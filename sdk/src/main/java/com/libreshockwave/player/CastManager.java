@@ -2,11 +2,14 @@ package com.libreshockwave.player;
 
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.chunks.*;
+import com.libreshockwave.net.NetManager;
+import com.libreshockwave.net.NetResult;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
 
 /**
@@ -28,9 +31,21 @@ public class CastManager {
     private final Map<String, DirectorFile> castFileCache = new HashMap<>();
     private String basePath;
     private BiConsumer<String, byte[]> externalLoader;
+    private NetManager netManager;
 
     public CastManager() {
         this.basePath = "";
+    }
+
+    /**
+     * Set the network manager for HTTP loading.
+     */
+    public void setNetManager(NetManager netManager) {
+        this.netManager = netManager;
+    }
+
+    public NetManager getNetManager() {
+        return netManager;
     }
 
     /**
@@ -296,6 +311,113 @@ public class CastManager {
 
         cast.setState(CastLib.State.NONE);
         return false;
+    }
+
+    /**
+     * Load an external cast file asynchronously.
+     * Supports both file and HTTP URLs via NetManager.
+     */
+    public CompletableFuture<Boolean> loadExternalCastAsync(CastLib cast) {
+        if (!cast.isExternal()) {
+            return CompletableFuture.completedFuture(true);
+        }
+
+        String fileName = cast.getFileName();
+        if (fileName.isEmpty()) {
+            return CompletableFuture.completedFuture(false);
+        }
+
+        // Check cache first
+        DirectorFile cachedFile = castFileCache.get(fileName);
+        if (cachedFile != null) {
+            cast.loadFromDirectorFile(cachedFile);
+            return CompletableFuture.completedFuture(true);
+        }
+
+        cast.setState(CastLib.State.LOADING);
+
+        // Use NetManager if available and we have HTTP base path
+        if (netManager != null && netManager.getBasePath().isPresent()) {
+            return loadCastFromNetwork(cast, fileName);
+        }
+
+        // Fall back to file loading
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                DirectorFile castFile = loadCastFile(fileName);
+                if (castFile != null) {
+                    castFileCache.put(fileName, castFile);
+                    cast.loadFromDirectorFile(castFile);
+                    return true;
+                }
+            } catch (Exception e) {
+                System.err.println("Failed to load cast: " + e.getMessage());
+            }
+            cast.setState(CastLib.State.NONE);
+            return false;
+        });
+    }
+
+    /**
+     * Load a cast file over HTTP using NetManager.
+     */
+    private CompletableFuture<Boolean> loadCastFromNetwork(CastLib cast, String fileName) {
+        System.out.println("[CastManager] Loading cast from network: " + fileName);
+        int taskId = netManager.preloadNetThing(fileName);
+
+        return netManager.awaitTask(taskId).thenApply(result -> {
+            if (result.isSuccess()) {
+                try {
+                    byte[] data = result.getData();
+                    System.out.println("[CastManager] Downloaded " + fileName + " (" + data.length + " bytes)");
+                    DirectorFile castFile = DirectorFile.load(data);
+                    if (castFile != null) {
+                        castFileCache.put(fileName, castFile);
+                        cast.loadFromDirectorFile(castFile);
+                        System.out.println("[CastManager] Loaded cast: " + cast.getName() +
+                            " with " + cast.getMemberCount() + " members");
+                        return true;
+                    }
+                } catch (Exception e) {
+                    System.err.println("[CastManager] Failed to parse cast from network: " + e.getMessage());
+                    e.printStackTrace();
+                }
+            } else {
+                System.err.println("[CastManager] Failed to download cast: " + fileName +
+                    " (error " + result.getErrorCode() + ")");
+            }
+            cast.setState(CastLib.State.NONE);
+            return false;
+        });
+    }
+
+    /**
+     * Preload external casts asynchronously.
+     */
+    public CompletableFuture<Void> preloadCastsAsync(PreloadReason reason) {
+        List<CompletableFuture<Boolean>> futures = new ArrayList<>();
+
+        for (CastLib cast : casts) {
+            if (!cast.isExternal() || cast.getState() != CastLib.State.NONE) {
+                continue;
+            }
+            if (cast.getFileName().isEmpty()) {
+                continue;
+            }
+
+            CastLib.PreloadMode mode = cast.getPreloadMode();
+            boolean shouldPreload = switch (mode) {
+                case WHEN_NEEDED -> false;
+                case AFTER_FRAME_ONE -> reason == PreloadReason.AFTER_FRAME_ONE;
+                case BEFORE_FRAME_ONE -> reason == PreloadReason.MOVIE_LOADED;
+            };
+
+            if (shouldPreload) {
+                futures.add(loadExternalCastAsync(cast));
+            }
+        }
+
+        return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
     }
 
     /**

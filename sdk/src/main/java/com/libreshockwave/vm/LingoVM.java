@@ -4,6 +4,9 @@ import com.libreshockwave.DirectorFile;
 import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.chunks.ScriptNamesChunk;
 import com.libreshockwave.lingo.*;
+import com.libreshockwave.net.NetManager;
+import com.libreshockwave.net.NetResult;
+import com.libreshockwave.net.NetTask;
 
 import java.util.*;
 
@@ -21,6 +24,7 @@ public class LingoVM {
 
     private boolean halted;
     private int maxInstructions = 100000;
+    private NetManager netManager;
 
     @FunctionalInterface
     public interface BuiltinHandler {
@@ -62,6 +66,14 @@ public class LingoVM {
 
     public void setMaxInstructions(int max) {
         this.maxInstructions = max;
+    }
+
+    public void setNetManager(NetManager netManager) {
+        this.netManager = netManager;
+    }
+
+    public NetManager getNetManager() {
+        return netManager;
     }
 
     public void registerBuiltin(String name, BuiltinHandler handler) {
@@ -1247,33 +1259,84 @@ public class LingoVM {
             return Datum.voidValue();
         });
 
-        // Network stubs
+        // Network handlers (using NetManager when available)
         registerBuiltin("netDone", (vm, args) -> {
-            // Check if network operation is complete
-            return Datum.TRUE; // Always return done in stub
+            if (vm.netManager == null) return Datum.TRUE;
+            Integer taskId = args.isEmpty() ? null : args.get(0).intValue();
+            return vm.netManager.isTaskDone(taskId) ? Datum.TRUE : Datum.FALSE;
         });
 
         registerBuiltin("preloadNetThing", (vm, args) -> {
-            if (!args.isEmpty()) {
-                System.out.println("[preloadNetThing] " + args.get(0).stringValue());
+            if (args.isEmpty()) return Datum.of(0);
+            String url = args.get(0).stringValue();
+            if (vm.netManager == null) {
+                System.out.println("[preloadNetThing] " + url + " (no NetManager)");
+                return Datum.of(1);
             }
-            return Datum.of(1); // Return task ID
+            int taskId = vm.netManager.preloadNetThing(url);
+            System.out.println("[preloadNetThing] " + url + " -> task " + taskId);
+            return Datum.of(taskId);
         });
 
         registerBuiltin("getNetText", (vm, args) -> {
-            return Datum.of(""); // Stub
+            if (args.isEmpty()) return Datum.of(0);
+            String url = args.get(0).stringValue();
+            if (vm.netManager == null) return Datum.of(1);
+            int taskId = vm.netManager.preloadNetThing(url);
+            return Datum.of(taskId);
         });
 
         registerBuiltin("netTextResult", (vm, args) -> {
-            return Datum.of(""); // Stub
+            if (vm.netManager == null) return Datum.of("");
+            Integer taskId = args.isEmpty() ? null : args.get(0).intValue();
+            return vm.netManager.getTaskResult(taskId)
+                .filter(NetResult::isSuccess)
+                .map(r -> Datum.of(new String(r.getData())))
+                .orElse(Datum.of(""));
         });
 
         registerBuiltin("netStatus", (vm, args) -> {
-            return Datum.of("Complete");
+            if (vm.netManager == null) return Datum.of("Complete");
+            Integer taskId = args.isEmpty() ? null : args.get(0).intValue();
+            boolean done = vm.netManager.isTaskDone(taskId);
+            return Datum.of(done ? "Complete" : "InProgress");
         });
 
         registerBuiltin("netError", (vm, args) -> {
-            return Datum.of("OK");
+            if (vm.netManager == null) return Datum.of("OK");
+            Integer taskId = args.isEmpty() ? null : args.get(0).intValue();
+            return vm.netManager.getTaskResult(taskId)
+                .map(r -> r.isSuccess() ? Datum.of("OK") : Datum.of(r.getErrorCode()))
+                .orElse(Datum.of(0));
+        });
+
+        registerBuiltin("postNetText", (vm, args) -> {
+            if (args.isEmpty()) return Datum.of(0);
+            String url = args.get(0).stringValue();
+            String postData = args.size() > 1 ? args.get(1).stringValue() : "";
+            if (vm.netManager == null) return Datum.of(1);
+            int taskId = vm.netManager.postNetText(url, postData);
+            return Datum.of(taskId);
+        });
+
+        registerBuiltin("getStreamStatus", (vm, args) -> {
+            if (vm.netManager == null || args.isEmpty()) return Datum.propList();
+            int taskId = args.get(0).intValue();
+            Optional<NetTask> taskOpt = vm.netManager.getTask(taskId);
+            if (taskOpt.isEmpty()) return Datum.propList();
+            NetTask task = taskOpt.get();
+
+            boolean isDone = vm.netManager.isTaskDone(taskId);
+            boolean isOk = isDone && vm.netManager.getTaskResult(taskId)
+                .map(NetResult::isSuccess).orElse(false);
+
+            Datum.PropList result = Datum.propList();
+            result.put(Datum.symbol("URL"), Datum.of(task.url()));
+            result.put(Datum.symbol("state"), Datum.of(isDone ? "Complete" : "InProgress"));
+            result.put(Datum.symbol("bytesSoFar"), Datum.of(isOk ? 100 : 0));
+            result.put(Datum.symbol("bytesTotal"), Datum.of(100));
+            result.put(Datum.symbol("error"), Datum.of(isOk ? "OK" : "Error"));
+            return result;
         });
 
         registerBuiltin("gotoNetPage", (vm, args) -> {

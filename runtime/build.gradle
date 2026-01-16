@@ -64,3 +64,16 @@ tasks.register('runTests', JavaExec) {
         languageVersion = JavaLanguageVersion.of(24)
     }
 }
+
+// Task to run network loading tests
+tasks.register('runNetworkTest', JavaExec) {
+    group = 'verification'
+    description = 'Run network loading tests (pass -Purl=http://localhost:8080/movie.dcr)'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.runtime.NetworkTest'
+    args = project.hasProperty('url') ? [project.property('url')] : ['http://localhost:8080/habbo.dcr']
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(24)
+    }
+}

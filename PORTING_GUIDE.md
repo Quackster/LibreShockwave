@@ -27,8 +27,12 @@ LibreShockwave is a port of the Rust project **dirplayer-rs** and must match its
 # Run a specific test with a Director file
 ./gradlew runDcrTests -Pfile=path/to/movie.dcr
 
-# Run DirPlayer with a movie file
+# Run DirPlayer with a movie file (local or HTTP)
 ./gradlew runPlayer -Pfile=path/to/movie.dcr
+./gradlew runPlayer -Pfile=http://localhost:8080/movie.dcr
+
+# Run network loading tests
+./gradlew :runtime:runNetworkTest -Purl=http://localhost:8080/habbo.dcr
 ```
 
 ---
@@ -45,13 +49,14 @@ libreshockwave/
 │       ├── io/                   # BinaryReader for parsing
 │       ├── lingo/                # Datum, Opcode, DatumType
 │       ├── vm/                   # LingoVM bytecode executor (single source of truth)
-│       ├── player/               # CastLib, CastManager
+│       ├── net/                  # Network loading (NetManager, NetTask, NetResult)
+│       ├── player/               # CastLib, CastManager, Score
 │       │   └── bitmap/           # Bitmap handling
 │       └── handlers/             # Built-in Lingo handlers
 │
 ├── runtime/                      # Execution runtime (depends on SDK)
 │   └── src/main/java/com/libreshockwave/runtime/
-│       ├── DirPlayer.java        # Movie playback (uses SDK's LingoVM)
+│       ├── DirPlayer.java        # Movie playback (uses SDK's LingoVM, supports HTTP)
 │       ├── ExecutionScope.java   # Stack, locals, args utility
 │       ├── HandlerExecutionResult.java  # ADVANCE, JUMP, STOP, ERROR
 │       └── BytecodeHandlerContext.java  # Context for player extensions
@@ -354,6 +359,227 @@ Only diverge from `dirplayer-rs` when ProjectorRays clearly demonstrates the int
 
 ---
 
+## Current Porting Progress
+
+### Completed Features
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Container Parsing (RIFX) | ✅ Complete | Uncompressed .dir files |
+| Afterburner Parsing (DCR) | ✅ Complete | Compressed .dcr files via ABMP/ILS |
+| Chunk Parsing | ✅ Complete | CASt, Lscr, BITD, KEY*, CAS*, etc. |
+| LingoVM Bytecode Execution | ✅ Complete | All major opcodes implemented |
+| Built-in Handlers (60+) | ✅ Complete | Math, lists, strings, etc. |
+| External Cast Support | ✅ Complete | File-based loading |
+| **HTTP Network Loading** | ✅ Complete | Movies and casts over HTTP |
+| Score Frame Data | 🔄 Partial | Basic parsing, needs delta decompression |
+| Sprite Behaviors | ❌ Not Started | beginSprite/endSprite events |
+
+### TODO - Score Implementation
+
+The score is the timeline that controls sprite placement and behavior attachment per frame.
+
+#### Pending Tasks
+
+1. **Enhance ScoreChunk Parsing**
+   - Parse Entry[0] frame data (delta-compressed sprite positions)
+   - Parse Entry[2+] behavior intervals (FrameIntervalPrimary + Secondary)
+   - Reference: `vm-rust/src/director/chunks/score.rs`
+
+2. **Score Delta Decompression**
+   - Implement delta decompression for sprite channel data
+   - 24-byte ScoreFrameChannelData structure per channel
+   - Reference: `vm-rust/src/director/chunks/score.rs:parse_frame_data()`
+
+3. **Create SpriteChannel Class**
+   - Runtime state for each sprite channel
+   - Properties: member, locH, locV, width, height, ink, blend, visible
+   - Attached behaviors (scriptInstanceList)
+
+4. **Implement Frame Execution Cycle**
+   - `beginSprites(frame)` - initialize sprites, attach behaviors, dispatch beginSprite
+   - `endSprites(prevFrame, nextFrame)` - dispatch endSprite, detach behaviors
+   - `executeFrameScript(frame)` - run frame script from channel 0
+   - Reference: `vm-rust/src/player/score.rs`
+
+5. **Reserved Channel Indices**
+   - Channel 0: Frame script
+   - Channel 1: Palette
+   - Channel 2: Transition
+   - Channel 3-4: Sound
+   - Channel 5: Tempo
+   - Channel 6+: Sprite channels
+
+### TODO - Additional Features
+
+| Feature | Priority | Reference |
+|---------|----------|-----------|
+| Film Loops | Medium | `vm-rust/src/player/film_loop.rs` |
+| Sound Playback | Medium | `vm-rust/src/player/sound.rs` |
+| Bitmap Rendering | Low | `vm-rust/src/rendering.rs` |
+| Transitions | Low | `vm-rust/src/player/transition.rs` |
+
+---
+
+## Network Loading Support
+
+### Architecture
+
+```
++----------------------------------------------------------+
+|                    Network Loading                        |
++----------------------------------------------------------+
+|  NetManager (sdk/net/)                                    |
+|    ├── preloadNetThing(url) -> taskId                     |
+|    ├── isTaskDone(taskId) -> boolean                      |
+|    ├── getTaskResult(taskId) -> NetResult                 |
+|    ├── awaitTask(taskId) -> CompletableFuture             |
+|    └── postNetText(url, data) -> taskId                   |
++----------------------------------------------------------+
+|  NetTask                                                  |
+|    ├── id, url, resolvedUri                               |
+|    ├── method: GET | POST                                 |
+|    └── postData (for POST requests)                       |
++----------------------------------------------------------+
+|  NetResult                                                |
+|    ├── Success(byte[] data)                               |
+|    └── Error(int errorCode)                               |
++----------------------------------------------------------+
+```
+
+### Lingo Network Handlers
+
+All network handlers now use `NetManager` when available:
+
+| Handler | Behavior |
+|---------|----------|
+| `preloadNetThing(url)` | Starts async HTTP fetch, returns task ID |
+| `netDone(taskId)` | Returns TRUE if task is complete |
+| `netTextResult(taskId)` | Returns downloaded content as string |
+| `netError(taskId)` | Returns "OK" or error code |
+| `netStatus(taskId)` | Returns "Complete" or "InProgress" |
+| `getStreamStatus(taskId)` | Returns propList with URL, state, bytes, error |
+| `postNetText(url, data)` | POST request, returns task ID |
+
+### HTTP Movie Loading
+
+```java
+DirPlayer player = new DirPlayer();
+
+// Load movie from HTTP URL
+player.loadMovieFromUrl("http://localhost:8080/habbo.dcr")
+    .get(60, TimeUnit.SECONDS);
+
+// External casts are resolved relative to movie URL
+// e.g., "fuse_client.cct" -> "http://localhost:8080/fuse_client.cct"
+
+// Preload external casts asynchronously
+player.getCastManager()
+    .preloadCastsAsync(CastManager.PreloadReason.MOVIE_LOADED)
+    .get(120, TimeUnit.SECONDS);
+```
+
+### Testing HTTP Loading
+
+```bash
+# Start a local HTTP server with your Director files
+cd /path/to/director/files
+python -m http.server 8080
+
+# Run the network test
+./gradlew :runtime:runNetworkTest -Purl=http://localhost:8080/habbo.dcr
+```
+
+---
+
+## Score Implementation Details
+
+### VWSC Chunk Structure
+
+The score is stored in the VWSC chunk with this layout:
+
+```
+Header (24 bytes):
+  total_length (u32)
+  unk1 (u32)
+  unk2 (u32)
+  entry_count (u32)
+  unk3 (u32)
+  entry_size_sum (u32)
+
+Offset Table:
+  (entry_count + 1) offsets pointing to entries
+
+Entries:
+  Entry[0]: Frame delta-compressed data (ScoreFrameData)
+  Entry[1]: Unknown/reserved
+  Entry[2+]: Behavior intervals (FrameIntervalPrimary + Secondary)
+```
+
+### Frame Data Delta Compression
+
+Each frame's sprite data is delta-compressed:
+
+```
+For each frame:
+  length (u16) - frame segment length
+
+  For each channel with changes:
+    channel_size (u16)
+    channel_offset (u16)
+    delta_data (bytes) - applied to channel buffer
+```
+
+### ScoreFrameChannelData (24 bytes per channel)
+
+```
+sprite_type (u8)
+ink (u8)
+fore_color (u8)
+back_color (u8)
+cast_lib (u16)
+cast_member (u16)
+pos_y (u16)
+pos_x (u16)
+height (u16)
+width (u16)
+color_flag (u8)
+fore_color_g (u8)
+back_color_g (u8)
+fore_color_b (u8)
+back_color_b (u8)
+... (remaining bytes)
+```
+
+### Behavior Interval Records
+
+**FrameIntervalPrimary (44 bytes):**
+- start_frame, end_frame, channel_index
+- Defines when a behavior is active
+
+**FrameIntervalSecondary (8+ bytes):**
+- cast_lib, cast_member, param_index
+- References the behavior script to attach
+
+### Frame Execution Cycle (dirplayer-rs pattern)
+
+```
+1. Check if frame changed
+2. Call score.end_sprites(prev_frame, next_frame)
+   - Dispatch endSprite events
+   - Detach exiting behaviors
+3. Call score.begin_sprites(current_frame)
+   - Load sprite properties from score
+   - Attach behaviors from intervals
+   - Dispatch beginSprite events
+4. Execute frame script (channel 0)
+5. Process events, render frame
+6. Determine next frame
+7. Loop
+```
+
+---
+
 ## Change Documentation Template
 
 When making changes, document in this file:
@@ -378,6 +604,37 @@ Brief description of what was changed and the motivation.
 ---
 
 ## Recent Changes
+
+### 2026-01-16: HTTP Network Loading Support
+
+**Summary:** Added full HTTP network loading support for movies and external casts, matching dirplayer-rs NetManager behavior.
+
+**Rust Reference:**
+- `vm-rust/src/player/net_manager.rs` - NetManager implementation
+- `vm-rust/src/player/net_task.rs` - NetTask structure
+- `vm-rust/src/player/handlers/net.rs` - Network handlers
+
+**New Files:**
+1. `sdk/src/main/java/com/libreshockwave/net/NetTask.java` - Network task record
+2. `sdk/src/main/java/com/libreshockwave/net/NetResult.java` - Success/Error result
+3. `sdk/src/main/java/com/libreshockwave/net/NetManager.java` - HTTP task manager
+
+**Modified Files:**
+1. `sdk/.../vm/LingoVM.java` - Real network handler implementations using NetManager
+2. `sdk/.../player/CastManager.java` - Added async HTTP cast loading
+3. `runtime/.../DirPlayer.java` - Added loadMovieFromUrl() for HTTP loading
+4. `runtime/build.gradle` - Added runNetworkTest task
+
+**Features:**
+- Async HTTP fetching via Java HttpClient
+- Task tracking by ID (matches dirplayer-rs)
+- Base URL resolution for relative paths
+- External cast loading over HTTP
+- All Lingo network handlers implemented (preloadNetThing, netDone, etc.)
+
+**Test:** Run `./gradlew :runtime:runNetworkTest -Purl=http://localhost:8080/habbo.dcr`
+
+---
 
 ### 2026-01-16: Runtime Uses SDK's LingoVM
 
@@ -439,6 +696,22 @@ Runtime
 3. `CastMemberChunk.java` - Set big-endian, parse ListChunk for name
 4. `ScriptContextChunk.java` - Added lnamSectionId field
 5. `DirectorFile.java` - Two-pass Afterburner loading, keep non-empty chunks
+
+---
+
+## dirplayer-rs Key Files Reference
+
+| Area | Rust File | Purpose |
+|------|-----------|---------|
+| File Parsing | `director/file.rs` | Main file parser |
+| Chunk Parsing | `director/chunks/*.rs` | Individual chunk parsers |
+| Score | `director/chunks/score.rs` | VWSC chunk parsing |
+| Score Runtime | `player/score.rs` | begin/endSprites, frame execution |
+| NetManager | `player/net_manager.rs` | Network task management |
+| Net Handlers | `player/handlers/net.rs` | preloadNetThing, netDone, etc. |
+| Cast Manager | `player/cast_manager.rs` | Cast library management |
+| Cast Lib | `player/cast_lib.rs` | Individual cast loading |
+| Bytecode | `player/bytecode/*.rs` | Opcode handlers |
 
 ---
 

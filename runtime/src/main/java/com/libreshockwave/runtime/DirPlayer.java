@@ -3,12 +3,17 @@ package com.libreshockwave.runtime;
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.chunks.*;
 import com.libreshockwave.lingo.Datum;
+import com.libreshockwave.net.NetManager;
+import com.libreshockwave.net.NetResult;
 import com.libreshockwave.player.CastManager;
 import com.libreshockwave.vm.LingoVM;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Director movie player for the runtime.
@@ -53,6 +58,8 @@ public class DirPlayer {
     private DirectorFile file;
     private CastManager castManager;
     private LingoVM vm;
+    private NetManager netManager;
+    private String baseUrl;
 
     private PlayState state = PlayState.STOPPED;
     private int currentFrame = 1;
@@ -73,10 +80,16 @@ public class DirPlayer {
     }
 
     public DirPlayer() {
+        this.netManager = new NetManager();
     }
 
     public DirPlayer(DirectorFile file) {
+        this();
         loadMovie(file);
+    }
+
+    public NetManager getNetManager() {
+        return netManager;
     }
 
     // Loading
@@ -96,6 +109,10 @@ public class DirPlayer {
         this.castManager = file.createCastManager();
         this.vm = new LingoVM(file);
 
+        // Inject NetManager into VM and CastManager
+        vm.setNetManager(netManager);
+        castManager.setNetManager(netManager);
+
         // Set tempo from config
         if (file.getConfig() != null) {
             this.tempo = file.getConfig().tempo();
@@ -113,6 +130,47 @@ public class DirPlayer {
 
         // Determine last frame from score
         this.lastFrame = 100;
+    }
+
+    /**
+     * Load a movie from an HTTP URL.
+     * Sets base path for resolving relative cast URLs.
+     */
+    public CompletableFuture<Void> loadMovieFromUrl(String url) {
+        System.out.println("[DirPlayer] Loading movie from URL: " + url);
+
+        // Set base path from movie URL
+        int lastSlash = url.lastIndexOf('/');
+        this.baseUrl = lastSlash > 0 ? url.substring(0, lastSlash + 1) : url;
+        netManager.setBasePath(baseUrl);
+        System.out.println("[DirPlayer] Base URL: " + baseUrl);
+
+        // Download the movie file
+        int taskId = netManager.preloadNetThing(url);
+
+        return netManager.awaitTask(taskId).thenAccept(result -> {
+            if (result.isSuccess()) {
+                try {
+                    byte[] data = result.getData();
+                    System.out.println("[DirPlayer] Downloaded movie (" + data.length + " bytes)");
+                    DirectorFile dirFile = DirectorFile.load(data);
+                    loadMovie(dirFile);
+                    System.out.println("[DirPlayer] Movie loaded successfully");
+                } catch (Exception e) {
+                    throw new RuntimeException("Failed to load movie from URL: " + e.getMessage(), e);
+                }
+            } else {
+                throw new RuntimeException("Failed to download movie from: " + url +
+                    " (error " + result.getErrorCode() + ")");
+            }
+        });
+    }
+
+    /**
+     * Get the base URL for resolving relative paths.
+     */
+    public String getBaseUrl() {
+        return baseUrl;
     }
 
     /**
@@ -454,21 +512,38 @@ public class DirPlayer {
 
     public static void main(String[] args) {
         if (args.length == 0) {
-            System.out.println("Usage: DirPlayer <movie.dcr>");
+            System.out.println("Usage: DirPlayer <movie.dcr|http://url/movie.dcr>");
             System.out.println("\nDirector Movie Player (Runtime)");
             System.out.println("Loads and executes Lingo scripts from Director files.");
+            System.out.println("Supports both local files and HTTP URLs.");
             return;
         }
 
         try {
             DirPlayer player = new DirPlayer();
-            player.loadMovie(Path.of(args[0]));
+            String path = args[0];
 
-            System.out.println("=== Director Player (Runtime) ===");
-            System.out.println("File: " + args[0]);
+            // Check if it's a URL or file path
+            if (path.startsWith("http://") || path.startsWith("https://")) {
+                System.out.println("=== Director Player (Runtime) - HTTP Mode ===");
+                player.loadMovieFromUrl(path).get(60, TimeUnit.SECONDS);
+            } else {
+                System.out.println("=== Director Player (Runtime) - File Mode ===");
+                player.loadMovie(Path.of(path));
+            }
+
+            System.out.println("File: " + path);
             System.out.println("Stage: " + player.getStageWidth() + "x" + player.getStageHeight());
             System.out.println("Tempo: " + player.getTempo() + " fps");
             System.out.println("Scripts: " + player.getFile().getScripts().size());
+            System.out.println("Casts: " + player.getCastManager().getCastCount());
+
+            // Show external casts
+            for (var cast : player.getCastManager().getCasts()) {
+                if (cast.isExternal()) {
+                    System.out.println("  External cast: " + cast.getName() + " -> " + cast.getFileName());
+                }
+            }
             System.out.println();
 
             System.out.println("--- Executing prepareMovie ---");
@@ -483,8 +558,8 @@ public class DirPlayer {
 
             System.out.println("\n=== Done ===");
 
-        } catch (IOException e) {
-            System.err.println("Error loading file: " + e.getMessage());
+        } catch (Exception e) {
+            System.err.println("Error: " + e.getMessage());
             e.printStackTrace();
         }
     }
