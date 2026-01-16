@@ -45,7 +45,7 @@ LibreShockwave is a port of the Rust project **dirplayer-rs** and must match its
 
 ```
 libreshockwave/
-├── sdk/                          # Core SDK (file parsing, VM)
+├── sdk/                          # Core SDK (file parsing, VM, playback)
 │   └── src/main/java/com/libreshockwave/
 │       ├── DirectorFile.java     # Main entry point - loads .dir/.dcr files
 │       ├── chunks/               # Chunk parsers (CASt, Lscr, BITD, etc.)
@@ -54,29 +54,42 @@ libreshockwave/
 │       ├── lingo/                # Datum, Opcode, DatumType
 │       ├── vm/                   # LingoVM bytecode executor (single source of truth)
 │       ├── net/                  # Network loading (NetManager, NetTask, NetResult)
+│       ├── execution/            # DirPlayer - consolidated movie playback
 │       ├── player/               # CastLib, CastManager, Score
 │       │   └── bitmap/           # Bitmap handling
 │       └── handlers/             # Built-in Lingo handlers
 │
-├── runtime/                      # Execution runtime (depends on SDK)
-│   └── src/main/java/com/libreshockwave/runtime/
-│       ├── DirPlayer.java        # Movie playback (uses SDK's LingoVM, supports HTTP)
-│       ├── WebPlayer.java        # Web-based player with HTTP server
-│       ├── ExecutionScope.java   # Stack, locals, args utility
-│       ├── HandlerExecutionResult.java  # ADVANCE, JUMP, STOP, ERROR
-│       └── BytecodeHandlerContext.java  # Context for player extensions
+├── runtime/                      # WASM runtime (depends on SDK)
+│   └── src/main/java/com/libreshockwave/wasm/
+│       ├── WasmPlayer.java       # WASM-specific player with bitmap caching
+│       ├── WasmEntry.java        # @CEntryPoint exports for native-image
+│       └── WebPlayer.java        # Web-based player with HTTP server
 │   └── src/main/resources/player/
 │       ├── index.html            # Web player UI
 │       ├── style.css             # Player styling
 │       ├── libreshockwave-api.js # JavaScript API (WASM loader/stub)
 │       └── player.js             # UI controller and canvas renderer
 │
+├── player/                       # Swing-based desktop player
+│   └── src/main/java/com/libreshockwave/player/swing/
+│       └── SwingPlayer.java      # Uses SDK's DirPlayer for playback
+│
+├── xtras/                        # Director Xtras (extensions)
+│   └── src/main/java/com/libreshockwave/xtras/
+│       ├── Xtra.java             # Base Xtra interface
+│       ├── XtraManager.java      # Registers Xtras with VM
+│       └── NetLingoXtra.java     # Network functions (preloadNetThing, etc.)
+│
 ├── build.gradle                  # Root project (coordinates subprojects)
-├── settings.gradle               # includes 'sdk', 'runtime'
+├── settings.gradle               # includes 'sdk', 'runtime', 'player', 'xtras'
 └── README.md
 ```
 
-**Key Architecture Decision:** SDK's `LingoVM` is the single source of truth for bytecode execution. Runtime's `DirPlayer` uses LingoVM and extends it with player-specific handlers (go, play, stop, frame navigation).
+**Key Architecture Decisions:**
+- SDK's `LingoVM` is the single source of truth for bytecode execution
+- SDK's `DirPlayer` (in `execution/`) handles movie playback with frame events (enterFrame, exitFrame)
+- Both `SwingPlayer` and `WasmPlayer` use SDK's `DirPlayer` for core playback logic
+- Xtras are in a separate module to keep SDK dependencies minimal
 
 ---
 
@@ -245,13 +258,15 @@ Over 60 built-in handlers are implemented:
 Event types: PREPARE_MOVIE, START_MOVIE, STOP_MOVIE, PREPARE_FRAME, ENTER_FRAME, EXIT_FRAME, IDLE
 
 ```java
+import com.libreshockwave.execution.DirPlayer;
+
 DirPlayer player = new DirPlayer();
 player.loadMovie(Path.of("movie.dcr"));
 
-// Event handlers are called automatically
+// Events dispatched automatically during playback
+// Manual dispatch also available:
 player.dispatchEvent(DirPlayer.MovieEvent.PREPARE_MOVIE);
 player.dispatchEvent(DirPlayer.MovieEvent.START_MOVIE);
-player.dispatchEvent(DirPlayer.MovieEvent.EXIT_FRAME);
 ```
 
 ---
@@ -313,36 +328,38 @@ A cast is external if:
 
 ---
 
-## Runtime Subproject
+## DirPlayer (SDK execution/)
 
-The `runtime/` subproject contains execution components that depend on SDK.
-
-### ExecutionScope
-
-Manages state for a single handler call:
+The `DirPlayer` class in `sdk/execution/` provides movie playback:
 
 ```java
-ExecutionScope scope = new ExecutionScope(args);
+import com.libreshockwave.execution.DirPlayer;
 
-// Stack operations
-scope.push(Datum.of(42));
-Datum value = scope.pop();
-scope.swap();
+DirPlayer player = new DirPlayer();
+player.loadMovie(Path.of("movie.dcr"));
 
-// Local variables
-scope.setLocal("x", Datum.of(10));
-Datum x = scope.getLocal("x");
+// Playback control
+player.play();       // Start playing
+player.stop();       // Stop and reset to frame 1
+player.pause();      // Pause playback
+player.tick();       // Advance one frame (call in a timer loop)
 
-// Arguments
-Datum arg0 = scope.getArg(0);
-scope.setArg(1, Datum.of(99));
+// Navigation
+player.goToFrame(10);
+player.goToLabel("intro");
+player.nextFrame();
+player.prevFrame();
 
-// Bytecode position
-scope.setBytecodeIndex(10);
-scope.advanceBytecodeIndex();
+// Frame events are dispatched automatically:
+// - exitFrame before leaving current frame
+// - enterFrame after entering new frame
+// - prepareFrame before entering new frame
 
-// Return value
-scope.setReturnValue(Datum.of("result"));
+// Access state
+int frame = player.getCurrentFrame();
+int lastFrame = player.getLastFrame();
+Score score = player.getScore();
+LingoVM vm = player.getVM();
 ```
 
 ---
@@ -461,19 +478,20 @@ All network handlers now use `NetManager` when available:
 ### HTTP Movie Loading
 
 ```java
+import com.libreshockwave.execution.DirPlayer;
+
 DirPlayer player = new DirPlayer();
 
 // Load movie from HTTP URL
 player.loadMovieFromUrl("http://localhost:8080/habbo.dcr")
     .get(60, TimeUnit.SECONDS);
 
-// External casts are resolved relative to movie URL
+// Base URL is set automatically for resolving external casts
 // e.g., "fuse_client.cct" -> "http://localhost:8080/fuse_client.cct"
 
-// Preload external casts asynchronously
-player.getCastManager()
-    .preloadCastsAsync(CastManager.PreloadReason.MOVIE_LOADED)
-    .get(120, TimeUnit.SECONDS);
+// Or load from bytes with manual base URL
+player.loadMovie(movieBytes);
+player.setBaseUrl("http://localhost:8080/");
 ```
 
 ### Testing HTTP Loading
@@ -750,13 +768,13 @@ libreshockwave.wasm     # SDK + Runtime compiled to WebAssembly (TODO)
 SDK (libreshockwave)
 ├── LingoVM            <- Single source of truth for bytecode execution
 ├── Scope              <- Execution scope used internally by LingoVM
+├── DirPlayer          <- Movie playback with frame events (in execution/)
 └── 60+ built-in handlers (math, lists, strings, etc.)
 
-Runtime
-├── DirPlayer          <- Uses LingoVM, adds player-specific handlers (go, play, stop)
-├── ExecutionScope     <- Utility class for runtime-specific scope tracking
-├── HandlerExecutionResult <- Result enum matching dirplayer-rs
-└── BytecodeHandlerContext <- Context for player extensions
+Player/Runtime
+├── SwingPlayer        <- Uses SDK's DirPlayer, adds Swing UI
+├── WasmPlayer         <- Uses SDK APIs, adds WASM-specific bitmap caching
+└── XtraManager        <- Registers network Xtras (preloadNetThing, etc.)
 ```
 
 ---

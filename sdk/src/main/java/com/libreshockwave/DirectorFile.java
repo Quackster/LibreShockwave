@@ -1,5 +1,6 @@
 package com.libreshockwave;
 
+import com.libreshockwave.cast.BitmapInfo;
 import com.libreshockwave.chunks.*;
 import com.libreshockwave.format.AfterburnerReader;
 import com.libreshockwave.format.ChunkType;
@@ -8,6 +9,9 @@ import com.libreshockwave.lingo.Opcode;
 
 import com.libreshockwave.player.CastLib;
 import com.libreshockwave.player.CastManager;
+import com.libreshockwave.player.Palette;
+import com.libreshockwave.player.bitmap.Bitmap;
+import com.libreshockwave.player.bitmap.BitmapDecoder;
 
 import java.io.IOException;
 import java.nio.ByteOrder;
@@ -106,6 +110,56 @@ public class DirectorFile {
 
     public int getTempo() {
         return config != null ? config.tempo() : 15;
+    }
+
+    /**
+     * Decode a bitmap cast member to a Bitmap object.
+     * @param member The cast member chunk (must be a bitmap type)
+     * @return Optional containing the decoded bitmap, or empty if decoding fails
+     */
+    public Optional<Bitmap> decodeBitmap(CastMemberChunk member) {
+        if (!member.isBitmap() || keyTable == null) {
+            return Optional.empty();
+        }
+
+        try {
+            BitmapInfo info = BitmapInfo.parse(member.specificData());
+
+            // Find BITD chunk via key table
+            BitmapChunk bitmapChunk = null;
+            for (KeyTableChunk.KeyTableEntry entry : keyTable.getEntriesForOwner(member.id())) {
+                String fourcc = entry.fourccString();
+                if (fourcc.equals("BITD") || fourcc.equals("DTIB")) {
+                    Chunk chunk = getChunk(entry.sectionId());
+                    if (chunk instanceof BitmapChunk bc) {
+                        bitmapChunk = bc;
+                        break;
+                    }
+                }
+            }
+            if (bitmapChunk == null) {
+                return Optional.empty();
+            }
+
+            // Get palette
+            Palette palette = info.paletteId() < 0
+                ? Palette.getBuiltIn(info.paletteId())
+                : Palette.getBuiltIn(Palette.SYSTEM_MAC);
+
+            // Decode bitmap
+            boolean bigEndian = endian == ByteOrder.BIG_ENDIAN;
+            int directorVersion = config != null ? config.directorVersion() : 500;
+
+            Bitmap bitmap = BitmapDecoder.decode(
+                bitmapChunk.data(),
+                info.width(), info.height(), info.bitDepth(),
+                palette, true, bigEndian, directorVersion
+            );
+
+            return Optional.of(bitmap);
+        } catch (Exception e) {
+            return Optional.empty();
+        }
     }
 
     /**

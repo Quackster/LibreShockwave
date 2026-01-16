@@ -39,71 +39,28 @@ Run the Swing player:
 
 ```java
 import com.libreshockwave.DirectorFile;
-import com.libreshockwave.cast.BitmapInfo;
 import com.libreshockwave.chunks.*;
-import com.libreshockwave.player.*;
-import com.libreshockwave.player.bitmap.*;
-
 import javax.imageio.ImageIO;
-import java.awt.image.BufferedImage;
 import java.io.File;
-import java.nio.ByteOrder;
 import java.nio.file.*;
 
 public class DumpBitmaps {
     public static void main(String[] args) throws Exception {
         DirectorFile file = DirectorFile.load(Path.of("movie.dcr"));
-        CastManager castManager = file.createCastManager();
-        KeyTableChunk keyTable = file.getKeyTable();
-        ConfigChunk config = file.getConfig();
-
-        boolean bigEndian = file.getEndian() == ByteOrder.BIG_ENDIAN;
-        int version = config != null ? config.directorVersion() : 500;
-
         Files.createDirectories(Path.of("output"));
 
-        for (CastLib cast : castManager.getCasts()) {
-            for (CastMemberChunk member : cast.getAllMembers()) {
-                if (!member.isBitmap()) continue;
+        for (CastMemberChunk member : file.getCastMembers()) {
+            if (!member.isBitmap()) continue;
 
-                // Parse bitmap metadata
-                BitmapInfo info = BitmapInfo.parse(member.specificData());
-
-                // Find BITD chunk via key table
-                BitmapChunk bitmapChunk = null;
-                for (KeyTableChunk.KeyTableEntry entry : keyTable.getEntriesForOwner(member.id())) {
-                    if (entry.fourccString().equals("BITD")) {
-                        Chunk chunk = file.getChunk(entry.sectionId());
-                        if (chunk instanceof BitmapChunk bc) {
-                            bitmapChunk = bc;
-                            break;
-                        }
-                    }
-                }
-                if (bitmapChunk == null) continue;
-
-                // Get palette
-                Palette palette = info.paletteId() < 0
-                    ? Palette.getBuiltIn(info.paletteId())
-                    : Palette.getBuiltIn(Palette.SYSTEM_MAC);
-
-                // Decode bitmap
-                Bitmap bitmap = BitmapDecoder.decode(
-                    bitmapChunk.data(),
-                    info.width(), info.height(), info.bitDepth(),
-                    palette, true, bigEndian, version
-                );
-
-                // Save as PNG
-                int[] pixels = bitmap.getPixels();
-                BufferedImage image = new BufferedImage(
-                    bitmap.getWidth(), bitmap.getHeight(), BufferedImage.TYPE_INT_ARGB);
-                image.setRGB(0, 0, bitmap.getWidth(), bitmap.getHeight(), pixels, 0, bitmap.getWidth());
-
+            file.decodeBitmap(member).ifPresent(bitmap -> {
                 String name = member.name().isEmpty() ? "member_" + member.id() : member.name();
-                ImageIO.write(image, "PNG", new File("output/" + name + ".png"));
-                System.out.println("Saved: " + name + ".png");
-            }
+                try {
+                    ImageIO.write(bitmap.toBufferedImage(), "PNG", new File("output/" + name + ".png"));
+                    System.out.println("Saved: " + name + ".png");
+                } catch (Exception e) {
+                    System.err.println("Failed: " + name + " - " + e.getMessage());
+                }
+            });
         }
     }
 }
