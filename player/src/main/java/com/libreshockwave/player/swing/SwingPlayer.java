@@ -17,6 +17,10 @@ import java.awt.*;
 import java.awt.event.*;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.ByteOrder;
 import java.nio.file.Files;
 import java.util.*;
@@ -37,6 +41,8 @@ public class SwingPlayer extends JFrame {
     private final JButton prevButton;
     private final JButton nextButton;
     private final JCheckBox debugCheckbox;
+    private final JTextField urlField;
+    private final JButton loadUrlButton;
 
     private DirectorFile movieFile;
     private CastManager castManager;
@@ -53,8 +59,11 @@ public class SwingPlayer extends JFrame {
 
     private final Map<String, BufferedImage> bitmapCache = new HashMap<>();
     private File currentMovieDir;
+    private String currentBaseUrl;  // Base URL for network loading
+    private final HttpClient httpClient = HttpClient.newHttpClient();
     private final Preferences prefs = Preferences.userNodeForPackage(SwingPlayer.class);
     private static final String PREF_LAST_MOVIE = "lastMoviePath";
+    private static final String PREF_LAST_URL = "lastMovieUrl";
 
     public SwingPlayer() {
         super("LibreShockwave Swing Player");
@@ -85,6 +94,23 @@ public class SwingPlayer extends JFrame {
         JScrollPane stageScroll = new JScrollPane(stagePanel);
         stageScroll.setBorder(BorderFactory.createTitledBorder("Stage"));
 
+        // URL panel
+        JPanel urlPanel = new JPanel(new BorderLayout(5, 0));
+        urlPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 5, 0));
+        urlField = new JTextField();
+        loadUrlButton = new JButton("Load URL");
+
+        // Restore last URL
+        String lastUrl = prefs.get(PREF_LAST_URL, "http://localhost:8080/assets/movie.dcr");
+        urlField.setText(lastUrl);
+
+        urlField.addActionListener(e -> loadFromUrl(urlField.getText().trim()));
+        loadUrlButton.addActionListener(e -> loadFromUrl(urlField.getText().trim()));
+
+        urlPanel.add(new JLabel("URL: "), BorderLayout.WEST);
+        urlPanel.add(urlField, BorderLayout.CENTER);
+        urlPanel.add(loadUrlButton, BorderLayout.EAST);
+
         // Control panel
         JPanel controlPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
         playButton = new JButton("Play");
@@ -113,6 +139,11 @@ public class SwingPlayer extends JFrame {
         controlPanel.add(Box.createHorizontalStrut(20));
         controlPanel.add(debugCheckbox);
 
+        // Top panel combines URL and controls
+        JPanel topPanel = new JPanel(new BorderLayout());
+        topPanel.add(urlPanel, BorderLayout.NORTH);
+        topPanel.add(controlPanel, BorderLayout.SOUTH);
+
         // Console panel
         consoleArea = new JTextArea(10, 60);
         consoleArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
@@ -136,7 +167,7 @@ public class SwingPlayer extends JFrame {
         JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, stageScroll, consolePanel);
         splitPane.setResizeWeight(0.7);
 
-        mainPanel.add(controlPanel, BorderLayout.NORTH);
+        mainPanel.add(topPanel, BorderLayout.NORTH);
         mainPanel.add(splitPane, BorderLayout.CENTER);
         mainPanel.add(statusLabel, BorderLayout.SOUTH);
 
@@ -316,8 +347,143 @@ public class SwingPlayer extends JFrame {
         }
     }
 
+    private void loadFromUrl(String url) {
+        if (url == null || url.isEmpty()) return;
+
+        stop();
+        consoleArea.setText("");
+        bitmapCache.clear();
+        currentMovieDir = null;
+
+        // Remember this URL
+        prefs.put(PREF_LAST_URL, url);
+        urlField.setText(url);
+
+        // Extract base URL for external casts
+        currentBaseUrl = url.substring(0, url.lastIndexOf('/') + 1);
+
+        setStatus("Loading from URL...");
+        log("=== Loading: " + url + " ===");
+        log("Base URL: " + currentBaseUrl);
+
+        // Load in background thread
+        new Thread(() -> {
+            try {
+                HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .build();
+                HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+
+                if (response.statusCode() != 200) {
+                    SwingUtilities.invokeLater(() -> {
+                        log("ERROR: HTTP " + response.statusCode());
+                        setStatus("Failed to load: HTTP " + response.statusCode());
+                    });
+                    return;
+                }
+
+                byte[] data = response.body();
+                SwingUtilities.invokeLater(() -> {
+                    log("Downloaded: " + data.length + " bytes");
+                    loadMovieFromData(data, url);
+                });
+
+            } catch (Exception e) {
+                SwingUtilities.invokeLater(() -> {
+                    log("ERROR: " + e.getMessage());
+                    setStatus("Failed to load: " + e.getMessage());
+                    JOptionPane.showMessageDialog(this,
+                        "Failed to load from URL:\n" + e.getMessage(),
+                        "Load Error", JOptionPane.ERROR_MESSAGE);
+                });
+            }
+        }).start();
+    }
+
+    private void loadMovieFromData(byte[] data, String sourceName) {
+        try {
+            movieFile = DirectorFile.load(data);
+            log("DirectorFile loaded, endian: " + movieFile.getEndian());
+
+            // Get config
+            ConfigChunk config = movieFile.getConfig();
+            if (config != null) {
+                tempo = config.tempo();
+                int width = config.stageRight() - config.stageLeft();
+                int height = config.stageBottom() - config.stageTop();
+                stagePanel.setPreferredSize(new Dimension(width, height));
+                stagePanel.revalidate();
+                log("Config: " + width + "x" + height + " @ " + tempo + " fps");
+            }
+
+            // Create cast manager
+            castManager = movieFile.createCastManager();
+            log("CastManager: " + castManager.getCastCount() + " casts");
+
+            for (CastLib cast : castManager.getCasts()) {
+                log("  Cast #" + cast.getNumber() + " '" + cast.getName() + "': " +
+                    cast.getMemberCount() + " members" +
+                    (cast.isExternal() ? " [EXTERNAL: " + cast.getFileName() + "]" : ""));
+            }
+
+            // Load external casts
+            loadExternalCasts();
+
+            // Create score
+            if (movieFile.hasScore()) {
+                score = movieFile.createScore();
+                lastFrame = score.getFrameCount();
+                log("Score: " + lastFrame + " frames");
+            } else {
+                lastFrame = 1;
+                log("No score found");
+            }
+
+            // Create VM
+            vm = new LingoVM(movieFile);
+            vm.setDebugMode(debugCheckbox.isSelected());
+            vm.setDebugOutputCallback(this::log);
+            vm.setCastManager(castManager);
+
+            // Initialize NetManager for network operations
+            netManager = new NetManager();
+            if (currentBaseUrl != null) {
+                netManager.setBasePath(currentBaseUrl);
+            } else if (currentMovieDir != null) {
+                netManager.setBasePath(currentMovieDir.toURI());
+            }
+            vm.setNetManager(netManager);
+
+            registerBuiltins();
+
+            // Initialize Xtras
+            xtraManager = XtraManager.createWithStandardXtras();
+            xtraManager.registerAll(vm);
+            log("LingoVM initialized, " + movieFile.getScripts().size() + " scripts");
+            log("Xtras loaded: " + xtraManager.getXtras().size());
+
+            currentFrame = 1;
+            setControlsEnabled(true);
+            updateFrameLabel();
+            renderFrame();
+
+            // Execute startup handlers
+            log("--- Executing startup handlers ---");
+            executeHandlerIfExists("prepareMovie");
+            executeHandlerIfExists("startMovie");
+
+            setStatus("Loaded: " + sourceName);
+
+        } catch (Exception e) {
+            log("ERROR: " + e.getMessage());
+            e.printStackTrace();
+            setStatus("Failed to load: " + e.getMessage());
+        }
+    }
+
     private void loadExternalCasts() {
-        if (castManager == null || currentMovieDir == null) return;
+        if (castManager == null) return;
+        if (currentMovieDir == null && currentBaseUrl == null) return;
 
         for (CastLib cast : castManager.getCasts()) {
             if (cast.isExternal() && cast.getState() == CastLib.State.NONE) {
@@ -328,20 +494,54 @@ public class SwingPlayer extends JFrame {
 
                 // Try different extensions
                 String[] extensions = {"", ".cct", ".cst", ".cxt"};
+                boolean loaded = false;
+
                 for (String ext : extensions) {
+                    if (loaded) break;
                     String baseName = fileName.replaceAll("\\.(cct|cst|cxt)$", "");
-                    File castFile = new File(currentMovieDir, baseName + ext);
-                    if (castFile.exists()) {
-                        try {
-                            byte[] data = Files.readAllBytes(castFile.toPath());
-                            DirectorFile castDir = DirectorFile.load(data);
-                            cast.loadFromDirectorFile(castDir);
-                            log("  Loaded from: " + castFile.getName() + " (" + cast.getMemberCount() + " members)");
-                            break;
-                        } catch (Exception e) {
-                            log("  Failed to load " + castFile.getName() + ": " + e.getMessage());
+
+                    // Try local file first
+                    if (currentMovieDir != null) {
+                        File castFile = new File(currentMovieDir, baseName + ext);
+                        if (castFile.exists()) {
+                            try {
+                                byte[] data = Files.readAllBytes(castFile.toPath());
+                                DirectorFile castDir = DirectorFile.load(data);
+                                cast.loadFromDirectorFile(castDir);
+                                log("  Loaded from file: " + castFile.getName() + " (" + cast.getMemberCount() + " members)");
+                                loaded = true;
+                                break;
+                            } catch (Exception e) {
+                                log("  Failed to load " + castFile.getName() + ": " + e.getMessage());
+                            }
                         }
                     }
+
+                    // Try URL
+                    if (currentBaseUrl != null && !loaded) {
+                        String castUrl = currentBaseUrl + baseName + ext;
+                        try {
+                            HttpRequest request = HttpRequest.newBuilder()
+                                .uri(URI.create(castUrl))
+                                .build();
+                            HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+
+                            if (response.statusCode() == 200) {
+                                byte[] data = response.body();
+                                DirectorFile castDir = DirectorFile.load(data);
+                                cast.loadFromDirectorFile(castDir);
+                                log("  Loaded from URL: " + castUrl + " (" + cast.getMemberCount() + " members)");
+                                loaded = true;
+                                break;
+                            }
+                        } catch (Exception e) {
+                            log("  Failed to load " + castUrl + ": " + e.getMessage());
+                        }
+                    }
+                }
+
+                if (!loaded) {
+                    log("  WARNING: Could not load external cast");
                 }
             }
         }
@@ -700,9 +900,14 @@ public class SwingPlayer extends JFrame {
             SwingPlayer player = new SwingPlayer();
             player.setVisible(true);
 
-            // If a file was passed as argument, load it
+            // If an argument was passed, load it (URL or file)
             if (args.length > 0) {
-                player.loadMovie(new File(args[0]));
+                String arg = args[0];
+                if (arg.startsWith("http://") || arg.startsWith("https://")) {
+                    player.loadFromUrl(arg);
+                } else {
+                    player.loadMovie(new File(arg));
+                }
             }
         });
     }
