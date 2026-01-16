@@ -99,16 +99,18 @@ teavm.wasm {
 tasks.register('runWasmPlayer') {
     group = 'application'
     description = 'Build WASM, copy to player resources, and start web server'
+
+    // Ensure WASM is compiled first
     dependsOn 'generateWasm'
 
     doLast {
-        // Copy WASM file to player resources
+        // Copy WASM and runtime JS files to player resources
         copy {
             from layout.buildDirectory.dir('generated/teavm/wasm')
             into 'src/main/resources/player'
-            include '*.wasm'
+            include '*.wasm', '*.js'
         }
-        println "WASM copied to player resources"
+        println "WASM and runtime JS copied to player resources"
 
         // Start Python HTTP server
         def port = project.hasProperty('port') ? project.property('port') : '8080'

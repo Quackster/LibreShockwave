@@ -43,5 +43,5 @@ tasks.register('runPlayer') {
 tasks.register('buildAll') {
     group = 'build'
     description = 'Build all subprojects'
-    dependsOn ':sdk:build', ':runtime:build'
+    dependsOn ':sdk:build', ':runtime:build', ':runtime:generateWasm'
 }
