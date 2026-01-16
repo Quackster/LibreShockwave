@@ -328,8 +328,8 @@ public class WasmEntry {
      * @param size Number of bytes to allocate
      * @return Pointer to allocated memory, or null on failure
      */
-    @CEntryPoint(name = "malloc")
-    public static Pointer malloc(IsolateThread thread, int size) {
+    @CEntryPoint(name = "lsw_malloc")
+    public static Pointer lswMalloc(IsolateThread thread, int size) {
         if (size <= 0) {
             return WordFactory.nullPointer();
         }
@@ -340,8 +340,8 @@ public class WasmEntry {
      * Free memory (for WASM interop).
      * @param ptr Pointer to free
      */
-    @CEntryPoint(name = "free")
-    public static void free(IsolateThread thread, Pointer ptr) {
+    @CEntryPoint(name = "lsw_free")
+    public static void lswFree(IsolateThread thread, Pointer ptr) {
         if (ptr.isNonNull()) {
             UnmanagedMemory.free(ptr);
         }

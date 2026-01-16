@@ -5,7 +5,7 @@ plugins {
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(24)
+        languageVersion = JavaLanguageVersion.of(21)
     }
 }
 
@@ -42,7 +42,7 @@ tasks.register('runTests', JavaExec) {
     mainClass = 'com.libreshockwave.DirectorFileTest'
     dependsOn compileTestJava
     javaLauncher = javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(24)
+        languageVersion = JavaLanguageVersion.of(21)
     }
 }
 
@@ -55,7 +55,7 @@ tasks.register('runDcrTests', JavaExec) {
     args = project.hasProperty('file') ? [project.property('file')] : []
     dependsOn compileTestJava
     javaLauncher = javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(24)
+        languageVersion = JavaLanguageVersion.of(21)
     }
 }
 
@@ -67,6 +67,6 @@ tasks.register('runBytecodeTests', JavaExec) {
     mainClass = 'com.libreshockwave.BytecodeExecutionTest'
     dependsOn compileTestJava
     javaLauncher = javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(24)
+        languageVersion = JavaLanguageVersion.of(21)
     }
 }

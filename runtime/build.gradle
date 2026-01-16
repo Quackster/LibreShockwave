@@ -2,11 +2,12 @@ plugins {
     id 'java'
     id 'application'
     id 'org.graalvm.buildtools.native' version '0.10.4'
+    id 'org.teavm' version '0.10.2'
 }
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(24)
+        languageVersion = JavaLanguageVersion.of(21)
     }
 }
 
@@ -20,6 +21,9 @@ dependencies {
 
     // GraalVM Native Image SDK for @CEntryPoint
     compileOnly 'org.graalvm.sdk:nativeimage:24.1.1'
+
+    // TeaVM for WebAssembly compilation
+    implementation 'org.teavm:teavm-interop:0.10.2'
 
     // Test dependencies
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
@@ -52,7 +56,7 @@ tasks.register('runPlayer', JavaExec) {
     mainClass = 'com.libreshockwave.runtime.DirPlayer'
     args = project.hasProperty('file') ? [project.property('file')] : []
     javaLauncher = javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(24)
+        languageVersion = JavaLanguageVersion.of(21)
     }
 }
 
@@ -65,7 +69,7 @@ tasks.register('runTests', JavaExec) {
     args = project.hasProperty('file') ? [project.property('file')] : []
     dependsOn compileTestJava
     javaLauncher = javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(24)
+        languageVersion = JavaLanguageVersion.of(21)
     }
 }
 
@@ -78,56 +82,27 @@ tasks.register('runNetworkTest', JavaExec) {
     args = project.hasProperty('url') ? [project.property('url')] : ['http://localhost:8080/habbo.dcr']
     dependsOn compileTestJava
     javaLauncher = javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(24)
+        languageVersion = JavaLanguageVersion.of(21)
     }
 }
 
-// Task to run the web player
-tasks.register('runWebPlayer', JavaExec) {
+// Task to serve player with Python
+tasks.register('servePlayer', Exec) {
     group = 'application'
-    description = 'Run the LibreShockwave web player (pass -Pport=8080 to change port)'
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.libreshockwave.runtime.WebPlayer'
-    args = project.hasProperty('port') ? [project.property('port')] : ['8080']
-    javaLauncher = javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(24)
+    description = 'Serve the player HTML files with Python HTTP server (port 8080)'
+    dependsOn 'compileJava'
+    workingDir = file('src/main/resources/player')
+    def port = project.hasProperty('port') ? project.property('port') : '8080'
+    commandLine 'python', '-m', 'http.server', port
+    doFirst {
+        println ""
+        println "Starting web server at http://localhost:${port}"
+        println "Player files: ${workingDir.absolutePath}"
+        println "Press Ctrl+C to stop"
+        println ""
     }
 }
 
-// GraalVM Native Image configuration
-graalvmNative {
-    binaries {
-        main {
-            imageName = 'libreshockwave'
-            mainClass = 'com.libreshockwave.wasm.WasmEntry'
-            buildArgs.addAll([
-                '--no-fallback',
-                '--enable-preview',
-                '-H:+UnlockExperimentalVMOptions',
-                '--initialize-at-build-time=com.libreshockwave',
-                '-H:Name=libreshockwave'
-            ])
-            javaLauncher = javaToolchains.launcherFor {
-                languageVersion = JavaLanguageVersion.of(24)
-            }
-        }
-
-        // WASM target configuration
-        wasm {
-            imageName = 'libreshockwave'
-            mainClass = 'com.libreshockwave.wasm.WasmEntry'
-            buildArgs.addAll([
-                '--no-fallback',
-                '--enable-preview',
-                '-H:+UnlockExperimentalVMOptions',
-                '--initialize-at-build-time=com.libreshockwave',
-                '-H:Name=libreshockwave'
-            ])
-        }
-    }
-
-    toolchainDetection = false
-}
 
 // Task to copy WASM output to player resources
 tasks.register('copyWasmToPlayer', Copy) {
@@ -137,4 +112,81 @@ tasks.register('copyWasmToPlayer', Copy) {
     into 'src/main/resources/player'
     include 'libreshockwave*'
     dependsOn 'nativeCompile'
+}
+
+// GraalVM Native Image configuration
+graalvmNative {
+    toolchainDetection = true
+
+    binaries {
+        main {
+            imageName = 'libreshockwave'
+            mainClass = 'com.libreshockwave.wasm.WasmEntry'
+            buildArgs.addAll([
+                '--no-fallback',
+                '--initialize-at-build-time=com.libreshockwave'
+            ])
+            javaLauncher = javaToolchains.launcherFor {
+                languageVersion = JavaLanguageVersion.of(21)
+                vendor = JvmVendorSpec.GRAAL_VM
+            }
+            // Use config files from resources
+            configurationFileDirectories.from(file('src/main/resources/META-INF/native-image/com.libreshockwave/runtime'))
+        }
+    }
+}
+
+// TeaVM WebAssembly compilation
+teavm.js {
+    mainClass = 'com.libreshockwave.wasm.TeaVMEntry'
+    targetFileName = 'libreshockwave.js'
+    obfuscated = false
+    optimization = org.teavm.gradle.api.OptimizationLevel.AGGRESSIVE
+}
+
+teavm.wasm {
+    mainClass = 'com.libreshockwave.wasm.TeaVMEntry'
+    targetFileName = 'libreshockwave.wasm'
+    minHeapSize = 4
+    maxHeapSize = 128
+    optimization = org.teavm.gradle.api.OptimizationLevel.AGGRESSIVE
+}
+
+// Task to copy TeaVM WASM to player resources
+tasks.register('copyTeaVMToPlayer', Copy) {
+    group = 'build'
+    description = 'Copy TeaVM compiled WASM/JS to player resources'
+    from layout.buildDirectory.dir('generated/teavm/wasm')
+    from layout.buildDirectory.dir('generated/teavm/js')
+    into 'src/main/resources/player'
+    include '*.wasm', '*.js', '*.wasm.c'
+    dependsOn 'generateWasm', 'generateJs'
+}
+
+// Combined build task
+tasks.register('buildWasm') {
+    group = 'build'
+    description = 'Build WebAssembly runtime and copy to player'
+    dependsOn 'generateWasm', 'copyTeaVMToPlayer'
+}
+
+// Task to build WASM and run the player
+tasks.register('runWasmPlayer') {
+    group = 'application'
+    description = 'Build WASM, copy to player, and start web server'
+    dependsOn 'generateWasm'
+
+    doLast {
+        // Copy WASM files
+        copy {
+            from layout.buildDirectory.dir('generated/teavm/wasm')
+            into 'src/main/resources/player'
+            include '*.wasm', '*.js'
+        }
+        println ""
+        println "WASM files copied to player resources"
+        println ""
+    }
+
+    finalizedBy 'servePlayer'
 }

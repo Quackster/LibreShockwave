@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LibreShockwave API Test</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Consolas', 'Monaco', monospace;
+            background: #1a1a2e;
+            color: #eee;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 { color: #0f0; margin-bottom: 20px; }
+        .test-section {
+            background: #16213e;
+            border: 1px solid #0f4c75;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        .test-section h2 {
+            margin: 0 0 10px 0;
+            color: #3282b8;
+            font-size: 14px;
+        }
+        button {
+            background: #0f4c75;
+            color: #fff;
+            border: none;
+            padding: 8px 16px;
+            margin: 4px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        button:hover { background: #3282b8; }
+        button:disabled { background: #444; cursor: not-allowed; }
+        button.success { background: #0a0; }
+        button.fail { background: #a00; }
+        .result {
+            background: #0d1b2a;
+            padding: 10px;
+            margin-top: 10px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .pass { color: #0f0; }
+        .fail { color: #f00; }
+        .info { color: #0af; }
+        .warn { color: #fa0; }
+        #test-log {
+            background: #0d1b2a;
+            padding: 15px;
+            border-radius: 8px;
+            height: 300px;
+            overflow-y: auto;
+            font-size: 12px;
+        }
+        #test-log div { margin: 2px 0; }
+        .test-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+        }
+        #state-display {
+            font-size: 11px;
+        }
+        table { width: 100%; border-collapse: collapse; }
+        td { padding: 4px 8px; border-bottom: 1px solid #333; }
+        td:first-child { color: #888; width: 120px; }
+        .mini-stage {
+            background: #fff;
+            width: 320px;
+            height: 240px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>LibreShockwave API Test Suite</h1>
+
+    <div class="test-grid">
+        <div class="test-section">
+            <h2>1. Initialization Tests</h2>
+            <button id="test-init">Test init()</button>
+            <button id="test-state">Test getState()</button>
+            <button id="test-mode">Test isWasmMode()</button>
+            <div class="result" id="init-result"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>2. Event System Tests</h2>
+            <button id="test-events-on">Test on()</button>
+            <button id="test-events-off">Test off()</button>
+            <button id="test-events-emit">Trigger Events</button>
+            <div class="result" id="events-result"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>3. Movie Loading Tests</h2>
+            <button id="test-load-stub">Load Stub Movie</button>
+            <button id="test-load-invalid">Load Invalid Data</button>
+            <input type="file" id="test-file-input" style="display:none" accept=".dcr,.dir,.dxr">
+            <button id="test-load-file">Load Real File</button>
+            <div class="result" id="load-result"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>4. Playback Control Tests</h2>
+            <button id="test-play" disabled>play()</button>
+            <button id="test-pause" disabled>pause()</button>
+            <button id="test-stop" disabled>stop()</button>
+            <button id="test-next" disabled>nextFrame()</button>
+            <button id="test-prev" disabled>prevFrame()</button>
+            <button id="test-goto" disabled>goToFrame(50)</button>
+            <div class="result" id="playback-result"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>5. Current State</h2>
+            <div id="state-display">
+                <table>
+                    <tr><td>initialized</td><td id="st-init">-</td></tr>
+                    <tr><td>loaded</td><td id="st-loaded">-</td></tr>
+                    <tr><td>playing</td><td id="st-playing">-</td></tr>
+                    <tr><td>paused</td><td id="st-paused">-</td></tr>
+                    <tr><td>currentFrame</td><td id="st-frame">-</td></tr>
+                    <tr><td>lastFrame</td><td id="st-last">-</td></tr>
+                    <tr><td>tempo</td><td id="st-tempo">-</td></tr>
+                    <tr><td>stageSize</td><td id="st-size">-</td></tr>
+                    <tr><td>movieName</td><td id="st-name">-</td></tr>
+                    <tr><td>spriteCount</td><td id="st-sprites">-</td></tr>
+                </table>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h2>6. Mini Stage Preview</h2>
+            <canvas id="mini-stage" class="mini-stage" width="320" height="240"></canvas>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test Log</h2>
+        <button id="clear-log">Clear</button>
+        <button id="run-all">Run All Tests</button>
+        <div id="test-log"></div>
+    </div>
+
+    <script src="libreshockwave-api.js"></script>
+    <script>
+        // Test utilities
+        const log = (msg, type = 'info') => {
+            const el = document.getElementById('test-log');
+            const line = document.createElement('div');
+            line.className = type;
+            line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            el.appendChild(line);
+            el.scrollTop = el.scrollHeight;
+            console.log(`[${type}] ${msg}`);
+        };
+
+        const setResult = (id, text, isPass = null) => {
+            const el = document.getElementById(id);
+            el.textContent = text;
+            if (isPass !== null) {
+                el.className = 'result ' + (isPass ? 'pass' : 'fail');
+            }
+        };
+
+        const updateStateDisplay = () => {
+            const state = LibreShockwave.getState();
+            document.getElementById('st-init').textContent = state.initialized;
+            document.getElementById('st-loaded').textContent = state.loaded;
+            document.getElementById('st-playing').textContent = state.playing;
+            document.getElementById('st-paused').textContent = state.paused;
+            document.getElementById('st-frame').textContent = state.currentFrame;
+            document.getElementById('st-last').textContent = state.lastFrame;
+            document.getElementById('st-tempo').textContent = state.tempo;
+            document.getElementById('st-size').textContent = `${state.stageWidth}x${state.stageHeight}`;
+            document.getElementById('st-name').textContent = state.movieName || '-';
+            document.getElementById('st-sprites').textContent = state.sprites.length;
+        };
+
+        const enablePlaybackButtons = (enabled) => {
+            ['test-play', 'test-pause', 'test-stop', 'test-next', 'test-prev', 'test-goto']
+                .forEach(id => document.getElementById(id).disabled = !enabled);
+        };
+
+        // Mini stage rendering
+        const miniCtx = document.getElementById('mini-stage').getContext('2d');
+        const renderMiniStage = () => {
+            miniCtx.fillStyle = '#fff';
+            miniCtx.fillRect(0, 0, 320, 240);
+
+            const state = LibreShockwave.getState();
+            const scaleX = 320 / state.stageWidth;
+            const scaleY = 240 / state.stageHeight;
+
+            const sprites = LibreShockwave.getSprites();
+            sprites.forEach(s => {
+                if (!s.visible) return;
+                miniCtx.fillStyle = 'rgba(0, 136, 255, 0.3)';
+                miniCtx.fillRect(s.locH * scaleX, s.locV * scaleY,
+                    (s.width || 20) * scaleX, (s.height || 20) * scaleY);
+                miniCtx.strokeStyle = '#0088ff';
+                miniCtx.strokeRect(s.locH * scaleX, s.locV * scaleY,
+                    (s.width || 20) * scaleX, (s.height || 20) * scaleY);
+            });
+
+            // Frame indicator
+            miniCtx.fillStyle = '#000';
+            miniCtx.font = '12px monospace';
+            miniCtx.fillText(`Frame: ${state.currentFrame}/${state.lastFrame}`, 5, 15);
+        };
+
+        // ========================================
+        // Test 1: Initialization
+        // ========================================
+        document.getElementById('test-init').onclick = async () => {
+            log('Testing init()...');
+            try {
+                await LibreShockwave.init();
+                const state = LibreShockwave.getState();
+                const pass = state.initialized === true;
+                setResult('init-result', `init() completed\ninitialized: ${state.initialized}`, pass);
+                log(`init() test ${pass ? 'PASSED' : 'FAILED'}`, pass ? 'pass' : 'fail');
+                updateStateDisplay();
+            } catch (e) {
+                setResult('init-result', `init() failed: ${e.message}`, false);
+                log(`init() threw error: ${e.message}`, 'fail');
+            }
+        };
+
+        document.getElementById('test-state').onclick = () => {
+            log('Testing getState()...');
+            const state = LibreShockwave.getState();
+            const pass = typeof state === 'object' && 'initialized' in state;
+            setResult('init-result', JSON.stringify(state, null, 2), pass);
+            log(`getState() returned ${pass ? 'valid' : 'invalid'} state object`, pass ? 'pass' : 'fail');
+            updateStateDisplay();
+        };
+
+        document.getElementById('test-mode').onclick = () => {
+            log('Testing isWasmMode()...');
+            const isWasm = LibreShockwave.isWasmMode();
+            setResult('init-result', `isWasmMode(): ${isWasm}\nExpected: false (stub mode)`, !isWasm);
+            log(`isWasmMode() = ${isWasm}`, 'info');
+        };
+
+        // ========================================
+        // Test 2: Event System
+        // ========================================
+        let testEventFired = false;
+        const testCallback = (data) => {
+            testEventFired = true;
+            log(`Event received: ${JSON.stringify(data)}`, 'info');
+        };
+
+        document.getElementById('test-events-on').onclick = () => {
+            log('Testing on() - registering stateChange listener...');
+            testEventFired = false;
+            LibreShockwave.on('stateChange', testCallback);
+            setResult('events-result', 'Listener registered. Click "Trigger Events" to test.', true);
+            log('on() test: listener registered', 'pass');
+        };
+
+        document.getElementById('test-events-off').onclick = () => {
+            log('Testing off() - removing listener...');
+            LibreShockwave.off('stateChange', testCallback);
+            setResult('events-result', 'Listener removed.', true);
+            log('off() test: listener removed', 'pass');
+        };
+
+        document.getElementById('test-events-emit').onclick = () => {
+            log('Triggering state change by calling play()...');
+            testEventFired = false;
+            LibreShockwave.play();
+            setTimeout(() => {
+                LibreShockwave.stop();
+                setResult('events-result', `Event fired: ${testEventFired}`, testEventFired);
+                log(`Event trigger test ${testEventFired ? 'PASSED' : 'FAILED'}`, testEventFired ? 'pass' : 'fail');
+                updateStateDisplay();
+            }, 100);
+        };
+
+        // ========================================
+        // Test 3: Movie Loading
+        // ========================================
+        document.getElementById('test-load-stub').onclick = async () => {
+            log('Testing loadMovieFromData() with stub RIFX data...');
+            try {
+                // Create minimal valid RIFX header
+                const data = new ArrayBuffer(12);
+                const view = new DataView(data);
+                view.setUint32(0, 0x52494658, false); // 'RIFX'
+                view.setUint32(4, 4, false);          // size
+                view.setUint32(8, 0x4D563933, false); // 'MV93'
+
+                await LibreShockwave.loadMovieFromData(data, 'test-stub.dcr');
+                const state = LibreShockwave.getState();
+                const pass = state.loaded === true;
+                setResult('load-result', `Stub movie loaded!\nloaded: ${state.loaded}\nlastFrame: ${state.lastFrame}`, pass);
+                log(`loadMovieFromData() stub test ${pass ? 'PASSED' : 'FAILED'}`, pass ? 'pass' : 'fail');
+                enablePlaybackButtons(true);
+                updateStateDisplay();
+                renderMiniStage();
+            } catch (e) {
+                setResult('load-result', `Load failed: ${e.message}`, false);
+                log(`loadMovieFromData() threw: ${e.message}`, 'fail');
+            }
+        };
+
+        document.getElementById('test-load-invalid').onclick = async () => {
+            log('Testing loadMovieFromData() with invalid data...');
+            try {
+                const data = new ArrayBuffer(8);
+                new DataView(data).setUint32(0, 0x12345678, false); // Invalid magic
+
+                await LibreShockwave.loadMovieFromData(data, 'invalid.bin');
+                setResult('load-result', 'ERROR: Should have thrown for invalid data!', false);
+                log('loadMovieFromData() should have thrown for invalid data', 'fail');
+            } catch (e) {
+                setResult('load-result', `Correctly rejected invalid data:\n${e.message}`, true);
+                log(`loadMovieFromData() correctly rejected invalid data`, 'pass');
+            }
+        };
+
+        document.getElementById('test-load-file').onclick = () => {
+            document.getElementById('test-file-input').click();
+        };
+
+        document.getElementById('test-file-input').onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            log(`Loading real file: ${file.name} (${file.size} bytes)...`);
+            try {
+                const data = await file.arrayBuffer();
+                await LibreShockwave.loadMovieFromData(data, file.name);
+                const state = LibreShockwave.getState();
+                setResult('load-result', `File loaded: ${file.name}\nSize: ${file.size} bytes\nFrames: ${state.lastFrame}`, state.loaded);
+                log(`Real file loaded successfully`, 'pass');
+                enablePlaybackButtons(true);
+                updateStateDisplay();
+                renderMiniStage();
+            } catch (e) {
+                setResult('load-result', `Failed to load ${file.name}: ${e.message}`, false);
+                log(`Failed to load file: ${e.message}`, 'fail');
+            }
+        };
+
+        // ========================================
+        // Test 4: Playback Controls
+        // ========================================
+        document.getElementById('test-play').onclick = () => {
+            log('Testing play()...');
+            LibreShockwave.play();
+            const state = LibreShockwave.getState();
+            setResult('playback-result', `play() called\nplaying: ${state.playing}`, state.playing);
+            log(`play() - playing=${state.playing}`, state.playing ? 'pass' : 'fail');
+            updateStateDisplay();
+        };
+
+        document.getElementById('test-pause').onclick = () => {
+            log('Testing pause()...');
+            LibreShockwave.pause();
+            const state = LibreShockwave.getState();
+            setResult('playback-result', `pause() called\npaused: ${state.paused}`, state.paused);
+            log(`pause() - paused=${state.paused}`, state.paused ? 'pass' : 'fail');
+            updateStateDisplay();
+        };
+
+        document.getElementById('test-stop').onclick = () => {
+            log('Testing stop()...');
+            LibreShockwave.stop();
+            const state = LibreShockwave.getState();
+            const pass = !state.playing && !state.paused && state.currentFrame === 1;
+            setResult('playback-result', `stop() called\nplaying: ${state.playing}\npaused: ${state.paused}\nframe: ${state.currentFrame}`, pass);
+            log(`stop() - frame reset to 1: ${pass}`, pass ? 'pass' : 'fail');
+            updateStateDisplay();
+            renderMiniStage();
+        };
+
+        document.getElementById('test-next').onclick = () => {
+            log('Testing nextFrame()...');
+            const before = LibreShockwave.getState().currentFrame;
+            LibreShockwave.nextFrame();
+            const after = LibreShockwave.getState().currentFrame;
+            const pass = after === before + 1 || (before === LibreShockwave.getState().lastFrame && after === before);
+            setResult('playback-result', `nextFrame()\nBefore: ${before}\nAfter: ${after}`, pass);
+            log(`nextFrame() - ${before} -> ${after}`, pass ? 'pass' : 'fail');
+            updateStateDisplay();
+            renderMiniStage();
+        };
+
+        document.getElementById('test-prev').onclick = () => {
+            log('Testing prevFrame()...');
+            const before = LibreShockwave.getState().currentFrame;
+            LibreShockwave.prevFrame();
+            const after = LibreShockwave.getState().currentFrame;
+            const pass = after === before - 1 || (before === 1 && after === 1);
+            setResult('playback-result', `prevFrame()\nBefore: ${before}\nAfter: ${after}`, pass);
+            log(`prevFrame() - ${before} -> ${after}`, pass ? 'pass' : 'fail');
+            updateStateDisplay();
+            renderMiniStage();
+        };
+
+        document.getElementById('test-goto').onclick = () => {
+            log('Testing goToFrame(50)...');
+            LibreShockwave.goToFrame(50);
+            const state = LibreShockwave.getState();
+            const expected = Math.min(50, state.lastFrame);
+            const pass = state.currentFrame === expected;
+            setResult('playback-result', `goToFrame(50)\ncurrentFrame: ${state.currentFrame}\nexpected: ${expected}`, pass);
+            log(`goToFrame(50) - frame=${state.currentFrame}`, pass ? 'pass' : 'fail');
+            updateStateDisplay();
+            renderMiniStage();
+        };
+
+        // ========================================
+        // Run All Tests
+        // ========================================
+        document.getElementById('run-all').onclick = async () => {
+            log('========== RUNNING ALL TESTS ==========', 'warn');
+
+            // Init
+            document.getElementById('test-init').click();
+            await new Promise(r => setTimeout(r, 200));
+
+            document.getElementById('test-state').click();
+            await new Promise(r => setTimeout(r, 100));
+
+            document.getElementById('test-mode').click();
+            await new Promise(r => setTimeout(r, 100));
+
+            // Events
+            document.getElementById('test-events-on').click();
+            await new Promise(r => setTimeout(r, 100));
+
+            document.getElementById('test-events-emit').click();
+            await new Promise(r => setTimeout(r, 200));
+
+            document.getElementById('test-events-off').click();
+            await new Promise(r => setTimeout(r, 100));
+
+            // Load
+            document.getElementById('test-load-stub').click();
+            await new Promise(r => setTimeout(r, 300));
+
+            document.getElementById('test-load-invalid').click();
+            await new Promise(r => setTimeout(r, 200));
+
+            // Playback
+            document.getElementById('test-play').click();
+            await new Promise(r => setTimeout(r, 100));
+
+            document.getElementById('test-pause').click();
+            await new Promise(r => setTimeout(r, 100));
+
+            document.getElementById('test-next').click();
+            await new Promise(r => setTimeout(r, 100));
+
+            document.getElementById('test-prev').click();
+            await new Promise(r => setTimeout(r, 100));
+
+            document.getElementById('test-goto').click();
+            await new Promise(r => setTimeout(r, 100));
+
+            document.getElementById('test-stop').click();
+            await new Promise(r => setTimeout(r, 100));
+
+            log('========== ALL TESTS COMPLETE ==========', 'warn');
+        };
+
+        document.getElementById('clear-log').onclick = () => {
+            document.getElementById('test-log').innerHTML = '';
+        };
+
+        // ========================================
+        // Setup API event listeners
+        // ========================================
+        LibreShockwave.on('ready', (info) => {
+            log(`API ready (mode: ${info.mode})`, 'pass');
+            updateStateDisplay();
+        });
+
+        LibreShockwave.on('log', (data) => {
+            log(`[API] ${data.message}`, data.level);
+        });
+
+        LibreShockwave.on('stateChange', () => {
+            updateStateDisplay();
+        });
+
+        LibreShockwave.on('frameChange', () => {
+            renderMiniStage();
+        });
+
+        // Initial state update
+        updateStateDisplay();
+        log('Test page loaded. Click "Run All Tests" or test individual functions.', 'info');
+    </script>
+</body>
+</html>
