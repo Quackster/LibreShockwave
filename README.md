@@ -10,6 +10,14 @@ Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for detai
 
 LibreShockwave is an open-source implementation of a Macromedia/Adobe Director and Shockwave player. It aims to preserve and play legacy Director content (.dir, .dxr, .dcr files) that would otherwise be lost as official support has ended.
 
+## Acknowledgments
+
+This work could not have been done without the following projects and people:
+
+- **[dirplayer-rs](https://github.com/igorlira/dirplayer-rs)** by **Igor Lira** - A Rust implementation of a Shockwave player
+- **[ProjectorRays](https://github.com/ProjectorRays/ProjectorRays)** by **Debby Servilla** - A Director movie decompiler
+- **The ScummVM Director Engine Team** - Research on the Director file format
+
 ## Project Structure
 
 - **sdk/** - Core library for parsing Director file formats, Lingo bytecode VM, cast/score management
