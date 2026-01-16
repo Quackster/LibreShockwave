@@ -1,14 +1,9 @@
 package com.libreshockwave;
 
-import com.libreshockwave.cast.BitmapInfo;
 import com.libreshockwave.chunks.*;
-import com.libreshockwave.io.BinaryReader;
-import com.libreshockwave.player.Palette;
 import com.libreshockwave.player.bitmap.Bitmap;
-import com.libreshockwave.player.bitmap.BitmapDecoder;
 
 import javax.imageio.ImageIO;
-import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -72,119 +67,20 @@ public class BitmapExtractTest {
                 return;
             }
 
-            // Parse bitmap info from specificData
-            BitmapInfo bitmapInfo = BitmapInfo.parse(targetMember.specificData());
-            System.out.println("  Bitmap info: " + bitmapInfo.width() + "x" + bitmapInfo.height() +
-                ", " + bitmapInfo.bitDepth() + "-bit");
-
-            // Use the KeyTable to find the BITD chunk for this cast member
-            KeyTableChunk keyTable = file.getKeyTable();
-            if (keyTable == null) {
-                System.out.println("  ERROR: No KEY* table found");
+            // Decode bitmap using DirectorFile helper
+            var bitmapOpt = file.decodeBitmap(targetMember);
+            if (bitmapOpt.isEmpty()) {
+                System.out.println("  ERROR: Failed to decode bitmap");
                 return;
             }
 
-            // Find BITD entry for this cast member
-            // Note: fourCC may be stored in different byte orders, so search by string match
-            KeyTableChunk.KeyTableEntry bitdEntry = null;
-            for (KeyTableChunk.KeyTableEntry entry : keyTable.getEntriesForOwner(targetMember.id())) {
-                String fourccStr = entry.fourccString();
-                // Check for both "BITD" and reversed "DTIB" (endian difference)
-                if (fourccStr.equals("BITD") || fourccStr.equals("DTIB")) {
-                    bitdEntry = entry;
-                    break;
-                }
-            }
-
-            if (bitdEntry == null) {
-                System.out.println("  ERROR: No BITD chunk found for cast member " + targetMember.id());
-                System.out.println("  Entries for this cast member:");
-                for (KeyTableChunk.KeyTableEntry entry : keyTable.getEntriesForOwner(targetMember.id())) {
-                    System.out.println("    - " + entry.fourccString() + " (sectionId=" + entry.sectionId() + ")");
-                }
-                return;
-            }
-
-            System.out.println("  Found BITD chunk at sectionId=" + bitdEntry.sectionId());
-
-            // Get the BITD chunk
-            Chunk bitdChunk = file.getChunk(bitdEntry.sectionId());
-            if (!(bitdChunk instanceof BitmapChunk bitmapChunk)) {
-                System.out.println("  ERROR: BITD chunk not found or wrong type");
-                return;
-            }
-
-            System.out.println("  BITD data size: " + bitmapChunk.data().length + " bytes");
-
-            // Look up the palette
-            Palette palette = null;
-            int paletteId = bitmapInfo.paletteId();
-            System.out.println("  Palette ID: " + paletteId);
-
-            if (paletteId < 0) {
-                // Built-in palette (negative IDs)
-                palette = Palette.getBuiltIn(paletteId);
-                System.out.println("  Using built-in palette: " + palette.getName());
-            } else if (paletteId > 0) {
-                // Custom palette - look up CLUT chunk by cast member ID
-                // First find the cast member for the palette
-                CastMemberChunk paletteMember = null;
-                for (CastMemberChunk member : file.getCastMembers()) {
-                    if (member.id() == paletteId && member.memberType() == CastMemberChunk.MemberType.PALETTE) {
-                        paletteMember = member;
-                        break;
-                    }
-                }
-
-                if (paletteMember != null) {
-                    // Find CLUT chunk for this cast member
-                    for (KeyTableChunk.KeyTableEntry entry : keyTable.getEntriesForOwner(paletteMember.id())) {
-                        String fourccStr = entry.fourccString();
-                        if (fourccStr.equals("CLUT") || fourccStr.equals("TULC")) {
-                            Chunk clutChunk = file.getChunk(entry.sectionId());
-                            if (clutChunk instanceof PaletteChunk paletteChunk) {
-                                // Convert PaletteChunk to Palette
-                                palette = new Palette(paletteChunk.colors(), "Custom Palette " + paletteId);
-                                System.out.println("  Using custom palette from cast member " + paletteId +
-                                    " (" + paletteChunk.colorCount() + " colors)");
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                if (palette == null) {
-                    System.out.println("  Custom palette " + paletteId + " not found, using default");
-                    palette = Palette.getBuiltIn(Palette.SYSTEM_MAC);
-                }
-            } else {
-                // paletteId == 0: use default
-                palette = Palette.getBuiltIn(Palette.SYSTEM_MAC);
-                System.out.println("  Using default System Mac palette");
-            }
-
-            // Decode the bitmap
-            boolean bigEndian = file.getEndian() == java.nio.ByteOrder.BIG_ENDIAN;
-            int directorVersion = file.getConfig() != null ? file.getConfig().directorVersion() : 500;
-
-            Bitmap bitmap = BitmapDecoder.decode(
-                bitmapChunk.data(),
-                bitmapInfo.width(),
-                bitmapInfo.height(),
-                bitmapInfo.bitDepth(),
-                palette,
-                true,  // RLE compressed
-                bigEndian,
-                directorVersion
-            );
-
+            Bitmap bitmap = bitmapOpt.get();
             System.out.println("  Decoded bitmap: " + bitmap);
 
-            // Convert to BufferedImage and save as PNG
-            BufferedImage image = bitmap.toBufferedImage();
+            // Save as PNG
             String outputPath = targetName + "_extracted.png";
             File outputFile = new File(outputPath);
-            ImageIO.write(image, "PNG", outputFile);
+            ImageIO.write(bitmap.toBufferedImage(), "PNG", outputFile);
 
             System.out.println("  Saved to: " + outputFile.getAbsolutePath());
             System.out.println("  Bitmap Extract: PASS");

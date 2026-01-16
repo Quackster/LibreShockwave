@@ -2,8 +2,10 @@ package com.libreshockwave.player;
 
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.chunks.*;
+import com.libreshockwave.player.bitmap.Bitmap;
 
 import java.util.*;
+import java.util.Optional;
 
 /**
  * Represents a cast library (internal or external).
@@ -56,6 +58,9 @@ public class CastLib {
     // Script context for this cast
     private ScriptContextChunk scriptContext;
     private ScriptNamesChunk scriptNames;
+
+    // DirectorFile for bitmap decoding (set for external casts)
+    private DirectorFile directorFile;
 
     // Members mapped by slot number (1-based)
     private final Map<Integer, CastMemberChunk> members = new HashMap<>();
@@ -195,6 +200,39 @@ public class CastLib {
         return Collections.unmodifiableCollection(scripts.values());
     }
 
+    public DirectorFile getDirectorFile() {
+        return directorFile;
+    }
+
+    public void setDirectorFile(DirectorFile file) {
+        this.directorFile = file;
+    }
+
+    /**
+     * Decode a bitmap cast member from this cast library.
+     * @param member The cast member chunk (must be a bitmap type)
+     * @return Optional containing the decoded bitmap, or empty if decoding fails
+     */
+    public Optional<Bitmap> decodeBitmap(CastMemberChunk member) {
+        if (directorFile != null) {
+            return directorFile.decodeBitmap(member);
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Decode a bitmap cast member by slot number.
+     * @param slot The member slot number (1-based)
+     * @return Optional containing the decoded bitmap, or empty if not found or not a bitmap
+     */
+    public Optional<Bitmap> decodeBitmap(int slot) {
+        CastMemberChunk member = getMember(slot);
+        if (member == null || !member.isBitmap()) {
+            return Optional.empty();
+        }
+        return decodeBitmap(member);
+    }
+
     /**
      * Clear all members and scripts (for reloading).
      */
@@ -211,6 +249,7 @@ public class CastLib {
      */
     public void loadFromDirectorFile(DirectorFile file) {
         clear();
+        this.directorFile = file;
 
         if (name.isEmpty() && file.getConfig() != null) {
             // Use file name as cast name if not set

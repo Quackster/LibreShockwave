@@ -5,9 +5,6 @@ import com.libreshockwave.chunks.*;
 import com.libreshockwave.execution.DirPlayer;
 import com.libreshockwave.lingo.Datum;
 import com.libreshockwave.player.*;
-import com.libreshockwave.player.bitmap.Bitmap;
-import com.libreshockwave.player.bitmap.BitmapDecoder;
-import com.libreshockwave.cast.BitmapInfo;
 import com.libreshockwave.vm.LingoVM;
 import com.libreshockwave.xtras.XtraManager;
 
@@ -21,7 +18,6 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.ByteOrder;
 import java.nio.file.Files;
 import java.util.*;
 import java.util.List;
@@ -649,57 +645,10 @@ public class SwingPlayer extends JFrame {
             CastLib castLib = castManager.getCast(effectiveCastLib);
             if (castLib == null) return null;
 
-            CastMemberChunk member = castLib.getMember(memberNum);
-            if (member == null || !member.isBitmap()) return null;
+            var bitmapOpt = castLib.decodeBitmap(memberNum);
+            if (bitmapOpt.isEmpty()) return null;
 
-            BitmapInfo bitmapInfo = BitmapInfo.parse(member.specificData());
-
-            DirectorFile movieFile = dirPlayer.getFile();
-            KeyTableChunk keyTable = movieFile.getKeyTable();
-            if (keyTable == null) return null;
-
-            BitmapChunk bitmapChunk = null;
-            for (KeyTableChunk.KeyTableEntry entry : keyTable.getEntriesForOwner(member.id())) {
-                String fourcc = entry.fourccString();
-                if (fourcc.equals("BITD") || fourcc.equals("DTIB")) {
-                    Chunk chunk = movieFile.getChunk(entry.sectionId());
-                    if (chunk instanceof BitmapChunk bc) {
-                        bitmapChunk = bc;
-                        break;
-                    }
-                }
-            }
-
-            if (bitmapChunk == null) return null;
-
-            Palette palette;
-            int paletteId = bitmapInfo.paletteId();
-            if (paletteId < 0) {
-                palette = Palette.getBuiltIn(paletteId);
-            } else {
-                palette = Palette.getBuiltIn(Palette.SYSTEM_MAC);
-            }
-
-            boolean bigEndian = movieFile.getEndian() == ByteOrder.BIG_ENDIAN;
-            ConfigChunk config = movieFile.getConfig();
-            int directorVersion = config != null ? config.directorVersion() : 500;
-
-            Bitmap bitmap = BitmapDecoder.decode(
-                bitmapChunk.data(),
-                bitmapInfo.width(),
-                bitmapInfo.height(),
-                bitmapInfo.bitDepth(),
-                palette,
-                true,
-                bigEndian,
-                directorVersion
-            );
-
-            int[] pixels = bitmap.getPixels();
-            BufferedImage image = new BufferedImage(
-                bitmap.getWidth(), bitmap.getHeight(), BufferedImage.TYPE_INT_ARGB);
-            image.setRGB(0, 0, bitmap.getWidth(), bitmap.getHeight(), pixels, 0, bitmap.getWidth());
-
+            BufferedImage image = bitmapOpt.get().toBufferedImage();
             bitmapCache.put(key, image);
             return image;
 

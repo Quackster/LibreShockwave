@@ -167,6 +167,7 @@ public class CastManager {
 
                 if (!isExternal) {
                     // Internal cast - load members from main file
+                    castLib.setDirectorFile(file);
                     // If we found a matching CAS* chunk, use it; otherwise load all members
                     if (castDef != null) {
                         loadCastMembers(castLib, file, castDef);
@@ -182,6 +183,7 @@ public class CastManager {
             // Older Director: Single CAS* chunk
             CastChunk castDef = fileCasts.get(0);
             CastLib castLib = new CastLib(1, "", "", false);
+            castLib.setDirectorFile(file);
             loadCastMembers(castLib, file, castDef);
             casts.add(castLib);
         }
