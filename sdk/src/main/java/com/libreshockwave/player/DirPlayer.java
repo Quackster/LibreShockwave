@@ -166,6 +166,7 @@ public class DirPlayer {
             return Datum.voidValue();
         });
 
+        /*
         // Common stub handlers for external/missing handlers
         vm.registerBuiltin("startClient", (vmRef, args) -> {
             System.out.println("[startClient] called");
@@ -176,6 +177,8 @@ public class DirPlayer {
             System.out.println("[stopClient] called");
             return Datum.voidValue();
         });
+
+         */
     }
 
     // Playback control

@@ -23,13 +23,19 @@ public class RuntimeTest {
         testScopeArgs();
         testHandlerExecutionResult();
 
+        String path = "http://localhost:8080/assets/habbo.dcr";
+
+        testDirPlayer(path);
+        testLingoVMIntegration(path);
+
+        /*
         if (args.length > 0) {
             testDirPlayer(args[0]);
             testLingoVMIntegration(args[0]);
         } else {
             System.out.println("\n[Skipping DirPlayer test - no file provided]");
             System.out.println("Run with: gradle runTests -Pfile=path/to/movie.dcr");
-        }
+        }*/
 
         System.out.println("\n=== All Tests Complete ===");
     }

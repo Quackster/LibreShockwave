@@ -49,6 +49,9 @@
 
         // Wait for LibreShockwave to initialize
         LibreShockwave.on('ready', onReady);
+
+        // Initialize the WASM runtime
+        LibreShockwave.init();
     }
 
     /**

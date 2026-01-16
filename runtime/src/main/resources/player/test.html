@@ -185,7 +185,7 @@
             document.getElementById('st-tempo').textContent = state.tempo;
             document.getElementById('st-size').textContent = `${state.stageWidth}x${state.stageHeight}`;
             document.getElementById('st-name').textContent = state.movieName || '-';
-            document.getElementById('st-sprites').textContent = state.sprites.length;
+            document.getElementById('st-sprites').textContent = LibreShockwave.getSpriteCount();
         };
 
         const enablePlaybackButtons = (enabled) => {
