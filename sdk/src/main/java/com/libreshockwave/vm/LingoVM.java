@@ -138,21 +138,146 @@ public class LingoVM {
     }
 
     private String formatDatum(Datum d) {
+        return formatDatum(d, true);
+    }
+
+    private String formatDatum(Datum d, boolean showDetails) {
         if (d == null) return "null";
         if (d.isVoid()) return "VOID";
         if (d.isInt()) return String.valueOf(d.intValue());
         if (d.isFloat()) return String.format("%.2f", d.floatValue());
         if (d.isString()) {
             String s = d.stringValue();
-            if (s.length() > 20) s = s.substring(0, 20) + "...";
+            if (s.length() > 30) s = s.substring(0, 30) + "...";
             return "\"" + s + "\"";
         }
         if (d.isSymbol()) return "#" + d.stringValue();
-        if (d instanceof Datum.DList l) return "list(" + l.count() + ")";
-        if (d instanceof Datum.PropList p) return "propList(" + p.count() + ")";
-        if (d instanceof Datum.ArgList a) return "args(" + a.args().size() + ")";
-        if (d instanceof Datum.ArgListNoRet a) return "argsNoRet(" + a.args().size() + ")";
+
+        // Member reference - show name if available
+        if (d instanceof Datum.CastMemberRef ref) {
+            String name = getMemberName(ref.castLib(), ref.castMember());
+            if (name != null && !name.isEmpty()) {
+                return "member(\"" + name + "\", " + ref.castLib() + ")";
+            }
+            return "member(" + ref.castLib() + ":" + ref.castMember() + ")";
+        }
+
+        // Cast lib reference
+        if (d instanceof Datum.CastLibRef ref) {
+            String name = getCastName(ref.castLib());
+            if (name != null && !name.isEmpty()) {
+                return "castLib(\"" + name + "\")";
+            }
+            return "castLib(" + ref.castLib() + ")";
+        }
+
+        // Sprite reference
+        if (d instanceof Datum.SpriteRef ref) {
+            return "sprite(" + ref.channel() + ")";
+        }
+
+        // Script reference
+        if (d instanceof Datum.ScriptRef ref) {
+            String name = getMemberName(ref.memberRef().castLib(), ref.memberRef().castMember());
+            if (name != null && !name.isEmpty()) {
+                return "script(\"" + name + "\")";
+            }
+            return "script(" + ref.memberRef().castLib() + ":" + ref.memberRef().castMember() + ")";
+        }
+
+        // Lists with content preview
+        if (d instanceof Datum.DList l) {
+            if (!showDetails || l.count() == 0) return "[]";
+            if (l.count() <= 3) {
+                StringBuilder sb = new StringBuilder("[");
+                for (int i = 0; i < l.count(); i++) {
+                    if (i > 0) sb.append(", ");
+                    sb.append(formatDatum(l.getAt(i + 1), false));
+                }
+                sb.append("]");
+                return sb.toString();
+            }
+            return "[" + formatDatum(l.getAt(1), false) + ", " + formatDatum(l.getAt(2), false) + ", ...(" + l.count() + ")]";
+        }
+
+        // Prop lists with content preview
+        if (d instanceof Datum.PropList p) {
+            if (!showDetails || p.count() == 0) return "[:]";
+            StringBuilder sb = new StringBuilder("[");
+            int shown = 0;
+            for (var entry : p.properties().entrySet()) {
+                if (shown > 0) sb.append(", ");
+                if (shown >= 2) {
+                    sb.append("...(" + p.count() + ")");
+                    break;
+                }
+                sb.append(formatDatum(entry.getKey(), false)).append(": ").append(formatDatum(entry.getValue(), false));
+                shown++;
+            }
+            sb.append("]");
+            return sb.toString();
+        }
+
+        // Arg lists - show actual values
+        if (d instanceof Datum.ArgList a) {
+            if (a.args().isEmpty()) return "args()";
+            if (a.args().size() <= 3) {
+                StringBuilder sb = new StringBuilder("args(");
+                for (int i = 0; i < a.args().size(); i++) {
+                    if (i > 0) sb.append(", ");
+                    sb.append(formatDatum(a.args().get(i), false));
+                }
+                sb.append(")");
+                return sb.toString();
+            }
+            return "args(" + formatDatum(a.args().get(0), false) + ", " + formatDatum(a.args().get(1), false) + ", ...(" + a.args().size() + "))";
+        }
+
+        if (d instanceof Datum.ArgListNoRet a) {
+            if (a.args().isEmpty()) return "argsNoRet()";
+            if (a.args().size() <= 3) {
+                StringBuilder sb = new StringBuilder("argsNoRet(");
+                for (int i = 0; i < a.args().size(); i++) {
+                    if (i > 0) sb.append(", ");
+                    sb.append(formatDatum(a.args().get(i), false));
+                }
+                sb.append(")");
+                return sb.toString();
+            }
+            return "argsNoRet(" + formatDatum(a.args().get(0), false) + ", ...(" + a.args().size() + "))";
+        }
+
+        // Point/Rect
+        if (d instanceof Datum.IntPoint pt) {
+            return "point(" + pt.x() + ", " + pt.y() + ")";
+        }
+        if (d instanceof Datum.IntRect r) {
+            return "rect(" + r.left() + ", " + r.top() + ", " + r.right() + ", " + r.bottom() + ")";
+        }
+        if (d instanceof Datum.Vector3 v) {
+            return "vector(" + v.x() + ", " + v.y() + ", " + v.z() + ")";
+        }
+        if (d instanceof Datum.ColorRef c) {
+            return "color(" + c.r() + ", " + c.g() + ", " + c.b() + ")";
+        }
+
         return d.getClass().getSimpleName();
+    }
+
+    private String getMemberName(int castLib, int memberNum) {
+        if (castManager == null) return null;
+        CastLib cast = castManager.getCast(castLib);
+        if (cast == null) return null;
+        var member = cast.getMember(memberNum);
+        if (member == null) return null;
+        return member.name();
+    }
+
+    private String getCastName(int castLib) {
+        if (castManager == null) return null;
+        CastLib cast = castManager.getCast(castLib);
+        if (cast == null) return null;
+        return cast.getName();
     }
 
     public void registerBuiltin(String name, BuiltinHandler handler) {
