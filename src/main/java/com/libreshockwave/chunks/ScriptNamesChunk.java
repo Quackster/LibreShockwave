@@ -50,14 +50,11 @@ public record ScriptNamesChunk(
 
         List<String> names = new ArrayList<>();
 
-        if (namesCount > 0 && namesOffset > 0 && namesOffset < reader.length()) {
-            reader.setPosition(namesOffset);
-            for (int i = 0; i < namesCount; i++) {
-                int len = reader.readU8();
-                if (reader.bytesLeft() >= len) {
-                    names.add(reader.readStringMacRoman(len));
-                }
-            }
+        // Seek to names offset and read all names (matching ProjectorRays behavior)
+        reader.setPosition(namesOffset);
+        for (int i = 0; i < namesCount; i++) {
+            int len = reader.readU8();
+            names.add(reader.readStringMacRoman(len));
         }
 
         return new ScriptNamesChunk(id, names);

@@ -26,7 +26,8 @@ public class DirectorFile {
     private KeyTableChunk keyTable;
     private CastListChunk castList;
     private ScriptContextChunk scriptContext;
-    private ScriptNamesChunk scriptNames;
+    private ScriptNamesChunk scriptNames;  // Default/primary names chunk
+    private final Map<Integer, ScriptNamesChunk> scriptNamesById = new HashMap<>();
 
     private final Map<Integer, Chunk> chunks = new HashMap<>();
     private final Map<Integer, ChunkInfo> chunkInfo = new HashMap<>();
@@ -137,11 +138,35 @@ public class DirectorFile {
         return allHandlers;
     }
 
+    /**
+     * Get handler name from the default script names chunk.
+     * For more accurate lookup, use getHandlerName(int, ScriptContextChunk).
+     */
     public String getHandlerName(int nameId) {
         if (scriptNames != null) {
             return scriptNames.getName(nameId);
         }
         return "<unknown:" + nameId + ">";
+    }
+
+    /**
+     * Get the ScriptNamesChunk for a given ScriptContextChunk.
+     */
+    public ScriptNamesChunk getScriptNamesForContext(ScriptContextChunk context) {
+        if (context != null) {
+            ScriptNamesChunk names = scriptNamesById.get(context.lnamSectionId());
+            if (names != null) {
+                return names;
+            }
+        }
+        return scriptNames;  // Fallback to default
+    }
+
+    /**
+     * Get a ScriptNamesChunk by its resource ID.
+     */
+    public ScriptNamesChunk getScriptNamesById(int id) {
+        return scriptNamesById.get(id);
     }
 
     // Loading
@@ -363,7 +388,13 @@ public class DirectorFile {
             case KeyTableChunk k -> this.keyTable = k;
             case CastListChunk cl -> this.castList = cl;
             case ScriptContextChunk sc -> this.scriptContext = sc;
-            case ScriptNamesChunk sn -> this.scriptNames = sn;
+            case ScriptNamesChunk sn -> {
+                this.scriptNamesById.put(sn.id(), sn);
+                // Also set as default if it has names (for backward compatibility)
+                if (sn.names().size() > 0) {
+                    this.scriptNames = sn;
+                }
+            }
             case CastChunk c -> this.casts.add(c);
             case CastMemberChunk cm -> this.castMembers.add(cm);
             case ScriptChunk s -> this.scripts.add(s);

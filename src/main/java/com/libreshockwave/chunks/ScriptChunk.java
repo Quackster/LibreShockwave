@@ -218,21 +218,21 @@ public record ScriptChunk(
 
                 int savedPos = reader.getPosition();
 
-                // Read argument names
+                // Read argument names (using unsigned 16-bit per ProjectorRays)
                 List<Integer> argNameIds = new ArrayList<>();
                 if (argCount > 0 && argOffset > 0) {
                     reader.setPosition(argOffset);
                     for (int j = 0; j < argCount; j++) {
-                        argNameIds.add((int) reader.readI16());
+                        argNameIds.add(reader.readU16());
                     }
                 }
 
-                // Read local variable names
+                // Read local variable names (using unsigned 16-bit per ProjectorRays)
                 List<Integer> localNameIds = new ArrayList<>();
                 if (localCount > 0 && localOffset > 0) {
                     reader.setPosition(localOffset);
                     for (int j = 0; j < localCount; j++) {
-                        localNameIds.add((int) reader.readI16());
+                        localNameIds.add(reader.readU16());
                     }
                 }
 
