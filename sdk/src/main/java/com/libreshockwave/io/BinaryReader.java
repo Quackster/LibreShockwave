@@ -17,7 +17,18 @@ import java.util.zip.InflaterInputStream;
  */
 public class BinaryReader implements AutoCloseable {
 
-    private static final Charset MAC_ROMAN = Charset.forName("x-MacRoman");
+    // Mac Roman charset with fallback for environments that don't support it (e.g., TeaVM)
+    private static final Charset MAC_ROMAN;
+    static {
+        Charset charset;
+        try {
+            charset = Charset.forName("x-MacRoman");
+        } catch (Exception e) {
+            // Fall back to ISO-8859-1 which covers most MacRoman characters
+            charset = StandardCharsets.ISO_8859_1;
+        }
+        MAC_ROMAN = charset;
+    }
 
     private final byte[] data;
     private int position;
