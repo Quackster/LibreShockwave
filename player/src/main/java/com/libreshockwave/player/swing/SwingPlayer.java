@@ -8,6 +8,8 @@ import com.libreshockwave.player.bitmap.Bitmap;
 import com.libreshockwave.player.bitmap.BitmapDecoder;
 import com.libreshockwave.cast.BitmapInfo;
 import com.libreshockwave.vm.LingoVM;
+import com.libreshockwave.net.NetManager;
+import com.libreshockwave.xtras.XtraManager;
 
 import javax.swing.*;
 import javax.swing.filechooser.FileNameExtensionFilter;
@@ -40,6 +42,8 @@ public class SwingPlayer extends JFrame {
     private CastManager castManager;
     private Score score;
     private LingoVM vm;
+    private NetManager netManager;
+    private XtraManager xtraManager;
 
     private int currentFrame = 1;
     private int lastFrame = 1;
@@ -242,8 +246,21 @@ public class SwingPlayer extends JFrame {
             vm = new LingoVM(movieFile);
             vm.setDebugMode(debugCheckbox.isSelected());
             vm.setDebugOutputCallback(this::log);
+
+            // Initialize NetManager for network operations
+            netManager = new NetManager();
+            if (currentMovieDir != null) {
+                netManager.setBasePath(currentMovieDir.toURI());
+            }
+            vm.setNetManager(netManager);
+
             registerBuiltins();
+
+            // Initialize Xtras (provides network functions, etc.)
+            xtraManager = XtraManager.createWithStandardXtras();
+            xtraManager.registerAll(vm);
             log("LingoVM initialized, " + movieFile.getScripts().size() + " scripts");
+            log("Xtras loaded: " + xtraManager.getXtras().size());
 
             // List scripts
             ScriptNamesChunk names = movieFile.getScriptNames();

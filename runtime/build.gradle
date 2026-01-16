@@ -19,6 +19,9 @@ dependencies {
     // Depend on the SDK subproject
     implementation project(':sdk')
 
+    // Xtras for network functions and other extensions
+    implementation project(':xtras')
+
     // GraalVM Native Image SDK for @CEntryPoint
     compileOnly 'org.graalvm.sdk:nativeimage:24.1.1'
 

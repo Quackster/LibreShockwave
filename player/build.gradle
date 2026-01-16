@@ -11,6 +11,7 @@ java {
 
 dependencies {
     implementation project(':sdk')
+    implementation project(':xtras')
 }
 
 application {
@@ -21,6 +22,15 @@ jar {
     manifest {
         attributes 'Main-Class': 'com.libreshockwave.player.swing.SwingPlayer'
     }
+}
+
+// Run network Xtra test
+tasks.register('runNetXtraTest', JavaExec) {
+    group = 'verification'
+    description = 'Test NetLingo Xtra functions'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.NetXtraTest'
+    dependsOn compileTestJava
 }
 
 // Fat JAR with all dependencies

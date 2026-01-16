@@ -12,6 +12,7 @@ import com.libreshockwave.player.Sprite;
 import com.libreshockwave.player.bitmap.Bitmap;
 import com.libreshockwave.player.bitmap.BitmapDecoder;
 import com.libreshockwave.vm.LingoVM;
+import com.libreshockwave.xtras.XtraManager;
 
 import java.nio.ByteOrder;
 import java.util.Collections;
@@ -33,6 +34,7 @@ public class WasmPlayer {
     private CastManager castManager;
     private Score score;
     private LingoVM vm;
+    private XtraManager xtraManager;
 
     private PlayState state = PlayState.STOPPED;
     private int currentFrame = 1;
@@ -178,7 +180,12 @@ public class WasmPlayer {
             }
         });
         registerPlayerBuiltins();
+
+        // Initialize Xtras (provides network functions, etc.)
+        xtraManager = XtraManager.createWithStandardXtras();
+        xtraManager.registerAll(vm);
         log("LingoVM initialized with " + movieFile.getScripts().size() + " scripts");
+        log("Xtras loaded: " + xtraManager.getXtras().size());
 
         // Reset state
         currentFrame = 1;
@@ -388,60 +395,7 @@ public class WasmPlayer {
             return Datum.voidValue();
         });
 
-        // Network functions (stubs for now)
-        vm.registerBuiltin("preloadNetThing", (vmRef, args) -> {
-            String url = args.isEmpty() ? "" : args.get(0).toString();
-            debugOutput("[Lingo] preloadNetThing: " + url);
-            // Return a netID (stub - just return 1)
-            return Datum.of(1);
-        });
-
-        vm.registerBuiltin("netDone", (vmRef, args) -> {
-            // Always return true (done) for now
-            return Datum.of(1);
-        });
-
-        vm.registerBuiltin("netError", (vmRef, args) -> {
-            // Return empty string (no error) for now
-            return Datum.of("");
-        });
-
-        vm.registerBuiltin("netTextResult", (vmRef, args) -> {
-            // Return empty string for now
-            return Datum.of("");
-        });
-
-        vm.registerBuiltin("netLastModDate", (vmRef, args) -> {
-            return Datum.of("");
-        });
-
-        vm.registerBuiltin("netMIME", (vmRef, args) -> {
-            return Datum.of("application/octet-stream");
-        });
-
-        vm.registerBuiltin("getNetText", (vmRef, args) -> {
-            String url = args.isEmpty() ? "" : args.get(0).toString();
-            debugOutput("[Lingo] getNetText: " + url);
-            return Datum.of(1);
-        });
-
-        vm.registerBuiltin("postNetText", (vmRef, args) -> {
-            String url = args.isEmpty() ? "" : args.get(0).toString();
-            debugOutput("[Lingo] postNetText: " + url);
-            return Datum.of(1);
-        });
-
-        vm.registerBuiltin("gotoNetPage", (vmRef, args) -> {
-            String url = args.isEmpty() ? "" : args.get(0).toString();
-            debugOutput("[Lingo] gotoNetPage: " + url);
-            return Datum.voidValue();
-        });
-
-        vm.registerBuiltin("gotoNetMovie", (vmRef, args) -> {
-            String url = args.isEmpty() ? "" : args.get(0).toString();
-            debugOutput("[Lingo] gotoNetMovie: " + url);
-            return Datum.voidValue();
-        });
+        // Note: Network functions (preloadNetThing, netDone, etc.) are provided by NetLingoXtra
 
         // Other common builtins
         vm.registerBuiltin("delay", (vmRef, args) -> {

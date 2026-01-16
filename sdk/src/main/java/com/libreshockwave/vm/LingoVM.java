@@ -155,14 +155,15 @@ public class LingoVM {
     }
 
     public Datum call(String handlerName, List<Datum> args) {
-        // Find the handler
+        // Check builtins first (more efficient and works without a file)
+        BuiltinHandler builtin = builtins.get(handlerName.toLowerCase());
+        if (builtin != null) {
+            return builtin.call(this, args);
+        }
+
+        // Find the handler in scripts
         ScriptChunk.Handler handler = findHandler(handlerName);
         if (handler == null) {
-            // Check builtins
-            BuiltinHandler builtin = builtins.get(handlerName.toLowerCase());
-            if (builtin != null) {
-                return builtin.call(this, args);
-            }
             throw LingoException.undefinedHandler(handlerName);
         }
 
@@ -1089,6 +1090,7 @@ public class LingoVM {
     }
 
     private ScriptChunk.Handler findHandler(String name) {
+        if (file == null) return null;
         ScriptNamesChunk names = file.getScriptNames();
         if (names == null) return null;
 
