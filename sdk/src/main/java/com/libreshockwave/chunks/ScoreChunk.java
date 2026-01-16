@@ -302,11 +302,12 @@ public record ScoreChunk(
 
         FrameDataHeader header = new FrameDataHeader(frameCount, spriteRecordSize, numChannels);
 
-        // Allocate channel data buffer
-        int totalSize = frameCount * numChannels * spriteRecordSize;
-        if (totalSize > 50_000_000) {
-            return ScoreFrameData.EMPTY; // Sanity limit
+        // Allocate channel data buffer with overflow protection
+        long totalSizeLong = (long) frameCount * numChannels * spriteRecordSize;
+        if (totalSizeLong <= 0 || totalSizeLong > 50_000_000) {
+            return ScoreFrameData.EMPTY; // Sanity limit or overflow
         }
+        int totalSize = (int) totalSizeLong;
         byte[] channelData = new byte[totalSize];
 
         // Read delta-compressed frame data

@@ -241,22 +241,37 @@ public class TeaVMEntry {
             return 0;
         }
 
-        // Make a defensive copy to avoid ConcurrentModificationException
+        // Get sprites map
         var spriteMap = player.getSprites();
         if (spriteMap == null || spriteMap.isEmpty()) {
             spriteData = new int[0];
             return 0;
         }
 
-        // Copy values to ArrayList first to avoid concurrent modification
-        var spriteList = new java.util.ArrayList<>(spriteMap.values());
-        spriteList.sort((a, b) -> Integer.compare(a.channel, b.channel));
+        // Copy to array (avoid ArrayList for TeaVM compatibility)
+        int size = spriteMap.size();
+        WasmPlayer.SpriteState[] sprites = new WasmPlayer.SpriteState[size];
+        int idx = 0;
+        for (WasmPlayer.SpriteState s : spriteMap.values()) {
+            sprites[idx++] = s;
+        }
+
+        // Sort by channel using simple bubble sort (avoid Arrays.sort for TeaVM)
+        for (int i = 0; i < size - 1; i++) {
+            for (int j = 0; j < size - i - 1; j++) {
+                if (sprites[j].channel > sprites[j + 1].channel) {
+                    WasmPlayer.SpriteState temp = sprites[j];
+                    sprites[j] = sprites[j + 1];
+                    sprites[j + 1] = temp;
+                }
+            }
+        }
 
         // 10 ints per sprite: channel, locH, locV, width, height, castLib, castMember, ink, blend, visible
-        spriteData = new int[spriteList.size() * 10];
+        spriteData = new int[size * 10];
 
         int i = 0;
-        for (WasmPlayer.SpriteState s : spriteList) {
+        for (WasmPlayer.SpriteState s : sprites) {
             spriteData[i++] = s.channel;
             spriteData[i++] = s.locH;
             spriteData[i++] = s.locV;
@@ -269,7 +284,7 @@ public class TeaVMEntry {
             spriteData[i++] = s.visible ? 1 : 0;
         }
 
-        return spriteList.size();
+        return size;
     }
 
     /**

@@ -20,7 +20,14 @@ public class BitmapDecoder {
      * - If byte >= 0x80: repeat next byte (0x101 - byte) times
      */
     public static byte[] decompressRLE(byte[] compressed, int expectedSize) {
-        List<Byte> result = new ArrayList<>(expectedSize);
+        // Guard against negative or excessive sizes
+        if (expectedSize <= 0) {
+            return new byte[0];
+        }
+        if (expectedSize > 100_000_000) { // 100MB max
+            expectedSize = 100_000_000;
+        }
+        List<Byte> result = new ArrayList<>(Math.min(expectedSize, 65536));
         int pos = 0;
 
         while (pos < compressed.length && result.size() < expectedSize) {

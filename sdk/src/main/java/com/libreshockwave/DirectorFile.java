@@ -425,8 +425,11 @@ public class DirectorFile {
                     }
                 }
             } catch (Exception e) {
+                String msg = e.getMessage();
+                if (msg == null) msg = e.getClass().getName();
                 System.err.println("Failed to parse Afterburner chunk " + abInfo.fourCC() +
-                    " (id=" + abInfo.resourceId() + "): " + e.getMessage());
+                    " (id=" + abInfo.resourceId() + "): " + msg);
+                e.printStackTrace();
             }
         }
 
