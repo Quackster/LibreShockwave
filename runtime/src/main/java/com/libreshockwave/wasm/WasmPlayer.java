@@ -530,6 +530,7 @@ public class WasmPlayer {
 
     public void nextFrame() {
         if (currentFrame < lastFrame) {
+            executeHandlerIfExists("exitFrame");
             currentFrame++;
             loadSpritesFromScore();
         }
@@ -537,12 +538,14 @@ public class WasmPlayer {
 
     public void prevFrame() {
         if (currentFrame > 1) {
+            executeHandlerIfExists("exitFrame");
             currentFrame--;
             loadSpritesFromScore();
         }
     }
 
     public void goToFrame(int frame) {
+        executeHandlerIfExists("exitFrame");
         currentFrame = Math.max(1, Math.min(frame, lastFrame));
         loadSpritesFromScore();
     }
@@ -550,6 +553,7 @@ public class WasmPlayer {
     public void tick() {
         if (state != PlayState.PLAYING) return;
 
+        executeHandlerIfExists("exitFrame");
         currentFrame++;
         if (currentFrame > lastFrame) {
             currentFrame = 1; // Loop
