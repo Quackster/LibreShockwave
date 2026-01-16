@@ -1117,5 +1117,419 @@ public class LingoVM {
             vm.halt();
             return Datum.voidValue();
         });
+
+        // Type checking
+        registerBuiltin("ilk", (vm, args) -> {
+            if (args.isEmpty()) return Datum.symbol("void");
+            Datum a = args.get(0);
+            if (args.size() >= 2) {
+                // ilk(x, #type) - returns true if x is of type
+                String checkType = args.get(1).stringValue().toLowerCase();
+                return switch (checkType) {
+                    case "integer" -> a.isInt() ? Datum.TRUE : Datum.FALSE;
+                    case "float" -> a.isFloat() ? Datum.TRUE : Datum.FALSE;
+                    case "string" -> a.isString() ? Datum.TRUE : Datum.FALSE;
+                    case "symbol" -> a.isSymbol() ? Datum.TRUE : Datum.FALSE;
+                    case "list" -> a instanceof Datum.DList ? Datum.TRUE : Datum.FALSE;
+                    case "proplist" -> a instanceof Datum.PropList ? Datum.TRUE : Datum.FALSE;
+                    case "point" -> a instanceof Datum.IntPoint ? Datum.TRUE : Datum.FALSE;
+                    case "rect" -> a instanceof Datum.IntRect ? Datum.TRUE : Datum.FALSE;
+                    case "void" -> a.isVoid() ? Datum.TRUE : Datum.FALSE;
+                    default -> Datum.FALSE;
+                };
+            }
+            // Return type symbol
+            return switch (a) {
+                case Datum.Int i -> Datum.symbol("integer");
+                case Datum.DFloat f -> Datum.symbol("float");
+                case Datum.Str s -> Datum.symbol("string");
+                case Datum.Symbol sym -> Datum.symbol("symbol");
+                case Datum.DList l -> Datum.symbol("list");
+                case Datum.PropList p -> Datum.symbol("propList");
+                case Datum.IntPoint p -> Datum.symbol("point");
+                case Datum.IntRect r -> Datum.symbol("rect");
+                case Datum.Void v -> Datum.symbol("void");
+                default -> Datum.symbol("object");
+            };
+        });
+
+        registerBuiltin("voidP", (vm, args) -> args.isEmpty() ? Datum.TRUE :
+            args.get(0).isVoid() ? Datum.TRUE : Datum.FALSE);
+        registerBuiltin("integerP", (vm, args) -> args.isEmpty() ? Datum.FALSE :
+            args.get(0).isInt() ? Datum.TRUE : Datum.FALSE);
+        registerBuiltin("floatP", (vm, args) -> args.isEmpty() ? Datum.FALSE :
+            args.get(0).isFloat() ? Datum.TRUE : Datum.FALSE);
+        registerBuiltin("stringP", (vm, args) -> args.isEmpty() ? Datum.FALSE :
+            args.get(0).isString() ? Datum.TRUE : Datum.FALSE);
+        registerBuiltin("symbolP", (vm, args) -> args.isEmpty() ? Datum.FALSE :
+            args.get(0).isSymbol() ? Datum.TRUE : Datum.FALSE);
+        registerBuiltin("listP", (vm, args) -> args.isEmpty() ? Datum.FALSE :
+            args.get(0) instanceof Datum.DList ? Datum.TRUE : Datum.FALSE);
+        registerBuiltin("objectP", (vm, args) -> args.isEmpty() ? Datum.FALSE :
+            args.get(0) instanceof Datum.ScriptInstanceRef ? Datum.TRUE : Datum.FALSE);
+
+        registerBuiltin("value", (vm, args) -> {
+            if (args.isEmpty()) return Datum.voidValue();
+            String s = args.get(0).stringValue().trim();
+            try {
+                if (s.contains(".")) {
+                    return Datum.of(Float.parseFloat(s));
+                }
+                return Datum.of(Integer.parseInt(s));
+            } catch (NumberFormatException e) {
+                return Datum.voidValue();
+            }
+        });
+
+        // Point and Rect constructors
+        registerBuiltin("point", (vm, args) -> {
+            if (args.size() < 2) return new Datum.IntPoint(0, 0);
+            return new Datum.IntPoint(args.get(0).intValue(), args.get(1).intValue());
+        });
+
+        registerBuiltin("rect", (vm, args) -> {
+            if (args.size() < 4) return new Datum.IntRect(0, 0, 0, 0);
+            return new Datum.IntRect(
+                args.get(0).intValue(), args.get(1).intValue(),
+                args.get(2).intValue(), args.get(3).intValue()
+            );
+        });
+
+        // Cast/member/sprite references
+        registerBuiltin("castLib", (vm, args) -> {
+            if (args.isEmpty()) return Datum.voidValue();
+            int num = args.get(0).intValue();
+            return new Datum.CastLibRef(num);
+        });
+
+        registerBuiltin("member", (vm, args) -> {
+            if (args.isEmpty()) return Datum.voidValue();
+            if (args.size() >= 2) {
+                // member(name/num, castLib)
+                return new Datum.CastMemberRef(args.get(0).intValue(), args.get(1).intValue());
+            }
+            return new Datum.CastMemberRef(args.get(0).intValue(), 1);
+        });
+
+        registerBuiltin("sprite", (vm, args) -> {
+            if (args.isEmpty()) return Datum.voidValue();
+            return new Datum.SpriteRef(args.get(0).intValue());
+        });
+
+        // Navigation
+        registerBuiltin("go", (vm, args) -> {
+            // go(frame) or go(frame, movie)
+            if (!args.isEmpty()) {
+                System.out.println("[go] frame=" + args.get(0).stringValue());
+            }
+            return Datum.voidValue();
+        });
+
+        registerBuiltin("play", (vm, args) -> {
+            System.out.println("[play] " + (args.isEmpty() ? "" : args.get(0).stringValue()));
+            return Datum.voidValue();
+        });
+
+        registerBuiltin("updateStage", (vm, args) -> {
+            // Would trigger stage redraw
+            return Datum.voidValue();
+        });
+
+        registerBuiltin("puppetTempo", (vm, args) -> {
+            if (!args.isEmpty()) {
+                System.out.println("[puppetTempo] " + args.get(0).intValue() + " fps");
+            }
+            return Datum.voidValue();
+        });
+
+        registerBuiltin("moveToFront", (vm, args) -> {
+            // Window management - no-op in headless
+            return Datum.voidValue();
+        });
+
+        // Network stubs
+        registerBuiltin("netDone", (vm, args) -> {
+            // Check if network operation is complete
+            return Datum.TRUE; // Always return done in stub
+        });
+
+        registerBuiltin("preloadNetThing", (vm, args) -> {
+            if (!args.isEmpty()) {
+                System.out.println("[preloadNetThing] " + args.get(0).stringValue());
+            }
+            return Datum.of(1); // Return task ID
+        });
+
+        registerBuiltin("getNetText", (vm, args) -> {
+            return Datum.of(""); // Stub
+        });
+
+        registerBuiltin("netTextResult", (vm, args) -> {
+            return Datum.of(""); // Stub
+        });
+
+        registerBuiltin("netStatus", (vm, args) -> {
+            return Datum.of("Complete");
+        });
+
+        registerBuiltin("netError", (vm, args) -> {
+            return Datum.of("OK");
+        });
+
+        registerBuiltin("gotoNetPage", (vm, args) -> {
+            if (!args.isEmpty()) {
+                System.out.println("[gotoNetPage] " + args.get(0).stringValue());
+            }
+            return Datum.voidValue();
+        });
+
+        registerBuiltin("gotoNetMovie", (vm, args) -> {
+            if (!args.isEmpty()) {
+                System.out.println("[gotoNetMovie] " + args.get(0).stringValue());
+            }
+            return Datum.voidValue();
+        });
+
+        // Sound
+        registerBuiltin("sound", (vm, args) -> {
+            if (args.isEmpty()) return Datum.voidValue();
+            return new Datum.SoundRef(args.get(0).intValue());
+        });
+
+        registerBuiltin("puppetSound", (vm, args) -> {
+            // puppetSound(channel, member) or puppetSound(channel, 0) to stop
+            return Datum.voidValue();
+        });
+
+        // Alert/dialogs
+        registerBuiltin("alert", (vm, args) -> {
+            if (!args.isEmpty()) {
+                System.out.println("[ALERT] " + args.get(0).stringValue());
+            }
+            return Datum.voidValue();
+        });
+
+        registerBuiltin("beep", (vm, args) -> {
+            System.out.println("[BEEP]");
+            return Datum.voidValue();
+        });
+
+        // Cursor
+        registerBuiltin("cursor", (vm, args) -> {
+            // Set cursor type
+            return Datum.voidValue();
+        });
+
+        // List constructors
+        registerBuiltin("list", (vm, args) -> {
+            Datum.DList list = Datum.list();
+            for (Datum arg : args) {
+                list.add(arg);
+            }
+            return list;
+        });
+
+        // Additional list operations
+        registerBuiltin("add", (vm, args) -> {
+            if (args.size() < 2) return Datum.voidValue();
+            if (args.get(0) instanceof Datum.DList list) {
+                list.add(args.get(1));
+            }
+            return Datum.voidValue();
+        });
+
+        registerBuiltin("append", (vm, args) -> {
+            if (args.size() < 2) return Datum.voidValue();
+            if (args.get(0) instanceof Datum.DList list) {
+                list.add(args.get(1));
+            }
+            return Datum.voidValue();
+        });
+
+        registerBuiltin("addAt", (vm, args) -> {
+            if (args.size() < 3) return Datum.voidValue();
+            if (args.get(0) instanceof Datum.DList list) {
+                int index = args.get(1).intValue();
+                if (index >= 1 && index <= list.count() + 1) {
+                    list.items().add(index - 1, args.get(2));
+                }
+            }
+            return Datum.voidValue();
+        });
+
+        registerBuiltin("deleteAt", (vm, args) -> {
+            if (args.size() < 2) return Datum.voidValue();
+            if (args.get(0) instanceof Datum.DList list) {
+                int index = args.get(1).intValue();
+                if (index >= 1 && index <= list.count()) {
+                    list.items().remove(index - 1);
+                }
+            }
+            return Datum.voidValue();
+        });
+
+        registerBuiltin("getOne", (vm, args) -> {
+            if (args.size() < 2) return Datum.of(0);
+            if (args.get(0) instanceof Datum.DList list) {
+                Datum search = args.get(1);
+                for (int i = 0; i < list.count(); i++) {
+                    if (list.items().get(i).equals(search)) {
+                        return Datum.of(i + 1);
+                    }
+                }
+            }
+            return Datum.of(0);
+        });
+
+        registerBuiltin("getPos", (vm, args) -> {
+            if (args.size() < 2) return Datum.of(0);
+            if (args.get(0) instanceof Datum.DList list) {
+                Datum search = args.get(1);
+                for (int i = 0; i < list.count(); i++) {
+                    if (list.items().get(i).equals(search)) {
+                        return Datum.of(i + 1);
+                    }
+                }
+            }
+            return Datum.of(0);
+        });
+
+        registerBuiltin("getLast", (vm, args) -> {
+            if (args.isEmpty()) return Datum.voidValue();
+            if (args.get(0) instanceof Datum.DList list) {
+                if (list.count() > 0) {
+                    return list.items().get(list.count() - 1);
+                }
+            }
+            return Datum.voidValue();
+        });
+
+        registerBuiltin("sort", (vm, args) -> {
+            if (args.isEmpty()) return Datum.voidValue();
+            if (args.get(0) instanceof Datum.DList list) {
+                list.items().sort((a, b) -> {
+                    if (a.isNumber() && b.isNumber()) {
+                        return Float.compare(a.floatValue(), b.floatValue());
+                    }
+                    return a.stringValue().compareToIgnoreCase(b.stringValue());
+                });
+            }
+            return Datum.voidValue();
+        });
+
+        // PropList operations
+        registerBuiltin("getProp", (vm, args) -> {
+            if (args.size() < 2) return Datum.voidValue();
+            if (args.get(0) instanceof Datum.PropList propList) {
+                return propList.get(args.get(1));
+            }
+            return Datum.voidValue();
+        });
+
+        registerBuiltin("setProp", (vm, args) -> {
+            if (args.size() < 3) return Datum.voidValue();
+            if (args.get(0) instanceof Datum.PropList propList) {
+                propList.put(args.get(1), args.get(2));
+            }
+            return Datum.voidValue();
+        });
+
+        registerBuiltin("addProp", (vm, args) -> {
+            if (args.size() < 3) return Datum.voidValue();
+            if (args.get(0) instanceof Datum.PropList propList) {
+                propList.put(args.get(1), args.get(2));
+            }
+            return Datum.voidValue();
+        });
+
+        registerBuiltin("deleteProp", (vm, args) -> {
+            if (args.size() < 2) return Datum.voidValue();
+            if (args.get(0) instanceof Datum.PropList propList) {
+                propList.properties().remove(args.get(1));
+            }
+            return Datum.voidValue();
+        });
+
+        registerBuiltin("findPos", (vm, args) -> {
+            if (args.size() < 2) return Datum.of(0);
+            if (args.get(0) instanceof Datum.PropList propList) {
+                int pos = 1;
+                for (Datum key : propList.properties().keySet()) {
+                    if (key.equals(args.get(1))) {
+                        return Datum.of(pos);
+                    }
+                    pos++;
+                }
+            }
+            return Datum.of(0);
+        });
+
+        // String utilities
+        registerBuiltin("offset", (vm, args) -> {
+            if (args.size() < 2) return Datum.of(0);
+            String needle = args.get(0).stringValue();
+            String haystack = args.get(1).stringValue();
+            int idx = haystack.indexOf(needle);
+            return Datum.of(idx + 1); // 1-based, 0 if not found
+        });
+
+        registerBuiltin("charToNum", (vm, args) -> {
+            if (args.isEmpty()) return Datum.of(0);
+            String s = args.get(0).stringValue();
+            if (s.isEmpty()) return Datum.of(0);
+            return Datum.of((int) s.charAt(0));
+        });
+
+        registerBuiltin("numToChar", (vm, args) -> {
+            if (args.isEmpty()) return Datum.of("");
+            int n = args.get(0).intValue();
+            return Datum.of(String.valueOf((char) n));
+        });
+
+        // Min/max
+        registerBuiltin("min", (vm, args) -> {
+            if (args.isEmpty()) return Datum.of(0);
+            float minVal = args.get(0).floatValue();
+            for (int i = 1; i < args.size(); i++) {
+                minVal = Math.min(minVal, args.get(i).floatValue());
+            }
+            if (args.stream().allMatch(Datum::isInt)) {
+                return Datum.of((int) minVal);
+            }
+            return Datum.of(minVal);
+        });
+
+        registerBuiltin("max", (vm, args) -> {
+            if (args.isEmpty()) return Datum.of(0);
+            float maxVal = args.get(0).floatValue();
+            for (int i = 1; i < args.size(); i++) {
+                maxVal = Math.max(maxVal, args.get(i).floatValue());
+            }
+            if (args.stream().allMatch(Datum::isInt)) {
+                return Datum.of((int) maxVal);
+            }
+            return Datum.of(maxVal);
+        });
+
+        // Bitwise operations
+        registerBuiltin("bitAnd", (vm, args) -> {
+            if (args.size() < 2) return Datum.of(0);
+            return Datum.of(args.get(0).intValue() & args.get(1).intValue());
+        });
+
+        registerBuiltin("bitOr", (vm, args) -> {
+            if (args.size() < 2) return Datum.of(0);
+            return Datum.of(args.get(0).intValue() | args.get(1).intValue());
+        });
+
+        registerBuiltin("bitXor", (vm, args) -> {
+            if (args.size() < 2) return Datum.of(0);
+            return Datum.of(args.get(0).intValue() ^ args.get(1).intValue());
+        });
+
+        registerBuiltin("bitNot", (vm, args) -> {
+            if (args.isEmpty()) return Datum.of(0);
+            return Datum.of(~args.get(0).intValue());
+        });
     }
 }

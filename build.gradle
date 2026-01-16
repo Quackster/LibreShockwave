@@ -78,3 +78,27 @@ tasks.register('runPlayer', JavaExec) {
         languageVersion = JavaLanguageVersion.of(24)
     }
 }
+
+// Task to run DirPlayer with a movie file
+tasks.register('runDirPlayer', JavaExec) {
+    group = 'application'
+    description = 'Run DirPlayer with a Director file (pass -Pfile=path/to/movie.dcr)'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.DirPlayer'
+    args = project.hasProperty('file') ? [project.property('file')] : ['C:/SourceControl/habbo.dcr']
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(24)
+    }
+}
+
+// Task to run bytecode execution tests
+tasks.register('runBytecodeTests', JavaExec) {
+    group = 'verification'
+    description = 'Run bytecode execution tests'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.BytecodeExecutionTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(24)
+    }
+}

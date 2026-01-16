@@ -280,12 +280,16 @@ libreshockwave/
 |   |   |   +-- bitmap/       # Bitmap handling
 |   |   |   +-- CastLib.java  # Cast library management
 |   |   |   +-- CastManager.java # Multi-cast management
+|   |   |   +-- DirPlayer.java # Movie playback controller
 |   |   +-- vm/               # Lingo VM
+|   |   |   +-- LingoVM.java  # Bytecode executor
+|   |   |   +-- ExecutionScope.java # Call stack/locals
 |   |   +-- DirectorFile.java # Main entry point
 |   +-- test/java/
 |       +-- com/libreshockwave/
-|           +-- DirectorFileTest.java  # Integration tests
-|           +-- DcrFileTest.java       # DCR/external cast tests
+|           +-- DirectorFileTest.java      # Integration tests
+|           +-- DcrFileTest.java           # DCR/external cast tests
+|           +-- BytecodeExecutionTest.java # Bytecode execution tests
 +-- build.gradle
 +-- ARCHITECTURE.md
 ```
@@ -416,7 +420,108 @@ CastMemberChunk member = cast.getMember(10);
 
 ---
 
+## Bytecode Execution
+
+LibreShockwave includes a complete Lingo bytecode executor that matches dirplayer-rs behavior.
+
+### Architecture
+
+```
++----------------------------------------------------------+
+|                    Bytecode Execution                     |
++----------------------------------------------------------+
+|  LingoVM                                                  |
+|    +-- execute(script, handler, args) -> Datum            |
+|    +-- call(handlerName, args) -> Datum                   |
+|    +-- registerBuiltin(name, handler)                     |
++----------------------------------------------------------+
+|  DirPlayer                                                |
+|    +-- loadMovie(path)                                    |
+|    +-- play() / stop() / pause()                          |
+|    +-- goToFrame(frame)                                   |
+|    +-- dispatchEvent(MovieEvent)                          |
++----------------------------------------------------------+
+```
+
+### Opcode Categories
+
+| Category | Opcodes | Status |
+|----------|---------|--------|
+| Stack | PUSH_INT, PUSH_FLOAT, POP, SWAP, PEEK | Complete |
+| Arithmetic | ADD, SUB, MUL, DIV, MOD, INV | Complete |
+| Comparison | LT, GT, EQ, NT_EQ, AND, OR, NOT | Complete |
+| Control Flow | JMP, JMP_IF_Z, END_REPEAT, RET | Complete |
+| Variables | GET_LOCAL, SET_LOCAL, GET_GLOBAL, SET_GLOBAL | Complete |
+| Properties | GET_PROP, SET_PROP, GET_OBJ_PROP | Complete |
+| Functions | EXT_CALL, LOCAL_CALL, OBJ_CALL | Complete |
+| Lists | PUSH_LIST, PUSH_PROP_LIST | Complete |
+| Strings | JOIN_STR, CONTAINS_STR, GET_CHUNK | Complete |
+
+### Built-in Handlers
+
+Over 60 built-in handlers are implemented:
+
+- **Math**: abs, sqrt, sin, cos, tan, atan, power, random, min, max, pi
+- **Type**: integer, float, string, symbol, value, ilk
+- **Lists**: list, count, getAt, setAt, add, append, addAt, deleteAt, sort, getPos
+- **PropLists**: getProp, setProp, addProp, deleteProp, findPos
+- **Strings**: length, chars, offset, charToNum, numToChar
+- **Points/Rects**: point, rect
+- **References**: castLib, member, sprite, sound
+- **Navigation**: go, play, updateStage, puppetTempo
+- **Network**: netDone, preloadNetThing, getNetText
+- **Bitwise**: bitAnd, bitOr, bitXor, bitNot
+- **System**: put, halt, alert, beep, cursor
+
+### Movie Events
+
+```java
+DirPlayer player = new DirPlayer();
+player.loadMovie(Path.of("movie.dcr"));
+
+// Event handlers are called automatically
+player.dispatchEvent(DirPlayer.MovieEvent.PREPARE_MOVIE);
+player.dispatchEvent(DirPlayer.MovieEvent.START_MOVIE);
+player.dispatchEvent(DirPlayer.MovieEvent.EXIT_FRAME);
+```
+
+Event types: PREPARE_MOVIE, START_MOVIE, STOP_MOVIE, PREPARE_FRAME, ENTER_FRAME, EXIT_FRAME, IDLE
+
+### Rust Reference
+
+- `vm-rust/src/player/bytecode/handler_manager.rs` - Opcode dispatch
+- `vm-rust/src/player/bytecode/stack.rs` - Stack operations
+- `vm-rust/src/player/bytecode/arithmetics.rs` - Arithmetic ops
+- `vm-rust/src/player/bytecode/flow_control.rs` - Control flow
+- `vm-rust/src/player/bytecode/get_set.rs` - Variable access
+
+**Test:** Run `./gradlew runBytecodeTests` to verify bytecode execution
+
+---
+
 ## Recent Changes
+
+### 2026-01-16: Added Bytecode Execution
+
+**Summary:** Added complete Lingo bytecode execution matching dirplayer-rs.
+
+**Rust Reference:**
+- `vm-rust/src/player/bytecode/*.rs` - Bytecode handlers
+- `vm-rust/src/player/mod.rs` - Main execution loop
+
+**Changes:**
+1. `LingoVM.java` - Enhanced with 60+ built-in handlers
+2. `DirPlayer.java` - New player class for movie playback
+3. `ExecutionScope.java` - Execution scope management
+4. `BytecodeExecutionTest.java` - Bytecode execution tests
+
+**Features:**
+- All major opcodes implemented (stack, arithmetic, comparison, control flow, variables)
+- Movie event dispatching (prepareMovie, exitFrame, etc.)
+- Frame navigation (go, play, stop)
+- Built-in function library matching dirplayer-rs
+
+---
 
 ### 2026-01-16: Added External Cast Support
 
