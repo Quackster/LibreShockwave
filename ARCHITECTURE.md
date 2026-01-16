@@ -1,341 +1,345 @@
-# LibreShockwave - Java SDK for Director/Shockwave Files
+# LibreShockwave Development Guide
 
-## Project Overview
-
-LibreShockwave is a Java SDK for reading, parsing, and executing Macromedia/Adobe Director and Shockwave files (.dir, .dxr, .dcr, .cst). This project is a port of the [dirplayer-rs](https://github.com/user/dirplayer-rs) Rust implementation to Java, providing a native JVM solution for Director file manipulation.
-
-## Goals
-
-### Primary Objectives
-1. **Complete file format support** - Parse all Director file formats including uncompressed (.dir/.dxr) and Afterburner-compressed (.dcr) files
-2. **Full Lingo execution** - Interpret and execute Lingo bytecode with complete opcode coverage
-3. **Asset extraction** - Extract bitmaps, sounds, text, and other cast members
-4. **Script analysis** - Decompile and analyze Lingo scripts for research/preservation
-
-### Use Cases
-- Digital preservation of legacy Director content
-- Asset extraction from Shockwave games/applications
-- Educational tools for understanding Director internals
-- Building modern players/viewers for Director content
-
-## Architecture
-
-### Package Structure
-
-```
-com.libreshockwave
-├── io/                     # Binary I/O utilities
-│   └── BinaryReader        # Endian-aware binary reading, zlib, FourCC
-├── format/                 # File format definitions
-│   └── ChunkType           # FourCC chunk type enumeration
-├── chunks/                 # Chunk parsers (15 types)
-│   ├── Chunk               # Sealed interface for all chunks
-│   ├── ConfigChunk         # Movie configuration (DRCF/VWCF)
-│   ├── KeyTableChunk       # Resource mapping (KEY*)
-│   ├── CastListChunk       # Cast library list (MCsL)
-│   ├── CastChunk           # Cast member index (CAS*)
-│   ├── CastMemberChunk     # Individual cast member (CASt)
-│   ├── ScriptContextChunk  # Script context (Lctx)
-│   ├── ScriptNamesChunk    # Script name table (Lnam)
-│   ├── ScriptChunk         # Bytecode + handlers (Lscr)
-│   ├── ScoreChunk          # Timeline data (VWSC)
-│   ├── BitmapChunk         # Bitmap data (BITD)
-│   ├── PaletteChunk        # Color palette (CLUT)
-│   ├── TextChunk           # Rich text (STXT)
-│   ├── SoundChunk          # Audio data (snd)
-│   └── RawChunk            # Unknown/raw chunks
-├── lingo/                  # Lingo language types
-│   ├── Opcode              # 84 bytecode opcodes
-│   ├── Datum               # Sealed interface (35+ value types)
-│   ├── DatumType           # Type enumeration
-│   ├── StringChunkType     # char/word/line/item
-│   └── LingoException      # Runtime errors
-├── cast/                   # Cast member definitions
-│   ├── MemberType          # 18 member types
-│   ├── CastMember          # Unified member container
-│   ├── BitmapInfo          # Bitmap-specific data
-│   ├── ShapeInfo           # Vector shape data
-│   ├── FilmLoopInfo        # Film loop properties
-│   └── ScriptType          # movie/behavior/parent
-├── player/                 # Runtime player
-│   ├── Sprite              # Runtime sprite state
-│   ├── Score               # Frame/channel management
-│   ├── Palette             # Built-in palettes + InkMode
-│   └── bitmap/             # Bitmap processing
-│       ├── Bitmap          # RGBA pixel buffer
-│       ├── BitmapDecoder   # RLE decompression
-│       └── Drawing         # Ink mode blending
-├── vm/                     # Virtual machine
-│   ├── LingoVM             # Bytecode interpreter
-│   └── Scope               # Execution scope
-├── handlers/               # Built-in Lingo functions
-│   ├── HandlerRegistry     # Unified registration
-│   ├── MathHandlers        # abs, sqrt, sin, cos, random...
-│   ├── StringHandlers      # length, chars, word, offset...
-│   └── ListHandlers        # count, getAt, add, sort, getProp...
-└── DirectorFile            # Main entry point
-```
-
-### Key Design Decisions
-
-#### 1. Sealed Interfaces for Type Safety
-We use Java 17+ sealed interfaces for `Datum` and `Chunk` types, providing:
-- Exhaustive pattern matching in switch expressions
-- Compile-time verification of type handling
-- Clean record-based implementations
-
-```java
-public sealed interface Datum permits
-    Datum.DInt, Datum.DFloat, Datum.Str, Datum.Symbol,
-    Datum.DList, Datum.PropList, Datum.IntPoint, Datum.IntRect,
-    Datum.CastMemberRef, Datum.ScriptInstanceRef, ... {
-
-    record DInt(int value) implements Datum { ... }
-    record Str(String value) implements Datum { ... }
-    // ...35+ types
-}
-```
-
-#### 2. Endian-Aware Binary Reading
-Director files can be big-endian (Mac) or little-endian (Windows). `BinaryReader` handles this transparently:
-
-```java
-BinaryReader reader = new BinaryReader(data, ByteOrder.BIG_ENDIAN);
-int value = reader.readInt();      // Respects byte order
-String fourcc = reader.readFourCC(); // Always big-endian for tags
-```
-
-#### 3. Chunk-Based Parsing
-Files are parsed chunk-by-chunk, allowing lazy loading and streaming:
-
-```java
-DirectorFile file = DirectorFile.open(path);
-for (Chunk chunk : file.getChunks()) {
-    switch (chunk) {
-        case ScriptChunk script -> analyzeScript(script);
-        case BitmapChunk bitmap -> extractBitmap(bitmap);
-        // ...
-    }
-}
-```
-
-## Current Implementation Status
-
-### Completed (v0.1)
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| RIFX container parsing | Done | Big/little endian detection |
-| Config chunk (DRCF/VWCF) | Done | Stage size, FPS, version |
-| Key table (KEY*) | Done | Resource ID mapping |
-| Cast chunks | Done | CAS*, CASt, MCsL |
-| Script parsing | Done | Lctx, Lnam, Lscr with bytecode |
-| Score parsing | Done | VWSC frame/sprite data |
-| Bitmap parsing | Done | BITD with RLE decompression |
-| Palette handling | Done | Built-in + custom palettes |
-| VM core (40+ opcodes) | Done | Stack ops, arithmetic, flow control |
-| Built-in handlers (70+) | Done | Math, string, list operations |
-| Ink mode blending | Done | 20 ink modes implemented |
-| Bit depth conversion | Done | 1, 2, 4, 8, 16, 32-bit |
-
-### In Progress (v0.2)
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Afterburner (.dcr) | In Progress | Zlib decompression, ILS/ABMP parsing |
-| Remaining VM opcodes | Pending | ~34 advanced opcodes |
-| Film loop rendering | Pending | Recursive sprite compositing |
-| Sound members | Pending | Audio extraction/playback |
-| Integration tests | Pending | Real file testing |
-
-### Planned (v0.3+)
-
-| Feature | Notes |
-|---------|-------|
-| Video members | Digital video cast members |
-| Xtra stubs | Common Xtra function stubs |
-| Script decompiler | Bytecode to Lingo source |
-| Projector support | Standalone .exe/.app files |
-
-## File Format Reference
-
-### RIFX Container Structure
-
-```
-RIFX/XFIR (4 bytes) - Format identifier
-Length (4 bytes)    - Total file length
-Codec (4 bytes)     - "MV93" (uncompressed) or "FGDM" (Afterburner)
-
-[Chunks...]
-  FourCC (4 bytes)  - Chunk type
-  Length (4 bytes)  - Chunk data length
-  Data (N bytes)    - Chunk content
-```
-
-### Afterburner (.dcr) Structure
-
-Afterburner files use zlib compression with this structure:
-
-```
-RIFX header (as above, codec = "FGDM" or "FGDC")
-
-Fver chunk - File version metadata
-  - Director version
-  - imap version
-  - Version string (optional)
-
-Fcdr chunk - Compression directory (zlib compressed)
-  - Array of MoaID compression type GUIDs
-  - Compression type description strings
-
-ABMP chunk - Resource map (zlib compressed)
-  - Resource count
-  - For each resource:
-    - Resource ID (variable-length int)
-    - Offset in ILS segment
-    - Compressed size
-    - Uncompressed size
-    - Compression type index
-    - FourCC chunk type
-
-FGEI/ILS chunk - Initial Load Segment
-  - Concatenated zlib-compressed chunk data
-  - Resources accessed by offset from ABMP
-```
-
-### Compression Types
-
-| GUID | Name | Description |
-|------|------|-------------|
-| AC99E904-0070-0B36-... | ZLIB | Standard zlib compression |
-| 7204A889-AFD0-11CF-... | SND | Sound-specific encoding |
-| AC99982E-005D-0D50-... | NULL | No compression (raw data) |
-| 8A4679A1-3720-11D0-... | FONTMAP | Font mapping (not implemented) |
-
-## Lingo VM Architecture
-
-### Execution Model
-
-The Lingo VM is a stack-based interpreter:
-
-```
-┌─────────────────────────────────────────┐
-│                LingoVM                   │
-├─────────────────────────────────────────┤
-│  Stack: [Datum...]                      │  ← Operand stack
-│  Globals: Map<String, Datum>            │  ← Global variables
-│  Scopes: Stack<Scope>                   │  ← Call stack
-│  Builtins: Map<String, Handler>         │  ← Built-in functions
-└─────────────────────────────────────────┘
-
-┌─────────────────────────────────────────┐
-│                 Scope                    │
-├─────────────────────────────────────────┤
-│  Locals: Map<String, Datum>             │  ← Local variables
-│  Args: List<Datum>                      │  ← Handler arguments
-│  ReturnValue: Datum                     │  ← Return value
-│  PC: int                                │  ← Program counter
-└─────────────────────────────────────────┘
-```
-
-### Opcode Categories
-
-| Category | Opcodes | Examples |
-|----------|---------|----------|
-| Stack | 15 | PUSH_INT, PUSH_FLOAT, PUSH_STRING, POP |
-| Arithmetic | 8 | ADD, SUB, MUL, DIV, MOD, NEGATE |
-| Comparison | 10 | EQ, NEQ, LT, GT, AND, OR, NOT, CONTAINS |
-| Flow Control | 8 | JMP, JMP_IF_ZERO, CALL, RETURN |
-| Variables | 12 | GET_GLOBAL, SET_GLOBAL, GET_LOCAL, GET_PROPERTY |
-| Objects | 10 | GET_MEMBER, SET_MEMBER, NEW, CALL_METHOD |
-| Strings | 6 | CONCAT, GET_CHUNK, HILITE_CHUNK |
-| Lists | 8 | GET_AT, SET_AT, APPEND, DELETE_AT |
-| Special | 7 | THE_ENTITY, SPRITE_REF, TELL, END_TELL |
-
-## Building
-
-### Requirements
-- Java 24 (for sealed types, records, pattern matching)
-- Gradle 8.x (wrapper included)
-
-### Compile
-```bash
-# Build with Gradle
-./gradlew build
-
-# Or on Windows
-gradlew.bat build
-```
-
-### Run Tests
-```bash
-./gradlew runTests
-```
-
-### Run with a Director File
-```bash
-./gradlew runPlayer -Pfile=path/to/movie.dir
-```
-
-### Create JAR
-```bash
-./gradlew jar
-# Output: build/libs/libreshockwave-0.1.0.jar
-```
-
-### Usage Example
-
-```java
-import com.libreshockwave.DirectorFile;
-import com.libreshockwave.chunks.*;
-import com.libreshockwave.vm.LingoVM;
-
-// Load a Director file
-DirectorFile file = DirectorFile.open("movie.dir");
-
-// Access configuration
-ConfigChunk config = file.getConfig();
-System.out.println("Stage: " + config.stageWidth() + "x" + config.stageHeight());
-System.out.println("FPS: " + config.tempo());
-
-// Extract scripts
-for (ScriptChunk script : file.getScripts()) {
-    System.out.println("Script: " + script.getName());
-    for (var handler : script.getHandlers()) {
-        System.out.println("  Handler: " + handler.name());
-    }
-}
-
-// Execute Lingo
-LingoVM vm = new LingoVM(file);
-vm.callHandler("startMovie");
-```
-
-## Contributing
-
-### Areas Needing Work
-1. **Afterburner support** - Complete the .dcr file parsing
-2. **VM opcodes** - Implement remaining ~34 opcodes
-3. **Testing** - Add unit tests with real Director files
-4. **Documentation** - Document chunk formats and opcodes
-
-### Code Style
-- Use Java 21 features (records, sealed types, pattern matching)
-- Prefer immutable data structures
-- Follow existing naming conventions
-- Add Javadoc for public APIs
-
-## References
-
-- [dirplayer-rs](https://github.com/user/dirplayer-rs) - Original Rust implementation
-- [Shockwave Reversing](https://github.com/user/shockwave-reversing) - Format documentation
-- [ScummVM Director Engine](https://github.com/scummvm/scummvm/tree/master/engines/director) - C++ reference
-- [OpenShockwave](https://github.com/user/openshockwave) - Another open-source effort
-
-## License
-
-This project is licensed under the MIT License. See LICENSE file for details.
+A Java 21+ SDK for reading, parsing, and executing Macromedia/Adobe Director & Shockwave files (`.dir`, `.dxr`, `.dcr`, `.cst`).
 
 ---
 
-*LibreShockwave is not affiliated with Adobe, Macromedia, or any original Director/Shockwave developers. Director and Shockwave are trademarks of Adobe Inc.*
+## Overview
+
+LibreShockwave is a port of the Rust project **dirplayer-rs** and must match its behavior exactly. This document serves as the canonical development guide for contributors.
+
+## Sources of Truth
+
+| Priority | Project | Path | Purpose |
+|----------|---------|------|---------|
+| **Primary** | dirplayer-rs | `C:\SourceControl\dirplayer-rs\vm-rust\src` | Defines semantics, behavior, edge cases |
+| **Secondary** | ProjectorRays | `C:\SourceControl\ProjectorRays` | Disambiguation when tests fail or Rust is unclear |
+
+> **Important:** Only consult ProjectorRays when `dirplayer-rs` alone cannot resolve behavior.
+
+### dirplayer-rs Structure
+
+```
+vm-rust/src/
+├── director/           # File/chunk parsing
+│   ├── file.rs         # Main file parser
+│   ├── chunks/         # Individual chunk parsers
+│   ├── lingo/          # Lingo script structures
+│   ├── cast.rs         # Cast handling
+│   └── enums.rs        # Enumerations
+├── player/             # Runtime/VM
+├── io/                 # Binary reading utilities
+├── js_api.rs           # WASM/JS API
+└── rendering.rs        # Stage rendering
+```
+
+---
+
+## Project Objectives
+
+LibreShockwave must achieve full parity with dirplayer-rs across these capabilities:
+
+1. **Container Parsing** - Fully parse Director containers and chunks (including Afterburner `.dcr`)
+2. **Resource Mapping** - Correctly map resources via `KEY*`, `ABMP`, and `ILS`
+3. **Lingo Execution** - Execute Lingo bytecode with complete opcode coverage
+4. **Asset Extraction** - Support bitmaps, palettes, sounds, text, and other assets
+5. **Test Parity** - Passing Java tests with verified behavior matching Rust
+
+---
+
+## Non-Negotiables
+
+| Rule | Rationale |
+|------|-----------|
+| `dirplayer-rs` defines semantics | Port behavior, edge cases, and error handling exactly |
+| Keep Java idiomatic | Use records, sealed types, pattern matching - but never change meaning |
+| Deterministic behavior | Prefer well-documented behavior over guesswork |
+| Document mappings | When Rust patterns don't translate directly, implement closest Java equivalent and document |
+
+---
+
+## Work Plan
+
+Execute in small, verifiable steps:
+
+### Step 1: Gap Analysis
+Identify incomplete areas in LibreShockwave vs dirplayer-rs:
+- [ ] Missing chunk types
+- [ ] Afterburner gaps
+- [ ] Opcode gaps
+- [ ] Cast member coverage
+- [ ] Sound support
+- [ ] Film loops
+- [ ] Other assets
+
+### Step 2: Prioritize High-Leverage Areas
+
+Select the most blocking incomplete feature first:
+
+| Area | Priority | Status |
+|------|----------|--------|
+| Afterburner `.dcr` pipeline | High | Fcdr/ABMP/ILS decoding |
+| Remaining VM opcodes (~34) | High | Stack/arithmetic/flow/vars |
+| Integration tests | Medium | Real file validation |
+
+### Step 3: Implementation Loop
+
+For each item:
+
+```
+1. Locate equivalent Rust module/function in dirplayer-rs
+2. Port logic line-for-line where reasonable
+3. Add/extend Java tests to lock behavior
+4. Validate against known files/fixtures
+```
+
+---
+
+## Afterburner Support Rules (v0.2 Focus)
+
+Implement `.dcr` support to match Rust parsing precisely:
+
+### Required Components
+
+```
++-----------------------------------------------------+
+|                    DCR Pipeline                      |
++-----------------------------------------------------+
+|  1. Read Fver/Fcdr/ABMP                             |
+|  2. Decompress zlib segments                        |
+|  3. Resolve resource entries via ABMP offset -> ILS |
+|  4. Expose chunks through same APIs as uncompressed |
++-----------------------------------------------------+
+```
+
+### Critical Implementation Details
+
+| Area | Consideration |
+|------|---------------|
+| **Variable-length ints** | Match Rust parsing exactly |
+| **Endian rules** | FourCC vs numeric fields have different rules |
+| **Offset/size accounting** | Off-by-one errors are common pitfalls |
+| **Compression type GUID** | Map GUIDs correctly |
+| **Lazy vs eager decompression** | Match Rust behavior first, optimize later |
+
+---
+
+## VM / Opcode Rules
+
+Maintain the VM as a stack-based interpreter matching Rust:
+
+### Core Requirements
+
+| Aspect | Requirement |
+|--------|-------------|
+| **Stack effects** | Match Rust push/pop semantics exactly |
+| **Control flow** | Identical branching and call semantics |
+| **Datum coercions** | int/float/string/symbol/list/propList |
+| **Runtime errors** | Same exception types and conditions |
+
+### Datum Type System
+
+```
++------------------------------------------+
+|              Datum Types                 |
++------------------------------------------+
+|  int       | 32-bit signed integer       |
+|  float     | 64-bit double precision     |
+|  string    | UTF-8 string value          |
+|  symbol    | Interned symbol reference   |
+|  list      | Linear list [a, b, c]       |
+|  propList  | Property list [#a: 1, ...]  |
+|  void      | Null/undefined value        |
+|  object    | Script/sprite instance      |
++------------------------------------------+
+```
+
+---
+
+## "Stuck" Policy
+
+When Java tests won't pass and `dirplayer-rs` alone cannot resolve behavior:
+
+### Resolution Steps
+
+```
+1. Consult ProjectorRays at C:\SourceControl\ProjectorRays
+2. Confirm intent/edge cases
+3. Break ties in ambiguous areas
+4. Document any divergence explicitly
+```
+
+### Valid Divergence Conditions
+
+Only diverge from `dirplayer-rs` when ProjectorRays clearly demonstrates:
+- The intended behavior differs
+- Rust implementation appears incomplete
+- Rust implementation is underspecified
+- Rust implementation is buggy
+
+> **Always document divergences explicitly with rationale**
+
+---
+
+## Output Expectations
+
+When making changes, include:
+
+### Required Documentation
+
+| Element | Description |
+|---------|-------------|
+| **Summary** | What changed and why |
+| **Rust Reference** | Link to corresponding Rust code (file/class/function) |
+| **Tests** | Include tests or reproduction path |
+| **TODOs** | Call out known incompatibilities or remaining work |
+
+### Change Template
+
+```markdown
+## Change: [Feature/Fix Name]
+
+### Summary
+Brief description of what was changed and the motivation.
+
+### Rust Reference
+- File: `vm-rust/src/director/file.rs`
+- Function: `parse_abmp()`
+- Lines: 142-198
+
+### Tests Added
+- `AfterburnerParserTest.testAbmpParsing()`
+- `AfterburnerParserTest.testIlsResolution()`
+
+### Known Issues / TODOs
+- [ ] Edge case X not yet handled
+- [ ] Performance optimization pending
+```
+
+---
+
+## File Format Reference
+
+### Supported Extensions
+
+| Extension | Type | Compressed |
+|-----------|------|------------|
+| `.dir` | Director Movie | No |
+| `.dxr` | Protected Director Movie | No |
+| `.dcr` | Shockwave Movie (Afterburner) | Yes |
+| `.cst` | Cast Library | No |
+
+### Chunk Types Overview
+
+```
+Container Chunks:
++-- RIFX      (Main container)
++-- imap      (Initial map)
++-- mmap      (Memory map)
++-- KEY*      (Key table)
++-- CAS*      (Cast association)
+
+Content Chunks:
++-- Lctx      (Lingo context)
++-- Lnam      (Lingo names)
++-- Lscr      (Lingo script)
++-- BITD      (Bitmap data)
++-- CLUT      (Color lookup table)
++-- snd       (Sound data)
++-- STXT      (Styled text)
+
+Afterburner Chunks:
++-- Fver      (Format version)
++-- Fcdr      (Compressed data reference)
++-- ABMP      (Afterburner map)
++-- ILS       (Internal linked segments)
+```
+
+---
+
+## Development Setup
+
+### Prerequisites
+
+- Java 21+
+- Gradle
+- Access to test Director files
+- Reference repositories cloned locally
+
+### Project Structure
+
+```
+libreshockwave/
++-- src/
+|   +-- main/java/com/libreshockwave/
+|   |   +-- chunks/           # Chunk record types
+|   |   +-- format/           # File format handling
+|   |   +-- io/               # Binary reading
+|   |   +-- lingo/            # Lingo types (Datum, Opcode)
+|   |   +-- player/           # Runtime player
+|   |   |   +-- bitmap/       # Bitmap handling
+|   |   +-- vm/               # Lingo VM
+|   |   +-- DirectorFile.java # Main entry point
+|   +-- test/java/
+|       +-- com/libreshockwave/
+|           +-- DirectorFileTest.java
++-- build.gradle
++-- ARCHITECTURE.md
+```
+
+---
+
+## Testing Strategy
+
+### Unit Tests
+- One test class per chunk type
+- One test class per opcode category
+- Edge case coverage matching Rust tests
+
+### Integration Tests
+- Real `.dir` files parsing
+- Real `.dcr` files parsing
+- Full movie playback scenarios
+
+### Validation Approach
+
+```java
+// Compare output against dirplayer-rs for:
+// 1. Parsed chunk data structures
+// 2. VM execution traces
+// 3. Extracted asset bytes
+// 4. Error conditions and messages
+```
+
+---
+
+## Recent Changes
+
+### 2025-01-16: Fixed Script/Handler Name Reading
+
+**Summary:** Fixed reading of script names and handler names from Director files.
+
+**Rust Reference:**
+- `vm-rust/src/director/lingo/handler.rs` - Handler record structure
+- `vm-rust/src/director/chunks/cast_member.rs` - Cast member info parsing
+
+**Changes:**
+1. `ScriptNamesChunk.java` - Removed overly cautious bounds checks
+2. `ScriptChunk.java` - Fixed handler record structure (42/46 bytes)
+3. `CastMemberChunk.java` - Set big-endian, parse ListChunk for name
+4. `ScriptContextChunk.java` - Added lnamSectionId field
+5. `DirectorFile.java` - Two-pass Afterburner loading, keep non-empty chunks
+
+**Result:** Scripts now display correct names (e.g., "Initialization", "Init", "Loop") and handlers show correct method names (e.g., "prepareMovie", "stopMovie", "exitFrame").
+
+---
+
+## Resources
+
+- [dirplayer-rs](C:\SourceControl\dirplayer-rs\vm-rust\src) - Primary reference
+- [ProjectorRays](C:\SourceControl\ProjectorRays) - Secondary reference
+- [Director File Format](http://fileformats.archiveteam.org/wiki/Shockwave) - Format documentation
+
+---
+
+*Last updated: January 2025*

@@ -4,6 +4,7 @@ import com.libreshockwave.chunks.*;
 import com.libreshockwave.format.AfterburnerReader;
 import com.libreshockwave.format.ChunkType;
 import com.libreshockwave.io.BinaryReader;
+import com.libreshockwave.lingo.Opcode;
 
 import java.io.IOException;
 import java.nio.ByteOrder;
@@ -462,34 +463,109 @@ public class DirectorFile {
             return;
         }
 
-        System.out.println("=== Script Disassembly ===");
-        System.out.println("Type: " + script.scriptType());
-
         for (ScriptChunk.Handler handler : script.handlers()) {
             String name = scriptNames.getName(handler.nameId());
-            System.out.println("\n-- Handler: " + name + " --");
 
-            // Print arguments
-            System.out.print("  Args: ");
-            for (int i = 0; i < handler.argNameIds().size(); i++) {
-                if (i > 0) System.out.print(", ");
-                System.out.print(scriptNames.getName(handler.argNameIds().get(i)));
+            // Print handler signature
+            StringBuilder sig = new StringBuilder();
+            sig.append("on ").append(name);
+            if (!handler.argNameIds().isEmpty()) {
+                sig.append("(");
+                for (int i = 0; i < handler.argNameIds().size(); i++) {
+                    if (i > 0) sig.append(", ");
+                    sig.append(scriptNames.getName(handler.argNameIds().get(i)));
+                }
+                sig.append(")");
             }
-            System.out.println();
+            System.out.println("        " + sig);
 
-            // Print locals
-            System.out.print("  Locals: ");
-            for (int i = 0; i < handler.localNameIds().size(); i++) {
-                if (i > 0) System.out.print(", ");
-                System.out.print(scriptNames.getName(handler.localNameIds().get(i)));
+            // Print locals if any
+            if (!handler.localNameIds().isEmpty()) {
+                StringBuilder locals = new StringBuilder("          -- locals: ");
+                for (int i = 0; i < handler.localNameIds().size(); i++) {
+                    if (i > 0) locals.append(", ");
+                    locals.append(scriptNames.getName(handler.localNameIds().get(i)));
+                }
+                System.out.println(locals);
             }
-            System.out.println();
 
-            // Print bytecode
-            System.out.println("  Bytecode:");
+            // Print bytecode with resolved names
             for (ScriptChunk.Handler.Instruction instr : handler.instructions()) {
-                System.out.println("    " + instr);
+                String line = formatInstruction(instr, handler, scriptNames);
+                System.out.println("          " + line);
+            }
+            System.out.println("        end");
+        }
+    }
+
+    private String formatInstruction(ScriptChunk.Handler.Instruction instr,
+                                     ScriptChunk.Handler handler,
+                                     ScriptNamesChunk names) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("[%d] %s", instr.offset(), instr.opcode().getMnemonic()));
+
+        Opcode op = instr.opcode();
+        long arg = instr.argument();
+
+        switch (op) {
+            // Jump instructions - show target position
+            case JMP, JMP_IF_Z -> {
+                int target = instr.offset() + (int) arg;
+                sb.append(" [").append(target).append("]");
+            }
+            case END_REPEAT -> {
+                int target = instr.offset() - (int) arg;
+                sb.append(" [").append(target).append("]");
+            }
+
+            // Name-based opcodes - resolve name from script names
+            case OBJ_CALL, EXT_CALL, GET_OBJ_PROP, SET_OBJ_PROP,
+                 PUSH_SYMB, GET_PROP, SET_PROP, GET_CHAINED_PROP,
+                 GET_GLOBAL, SET_GLOBAL, GET_GLOBAL2, SET_GLOBAL2,
+                 GET_TOP_LEVEL_PROP, NEW_OBJ -> {
+                String symName = names.getName((int) arg);
+                sb.append(" ").append(symName);
+            }
+
+            // Local variable access - resolve from handler's local names
+            case GET_LOCAL, SET_LOCAL -> {
+                if (arg >= 0 && arg < handler.localNameIds().size()) {
+                    int nameId = handler.localNameIds().get((int) arg);
+                    sb.append(" ").append(names.getName(nameId));
+                } else {
+                    sb.append(" local_").append(arg);
+                }
+            }
+
+            // Parameter access - resolve from handler's arg names
+            case GET_PARAM, SET_PARAM -> {
+                if (arg >= 0 && arg < handler.argNameIds().size()) {
+                    int nameId = handler.argNameIds().get((int) arg);
+                    sb.append(" ").append(names.getName(nameId));
+                } else {
+                    sb.append(" param_").append(arg);
+                }
+            }
+
+            // Float literal
+            case PUSH_FLOAT32 -> {
+                float f = Float.intBitsToFloat((int) arg);
+                sb.append(" ").append(f);
+            }
+
+            // Integer literals
+            case PUSH_INT8, PUSH_INT16, PUSH_INT32 -> {
+                sb.append(" ").append(arg);
+            }
+
+            // Other multi-byte opcodes - just show the argument
+            default -> {
+                if (instr.rawOpcode() >= 0x40) {
+                    sb.append(" ").append(arg);
+                }
             }
         }
+
+        return sb.toString();
     }
 }

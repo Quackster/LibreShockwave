@@ -65,14 +65,14 @@ public record ScriptChunk(
             int offset,
             Opcode opcode,
             int rawOpcode,
-            int argument
+            long argument
         ) {
             @Override
             public String toString() {
-                if (opcode.isMultiByte() && opcode.getArgBytes() > 0) {
-                    return String.format("%04X: %s %d", offset, opcode.getMnemonic(), argument);
+                if (rawOpcode >= 0x40) {
+                    return String.format("[%d] %s %d", offset, opcode.getMnemonic(), argument);
                 } else {
-                    return String.format("%04X: %s", offset, opcode.getMnemonic());
+                    return String.format("[%d] %s", offset, opcode.getMnemonic());
                 }
             }
         }
@@ -240,7 +240,7 @@ public record ScriptChunk(
                     }
                 }
 
-                // Parse bytecode instructions
+                // Parse bytecode instructions (matching dirplayer-rs handler.rs)
                 List<Handler.Instruction> instructions = new ArrayList<>();
                 if (bytecodeLen > 0 && bytecodeOffset > 0) {
                     reader.setPosition(bytecodeOffset);
@@ -249,29 +249,33 @@ public record ScriptChunk(
                     while (reader.getPosition() < bytecodeEnd) {
                         int instrOffset = reader.getPosition() - bytecodeOffset;
                         int op = reader.readU8();
-                        Opcode opcode = Opcode.fromCode(op);
-                        int argument = 0;
 
-                        if (op >= 0x40) {
-                            // Multi-byte opcode
-                            op = op % 0x40 + 0x40;
-                            opcode = Opcode.fromCode(op);
-                            int argSize = (reader.getPosition() > 0 ? (reader.peekBytes(1)[0] & 0xFF) : 0);
+                        // Normalize opcode: multi-byte opcodes are 0x40 + (op % 0x40)
+                        Opcode opcode = Opcode.fromCode(op >= 0x40 ? (0x40 + op % 0x40) : op);
+                        long argument = 0;
 
-                            // Determine argument size based on original opcode byte
-                            int origOp = reader.getPosition() > bytecodeOffset
-                                ? (op + ((reader.getPosition() - bytecodeOffset - 1) >= 0 ? 0 : 0))
-                                : op;
-
-                            // Read argument based on opcode
-                            if (opcode.getArgBytes() == 1) {
-                                argument = reader.readU8();
-                            } else if (opcode.getArgBytes() == 2) {
+                        // Argument size is determined by the op byte value, not opcode type
+                        if (op >= 0xC0) {
+                            // 4-byte argument
+                            argument = reader.readI32();
+                        } else if (op >= 0x80) {
+                            // 2-byte argument
+                            if (opcode == Opcode.PUSH_INT16 || opcode == Opcode.PUSH_INT8) {
+                                // Treat pushint's arg as signed
                                 argument = reader.readI16();
-                            } else if (opcode.getArgBytes() == 4) {
-                                argument = reader.readI32();
+                            } else {
+                                argument = reader.readU16();
+                            }
+                        } else if (op >= 0x40) {
+                            // 1-byte argument
+                            if (opcode == Opcode.PUSH_INT8) {
+                                // Treat pushint's arg as signed
+                                argument = reader.readI8();
+                            } else {
+                                argument = reader.readU8();
                             }
                         }
+                        // op < 0x40: no argument (single-byte opcode)
 
                         instructions.add(new Handler.Instruction(instrOffset, opcode, op, argument));
                     }

@@ -119,7 +119,7 @@ public class LingoVM {
 
     private void executeInstruction(Scope scope, ScriptChunk.Handler.Instruction instr) {
         Opcode op = instr.opcode();
-        int arg = instr.argument();
+        int arg = (int) instr.argument();
 
         switch (op) {
             // Stack operations
