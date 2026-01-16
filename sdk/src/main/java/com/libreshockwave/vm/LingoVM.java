@@ -396,6 +396,7 @@ public class LingoVM {
         if (op == Opcode.PUSH_SYMB || op == Opcode.EXT_CALL || op == Opcode.LOCAL_CALL ||
             op == Opcode.GET_PROP || op == Opcode.SET_PROP || op == Opcode.GET_GLOBAL ||
             op == Opcode.SET_GLOBAL || op == Opcode.GET_MOVIE_PROP || op == Opcode.SET_MOVIE_PROP ||
+            op == Opcode.GET_OBJ_PROP || op == Opcode.SET_OBJ_PROP || op == Opcode.GET_CHAINED_PROP ||
             op == Opcode.THE_BUILTIN || op == Opcode.OBJ_CALL || op == Opcode.NEW_OBJ) {
             // Argument is a name ID
             argStr = " '" + getName((int) arg) + "'";
@@ -933,9 +934,12 @@ public class LingoVM {
             return instance.getProperty(propName);
         } else if (obj instanceof Datum.CastMemberRef memberRef) {
             return getCastMemberProperty(memberRef, propName);
+        } else if (obj instanceof Datum.CastLibRef castLibRef) {
+            return getCastLibProperty(castLibRef, propName);
         } else if (obj instanceof Datum.SpriteRef spriteRef) {
             return getSpriteProperty(spriteRef.channel(), propName);
         }
+        debugLog("getProperty: unhandled object type " + obj.getClass().getSimpleName() + " for property '" + propName + "'");
         return Datum.voidValue();
     }
 
@@ -953,6 +957,28 @@ public class LingoVM {
             case "number", "membernum" -> Datum.of(memberRef.memberNum());
             case "castlib", "castlibnum" -> Datum.of(memberRef.castLib());
             default -> Datum.voidValue();
+        };
+    }
+
+    private Datum getCastLibProperty(Datum.CastLibRef castLibRef, String propName) {
+        int castNum = castLibRef.castLib();
+        CastLib cast = castManager != null ? castManager.getCast(castNum) : null;
+
+        return switch (propName.toLowerCase()) {
+            case "number" -> Datum.of(castNum);
+            case "name" -> Datum.of(cast != null ? cast.getName() : "");
+            case "filename" -> Datum.of(cast != null ? cast.getFileName() : "");
+            case "preloadmode" -> {
+                // 0 = when needed, 1 = after frame one, 2 = before frame one
+                if (cast != null && cast.isExternal()) {
+                    yield Datum.of(cast.getState() == CastLib.State.LOADED ? 2 : 0);
+                }
+                yield Datum.of(0);
+            }
+            default -> {
+                debugLog("getCastLibProperty: unknown property '" + propName + "' for castLib " + castNum);
+                yield Datum.voidValue();
+            }
         };
     }
 
