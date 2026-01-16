@@ -1,0 +1,66 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(24)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Depend on the SDK subproject
+    implementation project(':sdk')
+
+    // Test dependencies
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+application {
+    mainClass = 'com.libreshockwave.runtime.DirPlayer'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+jar {
+    manifest {
+        attributes(
+            'Implementation-Title': 'LibreShockwave Runtime',
+            'Implementation-Version': rootProject.version,
+            'Main-Class': 'com.libreshockwave.runtime.DirPlayer'
+        )
+    }
+}
+
+// Task to run DirPlayer with a movie file
+tasks.register('runPlayer', JavaExec) {
+    group = 'application'
+    description = 'Run DirPlayer with a Director file (pass -Pfile=path/to/movie.dcr)'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.libreshockwave.runtime.DirPlayer'
+    args = project.hasProperty('file') ? [project.property('file')] : []
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(24)
+    }
+}
+
+// Task to run runtime tests
+tasks.register('runTests', JavaExec) {
+    group = 'verification'
+    description = 'Run runtime tests (pass -Pfile=path/to/movie.dcr for DirPlayer test)'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.runtime.RuntimeTest'
+    args = project.hasProperty('file') ? [project.property('file')] : []
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(24)
+    }
+}

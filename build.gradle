@@ -1,104 +1,47 @@
-plugins {
-    id 'java'
-    id 'application'
-}
-
+// Root project - coordinates subprojects
 group = 'com.libreshockwave'
 version = '0.1.0'
 
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(24)
-    }
+// Apply common settings to all subprojects
+subprojects {
+    group = rootProject.group
+    version = rootProject.version
 }
 
-repositories {
-    mavenCentral()
-}
+// Convenience tasks to run subproject tasks from root
 
-dependencies {
-    // No external dependencies - pure Java implementation
-
-    // Test dependencies
-    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-}
-
-application {
-    mainClass = 'com.libreshockwave.examples.BasicUsage'
-}
-
-tasks.named('test') {
-    useJUnitPlatform()
-}
-
-jar {
-    manifest {
-        attributes(
-            'Implementation-Title': 'LibreShockwave',
-            'Implementation-Version': version,
-            'Main-Class': 'com.libreshockwave.examples.BasicUsage'
-        )
-    }
-}
-
-// Task to run the integration tests
-tasks.register('runTests', JavaExec) {
+tasks.register('runTests') {
     group = 'verification'
-    description = 'Run integration tests'
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'com.libreshockwave.DirectorFileTest'
-    dependsOn compileTestJava
-    javaLauncher = javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(24)
-    }
+    description = 'Run SDK integration tests'
+    dependsOn ':sdk:runTests'
 }
 
-// Task to run DCR file tests
-tasks.register('runDcrTests', JavaExec) {
+tasks.register('runDcrTests') {
     group = 'verification'
-    description = 'Run DCR file tests with external cast support'
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'com.libreshockwave.DcrFileTest'
-    args = project.hasProperty('file') ? [project.property('file')] : []
-    dependsOn compileTestJava
-    javaLauncher = javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(24)
-    }
+    description = 'Run DCR file tests'
+    dependsOn ':sdk:runDcrTests'
 }
 
-// Task to run with a Director file
-tasks.register('runPlayer', JavaExec) {
-    group = 'application'
-    description = 'Run with a Director file (pass -Pfile=path/to/movie.dir)'
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.libreshockwave.examples.BasicUsage'
-    args = project.hasProperty('file') ? [project.property('file')] : []
-    javaLauncher = javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(24)
-    }
-}
-
-// Task to run DirPlayer with a movie file
-tasks.register('runDirPlayer', JavaExec) {
-    group = 'application'
-    description = 'Run DirPlayer with a Director file (pass -Pfile=path/to/movie.dcr)'
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.libreshockwave.player.DirPlayer'
-    args = project.hasProperty('file') ? [project.property('file')] : ['C:/SourceControl/habbo.dcr']
-    javaLauncher = javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(24)
-    }
-}
-
-// Task to run bytecode execution tests
-tasks.register('runBytecodeTests', JavaExec) {
+tasks.register('runBytecodeTests') {
     group = 'verification'
     description = 'Run bytecode execution tests'
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'com.libreshockwave.BytecodeExecutionTest'
-    dependsOn compileTestJava
-    javaLauncher = javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(24)
-    }
+    dependsOn ':sdk:runBytecodeTests'
+}
+
+tasks.register('runRuntimeTests') {
+    group = 'verification'
+    description = 'Run runtime tests'
+    dependsOn ':runtime:runTests'
+}
+
+tasks.register('runPlayer') {
+    group = 'application'
+    description = 'Run DirPlayer with a Director file'
+    dependsOn ':runtime:runPlayer'
+}
+
+tasks.register('buildAll') {
+    group = 'build'
+    description = 'Build all subprojects'
+    dependsOn ':sdk:build', ':runtime:build'
 }

@@ -1,1 +1,4 @@
 rootProject.name = 'libreshockwave'
+
+include 'sdk'
+include 'runtime'

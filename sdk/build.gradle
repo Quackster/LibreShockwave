@@ -1,0 +1,72 @@
+plugins {
+    id 'java'
+    id 'java-library'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(24)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // No external dependencies - pure Java implementation
+
+    // Test dependencies
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+jar {
+    manifest {
+        attributes(
+            'Implementation-Title': 'LibreShockwave SDK',
+            'Implementation-Version': rootProject.version
+        )
+    }
+}
+
+// Task to run the integration tests
+tasks.register('runTests', JavaExec) {
+    group = 'verification'
+    description = 'Run integration tests'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.DirectorFileTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(24)
+    }
+}
+
+// Task to run DCR file tests
+tasks.register('runDcrTests', JavaExec) {
+    group = 'verification'
+    description = 'Run DCR file tests with external cast support'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.DcrFileTest'
+    args = project.hasProperty('file') ? [project.property('file')] : []
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(24)
+    }
+}
+
+// Task to run bytecode execution tests
+tasks.register('runBytecodeTests', JavaExec) {
+    group = 'verification'
+    description = 'Run bytecode execution tests'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.BytecodeExecutionTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(24)
+    }
+}

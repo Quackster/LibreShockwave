@@ -270,27 +270,36 @@ Afterburner Chunks:
 
 ```
 libreshockwave/
-+-- src/
-|   +-- main/java/com/libreshockwave/
-|   |   +-- chunks/           # Chunk record types
-|   |   +-- format/           # File format handling
-|   |   +-- io/               # Binary reading
-|   |   +-- lingo/            # Lingo types (Datum, Opcode)
-|   |   +-- player/           # Runtime player
-|   |   |   +-- bitmap/       # Bitmap handling
-|   |   |   +-- CastLib.java  # Cast library management
-|   |   |   +-- CastManager.java # Multi-cast management
-|   |   |   +-- DirPlayer.java # Movie playback controller
-|   |   +-- vm/               # Lingo VM
-|   |   |   +-- LingoVM.java  # Bytecode executor
-|   |   |   +-- ExecutionScope.java # Call stack/locals
-|   |   +-- DirectorFile.java # Main entry point
-|   +-- test/java/
-|       +-- com/libreshockwave/
-|           +-- DirectorFileTest.java      # Integration tests
-|           +-- DcrFileTest.java           # DCR/external cast tests
-|           +-- BytecodeExecutionTest.java # Bytecode execution tests
-+-- build.gradle
++-- sdk/                      # SDK subproject (file parsing, VM)
+|   +-- src/
+|   |   +-- main/java/com/libreshockwave/
+|   |   |   +-- chunks/           # Chunk record types
+|   |   |   +-- format/           # File format handling
+|   |   |   +-- io/               # Binary reading
+|   |   |   +-- lingo/            # Lingo types (Datum, Opcode)
+|   |   |   +-- player/           # Player components
+|   |   |   |   +-- bitmap/       # Bitmap handling
+|   |   |   |   +-- CastLib.java  # Cast library management
+|   |   |   |   +-- CastManager.java # Multi-cast management
+|   |   |   |   +-- DirPlayer.java # Movie playback controller
+|   |   |   +-- vm/               # Lingo VM
+|   |   |   |   +-- LingoVM.java  # Bytecode executor
+|   |   |   +-- DirectorFile.java # Main entry point
+|   |   +-- test/java/com/libreshockwave/
+|   |       +-- DirectorFileTest.java      # Integration tests
+|   |       +-- DcrFileTest.java           # DCR/external cast tests
+|   |       +-- BytecodeExecutionTest.java # Bytecode execution tests
+|   +-- build.gradle
++-- runtime/                  # Runtime subproject (depends on sdk)
+|   +-- src/
+|   |   +-- main/java/com/libreshockwave/runtime/
+|   |   |   +-- ExecutionScope.java  # Execution scope for handler calls
+|   |   |   +-- DirPlayer.java       # Movie playback controller
+|   |   +-- test/java/com/libreshockwave/runtime/
+|   |       +-- RuntimeTest.java     # Runtime unit tests
+|   +-- build.gradle
++-- build.gradle              # Root project (coordinates subprojects)
++-- settings.gradle           # includes 'sdk', 'runtime'
 +-- ARCHITECTURE.md
 ```
 
@@ -499,7 +508,108 @@ Event types: PREPARE_MOVIE, START_MOVIE, STOP_MOVIE, PREPARE_FRAME, ENTER_FRAME,
 
 ---
 
+## Runtime Subproject
+
+The `runtime/` subproject contains the execution runtime components that depend on LibreShockwave.
+
+### Purpose
+
+- Separates parsing (LibreShockwave) from execution (runtime)
+- Allows runtime to be developed and tested independently
+- Provides clean dependency structure: runtime depends on LibreShockwave
+
+### Components
+
+| Class | Purpose |
+|-------|---------|
+| `ExecutionScope` | Manages stack, locals, args for handler execution |
+| `DirPlayer` | Movie playback controller with scope management |
+| `RuntimeTest` | Unit tests for runtime components |
+
+### ExecutionScope
+
+The execution scope manages state for a single handler call:
+
+```java
+ExecutionScope scope = new ExecutionScope(args);
+
+// Stack operations
+scope.push(Datum.of(42));
+Datum value = scope.pop();
+scope.swap();
+
+// Local variables
+scope.setLocal("x", Datum.of(10));
+Datum x = scope.getLocal("x");
+
+// Arguments
+Datum arg0 = scope.getArg(0);
+scope.setArg(1, Datum.of(99));
+
+// Bytecode position
+scope.setBytecodeIndex(10);
+scope.advanceBytecodeIndex();
+
+// Return value
+scope.setReturnValue(Datum.of("result"));
+```
+
+### Building and Testing
+
+```bash
+# Build all subprojects
+./gradlew buildAll
+
+# Build SDK only
+./gradlew :sdk:build
+
+# Build runtime only
+./gradlew :runtime:build
+
+# Run SDK tests
+./gradlew runTests
+./gradlew runDcrTests
+./gradlew runBytecodeTests
+
+# Run runtime tests
+./gradlew runRuntimeTests
+
+# Run DirPlayer with a movie file
+./gradlew runPlayer -Pfile=path/to/movie.dcr
+```
+
+### Rust Reference
+
+- `vm-rust/src/player/scope.rs` - Scope structure
+- `vm-rust/src/player/mod.rs` - DirPlayer implementation
+
+---
+
 ## Recent Changes
+
+### 2026-01-16: Added Runtime Subproject
+
+**Summary:** Created separate `runtime/` subproject for execution components.
+
+**Changes:**
+1. `runtime/src/main/java/.../ExecutionScope.java` - Execution scope with stack, locals, args
+2. `runtime/src/main/java/.../DirPlayer.java` - Movie player with scope management
+3. `runtime/src/test/java/.../RuntimeTest.java` - Unit tests for runtime components
+4. `runtime/build.gradle` - Subproject build configuration
+5. `settings.gradle` - Added `include 'runtime'`
+
+**Features:**
+- Stack operations: push, pop, peek, swap, popN, clearStack
+- Local variables: get/set/has locals
+- Arguments: get/set args by index
+- Bytecode position tracking
+- Return value management
+- Receiver (me) reference for object methods
+- Loop return index stack for control flow
+
+**Test:** Run `./gradlew :runtime:runTests` to verify runtime functionality
+
+---
 
 ### 2026-01-16: Added Bytecode Execution
 
