@@ -266,6 +266,7 @@
 
         // Get and render sprites
         const sprites = LibreShockwave.getSprites();
+        log('debug', `Frame ${LibreShockwave.getCurrentFrame()}: ${sprites.length} sprites`);
         renderSprites(sprites);
     }
 
@@ -292,6 +293,7 @@
     function renderSprite(sprite) {
         if (!sprite.member || sprite.member.memberNum <= 0) {
             // No member - draw placeholder
+            log('debug', `  Sprite ch=${sprite.channel}: no member (memberNum=${sprite.member?.memberNum})`);
             drawPlaceholder(sprite);
             return;
         }
@@ -304,12 +306,16 @@
 
         if (!bitmap) {
             // Try to get bitmap from WASM
+            log('debug', `  Sprite ch=${sprite.channel}: fetching bitmap ${cacheKey}...`);
             const imageData = LibreShockwave.getBitmap(castLib, memberNum);
             if (imageData) {
                 // Convert ImageData to ImageBitmap for better rendering
                 // For now, store the ImageData directly
                 bitmap = imageData;
                 bitmapCache.set(cacheKey, bitmap);
+                log('info', `  Sprite ch=${sprite.channel}: loaded bitmap ${cacheKey} (${imageData.width}x${imageData.height})`);
+            } else {
+                log('warn', `  Sprite ch=${sprite.channel}: failed to get bitmap ${cacheKey}`);
             }
         }
 
@@ -333,6 +339,7 @@
             ctx.globalAlpha = 1.0;
         } else {
             // Draw placeholder for sprites without bitmaps
+            log('debug', `  Sprite ch=${sprite.channel}: drawing placeholder (no bitmap in cache)`);
             drawPlaceholder(sprite);
         }
     }

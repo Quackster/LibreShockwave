@@ -502,10 +502,17 @@ const LibreShockwave = (function() {
         async loadMovie(url) {
             if (!initialized) throw new Error('Not initialized');
             log('info', `Fetching movie from ${url}...`);
+
+            // Extract base URL for external casts
+            const lastSlash = url.lastIndexOf('/');
+            this._movieBaseUrl = lastSlash > 0 ? url.substring(0, lastSlash) : '';
+            this._movieName = lastSlash > 0 ? url.substring(lastSlash + 1) : url;
+            log('info', `Movie base URL: ${this._movieBaseUrl || '(current directory)'}`);
+
             const response = await fetch(url);
             if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             const data = await response.arrayBuffer();
-            return this.loadMovieFromData(data);
+            return this.loadMovieFromData(data, this._movieName);
         },
 
         // Load movie from ArrayBuffer
@@ -513,6 +520,12 @@ const LibreShockwave = (function() {
             if (!initialized) throw new Error('Not initialized');
             const bytes = new Uint8Array(data);
             log('info', `Loading movie data (${bytes.length} bytes)...`);
+
+            // Store the movie name (base URL should already be set by loadMovie if applicable)
+            this._movieName = name;
+            if (this._movieBaseUrl === undefined) {
+                this._movieBaseUrl = '';
+            }
 
             // Use TeaVMEntry functions to transfer data
             this.allocateMovieBuffer(bytes.length);
@@ -523,7 +536,107 @@ const LibreShockwave = (function() {
 
             if (result !== 1) throw new Error('Failed to load movie in WASM');
             log('info', `Movie loaded: ${this.getLastFrame()} frames, ${this.getStageWidth()}x${this.getStageHeight()}`);
+
+            // Load external casts
+            await this.loadPendingExternalCasts();
+
             return this.getState();
+        },
+
+        // Get pending external cast count
+        getPendingExternalCastCount() {
+            return exports ? exports.getPendingExternalCastCount() : 0;
+        },
+
+        // Get pending external cast info
+        getPendingExternalCastInfo(index) {
+            if (!exports) return null;
+            const castNumber = exports.getPendingExternalCastNumber(index);
+            const fileNameLength = exports.getPendingExternalCastFileNameLength(index);
+            if (castNumber === 0 || fileNameLength === 0) return null;
+
+            let fileName = '';
+            for (let i = 0; i < fileNameLength; i++) {
+                fileName += String.fromCharCode(exports.getPendingExternalCastFileNameChar(index, i));
+            }
+            return { castNumber, fileName };
+        },
+
+        // Load external cast from data
+        async loadExternalCastFromData(castNumber, data) {
+            if (!exports) throw new Error('Not initialized');
+            const bytes = new Uint8Array(data);
+            log('info', `Loading external cast #${castNumber} (${bytes.length} bytes)...`);
+
+            exports.allocateExternalCastBuffer(bytes.length);
+            for (let i = 0; i < bytes.length; i++) {
+                exports.setExternalCastDataByte(i, bytes[i]);
+            }
+            const result = exports.loadExternalCastFromBuffer(castNumber);
+
+            if (result !== 1) {
+                log('error', `Failed to load external cast #${castNumber}`);
+                return false;
+            }
+            log('info', `External cast #${castNumber} loaded successfully`);
+            return true;
+        },
+
+        // Load all pending external casts
+        async loadPendingExternalCasts() {
+            const count = this.getPendingExternalCastCount();
+            if (count === 0) {
+                log('info', 'No external casts to load');
+                return;
+            }
+
+            log('info', `Loading ${count} external cast(s)...`);
+
+            for (let i = 0; i < count; i++) {
+                const info = this.getPendingExternalCastInfo(i);
+                if (!info) continue;
+
+                log('info', `  Fetching external cast #${info.castNumber}: ${info.fileName}`);
+
+                try {
+                    // Construct URL relative to movie or current page
+                    let url = info.fileName;
+                    if (this._movieBaseUrl) {
+                        url = this._movieBaseUrl + '/' + info.fileName;
+                    }
+
+                    // Try different extensions
+                    const extensions = ['', '.cct', '.cst', '.cxt'];
+                    let data = null;
+                    let loadedUrl = null;
+
+                    for (const ext of extensions) {
+                        const tryUrl = url.replace(/\.(cct|cst|cxt)$/i, '') + ext;
+                        try {
+                            log('info', `    Trying: ${tryUrl}`);
+                            const response = await fetch(tryUrl);
+                            if (response.ok) {
+                                data = await response.arrayBuffer();
+                                loadedUrl = tryUrl;
+                                break;
+                            }
+                        } catch (e) {
+                            // Try next extension
+                        }
+                    }
+
+                    if (data) {
+                        log('info', `    Loaded from: ${loadedUrl} (${data.byteLength} bytes)`);
+                        await this.loadExternalCastFromData(info.castNumber, data);
+                    } else {
+                        log('error', `    Failed to fetch external cast: ${info.fileName}`);
+                    }
+                } catch (error) {
+                    log('error', `    Error loading external cast #${info.castNumber}: ${error.message}`);
+                }
+            }
+
+            log('info', 'External cast loading complete');
         },
 
         // Get sprites for current frame (convenience)
@@ -579,19 +692,27 @@ const LibreShockwave = (function() {
 
         // Get bitmap as ImageData for canvas rendering
         getBitmap(castLib, memberNum) {
-            if (!exports) return null;
+            if (!exports) {
+                console.log('[getBitmap] exports not available');
+                return null;
+            }
 
             // Prepare bitmap data in WASM
+            console.log(`[getBitmap] Calling prepareBitmap(${castLib}, ${memberNum})`);
             const result = exports.prepareBitmap(castLib, memberNum);
+            console.log(`[getBitmap] prepareBitmap returned ${result}`);
             if (result !== 1) {
+                console.log('[getBitmap] Failed to prepare bitmap');
                 return null;
             }
 
             const width = exports.getBitmapWidth();
             const height = exports.getBitmapHeight();
             const pixelCount = exports.getBitmapPixelCount();
+            console.log(`[getBitmap] Dimensions: ${width}x${height}, ${pixelCount} pixels`);
 
             if (width <= 0 || height <= 0 || pixelCount <= 0) {
+                console.log('[getBitmap] Invalid dimensions');
                 return null;
             }
 
@@ -609,6 +730,7 @@ const LibreShockwave = (function() {
                 data[idx + 3] = (argb >> 24) & 0xFF; // A
             }
 
+            console.log(`[getBitmap] Successfully created ImageData ${width}x${height}`);
             return imageData;
         },
 
