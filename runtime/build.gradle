@@ -1,6 +1,7 @@
 plugins {
     id 'java'
     id 'application'
+    id 'org.graalvm.buildtools.native' version '0.10.4'
 }
 
 java {
@@ -16,6 +17,9 @@ repositories {
 dependencies {
     // Depend on the SDK subproject
     implementation project(':sdk')
+
+    // GraalVM Native Image SDK for @CEntryPoint
+    compileOnly 'org.graalvm.sdk:nativeimage:24.1.1'
 
     // Test dependencies
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
@@ -76,4 +80,61 @@ tasks.register('runNetworkTest', JavaExec) {
     javaLauncher = javaToolchains.launcherFor {
         languageVersion = JavaLanguageVersion.of(24)
     }
+}
+
+// Task to run the web player
+tasks.register('runWebPlayer', JavaExec) {
+    group = 'application'
+    description = 'Run the LibreShockwave web player (pass -Pport=8080 to change port)'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.libreshockwave.runtime.WebPlayer'
+    args = project.hasProperty('port') ? [project.property('port')] : ['8080']
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(24)
+    }
+}
+
+// GraalVM Native Image configuration
+graalvmNative {
+    binaries {
+        main {
+            imageName = 'libreshockwave'
+            mainClass = 'com.libreshockwave.wasm.WasmEntry'
+            buildArgs.addAll([
+                '--no-fallback',
+                '--enable-preview',
+                '-H:+UnlockExperimentalVMOptions',
+                '--initialize-at-build-time=com.libreshockwave',
+                '-H:Name=libreshockwave'
+            ])
+            javaLauncher = javaToolchains.launcherFor {
+                languageVersion = JavaLanguageVersion.of(24)
+            }
+        }
+
+        // WASM target configuration
+        wasm {
+            imageName = 'libreshockwave'
+            mainClass = 'com.libreshockwave.wasm.WasmEntry'
+            buildArgs.addAll([
+                '--no-fallback',
+                '--enable-preview',
+                '-H:+UnlockExperimentalVMOptions',
+                '--initialize-at-build-time=com.libreshockwave',
+                '-H:Name=libreshockwave'
+            ])
+        }
+    }
+
+    toolchainDetection = false
+}
+
+// Task to copy WASM output to player resources
+tasks.register('copyWasmToPlayer', Copy) {
+    group = 'build'
+    description = 'Copy compiled WASM to player resources'
+    from layout.buildDirectory.dir('native/nativeCompile')
+    into 'src/main/resources/player'
+    include 'libreshockwave*'
+    dependsOn 'nativeCompile'
 }

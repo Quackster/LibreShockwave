@@ -33,6 +33,10 @@ LibreShockwave is a port of the Rust project **dirplayer-rs** and must match its
 
 # Run network loading tests
 ./gradlew :runtime:runNetworkTest -Purl=http://localhost:8080/habbo.dcr
+
+# Run the web player (opens at http://localhost:8080)
+./gradlew :runtime:runWebPlayer
+./gradlew :runtime:runWebPlayer -Pport=3000  # Custom port
 ```
 
 ---
@@ -57,9 +61,15 @@ libreshockwave/
 ├── runtime/                      # Execution runtime (depends on SDK)
 │   └── src/main/java/com/libreshockwave/runtime/
 │       ├── DirPlayer.java        # Movie playback (uses SDK's LingoVM, supports HTTP)
+│       ├── WebPlayer.java        # Web-based player with HTTP server
 │       ├── ExecutionScope.java   # Stack, locals, args utility
 │       ├── HandlerExecutionResult.java  # ADVANCE, JUMP, STOP, ERROR
 │       └── BytecodeHandlerContext.java  # Context for player extensions
+│   └── src/main/resources/player/
+│       ├── index.html            # Web player UI
+│       ├── style.css             # Player styling
+│       ├── libreshockwave-api.js # JavaScript API (WASM loader/stub)
+│       └── player.js             # UI controller and canvas renderer
 │
 ├── build.gradle                  # Root project (coordinates subprojects)
 ├── settings.gradle               # includes 'sdk', 'runtime'
@@ -592,6 +602,48 @@ Brief description of what was changed and the motivation.
 
 ## Recent Changes
 
+### 2026-01-16: Web Player UI
+
+**Summary:** Created a web-based Shockwave player with HTML controls, canvas rendering, and WASM-based JavaScript API.
+
+**New Files:**
+1. `runtime/src/main/resources/player/index.html` - Player UI with controls
+2. `runtime/src/main/resources/player/style.css` - Dark theme styling
+3. `runtime/src/main/resources/player/libreshockwave-api.js` - WASM loader/stub API
+4. `runtime/src/main/resources/player/player.js` - UI controller and canvas renderer
+5. `runtime/src/main/java/.../WebPlayer.java` - Static file server
+
+**Architecture:**
+```
+Browser
+├── index.html          # Player UI (play/stop/pause/prev/next, frame input)
+├── style.css           # Dark theme styling
+├── player.js           # UI controller, canvas rendering
+└── libreshockwave-api.js
+    ├── WASM Mode       # Loads libreshockwave.wasm (when available)
+    └── Stub Mode       # Falls back to basic file parsing
+
+libreshockwave.wasm     # SDK + Runtime compiled to WebAssembly (TODO)
+```
+
+**Features:**
+- Play/Stop/Pause/Next/Previous frame controls
+- Frame number input and display
+- Canvas-based stage rendering
+- Sprite placeholder rendering (blue rectangles with channel numbers)
+- Sprite list panel showing visible sprites
+- Console panel for logging
+- File upload and URL loading
+- WASM API with stub fallback for testing
+
+**Usage:**
+```bash
+./gradlew :runtime:runWebPlayer              # Starts at http://localhost:8080
+./gradlew :runtime:runWebPlayer -Pport=3000  # Custom port
+```
+
+---
+
 ### 2026-01-16: DirPlayer Score Integration
 
 **Summary:** Integrated Score into DirPlayer for frame navigation, sprite loading, and frame script execution.
@@ -755,6 +807,79 @@ Runtime
 | Cast Manager | `player/cast_manager.rs` | Cast library management |
 | Cast Lib | `player/cast_lib.rs` | Individual cast loading |
 | Bytecode | `player/bytecode/*.rs` | Opcode handlers |
+
+---
+
+## GraalVM Native Image / WASM Compilation
+
+The project supports compiling to a native binary using GraalVM Native Image. This can be used to create standalone executables or shared libraries.
+
+### Prerequisites
+
+1. **Install GraalVM** (version 24.x recommended):
+   - Download from https://www.graalvm.org/downloads/
+   - Set `GRAALVM_HOME` environment variable
+   - Add GraalVM bin to PATH
+
+2. **Install Native Image component**:
+   ```bash
+   gu install native-image
+   ```
+
+### Build Commands
+
+```bash
+# Compile Java code first
+./gradlew :runtime:compileJava
+
+# Build native executable
+./gradlew :runtime:nativeCompile
+
+# Copy native output to player resources
+./gradlew :runtime:copyWasmToPlayer
+```
+
+### Native Image Configuration
+
+Configuration files are in `runtime/src/main/resources/META-INF/native-image/com.libreshockwave/runtime/`:
+
+| File | Purpose |
+|------|---------|
+| `native-image.properties` | Build arguments (--no-fallback, etc.) |
+| `reflect-config.json` | Classes requiring reflection |
+| `resource-config.json` | Resources to include in image |
+
+### WasmEntry Entry Points
+
+The `WasmEntry` class in `runtime/src/main/java/com/libreshockwave/wasm/` provides `@CEntryPoint` exports:
+
+| Function | Parameters | Description |
+|----------|------------|-------------|
+| `init` | - | Initialize runtime |
+| `loadMovieFromData` | Pointer, length | Load movie from bytes |
+| `play` / `stop` / `pause` | - | Playback control |
+| `nextFrame` / `prevFrame` | - | Frame navigation |
+| `goToFrame` | frame | Jump to frame |
+| `tick` | - | Execute one frame tick |
+| `getCurrentFrame` / `getLastFrame` | - | Frame info |
+| `getTempo` | - | FPS setting |
+| `getStageWidth` / `getStageHeight` | - | Stage dimensions |
+| `isPlaying` / `isPaused` | - | Playback state |
+| `getSpriteCount` | - | Sprites in current frame |
+| `getSpriteData` | Pointer outLength | Packed sprite data |
+
+### WebAssembly Notes
+
+GraalVM's WASM target is experimental. Current options:
+
+1. **Native executable** - Works now, platform-specific
+2. **Shared library** - Use `--shared` flag for C interop
+3. **WebAssembly** - Requires experimental WASM backend
+
+For browser usage with the current setup, consider:
+- Running native executable as a backend service
+- Using TeaVM or CheerpJ for Java-to-WASM transpilation
+- Waiting for GraalVM's WASM support to mature
 
 ---
 

@@ -1,0 +1,10 @@
+{
+  "resources": {
+    "includes": [
+      {
+        "pattern": "player/.*"
+      }
+    ]
+  },
+  "bundles": []
+}

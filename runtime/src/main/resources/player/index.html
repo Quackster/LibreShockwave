@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LibreShockwave Player</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="player-container">
+        <header class="player-header">
+            <h1>LibreShockwave Player</h1>
+            <div class="movie-info">
+                <span id="movie-name">No movie loaded</span>
+                <span id="movie-size"></span>
+            </div>
+        </header>
+
+        <div class="stage-container">
+            <canvas id="stage" width="640" height="480"></canvas>
+            <div id="loading-overlay" class="loading-overlay hidden">
+                <div class="spinner"></div>
+                <span>Loading...</span>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <button id="btn-load" class="btn" title="Load Movie">
+                    <span class="icon">&#128194;</span> Load
+                </button>
+                <input type="file" id="file-input" accept=".dcr,.dir,.dxr" hidden>
+                <input type="text" id="url-input" placeholder="Enter movie URL..." class="url-input">
+                <button id="btn-load-url" class="btn" title="Load from URL">
+                    <span class="icon">&#127760;</span>
+                </button>
+            </div>
+
+            <div class="control-group playback-controls">
+                <button id="btn-prev" class="btn" title="Previous Frame" disabled>
+                    <span class="icon">&#9198;</span>
+                </button>
+                <button id="btn-stop" class="btn" title="Stop" disabled>
+                    <span class="icon">&#9632;</span>
+                </button>
+                <button id="btn-play" class="btn btn-primary" title="Play" disabled>
+                    <span class="icon">&#9654;</span>
+                </button>
+                <button id="btn-pause" class="btn" title="Pause" disabled>
+                    <span class="icon">&#10074;&#10074;</span>
+                </button>
+                <button id="btn-next" class="btn" title="Next Frame" disabled>
+                    <span class="icon">&#9197;</span>
+                </button>
+            </div>
+
+            <div class="control-group frame-info">
+                <label>Frame:</label>
+                <input type="number" id="frame-input" min="1" value="1" disabled>
+                <span id="frame-display">1 / 1</span>
+                <span id="tempo-display">@ 15 fps</span>
+            </div>
+        </div>
+
+        <div class="status-bar">
+            <span id="status">Ready</span>
+            <span id="play-state" class="state-stopped">Stopped</span>
+        </div>
+
+        <div class="sprite-info-panel">
+            <h3>Sprites</h3>
+            <div id="sprite-list" class="sprite-list"></div>
+        </div>
+
+        <div class="console-panel">
+            <h3>Console <button id="btn-clear-console" class="btn-small">Clear</button></h3>
+            <div id="console-output" class="console-output"></div>
+        </div>
+    </div>
+
+    <script src="libreshockwave-api.js"></script>
+    <script src="player.js"></script>
+</body>
+</html>
