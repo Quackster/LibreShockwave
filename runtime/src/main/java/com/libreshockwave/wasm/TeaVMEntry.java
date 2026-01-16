@@ -81,7 +81,12 @@ public class TeaVMEntry {
             log("Movie loaded: " + player.getLastFrame() + " frames");
             return 1;
         } catch (Exception e) {
-            logError("Load error: " + e.getMessage());
+            String msg = e.getMessage();
+            if (msg == null || msg.isEmpty()) {
+                msg = e.getClass().getName();
+            }
+            logError("Load error: " + msg);
+            e.printStackTrace();
             return 0;
         }
     }
@@ -217,10 +222,11 @@ public class TeaVMEntry {
      */
     @Export(name = "getSpriteCount")
     public static int getSpriteCount() {
-        if (player == null) {
+        if (player == null || !player.isLoaded()) {
             return 0;
         }
-        return player.getSprites().size();
+        var sprites = player.getSprites();
+        return sprites != null ? sprites.size() : 0;
     }
 
     /**
@@ -230,20 +236,27 @@ public class TeaVMEntry {
      */
     @Export(name = "prepareSpriteData")
     public static int prepareSpriteData() {
-        if (player == null) {
+        if (player == null || !player.isLoaded()) {
             spriteData = new int[0];
             return 0;
         }
 
-        var sprites = player.getSprites().values().stream()
-            .sorted((a, b) -> Integer.compare(a.channel, b.channel))
-            .toList();
+        // Make a defensive copy to avoid ConcurrentModificationException
+        var spriteMap = player.getSprites();
+        if (spriteMap == null || spriteMap.isEmpty()) {
+            spriteData = new int[0];
+            return 0;
+        }
+
+        // Copy values to ArrayList first to avoid concurrent modification
+        var spriteList = new java.util.ArrayList<>(spriteMap.values());
+        spriteList.sort((a, b) -> Integer.compare(a.channel, b.channel));
 
         // 10 ints per sprite: channel, locH, locV, width, height, castLib, castMember, ink, blend, visible
-        spriteData = new int[sprites.size() * 10];
+        spriteData = new int[spriteList.size() * 10];
 
         int i = 0;
-        for (WasmPlayer.SpriteState s : sprites) {
+        for (WasmPlayer.SpriteState s : spriteList) {
             spriteData[i++] = s.channel;
             spriteData[i++] = s.locH;
             spriteData[i++] = s.locV;
@@ -256,7 +269,7 @@ public class TeaVMEntry {
             spriteData[i++] = s.visible ? 1 : 0;
         }
 
-        return sprites.size();
+        return spriteList.size();
     }
 
     /**

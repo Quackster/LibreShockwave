@@ -238,17 +238,38 @@ const LibreShockwave = (function() {
     // WASM Loading
     // =====================================================
 
+    // Helper to convert Java string pointer to JS string
+    function javaStringToJs(stringPtr, instance) {
+        if (!instance || !stringPtr) return String(stringPtr);
+        try {
+            const memory = instance.exports.memory.buffer;
+            const arrayPtr = instance.exports.teavm_stringData(stringPtr);
+            const length = instance.exports.teavm_arrayLength(arrayPtr);
+            const charArrayPtr = instance.exports.teavm_charArrayData(arrayPtr);
+            const chars = new Uint16Array(memory, charArrayPtr, length);
+            let str = '';
+            for (let i = 0; i < length; i++) {
+                str += String.fromCharCode(chars[i]);
+            }
+            return str;
+        } catch (e) {
+            return String(stringPtr);
+        }
+    }
+
     async function loadWasm(wasmUrl) {
         log('info', `Loading WASM from ${wasmUrl}...`);
 
         teavm = await TeaVM.wasm.load(wasmUrl, {
             installImports: function(importObj, controller) {
                 importObj.env = importObj.env || {};
-                importObj.env.consoleLog = function(message) {
-                    console.log('[WASM]', message);
+                importObj.env.consoleLog = function(stringPtr) {
+                    const msg = javaStringToJs(stringPtr, controller.instance);
+                    console.log(msg);
                 };
-                importObj.env.consoleError = function(message) {
-                    console.error('[WASM]', message);
+                importObj.env.consoleError = function(stringPtr) {
+                    const msg = javaStringToJs(stringPtr, controller.instance);
+                    console.error(msg);
                 };
             }
         });

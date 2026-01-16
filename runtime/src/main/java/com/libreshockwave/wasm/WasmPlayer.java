@@ -6,6 +6,7 @@ import com.libreshockwave.player.CastManager;
 import com.libreshockwave.player.Score;
 import com.libreshockwave.player.Sprite;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -157,6 +158,6 @@ public class WasmPlayer {
     public int getStageWidth() { return stageWidth; }
     public int getStageHeight() { return stageHeight; }
     public Score getScore() { return score; }
-    public Map<Integer, SpriteState> getSprites() { return sprites; }
+    public Map<Integer, SpriteState> getSprites() { return Collections.unmodifiableMap(sprites); }
     public boolean isLoaded() { return movieFile != null; }
 }
