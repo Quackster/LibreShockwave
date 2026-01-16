@@ -367,42 +367,29 @@ Only diverge from `dirplayer-rs` when ProjectorRays clearly demonstrates the int
 |---------|--------|-------|
 | Container Parsing (RIFX) | ✅ Complete | Uncompressed .dir files |
 | Afterburner Parsing (DCR) | ✅ Complete | Compressed .dcr files via ABMP/ILS |
-| Chunk Parsing | ✅ Complete | CASt, Lscr, BITD, KEY*, CAS*, etc. |
+| Chunk Parsing | ✅ Complete | CASt, Lscr, BITD, KEY*, CAS*, VWSC, VWLB, etc. |
 | LingoVM Bytecode Execution | ✅ Complete | All major opcodes implemented |
 | Built-in Handlers (60+) | ✅ Complete | Math, lists, strings, etc. |
 | External Cast Support | ✅ Complete | File-based loading |
 | **HTTP Network Loading** | ✅ Complete | Movies and casts over HTTP |
-| Score Frame Data | 🔄 Partial | Basic parsing, needs delta decompression |
+| **Score Parsing** | ✅ Complete | Delta decompression, frame intervals, frame labels |
+| **Score Integration in DirPlayer** | ✅ Complete | Frame navigation, sprite loading, frame scripts |
 | Sprite Behaviors | ❌ Not Started | beginSprite/endSprite events |
 
-### TODO - Score Implementation
+### TODO - Sprite Behaviors
 
-The score is the timeline that controls sprite placement and behavior attachment per frame.
+The score parsing and basic frame execution are complete. The remaining work is behavior attachment.
 
 #### Pending Tasks
 
-1. **Enhance ScoreChunk Parsing**
-   - Parse Entry[0] frame data (delta-compressed sprite positions)
-   - Parse Entry[2+] behavior intervals (FrameIntervalPrimary + Secondary)
-   - Reference: `vm-rust/src/director/chunks/score.rs`
-
-2. **Score Delta Decompression**
-   - Implement delta decompression for sprite channel data
-   - 24-byte ScoreFrameChannelData structure per channel
-   - Reference: `vm-rust/src/director/chunks/score.rs:parse_frame_data()`
-
-3. **Create SpriteChannel Class**
-   - Runtime state for each sprite channel
-   - Properties: member, locH, locV, width, height, ink, blend, visible
-   - Attached behaviors (scriptInstanceList)
-
-4. **Implement Frame Execution Cycle**
-   - `beginSprites(frame)` - initialize sprites, attach behaviors, dispatch beginSprite
-   - `endSprites(prevFrame, nextFrame)` - dispatch endSprite, detach behaviors
-   - `executeFrameScript(frame)` - run frame script from channel 0
+1. **Sprite Behavior Attachment**
+   - Use frame intervals from Score to attach behaviors to sprites
+   - Create script instances for behaviors
+   - Dispatch beginSprite events when sprites enter
+   - Dispatch endSprite events when sprites exit
    - Reference: `vm-rust/src/player/score.rs`
 
-5. **Reserved Channel Indices**
+2. **Reserved Channel Indices (already defined in Score class)**
    - Channel 0: Frame script
    - Channel 1: Palette
    - Channel 2: Transition
@@ -604,6 +591,62 @@ Brief description of what was changed and the motivation.
 ---
 
 ## Recent Changes
+
+### 2026-01-16: DirPlayer Score Integration
+
+**Summary:** Integrated Score into DirPlayer for frame navigation, sprite loading, and frame script execution.
+
+**Modified Files:**
+1. `runtime/.../DirPlayer.java` - Score integration:
+   - Added Score field, populated from DirectorFile.createScore()
+   - lastFrame now comes from Score.getFrameCount()
+   - goToLabel() uses Score.getFrameByLabel()
+   - goToFrame() and tick() now load sprites from Score
+   - executeFrameScript() runs frame scripts from channel 0
+   - loadSpritesFromScore() updates SpriteState from Score frames
+   - Main method displays score info (channels, intervals, labels)
+
+**Features:**
+- Frame count determined from actual score data
+- Frame labels work for navigation (go "labelName")
+- Sprites populated from score on frame changes
+- Frame scripts executed when present in channel 0
+
+---
+
+### 2026-01-16: Complete Score Parsing Implementation
+
+**Summary:** Implemented full score parsing with delta decompression, frame intervals, and frame labels matching dirplayer-rs.
+
+**Rust Reference:**
+- `vm-rust/src/director/chunks/score.rs` - ScoreChunk, ScoreFrameData, FrameIntervalPrimary/Secondary, FrameLabelsChunk
+
+**New Files:**
+1. `sdk/src/main/java/com/libreshockwave/chunks/FrameLabelsChunk.java` - VWLB chunk parser
+
+**Modified Files:**
+1. `sdk/.../chunks/ScoreChunk.java` - Full rewrite with:
+   - Entry-based parsing (offsets table, entries)
+   - Delta decompression of frame data (Entry[0])
+   - Frame interval parsing (Entry[2+] for behavior attachment)
+   - ChannelData record (24+ bytes per channel with extended colors)
+   - FrameIntervalPrimary (44 bytes) and FrameIntervalSecondary (8 bytes) records
+2. `sdk/.../player/Score.java` - Updated to use ScoreChunk data:
+   - Populates frames from parsed channel data
+   - Supports frame labels from FrameLabelsChunk
+   - getBehaviorsForFrameChannel() for behavior lookup
+3. `sdk/.../player/Sprite.java` - Added spriteType field
+4. `sdk/.../chunks/Chunk.java` - Added FrameLabelsChunk to sealed permits
+5. `sdk/.../DirectorFile.java` - Added VWLB parsing, createScore() helper
+
+**Features:**
+- Full delta decompression matching Rust implementation
+- Frame intervals for sprite behavior attachment
+- Frame labels (VWLB chunk)
+- Extended color support (RGB per sprite)
+- Reserved channel handling (script, palette, transition, sound, tempo)
+
+---
 
 ### 2026-01-16: HTTP Network Loading Support
 

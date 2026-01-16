@@ -6,6 +6,8 @@ import com.libreshockwave.lingo.Datum;
 import com.libreshockwave.net.NetManager;
 import com.libreshockwave.net.NetResult;
 import com.libreshockwave.player.CastManager;
+import com.libreshockwave.player.Score;
+import com.libreshockwave.player.Sprite;
 import com.libreshockwave.vm.LingoVM;
 
 import java.io.IOException;
@@ -59,6 +61,7 @@ public class DirPlayer {
     private CastManager castManager;
     private LingoVM vm;
     private NetManager netManager;
+    private Score score;
     private String baseUrl;
 
     private PlayState state = PlayState.STOPPED;
@@ -113,6 +116,9 @@ public class DirPlayer {
         vm.setNetManager(netManager);
         castManager.setNetManager(netManager);
 
+        // Create Score from parsed ScoreChunk
+        this.score = file.createScore();
+
         // Set tempo from config
         if (file.getConfig() != null) {
             this.tempo = file.getConfig().tempo();
@@ -129,7 +135,12 @@ public class DirPlayer {
         this.scopeStack.clear();
 
         // Determine last frame from score
-        this.lastFrame = 100;
+        if (score != null && score.getFrameCount() > 0) {
+            this.lastFrame = score.getFrameCount();
+        } else {
+            this.lastFrame = 1;
+        }
+        System.out.println("[DirPlayer] Score: " + (score != null ? score.getFrameCount() + " frames, " + score.getChannelCount() + " channels" : "none"));
     }
 
     /**
@@ -325,17 +336,105 @@ public class DirPlayer {
         if (frame < 1) frame = 1;
         if (frame > lastFrame) frame = lastFrame;
 
+        int previousFrame = currentFrame;
         dispatchEvent(MovieEvent.EXIT_FRAME);
+
         currentFrame = frame;
+
+        // Load sprites from score for this frame
+        loadSpritesFromScore(currentFrame);
+
         dispatchEvent(MovieEvent.PREPARE_FRAME);
+
+        // Execute frame script if present
+        executeFrameScript(currentFrame);
+
         dispatchEvent(MovieEvent.ENTER_FRAME);
+    }
+
+    /**
+     * Load sprites from the Score for a given frame.
+     */
+    private void loadSpritesFromScore(int frameNum) {
+        if (score == null) return;
+
+        Score.Frame frame = score.getFrame(frameNum);
+        if (frame == null) return;
+
+        // Update sprite states from score data
+        for (Sprite sprite : frame.getSprites()) {
+            SpriteState state = getSprite(sprite.getChannel());
+            state.setLocH(sprite.getLocH());
+            state.setLocV(sprite.getLocV());
+            state.setWidth(sprite.getWidth());
+            state.setHeight(sprite.getHeight());
+            state.setInk(sprite.getInk());
+            state.setBlend(sprite.getBlend());
+            state.setVisible(sprite.isVisible());
+
+            if (sprite.getCastMember() > 0) {
+                state.setMember(new Datum.CastMemberRef(sprite.getCastLib(), sprite.getCastMember()));
+            } else {
+                state.setMember(null);
+            }
+        }
+    }
+
+    /**
+     * Execute the frame script for a given frame (from Score channel 0).
+     */
+    private void executeFrameScript(int frameNum) {
+        if (score == null) return;
+
+        Score.Frame frame = score.getFrame(frameNum);
+        if (frame == null || !frame.hasFrameScript()) return;
+
+        int castLib = frame.getScriptCastLib();
+        int castMember = frame.getScriptCastMember();
+
+        // Find and execute the script
+        ScriptChunk script = findScriptForCastMember(castLib, castMember);
+        if (script != null && !script.handlers().isEmpty()) {
+            // Execute the first handler (typically the frame script)
+            try {
+                vm.execute(script, script.handlers().get(0), new Datum[0]);
+            } catch (Exception e) {
+                System.err.println("Error executing frame script for frame " + frameNum + ": " + e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Find a script chunk for a given cast member.
+     */
+    private ScriptChunk findScriptForCastMember(int castLib, int castMember) {
+        // For now, search through all scripts
+        // TODO: Use KeyTable to map cast members to scripts properly
+        for (ScriptChunk script : file.getScripts()) {
+            // Simple matching - in reality this should use the cast member -> script mapping
+            if (script.id() == castMember) {
+                return script;
+            }
+        }
+        return null;
     }
 
     /**
      * Go to a frame by label name.
      */
     public void goToLabel(String label) {
-        System.out.println("[goToLabel] " + label);
+        if (score == null) {
+            System.out.println("[goToLabel] No score available");
+            return;
+        }
+
+        int frameNum = score.getFrameByLabel(label);
+        if (frameNum > 0) {
+            System.out.println("[goToLabel] " + label + " -> frame " + frameNum);
+            goToFrame(frameNum);
+        } else {
+            System.out.println("[goToLabel] Label not found: " + label);
+        }
     }
 
     /**
@@ -349,6 +448,7 @@ public class DirPlayer {
         int frameBefore = currentFrame;
         dispatchEvent(MovieEvent.EXIT_FRAME);
 
+        // Only advance if exitFrame didn't change the frame (via go command)
         if (currentFrame == frameBefore) {
             if (currentFrame < lastFrame) {
                 currentFrame++;
@@ -357,7 +457,14 @@ public class DirPlayer {
             }
         }
 
+        // Load sprites from score for new frame
+        loadSpritesFromScore(currentFrame);
+
         dispatchEvent(MovieEvent.PREPARE_FRAME);
+
+        // Execute frame script
+        executeFrameScript(currentFrame);
+
         dispatchEvent(MovieEvent.ENTER_FRAME);
     }
 
@@ -467,6 +574,10 @@ public class DirPlayer {
         return file != null ? file.getStageHeight() : 0;
     }
 
+    public Score getScore() {
+        return score;
+    }
+
     // Sprite state
 
     public SpriteState getSprite(int channel) {
@@ -535,13 +646,33 @@ public class DirPlayer {
             System.out.println("File: " + path);
             System.out.println("Stage: " + player.getStageWidth() + "x" + player.getStageHeight());
             System.out.println("Tempo: " + player.getTempo() + " fps");
+            System.out.println("Frames: " + player.getLastFrame());
             System.out.println("Scripts: " + player.getFile().getScripts().size());
             System.out.println("Casts: " + player.getCastManager().getCastCount());
 
+            // Show score info
+            Score score = player.getScore();
+            if (score != null) {
+                System.out.println("\n--- Score ---");
+                System.out.println("Channels: " + score.getChannelCount());
+                System.out.println("Behavior intervals: " + score.getFrameIntervals().size());
+                if (!score.getFrameLabels().isEmpty()) {
+                    System.out.println("Frame labels:");
+                    for (var entry : score.getFrameLabels().entrySet()) {
+                        System.out.println("  " + entry.getKey() + " -> frame " + entry.getValue());
+                    }
+                }
+            }
+
             // Show external casts
+            boolean hasExternal = false;
             for (var cast : player.getCastManager().getCasts()) {
                 if (cast.isExternal()) {
-                    System.out.println("  External cast: " + cast.getName() + " -> " + cast.getFileName());
+                    if (!hasExternal) {
+                        System.out.println("\n--- External Casts ---");
+                        hasExternal = true;
+                    }
+                    System.out.println("  " + cast.getName() + " -> " + cast.getFileName());
                 }
             }
             System.out.println();
@@ -552,9 +683,8 @@ public class DirPlayer {
             System.out.println("\n--- Executing startMovie ---");
             player.dispatchEvent(MovieEvent.START_MOVIE);
 
-            System.out.println("\n--- Executing frame 1 ---");
-            player.dispatchEvent(MovieEvent.ENTER_FRAME);
-            player.dispatchEvent(MovieEvent.EXIT_FRAME);
+            System.out.println("\n--- Going to frame 1 ---");
+            player.goToFrame(1);
 
             System.out.println("\n=== Done ===");
 

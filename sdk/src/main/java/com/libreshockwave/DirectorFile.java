@@ -33,6 +33,8 @@ public class DirectorFile {
     private ScriptContextChunk scriptContext;
     private ScriptNamesChunk scriptNames;  // Default/primary names chunk
     private final Map<Integer, ScriptNamesChunk> scriptNamesById = new HashMap<>();
+    private ScoreChunk scoreChunk;
+    private FrameLabelsChunk frameLabelsChunk;
 
     private final Map<Integer, Chunk> chunks = new HashMap<>();
     private final Map<Integer, ChunkInfo> chunkInfo = new HashMap<>();
@@ -76,6 +78,8 @@ public class DirectorFile {
     public List<ScriptChunk> getScripts() { return Collections.unmodifiableList(scripts); }
     public Collection<ChunkInfo> getAllChunkInfo() { return Collections.unmodifiableCollection(chunkInfo.values()); }
     public String getBasePath() { return basePath; }
+    public ScoreChunk getScoreChunk() { return scoreChunk; }
+    public FrameLabelsChunk getFrameLabelsChunk() { return frameLabelsChunk; }
     public void setBasePath(String basePath) { this.basePath = basePath != null ? basePath : ""; }
 
     public Chunk getChunk(int id) {
@@ -219,6 +223,26 @@ public class DirectorFile {
             }
         }
         return false;
+    }
+
+    // Score Management
+
+    /**
+     * Create a Score from this file's parsed ScoreChunk and FrameLabelsChunk.
+     * Returns null if no score chunk is present.
+     */
+    public com.libreshockwave.player.Score createScore() {
+        if (scoreChunk == null) {
+            return null;
+        }
+        return new com.libreshockwave.player.Score(scoreChunk, frameLabelsChunk);
+    }
+
+    /**
+     * Check if this file has score data.
+     */
+    public boolean hasScore() {
+        return scoreChunk != null && scoreChunk.getFrameCount() > 0;
     }
 
     // Loading
@@ -423,6 +447,7 @@ public class DirectorFile {
             case Lnam -> ScriptNamesChunk.read(reader, info.id, version);
             case Lscr -> ScriptChunk.read(reader, info.id, version, capitalX);
             case VWSC, SCVW -> ScoreChunk.read(reader, info.id, version);
+            case VWLB -> FrameLabelsChunk.read(reader, info.id, version);
             case BITD -> BitmapChunk.read(reader, info.id, version);
             case CLUT -> PaletteChunk.read(reader, info.id, version);
             case STXT -> TextChunk.read(reader, info.id);
@@ -447,6 +472,7 @@ public class DirectorFile {
             case Lnam -> ScriptNamesChunk.read(reader, info.id, version);
             case Lscr -> ScriptChunk.read(reader, info.id, version, capitalX);
             case VWSC, SCVW -> ScoreChunk.read(reader, info.id, version);
+            case VWLB -> FrameLabelsChunk.read(reader, info.id, version);
             case BITD -> BitmapChunk.read(reader, info.id, version);
             case CLUT -> PaletteChunk.read(reader, info.id, version);
             case STXT -> TextChunk.read(reader, info.id);
@@ -476,6 +502,8 @@ public class DirectorFile {
             case CastChunk c -> this.casts.add(c);
             case CastMemberChunk cm -> this.castMembers.add(cm);
             case ScriptChunk s -> this.scripts.add(s);
+            case ScoreChunk sc -> this.scoreChunk = sc;
+            case FrameLabelsChunk fl -> this.frameLabelsChunk = fl;
             default -> {}
         }
     }
@@ -500,6 +528,19 @@ public class DirectorFile {
         System.out.println("Cast libraries: " + (castList != null ? castList.entries().size() : 0));
         System.out.println("Cast members: " + castMembers.size());
         System.out.println("Scripts: " + scripts.size());
+
+        if (scoreChunk != null) {
+            System.out.println("\n--- Score ---");
+            System.out.println("Frames: " + scoreChunk.getFrameCount());
+            System.out.println("Channels: " + scoreChunk.getChannelCount());
+            System.out.println("Behavior intervals: " + scoreChunk.frameIntervals().size());
+            if (frameLabelsChunk != null && !frameLabelsChunk.labels().isEmpty()) {
+                System.out.println("Frame labels: " + frameLabelsChunk.labels().size());
+                for (FrameLabelsChunk.FrameLabel label : frameLabelsChunk.labels()) {
+                    System.out.println("  " + label.label() + " -> frame " + label.frameNum());
+                }
+            }
+        }
 
         if (!scripts.isEmpty() && scriptNames != null) {
             System.out.println("\n--- Handlers ---");

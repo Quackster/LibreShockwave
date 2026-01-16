@@ -21,6 +21,7 @@ public class Sprite {
     private int regPointV;
 
     // Visual properties
+    private int spriteType;
     private int ink;
     private int blend = 100;
     private boolean visible = true;
@@ -71,6 +72,9 @@ public class Sprite {
 
     public int getHeight() { return height; }
     public void setHeight(int height) { this.height = height; }
+
+    public int getSpriteType() { return spriteType; }
+    public void setSpriteType(int spriteType) { this.spriteType = spriteType; }
 
     public int getInk() { return ink; }
     public void setInk(int ink) { this.ink = ink; }
@@ -142,6 +146,7 @@ public class Sprite {
         this.locV = other.locV;
         this.width = other.width;
         this.height = other.height;
+        this.spriteType = other.spriteType;
         this.ink = other.ink;
         this.blend = other.blend;
         this.visible = other.visible;

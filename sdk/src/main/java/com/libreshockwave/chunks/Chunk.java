@@ -15,6 +15,7 @@ public sealed interface Chunk permits
         ScriptNamesChunk,
         ScriptChunk,
         ScoreChunk,
+        FrameLabelsChunk,
         BitmapChunk,
         PaletteChunk,
         TextChunk,

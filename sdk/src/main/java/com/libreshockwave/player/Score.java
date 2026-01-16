@@ -1,17 +1,18 @@
 package com.libreshockwave.player;
 
+import com.libreshockwave.chunks.FrameLabelsChunk;
 import com.libreshockwave.chunks.ScoreChunk;
-import com.libreshockwave.io.BinaryReader;
+import com.libreshockwave.chunks.ScoreChunk.*;
 
-import java.nio.ByteOrder;
 import java.util.*;
 
 /**
  * Manages the score (timeline) with frames and sprite channels.
+ * Matches dirplayer-rs vm-rust/src/player/score.rs
  */
 public class Score {
 
-    // Reserved channel indices
+    // Reserved channel indices (0-based)
     public static final int CHANNEL_SCRIPT = 0;
     public static final int CHANNEL_PALETTE = 1;
     public static final int CHANNEL_TRANSITION = 2;
@@ -26,11 +27,26 @@ public class Score {
 
     private final List<Frame> frames;
     private final Map<String, Integer> frameLabels;
+    private final List<FrameInterval> frameIntervals;
 
+    /**
+     * Create a Score from a parsed ScoreChunk.
+     */
     public Score(ScoreChunk chunk) {
-        this.frameCount = chunk.frameCount();
-        this.channelCount = chunk.channelCount();
-        this.spriteRecordSize = 24; // Default sprite record size
+        this(chunk, null);
+    }
+
+    /**
+     * Create a Score from a parsed ScoreChunk and optional FrameLabelsChunk.
+     */
+    public Score(ScoreChunk chunk, FrameLabelsChunk labelsChunk) {
+        ScoreFrameData frameData = chunk.frameData();
+        FrameDataHeader header = frameData.header();
+
+        this.frameCount = header.frameCount();
+        this.channelCount = header.numChannels();
+        this.spriteRecordSize = header.spriteRecordSize();
+        this.frameIntervals = new ArrayList<>(chunk.frameIntervals());
 
         this.frames = new ArrayList<>();
         this.frameLabels = new HashMap<>();
@@ -39,123 +55,75 @@ public class Score {
         for (int i = 0; i < frameCount; i++) {
             frames.add(new Frame(i + 1, channelCount));
         }
-    }
 
-    /**
-     * Parse detailed score data from raw bytes.
-     */
-    public void parseFrameData(byte[] data) {
-        if (data == null || data.length == 0) return;
+        // Populate frames from parsed channel data
+        for (FrameChannelEntry entry : frameData.frameChannelData()) {
+            int frameIndex = entry.frameIndex();
+            int channelIndex = entry.channelIndex();
+            ChannelData cd = entry.data();
 
-        BinaryReader reader = new BinaryReader(data, ByteOrder.BIG_ENDIAN);
-
-        // Read header
-        int actualLength = reader.readI32();
-        int unk1 = reader.readI32();
-        int parsedFrameCount = reader.readI32();
-        int framesVersion = reader.readU16();
-        int spriteRecordSize = reader.readU16();
-        int numChannels = reader.readU16();
-
-        if (framesVersion > 13) {
-            reader.skip(2); // numChannelsDisplayed
-        } else {
-            reader.skip(2); // skip
-        }
-
-        // Allocate channel data buffer
-        byte[] channelData = new byte[parsedFrameCount * numChannels * spriteRecordSize];
-
-        int frameIndex = 0;
-        while (!reader.eof() && frameIndex < parsedFrameCount) {
-            int length = reader.readU16();
-            if (length == 0) break;
-
-            int frameLength = length - 2;
-            if (frameLength > 0) {
-                byte[] frameData = reader.readBytes(frameLength);
-                BinaryReader frameReader = new BinaryReader(frameData, ByteOrder.BIG_ENDIAN);
-
-                // Parse delta-compressed channel data
-                while (!frameReader.eof()) {
-                    int channelSize = frameReader.readU16();
-                    int channelOffset = frameReader.readU16();
-                    byte[] channelDelta = frameReader.readBytes(channelSize);
-
-                    int frameOffset = frameIndex * numChannels * spriteRecordSize;
-                    int destOffset = frameOffset + channelOffset;
-
-                    if (destOffset + channelSize <= channelData.length) {
-                        System.arraycopy(channelDelta, 0, channelData, destOffset, channelSize);
-                    }
-                }
+            if (frameIndex >= 0 && frameIndex < frames.size()) {
+                Frame frame = frames.get(frameIndex);
+                populateFrameFromChannelData(frame, channelIndex, cd);
             }
-            frameIndex++;
         }
 
-        // Parse channel data into sprites
-        BinaryReader channelReader = new BinaryReader(channelData, ByteOrder.BIG_ENDIAN);
-
-        for (int f = 0; f < parsedFrameCount && f < frames.size(); f++) {
-            Frame frame = frames.get(f);
-
-            for (int c = 0; c < numChannels; c++) {
-                int pos = channelReader.getPosition();
-                ChannelData cd = parseChannelData(channelReader);
-                channelReader.setPosition(pos + spriteRecordSize);
-
-                if (cd.castMember > 0 && c >= FIRST_SPRITE_CHANNEL) {
-                    int spriteChannel = c - FIRST_SPRITE_CHANNEL + 1;
-                    Sprite sprite = new Sprite(spriteChannel);
-                    sprite.setCastLib(cd.castLib);
-                    sprite.setCastMember(cd.castMember);
-                    sprite.setLocH(cd.posX);
-                    sprite.setLocV(cd.posY);
-                    sprite.setWidth(cd.width);
-                    sprite.setHeight(cd.height);
-                    sprite.setInk(cd.ink);
-                    sprite.setForeColor(cd.foreColor);
-                    sprite.setBackColor(cd.backColor);
-
-                    frame.setSprite(spriteChannel, sprite);
-                }
+        // Load frame labels if provided
+        if (labelsChunk != null) {
+            for (FrameLabelsChunk.FrameLabel label : labelsChunk.labels()) {
+                frameLabels.put(label.label(), label.frameNum());
             }
         }
     }
 
-    private ChannelData parseChannelData(BinaryReader reader) {
-        ChannelData cd = new ChannelData();
+    private void populateFrameFromChannelData(Frame frame, int channelIndex, ChannelData cd) {
+        if (channelIndex == CHANNEL_SCRIPT) {
+            // Frame script - castMember is the script ID
+            if (cd.castMember() > 0) {
+                frame.setScriptCastLib(cd.castLib());
+                frame.setScriptCastMember(cd.castMember());
+            }
+        } else if (channelIndex == CHANNEL_PALETTE) {
+            if (cd.castMember() > 0) {
+                frame.setPaletteId(cd.castMember());
+            }
+        } else if (channelIndex == CHANNEL_TRANSITION) {
+            if (cd.castMember() > 0) {
+                frame.setTransitionId(cd.castMember());
+            }
+        } else if (channelIndex == CHANNEL_SOUND1) {
+            if (cd.castMember() > 0) {
+                frame.setSound1Id(cd.castMember());
+            }
+        } else if (channelIndex == CHANNEL_SOUND2) {
+            if (cd.castMember() > 0) {
+                frame.setSound2Id(cd.castMember());
+            }
+        } else if (channelIndex == CHANNEL_TEMPO) {
+            // Tempo channel
+            if (cd.castMember() > 0) {
+                frame.setTempo(cd.castMember());
+            }
+        } else if (channelIndex >= FIRST_SPRITE_CHANNEL) {
+            // Sprite channel (1-based sprite number)
+            int spriteChannel = channelIndex - FIRST_SPRITE_CHANNEL + 1;
 
-        if (reader.bytesLeft() < 24) {
-            return cd;
+            if (cd.castMember() > 0) {
+                Sprite sprite = new Sprite(spriteChannel);
+                sprite.setCastLib(cd.castLib());
+                sprite.setCastMember(cd.castMember());
+                sprite.setLocH(cd.posX());
+                sprite.setLocV(cd.posY());
+                sprite.setWidth(cd.width());
+                sprite.setHeight(cd.height());
+                sprite.setInk(cd.ink());
+                sprite.setForeColor(cd.foreColor());
+                sprite.setBackColor(cd.backColor());
+                sprite.setSpriteType(cd.spriteType());
+
+                frame.setSprite(spriteChannel, sprite);
+            }
         }
-
-        cd.spriteType = reader.readU8();
-        cd.ink = reader.readU8();
-        cd.foreColor = reader.readU8();
-        cd.backColor = reader.readU8();
-        cd.castLib = reader.readU16();
-        cd.castMember = reader.readU16();
-        reader.skip(4); // unknown
-        cd.posY = reader.readU16();
-        cd.posX = reader.readU16();
-        cd.height = reader.readU16();
-        cd.width = reader.readU16();
-
-        return cd;
-    }
-
-    private static class ChannelData {
-        int spriteType;
-        int ink;
-        int foreColor;
-        int backColor;
-        int castLib;
-        int castMember;
-        int posX;
-        int posY;
-        int width;
-        int height;
     }
 
     // Accessors
@@ -188,12 +156,36 @@ public class Score {
     }
 
     /**
+     * Get behavior intervals that are active for a given frame and channel.
+     */
+    public List<FrameInterval> getBehaviorsForFrameChannel(int frameNum, int channelIndex) {
+        List<FrameInterval> result = new ArrayList<>();
+        for (FrameInterval interval : frameIntervals) {
+            FrameIntervalPrimary primary = interval.primary();
+            if (primary.channelIndex() == channelIndex
+                && frameNum >= primary.startFrame()
+                && frameNum <= primary.endFrame()) {
+                result.add(interval);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Get all frame intervals (behavior attachments).
+     */
+    public List<FrameInterval> getFrameIntervals() {
+        return Collections.unmodifiableList(frameIntervals);
+    }
+
+    /**
      * Represents a single frame in the score.
      */
     public static class Frame {
         private final int frameNum;
         private final Map<Integer, Sprite> sprites;
-        private int scriptId;
+        private int scriptCastLib;
+        private int scriptCastMember;
         private int paletteId;
         private int transitionId;
         private int sound1Id;
@@ -225,11 +217,25 @@ public class Score {
             return sorted;
         }
 
-        public int getScriptId() { return scriptId; }
-        public void setScriptId(int scriptId) { this.scriptId = scriptId; }
+        public int getScriptCastLib() { return scriptCastLib; }
+        public void setScriptCastLib(int scriptCastLib) { this.scriptCastLib = scriptCastLib; }
+
+        public int getScriptCastMember() { return scriptCastMember; }
+        public void setScriptCastMember(int scriptCastMember) { this.scriptCastMember = scriptCastMember; }
+
+        public boolean hasFrameScript() { return scriptCastMember > 0; }
 
         public int getPaletteId() { return paletteId; }
         public void setPaletteId(int paletteId) { this.paletteId = paletteId; }
+
+        public int getTransitionId() { return transitionId; }
+        public void setTransitionId(int transitionId) { this.transitionId = transitionId; }
+
+        public int getSound1Id() { return sound1Id; }
+        public void setSound1Id(int sound1Id) { this.sound1Id = sound1Id; }
+
+        public int getSound2Id() { return sound2Id; }
+        public void setSound2Id(int sound2Id) { this.sound2Id = sound2Id; }
 
         public int getTempo() { return tempo; }
         public void setTempo(int tempo) { this.tempo = tempo; }
