@@ -552,9 +552,64 @@ const LibreShockwave = (function() {
             return sprites;
         },
 
-        // Get bitmap (placeholder)
+        // TeaVMEntry: prepareBitmap
+        prepareBitmap(castLib, memberNum) {
+            return exports ? exports.prepareBitmap(castLib, memberNum) : 0;
+        },
+
+        // TeaVMEntry: getBitmapWidth
+        getBitmapWidth() {
+            return exports ? exports.getBitmapWidth() : 0;
+        },
+
+        // TeaVMEntry: getBitmapHeight
+        getBitmapHeight() {
+            return exports ? exports.getBitmapHeight() : 0;
+        },
+
+        // TeaVMEntry: getBitmapPixel
+        getBitmapPixel(index) {
+            return exports ? exports.getBitmapPixel(index) : 0;
+        },
+
+        // TeaVMEntry: getBitmapPixelCount
+        getBitmapPixelCount() {
+            return exports ? exports.getBitmapPixelCount() : 0;
+        },
+
+        // Get bitmap as ImageData for canvas rendering
         getBitmap(castLib, memberNum) {
-            return null;
+            if (!exports) return null;
+
+            // Prepare bitmap data in WASM
+            const result = exports.prepareBitmap(castLib, memberNum);
+            if (result !== 1) {
+                return null;
+            }
+
+            const width = exports.getBitmapWidth();
+            const height = exports.getBitmapHeight();
+            const pixelCount = exports.getBitmapPixelCount();
+
+            if (width <= 0 || height <= 0 || pixelCount <= 0) {
+                return null;
+            }
+
+            // Create ImageData and copy pixels
+            const imageData = new ImageData(width, height);
+            const data = imageData.data;
+
+            for (let i = 0; i < pixelCount; i++) {
+                const argb = exports.getBitmapPixel(i);
+                const idx = i * 4;
+                // ARGB to RGBA
+                data[idx + 0] = (argb >> 16) & 0xFF; // R
+                data[idx + 1] = (argb >> 8) & 0xFF;  // G
+                data[idx + 2] = argb & 0xFF;         // B
+                data[idx + 3] = (argb >> 24) & 0xFF; // A
+            }
+
+            return imageData;
         },
 
         // Direct access to WASM exports

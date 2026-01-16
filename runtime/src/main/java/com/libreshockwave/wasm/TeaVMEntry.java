@@ -301,6 +301,84 @@ public class TeaVMEntry {
     }
 
     // =====================================================
+    // Bitmap access functions
+    // =====================================================
+
+    // Bitmap pixel data buffer (set when prepareBitmap is called)
+    private static int[] bitmapPixels;
+    private static int bitmapWidth;
+    private static int bitmapHeight;
+
+    /**
+     * Prepare bitmap data for a cast member.
+     * Call getBitmapWidth/Height/Pixel after this.
+     * @return 1 if bitmap found and decoded, 0 otherwise
+     */
+    @Export(name = "prepareBitmap")
+    public static int prepareBitmap(int castLib, int memberNum) {
+        bitmapPixels = null;
+        bitmapWidth = 0;
+        bitmapHeight = 0;
+
+        if (player == null || !player.isLoaded()) {
+            return 0;
+        }
+
+        int[] dims = player.getBitmapDimensions(castLib, memberNum);
+        if (dims == null) {
+            return 0;
+        }
+
+        int[] pixels = player.getBitmapPixels(castLib, memberNum);
+        if (pixels == null) {
+            return 0;
+        }
+
+        bitmapPixels = pixels;
+        bitmapWidth = dims[0];
+        bitmapHeight = dims[1];
+
+        return 1;
+    }
+
+    /**
+     * Get the width of the prepared bitmap.
+     */
+    @Export(name = "getBitmapWidth")
+    public static int getBitmapWidth() {
+        return bitmapWidth;
+    }
+
+    /**
+     * Get the height of the prepared bitmap.
+     */
+    @Export(name = "getBitmapHeight")
+    public static int getBitmapHeight() {
+        return bitmapHeight;
+    }
+
+    /**
+     * Get a pixel value from the prepared bitmap (ARGB format).
+     * @param index Pixel index (y * width + x)
+     * @return ARGB pixel value
+     */
+    @Export(name = "getBitmapPixel")
+    public static int getBitmapPixel(int index) {
+        if (bitmapPixels != null && index >= 0 && index < bitmapPixels.length) {
+            return bitmapPixels[index];
+        }
+        return 0;
+    }
+
+    /**
+     * Get total number of pixels in prepared bitmap.
+     */
+    @Export(name = "getBitmapPixelCount")
+    public static int getBitmapPixelCount() {
+        return bitmapPixels != null ? bitmapPixels.length : 0;
+    }
+
+    // =====================================================
     // Imported functions - callable from Java to JavaScript
     // =====================================================
 

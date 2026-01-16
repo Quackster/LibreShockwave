@@ -290,7 +290,7 @@
      * Render a single sprite
      */
     function renderSprite(sprite) {
-        if (!sprite.member) {
+        if (!sprite.member || sprite.member.memberNum <= 0) {
             // No member - draw placeholder
             drawPlaceholder(sprite);
             return;
@@ -304,17 +304,30 @@
 
         if (!bitmap) {
             // Try to get bitmap from WASM
-            bitmap = LibreShockwave.getBitmap(castLib, memberNum);
-            if (bitmap) {
+            const imageData = LibreShockwave.getBitmap(castLib, memberNum);
+            if (imageData) {
+                // Convert ImageData to ImageBitmap for better rendering
+                // For now, store the ImageData directly
+                bitmap = imageData;
                 bitmapCache.set(cacheKey, bitmap);
             }
         }
 
         if (bitmap instanceof ImageData) {
-            // Render ImageData
-            ctx.putImageData(bitmap, sprite.locH, sprite.locV);
-        } else if (bitmap instanceof HTMLImageElement) {
-            // Render image element
+            // Render ImageData using a temporary canvas for proper positioning
+            // This handles negative coordinates and alpha blending correctly
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = bitmap.width;
+            tempCanvas.height = bitmap.height;
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.putImageData(bitmap, 0, 0);
+
+            // Draw with proper positioning and blend
+            ctx.globalAlpha = sprite.blend / 100;
+            ctx.drawImage(tempCanvas, sprite.locH, sprite.locV);
+            ctx.globalAlpha = 1.0;
+        } else if (bitmap instanceof HTMLImageElement || bitmap instanceof HTMLCanvasElement) {
+            // Render image/canvas element
             ctx.globalAlpha = sprite.blend / 100;
             ctx.drawImage(bitmap, sprite.locH, sprite.locV, sprite.width, sprite.height);
             ctx.globalAlpha = 1.0;

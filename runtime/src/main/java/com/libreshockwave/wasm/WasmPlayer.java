@@ -1,11 +1,17 @@
 package com.libreshockwave.wasm;
 
 import com.libreshockwave.DirectorFile;
-import com.libreshockwave.chunks.ConfigChunk;
+import com.libreshockwave.cast.BitmapInfo;
+import com.libreshockwave.chunks.*;
+import com.libreshockwave.player.CastLib;
 import com.libreshockwave.player.CastManager;
+import com.libreshockwave.player.Palette;
 import com.libreshockwave.player.Score;
 import com.libreshockwave.player.Sprite;
+import com.libreshockwave.player.bitmap.Bitmap;
+import com.libreshockwave.player.bitmap.BitmapDecoder;
 
+import java.nio.ByteOrder;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -33,6 +39,10 @@ public class WasmPlayer {
 
     // Sprite states
     private final Map<Integer, SpriteState> sprites = new HashMap<>();
+
+    // Bitmap cache: key = "castLib:memberNum", value = decoded RGBA data
+    private final Map<String, int[]> bitmapCache = new HashMap<>();
+    private final Map<String, int[]> bitmapDimensions = new HashMap<>(); // [width, height]
 
     public static class SpriteState {
         public int channel;
@@ -160,4 +170,135 @@ public class WasmPlayer {
     public Score getScore() { return score; }
     public Map<Integer, SpriteState> getSprites() { return Collections.unmodifiableMap(sprites); }
     public boolean isLoaded() { return movieFile != null; }
+
+    // =====================================================
+    // Bitmap access for WASM rendering
+    // =====================================================
+
+    /**
+     * Get bitmap dimensions for a cast member.
+     * @return [width, height] or null if not a bitmap
+     */
+    public int[] getBitmapDimensions(int castLib, int memberNum) {
+        String key = castLib + ":" + memberNum;
+
+        // Check cache first
+        if (bitmapDimensions.containsKey(key)) {
+            return bitmapDimensions.get(key);
+        }
+
+        // Try to decode bitmap
+        decodeBitmap(castLib, memberNum);
+
+        return bitmapDimensions.get(key);
+    }
+
+    /**
+     * Get decoded RGBA pixel data for a bitmap cast member.
+     * @return RGBA pixel array (packed as 0xAARRGGBB integers) or null if not a bitmap
+     */
+    public int[] getBitmapPixels(int castLib, int memberNum) {
+        String key = castLib + ":" + memberNum;
+
+        // Check cache first
+        if (bitmapCache.containsKey(key)) {
+            return bitmapCache.get(key);
+        }
+
+        // Try to decode bitmap
+        decodeBitmap(castLib, memberNum);
+
+        return bitmapCache.get(key);
+    }
+
+    /**
+     * Decode a bitmap cast member and cache the result.
+     */
+    private void decodeBitmap(int castLibNum, int memberNum) {
+        String key = castLibNum + ":" + memberNum;
+
+        if (movieFile == null || castManager == null) {
+            return;
+        }
+
+        try {
+            // Get cast member
+            CastLib castLib = castManager.getCast(castLibNum);
+            if (castLib == null) {
+                return;
+            }
+
+            CastMemberChunk member = castLib.getMember(memberNum);
+            if (member == null || !member.isBitmap()) {
+                return;
+            }
+
+            // Parse bitmap info
+            BitmapInfo bitmapInfo = BitmapInfo.parse(member.specificData());
+
+            // Find BITD chunk using KeyTable
+            KeyTableChunk keyTable = movieFile.getKeyTable();
+            if (keyTable == null) {
+                return;
+            }
+
+            BitmapChunk bitmapChunk = null;
+            for (KeyTableChunk.KeyTableEntry entry : keyTable.getEntriesForOwner(member.id())) {
+                String fourccStr = entry.fourccString();
+                if (fourccStr.equals("BITD") || fourccStr.equals("DTIB")) {
+                    Chunk chunk = movieFile.getChunk(entry.sectionId());
+                    if (chunk instanceof BitmapChunk bc) {
+                        bitmapChunk = bc;
+                        break;
+                    }
+                }
+            }
+
+            if (bitmapChunk == null) {
+                return;
+            }
+
+            // Get palette
+            Palette palette;
+            int paletteId = bitmapInfo.paletteId();
+            if (paletteId < 0) {
+                palette = Palette.getBuiltIn(paletteId);
+            } else {
+                palette = Palette.getBuiltIn(Palette.SYSTEM_MAC);
+            }
+
+            // Decode bitmap
+            boolean bigEndian = movieFile.getEndian() == ByteOrder.BIG_ENDIAN;
+            int directorVersion = movieFile.getConfig() != null ? movieFile.getConfig().directorVersion() : 500;
+
+            Bitmap bitmap = BitmapDecoder.decode(
+                bitmapChunk.data(),
+                bitmapInfo.width(),
+                bitmapInfo.height(),
+                bitmapInfo.bitDepth(),
+                palette,
+                true,
+                bigEndian,
+                directorVersion
+            );
+
+            // Convert to RGBA pixel array
+            int[] pixels = bitmap.getPixels();
+
+            // Cache the result
+            bitmapCache.put(key, pixels);
+            bitmapDimensions.put(key, new int[]{bitmap.getWidth(), bitmap.getHeight()});
+
+        } catch (Exception e) {
+            System.err.println("Failed to decode bitmap " + key + ": " + e.getMessage());
+        }
+    }
+
+    /**
+     * Clear the bitmap cache.
+     */
+    public void clearBitmapCache() {
+        bitmapCache.clear();
+        bitmapDimensions.clear();
+    }
 }
