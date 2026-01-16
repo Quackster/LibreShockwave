@@ -278,11 +278,14 @@ libreshockwave/
 |   |   +-- lingo/            # Lingo types (Datum, Opcode)
 |   |   +-- player/           # Runtime player
 |   |   |   +-- bitmap/       # Bitmap handling
+|   |   |   +-- CastLib.java  # Cast library management
+|   |   |   +-- CastManager.java # Multi-cast management
 |   |   +-- vm/               # Lingo VM
 |   |   +-- DirectorFile.java # Main entry point
 |   +-- test/java/
 |       +-- com/libreshockwave/
-|           +-- DirectorFileTest.java
+|           +-- DirectorFileTest.java  # Integration tests
+|           +-- DcrFileTest.java       # DCR/external cast tests
 +-- build.gradle
 +-- ARCHITECTURE.md
 ```
@@ -313,7 +316,133 @@ libreshockwave/
 
 ---
 
+## External Cast Support
+
+LibreShockwave supports external cast libraries (`.cst`, `.cxt`, `.cct` files) that can be referenced by Director movies. This matches dirplayer-rs's cast management system.
+
+### Architecture
+
+```
++----------------------------------------------------------+
+|                    Cast Management                        |
++----------------------------------------------------------+
+|  DirectorFile                                             |
+|    +-- createCastManager() -> CastManager                 |
+|    +-- hasExternalCasts() -> boolean                      |
+|    +-- getExternalCastPaths() -> List<String>             |
++----------------------------------------------------------+
+|  CastManager                                              |
+|    +-- getCasts() -> List<CastLib>                        |
+|    +-- getCast(number) -> CastLib                         |
+|    +-- preloadCasts(PreloadReason)                        |
+|    +-- loadExternalCast(CastLib)                          |
++----------------------------------------------------------+
+|  CastLib                                                  |
+|    +-- State: NONE | LOADING | LOADED                     |
+|    +-- PreloadMode: WHEN_NEEDED | AFTER_FRAME_ONE | ...   |
+|    +-- members: Map<slot, CastMemberChunk>                |
+|    +-- scripts: Map<id, ScriptChunk>                      |
++----------------------------------------------------------+
+```
+
+### External Cast Detection
+
+External casts are identified from the MCsL (cast list) chunk:
+
+```java
+// MCsL entry structure
+CastListEntry {
+    String name;      // Cast library name
+    String path;      // Path to external .cst/.cxt file (empty if internal)
+    int minMember;    // First member slot
+    int maxMember;    // Last member slot
+    int id;           // Cast ID for KEY* lookup
+}
+
+// A cast is external if:
+// 1. MCsL entry has a non-empty path, AND
+// 2. No matching CAS* chunk exists in main file
+```
+
+### Path Normalization
+
+External cast paths are normalized to `.cct` format:
+
+```java
+// Original: "assets:casts:sprites.cst"
+// Normalized: "sprites.cct"
+
+// Resolution order:
+// 1. basePath + normalized.cct
+// 2. basePath + normalized.cst
+// 3. basePath + normalized.cxt
+```
+
+### Preload Modes
+
+External casts support three loading strategies:
+
+| Mode | Code | Behavior |
+|------|------|----------|
+| When Needed | 0 | Lazy load on first member access |
+| After Frame One | 1 | Load after first frame displays |
+| Before Frame One | 2 | Load before movie starts |
+
+### Usage Example
+
+```java
+// Load a Director file
+DirectorFile file = DirectorFile.load(Path.of("movie.dcr"));
+
+// Create cast manager
+CastManager castManager = file.createCastManager();
+
+// Check for external casts
+if (file.hasExternalCasts()) {
+    // Preload external casts before frame 1
+    castManager.preloadCasts(CastManager.PreloadReason.MOVIE_LOADED);
+}
+
+// Access cast members
+CastLib cast = castManager.getCast(1);
+CastMemberChunk member = cast.getMember(10);
+```
+
+### Rust Reference
+
+- `vm-rust/src/player/cast_manager.rs` - CastManager implementation
+- `vm-rust/src/player/cast_lib.rs` - CastLib structure and loading
+- `vm-rust/src/director/chunks/cast_list.rs` - MCsL parsing
+
+---
+
 ## Recent Changes
+
+### 2026-01-16: Added External Cast Support
+
+**Summary:** Added support for external cast libraries like dirplayer-rs.
+
+**Rust Reference:**
+- `vm-rust/src/player/cast_manager.rs` - CastManager implementation
+- `vm-rust/src/player/cast_lib.rs` - CastLib structure
+
+**Changes:**
+1. `CastLib.java` - New class for individual cast library management
+2. `CastManager.java` - New class for managing all casts (internal + external)
+3. `DirectorFile.java` - Added createCastManager(), hasExternalCasts(), getExternalCastPaths()
+4. `DcrFileTest.java` - New test for DCR files with external cast support
+
+**Features:**
+- Detects external casts from MCsL chunk entries (external = has file path)
+- Normalizes cast paths to .cct format
+- Supports three preload modes (when needed, after frame 1, before frame 1)
+- Caches loaded external cast files
+- Provides member and script access by cast number
+- Loads internal cast members when no CAS* chunk mapping found
+
+**Test:** Run `./gradlew runDcrTests` to test DCR loading and external cast support
+
+---
 
 ### 2025-01-16: Fixed Script/Handler Name Reading
 
@@ -342,4 +471,4 @@ libreshockwave/
 
 ---
 
-*Last updated: January 2025*
+*Last updated: January 2026*

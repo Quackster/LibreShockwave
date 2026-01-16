@@ -54,6 +54,19 @@ tasks.register('runTests', JavaExec) {
     }
 }
 
+// Task to run DCR file tests
+tasks.register('runDcrTests', JavaExec) {
+    group = 'verification'
+    description = 'Run DCR file tests with external cast support'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.DcrFileTest'
+    args = project.hasProperty('file') ? [project.property('file')] : []
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(24)
+    }
+}
+
 // Task to run with a Director file
 tasks.register('runPlayer', JavaExec) {
     group = 'application'

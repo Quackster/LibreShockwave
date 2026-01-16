@@ -6,6 +6,9 @@ import com.libreshockwave.format.ChunkType;
 import com.libreshockwave.io.BinaryReader;
 import com.libreshockwave.lingo.Opcode;
 
+import com.libreshockwave.player.CastLib;
+import com.libreshockwave.player.CastManager;
+
 import java.io.IOException;
 import java.nio.ByteOrder;
 import java.nio.file.Files;
@@ -22,6 +25,7 @@ public class DirectorFile {
     private final boolean afterburner;
     private final int version;
     private final ChunkType movieType;
+    private String basePath;  // Base path for resolving external casts
 
     private ConfigChunk config;
     private KeyTableChunk keyTable;
@@ -53,6 +57,7 @@ public class DirectorFile {
         this.afterburner = afterburner;
         this.version = version;
         this.movieType = movieType;
+        this.basePath = "";
     }
 
     // Getters
@@ -70,6 +75,8 @@ public class DirectorFile {
     public List<CastMemberChunk> getCastMembers() { return Collections.unmodifiableList(castMembers); }
     public List<ScriptChunk> getScripts() { return Collections.unmodifiableList(scripts); }
     public Collection<ChunkInfo> getAllChunkInfo() { return Collections.unmodifiableCollection(chunkInfo.values()); }
+    public String getBasePath() { return basePath; }
+    public void setBasePath(String basePath) { this.basePath = basePath != null ? basePath : ""; }
 
     public Chunk getChunk(int id) {
         return chunks.get(id);
@@ -170,11 +177,60 @@ public class DirectorFile {
         return scriptNamesById.get(id);
     }
 
+    // Cast Management
+
+    /**
+     * Create a CastManager for this file.
+     * The CastManager handles both internal and external casts.
+     * For external casts, call preloadCasts() after creating the manager.
+     */
+    public CastManager createCastManager() {
+        CastManager manager = new CastManager();
+        manager.setBasePath(basePath);
+        manager.loadFromDirectorFile(this);
+        return manager;
+    }
+
+    /**
+     * Get list of external cast file paths referenced by this movie.
+     * These paths have been normalized to .cct extension.
+     */
+    public List<String> getExternalCastPaths() {
+        List<String> paths = new ArrayList<>();
+        if (castList != null) {
+            for (CastListChunk.CastListEntry entry : castList.entries()) {
+                if (entry.path() != null && !entry.path().isEmpty()) {
+                    String normalized = CastLib.normalizeCastPath(basePath, entry.path());
+                    paths.add(normalized);
+                }
+            }
+        }
+        return paths;
+    }
+
+    /**
+     * Check if this file references external casts.
+     */
+    public boolean hasExternalCasts() {
+        if (castList == null) return false;
+        for (CastListChunk.CastListEntry entry : castList.entries()) {
+            if (entry.path() != null && !entry.path().isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // Loading
 
     public static DirectorFile load(Path path) throws IOException {
         byte[] data = Files.readAllBytes(path);
-        return load(data);
+        DirectorFile file = load(data);
+        // Set base path from file location for external cast resolution
+        if (path.getParent() != null) {
+            file.setBasePath(path.getParent().toString());
+        }
+        return file;
     }
 
     public static DirectorFile load(byte[] data) throws IOException {
