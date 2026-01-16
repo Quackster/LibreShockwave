@@ -1,0 +1,67 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+group = 'com.libreshockwave'
+version = '0.1.0'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(24)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // No external dependencies - pure Java implementation
+
+    // Test dependencies
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+application {
+    mainClass = 'com.libreshockwave.examples.BasicUsage'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+jar {
+    manifest {
+        attributes(
+            'Implementation-Title': 'LibreShockwave',
+            'Implementation-Version': version,
+            'Main-Class': 'com.libreshockwave.examples.BasicUsage'
+        )
+    }
+}
+
+// Task to run the integration tests
+tasks.register('runTests', JavaExec) {
+    group = 'verification'
+    description = 'Run integration tests'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.DirectorFileTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(24)
+    }
+}
+
+// Task to run with a Director file
+tasks.register('runPlayer', JavaExec) {
+    group = 'application'
+    description = 'Run with a Director file (pass -Pfile=path/to/movie.dir)'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.libreshockwave.examples.BasicUsage'
+    args = project.hasProperty('file') ? [project.property('file')] : []
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(24)
+    }
+}
