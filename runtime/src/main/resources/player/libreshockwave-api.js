@@ -566,7 +566,7 @@ const LibreShockwave = (function() {
         async loadExternalCastFromData(castNumber, data) {
             if (!exports) throw new Error('Not initialized');
             const bytes = new Uint8Array(data);
-            log('info', `Loading external cast #${castNumber} (${bytes.length} bytes)...`);
+            // log('info', `Loading external cast #${castNumber} (${bytes.length} bytes)...`);
 
             exports.allocateExternalCastBuffer(bytes.length);
             for (let i = 0; i < bytes.length; i++) {
@@ -575,7 +575,7 @@ const LibreShockwave = (function() {
             const result = exports.loadExternalCastFromBuffer(castNumber);
 
             if (result !== 1) {
-                log('error', `Failed to load external cast #${castNumber}`);
+                // log('error', `Failed to load external cast #${castNumber}`);
                 return false;
             }
             log('info', `External cast #${castNumber} loaded successfully`);
@@ -590,13 +590,13 @@ const LibreShockwave = (function() {
                 return;
             }
 
-            log('info', `Loading ${count} external cast(s)...`);
+            // log('info', `Loading ${count} external cast(s)...`);
 
             for (let i = 0; i < count; i++) {
                 const info = this.getPendingExternalCastInfo(i);
                 if (!info) continue;
 
-                log('info', `  Fetching external cast #${info.castNumber}: ${info.fileName}`);
+                // log('info', `  Fetching external cast #${info.castNumber}: ${info.fileName}`);
 
                 try {
                     // Construct URL relative to movie or current page
@@ -613,7 +613,7 @@ const LibreShockwave = (function() {
                     for (const ext of extensions) {
                         const tryUrl = url.replace(/\.(cct|cst|cxt)$/i, '') + ext;
                         try {
-                            log('info', `    Trying: ${tryUrl}`);
+                            // log('info', `    Trying: ${tryUrl}`);
                             const response = await fetch(tryUrl);
                             if (response.ok) {
                                 data = await response.arrayBuffer();
@@ -629,10 +629,10 @@ const LibreShockwave = (function() {
                         log('info', `    Loaded from: ${loadedUrl} (${data.byteLength} bytes)`);
                         await this.loadExternalCastFromData(info.castNumber, data);
                     } else {
-                        log('error', `    Failed to fetch external cast: ${info.fileName}`);
+                        // log('error', `    Failed to fetch external cast: ${info.fileName}`);
                     }
                 } catch (error) {
-                    log('error', `    Error loading external cast #${info.castNumber}: ${error.message}`);
+                   // log('error', `    Error loading external cast #${info.castNumber}: ${error.message}`);
                 }
             }
 

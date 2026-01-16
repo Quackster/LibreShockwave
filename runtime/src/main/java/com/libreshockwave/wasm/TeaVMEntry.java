@@ -301,6 +301,98 @@ public class TeaVMEntry {
     }
 
     // =====================================================
+    // External cast loading functions
+    // =====================================================
+
+    // External cast data buffer
+    private static byte[] externalCastData;
+
+    /**
+     * Get the number of external casts that need to be loaded.
+     */
+    @Export(name = "getPendingExternalCastCount")
+    public static int getPendingExternalCastCount() {
+        if (player == null) return 0;
+        int count = player.getPendingExternalCastCount();
+        log("getPendingExternalCastCount: " + count);
+        return count;
+    }
+
+    /**
+     * Get the cast number of a pending external cast by index.
+     */
+    @Export(name = "getPendingExternalCastNumber")
+    public static int getPendingExternalCastNumber(int index) {
+        if (player == null) return 0;
+        String[] info = player.getPendingExternalCastInfo(index);
+        if (info == null) return 0;
+        return Integer.parseInt(info[0]);
+    }
+
+    /**
+     * Get the filename length of a pending external cast by index.
+     */
+    @Export(name = "getPendingExternalCastFileNameLength")
+    public static int getPendingExternalCastFileNameLength(int index) {
+        if (player == null) return 0;
+        String[] info = player.getPendingExternalCastInfo(index);
+        if (info == null) return 0;
+        return info[1].length();
+    }
+
+    /**
+     * Get a character from the filename of a pending external cast.
+     */
+    @Export(name = "getPendingExternalCastFileNameChar")
+    public static int getPendingExternalCastFileNameChar(int index, int charIndex) {
+        if (player == null) return 0;
+        String[] info = player.getPendingExternalCastInfo(index);
+        if (info == null || charIndex < 0 || charIndex >= info[1].length()) return 0;
+        return info[1].charAt(charIndex);
+    }
+
+    /**
+     * Allocate buffer for external cast data.
+     */
+    @Export(name = "allocateExternalCastBuffer")
+    public static void allocateExternalCastBuffer(int size) {
+        externalCastData = new byte[size];
+        log("allocateExternalCastBuffer: " + size + " bytes");
+    }
+
+    /**
+     * Set a byte in the external cast data buffer.
+     */
+    @Export(name = "setExternalCastDataByte")
+    public static void setExternalCastDataByte(int index, int value) {
+        if (externalCastData != null && index >= 0 && index < externalCastData.length) {
+            externalCastData[index] = (byte) value;
+        }
+    }
+
+    /**
+     * Load external cast from the previously set buffer.
+     * @param castNumber The 1-based cast number
+     * @return 1 on success, 0 on failure
+     */
+    @Export(name = "loadExternalCastFromBuffer")
+    public static int loadExternalCastFromBuffer(int castNumber) {
+        log("loadExternalCastFromBuffer: cast #" + castNumber);
+        if (player == null) {
+            logError("loadExternalCastFromBuffer: player is null");
+            return 0;
+        }
+        if (externalCastData == null || externalCastData.length == 0) {
+            logError("loadExternalCastFromBuffer: no data set");
+            return 0;
+        }
+
+        boolean success = player.loadExternalCastFromData(castNumber, externalCastData);
+        externalCastData = null; // Free the buffer
+        return success ? 1 : 0;
+    }
+
+    // =====================================================
     // Bitmap access functions
     // =====================================================
 
@@ -316,21 +408,25 @@ public class TeaVMEntry {
      */
     @Export(name = "prepareBitmap")
     public static int prepareBitmap(int castLib, int memberNum) {
+        log("prepareBitmap(" + castLib + ", " + memberNum + ")");
         bitmapPixels = null;
         bitmapWidth = 0;
         bitmapHeight = 0;
 
         if (player == null || !player.isLoaded()) {
+            log("  ERROR: player not loaded");
             return 0;
         }
 
         int[] dims = player.getBitmapDimensions(castLib, memberNum);
         if (dims == null) {
+            log("  ERROR: getBitmapDimensions returned null");
             return 0;
         }
 
         int[] pixels = player.getBitmapPixels(castLib, memberNum);
         if (pixels == null) {
+            log("  ERROR: getBitmapPixels returned null");
             return 0;
         }
 
@@ -338,6 +434,7 @@ public class TeaVMEntry {
         bitmapWidth = dims[0];
         bitmapHeight = dims[1];
 
+        log("  SUCCESS: " + bitmapWidth + "x" + bitmapHeight + " (" + pixels.length + " pixels)");
         return 1;
     }
 
