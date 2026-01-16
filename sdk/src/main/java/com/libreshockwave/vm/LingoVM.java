@@ -102,9 +102,10 @@ public class LingoVM {
         if (!debugMode) return;
         String indent = "  ".repeat(debugIndent);
         String output = "[VM] " + indent + message;
-        System.out.println(output);
         if (debugOutputCallback != null) {
             debugOutputCallback.onDebugOutput(output);
+        } else {
+            System.out.println(output);
         }
     }
 

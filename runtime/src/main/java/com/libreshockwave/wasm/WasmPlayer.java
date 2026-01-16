@@ -313,9 +313,11 @@ public class WasmPlayer {
     }
 
     private void log(String message) {
-        System.out.println("[WasmPlayer] " + message);
-        if (debugMode && debugOutputCallback != null) {
-            debugOutputCallback.onDebugOutput("[WasmPlayer] " + message);
+        String output = "[WasmPlayer] " + message;
+        if (debugOutputCallback != null) {
+            debugOutputCallback.onDebugOutput(output);
+        } else {
+            System.out.println(output);
         }
     }
 
@@ -364,6 +366,107 @@ public class WasmPlayer {
             }
             return Datum.voidValue();
         });
+
+        // put/trace for Lingo output
+        vm.registerBuiltin("put", (vmRef, args) -> {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < args.size(); i++) {
+                if (i > 0) sb.append(" ");
+                sb.append(args.get(i).toString());
+            }
+            debugOutput("[Lingo] put: " + sb);
+            return Datum.voidValue();
+        });
+
+        vm.registerBuiltin("trace", (vmRef, args) -> {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < args.size(); i++) {
+                if (i > 0) sb.append(" ");
+                sb.append(args.get(i).toString());
+            }
+            debugOutput("[Lingo] trace: " + sb);
+            return Datum.voidValue();
+        });
+
+        // Network functions (stubs for now)
+        vm.registerBuiltin("preloadNetThing", (vmRef, args) -> {
+            String url = args.isEmpty() ? "" : args.get(0).toString();
+            debugOutput("[Lingo] preloadNetThing: " + url);
+            // Return a netID (stub - just return 1)
+            return Datum.of(1);
+        });
+
+        vm.registerBuiltin("netDone", (vmRef, args) -> {
+            // Always return true (done) for now
+            return Datum.of(1);
+        });
+
+        vm.registerBuiltin("netError", (vmRef, args) -> {
+            // Return empty string (no error) for now
+            return Datum.of("");
+        });
+
+        vm.registerBuiltin("netTextResult", (vmRef, args) -> {
+            // Return empty string for now
+            return Datum.of("");
+        });
+
+        vm.registerBuiltin("netLastModDate", (vmRef, args) -> {
+            return Datum.of("");
+        });
+
+        vm.registerBuiltin("netMIME", (vmRef, args) -> {
+            return Datum.of("application/octet-stream");
+        });
+
+        vm.registerBuiltin("getNetText", (vmRef, args) -> {
+            String url = args.isEmpty() ? "" : args.get(0).toString();
+            debugOutput("[Lingo] getNetText: " + url);
+            return Datum.of(1);
+        });
+
+        vm.registerBuiltin("postNetText", (vmRef, args) -> {
+            String url = args.isEmpty() ? "" : args.get(0).toString();
+            debugOutput("[Lingo] postNetText: " + url);
+            return Datum.of(1);
+        });
+
+        vm.registerBuiltin("gotoNetPage", (vmRef, args) -> {
+            String url = args.isEmpty() ? "" : args.get(0).toString();
+            debugOutput("[Lingo] gotoNetPage: " + url);
+            return Datum.voidValue();
+        });
+
+        vm.registerBuiltin("gotoNetMovie", (vmRef, args) -> {
+            String url = args.isEmpty() ? "" : args.get(0).toString();
+            debugOutput("[Lingo] gotoNetMovie: " + url);
+            return Datum.voidValue();
+        });
+
+        // Other common builtins
+        vm.registerBuiltin("delay", (vmRef, args) -> {
+            // No-op for now
+            return Datum.voidValue();
+        });
+
+        vm.registerBuiltin("cursor", (vmRef, args) -> {
+            return Datum.voidValue();
+        });
+
+        vm.registerBuiltin("beep", (vmRef, args) -> {
+            debugOutput("[Lingo] beep");
+            return Datum.voidValue();
+        });
+
+        vm.registerBuiltin("alert", (vmRef, args) -> {
+            String msg = args.isEmpty() ? "" : args.get(0).toString();
+            debugOutput("[Lingo] alert: " + msg);
+            return Datum.voidValue();
+        });
+
+        vm.registerBuiltin("nothing", (vmRef, args) -> Datum.voidValue());
+
+        vm.registerBuiltin("void", (vmRef, args) -> Datum.voidValue());
     }
 
     /**

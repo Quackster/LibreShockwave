@@ -1,0 +1,37 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+dependencies {
+    implementation project(':sdk')
+}
+
+application {
+    mainClass = 'com.libreshockwave.player.swing.SwingPlayer'
+}
+
+jar {
+    manifest {
+        attributes 'Main-Class': 'com.libreshockwave.player.swing.SwingPlayer'
+    }
+}
+
+// Fat JAR with all dependencies
+tasks.register('fatJar', Jar) {
+    archiveClassifier = 'all'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest {
+        attributes 'Main-Class': 'com.libreshockwave.player.swing.SwingPlayer'
+    }
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+    with jar
+}

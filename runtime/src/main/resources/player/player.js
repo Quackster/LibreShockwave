@@ -48,6 +48,12 @@
         setupEventListeners();
         setupApiListeners();
 
+        // Restore last used URL
+        const lastUrl = localStorage.getItem('libreshockwave-lastUrl');
+        if (lastUrl) {
+            elements.urlInput.value = lastUrl;
+        }
+
         // Wait for LibreShockwave to initialize
         LibreShockwave.on('ready', onReady);
 
@@ -185,6 +191,8 @@
 
         try {
             await LibreShockwave.loadMovie(url);
+            // Remember the URL for next time
+            localStorage.setItem('libreshockwave-lastUrl', url);
             onMovieLoaded();
         } catch (error) {
             setStatus('Failed to load movie');

@@ -228,7 +228,7 @@ public class DirPlayer {
             }
             return Datum.voidValue();
         });
-        
+
         // Cast preloading
         vm.registerBuiltin("preload", (vmRef, args) -> {
             return Datum.voidValue();
