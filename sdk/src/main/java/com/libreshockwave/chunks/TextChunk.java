@@ -30,6 +30,10 @@ public record TextChunk(
     ) {}
 
     public static TextChunk read(BinaryReader reader, int id) {
+        // STXT chunks always use big-endian format regardless of file endianness
+        java.nio.ByteOrder originalOrder = reader.getOrder();
+        reader.setOrder(java.nio.ByteOrder.BIG_ENDIAN);
+
         int headerLen = reader.readI32();
         int textLen = reader.readI32();
 
@@ -54,6 +58,9 @@ public record TextChunk(
                 runs.add(new TextRun(startOffset, textLen, fontId, fontSize, fontStyle));
             }
         }
+
+        // Restore original byte order
+        reader.setOrder(originalOrder);
 
         return new TextChunk(id, text, runs);
     }

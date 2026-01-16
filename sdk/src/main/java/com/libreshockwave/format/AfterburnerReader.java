@@ -5,7 +5,6 @@ import com.libreshockwave.io.BinaryReader;
 import java.io.IOException;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -72,23 +71,31 @@ public class AfterburnerReader {
         }
 
         int length = readVarInt();
-        long endPos = reader.getPosition() + length;
+        int endPos = reader.getPosition() + length;
+
+        // Sanity check - endPos should be within file bounds
+        if (endPos > reader.length()) {
+            throw new IOException("Fver chunk length " + length + " extends past end of file (endPos=" + endPos + ", fileLen=" + reader.length() + ")");
+        }
 
         // Read version fields
         imapVersion = readVarInt();
         directorVersion = readVarInt();
 
         // Version string (optional, v0x501+)
-        if (reader.getPosition() < endPos) {
+        if (reader.getPosition() < endPos && reader.bytesLeft() > 0) {
             int strLen = readVarInt();
-            if (strLen > 0) {
+            int maxStrLen = endPos - reader.getPosition();
+            if (strLen > 0 && strLen <= maxStrLen && strLen < 10000) {
                 byte[] strBytes = reader.readBytes(strLen);
                 versionString = new String(strBytes).trim();
             }
         }
 
-        // Skip any remaining data
-        reader.seek((int) endPos);
+        // Skip any remaining data (but don't seek past file end)
+        if (endPos <= reader.length()) {
+            reader.seek(endPos);
+        }
     }
 
     /**
@@ -117,12 +124,10 @@ public class AfterburnerReader {
 
         // Read compression type description strings (null-terminated)
         for (int i = 0; i < typeCount; i++) {
-            StringBuilder sb = new StringBuilder();
             int b;
             while ((b = fcdrReader.readUnsignedByte()) != 0) {
-                sb.append((char) b);
+                // Description string is informational only, not stored
             }
-            // Description string is informational only, not stored
         }
     }
 
@@ -139,8 +144,8 @@ public class AfterburnerReader {
         int chunkEndPos = reader.getPosition() + chunkLength;
 
         // Read header fields: unknown VarInt and uncompressed length VarInt
-        int unk = readVarInt();
-        int uncompLength = readVarInt();
+        readVarInt(); // unk
+        readVarInt(); // uncompLength
 
         // Read remaining bytes as compressed data
         int compressedLength = chunkEndPos - reader.getPosition();
@@ -150,8 +155,8 @@ public class AfterburnerReader {
         BinaryReader abmpReader = new BinaryReader(data, byteOrder);
 
         // Unknown fields
-        int unk1 = readVarInt(abmpReader);
-        int unk2 = readVarInt(abmpReader);
+        readVarInt(abmpReader); // unk1
+        readVarInt(abmpReader); // unk2
 
         // Resource count
         int resCount = readVarInt(abmpReader);
@@ -167,7 +172,9 @@ public class AfterburnerReader {
             int compSize = readVarInt(abmpReader);
             int uncompSize = readVarInt(abmpReader);
             int compressionTypeIndex = readVarInt(abmpReader);
-            // Tag is read as u32 with byte order, not as FourCC string
+            // Tag is stored as a u32 in the file's byte order. In LE files, tags are
+            // byte-swapped (e.g., "STXT" stored as 54 58 54 53). readI32() with file's
+            // endian produces the correct integer, and fourCCToString converts it back.
             int tagInt = abmpReader.readI32();
             String tag = BinaryReader.fourCCToString(tagInt);
 
@@ -211,7 +218,7 @@ public class AfterburnerReader {
         }
 
         // Read the unknown field (usually 0)
-        int ilsUnk1 = readVarInt();
+        readVarInt();
 
         // Store the position where ILS body starts
         ilsBodyOffset = reader.getPosition();

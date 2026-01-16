@@ -277,8 +277,8 @@ public class DirectorFile {
         reader.setOrder(endian);
         int fileSize = reader.readI32();
 
-        // Read movie type FourCC using the file's byte order (not always big-endian)
-        // because the movie type is stored in the container's native byte order
+        // Movie type codec is stored as a byte-swapped integer in little-endian files,
+        // so read using the file's byte order (matches Rust: read_u32() after endian set)
         int movieFourCC = reader.readI32();
         ChunkType movieType = ChunkType.fromFourCC(movieFourCC);
 
@@ -299,14 +299,14 @@ public class DirectorFile {
     private static DirectorFile loadRIFX(BinaryReader reader, ByteOrder endian, ChunkType movieType) throws IOException {
         DirectorFile file = new DirectorFile(endian, false, 0, movieType);
 
-        // Read imap chunk to find mmap (FourCCs use the file's byte order)
-        int imapFourCC = reader.readI32();
+        // Read imap chunk to find mmap - FourCCs are always 4-byte ASCII (read as big-endian int)
+        int imapFourCC = reader.readFourCC();
         int imapLen = reader.readI32();
         int mmapOffset = reader.readI32();
 
         // Read mmap (memory map)
         reader.setPosition(mmapOffset);
-        int mmapFourCC = reader.readI32();
+        int mmapFourCC = reader.readFourCC();
         int mmapLen = reader.readI32();
 
         // Parse memory map
@@ -318,9 +318,9 @@ public class DirectorFile {
         reader.skip(4);
         int freePtr = reader.readI32();
 
-        // Read chunk entries (FourCCs use the file's byte order)
+        // Read chunk entries - FourCCs are always 4-byte ASCII (not byte-swapped)
         for (int i = 0; i < chunkCountUsed; i++) {
-            int fourcc = reader.readI32();  // FourCC in file's byte order
+            int fourcc = reader.readFourCC();  // FourCC is always big-endian
             int length = reader.readI32();
             int offset = reader.readI32();
             int flags = reader.readI16();

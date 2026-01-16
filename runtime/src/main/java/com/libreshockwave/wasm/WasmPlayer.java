@@ -214,7 +214,13 @@ public class WasmPlayer {
             "' from " + data.length + " bytes");
 
         try {
+            log("loadExternalCastFromData: Parsing " + data.length + " bytes...");
             DirectorFile castFile = DirectorFile.load(data);
+            if (castFile == null) {
+                log("loadExternalCastFromData: DirectorFile.load returned null");
+                return false;
+            }
+            log("loadExternalCastFromData: DirectorFile parsed, loading into cast...");
             cast.loadFromDirectorFile(castFile);
             log("loadExternalCastFromData: SUCCESS - loaded " + cast.getMemberCount() + " members");
 
@@ -229,8 +235,22 @@ public class WasmPlayer {
 
             return true;
         } catch (Exception e) {
-            log("loadExternalCastFromData: FAILED - " + e.getMessage());
-            e.printStackTrace();
+            String msg = e.getMessage();
+            if (msg == null) msg = e.getClass().getName();
+            log("loadExternalCastFromData: FAILED - " + msg);
+            log("  Exception type: " + e.getClass().getName());
+
+            // Print stack trace
+            for (StackTraceElement ste : e.getStackTrace()) {
+                log("    at " + ste.toString());
+            }
+
+            // Check for cause
+            Throwable cause = e.getCause();
+            if (cause != null) {
+                log("  Caused by: " + cause.getClass().getName() + ": " + cause.getMessage());
+            }
+
             return false;
         }
     }
@@ -332,7 +352,12 @@ public class WasmPlayer {
     public int getStageWidth() { return stageWidth; }
     public int getStageHeight() { return stageHeight; }
     public Score getScore() { return score; }
-    public Map<Integer, SpriteState> getSprites() { return Collections.unmodifiableMap(sprites); }
+    public Map<Integer, SpriteState> getSprites() {
+        if (sprites == null) {
+            return Collections.emptyMap();
+        }
+        return Collections.unmodifiableMap(sprites);
+    }
     public boolean isLoaded() { return movieFile != null; }
 
     // =====================================================

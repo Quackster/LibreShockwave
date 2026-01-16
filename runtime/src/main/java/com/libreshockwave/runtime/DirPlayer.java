@@ -239,17 +239,6 @@ public class DirPlayer {
         vm.registerBuiltin("preload", (vmRef, args) -> {
             return Datum.voidValue();
         });
-
-        // Common stub handlers
-        vm.registerBuiltin("startClient", (vmRef, args) -> {
-            System.out.println("[startClient] called");
-            return Datum.voidValue();
-        });
-
-        vm.registerBuiltin("stopClient", (vmRef, args) -> {
-            System.out.println("[stopClient] called");
-            return Datum.voidValue();
-        });
     }
 
     // Scope management (runtime-specific tracking)

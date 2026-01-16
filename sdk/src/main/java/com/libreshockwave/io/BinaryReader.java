@@ -144,6 +144,11 @@ public class BinaryReader implements AutoCloseable {
     // Byte array reads
 
     public byte[] readBytes(int length) {
+        if (position + length > data.length) {
+            throw new IndexOutOfBoundsException(
+                "Cannot read " + length + " bytes at position " + position +
+                " (data length: " + data.length + ", remaining: " + (data.length - position) + ")");
+        }
         byte[] result = new byte[length];
         System.arraycopy(data, position, result, 0, length);
         position += length;
@@ -151,6 +156,11 @@ public class BinaryReader implements AutoCloseable {
     }
 
     public byte[] peekBytes(int length) {
+        if (position + length > data.length) {
+            throw new IndexOutOfBoundsException(
+                "Cannot peek " + length + " bytes at position " + position +
+                " (data length: " + data.length + ", remaining: " + (data.length - position) + ")");
+        }
         byte[] result = new byte[length];
         System.arraycopy(data, position, result, 0, length);
         return result;
