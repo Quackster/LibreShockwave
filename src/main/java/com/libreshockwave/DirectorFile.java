@@ -295,7 +295,23 @@ public class DirectorFile {
         int version = abReader.getDirectorVersion();
         boolean capitalX = false;
 
-        // Convert AfterburnerReader's ChunkInfo to our format and parse chunks
+        // First pass: find and parse the config chunk to get correct version
+        for (com.libreshockwave.format.ChunkInfo abInfo : abReader.getChunkInfos()) {
+            String fourCCStr = abInfo.fourCC().trim();
+            if (fourCCStr.equals("DRCF") || fourCCStr.equals("VWCF")) {
+                try {
+                    byte[] chunkData = abReader.getChunkData(abInfo.resourceId());
+                    BinaryReader chunkReader = new BinaryReader(chunkData, endian);
+                    file.config = ConfigChunk.read(chunkReader, abInfo.resourceId(), 0, endian);
+                    version = file.config.directorVersion();
+                    break;
+                } catch (Exception e) {
+                    // Continue without config
+                }
+            }
+        }
+
+        // Second pass: parse all chunks with correct version
         for (com.libreshockwave.format.ChunkInfo abInfo : abReader.getChunkInfos()) {
             int fourcc = BinaryReader.fourCC(abInfo.fourCC());
             ChunkInfo info = new ChunkInfo(
@@ -387,7 +403,12 @@ public class DirectorFile {
             case ConfigChunk c -> this.config = c;
             case KeyTableChunk k -> this.keyTable = k;
             case CastListChunk cl -> this.castList = cl;
-            case ScriptContextChunk sc -> this.scriptContext = sc;
+            case ScriptContextChunk sc -> {
+                // Keep the context with entries (some files have multiple Lctx, one empty)
+                if (this.scriptContext == null || sc.entries().size() > 0) {
+                    this.scriptContext = sc;
+                }
+            }
             case ScriptNamesChunk sn -> {
                 this.scriptNamesById.put(sn.id(), sn);
                 // Also set as default if it has names (for backward compatibility)

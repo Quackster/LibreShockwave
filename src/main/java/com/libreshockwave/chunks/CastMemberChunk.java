@@ -88,6 +88,9 @@ public record CastMemberChunk(
     }
 
     public static CastMemberChunk read(BinaryReader reader, int id, int version) {
+        // CASt chunks are ALWAYS big endian regardless of file byte order
+        reader.setOrder(java.nio.ByteOrder.BIG_ENDIAN);
+
         MemberType memberType;
         int infoLen;
         int dataLen;
@@ -127,19 +130,49 @@ public record CastMemberChunk(
             specificData = reader.readBytes(dataLen);
         }
 
-        // Parse common info fields if present
+        // Parse CastInfoChunk (ListChunk structure) to extract name and scriptId
+        // Structure: header (dataOffset, unk1, unk2, flags, scriptId), then offset table, then items
         if (info.length >= 20) {
             BinaryReader infoReader = new BinaryReader(info);
-            infoReader.setOrder(reader.getOrder());
+            infoReader.setOrder(java.nio.ByteOrder.BIG_ENDIAN);  // Info is always big endian
 
-            infoReader.skip(4); // unknown
+            // Read ListChunk header (CastInfoChunk header)
+            int dataOffset = infoReader.readI32();
+            int unk1 = infoReader.readI32();
+            int unk2 = infoReader.readI32();
+            int flags = infoReader.readI32();
             scriptId = infoReader.readI32();
 
-            // Skip to name offset table
-            if (info.length >= 32) {
-                infoReader.setPosition(20);
-                regPointX = infoReader.readI16();
-                regPointY = infoReader.readI16();
+            // Read offset table (at dataOffset position)
+            if (dataOffset > 0 && dataOffset < info.length) {
+                infoReader.setPosition(dataOffset);
+                int offsetTableLen = infoReader.readU16();
+
+                if (offsetTableLen > 0) {
+                    int[] offsets = new int[offsetTableLen];
+                    for (int i = 0; i < offsetTableLen; i++) {
+                        offsets[i] = infoReader.readI32();
+                    }
+
+                    // Read items length
+                    int itemsLen = infoReader.readI32();
+                    int itemsStart = infoReader.getPosition();
+
+                    // Item at index 1 is the name (Pascal string)
+                    if (offsetTableLen > 1) {
+                        int nameOffset = offsets[1];
+                        int nameEnd = (offsetTableLen > 2) ? offsets[2] : itemsLen;
+                        int nameLen = nameEnd - nameOffset;
+
+                        if (nameLen > 0 && itemsStart + nameOffset < info.length) {
+                            infoReader.setPosition(itemsStart + nameOffset);
+                            int pascalLen = infoReader.readU8();
+                            if (pascalLen > 0 && infoReader.bytesLeft() >= pascalLen) {
+                                name = infoReader.readStringMacRoman(pascalLen);
+                            }
+                        }
+                    }
+                }
             }
         }
 

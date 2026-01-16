@@ -230,18 +230,36 @@ public class DirectorFileTest {
             System.out.println("  Scripts: " + file.getScripts().size());
             System.out.println("  Cast Members: " + file.getCastMembers().size());
 
-            // Print handlers
-            if (file.getScriptNames() != null) {
-                int handlerCount = 0;
-                for (ScriptChunk script : file.getScripts()) {
-                    for (ScriptChunk.Handler handler : script.handlers()) {
-                        handlerCount++;
-                        String name = file.getScriptNames().getName(handler.nameId());
-                        System.out.println("    Handler: " + name +
-                            " (" + handler.instructions().size() + " instructions)");
+            // Build a map from scriptId to cast member name
+            java.util.Map<Integer, String> scriptIdToName = new java.util.HashMap<>();
+            for (CastMemberChunk cm : file.getCastMembers()) {
+                if (cm.isScript() && cm.scriptId() > 0) {
+                    scriptIdToName.put(cm.scriptId(), cm.name());
+                }
+            }
+
+            // Print scripts with their names (from cast members)
+            if (file.getScriptNames() != null && file.getScriptContext() != null) {
+                System.out.println("  Scripts:");
+                var entries = file.getScriptContext().entries();
+                for (int i = 0; i < entries.size(); i++) {
+                    var entry = entries.get(i);
+                    int scriptIndex = i + 1;  // 1-based index
+                    String scriptName = scriptIdToName.getOrDefault(scriptIndex, "<unnamed>");
+
+                    // Find the script chunk for this entry
+                    for (ScriptChunk script : file.getScripts()) {
+                        if (script.id() == entry.id()) {
+                            System.out.println("    Script \"" + scriptName + "\" (id=" + script.id() + "):");
+                            for (ScriptChunk.Handler handler : script.handlers()) {
+                                String handlerName = file.getScriptNames().getName(handler.nameId());
+                                System.out.println("      on " + handlerName +
+                                    " (" + handler.instructions().size() + " instructions)");
+                            }
+                            break;
+                        }
                     }
                 }
-                System.out.println("  Total Handlers: " + handlerCount);
             }
 
             System.out.println("  File Loading: PASS\n");

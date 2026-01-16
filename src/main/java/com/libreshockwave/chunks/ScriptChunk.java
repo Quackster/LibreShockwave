@@ -55,9 +55,8 @@ public record ScriptChunk(
         int bytecodeOffset,
         int argCount,
         int localCount,
-        int unknown1,
-        int unknown2,
-        int unknown3,
+        int globalsCount,
+        int lineCount,
         List<Integer> argNameIds,
         List<Integer> localNameIds,
         List<Instruction> instructions
@@ -202,19 +201,24 @@ public record ScriptChunk(
             reader.setPosition(handlersOffset);
 
             for (int i = 0; i < handlerInfoCount; i++) {
-                int nameId = reader.readI16();
-                int handlerVectorPos = reader.readI16();
-                int bytecodeLen = reader.readI32();
-                int bytecodeOffset = reader.readI32();
-                int argCount = reader.readI16();
-                int argOffset = reader.readI32();
-                int localCount = reader.readI16();
-                int localOffset = reader.readI32();
-                int unknown1 = reader.readI16();
-                reader.skip(2);
-                int unknown2 = reader.readI16();
-                int unknown3 = reader.readI16();
-                reader.skip(22);
+                // Handler record structure from ProjectorRays handler.cpp:readRecord()
+                int nameId = reader.readI16();           // int16
+                int handlerVectorPos = reader.readU16(); // uint16
+                int bytecodeLen = reader.readI32();      // uint32
+                int bytecodeOffset = reader.readI32();   // uint32
+                int argCount = reader.readU16();         // uint16
+                int argOffset = reader.readI32();        // uint32
+                int localCount = reader.readU16();       // uint16
+                int localOffset = reader.readI32();      // uint32
+                int handlerGlobalsCount = reader.readU16();   // uint16
+                int handlerGlobalsOffset = reader.readI32();  // uint32
+                int unknown1 = reader.readI32();         // uint32
+                int unknown2 = reader.readU16();         // uint16
+                int lineCount = reader.readU16();        // uint16
+                int lineOffset = reader.readI32();       // uint32
+                if (capitalX) {
+                    int stackHeight = reader.readI32();  // uint32 (only in LctX)
+                }
 
                 int savedPos = reader.getPosition();
 
@@ -282,9 +286,8 @@ public record ScriptChunk(
                     bytecodeOffset,
                     argCount,
                     localCount,
-                    unknown1,
-                    unknown2,
-                    unknown3,
+                    handlerGlobalsCount,
+                    lineCount,
                     argNameIds,
                     localNameIds,
                     instructions
