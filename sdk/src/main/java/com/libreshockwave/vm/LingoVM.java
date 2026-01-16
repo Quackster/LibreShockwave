@@ -26,6 +26,20 @@ public class LingoVM {
     private int maxInstructions = 100000;
     private NetManager netManager;
 
+    // Debug mode - when enabled, logs execution details
+    private boolean debugMode = false;
+    private int debugIndent = 0;
+    private DebugOutputCallback debugOutputCallback;
+
+    @FunctionalInterface
+    public interface DebugOutputCallback {
+        void onDebugOutput(String message);
+    }
+
+    public void setDebugOutputCallback(DebugOutputCallback callback) {
+        this.debugOutputCallback = callback;
+    }
+
     @FunctionalInterface
     public interface BuiltinHandler {
         Datum call(LingoVM vm, List<Datum> args);
@@ -76,6 +90,59 @@ public class LingoVM {
         return netManager;
     }
 
+    public void setDebugMode(boolean enabled) {
+        this.debugMode = enabled;
+    }
+
+    public boolean isDebugMode() {
+        return debugMode;
+    }
+
+    private void debugLog(String message) {
+        if (!debugMode) return;
+        String indent = "  ".repeat(debugIndent);
+        String output = "[VM] " + indent + message;
+        System.out.println(output);
+        if (debugOutputCallback != null) {
+            debugOutputCallback.onDebugOutput(output);
+        }
+    }
+
+    private String formatStack() {
+        if (stack.isEmpty()) return "[]";
+        StringBuilder sb = new StringBuilder("[");
+        int count = 0;
+        for (Datum d : stack) {
+            if (count > 0) sb.append(", ");
+            if (count >= 8) {
+                sb.append("... (").append(stack.size() - count).append(" more)");
+                break;
+            }
+            sb.append(formatDatum(d));
+            count++;
+        }
+        sb.append("]");
+        return sb.toString();
+    }
+
+    private String formatDatum(Datum d) {
+        if (d == null) return "null";
+        if (d.isVoid()) return "VOID";
+        if (d.isInt()) return String.valueOf(d.intValue());
+        if (d.isFloat()) return String.format("%.2f", d.floatValue());
+        if (d.isString()) {
+            String s = d.stringValue();
+            if (s.length() > 20) s = s.substring(0, 20) + "...";
+            return "\"" + s + "\"";
+        }
+        if (d.isSymbol()) return "#" + d.stringValue();
+        if (d instanceof Datum.DList l) return "list(" + l.count() + ")";
+        if (d instanceof Datum.PropList p) return "propList(" + p.count() + ")";
+        if (d instanceof Datum.ArgList a) return "args(" + a.args().size() + ")";
+        if (d instanceof Datum.ArgListNoRet a) return "argsNoRet(" + a.args().size() + ")";
+        return d.getClass().getSimpleName();
+    }
+
     public void registerBuiltin(String name, BuiltinHandler handler) {
         builtins.put(name.toLowerCase(), handler);
     }
@@ -105,6 +172,35 @@ public class LingoVM {
     }
 
     public Datum execute(ScriptChunk script, ScriptChunk.Handler handler, Datum[] args) {
+        // Debug: Log handler entry (before pushing to call stack to get caller info)
+        if (debugMode) {
+            String handlerName = getName(handler.nameId());
+            String scriptType = script.scriptType() != null ? script.scriptType().name() : "UNKNOWN";
+            String scriptInfo = scriptType + " script#" + script.id();
+
+            // Get caller info from call stack (before we push the new scope)
+            String callerInfo = "";
+            if (!callStack.isEmpty()) {
+                Scope callerScope = callStack.peek();
+                String callerName = getName(callerScope.getHandler().nameId());
+                int callerIP = callerScope.getInstructionPointer();
+                callerInfo = " [called from " + callerName + " at IP:" + callerIP + "]";
+            }
+
+            debugLog("=== CALL " + handlerName + " in " + scriptInfo + callerInfo + " ===");
+            debugLog("Args: " + (args.length == 0 ? "(none)" : formatArgsArray(args)));
+            debugLog("Opcodes (" + handler.instructions().size() + "):");
+            for (int i = 0; i < handler.instructions().size() && i < 50; i++) {
+                ScriptChunk.Handler.Instruction instr = handler.instructions().get(i);
+                debugLog("  [" + i + "] " + formatInstruction(instr));
+            }
+            if (handler.instructions().size() > 50) {
+                debugLog("  ... (" + (handler.instructions().size() - 50) + " more)");
+            }
+            debugLog("--- Executing ---");
+            debugIndent++;
+        }
+
         Scope scope = new Scope(script, handler, args);
         callStack.push(scope);
 
@@ -114,6 +210,14 @@ public class LingoVM {
         try {
             while (!scope.isAtEnd() && !halted && instructionCount < maxInstructions) {
                 ScriptChunk.Handler.Instruction instr = scope.getCurrentInstruction();
+
+                if (debugMode) {
+                    debugLog(String.format("[%03d] %-20s | Stack: %s",
+                        scope.getInstructionPointer(),
+                        formatInstruction(instr),
+                        formatStack()));
+                }
+
                 executeInstruction(scope, instr);
                 scope.advanceIP();
                 instructionCount++;
@@ -123,15 +227,50 @@ public class LingoVM {
                 throw new LingoException("Execution limit exceeded: " + maxInstructions + " instructions");
             }
 
-            return scope.getReturnValue();
+            Datum result = scope.getReturnValue();
+            if (debugMode) {
+                debugIndent--;
+                debugLog("=== RETURN " + formatDatum(result) + " ===");
+            }
+            return result;
         } finally {
             callStack.pop();
+            if (debugMode && debugIndent > 0) debugIndent--;
         }
+    }
+
+    private String formatArgsArray(Datum[] args) {
+        if (args.length == 0) return "(none)";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < args.length; i++) {
+            if (i > 0) sb.append(", ");
+            sb.append(formatDatum(args[i]));
+        }
+        return sb.toString();
+    }
+
+    private String formatInstruction(ScriptChunk.Handler.Instruction instr) {
+        Opcode op = instr.opcode();
+        int arg = instr.argument();
+        String argStr = "";
+
+        // Format argument based on opcode type
+        if (op == Opcode.PUSH_SYMB || op == Opcode.EXT_CALL || op == Opcode.LOCAL_CALL ||
+            op == Opcode.GET_PROP || op == Opcode.SET_PROP || op == Opcode.GET_GLOBAL ||
+            op == Opcode.SET_GLOBAL || op == Opcode.GET_MOVIE_PROP || op == Opcode.SET_MOVIE_PROP ||
+            op == Opcode.THE_BUILTIN || op == Opcode.OBJ_CALL || op == Opcode.NEW_OBJ) {
+            // Argument is a name ID
+            argStr = " '" + getName((int) arg) + "'";
+        } else if (arg != 0) {
+            argStr = " " + arg;
+        }
+
+        return op.name() + argStr;
     }
 
     private void executeInstruction(Scope scope, ScriptChunk.Handler.Instruction instr) {
         Opcode op = instr.opcode();
-        int arg = (int) instr.argument();
+        int arg = instr.argument();
 
         switch (op) {
             // Stack operations

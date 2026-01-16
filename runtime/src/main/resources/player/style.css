@@ -258,6 +258,31 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 10px;
+}
+
+.debug-toggle {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    margin-left: auto;
+    margin-right: 10px;
+}
+
+.debug-toggle input {
+    cursor: pointer;
+}
+
+.console-line.debug {
+    color: #8888ff;
+    font-family: monospace;
+    font-size: 0.75rem;
+    white-space: pre;
+    border-left: 2px solid #4444aa;
+    padding-left: 6px;
+    margin: 1px 0;
 }
 
 .sprite-list {

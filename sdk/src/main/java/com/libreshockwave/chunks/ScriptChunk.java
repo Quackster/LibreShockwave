@@ -65,7 +65,7 @@ public record ScriptChunk(
             int offset,
             Opcode opcode,
             int rawOpcode,
-            long argument
+            int argument
         ) {
             @Override
             public String toString() {
@@ -252,7 +252,7 @@ public record ScriptChunk(
 
                         // Normalize opcode: multi-byte opcodes are 0x40 + (op % 0x40)
                         Opcode opcode = Opcode.fromCode(op >= 0x40 ? (0x40 + op % 0x40) : op);
-                        long argument = 0;
+                        int argument = 0;
 
                         // Argument size is determined by the op byte value, not opcode type
                         if (op >= 0xC0) {

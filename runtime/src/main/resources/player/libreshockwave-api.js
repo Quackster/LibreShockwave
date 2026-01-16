@@ -333,6 +333,40 @@ const LibreShockwave = (function() {
         isInitialized() { return initialized; },
         isWasmMode() { return exports !== null; },
 
+        // Debug mode
+        setDebugMode(enabled) {
+            if (!exports) throw new Error('Not initialized');
+            exports.setDebugMode(enabled ? 1 : 0);
+            log('info', `Debug mode: ${enabled ? 'ON' : 'OFF'}`);
+        },
+
+        isDebugMode() {
+            return exports ? exports.isDebugMode() === 1 : false;
+        },
+
+        /**
+         * Poll and retrieve debug messages from the VM.
+         * Returns an array of messages.
+         */
+        pollDebugMessages() {
+            if (!exports) return [];
+            const messages = [];
+            let count = exports.getDebugMessageCount();
+            while (count > 0) {
+                const len = exports.getNextDebugMessageLength();
+                if (len > 0) {
+                    let msg = '';
+                    for (let i = 0; i < len; i++) {
+                        msg += String.fromCharCode(exports.getNextDebugMessageChar(i));
+                    }
+                    messages.push(msg);
+                }
+                exports.popDebugMessage();
+                count--;
+            }
+            return messages;
+        },
+
         // TeaVMEntry: lsw_init (called by init())
 
         // TeaVMEntry: allocateMovieBuffer

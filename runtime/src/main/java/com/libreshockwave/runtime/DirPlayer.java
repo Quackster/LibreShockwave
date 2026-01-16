@@ -228,13 +228,7 @@ public class DirPlayer {
             }
             return Datum.voidValue();
         });
-
-        // Update stage
-        vm.registerBuiltin("updateStage", (vmRef, args) -> {
-            updateStage();
-            return Datum.voidValue();
-        });
-
+        
         // Cast preloading
         vm.registerBuiltin("preload", (vmRef, args) -> {
             return Datum.voidValue();
@@ -455,13 +449,6 @@ public class DirPlayer {
         executeFrameScript(currentFrame);
 
         dispatchEvent(MovieEvent.ENTER_FRAME);
-    }
-
-    /**
-     * Update the stage (trigger redraw).
-     */
-    public void updateStage() {
-        // Would trigger rendering
     }
 
     // Event dispatching

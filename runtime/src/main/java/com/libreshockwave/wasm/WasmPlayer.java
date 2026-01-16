@@ -3,6 +3,7 @@ package com.libreshockwave.wasm;
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.cast.BitmapInfo;
 import com.libreshockwave.chunks.*;
+import com.libreshockwave.lingo.Datum;
 import com.libreshockwave.player.CastLib;
 import com.libreshockwave.player.CastManager;
 import com.libreshockwave.player.Palette;
@@ -10,15 +11,17 @@ import com.libreshockwave.player.Score;
 import com.libreshockwave.player.Sprite;
 import com.libreshockwave.player.bitmap.Bitmap;
 import com.libreshockwave.player.bitmap.BitmapDecoder;
+import com.libreshockwave.vm.LingoVM;
 
 import java.nio.ByteOrder;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
- * Lightweight player for WASM environment.
- * Does not support network loading or script execution - basic frame playback only.
+ * Player for WASM environment.
+ * Supports frame playback and Lingo script execution.
  */
 public class WasmPlayer {
 
@@ -29,6 +32,7 @@ public class WasmPlayer {
     private DirectorFile movieFile;
     private CastManager castManager;
     private Score score;
+    private LingoVM vm;
 
     private PlayState state = PlayState.STOPPED;
     private int currentFrame = 1;
@@ -43,6 +47,42 @@ public class WasmPlayer {
     // Bitmap cache: key = "castLib:memberNum", value = decoded RGBA data
     private final Map<String, int[]> bitmapCache = new HashMap<>();
     private final Map<String, int[]> bitmapDimensions = new HashMap<>(); // [width, height]
+
+    // Debug mode - controls verbose logging
+    private boolean debugMode = false;
+
+    // Debug output callback for sending to JS console
+    private DebugOutputCallback debugOutputCallback;
+
+    @FunctionalInterface
+    public interface DebugOutputCallback {
+        void onDebugOutput(String message);
+    }
+
+    public void setDebugOutputCallback(DebugOutputCallback callback) {
+        this.debugOutputCallback = callback;
+    }
+
+    public void setDebugMode(boolean enabled) {
+        this.debugMode = enabled;
+        if (vm != null) {
+            vm.setDebugMode(enabled);
+        }
+        log("Debug mode: " + (enabled ? "ON" : "OFF"));
+    }
+
+    public boolean isDebugMode() {
+        return debugMode;
+    }
+
+    private void debugOutput(String message) {
+        if (debugMode) {
+            System.out.println(message);
+            if (debugOutputCallback != null) {
+                debugOutputCallback.onDebugOutput(message);
+            }
+        }
+    }
 
     public static class SpriteState {
         public int channel;
@@ -128,6 +168,18 @@ public class WasmPlayer {
             log("WARNING: No score found in movie");
         }
 
+        // Initialize LingoVM for script execution
+        vm = new LingoVM(movieFile);
+        vm.setDebugMode(debugMode);
+        // Forward VM debug output to our callback
+        vm.setDebugOutputCallback(msg -> {
+            if (debugOutputCallback != null) {
+                debugOutputCallback.onDebugOutput(msg);
+            }
+        });
+        registerPlayerBuiltins();
+        log("LingoVM initialized with " + movieFile.getScripts().size() + " scripts");
+
         // Reset state
         currentFrame = 1;
         state = PlayState.STOPPED;
@@ -140,6 +192,11 @@ public class WasmPlayer {
 
         // Load initial frame
         loadSpritesFromScore();
+
+        // Execute startMovie handler if it exists
+        executeHandlerIfExists("startMovie");
+        executeHandlerIfExists("prepareMovie");
+
         log("=== Movie load complete ===");
     }
 
@@ -257,6 +314,143 @@ public class WasmPlayer {
 
     private void log(String message) {
         System.out.println("[WasmPlayer] " + message);
+        if (debugMode && debugOutputCallback != null) {
+            debugOutputCallback.onDebugOutput("[WasmPlayer] " + message);
+        }
+    }
+
+    /**
+     * Register player-specific built-in handlers in the VM.
+     */
+    private void registerPlayerBuiltins() {
+        if (vm == null) return;
+
+        // Frame navigation
+        vm.registerBuiltin("go", (vmRef, args) -> {
+            if (!args.isEmpty()) {
+                Datum target = args.get(0);
+                if (target.isInt()) {
+                    goToFrame(target.intValue());
+                } else if (target.isString()) {
+                    goToLabel(target.stringValue());
+                }
+            }
+            return Datum.voidValue();
+        });
+
+        vm.registerBuiltin("play", (vmRef, args) -> {
+            play();
+            return Datum.voidValue();
+        });
+
+        vm.registerBuiltin("stop", (vmRef, args) -> {
+            stop();
+            return Datum.voidValue();
+        });
+
+        vm.registerBuiltin("pause", (vmRef, args) -> {
+            pause();
+            return Datum.voidValue();
+        });
+
+        // Frame properties
+        vm.registerBuiltin("frame", (vmRef, args) -> Datum.of(currentFrame));
+
+        // Tempo
+        vm.registerBuiltin("puppetTempo", (vmRef, args) -> {
+            if (!args.isEmpty()) {
+                tempo = args.get(0).intValue();
+                if (tempo <= 0) tempo = 15;
+            }
+            return Datum.voidValue();
+        });
+    }
+
+    /**
+     * Go to a frame by label name.
+     */
+    public void goToLabel(String label) {
+        if (score == null) {
+            log("goToLabel: No score available");
+            return;
+        }
+
+        int frameNum = score.getFrameByLabel(label);
+        if (frameNum > 0) {
+            log("goToLabel: " + label + " -> frame " + frameNum);
+            goToFrame(frameNum);
+        } else {
+            log("goToLabel: Label not found: " + label);
+        }
+    }
+
+    /**
+     * Execute frame script for the current frame.
+     */
+    private void executeFrameScript() {
+        if (score == null || vm == null) return;
+
+        Score.Frame frame = score.getFrame(currentFrame);
+        if (frame == null || !frame.hasFrameScript()) return;
+
+        int castLib = frame.getScriptCastLib();
+        int castMember = frame.getScriptCastMember();
+
+        debugOutput("[WasmPlayer] Executing frame script for frame " + currentFrame + " (cast " + castLib + ":" + castMember + ")");
+
+        ScriptChunk script = findScriptForCastMember(castLib, castMember);
+        if (script != null && !script.handlers().isEmpty()) {
+            try {
+                vm.execute(script, script.handlers().get(0), new Datum[0]);
+            } catch (Exception e) {
+                log("Error executing frame script for frame " + currentFrame + ": " + e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Execute a handler by name if it exists.
+     */
+    private void executeHandlerIfExists(String handlerName) {
+        if (vm == null || movieFile == null) return;
+
+        ScriptNamesChunk names = movieFile.getScriptNames();
+        if (names == null) return;
+
+        int nameId = names.findName(handlerName);
+        if (nameId < 0) return;
+
+        debugOutput("[WasmPlayer] Looking for handler: " + handlerName);
+
+        for (ScriptChunk script : movieFile.getScripts()) {
+            for (ScriptChunk.Handler handler : script.handlers()) {
+                if (handler.nameId() == nameId) {
+                    debugOutput("[WasmPlayer] Found handler " + handlerName + " in script#" + script.id());
+                    try {
+                        vm.execute(script, handler, new Datum[0]);
+                    } catch (Exception e) {
+                        log("Error executing " + handlerName + ": " + e.getMessage());
+                    }
+                    return;
+                }
+            }
+        }
+    }
+
+    /**
+     * Find a script chunk for a given cast member.
+     */
+    private ScriptChunk findScriptForCastMember(int castLib, int castMember) {
+        for (ScriptChunk script : movieFile.getScripts()) {
+            if (script.id() == castMember) {
+                return script;
+            }
+        }
+        return null;
+    }
+
+    public LingoVM getVM() {
+        return vm;
     }
 
     public void play() {
@@ -303,6 +497,10 @@ public class WasmPlayer {
     }
 
     private void loadSpritesFromScore() {
+        loadSpritesFromScore(true);
+    }
+
+    private void loadSpritesFromScore(boolean executeScripts) {
         sprites.clear();
 
         if (score == null) {
@@ -316,11 +514,12 @@ public class WasmPlayer {
             return;
         }
 
-        log("Loading frame " + currentFrame + " with " + frame.getSprites().size() + " sprites");
+        if (debugMode) {
+            debugOutput("[WasmPlayer] Loading frame " + currentFrame + " with " + frame.getSprites().size() + " sprites");
+        }
 
         for (Sprite sprite : frame.getSprites()) {
             if (sprite.getCastMember() <= 0) {
-                log("  Skipping sprite ch=" + sprite.getChannel() + " (no member)");
                 continue;
             }
 
@@ -337,11 +536,17 @@ public class WasmPlayer {
             ss.visible = sprite.isVisible();
 
             sprites.put(ss.channel, ss);
-            log("  Loaded sprite: ch=" + ss.channel + " member=" + ss.castLib + ":" + ss.castMember +
-                " pos=(" + ss.locH + "," + ss.locV + ") size=" + ss.width + "x" + ss.height);
         }
 
-        log("Total sprites loaded: " + sprites.size());
+        if (debugMode) {
+            debugOutput("[WasmPlayer] Total sprites loaded: " + sprites.size());
+        }
+
+        // Execute scripts for this frame
+        if (executeScripts && vm != null) {
+            executeHandlerIfExists("enterFrame");
+            executeFrameScript();
+        }
     }
 
     // Getters

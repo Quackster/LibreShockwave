@@ -41,6 +41,93 @@ public class TeaVMEntry {
         log("LibreShockwave initialized");
     }
 
+    // Debug output buffer - stores messages for JS to poll
+    private static final int DEBUG_BUFFER_SIZE = 100;
+    private static String[] debugBuffer = new String[DEBUG_BUFFER_SIZE];
+    private static int debugBufferHead = 0;
+    private static int debugBufferTail = 0;
+    private static int debugBufferCount = 0;
+
+    private static void addDebugMessage(String message) {
+        debugBuffer[debugBufferHead] = message;
+        debugBufferHead = (debugBufferHead + 1) % DEBUG_BUFFER_SIZE;
+        if (debugBufferCount < DEBUG_BUFFER_SIZE) {
+            debugBufferCount++;
+        } else {
+            // Buffer full, drop oldest
+            debugBufferTail = (debugBufferTail + 1) % DEBUG_BUFFER_SIZE;
+        }
+    }
+
+    /**
+     * Enable or disable debug mode.
+     * When enabled, verbose logging shows frame/sprite loading details and script execution.
+     * @param enabled 1 to enable, 0 to disable
+     */
+    @Export(name = "setDebugMode")
+    public static void setDebugMode(int enabled) {
+        if (player != null) {
+            player.setDebugMode(enabled != 0);
+            // Set up debug output callback
+            if (enabled != 0) {
+                player.setDebugOutputCallback(TeaVMEntry::addDebugMessage);
+            } else {
+                player.setDebugOutputCallback(null);
+            }
+        }
+    }
+
+    /**
+     * Check if debug mode is enabled.
+     * @return 1 if enabled, 0 if disabled
+     */
+    @Export(name = "isDebugMode")
+    public static int isDebugMode() {
+        return (player != null && player.isDebugMode()) ? 1 : 0;
+    }
+
+    /**
+     * Get the number of pending debug messages.
+     */
+    @Export(name = "getDebugMessageCount")
+    public static int getDebugMessageCount() {
+        return debugBufferCount;
+    }
+
+    /**
+     * Get the length of the next debug message.
+     * @return length of next message, or 0 if no messages
+     */
+    @Export(name = "getNextDebugMessageLength")
+    public static int getNextDebugMessageLength() {
+        if (debugBufferCount == 0) return 0;
+        String msg = debugBuffer[debugBufferTail];
+        return msg != null ? msg.length() : 0;
+    }
+
+    /**
+     * Get a character from the next debug message.
+     */
+    @Export(name = "getNextDebugMessageChar")
+    public static int getNextDebugMessageChar(int index) {
+        if (debugBufferCount == 0) return 0;
+        String msg = debugBuffer[debugBufferTail];
+        if (msg == null || index < 0 || index >= msg.length()) return 0;
+        return msg.charAt(index);
+    }
+
+    /**
+     * Pop the next debug message (remove it from the buffer).
+     */
+    @Export(name = "popDebugMessage")
+    public static void popDebugMessage() {
+        if (debugBufferCount > 0) {
+            debugBuffer[debugBufferTail] = null;
+            debugBufferTail = (debugBufferTail + 1) % DEBUG_BUFFER_SIZE;
+            debugBufferCount--;
+        }
+    }
+
     /**
      * Allocate buffer for movie data.
      * Call this before setMovieDataByte.

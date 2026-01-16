@@ -28,7 +28,8 @@
         playState: document.getElementById('play-state'),
         spriteList: document.getElementById('sprite-list'),
         consoleOutput: document.getElementById('console-output'),
-        btnClearConsole: document.getElementById('btn-clear-console')
+        btnClearConsole: document.getElementById('btn-clear-console'),
+        debugToggle: document.getElementById('debug-toggle')
     };
 
     // Canvas context
@@ -60,6 +61,12 @@
     function onReady(info) {
         if (info.mode === 'wasm') {
             log('info', 'LibreShockwave WASM runtime ready');
+
+            // Apply saved debug mode
+            const savedDebugMode = localStorage.getItem('libreshockwave-debug') === 'true';
+            if (savedDebugMode) {
+                LibreShockwave.setDebugMode(true);
+            }
         } else {
             log('warn', 'Running in stub mode - WASM not available');
         }
@@ -141,6 +148,20 @@
         elements.btnClearConsole.addEventListener('click', () => {
             elements.consoleOutput.innerHTML = '';
         });
+
+        // Debug toggle - load saved state
+        const savedDebugMode = localStorage.getItem('libreshockwave-debug') === 'true';
+        elements.debugToggle.checked = savedDebugMode;
+
+        elements.debugToggle.addEventListener('change', () => {
+            const enabled = elements.debugToggle.checked;
+            localStorage.setItem('libreshockwave-debug', enabled ? 'true' : 'false');
+            try {
+                LibreShockwave.setDebugMode(enabled);
+            } catch (e) {
+                log('warn', 'Debug mode requires WASM to be initialized');
+            }
+        });
     }
 
     /**
@@ -212,6 +233,9 @@
         // Clear bitmap cache
         bitmapCache.clear();
 
+        // Poll debug messages from movie loading (startMovie handlers etc)
+        pollDebugMessages();
+
         // Render initial frame
         renderFrame();
 
@@ -260,6 +284,9 @@
      * Render the current frame
      */
     function renderFrame() {
+        // Poll debug messages before rendering
+        pollDebugMessages();
+
         // Clear the stage with white background
         ctx.fillStyle = '#FFFFFF';
         ctx.fillRect(0, 0, elements.stage.width, elements.stage.height);
@@ -405,8 +432,34 @@
 
         playbackTimer = setInterval(() => {
             LibreShockwave.tick();
+            pollDebugMessages();
             renderFrame();
         }, interval);
+    }
+
+    /**
+     * Poll and display debug messages from the VM
+     */
+    function pollDebugMessages() {
+        if (!LibreShockwave.isDebugMode()) return;
+
+        try {
+            const messages = LibreShockwave.pollDebugMessages();
+            for (const msg of messages) {
+                // Add to console with special debug styling
+                const entry = document.createElement('div');
+                entry.className = 'console-line debug';
+                entry.textContent = msg;
+                elements.consoleOutput.appendChild(entry);
+            }
+
+            // Auto-scroll if there were new messages
+            if (messages.length > 0) {
+                elements.consoleOutput.scrollTop = elements.consoleOutput.scrollHeight;
+            }
+        } catch (e) {
+            // Ignore errors when polling
+        }
     }
 
     /**
