@@ -179,6 +179,10 @@ public class WasmPlayer {
                 debugOutputCallback.onDebugOutput(msg);
             }
         });
+
+        // Set cast manager so VM can find handlers in external casts
+        vm.setCastManager(castManager);
+
         registerPlayerBuiltins();
 
         // Initialize Xtras (provides network functions, etc.)

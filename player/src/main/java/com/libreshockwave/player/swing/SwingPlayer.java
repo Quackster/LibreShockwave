@@ -247,6 +247,9 @@ public class SwingPlayer extends JFrame {
             vm.setDebugMode(debugCheckbox.isSelected());
             vm.setDebugOutputCallback(this::log);
 
+            // Set cast manager so VM can find handlers in external casts
+            vm.setCastManager(castManager);
+
             // Initialize NetManager for network operations
             netManager = new NetManager();
             if (currentMovieDir != null) {

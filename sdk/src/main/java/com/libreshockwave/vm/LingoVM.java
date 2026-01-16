@@ -7,6 +7,8 @@ import com.libreshockwave.lingo.*;
 import com.libreshockwave.net.NetManager;
 import com.libreshockwave.net.NetResult;
 import com.libreshockwave.net.NetTask;
+import com.libreshockwave.player.CastLib;
+import com.libreshockwave.player.CastManager;
 
 import java.util.*;
 
@@ -25,6 +27,7 @@ public class LingoVM {
     private boolean halted;
     private int maxInstructions = 100000;
     private NetManager netManager;
+    private CastManager castManager;
 
     // Debug mode - when enabled, logs execution details
     private boolean debugMode = false;
@@ -88,6 +91,14 @@ public class LingoVM {
 
     public NetManager getNetManager() {
         return netManager;
+    }
+
+    public void setCastManager(CastManager castManager) {
+        this.castManager = castManager;
+    }
+
+    public CastManager getCastManager() {
+        return castManager;
     }
 
     public void setDebugMode(boolean enabled) {
@@ -1089,30 +1100,82 @@ public class LingoVM {
         return "<name:" + nameId + ">";
     }
 
-    private ScriptChunk.Handler findHandler(String name) {
-        if (file == null) return null;
-        ScriptNamesChunk names = file.getScriptNames();
-        if (names == null) return null;
+    /**
+     * Result of finding a handler - contains both the script and handler.
+     */
+    private record HandlerLocation(ScriptChunk script, ScriptChunk.Handler handler, ScriptNamesChunk names) {}
 
-        int nameId = names.findName(name);
-        if (nameId < 0) return null;
-
-        for (ScriptChunk script : file.getScripts()) {
-            for (ScriptChunk.Handler handler : script.handlers()) {
-                if (handler.nameId() == nameId) {
-                    return handler;
+    private HandlerLocation findHandlerWithScript(String name) {
+        // First search in the main movie's scripts
+        if (file != null) {
+            ScriptNamesChunk names = file.getScriptNames();
+            if (names != null) {
+                int nameId = names.findName(name);
+                if (nameId >= 0) {
+                    for (ScriptChunk script : file.getScripts()) {
+                        for (ScriptChunk.Handler handler : script.handlers()) {
+                            if (handler.nameId() == nameId) {
+                                return new HandlerLocation(script, handler, names);
+                            }
+                        }
+                    }
                 }
             }
         }
+
+        // Then search in external cast scripts
+        if (castManager != null) {
+            for (CastLib cast : castManager.getCasts()) {
+                if (cast.getState() == CastLib.State.LOADED) {
+                    ScriptNamesChunk castNames = cast.getScriptNames();
+                    if (castNames != null) {
+                        int nameId = castNames.findName(name);
+                        if (nameId >= 0) {
+                            for (ScriptChunk script : cast.getAllScripts()) {
+                                for (ScriptChunk.Handler handler : script.handlers()) {
+                                    if (handler.nameId() == nameId) {
+                                        debugLog("Found handler '" + name + "' in cast #" + cast.getNumber() + " '" + cast.getName() + "'");
+                                        return new HandlerLocation(script, handler, castNames);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         return null;
     }
 
+    private ScriptChunk.Handler findHandler(String name) {
+        HandlerLocation loc = findHandlerWithScript(name);
+        return loc != null ? loc.handler : null;
+    }
+
     private ScriptChunk findScriptForHandler(ScriptChunk.Handler target) {
-        for (ScriptChunk script : file.getScripts()) {
-            if (script.handlers().contains(target)) {
-                return script;
+        // Search in movie scripts
+        if (file != null) {
+            for (ScriptChunk script : file.getScripts()) {
+                if (script.handlers().contains(target)) {
+                    return script;
+                }
             }
         }
+
+        // Search in cast scripts
+        if (castManager != null) {
+            for (CastLib cast : castManager.getCasts()) {
+                if (cast.getState() == CastLib.State.LOADED) {
+                    for (ScriptChunk script : cast.getAllScripts()) {
+                        if (script.handlers().contains(target)) {
+                            return script;
+                        }
+                    }
+                }
+            }
+        }
+
         return null;
     }
 

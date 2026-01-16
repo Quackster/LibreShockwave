@@ -33,6 +33,17 @@ tasks.register('runNetXtraTest', JavaExec) {
     dependsOn compileTestJava
 }
 
+// Debug startClient loading
+tasks.register('runStartClientDebug', JavaExec) {
+    group = 'verification'
+    description = 'Debug startClient handler loading'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.StartClientDebugTest'
+    workingDir = rootProject.projectDir
+    args = project.hasProperty('url') ? [project.property('url')] : ['runtime/src/main/resources/player/assets/movie.dcr']
+    dependsOn compileTestJava
+}
+
 // Fat JAR with all dependencies
 tasks.register('fatJar', Jar) {
     archiveClassifier = 'all'
