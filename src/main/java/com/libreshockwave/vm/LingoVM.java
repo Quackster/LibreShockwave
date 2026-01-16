@@ -303,8 +303,9 @@ public class LingoVM {
 
             // Control flow
             case JMP -> {
-                // Jump to bytecode offset
-                int targetOffset = arg;
+                // Jump relative to current position: target = current_offset + arg
+                int currentOffset = instr.offset();
+                int targetOffset = currentOffset + arg;
                 int targetIndex = findInstructionAtOffset(scope.getHandler(), targetOffset);
                 scope.setInstructionPointer(targetIndex - 1); // -1 because we advance after
             }
@@ -312,15 +313,18 @@ public class LingoVM {
             case JMP_IF_Z -> {
                 Datum condition = pop();
                 if (!condition.boolValue()) {
-                    int targetOffset = arg;
+                    // Jump relative to current position: target = current_offset + arg
+                    int currentOffset = instr.offset();
+                    int targetOffset = currentOffset + arg;
                     int targetIndex = findInstructionAtOffset(scope.getHandler(), targetOffset);
                     scope.setInstructionPointer(targetIndex - 1);
                 }
             }
 
             case END_REPEAT -> {
-                // Jump back to loop start
-                int targetOffset = arg;
+                // Jump back: target = current_offset - arg
+                int currentOffset = instr.offset();
+                int targetOffset = currentOffset - arg;
                 int targetIndex = findInstructionAtOffset(scope.getHandler(), targetOffset);
                 scope.setInstructionPointer(targetIndex - 1);
             }

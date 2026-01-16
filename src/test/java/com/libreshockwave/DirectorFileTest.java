@@ -250,12 +250,8 @@ public class DirectorFileTest {
                     // Find the script chunk for this entry
                     for (ScriptChunk script : file.getScripts()) {
                         if (script.id() == entry.id()) {
-                            System.out.println("    Script \"" + scriptName + "\" (id=" + script.id() + "):");
-                            for (ScriptChunk.Handler handler : script.handlers()) {
-                                String handlerName = file.getScriptNames().getName(handler.nameId());
-                                System.out.println("      on " + handlerName +
-                                    " (" + handler.instructions().size() + " instructions)");
-                            }
+                            System.out.println("    Script \"" + scriptName + "\":");
+                            file.disassembleScript(script);
                             break;
                         }
                     }
