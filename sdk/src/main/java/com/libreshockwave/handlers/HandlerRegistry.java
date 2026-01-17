@@ -1,6 +1,8 @@
 package com.libreshockwave.handlers;
 
+import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.lingo.Datum;
+import com.libreshockwave.player.CastManager;
 import com.libreshockwave.vm.LingoVM;
 
 import java.util.ArrayList;
@@ -69,6 +71,7 @@ public class HandlerRegistry {
         vm.registerBuiltin("member", HandlerRegistry::member);
         vm.registerBuiltin("sprite", HandlerRegistry::sprite);
         vm.registerBuiltin("sound", HandlerRegistry::sound);
+        vm.registerBuiltin("script", HandlerRegistry::script);
     }
 
     private static void registerBitwiseHandlers(LingoVM vm) {
@@ -518,5 +521,40 @@ public class HandlerRegistry {
     // Call handler - delegates to VM for script resolution
     private static Datum call(LingoVM vm, List<Datum> args) {
         return vm.callHandler(args);
+    }
+
+    /**
+     * Get a reference to a script by name, number, or member reference.
+     * Matches dirplayer-rs MovieHandlers::script().
+     */
+    private static Datum script(LingoVM vm, List<Datum> args) {
+        if (args.isEmpty()) return Datum.voidValue();
+
+        CastManager castManager = vm.getCastManager();
+        if (castManager == null) return Datum.voidValue();
+
+        Datum identifier = args.get(0);
+        Datum.CastMemberRef memberRef = null;
+
+        // Look up by name, number, or use existing ref
+        if (identifier.isString()) {
+            memberRef = castManager.findMemberRefByName(identifier.stringValue());
+        } else if (identifier.isInt()) {
+            memberRef = castManager.findMemberRefByNumber(identifier.intValue());
+        } else if (identifier instanceof Datum.CastMemberRef ref) {
+            memberRef = ref;
+        }
+
+        if (memberRef == null) {
+            return Datum.voidValue();  // Script not found
+        }
+
+        // Verify it's actually a script
+        ScriptChunk script = castManager.getScriptByRef(memberRef);
+        if (script == null) {
+            return Datum.voidValue();  // Not a script member
+        }
+
+        return new Datum.ScriptRef(memberRef);
     }
 }

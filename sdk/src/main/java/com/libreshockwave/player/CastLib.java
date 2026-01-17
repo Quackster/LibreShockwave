@@ -188,6 +188,14 @@ public class CastLib {
         return Collections.unmodifiableCollection(members.values());
     }
 
+    /**
+     * Get all member entries with their slot numbers.
+     * Used for iterating over members when the slot number is needed.
+     */
+    public Set<Map.Entry<Integer, CastMemberChunk>> getMemberEntries() {
+        return Collections.unmodifiableSet(members.entrySet());
+    }
+
     public ScriptChunk getScript(int id) {
         return scripts.get(id);
     }

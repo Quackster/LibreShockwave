@@ -2,6 +2,7 @@ package com.libreshockwave.player;
 
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.chunks.*;
+import com.libreshockwave.lingo.Datum;
 import com.libreshockwave.net.NetManager;
 import com.libreshockwave.net.NetResult;
 
@@ -502,6 +503,53 @@ public class CastManager {
             }
         }
         return null;
+    }
+
+    /**
+     * Find a member reference by name across all casts.
+     * Returns the cast/member pair needed for ScriptRef.
+     * Matches dirplayer-rs CastManager::find_member_ref_by_name().
+     */
+    public Datum.CastMemberRef findMemberRefByName(String name) {
+        for (CastLib cast : casts) {
+            for (Map.Entry<Integer, CastMemberChunk> entry : cast.getMemberEntries()) {
+                CastMemberChunk member = entry.getValue();
+                if (name.equals(member.name())) {
+                    int slot = entry.getKey();  // The slot number is the member number
+                    return new Datum.CastMemberRef(cast.getNumber(), slot);
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Find a member reference by number (slot number lookup).
+     * Matches dirplayer-rs CastManager::find_member_ref_by_number().
+     */
+    public Datum.CastMemberRef findMemberRefByNumber(int number) {
+        for (CastLib cast : casts) {
+            CastMemberChunk member = cast.getMember(number);
+            if (member != null) {
+                return new Datum.CastMemberRef(cast.getNumber(), number);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Get a script by cast member reference.
+     * Returns null if the member is not a script.
+     * Matches dirplayer-rs CastManager::get_script_by_ref().
+     */
+    public ScriptChunk getScriptByRef(Datum.CastMemberRef ref) {
+        CastLib cast = getCast(ref.castLib());
+        if (cast == null) return null;
+
+        CastMemberChunk member = cast.getMember(ref.memberNum());
+        if (member == null || !member.isScript()) return null;
+
+        return cast.getScript(member.scriptId());
     }
 
     /**

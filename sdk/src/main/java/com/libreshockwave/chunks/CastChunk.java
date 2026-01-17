@@ -3,6 +3,7 @@ package com.libreshockwave.chunks;
 import com.libreshockwave.format.ChunkType;
 import com.libreshockwave.io.BinaryReader;
 
+import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -25,6 +26,9 @@ public record CastChunk(
     }
 
     public static CastChunk read(BinaryReader reader, int id, int version) {
+        // CAS* chunk is always big endian regardless of file byte order
+        reader.setOrder(ByteOrder.BIG_ENDIAN);
+
         List<Integer> memberIds = new ArrayList<>();
 
         while (reader.bytesLeft() >= 4) {
