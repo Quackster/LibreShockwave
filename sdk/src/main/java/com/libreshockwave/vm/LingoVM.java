@@ -2091,6 +2091,49 @@ public class LingoVM {
             return new Datum.SpriteRef(args.get(0).intValue());
         });
 
+        // script(name/num) - returns a ScriptRef to the script
+        registerBuiltin("script", (vm, args) -> {
+            if (args.isEmpty()) return Datum.voidValue();
+            Datum identifier = args.get(0);
+
+            // Find script by name or number
+            Datum.CastMemberRef memberRef = null;
+
+            if (identifier.isString()) {
+                String scriptName = identifier.stringValue();
+                // Search for script by name across all casts
+                if (castManager != null) {
+                    for (CastLib cast : castManager.getCasts()) {
+                        for (int i = 0; i <= cast.getMemberCount(); i++) {
+                            String name = cast.getName();
+                            if (name != null && name.equalsIgnoreCase(scriptName)) {
+                                // Found the member, check if it's a script
+                                ScriptChunk script = findScriptByCastRef(new Datum.CastMemberRef(i, cast.getNumber()));
+                                if (script != null) {
+                                    memberRef = new Datum.CastMemberRef(i, cast.getNumber());
+                                    break;
+                                }
+                            }
+                        }
+                        if (memberRef != null) break;
+                    }
+                }
+            } else if (identifier.isInt()) {
+                int scriptNum = identifier.intValue();
+                // Use first cast by default
+                memberRef = new Datum.CastMemberRef(scriptNum, 1);
+            } else if (identifier instanceof Datum.CastMemberRef ref) {
+                memberRef = ref;
+            }
+
+            if (memberRef == null) {
+                debugLog("script: not found for " + identifier);
+                return Datum.voidValue();
+            }
+
+            return new Datum.ScriptRef(memberRef);
+        });
+
         // Navigation
         registerBuiltin("go", (vm, args) -> {
             // go(frame) or go(frame, movie)
