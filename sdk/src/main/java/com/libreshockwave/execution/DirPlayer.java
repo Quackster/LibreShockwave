@@ -4,6 +4,7 @@ import com.libreshockwave.DirectorFile;
 import com.libreshockwave.chunks.*;
 import com.libreshockwave.lingo.Datum;
 import com.libreshockwave.net.NetManager;
+import com.libreshockwave.player.CastLib;
 import com.libreshockwave.player.CastManager;
 import com.libreshockwave.player.Score;
 import com.libreshockwave.player.Sprite;
@@ -386,6 +387,56 @@ public class DirPlayer {
     }
 
     /**
+     * Get the member name for a script, searching all casts.
+     * Used for debug/error output to show "Client Initialization Script" instead of "#5".
+     */
+    private String getScriptMemberName(ScriptChunk script) {
+        if (script == null) return null;
+        int scriptId = script.id();
+
+        // First check the main file's cast members
+        if (file != null) {
+            for (var member : file.getCastMembers()) {
+                if (member.id() == scriptId && member.isScript()) {
+                    String name = member.name();
+                    if (name != null && !name.isEmpty()) {
+                        return name;
+                    }
+                }
+            }
+        }
+
+        // Then check all cast libraries
+        if (castManager != null) {
+            for (var cast : castManager.getCasts()) {
+                if (cast.getState() == CastLib.State.LOADED) {
+                    var member = cast.getMember(scriptId);
+                    if (member != null && member.isScript()) {
+                        String name = member.name();
+                        if (name != null && !name.isEmpty()) {
+                            return name;
+
+                        }
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Format a script identifier for display (member name if available, otherwise "#id").
+     */
+    private String formatScriptId(ScriptChunk script) {
+        String name = getScriptMemberName(script);
+        if (name != null && !name.isEmpty()) {
+            return "\"" + name + "\"";
+        }
+        return "#" + script.id();
+    }
+
+    /**
      * Go to a frame by label name.
      */
     public void goToLabel(String label) {
@@ -507,7 +558,7 @@ public class DirPlayer {
                         try {
                             vm.execute(script, handler, new Datum[0]);
                         } catch (Exception e) {
-                            System.err.println("Error executing " + handlerName + " in script #" + script.id() + ": " + e.getMessage());
+                            System.err.println("Error executing " + handlerName + " in script " + formatScriptId(script) + ": " + e.getMessage());
                         }
                         break; // Only execute once per script
                     }

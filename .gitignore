@@ -24,3 +24,4 @@ Thumbs.db
 # Logs
 *.log
 runtime/src/main/resources/player/libreshockwave.wasm
+/.claude

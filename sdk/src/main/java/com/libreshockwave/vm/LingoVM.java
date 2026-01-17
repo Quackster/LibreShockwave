@@ -295,6 +295,44 @@ public class LingoVM {
         return cast.getName();
     }
 
+    /**
+     * Get the member name for a script, searching all casts.
+     * Used for debug output to show "Client Initialization Script" instead of "#5".
+     */
+    private String getScriptMemberName(ScriptChunk script) {
+        if (script == null) return null;
+        int scriptId = script.id();
+
+        // First check the main file's cast members
+        if (file != null) {
+            for (var member : file.getCastMembers()) {
+                if (member.id() == scriptId && member.isScript()) {
+                    String name = member.name();
+                    if (name != null && !name.isEmpty()) {
+                        return name;
+                    }
+                }
+            }
+        }
+
+        // Then check all cast libraries
+        if (castManager != null) {
+            for (CastLib cast : castManager.getCasts()) {
+                if (cast.getState() == CastLib.State.LOADED) {
+                    var member = cast.getMember(scriptId);
+                    if (member != null && member.isScript()) {
+                        String name = member.name();
+                        if (name != null && !name.isEmpty()) {
+                            return name;
+                        }
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
     public void registerBuiltin(String name, BuiltinHandler handler) {
         builtins.put(name.toLowerCase(), handler);
     }
@@ -329,7 +367,10 @@ public class LingoVM {
         if (debugMode) {
             String handlerName = getName(handler.nameId());
             String scriptType = script.scriptType() != null ? script.scriptType().name() : "UNKNOWN";
-            String scriptInfo = scriptType + " script#" + script.id();
+            String memberName = getScriptMemberName(script);
+            String scriptInfo = memberName != null && !memberName.isEmpty()
+                ? scriptType + " \"" + memberName + "\""
+                : scriptType + " script#" + script.id();
 
             // Get caller info from call stack (before we push the new scope)
             String callerInfo = "";

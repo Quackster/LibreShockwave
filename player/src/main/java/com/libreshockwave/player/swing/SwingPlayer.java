@@ -174,6 +174,57 @@ public class SwingPlayer extends JFrame {
         System.out.println(message);
     }
 
+    /**
+     * Get the member name for a script, searching all casts.
+     * Used for debug output to show "Client Initialization Script" instead of "#5".
+     */
+    private String getScriptMemberName(ScriptChunk script) {
+        if (script == null || dirPlayer == null) return null;
+        int scriptId = script.id();
+        DirectorFile file = dirPlayer.getFile();
+        CastManager castManager = dirPlayer.getCastManager();
+
+        // First check the main file's cast members
+        if (file != null) {
+            for (var member : file.getCastMembers()) {
+                if (member.id() == scriptId && member.isScript()) {
+                    String name = member.name();
+                    if (name != null && !name.isEmpty()) {
+                        return name;
+                    }
+                }
+            }
+        }
+
+        // Then check all cast libraries
+        if (castManager != null) {
+            for (CastLib cast : castManager.getCasts()) {
+                if (cast.getState() == CastLib.State.LOADED) {
+                    var member = cast.getMember(scriptId);
+                    if (member != null && member.isScript()) {
+                        String name = member.name();
+                        if (name != null && !name.isEmpty()) {
+                            return name;
+                        }
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Format a script identifier for display (member name if available, otherwise "#id").
+     */
+    private String formatScriptId(ScriptChunk script) {
+        String name = getScriptMemberName(script);
+        if (name != null && !name.isEmpty()) {
+            return "\"" + name + "\"";
+        }
+        return "#" + script.id();
+    }
+
     private void setStatus(String text) {
         statusLabel.setText(text);
     }
@@ -421,7 +472,7 @@ public class SwingPlayer extends JFrame {
         }
 
         for (ScriptChunk script : movieFile.getScripts()) {
-            log("  Script #" + script.id() + " (" + script.scriptType() + "): " +
+            log("  Script " + formatScriptId(script) + " (" + script.scriptType() + "): " +
                 script.handlers().size() + " handlers");
             for (ScriptChunk.Handler h : script.handlers()) {
                 String handlerName = names != null ? names.getName(h.nameId()) : "?" + h.nameId();
