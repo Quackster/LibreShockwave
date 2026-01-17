@@ -263,6 +263,7 @@ public class CastLib {
         scriptContext = file.getScriptContext();
         scriptNames = file.getScriptNames();
         dirVersion = file.getConfig() != null ? file.getConfig().directorVersion() : 0;
+        capitalX = file.isCapitalX();
 
         // Load all cast members
         for (CastMemberChunk member : file.getCastMembers()) {

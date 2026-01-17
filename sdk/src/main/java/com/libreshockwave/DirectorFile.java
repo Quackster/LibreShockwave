@@ -45,6 +45,7 @@ public class DirectorFile {
     private final List<CastChunk> casts = new ArrayList<>();
     private final List<CastMemberChunk> castMembers = new ArrayList<>();
     private final List<ScriptChunk> scripts = new ArrayList<>();
+    private boolean capitalX = false;  // True if file uses LctX (capital X) format
 
     public record ChunkInfo(
         int id,
@@ -77,6 +78,7 @@ public class DirectorFile {
     public CastListChunk getCastList() { return castList; }
     public ScriptContextChunk getScriptContext() { return scriptContext; }
     public ScriptNamesChunk getScriptNames() { return scriptNames; }
+    public boolean isCapitalX() { return capitalX; }
     public List<CastChunk> getCasts() { return Collections.unmodifiableList(casts); }
     public List<CastMemberChunk> getCastMembers() { return Collections.unmodifiableList(castMembers); }
     public List<ScriptChunk> getScripts() { return Collections.unmodifiableList(scripts); }
@@ -409,6 +411,7 @@ public class DirectorFile {
 
                     if (chunk instanceof ScriptContextChunk) {
                         capitalX = info.fourcc == BinaryReader.fourCC("LctX");
+                        file.capitalX = capitalX;
                     }
                 }
             } catch (Exception e) {
@@ -471,6 +474,7 @@ public class DirectorFile {
                     // Update capitalX flag if we found a script context
                     if (chunk instanceof ScriptContextChunk) {
                         capitalX = abInfo.fourCC().equals("LctX");
+                        file.capitalX = capitalX;
                     }
 
                     // Update version from config

@@ -197,6 +197,7 @@ public class CastManager {
         if (file.getConfig() != null) {
             castLib.setDirVersion(file.getConfig().directorVersion());
         }
+        castLib.setCapitalX(file.isCapitalX());
 
         castLib.setState(CastLib.State.LOADED);
 
@@ -218,6 +219,7 @@ public class CastManager {
         if (file.getConfig() != null) {
             castLib.setDirVersion(file.getConfig().directorVersion());
         }
+        castLib.setCapitalX(file.isCapitalX());
 
         castLib.setState(CastLib.State.LOADED);
 

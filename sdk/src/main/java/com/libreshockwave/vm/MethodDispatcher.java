@@ -168,8 +168,8 @@ public class MethodDispatcher {
     private Datum callPropListMethod(Datum.PropList propList, String method, List<Datum> args) {
         return switch (method.toLowerCase()) {
             case "count" -> Datum.of(propList.count());
-            case "getprop", "getaprop" -> args.isEmpty() ? Datum.voidValue() : propList.get(args.get(0));
-            case "setprop", "setaprop", "addprop" -> {
+            case "getprop", "getaprop", "getat" -> args.isEmpty() ? Datum.voidValue() : propList.get(args.get(0));
+            case "setprop", "setaprop", "addprop", "setat" -> {
                 if (args.size() >= 2) propList.put(args.get(0), args.get(1));
                 yield Datum.voidValue();
             }
