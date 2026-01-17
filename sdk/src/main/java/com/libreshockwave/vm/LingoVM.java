@@ -905,12 +905,28 @@ public class LingoVM {
                 push(contains ? Datum.TRUE : Datum.FALSE);
             }
 
-            // Variables
-            case GET_LOCAL -> push(scope.getLocal(arg));
-            case SET_LOCAL -> scope.setLocal(arg, pop());
+            // Variables - divide arg by variable multiplier to get 0-based index (matches dirplayer-rs)
+            case GET_LOCAL -> {
+                int multiplier = getVariableMultiplier();
+                int index = arg / multiplier;
+                push(scope.getLocal(index));
+            }
+            case SET_LOCAL -> {
+                int multiplier = getVariableMultiplier();
+                int index = arg / multiplier;
+                scope.setLocal(index, pop());
+            }
 
-            case GET_PARAM -> push(scope.getArg(arg));
-            case SET_PARAM -> scope.setArg(arg, pop());
+            case GET_PARAM -> {
+                int multiplier = getVariableMultiplier();
+                int index = arg / multiplier;
+                push(scope.getArg(index));
+            }
+            case SET_PARAM -> {
+                int multiplier = getVariableMultiplier();
+                int index = arg / multiplier;
+                scope.setArg(index, pop());
+            }
 
             case GET_GLOBAL, GET_GLOBAL2 -> {
                 String name = getName(arg);
@@ -1844,6 +1860,42 @@ public class LingoVM {
             }
         }
         return handler.instructions().size();
+    }
+
+    /**
+     * Get the variable multiplier for the current script.
+     * Matches dirplayer-rs get_variable_multiplier().
+     *
+     * The bytecode argument for local/param access needs to be divided by this multiplier
+     * to get the actual 0-based index.
+     */
+    private int getVariableMultiplier() {
+        if (callStack.isEmpty()) {
+            return 1;
+        }
+
+        Scope currentScope = callStack.peek();
+        ScriptChunk currentScript = currentScope.getScript();
+        if (currentScript == null) {
+            return 1;
+        }
+
+        CastLib scriptCast = findCastForScript(currentScript);
+        if (scriptCast == null) {
+            // Default for main file scripts
+            int version = file != null && file.getConfig() != null ? file.getConfig().directorVersion() : 0;
+            return version >= 500 ? 8 : 6;
+        }
+
+        // Match dirplayer-rs logic:
+        // - capitalX (LctX): multiplier = 1
+        // - version >= 500: multiplier = 8
+        // - otherwise: multiplier = 6
+        if (scriptCast.isCapitalX()) {
+            return 1;
+        }
+        int version = scriptCast.getDirVersion();
+        return version >= 500 ? 8 : 6;
     }
 
     private List<Datum> extractArgList(Datum argList) {

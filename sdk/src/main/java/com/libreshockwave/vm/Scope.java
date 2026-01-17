@@ -67,18 +67,18 @@ public class Scope {
         return instructionPointer >= handler.instructions().size();
     }
 
-    // Argument access (1-based indexing)
+    // Argument access (0-based indexing, matching dirplayer-rs)
 
     public Datum getArg(int index) {
-        if (index >= 1 && index <= args.length) {
-            return args[index - 1];
+        if (index >= 0 && index < args.length) {
+            return args[index];
         }
         return Datum.voidValue();
     }
 
     public void setArg(int index, Datum value) {
-        if (index >= 1 && index <= args.length) {
-            args[index - 1] = value;
+        if (index >= 0 && index < args.length) {
+            args[index] = value;
         }
     }
 
@@ -86,18 +86,18 @@ public class Scope {
         return args.length;
     }
 
-    // Local variable access (1-based indexing)
+    // Local variable access (0-based indexing, matching dirplayer-rs)
 
     public Datum getLocal(int index) {
-        if (index >= 1 && index <= locals.length) {
-            return locals[index - 1];
+        if (index >= 0 && index < locals.length) {
+            return locals[index];
         }
         return Datum.voidValue();
     }
 
     public void setLocal(int index, Datum value) {
-        if (index >= 1 && index <= locals.length) {
-            locals[index - 1] = value;
+        if (index >= 0 && index < locals.length) {
+            locals[index] = value;
         }
     }
 
