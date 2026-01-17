@@ -2457,5 +2457,80 @@ public class LingoVM {
             if (args.isEmpty()) return Datum.of(0);
             return Datum.of(~args.get(0).intValue());
         });
+
+        // call(#handlerName, receiver, args...) - matches dirplayer-rs call handler
+        registerBuiltin("call", (vm, args) -> {
+            if (args.size() < 2) return Datum.voidValue();
+
+            // First arg must be a symbol (handler name)
+            Datum handlerNameDatum = args.get(0);
+            if (!(handlerNameDatum instanceof Datum.Symbol symbol)) {
+                debugLog("call: handler name must be a symbol, got " + handlerNameDatum.getClass().getSimpleName());
+                return Datum.voidValue();
+            }
+            String handlerName = symbol.name();
+
+            // Second arg is the receiver
+            Datum receiver = args.get(1);
+
+            // Remaining args are passed to the handler
+            List<Datum> handlerArgs = args.size() > 2 ? args.subList(2, args.size()) : new ArrayList<>();
+
+            // Collect script instances from the receiver
+            List<Datum.ScriptInstanceRef> instances = new ArrayList<>();
+            collectScriptInstances(receiver, instances);
+
+            if (instances.isEmpty()) {
+                // Try to call as a method on the receiver directly
+                return callMethod(receiver, handlerName, handlerArgs);
+            }
+
+            // Call the handler on each script instance
+            Datum result = Datum.voidValue();
+            for (Datum.ScriptInstanceRef instance : instances) {
+                ScriptChunk script = findScriptByName(instance.scriptName());
+                if (script != null) {
+                    for (ScriptChunk.Handler h : script.handlers()) {
+                        String hName = getName(h.nameId());
+                        if (hName != null && hName.equalsIgnoreCase(handlerName)) {
+                            // Prepend 'me' (the instance) as first argument
+                            List<Datum> allArgs = new ArrayList<>();
+                            allArgs.add(instance);
+                            allArgs.addAll(handlerArgs);
+                            result = execute(script, h, allArgs.toArray(new Datum[0]));
+                            break;
+                        }
+                    }
+                }
+            }
+            return result;
+        });
+    }
+
+    /**
+     * Collect script instances from a datum (recursively for lists/proplists).
+     * Matches dirplayer-rs get_datum_script_instance_ids.
+     */
+    private void collectScriptInstances(Datum datum, List<Datum.ScriptInstanceRef> instances) {
+        if (datum instanceof Datum.ScriptInstanceRef instance) {
+            instances.add(instance);
+        } else if (datum instanceof Datum.SpriteRef spriteRef) {
+            // Get script instances from sprite via callback
+            if (activeScriptInstancesCallback != null) {
+                for (Datum.ScriptInstanceRef instance : activeScriptInstancesCallback.getActiveScriptInstances()) {
+                    // TODO: Filter by sprite channel if needed
+                    instances.add(instance);
+                }
+            }
+        } else if (datum instanceof Datum.DList list) {
+            for (Datum item : list.items()) {
+                collectScriptInstances(item, instances);
+            }
+        } else if (datum instanceof Datum.PropList propList) {
+            for (Datum value : propList.properties().values()) {
+                collectScriptInstances(value, instances);
+            }
+        }
+        // Int and other types are silently ignored (matches dirplayer-rs)
     }
 }
