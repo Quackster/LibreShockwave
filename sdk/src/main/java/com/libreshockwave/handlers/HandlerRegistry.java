@@ -3,6 +3,7 @@ package com.libreshockwave.handlers;
 import com.libreshockwave.lingo.Datum;
 import com.libreshockwave.vm.LingoVM;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -201,15 +202,239 @@ public class HandlerRegistry {
         return args.isEmpty() ? Datum.TRUE : args.get(0).isVoid() ? Datum.TRUE : Datum.FALSE;
     }
 
+    /**
+     * Parse a Lingo literal string into a Datum.
+     * Supports: lists, proplists, strings, symbols, integers, floats, VOID, TRUE, FALSE.
+     * Example: value("[\"Object Manager Class\"]") -> list with one string element
+     */
     private static Datum value(LingoVM vm, List<Datum> args) {
         if (args.isEmpty()) return Datum.voidValue();
         String s = args.get(0).stringValue().trim();
-        try {
-            if (s.contains(".")) return Datum.of(Float.parseFloat(s));
-            return Datum.of(Integer.parseInt(s));
-        } catch (NumberFormatException e) {
-            return Datum.voidValue();
+        if (s.isEmpty()) return Datum.voidValue();
+        return parseLingoLiteral(s, 0).datum;
+    }
+
+    private record ParseResult(Datum datum, int endPos) {}
+
+    private static ParseResult parseLingoLiteral(String s, int start) {
+        // Skip whitespace
+        while (start < s.length() && Character.isWhitespace(s.charAt(start))) start++;
+        if (start >= s.length()) return new ParseResult(Datum.voidValue(), start);
+
+        char c = s.charAt(start);
+
+        // List or PropList: [...]
+        if (c == '[') {
+            return parseListOrPropList(s, start);
         }
+
+        // Quoted string: "..."
+        if (c == '"') {
+            return parseString(s, start);
+        }
+
+        // Symbol: #name
+        if (c == '#') {
+            return parseSymbol(s, start);
+        }
+
+        // Number (integer or float) or keyword
+        return parseNumberOrKeyword(s, start);
+    }
+
+    private static ParseResult parseListOrPropList(String s, int start) {
+        // Skip '['
+        int pos = start + 1;
+
+        // Skip whitespace
+        while (pos < s.length() && Character.isWhitespace(s.charAt(pos))) pos++;
+
+        // Empty list/proplist check
+        if (pos < s.length() && s.charAt(pos) == ']') {
+            return new ParseResult(Datum.list(), pos + 1);
+        }
+
+        // Check for proplist marker ':'
+        if (pos < s.length() && s.charAt(pos) == ':') {
+            // Empty proplist [:]
+            pos++;
+            while (pos < s.length() && Character.isWhitespace(s.charAt(pos))) pos++;
+            if (pos < s.length() && s.charAt(pos) == ']') {
+                return new ParseResult(Datum.propList(), pos + 1);
+            }
+        }
+
+        // Parse first element to determine if list or proplist
+        List<Datum> items = new ArrayList<>();
+        Datum.PropList propList = null;
+        boolean isPropList = false;
+
+        while (pos < s.length()) {
+            // Skip whitespace
+            while (pos < s.length() && Character.isWhitespace(s.charAt(pos))) pos++;
+            if (pos >= s.length()) break;
+
+            // Check for end
+            if (s.charAt(pos) == ']') {
+                pos++;
+                break;
+            }
+
+            // Parse key/value
+            ParseResult keyResult = parseLingoLiteral(s, pos);
+            pos = keyResult.endPos;
+
+            // Skip whitespace
+            while (pos < s.length() && Character.isWhitespace(s.charAt(pos))) pos++;
+
+            // Check for ':' (proplist)
+            if (pos < s.length() && s.charAt(pos) == ':') {
+                if (!isPropList && items.isEmpty()) {
+                    isPropList = true;
+                    propList = Datum.propList();
+                }
+                pos++; // skip ':'
+
+                // Parse value
+                while (pos < s.length() && Character.isWhitespace(s.charAt(pos))) pos++;
+                ParseResult valResult = parseLingoLiteral(s, pos);
+                pos = valResult.endPos;
+
+                if (propList != null) {
+                    propList.put(keyResult.datum, valResult.datum);
+                }
+            } else {
+                // Regular list item
+                items.add(keyResult.datum);
+            }
+
+            // Skip whitespace and comma
+            while (pos < s.length() && Character.isWhitespace(s.charAt(pos))) pos++;
+            if (pos < s.length() && s.charAt(pos) == ',') pos++;
+        }
+
+        if (isPropList && propList != null) {
+            return new ParseResult(propList, pos);
+        } else {
+            Datum.DList list = Datum.list();
+            for (Datum item : items) {
+                list.add(item);
+            }
+            return new ParseResult(list, pos);
+        }
+    }
+
+    private static ParseResult parseString(String s, int start) {
+        StringBuilder sb = new StringBuilder();
+        int pos = start + 1; // skip opening quote
+
+        while (pos < s.length()) {
+            char c = s.charAt(pos);
+            if (c == '"') {
+                pos++;
+                break;
+            }
+            if (c == '\\' && pos + 1 < s.length()) {
+                pos++;
+                c = s.charAt(pos);
+                switch (c) {
+                    case 'n' -> sb.append('\n');
+                    case 'r' -> sb.append('\r');
+                    case 't' -> sb.append('\t');
+                    case '"' -> sb.append('"');
+                    case '\\' -> sb.append('\\');
+                    default -> sb.append(c);
+                }
+            } else {
+                sb.append(c);
+            }
+            pos++;
+        }
+
+        return new ParseResult(Datum.of(sb.toString()), pos);
+    }
+
+    private static ParseResult parseSymbol(String s, int start) {
+        int pos = start + 1; // skip '#'
+        StringBuilder sb = new StringBuilder();
+
+        while (pos < s.length()) {
+            char c = s.charAt(pos);
+            if (Character.isLetterOrDigit(c) || c == '_') {
+                sb.append(c);
+                pos++;
+            } else {
+                break;
+            }
+        }
+
+        return new ParseResult(Datum.symbol(sb.toString()), pos);
+    }
+
+    private static ParseResult parseNumberOrKeyword(String s, int start) {
+        int pos = start;
+        StringBuilder sb = new StringBuilder();
+
+        // Handle negative numbers
+        if (pos < s.length() && s.charAt(pos) == '-') {
+            sb.append('-');
+            pos++;
+        }
+
+        // Collect digits and decimal point
+        boolean hasDecimal = false;
+        while (pos < s.length()) {
+            char c = s.charAt(pos);
+            if (Character.isDigit(c)) {
+                sb.append(c);
+                pos++;
+            } else if (c == '.' && !hasDecimal) {
+                hasDecimal = true;
+                sb.append(c);
+                pos++;
+            } else if (Character.isLetter(c) || c == '_') {
+                // It's a keyword/identifier
+                while (pos < s.length() && (Character.isLetterOrDigit(s.charAt(pos)) || s.charAt(pos) == '_')) {
+                    sb.append(s.charAt(pos));
+                    pos++;
+                }
+                break;
+            } else {
+                break;
+            }
+        }
+
+        String token = sb.toString();
+        if (token.isEmpty()) {
+            return new ParseResult(Datum.voidValue(), pos);
+        }
+
+        // Check for keywords
+        return switch (token.toUpperCase()) {
+            case "VOID" -> new ParseResult(Datum.voidValue(), pos);
+            case "TRUE", "1" -> new ParseResult(Datum.TRUE, pos);
+            case "FALSE", "0" -> {
+                // Only treat as boolean if it's the keyword, not just digit
+                if (token.equalsIgnoreCase("FALSE")) {
+                    yield new ParseResult(Datum.FALSE, pos);
+                }
+                yield new ParseResult(Datum.of(0), pos);
+            }
+            case "EMPTY" -> new ParseResult(Datum.of(""), pos);
+            default -> {
+                // Try parsing as number
+                try {
+                    if (hasDecimal) {
+                        yield new ParseResult(Datum.of(Float.parseFloat(token)), pos);
+                    } else {
+                        yield new ParseResult(Datum.of(Integer.parseInt(token)), pos);
+                    }
+                } catch (NumberFormatException e) {
+                    // Unknown identifier returns VOID per Lingo spec
+                    yield new ParseResult(Datum.voidValue(), pos);
+                }
+            }
+        };
     }
 
     private static Datum symbol(LingoVM vm, List<Datum> args) {
