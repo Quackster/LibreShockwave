@@ -901,4 +901,71 @@ For browser usage with the current setup, consider:
 
 ---
 
+### 2026-01-17: Script Instance Creation (script "new" extcall)
+
+**Summary:** Implemented `script(x).new()` functionality matching dirplayer-rs behavior for creating script instances.
+
+**Rust Reference:**
+- `vm-rust/src/player/handlers/types.rs` - TypeHandlers::new() entry point
+- `vm-rust/src/player/handlers/datum_handlers/script.rs` - ScriptDatumHandlers::new() and create_script_instance()
+- `vm-rust/src/player/script.rs` - ScriptInstance structure
+
+**Modified Files:**
+1. `sdk/src/main/java/com/libreshockwave/lingo/Datum.java` - Updated ScriptInstanceRef:
+   - Added `CastMemberRef scriptRef` field to track parent script
+   - Added `ScriptInstanceRef ancestor` field for inheritance
+   - Updated `getProperty()` to check ancestor chain
+   - Updated `setProperty()` to handle ancestor property and inheritance
+   - Added `hasProperty()` method for property existence check
+
+2. `sdk/src/main/java/com/libreshockwave/vm/LingoVM.java`:
+   - Added `new` built-in handler that dispatches based on argument type:
+     - ScriptRef: creates script instance via `createScriptInstance()`
+     - Symbol + CastLib: TODO (cast member creation)
+     - Xtra: TODO (xtra instance creation)
+   - Added `createScriptInstance()` method that:
+     - Gets script from ScriptRef
+     - Initializes properties from script's property declarations (PropertyEntry nameIds)
+     - Creates ScriptInstanceRef with scriptName, scriptRef, and initial properties
+     - Calls script's "new" handler if present (with instance as first arg)
+     - Returns instance or return value from "new" handler
+   - Updated `callMethod()` for ScriptRef to special-case "new" method
+
+**Call Flow for script(x).new():**
+```
+1. EXT_CALL opcode → callGlobalHandler("new", args)
+2. callGlobalHandler routes "new" to built-in handlers (skips custom handlers)
+3. "new" built-in checks argument type → ScriptRef
+4. createScriptInstance(scriptRef, constructorArgs):
+   a. Find script by CastMemberRef
+   b. Initialize properties from script's PropertyEntry list
+   c. Create ScriptInstanceRef(name, scriptRef, properties)
+   d. Look for "new" handler in script
+   e. If found, call it with [instance, ...constructorArgs]
+   f. Return instance (or handler's return value if non-void)
+```
+
+**Example Lingo:**
+```lingo
+-- Create script instance
+myObj = script("MyParentScript").new()
+
+-- Create with constructor args
+myObj = script("MyScript").new(arg1, arg2)
+
+-- Instance property access (supported via ScriptInstanceRef)
+put myObj.someProperty
+myObj.someProperty = newValue
+
+-- Ancestor inheritance (supported)
+myObj.ancestor = script("BaseScript").new()
+```
+
+**Differences from dirplayer-rs:**
+- Java uses synchronous execution vs Rust's async
+- ScriptInstanceRef embeds properties directly vs Rust's allocator-based refs
+- Legacy constructor maintained for backwards compatibility
+
+---
+
 *Last updated: January 2026*

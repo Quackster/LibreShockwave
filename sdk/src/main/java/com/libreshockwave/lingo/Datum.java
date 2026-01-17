@@ -224,24 +224,79 @@ public sealed interface Datum {
 
     /**
      * Runtime script instance with property storage.
+     * Matches dirplayer-rs ScriptInstance structure.
      */
     final class ScriptInstanceRef implements Datum {
         private final String scriptName;
+        private final CastMemberRef scriptRef;  // Reference to parent script
         private final Map<String, Datum> properties;
+        private ScriptInstanceRef ancestor;  // Optional ancestor for inheritance
 
-        public ScriptInstanceRef(String scriptName, Map<String, Datum> initialProps) {
+        public ScriptInstanceRef(String scriptName, CastMemberRef scriptRef, Map<String, Datum> initialProps) {
             this.scriptName = scriptName;
+            this.scriptRef = scriptRef;
             this.properties = new LinkedHashMap<>(initialProps);
+            this.ancestor = null;
+        }
+
+        // Legacy constructor for backwards compatibility
+        public ScriptInstanceRef(String scriptName, Map<String, Datum> initialProps) {
+            this(scriptName, null, initialProps);
         }
 
         public String scriptName() { return scriptName; }
 
+        public CastMemberRef scriptRef() { return scriptRef; }
+
+        public ScriptInstanceRef ancestor() { return ancestor; }
+
+        public void setAncestor(ScriptInstanceRef ancestor) { this.ancestor = ancestor; }
+
         public Datum getProperty(String name) {
-            return properties.getOrDefault(name, Void.INSTANCE);
+            // Check for ancestor property
+            if ("ancestor".equalsIgnoreCase(name)) {
+                return ancestor != null ? ancestor : Void.INSTANCE;
+            }
+            // Check local properties first
+            Datum value = properties.get(name);
+            if (value != null) {
+                return value;
+            }
+            // Check ancestor chain
+            if (ancestor != null) {
+                return ancestor.getProperty(name);
+            }
+            return Void.INSTANCE;
         }
 
         public void setProperty(String name, Datum value) {
+            // Handle ancestor property
+            if ("ancestor".equalsIgnoreCase(name)) {
+                if (value instanceof ScriptInstanceRef ancestorRef) {
+                    this.ancestor = ancestorRef;
+                } else if (value instanceof Void) {
+                    this.ancestor = null;
+                }
+                return;
+            }
+            // Try to set on current instance first
+            if (properties.containsKey(name)) {
+                properties.put(name, value);
+                return;
+            }
+            // If not found locally, try ancestor
+            if (ancestor != null && ancestor.hasProperty(name)) {
+                ancestor.setProperty(name, value);
+                return;
+            }
+            // Otherwise create on current instance
             properties.put(name, value);
+        }
+
+        public boolean hasProperty(String name) {
+            if (properties.containsKey(name)) return true;
+            if (ancestor != null) return ancestor.hasProperty(name);
+            return false;
         }
 
         public Map<String, Datum> properties() {

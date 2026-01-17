@@ -633,6 +633,79 @@ public class LingoVM {
     }
 
     /**
+     * Create a new script instance from a ScriptRef.
+     * Matches dirplayer-rs ScriptDatumHandlers::new and create_script_instance.
+     *
+     * @param scriptRef Reference to the script
+     * @param constructorArgs Arguments to pass to the "new" handler
+     * @return The new script instance (or return value from "new" handler)
+     */
+    private Datum createScriptInstance(Datum.ScriptRef scriptRef, List<Datum> constructorArgs) {
+        ScriptChunk script = findScriptByCastRef(scriptRef.memberRef());
+        if (script == null) {
+            throw new LingoException("Cannot find script for " + scriptRef.memberRef());
+        }
+
+        // Get script name
+        String scriptName = getScriptMemberName(script);
+        if (scriptName == null || scriptName.isEmpty()) {
+            scriptName = "script_" + script.id();
+        }
+
+        // Initialize properties from script's property declarations
+        Map<String, Datum> initialProps = new LinkedHashMap<>();
+        for (ScriptChunk.PropertyEntry prop : script.properties()) {
+            String propName = getName(prop.nameId());
+            if (propName != null) {
+                initialProps.put(propName, Datum.voidValue());
+            }
+        }
+
+        // Create the script instance
+        Datum.ScriptInstanceRef instance = new Datum.ScriptInstanceRef(
+            scriptName,
+            scriptRef.memberRef(),
+            initialProps
+        );
+
+        // Look for a "new" handler in the script
+        ScriptChunk.Handler newHandler = null;
+        int expectedParamCount = 0;
+        for (ScriptChunk.Handler h : script.handlers()) {
+            String hName = getName(h.nameId());
+            if ("new".equalsIgnoreCase(hName)) {
+                newHandler = h;
+                expectedParamCount = h.argNameIds().size();
+                break;
+            }
+        }
+
+        // If script has a "new" handler, call it
+        if (newHandler != null) {
+            // Pad args to expected count
+            List<Datum> paddedArgs = new ArrayList<>(constructorArgs);
+            while (paddedArgs.size() < expectedParamCount) {
+                paddedArgs.add(Datum.voidValue());
+            }
+
+            // Call the handler with instance as first arg (me)
+            List<Datum> allArgs = new ArrayList<>();
+            allArgs.add(instance);
+            allArgs.addAll(paddedArgs);
+
+            Datum result = execute(script, newHandler, allArgs.toArray(new Datum[0]));
+
+            // If the new handler returns a value (not void), return that instead
+            // This matches dirplayer-rs behavior where new() can return a different object
+            if (!(result instanceof Datum.Void)) {
+                return result;
+            }
+        }
+
+        return instance;
+    }
+
+    /**
      * Call a global handler with full resolution order.
      * Matches dirplayer-rs player_call_global_handler().
      *
@@ -1778,8 +1851,14 @@ public class LingoVM {
             return Datum.voidValue();
         }
 
-        // Handle ScriptRef - call static method on script
+        // Handle ScriptRef - call static method on script or create instance
         if (obj instanceof Datum.ScriptRef scriptRef) {
+            // Special case: "new" creates a script instance (matches dirplayer-rs)
+            if ("new".equalsIgnoreCase(methodName)) {
+                return createScriptInstance(scriptRef, args);
+            }
+
+            // Other methods are called as static handlers on the script
             ScriptChunk refScript = findScriptByCastRef(scriptRef.memberRef());
             if (refScript != null) {
                 for (ScriptChunk.Handler h : refScript.handlers()) {
@@ -2498,6 +2577,33 @@ public class LingoVM {
             }
 
             return new Datum.ScriptRef(memberRef);
+        });
+
+        // new(scriptRef, ...args) - creates a new instance of a script
+        // Matches dirplayer-rs TypeHandlers::new and ScriptDatumHandlers::new
+        registerBuiltin("new", (vm, args) -> {
+            if (args.isEmpty()) return Datum.voidValue();
+            Datum subject = args.get(0);
+            List<Datum> constructorArgs = args.size() > 1 ? args.subList(1, args.size()) : List.of();
+
+            // Handle ScriptRef - create script instance
+            if (subject instanceof Datum.ScriptRef scriptRef) {
+                return vm.createScriptInstance(scriptRef, constructorArgs);
+            }
+
+            // Handle Symbol with CastLib - create new cast member (not fully implemented)
+            if (subject.isSymbol() && args.size() >= 2 && args.get(1) instanceof Datum.CastLibRef) {
+                // TODO: Implement cast member creation
+                return Datum.voidValue();
+            }
+
+            // Handle Xtra - create xtra instance (delegated to callback)
+            if (subject instanceof Datum.Xtra xtra) {
+                // TODO: Implement xtra instance creation via callback
+                return Datum.voidValue();
+            }
+
+            throw new LingoException("Cannot call new() on " + subject.typeString());
         });
 
         // Navigation
