@@ -299,7 +299,7 @@ public class LingoVM {
      * Get the member name for a script, searching all casts.
      * Used for debug output to show "Client Initialization Script" instead of "#5".
      */
-    private String getScriptMemberName(ScriptChunk script) {
+    public String getScriptMemberName(ScriptChunk script) {
         if (script == null) return null;
         int scriptId = script.id();
 

@@ -387,49 +387,10 @@ public class DirPlayer {
     }
 
     /**
-     * Get the member name for a script, searching all casts.
-     * Used for debug/error output to show "Client Initialization Script" instead of "#5".
-     */
-    private String getScriptMemberName(ScriptChunk script) {
-        if (script == null) return null;
-        int scriptId = script.id();
-
-        // First check the main file's cast members
-        if (file != null) {
-            for (var member : file.getCastMembers()) {
-                if (member.id() == scriptId && member.isScript()) {
-                    String name = member.name();
-                    if (name != null && !name.isEmpty()) {
-                        return name;
-                    }
-                }
-            }
-        }
-
-        // Then check all cast libraries
-        if (castManager != null) {
-            for (var cast : castManager.getCasts()) {
-                if (cast.getState() == CastLib.State.LOADED) {
-                    var member = cast.getMember(scriptId);
-                    if (member != null && member.isScript()) {
-                        String name = member.name();
-                        if (name != null && !name.isEmpty()) {
-                            return name;
-
-                        }
-                    }
-                }
-            }
-        }
-
-        return null;
-    }
-
-    /**
      * Format a script identifier for display (member name if available, otherwise "#id").
      */
     private String formatScriptId(ScriptChunk script) {
-        String name = getScriptMemberName(script);
+        String name = this.vm.getScriptMemberName(script);
         if (name != null && !name.isEmpty()) {
             return "\"" + name + "\"";
         }
