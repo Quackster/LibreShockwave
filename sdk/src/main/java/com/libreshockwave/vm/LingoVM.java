@@ -300,8 +300,59 @@ public class LingoVM {
      * Used for debug output to show "Client Initialization Script" instead of "#5".
      */
     public String getScriptMemberName(ScriptChunk script) {
+        // First find which cast this script belongs to
+        CastLib sourceCast = findCastForScript(script);
+        return getScriptMemberName(script, sourceCast);
+    }
+
+    /**
+     * Find which cast library contains a given script.
+     */
+    private CastLib findCastForScript(ScriptChunk script) {
+        if (script == null || castManager == null) return null;
+
+        // Check if script is in the main file's scripts
+        if (file != null) {
+            for (ScriptChunk s : file.getScripts()) {
+                if (s == script) {
+                    // Main file scripts belong to cast #1
+                    return castManager.getCast(1);
+                }
+            }
+        }
+
+        // Check all cast libraries
+        for (CastLib cast : castManager.getCasts()) {
+            if (cast.getState() == CastLib.State.LOADED) {
+                for (ScriptChunk s : cast.getAllScripts()) {
+                    if (s == script) {
+                        return cast;
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Get the member name for a script, optionally using a known source cast.
+     * Used for debug output to show "Client Initialization Script" instead of "#5".
+     */
+    public String getScriptMemberName(ScriptChunk script, CastLib sourceCast) {
         if (script == null) return null;
         int scriptId = script.id();
+
+        // If we know the source cast, look there first
+        if (sourceCast != null && sourceCast.getState() == CastLib.State.LOADED) {
+            var member = sourceCast.getMember(scriptId);
+            if (member != null && member.isScript()) {
+                String name = member.name();
+                if (name != null && !name.isEmpty()) {
+                    return name;
+                }
+            }
+        }
 
         // First check the main file's cast members
         if (file != null) {
@@ -319,6 +370,9 @@ public class LingoVM {
         if (castManager != null) {
             for (CastLib cast : castManager.getCasts()) {
                 if (cast.getState() == CastLib.State.LOADED) {
+                    // Skip if this is the source cast we already checked
+                    if (cast == sourceCast) continue;
+
                     var member = cast.getMember(scriptId);
                     if (member != null && member.isScript()) {
                         String name = member.name();
@@ -368,9 +422,13 @@ public class LingoVM {
             String handlerName = getName(handler.nameId());
             String scriptType = script.scriptType() != null ? script.scriptType().name() : "UNKNOWN";
             String memberName = getScriptMemberName(script);
+            CastLib sourceCast = findCastForScript(script);
+            String castInfo = sourceCast != null
+                ? " in cast#" + sourceCast.getNumber() + (sourceCast.getName().isEmpty() ? "" : " \"" + sourceCast.getName() + "\"")
+                : "";
             String scriptInfo = memberName != null && !memberName.isEmpty()
-                ? scriptType + " \"" + memberName + "\""
-                : scriptType + " script#" + script.id();
+                ? scriptType + " \"" + memberName + "\"" + castInfo
+                : scriptType + " script#" + script.id() + castInfo;
 
             // Get caller info from call stack (before we push the new scope)
             String callerInfo = "";
@@ -1333,12 +1391,12 @@ public class LingoVM {
     }
 
     /**
-     * Result of finding a handler - contains both the script and handler.
+     * Result of finding a handler - contains the script, handler, names, and source cast.
      */
-    private record HandlerLocation(ScriptChunk script, ScriptChunk.Handler handler, ScriptNamesChunk names) {}
+    private record HandlerLocation(ScriptChunk script, ScriptChunk.Handler handler, ScriptNamesChunk names, CastLib sourceCast) {}
 
     private HandlerLocation findHandlerWithScript(String name) {
-        // First search in the main movie's scripts
+        // First search in the main movie's scripts (use cast #1 from castManager if available)
         if (file != null) {
             ScriptNamesChunk names = file.getScriptNames();
             if (names != null) {
@@ -1347,7 +1405,8 @@ public class LingoVM {
                     for (ScriptChunk script : file.getScripts()) {
                         for (ScriptChunk.Handler handler : script.handlers()) {
                             if (handler.nameId() == nameId) {
-                                return new HandlerLocation(script, handler, names);
+                                CastLib primaryCast = castManager != null ? castManager.getCast(1) : null;
+                                return new HandlerLocation(script, handler, names, primaryCast);
                             }
                         }
                     }
@@ -1367,7 +1426,7 @@ public class LingoVM {
                                 for (ScriptChunk.Handler handler : script.handlers()) {
                                     if (handler.nameId() == nameId) {
                                         debugLog("Found handler '" + name + "' in cast #" + cast.getNumber() + " '" + cast.getName() + "'");
-                                        return new HandlerLocation(script, handler, castNames);
+                                        return new HandlerLocation(script, handler, castNames, cast);
                                     }
                                 }
                             }

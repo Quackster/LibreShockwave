@@ -54,7 +54,8 @@ public record ScriptNamesChunk(
         reader.setPosition(namesOffset);
         for (int i = 0; i < namesCount; i++) {
             int len = reader.readU8();
-            names.add(reader.readStringMacRoman(len));
+            String name = reader.readStringMacRoman(len);
+            names.add(name);
         }
 
         return new ScriptNamesChunk(id, names);
