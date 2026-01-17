@@ -19,34 +19,29 @@ public class HandlerRegistry {
         StringHandlers.register(vm);
         ListHandlers.register(vm);
         SoundHandlers.register(vm);
+        NetworkHandlers.register(vm);
         registerCoreHandlers(vm);
         registerTypeHandlers(vm);
         registerPointRectHandlers(vm);
+        registerReferenceHandlers(vm);
+        registerBitwiseHandlers(vm);
+        registerNavigationHandlers(vm);
+        registerCallHandler(vm);
     }
 
     private static void registerCoreHandlers(LingoVM vm) {
-        // Output
         vm.registerBuiltin("put", HandlerRegistry::put);
         vm.registerBuiltin("alert", HandlerRegistry::alert);
-
-        // Control
+        vm.registerBuiltin("beep", HandlerRegistry::beep);
         vm.registerBuiltin("halt", HandlerRegistry::halt);
         vm.registerBuiltin("nothing", HandlerRegistry::nothing);
         vm.registerBuiltin("pass", HandlerRegistry::nothing);
-        vm.registerBuiltin("return", HandlerRegistry::returnValue);
-
-        // Timing
-        vm.registerBuiltin("delay", HandlerRegistry::delay);
-        vm.registerBuiltin("timeout", HandlerRegistry::timeout);
-
-        // Object
-        vm.registerBuiltin("new", HandlerRegistry::newObject);
-        vm.registerBuiltin("objectP", HandlerRegistry::objectP);
-        vm.registerBuiltin("script", HandlerRegistry::script);
+        vm.registerBuiltin("delay", HandlerRegistry::nothing);
+        vm.registerBuiltin("timeout", HandlerRegistry::nothing);
+        vm.registerBuiltin("cursor", HandlerRegistry::nothing);
     }
 
     private static void registerTypeHandlers(LingoVM vm) {
-        // Type checking
         vm.registerBuiltin("ilk", HandlerRegistry::ilk);
         vm.registerBuiltin("objectP", HandlerRegistry::objectP);
         vm.registerBuiltin("listP", HandlerRegistry::listP);
@@ -55,23 +50,57 @@ public class HandlerRegistry {
         vm.registerBuiltin("integerP", HandlerRegistry::integerP);
         vm.registerBuiltin("floatP", HandlerRegistry::floatP);
         vm.registerBuiltin("voidP", HandlerRegistry::voidP);
-
-        // Type conversion
         vm.registerBuiltin("value", HandlerRegistry::value);
         vm.registerBuiltin("symbol", HandlerRegistry::symbol);
     }
 
     private static void registerPointRectHandlers(LingoVM vm) {
-        // Point
         vm.registerBuiltin("point", HandlerRegistry::point);
-
-        // Rect
         vm.registerBuiltin("rect", HandlerRegistry::rect);
         vm.registerBuiltin("union", HandlerRegistry::union);
         vm.registerBuiltin("intersect", HandlerRegistry::intersect);
         vm.registerBuiltin("inside", HandlerRegistry::inside);
         vm.registerBuiltin("map", HandlerRegistry::map);
-        vm.registerBuiltin("offset", HandlerRegistry::offset);
+    }
+
+    private static void registerReferenceHandlers(LingoVM vm) {
+        vm.registerBuiltin("castLib", HandlerRegistry::castLib);
+        vm.registerBuiltin("member", HandlerRegistry::member);
+        vm.registerBuiltin("sprite", HandlerRegistry::sprite);
+        vm.registerBuiltin("sound", HandlerRegistry::sound);
+    }
+
+    private static void registerBitwiseHandlers(LingoVM vm) {
+        vm.registerBuiltin("bitAnd", (vm1, args) ->
+            args.size() < 2 ? Datum.of(0) : Datum.of(args.get(0).intValue() & args.get(1).intValue()));
+        vm.registerBuiltin("bitOr", (vm1, args) ->
+            args.size() < 2 ? Datum.of(0) : Datum.of(args.get(0).intValue() | args.get(1).intValue()));
+        vm.registerBuiltin("bitXor", (vm1, args) ->
+            args.size() < 2 ? Datum.of(0) : Datum.of(args.get(0).intValue() ^ args.get(1).intValue()));
+        vm.registerBuiltin("bitNot", (vm1, args) ->
+            args.isEmpty() ? Datum.of(0) : Datum.of(~args.get(0).intValue()));
+    }
+
+    private static void registerNavigationHandlers(LingoVM vm) {
+        vm.registerBuiltin("go", (vm1, args) -> {
+            if (!args.isEmpty()) System.out.println("[go] frame=" + args.get(0).stringValue());
+            return Datum.voidValue();
+        });
+        vm.registerBuiltin("play", (vm1, args) -> {
+            System.out.println("[play] " + (args.isEmpty() ? "" : args.get(0).stringValue()));
+            return Datum.voidValue();
+        });
+        vm.registerBuiltin("updateStage", (vm1, args) -> Datum.voidValue());
+        vm.registerBuiltin("puppetTempo", (vm1, args) -> {
+            if (!args.isEmpty()) System.out.println("[puppetTempo] " + args.get(0).intValue() + " fps");
+            return Datum.voidValue();
+        });
+        vm.registerBuiltin("moveToFront", (vm1, args) -> Datum.voidValue());
+        vm.registerBuiltin("puppetSound", (vm1, args) -> Datum.voidValue());
+    }
+
+    private static void registerCallHandler(LingoVM vm) {
+        vm.registerBuiltin("call", HandlerRegistry::call);
     }
 
     // Core handlers
@@ -87,9 +116,12 @@ public class HandlerRegistry {
     }
 
     private static Datum alert(LingoVM vm, List<Datum> args) {
-        if (!args.isEmpty()) {
-            System.out.println("[ALERT] " + args.get(0).stringValue());
-        }
+        if (!args.isEmpty()) System.out.println("[ALERT] " + args.get(0).stringValue());
+        return Datum.voidValue();
+    }
+
+    private static Datum beep(LingoVM vm, List<Datum> args) {
+        System.out.println("[BEEP]");
         return Datum.voidValue();
     }
 
@@ -102,31 +134,6 @@ public class HandlerRegistry {
         return Datum.voidValue();
     }
 
-    private static Datum returnValue(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.voidValue();
-        return args.get(0);
-    }
-
-    private static Datum delay(LingoVM vm, List<Datum> args) {
-        // Delay is typically handled by the player, not the VM
-        return Datum.voidValue();
-    }
-
-    private static Datum timeout(LingoVM vm, List<Datum> args) {
-        // Timeout creation - would need player support
-        return Datum.voidValue();
-    }
-
-    private static Datum newObject(LingoVM vm, List<Datum> args) {
-        // Object instantiation - requires parent script support
-        return Datum.voidValue();
-    }
-
-    private static Datum script(LingoVM vm, List<Datum> args) {
-        // Script reference - would need cast member lookup
-        return Datum.voidValue();
-    }
-
     // Type checking handlers
 
     private static Datum ilk(LingoVM vm, List<Datum> args) {
@@ -134,76 +141,79 @@ public class HandlerRegistry {
         Datum d = args.get(0);
 
         if (args.size() > 1) {
-            // ilk(obj, #type) - check if obj is of type
             String checkType = args.get(1).stringValue().toLowerCase();
-            String actualType = d.type().getTypeName().toLowerCase();
-            return actualType.equals(checkType) ? Datum.TRUE : Datum.FALSE;
+            return switch (checkType) {
+                case "integer" -> d.isInt() ? Datum.TRUE : Datum.FALSE;
+                case "float" -> d.isFloat() ? Datum.TRUE : Datum.FALSE;
+                case "string" -> d.isString() ? Datum.TRUE : Datum.FALSE;
+                case "symbol" -> d.isSymbol() ? Datum.TRUE : Datum.FALSE;
+                case "list" -> d instanceof Datum.DList ? Datum.TRUE : Datum.FALSE;
+                case "proplist" -> d instanceof Datum.PropList ? Datum.TRUE : Datum.FALSE;
+                case "point" -> d instanceof Datum.IntPoint ? Datum.TRUE : Datum.FALSE;
+                case "rect" -> d instanceof Datum.IntRect ? Datum.TRUE : Datum.FALSE;
+                case "void" -> d.isVoid() ? Datum.TRUE : Datum.FALSE;
+                default -> Datum.FALSE;
+            };
         }
 
-        return Datum.symbol(d.type().getTypeName());
+        return switch (d) {
+            case Datum.Int i -> Datum.symbol("integer");
+            case Datum.DFloat f -> Datum.symbol("float");
+            case Datum.Str s -> Datum.symbol("string");
+            case Datum.Symbol sym -> Datum.symbol("symbol");
+            case Datum.DList l -> Datum.symbol("list");
+            case Datum.PropList p -> Datum.symbol("propList");
+            case Datum.IntPoint p -> Datum.symbol("point");
+            case Datum.IntRect r -> Datum.symbol("rect");
+            case Datum.Void v -> Datum.symbol("void");
+            default -> Datum.symbol("object");
+        };
     }
 
     private static Datum objectP(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.FALSE;
-        Datum d = args.get(0);
-        return (d instanceof Datum.ScriptInstanceRef) ? Datum.TRUE : Datum.FALSE;
+        return args.isEmpty() ? Datum.FALSE :
+            args.get(0) instanceof Datum.ScriptInstanceRef ? Datum.TRUE : Datum.FALSE;
     }
 
     private static Datum listP(LingoVM vm, List<Datum> args) {
         if (args.isEmpty()) return Datum.FALSE;
         Datum d = args.get(0);
-        return (d instanceof Datum.DList || d instanceof Datum.PropList) ? Datum.TRUE : Datum.FALSE;
+        return d instanceof Datum.DList || d instanceof Datum.PropList ? Datum.TRUE : Datum.FALSE;
     }
 
     private static Datum stringP(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.FALSE;
-        return args.get(0).isString() ? Datum.TRUE : Datum.FALSE;
+        return args.isEmpty() ? Datum.FALSE : args.get(0).isString() ? Datum.TRUE : Datum.FALSE;
     }
 
     private static Datum symbolP(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.FALSE;
-        return args.get(0).isSymbol() ? Datum.TRUE : Datum.FALSE;
+        return args.isEmpty() ? Datum.FALSE : args.get(0).isSymbol() ? Datum.TRUE : Datum.FALSE;
     }
 
     private static Datum integerP(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.FALSE;
-        return args.get(0).isInt() ? Datum.TRUE : Datum.FALSE;
+        return args.isEmpty() ? Datum.FALSE : args.get(0).isInt() ? Datum.TRUE : Datum.FALSE;
     }
 
     private static Datum floatP(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.FALSE;
-        return (args.get(0) instanceof Datum.DFloat) ? Datum.TRUE : Datum.FALSE;
+        return args.isEmpty() ? Datum.FALSE : args.get(0) instanceof Datum.DFloat ? Datum.TRUE : Datum.FALSE;
     }
 
     private static Datum voidP(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.TRUE;
-        return args.get(0).isVoid() ? Datum.TRUE : Datum.FALSE;
+        return args.isEmpty() ? Datum.TRUE : args.get(0).isVoid() ? Datum.TRUE : Datum.FALSE;
     }
 
     private static Datum value(LingoVM vm, List<Datum> args) {
         if (args.isEmpty()) return Datum.voidValue();
         String s = args.get(0).stringValue().trim();
-
-        // Try to parse as integer
         try {
+            if (s.contains(".")) return Datum.of(Float.parseFloat(s));
             return Datum.of(Integer.parseInt(s));
         } catch (NumberFormatException e) {
-            // Not an integer
+            return Datum.voidValue();
         }
-
-        // Try to parse as float
-        try {
-            return Datum.of(Float.parseFloat(s));
-        } catch (NumberFormatException e) {
-            // Not a float
-        }
-
-        return Datum.voidValue();
     }
 
     private static Datum symbol(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.symbol("");
-        return Datum.symbol(args.get(0).stringValue());
+        return args.isEmpty() ? Datum.symbol("") : Datum.symbol(args.get(0).stringValue());
     }
 
     // Point/Rect handlers
@@ -224,65 +234,64 @@ public class HandlerRegistry {
 
     private static Datum union(LingoVM vm, List<Datum> args) {
         if (args.size() < 2) return new Datum.IntRect(0, 0, 0, 0);
-
         if (args.get(0) instanceof Datum.IntRect r1 && args.get(1) instanceof Datum.IntRect r2) {
             return new Datum.IntRect(
-                Math.min(r1.left(), r2.left()),
-                Math.min(r1.top(), r2.top()),
-                Math.max(r1.right(), r2.right()),
-                Math.max(r1.bottom(), r2.bottom())
-            );
+                Math.min(r1.left(), r2.left()), Math.min(r1.top(), r2.top()),
+                Math.max(r1.right(), r2.right()), Math.max(r1.bottom(), r2.bottom()));
         }
         return new Datum.IntRect(0, 0, 0, 0);
     }
 
     private static Datum intersect(LingoVM vm, List<Datum> args) {
         if (args.size() < 2) return new Datum.IntRect(0, 0, 0, 0);
-
         if (args.get(0) instanceof Datum.IntRect r1 && args.get(1) instanceof Datum.IntRect r2) {
             int left = Math.max(r1.left(), r2.left());
             int top = Math.max(r1.top(), r2.top());
             int right = Math.min(r1.right(), r2.right());
             int bottom = Math.min(r1.bottom(), r2.bottom());
-
-            if (right > left && bottom > top) {
-                return new Datum.IntRect(left, top, right, bottom);
-            }
+            if (right > left && bottom > top) return new Datum.IntRect(left, top, right, bottom);
         }
         return new Datum.IntRect(0, 0, 0, 0);
     }
 
     private static Datum inside(LingoVM vm, List<Datum> args) {
         if (args.size() < 2) return Datum.FALSE;
-
         if (args.get(0) instanceof Datum.IntPoint p && args.get(1) instanceof Datum.IntRect r) {
-            boolean isInside = p.x() >= r.left() && p.x() < r.right() &&
-                               p.y() >= r.top() && p.y() < r.bottom();
-            return isInside ? Datum.TRUE : Datum.FALSE;
+            return p.x() >= r.left() && p.x() < r.right() && p.y() >= r.top() && p.y() < r.bottom()
+                ? Datum.TRUE : Datum.FALSE;
         }
         return Datum.FALSE;
     }
 
     private static Datum map(LingoVM vm, List<Datum> args) {
-        // map(destRect, srcRect, srcPoint) -> destPoint
-        if (args.size() < 3) return new Datum.IntPoint(0, 0);
-
-        // This is a more complex operation used for coordinate transformation
         return new Datum.IntPoint(0, 0);
     }
 
-    private static Datum offset(LingoVM vm, List<Datum> args) {
-        if (args.size() < 3) return Datum.voidValue();
+    // Reference handlers
 
-        Datum target = args.get(0);
-        int dx = args.get(1).intValue();
-        int dy = args.get(2).intValue();
+    private static Datum castLib(LingoVM vm, List<Datum> args) {
+        if (args.isEmpty()) return Datum.voidValue();
+        return new Datum.CastLibRef(args.get(0).intValue());
+    }
 
-        if (target instanceof Datum.IntPoint p) {
-            return new Datum.IntPoint(p.x() + dx, p.y() + dy);
-        } else if (target instanceof Datum.IntRect r) {
-            return new Datum.IntRect(r.left() + dx, r.top() + dy, r.right() + dx, r.bottom() + dy);
-        }
-        return target;
+    private static Datum member(LingoVM vm, List<Datum> args) {
+        if (args.isEmpty()) return Datum.voidValue();
+        int castLib = args.size() >= 2 ? args.get(1).intValue() : 1;
+        return new Datum.CastMemberRef(args.get(0).intValue(), castLib);
+    }
+
+    private static Datum sprite(LingoVM vm, List<Datum> args) {
+        if (args.isEmpty()) return Datum.voidValue();
+        return new Datum.SpriteRef(args.get(0).intValue());
+    }
+
+    private static Datum sound(LingoVM vm, List<Datum> args) {
+        if (args.isEmpty()) return Datum.voidValue();
+        return new Datum.SoundRef(args.get(0).intValue());
+    }
+
+    // Call handler - delegates to VM for script resolution
+    private static Datum call(LingoVM vm, List<Datum> args) {
+        return vm.callHandler(args);
     }
 }

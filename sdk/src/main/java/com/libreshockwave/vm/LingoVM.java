@@ -1,15 +1,10 @@
 package com.libreshockwave.vm;
 
 import com.libreshockwave.DirectorFile;
-import com.libreshockwave.chunks.KeyTableChunk;
 import com.libreshockwave.chunks.ScriptChunk;
-import com.libreshockwave.chunks.ScriptNamesChunk;
-import com.libreshockwave.chunks.TextChunk;
-import com.libreshockwave.chunks.CastMemberChunk;
+import com.libreshockwave.handlers.HandlerRegistry;
 import com.libreshockwave.lingo.*;
 import com.libreshockwave.net.NetManager;
-import com.libreshockwave.net.NetResult;
-import com.libreshockwave.net.NetTask;
 import com.libreshockwave.player.CastLib;
 import com.libreshockwave.player.CastManager;
 
@@ -22,117 +17,39 @@ import java.util.*;
 public class LingoVM {
 
     private final DirectorFile file;
-    private final Map<String, Datum> globals;
-    private final Deque<Datum> stack;
-    private final Deque<Scope> callStack;
-    private final Map<String, BuiltinHandler> builtins;
+    private final Map<String, Datum> globals = new HashMap<>();
+    private final Deque<Datum> stack = new ArrayDeque<>();
+    private final Deque<Scope> callStack = new ArrayDeque<>();
+    private final Map<String, BuiltinHandler> builtins = new HashMap<>();
 
     private boolean halted;
     private int maxInstructions = 100000;
     private NetManager netManager;
     private CastManager castManager;
-
-    // Last handler result (matches dirplayer-rs player.last_handler_result)
     private Datum lastHandlerResult = Datum.voidValue();
 
-    // Debug mode - when enabled, logs execution details
+    // Movie state
+    private final PropertyAccessor.MovieState movieState = new PropertyAccessor.MovieState();
+
+    // Debug support
     private boolean debugMode = false;
     private int debugIndent = 0;
     private DebugOutputCallback debugOutputCallback;
 
-    // Movie state - matches dirplayer-rs player state
-    private int currentFrame = 1;
-    private String currentFrameLabel = "";
-    private long startTimeMillis = System.currentTimeMillis();
+    // Helper components
+    private ScriptResolver scriptResolver;
+    private PropertyAccessor propertyAccessor;
+    private MethodDispatcher methodDispatcher;
+    private DebugFormatter debugFormatter;
 
-    // Mouse state
-    private int mouseX = 0;
-    private int mouseY = 0;
-    private int rolloverSprite = 0;
-    private int clickOnSprite = 0;
-    private boolean isDoubleClick = false;
-
-    // Keyboard state
-    private int keyCode = 0;
-    private String lastKey = "";
-    private boolean shiftDown = false;
-    private boolean controlDown = false;
-    private boolean commandDown = false;
-    private boolean altDown = false;
-
-    // Focus and selection
-    private int keyboardFocusSprite = 0;
-    private int selectionStart = 0;
-    private int selectionEnd = 0;
-
-    // Movie settings
-    private int floatPrecision = 4;
-    private String itemDelimiter = ",";
-    private boolean exitLock = false;
-    private boolean updateLock = false;
+    // Callbacks
+    private StageCallback stageCallback;
+    private XtraInstanceCallback xtraInstanceCallback;
+    private ActiveScriptInstancesCallback activeScriptInstancesCallback;
 
     @FunctionalInterface
     public interface DebugOutputCallback {
         void onDebugOutput(String message);
-    }
-
-    public void setDebugOutputCallback(DebugOutputCallback callback) {
-        this.debugOutputCallback = callback;
-    }
-
-    /**
-     * Callback interface for stage window operations.
-     */
-    public interface StageCallback {
-        void moveToFront();
-        void moveToBack();
-        void close();
-    }
-
-    private StageCallback stageCallback;
-
-    public void setStageCallback(StageCallback callback) {
-        this.stageCallback = callback;
-    }
-
-    /**
-     * Callback interface for Xtra instance method calls.
-     * Matches dirplayer-rs call_xtra_instance_handler().
-     */
-    public interface XtraInstanceCallback {
-        /**
-         * Call a method on an Xtra instance.
-         * @param xtraName The name of the xtra (e.g., "Multiuser")
-         * @param instanceId The instance ID
-         * @param methodName The method being called
-         * @param args The method arguments
-         * @return The result, or null if the method is not handled
-         */
-        Datum callMethod(String xtraName, int instanceId, String methodName, List<Datum> args);
-    }
-
-    private XtraInstanceCallback xtraInstanceCallback;
-
-    public void setXtraInstanceCallback(XtraInstanceCallback callback) {
-        this.xtraInstanceCallback = callback;
-    }
-
-    /**
-     * Callback interface for getting active script instances from the score.
-     * Matches dirplayer-rs score.get_active_script_instance_list().
-     */
-    public interface ActiveScriptInstancesCallback {
-        /**
-         * Get all active script instances from sprites in the current frame.
-         * @return List of active script instance references
-         */
-        List<Datum.ScriptInstanceRef> getActiveScriptInstances();
-    }
-
-    private ActiveScriptInstancesCallback activeScriptInstancesCallback;
-
-    public void setActiveScriptInstancesCallback(ActiveScriptInstancesCallback callback) {
-        this.activeScriptInstancesCallback = callback;
     }
 
     @FunctionalInterface
@@ -140,726 +57,138 @@ public class LingoVM {
         Datum call(LingoVM vm, List<Datum> args);
     }
 
+    public interface StageCallback {
+        void moveToFront();
+        void moveToBack();
+        void close();
+    }
+
+    public interface XtraInstanceCallback {
+        Datum callMethod(String xtraName, int instanceId, String methodName, List<Datum> args);
+    }
+
+    public interface ActiveScriptInstancesCallback {
+        List<Datum.ScriptInstanceRef> getActiveScriptInstances();
+    }
+
     public LingoVM(DirectorFile file) {
         this.file = file;
-        this.globals = new HashMap<>();
-        this.stack = new ArrayDeque<>();
-        this.callStack = new ArrayDeque<>();
-        this.builtins = new HashMap<>();
-        this.halted = false;
+        initializeComponents();
+        HandlerRegistry.registerAll(this);
+    }
 
-        registerBuiltins();
+    private void initializeComponents() {
+        this.scriptResolver = new ScriptResolver(file, castManager, callStack);
+        this.propertyAccessor = new PropertyAccessor(this);
+        this.methodDispatcher = new MethodDispatcher(this, scriptResolver, this::execute);
+        this.debugFormatter = new DebugFormatter(this);
     }
 
     // Public API
 
-    public DirectorFile getFile() {
-        return file;
-    }
-
-    public Datum getGlobal(String name) {
-        return globals.getOrDefault(name, Datum.voidValue());
-    }
-
-    public void setGlobal(String name, Datum value) {
-        globals.put(name, value);
-    }
-
-    public Map<String, Datum> getAllGlobals() {
-        return Collections.unmodifiableMap(globals);
-    }
-
-    public void halt() {
-        halted = true;
-    }
-
-    public void setMaxInstructions(int max) {
-        this.maxInstructions = max;
-    }
-
-    public void setNetManager(NetManager netManager) {
-        this.netManager = netManager;
-    }
-
-    public NetManager getNetManager() {
-        return netManager;
-    }
-
+    public DirectorFile getFile() { return file; }
+    public Datum getGlobal(String name) { return globals.getOrDefault(name, Datum.voidValue()); }
+    public void setGlobal(String name, Datum value) { globals.put(name, value); }
+    public Map<String, Datum> getAllGlobals() { return Collections.unmodifiableMap(globals); }
+    public void halt() { halted = true; }
+    public void setMaxInstructions(int max) { this.maxInstructions = max; }
+    public void setNetManager(NetManager netManager) { this.netManager = netManager; }
+    public NetManager getNetManager() { return netManager; }
     public void setCastManager(CastManager castManager) {
         this.castManager = castManager;
+        this.scriptResolver = new ScriptResolver(file, castManager, callStack);
+        this.methodDispatcher = new MethodDispatcher(this, scriptResolver, this::execute);
     }
+    public CastManager getCastManager() { return castManager; }
+    public Datum getLastHandlerResult() { return lastHandlerResult; }
+    public String getItemDelimiter() { return movieState.itemDelimiter; }
+    public int getFloatPrecision() { return movieState.floatPrecision; }
+    public boolean isExitLock() { return movieState.exitLock; }
+    public boolean isUpdateLock() { return movieState.updateLock; }
 
-    public CastManager getCastManager() {
-        return castManager;
-    }
+    // Callback setters
+    public void setDebugOutputCallback(DebugOutputCallback callback) { this.debugOutputCallback = callback; }
+    public void setStageCallback(StageCallback callback) { this.stageCallback = callback; }
+    public StageCallback getStageCallback() { return stageCallback; }
+    public void setXtraInstanceCallback(XtraInstanceCallback callback) { this.xtraInstanceCallback = callback; }
+    public void setActiveScriptInstancesCallback(ActiveScriptInstancesCallback callback) { this.activeScriptInstancesCallback = callback; }
 
-    // Movie state setters - called by player to update VM state
-
-    public void setCurrentFrame(int frame) {
-        this.currentFrame = frame;
-    }
-
-    public void setCurrentFrameLabel(String label) {
-        this.currentFrameLabel = label;
-    }
-
-    public void setMousePosition(int x, int y) {
-        this.mouseX = x;
-        this.mouseY = y;
-    }
-
-    public void setRolloverSprite(int sprite) {
-        this.rolloverSprite = sprite;
-    }
-
-    public void setClickOnSprite(int sprite) {
-        this.clickOnSprite = sprite;
-    }
-
-    public void setDoubleClick(boolean doubleClick) {
-        this.isDoubleClick = doubleClick;
-    }
-
+    // Movie state setters
+    public void setCurrentFrame(int frame) { movieState.currentFrame = frame; }
+    public void setCurrentFrameLabel(String label) { movieState.currentFrameLabel = label; }
+    public void setMousePosition(int x, int y) { movieState.mouseX = x; movieState.mouseY = y; }
+    public void setRolloverSprite(int sprite) { movieState.rolloverSprite = sprite; }
+    public void setClickOnSprite(int sprite) { movieState.clickOnSprite = sprite; }
+    public void setDoubleClick(boolean doubleClick) { movieState.isDoubleClick = doubleClick; }
     public void setKeyboardState(int keyCode, String key, boolean shift, boolean control, boolean command, boolean alt) {
-        this.keyCode = keyCode;
-        this.lastKey = key;
-        this.shiftDown = shift;
-        this.controlDown = control;
-        this.commandDown = command;
-        this.altDown = alt;
+        movieState.keyCode = keyCode; movieState.lastKey = key;
+        movieState.shiftDown = shift; movieState.controlDown = control;
+        movieState.commandDown = command; movieState.altDown = alt;
     }
 
-    public boolean isExitLock() {
-        return exitLock;
-    }
-
-    public boolean isUpdateLock() {
-        return updateLock;
-    }
-
-    public String getItemDelimiter() {
-        return itemDelimiter;
-    }
-
-    public int getFloatPrecision() {
-        return floatPrecision;
-    }
-
-    public void setDebugMode(boolean enabled) {
-        this.debugMode = enabled;
-    }
-
-    public boolean isDebugMode() {
-        return debugMode;
-    }
+    // Debug support
+    public void setDebugMode(boolean enabled) { this.debugMode = enabled; }
+    public boolean isDebugMode() { return debugMode; }
 
     private void debugLog(String message) {
         if (!debugMode) return;
-        String indent = "  ".repeat(debugIndent);
-        String output = "[VM] " + indent + message;
-        if (debugOutputCallback != null) {
-            debugOutputCallback.onDebugOutput(output);
-        } else {
-            System.out.println(output);
-        }
+        String output = "[VM] " + "  ".repeat(debugIndent) + message;
+        if (debugOutputCallback != null) debugOutputCallback.onDebugOutput(output);
+        else System.out.println(output);
     }
 
-    private String formatStack() {
-        if (stack.isEmpty()) return "[]";
-        StringBuilder sb = new StringBuilder("[");
-        int count = 0;
-        for (Datum d : stack) {
-            if (count > 0) sb.append(", ");
-            /*if (count >= 8) {
-                sb.append("... (").append(stack.size() - count).append(" more)");
-                break;
-            }*/
-            sb.append(formatDatum(d));
-            count++;
-        }
-        sb.append("]");
-        return sb.toString();
-    }
-
-    private String formatDatum(Datum d) {
-        return formatDatum(d, true);
-    }
-
-    private String formatDatum(Datum d, boolean showDetails) {
-        if (d == null) return "null";
-        if (d.isVoid()) return "VOID";
-        if (d.isInt()) return String.valueOf(d.intValue());
-        if (d.isFloat()) return String.format("%.2f", d.floatValue());
-        if (d.isString()) {
-            String s = d.stringValue();
-            if (s.length() > 30) s = s.substring(0, 30) + "...";
-            return "\"" + s + "\"";
-        }
-        if (d.isSymbol()) return "#" + d.stringValue();
-
-        // Member reference - show name if available
-        if (d instanceof Datum.CastMemberRef ref) {
-            String name = getMemberName(ref.castLib(), ref.castMember());
-            if (name != null && !name.isEmpty()) {
-                return "member(\"" + name + "\", " + ref.castLib() + ")";
-            }
-            return "member(" + ref.castLib() + ":" + ref.castMember() + ")";
-        }
-
-        // Cast lib reference
-        if (d instanceof Datum.CastLibRef ref) {
-            String name = getCastName(ref.castLib());
-            if (name != null && !name.isEmpty()) {
-                return "castLib(\"" + name + "\")";
-            }
-            return "castLib(" + ref.castLib() + ")";
-        }
-
-        // Sprite reference
-        if (d instanceof Datum.SpriteRef ref) {
-            return "sprite(" + ref.channel() + ")";
-        }
-
-        // Script reference
-        if (d instanceof Datum.ScriptRef ref) {
-            String name = getMemberName(ref.memberRef().castLib(), ref.memberRef().castMember());
-            if (name != null && !name.isEmpty()) {
-                return "script(\"" + name + "\")";
-            }
-            return "script(" + ref.memberRef().castLib() + ":" + ref.memberRef().castMember() + ")";
-        }
-
-        // Lists with content preview
-        if (d instanceof Datum.DList l) {
-            if (!showDetails || l.count() == 0) return "[]";
-            if (l.count() <= 3) {
-                StringBuilder sb = new StringBuilder("[");
-                for (int i = 0; i < l.count(); i++) {
-                    if (i > 0) sb.append(", ");
-                    sb.append(formatDatum(l.getAt(i + 1), false));
-                }
-                sb.append("]");
-                return sb.toString();
-            }
-            return "[" + formatDatum(l.getAt(1), false) + ", " + formatDatum(l.getAt(2), false) + ", ...(" + l.count() + ")]";
-        }
-
-        // Prop lists with content preview
-        if (d instanceof Datum.PropList p) {
-            if (!showDetails || p.count() == 0) return "[:]";
-            StringBuilder sb = new StringBuilder("[");
-            int shown = 0;
-            for (var entry : p.properties().entrySet()) {
-                if (shown > 0) sb.append(", ");
-                if (shown >= 2) {
-                    sb.append("...(" + p.count() + ")");
-                    break;
-                }
-                sb.append(formatDatum(entry.getKey(), false)).append(": ").append(formatDatum(entry.getValue(), false));
-                shown++;
-            }
-            sb.append("]");
-            return sb.toString();
-        }
-
-        // Arg lists - show actual values
-        if (d instanceof Datum.ArgList a) {
-            if (a.args().isEmpty()) return "args()";
-            if (a.args().size() <= 3) {
-                StringBuilder sb = new StringBuilder("args(");
-                for (int i = 0; i < a.args().size(); i++) {
-                    if (i > 0) sb.append(", ");
-                    sb.append(formatDatum(a.args().get(i), false));
-                }
-                sb.append(")");
-                return sb.toString();
-            }
-            return "args(" + formatDatum(a.args().get(0), false) + ", " + formatDatum(a.args().get(1), false) + ", ...(" + a.args().size() + "))";
-        }
-
-        if (d instanceof Datum.ArgListNoRet a) {
-            if (a.args().isEmpty()) return "argsNoRet()";
-            if (a.args().size() <= 3) {
-                StringBuilder sb = new StringBuilder("argsNoRet(");
-                for (int i = 0; i < a.args().size(); i++) {
-                    if (i > 0) sb.append(", ");
-                    sb.append(formatDatum(a.args().get(i), false));
-                }
-                sb.append(")");
-                return sb.toString();
-            }
-            return "argsNoRet(" + formatDatum(a.args().get(0), false) + ", ...(" + a.args().size() + "))";
-        }
-
-        // Point/Rect
-        if (d instanceof Datum.IntPoint pt) {
-            return "point(" + pt.x() + ", " + pt.y() + ")";
-        }
-        if (d instanceof Datum.IntRect r) {
-            return "rect(" + r.left() + ", " + r.top() + ", " + r.right() + ", " + r.bottom() + ")";
-        }
-        if (d instanceof Datum.Vector3 v) {
-            return "vector(" + v.x() + ", " + v.y() + ", " + v.z() + ")";
-        }
-        if (d instanceof Datum.ColorRef c) {
-            return "color(" + c.r() + ", " + c.g() + ", " + c.b() + ")";
-        }
-
-        return d.getClass().getSimpleName();
-    }
-
-    private String getMemberName(int castLib, int memberNum) {
-        if (castManager == null) return null;
-        CastLib cast = castManager.getCast(castLib);
-        if (cast == null) return null;
-        var member = cast.getMember(memberNum);
-        if (member == null) return null;
-        return member.name();
-    }
-
-    private String getCastName(int castLib) {
-        if (castManager == null) return null;
-        CastLib cast = castManager.getCast(castLib);
-        if (cast == null) return null;
-        return cast.getName();
-    }
-
-    /**
-     * Get the member name for a script, searching all casts.
-     * Used for debug output to show "Client Initialization Script" instead of "#5".
-     */
-    public String getScriptMemberName(ScriptChunk script) {
-        // First find which cast this script belongs to
-        CastLib sourceCast = findCastForScript(script);
-        return getScriptMemberName(script, sourceCast);
-    }
-
-    /**
-     * Find which cast library contains a given script.
-     */
-    private CastLib findCastForScript(ScriptChunk script) {
-        if (script == null || castManager == null) return null;
-
-        // Check if script is in the main file's scripts
-        if (file != null) {
-            for (ScriptChunk s : file.getScripts()) {
-                if (s == script) {
-                    // Main file scripts belong to cast #1
-                    return castManager.getCast(1);
-                }
-            }
-        }
-
-        // Check all cast libraries
-        for (CastLib cast : castManager.getCasts()) {
-            if (cast.getState() == CastLib.State.LOADED) {
-                for (ScriptChunk s : cast.getAllScripts()) {
-                    if (s == script) {
-                        return cast;
-                    }
-                }
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Get the member name for a script, optionally using a known source cast.
-     * Used for debug output to show "Client Initialization Script" instead of "#5".
-     */
-    public String getScriptMemberName(ScriptChunk script, CastLib sourceCast) {
-        if (script == null) return null;
-        int scriptId = script.id();
-
-        // If we know the source cast, look there first
-        if (sourceCast != null && sourceCast.getState() == CastLib.State.LOADED) {
-            var member = sourceCast.getMember(scriptId);
-            if (member != null && member.isScript()) {
-                String name = member.name();
-                if (name != null && !name.isEmpty()) {
-                    return name;
-                }
-            }
-        }
-
-        // First check the main file's cast members
-        if (file != null) {
-            for (var member : file.getCastMembers()) {
-                if (member.id() == scriptId && member.isScript()) {
-                    String name = member.name();
-                    if (name != null && !name.isEmpty()) {
-                        return name;
-                    }
-                }
-            }
-        }
-
-        // Then check all cast libraries
-        if (castManager != null) {
-            for (CastLib cast : castManager.getCasts()) {
-                if (cast.getState() == CastLib.State.LOADED) {
-                    // Skip if this is the source cast we already checked
-                    if (cast == sourceCast) continue;
-
-                    var member = cast.getMember(scriptId);
-                    if (member != null && member.isScript()) {
-                        String name = member.name();
-                        if (name != null && !name.isEmpty()) {
-                            return name;
-                        }
-                    }
-                }
-            }
-        }
-
-        return null;
-    }
-
+    // Builtin registration
     public void registerBuiltin(String name, BuiltinHandler handler) {
         builtins.put(name.toLowerCase(), handler);
     }
 
-    /**
-     * Get the last handler result (matches dirplayer-rs player.last_handler_result).
-     */
-    public Datum getLastHandlerResult() {
-        return lastHandlerResult;
+    public BuiltinHandler getBuiltin(String name) {
+        return builtins.get(name.toLowerCase());
     }
 
-    // Script execution - matches dirplayer-rs call resolution
+    // Script resolution delegates
+    public String getScriptMemberName(ScriptChunk script) { return scriptResolver.getScriptMemberName(script); }
+    public String getScriptMemberName(ScriptChunk script, CastLib sourceCast) { return scriptResolver.getScriptMemberName(script, sourceCast); }
 
-    /**
-     * Check if first argument is a script instance that has the given handler.
-     * Matches dirplayer-rs ScriptInstanceUtils::get_handler_from_first_arg().
-     */
-    private HandlerLocation getHandlerFromFirstArg(List<Datum> args, String handlerName) {
-        if (args.isEmpty()) return null;
+    // Script execution
 
-        Datum firstArg = args.get(0);
-
-        // Check if first arg is a script instance reference
-        if (firstArg instanceof Datum.ScriptInstanceRef scriptInstance) {
-            // Look up the script by name for this instance
-            String scriptName = scriptInstance.scriptName();
-            ScriptChunk instanceScript = findScriptByName(scriptName);
-            if (instanceScript != null) {
-                for (ScriptChunk.Handler h : instanceScript.handlers()) {
-                    String hName = getName(h.nameId());
-                    if (hName != null && hName.equalsIgnoreCase(handlerName)) {
-                        return new HandlerLocation(instanceScript, h, null, null);
-                    }
-                }
-            }
-        }
-
-        // Check if first arg is a script reference (cast member)
-        if (firstArg instanceof Datum.ScriptRef scriptRef) {
-            // Look up the script from the cast member reference
-            ScriptChunk refScript = findScriptByCastRef(scriptRef.memberRef());
-            if (refScript != null) {
-                for (ScriptChunk.Handler h : refScript.handlers()) {
-                    String hName = getName(h.nameId());
-                    if (hName != null && hName.equalsIgnoreCase(handlerName)) {
-                        return new HandlerLocation(refScript, h, null, null);
-                    }
-                }
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Find a script by its name (used for script instances).
-     */
-    private ScriptChunk findScriptByName(String name) {
-        if (name == null || name.isEmpty()) return null;
-
-        // Search in main file's scripts
-        if (file != null) {
-            for (ScriptChunk script : file.getScripts()) {
-                String memberName = getScriptMemberName(script);
-                if (name.equalsIgnoreCase(memberName)) {
-                    return script;
-                }
-            }
-        }
-
-        // Search in cast libraries
-        if (castManager != null) {
-            for (CastLib cast : castManager.getCasts()) {
-                if (cast.getState() == CastLib.State.LOADED) {
-                    for (ScriptChunk script : cast.getAllScripts()) {
-                        String memberName = getScriptMemberName(script);
-                        if (name.equalsIgnoreCase(memberName)) {
-                            return script;
-                        }
-                    }
-                }
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Find a script by its cast member reference.
-     */
-    private ScriptChunk findScriptByCastRef(Datum.CastMemberRef ref) {
-        if (ref == null) return null;
-
-        int castLib = ref.castLib();
-        int memberId = ref.memberNum();
-
-        // Search in main file
-        if (file != null && castLib <= 1) {
-            for (ScriptChunk script : file.getScripts()) {
-                if (script.id() == memberId) {
-                    return script;
-                }
-            }
-        }
-
-        // Search in cast library
-        if (castManager != null) {
-            CastLib cast = castManager.getCast(castLib);
-            if (cast != null && cast.getState() == CastLib.State.LOADED) {
-                return cast.getScript(memberId);
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Create a new script instance from a ScriptRef.
-     * Matches dirplayer-rs ScriptDatumHandlers::new and create_script_instance.
-     *
-     * @param scriptRef Reference to the script
-     * @param constructorArgs Arguments to pass to the "new" handler
-     * @return The new script instance (or return value from "new" handler)
-     */
-    private Datum createScriptInstance(Datum.ScriptRef scriptRef, List<Datum> constructorArgs) {
-        ScriptChunk script = findScriptByCastRef(scriptRef.memberRef());
-        if (script == null) {
-            throw new LingoException("Cannot find script for " + scriptRef.memberRef());
-        }
-
-        // Get script name
-        String scriptName = getScriptMemberName(script);
-        if (scriptName == null || scriptName.isEmpty()) {
-            scriptName = "script_" + script.id();
-        }
-
-        // Initialize properties from script's property declarations
-        Map<String, Datum> initialProps = new LinkedHashMap<>();
-        for (ScriptChunk.PropertyEntry prop : script.properties()) {
-            String propName = getName(prop.nameId());
-            if (propName != null) {
-                initialProps.put(propName, Datum.voidValue());
-            }
-        }
-
-        // Create the script instance
-        Datum.ScriptInstanceRef instance = new Datum.ScriptInstanceRef(
-            scriptName,
-            scriptRef.memberRef(),
-            initialProps
-        );
-
-        // Look for a "new" handler in the script
-        ScriptChunk.Handler newHandler = null;
-        int expectedParamCount = 0;
-        for (ScriptChunk.Handler h : script.handlers()) {
-            String hName = getName(h.nameId());
-            if ("new".equalsIgnoreCase(hName)) {
-                newHandler = h;
-                expectedParamCount = h.argNameIds().size();
-                break;
-            }
-        }
-
-        // If script has a "new" handler, call it
-        if (newHandler != null) {
-            // Pad args to expected count
-            List<Datum> paddedArgs = new ArrayList<>(constructorArgs);
-            while (paddedArgs.size() < expectedParamCount) {
-                paddedArgs.add(Datum.voidValue());
-            }
-
-            // Call the handler with instance as first arg (me)
-            List<Datum> allArgs = new ArrayList<>();
-            allArgs.add(instance);
-            allArgs.addAll(paddedArgs);
-
-            Datum result = execute(script, newHandler, allArgs.toArray(new Datum[0]));
-
-            // If the new handler returns a value (not void), return that instead
-            // This matches dirplayer-rs behavior where new() can return a different object
-            if (!(result instanceof Datum.Void)) {
-                return result;
-            }
-        }
-
-        return instance;
-    }
-
-    /**
-     * Call a global handler with full resolution order.
-     * Matches dirplayer-rs player_call_global_handler().
-     *
-     * Resolution order:
-     * 1. "new" always goes to built-in handler
-     * 2. Check if first arg is a script/script instance with this handler
-     * 3. Check active script instances in score (behaviors)
-     * 4. Check static scripts (movie scripts)
-     * 5. Check built-in async handlers
-     * 6. Check built-in sync handlers
-     */
-    private Datum callGlobalHandler(String handlerName, List<Datum> args, Scope currentScope) {
-        // "new" invocations should always go through the built-in handler (matches dirplayer-rs)
-        if (!handlerName.equalsIgnoreCase("new")) {
-
-            // 1. Check if first arg is a script or script instance with this handler
-            HandlerLocation firstArgHandler = getHandlerFromFirstArg(args, handlerName);
-            if (firstArgHandler != null) {
-                return execute(firstArgHandler.script(), firstArgHandler.handler(), args.toArray(new Datum[0]));
-            }
-
-            // 2. Check active script instances in score (behaviors)
-            // Matches dirplayer-rs score.get_active_script_instance_list() iteration
-            if (activeScriptInstancesCallback != null) {
-                List<Datum.ScriptInstanceRef> activeInstances = activeScriptInstancesCallback.getActiveScriptInstances();
-                for (Datum.ScriptInstanceRef instanceRef : activeInstances) {
-                    // Look up the parent script and find the handler
-                    ScriptChunk instanceScript = findScriptByName(instanceRef.scriptName());
-                    if (instanceScript != null) {
-                        for (ScriptChunk.Handler h : instanceScript.handlers()) {
-                            String hName = getName(h.nameId());
-                            if (hName != null && hName.equalsIgnoreCase(handlerName)) {
-                                // Call with the instance as receiver - prepend 'me' to args
-                                List<Datum> allArgs = new ArrayList<>();
-                                allArgs.add(instanceRef);
-                                allArgs.addAll(args);
-                                return execute(instanceScript, h, allArgs.toArray(new Datum[0]));
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 3. Check static scripts (movie scripts, frame scripts, etc.)
-            HandlerLocation staticHandler = findHandlerWithScript(handlerName);
-            if (staticHandler != null) {
-                return execute(staticHandler.script(), staticHandler.handler(), args.toArray(new Datum[0]));
-            }
-        }
-
-        // 4. Check built-in handlers
-        BuiltinHandler builtin = builtins.get(handlerName.toLowerCase());
-        if (builtin != null) {
-            return builtin.call(this, args);
-        }
-
-        // No handler found
-        throw LingoException.undefinedHandler(handlerName);
-    }
-
-    public Datum call(String handlerName, Datum... args) {
-        return call(handlerName, Arrays.asList(args));
-    }
+    public Datum call(String handlerName, Datum... args) { return call(handlerName, Arrays.asList(args)); }
 
     public Datum call(String handlerName, List<Datum> args) {
-        // Check builtins first (more efficient and works without a file)
         BuiltinHandler builtin = builtins.get(handlerName.toLowerCase());
-        if (builtin != null) {
-            return builtin.call(this, args);
-        }
+        if (builtin != null) return builtin.call(this, args);
 
-        // Find the handler in scripts
-        ScriptChunk.Handler handler = Objects.requireNonNull(findHandlerWithScript(handlerName)).handler;
-        if (handler == null) {
-            throw LingoException.undefinedHandler(handlerName);
-        }
-
-        // Find the script containing this handler
-        ScriptChunk script = findScriptForHandler(handler);
-
-        return execute(script, handler, args.toArray(new Datum[0]));
+        ScriptResolver.HandlerLocation loc = scriptResolver.findHandler(handlerName);
+        if (loc == null) throw LingoException.undefinedHandler(handlerName);
+        return execute(loc.script(), loc.handler(), args.toArray(new Datum[0]));
     }
 
     public Datum execute(ScriptChunk script, ScriptChunk.Handler handler, Datum[] args) {
-        // Debug: Log handler entry (before pushing to call stack to get caller info)
-        if (debugMode) {
-            String handlerName = getName(handler.nameId());
-            String scriptType = script.scriptType() != null ? script.scriptType().name() : "UNKNOWN";
-            String memberName = getScriptMemberName(script);
-            CastLib sourceCast = findCastForScript(script);
-            String castInfo = sourceCast != null
-                ? " in cast#" + sourceCast.getNumber() + (sourceCast.getName().isEmpty() ? "" : " \"" + sourceCast.getName() + "\"")
-                : "";
-            String scriptInfo = memberName != null && !memberName.isEmpty()
-                ? scriptType + " \"" + memberName + "\"" + castInfo
-                : scriptType + " script#" + script.id() + castInfo;
-
-            // Get caller info from call stack (before we push the new scope)
-            String callerInfo = "";
-            if (!callStack.isEmpty()) {
-                Scope callerScope = callStack.peek();
-                String callerName = getName(callerScope.getHandler().nameId());
-                int callerIP = callerScope.getInstructionPointer();
-                callerInfo = " [called from " + callerName + " at IP:" + callerIP + "]";
-            }
-
-            debugLog("=== CALL " + handlerName + " in " + scriptInfo + callerInfo + " ===");
-            debugLog("Args: " + (args.length == 0 ? "(none)" : formatArgsArray(args)));
-            debugLog("Opcodes (" + handler.instructions().size() + "):");
-            for (int i = 0; i < handler.instructions().size(); i++) {
-                ScriptChunk.Handler.Instruction instr = handler.instructions().get(i);
-                debugLog("  [" + i + "] " + formatInstruction(instr));
-            }
-
-            /*
-            if (handler.instructions().size() > 50) {
-                debugLog("  ... (" + (handler.instructions().size() - 50) + " more)");
-            }*/
-
-            debugLog("--- Executing ---");
-            debugIndent++;
-        }
+        if (debugMode) logHandlerEntry(script, handler, args);
 
         Scope scope = new Scope(script, handler, args);
         callStack.push(scope);
-
         int instructionCount = 0;
         halted = false;
 
         try {
             while (!scope.isAtEnd() && !halted && instructionCount < maxInstructions) {
                 ScriptChunk.Handler.Instruction instr = scope.getCurrentInstruction();
-
                 if (debugMode) {
                     debugLog(String.format("[%03d] %-20s | Stack: %s",
                         scope.getInstructionPointer(),
-                        formatInstruction(instr),
-                        formatStack()));
+                        debugFormatter.formatInstruction(instr, scriptResolver),
+                        debugFormatter.formatStack(stack)));
                 }
-
                 executeInstruction(scope, instr);
                 scope.advanceIP();
                 instructionCount++;
             }
-
             if (instructionCount >= maxInstructions) {
                 throw new LingoException("Execution limit exceeded: " + maxInstructions + " instructions");
             }
-
             Datum result = scope.getReturnValue();
-            if (debugMode) {
-                debugIndent--;
-                debugLog("=== RETURN " + formatDatum(result) + " ===");
-            }
+            if (debugMode) { debugIndent--; debugLog("=== RETURN " + debugFormatter.formatDatum(result) + " ==="); }
             return result;
         } finally {
             callStack.pop();
@@ -867,34 +196,23 @@ public class LingoVM {
         }
     }
 
-    private String formatArgsArray(Datum[] args) {
-        if (args.length == 0) return "(none)";
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < args.length; i++) {
-            if (i > 0) sb.append(", ");
-            sb.append(formatDatum(args[i]));
-        }
-        return sb.toString();
-    }
-
-    private String formatInstruction(ScriptChunk.Handler.Instruction instr) {
-        Opcode op = instr.opcode();
-        int arg = instr.argument();
-        String argStr = "";
-
-        // Format argument based on opcode type
-        if (op == Opcode.PUSH_SYMB || op == Opcode.EXT_CALL || op == Opcode.LOCAL_CALL ||
-            op == Opcode.GET_PROP || op == Opcode.SET_PROP || op == Opcode.GET_GLOBAL ||
-            op == Opcode.SET_GLOBAL || op == Opcode.GET_MOVIE_PROP || op == Opcode.SET_MOVIE_PROP ||
-            op == Opcode.GET_OBJ_PROP || op == Opcode.SET_OBJ_PROP || op == Opcode.GET_CHAINED_PROP ||
-            op == Opcode.THE_BUILTIN || op == Opcode.OBJ_CALL || op == Opcode.NEW_OBJ) {
-            // Argument is a name ID
-            argStr = " '" + getName((int) arg) + "'";
-        } else if (arg != 0) {
-            argStr = " " + arg;
-        }
-
-        return op.name() + argStr;
+    private void logHandlerEntry(ScriptChunk script, ScriptChunk.Handler handler, Datum[] args) {
+        String handlerName = scriptResolver.getName(handler.nameId());
+        String scriptType = script.scriptType() != null ? script.scriptType().name() : "UNKNOWN";
+        String memberName = scriptResolver.getScriptMemberName(script);
+        CastLib sourceCast = scriptResolver.findCastForScript(script);
+        String castInfo = sourceCast != null
+            ? " in cast#" + sourceCast.getNumber() + (sourceCast.getName().isEmpty() ? "" : " \"" + sourceCast.getName() + "\"")
+            : "";
+        String scriptInfo = memberName != null && !memberName.isEmpty()
+            ? scriptType + " \"" + memberName + "\"" + castInfo
+            : scriptType + " script#" + script.id() + castInfo;
+        String callerInfo = !callStack.isEmpty()
+            ? " [called from " + scriptResolver.getName(callStack.peek().getHandler().nameId()) + " at IP:" + callStack.peek().getInstructionPointer() + "]"
+            : "";
+        debugLog("=== CALL " + handlerName + " in " + scriptInfo + callerInfo + " ===");
+        debugLog("Args: " + debugFormatter.formatArgs(args));
+        debugIndent++;
     }
 
     private void executeInstruction(Scope scope, ScriptChunk.Handler.Instruction instr) {
@@ -906,2290 +224,351 @@ public class LingoVM {
             case PUSH_ZERO -> push(Datum.of(0));
             case PUSH_INT8, PUSH_INT16, PUSH_INT32 -> push(Datum.of(arg));
             case PUSH_FLOAT32 -> push(Datum.of(Float.intBitsToFloat(arg)));
-
-            case PUSH_CONS -> {
-                // Push constant from literal table
-                ScriptChunk script = scope.getScript();
-                if (arg < script.literals().size()) {
-                    Object val = script.literals().get(arg).value();
-                    if (val instanceof String s) {
-                        push(Datum.of(s));
-                    } else if (val instanceof Integer i) {
-                        push(Datum.of(i));
-                    } else if (val instanceof Double d) {
-                        push(Datum.of(d.floatValue()));
-                    } else {
-                        push(Datum.voidValue());
-                    }
-                } else {
-                    push(Datum.voidValue());
-                }
-            }
-
-            case PUSH_SYMB -> {
-                String name = getName(arg);
-                push(Datum.symbol(name));
-            }
-
-            case POP -> {
-                for (int i = 0; i < arg; i++) {
-                    if (!stack.isEmpty()) stack.pop();
-                }
-            }
-
-            case SWAP -> {
-                if (stack.size() >= 2) {
-                    Datum a = stack.pop();
-                    Datum b = stack.pop();
-                    stack.push(a);
-                    stack.push(b);
-                }
-            }
-
-            case PEEK -> {
-                if (!stack.isEmpty()) {
-                    push(stack.peek());
-                }
-            }
+            case PUSH_CONS -> push(getLiteral(scope.getScript(), arg));
+            case PUSH_SYMB -> push(Datum.symbol(scriptResolver.getName(arg)));
+            case POP -> { for (int i = 0; i < arg; i++) if (!stack.isEmpty()) stack.pop(); }
+            case SWAP -> { if (stack.size() >= 2) { Datum a = stack.pop(); Datum b = stack.pop(); stack.push(a); stack.push(b); } }
+            case PEEK -> { if (!stack.isEmpty()) push(stack.peek()); }
 
             // Arithmetic
-            case ADD -> {
-                Datum b = pop();
-                Datum a = pop();
-                push(add(a, b));
-            }
-
-            case SUB -> {
-                Datum b = pop();
-                Datum a = pop();
-                push(subtract(a, b));
-            }
-
-            case MUL -> {
-                Datum b = pop();
-                Datum a = pop();
-                push(multiply(a, b));
-            }
-
-            case DIV -> {
-                Datum b = pop();
-                Datum a = pop();
-                push(divide(a, b));
-            }
-
-            case MOD -> {
-                Datum b = pop();
-                Datum a = pop();
-                push(modulo(a, b));
-            }
-
-            case INV -> {
-                Datum a = pop();
-                push(negate(a));
-            }
+            case ADD -> { Datum b = pop(), a = pop(); push(add(a, b)); }
+            case SUB -> { Datum b = pop(), a = pop(); push(subtract(a, b)); }
+            case MUL -> { Datum b = pop(), a = pop(); push(multiply(a, b)); }
+            case DIV -> { Datum b = pop(), a = pop(); push(divide(a, b)); }
+            case MOD -> { Datum b = pop(), a = pop(); push(modulo(a, b)); }
+            case INV -> push(negate(pop()));
 
             // Comparison
-            case LT -> {
-                Datum b = pop();
-                Datum a = pop();
-                push(compare(a, b) < 0 ? Datum.TRUE : Datum.FALSE);
-            }
-
-            case LT_EQ -> {
-                Datum b = pop();
-                Datum a = pop();
-                push(compare(a, b) <= 0 ? Datum.TRUE : Datum.FALSE);
-            }
-
-            case GT -> {
-                Datum b = pop();
-                Datum a = pop();
-                push(compare(a, b) > 0 ? Datum.TRUE : Datum.FALSE);
-            }
-
-            case GT_EQ -> {
-                Datum b = pop();
-                Datum a = pop();
-                push(compare(a, b) >= 0 ? Datum.TRUE : Datum.FALSE);
-            }
-
-            case EQ -> {
-                Datum b = pop();
-                Datum a = pop();
-                push(equals(a, b) ? Datum.TRUE : Datum.FALSE);
-            }
-
-            case NT_EQ -> {
-                Datum b = pop();
-                Datum a = pop();
-                push(!equals(a, b) ? Datum.TRUE : Datum.FALSE);
-            }
+            case LT -> { Datum b = pop(), a = pop(); push(compare(a, b) < 0 ? Datum.TRUE : Datum.FALSE); }
+            case LT_EQ -> { Datum b = pop(), a = pop(); push(compare(a, b) <= 0 ? Datum.TRUE : Datum.FALSE); }
+            case GT -> { Datum b = pop(), a = pop(); push(compare(a, b) > 0 ? Datum.TRUE : Datum.FALSE); }
+            case GT_EQ -> { Datum b = pop(), a = pop(); push(compare(a, b) >= 0 ? Datum.TRUE : Datum.FALSE); }
+            case EQ -> { Datum b = pop(), a = pop(); push(equals(a, b) ? Datum.TRUE : Datum.FALSE); }
+            case NT_EQ -> { Datum b = pop(), a = pop(); push(!equals(a, b) ? Datum.TRUE : Datum.FALSE); }
 
             // Logical
-            case AND -> {
-                Datum b = pop();
-                Datum a = pop();
-                push(a.boolValue() && b.boolValue() ? Datum.TRUE : Datum.FALSE);
-            }
-
-            case OR -> {
-                Datum b = pop();
-                Datum a = pop();
-                push(a.boolValue() || b.boolValue() ? Datum.TRUE : Datum.FALSE);
-            }
-
-            case NOT -> {
-                Datum a = pop();
-                push(!a.boolValue() ? Datum.TRUE : Datum.FALSE);
-            }
+            case AND -> { Datum b = pop(), a = pop(); push(a.boolValue() && b.boolValue() ? Datum.TRUE : Datum.FALSE); }
+            case OR -> { Datum b = pop(), a = pop(); push(a.boolValue() || b.boolValue() ? Datum.TRUE : Datum.FALSE); }
+            case NOT -> push(!pop().boolValue() ? Datum.TRUE : Datum.FALSE);
 
             // String operations
-            case JOIN_STR -> {
-                Datum b = pop();
-                Datum a = pop();
-                push(Datum.of(a.stringValue() + b.stringValue()));
-            }
+            case JOIN_STR -> { Datum b = pop(), a = pop(); push(Datum.of(a.stringValue() + b.stringValue())); }
+            case JOIN_PAD_STR -> { Datum b = pop(), a = pop(); push(Datum.of(a.stringValue() + " " + b.stringValue())); }
+            case CONTAINS_STR, CONTAINS_0_STR -> { Datum b = pop(), a = pop(); push(a.stringValue().toLowerCase().contains(b.stringValue().toLowerCase()) ? Datum.TRUE : Datum.FALSE); }
 
-            case JOIN_PAD_STR -> {
-                Datum b = pop();
-                Datum a = pop();
-                push(Datum.of(a.stringValue() + " " + b.stringValue()));
-            }
-
-            case CONTAINS_STR -> {
-                Datum b = pop();
-                Datum a = pop();
-                boolean contains = a.stringValue().toLowerCase()
-                    .contains(b.stringValue().toLowerCase());
-                push(contains ? Datum.TRUE : Datum.FALSE);
-            }
-
-            // Variables - divide arg by variable multiplier to get 0-based index (matches dirplayer-rs)
-            case GET_LOCAL -> {
-                int multiplier = getVariableMultiplier();
-                int index = arg / multiplier;
-                push(scope.getLocal(index));
-            }
-            case SET_LOCAL -> {
-                int multiplier = getVariableMultiplier();
-                int index = arg / multiplier;
-                scope.setLocal(index, pop());
-            }
-
-            case GET_PARAM -> {
-                int multiplier = getVariableMultiplier();
-                int index = arg / multiplier;
-                push(scope.getArg(index));
-            }
-            case SET_PARAM -> {
-                int multiplier = getVariableMultiplier();
-                int index = arg / multiplier;
-                scope.setArg(index, pop());
-            }
-
-            case GET_GLOBAL, GET_GLOBAL2 -> {
-                String name = getName(arg);
-                push(getGlobal(name));
-            }
-
-            case SET_GLOBAL, SET_GLOBAL2 -> {
-                String name = getName(arg);
-                setGlobal(name, pop());
-            }
+            // Variables
+            case GET_LOCAL -> { int idx = arg / scriptResolver.getVariableMultiplier(); push(scope.getLocal(idx)); }
+            case SET_LOCAL -> { int idx = arg / scriptResolver.getVariableMultiplier(); scope.setLocal(idx, pop()); }
+            case GET_PARAM -> { int idx = arg / scriptResolver.getVariableMultiplier(); push(scope.getArg(idx)); }
+            case SET_PARAM -> { int idx = arg / scriptResolver.getVariableMultiplier(); scope.setArg(idx, pop()); }
+            case GET_GLOBAL, GET_GLOBAL2 -> push(getGlobal(scriptResolver.getName(arg)));
+            case SET_GLOBAL, SET_GLOBAL2 -> setGlobal(scriptResolver.getName(arg), pop());
 
             // Control flow
-            case JMP -> {
-                // Jump relative to current position: target = current_offset + arg
-                int currentOffset = instr.offset();
-                int targetOffset = currentOffset + arg;
-                int targetIndex = findInstructionAtOffset(scope.getHandler(), targetOffset);
-                scope.setInstructionPointer(targetIndex - 1); // -1 because we advance after
-            }
-
-            case JMP_IF_Z -> {
-                Datum condition = pop();
-                if (!condition.boolValue()) {
-                    // Jump relative to current position: target = current_offset + arg
-                    int currentOffset = instr.offset();
-                    int targetOffset = currentOffset + arg;
-                    int targetIndex = findInstructionAtOffset(scope.getHandler(), targetOffset);
-                    scope.setInstructionPointer(targetIndex - 1);
-                }
-            }
-
-            case END_REPEAT -> {
-                // Jump back: target = current_offset - arg
-                int currentOffset = instr.offset();
-                int targetOffset = currentOffset - arg;
-                int targetIndex = findInstructionAtOffset(scope.getHandler(), targetOffset);
-                scope.setInstructionPointer(targetIndex - 1);
-            }
-
-            case RET -> {
-                // Return from handler
-                if (!stack.isEmpty()) {
-                    scope.setReturnValue(pop());
-                }
-                scope.setInstructionPointer(scope.getHandler().instructions().size());
-            }
-
-            case RET_FACTORY -> {
-                // Return from factory (parent script constructor)
-                scope.setReturnValue(Datum.voidValue());
-                scope.setInstructionPointer(scope.getHandler().instructions().size());
-            }
+            case JMP -> scope.setInstructionPointer(scriptResolver.findInstructionAtOffset(scope.getHandler(), instr.offset() + arg) - 1);
+            case JMP_IF_Z -> { if (!pop().boolValue()) scope.setInstructionPointer(scriptResolver.findInstructionAtOffset(scope.getHandler(), instr.offset() + arg) - 1); }
+            case END_REPEAT -> scope.setInstructionPointer(scriptResolver.findInstructionAtOffset(scope.getHandler(), instr.offset() - arg) - 1);
+            case RET -> { if (!stack.isEmpty()) scope.setReturnValue(pop()); scope.setInstructionPointer(scope.getHandler().instructions().size()); }
+            case RET_FACTORY -> { scope.setReturnValue(Datum.voidValue()); scope.setInstructionPointer(scope.getHandler().instructions().size()); }
 
             // Lists
-            case PUSH_LIST -> {
-                int count = arg;
-                List<Datum> items = new ArrayList<>();
-                for (int i = 0; i < count; i++) {
-                    items.add(0, pop()); // Reverse order from stack
-                }
-                Datum.DList list = Datum.list();
-                for (Datum item : items) {
-                    list.add(item);
-                }
-                push(list);
-            }
+            case PUSH_LIST -> { List<Datum> items = popN(arg); Datum.DList list = Datum.list(); items.forEach(list::add); push(list); }
+            case PUSH_PROP_LIST -> { Datum.PropList pl = Datum.propList(); for (int i = 0; i < arg; i++) { Datum v = pop(), k = pop(); pl.put(k, v); } push(pl); }
+            case PUSH_ARG_LIST -> push(new Datum.ArgList(popN(arg)));
+            case PUSH_ARG_LIST_NO_RET -> push(new Datum.ArgListNoRet(popN(arg)));
 
-            case PUSH_PROP_LIST -> {
-                int count = arg;
-                Datum.PropList propList = Datum.propList();
-                for (int i = 0; i < count; i++) {
-                    Datum value = pop();
-                    Datum key = pop();
-                    propList.put(key, value);
-                }
-                push(propList);
-            }
-
-            // Argument lists for function calls
-            case PUSH_ARG_LIST -> {
-                int count = arg;
-                List<Datum> items = new ArrayList<>();
-                for (int i = 0; i < count; i++) {
-                    items.add(0, pop());
-                }
-                push(new Datum.ArgList(items));
-            }
-
-            case PUSH_ARG_LIST_NO_RET -> {
-                int count = arg;
-                List<Datum> items = new ArrayList<>();
-                for (int i = 0; i < count; i++) {
-                    items.add(0, pop());
-                }
-                push(new Datum.ArgListNoRet(items));
-            }
-
-            // Function calls - matches dirplayer-rs ext_call
-            case EXT_CALL -> {
-                String handlerName = getName(arg);
-                Datum argListDatum = pop();
-                boolean isNoRet = argListDatum instanceof Datum.ArgListNoRet;
-                List<Datum> args = extractArgList(argListDatum);
-
-                // Special case: "return" statement (matches dirplayer-rs player_ext_call)
-                if (handlerName.contains("return")) {
-                    Datum returnValue = args.isEmpty() ? Datum.voidValue() : args.get(0);
-                    scope.setReturnValue(returnValue);
-                    scope.setInstructionPointer(scope.getHandler().instructions().size()); // Exit handler
-                    if (!isNoRet) {
-                        push(returnValue);
-                    }
-                } else {
-                    // Call global handler with full resolution (matches dirplayer-rs player_call_global_handler)
-                    Datum result = callGlobalHandler(handlerName, args, scope);
-                    lastHandlerResult = result;
-                    scope.setReturnValue(result);
-                    if (!isNoRet) {
-                        push(result);
-                    }
-                }
-            }
-
-            case LOCAL_CALL -> {
-                Datum argListDatum = pop();
-                boolean isNoRet = argListDatum instanceof Datum.ArgListNoRet;
-                List<Datum> args = extractArgList(argListDatum);
-
-                // Get handler at this index in current script (matches dirplayer-rs local_call)
-                ScriptChunk script = scope.getScript();
-                ScriptChunk.Handler targetHandler = null;
-                String handlerName = null;
-
-                // LOCAL_CALL uses handler index, not name ID
-                int handlerIndex = arg;
-                if (handlerIndex >= 0 && handlerIndex < script.handlers().size()) {
-                    targetHandler = script.handlers().get(handlerIndex);
-                    handlerName = getName(targetHandler.nameId());
-                }
-
-                // Check if first arg is a script instance with this handler (matches dirplayer-rs)
-                if (handlerName != null && !args.isEmpty()) {
-                    HandlerLocation firstArgHandler = getHandlerFromFirstArg(args, handlerName);
-                    if (firstArgHandler != null) {
-                        // Use the handler from the first argument's script/instance
-                        Datum result = execute(firstArgHandler.script(), firstArgHandler.handler(), args.toArray(new Datum[0]));
-                        lastHandlerResult = result;
-                        if (!isNoRet) {
-                            push(result);
-                        }
-                        break;
-                    }
-                }
-
-                // Fall back to calling handler in current script
-                if (targetHandler != null) {
-                    Datum result = execute(script, targetHandler, args.toArray(new Datum[0]));
-                    lastHandlerResult = result;
-                    if (!isNoRet) {
-                        push(result);
-                    }
-                } else {
-                    if (!isNoRet) {
-                        push(Datum.voidValue());
-                    }
-                }
-            }
+            // Function calls
+            case EXT_CALL -> executeExtCall(scope, scriptResolver.getName(arg));
+            case LOCAL_CALL -> executeLocalCall(scope, arg);
 
             // Property access
-            case GET_PROP -> {
-                String propName = getName(arg);
-                Datum obj = pop();
-                push(getProperty(obj, propName));
-            }
+            case GET_PROP, GET_OBJ_PROP, GET_CHAINED_PROP -> push(propertyAccessor.getProperty(pop(), scriptResolver.getName(arg), this::getActiveInstances));
+            case SET_PROP, SET_OBJ_PROP -> { Datum v = pop(), o = pop(); propertyAccessor.setProperty(o, scriptResolver.getName(arg), v, this::getActiveInstances); }
+            case GET_TOP_LEVEL_PROP -> push(getGlobal(scriptResolver.getName(arg)));
+            case GET_MOVIE_PROP -> push(propertyAccessor.getMovieProperty(scriptResolver.getName(arg), movieState));
+            case SET_MOVIE_PROP -> propertyAccessor.setMovieProperty(scriptResolver.getName(arg), pop(), movieState);
 
-            case SET_PROP -> {
-                String propName = getName(arg);
-                Datum value = pop();
-                Datum obj = pop();
-                setProperty(obj, propName, value);
-            }
+            // Object calls
+            case OBJ_CALL, OBJ_CALL_V4 -> executeObjCall(scriptResolver.getName(arg));
 
-            case GET_OBJ_PROP -> {
-                String propName = getName(arg);
-                Datum obj = pop();
-                push(getProperty(obj, propName));
-            }
+            // Field access
+            case GET_FIELD -> executeGetField(scope);
 
-            case SET_OBJ_PROP -> {
-                String propName = getName(arg);
-                Datum value = pop();
-                Datum obj = pop();
-                setProperty(obj, propName, value);
-            }
-
-            case GET_CHAINED_PROP -> {
-                String propName = getName(arg);
-                Datum obj = pop();
-                push(getProperty(obj, propName));
-            }
-
-            case GET_TOP_LEVEL_PROP -> {
-                String propName = getName(arg);
-                push(getGlobal(propName));
-            }
-
-            // Movie properties
-            case GET_MOVIE_PROP -> {
-                String propName = getName(arg);
-                push(getMovieProperty(propName));
-            }
-
-            case SET_MOVIE_PROP -> {
-                String propName = getName(arg);
-                Datum value = pop();
-                setMovieProperty(propName, value);
-            }
-
-            // Object calls - matches dirplayer-rs obj_call
-            case OBJ_CALL, OBJ_CALL_V4 -> {
-                String methodName = getName(arg);
-                Datum argListDatum = pop();
-                boolean isNoRet = argListDatum instanceof Datum.ArgListNoRet;
-                List<Datum> args = extractArgList(argListDatum);
-                Datum obj = args.isEmpty() ? Datum.voidValue() : args.remove(0);
-                Datum result = callMethod(obj, methodName, args);
-                lastHandlerResult = result;
-                if (!isNoRet) {
-                    push(result);
-                }
-            }
-
-            // String chunk operations
-            case GET_CHUNK -> {
-                // Stack: string, chunkType, start, end
-                Datum end = pop();
-                Datum start = pop();
-                Datum chunkType = pop();
-                Datum string = pop();
-                push(getStringChunk(string.stringValue(), chunkType, start.intValue(), end.intValue()));
-            }
-
-            case PUT_CHUNK -> {
-                // Put into chunk
-                int chunkType = arg;
-                Datum value = pop();
-                Datum end = pop();
-                Datum start = pop();
-                Datum target = pop();
-                // Implementation depends on target type
-                push(Datum.voidValue());
-            }
-
-            case DELETE_CHUNK -> {
-                // Delete chunk from string/field
-                int chunkType = arg;
-                Datum end = pop();
-                Datum start = pop();
-                Datum target = pop();
-                push(Datum.voidValue());
-            }
-
-            case HILITE_CHUNK -> {
-                // Highlight a chunk (used for text fields)
-                // No-op in headless execution
-            }
-
-            // Tell blocks
-            case START_TELL -> {
-                // Start a tell block - target object is on stack
-                Datum target = pop();
-                scope.pushTellTarget(target);
-            }
-
-            case END_TELL -> {
-                // End tell block
-                scope.popTellTarget();
-            }
-
-            case TELL_CALL -> {
-                String handlerName = getName(arg);
-                Datum argListDatum = pop();
-                List<Datum> args = extractArgList(argListDatum);
-                Datum target = scope.getTellTarget();
-                if (target != null) {
-                    push(callMethod(target, handlerName, args));
-                } else {
-                    push(call(handlerName, args));
-                }
-            }
-
-            // Sprite/field operations
-            case ONTO_SPR -> {
-                // sprite intersection test
-                Datum spr2 = pop();
-                Datum spr1 = pop();
-                push(Datum.FALSE); // Simplified - would check sprite bounds
-            }
-
-            case INTO_SPR -> {
-                // sprite containment test
-                Datum spr2 = pop();
-                Datum spr1 = pop();
-                push(Datum.FALSE);
-            }
-
-            case GET_FIELD -> {
-                // Get field text content (matches dirplayer-rs get_field)
-                // For Director 5+: pop cast_id first, then field_name_or_num
-                int dirVersion = file != null && file.getConfig() != null
-                    ? file.getConfig().directorVersion() : 0;
-
-                // Pop castId only if supported by version
-                Datum castId = (dirVersion >= 500)
-                        ? pop()
-                        : Datum.of((int) 0);
-
-                if (castId.intValue() <= 0) {
-                    Scope currentScope = callStack.peek();
-                    ScriptChunk currentScript = currentScope.getScript();
-
-                    if (currentScript == null) {
-                        push(Datum.voidValue());
-                    }
-                    else {
-                        CastLib scriptCast = findCastForScript(currentScript);
-                        castId = Datum.of(scriptCast.getNumber());
-                    }
-                }
-
-                // Always pop field reference
-                Datum fieldNameOrNumRef = pop();
-                String fieldText = getFieldText(fieldNameOrNumRef, castId);
-                push(Datum.of(fieldText));
-            }
-
-            // The/builtin entity access
-            case THE_BUILTIN -> {
-                String entityName = getName(arg);
-                push(getTheEntity(entityName));
-            }
-
-            case GET -> {
-                // Generic get operation
-                String propName = getName(arg);
-                push(getGlobal(propName));
-            }
-
-            case SET -> {
-                // Generic set operation
-                String propName = getName(arg);
-                setGlobal(propName, pop());
-            }
-
-            case PUT -> {
-                // Put statement (output)
-                int outputType = arg;
-                Datum value = pop();
-                System.out.println(value.stringValue());
-            }
+            // The entity
+            case THE_BUILTIN -> push(propertyAccessor.getMovieProperty(scriptResolver.getName(arg), movieState));
+            case GET -> push(getGlobal(scriptResolver.getName(arg)));
+            case SET -> setGlobal(scriptResolver.getName(arg), pop());
+            case PUT -> System.out.println(pop().stringValue());
 
             // Object creation
-            case NEW_OBJ -> {
-                String className = getName(arg);
-                Datum argListDatum = pop();
-                List<Datum> args = extractArgList(argListDatum);
-                push(createObject(className, args));
-            }
+            case NEW_OBJ -> { List<Datum> args2 = extractArgList(pop()); push(new Datum.ScriptInstanceRef(scriptResolver.getName(arg), new HashMap<>())); }
+            case PUSH_VAR_REF, PUSH_CHUNK_VAR_REF -> push(new Datum.VarRef(scriptResolver.getName(arg)));
 
-            // Variable references
-            case PUSH_VAR_REF -> {
-                String varName = getName(arg);
-                push(new Datum.VarRef(varName));
-            }
+            // String chunks
+            case GET_CHUNK -> { Datum e = pop(), s = pop(), t = pop(), str = pop(); push(getStringChunk(str.stringValue(), t, s.intValue(), e.intValue())); }
+            case PUT_CHUNK, DELETE_CHUNK, HILITE_CHUNK -> { for (int i = 0; i < 3; i++) pop(); }
 
-            case PUSH_CHUNK_VAR_REF -> {
-                // Push reference to a chunk of a variable
-                String varName = getName(arg);
-                push(new Datum.VarRef(varName));
-            }
+            // Tell blocks
+            case START_TELL -> scope.pushTellTarget(pop());
+            case END_TELL -> scope.popTellTarget();
+            case TELL_CALL -> { String name = scriptResolver.getName(arg); List<Datum> args2 = extractArgList(pop()); Datum t = scope.getTellTarget(); push(t != null ? methodDispatcher.callMethod(t, name, args2, xtraInstanceCallback) : call(name, args2)); }
 
-            // Contains (alternate form)
-            case CONTAINS_0_STR -> {
-                Datum b = pop();
-                Datum a = pop();
-                boolean contains = a.stringValue().toLowerCase()
-                    .contains(b.stringValue().toLowerCase());
-                push(contains ? Datum.TRUE : Datum.FALSE);
-            }
+            // Sprite tests
+            case ONTO_SPR, INTO_SPR -> { pop(); pop(); push(Datum.FALSE); }
 
-            // JavaScript interop (stub)
-            case CALL_JAVASCRIPT -> {
-                // JavaScript calls not supported in pure Java VM
-                push(Datum.voidValue());
-            }
+            case CALL_JAVASCRIPT -> push(Datum.voidValue());
 
-            // Default: unimplemented opcode
-            default -> {
-                // Log warning but continue
-                System.err.println("Unimplemented opcode: " + op + " (0x" +
-                    Integer.toHexString(op.getCode()) + ")");
-            }
+            default -> System.err.println("Unimplemented opcode: " + op + " (0x" + Integer.toHexString(op.getCode()) + ")");
         }
     }
 
-    // Property access helpers
+    private void executeExtCall(Scope scope, String handlerName) {
+        Datum argListDatum = pop();
+        boolean isNoRet = argListDatum instanceof Datum.ArgListNoRet;
+        List<Datum> args = extractArgList(argListDatum);
 
-    private Datum getProperty(Datum obj, String propName) {
-        if (obj instanceof Datum.PropList propList) {
-            return propList.get(Datum.symbol(propName));
-        } else if (obj instanceof Datum.ScriptInstanceRef instance) {
-            return instance.getProperty(propName);
-        } else if (obj instanceof Datum.CastMemberRef memberRef) {
-            return getCastMemberProperty(memberRef, propName);
-        } else if (obj instanceof Datum.CastLibRef castLibRef) {
-            return getCastLibProperty(castLibRef, propName);
-        } else if (obj instanceof Datum.SpriteRef spriteRef) {
-            return getSpriteProperty(spriteRef.channel(), propName);
-        } else if (obj instanceof Datum.Symbol symbol) {
-            // Resolve symbol to a script instance and get property from it
-            String scriptName = symbol.name();
+        if (handlerName.contains("return")) {
+            Datum returnValue = args.isEmpty() ? Datum.voidValue() : args.get(0);
+            scope.setReturnValue(returnValue);
+            scope.setInstructionPointer(scope.getHandler().instructions().size());
+            if (!isNoRet) push(returnValue);
+            return;
+        }
+
+        Datum result = callGlobalHandler(handlerName, args, scope);
+        lastHandlerResult = result;
+        scope.setReturnValue(result);
+        if (!isNoRet) push(result);
+    }
+
+    private void executeLocalCall(Scope scope, int handlerIndex) {
+        Datum argListDatum = pop();
+        boolean isNoRet = argListDatum instanceof Datum.ArgListNoRet;
+        List<Datum> args = extractArgList(argListDatum);
+
+        ScriptChunk script = scope.getScript();
+        if (handlerIndex >= 0 && handlerIndex < script.handlers().size()) {
+            ScriptChunk.Handler targetHandler = script.handlers().get(handlerIndex);
+            String handlerName = scriptResolver.getName(targetHandler.nameId());
+
+            // Check first arg for script instance with this handler
+            if (handlerName != null && !args.isEmpty()) {
+                ScriptResolver.HandlerLocation loc = getHandlerFromFirstArg(args, handlerName);
+                if (loc != null) {
+                    Datum result = execute(loc.script(), loc.handler(), args.toArray(new Datum[0]));
+                    lastHandlerResult = result;
+                    if (!isNoRet) push(result);
+                    return;
+                }
+            }
+
+            Datum result = execute(script, targetHandler, args.toArray(new Datum[0]));
+            lastHandlerResult = result;
+            if (!isNoRet) push(result);
+        } else if (!isNoRet) {
+            push(Datum.voidValue());
+        }
+    }
+
+    private void executeObjCall(String methodName) {
+        Datum argListDatum = pop();
+        boolean isNoRet = argListDatum instanceof Datum.ArgListNoRet;
+        List<Datum> args = extractArgList(argListDatum);
+        Datum obj = args.isEmpty() ? Datum.voidValue() : args.remove(0);
+        Datum result = methodDispatcher.callMethod(obj, methodName, args, xtraInstanceCallback);
+        lastHandlerResult = result;
+        if (!isNoRet) push(result);
+    }
+
+    private void executeGetField(Scope scope) {
+        int dirVersion = file != null && file.getConfig() != null ? file.getConfig().directorVersion() : 0;
+        Datum castId = dirVersion >= 500 ? pop() : Datum.of(0);
+        if (castId.intValue() <= 0) {
+            CastLib scriptCast = scriptResolver.findCastForScript(scope.getScript());
+            castId = scriptCast != null ? Datum.of(scriptCast.getNumber()) : Datum.of(1);
+        }
+        push(Datum.of(propertyAccessor.getFieldText(pop(), castId, scriptResolver)));
+    }
+
+    private Datum callGlobalHandler(String handlerName, List<Datum> args, Scope scope) {
+        if (!handlerName.equalsIgnoreCase("new")) {
+            // Check first arg for script/instance with handler
+            ScriptResolver.HandlerLocation loc = getHandlerFromFirstArg(args, handlerName);
+            if (loc != null) return execute(loc.script(), loc.handler(), args.toArray(new Datum[0]));
+
+            // Check active script instances
             if (activeScriptInstancesCallback != null) {
-                for (Datum.ScriptInstanceRef instanceRef : activeScriptInstancesCallback.getActiveScriptInstances()) {
-                    if (instanceRef.scriptName().equalsIgnoreCase(scriptName)) {
-                        return instanceRef.getProperty(propName);
+                for (Datum.ScriptInstanceRef ref : activeScriptInstancesCallback.getActiveScriptInstances()) {
+                    ScriptChunk script = scriptResolver.findScriptByName(ref.scriptName());
+                    if (script != null) {
+                        for (ScriptChunk.Handler h : script.handlers()) {
+                            if (handlerName.equalsIgnoreCase(scriptResolver.getName(h.nameId()))) {
+                                List<Datum> allArgs = new ArrayList<>();
+                                allArgs.add(ref);
+                                allArgs.addAll(args);
+                                return execute(script, h, allArgs.toArray(new Datum[0]));
+                            }
+                        }
                     }
                 }
             }
 
-            // Script instance not found - return void
-            return Datum.voidValue();
+            // Check static scripts
+            ScriptResolver.HandlerLocation staticLoc = scriptResolver.findHandler(handlerName);
+            if (staticLoc != null) return execute(staticLoc.script(), staticLoc.handler(), args.toArray(new Datum[0]));
         }
-        debugLog("getProperty: unhandled object type " + obj.getClass().getSimpleName() + " for property '" + propName + "'");
-        return Datum.voidValue();
+
+        // Check builtins
+        BuiltinHandler builtin = builtins.get(handlerName.toLowerCase());
+        if (builtin != null) return builtin.call(this, args);
+
+        throw LingoException.undefinedHandler(handlerName);
     }
 
-    private void setProperty(Datum obj, String propName, Datum value) {
-        if (obj instanceof Datum.PropList propList) {
-            propList.put(Datum.symbol(propName), value);
-        } else if (obj instanceof Datum.ScriptInstanceRef instance) {
-            instance.setProperty(propName, value);
-        } else if (obj instanceof Datum.Symbol symbol) {
-            // Resolve symbol to a script instance and set property on it
-            String scriptName = symbol.name();
-            if (activeScriptInstancesCallback != null) {
-                for (Datum.ScriptInstanceRef instanceRef : activeScriptInstancesCallback.getActiveScriptInstances()) {
-                    if (instanceRef.scriptName().equalsIgnoreCase(scriptName)) {
-                        instanceRef.setProperty(propName, value);
-                        return;
+    private ScriptResolver.HandlerLocation getHandlerFromFirstArg(List<Datum> args, String handlerName) {
+        if (args.isEmpty()) return null;
+        Datum firstArg = args.get(0);
+
+        if (firstArg instanceof Datum.ScriptInstanceRef si) {
+            ScriptChunk script = scriptResolver.findScriptByName(si.scriptName());
+            if (script != null) {
+                for (ScriptChunk.Handler h : script.handlers()) {
+                    if (handlerName.equalsIgnoreCase(scriptResolver.getName(h.nameId()))) {
+                        return new ScriptResolver.HandlerLocation(script, h, null, null);
                     }
                 }
             }
         }
-    }
 
-    private Datum getCastMemberProperty(Datum.CastMemberRef memberRef, String propName) {
-        // Return cast member properties
-        return switch (propName.toLowerCase()) {
-            case "number", "membernum" -> Datum.of(memberRef.memberNum());
-            case "castlib", "castlibnum" -> Datum.of(memberRef.castLib());
-            default -> Datum.voidValue();
-        };
-    }
-
-    private Datum getCastLibProperty(Datum.CastLibRef castLibRef, String propName) {
-        int castNum = castLibRef.castLib();
-        CastLib cast = castManager != null ? castManager.getCast(castNum) : null;
-
-        return switch (propName.toLowerCase()) {
-            case "number" -> Datum.of(castNum);
-            case "name" -> Datum.of(cast != null ? cast.getName() : "");
-            case "filename" -> Datum.of(cast != null ? cast.getFileName() : "");
-            case "preloadmode" -> {
-                // 0 = when needed, 1 = after frame one, 2 = before frame one
-                if (cast != null && cast.isExternal()) {
-                    yield Datum.of(cast.getState() == CastLib.State.LOADED ? 2 : 0);
-                }
-                yield Datum.of(0);
-            }
-            default -> {
-                debugLog("getCastLibProperty: unknown property '" + propName + "' for castLib " + castNum);
-                yield Datum.voidValue();
-            }
-        };
-    }
-
-    private Datum getSpriteProperty(int channel, String propName) {
-        // Would query actual sprite state
-        return switch (propName.toLowerCase()) {
-            case "spritenum", "channel" -> Datum.of(channel);
-            case "visible" -> Datum.TRUE;
-            case "loc" -> new Datum.IntPoint(0, 0);
-            case "rect" -> new Datum.IntRect(0, 0, 0, 0);
-            case "locH", "left" -> Datum.of(0);
-            case "locV", "top" -> Datum.of(0);
-            case "width" -> Datum.of(0);
-            case "height" -> Datum.of(0);
-            case "ink" -> Datum.of(0);
-            case "blend" -> Datum.of(100);
-            default -> Datum.voidValue();
-        };
-    }
-
-    private Datum getMovieProperty(String propName) {
-        return switch (propName.toLowerCase()) {
-            // Stage properties
-            case "stage" -> new Datum.StageRef();
-            case "stagewidth" -> Datum.of(file != null ? file.getStageWidth() : 640);
-            case "stageheight" -> Datum.of(file != null ? file.getStageHeight() : 480);
-            case "stageright" -> Datum.of(file != null ? file.getStageWidth() : 640);
-            case "stageleft" -> Datum.of(0);
-            case "stagetop" -> Datum.of(0);
-            case "stagebottom" -> Datum.of(file != null ? file.getStageHeight() : 480);
-
-            // Frame properties
-            case "frame" -> Datum.of(currentFrame);
-            case "lastframe" -> Datum.of(file != null && file.getScoreChunk() != null
-                && file.getScoreChunk().frameData() != null
-                ? file.getScoreChunk().frameData().header().frameCount() : 1);
-            case "framelabel" -> Datum.of(currentFrameLabel != null ? currentFrameLabel : "");
-            case "frametempo", "tempo" -> Datum.of(file != null ? file.getTempo() : 15);
-            case "lastchannel" -> Datum.of(file != null && file.getScoreChunk() != null
-                && file.getScoreChunk().frameData() != null
-                ? file.getScoreChunk().frameData().header().numChannels() : 48);
-
-            // Time properties
-            case "time" -> {
-                java.time.LocalTime now = java.time.LocalTime.now();
-                yield Datum.of(String.format("%02d:%02d %s",
-                    now.getHour() % 12 == 0 ? 12 : now.getHour() % 12,
-                    now.getMinute(),
-                    now.getHour() < 12 ? "AM" : "PM"));
-            }
-            case "long time" -> {
-                java.time.LocalTime now = java.time.LocalTime.now();
-                yield Datum.of(String.format("%02d:%02d:%02d %s",
-                    now.getHour() % 12 == 0 ? 12 : now.getHour() % 12,
-                    now.getMinute(),
-                    now.getSecond(),
-                    now.getHour() < 12 ? "AM" : "PM"));
-            }
-            case "date" -> {
-                java.time.LocalDate now = java.time.LocalDate.now();
-                yield Datum.of(String.format("%02d/%02d/%04d",
-                    now.getMonthValue(), now.getDayOfMonth(), now.getYear()));
-            }
-            case "milliseconds" -> Datum.of((int) (System.currentTimeMillis() - startTimeMillis));
-            case "ticks" -> Datum.of((int) ((System.currentTimeMillis() - startTimeMillis) / 16));
-
-            // Mouse properties
-            case "mouseloc" -> new Datum.IntPoint(mouseX, mouseY);
-            case "mouseh" -> Datum.of(mouseX);
-            case "mousev" -> Datum.of(mouseY);
-            case "rollover" -> Datum.of(rolloverSprite);
-            case "clickon" -> Datum.of(clickOnSprite);
-            case "doubleclick" -> isDoubleClick ? Datum.TRUE : Datum.FALSE;
-
-            // Keyboard properties
-            case "keycode" -> Datum.of(keyCode);
-            case "key" -> Datum.of(lastKey != null ? lastKey : "");
-            case "shiftdown" -> shiftDown ? Datum.TRUE : Datum.FALSE;
-            case "controldown" -> controlDown ? Datum.TRUE : Datum.FALSE;
-            case "commanddown" -> commandDown ? Datum.TRUE : Datum.FALSE;
-            case "optiondown", "altdown" -> altDown ? Datum.TRUE : Datum.FALSE;
-
-            // Focus and selection
-            case "keyboardfocussprite" -> Datum.of(keyboardFocusSprite);
-            case "selstart" -> Datum.of(selectionStart);
-            case "selend" -> Datum.of(selectionEnd);
-
-            // Movie info
-            case "moviename" -> Datum.of(file != null && file.getBasePath() != null
-                ? new java.io.File(file.getBasePath()).getName() : "");
-            case "moviepath", "path" -> Datum.of(file != null ? file.getBasePath() : "");
-            case "platform" -> Datum.of("Windows,32");
-            case "runmode" -> Datum.of("Plugin");
-            case "productversion" -> Datum.of("10.1");
-            case "colordepth" -> Datum.of(32);
-
-            // Settings
-            case "floatprecision" -> Datum.of(floatPrecision);
-            case "itemdelimiter" -> Datum.of(String.valueOf(itemDelimiter));
-            case "exitlock" -> exitLock ? Datum.TRUE : Datum.FALSE;
-            case "updatelock" -> updateLock ? Datum.TRUE : Datum.FALSE;
-            case "tracescript" -> Datum.of(0);
-            case "tracelogfile" -> Datum.of("");
-
-            // actorList global
-            case "actorlist" -> getGlobal("actorList");
-
-            // currentSpriteNum - get from current script instance
-            case "currentspritenum" -> Datum.of(0); // TODO: get from receiver
-
-            default -> {
-                debugLog("getMovieProperty: unknown property '" + propName + "'");
-                yield Datum.voidValue();
-            }
-        };
-    }
-
-    private void setMovieProperty(String propName, Datum value) {
-        switch (propName.toLowerCase()) {
-            case "keyboardfocussprite" -> keyboardFocusSprite = value.intValue();
-            case "selstart" -> selectionStart = value.intValue();
-            case "selend" -> selectionEnd = value.intValue();
-            case "floatprecision" -> floatPrecision = value.intValue();
-            case "itemdelimiter" -> {
-                String s = value.stringValue();
-                if (!s.isEmpty()) {
-                    itemDelimiter = s;
+        if (firstArg instanceof Datum.ScriptRef sr) {
+            ScriptChunk script = scriptResolver.findScriptByCastRef(sr.memberRef());
+            if (script != null) {
+                for (ScriptChunk.Handler h : script.handlers()) {
+                    if (handlerName.equalsIgnoreCase(scriptResolver.getName(h.nameId()))) {
+                        return new ScriptResolver.HandlerLocation(script, h, null, null);
+                    }
                 }
             }
-            case "exitlock" -> exitLock = value.boolValue();
-            case "updatelock" -> updateLock = value.boolValue();
-            case "actorlist" -> setGlobal("actorList", value);
-            case "centerstage" -> { /* TODO: requires player support */ }
-            case "tracescript", "tracelogfile", "debugplaybackenabled" -> { /* ignore */ }
-            default -> debugLog("setMovieProperty: unknown property '" + propName + "'");
         }
+
+        return null;
+    }
+
+    public Datum createScriptInstance(Datum.ScriptRef scriptRef, List<Datum> constructorArgs) {
+        ScriptChunk script = scriptResolver.findScriptByCastRef(scriptRef.memberRef());
+        if (script == null) throw new LingoException("Cannot find script for " + scriptRef.memberRef());
+
+        String scriptName = scriptResolver.getScriptMemberName(script);
+        if (scriptName == null || scriptName.isEmpty()) scriptName = "script_" + script.id();
+
+        Map<String, Datum> props = new LinkedHashMap<>();
+        for (ScriptChunk.PropertyEntry prop : script.properties()) {
+            String propName = scriptResolver.getName(prop.nameId());
+            if (propName != null) props.put(propName, Datum.voidValue());
+        }
+
+        Datum.ScriptInstanceRef instance = new Datum.ScriptInstanceRef(scriptName, scriptRef.memberRef(), props);
+
+        // Call "new" handler if present
+        for (ScriptChunk.Handler h : script.handlers()) {
+            if ("new".equalsIgnoreCase(scriptResolver.getName(h.nameId()))) {
+                List<Datum> paddedArgs = new ArrayList<>(constructorArgs);
+                while (paddedArgs.size() < h.argNameIds().size()) paddedArgs.add(Datum.voidValue());
+                List<Datum> allArgs = new ArrayList<>();
+                allArgs.add(instance);
+                allArgs.addAll(paddedArgs);
+                Datum result = execute(script, h, allArgs.toArray(new Datum[0]));
+                return result instanceof Datum.Void ? instance : result;
+            }
+        }
+
+        return instance;
     }
 
     /**
-     * Get the text content of a field member.
-     * Looks up the associated TextChunk (STXT) via the KeyTable.
+     * Handle the call(#handler, receiver, args...) builtin.
      */
-    private String getFieldText(Datum memberIdentifier, Datum castIdentifier) {
-        if (castManager == null) {
-            debugLog("getFieldText: no castManager");
-            return "";
-        }
+    public Datum callHandler(List<Datum> args) {
+        if (args.size() < 2 || !(args.get(0) instanceof Datum.Symbol symbol)) return Datum.voidValue();
 
-        // Determine cast number
-        int castNum = 1; // Default to first cast
-        if (castIdentifier != null && !castIdentifier.isVoid()) {
-            if (castIdentifier.isInt()) {
-                castNum = castIdentifier.intValue();
-            } else if (castIdentifier.isString()) {
-                // Find cast by name
-                CastLib cast = castManager.getCastByName(castIdentifier.stringValue());
-                if (cast != null) {
-                    castNum = cast.getNumber();
-                }
-            }
-        }
+        String handlerName = symbol.name();
+        Datum receiver = args.get(1);
+        List<Datum> handlerArgs = args.size() > 2 ? args.subList(2, args.size()) : new ArrayList<>();
 
-        // Find the member
-        CastMemberChunk member = null;
-        CastLib cast = castManager.getCast(castNum);
+        List<Datum.ScriptInstanceRef> instances = new ArrayList<>();
+        methodDispatcher.collectScriptInstances(receiver, instances, activeScriptInstancesCallback);
 
-        if (memberIdentifier.isInt()) {
-            int memberNum = memberIdentifier.intValue();
-            if (cast != null) {
-                member = cast.getMember(memberNum);
-            }
-        } else if (memberIdentifier.isString()) {
-            String memberName = memberIdentifier.stringValue();
-            // Search in specified cast first, then all casts
-            if (cast != null) {
-                for (CastMemberChunk m : cast.getAllMembers()) {
-                    if (memberName.equalsIgnoreCase(m.name())) {
-                        member = m;
+        if (instances.isEmpty()) return methodDispatcher.callMethod(receiver, handlerName, handlerArgs, xtraInstanceCallback);
+
+        Datum result = Datum.voidValue();
+        for (Datum.ScriptInstanceRef instance : instances) {
+            ScriptChunk script = scriptResolver.findScriptByName(instance.scriptName());
+            if (script != null) {
+                for (ScriptChunk.Handler h : script.handlers()) {
+                    if (handlerName.equalsIgnoreCase(scriptResolver.getName(h.nameId()))) {
+                        List<Datum> allArgs = new ArrayList<>();
+                        allArgs.add(instance);
+                        allArgs.addAll(handlerArgs);
+                        result = execute(script, h, allArgs.toArray(new Datum[0]));
                         break;
                     }
                 }
             }
-            if (member == null) {
-                member = castManager.findMemberByName(memberName);
-            }
         }
-
-        if (member == null) {
-            debugLog("getFieldText: member not found for " + memberIdentifier);
-            return "";
-        }
-
-        if (!member.isText()) {
-            debugLog("getFieldText: member is not a text/field type: " + member.memberType());
-            return "";
-        }
-
-        // Find the associated TextChunk via KeyTable
-        DirectorFile dirFile = (cast != null && cast.getDirectorFile() != null)
-            ? cast.getDirectorFile()
-            : file;
-
-        if (dirFile == null) {
-            debugLog("getFieldText: no DirectorFile available");
-            return "";
-        }
-
-        KeyTableChunk keyTable = dirFile.getKeyTable();
-        if (keyTable == null) {
-            debugLog("getFieldText: no KeyTable available");
-            return "";
-        }
-
-        // Look for STXT entry linked to this member
-        // The KeyTable maps owner chunk IDs (castId) to their child chunks (sectionId)
-        // Note: fourCC might be stored in different byte orders (STXT vs TXTS)
-        int stxtFourccBE = com.libreshockwave.io.BinaryReader.fourCC("STXT");
-        int stxtFourccLE = com.libreshockwave.io.BinaryReader.fourCC("TXTS");
-        int memberId = member.id();  // This is the CASt chunk section ID
-
-        // Find STXT entry (try both byte orders)
-        KeyTableChunk.KeyTableEntry stxtEntry = keyTable.findEntry(memberId, stxtFourccBE);
-        if (stxtEntry == null) {
-            stxtEntry = keyTable.findEntry(memberId, stxtFourccLE);
-        }
-
-        if (stxtEntry == null) {
-            debugLog("getFieldText: no STXT chunk found for member " + memberId +
-                " (name='" + member.name() + "')");
-            return "";
-        }
-
-        // Get the TextChunk
-        Optional<TextChunk> textChunkOpt = dirFile.getChunk(stxtEntry.sectionId(), TextChunk.class);
-        if (textChunkOpt.isEmpty()) {
-            debugLog("getFieldText: TextChunk not found for section " + stxtEntry.sectionId());
-            return "";
-        }
-
-        return textChunkOpt.get().text();
+        return result;
     }
 
-    /**
-     * Call a method on an object.
-     * Matches dirplayer-rs player_call_datum_handler() dispatch.
-     */
-    private Datum callMethod(Datum obj, String methodName, List<Datum> args) {
-        // Handle XtraInstance - matches dirplayer-rs XtraInstance handler dispatch
-        if (obj instanceof Datum.XtraInstance xtraInstance) {
-            if (xtraInstanceCallback != null) {
-                Datum result = xtraInstanceCallback.callMethod(
-                    xtraInstance.xtraName(),
-                    xtraInstance.instanceId(),
-                    methodName,
-                    args
-                );
-                if (result != null) {
-                    return result;
-                }
-            }
-            // Fall through to builtin check if no callback or method not handled
-        }
+    private List<Datum.ScriptInstanceRef> getActiveInstances() {
+        return activeScriptInstancesCallback != null ? activeScriptInstancesCallback.getActiveScriptInstances() : List.of();
+    }
 
-        // Handle ScriptInstanceRef - call method on script instance
-        if (obj instanceof Datum.ScriptInstanceRef instance) {
-            // Look up the parent script and find the handler
-            ScriptChunk instanceScript = findScriptByName(instance.scriptName());
-            if (instanceScript != null) {
-                for (ScriptChunk.Handler h : instanceScript.handlers()) {
-                    String hName = getName(h.nameId());
-                    if (hName != null && hName.equalsIgnoreCase(methodName)) {
-                        // Prepend 'me' (the instance) as first argument
-                        List<Datum> allArgs = new ArrayList<>();
-                        allArgs.add(obj);
-                        allArgs.addAll(args);
-                        return execute(instanceScript, h, allArgs.toArray(new Datum[0]));
-                    }
-                }
-            }
-            return Datum.voidValue();
-        }
+    // Stack operations
+    private void push(Datum value) { stack.push(value); }
+    private Datum pop() { return stack.isEmpty() ? Datum.voidValue() : stack.pop(); }
+    private List<Datum> popN(int n) { List<Datum> items = new ArrayList<>(); for (int i = 0; i < n; i++) items.add(0, pop()); return items; }
 
-        // Handle ScriptRef - call static method on script or create instance
-        if (obj instanceof Datum.ScriptRef scriptRef) {
-            // Special case: "new" creates a script instance (matches dirplayer-rs)
-            if ("new".equalsIgnoreCase(methodName)) {
-                return createScriptInstance(scriptRef, args);
-            }
+    // Arithmetic operations
+    private Datum add(Datum a, Datum b) { return a.isFloat() || b.isFloat() ? Datum.of(a.floatValue() + b.floatValue()) : Datum.of(a.intValue() + b.intValue()); }
+    private Datum subtract(Datum a, Datum b) { return a.isFloat() || b.isFloat() ? Datum.of(a.floatValue() - b.floatValue()) : Datum.of(a.intValue() - b.intValue()); }
+    private Datum multiply(Datum a, Datum b) { return a.isFloat() || b.isFloat() ? Datum.of(a.floatValue() * b.floatValue()) : Datum.of(a.intValue() * b.intValue()); }
+    private Datum divide(Datum a, Datum b) {
+        float bVal = b.floatValue();
+        if (bVal == 0) throw new LingoException("Division by zero");
+        return a.isInt() && b.isInt() && a.intValue() % b.intValue() == 0 ? Datum.of(a.intValue() / b.intValue()) : Datum.of(a.floatValue() / bVal);
+    }
+    private Datum modulo(Datum a, Datum b) { int bVal = b.intValue(); if (bVal == 0) throw new LingoException("Modulo by zero"); return Datum.of(a.intValue() % bVal); }
+    private Datum negate(Datum a) { return a.isFloat() ? Datum.of(-a.floatValue()) : Datum.of(-a.intValue()); }
+    private int compare(Datum a, Datum b) { return a.isNumber() && b.isNumber() ? Float.compare(a.floatValue(), b.floatValue()) : a.stringValue().compareToIgnoreCase(b.stringValue()); }
+    private boolean equals(Datum a, Datum b) { return a.isNumber() && b.isNumber() ? a.floatValue() == b.floatValue() : a.stringValue().equalsIgnoreCase(b.stringValue()); }
 
-            // Other methods are called as static handlers on the script
-            ScriptChunk refScript = findScriptByCastRef(scriptRef.memberRef());
-            if (refScript != null) {
-                for (ScriptChunk.Handler h : refScript.handlers()) {
-                    String hName = getName(h.nameId());
-                    if (hName != null && hName.equalsIgnoreCase(methodName)) {
-                        return execute(refScript, h, args.toArray(new Datum[0]));
-                    }
-                }
-            }
-            return Datum.voidValue();
-        }
-
-        // Handle DList
-        if (obj instanceof Datum.DList list) {
-            return callListMethod(list, methodName, args);
-        }
-
-        // Handle PropList
-        if (obj instanceof Datum.PropList propList) {
-            return callPropListMethod(propList, methodName, args);
-        }
-
-        // Handle Stage
-        if (obj instanceof Datum.StageRef) {
-            return callStageMethod(methodName, args);
-        }
-
-        // Handle String - matches dirplayer-rs StringDatumHandlers::call
-        if (obj instanceof Datum.Str str) {
-            return callStringMethod(str.value(), methodName, args);
-        }
-
-        // Handle StringChunk - delegate to the resolved string value
-        if (obj instanceof Datum.StringChunk chunk) {
-            return callStringMethod(chunk.value(), methodName, args);
-        }
-
-        // Try as builtin
-        BuiltinHandler builtin = builtins.get(methodName.toLowerCase());
-        if (builtin != null) {
-            List<Datum> allArgs = new ArrayList<>();
-            allArgs.add(obj);
-            allArgs.addAll(args);
-            return builtin.call(this, allArgs);
-        }
-
+    // Helper methods
+    private Datum getLiteral(ScriptChunk script, int index) {
+        if (index >= script.literals().size()) return Datum.voidValue();
+        Object val = script.literals().get(index).value();
+        if (val instanceof String s) return Datum.of(s);
+        if (val instanceof Integer i) return Datum.of(i);
+        if (val instanceof Double d) return Datum.of(d.floatValue());
         return Datum.voidValue();
     }
 
-    private Datum callStageMethod(String method, List<Datum> args) {
-        return switch (method.toLowerCase()) {
-            case "movetofront" -> {
-                if (stageCallback != null) stageCallback.moveToFront();
-                yield Datum.voidValue();
-            }
-            case "movetoback" -> {
-                if (stageCallback != null) stageCallback.moveToBack();
-                yield Datum.voidValue();
-            }
-            case "close" -> {
-                if (stageCallback != null) stageCallback.close();
-                yield Datum.voidValue();
-            }
-            case "forget" -> Datum.voidValue();
-            default -> Datum.voidValue();
-        };
-    }
-
-    private Datum callListMethod(Datum.DList list, String method, List<Datum> args) {
-        return switch (method.toLowerCase()) {
-            case "count" -> Datum.of(list.count());
-            case "getat" -> args.isEmpty() ? Datum.voidValue() : list.getAt(args.get(0).intValue());
-            case "setat" -> {
-                if (args.size() >= 2) {
-                    list.setAt(args.get(0).intValue(), args.get(1));
-                }
-                yield Datum.voidValue();
-            }
-            case "add", "append" -> {
-                if (!args.isEmpty()) list.add(args.get(0));
-                yield Datum.voidValue();
-            }
-            case "deleteat" -> {
-                if (!args.isEmpty() && args.get(0).intValue() >= 1 &&
-                    args.get(0).intValue() <= list.count()) {
-                    list.items().remove(args.get(0).intValue() - 1);
-                }
-                yield Datum.voidValue();
-            }
-            case "getlast" -> list.count() > 0 ? list.items().get(list.count() - 1) : Datum.voidValue();
-            case "sort" -> {
-                list.items().sort((a, b) -> {
-                    if (a.isNumber() && b.isNumber()) {
-                        return Float.compare(a.floatValue(), b.floatValue());
-                    }
-                    return a.stringValue().compareToIgnoreCase(b.stringValue());
-                });
-                yield Datum.voidValue();
-            }
-            default -> Datum.voidValue();
-        };
-    }
-
-    private Datum callPropListMethod(Datum.PropList propList, String method, List<Datum> args) {
-        return switch (method.toLowerCase()) {
-            case "count" -> Datum.of(propList.count());
-            case "getprop", "getaprop" -> args.isEmpty() ? Datum.voidValue() : propList.get(args.get(0));
-            case "setprop", "setaprop", "addprop" -> {
-                if (args.size() >= 2) {
-                    propList.put(args.get(0), args.get(1));
-                }
-                yield Datum.voidValue();
-            }
-            case "deleteprop" -> {
-                if (!args.isEmpty()) {
-                    propList.properties().remove(args.get(0));
-                }
-                yield Datum.voidValue();
-            }
-            case "findpos" -> {
-                if (args.isEmpty()) yield Datum.of(0);
-                int pos = 1;
-                for (Datum key : propList.properties().keySet()) {
-                    if (key.equals(args.get(0))) {
-                        yield Datum.of(pos);
-                    }
-                    pos++;
-                }
-                yield Datum.of(0);
-            }
-            default -> Datum.voidValue();
-        };
-    }
-
-    /**
-     * Call a method on a string.
-     * Matches dirplayer-rs StringDatumHandlers::call
-     */
-    private Datum callStringMethod(String str, String method, List<Datum> args) {
-        return switch (method.toLowerCase()) {
-            case "count" -> {
-                // count(str, chunkType) - count items/words/chars/lines
-                if (args.isEmpty()) yield Datum.of(0);
-                String chunkType = args.get(0).stringValue().toLowerCase();
-                yield Datum.of(stringGetCount(str, chunkType));
-            }
-            case "getpropref" -> {
-                // getPropRef(str, chunkType, start, [end]) - get chunk reference
-                if (args.size() < 2) yield Datum.voidValue();
-                String chunkType = args.get(0).stringValue();
-                int start = args.get(1).intValue();
-                int end = args.size() > 2 ? args.get(2).intValue() : start;
-                yield getStringChunkRef(str, chunkType, start, end);
-            }
-            case "getprop" -> {
-                // getProp(str, chunkType, start, [end]) - get chunk value as string
-                if (args.size() < 2) yield Datum.voidValue();
-                String chunkType = args.get(0).stringValue();
-                int start = args.get(1).intValue();
-                int end = args.size() > 2 ? args.get(2).intValue() : start;
-                Datum chunk = getStringChunkRef(str, chunkType, start, end);
-                if (chunk instanceof Datum.StringChunk sc) {
-                    yield Datum.of(sc.value());
-                }
-                yield Datum.voidValue();
-            }
-            case "split" -> {
-                // split(str, delimiter) - split string into list
-                String delimiter = args.isEmpty() ? "," : args.get(0).stringValue();
-                String[] parts = str.split(java.util.regex.Pattern.quote(delimiter), -1);
-                List<Datum> items = new ArrayList<>();
-                for (String part : parts) {
-                    items.add(Datum.of(part));
-                }
-                yield new Datum.DList(items, false);
-            }
-            default -> Datum.voidValue();
-        };
-    }
-
-    /**
-     * Get a chunk reference from a string.
-     * Matches dirplayer-rs StringDatumUtils::get_prop_ref
-     */
-    private Datum getStringChunkRef(String str, String chunkTypeName, int start, int end) {
-        StringChunkType chunkType = switch (chunkTypeName.toLowerCase()) {
-            case "char" -> StringChunkType.CHAR;
-            case "word" -> StringChunkType.WORD;
-            case "line" -> StringChunkType.LINE;
-            case "item" -> StringChunkType.ITEM;
-            default -> StringChunkType.CHAR;
-        };
-
-        // Get item delimiter as char
-        char delimiterChar = itemDelimiter.isEmpty() ? ',' : itemDelimiter.charAt(0);
-
-        // Extract the chunk value
-        String chunkValue = extractStringChunk(str, chunkType, start, end);
-
-        // Create StringChunk with source as the original string
-        return new Datum.StringChunk(Datum.of(str), chunkType, start, end, delimiterChar, chunkValue);
-    }
-
-    /**
-     * Count items/words/chars/lines in a string.
-     * Matches dirplayer-rs string_get_count
-     */
-    private int stringGetCount(String str, String chunkType) {
-        return switch (chunkType.toLowerCase()) {
-            case "char", "chars" -> str.length();
-            case "word", "words" -> str.isEmpty() ? 0 : str.split("\\s+").length;
-            case "item", "items" -> {
-                String delimiter = itemDelimiter.isEmpty() ? "," : itemDelimiter;
-                yield str.split(java.util.regex.Pattern.quote(delimiter), -1).length;
-            }
-            case "line", "lines" -> str.split("\\r?\\n|\\r", -1).length;
-            default -> 0;
-        };
-    }
-
-    /**
-     * Extract a chunk from a string.
-     */
-    private String extractStringChunk(String str, StringChunkType type, int start, int end) {
-        if (start < 1) start = 1;
-        if (end < start) end = start;
-
-        return switch (type) {
-            case CHAR -> {
-                int startIdx = Math.min(start - 1, str.length());
-                int endIdx = Math.min(end, str.length());
-                yield startIdx < endIdx ? str.substring(startIdx, endIdx) : "";
-            }
-            case WORD -> {
-                String[] words = str.split("\\s+");
-                if (start > words.length) yield "";
-                StringBuilder sb = new StringBuilder();
-                for (int i = start - 1; i < Math.min(end, words.length); i++) {
-                    if (sb.length() > 0) sb.append(" ");
-                    sb.append(words[i]);
-                }
-                yield sb.toString();
-            }
-            case LINE -> {
-                String[] lines = str.split("\\r?\\n|\\r", -1);
-                if (start > lines.length) yield "";
-                StringBuilder sb = new StringBuilder();
-                String lineBreak = str.contains("\r\n") ? "\r\n" : (str.contains("\n") ? "\n" : "\r");
-                for (int i = start - 1; i < Math.min(end, lines.length); i++) {
-                    if (sb.length() > 0) sb.append(lineBreak);
-                    sb.append(lines[i]);
-                }
-                yield sb.toString();
-            }
-            case ITEM -> {
-                String delimiter = itemDelimiter.isEmpty() ? "," : itemDelimiter;
-                String[] items = str.split(java.util.regex.Pattern.quote(delimiter), -1);
-                if (start > items.length) yield "";
-                StringBuilder sb = new StringBuilder();
-                for (int i = start - 1; i < Math.min(end, items.length); i++) {
-                    if (!sb.isEmpty()) sb.append(delimiter);
-                    sb.append(items[i]);
-                }
-                yield sb.toString();
-            }
-        };
+    private List<Datum> extractArgList(Datum argList) {
+        if (argList instanceof Datum.ArgList al) return al.args();
+        if (argList instanceof Datum.ArgListNoRet al) return al.args();
+        return List.of();
     }
 
     private Datum getStringChunk(String str, Datum chunkType, int start, int end) {
         StringChunkType type = StringChunkType.CHAR;
         if (chunkType.isSymbol()) {
             type = switch (chunkType.stringValue().toLowerCase()) {
-                case "char" -> StringChunkType.CHAR;
                 case "word" -> StringChunkType.WORD;
                 case "line" -> StringChunkType.LINE;
                 case "item" -> StringChunkType.ITEM;
                 default -> StringChunkType.CHAR;
             };
         } else if (chunkType.isInt()) {
-            type = switch (chunkType.intValue()) {
-                case 1 -> StringChunkType.CHAR;
-                case 2 -> StringChunkType.WORD;
-                case 3 -> StringChunkType.ITEM;
-                case 4 -> StringChunkType.LINE;
-                default -> StringChunkType.CHAR;
-            };
+            type = switch (chunkType.intValue()) { case 2 -> StringChunkType.WORD; case 3 -> StringChunkType.ITEM; case 4 -> StringChunkType.LINE; default -> StringChunkType.CHAR; };
         }
-
-        return Datum.of(com.libreshockwave.handlers.StringHandlers.extractChunk(
-            str, type, start, end, ','));
-    }
-
-    private Datum getTheEntity(String entityName) {
-        return switch (entityName.toLowerCase()) {
-            case "mouse" -> Datum.of(0);
-            case "mouseh" -> Datum.of(0);
-            case "mousev" -> Datum.of(0);
-            case "mousedown" -> Datum.FALSE;
-            case "mouseup" -> Datum.TRUE;
-            case "key" -> Datum.of("");
-            case "keycode" -> Datum.of(0);
-            case "shiftdown" -> Datum.FALSE;
-            case "controldown", "commanddown" -> Datum.FALSE;
-            case "optiondown", "altdown" -> Datum.FALSE;
-            case "ticks" -> Datum.of((int) (System.currentTimeMillis() / 16));
-            case "time" -> Datum.of(java.time.LocalTime.now().toString());
-            case "date" -> Datum.of(java.time.LocalDate.now().toString());
-            case "milliseconds" -> Datum.of((int) (System.currentTimeMillis() % Integer.MAX_VALUE));
-            case "platform" -> Datum.of("Java");
-            case "environment" -> Datum.symbol("java");
-            case "colordepth" -> Datum.of(32);
-            case "runmode" -> Datum.symbol("projector");
-            case "version" -> Datum.of("12.0");
-            default -> Datum.voidValue();
-        };
-    }
-
-    private Datum createObject(String className, List<Datum> args) {
-        // Create script instance
-        return new Datum.ScriptInstanceRef(className, new HashMap<>());
-    }
-
-    // Stack operations
-
-    private void push(Datum value) {
-        stack.push(value);
-    }
-
-    private Datum pop() {
-        if (stack.isEmpty()) {
-            return Datum.voidValue();
-        }
-        return stack.pop();
-    }
-
-    private Datum peek() {
-        if (stack.isEmpty()) {
-            return Datum.voidValue();
-        }
-        return stack.peek();
-    }
-
-    // Arithmetic operations
-
-    private Datum add(Datum a, Datum b) {
-        if (a.isFloat() || b.isFloat()) {
-            return Datum.of(a.floatValue() + b.floatValue());
-        }
-        return Datum.of(a.intValue() + b.intValue());
-    }
-
-    private Datum subtract(Datum a, Datum b) {
-        if (a.isFloat() || b.isFloat()) {
-            return Datum.of(a.floatValue() - b.floatValue());
-        }
-        return Datum.of(a.intValue() - b.intValue());
-    }
-
-    private Datum multiply(Datum a, Datum b) {
-        if (a.isFloat() || b.isFloat()) {
-            return Datum.of(a.floatValue() * b.floatValue());
-        }
-        return Datum.of(a.intValue() * b.intValue());
-    }
-
-    private Datum divide(Datum a, Datum b) {
-        float bVal = b.floatValue();
-        if (bVal == 0) {
-            throw new LingoException("Division by zero");
-        }
-        if (a.isInt() && b.isInt() && a.intValue() % b.intValue() == 0) {
-            return Datum.of(a.intValue() / b.intValue());
-        }
-        return Datum.of(a.floatValue() / bVal);
-    }
-
-    private Datum modulo(Datum a, Datum b) {
-        int bVal = b.intValue();
-        if (bVal == 0) {
-            throw new LingoException("Modulo by zero");
-        }
-        return Datum.of(a.intValue() % bVal);
-    }
-
-    private Datum negate(Datum a) {
-        if (a.isFloat()) {
-            return Datum.of(-a.floatValue());
-        }
-        return Datum.of(-a.intValue());
-    }
-
-    private int compare(Datum a, Datum b) {
-        if (a.isNumber() && b.isNumber()) {
-            return Float.compare(a.floatValue(), b.floatValue());
-        }
-        return a.stringValue().compareToIgnoreCase(b.stringValue());
-    }
-
-    private boolean equals(Datum a, Datum b) {
-        if (a.isNumber() && b.isNumber()) {
-            return a.floatValue() == b.floatValue();
-        }
-        return a.stringValue().equalsIgnoreCase(b.stringValue());
-    }
-
-    // Helper methods
-
-    /**
-     * Get a name by ID from the appropriate names chunk.
-     * Matches dirplayer-rs get_name() which uses the current script's lctx.
-     *
-     * The name resolution order is:
-     * 1. Current executing script's names chunk (from current scope)
-     * 2. Fall back to main file's names chunk
-     */
-    private String getName(int nameId) {
-        // First try to get names from the current executing scope's script
-        // This matches dirplayer-rs get_lctx(player, ctx) behavior
-        if (!callStack.isEmpty()) {
-            Scope currentScope = callStack.peek();
-            ScriptChunk currentScript = currentScope.getScript();
-            if (currentScript != null) {
-                // Try to find the names chunk for this script's cast
-                CastLib scriptCast = findCastForScript(currentScript);
-                if (scriptCast != null && scriptCast.getState() == CastLib.State.LOADED) {
-                    ScriptNamesChunk castNames = scriptCast.getScriptNames();
-                    if (castNames != null && nameId >= 0 && nameId < castNames.names().size()) {
-                        return castNames.getName(nameId);
-                    }
-                }
-            }
-        }
-
-        // Fall back to main file's names chunk
-        if (file != null) {
-            ScriptNamesChunk names = file.getScriptNames();
-            if (names != null && nameId >= 0 && nameId < names.names().size()) {
-                return names.getName(nameId);
-            }
-        }
-
-        // Then search in external cast scripts
-        if (castManager != null) {
-            for (CastLib cast : castManager.getCasts()) {
-                if (cast.getState() == CastLib.State.LOADED) {
-                    ScriptNamesChunk names = cast.getDirectorFile().getScriptNames();
-                    if (names != null && nameId >= 0 && nameId < names.names().size()) {
-                        return names.getName(nameId);
-                    }
-                }
-            }
-        }
-
-        return "<name:" + nameId + ">";
-    }
-
-    /**
-     * Result of finding a handler - contains the script, handler, names, and source cast.
-     */
-    private record HandlerLocation(ScriptChunk script, ScriptChunk.Handler handler, ScriptNamesChunk names, CastLib sourceCast) {}
-
-    private HandlerLocation findHandlerWithScript(String name) {
-        // First search in the main movie's scripts (use cast #1 from castManager if available)
-        if (file != null) {
-            ScriptNamesChunk names = file.getScriptNames();
-            if (names != null) {
-                int nameId = names.findName(name);
-                if (nameId >= 0) {
-                    for (ScriptChunk script : file.getScripts()) {
-                        for (ScriptChunk.Handler handler : script.handlers()) {
-                            if (handler.nameId() == nameId) {
-                                CastLib primaryCast = castManager != null ? castManager.getCast(1) : null;
-                                return new HandlerLocation(script, handler, names, primaryCast);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Then search in external cast scripts
-        if (castManager != null) {
-            for (CastLib cast : castManager.getCasts()) {
-                if (cast.getState() == CastLib.State.LOADED) {
-                    ScriptNamesChunk castNames = cast.getScriptNames();
-                    if (castNames != null) {
-                        int nameId = castNames.findName(name);
-                        if (nameId >= 0) {
-                            for (ScriptChunk script : cast.getAllScripts()) {
-                                for (ScriptChunk.Handler handler : script.handlers()) {
-                                    if (handler.nameId() == nameId) {
-                                        debugLog("Found handler '" + name + "' in cast #" + cast.getNumber() + " '" + cast.getName() + "'");
-                                        return new HandlerLocation(script, handler, castNames, cast);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        return null;
-    }
-
-    private ScriptChunk findScriptForHandler(ScriptChunk.Handler target) {
-        // Search in movie scripts
-        if (file != null) {
-            for (ScriptChunk script : file.getScripts()) {
-                if (script.handlers().contains(target)) {
-                    return script;
-                }
-            }
-        }
-
-        // Search in cast scripts
-        if (castManager != null) {
-            for (CastLib cast : castManager.getCasts()) {
-                if (cast.getState() == CastLib.State.LOADED) {
-                    for (ScriptChunk script : cast.getAllScripts()) {
-                        if (script.handlers().contains(target)) {
-                            return script;
-                        }
-                    }
-                }
-            }
-        }
-
-        return null;
-    }
-
-    private int findInstructionAtOffset(ScriptChunk.Handler handler, int offset) {
-        for (int i = 0; i < handler.instructions().size(); i++) {
-            if (handler.instructions().get(i).offset() == offset) {
-                return i;
-            }
-        }
-        return handler.instructions().size();
-    }
-
-    /**
-     * Get the variable multiplier for the current script.
-     * Matches dirplayer-rs get_variable_multiplier().
-     *
-     * The bytecode argument for local/param access needs to be divided by this multiplier
-     * to get the actual 0-based index.
-     */
-    private int getVariableMultiplier() {
-        if (callStack.isEmpty()) {
-            return 1;
-        }
-
-        Scope currentScope = callStack.peek();
-        ScriptChunk currentScript = currentScope.getScript();
-        if (currentScript == null) {
-            return 1;
-        }
-
-        CastLib scriptCast = findCastForScript(currentScript);
-        if (scriptCast == null) {
-            // Default for main file scripts
-            int version = file != null && file.getConfig() != null ? file.getConfig().directorVersion() : 0;
-            return version >= 500 ? 8 : 6;
-        }
-
-        // Match dirplayer-rs logic:
-        // - capitalX (LctX): multiplier = 1
-        // - version >= 500: multiplier = 8
-        // - otherwise: multiplier = 6
-        if (scriptCast.isCapitalX()) {
-            return 1;
-        }
-        int version = scriptCast.getDirVersion();
-        return version >= 500 ? 8 : 6;
-    }
-
-    private List<Datum> extractArgList(Datum argList) {
-        if (argList instanceof Datum.ArgList al) {
-            return al.args();
-        } else if (argList instanceof Datum.ArgListNoRet al) {
-            return al.args();
-        }
-        return List.of();
-    }
-
-    // Built-in handlers
-
-    private void registerBuiltins() {
-        // Math functions
-        registerBuiltin("abs", (vm, args) -> {
-            if (args.isEmpty()) return Datum.of(0);
-            Datum a = args.get(0);
-            if (a.isFloat()) return Datum.of(Math.abs(a.floatValue()));
-            return Datum.of(Math.abs(a.intValue()));
-        });
-
-        registerBuiltin("sqrt", (vm, args) -> {
-            if (args.isEmpty()) return Datum.of(0.0f);
-            return Datum.of((float) Math.sqrt(args.get(0).floatValue()));
-        });
-
-        registerBuiltin("sin", (vm, args) -> {
-            if (args.isEmpty()) return Datum.of(0.0f);
-            return Datum.of((float) Math.sin(args.get(0).floatValue()));
-        });
-
-        registerBuiltin("cos", (vm, args) -> {
-            if (args.isEmpty()) return Datum.of(0.0f);
-            return Datum.of((float) Math.cos(args.get(0).floatValue()));
-        });
-
-        registerBuiltin("tan", (vm, args) -> {
-            if (args.isEmpty()) return Datum.of(0.0f);
-            return Datum.of((float) Math.tan(args.get(0).floatValue()));
-        });
-
-        registerBuiltin("atan", (vm, args) -> {
-            if (args.isEmpty()) return Datum.of(0.0f);
-            return Datum.of((float) Math.atan(args.get(0).floatValue()));
-        });
-
-        registerBuiltin("power", (vm, args) -> {
-            if (args.size() < 2) return Datum.of(0.0f);
-            return Datum.of((float) Math.pow(args.get(0).floatValue(), args.get(1).floatValue()));
-        });
-
-        registerBuiltin("random", (vm, args) -> {
-            if (args.isEmpty()) return Datum.of(0);
-            int max = args.get(0).intValue();
-            return Datum.of((int) (Math.random() * max) + 1);
-        });
-
-        registerBuiltin("pi", (vm, args) -> Datum.of((float) Math.PI));
-
-        // Type conversion
-        registerBuiltin("integer", (vm, args) -> {
-            if (args.isEmpty()) return Datum.of(0);
-            return Datum.of(args.get(0).intValue());
-        });
-
-        registerBuiltin("float", (vm, args) -> {
-            if (args.isEmpty()) return Datum.of(0.0f);
-            return Datum.of(args.get(0).floatValue());
-        });
-
-        registerBuiltin("string", (vm, args) -> {
-            if (args.isEmpty()) return Datum.of("");
-            return Datum.of(args.get(0).stringValue());
-        });
-
-        registerBuiltin("symbol", (vm, args) -> {
-            if (args.isEmpty()) return Datum.symbol("");
-            return Datum.symbol(args.get(0).stringValue());
-        });
-
-        // List operations
-        registerBuiltin("count", (vm, args) -> {
-            if (args.isEmpty()) return Datum.of(0);
-            Datum a = args.get(0);
-            if (a instanceof Datum.DList list) {
-                return Datum.of(list.count());
-            } else if (a instanceof Datum.PropList propList) {
-                return Datum.of(propList.count());
-            } else if (a instanceof Datum.Str s) {
-                return Datum.of(s.value().length());
-            }
-            return Datum.of(0);
-        });
-
-        registerBuiltin("getAt", (vm, args) -> {
-            if (args.size() < 2) return Datum.voidValue();
-            Datum list = args.get(0);
-            int index = args.get(1).intValue();
-            if (list instanceof Datum.DList l) {
-                return l.getAt(index);
-            }
-            return Datum.voidValue();
-        });
-
-        registerBuiltin("setAt", (vm, args) -> {
-            if (args.size() < 3) return Datum.voidValue();
-            Datum list = args.get(0);
-            int index = args.get(1).intValue();
-            Datum value = args.get(2);
-            if (list instanceof Datum.DList l) {
-                l.setAt(index, value);
-            }
-            return Datum.voidValue();
-        });
-
-        // String operations
-        registerBuiltin("length", (vm, args) -> {
-            if (args.isEmpty()) return Datum.of(0);
-            return Datum.of(args.get(0).stringValue().length());
-        });
-
-        registerBuiltin("chars", (vm, args) -> {
-            if (args.size() < 3) return Datum.of("");
-            String s = args.get(0).stringValue();
-            int start = args.get(1).intValue();
-            int end = args.get(2).intValue();
-            if (start < 1) start = 1;
-            if (end > s.length()) end = s.length();
-            return Datum.of(s.substring(start - 1, end));
-        });
-
-        // Output
-        registerBuiltin("put", (vm, args) -> {
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < args.size(); i++) {
-                if (i > 0) sb.append(" ");
-                sb.append(args.get(i).stringValue());
-            }
-            System.out.println(sb);
-            return Datum.voidValue();
-        });
-
-        // System
-        registerBuiltin("halt", (vm, args) -> {
-            vm.halt();
-            return Datum.voidValue();
-        });
-
-        // Type checking
-        registerBuiltin("ilk", (vm, args) -> {
-            if (args.isEmpty()) return Datum.symbol("void");
-            Datum a = args.get(0);
-            if (args.size() >= 2) {
-                // ilk(x, #type) - returns true if x is of type
-                String checkType = args.get(1).stringValue().toLowerCase();
-                return switch (checkType) {
-                    case "integer" -> a.isInt() ? Datum.TRUE : Datum.FALSE;
-                    case "float" -> a.isFloat() ? Datum.TRUE : Datum.FALSE;
-                    case "string" -> a.isString() ? Datum.TRUE : Datum.FALSE;
-                    case "symbol" -> a.isSymbol() ? Datum.TRUE : Datum.FALSE;
-                    case "list" -> a instanceof Datum.DList ? Datum.TRUE : Datum.FALSE;
-                    case "proplist" -> a instanceof Datum.PropList ? Datum.TRUE : Datum.FALSE;
-                    case "point" -> a instanceof Datum.IntPoint ? Datum.TRUE : Datum.FALSE;
-                    case "rect" -> a instanceof Datum.IntRect ? Datum.TRUE : Datum.FALSE;
-                    case "void" -> a.isVoid() ? Datum.TRUE : Datum.FALSE;
-                    default -> Datum.FALSE;
-                };
-            }
-            // Return type symbol
-            return switch (a) {
-                case Datum.Int i -> Datum.symbol("integer");
-                case Datum.DFloat f -> Datum.symbol("float");
-                case Datum.Str s -> Datum.symbol("string");
-                case Datum.Symbol sym -> Datum.symbol("symbol");
-                case Datum.DList l -> Datum.symbol("list");
-                case Datum.PropList p -> Datum.symbol("propList");
-                case Datum.IntPoint p -> Datum.symbol("point");
-                case Datum.IntRect r -> Datum.symbol("rect");
-                case Datum.Void v -> Datum.symbol("void");
-                default -> Datum.symbol("object");
-            };
-        });
-
-        registerBuiltin("voidP", (vm, args) -> args.isEmpty() ? Datum.TRUE :
-            args.get(0).isVoid() ? Datum.TRUE : Datum.FALSE);
-        registerBuiltin("integerP", (vm, args) -> args.isEmpty() ? Datum.FALSE :
-            args.get(0).isInt() ? Datum.TRUE : Datum.FALSE);
-        registerBuiltin("floatP", (vm, args) -> args.isEmpty() ? Datum.FALSE :
-            args.get(0).isFloat() ? Datum.TRUE : Datum.FALSE);
-        registerBuiltin("stringP", (vm, args) -> args.isEmpty() ? Datum.FALSE :
-            args.get(0).isString() ? Datum.TRUE : Datum.FALSE);
-        registerBuiltin("symbolP", (vm, args) -> args.isEmpty() ? Datum.FALSE :
-            args.get(0).isSymbol() ? Datum.TRUE : Datum.FALSE);
-        registerBuiltin("listP", (vm, args) -> args.isEmpty() ? Datum.FALSE :
-            args.get(0) instanceof Datum.DList ? Datum.TRUE : Datum.FALSE);
-        registerBuiltin("objectP", (vm, args) -> args.isEmpty() ? Datum.FALSE :
-            args.get(0) instanceof Datum.ScriptInstanceRef ? Datum.TRUE : Datum.FALSE);
-
-        registerBuiltin("value", (vm, args) -> {
-            if (args.isEmpty()) return Datum.voidValue();
-            String s = args.get(0).stringValue().trim();
-            try {
-                if (s.contains(".")) {
-                    return Datum.of(Float.parseFloat(s));
-                }
-                return Datum.of(Integer.parseInt(s));
-            } catch (NumberFormatException e) {
-                return Datum.voidValue();
-            }
-        });
-
-        // Point and Rect constructors
-        registerBuiltin("point", (vm, args) -> {
-            if (args.size() < 2) return new Datum.IntPoint(0, 0);
-            return new Datum.IntPoint(args.get(0).intValue(), args.get(1).intValue());
-        });
-
-        registerBuiltin("rect", (vm, args) -> {
-            if (args.size() < 4) return new Datum.IntRect(0, 0, 0, 0);
-            return new Datum.IntRect(
-                args.get(0).intValue(), args.get(1).intValue(),
-                args.get(2).intValue(), args.get(3).intValue()
-            );
-        });
-
-        // Cast/member/sprite references
-        registerBuiltin("castLib", (vm, args) -> {
-            if (args.isEmpty()) return Datum.voidValue();
-            int num = args.get(0).intValue();
-            return new Datum.CastLibRef(num);
-        });
-
-        registerBuiltin("member", (vm, args) -> {
-            if (args.isEmpty()) return Datum.voidValue();
-            if (args.size() >= 2) {
-                // member(name/num, castLib)
-                return new Datum.CastMemberRef(args.get(0).intValue(), args.get(1).intValue());
-            }
-            return new Datum.CastMemberRef(args.get(0).intValue(), 1);
-        });
-
-        registerBuiltin("sprite", (vm, args) -> {
-            if (args.isEmpty()) return Datum.voidValue();
-            return new Datum.SpriteRef(args.get(0).intValue());
-        });
-
-        // script(name/num) - returns a ScriptRef to the script
-        registerBuiltin("script", (vm, args) -> {
-            if (args.isEmpty()) return Datum.voidValue();
-            Datum identifier = args.get(0);
-
-            // Find script by name or number
-            Datum.CastMemberRef memberRef = null;
-
-            if (identifier.isString()) {
-                String scriptName = identifier.stringValue();
-                // Search for script by name across all casts
-                if (castManager != null) {
-                    for (CastLib cast : castManager.getCasts()) {
-                        for (int i = 0; i <= cast.getMemberCount(); i++) {
-                            String name = cast.getName();
-                            if (name != null && name.equalsIgnoreCase(scriptName)) {
-                                // Found the member, check if it's a script
-                                ScriptChunk script = findScriptByCastRef(new Datum.CastMemberRef(i, cast.getNumber()));
-                                if (script != null) {
-                                    memberRef = new Datum.CastMemberRef(i, cast.getNumber());
-                                    break;
-                                }
-                            }
-                        }
-                        if (memberRef != null) break;
-                    }
-                }
-            } else if (identifier.isInt()) {
-                int scriptNum = identifier.intValue();
-                // Use first cast by default
-                memberRef = new Datum.CastMemberRef(scriptNum, 1);
-            } else if (identifier instanceof Datum.CastMemberRef ref) {
-                memberRef = ref;
-            }
-
-            if (memberRef == null) {
-                debugLog("script: not found for " + identifier);
-                return Datum.voidValue();
-            }
-
-            return new Datum.ScriptRef(memberRef);
-        });
-
-        // new(scriptRef, ...args) - creates a new instance of a script
-        // Matches dirplayer-rs TypeHandlers::new and ScriptDatumHandlers::new
-        registerBuiltin("new", (vm, args) -> {
-            if (args.isEmpty()) return Datum.voidValue();
-            Datum subject = args.get(0);
-            List<Datum> constructorArgs = args.size() > 1 ? args.subList(1, args.size()) : List.of();
-
-            // Handle ScriptRef - create script instance
-            if (subject instanceof Datum.ScriptRef scriptRef) {
-                return vm.createScriptInstance(scriptRef, constructorArgs);
-            }
-
-            // Handle Symbol with CastLib - create new cast member (not fully implemented)
-            if (subject.isSymbol() && args.size() >= 2 && args.get(1) instanceof Datum.CastLibRef) {
-                // TODO: Implement cast member creation
-                return Datum.voidValue();
-            }
-
-            // Handle Xtra - create xtra instance (delegated to callback)
-            if (subject instanceof Datum.Xtra xtra) {
-                // TODO: Implement xtra instance creation via callback
-                return Datum.voidValue();
-            }
-
-            throw new LingoException("Cannot call new() on " + subject.typeString());
-        });
-
-        // Navigation
-        registerBuiltin("go", (vm, args) -> {
-            // go(frame) or go(frame, movie)
-            if (!args.isEmpty()) {
-                System.out.println("[go] frame=" + args.get(0).stringValue());
-            }
-            return Datum.voidValue();
-        });
-
-        registerBuiltin("play", (vm, args) -> {
-            System.out.println("[play] " + (args.isEmpty() ? "" : args.get(0).stringValue()));
-            return Datum.voidValue();
-        });
-
-        registerBuiltin("updateStage", (vm, args) -> {
-            // Would trigger stage redraw
-            return Datum.voidValue();
-        });
-
-        registerBuiltin("puppetTempo", (vm, args) -> {
-            if (!args.isEmpty()) {
-                System.out.println("[puppetTempo] " + args.get(0).intValue() + " fps");
-            }
-            return Datum.voidValue();
-        });
-
-        registerBuiltin("moveToFront", (vm, args) -> {
-            // Window management - no-op in headless
-            return Datum.voidValue();
-        });
-
-        // Network handlers (using NetManager when available)
-        registerBuiltin("netDone", (vm, args) -> {
-            if (vm.netManager == null) return Datum.TRUE;
-            Integer taskId = args.isEmpty() ? null : args.get(0).intValue();
-            return vm.netManager.isTaskDone(taskId) ? Datum.TRUE : Datum.FALSE;
-        });
-
-        registerBuiltin("preloadNetThing", (vm, args) -> {
-            if (args.isEmpty()) return Datum.of(0);
-            String url = args.get(0).stringValue();
-            if (vm.netManager == null) {
-                System.out.println("[preloadNetThing] " + url + " (no NetManager)");
-                return Datum.of(1);
-            }
-            int taskId = vm.netManager.preloadNetThing(url);
-            System.out.println("[preloadNetThing] " + url + " -> task " + taskId);
-            return Datum.of(taskId);
-        });
-
-        registerBuiltin("getNetText", (vm, args) -> {
-            if (args.isEmpty()) return Datum.of(0);
-            String url = args.get(0).stringValue();
-            if (vm.netManager == null) return Datum.of(1);
-            int taskId = vm.netManager.preloadNetThing(url);
-            return Datum.of(taskId);
-        });
-
-        registerBuiltin("netTextResult", (vm, args) -> {
-            if (vm.netManager == null) return Datum.of("");
-            Integer taskId = args.isEmpty() ? null : args.get(0).intValue();
-            return vm.netManager.getTaskResult(taskId)
-                .filter(NetResult::isSuccess)
-                .map(r -> Datum.of(new String(r.getData())))
-                .orElse(Datum.of(""));
-        });
-
-        registerBuiltin("netStatus", (vm, args) -> {
-            if (vm.netManager == null) return Datum.of("Complete");
-            Integer taskId = args.isEmpty() ? null : args.get(0).intValue();
-            boolean done = vm.netManager.isTaskDone(taskId);
-            return Datum.of(done ? "Complete" : "InProgress");
-        });
-
-        registerBuiltin("netError", (vm, args) -> {
-            if (vm.netManager == null) return Datum.of("OK");
-            Integer taskId = args.isEmpty() ? null : args.get(0).intValue();
-            return vm.netManager.getTaskResult(taskId)
-                .map(r -> r.isSuccess() ? Datum.of("OK") : Datum.of(r.getErrorCode()))
-                .orElse(Datum.of(0));
-        });
-
-        registerBuiltin("postNetText", (vm, args) -> {
-            if (args.isEmpty()) return Datum.of(0);
-            String url = args.get(0).stringValue();
-            String postData = args.size() > 1 ? args.get(1).stringValue() : "";
-            if (vm.netManager == null) return Datum.of(1);
-            int taskId = vm.netManager.postNetText(url, postData);
-            return Datum.of(taskId);
-        });
-
-        registerBuiltin("getStreamStatus", (vm, args) -> {
-            if (vm.netManager == null || args.isEmpty()) return Datum.propList();
-            int taskId = args.get(0).intValue();
-            Optional<NetTask> taskOpt = vm.netManager.getTask(taskId);
-            if (taskOpt.isEmpty()) return Datum.propList();
-            NetTask task = taskOpt.get();
-
-            boolean isDone = vm.netManager.isTaskDone(taskId);
-            boolean isOk = isDone && vm.netManager.getTaskResult(taskId)
-                .map(NetResult::isSuccess).orElse(false);
-
-            Datum.PropList result = Datum.propList();
-            result.put(Datum.symbol("URL"), Datum.of(task.url()));
-            result.put(Datum.symbol("state"), Datum.of(isDone ? "Complete" : "InProgress"));
-            result.put(Datum.symbol("bytesSoFar"), Datum.of(isOk ? 100 : 0));
-            result.put(Datum.symbol("bytesTotal"), Datum.of(100));
-            result.put(Datum.symbol("error"), Datum.of(isOk ? "OK" : "Error"));
-            return result;
-        });
-
-        registerBuiltin("gotoNetPage", (vm, args) -> {
-            if (!args.isEmpty()) {
-                System.out.println("[gotoNetPage] " + args.get(0).stringValue());
-            }
-            return Datum.voidValue();
-        });
-
-        registerBuiltin("gotoNetMovie", (vm, args) -> {
-            if (!args.isEmpty()) {
-                System.out.println("[gotoNetMovie] " + args.get(0).stringValue());
-            }
-            return Datum.voidValue();
-        });
-
-        // Sound
-        registerBuiltin("sound", (vm, args) -> {
-            if (args.isEmpty()) return Datum.voidValue();
-            return new Datum.SoundRef(args.get(0).intValue());
-        });
-
-        registerBuiltin("puppetSound", (vm, args) -> {
-            // puppetSound(channel, member) or puppetSound(channel, 0) to stop
-            return Datum.voidValue();
-        });
-
-        // Alert/dialogs
-        registerBuiltin("alert", (vm, args) -> {
-            if (!args.isEmpty()) {
-                System.out.println("[ALERT] " + args.get(0).stringValue());
-            }
-            return Datum.voidValue();
-        });
-
-        registerBuiltin("beep", (vm, args) -> {
-            System.out.println("[BEEP]");
-            return Datum.voidValue();
-        });
-
-        // Cursor
-        registerBuiltin("cursor", (vm, args) -> {
-            // Set cursor type
-            return Datum.voidValue();
-        });
-
-        // List constructors
-        registerBuiltin("list", (vm, args) -> {
-            Datum.DList list = Datum.list();
-            for (Datum arg : args) {
-                list.add(arg);
-            }
-            return list;
-        });
-
-        // Additional list operations
-        registerBuiltin("add", (vm, args) -> {
-            if (args.size() < 2) return Datum.voidValue();
-            if (args.get(0) instanceof Datum.DList list) {
-                list.add(args.get(1));
-            }
-            return Datum.voidValue();
-        });
-
-        registerBuiltin("append", (vm, args) -> {
-            if (args.size() < 2) return Datum.voidValue();
-            if (args.get(0) instanceof Datum.DList list) {
-                list.add(args.get(1));
-            }
-            return Datum.voidValue();
-        });
-
-        registerBuiltin("addAt", (vm, args) -> {
-            if (args.size() < 3) return Datum.voidValue();
-            if (args.get(0) instanceof Datum.DList list) {
-                int index = args.get(1).intValue();
-                if (index >= 1 && index <= list.count() + 1) {
-                    list.items().add(index - 1, args.get(2));
-                }
-            }
-            return Datum.voidValue();
-        });
-
-        registerBuiltin("deleteAt", (vm, args) -> {
-            if (args.size() < 2) return Datum.voidValue();
-            if (args.get(0) instanceof Datum.DList list) {
-                int index = args.get(1).intValue();
-                if (index >= 1 && index <= list.count()) {
-                    list.items().remove(index - 1);
-                }
-            }
-            return Datum.voidValue();
-        });
-
-        registerBuiltin("getOne", (vm, args) -> {
-            if (args.size() < 2) return Datum.of(0);
-            if (args.get(0) instanceof Datum.DList list) {
-                Datum search = args.get(1);
-                for (int i = 0; i < list.count(); i++) {
-                    if (list.items().get(i).equals(search)) {
-                        return Datum.of(i + 1);
-                    }
-                }
-            }
-            return Datum.of(0);
-        });
-
-        registerBuiltin("getPos", (vm, args) -> {
-            if (args.size() < 2) return Datum.of(0);
-            if (args.get(0) instanceof Datum.DList list) {
-                Datum search = args.get(1);
-                for (int i = 0; i < list.count(); i++) {
-                    if (list.items().get(i).equals(search)) {
-                        return Datum.of(i + 1);
-                    }
-                }
-            }
-            return Datum.of(0);
-        });
-
-        registerBuiltin("getLast", (vm, args) -> {
-            if (args.isEmpty()) return Datum.voidValue();
-            if (args.get(0) instanceof Datum.DList list) {
-                if (list.count() > 0) {
-                    return list.items().get(list.count() - 1);
-                }
-            }
-            return Datum.voidValue();
-        });
-
-        registerBuiltin("sort", (vm, args) -> {
-            if (args.isEmpty()) return Datum.voidValue();
-            if (args.get(0) instanceof Datum.DList list) {
-                list.items().sort((a, b) -> {
-                    if (a.isNumber() && b.isNumber()) {
-                        return Float.compare(a.floatValue(), b.floatValue());
-                    }
-                    return a.stringValue().compareToIgnoreCase(b.stringValue());
-                });
-            }
-            return Datum.voidValue();
-        });
-
-        // PropList operations
-        registerBuiltin("getProp", (vm, args) -> {
-            if (args.size() < 2) return Datum.voidValue();
-            if (args.get(0) instanceof Datum.PropList propList) {
-                return propList.get(args.get(1));
-            }
-            return Datum.voidValue();
-        });
-
-        registerBuiltin("setProp", (vm, args) -> {
-            if (args.size() < 3) return Datum.voidValue();
-            if (args.get(0) instanceof Datum.PropList propList) {
-                propList.put(args.get(1), args.get(2));
-            }
-            return Datum.voidValue();
-        });
-
-        registerBuiltin("addProp", (vm, args) -> {
-            if (args.size() < 3) return Datum.voidValue();
-            if (args.get(0) instanceof Datum.PropList propList) {
-                propList.put(args.get(1), args.get(2));
-            }
-            return Datum.voidValue();
-        });
-
-        registerBuiltin("deleteProp", (vm, args) -> {
-            if (args.size() < 2) return Datum.voidValue();
-            if (args.get(0) instanceof Datum.PropList propList) {
-                propList.properties().remove(args.get(1));
-            }
-            return Datum.voidValue();
-        });
-
-        registerBuiltin("findPos", (vm, args) -> {
-            if (args.size() < 2) return Datum.of(0);
-            if (args.get(0) instanceof Datum.PropList propList) {
-                int pos = 1;
-                for (Datum key : propList.properties().keySet()) {
-                    if (key.equals(args.get(1))) {
-                        return Datum.of(pos);
-                    }
-                    pos++;
-                }
-            }
-            return Datum.of(0);
-        });
-
-        // String utilities
-        registerBuiltin("offset", (vm, args) -> {
-            if (args.size() < 2) return Datum.of(0);
-            String needle = args.get(0).stringValue();
-            String haystack = args.get(1).stringValue();
-            int idx = haystack.indexOf(needle);
-            return Datum.of(idx + 1); // 1-based, 0 if not found
-        });
-
-        registerBuiltin("charToNum", (vm, args) -> {
-            if (args.isEmpty()) return Datum.of(0);
-            String s = args.get(0).stringValue();
-            if (s.isEmpty()) return Datum.of(0);
-            return Datum.of((int) s.charAt(0));
-        });
-
-        registerBuiltin("numToChar", (vm, args) -> {
-            if (args.isEmpty()) return Datum.of("");
-            int n = args.get(0).intValue();
-            return Datum.of(String.valueOf((char) n));
-        });
-
-        // Min/max
-        registerBuiltin("min", (vm, args) -> {
-            if (args.isEmpty()) return Datum.of(0);
-            float minVal = args.get(0).floatValue();
-            for (int i = 1; i < args.size(); i++) {
-                minVal = Math.min(minVal, args.get(i).floatValue());
-            }
-            if (args.stream().allMatch(Datum::isInt)) {
-                return Datum.of((int) minVal);
-            }
-            return Datum.of(minVal);
-        });
-
-        registerBuiltin("max", (vm, args) -> {
-            if (args.isEmpty()) return Datum.of(0);
-            float maxVal = args.get(0).floatValue();
-            for (int i = 1; i < args.size(); i++) {
-                maxVal = Math.max(maxVal, args.get(i).floatValue());
-            }
-            if (args.stream().allMatch(Datum::isInt)) {
-                return Datum.of((int) maxVal);
-            }
-            return Datum.of(maxVal);
-        });
-
-        // Bitwise operations
-        registerBuiltin("bitAnd", (vm, args) -> {
-            if (args.size() < 2) return Datum.of(0);
-            return Datum.of(args.get(0).intValue() & args.get(1).intValue());
-        });
-
-        registerBuiltin("bitOr", (vm, args) -> {
-            if (args.size() < 2) return Datum.of(0);
-            return Datum.of(args.get(0).intValue() | args.get(1).intValue());
-        });
-
-        registerBuiltin("bitXor", (vm, args) -> {
-            if (args.size() < 2) return Datum.of(0);
-            return Datum.of(args.get(0).intValue() ^ args.get(1).intValue());
-        });
-
-        registerBuiltin("bitNot", (vm, args) -> {
-            if (args.isEmpty()) return Datum.of(0);
-            return Datum.of(~args.get(0).intValue());
-        });
-
-        // call(#handlerName, receiver, args...) - matches dirplayer-rs call handler
-        registerBuiltin("call", (vm, args) -> {
-            if (args.size() < 2) return Datum.voidValue();
-
-            // First arg must be a symbol (handler name)
-            Datum handlerNameDatum = args.get(0);
-            if (!(handlerNameDatum instanceof Datum.Symbol symbol)) {
-                debugLog("call: handler name must be a symbol, got " + handlerNameDatum.getClass().getSimpleName());
-                return Datum.voidValue();
-            }
-            String handlerName = symbol.name();
-
-            // Second arg is the receiver
-            Datum receiver = args.get(1);
-
-            // Remaining args are passed to the handler
-            List<Datum> handlerArgs = args.size() > 2 ? args.subList(2, args.size()) : new ArrayList<>();
-
-            // Collect script instances from the receiver
-            List<Datum.ScriptInstanceRef> instances = new ArrayList<>();
-            collectScriptInstances(receiver, instances);
-
-            if (instances.isEmpty()) {
-                // Try to call as a method on the receiver directly
-                return callMethod(receiver, handlerName, handlerArgs);
-            }
-
-            // Call the handler on each script instance
-            Datum result = Datum.voidValue();
-            for (Datum.ScriptInstanceRef instance : instances) {
-                ScriptChunk script = findScriptByName(instance.scriptName());
-                if (script != null) {
-                    for (ScriptChunk.Handler h : script.handlers()) {
-                        String hName = getName(h.nameId());
-                        if (hName != null && hName.equalsIgnoreCase(handlerName)) {
-                            // Prepend 'me' (the instance) as first argument
-                            List<Datum> allArgs = new ArrayList<>();
-                            allArgs.add(instance);
-                            allArgs.addAll(handlerArgs);
-                            result = execute(script, h, allArgs.toArray(new Datum[0]));
-                            break;
-                        }
-                    }
-                }
-            }
-            return result;
-        });
-    }
-
-    /**
-     * Collect script instances from a datum (recursively for lists/proplists).
-     * Matches dirplayer-rs get_datum_script_instance_ids.
-     */
-    private void collectScriptInstances(Datum datum, List<Datum.ScriptInstanceRef> instances) {
-        if (datum instanceof Datum.ScriptInstanceRef instance) {
-            instances.add(instance);
-        } else if (datum instanceof Datum.SpriteRef spriteRef) {
-            // Get script instances from sprite via callback
-            if (activeScriptInstancesCallback != null) {
-                for (Datum.ScriptInstanceRef instance : activeScriptInstancesCallback.getActiveScriptInstances()) {
-                    // TODO: Filter by sprite channel if needed
-                    instances.add(instance);
-                }
-            }
-        } else if (datum instanceof Datum.DList list) {
-            for (Datum item : list.items()) {
-                collectScriptInstances(item, instances);
-            }
-        } else if (datum instanceof Datum.PropList propList) {
-            for (Datum value : propList.properties().values()) {
-                collectScriptInstances(value, instances);
-            }
-        }
-        // Int and other types are silently ignored (matches dirplayer-rs)
+        return Datum.of(com.libreshockwave.handlers.StringHandlers.extractChunk(str, type, start, end, ','));
     }
 }
