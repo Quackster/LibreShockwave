@@ -40,6 +40,37 @@ public class LingoVM {
     private int debugIndent = 0;
     private DebugOutputCallback debugOutputCallback;
 
+    // Movie state - matches dirplayer-rs player state
+    private int currentFrame = 1;
+    private String currentFrameLabel = "";
+    private long startTimeMillis = System.currentTimeMillis();
+
+    // Mouse state
+    private int mouseX = 0;
+    private int mouseY = 0;
+    private int rolloverSprite = 0;
+    private int clickOnSprite = 0;
+    private boolean isDoubleClick = false;
+
+    // Keyboard state
+    private int keyCode = 0;
+    private String lastKey = "";
+    private boolean shiftDown = false;
+    private boolean controlDown = false;
+    private boolean commandDown = false;
+    private boolean altDown = false;
+
+    // Focus and selection
+    private int keyboardFocusSprite = 0;
+    private int selectionStart = 0;
+    private int selectionEnd = 0;
+
+    // Movie settings
+    private int floatPrecision = 4;
+    private String itemDelimiter = ",";
+    private boolean exitLock = false;
+    private boolean updateLock = false;
+
     @FunctionalInterface
     public interface DebugOutputCallback {
         void onDebugOutput(String message);
@@ -160,6 +191,58 @@ public class LingoVM {
 
     public CastManager getCastManager() {
         return castManager;
+    }
+
+    // Movie state setters - called by player to update VM state
+
+    public void setCurrentFrame(int frame) {
+        this.currentFrame = frame;
+    }
+
+    public void setCurrentFrameLabel(String label) {
+        this.currentFrameLabel = label;
+    }
+
+    public void setMousePosition(int x, int y) {
+        this.mouseX = x;
+        this.mouseY = y;
+    }
+
+    public void setRolloverSprite(int sprite) {
+        this.rolloverSprite = sprite;
+    }
+
+    public void setClickOnSprite(int sprite) {
+        this.clickOnSprite = sprite;
+    }
+
+    public void setDoubleClick(boolean doubleClick) {
+        this.isDoubleClick = doubleClick;
+    }
+
+    public void setKeyboardState(int keyCode, String key, boolean shift, boolean control, boolean command, boolean alt) {
+        this.keyCode = keyCode;
+        this.lastKey = key;
+        this.shiftDown = shift;
+        this.controlDown = control;
+        this.commandDown = command;
+        this.altDown = alt;
+    }
+
+    public boolean isExitLock() {
+        return exitLock;
+    }
+
+    public boolean isUpdateLock() {
+        return updateLock;
+    }
+
+    public String getItemDelimiter() {
+        return itemDelimiter;
+    }
+
+    public int getFloatPrecision() {
+        return floatPrecision;
     }
 
     public void setDebugMode(boolean enabled) {
@@ -1035,7 +1118,7 @@ public class LingoVM {
                 List<Datum> args = extractArgList(argListDatum);
 
                 // Special case: "return" statement (matches dirplayer-rs player_ext_call)
-                if (handlerName.equalsIgnoreCase("return")) {
+                if (handlerName.contains("return")) {
                     Datum returnValue = args.isEmpty() ? Datum.voidValue() : args.get(0);
                     scope.setReturnValue(returnValue);
                     scope.setInstructionPointer(scope.getHandler().instructions().size()); // Exit handler
@@ -1435,20 +1518,120 @@ public class LingoVM {
 
     private Datum getMovieProperty(String propName) {
         return switch (propName.toLowerCase()) {
+            // Stage properties
             case "stage" -> new Datum.StageRef();
-            case "stagewidth" -> Datum.of(file.getStageWidth());
-            case "stageheight" -> Datum.of(file.getStageHeight());
-            case "framelabel" -> Datum.of("");
-            case "frame" -> Datum.of(1);
-            case "lastframe" -> Datum.of(1);
-            case "tempo" -> Datum.of(file.getTempo());
+            case "stagewidth" -> Datum.of(file != null ? file.getStageWidth() : 640);
+            case "stageheight" -> Datum.of(file != null ? file.getStageHeight() : 480);
+            case "stageright" -> Datum.of(file != null ? file.getStageWidth() : 640);
+            case "stageleft" -> Datum.of(0);
+            case "stagetop" -> Datum.of(0);
+            case "stagebottom" -> Datum.of(file != null ? file.getStageHeight() : 480);
+
+            // Frame properties
+            case "frame" -> Datum.of(currentFrame);
+            case "lastframe" -> Datum.of(file != null && file.getScoreChunk() != null
+                && file.getScoreChunk().frameData() != null
+                ? file.getScoreChunk().frameData().header().frameCount() : 1);
+            case "framelabel" -> Datum.of(currentFrameLabel != null ? currentFrameLabel : "");
+            case "frametempo", "tempo" -> Datum.of(file != null ? file.getTempo() : 15);
+            case "lastchannel" -> Datum.of(file != null && file.getScoreChunk() != null
+                && file.getScoreChunk().frameData() != null
+                ? file.getScoreChunk().frameData().header().numChannels() : 48);
+
+            // Time properties
+            case "time" -> {
+                java.time.LocalTime now = java.time.LocalTime.now();
+                yield Datum.of(String.format("%02d:%02d %s",
+                    now.getHour() % 12 == 0 ? 12 : now.getHour() % 12,
+                    now.getMinute(),
+                    now.getHour() < 12 ? "AM" : "PM"));
+            }
+            case "long time" -> {
+                java.time.LocalTime now = java.time.LocalTime.now();
+                yield Datum.of(String.format("%02d:%02d:%02d %s",
+                    now.getHour() % 12 == 0 ? 12 : now.getHour() % 12,
+                    now.getMinute(),
+                    now.getSecond(),
+                    now.getHour() < 12 ? "AM" : "PM"));
+            }
+            case "date" -> {
+                java.time.LocalDate now = java.time.LocalDate.now();
+                yield Datum.of(String.format("%02d/%02d/%04d",
+                    now.getMonthValue(), now.getDayOfMonth(), now.getYear()));
+            }
+            case "milliseconds" -> Datum.of((int) (System.currentTimeMillis() - startTimeMillis));
+            case "ticks" -> Datum.of((int) ((System.currentTimeMillis() - startTimeMillis) / 16));
+
+            // Mouse properties
+            case "mouseloc" -> new Datum.IntPoint(mouseX, mouseY);
+            case "mouseh" -> Datum.of(mouseX);
+            case "mousev" -> Datum.of(mouseY);
+            case "rollover" -> Datum.of(rolloverSprite);
+            case "clickon" -> Datum.of(clickOnSprite);
+            case "doubleclick" -> isDoubleClick ? Datum.TRUE : Datum.FALSE;
+
+            // Keyboard properties
+            case "keycode" -> Datum.of(keyCode);
+            case "key" -> Datum.of(lastKey != null ? lastKey : "");
+            case "shiftdown" -> shiftDown ? Datum.TRUE : Datum.FALSE;
+            case "controldown" -> controlDown ? Datum.TRUE : Datum.FALSE;
+            case "commanddown" -> commandDown ? Datum.TRUE : Datum.FALSE;
+            case "optiondown", "altdown" -> altDown ? Datum.TRUE : Datum.FALSE;
+
+            // Focus and selection
+            case "keyboardfocussprite" -> Datum.of(keyboardFocusSprite);
+            case "selstart" -> Datum.of(selectionStart);
+            case "selend" -> Datum.of(selectionEnd);
+
+            // Movie info
+            case "moviename" -> Datum.of(file != null && file.getBasePath() != null
+                ? new java.io.File(file.getBasePath()).getName() : "");
+            case "moviepath", "path" -> Datum.of(file != null ? file.getBasePath() : "");
+            case "platform" -> Datum.of("Windows,32");
+            case "runmode" -> Datum.of("Plugin");
+            case "productversion" -> Datum.of("10.1");
             case "colordepth" -> Datum.of(32);
-            default -> Datum.voidValue();
+
+            // Settings
+            case "floatprecision" -> Datum.of(floatPrecision);
+            case "itemdelimiter" -> Datum.of(String.valueOf(itemDelimiter));
+            case "exitlock" -> exitLock ? Datum.TRUE : Datum.FALSE;
+            case "updatelock" -> updateLock ? Datum.TRUE : Datum.FALSE;
+            case "tracescript" -> Datum.of(0);
+            case "tracelogfile" -> Datum.of("");
+
+            // actorList global
+            case "actorlist" -> getGlobal("actorList");
+
+            // currentSpriteNum - get from current script instance
+            case "currentspritenum" -> Datum.of(0); // TODO: get from receiver
+
+            default -> {
+                debugLog("getMovieProperty: unknown property '" + propName + "'");
+                yield Datum.voidValue();
+            }
         };
     }
 
     private void setMovieProperty(String propName, Datum value) {
-        // Movie properties are generally read-only or require player support
+        switch (propName.toLowerCase()) {
+            case "keyboardfocussprite" -> keyboardFocusSprite = value.intValue();
+            case "selstart" -> selectionStart = value.intValue();
+            case "selend" -> selectionEnd = value.intValue();
+            case "floatprecision" -> floatPrecision = value.intValue();
+            case "itemdelimiter" -> {
+                String s = value.stringValue();
+                if (!s.isEmpty()) {
+                    itemDelimiter = s;
+                }
+            }
+            case "exitlock" -> exitLock = value.boolValue();
+            case "updatelock" -> updateLock = value.boolValue();
+            case "actorlist" -> setGlobal("actorList", value);
+            case "centerstage" -> { /* TODO: requires player support */ }
+            case "tracescript", "tracelogfile", "debugplaybackenabled" -> { /* ignore */ }
+            default -> debugLog("setMovieProperty: unknown property '" + propName + "'");
+        }
     }
 
     /**
