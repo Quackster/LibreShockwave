@@ -53,6 +53,20 @@ public class ListHandlers {
         if (args.isEmpty()) return Datum.of(0);
         Datum d = args.get(0);
 
+        // Two-argument form: count(string, #chunkType) or count(string, chunkTypeSymbol)
+        if (args.size() >= 2 && d.isString()) {
+            String str = d.stringValue();
+            String chunkType = args.get(1).stringValue().toLowerCase();
+            char itemDelim = vm.getItemDelimiter().isEmpty() ? ',' : vm.getItemDelimiter().charAt(0);
+            return switch (chunkType) {
+                case "char", "chars" -> Datum.of(str.length());
+                case "word", "words" -> Datum.of(str.isEmpty() ? 0 : str.trim().split("\\s+").length);
+                case "item", "items" -> Datum.of(str.split(java.util.regex.Pattern.quote(String.valueOf(itemDelim)), -1).length);
+                case "line", "lines" -> Datum.of(str.split("\\r?\\n|\\r", -1).length);
+                default -> Datum.of(0);
+            };
+        }
+
         if (d instanceof Datum.DList list) {
             return Datum.of(list.count());
         } else if (d instanceof Datum.PropList propList) {
