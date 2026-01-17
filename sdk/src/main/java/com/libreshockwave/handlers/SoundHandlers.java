@@ -172,13 +172,14 @@ public class SoundHandlers {
      * beep() or beep(count)
      */
     private static Datum beep(LingoVM vm, List<Datum> args) {
-        int count = args.isEmpty() ? 1 : args.get(0).intValue();
+
+        /*int count = args.isEmpty() ? 1 : args.get(0).intValue();
         for (int i = 0; i < count; i++) {
             java.awt.Toolkit.getDefaultToolkit().beep();
             if (i < count - 1) {
                 try { Thread.sleep(100); } catch (InterruptedException ignored) {}
             }
-        }
+        }*/
         return Datum.voidValue();
     }
 
