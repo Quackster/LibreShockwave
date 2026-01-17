@@ -237,6 +237,9 @@ public class SwingPlayer extends JFrame {
             vm.setDebugMode(debugCheckbox.isSelected());
             vm.setDebugOutputCallback(this::log);
 
+            // Set stage callback for window operations
+            setupStageCallback(vm);
+
             // Initialize and register Xtras
             xtraManager = XtraManager.createWithStandardXtras();
             xtraManager.registerAll(vm);
@@ -335,6 +338,9 @@ public class SwingPlayer extends JFrame {
             LingoVM vm = dirPlayer.getVM();
             vm.setDebugMode(debugCheckbox.isSelected());
             vm.setDebugOutputCallback(this::log);
+
+            // Set stage callback for window operations
+            setupStageCallback(vm);
 
             // Initialize and register Xtras
             xtraManager = XtraManager.createWithStandardXtras();
@@ -491,6 +497,28 @@ public class SwingPlayer extends JFrame {
                 }
             }
         }
+    }
+
+    private void setupStageCallback(LingoVM vm) {
+        vm.setStageCallback(new LingoVM.StageCallback() {
+            @Override
+            public void moveToFront() {
+                SwingUtilities.invokeLater(() -> {
+                    SwingPlayer.this.toFront();
+                    SwingPlayer.this.requestFocus();
+                });
+            }
+
+            @Override
+            public void moveToBack() {
+                SwingUtilities.invokeLater(() -> SwingPlayer.this.toBack());
+            }
+
+            @Override
+            public void close() {
+                SwingUtilities.invokeLater(() -> SwingPlayer.this.dispose());
+            }
+        });
     }
 
     private void registerSwingBuiltins(LingoVM vm) {

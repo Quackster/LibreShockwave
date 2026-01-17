@@ -43,6 +43,21 @@ public class LingoVM {
         this.debugOutputCallback = callback;
     }
 
+    /**
+     * Callback interface for stage window operations.
+     */
+    public interface StageCallback {
+        void moveToFront();
+        void moveToBack();
+        void close();
+    }
+
+    private StageCallback stageCallback;
+
+    public void setStageCallback(StageCallback callback) {
+        this.stageCallback = callback;
+    }
+
     @FunctionalInterface
     public interface BuiltinHandler {
         Datum call(LingoVM vm, List<Datum> args);
@@ -1001,6 +1016,7 @@ public class LingoVM {
 
     private Datum getMovieProperty(String propName) {
         return switch (propName.toLowerCase()) {
+            case "stage" -> new Datum.StageRef();
             case "stagewidth" -> Datum.of(file.getStageWidth());
             case "stageheight" -> Datum.of(file.getStageHeight());
             case "framelabel" -> Datum.of("");
@@ -1024,6 +1040,8 @@ public class LingoVM {
             return callListMethod(list, methodName, args);
         } else if (obj instanceof Datum.PropList propList) {
             return callPropListMethod(propList, methodName, args);
+        } else if (obj instanceof Datum.StageRef) {
+            return callStageMethod(methodName, args);
         }
 
         // Try as builtin
@@ -1036,6 +1054,25 @@ public class LingoVM {
         }
 
         return Datum.voidValue();
+    }
+
+    private Datum callStageMethod(String method, List<Datum> args) {
+        return switch (method.toLowerCase()) {
+            case "movetofront" -> {
+                if (stageCallback != null) stageCallback.moveToFront();
+                yield Datum.voidValue();
+            }
+            case "movetoback" -> {
+                if (stageCallback != null) stageCallback.moveToBack();
+                yield Datum.voidValue();
+            }
+            case "close" -> {
+                if (stageCallback != null) stageCallback.close();
+                yield Datum.voidValue();
+            }
+            case "forget" -> Datum.voidValue();
+            default -> Datum.voidValue();
+        };
     }
 
     private Datum callListMethod(Datum.DList list, String method, List<Datum> args) {

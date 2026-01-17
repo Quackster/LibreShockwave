@@ -208,6 +208,16 @@ public sealed interface Datum {
         public int spriteNum() { return channel; }
     }
 
+    /**
+     * Reference to the stage window.
+     */
+    record StageRef() implements Datum {
+        @Override public DatumType type() { return DatumType.STAGE_REF; }
+
+        @Override
+        public String toString() { return "(the stage)"; }
+    }
+
     record ScriptRef(CastMemberRef memberRef) implements Datum {
         @Override public DatumType type() { return DatumType.SCRIPT_REF; }
     }

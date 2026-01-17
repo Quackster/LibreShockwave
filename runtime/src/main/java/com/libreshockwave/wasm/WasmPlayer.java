@@ -183,6 +183,25 @@ public class WasmPlayer {
         // Set cast manager so VM can find handlers in external casts
         vm.setCastManager(castManager);
 
+        // Set stage callback for window operations (mostly no-ops in WASM)
+        vm.setStageCallback(new LingoVM.StageCallback() {
+            @Override
+            public void moveToFront() {
+                log("Stage.moveToFront() called (no-op in WASM)");
+            }
+
+            @Override
+            public void moveToBack() {
+                log("Stage.moveToBack() called (no-op in WASM)");
+            }
+
+            @Override
+            public void close() {
+                log("Stage.close() called");
+                stop();
+            }
+        });
+
         registerPlayerBuiltins();
 
         // Initialize Xtras (provides network functions, etc.)
