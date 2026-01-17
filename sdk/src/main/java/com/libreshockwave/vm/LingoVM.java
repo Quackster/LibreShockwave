@@ -188,11 +188,11 @@ public class LingoVM {
                 throw new LingoException("Execution limit exceeded: " + maxInstructions + " instructions");
             }
             Datum result = scope.getReturnValue();
-            if (debugMode) { debugIndent--; debugLog("=== RETURN " + debugFormatter.formatDatum(result) + " ==="); }
+            if (debugMode) { debugLog("=== RETURN " + debugFormatter.formatDatum(result) + " ==="); }
             return result;
         } finally {
             callStack.pop();
-            if (debugMode && debugIndent > 0) debugIndent--;
+            if (debugMode) debugIndent = Math.max(0, debugIndent - 1);
         }
     }
 
