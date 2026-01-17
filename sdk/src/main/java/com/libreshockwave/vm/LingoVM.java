@@ -29,6 +29,9 @@ public class LingoVM {
     private NetManager netManager;
     private CastManager castManager;
 
+    // Last handler result (matches dirplayer-rs player.last_handler_result)
+    private Datum lastHandlerResult = Datum.voidValue();
+
     // Debug mode - when enabled, logs execution details
     private boolean debugMode = false;
     private int debugIndent = 0;
@@ -56,6 +59,46 @@ public class LingoVM {
 
     public void setStageCallback(StageCallback callback) {
         this.stageCallback = callback;
+    }
+
+    /**
+     * Callback interface for Xtra instance method calls.
+     * Matches dirplayer-rs call_xtra_instance_handler().
+     */
+    public interface XtraInstanceCallback {
+        /**
+         * Call a method on an Xtra instance.
+         * @param xtraName The name of the xtra (e.g., "Multiuser")
+         * @param instanceId The instance ID
+         * @param methodName The method being called
+         * @param args The method arguments
+         * @return The result, or null if the method is not handled
+         */
+        Datum callMethod(String xtraName, int instanceId, String methodName, List<Datum> args);
+    }
+
+    private XtraInstanceCallback xtraInstanceCallback;
+
+    public void setXtraInstanceCallback(XtraInstanceCallback callback) {
+        this.xtraInstanceCallback = callback;
+    }
+
+    /**
+     * Callback interface for getting active script instances from the score.
+     * Matches dirplayer-rs score.get_active_script_instance_list().
+     */
+    public interface ActiveScriptInstancesCallback {
+        /**
+         * Get all active script instances from sprites in the current frame.
+         * @return List of active script instance references
+         */
+        List<Datum.ScriptInstanceRef> getActiveScriptInstances();
+    }
+
+    private ActiveScriptInstancesCallback activeScriptInstancesCallback;
+
+    public void setActiveScriptInstancesCallback(ActiveScriptInstancesCallback callback) {
+        this.activeScriptInstancesCallback = callback;
     }
 
     @FunctionalInterface
@@ -391,7 +434,178 @@ public class LingoVM {
         builtins.put(name.toLowerCase(), handler);
     }
 
-    // Script execution
+    /**
+     * Get the last handler result (matches dirplayer-rs player.last_handler_result).
+     */
+    public Datum getLastHandlerResult() {
+        return lastHandlerResult;
+    }
+
+    // Script execution - matches dirplayer-rs call resolution
+
+    /**
+     * Check if first argument is a script instance that has the given handler.
+     * Matches dirplayer-rs ScriptInstanceUtils::get_handler_from_first_arg().
+     */
+    private HandlerLocation getHandlerFromFirstArg(List<Datum> args, String handlerName) {
+        if (args.isEmpty()) return null;
+
+        Datum firstArg = args.get(0);
+
+        // Check if first arg is a script instance reference
+        if (firstArg instanceof Datum.ScriptInstanceRef scriptInstance) {
+            // Look up the script by name for this instance
+            String scriptName = scriptInstance.scriptName();
+            ScriptChunk instanceScript = findScriptByName(scriptName);
+            if (instanceScript != null) {
+                for (ScriptChunk.Handler h : instanceScript.handlers()) {
+                    String hName = getName(h.nameId());
+                    if (hName != null && hName.equalsIgnoreCase(handlerName)) {
+                        return new HandlerLocation(instanceScript, h, null, null);
+                    }
+                }
+            }
+        }
+
+        // Check if first arg is a script reference (cast member)
+        if (firstArg instanceof Datum.ScriptRef scriptRef) {
+            // Look up the script from the cast member reference
+            ScriptChunk refScript = findScriptByCastRef(scriptRef.memberRef());
+            if (refScript != null) {
+                for (ScriptChunk.Handler h : refScript.handlers()) {
+                    String hName = getName(h.nameId());
+                    if (hName != null && hName.equalsIgnoreCase(handlerName)) {
+                        return new HandlerLocation(refScript, h, null, null);
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Find a script by its name (used for script instances).
+     */
+    private ScriptChunk findScriptByName(String name) {
+        if (name == null || name.isEmpty()) return null;
+
+        // Search in main file's scripts
+        if (file != null) {
+            for (ScriptChunk script : file.getScripts()) {
+                String memberName = getScriptMemberName(script);
+                if (name.equalsIgnoreCase(memberName)) {
+                    return script;
+                }
+            }
+        }
+
+        // Search in cast libraries
+        if (castManager != null) {
+            for (CastLib cast : castManager.getCasts()) {
+                if (cast.getState() == CastLib.State.LOADED) {
+                    for (ScriptChunk script : cast.getAllScripts()) {
+                        String memberName = getScriptMemberName(script);
+                        if (name.equalsIgnoreCase(memberName)) {
+                            return script;
+                        }
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Find a script by its cast member reference.
+     */
+    private ScriptChunk findScriptByCastRef(Datum.CastMemberRef ref) {
+        if (ref == null) return null;
+
+        int castLib = ref.castLib();
+        int memberId = ref.memberNum();
+
+        // Search in main file
+        if (file != null && castLib <= 1) {
+            for (ScriptChunk script : file.getScripts()) {
+                if (script.id() == memberId) {
+                    return script;
+                }
+            }
+        }
+
+        // Search in cast library
+        if (castManager != null) {
+            CastLib cast = castManager.getCast(castLib);
+            if (cast != null && cast.getState() == CastLib.State.LOADED) {
+                return cast.getScript(memberId);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Call a global handler with full resolution order.
+     * Matches dirplayer-rs player_call_global_handler().
+     *
+     * Resolution order:
+     * 1. "new" always goes to built-in handler
+     * 2. Check if first arg is a script/script instance with this handler
+     * 3. Check active script instances in score (behaviors)
+     * 4. Check static scripts (movie scripts)
+     * 5. Check built-in async handlers
+     * 6. Check built-in sync handlers
+     */
+    private Datum callGlobalHandler(String handlerName, List<Datum> args, Scope currentScope) {
+        // "new" invocations should always go through the built-in handler (matches dirplayer-rs)
+        if (!handlerName.equalsIgnoreCase("new")) {
+
+            // 1. Check if first arg is a script or script instance with this handler
+            HandlerLocation firstArgHandler = getHandlerFromFirstArg(args, handlerName);
+            if (firstArgHandler != null) {
+                return execute(firstArgHandler.script(), firstArgHandler.handler(), args.toArray(new Datum[0]));
+            }
+
+            // 2. Check active script instances in score (behaviors)
+            // Matches dirplayer-rs score.get_active_script_instance_list() iteration
+            if (activeScriptInstancesCallback != null) {
+                List<Datum.ScriptInstanceRef> activeInstances = activeScriptInstancesCallback.getActiveScriptInstances();
+                for (Datum.ScriptInstanceRef instanceRef : activeInstances) {
+                    // Look up the parent script and find the handler
+                    ScriptChunk instanceScript = findScriptByName(instanceRef.scriptName());
+                    if (instanceScript != null) {
+                        for (ScriptChunk.Handler h : instanceScript.handlers()) {
+                            String hName = getName(h.nameId());
+                            if (hName != null && hName.equalsIgnoreCase(handlerName)) {
+                                // Call with the instance as receiver - prepend 'me' to args
+                                List<Datum> allArgs = new ArrayList<>();
+                                allArgs.add(instanceRef);
+                                allArgs.addAll(args);
+                                return execute(instanceScript, h, allArgs.toArray(new Datum[0]));
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 3. Check static scripts (movie scripts, frame scripts, etc.)
+            HandlerLocation staticHandler = findHandlerWithScript(handlerName);
+            if (staticHandler != null) {
+                return execute(staticHandler.script(), staticHandler.handler(), args.toArray(new Datum[0]));
+            }
+        }
+
+        // 4. Check built-in handlers
+        BuiltinHandler builtin = builtins.get(handlerName.toLowerCase());
+        if (builtin != null) {
+            return builtin.call(this, args);
+        }
+
+        // No handler found
+        throw LingoException.undefinedHandler(handlerName);
+    }
 
     public Datum call(String handlerName, Datum... args) {
         return call(handlerName, Arrays.asList(args));
@@ -794,43 +1008,74 @@ public class LingoVM {
                 push(new Datum.ArgListNoRet(items));
             }
 
-            // Function calls
+            // Function calls - matches dirplayer-rs ext_call
             case EXT_CALL -> {
                 String handlerName = getName(arg);
                 Datum argListDatum = pop();
+                boolean isNoRet = argListDatum instanceof Datum.ArgListNoRet;
                 List<Datum> args = extractArgList(argListDatum);
 
-                // Check builtin first
-                BuiltinHandler builtin = builtins.get(handlerName.toLowerCase());
-                if (builtin != null) {
-                    push(builtin.call(this, args));
+                // Special case: "return" statement (matches dirplayer-rs player_ext_call)
+                if (handlerName.equalsIgnoreCase("return")) {
+                    Datum returnValue = args.isEmpty() ? Datum.voidValue() : args.get(0);
+                    scope.setReturnValue(returnValue);
+                    scope.setInstructionPointer(scope.getHandler().instructions().size()); // Exit handler
+                    if (!isNoRet) {
+                        push(returnValue);
+                    }
                 } else {
-                    // Find and call handler
-                    Datum result = call(handlerName, args);
-                    push(result);
+                    // Call global handler with full resolution (matches dirplayer-rs player_call_global_handler)
+                    Datum result = callGlobalHandler(handlerName, args, scope);
+                    lastHandlerResult = result;
+                    scope.setReturnValue(result);
+                    if (!isNoRet) {
+                        push(result);
+                    }
                 }
             }
 
             case LOCAL_CALL -> {
-                String handlerName = getName(arg);
                 Datum argListDatum = pop();
+                boolean isNoRet = argListDatum instanceof Datum.ArgListNoRet;
                 List<Datum> args = extractArgList(argListDatum);
 
-                // Call handler in current script
+                // Get handler at this index in current script (matches dirplayer-rs local_call)
                 ScriptChunk script = scope.getScript();
                 ScriptChunk.Handler targetHandler = null;
-                for (ScriptChunk.Handler h : script.handlers()) {
-                    if (h.nameId() == arg) {
-                        targetHandler = h;
+                String handlerName = null;
+
+                // LOCAL_CALL uses handler index, not name ID
+                int handlerIndex = arg;
+                if (handlerIndex >= 0 && handlerIndex < script.handlers().size()) {
+                    targetHandler = script.handlers().get(handlerIndex);
+                    handlerName = getName(targetHandler.nameId());
+                }
+
+                // Check if first arg is a script instance with this handler (matches dirplayer-rs)
+                if (handlerName != null && !args.isEmpty()) {
+                    HandlerLocation firstArgHandler = getHandlerFromFirstArg(args, handlerName);
+                    if (firstArgHandler != null) {
+                        // Use the handler from the first argument's script/instance
+                        Datum result = execute(firstArgHandler.script(), firstArgHandler.handler(), args.toArray(new Datum[0]));
+                        lastHandlerResult = result;
+                        if (!isNoRet) {
+                            push(result);
+                        }
                         break;
                     }
                 }
 
+                // Fall back to calling handler in current script
                 if (targetHandler != null) {
                     Datum result = execute(script, targetHandler, args.toArray(new Datum[0]));
-                    push(result);
+                    lastHandlerResult = result;
+                    if (!isNoRet) {
+                        push(result);
+                    }
                 } else {
-                    push(Datum.voidValue());
+                    if (!isNoRet) {
+                        push(Datum.voidValue());
+                    }
                 }
             }
 
@@ -884,13 +1129,18 @@ public class LingoVM {
                 setMovieProperty(propName, value);
             }
 
-            // Object calls
+            // Object calls - matches dirplayer-rs obj_call
             case OBJ_CALL, OBJ_CALL_V4 -> {
                 String methodName = getName(arg);
                 Datum argListDatum = pop();
+                boolean isNoRet = argListDatum instanceof Datum.ArgListNoRet;
                 List<Datum> args = extractArgList(argListDatum);
                 Datum obj = args.isEmpty() ? Datum.voidValue() : args.remove(0);
-                push(callMethod(obj, methodName, args));
+                Datum result = callMethod(obj, methodName, args);
+                lastHandlerResult = result;
+                if (!isNoRet) {
+                    push(result);
+                }
             }
 
             // String chunk operations
@@ -1134,15 +1384,72 @@ public class LingoVM {
         // Movie properties are generally read-only or require player support
     }
 
+    /**
+     * Call a method on an object.
+     * Matches dirplayer-rs player_call_datum_handler() dispatch.
+     */
     private Datum callMethod(Datum obj, String methodName, List<Datum> args) {
+        // Handle XtraInstance - matches dirplayer-rs XtraInstance handler dispatch
+        if (obj instanceof Datum.XtraInstance xtraInstance) {
+            if (xtraInstanceCallback != null) {
+                Datum result = xtraInstanceCallback.callMethod(
+                    xtraInstance.xtraName(),
+                    xtraInstance.instanceId(),
+                    methodName,
+                    args
+                );
+                if (result != null) {
+                    return result;
+                }
+            }
+            // Fall through to builtin check if no callback or method not handled
+        }
+
+        // Handle ScriptInstanceRef - call method on script instance
         if (obj instanceof Datum.ScriptInstanceRef instance) {
-            // Call method on script instance
+            // Look up the parent script and find the handler
+            ScriptChunk instanceScript = findScriptByName(instance.scriptName());
+            if (instanceScript != null) {
+                for (ScriptChunk.Handler h : instanceScript.handlers()) {
+                    String hName = getName(h.nameId());
+                    if (hName != null && hName.equalsIgnoreCase(methodName)) {
+                        // Prepend 'me' (the instance) as first argument
+                        List<Datum> allArgs = new ArrayList<>();
+                        allArgs.add(obj);
+                        allArgs.addAll(args);
+                        return execute(instanceScript, h, allArgs.toArray(new Datum[0]));
+                    }
+                }
+            }
             return Datum.voidValue();
-        } else if (obj instanceof Datum.DList list) {
+        }
+
+        // Handle ScriptRef - call static method on script
+        if (obj instanceof Datum.ScriptRef scriptRef) {
+            ScriptChunk refScript = findScriptByCastRef(scriptRef.memberRef());
+            if (refScript != null) {
+                for (ScriptChunk.Handler h : refScript.handlers()) {
+                    String hName = getName(h.nameId());
+                    if (hName != null && hName.equalsIgnoreCase(methodName)) {
+                        return execute(refScript, h, args.toArray(new Datum[0]));
+                    }
+                }
+            }
+            return Datum.voidValue();
+        }
+
+        // Handle DList
+        if (obj instanceof Datum.DList list) {
             return callListMethod(list, methodName, args);
-        } else if (obj instanceof Datum.PropList propList) {
+        }
+
+        // Handle PropList
+        if (obj instanceof Datum.PropList propList) {
             return callPropListMethod(propList, methodName, args);
-        } else if (obj instanceof Datum.StageRef) {
+        }
+
+        // Handle Stage
+        if (obj instanceof Datum.StageRef) {
             return callStageMethod(methodName, args);
         }
 

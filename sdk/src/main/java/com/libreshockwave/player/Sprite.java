@@ -45,6 +45,10 @@ public class Sprite {
     private boolean editable = false;
     private int cursor = 0;
 
+    // Script instances (behaviors) attached to this sprite
+    // Matches dirplayer-rs Sprite.script_instance_list
+    private final java.util.List<Datum.ScriptInstanceRef> scriptInstanceList = new java.util.ArrayList<>();
+
     // Lifecycle flags (for beginSprite/endSprite events)
     private boolean entered = false;
     private boolean exited = false;
@@ -143,6 +147,28 @@ public class Sprite {
 
     public int getCursor() { return cursor; }
     public void setCursor(int cursor) { this.cursor = cursor; }
+
+    /**
+     * Get the list of script instances (behaviors) attached to this sprite.
+     * Matches dirplayer-rs Sprite.script_instance_list
+     */
+    public java.util.List<Datum.ScriptInstanceRef> getScriptInstanceList() {
+        return scriptInstanceList;
+    }
+
+    /**
+     * Add a script instance (behavior) to this sprite.
+     */
+    public void addScriptInstance(Datum.ScriptInstanceRef instance) {
+        scriptInstanceList.add(instance);
+    }
+
+    /**
+     * Clear all script instances from this sprite.
+     */
+    public void clearScriptInstances() {
+        scriptInstanceList.clear();
+    }
 
     public boolean isEntered() { return entered; }
     public void setEntered(boolean entered) { this.entered = entered; }
