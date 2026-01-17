@@ -24,6 +24,7 @@ public class LingoVM {
 
     private boolean halted;
     private int maxInstructions = 100000;
+    private int maxCallDepth = 500;  // Prevent stack overflow from deep recursion
     private NetManager netManager;
     private CastManager castManager;
     private Datum lastHandlerResult = Datum.voidValue();
@@ -164,6 +165,12 @@ public class LingoVM {
     }
 
     public Datum execute(ScriptChunk script, ScriptChunk.Handler handler, Datum[] args) {
+        // Check for excessive recursion before pushing to call stack
+        if (callStack.size() >= maxCallDepth) {
+            String handlerName = scriptResolver.getName(handler.nameId());
+            throw new LingoException("Maximum call depth exceeded (" + maxCallDepth + ") - possible infinite recursion in handler '" + handlerName + "'");
+        }
+
         if (debugMode) logHandlerEntry(script, handler, args);
 
         Scope scope = new Scope(script, handler, args);
@@ -421,12 +428,22 @@ public class LingoVM {
     }
 
     private Datum callGlobalHandler(String handlerName, List<Datum> args, Scope scope) {
-        if (!handlerName.equalsIgnoreCase("new")) {
-            // Check first arg for script/instance with handler
+        // 1. Check first arg for script/instance with handler (explicit receiver)
+        if (!handlerName.equalsIgnoreCase("new") && !args.isEmpty()) {
             ScriptResolver.HandlerLocation loc = getHandlerFromFirstArg(args, handlerName);
             if (loc != null) return execute(loc.script(), loc.handler(), args.toArray(new Datum[0]));
+        }
 
-            // Check active script instances
+        // 2. Check builtins BEFORE script handlers to avoid shadowing built-in functions
+        BuiltinHandler builtin = builtins.get(handlerName.toLowerCase());
+        if (builtin != null) return builtin.call(this, args);
+
+        // 3. Check static scripts (movie scripts, behaviors)
+        if (!handlerName.equalsIgnoreCase("new")) {
+            ScriptResolver.HandlerLocation staticLoc = scriptResolver.findHandler(handlerName);
+            if (staticLoc != null) return execute(staticLoc.script(), staticLoc.handler(), args.toArray(new Datum[0]));
+
+            // 4. Check active script instances (for handlers not found elsewhere)
             if (activeScriptInstancesCallback != null) {
                 for (Datum.ScriptInstanceRef ref : activeScriptInstancesCallback.getActiveScriptInstances()) {
                     ScriptChunk script = scriptResolver.findScriptByName(ref.scriptName());
@@ -442,15 +459,7 @@ public class LingoVM {
                     }
                 }
             }
-
-            // Check static scripts
-            ScriptResolver.HandlerLocation staticLoc = scriptResolver.findHandler(handlerName);
-            if (staticLoc != null) return execute(staticLoc.script(), staticLoc.handler(), args.toArray(new Datum[0]));
         }
-
-        // Check builtins
-        BuiltinHandler builtin = builtins.get(handlerName.toLowerCase());
-        if (builtin != null) return builtin.call(this, args);
 
         throw LingoException.undefinedHandler(handlerName);
     }
