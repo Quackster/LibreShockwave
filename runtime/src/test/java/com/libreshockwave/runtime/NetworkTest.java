@@ -1,5 +1,6 @@
 package com.libreshockwave.runtime;
 
+import com.libreshockwave.execution.DirPlayer;
 import com.libreshockwave.net.NetManager;
 import com.libreshockwave.player.CastLib;
 import com.libreshockwave.player.CastManager;

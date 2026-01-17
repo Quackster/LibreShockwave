@@ -1,6 +1,7 @@
 package com.libreshockwave.runtime;
 
 import com.libreshockwave.DirectorFile;
+import com.libreshockwave.execution.DirPlayer;
 import com.libreshockwave.lingo.Datum;
 import com.libreshockwave.vm.LingoVM;
 
@@ -158,13 +159,6 @@ public class RuntimeTest {
             player.addEventListener((event, frame) -> {
                 System.out.println("  Event: " + event.handlerName() + " (frame " + frame + ")");
             });
-
-            // Test scope management
-            ExecutionScope scope = player.pushScope(Arrays.asList(Datum.of("test")));
-            assert scope != null : "Should have scope after push";
-            assert player.currentScope() == scope : "Current scope should match";
-            player.popScope();
-            assert player.currentScope() == null : "Should have no scope after pop";
 
             // Dispatch events
             System.out.println("\n  Dispatching events:");

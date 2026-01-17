@@ -1,6 +1,7 @@
 package com.libreshockwave.wasm;
 
 import com.libreshockwave.DirectorFile;
+import com.libreshockwave.execution.DirPlayer;
 import com.libreshockwave.player.Score;
 import com.libreshockwave.player.Sprite;
 import org.graalvm.nativeimage.IsolateThread;
