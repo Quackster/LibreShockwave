@@ -1305,6 +1305,19 @@ public class LingoVM {
             return getCastLibProperty(castLibRef, propName);
         } else if (obj instanceof Datum.SpriteRef spriteRef) {
             return getSpriteProperty(spriteRef.channel(), propName);
+        } else if (obj instanceof Datum.Symbol symbol) {
+            // Resolve symbol to a script instance and get property from it
+            String scriptName = symbol.name();
+            if (activeScriptInstancesCallback != null) {
+                for (Datum.ScriptInstanceRef instanceRef : activeScriptInstancesCallback.getActiveScriptInstances()) {
+                    if (instanceRef.scriptName().equalsIgnoreCase(scriptName)) {
+                        return instanceRef.getProperty(propName);
+                    }
+                }
+            }
+
+            // Script instance not found - return void
+            return Datum.voidValue();
         }
         debugLog("getProperty: unhandled object type " + obj.getClass().getSimpleName() + " for property '" + propName + "'");
         return Datum.voidValue();
@@ -1315,6 +1328,17 @@ public class LingoVM {
             propList.put(Datum.symbol(propName), value);
         } else if (obj instanceof Datum.ScriptInstanceRef instance) {
             instance.setProperty(propName, value);
+        } else if (obj instanceof Datum.Symbol symbol) {
+            // Resolve symbol to a script instance and set property on it
+            String scriptName = symbol.name();
+            if (activeScriptInstancesCallback != null) {
+                for (Datum.ScriptInstanceRef instanceRef : activeScriptInstancesCallback.getActiveScriptInstances()) {
+                    if (instanceRef.scriptName().equalsIgnoreCase(scriptName)) {
+                        instanceRef.setProperty(propName, value);
+                        return;
+                    }
+                }
+            }
         }
     }
 
