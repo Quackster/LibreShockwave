@@ -1886,6 +1886,16 @@ public class LingoVM {
             return callStageMethod(methodName, args);
         }
 
+        // Handle String - matches dirplayer-rs StringDatumHandlers::call
+        if (obj instanceof Datum.Str str) {
+            return callStringMethod(str.value(), methodName, args);
+        }
+
+        // Handle StringChunk - delegate to the resolved string value
+        if (obj instanceof Datum.StringChunk chunk) {
+            return callStringMethod(chunk.value(), methodName, args);
+        }
+
         // Try as builtin
         BuiltinHandler builtin = builtins.get(methodName.toLowerCase());
         if (builtin != null) {
@@ -1980,6 +1990,140 @@ public class LingoVM {
                 yield Datum.of(0);
             }
             default -> Datum.voidValue();
+        };
+    }
+
+    /**
+     * Call a method on a string.
+     * Matches dirplayer-rs StringDatumHandlers::call
+     */
+    private Datum callStringMethod(String str, String method, List<Datum> args) {
+        return switch (method.toLowerCase()) {
+            case "count" -> {
+                // count(str, chunkType) - count items/words/chars/lines
+                if (args.isEmpty()) yield Datum.of(0);
+                String chunkType = args.get(0).stringValue().toLowerCase();
+                yield Datum.of(stringGetCount(str, chunkType));
+            }
+            case "getpropref" -> {
+                // getPropRef(str, chunkType, start, [end]) - get chunk reference
+                if (args.size() < 2) yield Datum.voidValue();
+                String chunkType = args.get(0).stringValue();
+                int start = args.get(1).intValue();
+                int end = args.size() > 2 ? args.get(2).intValue() : start;
+                yield getStringChunkRef(str, chunkType, start, end);
+            }
+            case "getprop" -> {
+                // getProp(str, chunkType, start, [end]) - get chunk value as string
+                if (args.size() < 2) yield Datum.voidValue();
+                String chunkType = args.get(0).stringValue();
+                int start = args.get(1).intValue();
+                int end = args.size() > 2 ? args.get(2).intValue() : start;
+                Datum chunk = getStringChunkRef(str, chunkType, start, end);
+                if (chunk instanceof Datum.StringChunk sc) {
+                    yield Datum.of(sc.value());
+                }
+                yield Datum.voidValue();
+            }
+            case "split" -> {
+                // split(str, delimiter) - split string into list
+                String delimiter = args.isEmpty() ? "," : args.get(0).stringValue();
+                String[] parts = str.split(java.util.regex.Pattern.quote(delimiter), -1);
+                List<Datum> items = new ArrayList<>();
+                for (String part : parts) {
+                    items.add(Datum.of(part));
+                }
+                yield new Datum.DList(items, false);
+            }
+            default -> Datum.voidValue();
+        };
+    }
+
+    /**
+     * Get a chunk reference from a string.
+     * Matches dirplayer-rs StringDatumUtils::get_prop_ref
+     */
+    private Datum getStringChunkRef(String str, String chunkTypeName, int start, int end) {
+        StringChunkType chunkType = switch (chunkTypeName.toLowerCase()) {
+            case "char" -> StringChunkType.CHAR;
+            case "word" -> StringChunkType.WORD;
+            case "line" -> StringChunkType.LINE;
+            case "item" -> StringChunkType.ITEM;
+            default -> StringChunkType.CHAR;
+        };
+
+        // Get item delimiter as char
+        char delimiterChar = itemDelimiter.isEmpty() ? ',' : itemDelimiter.charAt(0);
+
+        // Extract the chunk value
+        String chunkValue = extractStringChunk(str, chunkType, start, end);
+
+        // Create StringChunk with source as the original string
+        return new Datum.StringChunk(Datum.of(str), chunkType, start, end, delimiterChar, chunkValue);
+    }
+
+    /**
+     * Count items/words/chars/lines in a string.
+     * Matches dirplayer-rs string_get_count
+     */
+    private int stringGetCount(String str, String chunkType) {
+        return switch (chunkType.toLowerCase()) {
+            case "char", "chars" -> str.length();
+            case "word", "words" -> str.isEmpty() ? 0 : str.split("\\s+").length;
+            case "item", "items" -> {
+                String delimiter = itemDelimiter.isEmpty() ? "," : itemDelimiter;
+                yield str.split(java.util.regex.Pattern.quote(delimiter), -1).length;
+            }
+            case "line", "lines" -> str.split("\\r?\\n|\\r", -1).length;
+            default -> 0;
+        };
+    }
+
+    /**
+     * Extract a chunk from a string.
+     */
+    private String extractStringChunk(String str, StringChunkType type, int start, int end) {
+        if (start < 1) start = 1;
+        if (end < start) end = start;
+
+        return switch (type) {
+            case CHAR -> {
+                int startIdx = Math.min(start - 1, str.length());
+                int endIdx = Math.min(end, str.length());
+                yield startIdx < endIdx ? str.substring(startIdx, endIdx) : "";
+            }
+            case WORD -> {
+                String[] words = str.split("\\s+");
+                if (start > words.length) yield "";
+                StringBuilder sb = new StringBuilder();
+                for (int i = start - 1; i < Math.min(end, words.length); i++) {
+                    if (sb.length() > 0) sb.append(" ");
+                    sb.append(words[i]);
+                }
+                yield sb.toString();
+            }
+            case LINE -> {
+                String[] lines = str.split("\\r?\\n|\\r", -1);
+                if (start > lines.length) yield "";
+                StringBuilder sb = new StringBuilder();
+                String lineBreak = str.contains("\r\n") ? "\r\n" : (str.contains("\n") ? "\n" : "\r");
+                for (int i = start - 1; i < Math.min(end, lines.length); i++) {
+                    if (sb.length() > 0) sb.append(lineBreak);
+                    sb.append(lines[i]);
+                }
+                yield sb.toString();
+            }
+            case ITEM -> {
+                String delimiter = itemDelimiter.isEmpty() ? "," : itemDelimiter;
+                String[] items = str.split(java.util.regex.Pattern.quote(delimiter), -1);
+                if (start > items.length) yield "";
+                StringBuilder sb = new StringBuilder();
+                for (int i = start - 1; i < Math.min(end, items.length); i++) {
+                    if (!sb.isEmpty()) sb.append(delimiter);
+                    sb.append(items[i]);
+                }
+                yield sb.toString();
+            }
         };
     }
 

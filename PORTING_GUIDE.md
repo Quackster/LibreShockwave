@@ -968,4 +968,36 @@ myObj.ancestor = script("BaseScript").new()
 
 ---
 
+### 2026-01-17: String Chunk Methods (getPropRef, getProp, count)
+
+**Summary:** Implemented string chunk methods matching dirplayer-rs behavior for chunk expressions like `item 1 of someString`.
+
+**Rust Reference:**
+- `vm-rust/src/player/handlers/datum_handlers/string.rs` - StringDatumHandlers::call and StringDatumUtils
+
+**Modified Files:**
+1. `sdk/src/main/java/com/libreshockwave/vm/LingoVM.java`:
+   - Added string handling in `callMethod()` for `Datum.Str` and `Datum.StringChunk`
+   - Added `callStringMethod()` supporting:
+     - `count(chunkType)` - count chars/words/lines/items
+     - `getPropRef(chunkType, start, [end])` - get chunk reference
+     - `getProp(chunkType, start, [end])` - get chunk value
+     - `split(delimiter)` - split into list
+   - Added `getStringChunkRef()` - creates StringChunk datum
+   - Added `stringGetCount()` - count chunks in string
+   - Added `extractStringChunk()` - extract substring by chunk type
+
+**Call Flow for `item 1 of someString`:**
+```
+1. OBJ_CALL 'getPropRef' on string with args [#item, 1]
+2. callMethod detects Datum.Str → callStringMethod("getPropRef", args)
+3. getStringChunkRef(str, "item", 1, 1):
+   a. Convert chunk type name to StringChunkType.ITEM
+   b. Extract item 1 using itemDelimiter
+   c. Create StringChunk(source, type, start, end, delimiter, value)
+4. Return StringChunk for further operations
+```
+
+---
+
 *Last updated: January 2026*
