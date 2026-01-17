@@ -3,7 +3,6 @@ package com.libreshockwave.wasm;
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.player.Score;
 import com.libreshockwave.player.Sprite;
-import com.libreshockwave.runtime.DirPlayer;
 import org.graalvm.nativeimage.IsolateThread;
 import org.graalvm.nativeimage.UnmanagedMemory;
 import org.graalvm.nativeimage.c.function.CEntryPoint;

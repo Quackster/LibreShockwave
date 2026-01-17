@@ -458,26 +458,85 @@ public class DirPlayer {
     }
 
     /**
-     * Execute a handler by name if it exists.
+     * Execute a handler by name across ALL scripts that have it.
+     * Matches dirplayer-rs player_invoke_global_event / player_invoke_static_event.
+     *
+     * Event order:
+     * 1. Frame script (if current frame has one and has this handler)
+     * 2. All movie scripts in the main file
+     * 3. All movie scripts in all casts (internal and external)
      */
     private void executeHandlerIfExists(String handlerName) {
         if (file == null) return;
 
+        // Get nameId from main file's name table
         ScriptNamesChunk names = file.getScriptNames();
-        if (names == null) return;
+        int mainNameId = names != null ? names.findName(handlerName) : -1;
 
-        int nameId = names.findName(handlerName);
-        if (nameId < 0) return;
-
-        for (ScriptChunk script : file.getScripts()) {
-            for (ScriptChunk.Handler handler : script.handlers()) {
-                if (handler.nameId() == nameId) {
-                    try {
-                        vm.execute(script, handler, new Datum[0]);
-                    } catch (Exception e) {
-                        System.err.println("Error executing " + handlerName + ": " + e.getMessage());
+        // 1. Execute frame script first (if it has this handler)
+        if (score != null && mainNameId >= 0) {
+            Score.Frame frame = score.getFrame(currentFrame);
+            if (frame != null && frame.hasFrameScript()) {
+                ScriptChunk frameScript = findScriptForCastMember(
+                    frame.getScriptCastLib(),
+                    frame.getScriptCastMember()
+                );
+                if (frameScript != null) {
+                    for (ScriptChunk.Handler handler : frameScript.handlers()) {
+                        if (handler.nameId() == mainNameId) {
+                            try {
+                                vm.execute(frameScript, handler, new Datum[0]);
+                            } catch (Exception e) {
+                                System.err.println("Error executing " + handlerName + " in frame script: " + e.getMessage());
+                            }
+                            break;
+                        }
                     }
-                    return;
+                }
+            }
+        }
+
+        // 2. Execute in ALL movie scripts from main file
+        if (mainNameId >= 0) {
+            for (ScriptChunk script : file.getScripts()) {
+                // Movie scripts have scriptType == MOVIE_SCRIPT
+                if (script.scriptType() != ScriptChunk.ScriptType.MOVIE_SCRIPT) continue;
+
+                for (ScriptChunk.Handler handler : script.handlers()) {
+                    if (handler.nameId() == mainNameId) {
+                        try {
+                            vm.execute(script, handler, new Datum[0]);
+                        } catch (Exception e) {
+                            System.err.println("Error executing " + handlerName + " in script #" + script.id() + ": " + e.getMessage());
+                        }
+                        break; // Only execute once per script
+                    }
+                }
+            }
+        }
+
+        // 3. Execute in movie scripts from ALL casts (each has its own name table)
+        if (castManager != null) {
+            for (var castLib : castManager.getCasts()) {
+                // Each cast has its own script names table
+                ScriptNamesChunk castNames = castLib.getScriptNames();
+                int castNameId = castNames != null ? castNames.findName(handlerName) : -1;
+                if (castNameId < 0) continue;
+
+                for (ScriptChunk script : castLib.getAllScripts()) {
+                    // Movie scripts have scriptType == MOVIE_SCRIPT
+                    if (script.scriptType() != ScriptChunk.ScriptType.MOVIE_SCRIPT) continue;
+
+                    for (ScriptChunk.Handler handler : script.handlers()) {
+                        if (handler.nameId() == castNameId) {
+                            try {
+                                vm.execute(script, handler, new Datum[0]);
+                            } catch (Exception e) {
+                                System.err.println("Error executing " + handlerName + " in cast '" + castLib.getName() + "': " + e.getMessage());
+                            }
+                            break;
+                        }
+                    }
                 }
             }
         }

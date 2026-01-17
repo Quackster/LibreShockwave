@@ -179,6 +179,30 @@ public class Score {
     }
 
     /**
+     * Find sprite at a given point in the current frame.
+     * Searches from front to back (highest z-order first).
+     * Matches dirplayer-rs get_sprite_at().
+     *
+     * @param frame The frame to search
+     * @param x X coordinate
+     * @param y Y coordinate
+     * @return The channel number of the sprite at the point, or -1 if none found
+     */
+    public static int getSpriteAt(Frame frame, int x, int y) {
+        if (frame == null) return -1;
+
+        // Search from front (highest z) to back (lowest z)
+        List<Sprite> sprites = frame.getSpritesByZOrder();
+        for (int i = sprites.size() - 1; i >= 0; i--) {
+            Sprite sprite = sprites.get(i);
+            if (sprite.isVisible() && sprite.hasMember() && sprite.containsPoint(x, y)) {
+                return sprite.getChannel();
+            }
+        }
+        return -1;
+    }
+
+    /**
      * Represents a single frame in the score.
      */
     public static class Frame {
@@ -211,9 +235,26 @@ public class Score {
             return sprites.values();
         }
 
+        /**
+         * Get sprites sorted by channel number.
+         */
         public List<Sprite> getSpritesSorted() {
             List<Sprite> sorted = new ArrayList<>(sprites.values());
             sorted.sort(Comparator.comparingInt(Sprite::getChannel));
+            return sorted;
+        }
+
+        /**
+         * Get sprites sorted by z-order (locZ), then by channel number.
+         * Matches dirplayer-rs Score::get_sorted_channels()
+         */
+        public List<Sprite> getSpritesByZOrder() {
+            List<Sprite> sorted = new ArrayList<>(sprites.values());
+            sorted.sort((a, b) -> {
+                int zCompare = Integer.compare(a.getLocZ(), b.getLocZ());
+                if (zCompare != 0) return zCompare;
+                return Integer.compare(a.getChannel(), b.getChannel());
+            });
             return sorted;
         }
 

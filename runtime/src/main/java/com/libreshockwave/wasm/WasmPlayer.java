@@ -489,29 +489,83 @@ public class WasmPlayer {
     }
 
     /**
-     * Execute a handler by name if it exists.
+     * Execute a handler by name across ALL scripts that have it.
+     * Matches dirplayer-rs player_invoke_global_event / player_invoke_static_event.
      */
     private void executeHandlerIfExists(String handlerName) {
         if (vm == null || movieFile == null) return;
 
+        // Get nameId from main file's name table
         ScriptNamesChunk names = movieFile.getScriptNames();
-        if (names == null) return;
-
-        int nameId = names.findName(handlerName);
-        if (nameId < 0) return;
+        int mainNameId = names != null ? names.findName(handlerName) : -1;
 
         debugOutput("[WasmPlayer] Looking for handler: " + handlerName);
 
-        for (ScriptChunk script : movieFile.getScripts()) {
-            for (ScriptChunk.Handler handler : script.handlers()) {
-                if (handler.nameId() == nameId) {
-                    debugOutput("[WasmPlayer] Found handler " + handlerName + " in script#" + script.id());
-                    try {
-                        vm.execute(script, handler, new Datum[0]);
-                    } catch (Exception e) {
-                        log("Error executing " + handlerName + ": " + e.getMessage());
+        // 1. Execute frame script first (if it has this handler)
+        if (score != null && mainNameId >= 0) {
+            Score.Frame frame = score.getFrame(currentFrame);
+            if (frame != null && frame.hasFrameScript()) {
+                ScriptChunk frameScript = findScriptForCastMember(
+                    frame.getScriptCastLib(),
+                    frame.getScriptCastMember()
+                );
+                if (frameScript != null) {
+                    for (ScriptChunk.Handler handler : frameScript.handlers()) {
+                        if (handler.nameId() == mainNameId) {
+                            debugOutput("[WasmPlayer] Found " + handlerName + " in frame script");
+                            try {
+                                vm.execute(frameScript, handler, new Datum[0]);
+                            } catch (Exception e) {
+                                log("Error executing " + handlerName + " in frame script: " + e.getMessage());
+                            }
+                            break;
+                        }
                     }
-                    return;
+                }
+            }
+        }
+
+        // 2. Execute in ALL movie scripts from main file
+        if (mainNameId >= 0) {
+            for (ScriptChunk script : movieFile.getScripts()) {
+                // Movie scripts have scriptType == 0
+                if (script.scriptType() != ScriptChunk.ScriptType.MOVIE_SCRIPT) continue;
+
+                for (ScriptChunk.Handler handler : script.handlers()) {
+                    if (handler.nameId() == mainNameId) {
+                        debugOutput("[WasmPlayer] Found " + handlerName + " in script#" + script.id());
+                        try {
+                            vm.execute(script, handler, new Datum[0]);
+                        } catch (Exception e) {
+                            log("Error executing " + handlerName + " in script #" + script.id() + ": " + e.getMessage());
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 3. Execute in movie scripts from ALL casts
+        if (castManager != null) {
+            for (var castLib : castManager.getCasts()) {
+                ScriptNamesChunk castNames = castLib.getScriptNames();
+                int castNameId = castNames != null ? castNames.findName(handlerName) : -1;
+                if (castNameId < 0) continue;
+
+                for (ScriptChunk script : castLib.getAllScripts()) {
+                    if (script.scriptType() != ScriptChunk.ScriptType.MOVIE_SCRIPT) continue;
+
+                    for (ScriptChunk.Handler handler : script.handlers()) {
+                        if (handler.nameId() == castNameId) {
+                            debugOutput("[WasmPlayer] Found " + handlerName + " in cast '" + castLib.getName() + "'");
+                            try {
+                                vm.execute(script, handler, new Datum[0]);
+                            } catch (Exception e) {
+                                log("Error executing " + handlerName + " in cast '" + castLib.getName() + "': " + e.getMessage());
+                            }
+                            break;
+                        }
+                    }
                 }
             }
         }
