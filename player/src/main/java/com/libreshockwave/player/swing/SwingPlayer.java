@@ -247,10 +247,10 @@ public class SwingPlayer extends JFrame {
             // Register Swing-specific builtins
             registerSwingBuiltins(vm);
 
-            logMovieInfo();
-
-            // Load external casts
+            // Load external casts first so member counts are accurate
             loadExternalCasts();
+
+            logMovieInfo();
 
             setControlsEnabled(true);
             updateFrameLabel();
@@ -358,10 +358,10 @@ public class SwingPlayer extends JFrame {
                 stagePanel.revalidate();
             }
 
-            logMovieInfo();
-
-            // Load external casts
+            // Load external casts first so member counts are accurate
             loadExternalCasts();
+
+            logMovieInfo();
 
             setControlsEnabled(true);
             updateFrameLabel();

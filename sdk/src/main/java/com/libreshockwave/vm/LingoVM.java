@@ -141,10 +141,10 @@ public class LingoVM {
         int count = 0;
         for (Datum d : stack) {
             if (count > 0) sb.append(", ");
-            if (count >= 8) {
+            /*if (count >= 8) {
                 sb.append("... (").append(stack.size() - count).append(" more)");
                 break;
-            }
+            }*/
             sb.append(formatDatum(d));
             count++;
         }
@@ -343,13 +343,16 @@ public class LingoVM {
             debugLog("=== CALL " + handlerName + " in " + scriptInfo + callerInfo + " ===");
             debugLog("Args: " + (args.length == 0 ? "(none)" : formatArgsArray(args)));
             debugLog("Opcodes (" + handler.instructions().size() + "):");
-            for (int i = 0; i < handler.instructions().size() && i < 50; i++) {
+            for (int i = 0; i < handler.instructions().size(); i++) {
                 ScriptChunk.Handler.Instruction instr = handler.instructions().get(i);
                 debugLog("  [" + i + "] " + formatInstruction(instr));
             }
+
+            /*
             if (handler.instructions().size() > 50) {
                 debugLog("  ... (" + (handler.instructions().size() - 50) + " more)");
-            }
+            }*/
+
             debugLog("--- Executing ---");
             debugIndent++;
         }

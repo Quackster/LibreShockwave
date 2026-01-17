@@ -500,7 +500,7 @@ public class DirPlayer {
         if (mainNameId >= 0) {
             for (ScriptChunk script : file.getScripts()) {
                 // Movie scripts have scriptType == MOVIE_SCRIPT
-                if (script.scriptType() != ScriptChunk.ScriptType.MOVIE_SCRIPT) continue;
+                // if (script.scriptType() != ScriptChunk.ScriptType.MOVIE_SCRIPT) continue;
 
                 for (ScriptChunk.Handler handler : script.handlers()) {
                     if (handler.nameId() == mainNameId) {
@@ -525,7 +525,7 @@ public class DirPlayer {
 
                 for (ScriptChunk script : castLib.getAllScripts()) {
                     // Movie scripts have scriptType == MOVIE_SCRIPT
-                    if (script.scriptType() != ScriptChunk.ScriptType.MOVIE_SCRIPT) continue;
+                    // if (script.scriptType() != ScriptChunk.ScriptType.MOVIE_SCRIPT) continue;
 
                     for (ScriptChunk.Handler handler : script.handlers()) {
                         if (handler.nameId() == castNameId) {

@@ -103,6 +103,11 @@ public class BasicUsage {
                 System.out.println("    Locals: " + handler.localCount());
                 System.out.println("    Instructions: " + handler.instructions().size());
 
+                for (int i = 0; i < handler.instructions().size(); i++) {
+                    System.out.println("      " + handler.instructions().get(i));
+                }
+
+                /*
                 // Optionally show first few instructions
                 int showCount = Math.min(5, handler.instructions().size());
                 for (int i = 0; i < showCount; i++) {
@@ -110,7 +115,7 @@ public class BasicUsage {
                 }
                 if (handler.instructions().size() > showCount) {
                     System.out.println("      ... (" + (handler.instructions().size() - showCount) + " more)");
-                }
+                }*/
             }
         }
 
