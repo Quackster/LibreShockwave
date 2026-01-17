@@ -619,7 +619,7 @@ public class LingoVM {
         }
 
         // Find the handler in scripts
-        ScriptChunk.Handler handler = findHandler(handlerName);
+        ScriptChunk.Handler handler = Objects.requireNonNull(findHandlerWithScript(handlerName)).handler;
         if (handler == null) {
             throw LingoException.undefinedHandler(handlerName);
         }
@@ -1689,11 +1689,52 @@ public class LingoVM {
 
     // Helper methods
 
+    /**
+     * Get a name by ID from the appropriate names chunk.
+     * Matches dirplayer-rs get_name() which uses the current script's lctx.
+     *
+     * The name resolution order is:
+     * 1. Current executing script's names chunk (from current scope)
+     * 2. Fall back to main file's names chunk
+     */
     private String getName(int nameId) {
-        ScriptNamesChunk names = file.getScriptNames();
-        if (names != null) {
-            return names.getName(nameId);
+        // First try to get names from the current executing scope's script
+        // This matches dirplayer-rs get_lctx(player, ctx) behavior
+        if (!callStack.isEmpty()) {
+            Scope currentScope = callStack.peek();
+            ScriptChunk currentScript = currentScope.getScript();
+            if (currentScript != null) {
+                // Try to find the names chunk for this script's cast
+                CastLib scriptCast = findCastForScript(currentScript);
+                if (scriptCast != null && scriptCast.getState() == CastLib.State.LOADED) {
+                    ScriptNamesChunk castNames = scriptCast.getScriptNames();
+                    if (castNames != null && nameId >= 0 && nameId < castNames.names().size()) {
+                        return castNames.getName(nameId);
+                    }
+                }
+            }
         }
+
+        // Fall back to main file's names chunk
+        if (file != null) {
+            ScriptNamesChunk names = file.getScriptNames();
+            if (names != null && nameId >= 0 && nameId < names.names().size()) {
+                return names.getName(nameId);
+            }
+        }
+
+        // Then search in external cast scripts
+        if (castManager != null) {
+            for (CastLib cast : castManager.getCasts()) {
+                if (cast.getState() == CastLib.State.LOADED) {
+                    ScriptNamesChunk names = cast.getDirectorFile().getScriptNames();
+                    if (names != null && nameId >= 0 && nameId < names.names().size()) {
+                        return names.getName(nameId);
+                    }
+                }
+            }
+        }
+
         return "<name:" + nameId + ">";
     }
 
@@ -1744,11 +1785,6 @@ public class LingoVM {
         }
 
         return null;
-    }
-
-    private ScriptChunk.Handler findHandler(String name) {
-        HandlerLocation loc = findHandlerWithScript(name);
-        return loc != null ? loc.handler : null;
     }
 
     private ScriptChunk findScriptForHandler(ScriptChunk.Handler target) {
