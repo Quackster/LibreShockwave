@@ -17,6 +17,7 @@ public class Scope {
     private final Datum[] locals;
     private final Map<String, Datum> properties;
     private final Deque<Datum> tellTargets;
+    private final Deque<Integer> loopReturnIndices;  // Track loop start indices for next repeat
     private int instructionPointer;
     private Datum returnValue;
 
@@ -27,6 +28,7 @@ public class Scope {
         this.locals = new Datum[handler.localCount()];
         this.properties = new HashMap<>();
         this.tellTargets = new ArrayDeque<>();
+        this.loopReturnIndices = new ArrayDeque<>();
         this.instructionPointer = 0;
         this.returnValue = Datum.voidValue();
 
@@ -147,5 +149,44 @@ public class Scope {
 
     public boolean hasTellTarget() {
         return !tellTargets.isEmpty();
+    }
+
+    // Loop tracking (for next repeat support)
+
+    /**
+     * Push the current instruction index when entering a loop.
+     * Called when JMP_IF_Z is executed (loop start).
+     */
+    public void pushLoopIndex(int index) {
+        loopReturnIndices.push(index);
+    }
+
+    /**
+     * Pop the loop start index when exiting a loop.
+     * Returns -1 if no loop is active.
+     */
+    public int popLoopIndex() {
+        if (loopReturnIndices.isEmpty()) {
+            return -1;
+        }
+        return loopReturnIndices.pop();
+    }
+
+    /**
+     * Peek at the current loop start index without removing it.
+     * Returns -1 if no loop is active.
+     */
+    public int peekLoopIndex() {
+        if (loopReturnIndices.isEmpty()) {
+            return -1;
+        }
+        return loopReturnIndices.peek();
+    }
+
+    /**
+     * Check if currently inside a loop.
+     */
+    public boolean inLoop() {
+        return !loopReturnIndices.isEmpty();
     }
 }

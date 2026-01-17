@@ -6,7 +6,9 @@ import com.libreshockwave.lingo.Opcode;
 
 import java.nio.ByteOrder;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Script bytecode chunk (Lscr).
@@ -59,8 +61,16 @@ public record ScriptChunk(
         int lineCount,
         List<Integer> argNameIds,
         List<Integer> localNameIds,
-        List<Instruction> instructions
+        List<Instruction> instructions,
+        Map<Integer, Integer> bytecodeIndexMap  // Maps bytecode offset -> instruction index
     ) {
+        /**
+         * Get instruction index for a bytecode offset. Returns -1 if not found.
+         */
+        public int getInstructionIndex(int offset) {
+            Integer index = bytecodeIndexMap.get(offset);
+            return index != null ? index : -1;
+        }
         public record Instruction(
             int offset,
             Opcode opcode,
@@ -247,6 +257,7 @@ public record ScriptChunk(
 
                 // Parse bytecode instructions (matching dirplayer-rs handler.rs)
                 List<Handler.Instruction> instructions = new ArrayList<>();
+                Map<Integer, Integer> bytecodeIndexMap = new HashMap<>();
                 if (bytecodeLen > 0 && bytecodeOffset > 0) {
                     reader.setPosition(bytecodeOffset);
                     int bytecodeEnd = bytecodeOffset + bytecodeLen;
@@ -282,6 +293,8 @@ public record ScriptChunk(
                         }
                         // op < 0x40: no argument (single-byte opcode)
 
+                        // Build bytecode index map: offset -> instruction index
+                        bytecodeIndexMap.put(instrOffset, instructions.size());
                         instructions.add(new Handler.Instruction(instrOffset, opcode, op, argument));
                     }
                 }
@@ -299,7 +312,8 @@ public record ScriptChunk(
                     lineCount,
                     argNameIds,
                     localNameIds,
-                    instructions
+                    instructions,
+                    bytecodeIndexMap
                 ));
             }
         }

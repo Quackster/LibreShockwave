@@ -264,10 +264,42 @@ public class LingoVM {
             case GET_GLOBAL, GET_GLOBAL2 -> push(getGlobal(scriptResolver.getName(arg)));
             case SET_GLOBAL, SET_GLOBAL2 -> setGlobal(scriptResolver.getName(arg), pop());
 
-            // Control flow
-            case JMP -> scope.setInstructionPointer(scriptResolver.findInstructionAtOffset(scope.getHandler(), instr.offset() + arg) - 1);
-            case JMP_IF_Z -> { if (!pop().boolValue()) scope.setInstructionPointer(scriptResolver.findInstructionAtOffset(scope.getHandler(), instr.offset() + arg) - 1); }
-            case END_REPEAT -> scope.setInstructionPointer(scriptResolver.findInstructionAtOffset(scope.getHandler(), instr.offset() - arg) - 1);
+            // Control flow - using bytecodeIndexMap for O(1) offset lookups
+            case JMP -> {
+                int targetOffset = instr.offset() + arg;
+                int targetIndex = scope.getHandler().getInstructionIndex(targetOffset);
+                if (targetIndex >= 0) {
+                    scope.setInstructionPointer(targetIndex - 1);
+                } else {
+                    throw new LingoException("JMP target offset not found: " + targetOffset);
+                }
+            }
+            case JMP_IF_Z -> {
+                // Push current index for loop tracking (like dirplayer-rs)
+                scope.pushLoopIndex(scope.getInstructionPointer());
+                if (!pop().boolValue()) {
+                    // Condition is false - exit loop
+                    int targetOffset = instr.offset() + arg;
+                    int targetIndex = scope.getHandler().getInstructionIndex(targetOffset);
+                    if (targetIndex >= 0) {
+                        scope.setInstructionPointer(targetIndex - 1);
+                        scope.popLoopIndex();  // Pop since we're exiting the loop
+                    } else {
+                        throw new LingoException("JMP_IF_Z target offset not found: " + targetOffset);
+                    }
+                }
+                // If condition is true, continue to loop body (don't pop - still in loop)
+            }
+            case END_REPEAT -> {
+                // Jump back to loop start
+                int targetOffset = instr.offset() - arg;
+                int targetIndex = scope.getHandler().getInstructionIndex(targetOffset);
+                if (targetIndex >= 0) {
+                    scope.setInstructionPointer(targetIndex - 1);
+                } else {
+                    throw new LingoException("END_REPEAT target offset not found: " + targetOffset);
+                }
+            }
             case RET -> { if (!stack.isEmpty()) scope.setReturnValue(pop()); scope.setInstructionPointer(scope.getHandler().instructions().size()); }
             case RET_FACTORY -> { scope.setReturnValue(Datum.voidValue()); scope.setInstructionPointer(scope.getHandler().instructions().size()); }
 
