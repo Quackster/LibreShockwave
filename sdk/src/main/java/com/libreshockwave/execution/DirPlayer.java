@@ -67,6 +67,10 @@ public class DirPlayer {
     private int lastFrame = 1;
     private int tempo = 15;
 
+    // Event dispatch tracking to prevent re-entrancy
+    private boolean inEventDispatch = false;
+    private Integer pendingFrame = null;  // Deferred frame navigation
+
     // Sprite state
     private final Map<Integer, SpriteState> sprites = new HashMap<>();
 
@@ -303,11 +307,25 @@ public class DirPlayer {
 
     /**
      * Go to a specific frame.
+     * If called during event dispatch, defers the navigation to after the current dispatch completes.
      */
     public void goToFrame(int frame) {
         if (frame < 1) frame = 1;
         if (frame > lastFrame) frame = lastFrame;
 
+        // If we're in event dispatch, defer navigation to prevent recursion
+        if (inEventDispatch) {
+            pendingFrame = frame;
+            return;
+        }
+
+        goToFrameImmediate(frame);
+    }
+
+    /**
+     * Internal method to navigate to a frame immediately (only when not in event dispatch).
+     */
+    private void goToFrameImmediate(int frame) {
         dispatchEvent(MovieEvent.EXIT_FRAME);
 
         currentFrame = frame;
@@ -462,10 +480,24 @@ public class DirPlayer {
             listener.onEvent(event, currentFrame);
         }
 
+        boolean wasInDispatch = inEventDispatch;
+        inEventDispatch = true;
         try {
             executeHandlerIfExists(handlerName);
         } catch (Exception e) {
             System.err.println("Error in " + handlerName + ": " + e.getMessage());
+        } finally {
+            inEventDispatch = wasInDispatch;
+
+            // If this was the outermost dispatch and there's a pending frame, navigate now
+            if (!inEventDispatch && pendingFrame != null) {
+                int targetFrame = pendingFrame;
+                pendingFrame = null;
+                // Only navigate if the target is different from current (prevents infinite loop)
+                if (targetFrame != currentFrame) {
+                    goToFrameImmediate(targetFrame);
+                }
+            }
         }
     }
 
