@@ -177,8 +177,13 @@ public record ScriptChunk(
                 int dataLen = reader.readI32();
 
                 switch (type) {
-                    case 1 -> { // String
-                        value = reader.readStringMacRoman(dataLen);
+                    case 1 -> { // String (dataLen includes null terminator)
+                        String s = reader.readStringMacRoman(dataLen);
+                        // Strip null terminator if present
+                        if (s.endsWith("\0")) {
+                            s = s.substring(0, s.length() - 1);
+                        }
+                        value = s;
                     }
                     case 4 -> { // Int
                         value = dataLen; // Actually the value
