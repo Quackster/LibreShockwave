@@ -1,8 +1,11 @@
 package com.libreshockwave.vm;
 
 import com.libreshockwave.DirectorFile;
+import com.libreshockwave.chunks.KeyTableChunk;
 import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.chunks.ScriptNamesChunk;
+import com.libreshockwave.chunks.TextChunk;
+import com.libreshockwave.chunks.CastMemberChunk;
 import com.libreshockwave.lingo.*;
 import com.libreshockwave.net.NetManager;
 import com.libreshockwave.net.NetResult;
@@ -1234,9 +1237,33 @@ public class LingoVM {
             }
 
             case GET_FIELD -> {
-                // Get field reference
-                Datum fieldRef = pop();
-                push(fieldRef);
+                // Get field text content (matches dirplayer-rs get_field)
+                // For Director 5+: pop cast_id first, then field_name_or_num
+                int dirVersion = file != null && file.getConfig() != null
+                    ? file.getConfig().directorVersion() : 0;
+
+                // Pop castId only if supported by version
+                Datum castId = (dirVersion >= 500)
+                        ? pop()
+                        : Datum.of((int) 0);
+
+                if (castId.intValue() <= 0) {
+                    Scope currentScope = callStack.peek();
+                    ScriptChunk currentScript = currentScope.getScript();
+
+                    if (currentScript == null) {
+                        push(Datum.voidValue());
+                    }
+                    else {
+                        CastLib scriptCast = findCastForScript(currentScript);
+                        castId = Datum.of(scriptCast.getNumber());
+                    }
+                }
+
+                // Always pop field reference
+                Datum fieldNameOrNumRef = pop();
+                String fieldText = getFieldText(fieldNameOrNumRef, castId);
+                push(Datum.of(fieldText));
             }
 
             // The/builtin entity access
@@ -1422,6 +1449,110 @@ public class LingoVM {
 
     private void setMovieProperty(String propName, Datum value) {
         // Movie properties are generally read-only or require player support
+    }
+
+    /**
+     * Get the text content of a field member.
+     * Looks up the associated TextChunk (STXT) via the KeyTable.
+     */
+    private String getFieldText(Datum memberIdentifier, Datum castIdentifier) {
+        if (castManager == null) {
+            debugLog("getFieldText: no castManager");
+            return "";
+        }
+
+        // Determine cast number
+        int castNum = 1; // Default to first cast
+        if (castIdentifier != null && !castIdentifier.isVoid()) {
+            if (castIdentifier.isInt()) {
+                castNum = castIdentifier.intValue();
+            } else if (castIdentifier.isString()) {
+                // Find cast by name
+                CastLib cast = castManager.getCastByName(castIdentifier.stringValue());
+                if (cast != null) {
+                    castNum = cast.getNumber();
+                }
+            }
+        }
+
+        // Find the member
+        CastMemberChunk member = null;
+        CastLib cast = castManager.getCast(castNum);
+
+        if (memberIdentifier.isInt()) {
+            int memberNum = memberIdentifier.intValue();
+            if (cast != null) {
+                member = cast.getMember(memberNum);
+            }
+        } else if (memberIdentifier.isString()) {
+            String memberName = memberIdentifier.stringValue();
+            // Search in specified cast first, then all casts
+            if (cast != null) {
+                for (CastMemberChunk m : cast.getAllMembers()) {
+                    if (memberName.equalsIgnoreCase(m.name())) {
+                        member = m;
+                        break;
+                    }
+                }
+            }
+            if (member == null) {
+                member = castManager.findMemberByName(memberName);
+            }
+        }
+
+        if (member == null) {
+            debugLog("getFieldText: member not found for " + memberIdentifier);
+            return "";
+        }
+
+        if (!member.isText()) {
+            debugLog("getFieldText: member is not a text/field type: " + member.memberType());
+            return "";
+        }
+
+        // Find the associated TextChunk via KeyTable
+        DirectorFile dirFile = (cast != null && cast.getDirectorFile() != null)
+            ? cast.getDirectorFile()
+            : file;
+
+        if (dirFile == null) {
+            debugLog("getFieldText: no DirectorFile available");
+            return "";
+        }
+
+        KeyTableChunk keyTable = dirFile.getKeyTable();
+        if (keyTable == null) {
+            debugLog("getFieldText: no KeyTable available");
+            return "";
+        }
+
+        // Look for STXT entry linked to this member
+        // The KeyTable maps owner chunk IDs (castId) to their child chunks (sectionId)
+        // Note: fourCC might be stored in different byte orders (STXT vs TXTS)
+        int stxtFourccBE = com.libreshockwave.io.BinaryReader.fourCC("STXT");
+        int stxtFourccLE = com.libreshockwave.io.BinaryReader.fourCC("TXTS");
+        int memberId = member.id();  // This is the CASt chunk section ID
+
+        // Find STXT entry (try both byte orders)
+        KeyTableChunk.KeyTableEntry stxtEntry = keyTable.findEntry(memberId, stxtFourccBE);
+        if (stxtEntry == null) {
+            stxtEntry = keyTable.findEntry(memberId, stxtFourccLE);
+        }
+
+        if (stxtEntry == null) {
+            debugLog("getFieldText: no STXT chunk found for member " + memberId +
+                " (name='" + member.name() + "')");
+            return "";
+        }
+
+        // Get the TextChunk
+        Optional<TextChunk> textChunkOpt = dirFile.getChunk(stxtEntry.sectionId(), TextChunk.class);
+        if (textChunkOpt.isEmpty()) {
+            debugLog("getFieldText: TextChunk not found for section " + stxtEntry.sectionId());
+            return "";
+        }
+
+        return textChunkOpt.get().text();
     }
 
     /**
