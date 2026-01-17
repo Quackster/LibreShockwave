@@ -275,20 +275,18 @@ public class LingoVM {
                 }
             }
             case JMP_IF_Z -> {
-                // Push current index for loop tracking (like dirplayer-rs)
-                scope.pushLoopIndex(scope.getInstructionPointer());
+                // Conditional jump - used for repeat loops and if statements
                 if (!pop().boolValue()) {
-                    // Condition is false - exit loop
+                    // Condition is false - jump forward (exit loop or skip if-body)
                     int targetOffset = instr.offset() + arg;
                     int targetIndex = scope.getHandler().getInstructionIndex(targetOffset);
                     if (targetIndex >= 0) {
                         scope.setInstructionPointer(targetIndex - 1);
-                        scope.popLoopIndex();  // Pop since we're exiting the loop
                     } else {
                         throw new LingoException("JMP_IF_Z target offset not found: " + targetOffset);
                     }
                 }
-                // If condition is true, continue to loop body (don't pop - still in loop)
+                // If condition is true, continue to next instruction
             }
             case END_REPEAT -> {
                 // Jump back to loop start
