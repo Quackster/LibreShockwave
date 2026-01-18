@@ -319,7 +319,16 @@ public class LingoVM {
             case LOCAL_CALL -> executeLocalCall(scope, arg);
 
             // Property access
-            case GET_PROP, GET_OBJ_PROP, GET_CHAINED_PROP -> push(propertyAccessor.getProperty(pop(), scriptResolver.getName(arg), this::getActiveInstances));
+            case GET_PROP, GET_OBJ_PROP, GET_CHAINED_PROP -> {
+                Datum obj = pop();
+                // Symbols don't have properties - if we see one, put it back and get the property as a global
+                if (obj instanceof Datum.Symbol) {
+                    push(obj);
+                    push(getGlobal(scriptResolver.getName(arg)));
+                } else {
+                    push(propertyAccessor.getProperty(obj, scriptResolver.getName(arg), this::getActiveInstances));
+                }
+            }
             case SET_PROP, SET_OBJ_PROP -> { Datum v = pop(), o = pop(); propertyAccessor.setProperty(o, scriptResolver.getName(arg), v, this::getActiveInstances); }
             case GET_TOP_LEVEL_PROP -> push(getGlobal(scriptResolver.getName(arg)));
             case GET_MOVIE_PROP -> push(propertyAccessor.getMovieProperty(scriptResolver.getName(arg), movieState));
@@ -363,6 +372,10 @@ public class LingoVM {
         Datum argListDatum = pop();
         boolean isNoRet = argListDatum instanceof Datum.ArgListNoRet;
         List<Datum> args = extractArgList(argListDatum);
+
+        if (handlerName.contains("call")) {
+            var t = 1;
+        }
 
         if (handlerName.contains("return")) {
             Datum returnValue = args.isEmpty() ? Datum.voidValue() : args.get(0);
