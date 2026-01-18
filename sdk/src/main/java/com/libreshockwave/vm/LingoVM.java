@@ -252,7 +252,7 @@ public class LingoVM {
 
     private void logHandlerEntry(ScriptChunk script, ScriptChunk.Handler handler, Datum[] args) {
         String handlerName = scriptResolver.getName(handler.nameId());
-        String scriptType = script.scriptType() != null ? script.scriptType().name() : "UNKNOWN";
+        String scriptType = script.scriptType() != null ? script.scriptType().name() : "SCRIPT";
         String memberName = scriptResolver.getScriptMemberName(script);
         CastLib sourceCast = scriptResolver.findCastForScript(script);
         String castInfo = sourceCast != null
@@ -260,7 +260,7 @@ public class LingoVM {
             : "";
         String scriptInfo = memberName != null && !memberName.isEmpty()
             ? scriptType + " \"" + memberName + "\"" + castInfo
-            : scriptType + " script#" + script.id() + castInfo;
+            : scriptType + " #" + script.id() + castInfo;
         String callerInfo = !callStack.isEmpty()
             ? " [called from " + scriptResolver.getName(callStack.peek().getHandler().nameId()) + " at IP:" + callStack.peek().getInstructionPointer() + "]"
             : "";

@@ -248,18 +248,22 @@ public class ScriptResolver {
 
     /**
      * Get the member name for a script, optionally using a known source cast.
+     * Note: Member slot IDs and script IDs are different - we need to find the member
+     * whose scriptId field matches the script's id.
      */
     public String getScriptMemberName(ScriptChunk script, CastLib sourceCast) {
         if (script == null) return null;
         int scriptId = script.id();
 
-        // If we know the source cast, look there first
+        // If we know the source cast, search its members for one with matching scriptId
         if (sourceCast != null && sourceCast.getState() == CastLib.State.LOADED) {
-            var member = sourceCast.getMember(scriptId);
-            if (member != null && member.isScript()) {
-                String name = member.name();
-                if (name != null && !name.isEmpty()) {
-                    return name;
+            for (var entry : sourceCast.getMemberEntries()) {
+                var member = entry.getValue();
+                if (member != null && member.isScript() && member.scriptId() == scriptId) {
+                    String name = member.name();
+                    if (name != null && !name.isEmpty()) {
+                        return name;
+                    }
                 }
             }
         }
@@ -267,7 +271,7 @@ public class ScriptResolver {
         // Check main file's cast members
         if (file != null) {
             for (var member : file.getCastMembers()) {
-                if (member.id() == scriptId && member.isScript()) {
+                if (member.isScript() && member.scriptId() == scriptId) {
                     String name = member.name();
                     if (name != null && !name.isEmpty()) {
                         return name;
@@ -280,11 +284,13 @@ public class ScriptResolver {
         if (castManager != null) {
             for (CastLib cast : castManager.getCasts()) {
                 if (cast.getState() == CastLib.State.LOADED && cast != sourceCast) {
-                    var member = cast.getMember(scriptId);
-                    if (member != null && member.isScript()) {
-                        String name = member.name();
-                        if (name != null && !name.isEmpty()) {
-                            return name;
+                    for (var entry : cast.getMemberEntries()) {
+                        var member = entry.getValue();
+                        if (member != null && member.isScript() && member.scriptId() == scriptId) {
+                            String name = member.name();
+                            if (name != null && !name.isEmpty()) {
+                                return name;
+                            }
                         }
                     }
                 }
