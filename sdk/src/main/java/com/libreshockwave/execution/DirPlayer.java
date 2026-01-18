@@ -69,11 +69,7 @@ public class DirPlayer {
 
     // Event dispatch tracking to prevent re-entrancy
     private boolean inEventDispatch = false;
-    private Integer pendingFrame = null;  // Deferred frame navigation
-
-    // Frame navigation recursion guard
-    private int frameNavigationDepth = 0;
-    private static final int MAX_FRAME_NAVIGATION_DEPTH = 100;
+    private Integer pendingFrame = null;  // Deferred frame navigation (used by next tick)
 
     // Sprite state
     private final Map<Integer, SpriteState> sprites = new HashMap<>();
@@ -327,34 +323,22 @@ public class DirPlayer {
     }
 
     /**
-     * Internal method to navigate to a frame immediately (only when not in event dispatch).
+     * Internal method to navigate to a frame immediately.
+     * Note: Does NOT dispatch EXIT_FRAME - that's only done once per tick in the main loop.
+     * This matches dirplayer-rs behavior where go commands just change the next frame.
      */
     private void goToFrameImmediate(int frame) {
-        // Guard against infinite frame navigation recursion
-        if (frameNavigationDepth >= MAX_FRAME_NAVIGATION_DEPTH) {
-            System.err.println("ERROR: Maximum frame navigation depth exceeded (" + MAX_FRAME_NAVIGATION_DEPTH +
-                ") - possible infinite loop between frames. Current frame: " + currentFrame + ", target: " + frame);
-            return;
-        }
+        currentFrame = frame;
 
-        frameNavigationDepth++;
-        try {
-            dispatchEvent(MovieEvent.EXIT_FRAME);
+        // Load sprites from score for this frame
+        loadSpritesFromScore(currentFrame);
 
-            currentFrame = frame;
+        dispatchEvent(MovieEvent.PREPARE_FRAME);
 
-            // Load sprites from score for this frame
-            loadSpritesFromScore(currentFrame);
+        // Execute frame script if present
+        executeFrameScript(currentFrame);
 
-            dispatchEvent(MovieEvent.PREPARE_FRAME);
-
-            // Execute frame script if present
-            executeFrameScript(currentFrame);
-
-            dispatchEvent(MovieEvent.ENTER_FRAME);
-        } finally {
-            frameNavigationDepth--;
-        }
+        dispatchEvent(MovieEvent.ENTER_FRAME);
     }
 
     /**
@@ -453,17 +437,20 @@ public class DirPlayer {
             return;
         }
 
-        int frameBefore = currentFrame;
         dispatchEvent(MovieEvent.EXIT_FRAME);
 
-        // Only advance if exitFrame didn't change the frame (via go command)
-        if (currentFrame == frameBefore) {
-            if (currentFrame < lastFrame) {
-                currentFrame++;
-            } else {
-                currentFrame = 1;
-            }
+        // Determine next frame: use pending frame from go command, or advance normally
+        int nextFrame;
+        if (pendingFrame != null) {
+            nextFrame = pendingFrame;
+            pendingFrame = null;
+        } else if (currentFrame < lastFrame) {
+            nextFrame = currentFrame + 1;
+        } else {
+            nextFrame = 1;  // Loop back to start
         }
+
+        currentFrame = nextFrame;
 
         // Load sprites from score for new frame
         loadSpritesFromScore(currentFrame);
@@ -504,16 +491,7 @@ public class DirPlayer {
             System.err.println("Error in " + handlerName + ": " + e.getMessage());
         } finally {
             inEventDispatch = wasInDispatch;
-
-            // If this was the outermost dispatch and there's a pending frame, navigate now
-            if (!inEventDispatch && pendingFrame != null) {
-                int targetFrame = pendingFrame;
-                pendingFrame = null;
-                // Only navigate if the target is different from current (prevents infinite loop)
-                if (targetFrame != currentFrame) {
-                    goToFrameImmediate(targetFrame);
-                }
-            }
+            // pendingFrame is handled by tick() on the next frame cycle - no immediate navigation
         }
     }
 
