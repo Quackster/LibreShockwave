@@ -148,6 +148,7 @@ public class LingoVM {
     }
 
     // Script resolution delegates
+    public ScriptResolver getScriptResolver() { return scriptResolver; }
     public String getScriptMemberName(ScriptChunk script) { return scriptResolver.getScriptMemberName(script); }
     public String getScriptMemberName(ScriptChunk script, CastLib sourceCast) { return scriptResolver.getScriptMemberName(script, sourceCast); }
 

@@ -40,6 +40,7 @@ public class SwingPlayer extends JFrame {
     private final JCheckBox debugCheckbox;
     private final JTextField urlField;
     private final JButton loadUrlButton;
+    private final ScriptBrowserPanel scriptBrowserPanel;
 
     // Use SDK's DirPlayer for playback
     private DirPlayer dirPlayer;
@@ -147,16 +148,24 @@ public class SwingPlayer extends JFrame {
         consoleButtons.add(clearConsole);
         consolePanel.add(consoleButtons, BorderLayout.SOUTH);
 
+        // Script browser panel
+        scriptBrowserPanel = new ScriptBrowserPanel();
+        scriptBrowserPanel.setBorder(BorderFactory.createTitledBorder("Scripts"));
+        scriptBrowserPanel.setPreferredSize(new Dimension(600, 400));
+
         // Status bar
         statusLabel = new JLabel("Ready - Open a .dcr, .dir, or .dxr file");
         statusLabel.setBorder(BorderFactory.createLoweredBevelBorder());
 
-        // Layout
-        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, stageScroll, consolePanel);
-        splitPane.setResizeWeight(0.7);
+        // Layout - stage and console on left, script browser on right
+        JSplitPane leftSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, stageScroll, consolePanel);
+        leftSplitPane.setResizeWeight(0.7);
+
+        JSplitPane mainSplitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftSplitPane, scriptBrowserPanel);
+        mainSplitPane.setResizeWeight(0.5);
 
         mainPanel.add(topPanel, BorderLayout.NORTH);
-        mainPanel.add(splitPane, BorderLayout.CENTER);
+        mainPanel.add(mainSplitPane, BorderLayout.CENTER);
         mainPanel.add(statusLabel, BorderLayout.SOUTH);
 
         setContentPane(mainPanel);
@@ -262,6 +271,12 @@ public class SwingPlayer extends JFrame {
             loadExternalCasts();
 
             logMovieInfo();
+
+            // Populate script browser
+            scriptBrowserPanel.loadMovie(
+                dirPlayer.getFile(),
+                dirPlayer.getCastManager(),
+                vm.getScriptResolver());
 
             setControlsEnabled(true);
             updateFrameLabel();
@@ -373,6 +388,12 @@ public class SwingPlayer extends JFrame {
             loadExternalCasts();
 
             logMovieInfo();
+
+            // Populate script browser
+            scriptBrowserPanel.loadMovie(
+                dirPlayer.getFile(),
+                dirPlayer.getCastManager(),
+                vm.getScriptResolver());
 
             setControlsEnabled(true);
             updateFrameLabel();
