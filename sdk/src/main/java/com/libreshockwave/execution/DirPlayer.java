@@ -71,6 +71,10 @@ public class DirPlayer {
     private boolean inEventDispatch = false;
     private Integer pendingFrame = null;  // Deferred frame navigation
 
+    // Frame navigation recursion guard
+    private int frameNavigationDepth = 0;
+    private static final int MAX_FRAME_NAVIGATION_DEPTH = 100;
+
     // Sprite state
     private final Map<Integer, SpriteState> sprites = new HashMap<>();
 
@@ -326,19 +330,31 @@ public class DirPlayer {
      * Internal method to navigate to a frame immediately (only when not in event dispatch).
      */
     private void goToFrameImmediate(int frame) {
-        dispatchEvent(MovieEvent.EXIT_FRAME);
+        // Guard against infinite frame navigation recursion
+        if (frameNavigationDepth >= MAX_FRAME_NAVIGATION_DEPTH) {
+            System.err.println("ERROR: Maximum frame navigation depth exceeded (" + MAX_FRAME_NAVIGATION_DEPTH +
+                ") - possible infinite loop between frames. Current frame: " + currentFrame + ", target: " + frame);
+            return;
+        }
 
-        currentFrame = frame;
+        frameNavigationDepth++;
+        try {
+            dispatchEvent(MovieEvent.EXIT_FRAME);
 
-        // Load sprites from score for this frame
-        loadSpritesFromScore(currentFrame);
+            currentFrame = frame;
 
-        dispatchEvent(MovieEvent.PREPARE_FRAME);
+            // Load sprites from score for this frame
+            loadSpritesFromScore(currentFrame);
 
-        // Execute frame script if present
-        executeFrameScript(currentFrame);
+            dispatchEvent(MovieEvent.PREPARE_FRAME);
 
-        dispatchEvent(MovieEvent.ENTER_FRAME);
+            // Execute frame script if present
+            executeFrameScript(currentFrame);
+
+            dispatchEvent(MovieEvent.ENTER_FRAME);
+        } finally {
+            frameNavigationDepth--;
+        }
     }
 
     /**
