@@ -178,16 +178,63 @@ public class LingoVM {
         int instructionCount = 0;
         halted = false;
 
+        // Loop logging optimization - track iterations to avoid flooding logs
+        Map<Integer, Integer> loopIterations = new HashMap<>();
+        int loopStartIP = -1;
+        boolean suppressLoopLogging = false;
+
         try {
             while (!scope.isAtEnd() && !halted && instructionCount < maxInstructions) {
                 ScriptChunk.Handler.Instruction instr = scope.getCurrentInstruction();
+                int currentIP = scope.getInstructionPointer();
+
+                // Track loop iterations for logging optimization
                 if (debugMode) {
-                    debugLog(String.format("[%03d] %-20s | Stack: %s",
-                        scope.getInstructionPointer(),
-                        debugFormatter.formatInstruction(instr, scriptResolver),
-                        debugFormatter.formatStack(stack)));
+                    Opcode op = instr.opcode();
+
+                    // END_REPEAT jumps back - this marks a loop iteration
+                    if (op == Opcode.END_REPEAT) {
+                        int targetOffset = instr.offset() - instr.argument();
+                        int loopStart = scope.getHandler().getInstructionIndex(targetOffset);
+                        if (loopStart >= 0) {
+                            int iteration = loopIterations.getOrDefault(loopStart, 0) + 1;
+                            loopIterations.put(loopStart, iteration);
+                            if (iteration == 1) {
+                                // First iteration just completed, suppress future logging
+                                loopStartIP = loopStart;
+                                suppressLoopLogging = true;
+                                debugLog("[LOOP] First iteration complete, suppressing further loop logging");
+                            } else if (iteration % 100 == 0) {
+                                // Periodic update for long loops
+                                debugLog("[LOOP] Iteration " + iteration + "...");
+                            }
+                        }
+                    }
+
+                    // Only log if not suppressing loop output
+                    if (!suppressLoopLogging || currentIP < loopStartIP || op == Opcode.JMP_IF_Z) {
+                        debugLog(String.format("[%03d] %-20s | Stack: %s",
+                            currentIP,
+                            debugFormatter.formatInstruction(instr, scriptResolver),
+                            debugFormatter.formatStack(stack)));
+                    }
                 }
+
+                int ipBeforeExec = scope.getInstructionPointer();
                 executeInstruction(scope, instr);
+
+                // Check if we exited the loop (JMP_IF_Z jumped forward past the loop)
+                if (debugMode && suppressLoopLogging && instr.opcode() == Opcode.JMP_IF_Z) {
+                    int newIP = scope.getInstructionPointer();
+                    if (newIP > ipBeforeExec) {
+                        // We jumped forward - exiting the loop
+                        int totalIterations = loopIterations.getOrDefault(loopStartIP, 0);
+                        debugLog("[LOOP] Exited after " + totalIterations + " iterations");
+                        suppressLoopLogging = false;
+                        loopStartIP = -1;
+                    }
+                }
+
                 scope.advanceIP();
                 instructionCount++;
             }
