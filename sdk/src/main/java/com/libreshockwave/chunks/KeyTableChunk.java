@@ -11,11 +11,15 @@ import java.util.Map;
 /**
  * Key table chunk (KEY*).
  * Maps resource IDs to their associated chunks.
+ * Provides bidirectional lookups:
+ * - Owner to chunks: getEntriesForOwner(castId) returns all chunks owned by a cast member
+ * - Chunk to owner: getOwnerCastId(sectionId) returns the cast member that owns a chunk
  */
 public record KeyTableChunk(
     int id,
     List<KeyTableEntry> entries,
-    Map<Integer, List<KeyTableEntry>> entriesByOwner
+    Map<Integer, List<KeyTableEntry>> entriesByOwner,
+    Map<Integer, Integer> ownerBySectionId
 ) implements Chunk {
 
     @Override
@@ -49,6 +53,36 @@ public record KeyTableChunk(
         return null;
     }
 
+    /**
+     * Get the cast member ID that owns a chunk by its section ID.
+     * @param sectionId The chunk's section ID (resource ID)
+     * @return The owning cast member's ID, or -1 if not found
+     */
+    public int getOwnerCastId(int sectionId) {
+        return ownerBySectionId.getOrDefault(sectionId, -1);
+    }
+
+    /**
+     * Get the KeyTableEntry for a chunk by its section ID.
+     * @param sectionId The chunk's section ID (resource ID)
+     * @return The KeyTableEntry, or null if not found
+     */
+    public KeyTableEntry getEntryBySectionId(int sectionId) {
+        int ownerId = ownerBySectionId.get(sectionId);
+        if (ownerId == 0) {
+            // Check if it's actually in the map vs default
+            if (!ownerBySectionId.containsKey(sectionId)) {
+                return null;
+            }
+        }
+        for (KeyTableEntry entry : entries) {
+            if (entry.sectionId == sectionId) {
+                return entry;
+            }
+        }
+        return null;
+    }
+
     public static KeyTableChunk read(BinaryReader reader, int id, int version) {
         int headerSize = reader.readI16() & 0xFFFF;
         int entrySize = reader.readI16() & 0xFFFF;
@@ -57,6 +91,7 @@ public record KeyTableChunk(
 
         List<KeyTableEntry> entries = new ArrayList<>();
         Map<Integer, List<KeyTableEntry>> byOwner = new HashMap<>();
+        Map<Integer, Integer> ownerBySection = new HashMap<>();
 
         for (int i = 0; i < usedCount; i++) {
             int sectionId = reader.readI32();
@@ -67,8 +102,9 @@ public record KeyTableChunk(
             entries.add(entry);
 
             byOwner.computeIfAbsent(castId, k -> new ArrayList<>()).add(entry);
+            ownerBySection.put(sectionId, castId);
         }
 
-        return new KeyTableChunk(id, entries, byOwner);
+        return new KeyTableChunk(id, entries, byOwner, ownerBySection);
     }
 }

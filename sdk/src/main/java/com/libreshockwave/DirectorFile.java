@@ -100,6 +100,42 @@ public class DirectorFile {
         return Optional.empty();
     }
 
+    // Reverse chunk linking methods
+
+    /**
+     * Get the CastMemberChunk that owns the given chunk.
+     * Uses the KeyTable to find the owner relationship.
+     * @param chunk Any chunk (BitmapChunk, TextChunk, SoundChunk, ScriptChunk, etc.)
+     * @return Optional containing the owning CastMemberChunk, or empty if not found
+     */
+    public Optional<CastMemberChunk> getCastMemberForChunk(Chunk chunk) {
+        return getCastMemberForChunkId(chunk.id());
+    }
+
+    /**
+     * Get the CastMemberChunk that owns a chunk by its ID.
+     * Uses the KeyTable to find the owner relationship.
+     * @param chunkId The chunk's resource ID
+     * @return Optional containing the owning CastMemberChunk, or empty if not found
+     */
+    public Optional<CastMemberChunk> getCastMemberForChunkId(int chunkId) {
+        if (keyTable == null) {
+            return Optional.empty();
+        }
+
+        int ownerId = keyTable.getOwnerCastId(chunkId);
+        if (ownerId < 0) {
+            return Optional.empty();
+        }
+
+        Chunk ownerChunk = chunks.get(ownerId);
+        if (ownerChunk instanceof CastMemberChunk castMember) {
+            return Optional.of(castMember);
+        }
+
+        return Optional.empty();
+    }
+
     // Stage properties
 
     public int getStageWidth() {
@@ -188,24 +224,6 @@ public class DirectorFile {
         }
     }
 
-    // Script access
-
-    public ScriptChunk getScriptForMember(int castLib, int memberNum) {
-        for (ScriptChunk script : scripts) {
-            // Match by cast member reference
-            // This requires linking through the script context
-        }
-        return null;
-    }
-
-    public List<ScriptChunk.Handler> getAllHandlers() {
-        List<ScriptChunk.Handler> allHandlers = new ArrayList<>();
-        for (ScriptChunk script : scripts) {
-            allHandlers.addAll(script.handlers());
-        }
-        return allHandlers;
-    }
-
     /**
      * Get handler name from the default script names chunk.
      * For more accurate lookup, use getHandlerName(int, ScriptContextChunk).
@@ -217,18 +235,6 @@ public class DirectorFile {
         return "<unknown:" + nameId + ">";
     }
 
-    /**
-     * Get the ScriptNamesChunk for a given ScriptContextChunk.
-     */
-    public ScriptNamesChunk getScriptNamesForContext(ScriptContextChunk context) {
-        if (context != null) {
-            ScriptNamesChunk names = scriptNamesById.get(context.lnamSectionId());
-            if (names != null) {
-                return names;
-            }
-        }
-        return scriptNames;  // Fallback to default
-    }
 
     /**
      * Get a ScriptNamesChunk by its resource ID.
