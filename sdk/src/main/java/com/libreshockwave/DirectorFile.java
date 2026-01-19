@@ -404,7 +404,8 @@ public class DirectorFile {
 
         for (ChunkInfo info : file.chunkInfo.values()) {
             try {
-                Chunk chunk = file.parseChunk(reader, info, version, capitalX);
+                BinaryReader r = reader.sliceReaderAt(info.offset, info.length);
+                Chunk chunk = file.parseChunkFromReader(r, info, version, capitalX);
                 if (chunk != null) {
                     file.chunks.put(info.id, chunk);
                     file.categorizeChunk(chunk);
@@ -517,6 +518,7 @@ public class DirectorFile {
         };
     }
 
+    /*
     private Chunk parseChunk(BinaryReader mainReader, ChunkInfo info, int version, boolean capitalX) {
         BinaryReader reader = mainReader.sliceReaderAt(info.offset, info.length);
         reader.setOrder(endian);
@@ -540,7 +542,7 @@ public class DirectorFile {
             case snd_ -> SoundChunk.read(reader, info.id);
             default -> new RawChunk(info.id, type, reader.readBytes(reader.bytesLeft()));
         };
-    }
+    }*/
 
     private void categorizeChunk(Chunk chunk) {
         switch (chunk) {
