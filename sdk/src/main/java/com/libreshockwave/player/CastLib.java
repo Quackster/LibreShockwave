@@ -64,7 +64,8 @@ public class CastLib {
 
     // Members mapped by slot number (1-based)
     private final Map<Integer, CastMemberChunk> members = new HashMap<>();
-    private final Map<Integer, ScriptChunk> scripts = new HashMap<>();
+    private final Map<Integer, ScriptChunk> scripts = new HashMap<>();  // keyed by resource ID
+    private final Map<Integer, ScriptChunk> scriptsByScriptId = new HashMap<>();  // keyed by scriptId (1-based index from Lctx)
 
     private int minMember;
     private int maxMember;
@@ -170,6 +171,14 @@ public class CastLib {
         return scriptNames;
     }
 
+    public void setScriptContext(ScriptContextChunk scriptContext) {
+        this.scriptContext = scriptContext;
+    }
+
+    public void setScriptNames(ScriptNamesChunk scriptNames) {
+        this.scriptNames = scriptNames;
+    }
+
     // Member access
 
     public int getMemberCount() {
@@ -200,8 +209,26 @@ public class CastLib {
         return scripts.get(id);
     }
 
+    /**
+     * Get a script by its scriptId (1-based index from ScriptContextChunk).
+     * This is the ID stored in CastMemberChunk.scriptId().
+     */
+    public ScriptChunk getScriptByScriptId(int scriptId) {
+        return scriptsByScriptId.get(scriptId);
+    }
+
     public void addScript(int id, ScriptChunk script) {
         scripts.put(id, script);
+    }
+
+    /**
+     * Add a script with its scriptId mapping (1-based index from ScriptContextChunk).
+     */
+    public void addScriptWithScriptId(int resourceId, int scriptId, ScriptChunk script) {
+        scripts.put(resourceId, script);
+        if (scriptId > 0) {
+            scriptsByScriptId.put(scriptId, script);
+        }
     }
 
     public Collection<ScriptChunk> getAllScripts() {
@@ -247,6 +274,7 @@ public class CastLib {
     public void clear() {
         members.clear();
         scripts.clear();
+        scriptsByScriptId.clear();
         scriptContext = null;
         scriptNames = null;
     }
@@ -278,9 +306,27 @@ public class CastLib {
             members.put(member.id(), member);
         }
 
-        // Load all scripts
+        // Load all scripts by resource ID
         for (ScriptChunk script : file.getScripts()) {
             scripts.put(script.id(), script);
+        }
+
+        // Build scriptId -> ScriptChunk mapping from ScriptContextChunk entries
+        // The scriptId in CastMemberChunk is a 1-based index into ScriptContextChunk.entries
+        // Each entry's id() is the resource ID of the Lscr chunk
+        if (scriptContext != null) {
+            var entries = scriptContext.entries();
+            for (int i = 0; i < entries.size(); i++) {
+                var entry = entries.get(i);
+                int resourceId = entry.id();
+                if (resourceId > 0) {
+                    ScriptChunk script = scripts.get(resourceId);
+                    if (script != null) {
+                        // scriptId is 1-based index
+                        scriptsByScriptId.put(i + 1, script);
+                    }
+                }
+            }
         }
 
         state = State.LOADED;

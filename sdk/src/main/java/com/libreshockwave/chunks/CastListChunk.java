@@ -1,7 +1,9 @@
 package com.libreshockwave.chunks;
 
+import com.libreshockwave.DirectorFile;
 import com.libreshockwave.format.ChunkType;
 import com.libreshockwave.io.BinaryReader;
+import com.libreshockwave.vm.LingoVM;
 
 import java.nio.ByteOrder;
 import java.util.ArrayList;
@@ -12,6 +14,7 @@ import java.util.List;
  * Contains the list of cast libraries in the movie.
  */
 public record CastListChunk(
+    DirectorFile file,
     int id,
     int dataOffset,
     int itemsPerEntry,
@@ -33,7 +36,7 @@ public record CastListChunk(
         int id
     ) {}
 
-    public static CastListChunk read(BinaryReader reader, int id, int version, ByteOrder endian) {
+    public static CastListChunk read(DirectorFile file, BinaryReader reader, int id, int version, ByteOrder endian) {
         // CastListChunk uses BIG ENDIAN
         reader.setOrder(ByteOrder.BIG_ENDIAN);
 
@@ -46,7 +49,7 @@ public record CastListChunk(
 
         // Sanity check
         if (dataOffset < 0 || dataOffset >= reader.length() || castCount < 0 || castCount > 1000) {
-            return new CastListChunk(id, dataOffset, itemsPerCast, 0, new ArrayList<>());
+            return new CastListChunk(file, id, dataOffset, itemsPerCast, 0, new ArrayList<>());
         }
 
         // Seek to data offset to read offset table
@@ -55,7 +58,7 @@ public record CastListChunk(
 
         // Sanity check
         if (offsetTableLen > 10000) {
-            return new CastListChunk(id, dataOffset, itemsPerCast, castCount, new ArrayList<>());
+            return new CastListChunk(file, id, dataOffset, itemsPerCast, castCount, new ArrayList<>());
         }
 
         int[] offsetTable = new int[offsetTableLen];
@@ -125,6 +128,6 @@ public record CastListChunk(
             entries.add(new CastListEntry(name, path, minMember, maxMember, memberCount, castId));
         }
 
-        return new CastListChunk(id, dataOffset, itemsPerCast, castCount, entries);
+        return new CastListChunk(file, id, dataOffset, itemsPerCast, castCount, entries);
     }
 }

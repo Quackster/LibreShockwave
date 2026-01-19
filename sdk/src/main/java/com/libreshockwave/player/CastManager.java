@@ -199,12 +199,34 @@ public class CastManager {
             castLib.setDirVersion(file.getConfig().directorVersion());
         }
         castLib.setCapitalX(file.isCapitalX());
+        castLib.setScriptContext(file.getScriptContext());
+        castLib.setScriptNames(file.getScriptNames());
 
         castLib.setState(CastLib.State.LOADED);
 
-        // Load all scripts
+        // Build a map from resource ID to ScriptChunk first
+        Map<Integer, ScriptChunk> scriptsByResourceId = new HashMap<>();
         for (ScriptChunk script : file.getScripts()) {
+            scriptsByResourceId.put(script.id(), script);
             castLib.addScript(script.id(), script);
+        }
+
+        // Build scriptId -> ScriptChunk mapping from ScriptContextChunk entries
+        // The scriptId in CastMemberChunk is a 1-based index into ScriptContextChunk.entries
+        ScriptContextChunk scriptContext = file.getScriptContext();
+        if (scriptContext != null) {
+            var entries = scriptContext.entries();
+            for (int i = 0; i < entries.size(); i++) {
+                var entry = entries.get(i);
+                int resourceId = entry.id();
+                if (resourceId > 0) {
+                    ScriptChunk script = scriptsByResourceId.get(resourceId);
+                    if (script != null) {
+                        // scriptId is 1-based index
+                        castLib.addScriptWithScriptId(resourceId, i + 1, script);
+                    }
+                }
+            }
         }
 
         // Load all members
@@ -221,12 +243,34 @@ public class CastManager {
             castLib.setDirVersion(file.getConfig().directorVersion());
         }
         castLib.setCapitalX(file.isCapitalX());
+        castLib.setScriptContext(file.getScriptContext());
+        castLib.setScriptNames(file.getScriptNames());
 
         castLib.setState(CastLib.State.LOADED);
 
-        // Load scripts
+        // Build a map from resource ID to ScriptChunk first
+        Map<Integer, ScriptChunk> scriptsByResourceId = new HashMap<>();
         for (ScriptChunk script : file.getScripts()) {
+            scriptsByResourceId.put(script.id(), script);
             castLib.addScript(script.id(), script);
+        }
+
+        // Build scriptId -> ScriptChunk mapping from ScriptContextChunk entries
+        // The scriptId in CastMemberChunk is a 1-based index into ScriptContextChunk.entries
+        ScriptContextChunk scriptContext = file.getScriptContext();
+        if (scriptContext != null) {
+            var entries = scriptContext.entries();
+            for (int i = 0; i < entries.size(); i++) {
+                var entry = entries.get(i);
+                int resourceId = entry.id();
+                if (resourceId > 0) {
+                    ScriptChunk script = scriptsByResourceId.get(resourceId);
+                    if (script != null) {
+                        // scriptId is 1-based index
+                        castLib.addScriptWithScriptId(resourceId, i + 1, script);
+                    }
+                }
+            }
         }
 
         // Load members
@@ -549,7 +593,8 @@ public class CastManager {
         CastMemberChunk member = cast.getMember(ref.memberNum());
         if (member == null || !member.isScript()) return null;
 
-        return cast.getScript(member.scriptId());
+        // scriptId is a 1-based index into ScriptContextChunk.entries, not a resource ID
+        return cast.getScriptByScriptId(member.scriptId());
     }
 
     /**

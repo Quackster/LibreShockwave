@@ -363,7 +363,7 @@ public class DirectorFile {
             ChunkType type = info.type();
             if (type == ChunkType.DRCF || type == ChunkType.VWCF) {
                 BinaryReader chunkReader = reader.sliceReaderAt(info.offset, info.length);
-                file.config = ConfigChunk.read(chunkReader, info.id, 0, endian);
+                file.config = ConfigChunk.read(file, chunkReader, info.id, 0, endian);
                 break;
             }
         }
@@ -411,7 +411,7 @@ public class DirectorFile {
                 try {
                     byte[] chunkData = abReader.getChunkData(abInfo.resourceId());
                     BinaryReader chunkReader = new BinaryReader(chunkData, endian);
-                    file.config = ConfigChunk.read(chunkReader, abInfo.resourceId(), 0, endian);
+                    file.config = ConfigChunk.read(file, chunkReader, abInfo.resourceId(), 0, endian);
                     version = file.config.directorVersion();
                     break;
                 } catch (Exception e) {
@@ -470,21 +470,21 @@ public class DirectorFile {
         ChunkType type = info.type();
 
         return switch (type) {
-            case DRCF, VWCF -> ConfigChunk.read(reader, info.id, version, endian);
-            case KEYp -> KeyTableChunk.read(reader, info.id, version);
-            case MCsL -> CastListChunk.read(reader, info.id, version, endian);
-            case CASp -> CastChunk.read(reader, info.id, version);
-            case CASt -> CastMemberChunk.read(reader, info.id, version);
-            case Lctx, LctX -> ScriptContextChunk.read(reader, info.id, version);
-            case Lnam -> ScriptNamesChunk.read(reader, info.id, version);
-            case Lscr -> ScriptChunk.read(reader, info.id, version, capitalX);
-            case VWSC, SCVW -> ScoreChunk.read(reader, info.id, version);
-            case VWLB -> FrameLabelsChunk.read(reader, info.id, version);
-            case BITD -> BitmapChunk.read(reader, info.id, version);
-            case CLUT -> PaletteChunk.read(reader, info.id, version);
-            case STXT -> TextChunk.read(reader, info.id);
-            case snd_ -> SoundChunk.read(reader, info.id);
-            default -> new RawChunk(info.id, type, reader.readBytes(reader.bytesLeft()));
+            case DRCF, VWCF -> ConfigChunk.read(this, reader, info.id, version, endian);
+            case KEYp -> KeyTableChunk.read(this, reader, info.id, version);
+            case MCsL -> CastListChunk.read(this, reader, info.id, version, endian);
+            case CASp -> CastChunk.read(this, reader, info.id, version);
+            case CASt -> CastMemberChunk.read(this, reader, info.id, version);
+            case Lctx, LctX -> ScriptContextChunk.read(this, reader, info.id, version);
+            case Lnam -> ScriptNamesChunk.read(this, reader, info.id, version);
+            case Lscr -> ScriptChunk.read(this, reader, info.id, version, capitalX);
+            case VWSC, SCVW -> ScoreChunk.read(this, reader, info.id, version);
+            case VWLB -> FrameLabelsChunk.read(this, reader, info.id, version);
+            case BITD -> BitmapChunk.read(this, reader, info.id, version);
+            case CLUT -> PaletteChunk.read(this, reader, info.id, version);
+            case STXT -> TextChunk.read(this, reader, info.id);
+            case snd_ -> SoundChunk.read(this, reader, info.id);
+            default -> new RawChunk(this, info.id, type, reader.readBytes(reader.bytesLeft()));
         };
     }
 

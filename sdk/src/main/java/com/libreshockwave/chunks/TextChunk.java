@@ -1,7 +1,9 @@
 package com.libreshockwave.chunks;
 
+import com.libreshockwave.DirectorFile;
 import com.libreshockwave.format.ChunkType;
 import com.libreshockwave.io.BinaryReader;
+import com.libreshockwave.vm.LingoVM;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -11,6 +13,7 @@ import java.util.List;
  * Contains text content with formatting information.
  */
 public record TextChunk(
+    DirectorFile file,
     int id,
     String text,
     List<TextRun> runs
@@ -29,7 +32,7 @@ public record TextChunk(
         int fontStyle
     ) {}
 
-    public static TextChunk read(BinaryReader reader, int id) {
+    public static TextChunk read(DirectorFile file, BinaryReader reader, int id) {
         // STXT chunks always use big-endian format regardless of file endianness
         java.nio.ByteOrder originalOrder = reader.getOrder();
         reader.setOrder(java.nio.ByteOrder.BIG_ENDIAN);
@@ -62,6 +65,6 @@ public record TextChunk(
         // Restore original byte order
         reader.setOrder(originalOrder);
 
-        return new TextChunk(id, text, runs);
+        return new TextChunk(file, id, text, runs);
     }
 }

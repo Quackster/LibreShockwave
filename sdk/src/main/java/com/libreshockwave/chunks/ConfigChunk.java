@@ -1,7 +1,9 @@
 package com.libreshockwave.chunks;
 
+import com.libreshockwave.DirectorFile;
 import com.libreshockwave.format.ChunkType;
 import com.libreshockwave.io.BinaryReader;
+import com.libreshockwave.vm.LingoVM;
 
 import java.nio.ByteOrder;
 
@@ -10,6 +12,7 @@ import java.nio.ByteOrder;
  * Contains movie properties like stage size, FPS, version.
  */
 public record ConfigChunk(
+    DirectorFile file,
     int id,
     int directorVersion,
     int stageTop,
@@ -42,7 +45,7 @@ public record ConfigChunk(
         return stageBottom - stageTop;
     }
 
-    public static ConfigChunk read(BinaryReader reader, int id, int version, ByteOrder endian) {
+    public static ConfigChunk read(DirectorFile file, BinaryReader reader, int id, int version, ByteOrder endian) {
         // Config chunk is ALWAYS big endian regardless of file byte order
         reader.setOrder(ByteOrder.BIG_ENDIAN);
 
@@ -83,6 +86,7 @@ public record ConfigChunk(
         int movieVersion = fileVersion;
 
         return new ConfigChunk(
+            file,
             id,
             directorVersion,
             stageTop, stageLeft, stageBottom, stageRight,

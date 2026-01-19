@@ -1,7 +1,9 @@
 package com.libreshockwave.chunks;
 
+import com.libreshockwave.DirectorFile;
 import com.libreshockwave.format.ChunkType;
 import com.libreshockwave.io.BinaryReader;
+import com.libreshockwave.vm.LingoVM;
 
 import java.nio.ByteOrder;
 import java.util.ArrayList;
@@ -17,6 +19,7 @@ import java.util.Map;
  * - Chunk to owner: getOwnerCastId(sectionId) returns the cast member that owns a chunk
  */
 public record KeyTableChunk(
+    DirectorFile file,
     int id,
     List<KeyTableEntry> entries,
     Map<Integer, List<KeyTableEntry>> entriesByOwner,
@@ -84,7 +87,7 @@ public record KeyTableChunk(
         return null;
     }
 
-    public static KeyTableChunk read(BinaryReader reader, int id, int version) {
+    public static KeyTableChunk read(DirectorFile vm, BinaryReader reader, int id, int version) {
         ByteOrder originalOrder = reader.getOrder();
         reader.setOrder(ByteOrder.LITTLE_ENDIAN);
 
@@ -111,6 +114,6 @@ public record KeyTableChunk(
 
         reader.setOrder(originalOrder);
 
-        return new KeyTableChunk(id, entries, byOwner, ownerBySection);
+        return new KeyTableChunk(vm, id, entries, byOwner, ownerBySection);
     }
 }

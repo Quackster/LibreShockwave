@@ -1,5 +1,6 @@
 package com.libreshockwave.chunks;
 
+import com.libreshockwave.DirectorFile;
 import com.libreshockwave.format.ChunkType;
 import com.libreshockwave.io.BinaryReader;
 
@@ -14,6 +15,7 @@ import java.util.List;
  * Structure matches dirplayer-rs vm-rust/src/director/chunks/score.rs
  */
 public record ScoreChunk(
+    DirectorFile file,
     int id,
     Header header,
     List<byte[]> entries,
@@ -214,11 +216,11 @@ public record ScoreChunk(
         return frameData != null ? frameData.header().numChannels() : 0;
     }
 
-    public static ScoreChunk read(BinaryReader reader, int id, int version) {
+    public static ScoreChunk read(DirectorFile file, BinaryReader reader, int id, int version) {
         reader.setOrder(ByteOrder.BIG_ENDIAN);
 
         if (reader.bytesLeft() < 24) {
-            return createEmpty(id);
+            return createEmpty(file, id);
         }
 
         // Read header
@@ -233,12 +235,12 @@ public record ScoreChunk(
 
         // Validate offsets
         if (offsets.size() != header.entryCount() + 1) {
-            return createEmpty(id);
+            return createEmpty(file, id);
         }
 
         for (int j = 0; j < offsets.size() - 1; j++) {
             if (offsets.get(j) > offsets.get(j + 1)) {
-                return createEmpty(id);
+                return createEmpty(file, id);
             }
         }
 
@@ -265,11 +267,12 @@ public record ScoreChunk(
         // Process behavior attachment entries (Entry[2+])
         List<FrameInterval> frameIntervals = parseFrameIntervals(entries);
 
-        return new ScoreChunk(id, header, entries, frameData, frameIntervals);
+        return new ScoreChunk(file, id, header, entries, frameData, frameIntervals);
     }
 
-    private static ScoreChunk createEmpty(int id) {
+    private static ScoreChunk createEmpty(DirectorFile file, int id) {
         return new ScoreChunk(
+            file,
             id,
             new Header(0, 0, 0, 0, 0, 0),
             new ArrayList<>(),

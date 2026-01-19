@@ -253,10 +253,9 @@ public class LingoVM {
      * Format a script identifier for display (member name if available, otherwise "#id").
      */
     public String formatChunkName(ScriptChunk script) {
-        String name = this.file
-                .getCastMemberForChunk(script)
-                .map(cm -> cm.name())
-                .orElse(script.type().name() + " #" + script.id());
+
+
+        String name = script.type().name() + " #" + script.id();
 
         if (name != null && !name.isEmpty()) {
             return "\"" + name + "\"";

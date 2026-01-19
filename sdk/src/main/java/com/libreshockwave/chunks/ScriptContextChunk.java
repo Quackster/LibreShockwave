@@ -1,7 +1,9 @@
 package com.libreshockwave.chunks;
 
+import com.libreshockwave.DirectorFile;
 import com.libreshockwave.format.ChunkType;
 import com.libreshockwave.io.BinaryReader;
+import com.libreshockwave.vm.LingoVM;
 
 import java.nio.ByteOrder;
 import java.util.ArrayList;
@@ -12,6 +14,7 @@ import java.util.List;
  * Contains information about scripts and their handlers.
  */
 public record ScriptContextChunk(
+    DirectorFile file,
     int id,
     int unknown1,
     int unknown2,
@@ -34,7 +37,7 @@ public record ScriptContextChunk(
         int flags
     ) {}
 
-    public static ScriptContextChunk read(BinaryReader reader, int id, int version) {
+    public static ScriptContextChunk read(DirectorFile file, BinaryReader reader, int id, int version) {
         // Lingo scripts are ALWAYS big endian regardless of file byte order
         reader.setOrder(ByteOrder.BIG_ENDIAN);
 
@@ -67,6 +70,7 @@ public record ScriptContextChunk(
         }
 
         return new ScriptContextChunk(
+            file,
             id,
             unknown1,
             unknown2,

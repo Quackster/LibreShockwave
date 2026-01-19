@@ -1,7 +1,9 @@
 package com.libreshockwave.chunks;
 
+import com.libreshockwave.DirectorFile;
 import com.libreshockwave.format.ChunkType;
 import com.libreshockwave.io.BinaryReader;
+import com.libreshockwave.vm.LingoVM;
 
 import java.nio.ByteOrder;
 import java.util.ArrayList;
@@ -14,6 +16,7 @@ import java.util.List;
  * Structure matches dirplayer-rs vm-rust/src/director/chunks/score.rs FrameLabelsChunk
  */
 public record FrameLabelsChunk(
+    DirectorFile file,
     int id,
     List<FrameLabel> labels
 ) implements Chunk {
@@ -55,13 +58,13 @@ public record FrameLabelsChunk(
         return null;
     }
 
-    public static FrameLabelsChunk read(BinaryReader reader, int id, int version) {
+    public static FrameLabelsChunk read(DirectorFile file, BinaryReader reader, int id, int version) {
         reader.setOrder(ByteOrder.BIG_ENDIAN);
 
         List<FrameLabel> labels = new ArrayList<>();
 
         if (reader.bytesLeft() < 2) {
-            return new FrameLabelsChunk(id, labels);
+            return new FrameLabelsChunk(file, id, labels);
         }
 
         int labelsCount = reader.readU16();
@@ -76,7 +79,7 @@ public record FrameLabelsChunk(
         }
 
         if (reader.bytesLeft() < 4) {
-            return new FrameLabelsChunk(id, labels);
+            return new FrameLabelsChunk(file, id, labels);
         }
 
         int labelsSize = reader.readI32();
@@ -99,6 +102,6 @@ public record FrameLabelsChunk(
             }
         }
 
-        return new FrameLabelsChunk(id, labels);
+        return new FrameLabelsChunk(file, id, labels);
     }
 }

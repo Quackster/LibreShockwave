@@ -1,13 +1,16 @@
 package com.libreshockwave.chunks;
 
+import com.libreshockwave.DirectorFile;
 import com.libreshockwave.format.ChunkType;
 import com.libreshockwave.io.BinaryReader;
+import com.libreshockwave.vm.LingoVM;
 
 /**
  * Sound chunk (snd ).
  * Contains audio data.
  */
 public record SoundChunk(
+    DirectorFile file,
     int id,
     int sampleRate,
     int sampleCount,
@@ -26,7 +29,7 @@ public record SoundChunk(
         return (double) sampleCount / sampleRate;
     }
 
-    public static SoundChunk read(BinaryReader reader, int id) {
+    public static SoundChunk read(DirectorFile file, BinaryReader reader, int id) {
         // Parse snd resource format
         int format = reader.readI16();
         int dataFormatCount = reader.readI16();
@@ -60,6 +63,6 @@ public record SoundChunk(
 
         byte[] audioData = reader.readBytes(reader.bytesLeft());
 
-        return new SoundChunk(id, sampleRate, sampleCount, bitsPerSample, channelCount, audioData);
+        return new SoundChunk(file, id, sampleRate, sampleCount, bitsPerSample, channelCount, audioData);
     }
 }

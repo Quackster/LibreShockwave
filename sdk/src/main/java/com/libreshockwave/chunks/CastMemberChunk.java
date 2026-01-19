@@ -1,13 +1,16 @@
 package com.libreshockwave.chunks;
 
+import com.libreshockwave.DirectorFile;
 import com.libreshockwave.format.ChunkType;
 import com.libreshockwave.io.BinaryReader;
+import com.libreshockwave.vm.LingoVM;
 
 /**
  * Cast member definition chunk (CASt).
  * Defines an individual cast member with its type and properties.
  */
 public record CastMemberChunk(
+    DirectorFile file,
     int id,
     MemberType memberType,
     int infoLen,
@@ -87,7 +90,7 @@ public record CastMemberChunk(
         return memberType == MemberType.SOUND;
     }
 
-    public static CastMemberChunk read(BinaryReader reader, int id, int version) {
+    public static CastMemberChunk read(DirectorFile file, BinaryReader reader, int id, int version) {
         // CASt chunks are ALWAYS big endian regardless of file byte order
         reader.setOrder(java.nio.ByteOrder.BIG_ENDIAN);
 
@@ -177,6 +180,7 @@ public record CastMemberChunk(
         }
 
         return new CastMemberChunk(
+            file,
             id,
             memberType,
             infoLen,

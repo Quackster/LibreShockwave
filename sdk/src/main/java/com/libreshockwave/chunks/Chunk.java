@@ -1,6 +1,8 @@
 package com.libreshockwave.chunks;
 
+import com.libreshockwave.DirectorFile;
 import com.libreshockwave.format.ChunkType;
+import com.libreshockwave.vm.LingoVM;
 
 /**
  * Base interface for all Director file chunks.
@@ -21,6 +23,8 @@ public sealed interface Chunk permits
         TextChunk,
         SoundChunk,
         RawChunk {
+
+    DirectorFile file();
 
     ChunkType type();
 

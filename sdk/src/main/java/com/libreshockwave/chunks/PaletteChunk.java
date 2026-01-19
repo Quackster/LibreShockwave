@@ -1,5 +1,6 @@
 package com.libreshockwave.chunks;
 
+import com.libreshockwave.DirectorFile;
 import com.libreshockwave.format.ChunkType;
 import com.libreshockwave.io.BinaryReader;
 
@@ -8,6 +9,7 @@ import com.libreshockwave.io.BinaryReader;
  * Contains color lookup table data.
  */
 public record PaletteChunk(
+    DirectorFile file,
     int id,
     int[] colors
 ) implements Chunk {
@@ -28,7 +30,7 @@ public record PaletteChunk(
         return colors.length;
     }
 
-    public static PaletteChunk read(BinaryReader reader, int id, int version) {
+    public static PaletteChunk read(DirectorFile file, BinaryReader reader, int id, int version) {
         int colorCount = reader.bytesLeft() / 6; // 6 bytes per color (RGB * 2)
         int[] colors = new int[colorCount];
 
@@ -42,6 +44,6 @@ public record PaletteChunk(
             colors[i] = (r << 16) | (g << 8) | b;
         }
 
-        return new PaletteChunk(id, colors);
+        return new PaletteChunk(file, id, colors);
     }
 }

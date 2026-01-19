@@ -1,7 +1,9 @@
 package com.libreshockwave.chunks;
 
+import com.libreshockwave.DirectorFile;
 import com.libreshockwave.format.ChunkType;
 import com.libreshockwave.io.BinaryReader;
+import com.libreshockwave.vm.LingoVM;
 
 import java.nio.ByteOrder;
 import java.util.ArrayList;
@@ -12,6 +14,7 @@ import java.util.List;
  * Contains array of cast member IDs for a cast library.
  */
 public record CastChunk(
+    DirectorFile file,
     int id,
     List<Integer> memberIds
 ) implements Chunk {
@@ -25,7 +28,7 @@ public record CastChunk(
         return memberIds.size();
     }
 
-    public static CastChunk read(BinaryReader reader, int id, int version) {
+    public static CastChunk read(DirectorFile vm,  BinaryReader reader, int id, int version) {
         // CAS* chunk is always big endian regardless of file byte order
         reader.setOrder(ByteOrder.BIG_ENDIAN);
 
@@ -35,6 +38,6 @@ public record CastChunk(
             memberIds.add(reader.readI32());
         }
 
-        return new CastChunk(id, memberIds);
+        return new CastChunk(vm, id, memberIds);
     }
 }
