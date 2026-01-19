@@ -177,7 +177,7 @@ public class ScriptBrowserPanel extends JPanel {
     private String getScriptDisplayName(ScriptChunk script, ScriptNamesChunk names) {
         // Try to get member name via ScriptResolver
         if (scriptResolver != null) {
-            String memberName = scriptResolver.getScriptMemberName(script);
+            String memberName = null; // TODO: scriptResolver.getScriptMemberName(script);
             if (memberName != null && !memberName.isEmpty()) {
                 return memberName;
             }

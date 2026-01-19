@@ -404,16 +404,6 @@ public class DirPlayer {
         return null;
     }
 
-    /**
-     * Format a script identifier for display (member name if available, otherwise "#id").
-     */
-    private String formatScriptId(ScriptChunk script) {
-        String name = this.vm.getScriptMemberName(script);
-        if (name != null && !name.isEmpty()) {
-            return "\"" + name + "\"";
-        }
-        return "#" + script.id();
-    }
 
     /**
      * Go to a frame by label name.
@@ -545,7 +535,7 @@ public class DirPlayer {
                         try {
                             vm.execute(script, handler, new Datum[0]);
                         } catch (Exception e) {
-                            System.err.println("Error executing " + handlerName + " in script " + formatScriptId(script) + ": " + e.getMessage());
+                            System.err.println("Error executing " + handlerName + " in script " + this.getVM().formatChunkName(script) + ": " + e.getMessage());
                         }
                         break; // Only execute once per script
                     }

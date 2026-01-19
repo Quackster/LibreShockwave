@@ -3,6 +3,7 @@ package com.libreshockwave.chunks;
 import com.libreshockwave.format.ChunkType;
 import com.libreshockwave.io.BinaryReader;
 
+import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -84,6 +85,9 @@ public record KeyTableChunk(
     }
 
     public static KeyTableChunk read(BinaryReader reader, int id, int version) {
+        ByteOrder originalOrder = reader.getOrder();
+        reader.setOrder(ByteOrder.LITTLE_ENDIAN);
+
         int headerSize = reader.readI16() & 0xFFFF;
         int entrySize = reader.readI16() & 0xFFFF;
         int totalCount = reader.readI32();
@@ -104,6 +108,8 @@ public record KeyTableChunk(
             byOwner.computeIfAbsent(castId, k -> new ArrayList<>()).add(entry);
             ownerBySection.put(sectionId, castId);
         }
+
+        reader.setOrder(originalOrder);
 
         return new KeyTableChunk(id, entries, byOwner, ownerBySection);
     }

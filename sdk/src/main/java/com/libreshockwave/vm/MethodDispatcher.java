@@ -91,7 +91,7 @@ public class MethodDispatcher {
     }
 
     private Datum callScriptInstanceMethod(Datum.ScriptInstanceRef instance, String methodName, List<Datum> args) {
-        ScriptChunk script = resolver.findScriptByName(instance.scriptName());
+        ScriptChunk script = null; // resolver.findScriptByName(instance.scriptName());
         if (script != null) {
             for (ScriptChunk.Handler h : script.handlers()) {
                 String hName = resolver.getName(h.nameId());

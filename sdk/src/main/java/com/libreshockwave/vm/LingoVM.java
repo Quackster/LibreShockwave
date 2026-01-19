@@ -149,8 +149,6 @@ public class LingoVM {
 
     // Script resolution delegates
     public ScriptResolver getScriptResolver() { return scriptResolver; }
-    public String getScriptMemberName(ScriptChunk script) { return scriptResolver.getScriptMemberName(script); }
-    public String getScriptMemberName(ScriptChunk script, CastLib sourceCast) { return scriptResolver.getScriptMemberName(script, sourceCast); }
 
     // Script execution
 
@@ -251,10 +249,26 @@ public class LingoVM {
         }
     }
 
+    /**
+     * Format a script identifier for display (member name if available, otherwise "#id").
+     */
+    public String formatChunkName(ScriptChunk script) {
+        String name = this.file
+                .getCastMemberForChunk(script)
+                .map(cm -> cm.name())
+                .orElse(script.type().name() + " #" + script.id());
+
+        if (name != null && !name.isEmpty()) {
+            return "\"" + name + "\"";
+        }
+
+        return "#" + script.id();
+    }
+
     private void logHandlerEntry(ScriptChunk script, ScriptChunk.Handler handler, Datum[] args) {
         String handlerName = scriptResolver.getName(handler.nameId());
         String scriptType = script.scriptType() != null ? script.scriptType().name() : "UNKNOWN";
-        String memberName = scriptResolver.getScriptMemberName(script);
+        String memberName = this.formatChunkName (script);
         CastLib sourceCast = scriptResolver.findCastForScript(script);
         String castInfo = sourceCast != null
             ? " in cast#" + sourceCast.getNumber() + (sourceCast.getName().isEmpty() ? "" : " \"" + sourceCast.getName() + "\"")
@@ -494,7 +508,7 @@ public class LingoVM {
             // 4. Check active script instances (for handlers not found elsewhere)
             if (activeScriptInstancesCallback != null) {
                 for (Datum.ScriptInstanceRef ref : activeScriptInstancesCallback.getActiveScriptInstances()) {
-                    ScriptChunk script = scriptResolver.findScriptByName(ref.scriptName());
+                    ScriptChunk script = null; // TODO: scriptResolver.findScriptByName(ref.scriptName());
                     if (script != null) {
                         for (ScriptChunk.Handler h : script.handlers()) {
                             if (handlerName.equalsIgnoreCase(scriptResolver.getName(h.nameId()))) {
@@ -517,7 +531,7 @@ public class LingoVM {
         Datum firstArg = args.get(0);
 
         if (firstArg instanceof Datum.ScriptInstanceRef si) {
-            ScriptChunk script = scriptResolver.findScriptByName(si.scriptName());
+            ScriptChunk script = null; // TODO: scriptResolver.findScriptByName(si.scriptName());
             if (script != null) {
                 for (ScriptChunk.Handler h : script.handlers()) {
                     if (handlerName.equalsIgnoreCase(scriptResolver.getName(h.nameId()))) {
@@ -545,7 +559,7 @@ public class LingoVM {
         ScriptChunk script = scriptResolver.findScriptByCastRef(scriptRef.memberRef());
         if (script == null) throw new LingoException("Cannot find script for " + scriptRef.memberRef());
 
-        String scriptName = scriptResolver.getScriptMemberName(script);
+        String scriptName = null ; // TODO: scriptResolver.getScriptMemberName(script);
         if (scriptName == null || scriptName.isEmpty()) scriptName = "script_" + script.id();
 
         Map<String, Datum> props = new LinkedHashMap<>();
@@ -589,7 +603,7 @@ public class LingoVM {
 
         Datum result = Datum.voidValue();
         for (Datum.ScriptInstanceRef instance : instances) {
-            ScriptChunk script = scriptResolver.findScriptByName(instance.scriptName());
+            ScriptChunk script = null; // TODO: scriptResolver.findScriptByName(instance.scriptName());
             if (script != null) {
                 for (ScriptChunk.Handler h : script.handlers()) {
                     if (handlerName.equalsIgnoreCase(scriptResolver.getName(h.nameId()))) {

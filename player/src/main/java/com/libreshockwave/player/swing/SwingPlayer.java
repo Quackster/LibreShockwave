@@ -183,17 +183,6 @@ public class SwingPlayer extends JFrame {
         System.out.println(message);
     }
 
-    /**
-     * Format a script identifier for display (member name if available, otherwise "#id").
-     */
-    private String formatScriptId(ScriptChunk script) {
-        String name = this.dirPlayer.getVM().getScriptMemberName(script);
-        if (name != null && !name.isEmpty()) {
-            return "\"" + name + "\"";
-        }
-        return "#" + script.id();
-    }
-
     private void setStatus(String text) {
         statusLabel.setText(text);
     }
@@ -453,7 +442,7 @@ public class SwingPlayer extends JFrame {
         }
 
         for (ScriptChunk script : movieFile.getScripts()) {
-            log("  Script " + formatScriptId(script) + " (" + script.scriptType() + "): " +
+            log("  Script " + this.dirPlayer.getVM().formatChunkName(script) + " (" + script.scriptType() + "): " +
                 script.handlers().size() + " handlers");
             for (ScriptChunk.Handler h : script.handlers()) {
                 String handlerName = names != null ? names.getName(h.nameId()) : "?" + h.nameId();

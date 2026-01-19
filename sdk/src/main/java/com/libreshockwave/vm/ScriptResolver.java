@@ -118,39 +118,7 @@ public class ScriptResolver {
         }
 
         return null;
-    }
 
-    /**
-     * Find a script by name (used for script instances).
-     */
-    public ScriptChunk findScriptByName(String name) {
-        if (name == null || name.isEmpty()) return null;
-
-        // Search in main file's scripts
-        if (file != null) {
-            for (ScriptChunk script : file.getScripts()) {
-                String memberName = getScriptMemberName(script);
-                if (name.equalsIgnoreCase(memberName)) {
-                    return script;
-                }
-            }
-        }
-
-        // Search in cast libraries
-        if (castManager != null) {
-            for (CastLib cast : castManager.getCasts()) {
-                if (cast.getState() == CastLib.State.LOADED) {
-                    for (ScriptChunk script : cast.getAllScripts()) {
-                        String memberName = getScriptMemberName(script);
-                        if (name.equalsIgnoreCase(memberName)) {
-                            return script;
-                        }
-                    }
-                }
-            }
-        }
-
-        return null;
     }
 
     /**
@@ -238,61 +206,6 @@ public class ScriptResolver {
         return null;
     }
 
-    /**
-     * Get the member name for a script.
-     */
-    public String getScriptMemberName(ScriptChunk script) {
-        CastLib sourceCast = findCastForScript(script);
-        return getScriptMemberName(script, sourceCast);
-    }
-
-    /**
-     * Get the member name for a script, optionally using a known source cast.
-     */
-    public String getScriptMemberName(ScriptChunk script, CastLib sourceCast) {
-        if (script == null) return null;
-        int scriptId = script.id();
-
-        // If we know the source cast, look there first
-        if (sourceCast != null && sourceCast.getState() == CastLib.State.LOADED) {
-            var member = sourceCast.getMember(scriptId);
-            if (member != null && member.isScript()) {
-                String name = member.name();
-                if (name != null && !name.isEmpty()) {
-                    return name;
-                }
-            }
-        }
-
-        // Check main file's cast members
-        if (file != null) {
-            for (var member : file.getCastMembers()) {
-                if (member.id() == scriptId && member.isScript()) {
-                    String name = member.name();
-                    if (name != null && !name.isEmpty()) {
-                        return name;
-                    }
-                }
-            }
-        }
-
-        // Check all cast libraries
-        if (castManager != null) {
-            for (CastLib cast : castManager.getCasts()) {
-                if (cast.getState() == CastLib.State.LOADED && cast != sourceCast) {
-                    var member = cast.getMember(scriptId);
-                    if (member != null && member.isScript()) {
-                        String name = member.name();
-                        if (name != null && !name.isEmpty()) {
-                            return name;
-                        }
-                    }
-                }
-            }
-        }
-
-        return null;
-    }
 
     /**
      * Find instruction index at a given bytecode offset.
