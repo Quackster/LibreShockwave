@@ -29,7 +29,7 @@ public class DirectorFileTest {
         //     testFileLoading(args[0]);
         // }
 
-        testFileLoading("C:/SourceControl/habbo.dcr");
+        testFileLoading("C:/SourceControl/lasm/test/habbo.dcr");
         System.out.println("\n=== All Tests Completed ===");
     }
 

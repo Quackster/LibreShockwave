@@ -1,6 +1,7 @@
 package com.libreshockwave.vm;
 
 import com.libreshockwave.DirectorFile;
+import com.libreshockwave.chunks.CastMemberChunk;
 import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.handlers.HandlerRegistry;
 import com.libreshockwave.lingo.*;
@@ -254,22 +255,53 @@ public class LingoVM {
      * Format a script identifier for display (member name if available, otherwise "#id").
      */
     public String formatChunkName(ScriptChunk script) {
-        String name = script.type().name() + " #" + script.id();
+        String name = getScriptName(script);
 
-        for (var cast : script.file().getCastManager().getCasts()) {
-            for (var member : cast.getAllMembers()) {
-                if (member.id() == script.id()) {
-                    name = member.name();
-                    break;
+        if (name == null) {
+            name = script.scriptType().name().toUpperCase() + " #" + script.id();
+        }
+
+        return name;
+    }
+
+    /**
+     * Gets the name of a script from its ScriptChunk by looking up the
+     * corresponding cast member name.
+     *
+     * @param script the ScriptChunk to get the name for
+     * @return the script name, or "<unnamed>" if not found
+     */
+    public String getScriptName(ScriptChunk script) {
+        // Build a map from scriptId to cast member name
+        Map<Integer, String> scriptIdToName = new HashMap<>();
+
+        for (var externalCasts : file.getCastManager().getCasts()) {
+            for (var externalCastMember : externalCasts.getAllMembers()) {
+                if (externalCastMember.isScript() && externalCastMember.scriptId() > 0) {
+                    scriptIdToName.put(externalCastMember.scriptId(), externalCastMember.name());
                 }
             }
         }
 
-        if (name != null && !name.isEmpty()) {
-            return name;
+        for (CastMemberChunk cm : file.getCastMembers()) {
+            if (cm.isScript() && cm.scriptId() > 0) {
+                scriptIdToName.put(cm.scriptId(), cm.name());
+            }
         }
 
-        return "#" + script.id();
+        // Find the script's index in the script context
+        if (file.getScriptContext() != null) {
+            var entries = file.getScriptContext().entries();
+            for (int i = 0; i < entries.size(); i++) {
+                var entry = entries.get(i);
+                if (entry.id() == script.id()) {
+                    int scriptIndex = i + 1;  // 1-based index
+                    return scriptIdToName.getOrDefault(scriptIndex, "<unnamed>");
+                }
+            }
+        }
+
+        return null;
     }
 
     private void logHandlerEntry(ScriptChunk script, ScriptChunk.Handler handler, Datum[] args) {
