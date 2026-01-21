@@ -26,7 +26,6 @@ public class LingoVM {
     private int maxInstructions = 100000;
     private int maxCallDepth = 500;  // Prevent stack overflow from deep recursion
     private NetManager netManager;
-    private CastManager castManager;
     private Datum lastHandlerResult = Datum.voidValue();
 
     // Movie state
@@ -79,7 +78,7 @@ public class LingoVM {
     }
 
     private void initializeComponents() {
-        this.scriptResolver = new ScriptResolver(file, castManager, callStack);
+        this.scriptResolver = new ScriptResolver(file, file != null ? file.getCastManager() : null, callStack);
         this.propertyAccessor = new PropertyAccessor(this);
         this.methodDispatcher = new MethodDispatcher(this, scriptResolver, this::execute);
         this.debugFormatter = new DebugFormatter(this);
@@ -96,11 +95,13 @@ public class LingoVM {
     public void setNetManager(NetManager netManager) { this.netManager = netManager; }
     public NetManager getNetManager() { return netManager; }
     public void setCastManager(CastManager castManager) {
-        this.castManager = castManager;
+        if (file != null) {
+            file.setCastManager(castManager);
+        }
         this.scriptResolver = new ScriptResolver(file, castManager, callStack);
         this.methodDispatcher = new MethodDispatcher(this, scriptResolver, this::execute);
     }
-    public CastManager getCastManager() { return castManager; }
+    public CastManager getCastManager() { return file != null ? file.getCastManager() : null; }
     public Datum getLastHandlerResult() { return lastHandlerResult; }
     public String getItemDelimiter() { return movieState.itemDelimiter; }
     public int getFloatPrecision() { return movieState.floatPrecision; }
@@ -253,12 +254,19 @@ public class LingoVM {
      * Format a script identifier for display (member name if available, otherwise "#id").
      */
     public String formatChunkName(ScriptChunk script) {
-
-
         String name = script.type().name() + " #" + script.id();
 
+        for (var cast : script.file().getCastManager().getCasts()) {
+            for (var member : cast.getAllMembers()) {
+                if (member.id() == script.id()) {
+                    name = member.name();
+                    break;
+                }
+            }
+        }
+
         if (name != null && !name.isEmpty()) {
-            return "\"" + name + "\"";
+            return name;
         }
 
         return "#" + script.id();

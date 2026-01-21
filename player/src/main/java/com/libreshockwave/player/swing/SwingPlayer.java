@@ -149,7 +149,7 @@ public class SwingPlayer extends JFrame {
         consolePanel.add(consoleButtons, BorderLayout.SOUTH);
 
         // Script browser panel
-        scriptBrowserPanel = new ScriptBrowserPanel();
+        scriptBrowserPanel = new ScriptBrowserPanel(this);
         scriptBrowserPanel.setBorder(BorderFactory.createTitledBorder("Scripts"));
         scriptBrowserPanel.setPreferredSize(new Dimension(600, 400));
 
@@ -757,6 +757,10 @@ public class SwingPlayer extends JFrame {
                 }
             }
         }
+    }
+
+    public DirPlayer getDirPlayer() {
+        return dirPlayer;
     }
 
     public static void main(String[] args) {

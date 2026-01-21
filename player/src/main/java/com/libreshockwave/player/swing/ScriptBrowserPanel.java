@@ -25,13 +25,16 @@ public class ScriptBrowserPanel extends JPanel {
     private final DefaultMutableTreeNode rootNode;
     private final JTextArea detailArea;
     private final JSplitPane splitPane;
+    private final SwingPlayer player;
 
     private CastManager castManager;
     private DirectorFile mainFile;
     private ScriptResolver scriptResolver;
 
-    public ScriptBrowserPanel() {
+    public ScriptBrowserPanel(SwingPlayer player) {
         setLayout(new BorderLayout());
+
+        this.player = player;
 
         // Create tree
         rootNode = new DefaultMutableTreeNode("Movie");
@@ -159,7 +162,7 @@ public class ScriptBrowserPanel extends JPanel {
     }
 
     private void addScriptNode(DefaultMutableTreeNode parent, ScriptChunk script, ScriptNamesChunk names) {
-        String scriptName = getScriptDisplayName(script, names);
+        String scriptName = this.player.getDirPlayer().getVM().formatChunkName(script);
         DefaultMutableTreeNode scriptNode = new DefaultMutableTreeNode(
             new ScriptNodeData(script, scriptName, names));
 
@@ -172,35 +175,6 @@ public class ScriptBrowserPanel extends JPanel {
         }
 
         parent.add(scriptNode);
-    }
-
-    private String getScriptDisplayName(ScriptChunk script, ScriptNamesChunk names) {
-        // Try to get member name via ScriptResolver
-        if (scriptResolver != null) {
-            String memberName = null; // TODO: scriptResolver.getScriptMemberName(script);
-            if (memberName != null && !memberName.isEmpty()) {
-                return memberName;
-            }
-        }
-
-        // Fallback: try to find from cast members
-        if (castManager != null) {
-            for (CastLib cast : castManager.getCasts()) {
-                if (cast.getState() == CastLib.State.LOADED) {
-                    for (var entry : cast.getMemberEntries()) {
-                        var member = entry.getValue();
-                        if (member != null && member.isScript() && member.scriptId() == script.id()) {
-                            String name = member.name();
-                            if (name != null && !name.isEmpty()) {
-                                return name;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        return "Script #" + script.id();
     }
 
     private void onTreeSelectionChanged() {

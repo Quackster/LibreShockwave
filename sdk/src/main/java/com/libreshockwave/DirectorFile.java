@@ -39,6 +39,7 @@ public class DirectorFile {
     private final Map<Integer, ScriptNamesChunk> scriptNamesById = new HashMap<>();
     private ScoreChunk scoreChunk;
     private FrameLabelsChunk frameLabelsChunk;
+    private CastManager castManager;  // Cast manager for this file
 
     private final Map<Integer, Chunk> chunks = new HashMap<>();
     private final Map<Integer, ChunkInfo> chunkInfo = new HashMap<>();
@@ -210,15 +211,33 @@ public class DirectorFile {
     // Cast Management
 
     /**
-     * Create a CastManager for this file.
+     * Get or create the CastManager for this file.
      * The CastManager handles both internal and external casts.
      * For external casts, call preloadCasts() after creating the manager.
      */
+    public CastManager getCastManager() {
+        if (castManager == null) {
+            castManager = new CastManager();
+            castManager.setBasePath(basePath);
+            castManager.loadFromDirectorFile(this);
+        }
+        return castManager;
+    }
+
+    /**
+     * Set the CastManager for this file.
+     */
+    public void setCastManager(CastManager castManager) {
+        this.castManager = castManager;
+    }
+
+    /**
+     * Create a CastManager for this file.
+     * @deprecated Use {@link #getCastManager()} instead, which caches the result.
+     */
+    @Deprecated
     public CastManager createCastManager() {
-        CastManager manager = new CastManager();
-        manager.setBasePath(basePath);
-        manager.loadFromDirectorFile(this);
-        return manager;
+        return getCastManager();
     }
 
     /**
