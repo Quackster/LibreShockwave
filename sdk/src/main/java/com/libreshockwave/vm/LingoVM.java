@@ -269,34 +269,39 @@ public class LingoVM {
      * corresponding cast member name.
      *
      * @param script the ScriptChunk to get the name for
-     * @return the script name, or "<unnamed>" if not found
+     * @return the script name, or null if not found
      */
     public String getScriptName(ScriptChunk script) {
+        // Use the script's own file reference - this handles both main file scripts
+        // and scripts from external cast files
+        DirectorFile scriptFile = script.file();
+
         // Build a map from scriptId to cast member name
         Map<Integer, String> scriptIdToName = new HashMap<>();
 
-        for (var externalCasts : file.getCastManager().getCasts()) {
-            for (var externalCastMember : externalCasts.getAllMembers()) {
-                if (externalCastMember.isScript() && externalCastMember.scriptId() > 0) {
-                    scriptIdToName.put(externalCastMember.scriptId(), externalCastMember.name());
+        /*
+        for (var cast : scriptFile.getCastManager().getCasts()) {
+            for (var castMember : cast.getAllMembers()) {
+                if (castMember.isScript() && castMember.scriptId() > 0) {
+                    scriptIdToName.put(castMember.scriptId(), castMember.name());
                 }
             }
         }
-
-        for (CastMemberChunk cm : file.getCastMembers()) {
+*/
+        for (CastMemberChunk cm : scriptFile.getCastMembers()) {
             if (cm.isScript() && cm.scriptId() > 0) {
                 scriptIdToName.put(cm.scriptId(), cm.name());
             }
         }
 
         // Find the script's index in the script context
-        if (file.getScriptContext() != null) {
-            var entries = file.getScriptContext().entries();
+        if (scriptFile.getScriptContext() != null) {
+            var entries = scriptFile.getScriptContext().entries();
             for (int i = 0; i < entries.size(); i++) {
                 var entry = entries.get(i);
                 if (entry.id() == script.id()) {
                     int scriptIndex = i + 1;  // 1-based index
-                    return scriptIdToName.getOrDefault(scriptIndex, "<unnamed>");
+                    return scriptIdToName.getOrDefault(scriptIndex, null);
                 }
             }
         }
