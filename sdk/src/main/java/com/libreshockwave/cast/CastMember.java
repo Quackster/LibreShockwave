@@ -82,33 +82,36 @@ public class CastMember {
     public boolean isFont() { return memberType == MemberType.FONT; }
 
     // Dimensions (for visual members)
+    // Refactored: Uses Dimensioned interface to eliminate duplicate null-check chains
+
+    /**
+     * Returns the Dimensioned info object if this member has dimensions, null otherwise.
+     */
+    private Dimensioned getDimensioned() {
+        if (bitmapInfo != null) return bitmapInfo;
+        if (shapeInfo != null) return shapeInfo;
+        if (filmLoopInfo != null) return filmLoopInfo;
+        return null;
+    }
 
     public int getWidth() {
-        if (bitmapInfo != null) return bitmapInfo.width();
-        if (shapeInfo != null) return shapeInfo.width();
-        if (filmLoopInfo != null) return filmLoopInfo.width();
-        return 0;
+        Dimensioned d = getDimensioned();
+        return d != null ? d.width() : 0;
     }
 
     public int getHeight() {
-        if (bitmapInfo != null) return bitmapInfo.height();
-        if (shapeInfo != null) return shapeInfo.height();
-        if (filmLoopInfo != null) return filmLoopInfo.height();
-        return 0;
+        Dimensioned d = getDimensioned();
+        return d != null ? d.height() : 0;
     }
 
     public int getRegX() {
-        if (bitmapInfo != null) return bitmapInfo.regX();
-        if (shapeInfo != null) return shapeInfo.regX();
-        if (filmLoopInfo != null) return filmLoopInfo.regX();
-        return 0;
+        Dimensioned d = getDimensioned();
+        return d != null ? d.regX() : 0;
     }
 
     public int getRegY() {
-        if (bitmapInfo != null) return bitmapInfo.regY();
-        if (shapeInfo != null) return shapeInfo.regY();
-        if (filmLoopInfo != null) return filmLoopInfo.regY();
-        return 0;
+        Dimensioned d = getDimensioned();
+        return d != null ? d.regY() : 0;
     }
 
     @Override

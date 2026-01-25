@@ -9,8 +9,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static com.libreshockwave.handlers.HandlerArgs.*;
+
 /**
  * Built-in sound handlers for Lingo.
+ * Refactored: Uses HandlerArgs for argument extraction, reducing boilerplate.
  */
 public class SoundHandlers {
 
@@ -46,8 +49,7 @@ public class SoundHandlers {
      * sound(channelNum)
      */
     private static Datum sound(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return new Datum.SoundChannel(1);
-        int channelNum = args.get(0).intValue();
+        int channelNum = getInt(args, 0, 1);
         if (channelNum < 1 || channelNum > SoundChannel.MAX_CHANNELS) {
             channelNum = 1;
         }
@@ -60,24 +62,18 @@ public class SoundHandlers {
      * puppetSound channelNum, 0 (to stop)
      */
     private static Datum puppetSound(LingoVM vm, List<Datum> args) {
-        if (args.size() < 2) return Datum.voidValue();
+        if (!hasAtLeast(args, 2)) return Datum.voidValue();
 
-        int channelNum = args.get(0).intValue();
-        Datum memberArg = args.get(1);
+        int channelNum = getInt0(args);
+        Datum memberArg = get1(args);
 
         SoundChannel channel = channels.get(channelNum);
         if (channel == null) return Datum.voidValue();
 
         if (memberArg.intValue() == 0) {
-            // Stop sound
             channel.stop();
         } else if (memberArg instanceof Datum.CastMemberRef ref) {
-            // Play cast member sound
-            int key = (ref.castLib() << 16) | ref.memberNum();
-            SoundMember sound = soundMembers.get(key);
-            if (sound != null) {
-                channel.play(sound);
-            }
+            playCastMemberSound(channel, ref);
         }
 
         return Datum.voidValue();
@@ -88,30 +84,39 @@ public class SoundHandlers {
      * playSound(sound) or playSound(channelNum, sound)
      */
     private static Datum playSound(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.voidValue();
+        if (isEmpty(args)) return Datum.voidValue();
 
-        int channelNum = 1;
+        int channelNum;
         Datum soundArg;
 
-        if (args.size() >= 2) {
-            channelNum = args.get(0).intValue();
-            soundArg = args.get(1);
+        if (hasAtLeast(args, 2)) {
+            channelNum = getInt0(args);
+            soundArg = get1(args);
         } else {
-            soundArg = args.get(0);
+            channelNum = 1;
+            soundArg = get0(args);
         }
 
         SoundChannel channel = channels.get(channelNum);
         if (channel == null) return Datum.voidValue();
 
         if (soundArg instanceof Datum.CastMemberRef ref) {
-            int key = (ref.castLib() << 16) | ref.memberNum();
-            SoundMember sound = soundMembers.get(key);
-            if (sound != null) {
-                channel.play(sound);
-            }
+            playCastMemberSound(channel, ref);
         }
 
         return Datum.voidValue();
+    }
+
+    /**
+     * Helper to play a cast member sound on a channel.
+     * Refactored: Extracts duplicated sound lookup/play logic.
+     */
+    private static void playCastMemberSound(SoundChannel channel, Datum.CastMemberRef ref) {
+        int key = (ref.castLib() << 16) | ref.memberNum();
+        SoundMember sound = soundMembers.get(key);
+        if (sound != null) {
+            channel.play(sound);
+        }
     }
 
     /**
@@ -119,13 +124,13 @@ public class SoundHandlers {
      * stopSound(channelNum)
      */
     private static Datum stopSound(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) {
+        if (isEmpty(args)) {
             // Stop all channels
             for (SoundChannel channel : channels.values()) {
                 channel.stop();
             }
         } else {
-            int channelNum = args.get(0).intValue();
+            int channelNum = getInt0(args);
             SoundChannel channel = channels.get(channelNum);
             if (channel != null) {
                 channel.stop();
@@ -139,13 +144,10 @@ public class SoundHandlers {
      * soundBusy(channelNum)
      */
     private static Datum soundBusy(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.FALSE;
-        int channelNum = args.get(0).intValue();
+        if (isEmpty(args)) return Datum.FALSE;
+        int channelNum = getInt0(args);
         SoundChannel channel = channels.get(channelNum);
-        if (channel != null && channel.isBusy()) {
-            return Datum.TRUE;
-        }
-        return Datum.FALSE;
+        return (channel != null && channel.isBusy()) ? Datum.TRUE : Datum.FALSE;
     }
 
     /**
@@ -153,12 +155,12 @@ public class SoundHandlers {
      * soundLevel() or soundLevel(volume)
      */
     private static Datum soundLevel(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) {
+        if (isEmpty(args)) {
             // Get current sound level (0-7 in classic Lingo)
             return Datum.of(7);
         } else {
             // Set sound level (0-7)
-            int level = args.get(0).intValue();
+            int level = getInt0(args);
             float volume = Math.max(0, Math.min(7, level)) / 7.0f;
             for (SoundChannel channel : channels.values()) {
                 channel.setVolume((int)(volume * 255));
@@ -172,14 +174,7 @@ public class SoundHandlers {
      * beep() or beep(count)
      */
     private static Datum beep(LingoVM vm, List<Datum> args) {
-
-        /*int count = args.isEmpty() ? 1 : args.get(0).intValue();
-        for (int i = 0; i < count; i++) {
-            java.awt.Toolkit.getDefaultToolkit().beep();
-            if (i < count - 1) {
-                try { Thread.sleep(100); } catch (InterruptedException ignored) {}
-            }
-        }*/
+        // Beep functionality disabled for cross-platform compatibility
         return Datum.voidValue();
     }
 

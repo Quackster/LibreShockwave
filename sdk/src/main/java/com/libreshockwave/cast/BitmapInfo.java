@@ -15,7 +15,7 @@ public record BitmapInfo(
     int regY,
     int bitDepth,
     int paletteId
-) {
+) implements Dimensioned {
 
     public static BitmapInfo parse(byte[] data) {
         if (data == null || data.length < 20) {

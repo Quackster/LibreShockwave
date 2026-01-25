@@ -6,8 +6,11 @@ import com.libreshockwave.vm.LingoVM;
 
 import java.util.*;
 
+import static com.libreshockwave.handlers.HandlerArgs.*;
+
 /**
  * Built-in list and propList handlers for Lingo.
+ * Refactored: Uses HandlerArgs for argument extraction, reducing boilerplate.
  */
 public class ListHandlers {
 
@@ -50,13 +53,13 @@ public class ListHandlers {
     }
 
     private static Datum count(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.of(0);
-        Datum d = args.get(0);
+        if (isEmpty(args)) return Datum.of(0);
+        Datum d = get0(args);
 
         // Two-argument form: count(string, #chunkType) or count(string, chunkTypeSymbol)
-        if (args.size() >= 2 && d.isString()) {
+        if (hasAtLeast(args, 2) && d.isString()) {
             String str = d.stringValue();
-            String chunkType = args.get(1).stringValue().toLowerCase();
+            String chunkType = getString(args, 1, "").toLowerCase();
             char itemDelim = vm.getItemDelimiter().isEmpty() ? ',' : vm.getItemDelimiter().charAt(0);
             return switch (chunkType) {
                 case "char", "chars" -> Datum.of(str.length());
@@ -78,48 +81,37 @@ public class ListHandlers {
     }
 
     private static Datum getAt(LingoVM vm, List<Datum> args) {
-        if (args.size() < 2) return Datum.voidValue();
-        Datum d = args.get(0);
-        int index = args.get(1).intValue();
-
-        if (d instanceof Datum.DList list) {
-            return list.getAt(index);
-        }
-        return Datum.voidValue();
+        if (!hasAtLeast(args, 2)) return Datum.voidValue();
+        Datum.DList list = asList(args, 0);
+        if (list == null) return Datum.voidValue();
+        return list.getAt(getInt(args, 1, 0));
     }
 
     private static Datum setAt(LingoVM vm, List<Datum> args) {
-        if (args.size() < 3) return Datum.voidValue();
-        Datum d = args.get(0);
-        int index = args.get(1).intValue();
-        Datum value = args.get(2);
-
-        if (d instanceof Datum.DList list) {
-            list.setAt(index, value);
+        if (!hasAtLeast(args, 3)) return Datum.voidValue();
+        Datum.DList list = asList(args, 0);
+        if (list != null) {
+            list.setAt(getInt(args, 1, 0), get2(args));
         }
         return Datum.voidValue();
     }
 
     private static Datum add(LingoVM vm, List<Datum> args) {
-        if (args.size() < 2) return Datum.voidValue();
-        Datum d = args.get(0);
-        Datum value = args.get(1);
-
-        if (d instanceof Datum.DList list) {
-            list.add(value);
+        if (!hasAtLeast(args, 2)) return Datum.voidValue();
+        Datum.DList list = asList(args, 0);
+        if (list != null) {
+            list.add(get1(args));
         }
         return Datum.voidValue();
     }
 
     private static Datum addAt(LingoVM vm, List<Datum> args) {
-        if (args.size() < 3) return Datum.voidValue();
-        Datum d = args.get(0);
-        int index = args.get(1).intValue();
-        Datum value = args.get(2);
-
-        if (d instanceof Datum.DList list) {
+        if (!hasAtLeast(args, 3)) return Datum.voidValue();
+        Datum.DList list = asList(args, 0);
+        if (list != null) {
+            int index = getInt(args, 1, 0);
             if (index >= 1 && index <= list.count() + 1) {
-                list.items().add(index - 1, value);
+                list.items().add(index - 1, get2(args));
             }
         }
         return Datum.voidValue();
@@ -130,11 +122,10 @@ public class ListHandlers {
     }
 
     private static Datum deleteAt(LingoVM vm, List<Datum> args) {
-        if (args.size() < 2) return Datum.voidValue();
-        Datum d = args.get(0);
-        int index = args.get(1).intValue();
-
-        if (d instanceof Datum.DList list) {
+        if (!hasAtLeast(args, 2)) return Datum.voidValue();
+        Datum.DList list = asList(args, 0);
+        if (list != null) {
+            int index = getInt(args, 1, 0);
             if (index >= 1 && index <= list.count()) {
                 list.items().remove(index - 1);
             }
@@ -143,26 +134,23 @@ public class ListHandlers {
     }
 
     private static Datum deleteOne(LingoVM vm, List<Datum> args) {
-        if (args.size() < 2) return Datum.voidValue();
-        Datum d = args.get(0);
-        Datum value = args.get(1);
-
-        if (d instanceof Datum.DList list) {
-            list.items().remove(value);
+        if (!hasAtLeast(args, 2)) return Datum.voidValue();
+        Datum.DList list = asList(args, 0);
+        if (list != null) {
+            list.items().remove(get1(args));
         }
         return Datum.voidValue();
     }
 
     private static Datum getOne(LingoVM vm, List<Datum> args) {
-        if (args.size() < 2) return Datum.of(0);
-        Datum d = args.get(0);
-        Datum value = args.get(1);
+        if (!hasAtLeast(args, 2)) return Datum.of(0);
+        Datum.DList list = asList(args, 0);
+        if (list == null) return Datum.of(0);
 
-        if (d instanceof Datum.DList list) {
-            for (int i = 0; i < list.count(); i++) {
-                if (list.items().get(i).equals(value)) {
-                    return Datum.of(i + 1);
-                }
+        Datum value = get1(args);
+        for (int i = 0; i < list.count(); i++) {
+            if (list.items().get(i).equals(value)) {
+                return Datum.of(i + 1);
             }
         }
         return Datum.of(0);
@@ -173,10 +161,9 @@ public class ListHandlers {
     }
 
     private static Datum sort(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.voidValue();
-        Datum d = args.get(0);
-
-        if (d instanceof Datum.DList list) {
+        if (isEmpty(args)) return Datum.voidValue();
+        Datum.DList list = asList(args, 0);
+        if (list != null) {
             list.items().sort((a, b) -> {
                 if (a.isNumber() && b.isNumber()) {
                     return Float.compare(a.floatValue(), b.floatValue());
@@ -188,8 +175,8 @@ public class ListHandlers {
     }
 
     private static Datum duplicate(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.list();
-        Datum d = args.get(0);
+        if (isEmpty(args)) return Datum.list();
+        Datum d = get0(args);
 
         if (d instanceof Datum.DList list) {
             Datum.DList copy = Datum.list();
@@ -208,20 +195,18 @@ public class ListHandlers {
     }
 
     private static Datum getLast(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.voidValue();
-        Datum d = args.get(0);
-
-        if (d instanceof Datum.DList list && list.count() > 0) {
+        if (isEmpty(args)) return Datum.voidValue();
+        Datum.DList list = asList(args, 0);
+        if (list != null && list.count() > 0) {
             return list.items().get(list.count() - 1);
         }
         return Datum.voidValue();
     }
 
     private static Datum deleteLast(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.voidValue();
-        Datum d = args.get(0);
-
-        if (d instanceof Datum.DList list && list.count() > 0) {
+        if (isEmpty(args)) return Datum.voidValue();
+        Datum.DList list = asList(args, 0);
+        if (list != null && list.count() > 0) {
             list.items().remove(list.count() - 1);
         }
         return Datum.voidValue();
@@ -230,24 +215,17 @@ public class ListHandlers {
     // PropList operations
 
     private static Datum getProp(LingoVM vm, List<Datum> args) {
-        if (args.size() < 2) return Datum.voidValue();
-        Datum d = args.get(0);
-        Datum key = args.get(1);
-
-        if (d instanceof Datum.PropList propList) {
-            return propList.get(key);
-        }
-        return Datum.voidValue();
+        if (!hasAtLeast(args, 2)) return Datum.voidValue();
+        Datum.PropList propList = asPropList(args, 0);
+        if (propList == null) return Datum.voidValue();
+        return propList.get(get1(args));
     }
 
     private static Datum setProp(LingoVM vm, List<Datum> args) {
-        if (args.size() < 3) return Datum.voidValue();
-        Datum d = args.get(0);
-        Datum key = args.get(1);
-        Datum value = args.get(2);
-
-        if (d instanceof Datum.PropList propList) {
-            propList.put(key, value);
+        if (!hasAtLeast(args, 3)) return Datum.voidValue();
+        Datum.PropList propList = asPropList(args, 0);
+        if (propList != null) {
+            propList.put(get1(args), get2(args));
         }
         return Datum.voidValue();
     }
@@ -257,29 +235,26 @@ public class ListHandlers {
     }
 
     private static Datum deleteProp(LingoVM vm, List<Datum> args) {
-        if (args.size() < 2) return Datum.voidValue();
-        Datum d = args.get(0);
-        Datum key = args.get(1);
-
-        if (d instanceof Datum.PropList propList) {
-            propList.properties().remove(key);
+        if (!hasAtLeast(args, 2)) return Datum.voidValue();
+        Datum.PropList propList = asPropList(args, 0);
+        if (propList != null) {
+            propList.properties().remove(get1(args));
         }
         return Datum.voidValue();
     }
 
     private static Datum findPos(LingoVM vm, List<Datum> args) {
-        if (args.size() < 2) return Datum.of(0);
-        Datum d = args.get(0);
-        Datum key = args.get(1);
+        if (!hasAtLeast(args, 2)) return Datum.of(0);
+        Datum.PropList propList = asPropList(args, 0);
+        if (propList == null) return Datum.of(0);
 
-        if (d instanceof Datum.PropList propList) {
-            int pos = 1;
-            for (Datum k : propList.properties().keySet()) {
-                if (k.equals(key)) {
-                    return Datum.of(pos);
-                }
-                pos++;
+        Datum key = get1(args);
+        int pos = 1;
+        for (Datum k : propList.properties().keySet()) {
+            if (k.equals(key)) {
+                return Datum.of(pos);
             }
+            pos++;
         }
         return Datum.of(0);
     }
@@ -289,18 +264,17 @@ public class ListHandlers {
     }
 
     private static Datum getPropAt(LingoVM vm, List<Datum> args) {
-        if (args.size() < 2) return Datum.voidValue();
-        Datum d = args.get(0);
-        int index = args.get(1).intValue();
+        if (!hasAtLeast(args, 2)) return Datum.voidValue();
+        Datum.PropList propList = asPropList(args, 0);
+        if (propList == null) return Datum.voidValue();
 
-        if (d instanceof Datum.PropList propList) {
-            int pos = 1;
-            for (Datum key : propList.properties().keySet()) {
-                if (pos == index) {
-                    return key;
-                }
-                pos++;
+        int index = getInt(args, 1, 0);
+        int pos = 1;
+        for (Datum key : propList.properties().keySet()) {
+            if (pos == index) {
+                return key;
             }
+            pos++;
         }
         return Datum.voidValue();
     }

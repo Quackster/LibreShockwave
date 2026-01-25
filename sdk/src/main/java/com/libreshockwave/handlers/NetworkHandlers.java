@@ -9,9 +9,12 @@ import com.libreshockwave.vm.LingoVM;
 import java.util.List;
 import java.util.Optional;
 
+import static com.libreshockwave.handlers.HandlerArgs.*;
+
 /**
  * Built-in network handlers for Lingo.
  * Provides netDone, preloadNetThing, getNetText, and related network operations.
+ * Refactored: Uses HandlerArgs for argument extraction, reducing boilerplate.
  */
 public class NetworkHandlers {
 
@@ -28,16 +31,23 @@ public class NetworkHandlers {
         vm.registerBuiltin("gotoNetMovie", NetworkHandlers::gotoNetMovie);
     }
 
+    /**
+     * Get optional task ID from args (null if empty).
+     * Refactored: Extracts common "optional task ID" pattern used in multiple handlers.
+     */
+    private static Integer getOptionalTaskId(List<Datum> args) {
+        return isEmpty(args) ? null : getInt0(args);
+    }
+
     private static Datum netDone(LingoVM vm, List<Datum> args) {
         NetManager netManager = vm.getNetManager();
         if (netManager == null) return Datum.TRUE;
-        Integer taskId = args.isEmpty() ? null : args.get(0).intValue();
-        return netManager.isTaskDone(taskId) ? Datum.TRUE : Datum.FALSE;
+        return netManager.isTaskDone(getOptionalTaskId(args)) ? Datum.TRUE : Datum.FALSE;
     }
 
     private static Datum preloadNetThing(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.of(0);
-        String url = args.get(0).stringValue();
+        if (isEmpty(args)) return Datum.of(0);
+        String url = getString0(args);
         NetManager netManager = vm.getNetManager();
         if (netManager == null) {
             System.out.println("[preloadNetThing] " + url + " (no NetManager)");
@@ -49,8 +59,8 @@ public class NetworkHandlers {
     }
 
     private static Datum getNetText(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.of(0);
-        String url = args.get(0).stringValue();
+        if (isEmpty(args)) return Datum.of(0);
+        String url = getString0(args);
         NetManager netManager = vm.getNetManager();
         if (netManager == null) return Datum.of(1);
         return Datum.of(netManager.preloadNetThing(url));
@@ -59,8 +69,7 @@ public class NetworkHandlers {
     private static Datum netTextResult(LingoVM vm, List<Datum> args) {
         NetManager netManager = vm.getNetManager();
         if (netManager == null) return Datum.of("");
-        Integer taskId = args.isEmpty() ? null : args.get(0).intValue();
-        return netManager.getTaskResult(taskId)
+        return netManager.getTaskResult(getOptionalTaskId(args))
             .filter(NetResult::isSuccess)
             .map(r -> Datum.of(new String(r.getData())))
             .orElse(Datum.of(""));
@@ -69,23 +78,21 @@ public class NetworkHandlers {
     private static Datum netStatus(LingoVM vm, List<Datum> args) {
         NetManager netManager = vm.getNetManager();
         if (netManager == null) return Datum.of("Complete");
-        Integer taskId = args.isEmpty() ? null : args.get(0).intValue();
-        return Datum.of(netManager.isTaskDone(taskId) ? "Complete" : "InProgress");
+        return Datum.of(netManager.isTaskDone(getOptionalTaskId(args)) ? "Complete" : "InProgress");
     }
 
     private static Datum netError(LingoVM vm, List<Datum> args) {
         NetManager netManager = vm.getNetManager();
         if (netManager == null) return Datum.of("OK");
-        Integer taskId = args.isEmpty() ? null : args.get(0).intValue();
-        return netManager.getTaskResult(taskId)
+        return netManager.getTaskResult(getOptionalTaskId(args))
             .map(r -> r.isSuccess() ? Datum.of("OK") : Datum.of(r.getErrorCode()))
             .orElse(Datum.of(0));
     }
 
     private static Datum postNetText(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.of(0);
-        String url = args.get(0).stringValue();
-        String postData = args.size() > 1 ? args.get(1).stringValue() : "";
+        if (isEmpty(args)) return Datum.of(0);
+        String url = getString0(args);
+        String postData = getString(args, 1, "");
         NetManager netManager = vm.getNetManager();
         if (netManager == null) return Datum.of(1);
         return Datum.of(netManager.postNetText(url, postData));
@@ -93,8 +100,8 @@ public class NetworkHandlers {
 
     private static Datum getStreamStatus(LingoVM vm, List<Datum> args) {
         NetManager netManager = vm.getNetManager();
-        if (netManager == null || args.isEmpty()) return Datum.propList();
-        int taskId = args.get(0).intValue();
+        if (netManager == null || isEmpty(args)) return Datum.propList();
+        int taskId = getInt0(args);
         Optional<NetTask> taskOpt = netManager.getTask(taskId);
         if (taskOpt.isEmpty()) return Datum.propList();
 
@@ -112,15 +119,15 @@ public class NetworkHandlers {
     }
 
     private static Datum gotoNetPage(LingoVM vm, List<Datum> args) {
-        if (!args.isEmpty()) {
-            System.out.println("[gotoNetPage] " + args.get(0).stringValue());
+        if (!isEmpty(args)) {
+            System.out.println("[gotoNetPage] " + getString0(args));
         }
         return Datum.voidValue();
     }
 
     private static Datum gotoNetMovie(LingoVM vm, List<Datum> args) {
-        if (!args.isEmpty()) {
-            System.out.println("[gotoNetMovie] " + args.get(0).stringValue());
+        if (!isEmpty(args)) {
+            System.out.println("[gotoNetMovie] " + getString0(args));
         }
         return Datum.voidValue();
     }

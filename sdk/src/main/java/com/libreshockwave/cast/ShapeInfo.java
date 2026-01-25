@@ -14,7 +14,7 @@ public record ShapeInfo(
     int width,
     int height,
     int color
-) {
+) implements Dimensioned {
 
     public enum ShapeType {
         RECT(0x01),

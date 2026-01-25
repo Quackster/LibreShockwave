@@ -16,7 +16,7 @@ public record FilmLoopInfo(
     boolean crop,
     boolean sound,
     boolean loops
-) {
+) implements Dimensioned {
 
     public static FilmLoopInfo parse(byte[] data) {
         if (data == null || data.length < 11) {

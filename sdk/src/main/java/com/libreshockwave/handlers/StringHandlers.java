@@ -6,8 +6,11 @@ import com.libreshockwave.vm.LingoVM;
 
 import java.util.List;
 
+import static com.libreshockwave.handlers.HandlerArgs.*;
+
 /**
  * Built-in string handlers for Lingo.
+ * Refactored: Uses HandlerArgs for argument extraction, reducing boilerplate.
  */
 public class StringHandlers {
 
@@ -25,20 +28,18 @@ public class StringHandlers {
     }
 
     private static Datum toString(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.of("");
-        return Datum.of(args.get(0).stringValue());
+        return Datum.of(getString0(args));
     }
 
     private static Datum length(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.of(0);
-        return Datum.of(args.get(0).stringValue().length());
+        return Datum.of(getString0(args).length());
     }
 
     private static Datum chars(LingoVM vm, List<Datum> args) {
-        if (args.size() < 3) return Datum.of("");
-        String s = args.get(0).stringValue();
-        int start = args.get(1).intValue();
-        int end = args.get(2).intValue();
+        if (!hasAtLeast(args, 3)) return Datum.of("");
+        String s = getString(args, 0, "");
+        int start = getInt(args, 1, 1);
+        int end = getInt(args, 2, 0);
 
         if (start < 1) start = 1;
         if (end > s.length()) end = s.length();
@@ -48,18 +49,18 @@ public class StringHandlers {
     }
 
     private static Datum charAt(LingoVM vm, List<Datum> args) {
-        if (args.size() < 2) return Datum.of("");
-        String s = args.get(0).stringValue();
-        int index = args.get(1).intValue();
+        if (!hasAtLeast(args, 2)) return Datum.of("");
+        String s = getString(args, 0, "");
+        int index = getInt(args, 1, 0);
 
         if (index < 1 || index > s.length()) return Datum.of("");
         return Datum.of(String.valueOf(s.charAt(index - 1)));
     }
 
     private static Datum word(LingoVM vm, List<Datum> args) {
-        if (args.size() < 2) return Datum.of("");
-        String s = args.get(0).stringValue();
-        int wordNum = args.get(1).intValue();
+        if (!hasAtLeast(args, 2)) return Datum.of("");
+        String s = getString(args, 0, "");
+        int wordNum = getInt(args, 1, 0);
 
         String[] words = s.split("\\s+");
         if (wordNum < 1 || wordNum > words.length) return Datum.of("");
@@ -67,9 +68,9 @@ public class StringHandlers {
     }
 
     private static Datum line(LingoVM vm, List<Datum> args) {
-        if (args.size() < 2) return Datum.of("");
-        String s = args.get(0).stringValue();
-        int lineNum = args.get(1).intValue();
+        if (!hasAtLeast(args, 2)) return Datum.of("");
+        String s = getString(args, 0, "");
+        int lineNum = getInt(args, 1, 0);
 
         String[] lines = s.split("\r|\n|\r\n");
         if (lineNum < 1 || lineNum > lines.length) return Datum.of("");
@@ -77,9 +78,9 @@ public class StringHandlers {
     }
 
     private static Datum item(LingoVM vm, List<Datum> args) {
-        if (args.size() < 2) return Datum.of("");
-        String s = args.get(0).stringValue();
-        int itemNum = args.get(1).intValue();
+        if (!hasAtLeast(args, 2)) return Datum.of("");
+        String s = getString(args, 0, "");
+        int itemNum = getInt(args, 1, 0);
         char delimiter = ',';
 
         // Item delimiter can be customized in Lingo
@@ -89,24 +90,22 @@ public class StringHandlers {
     }
 
     private static Datum offset(LingoVM vm, List<Datum> args) {
-        if (args.size() < 2) return Datum.of(0);
-        String needle = args.get(0).stringValue();
-        String haystack = args.get(1).stringValue();
+        if (!hasAtLeast(args, 2)) return Datum.of(0);
+        String needle = getString(args, 0, "");
+        String haystack = getString(args, 1, "");
 
         int index = haystack.indexOf(needle);
         return Datum.of(index + 1); // 1-based, 0 if not found
     }
 
     private static Datum charToNum(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.of(0);
-        String s = args.get(0).stringValue();
+        String s = getString0(args);
         if (s.isEmpty()) return Datum.of(0);
         return Datum.of((int) s.charAt(0));
     }
 
     private static Datum numToChar(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.of("");
-        int num = args.get(0).intValue();
+        int num = getInt0(args);
         if (num < 0 || num > 65535) return Datum.of("");
         return Datum.of(String.valueOf((char) num));
     }

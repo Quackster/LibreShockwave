@@ -6,8 +6,11 @@ import com.libreshockwave.vm.LingoVM;
 import java.util.List;
 import java.util.Random;
 
+import static com.libreshockwave.handlers.HandlerArgs.*;
+
 /**
  * Built-in math handlers for Lingo.
+ * Refactored: Uses HandlerArgs for argument extraction, reducing boilerplate.
  */
 public class MathHandlers {
 
@@ -44,55 +47,55 @@ public class MathHandlers {
     }
 
     private static Datum abs(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.of(0);
-        Datum a = args.get(0);
+        if (isEmpty(args)) return Datum.of(0);
+        Datum a = get0(args);
         if (a.isFloat()) return Datum.of(Math.abs(a.floatValue()));
         return Datum.of(Math.abs(a.intValue()));
     }
 
     private static Datum sqrt(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.of(0.0f);
-        return Datum.of((float) Math.sqrt(args.get(0).floatValue()));
+        if (isEmpty(args)) return Datum.of(0.0f);
+        return Datum.of((float) Math.sqrt(getFloat0(args)));
     }
 
     private static Datum power(LingoVM vm, List<Datum> args) {
-        if (args.size() < 2) return Datum.of(0.0f);
-        return Datum.of((float) Math.pow(args.get(0).floatValue(), args.get(1).floatValue()));
+        if (!hasAtLeast(args, 2)) return Datum.of(0.0f);
+        return Datum.of((float) Math.pow(getFloat(args, 0, 0), getFloat(args, 1, 0)));
     }
 
     private static Datum exp(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.of(1.0f);
-        return Datum.of((float) Math.exp(args.get(0).floatValue()));
+        if (isEmpty(args)) return Datum.of(1.0f);
+        return Datum.of((float) Math.exp(getFloat0(args)));
     }
 
     private static Datum log(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.of(0.0f);
-        return Datum.of((float) Math.log(args.get(0).floatValue()));
+        if (isEmpty(args)) return Datum.of(0.0f);
+        return Datum.of((float) Math.log(getFloat0(args)));
     }
 
     private static Datum sin(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.of(0.0f);
-        return Datum.of((float) Math.sin(args.get(0).floatValue()));
+        if (isEmpty(args)) return Datum.of(0.0f);
+        return Datum.of((float) Math.sin(getFloat0(args)));
     }
 
     private static Datum cos(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.of(1.0f);
-        return Datum.of((float) Math.cos(args.get(0).floatValue()));
+        if (isEmpty(args)) return Datum.of(1.0f);
+        return Datum.of((float) Math.cos(getFloat0(args)));
     }
 
     private static Datum tan(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.of(0.0f);
-        return Datum.of((float) Math.tan(args.get(0).floatValue()));
+        if (isEmpty(args)) return Datum.of(0.0f);
+        return Datum.of((float) Math.tan(getFloat0(args)));
     }
 
     private static Datum atan(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.of(0.0f);
-        return Datum.of((float) Math.atan(args.get(0).floatValue()));
+        if (isEmpty(args)) return Datum.of(0.0f);
+        return Datum.of((float) Math.atan(getFloat0(args)));
     }
 
     private static Datum atan2(LingoVM vm, List<Datum> args) {
-        if (args.size() < 2) return Datum.of(0.0f);
-        return Datum.of((float) Math.atan2(args.get(0).floatValue(), args.get(1).floatValue()));
+        if (!hasAtLeast(args, 2)) return Datum.of(0.0f);
+        return Datum.of((float) Math.atan2(getFloat(args, 0, 0), getFloat(args, 1, 0)));
     }
 
     private static Datum pi(LingoVM vm, List<Datum> args) {
@@ -100,36 +103,34 @@ public class MathHandlers {
     }
 
     private static Datum randomNum(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.of(0);
-        int max = args.get(0).intValue();
+        if (isEmpty(args)) return Datum.of(0);
+        int max = getInt0(args);
         if (max <= 0) return Datum.of(0);
         return Datum.of(random.nextInt(max) + 1);
     }
 
     private static Datum toInteger(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.of(0);
-        return Datum.of(args.get(0).intValue());
+        return Datum.of(getInt0(args));
     }
 
     private static Datum toFloat(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.of(0.0f);
-        return Datum.of(args.get(0).floatValue());
+        return Datum.of(getFloat0(args));
     }
 
     private static Datum min(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.of(0);
-        float minVal = args.get(0).floatValue();
+        if (isEmpty(args)) return Datum.of(0);
+        float minVal = getFloat0(args);
         for (int i = 1; i < args.size(); i++) {
-            minVal = Math.min(minVal, args.get(i).floatValue());
+            minVal = Math.min(minVal, getFloat(args, i, 0));
         }
         return Datum.of(minVal);
     }
 
     private static Datum max(LingoVM vm, List<Datum> args) {
-        if (args.isEmpty()) return Datum.of(0);
-        float maxVal = args.get(0).floatValue();
+        if (isEmpty(args)) return Datum.of(0);
+        float maxVal = getFloat0(args);
         for (int i = 1; i < args.size(); i++) {
-            maxVal = Math.max(maxVal, args.get(i).floatValue());
+            maxVal = Math.max(maxVal, getFloat(args, i, 0));
         }
         return Datum.of(maxVal);
     }
