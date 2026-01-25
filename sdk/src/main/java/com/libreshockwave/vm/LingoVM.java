@@ -243,6 +243,91 @@ public class LingoVM {
                 throw new LingoException("Execution limit exceeded: " + maxInstructions + " instructions");
             }
             Datum result = scope.getReturnValue();
+            lastHandlerResult = result;
+
+            // Match dirplayer-rs: propagate passed flag to parent scope
+            if (scope.isPassed() && !callStack.isEmpty()) {
+                // The current scope is still on the stack, get the parent
+                Scope parentScope = null;
+                var it = callStack.iterator();
+                if (it.hasNext()) {
+                    Scope current = it.next();
+                    if (it.hasNext()) {
+                        parentScope = it.next();
+                    }
+                }
+                if (parentScope != null) {
+                    parentScope.setPassed(true);
+                }
+            }
+
+            if (debugMode) { debugLog("=== RETURN " + debugFormatter.formatDatum(result) + " ==="); }
+            return result;
+        } finally {
+            callStack.pop();
+            if (debugMode) debugIndent = Math.max(0, debugIndent - 1);
+        }
+    }
+
+    /**
+     * Execute a handler with an optional receiver (for script instance method calls).
+     * Match dirplayer-rs: player_call_script_handler_raw_args(receiver, handler_ref, args, true)
+     *
+     * @param script The script containing the handler
+     * @param handler The handler to execute
+     * @param args The arguments to pass
+     * @param receiver Optional script instance receiver (null for static scripts)
+     * @return The result of execution
+     */
+    private Datum executeWithReceiver(ScriptChunk script, ScriptChunk.Handler handler, List<Datum> args, Datum.ScriptInstanceRef receiver) {
+        // Check for excessive recursion before pushing to call stack
+        if (callStack.size() >= maxCallDepth) {
+            String handlerName = scriptResolver.getName(handler.nameId());
+            throw new LingoException("Maximum call depth exceeded (" + maxCallDepth + ") - possible infinite recursion in handler '" + handlerName + "'");
+        }
+
+        if (debugMode) logHandlerEntry(script, handler, args.toArray(new Datum[0]));
+
+        Scope scope = new Scope(script, handler, args.toArray(new Datum[0]));
+        scope.setReceiver(receiver);  // Set receiver for script instance method calls
+        callStack.push(scope);
+        int instructionCount = 0;
+        halted = false;
+
+        try {
+            while (!scope.isAtEnd() && !halted && instructionCount < maxInstructions) {
+                ScriptChunk.Handler.Instruction instr = scope.getCurrentInstruction();
+
+                if (debugMode) {
+                    int currentIP = scope.getInstructionPointer();
+                    debugLog(String.format("[%03d] %-20s | Stack: %s",
+                        currentIP,
+                        debugFormatter.formatInstruction(instr, scriptResolver),
+                        debugFormatter.formatStack(stack)));
+                }
+
+                executeInstruction(scope, instr);
+                scope.advanceIP();
+                instructionCount++;
+            }
+            if (instructionCount >= maxInstructions) {
+                throw new LingoException("Execution limit exceeded: " + maxInstructions + " instructions");
+            }
+            Datum result = scope.getReturnValue();
+            lastHandlerResult = result;
+
+            // Match dirplayer-rs: propagate passed flag to parent scope
+            if (scope.isPassed() && callStack.size() > 1) {
+                var it = callStack.iterator();
+                if (it.hasNext()) {
+                    it.next(); // Skip current scope
+                    if (it.hasNext()) {
+                        Scope parentScope = it.next();
+                        parentScope.setPassed(true);
+                    }
+                }
+            }
+
             if (debugMode) { debugLog("=== RETURN " + debugFormatter.formatDatum(result) + " ==="); }
             return result;
         } finally {
@@ -470,9 +555,11 @@ public class LingoVM {
         boolean isNoRet = argListDatum instanceof Datum.ArgListNoRet;
         List<Datum> args = extractArgList(argListDatum);
 
-        if (handlerName.contains("return")) {
-            Datum returnValue = args.isEmpty() ? Datum.voidValue() : args.get(0);
+        // Match dirplayer-rs: exact string match for "return" handler
+        if ("return".equals(handlerName)) {
+            Datum returnValue = args.isEmpty() ? Datum.voidValue() : args.getFirst();
             scope.setReturnValue(returnValue);
+            // Match dirplayer-rs: return HandlerExecutionResult::Stop (end execution)
             scope.setInstructionPointer(scope.getHandler().instructions().size());
             if (!isNoRet) push(returnValue);
             return;
@@ -484,34 +571,58 @@ public class LingoVM {
         if (!isNoRet) push(result);
     }
 
-    private void executeLocalCall(Scope scope, int handlerIndex) {
+    /**
+     * Execute a local call (handler in the current script).
+     * Match dirplayer-rs: local_call() in flow_control.rs
+     */
+    private void executeLocalCall(Scope currentScope, int handlerIndex) {
         Datum argListDatum = pop();
         boolean isNoRet = argListDatum instanceof Datum.ArgListNoRet;
-        List<Datum> args = extractArgList(argListDatum);
+        List<Datum> args = new ArrayList<>(extractArgList(argListDatum));
 
-        ScriptChunk script = scope.getScript();
+        ScriptChunk script = currentScope.getScript();
         if (handlerIndex >= 0 && handlerIndex < script.handlers().size()) {
             ScriptChunk.Handler targetHandler = script.handlers().get(handlerIndex);
             String handlerName = scriptResolver.getName(targetHandler.nameId());
 
-            // Check first arg for script instance with this handler
+            // Match dirplayer-rs: Check first arg for script/instance with handler (polymorphism)
+            ScriptChunk resolvedScript = script;
+            ScriptChunk.Handler resolvedHandler = targetHandler;
+            Datum.ScriptInstanceRef receiver = null;
+
             if (handlerName != null && !args.isEmpty()) {
-                ScriptResolver.HandlerLocation loc = getHandlerFromFirstArg(args, handlerName);
-                if (loc != null) {
-                    Datum result = execute(loc.script(), loc.handler(), args.toArray(new Datum[0]));
-                    lastHandlerResult = result;
-                    if (!isNoRet) push(result);
-                    return;
+                HandlerWithReceiver hwResult = getHandlerFromFirstArgWithReceiver(args, handlerName);
+                if (hwResult != null) {
+                    // Use handler from first arg (polymorphism)
+                    receiver = hwResult.receiver;
+                    resolvedScript = hwResult.script;
+                    resolvedHandler = hwResult.handler;
+                } else {
+                    // Match dirplayer-rs: Use receiver from current scope
+                    receiver = currentScope.getReceiver();
                 }
+            } else {
+                // Match dirplayer-rs: Use receiver from current scope
+                receiver = currentScope.getReceiver();
             }
 
-            Datum result = execute(script, targetHandler, args.toArray(new Datum[0]));
-            lastHandlerResult = result;
+            // Execute the handler with receiver
+            Datum result = executeWithReceiver(resolvedScript, resolvedHandler, args, receiver);
+            handleScopeReturn();
             if (!isNoRet) push(result);
         } else if (!isNoRet) {
             push(Datum.voidValue());
         }
     }
+
+    /**
+     * Result of handler resolution with receiver information.
+     */
+    private record HandlerWithReceiver(
+        ScriptChunk script,
+        ScriptChunk.Handler handler,
+        Datum.ScriptInstanceRef receiver
+    ) {}
 
     private void executeObjCall(String methodName) {
         Datum argListDatum = pop();
@@ -533,67 +644,148 @@ public class LingoVM {
         push(Datum.of(propertyAccessor.getFieldText(pop(), castId, scriptResolver)));
     }
 
+    /**
+     * Call a global handler following dirplayer-rs resolution order:
+     * 1. Check first arg for script/instance with handler (polymorphism)
+     * 2. Search active script instances
+     * 3. Search active static scripts (movie scripts + frame script)
+     * 4. Check built-in handlers (LAST - fallback)
+     */
     private Datum callGlobalHandler(String handlerName, List<Datum> args, Scope scope) {
-        // 1. Check first arg for script/instance with handler (explicit receiver)
-        if (!handlerName.equalsIgnoreCase("new") && !args.isEmpty()) {
-            ScriptResolver.HandlerLocation loc = getHandlerFromFirstArg(args, handlerName);
-            if (loc != null) return execute(loc.script(), loc.handler(), args.toArray(new Datum[0]));
-        }
-
-        // 2. Check builtins BEFORE script handlers to avoid shadowing built-in functions
-        BuiltinHandler builtin = builtins.get(handlerName.toLowerCase());
-        if (builtin != null) return builtin.call(this, args);
-
-        // 3. Check static scripts (movie scripts, behaviors)
+        // "new" invocations should always go through the built-in handler
+        // Match dirplayer-rs: if handler_name != "new"
         if (!handlerName.equalsIgnoreCase("new")) {
-            ScriptResolver.HandlerLocation staticLoc = scriptResolver.findHandler(handlerName);
-            if (staticLoc != null) return execute(staticLoc.script(), staticLoc.handler(), args.toArray(new Datum[0]));
 
-            // 4. Check active script instances (for handlers not found elsewhere)
+            // 1. Check first arg for script/instance with handler (polymorphism)
+            if (!args.isEmpty()) {
+                ScriptResolver.HandlerLocation loc = getHandlerFromFirstArg(args, handlerName);
+                if (loc != null) {
+                    Datum result = executeWithReceiver(loc.script(), loc.handler(), args, null);
+                    handleScopeReturn();
+                    return result;
+                }
+            }
+
+            // 2. Search active script instances (from score)
+            // Match dirplayer-rs: player.movie.score.get_active_script_instance_list()
             if (activeScriptInstancesCallback != null) {
-                for (Datum.ScriptInstanceRef ref : activeScriptInstancesCallback.getActiveScriptInstances()) {
-                    ScriptChunk script = null; // TODO: scriptResolver.findScriptByName(ref.scriptName());
+                for (Datum.ScriptInstanceRef instanceRef : activeScriptInstancesCallback.getActiveScriptInstances()) {
+                    ScriptChunk script = scriptResolver.findScriptByCastRef(instanceRef.scriptRef());
                     if (script != null) {
                         for (ScriptChunk.Handler h : script.handlers()) {
                             if (handlerName.equalsIgnoreCase(scriptResolver.getName(h.nameId()))) {
-                                List<Datum> allArgs = new ArrayList<>();
-                                allArgs.add(ref);
-                                allArgs.addAll(args);
-                                return execute(script, h, allArgs.toArray(new Datum[0]));
+                                Datum result = executeWithReceiver(script, h, args, instanceRef);
+                                handleScopeReturn();
+                                return result;
                             }
                         }
                     }
                 }
             }
+
+            // 3. Search active static scripts (movie scripts + frame script)
+            // Match dirplayer-rs: get_active_static_script_refs()
+            ScriptResolver.HandlerLocation staticLoc = scriptResolver.findHandler(handlerName);
+            if (staticLoc != null) {
+                Datum result = executeWithReceiver(staticLoc.script(), staticLoc.handler(), args, null);
+                handleScopeReturn();
+                return result;
+            }
+        }
+
+        // 4. Check built-in handlers (LAST - fallback)
+        // Match dirplayer-rs: BuiltInHandlerManager::call_handler()
+        BuiltinHandler builtin = builtins.get(handlerName.toLowerCase());
+        if (builtin != null) {
+            return builtin.call(this, args);
         }
 
         throw LingoException.undefinedHandler(handlerName);
     }
 
-    private ScriptResolver.HandlerLocation getHandlerFromFirstArg(List<Datum> args, String handlerName) {
-        if (args.isEmpty()) return null;
-        Datum firstArg = args.get(0);
-
-        if (firstArg instanceof Datum.ScriptInstanceRef si) {
-            ScriptChunk script = null; // TODO: scriptResolver.findScriptByName(si.scriptName());
-            if (script != null) {
-                for (ScriptChunk.Handler h : script.handlers()) {
-                    if (handlerName.equalsIgnoreCase(scriptResolver.getName(h.nameId()))) {
-                        return new ScriptResolver.HandlerLocation(script, h, null, null);
-                    }
-                }
-            }
+    /**
+     * Handle scope return - propagate passed flag to parent scope.
+     * Match dirplayer-rs: player_handle_scope_return()
+     */
+    private void handleScopeReturn() {
+        // The scope was already popped in execute(), but we saved the passed flag
+        // We need to propagate it to the current scope (the caller)
+        if (!callStack.isEmpty()) {
+            Scope currentScope = callStack.peek();
+            // The passed flag was already set in execute() if needed
         }
+    }
 
+    /**
+     * Get handler from first argument (for polymorphic dispatch).
+     * Match dirplayer-rs: ScriptInstanceUtils::get_handler_from_first_arg()
+     */
+    private ScriptResolver.HandlerLocation getHandlerFromFirstArg(List<Datum> args, String handlerName) {
+        HandlerWithReceiver result = getHandlerFromFirstArgWithReceiver(args, handlerName);
+        if (result == null) return null;
+        return new ScriptResolver.HandlerLocation(result.script, result.handler, null, null);
+    }
+
+    /**
+     * Get handler from first argument with receiver information.
+     * Match dirplayer-rs: ScriptInstanceUtils::get_handler_from_first_arg()
+     *
+     * Returns (receiver, script, handler) tuple where:
+     * - For ScriptRef: receiver is null
+     * - For ScriptInstanceRef: receiver is the instance ref (includes ancestor chain lookup)
+     */
+    private HandlerWithReceiver getHandlerFromFirstArgWithReceiver(List<Datum> args, String handlerName) {
+        if (args.isEmpty()) return null;
+        Datum firstArg = args.getFirst();
+
+        // Match dirplayer-rs: Datum::ScriptRef case
         if (firstArg instanceof Datum.ScriptRef sr) {
             ScriptChunk script = scriptResolver.findScriptByCastRef(sr.memberRef());
             if (script != null) {
                 for (ScriptChunk.Handler h : script.handlers()) {
                     if (handlerName.equalsIgnoreCase(scriptResolver.getName(h.nameId()))) {
-                        return new ScriptResolver.HandlerLocation(script, h, null, null);
+                        // ScriptRef: no receiver (returns None in dirplayer-rs)
+                        return new HandlerWithReceiver(script, h, null);
                     }
                 }
             }
+            return null;
+        }
+
+        // Match dirplayer-rs: Datum::ScriptInstanceRef case
+        if (firstArg instanceof Datum.ScriptInstanceRef si) {
+            // Use get_script_instance_handler logic with ancestor chain lookup
+            HandlerWithReceiver result = getScriptInstanceHandler(handlerName, si);
+            if (result != null) {
+                // ScriptInstanceRef: has receiver
+                return new HandlerWithReceiver(result.script, result.handler, si);
+            }
+            return null;
+        }
+
+        return null;
+    }
+
+    /**
+     * Get handler from a script instance, including ancestor chain lookup.
+     * Match dirplayer-rs: ScriptInstanceUtils::get_script_instance_handler()
+     */
+    private HandlerWithReceiver getScriptInstanceHandler(String handlerName, Datum.ScriptInstanceRef instanceRef) {
+        // Find the script for this instance
+        ScriptChunk script = scriptResolver.findScriptByCastRef(instanceRef.scriptRef());
+        if (script == null) return null;
+
+        // Check own handlers first
+        for (ScriptChunk.Handler h : script.handlers()) {
+            if (handlerName.equalsIgnoreCase(scriptResolver.getName(h.nameId()))) {
+                return new HandlerWithReceiver(script, h, instanceRef);
+            }
+        }
+
+        // Match dirplayer-rs: Check ancestor chain
+        Datum.ScriptInstanceRef ancestorRef = instanceRef.ancestor();
+        if (ancestorRef != null) {
+            return getScriptInstanceHandler(handlerName, ancestorRef);
         }
 
         return null;

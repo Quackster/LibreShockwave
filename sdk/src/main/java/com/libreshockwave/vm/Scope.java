@@ -21,6 +21,12 @@ public class Scope {
     private int instructionPointer;
     private Datum returnValue;
 
+    // Receiver for script instance method calls (matches dirplayer-rs scope.receiver)
+    private Datum.ScriptInstanceRef receiver;
+
+    // Passed flag for exit handler propagation (matches dirplayer-rs scope.passed)
+    private boolean passed;
+
     public Scope(ScriptChunk script, ScriptChunk.Handler handler, Datum[] args) {
         this.script = script;
         this.handler = handler;
@@ -31,6 +37,8 @@ public class Scope {
         this.loopReturnIndices = new ArrayDeque<>();
         this.instructionPointer = 0;
         this.returnValue = Datum.voidValue();
+        this.receiver = null;
+        this.passed = false;
 
         // Initialize locals to VOID
         for (int i = 0; i < locals.length; i++) {
@@ -188,5 +196,25 @@ public class Scope {
      */
     public boolean inLoop() {
         return !loopReturnIndices.isEmpty();
+    }
+
+    // Receiver access (for script instance method calls)
+
+    public Datum.ScriptInstanceRef getReceiver() {
+        return receiver;
+    }
+
+    public void setReceiver(Datum.ScriptInstanceRef receiver) {
+        this.receiver = receiver;
+    }
+
+    // Passed flag (for exit handler propagation)
+
+    public boolean isPassed() {
+        return passed;
+    }
+
+    public void setPassed(boolean passed) {
+        this.passed = passed;
     }
 }
