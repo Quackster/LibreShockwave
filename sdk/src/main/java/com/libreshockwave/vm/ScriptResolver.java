@@ -7,8 +7,6 @@ import com.libreshockwave.lingo.Datum;
 import com.libreshockwave.player.CastLib;
 import com.libreshockwave.player.CastManager;
 
-import java.util.Deque;
-
 /**
  * Script and handler resolution for the Lingo VM.
  * Handles finding scripts by name/reference and resolving handler names.
@@ -17,12 +15,12 @@ public class ScriptResolver {
 
     private final DirectorFile file;
     private final CastManager castManager;
-    private final Deque<Scope> callStack;
+    private final LingoVM vm;
 
-    public ScriptResolver(DirectorFile file, CastManager castManager, Deque<Scope> callStack) {
+    public ScriptResolver(DirectorFile file, CastManager castManager, LingoVM vm) {
         this.file = file;
         this.castManager = castManager;
-        this.callStack = callStack;
+        this.vm = vm;
     }
 
     /**
@@ -37,15 +35,17 @@ public class ScriptResolver {
      */
     public String getName(int nameId) {
         // First try current scope's script names
-        if (!callStack.isEmpty()) {
-            Scope currentScope = callStack.peek();
-            ScriptChunk currentScript = currentScope.getScript();
-            if (currentScript != null) {
-                CastLib scriptCast = findCastForScript(currentScript);
-                if (scriptCast != null && scriptCast.getState() == CastLib.State.LOADED) {
-                    ScriptNamesChunk castNames = scriptCast.getScriptNames();
-                    if (castNames != null && nameId >= 0 && nameId < castNames.names().size()) {
-                        return castNames.getName(nameId);
+        if (vm != null && vm.getScopeCount() > 0) {
+            Scope currentScope = vm.getCurrentScope();
+            if (currentScope != null) {
+                ScriptChunk currentScript = currentScope.getScript();
+                if (currentScript != null) {
+                    CastLib scriptCast = findCastForScript(currentScript);
+                    if (scriptCast != null && scriptCast.getState() == CastLib.State.LOADED) {
+                        ScriptNamesChunk castNames = scriptCast.getScriptNames();
+                        if (castNames != null && nameId >= 0 && nameId < castNames.names().size()) {
+                            return castNames.getName(nameId);
+                        }
                     }
                 }
             }
@@ -223,9 +223,11 @@ public class ScriptResolver {
      * Get the variable multiplier for bytecode argument decoding.
      */
     public int getVariableMultiplier() {
-        if (callStack.isEmpty()) return 1;
+        if (vm == null || vm.getScopeCount() == 0) return 1;
 
-        Scope currentScope = callStack.peek();
+        Scope currentScope = vm.getCurrentScope();
+        if (currentScope == null) return 1;
+
         ScriptChunk currentScript = currentScope.getScript();
         if (currentScript == null) return 1;
 

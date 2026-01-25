@@ -7,43 +7,130 @@ import java.util.*;
 
 /**
  * Execution scope for a handler call.
- * Contains local variables, arguments, and execution state.
+ * Matches dirplayer-rs Scope structure.
+ *
+ * Contains:
+ * - Per-scope evaluation stack
+ * - Local variables and arguments
+ * - Execution state (bytecode index, return value)
+ * - Receiver for instance method calls
+ *
+ * Designed for pool-based reuse via reset() method.
  */
 public class Scope {
 
-    private final ScriptChunk script;
-    private final ScriptChunk.Handler handler;
-    private final Datum[] args;
-    private final Datum[] locals;
-    private final Map<String, Datum> properties;
-    private final Deque<Datum> tellTargets;
-    private final Deque<Integer> loopReturnIndices;  // Track loop start indices for next repeat
-    private int instructionPointer;
-    private Datum returnValue;
+    // Pool index for this scope (matches dirplayer-rs scope_ref)
+    private final int scopeRef;
+
+    // Script reference (cast member ref of the script being executed)
+    private Datum.CastMemberRef scriptRef;
+
+    // Script chunk and handler being executed
+    private ScriptChunk script;
+    private ScriptChunk.Handler handler;
 
     // Receiver for script instance method calls (matches dirplayer-rs scope.receiver)
     private Datum.ScriptInstanceRef receiver;
 
+    // Handler name ID for debugging/lookup
+    private int handlerNameId;
+
+    // Arguments passed to this handler
+    private final List<Datum> args;
+
+    // Bytecode index (instruction pointer)
+    private int bytecodeIndex;
+
+    // Local variables (by index for bytecode execution)
+    private Datum[] locals;
+
+    // Loop tracking for repeat/next repeat
+    private final Deque<Integer> loopReturnIndices;
+
+    // Return value from this handler
+    private Datum returnValue;
+
+    // Per-scope evaluation stack (matches dirplayer-rs scope.stack)
+    private final Deque<Datum> stack;
+
     // Passed flag for exit handler propagation (matches dirplayer-rs scope.passed)
     private boolean passed;
 
-    public Scope(ScriptChunk script, ScriptChunk.Handler handler, Datum[] args) {
+    // Tell block targets
+    private final Deque<Datum> tellTargets;
+
+    // Properties (for parent script access)
+    private final Map<String, Datum> properties;
+
+    /**
+     * Create a new scope with the given pool index.
+     * Use reset() to initialize for execution.
+     */
+    public Scope(int scopeRef) {
+        this.scopeRef = scopeRef;
+        this.args = new ArrayList<>();
+        this.loopReturnIndices = new ArrayDeque<>();
+        this.stack = new ArrayDeque<>();
+        this.tellTargets = new ArrayDeque<>();
+        this.properties = new HashMap<>();
+        this.locals = new Datum[0];
+        reset();
+    }
+
+    /**
+     * Reset this scope for reuse (matches dirplayer-rs Scope::reset).
+     * Clears all execution state while keeping the pool index.
+     */
+    public void reset() {
+        this.scriptRef = null;
+        this.script = null;
+        this.handler = null;
+        this.receiver = null;
+        this.handlerNameId = 0;
+        this.args.clear();
+        this.bytecodeIndex = 0;
+        this.locals = new Datum[0];
+        this.loopReturnIndices.clear();
+        this.returnValue = Datum.voidValue();
+        this.stack.clear();
+        this.passed = false;
+        this.tellTargets.clear();
+        this.properties.clear();
+    }
+
+    /**
+     * Initialize this scope for executing a handler.
+     */
+    public void initialize(ScriptChunk script, ScriptChunk.Handler handler, Datum.CastMemberRef scriptRef) {
         this.script = script;
         this.handler = handler;
-        this.args = args;
-        this.locals = new Datum[handler.localCount()];
-        this.properties = new HashMap<>();
-        this.tellTargets = new ArrayDeque<>();
-        this.loopReturnIndices = new ArrayDeque<>();
-        this.instructionPointer = 0;
+        this.scriptRef = scriptRef;
+        this.handlerNameId = handler.nameId();
+        this.bytecodeIndex = 0;
         this.returnValue = Datum.voidValue();
-        this.receiver = null;
         this.passed = false;
 
-        // Initialize locals to VOID
-        for (int i = 0; i < locals.length; i++) {
-            locals[i] = Datum.voidValue();
+        // Allocate locals array based on handler's local count
+        int localCount = handler.localCount();
+        if (this.locals.length != localCount) {
+            this.locals = new Datum[localCount];
         }
+        // Initialize all locals to VOID
+        for (int i = 0; i < localCount; i++) {
+            this.locals[i] = Datum.voidValue();
+        }
+    }
+
+    // === Pool reference ===
+
+    public int getScopeRef() {
+        return scopeRef;
+    }
+
+    // === Script/Handler access ===
+
+    public Datum.CastMemberRef getScriptRef() {
+        return scriptRef;
     }
 
     public ScriptChunk getScript() {
@@ -54,49 +141,130 @@ public class Scope {
         return handler;
     }
 
+    public int getHandlerNameId() {
+        return handlerNameId;
+    }
+
+    // === Bytecode execution ===
+
+    public int getBytecodeIndex() {
+        return bytecodeIndex;
+    }
+
+    public void setBytecodeIndex(int index) {
+        this.bytecodeIndex = index;
+    }
+
+    // Alias for compatibility
     public int getInstructionPointer() {
-        return instructionPointer;
+        return bytecodeIndex;
     }
 
     public void setInstructionPointer(int ip) {
-        this.instructionPointer = ip;
+        this.bytecodeIndex = ip;
     }
 
     public void advanceIP() {
-        instructionPointer++;
+        bytecodeIndex++;
     }
 
     public ScriptChunk.Handler.Instruction getCurrentInstruction() {
-        if (instructionPointer >= 0 && instructionPointer < handler.instructions().size()) {
-            return handler.instructions().get(instructionPointer);
+        if (handler == null) return null;
+        if (bytecodeIndex >= 0 && bytecodeIndex < handler.instructions().size()) {
+            return handler.instructions().get(bytecodeIndex);
         }
         return null;
     }
 
     public boolean isAtEnd() {
-        return instructionPointer >= handler.instructions().size();
+        return handler == null || bytecodeIndex >= handler.instructions().size();
     }
 
-    // Argument access (0-based indexing, matching dirplayer-rs)
+    // === Stack operations (matches dirplayer-rs scope.stack) ===
+
+    public void push(Datum value) {
+        stack.push(value != null ? value : Datum.voidValue());
+    }
+
+    public Datum pop() {
+        if (stack.isEmpty()) {
+            return Datum.voidValue();
+        }
+        return stack.pop();
+    }
+
+    public Datum peek() {
+        if (stack.isEmpty()) {
+            return Datum.voidValue();
+        }
+        return stack.peek();
+    }
+
+    /**
+     * Pop n items from the stack and return them in order (first popped = last in list).
+     * Matches dirplayer-rs Scope::pop_n behavior.
+     */
+    public List<Datum> popN(int n) {
+        List<Datum> result = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) {
+            result.add(0, pop());
+        }
+        return result;
+    }
+
+    public int stackSize() {
+        return stack.size();
+    }
+
+    public void clearStack() {
+        stack.clear();
+    }
+
+    public void swap() {
+        if (stack.size() >= 2) {
+            Datum a = stack.pop();
+            Datum b = stack.pop();
+            stack.push(a);
+            stack.push(b);
+        }
+    }
+
+    // === Argument access ===
+
+    public void addArg(Datum arg) {
+        args.add(arg != null ? arg : Datum.voidValue());
+    }
+
+    public void setArgs(List<Datum> newArgs) {
+        args.clear();
+        if (newArgs != null) {
+            args.addAll(newArgs);
+        }
+    }
 
     public Datum getArg(int index) {
-        if (index >= 0 && index < args.length) {
-            return args[index];
+        if (index >= 0 && index < args.size()) {
+            return args.get(index);
         }
         return Datum.voidValue();
     }
 
     public void setArg(int index, Datum value) {
-        if (index >= 0 && index < args.length) {
-            args[index] = value;
+        while (args.size() <= index) {
+            args.add(Datum.voidValue());
         }
+        args.set(index, value != null ? value : Datum.voidValue());
     }
 
     public int getArgCount() {
-        return args.length;
+        return args.size();
     }
 
-    // Local variable access (0-based indexing, matching dirplayer-rs)
+    public List<Datum> getArgs() {
+        return Collections.unmodifiableList(args);
+    }
+
+    // === Local variable access (by index for bytecode) ===
 
     public Datum getLocal(int index) {
         if (index >= 0 && index < locals.length) {
@@ -107,7 +275,7 @@ public class Scope {
 
     public void setLocal(int index, Datum value) {
         if (index >= 0 && index < locals.length) {
-            locals[index] = value;
+            locals[index] = value != null ? value : Datum.voidValue();
         }
     }
 
@@ -115,7 +283,7 @@ public class Scope {
         return locals.length;
     }
 
-    // Property access
+    // === Property access (for scope properties) ===
 
     public Datum getProperty(String name) {
         return properties.getOrDefault(name, Datum.voidValue());
@@ -125,17 +293,37 @@ public class Scope {
         properties.put(name, value);
     }
 
-    // Return value
+    // === Return value ===
 
     public Datum getReturnValue() {
         return returnValue;
     }
 
     public void setReturnValue(Datum value) {
-        this.returnValue = value;
+        this.returnValue = value != null ? value : Datum.voidValue();
     }
 
-    // Tell target management
+    // === Receiver (for script instance method calls) ===
+
+    public Datum.ScriptInstanceRef getReceiver() {
+        return receiver;
+    }
+
+    public void setReceiver(Datum.ScriptInstanceRef receiver) {
+        this.receiver = receiver;
+    }
+
+    // === Passed flag ===
+
+    public boolean isPassed() {
+        return passed;
+    }
+
+    public void setPassed(boolean passed) {
+        this.passed = passed;
+    }
+
+    // === Tell target management ===
 
     public void pushTellTarget(Datum target) {
         tellTargets.push(target);
@@ -159,20 +347,12 @@ public class Scope {
         return !tellTargets.isEmpty();
     }
 
-    // Loop tracking (for next repeat support)
+    // === Loop tracking ===
 
-    /**
-     * Push the current instruction index when entering a loop.
-     * Called when JMP_IF_Z is executed (loop start).
-     */
     public void pushLoopIndex(int index) {
         loopReturnIndices.push(index);
     }
 
-    /**
-     * Pop the loop start index when exiting a loop.
-     * Returns -1 if no loop is active.
-     */
     public int popLoopIndex() {
         if (loopReturnIndices.isEmpty()) {
             return -1;
@@ -180,10 +360,6 @@ public class Scope {
         return loopReturnIndices.pop();
     }
 
-    /**
-     * Peek at the current loop start index without removing it.
-     * Returns -1 if no loop is active.
-     */
     public int peekLoopIndex() {
         if (loopReturnIndices.isEmpty()) {
             return -1;
@@ -191,30 +367,7 @@ public class Scope {
         return loopReturnIndices.peek();
     }
 
-    /**
-     * Check if currently inside a loop.
-     */
     public boolean inLoop() {
         return !loopReturnIndices.isEmpty();
-    }
-
-    // Receiver access (for script instance method calls)
-
-    public Datum.ScriptInstanceRef getReceiver() {
-        return receiver;
-    }
-
-    public void setReceiver(Datum.ScriptInstanceRef receiver) {
-        this.receiver = receiver;
-    }
-
-    // Passed flag (for exit handler propagation)
-
-    public boolean isPassed() {
-        return passed;
-    }
-
-    public void setPassed(boolean passed) {
-        this.passed = passed;
     }
 }

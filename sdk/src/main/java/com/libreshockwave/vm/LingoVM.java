@@ -14,18 +14,27 @@ import java.util.*;
 /**
  * Lingo bytecode virtual machine.
  * Executes Director Lingo scripts.
+ *
+ * Matches dirplayer-rs architecture:
+ * - Pre-allocated scope pool for efficient call stack management
+ * - Per-scope evaluation stacks
+ * - Unified handler execution via callHandler()
  */
 public class LingoVM {
 
+    // Maximum call stack depth (matches dirplayer-rs MAX_STACK_SIZE)
+    private static final int MAX_STACK_SIZE = 50;
+
     private final DirectorFile file;
     private final Map<String, Datum> globals = new HashMap<>();
-    private final Deque<Datum> stack = new ArrayDeque<>();
-    private final Deque<Scope> callStack = new ArrayDeque<>();
     private final Map<String, BuiltinHandler> builtins = new HashMap<>();
+
+    // Pre-allocated scope pool (matches dirplayer-rs scopes: Vec<Scope>)
+    private final List<Scope> scopes;
+    private int scopeCount = 0;
 
     private boolean halted;
     private int maxInstructions = 100000;
-    private int maxCallDepth = 500;  // Prevent stack overflow from deep recursion
     private NetManager netManager;
     private Datum lastHandlerResult = Datum.voidValue();
 
@@ -74,18 +83,85 @@ public class LingoVM {
 
     public LingoVM(DirectorFile file) {
         this.file = file;
+
+        // Pre-allocate scope pool (matches dirplayer-rs)
+        this.scopes = new ArrayList<>(MAX_STACK_SIZE);
+        for (int i = 0; i < MAX_STACK_SIZE; i++) {
+            scopes.add(new Scope(i));
+        }
+
         initializeComponents();
         HandlerRegistry.registerAll(this);
     }
 
     private void initializeComponents() {
-        this.scriptResolver = new ScriptResolver(file, file != null ? file.getCastManager() : null, callStack);
+        this.scriptResolver = new ScriptResolver(file, file != null ? file.getCastManager() : null, this);
         this.propertyAccessor = new PropertyAccessor(this);
-        this.methodDispatcher = new MethodDispatcher(this, scriptResolver, this::execute);
+        this.methodDispatcher = new MethodDispatcher(this, scriptResolver, this::callHandlerDirect);
         this.debugFormatter = new DebugFormatter(this);
     }
 
-    // Public API
+    // === Scope Pool Management (matches dirplayer-rs push_scope/pop_scope) ===
+
+    /**
+     * Push a new scope onto the call stack.
+     * Returns the scope reference (index).
+     * Matches dirplayer-rs: player.push_scope()
+     */
+    private int pushScope() {
+        if (scopeCount >= MAX_STACK_SIZE) {
+            throw new LingoException("Stack overflow - maximum call depth (" + MAX_STACK_SIZE + ") exceeded");
+        }
+        int scopeRef = scopeCount;
+        Scope scope = scopes.get(scopeRef);
+        scope.reset();
+        scopeCount++;
+        return scopeRef;
+    }
+
+    /**
+     * Pop the current scope from the call stack.
+     * Matches dirplayer-rs: player.pop_scope()
+     */
+    private void popScope() {
+        if (scopeCount > 0) {
+            scopeCount--;
+        }
+    }
+
+    /**
+     * Get the current scope reference (index).
+     * Matches dirplayer-rs: player.current_scope_ref()
+     */
+    public int currentScopeRef() {
+        return scopeCount > 0 ? scopeCount - 1 : -1;
+    }
+
+    /**
+     * Get a scope by reference.
+     */
+    public Scope getScope(int scopeRef) {
+        if (scopeRef >= 0 && scopeRef < scopeCount) {
+            return scopes.get(scopeRef);
+        }
+        return null;
+    }
+
+    /**
+     * Get the current scope.
+     */
+    public Scope getCurrentScope() {
+        return getScope(currentScopeRef());
+    }
+
+    /**
+     * Get the scope count (call depth).
+     */
+    public int getScopeCount() {
+        return scopeCount;
+    }
+
+    // === Public API ===
 
     public DirectorFile getFile() { return file; }
     public Datum getGlobal(String name) { return globals.getOrDefault(name, Datum.voidValue()); }
@@ -99,8 +175,8 @@ public class LingoVM {
         if (file != null) {
             file.setCastManager(castManager);
         }
-        this.scriptResolver = new ScriptResolver(file, castManager, callStack);
-        this.methodDispatcher = new MethodDispatcher(this, scriptResolver, this::execute);
+        this.scriptResolver = new ScriptResolver(file, castManager, this);
+        this.methodDispatcher = new MethodDispatcher(this, scriptResolver, this::callHandlerDirect);
     }
     public CastManager getCastManager() { return file != null ? file.getCastManager() : null; }
     public Datum getLastHandlerResult() { return lastHandlerResult; }
@@ -152,9 +228,15 @@ public class LingoVM {
     // Script resolution delegates
     public ScriptResolver getScriptResolver() { return scriptResolver; }
 
-    // Script execution
+    // === Unified Handler Execution ===
 
-    public Datum call(String handlerName, Datum... args) { return call(handlerName, Arrays.asList(args)); }
+    /**
+     * Call a handler by name with arguments.
+     * This is the main public entry point for script execution.
+     */
+    public Datum call(String handlerName, Datum... args) {
+        return call(handlerName, Arrays.asList(args));
+    }
 
     public Datum call(String handlerName, List<Datum> args) {
         BuiltinHandler builtin = builtins.get(handlerName.toLowerCase());
@@ -162,24 +244,52 @@ public class LingoVM {
 
         ScriptResolver.HandlerLocation loc = scriptResolver.findHandler(handlerName);
         if (loc == null) throw LingoException.undefinedHandler(handlerName);
-        return execute(loc.script(), loc.handler(), args.toArray(new Datum[0]));
+        return callHandler(null, loc.script(), loc.handler(), args);
     }
 
+    /**
+     * Legacy execute method for compatibility.
+     * Delegates to unified callHandler().
+     */
     public Datum execute(ScriptChunk script, ScriptChunk.Handler handler, Datum[] args) {
-        // Check for excessive recursion before pushing to call stack
-        if (callStack.size() >= maxCallDepth) {
-            String handlerName = scriptResolver.getName(handler.nameId());
-            throw new LingoException("Maximum call depth exceeded (" + maxCallDepth + ") - possible infinite recursion in handler '" + handlerName + "'");
-        }
+        return callHandler(null, script, handler, Arrays.asList(args));
+    }
 
-        if (debugMode) logHandlerEntry(script, handler, args);
+    /**
+     * Internal method for MethodDispatcher compatibility.
+     */
+    private Datum callHandlerDirect(ScriptChunk script, ScriptChunk.Handler handler, Datum[] args) {
+        return callHandler(null, script, handler, Arrays.asList(args));
+    }
 
-        Scope scope = new Scope(script, handler, args);
-        callStack.push(scope);
+    /**
+     * Unified handler execution method.
+     * Matches dirplayer-rs: player_call_script_handler_raw_args()
+     *
+     * @param receiver Optional script instance receiver (null for static scripts)
+     * @param script The script containing the handler
+     * @param handler The handler to execute
+     * @param args The arguments to pass
+     * @return The result of execution
+     */
+    public Datum callHandler(Datum.ScriptInstanceRef receiver, ScriptChunk script,
+                              ScriptChunk.Handler handler, List<Datum> args) {
+        if (debugMode) logHandlerEntry(script, handler, args.toArray(new Datum[0]));
+
+        // Push a new scope
+        int scopeRef = pushScope();
+        Scope scope = scopes.get(scopeRef);
+
+        // Initialize scope for this handler
+        Datum.CastMemberRef scriptMemberRef = null; // TODO: get from script
+        scope.initialize(script, handler, scriptMemberRef);
+        scope.setReceiver(receiver);
+        scope.setArgs(args);
+
         int instructionCount = 0;
         halted = false;
 
-        // Loop logging optimization - track iterations to avoid flooding logs
+        // Loop logging optimization
         Map<Integer, Integer> loopIterations = new HashMap<>();
         int loopStartIP = -1;
         boolean suppressLoopLogging = false;
@@ -187,48 +297,41 @@ public class LingoVM {
         try {
             while (!scope.isAtEnd() && !halted && instructionCount < maxInstructions) {
                 ScriptChunk.Handler.Instruction instr = scope.getCurrentInstruction();
-                int currentIP = scope.getInstructionPointer();
+                int currentIP = scope.getBytecodeIndex();
 
-                // Track loop iterations for logging optimization
+                // Debug logging with loop optimization
                 if (debugMode) {
                     Opcode op = instr.opcode();
-
-                    // END_REPEAT jumps back - this marks a loop iteration
                     if (op == Opcode.END_REPEAT) {
                         int targetOffset = instr.offset() - instr.argument();
-                        int loopStart = scope.getHandler().getInstructionIndex(targetOffset);
+                        int loopStart = handler.getInstructionIndex(targetOffset);
                         if (loopStart >= 0) {
                             int iteration = loopIterations.getOrDefault(loopStart, 0) + 1;
                             loopIterations.put(loopStart, iteration);
                             if (iteration == 1) {
-                                // First iteration just completed, suppress future logging
                                 loopStartIP = loopStart;
                                 suppressLoopLogging = true;
                                 debugLog("[LOOP] First iteration complete, suppressing further loop logging");
                             } else if (iteration % 100 == 0) {
-                                // Periodic update for long loops
                                 debugLog("[LOOP] Iteration " + iteration + "...");
                             }
                         }
                     }
 
-                    // Only log if not suppressing loop output
                     if (!suppressLoopLogging || currentIP < loopStartIP || op == Opcode.JMP_IF_Z) {
                         debugLog(String.format("[%03d] %-20s | Stack: %s",
                             currentIP,
                             debugFormatter.formatInstruction(instr, scriptResolver),
-                            debugFormatter.formatStack(stack)));
+                            debugFormatter.formatScopeStack(scope)));
                     }
                 }
 
-                int ipBeforeExec = scope.getInstructionPointer();
+                int ipBeforeExec = scope.getBytecodeIndex();
                 executeInstruction(scope, instr);
 
-                // Check if we exited the loop (JMP_IF_Z jumped forward past the loop)
                 if (debugMode && suppressLoopLogging && instr.opcode() == Opcode.JMP_IF_Z) {
-                    int newIP = scope.getInstructionPointer();
+                    int newIP = scope.getBytecodeIndex();
                     if (newIP > ipBeforeExec) {
-                        // We jumped forward - exiting the loop
                         int totalIterations = loopIterations.getOrDefault(loopStartIP, 0);
                         debugLog("[LOOP] Exited after " + totalIterations + " iterations");
                         suppressLoopLogging = false;
@@ -239,153 +342,74 @@ public class LingoVM {
                 scope.advanceIP();
                 instructionCount++;
             }
+
             if (instructionCount >= maxInstructions) {
                 throw new LingoException("Execution limit exceeded: " + maxInstructions + " instructions");
             }
+
             Datum result = scope.getReturnValue();
             lastHandlerResult = result;
 
             // Match dirplayer-rs: propagate passed flag to parent scope
-            if (scope.isPassed() && !callStack.isEmpty()) {
-                // The current scope is still on the stack, get the parent
-                Scope parentScope = null;
-                var it = callStack.iterator();
-                if (it.hasNext()) {
-                    Scope current = it.next();
-                    if (it.hasNext()) {
-                        parentScope = it.next();
-                    }
-                }
-                if (parentScope != null) {
-                    parentScope.setPassed(true);
-                }
+            if (scope.isPassed() && scopeCount > 1) {
+                Scope parentScope = scopes.get(scopeCount - 2);
+                parentScope.setPassed(true);
             }
 
-            if (debugMode) { debugLog("=== RETURN " + debugFormatter.formatDatum(result) + " ==="); }
+            if (debugMode) {
+                debugLog("=== RETURN " + debugFormatter.formatDatum(result) + " ===");
+            }
+
             return result;
         } finally {
-            callStack.pop();
+            popScope();
             if (debugMode) debugIndent = Math.max(0, debugIndent - 1);
         }
     }
 
     /**
-     * Execute a handler with an optional receiver (for script instance method calls).
-     * Match dirplayer-rs: player_call_script_handler_raw_args(receiver, handler_ref, args, true)
-     *
-     * @param script The script containing the handler
-     * @param handler The handler to execute
-     * @param args The arguments to pass
-     * @param receiver Optional script instance receiver (null for static scripts)
-     * @return The result of execution
+     * Result of scope execution.
+     * Matches dirplayer-rs ScopeResult.
      */
-    private Datum executeWithReceiver(ScriptChunk script, ScriptChunk.Handler handler, List<Datum> args, Datum.ScriptInstanceRef receiver) {
-        // Check for excessive recursion before pushing to call stack
-        if (callStack.size() >= maxCallDepth) {
-            String handlerName = scriptResolver.getName(handler.nameId());
-            throw new LingoException("Maximum call depth exceeded (" + maxCallDepth + ") - possible infinite recursion in handler '" + handlerName + "'");
-        }
+    public record ScopeResult(Datum returnValue, boolean passed) {}
 
-        if (debugMode) logHandlerEntry(script, handler, args.toArray(new Datum[0]));
-
-        Scope scope = new Scope(script, handler, args.toArray(new Datum[0]));
-        scope.setReceiver(receiver);  // Set receiver for script instance method calls
-        callStack.push(scope);
-        int instructionCount = 0;
-        halted = false;
-
-        try {
-            while (!scope.isAtEnd() && !halted && instructionCount < maxInstructions) {
-                ScriptChunk.Handler.Instruction instr = scope.getCurrentInstruction();
-
-                if (debugMode) {
-                    int currentIP = scope.getInstructionPointer();
-                    debugLog(String.format("[%03d] %-20s | Stack: %s",
-                        currentIP,
-                        debugFormatter.formatInstruction(instr, scriptResolver),
-                        debugFormatter.formatStack(stack)));
-                }
-
-                executeInstruction(scope, instr);
-                scope.advanceIP();
-                instructionCount++;
-            }
-            if (instructionCount >= maxInstructions) {
-                throw new LingoException("Execution limit exceeded: " + maxInstructions + " instructions");
-            }
-            Datum result = scope.getReturnValue();
-            lastHandlerResult = result;
-
-            // Match dirplayer-rs: propagate passed flag to parent scope
-            if (scope.isPassed() && callStack.size() > 1) {
-                var it = callStack.iterator();
-                if (it.hasNext()) {
-                    it.next(); // Skip current scope
-                    if (it.hasNext()) {
-                        Scope parentScope = it.next();
-                        parentScope.setPassed(true);
-                    }
-                }
-            }
-
-            if (debugMode) { debugLog("=== RETURN " + debugFormatter.formatDatum(result) + " ==="); }
-            return result;
-        } finally {
-            callStack.pop();
-            if (debugMode) debugIndent = Math.max(0, debugIndent - 1);
+    /**
+     * Handle scope return - propagate passed flag to parent scope.
+     * Matches dirplayer-rs: player_handle_scope_return()
+     */
+    private void handleScopeReturn(ScopeResult result) {
+        if (result.passed && scopeCount > 0) {
+            Scope currentScope = scopes.get(scopeCount - 1);
+            currentScope.setPassed(true);
         }
     }
 
-    /**
-     * Format a script identifier for display (member name if available, otherwise "#id").
-     */
+    // === Script Name Resolution ===
+
     public String formatChunkName(ScriptChunk script) {
         String name = getScriptName(script);
-
         if (name == null) {
             name = script.scriptType().name().toUpperCase() + " #" + script.id();
         }
-
         return name;
     }
 
-    /**
-     * Gets the name of a script from its ScriptChunk by looking up the
-     * corresponding cast member name.
-     *
-     * @param script the ScriptChunk to get the name for
-     * @return the script name, or null if not found
-     */
     public String getScriptName(ScriptChunk script) {
-        // Use the script's own file reference - this handles both main file scripts
-        // and scripts from external cast files
         DirectorFile scriptFile = script.file();
-
-        // Build a map from scriptId to cast member name
         Map<Integer, String> scriptIdToName = new HashMap<>();
 
-        /*
-        for (var cast : scriptFile.getCastManager().getCasts()) {
-            for (var castMember : cast.getAllMembers()) {
-                if (castMember.isScript() && castMember.scriptId() > 0) {
-                    scriptIdToName.put(castMember.scriptId(), castMember.name());
-                }
-            }
-        }
-*/
         for (CastMemberChunk cm : scriptFile.getCastMembers()) {
             if (cm.isScript() && cm.scriptId() > 0) {
                 scriptIdToName.put(cm.scriptId(), cm.name());
             }
         }
 
-        // Find the script's index in the script context
         if (scriptFile.getScriptContext() != null) {
             var entries = scriptFile.getScriptContext().entries();
             for (int i = 0; i < entries.size(); i++) {
                 var entry = entries.get(i);
                 if (entry.id() == script.id()) {
-                    int scriptIndex = i + 1;  // 1-based index
+                    int scriptIndex = i + 1;
                     return scriptIdToName.getOrDefault(scriptIndex, null);
                 }
             }
@@ -397,7 +421,7 @@ public class LingoVM {
     private void logHandlerEntry(ScriptChunk script, ScriptChunk.Handler handler, Datum[] args) {
         String handlerName = scriptResolver.getName(handler.nameId());
         String scriptType = script.scriptType() != null ? script.scriptType().name() : "UNKNOWN";
-        String memberName = this.formatChunkName (script);
+        String memberName = this.formatChunkName(script);
         CastLib sourceCast = scriptResolver.findCastForScript(script);
         String castInfo = sourceCast != null
             ? " in cast#" + sourceCast.getNumber() + (sourceCast.getName().isEmpty() ? "" : " \"" + sourceCast.getName() + "\"")
@@ -405,153 +429,159 @@ public class LingoVM {
         String scriptInfo = memberName != null && !memberName.isEmpty()
             ? scriptType + " \"" + memberName + "\"" + castInfo
             : scriptType + " script#" + script.id() + castInfo;
-        String callerInfo = !callStack.isEmpty()
-            ? " [called from " + scriptResolver.getName(callStack.peek().getHandler().nameId()) + " at IP:" + callStack.peek().getInstructionPointer() + "]"
+        String callerInfo = scopeCount > 0
+            ? " [called from " + scriptResolver.getName(getCurrentScope().getHandler().nameId()) + " at IP:" + getCurrentScope().getBytecodeIndex() + "]"
             : "";
         debugLog("=== CALL " + handlerName + " in " + scriptInfo + callerInfo + " ===");
         debugLog("Args: " + debugFormatter.formatArgs(args));
         debugIndent++;
     }
 
+    // === Instruction Execution ===
+
     private void executeInstruction(Scope scope, ScriptChunk.Handler.Instruction instr) {
         Opcode op = instr.opcode();
         int arg = instr.argument();
 
         switch (op) {
-            // Stack operations
-            case PUSH_ZERO -> push(Datum.of(0));
-            case PUSH_INT8, PUSH_INT16, PUSH_INT32 -> push(Datum.of(arg));
-            case PUSH_FLOAT32 -> push(Datum.of(Float.intBitsToFloat(arg)));
-            case PUSH_CONS -> push(getLiteral(scope.getScript(), arg));
-            case PUSH_SYMB -> push(Datum.symbol(scriptResolver.getName(arg)));
-            case POP -> { for (int i = 0; i < arg; i++) if (!stack.isEmpty()) stack.pop(); }
-            case SWAP -> { if (stack.size() >= 2) { Datum a = stack.pop(); Datum b = stack.pop(); stack.push(a); stack.push(b); } }
-            case PEEK -> { if (!stack.isEmpty()) push(stack.peek()); }
+            // Stack operations (now use per-scope stack)
+            case PUSH_ZERO -> scope.push(Datum.of(0));
+            case PUSH_INT8, PUSH_INT16, PUSH_INT32 -> scope.push(Datum.of(arg));
+            case PUSH_FLOAT32 -> scope.push(Datum.of(Float.intBitsToFloat(arg)));
+            case PUSH_CONS -> scope.push(getLiteral(scope.getScript(), arg));
+            case PUSH_SYMB -> scope.push(Datum.symbol(scriptResolver.getName(arg)));
+            case POP -> { for (int i = 0; i < arg; i++) scope.pop(); }
+            case SWAP -> scope.swap();
+            case PEEK -> scope.push(scope.peek());
 
             // Arithmetic
-            case ADD -> { Datum b = pop(), a = pop(); push(add(a, b)); }
-            case SUB -> { Datum b = pop(), a = pop(); push(subtract(a, b)); }
-            case MUL -> { Datum b = pop(), a = pop(); push(multiply(a, b)); }
-            case DIV -> { Datum b = pop(), a = pop(); push(divide(a, b)); }
-            case MOD -> { Datum b = pop(), a = pop(); push(modulo(a, b)); }
-            case INV -> push(negate(pop()));
+            case ADD -> { Datum b = scope.pop(), a = scope.pop(); scope.push(add(a, b)); }
+            case SUB -> { Datum b = scope.pop(), a = scope.pop(); scope.push(subtract(a, b)); }
+            case MUL -> { Datum b = scope.pop(), a = scope.pop(); scope.push(multiply(a, b)); }
+            case DIV -> { Datum b = scope.pop(), a = scope.pop(); scope.push(divide(a, b)); }
+            case MOD -> { Datum b = scope.pop(), a = scope.pop(); scope.push(modulo(a, b)); }
+            case INV -> scope.push(negate(scope.pop()));
 
             // Comparison
-            case LT -> { Datum b = pop(), a = pop(); push(compare(a, b) < 0 ? Datum.TRUE : Datum.FALSE); }
-            case LT_EQ -> { Datum b = pop(), a = pop(); push(compare(a, b) <= 0 ? Datum.TRUE : Datum.FALSE); }
-            case GT -> { Datum b = pop(), a = pop(); push(compare(a, b) > 0 ? Datum.TRUE : Datum.FALSE); }
-            case GT_EQ -> { Datum b = pop(), a = pop(); push(compare(a, b) >= 0 ? Datum.TRUE : Datum.FALSE); }
-            case EQ -> { Datum b = pop(), a = pop(); push(equals(a, b) ? Datum.TRUE : Datum.FALSE); }
-            case NT_EQ -> { Datum b = pop(), a = pop(); push(!equals(a, b) ? Datum.TRUE : Datum.FALSE); }
+            case LT -> { Datum b = scope.pop(), a = scope.pop(); scope.push(compare(a, b) < 0 ? Datum.TRUE : Datum.FALSE); }
+            case LT_EQ -> { Datum b = scope.pop(), a = scope.pop(); scope.push(compare(a, b) <= 0 ? Datum.TRUE : Datum.FALSE); }
+            case GT -> { Datum b = scope.pop(), a = scope.pop(); scope.push(compare(a, b) > 0 ? Datum.TRUE : Datum.FALSE); }
+            case GT_EQ -> { Datum b = scope.pop(), a = scope.pop(); scope.push(compare(a, b) >= 0 ? Datum.TRUE : Datum.FALSE); }
+            case EQ -> { Datum b = scope.pop(), a = scope.pop(); scope.push(equals(a, b) ? Datum.TRUE : Datum.FALSE); }
+            case NT_EQ -> { Datum b = scope.pop(), a = scope.pop(); scope.push(!equals(a, b) ? Datum.TRUE : Datum.FALSE); }
 
             // Logical
-            case AND -> { Datum b = pop(), a = pop(); push(a.boolValue() && b.boolValue() ? Datum.TRUE : Datum.FALSE); }
-            case OR -> { Datum b = pop(), a = pop(); push(a.boolValue() || b.boolValue() ? Datum.TRUE : Datum.FALSE); }
-            case NOT -> push(!pop().boolValue() ? Datum.TRUE : Datum.FALSE);
+            case AND -> { Datum b = scope.pop(), a = scope.pop(); scope.push(a.boolValue() && b.boolValue() ? Datum.TRUE : Datum.FALSE); }
+            case OR -> { Datum b = scope.pop(), a = scope.pop(); scope.push(a.boolValue() || b.boolValue() ? Datum.TRUE : Datum.FALSE); }
+            case NOT -> scope.push(!scope.pop().boolValue() ? Datum.TRUE : Datum.FALSE);
 
             // String operations
-            case JOIN_STR -> { Datum b = pop(), a = pop(); push(Datum.of(a.stringValue() + b.stringValue())); }
-            case JOIN_PAD_STR -> { Datum b = pop(), a = pop(); push(Datum.of(a.stringValue() + " " + b.stringValue())); }
-            case CONTAINS_STR, CONTAINS_0_STR -> { Datum b = pop(), a = pop(); push(a.stringValue().toLowerCase().contains(b.stringValue().toLowerCase()) ? Datum.TRUE : Datum.FALSE); }
+            case JOIN_STR -> { Datum b = scope.pop(), a = scope.pop(); scope.push(Datum.of(a.stringValue() + b.stringValue())); }
+            case JOIN_PAD_STR -> { Datum b = scope.pop(), a = scope.pop(); scope.push(Datum.of(a.stringValue() + " " + b.stringValue())); }
+            case CONTAINS_STR, CONTAINS_0_STR -> { Datum b = scope.pop(), a = scope.pop(); scope.push(a.stringValue().toLowerCase().contains(b.stringValue().toLowerCase()) ? Datum.TRUE : Datum.FALSE); }
 
             // Variables
-            case GET_LOCAL -> { int idx = arg / scriptResolver.getVariableMultiplier(); push(scope.getLocal(idx)); }
-            case SET_LOCAL -> { int idx = arg / scriptResolver.getVariableMultiplier(); scope.setLocal(idx, pop()); }
-            case GET_PARAM -> { int idx = arg / scriptResolver.getVariableMultiplier(); push(scope.getArg(idx)); }
-            case SET_PARAM -> { int idx = arg / scriptResolver.getVariableMultiplier(); scope.setArg(idx, pop()); }
-            case GET_GLOBAL, GET_GLOBAL2 -> push(getGlobal(scriptResolver.getName(arg)));
-            case SET_GLOBAL, SET_GLOBAL2 -> setGlobal(scriptResolver.getName(arg), pop());
+            case GET_LOCAL -> { int idx = arg / scriptResolver.getVariableMultiplier(); scope.push(scope.getLocal(idx)); }
+            case SET_LOCAL -> { int idx = arg / scriptResolver.getVariableMultiplier(); scope.setLocal(idx, scope.pop()); }
+            case GET_PARAM -> { int idx = arg / scriptResolver.getVariableMultiplier(); scope.push(scope.getArg(idx)); }
+            case SET_PARAM -> { int idx = arg / scriptResolver.getVariableMultiplier(); scope.setArg(idx, scope.pop()); }
+            case GET_GLOBAL, GET_GLOBAL2 -> scope.push(getGlobal(scriptResolver.getName(arg)));
+            case SET_GLOBAL, SET_GLOBAL2 -> setGlobal(scriptResolver.getName(arg), scope.pop());
 
-            // Control flow - using bytecodeIndexMap for O(1) offset lookups
+            // Control flow
             case JMP -> {
                 int targetOffset = instr.offset() + arg;
                 int targetIndex = scope.getHandler().getInstructionIndex(targetOffset);
                 if (targetIndex >= 0) {
-                    scope.setInstructionPointer(targetIndex - 1);
+                    scope.setBytecodeIndex(targetIndex - 1);
                 } else {
                     throw new LingoException("JMP target offset not found: " + targetOffset);
                 }
             }
             case JMP_IF_Z -> {
-                // Conditional jump - used for repeat loops and if statements
-                if (!pop().boolValue()) {
-                    // Condition is false - jump forward (exit loop or skip if-body)
+                if (!scope.pop().boolValue()) {
                     int targetOffset = instr.offset() + arg;
                     int targetIndex = scope.getHandler().getInstructionIndex(targetOffset);
                     if (targetIndex >= 0) {
-                        scope.setInstructionPointer(targetIndex - 1);
+                        scope.setBytecodeIndex(targetIndex - 1);
                     } else {
                         throw new LingoException("JMP_IF_Z target offset not found: " + targetOffset);
                     }
                 }
-                // If condition is true, continue to next instruction
             }
             case END_REPEAT -> {
-                // Jump back to loop start
                 int targetOffset = instr.offset() - arg;
                 int targetIndex = scope.getHandler().getInstructionIndex(targetOffset);
                 if (targetIndex >= 0) {
-                    scope.setInstructionPointer(targetIndex - 1);
+                    scope.setBytecodeIndex(targetIndex - 1);
                 } else {
                     throw new LingoException("END_REPEAT target offset not found: " + targetOffset);
                 }
             }
-            case RET -> { if (!stack.isEmpty()) scope.setReturnValue(pop()); scope.setInstructionPointer(scope.getHandler().instructions().size()); }
-            case RET_FACTORY -> { scope.setReturnValue(Datum.voidValue()); scope.setInstructionPointer(scope.getHandler().instructions().size()); }
+            case RET -> {
+                if (scope.stackSize() > 0) scope.setReturnValue(scope.pop());
+                scope.setBytecodeIndex(scope.getHandler().instructions().size());
+            }
+            case RET_FACTORY -> {
+                scope.setReturnValue(Datum.voidValue());
+                scope.setBytecodeIndex(scope.getHandler().instructions().size());
+            }
 
             // Lists
-            case PUSH_LIST -> { List<Datum> items = popN(arg); Datum.DList list = Datum.list(); items.forEach(list::add); push(list); }
-            case PUSH_PROP_LIST -> { Datum.PropList pl = Datum.propList(); for (int i = 0; i < arg; i++) { Datum v = pop(), k = pop(); pl.put(k, v); } push(pl); }
-            case PUSH_ARG_LIST -> push(new Datum.ArgList(popN(arg)));
-            case PUSH_ARG_LIST_NO_RET -> push(new Datum.ArgListNoRet(popN(arg)));
+            case PUSH_LIST -> { List<Datum> items = scope.popN(arg); Datum.DList list = Datum.list(); items.forEach(list::add); scope.push(list); }
+            case PUSH_PROP_LIST -> { Datum.PropList pl = Datum.propList(); for (int i = 0; i < arg; i++) { Datum v = scope.pop(), k = scope.pop(); pl.put(k, v); } scope.push(pl); }
+            case PUSH_ARG_LIST -> scope.push(new Datum.ArgList(scope.popN(arg)));
+            case PUSH_ARG_LIST_NO_RET -> scope.push(new Datum.ArgListNoRet(scope.popN(arg)));
 
             // Function calls
             case EXT_CALL -> executeExtCall(scope, scriptResolver.getName(arg));
             case LOCAL_CALL -> executeLocalCall(scope, arg);
 
             // Property access
-            case GET_PROP, GET_OBJ_PROP, GET_CHAINED_PROP -> push(propertyAccessor.getProperty(pop(), scriptResolver.getName(arg), this::getActiveInstances));
-            case SET_PROP, SET_OBJ_PROP -> { Datum v = pop(), o = pop(); propertyAccessor.setProperty(o, scriptResolver.getName(arg), v, this::getActiveInstances); }
-            case GET_TOP_LEVEL_PROP -> push(getGlobal(scriptResolver.getName(arg)));
-            case GET_MOVIE_PROP -> push(propertyAccessor.getMovieProperty(scriptResolver.getName(arg), movieState));
-            case SET_MOVIE_PROP -> propertyAccessor.setMovieProperty(scriptResolver.getName(arg), pop(), movieState);
+            case GET_PROP, GET_OBJ_PROP, GET_CHAINED_PROP -> scope.push(propertyAccessor.getProperty(scope.pop(), scriptResolver.getName(arg), this::getActiveInstances));
+            case SET_PROP, SET_OBJ_PROP -> { Datum v = scope.pop(), o = scope.pop(); propertyAccessor.setProperty(o, scriptResolver.getName(arg), v, this::getActiveInstances); }
+            case GET_TOP_LEVEL_PROP -> scope.push(getGlobal(scriptResolver.getName(arg)));
+            case GET_MOVIE_PROP -> scope.push(propertyAccessor.getMovieProperty(scriptResolver.getName(arg), movieState));
+            case SET_MOVIE_PROP -> propertyAccessor.setMovieProperty(scriptResolver.getName(arg), scope.pop(), movieState);
 
             // Object calls
-            case OBJ_CALL, OBJ_CALL_V4 -> executeObjCall(scriptResolver.getName(arg));
+            case OBJ_CALL, OBJ_CALL_V4 -> executeObjCall(scope, scriptResolver.getName(arg));
 
             // Field access
             case GET_FIELD -> executeGetField(scope);
 
             // The entity
-            case THE_BUILTIN -> push(propertyAccessor.getMovieProperty(scriptResolver.getName(arg), movieState));
-            case GET -> push(getGlobal(scriptResolver.getName(arg)));
-            case SET -> setGlobal(scriptResolver.getName(arg), pop());
-            case PUT -> System.out.println(pop().stringValue());
+            case THE_BUILTIN -> scope.push(propertyAccessor.getMovieProperty(scriptResolver.getName(arg), movieState));
+            case GET -> scope.push(getGlobal(scriptResolver.getName(arg)));
+            case SET -> setGlobal(scriptResolver.getName(arg), scope.pop());
+            case PUT -> System.out.println(scope.pop().stringValue());
 
             // Object creation
-            case NEW_OBJ -> { List<Datum> args2 = extractArgList(pop()); push(new Datum.ScriptInstanceRef(scriptResolver.getName(arg), new HashMap<>())); }
-            case PUSH_VAR_REF, PUSH_CHUNK_VAR_REF -> push(new Datum.VarRef(scriptResolver.getName(arg)));
+            case NEW_OBJ -> { List<Datum> args2 = extractArgList(scope.pop()); scope.push(new Datum.ScriptInstanceRef(scriptResolver.getName(arg), new HashMap<>())); }
+            case PUSH_VAR_REF, PUSH_CHUNK_VAR_REF -> scope.push(new Datum.VarRef(scriptResolver.getName(arg)));
 
             // String chunks
-            case GET_CHUNK -> { Datum e = pop(), s = pop(), t = pop(), str = pop(); push(getStringChunk(str.stringValue(), t, s.intValue(), e.intValue())); }
-            case PUT_CHUNK, DELETE_CHUNK, HILITE_CHUNK -> { for (int i = 0; i < 3; i++) pop(); }
+            case GET_CHUNK -> { Datum e = scope.pop(), s = scope.pop(), t = scope.pop(), str = scope.pop(); scope.push(getStringChunk(str.stringValue(), t, s.intValue(), e.intValue())); }
+            case PUT_CHUNK, DELETE_CHUNK, HILITE_CHUNK -> { for (int i = 0; i < 3; i++) scope.pop(); }
 
             // Tell blocks
-            case START_TELL -> scope.pushTellTarget(pop());
+            case START_TELL -> scope.pushTellTarget(scope.pop());
             case END_TELL -> scope.popTellTarget();
-            case TELL_CALL -> { String name = scriptResolver.getName(arg); List<Datum> args2 = extractArgList(pop()); Datum t = scope.getTellTarget(); push(t != null ? methodDispatcher.callMethod(t, name, args2, xtraInstanceCallback) : call(name, args2)); }
+            case TELL_CALL -> { String name = scriptResolver.getName(arg); List<Datum> args2 = extractArgList(scope.pop()); Datum t = scope.getTellTarget(); scope.push(t != null ? methodDispatcher.callMethod(t, name, args2, xtraInstanceCallback) : call(name, args2)); }
 
             // Sprite tests
-            case ONTO_SPR, INTO_SPR -> { pop(); pop(); push(Datum.FALSE); }
+            case ONTO_SPR, INTO_SPR -> { scope.pop(); scope.pop(); scope.push(Datum.FALSE); }
 
-            case CALL_JAVASCRIPT -> push(Datum.voidValue());
+            case CALL_JAVASCRIPT -> scope.push(Datum.voidValue());
 
             default -> System.err.println("Unimplemented opcode: " + op + " (0x" + Integer.toHexString(op.getCode()) + ")");
         }
     }
 
+    // === Handler Call Implementations ===
+
     private void executeExtCall(Scope scope, String handlerName) {
-        Datum argListDatum = pop();
+        Datum argListDatum = scope.pop();
         boolean isNoRet = argListDatum instanceof Datum.ArgListNoRet;
         List<Datum> args = extractArgList(argListDatum);
 
@@ -559,24 +589,23 @@ public class LingoVM {
         if ("return".equals(handlerName)) {
             Datum returnValue = args.isEmpty() ? Datum.voidValue() : args.getFirst();
             scope.setReturnValue(returnValue);
-            // Match dirplayer-rs: return HandlerExecutionResult::Stop (end execution)
-            scope.setInstructionPointer(scope.getHandler().instructions().size());
-            if (!isNoRet) push(returnValue);
+            scope.setBytecodeIndex(scope.getHandler().instructions().size());
+            if (!isNoRet) scope.push(returnValue);
             return;
         }
 
         Datum result = callGlobalHandler(handlerName, args, scope);
         lastHandlerResult = result;
         scope.setReturnValue(result);
-        if (!isNoRet) push(result);
+        if (!isNoRet) scope.push(result);
     }
 
     /**
      * Execute a local call (handler in the current script).
-     * Match dirplayer-rs: local_call() in flow_control.rs
+     * Matches dirplayer-rs: local_call() in flow_control.rs
      */
     private void executeLocalCall(Scope currentScope, int handlerIndex) {
-        Datum argListDatum = pop();
+        Datum argListDatum = currentScope.pop();
         boolean isNoRet = argListDatum instanceof Datum.ArgListNoRet;
         List<Datum> args = new ArrayList<>(extractArgList(argListDatum));
 
@@ -593,55 +622,47 @@ public class LingoVM {
             if (handlerName != null && !args.isEmpty()) {
                 HandlerWithReceiver hwResult = getHandlerFromFirstArgWithReceiver(args, handlerName);
                 if (hwResult != null) {
-                    // Use handler from first arg (polymorphism)
                     receiver = hwResult.receiver;
                     resolvedScript = hwResult.script;
                     resolvedHandler = hwResult.handler;
                 } else {
-                    // Match dirplayer-rs: Use receiver from current scope
                     receiver = currentScope.getReceiver();
                 }
             } else {
-                // Match dirplayer-rs: Use receiver from current scope
                 receiver = currentScope.getReceiver();
             }
 
-            // Execute the handler with receiver
-            Datum result = executeWithReceiver(resolvedScript, resolvedHandler, args, receiver);
-            handleScopeReturn();
-            if (!isNoRet) push(result);
+            Datum result = callHandler(receiver, resolvedScript, resolvedHandler, args);
+            if (!isNoRet) currentScope.push(result);
         } else if (!isNoRet) {
-            push(Datum.voidValue());
+            currentScope.push(Datum.voidValue());
         }
     }
 
-    /**
-     * Result of handler resolution with receiver information.
-     */
     private record HandlerWithReceiver(
         ScriptChunk script,
         ScriptChunk.Handler handler,
         Datum.ScriptInstanceRef receiver
     ) {}
 
-    private void executeObjCall(String methodName) {
-        Datum argListDatum = pop();
+    private void executeObjCall(Scope scope, String methodName) {
+        Datum argListDatum = scope.pop();
         boolean isNoRet = argListDatum instanceof Datum.ArgListNoRet;
         List<Datum> args = extractArgList(argListDatum);
         Datum obj = args.isEmpty() ? Datum.voidValue() : args.remove(0);
         Datum result = methodDispatcher.callMethod(obj, methodName, args, xtraInstanceCallback);
         lastHandlerResult = result;
-        if (!isNoRet) push(result);
+        if (!isNoRet) scope.push(result);
     }
 
     private void executeGetField(Scope scope) {
         int dirVersion = file != null && file.getConfig() != null ? file.getConfig().directorVersion() : 0;
-        Datum castId = dirVersion >= 500 ? pop() : Datum.of(0);
+        Datum castId = dirVersion >= 500 ? scope.pop() : Datum.of(0);
         if (castId.intValue() <= 0) {
             CastLib scriptCast = scriptResolver.findCastForScript(scope.getScript());
             castId = scriptCast != null ? Datum.of(scriptCast.getNumber()) : Datum.of(1);
         }
-        push(Datum.of(propertyAccessor.getFieldText(pop(), castId, scriptResolver)));
+        scope.push(Datum.of(propertyAccessor.getFieldText(scope.pop(), castId, scriptResolver)));
     }
 
     /**
@@ -653,30 +674,24 @@ public class LingoVM {
      */
     private Datum callGlobalHandler(String handlerName, List<Datum> args, Scope scope) {
         // "new" invocations should always go through the built-in handler
-        // Match dirplayer-rs: if handler_name != "new"
         if (!handlerName.equalsIgnoreCase("new")) {
 
             // 1. Check first arg for script/instance with handler (polymorphism)
             if (!args.isEmpty()) {
-                ScriptResolver.HandlerLocation loc = getHandlerFromFirstArg(args, handlerName);
-                if (loc != null) {
-                    Datum result = executeWithReceiver(loc.script(), loc.handler(), args, null);
-                    handleScopeReturn();
-                    return result;
+                HandlerWithReceiver hwResult = getHandlerFromFirstArgWithReceiver(args, handlerName);
+                if (hwResult != null) {
+                    return callHandler(hwResult.receiver, hwResult.script, hwResult.handler, args);
                 }
             }
 
             // 2. Search active script instances (from score)
-            // Match dirplayer-rs: player.movie.score.get_active_script_instance_list()
             if (activeScriptInstancesCallback != null) {
                 for (Datum.ScriptInstanceRef instanceRef : activeScriptInstancesCallback.getActiveScriptInstances()) {
                     ScriptChunk script = scriptResolver.findScriptByCastRef(instanceRef.scriptRef());
                     if (script != null) {
                         for (ScriptChunk.Handler h : script.handlers()) {
                             if (handlerName.equalsIgnoreCase(scriptResolver.getName(h.nameId()))) {
-                                Datum result = executeWithReceiver(script, h, args, instanceRef);
-                                handleScopeReturn();
-                                return result;
+                                return callHandler(instanceRef, script, h, args);
                             }
                         }
                     }
@@ -684,17 +699,13 @@ public class LingoVM {
             }
 
             // 3. Search active static scripts (movie scripts + frame script)
-            // Match dirplayer-rs: get_active_static_script_refs()
             ScriptResolver.HandlerLocation staticLoc = scriptResolver.findHandler(handlerName);
             if (staticLoc != null) {
-                Datum result = executeWithReceiver(staticLoc.script(), staticLoc.handler(), args, null);
-                handleScopeReturn();
-                return result;
+                return callHandler(null, staticLoc.script(), staticLoc.handler(), args);
             }
         }
 
         // 4. Check built-in handlers (LAST - fallback)
-        // Match dirplayer-rs: BuiltInHandlerManager::call_handler()
         BuiltinHandler builtin = builtins.get(handlerName.toLowerCase());
         if (builtin != null) {
             return builtin.call(this, args);
@@ -703,48 +714,17 @@ public class LingoVM {
         throw LingoException.undefinedHandler(handlerName);
     }
 
-    /**
-     * Handle scope return - propagate passed flag to parent scope.
-     * Match dirplayer-rs: player_handle_scope_return()
-     */
-    private void handleScopeReturn() {
-        // The scope was already popped in execute(), but we saved the passed flag
-        // We need to propagate it to the current scope (the caller)
-        if (!callStack.isEmpty()) {
-            Scope currentScope = callStack.peek();
-            // The passed flag was already set in execute() if needed
-        }
-    }
+    // === Handler Resolution ===
 
-    /**
-     * Get handler from first argument (for polymorphic dispatch).
-     * Match dirplayer-rs: ScriptInstanceUtils::get_handler_from_first_arg()
-     */
-    private ScriptResolver.HandlerLocation getHandlerFromFirstArg(List<Datum> args, String handlerName) {
-        HandlerWithReceiver result = getHandlerFromFirstArgWithReceiver(args, handlerName);
-        if (result == null) return null;
-        return new ScriptResolver.HandlerLocation(result.script, result.handler, null, null);
-    }
-
-    /**
-     * Get handler from first argument with receiver information.
-     * Match dirplayer-rs: ScriptInstanceUtils::get_handler_from_first_arg()
-     *
-     * Returns (receiver, script, handler) tuple where:
-     * - For ScriptRef: receiver is null
-     * - For ScriptInstanceRef: receiver is the instance ref (includes ancestor chain lookup)
-     */
     private HandlerWithReceiver getHandlerFromFirstArgWithReceiver(List<Datum> args, String handlerName) {
         if (args.isEmpty()) return null;
         Datum firstArg = args.getFirst();
 
-        // Match dirplayer-rs: Datum::ScriptRef case
         if (firstArg instanceof Datum.ScriptRef sr) {
             ScriptChunk script = scriptResolver.findScriptByCastRef(sr.memberRef());
             if (script != null) {
                 for (ScriptChunk.Handler h : script.handlers()) {
                     if (handlerName.equalsIgnoreCase(scriptResolver.getName(h.nameId()))) {
-                        // ScriptRef: no receiver (returns None in dirplayer-rs)
                         return new HandlerWithReceiver(script, h, null);
                     }
                 }
@@ -752,12 +732,9 @@ public class LingoVM {
             return null;
         }
 
-        // Match dirplayer-rs: Datum::ScriptInstanceRef case
         if (firstArg instanceof Datum.ScriptInstanceRef si) {
-            // Use get_script_instance_handler logic with ancestor chain lookup
             HandlerWithReceiver result = getScriptInstanceHandler(handlerName, si);
             if (result != null) {
-                // ScriptInstanceRef: has receiver
                 return new HandlerWithReceiver(result.script, result.handler, si);
             }
             return null;
@@ -766,23 +743,17 @@ public class LingoVM {
         return null;
     }
 
-    /**
-     * Get handler from a script instance, including ancestor chain lookup.
-     * Match dirplayer-rs: ScriptInstanceUtils::get_script_instance_handler()
-     */
     private HandlerWithReceiver getScriptInstanceHandler(String handlerName, Datum.ScriptInstanceRef instanceRef) {
-        // Find the script for this instance
         ScriptChunk script = scriptResolver.findScriptByCastRef(instanceRef.scriptRef());
         if (script == null) return null;
 
-        // Check own handlers first
         for (ScriptChunk.Handler h : script.handlers()) {
             if (handlerName.equalsIgnoreCase(scriptResolver.getName(h.nameId()))) {
                 return new HandlerWithReceiver(script, h, instanceRef);
             }
         }
 
-        // Match dirplayer-rs: Check ancestor chain
+        // Check ancestor chain
         Datum.ScriptInstanceRef ancestorRef = instanceRef.ancestor();
         if (ancestorRef != null) {
             return getScriptInstanceHandler(handlerName, ancestorRef);
@@ -791,11 +762,13 @@ public class LingoVM {
         return null;
     }
 
+    // === Script Instance Creation ===
+
     public Datum createScriptInstance(Datum.ScriptRef scriptRef, List<Datum> constructorArgs) {
         ScriptChunk script = scriptResolver.findScriptByCastRef(scriptRef.memberRef());
         if (script == null) throw new LingoException("Cannot find script for " + scriptRef.memberRef());
 
-        String scriptName = null ; // TODO: scriptResolver.getScriptMemberName(script);
+        String scriptName = null;
         if (scriptName == null || scriptName.isEmpty()) scriptName = "script_" + script.id();
 
         Map<String, Datum> props = new LinkedHashMap<>();
@@ -814,7 +787,7 @@ public class LingoVM {
                 List<Datum> allArgs = new ArrayList<>();
                 allArgs.add(instance);
                 allArgs.addAll(paddedArgs);
-                Datum result = execute(script, h, allArgs.toArray(new Datum[0]));
+                Datum result = callHandler(instance, script, h, allArgs);
                 return result instanceof Datum.Void ? instance : result;
             }
         }
@@ -822,9 +795,6 @@ public class LingoVM {
         return instance;
     }
 
-    /**
-     * Handle the call(#handler, receiver, args...) builtin.
-     */
     public Datum callHandler(List<Datum> args) {
         if (args.size() < 2 || !(args.get(0) instanceof Datum.Symbol symbol)) return Datum.voidValue();
 
@@ -839,14 +809,14 @@ public class LingoVM {
 
         Datum result = Datum.voidValue();
         for (Datum.ScriptInstanceRef instance : instances) {
-            ScriptChunk script = null; // TODO: scriptResolver.findScriptByName(instance.scriptName());
+            ScriptChunk script = scriptResolver.findScriptByCastRef(instance.scriptRef());
             if (script != null) {
                 for (ScriptChunk.Handler h : script.handlers()) {
                     if (handlerName.equalsIgnoreCase(scriptResolver.getName(h.nameId()))) {
                         List<Datum> allArgs = new ArrayList<>();
                         allArgs.add(instance);
                         allArgs.addAll(handlerArgs);
-                        result = execute(script, h, allArgs.toArray(new Datum[0]));
+                        result = callHandler(instance, script, h, allArgs);
                         break;
                     }
                 }
@@ -859,12 +829,8 @@ public class LingoVM {
         return activeScriptInstancesCallback != null ? activeScriptInstancesCallback.getActiveScriptInstances() : List.of();
     }
 
-    // Stack operations
-    private void push(Datum value) { stack.push(value); }
-    private Datum pop() { return stack.isEmpty() ? Datum.voidValue() : stack.pop(); }
-    private List<Datum> popN(int n) { List<Datum> items = new ArrayList<>(); for (int i = 0; i < n; i++) items.add(0, pop()); return items; }
+    // === Arithmetic Operations ===
 
-    // Arithmetic operations
     private Datum add(Datum a, Datum b) { return a.isFloat() || b.isFloat() ? Datum.of(a.floatValue() + b.floatValue()) : Datum.of(a.intValue() + b.intValue()); }
     private Datum subtract(Datum a, Datum b) { return a.isFloat() || b.isFloat() ? Datum.of(a.floatValue() - b.floatValue()) : Datum.of(a.intValue() - b.intValue()); }
     private Datum multiply(Datum a, Datum b) { return a.isFloat() || b.isFloat() ? Datum.of(a.floatValue() * b.floatValue()) : Datum.of(a.intValue() * b.intValue()); }
@@ -878,7 +844,8 @@ public class LingoVM {
     private int compare(Datum a, Datum b) { return a.isNumber() && b.isNumber() ? Float.compare(a.floatValue(), b.floatValue()) : a.stringValue().compareToIgnoreCase(b.stringValue()); }
     private boolean equals(Datum a, Datum b) { return a.isNumber() && b.isNumber() ? a.floatValue() == b.floatValue() : a.stringValue().equalsIgnoreCase(b.stringValue()); }
 
-    // Helper methods
+    // === Helper Methods ===
+
     private Datum getLiteral(ScriptChunk script, int index) {
         if (index >= script.literals().size()) return Datum.voidValue();
         Object val = script.literals().get(index).value();
@@ -889,9 +856,9 @@ public class LingoVM {
     }
 
     private List<Datum> extractArgList(Datum argList) {
-        if (argList instanceof Datum.ArgList al) return al.args();
-        if (argList instanceof Datum.ArgListNoRet al) return al.args();
-        return List.of();
+        if (argList instanceof Datum.ArgList al) return new ArrayList<>(al.args());
+        if (argList instanceof Datum.ArgListNoRet al) return new ArrayList<>(al.args());
+        return new ArrayList<>();
     }
 
     private Datum getStringChunk(String str, Datum chunkType, int start, int end) {

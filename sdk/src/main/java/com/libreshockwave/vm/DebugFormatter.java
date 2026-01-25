@@ -6,7 +6,6 @@ import com.libreshockwave.lingo.Opcode;
 import com.libreshockwave.player.CastLib;
 import com.libreshockwave.player.CastManager;
 
-import java.util.Deque;
 
 /**
  * Debug output formatting for the Lingo VM.
@@ -21,9 +20,32 @@ public class DebugFormatter {
     }
 
     /**
-     * Format the current stack state for debug output.
+     * Format a scope's stack state for debug output.
      */
-    public String formatStack(Deque<Datum> stack) {
+    public String formatScopeStack(Scope scope) {
+        if (scope == null || scope.stackSize() == 0) return "[]";
+        StringBuilder sb = new StringBuilder("[");
+        // Iterate through the scope's stack by popping and repushing
+        java.util.List<Datum> items = new java.util.ArrayList<>();
+        int size = scope.stackSize();
+        for (int i = 0; i < size; i++) {
+            items.add(0, scope.pop());
+        }
+        for (int i = 0; i < items.size(); i++) {
+            if (i > 0) sb.append(", ");
+            sb.append(formatDatum(items.get(i)));
+            scope.push(items.get(i));
+        }
+        sb.append("]");
+        return sb.toString();
+    }
+
+    /**
+     * Format the current stack state for debug output.
+     * @deprecated Use formatScopeStack(Scope) instead
+     */
+    @Deprecated
+    public String formatStack(java.util.Deque<Datum> stack) {
         if (stack.isEmpty()) return "[]";
         StringBuilder sb = new StringBuilder("[");
         int count = 0;
