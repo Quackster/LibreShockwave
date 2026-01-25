@@ -287,20 +287,21 @@ public class MethodDispatcher {
 
     /**
      * Collect script instances from a datum (recursively for lists/proplists).
+     * Matches dirplayer-rs behavior for collecting script instances.
      */
     public void collectScriptInstances(Datum datum, List<Datum.ScriptInstanceRef> instances,
-                                       LingoVM.ActiveScriptInstancesCallback callback) {
+                                       List<Datum.ScriptInstanceRef> activeInstances) {
         if (datum instanceof Datum.ScriptInstanceRef instance) {
             instances.add(instance);
-        } else if (datum instanceof Datum.SpriteRef && callback != null) {
-            instances.addAll(callback.getActiveScriptInstances());
+        } else if (datum instanceof Datum.SpriteRef && activeInstances != null) {
+            instances.addAll(activeInstances);
         } else if (datum instanceof Datum.DList list) {
             for (Datum item : list.items()) {
-                collectScriptInstances(item, instances, callback);
+                collectScriptInstances(item, instances, activeInstances);
             }
         } else if (datum instanceof Datum.PropList propList) {
             for (Datum value : propList.properties().values()) {
-                collectScriptInstances(value, instances, callback);
+                collectScriptInstances(value, instances, activeInstances);
             }
         }
     }

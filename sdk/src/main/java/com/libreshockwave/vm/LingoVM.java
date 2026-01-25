@@ -8,6 +8,7 @@ import com.libreshockwave.lingo.*;
 import com.libreshockwave.net.NetManager;
 import com.libreshockwave.player.CastLib;
 import com.libreshockwave.player.CastManager;
+import com.libreshockwave.player.Score;
 
 import java.util.*;
 
@@ -55,7 +56,9 @@ public class LingoVM {
     // Callbacks
     private StageCallback stageCallback;
     private XtraInstanceCallback xtraInstanceCallback;
-    private ActiveScriptInstancesCallback activeScriptInstancesCallback;
+
+    // Score reference for active script instances (matches dirplayer-rs player.movie.score)
+    private Score score;
 
     @FunctionalInterface
     public interface DebugOutputCallback {
@@ -75,10 +78,6 @@ public class LingoVM {
 
     public interface XtraInstanceCallback {
         Datum callMethod(String xtraName, int instanceId, String methodName, List<Datum> args);
-    }
-
-    public interface ActiveScriptInstancesCallback {
-        List<Datum.ScriptInstanceRef> getActiveScriptInstances();
     }
 
     public LingoVM(DirectorFile file) {
@@ -190,7 +189,8 @@ public class LingoVM {
     public void setStageCallback(StageCallback callback) { this.stageCallback = callback; }
     public StageCallback getStageCallback() { return stageCallback; }
     public void setXtraInstanceCallback(XtraInstanceCallback callback) { this.xtraInstanceCallback = callback; }
-    public void setActiveScriptInstancesCallback(ActiveScriptInstancesCallback callback) { this.activeScriptInstancesCallback = callback; }
+    public void setScore(Score score) { this.score = score; }
+    public Score getScore() { return score; }
 
     // Movie state setters
     public void setCurrentFrame(int frame) { movieState.currentFrame = frame; }
@@ -538,8 +538,8 @@ public class LingoVM {
             case LOCAL_CALL -> executeLocalCall(scope, arg);
 
             // Property access
-            case GET_PROP, GET_OBJ_PROP, GET_CHAINED_PROP -> scope.push(propertyAccessor.getProperty(scope.pop(), scriptResolver.getName(arg), this::getActiveInstances));
-            case SET_PROP, SET_OBJ_PROP -> { Datum v = scope.pop(), o = scope.pop(); propertyAccessor.setProperty(o, scriptResolver.getName(arg), v, this::getActiveInstances); }
+            case GET_PROP, GET_OBJ_PROP, GET_CHAINED_PROP -> scope.push(propertyAccessor.getProperty(scope.pop(), scriptResolver.getName(arg), this::getActiveScriptInstances));
+            case SET_PROP, SET_OBJ_PROP -> { Datum v = scope.pop(), o = scope.pop(); propertyAccessor.setProperty(o, scriptResolver.getName(arg), v, this::getActiveScriptInstances); }
             case GET_TOP_LEVEL_PROP -> scope.push(getGlobal(scriptResolver.getName(arg)));
             case GET_MOVIE_PROP -> scope.push(propertyAccessor.getMovieProperty(scriptResolver.getName(arg), movieState));
             case SET_MOVIE_PROP -> propertyAccessor.setMovieProperty(scriptResolver.getName(arg), scope.pop(), movieState);
@@ -685,14 +685,14 @@ public class LingoVM {
             }
 
             // 2. Search active script instances (from score)
-            if (activeScriptInstancesCallback != null) {
-                for (Datum.ScriptInstanceRef instanceRef : activeScriptInstancesCallback.getActiveScriptInstances()) {
-                    ScriptChunk script = scriptResolver.findScriptByCastRef(instanceRef.scriptRef());
-                    if (script != null) {
-                        for (ScriptChunk.Handler h : script.handlers()) {
-                            if (handlerName.equalsIgnoreCase(scriptResolver.getName(h.nameId()))) {
-                                return callHandler(instanceRef, script, h, args);
-                            }
+            // Matches dirplayer-rs: player.movie.score.get_active_script_instance_list()
+            List<Datum.ScriptInstanceRef> activeInstances = getActiveScriptInstances();
+            for (Datum.ScriptInstanceRef instanceRef : activeInstances) {
+                ScriptChunk script = scriptResolver.findScriptByCastRef(instanceRef.scriptRef());
+                if (script != null) {
+                    for (ScriptChunk.Handler h : script.handlers()) {
+                        if (handlerName.equalsIgnoreCase(scriptResolver.getName(h.nameId()))) {
+                            return callHandler(instanceRef, script, h, args);
                         }
                     }
                 }
@@ -803,7 +803,7 @@ public class LingoVM {
         List<Datum> handlerArgs = args.size() > 2 ? args.subList(2, args.size()) : new ArrayList<>();
 
         List<Datum.ScriptInstanceRef> instances = new ArrayList<>();
-        methodDispatcher.collectScriptInstances(receiver, instances, activeScriptInstancesCallback);
+        methodDispatcher.collectScriptInstances(receiver, instances, getActiveScriptInstances());
 
         if (instances.isEmpty()) return methodDispatcher.callMethod(receiver, handlerName, handlerArgs, xtraInstanceCallback);
 
@@ -825,8 +825,15 @@ public class LingoVM {
         return result;
     }
 
-    private List<Datum.ScriptInstanceRef> getActiveInstances() {
-        return activeScriptInstancesCallback != null ? activeScriptInstancesCallback.getActiveScriptInstances() : List.of();
+    /**
+     * Get active script instances from the score.
+     * Matches dirplayer-rs: player.movie.score.get_active_script_instance_list()
+     * Currently returns empty list - sprite behavior instances not yet implemented.
+     */
+    private List<Datum.ScriptInstanceRef> getActiveScriptInstances() {
+        // TODO: When sprite behavior script instances are implemented,
+        // query them from score.getActiveScriptInstances()
+        return List.of();
     }
 
     // === Arithmetic Operations ===
