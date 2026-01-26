@@ -70,3 +70,16 @@ tasks.register('runBytecodeTests', JavaExec) {
         languageVersion = JavaLanguageVersion.of(21)
     }
 }
+
+// GUI Tool to extract bitmaps and text from .cct cast files
+// Usage: ./gradlew :sdk:extractCasts
+tasks.register('extractCasts', JavaExec) {
+    group = 'tools'
+    description = 'Launch GUI tool to extract bitmaps and text from .cct cast files'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.CastExtractorTool'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}

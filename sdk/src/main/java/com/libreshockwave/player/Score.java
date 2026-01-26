@@ -3,6 +3,7 @@ package com.libreshockwave.player;
 import com.libreshockwave.chunks.FrameLabelsChunk;
 import com.libreshockwave.chunks.ScoreChunk;
 import com.libreshockwave.chunks.ScoreChunk.*;
+import com.libreshockwave.lingo.Datum;
 
 import java.util.*;
 
@@ -29,6 +30,10 @@ public class Score {
     private final Map<String, Integer> frameLabels;
     private final List<FrameInterval> frameIntervals;
 
+    // Persistent sprite channels (runtime state).
+    // Matches dirplayer-rs Score.channels: Vec<SpriteChannel>
+    private final Map<Integer, Sprite> channels;
+
     /**
      * Create a Score from a parsed ScoreChunk.
      */
@@ -50,6 +55,13 @@ public class Score {
 
         this.frames = new ArrayList<>();
         this.frameLabels = new HashMap<>();
+        this.channels = new HashMap<>();
+
+        // Initialize persistent channels (runtime sprite state)
+        // Channel 0 is frame script channel, channels 1+ are sprite channels
+        for (int i = 0; i <= channelCount; i++) {
+            channels.put(i, new Sprite(i));
+        }
 
         // Initialize empty frames
         for (int i = 0; i < frameCount; i++) {
@@ -176,6 +188,44 @@ public class Score {
      */
     public List<FrameInterval> getFrameIntervals() {
         return Collections.unmodifiableList(frameIntervals);
+    }
+
+    // === Persistent Channel Access (runtime sprite state) ===
+
+    /**
+     * Get a persistent channel's sprite by channel number.
+     * Matches dirplayer-rs Score.get_sprite()
+     */
+    public Sprite getChannel(int channelNum) {
+        return channels.get(channelNum);
+    }
+
+    /**
+     * Get a mutable persistent channel's sprite.
+     * Creates a new sprite if the channel doesn't exist.
+     * Matches dirplayer-rs Score.get_sprite_mut()
+     */
+    public Sprite getOrCreateChannel(int channelNum) {
+        return channels.computeIfAbsent(channelNum, Sprite::new);
+    }
+
+    /**
+     * Get all persistent channels.
+     */
+    public Collection<Sprite> getChannels() {
+        return channels.values();
+    }
+
+    /**
+     * Get list of active script instances from all sprite channels.
+     * Matches dirplayer-rs Score.get_active_script_instance_list()
+     */
+    public List<Datum.ScriptInstanceRef> getActiveScriptInstanceList() {
+        List<Datum.ScriptInstanceRef> instanceList = new ArrayList<>();
+        for (Sprite sprite : channels.values()) {
+            instanceList.addAll(sprite.getScriptInstanceList());
+        }
+        return instanceList;
     }
 
     /**

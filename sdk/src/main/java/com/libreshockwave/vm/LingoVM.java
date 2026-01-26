@@ -828,12 +828,12 @@ public class LingoVM {
     /**
      * Get active script instances from the score.
      * Matches dirplayer-rs: player.movie.score.get_active_script_instance_list()
-     * Currently returns empty list - sprite behavior instances not yet implemented.
      */
     private List<Datum.ScriptInstanceRef> getActiveScriptInstances() {
-        // TODO: When sprite behavior script instances are implemented,
-        // query them from score.getActiveScriptInstances()
-        return List.of();
+        if (score == null) {
+            return List.of();
+        }
+        return score.getActiveScriptInstanceList();
     }
 
     // === Arithmetic Operations ===
