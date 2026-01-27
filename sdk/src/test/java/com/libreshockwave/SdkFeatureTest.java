@@ -1021,12 +1021,9 @@ public class SdkFeatureTest {
             assertTrue(wav16bit.length > 44, "16-bit WAV has content");
             pass("Generate 16-bit stereo WAV with endianness conversion");
 
-            // Save test WAV files
             Path outputDir = Path.of("test_output/audio");
             Files.createDirectories(outputDir);
-            Files.write(outputDir.resolve("test_8bit_mono.wav"), wav8bit);
-            Files.write(outputDir.resolve("test_16bit_stereo.wav"), wav16bit);
-            pass("Save test WAV files");
+            pass("WAV generation works correctly");
 
             // Test duration calculation
             double duration = SoundConverter.getDuration(testAudio.length, 22050, 8, 1);
@@ -1065,59 +1062,87 @@ public class SdkFeatureTest {
             byte[] adpcmWav = SoundConverter.imaAdpcmToWav(adpcmData, 22050, 1, 0, 0);
             assertNotNull(adpcmWav, "ADPCM to WAV conversion");
             assertTrue(adpcmWav.length > 44, "ADPCM WAV has content");
-            Files.write(outputDir.resolve("test_adpcm_decoded.wav"), adpcmWav);
             pass("Convert IMA ADPCM to WAV");
 
-            // Test with actual Director file sounds if available
-            DirectorFile file = loadTestFile("hh_entry_au.cct");
-            if (file == null) {
-                file = loadTestFile("habbo.dcr");
+            // Test with actual Director file sounds - try hh_game_bb.cct which has sounds
+            String[] soundFiles = {"hh_game_bb.cct", "hh_entry_au.cct", "habbo.dcr"};
+            DirectorFile file = null;
+
+            for (String soundFile : soundFiles) {
+                file = loadTestFile(soundFile);
+                if (file != null) {
+                    // Check if this file has sounds
+                    long soundCount = file.getCastMembers().stream().filter(CastMemberChunk::isSound).count();
+                    if (soundCount > 0) {
+                        System.out.println("    Found " + soundCount + " sound members in " + soundFile);
+                        break;
+                    }
+                    file = null; // Reset if no sounds
+                }
             }
 
             if (file != null) {
                 int soundsConverted = 0;
+                int mp3Count = 0;
+                int pcmCount = 0;
                 KeyTableChunk keyTable = file.getKeyTable();
 
                 if (keyTable != null) {
                     for (CastMemberChunk member : file.getCastMembers()) {
                         if (!member.isSound()) continue;
 
-                        // Find the sound chunk
+                        // Find the sound chunk via key table
+                        boolean foundSound = false;
                         for (KeyTableChunk.KeyTableEntry entry : keyTable.getEntriesForOwner(member.id())) {
-                            if (entry.fourccString().equals("snd ")) {
-                                Chunk chunk = file.getChunk(entry.sectionId());
-                                if (chunk instanceof SoundChunk soundChunk) {
-                                    if (soundChunk.audioData() != null && soundChunk.audioData().length > 0) {
+                            Chunk chunk = file.getChunk(entry.sectionId());
+                            if (chunk instanceof SoundChunk soundChunk) {
+                                foundSound = true;
+                                if (soundChunk.audioData() != null && soundChunk.audioData().length > 0) {
+                                    String name = sanitize(member.name(), member.id());
+
+                                    // Handle based on codec type
+                                    if (soundChunk.isMp3()) {
+                                        // MP3 - find start and save directly
+                                        int mp3Offset = SoundConverter.findMp3Start(soundChunk.audioData());
+                                        if (mp3Offset >= 0) {
+                                            byte[] mp3Data = Arrays.copyOfRange(soundChunk.audioData(), mp3Offset, soundChunk.audioData().length);
+                                            Files.write(outputDir.resolve(name + ".mp3"), mp3Data);
+                                            mp3Count++;
+                                            System.out.println("    MP3: " + member.name() + " (" + mp3Data.length + " bytes)");
+                                        }
+                                    } else {
+                                        // PCM - convert to WAV
                                         byte[] wavData = SoundConverter.toWav(soundChunk);
-
-                                        String name = sanitize(member.name(), member.id());
                                         Files.write(outputDir.resolve(name + ".wav"), wavData);
-
-                                        System.out.println("    Converted: " + member.name() +
+                                        pcmCount++;
+                                        System.out.println("    WAV: " + member.name() +
                                             " (" + soundChunk.sampleRate() + "Hz, " +
                                             soundChunk.bitsPerSample() + "-bit, " +
-                                            soundChunk.channelCount() + "ch, " +
                                             String.format("%.2f", soundChunk.durationSeconds()) + "s)");
-
-                                        soundsConverted++;
-                                        if (soundsConverted >= 5) break;
                                     }
+
+                                    soundsConverted++;
+                                } else {
+                                    System.out.println("    SKIP: " + member.name() + " (no audio data)");
                                 }
                                 break;
                             }
                         }
-                        if (soundsConverted >= 5) break;
+                        if (!foundSound) {
+                            System.out.println("    MISSING: " + member.name() + " (no snd chunk found)");
+                        }
                     }
                 }
 
                 if (soundsConverted > 0) {
-                    pass("Convert Director sounds to WAV: " + soundsConverted + " files");
+                    System.out.println("    Total: " + soundsConverted + " sounds (MP3: " + mp3Count + ", WAV: " + pcmCount + ")");
+                    pass("Extract Director sounds: " + soundsConverted + " files");
                 } else {
                     System.out.println("    No sound chunks found in test files");
                     pass("Sound conversion ready (no sounds in test files)");
                 }
             } else {
-                pass("Sound conversion implemented (no test files available)");
+                pass("Sound conversion implemented (no test files with sounds available)");
             }
 
         } catch (Exception e) {
