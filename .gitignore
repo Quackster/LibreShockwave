@@ -26,3 +26,4 @@ Thumbs.db
 runtime/src/main/resources/player/libreshockwave.wasm
 /.claude
 /sdk/test_output
+/test_output
