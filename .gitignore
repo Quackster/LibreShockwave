@@ -1,0 +1,28 @@
+# Gradle
+.gradle/
+build/
+
+# Keep wrapper jar
+!gradle/wrapper/gradle-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+
+# Compiled (legacy)
+/target/
+*.class
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+runtime/src/main/resources/player/libreshockwave.wasm
+/.claude
+/sdk/test_output

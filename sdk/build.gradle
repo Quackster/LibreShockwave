@@ -1,0 +1,86 @@
+plugins {
+    id 'java'
+    id 'java-library'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // No external dependencies - pure Java implementation
+
+    // Test dependencies
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+jar {
+    manifest {
+        attributes(
+            'Implementation-Title': 'LibreShockwave SDK',
+            'Implementation-Version': rootProject.version
+        )
+    }
+}
+
+// Task to run the integration tests
+tasks.register('runTests', JavaExec) {
+    group = 'verification'
+    description = 'Run integration tests'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.DirectorFileTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+// Task to run DCR file tests
+tasks.register('runDcrTests', JavaExec) {
+    group = 'verification'
+    description = 'Run DCR file tests with external cast support'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.DcrFileTest'
+    args = project.hasProperty('file') ? [project.property('file')] : []
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+// Comprehensive SDK feature tests
+// Usage: ./gradlew :sdk:runFeatureTests
+tasks.register('runFeatureTests', JavaExec) {
+    group = 'verification'
+    description = 'Run comprehensive SDK feature tests (local files + HTTP)'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.SdkFeatureTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+// GUI Tool to extract bitmaps and text from .cct cast files
+// Usage: ./gradlew :sdk:extractCasts
+tasks.register('extractCasts', JavaExec) {
+    group = 'tools'
+    description = 'Launch GUI tool to extract bitmaps and text from .cct cast files'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.CastExtractorTool'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
