@@ -172,7 +172,7 @@ public class SdkFeatureTest {
     private static void testMetadataReading() {
         printHeader("Metadata Reading");
 
-        DirectorFile file = loadTestFile("hh_entry.cct");
+        DirectorFile file = loadTestFile("habbo.dcr");
         if (file == null) return;
 
         try {
