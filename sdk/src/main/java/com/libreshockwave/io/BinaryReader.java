@@ -288,20 +288,21 @@ public class BinaryReader implements AutoCloseable {
         Inflater inflater = new Inflater();
         inflater.setInput(compressed);
 
-        ByteBuffer output = ByteBuffer.allocate(compressed.length * 4);
+        ByteBuffer output = ByteBuffer.allocate(Math.max(compressed.length * 4, 4096));
         byte[] buffer = new byte[4096];
 
         try {
             while (!inflater.finished()) {
-                if (output.remaining() < buffer.length) {
+                int count = inflater.inflate(buffer);
+                if (count == 0 && inflater.needsInput()) {
+                    break; // No more input available
+                }
+                // Ensure we have enough space for the inflated data
+                while (output.remaining() < count) {
                     ByteBuffer newOutput = ByteBuffer.allocate(output.capacity() * 2);
                     output.flip();
                     newOutput.put(output);
                     output = newOutput;
-                }
-                int count = inflater.inflate(buffer);
-                if (count == 0 && inflater.needsInput()) {
-                    break; // No more input available
                 }
                 output.put(buffer, 0, count);
             }
