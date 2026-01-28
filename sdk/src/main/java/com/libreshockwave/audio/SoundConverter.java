@@ -40,7 +40,9 @@ public class SoundConverter {
 
     /**
      * Extract MP3 data from a SoundChunk.
-     * Automatically detects header size and strips trailing padding.
+     * Finds the actual MP3 start by searching for sync bytes, then parses
+     * through all MP3 frames to find where the valid data actually ends.
+     * Finally strips any trailing padding bytes (0xFF).
      *
      * @param sound The SoundChunk containing MP3 data
      * @return MP3 file bytes ready to be written to a file, or null if not MP3
@@ -51,16 +53,90 @@ public class SoundConverter {
         }
 
         byte[] fullData = sound.audioData();
-        int headerSize = detectHeaderSize(fullData);
-        int endOffset = stripTrailingPadding(fullData);
 
-        if (endOffset <= headerSize) {
+        // Find where MP3 data actually starts (may have Director header before it)
+        int mp3Start = findMp3Start(fullData);
+        if (mp3Start < 0) {
             return null;
         }
 
-        byte[] mp3Data = new byte[endOffset - headerSize];
-        System.arraycopy(fullData, headerSize, mp3Data, 0, mp3Data.length);
+        // Parse through MP3 frames to find where the actual data ends
+        int mp3End = findMp3End(fullData, mp3Start);
+        if (mp3End <= mp3Start) {
+            // Fallback: use full data minus trailing padding
+            mp3End = fullData.length;
+        }
+
+        // Strip trailing 0xFF padding bytes (common in Director snd chunks)
+        while (mp3End > mp3Start && (fullData[mp3End - 1] & 0xFF) == 0xFF) {
+            mp3End--;
+        }
+
+        if (mp3End <= mp3Start) {
+            return null;
+        }
+
+        byte[] mp3Data = new byte[mp3End - mp3Start];
+        System.arraycopy(fullData, mp3Start, mp3Data, 0, mp3Data.length);
         return mp3Data;
+    }
+
+    /**
+     * Find the end of MP3 data by parsing through all valid frames.
+     * Follows frame boundaries precisely, handling padding between frames.
+     *
+     * @param data The data containing MP3
+     * @param startOffset Where MP3 data starts
+     * @return Offset after the last valid MP3 frame, or startOffset if no valid frames
+     */
+    private static int findMp3End(byte[] data, int startOffset) {
+        int pos = startOffset;
+        int lastValidFrameEnd = startOffset;
+        int frameCount = 0;
+
+        while (pos < data.length - 4) {
+            // Check for MP3 sync word
+            if ((data[pos] & 0xFF) != 0xFF || (data[pos + 1] & 0xE0) != 0xE0) {
+                // Not at a sync word - this shouldn't happen if we're following frame boundaries
+                break;
+            }
+
+            // Parse frame header
+            int header = ((data[pos] & 0xFF) << 24) | ((data[pos + 1] & 0xFF) << 16) |
+                        ((data[pos + 2] & 0xFF) << 8) | (data[pos + 3] & 0xFF);
+
+            int version = (header >> 19) & 3;
+            int layer = (header >> 17) & 3;
+            int bitrateIndex = (header >> 12) & 0xF;
+            int sampleRateIndex = (header >> 10) & 3;
+            int padding = (header >> 9) & 1;
+
+            // Validate frame header
+            if (version == 1 || layer == 0 || bitrateIndex == 0 || bitrateIndex == 15 ||
+                sampleRateIndex == 3) {
+                // Invalid header - we've reached the end of valid frames
+                break;
+            }
+
+            // Calculate frame size
+            int frameSize = calculateMp3FrameSize(version, layer, bitrateIndex, sampleRateIndex, padding);
+            if (frameSize <= 0 || pos + frameSize > data.length) {
+                // Can't fit another frame - use current position as end
+                break;
+            }
+
+            // Valid frame found - move to next frame
+            pos += frameSize;
+            lastValidFrameEnd = pos;
+            frameCount++;
+
+            // Safety limit - most MP3s have less than 100000 frames
+            if (frameCount > 100000) {
+                break;
+            }
+        }
+
+        return lastValidFrameEnd;
     }
 
     /**
