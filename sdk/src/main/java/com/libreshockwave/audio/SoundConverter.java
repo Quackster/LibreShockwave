@@ -18,22 +18,87 @@ public class SoundConverter {
     /**
      * Convert a SoundChunk to WAV format bytes.
      * Handles endianness conversion (Director = big-endian, WAV = little-endian for 16-bit).
-     * Skips the 64-byte snd header to get to the actual PCM audio data.
+     * Automatically detects header size (64, 96, or 128 bytes) and strips trailing padding.
      *
      * @param sound The SoundChunk to convert
      * @return WAV file bytes ready to be written to a file or played
      */
     public static byte[] toWav(SoundChunk sound) {
         byte[] fullData = sound.audioData();
-        // Skip 64-byte header to get PCM data
-        int headerSize = 64;
-        if (fullData.length <= headerSize) {
+        int headerSize = detectHeaderSize(fullData);
+        int endOffset = stripTrailingPadding(fullData);
+
+        if (endOffset <= headerSize) {
             return createEmptyWav(sound.sampleRate(), sound.bitsPerSample(), sound.channelCount());
         }
-        byte[] pcmData = new byte[fullData.length - headerSize];
+
+        byte[] pcmData = new byte[endOffset - headerSize];
         System.arraycopy(fullData, headerSize, pcmData, 0, pcmData.length);
         return toWav(pcmData, sound.sampleRate(), sound.bitsPerSample(),
                      sound.channelCount(), true);
+    }
+
+    /**
+     * Extract MP3 data from a SoundChunk.
+     * Automatically detects header size and strips trailing padding.
+     *
+     * @param sound The SoundChunk containing MP3 data
+     * @return MP3 file bytes ready to be written to a file, or null if not MP3
+     */
+    public static byte[] extractMp3(SoundChunk sound) {
+        if (!sound.isMp3()) {
+            return null;
+        }
+
+        byte[] fullData = sound.audioData();
+        int headerSize = detectHeaderSize(fullData);
+        int endOffset = stripTrailingPadding(fullData);
+
+        if (endOffset <= headerSize) {
+            return null;
+        }
+
+        byte[] mp3Data = new byte[endOffset - headerSize];
+        System.arraycopy(fullData, headerSize, mp3Data, 0, mp3Data.length);
+        return mp3Data;
+    }
+
+    /**
+     * Detect the snd chunk header size using dirplayer-rs algorithm.
+     * Looks for audio data patterns (values 0x70-0x90) to determine where audio starts.
+     */
+    private static int detectHeaderSize(byte[] data) {
+        if (data.length >= 128) {
+            // Check if bytes 64-128 contain typical audio patterns
+            for (int i = 64; i < 128 && i < data.length; i++) {
+                int b = data[i] & 0xFF;
+                if (b >= 0x70 && b <= 0x90) {
+                    return 64;
+                }
+            }
+            // Check bytes 96-128
+            for (int i = 96; i < 128 && i < data.length; i++) {
+                int b = data[i] & 0xFF;
+                if (b >= 0x70 && b <= 0x90) {
+                    return 96;
+                }
+            }
+            return 128;
+        } else if (data.length >= 64) {
+            return 64;
+        }
+        return 0;
+    }
+
+    /**
+     * Find where trailing 0xFF padding ends (returns the offset of last non-0xFF byte + 1).
+     */
+    private static int stripTrailingPadding(byte[] data) {
+        int endOffset = data.length;
+        while (endOffset > 0 && (data[endOffset - 1] & 0xFF) == 0xFF) {
+            endOffset--;
+        }
+        return endOffset;
     }
 
     /**

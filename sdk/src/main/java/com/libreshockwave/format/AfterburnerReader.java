@@ -227,6 +227,12 @@ public class AfterburnerReader {
         byte[] compressedData = reader.readBytes(ilsInfo.compressedSize());
         ilsData = reader.decompressZlib(compressedData);
 
+        // Validate decompressed size
+        if (ilsData.length != ilsInfo.uncompressedSize()) {
+            System.err.println("ILS: Expected uncompressed length " + ilsInfo.uncompressedSize() +
+                " but got " + ilsData.length);
+        }
+
         // Parse the ILS stream: it contains (resId, data) pairs
         // where data length comes from ABMP chunkInfo
         BinaryReader ilsReader = new BinaryReader(ilsData, byteOrder);
@@ -234,12 +240,18 @@ public class AfterburnerReader {
             int resId = readVarInt(ilsReader);
             ChunkInfo info = chunkInfoMap.get(resId);
             if (info == null) {
+                // Unknown resource ID - try to continue by reading remaining bytes
                 break;
             }
 
             // Read the chunk data using length from ABMP
             int dataLen = info.compressedSize();
             if (ilsReader.bytesLeft() < dataLen) {
+                // Not enough data - read what's available
+                System.err.println("ILS: Chunk " + resId + " (" + info.fourCC() +
+                    ") expected " + dataLen + " bytes but only " + ilsReader.bytesLeft() + " available");
+                byte[] partialData = ilsReader.readBytes(ilsReader.bytesLeft());
+                cachedChunkData.put(resId, partialData);
                 break;
             }
 

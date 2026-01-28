@@ -64,6 +64,7 @@ public class SdkFeatureTest {
         testMultipleFilesInParallel();
         testBitmapColorisation();
         testSoundConversion();
+        testFileSaving();
 
         // Print summary
         System.out.println("\n╔══════════════════════════════════════════════════════════════╗");
@@ -1102,11 +1103,9 @@ public class SdkFeatureTest {
 
                                     // Handle based on codec type
                                     if (soundChunk.isMp3()) {
-                                        // MP3 - strip 64-byte header, save rest (like dirplayer-rs)
-                                        byte[] fullData = soundChunk.audioData();
-                                        int headerSize = 64;
-                                        if (fullData.length > headerSize) {
-                                            byte[] mp3Data = Arrays.copyOfRange(fullData, headerSize, fullData.length);
+                                        // Use SoundConverter.extractMp3 for clean extraction
+                                        byte[] mp3Data = SoundConverter.extractMp3(soundChunk);
+                                        if (mp3Data != null && mp3Data.length > 0) {
                                             Files.write(outputDir.resolve(name + ".mp3"), mp3Data);
                                             mp3Count++;
                                             System.out.println("    MP3: " + member.name() + " (" + mp3Data.length + " bytes)");
@@ -1149,6 +1148,128 @@ public class SdkFeatureTest {
         } catch (Exception e) {
             fail("Sound conversion", e);
         }
+    }
+
+    // ==================== File Saving Tests ====================
+
+    private static void testFileSaving() {
+        printHeader("File Saving (Unprotected RIFX)");
+
+        try {
+            // Test with fuse_client.cct as specifically requested
+            Path fuseClientPath = Path.of("C:/Users/alexm/Desktop/lasm/test/fuse_client.cct");
+            if (Files.exists(fuseClientPath)) {
+                testSaveRoundTrip(fuseClientPath, "fuse_client.cct");
+            } else {
+                System.out.println("  Fuse client file not found at: " + fuseClientPath);
+
+                // Try with other test files
+                for (String filename : TEST_FILES) {
+                    Path path = Path.of(LOCAL_BASE_PATH, filename);
+                    if (Files.exists(path)) {
+                        testSaveRoundTrip(path, filename);
+                        break;
+                    }
+                }
+            }
+
+        } catch (Exception e) {
+            fail("File saving", e);
+        }
+    }
+
+    private static void testSaveRoundTrip(Path inputPath, String filename) throws Exception {
+        System.out.println("  Testing with: " + filename);
+
+        // Load the original file
+        DirectorFile file = DirectorFile.load(inputPath);
+        assertNotNull(file, "Load " + filename);
+
+        // Read original file bytes for comparison
+        byte[] originalBytes = Files.readAllBytes(inputPath);
+        System.out.println("    Original file size: " + originalBytes.length + " bytes");
+        System.out.println("    Original checksum: " + computeChecksum(originalBytes));
+
+        // If it's Afterburner (compressed), the saved file will be larger since we decompress
+        boolean isAfterburner = file.isAfterburner();
+        System.out.println("    Afterburner (compressed): " + isAfterburner);
+
+        // Save to a new file
+        Path outputDir = Path.of("test_output/saved");
+        Files.createDirectories(outputDir);
+        Path outputPath = outputDir.resolve(filename.replace(".cct", "_saved.cct")
+                                                    .replace(".dcr", "_saved.cct"));
+
+        file.save(outputPath);
+        pass("Save file to disk");
+
+        // Read saved file
+        byte[] savedBytes = Files.readAllBytes(outputPath);
+        System.out.println("    Saved file size: " + savedBytes.length + " bytes");
+        System.out.println("    Saved checksum: " + computeChecksum(savedBytes));
+
+        // Load the saved file and verify it's valid
+        DirectorFile savedFile = DirectorFile.load(outputPath);
+        assertNotNull(savedFile, "Load saved file");
+        pass("Load saved file successfully");
+
+        // Compare metadata
+        System.out.println("    Comparing metadata...");
+        if (file.getConfig() != null && savedFile.getConfig() != null) {
+            assertTrue(file.getConfig().directorVersion() == savedFile.getConfig().directorVersion(),
+                "Director version matches");
+            assertTrue(file.getConfig().stageWidth() == savedFile.getConfig().stageWidth(),
+                "Stage width matches");
+            assertTrue(file.getConfig().stageHeight() == savedFile.getConfig().stageHeight(),
+                "Stage height matches");
+            pass("Config metadata preserved");
+        }
+
+        // Compare chunk counts
+        System.out.println("    Original chunks: " + file.getAllChunkInfo().size());
+        System.out.println("    Saved chunks: " + savedFile.getAllChunkInfo().size());
+        assertTrue(file.getAllChunkInfo().size() == savedFile.getAllChunkInfo().size(),
+            "Chunk count matches");
+        pass("Chunk count preserved");
+
+        // Compare cast members
+        System.out.println("    Original cast members: " + file.getCastMembers().size());
+        System.out.println("    Saved cast members: " + savedFile.getCastMembers().size());
+        assertTrue(file.getCastMembers().size() == savedFile.getCastMembers().size(),
+            "Cast member count matches");
+        pass("Cast member count preserved");
+
+        // Compare scripts
+        System.out.println("    Original scripts: " + file.getScripts().size());
+        System.out.println("    Saved scripts: " + savedFile.getScripts().size());
+        assertTrue(file.getScripts().size() == savedFile.getScripts().size(),
+            "Script count matches");
+        pass("Script count preserved");
+
+        // If both are non-Afterburner, file sizes should be very close
+        if (!isAfterburner) {
+            // Allow for small differences due to padding, free chunks, etc.
+            double sizeRatio = (double) savedBytes.length / originalBytes.length;
+            System.out.println("    Size ratio: " + String.format("%.4f", sizeRatio));
+            assertTrue(sizeRatio > 0.9 && sizeRatio < 1.1,
+                "File size within 10% of original");
+            pass("File size reasonable for non-compressed file");
+        } else {
+            // Afterburner files will be larger when saved as RIFX
+            System.out.println("    (Saved as uncompressed RIFX, size increase expected)");
+            pass("Afterburner file saved as uncompressed RIFX");
+        }
+
+        System.out.println("    ✓ Round-trip save successful!");
+    }
+
+    private static long computeChecksum(byte[] data) {
+        // Simple CRC-like checksum
+        long sum = 0;
+        for (int i = 0; i < data.length; i++) {
+            sum = (sum * 31 + (data[i] & 0xFF)) & 0xFFFFFFFFL;
+        }
+        return sum;
     }
 
     // ==================== Helper Methods ====================
