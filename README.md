@@ -12,6 +12,37 @@ LibreShockwave SDK parses Director files and provides programmatic access to all
 
 This is a **read-only SDK** - it does not execute Lingo bytecode. Use this library to extract assets, analyze bytecode, or build your own interpreter.
 
+## Features
+
+### File Format Support
+- **RIFX container** - Both big-endian (Mac) and little-endian (Windows) files
+- **Afterburner compression** - Zlib-compressed Shockwave files (.dcr, .cct)
+- **Director versions** - D4 through D12
+
+### Asset Extraction
+- **Bitmaps** - Decode to PNG with full palette support (1/2/4/8/16/32-bit depths)
+- **Text** - Extract styled text content (STXT chunks)
+- **Sounds** - Multiple format support:
+  - PCM audio to WAV (automatic endian conversion, header detection)
+  - MP3 extraction (finds sync bytes, parses frame boundaries, strips padding)
+  - IMA ADPCM decoding to 16-bit PCM
+- **Palettes** - Built-in Director palettes (System Mac/Win, Grayscale, Rainbow, etc.) plus custom CLUT extraction
+
+### Script Analysis
+- **Bytecode disassembly** - Full Lingo VM opcode support with symbol resolution
+- **Lingo decompilation** - Reconstruct source code from bytecode
+- **Symbol tables** - Handler names, arguments, local variables, globals, properties
+
+### Score/Timeline Data
+- Frame count and channel count
+- Frame labels
+- Behavior/script intervals
+
+### File Writing
+- **Save to RIFX** - Write standard Director files
+- **Unprotect** - Remove protection from protected movies
+- **Script restoration** - Decompile and embed Lingo source into cast members
+
 ## Building
 
 Requires Java 21+.
@@ -133,6 +164,12 @@ for (CastMemberChunk member : file.getCastMembers()) {
 
 ### Extracting Text Content
 
+Director has two types of text cast members:
+- **Field** (type 3) - Old-style editable text, simpler formatting
+- **Text** (type 12) - Rich text with anti-aliasing and advanced formatting
+
+Both store content in STXT chunks. Use `hasTextContent()` to find both, or `isField()`/`isText()` to distinguish.
+
 ```java
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.chunks.*;
@@ -142,20 +179,24 @@ DirectorFile file = DirectorFile.load(Path.of("movie.dcr"));
 KeyTableChunk keyTable = file.getKeyTable();
 
 for (CastMemberChunk member : file.getCastMembers()) {
-    if (!member.isText()) continue;
+    // Check for any text content (Field or Text)
+    if (!member.hasTextContent()) continue;
 
-    // Find the STXT chunk for this text member via key table
+    // Distinguish between Field and Text
+    String textType = member.isField() ? "Field" : "Text";
+
+    // Find the STXT chunk for this member via key table
     for (KeyTableChunk.KeyTableEntry entry : keyTable.getEntriesForOwner(member.id())) {
         if (entry.fourccString().equals("STXT")) {
             Chunk chunk = file.getChunk(entry.sectionId());
             if (chunk instanceof TextChunk textChunk) {
-                System.out.println("=== " + member.name() + " ===");
+                System.out.printf("=== %s (%s) ===%n", member.name(), textType);
                 System.out.println(textChunk.text());
                 System.out.println();
 
-                // Save to file
+                // Save to file with type prefix
                 String filename = member.name().isEmpty()
-                    ? "text_" + member.id() + ".txt"
+                    ? textType.toLowerCase() + "_" + member.id() + ".txt"
                     : member.name() + ".txt";
                 Files.writeString(Path.of("output", filename), textChunk.text());
             }
@@ -210,6 +251,51 @@ if (!file.getPalettes().isEmpty()) {
     Bitmap customSwatch = Bitmap.createPaletteSwatch(customPalette.colors(), 16, 16);
     ImageIO.write(customSwatch.toBufferedImage(), "PNG",
         new File("custom_palette_" + customPalette.id() + ".png"));
+}
+```
+
+### Extracting Sounds
+
+```java
+import com.libreshockwave.DirectorFile;
+import com.libreshockwave.chunks.*;
+import com.libreshockwave.audio.SoundConverter;
+import java.nio.file.*;
+
+DirectorFile file = DirectorFile.load(Path.of("movie.dcr"));
+KeyTableChunk keyTable = file.getKeyTable();
+Files.createDirectories(Path.of("output/sounds"));
+
+for (CastMemberChunk member : file.getCastMembers()) {
+    if (!member.isSound()) continue;
+
+    // Find the snd chunk via key table
+    for (KeyTableChunk.KeyTableEntry entry : keyTable.getEntriesForOwner(member.id())) {
+        if (entry.fourccString().equals("snd ")) {
+            Chunk chunk = file.getChunk(entry.sectionId());
+            if (chunk instanceof SoundChunk sound) {
+                String name = member.name().isEmpty()
+                    ? "sound_" + member.id()
+                    : member.name().replaceAll("[^a-zA-Z0-9]", "_");
+
+                if (sound.isMp3()) {
+                    // Extract MP3 data directly
+                    byte[] mp3Data = SoundConverter.extractMp3(sound);
+                    if (mp3Data != null) {
+                        Files.write(Path.of("output/sounds/" + name + ".mp3"), mp3Data);
+                        System.out.println("Extracted MP3: " + name);
+                    }
+                } else {
+                    // Convert PCM to WAV
+                    byte[] wavData = SoundConverter.toWav(sound);
+                    Files.write(Path.of("output/sounds/" + name + ".wav"), wavData);
+                    System.out.printf("Extracted WAV: %s (%d Hz, %d-bit)%n",
+                        name, sound.sampleRate(), sound.bitsPerSample());
+                }
+            }
+            break;
+        }
+    }
 }
 ```
 
@@ -376,6 +462,26 @@ for (String castPath : movie.getExternalCastPaths()) {
         }
     }
 }
+```
+
+### Saving and Unprotecting Files
+
+```java
+import com.libreshockwave.DirectorFile;
+import java.nio.file.Path;
+
+// Load a protected/compressed DCR file
+DirectorFile file = DirectorFile.load(Path.of("protected_movie.dcr"));
+
+// Save as unprotected RIFX file
+// This automatically:
+// 1. Removes protection flags
+// 2. Decompiles Lingo bytecode to source text
+// 3. Embeds the source into cast members
+file.save(Path.of("unprotected_movie.dir"));
+
+// Or get the bytes directly
+byte[] rifxData = file.saveToBytes();
 ```
 
 ### Complete Asset Dump Example

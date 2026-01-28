@@ -1,6 +1,7 @@
 package com.libreshockwave.chunks;
 
 import com.libreshockwave.DirectorFile;
+import com.libreshockwave.cast.MemberType;
 import com.libreshockwave.format.ChunkType;
 import com.libreshockwave.io.BinaryReader;
 
@@ -25,52 +26,6 @@ public record CastMemberChunk(
     @Override
     public ChunkType type() {
         return ChunkType.CASt;
-    }
-
-    public enum MemberType {
-        NULL(0, "null"),
-        BITMAP(1, "bitmap"),
-        FILM_LOOP(2, "filmLoop"),
-        TEXT(3, "text"),
-        PALETTE(4, "palette"),
-        PICTURE(5, "picture"),
-        SOUND(6, "sound"),
-        BUTTON(7, "button"),
-        SHAPE(8, "shape"),
-        MOVIE(9, "movie"),
-        DIGITAL_VIDEO(10, "digitalVideo"),
-        SCRIPT(11, "script"),
-        RTE(12, "rte"),
-        OLE(13, "ole"),
-        TRANSITION(14, "transition"),
-        XTRA(15, "xtra"),
-        FONT(16, "font"),
-        UNKNOWN(-1, "unknown");
-
-        private final int code;
-        private final String name;
-
-        MemberType(int code, String name) {
-            this.code = code;
-            this.name = name;
-        }
-
-        public int getCode() {
-            return code;
-        }
-
-        public String getName() {
-            return name;
-        }
-
-        public static MemberType fromCode(int code) {
-            for (MemberType type : values()) {
-                if (type.code == code) {
-                    return type;
-                }
-            }
-            return UNKNOWN;
-        }
     }
 
     public boolean isBitmap() {
