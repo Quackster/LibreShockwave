@@ -243,6 +243,112 @@ public class DirectorFile {
         return scoreChunk != null && scoreChunk.getFrameCount() > 0;
     }
 
+    // Script globals and properties
+
+    /**
+     * Get all unique global variable names declared across all scripts.
+     * @return Set of global variable names
+     */
+    public Set<String> getAllGlobalNames() {
+        Set<String> globals = new LinkedHashSet<>();
+        if (scriptNames == null) return globals;
+
+        for (ScriptChunk script : scripts) {
+            globals.addAll(script.getGlobalNames(scriptNames));
+        }
+        return globals;
+    }
+
+    /**
+     * Get all unique property names declared across all scripts.
+     * Properties are instance variables for parent scripts/behaviors.
+     * @return Set of property names
+     */
+    public Set<String> getAllPropertyNames() {
+        Set<String> properties = new LinkedHashSet<>();
+        if (scriptNames == null) return properties;
+
+        for (ScriptChunk script : scripts) {
+            properties.addAll(script.getPropertyNames(scriptNames));
+        }
+        return properties;
+    }
+
+    /**
+     * Get globals declared by a specific script.
+     * @param script The script chunk
+     * @return List of global variable names, or empty list if no script names available
+     */
+    public List<String> getScriptGlobals(ScriptChunk script) {
+        if (scriptNames == null) return List.of();
+        return script.getGlobalNames(scriptNames);
+    }
+
+    /**
+     * Get properties declared by a specific script.
+     * @param script The script chunk
+     * @return List of property names, or empty list if no script names available
+     */
+    public List<String> getScriptProperties(ScriptChunk script) {
+        if (scriptNames == null) return List.of();
+        return script.getPropertyNames(scriptNames);
+    }
+
+    /**
+     * Information about globals and properties for a script.
+     */
+    public record ScriptInfo(
+        int scriptId,
+        String scriptName,
+        ScriptChunk.ScriptType scriptType,
+        List<String> globals,
+        List<String> properties,
+        List<String> handlers
+    ) {}
+
+    /**
+     * Get detailed info about all scripts including their globals, properties, and handlers.
+     * @return List of ScriptInfo records
+     */
+    public List<ScriptInfo> getScriptInfoList() {
+        List<ScriptInfo> result = new ArrayList<>();
+        if (scriptNames == null) return result;
+
+        // Build a map from script chunk ID to cast member name
+        Map<Integer, String> scriptIdToName = new HashMap<>();
+        if (scriptContext != null) {
+            List<ScriptContextChunk.ScriptEntry> entries = scriptContext.entries();
+            for (int i = 0; i < entries.size(); i++) {
+                int contextIndex = i + 1;
+                int chunkId = entries.get(i).id();
+                // Find the cast member with this scriptId
+                for (CastMemberChunk member : castMembers) {
+                    if (member.isScript() && member.scriptId() == contextIndex) {
+                        scriptIdToName.put(chunkId, member.name());
+                        break;
+                    }
+                }
+            }
+        }
+
+        for (ScriptChunk script : scripts) {
+            List<String> handlerNames = new ArrayList<>();
+            for (ScriptChunk.Handler handler : script.handlers()) {
+                handlerNames.add(scriptNames.getName(handler.nameId()));
+            }
+
+            result.add(new ScriptInfo(
+                script.id(),
+                scriptIdToName.getOrDefault(script.id(), ""),
+                script.scriptType(),
+                script.getGlobalNames(scriptNames),
+                script.getPropertyNames(scriptNames),
+                handlerNames
+            ));
+        }
+        return result;
+    }
+
     // Loading
 
     public static DirectorFile load(Path path) throws IOException {

@@ -116,6 +116,50 @@ public record ScriptChunk(
         return null;
     }
 
+    /**
+     * Get property names declared in this script.
+     * Properties are instance variables for parent scripts (behaviors).
+     * @param names The ScriptNamesChunk to resolve name IDs
+     * @return List of property names
+     */
+    public List<String> getPropertyNames(ScriptNamesChunk names) {
+        List<String> result = new ArrayList<>();
+        if (names == null) return result;
+        for (PropertyEntry prop : properties) {
+            result.add(names.getName(prop.nameId()));
+        }
+        return result;
+    }
+
+    /**
+     * Get global variable names declared in this script.
+     * These are globals that this script accesses.
+     * @param names The ScriptNamesChunk to resolve name IDs
+     * @return List of global variable names
+     */
+    public List<String> getGlobalNames(ScriptNamesChunk names) {
+        List<String> result = new ArrayList<>();
+        if (names == null) return result;
+        for (GlobalEntry global : globals) {
+            result.add(names.getName(global.nameId()));
+        }
+        return result;
+    }
+
+    /**
+     * Check if this script declares any properties.
+     */
+    public boolean hasProperties() {
+        return !properties.isEmpty();
+    }
+
+    /**
+     * Check if this script declares any globals.
+     */
+    public boolean hasGlobals() {
+        return !globals.isEmpty();
+    }
+
     public static ScriptChunk read(DirectorFile file, BinaryReader reader, int id, int version, boolean capitalX) {
         // Lingo scripts are ALWAYS big endian regardless of file byte order
         reader.setOrder(ByteOrder.BIG_ENDIAN);

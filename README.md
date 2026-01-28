@@ -378,6 +378,45 @@ for (ScriptChunk script : file.getScripts()) {
 }
 ```
 
+### Getting Script Globals and Properties
+
+```java
+import com.libreshockwave.DirectorFile;
+import com.libreshockwave.chunks.ScriptChunk;
+import java.nio.file.Path;
+
+DirectorFile file = DirectorFile.load(Path.of("movie.dcr"));
+
+// Get all unique globals declared across all scripts
+System.out.println("All globals: " + file.getAllGlobalNames());
+
+// Get all unique properties declared across all scripts
+System.out.println("All properties: " + file.getAllPropertyNames());
+
+// Get globals and properties per script
+for (ScriptChunk script : file.getScripts()) {
+    if (script.hasGlobals() || script.hasProperties()) {
+        System.out.println("\nScript " + script.id() + " (" + script.scriptType() + "):");
+
+        if (script.hasGlobals()) {
+            System.out.println("  Globals: " + file.getScriptGlobals(script));
+        }
+        if (script.hasProperties()) {
+            System.out.println("  Properties: " + file.getScriptProperties(script));
+        }
+    }
+}
+
+// Or get detailed info about all scripts at once
+for (DirectorFile.ScriptInfo info : file.getScriptInfoList()) {
+    System.out.printf("Script %d '%s' (%s):%n",
+        info.scriptId(), info.scriptName(), info.scriptType());
+    System.out.println("  Handlers: " + info.handlers());
+    System.out.println("  Globals: " + info.globals());
+    System.out.println("  Properties: " + info.properties());
+}
+```
+
 ### Reading Score (Timeline) Data
 
 ```java
