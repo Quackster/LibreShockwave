@@ -84,3 +84,29 @@ tasks.register('extractCasts', JavaExec) {
         languageVersion = JavaLanguageVersion.of(21)
     }
 }
+
+// Debug save test
+// Usage: ./gradlew :sdk:runDebugSave
+tasks.register('runDebugSave', JavaExec) {
+    group = 'tools'
+    description = 'Run debug save test to compare output with reference'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.DebugSaveTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+// Save test
+// Usage: ./gradlew :sdk:runSaveTest
+tasks.register('runSaveTest', JavaExec) {
+    group = 'tools'
+    description = 'Run save test'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.SaveTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}

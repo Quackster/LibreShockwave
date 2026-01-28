@@ -5,6 +5,10 @@ import com.libreshockwave.chunks.*;
 import com.libreshockwave.format.AfterburnerReader;
 import com.libreshockwave.format.ChunkType;
 import com.libreshockwave.io.BinaryReader;
+import com.libreshockwave.io.CastMemberChunkWriter;
+import com.libreshockwave.io.ConfigChunkProcessor;
+import com.libreshockwave.io.DirectorFileWriter;
+import com.libreshockwave.lingo.LingoDecompiler;
 import com.libreshockwave.lingo.Opcode;
 import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.bitmap.BitmapDecoder;
@@ -39,6 +43,7 @@ public class DirectorFile {
 
     private final Map<Integer, Chunk> chunks = new HashMap<>();
     private final Map<Integer, ChunkInfo> chunkInfo = new HashMap<>();
+    private final Map<Integer, byte[]> rawChunkData = new HashMap<>();  // Raw chunk data for writing
     private final List<CastChunk> casts = new ArrayList<>();
     private final List<CastMemberChunk> castMembers = new ArrayList<>();
     private final List<ScriptChunk> scripts = new ArrayList<>();
@@ -83,6 +88,7 @@ public class DirectorFile {
     public List<PaletteChunk> getPalettes() { return Collections.unmodifiableList(palettes); }
     public Collection<ChunkInfo> getAllChunkInfo() { return Collections.unmodifiableCollection(chunkInfo.values()); }
     public ChunkInfo getChunkInfo(int id) { return chunkInfo.get(id); }
+    public Map<Integer, byte[]> getRawChunkData() { return Collections.unmodifiableMap(rawChunkData); }
     public String getBasePath() { return basePath; }
     public ScoreChunk getScoreChunk() { return scoreChunk; }
     public FrameLabelsChunk getFrameLabelsChunk() { return frameLabelsChunk; }
@@ -243,6 +249,121 @@ public class DirectorFile {
         return scoreChunk != null && scoreChunk.getFrameCount() > 0;
     }
 
+    // Saving
+
+    /**
+     * Save the file to the specified path as an unprotected RIFX file.
+     * This produces a standard Director file that can be opened in Director.
+     * The file is unprotected and script text is restored from bytecode.
+     */
+    public void save(Path path) throws IOException {
+        // Prepare for saving: unprotect and restore script text
+        unprotect();
+        restoreScriptText();
+
+        DirectorFileWriter writer = new DirectorFileWriter(this, rawChunkData);
+        writer.writeToFile(path);
+    }
+
+    /**
+     * Save the file and return the byte array.
+     * The file is unprotected and script text is restored from bytecode.
+     */
+    public byte[] saveToBytes() throws IOException {
+        // Prepare for saving: unprotect and restore script text
+        unprotect();
+        restoreScriptText();
+
+        DirectorFileWriter writer = new DirectorFileWriter(this, rawChunkData);
+        return writer.write();
+    }
+
+    /**
+     * Unprotect the file by modifying the config chunk.
+     * Sets fileVersion = directorVersion and adjusts protection flag.
+     */
+    public void unprotect() {
+        if (config == null) return;
+
+        // Find the config chunk's raw data
+        for (ChunkInfo info : chunkInfo.values()) {
+            if (info.type() == ChunkType.DRCF || info.type() == ChunkType.VWCF) {
+                byte[] configData = rawChunkData.get(info.id());
+                if (configData != null) {
+                    byte[] unprotectedData = ConfigChunkProcessor.unprotect(configData, true);
+                    rawChunkData.put(info.id(), unprotectedData);
+                }
+                break;
+            }
+        }
+    }
+
+    /**
+     * Restore script text into CastMemberChunks.
+     * Decompiles Lingo bytecode and embeds the source text into cast member info.
+     *
+     * The relationship between components:
+     * - CastMemberChunk.scriptId = 1-based index into ScriptContextChunk.entries
+     * - ScriptContextChunk.entries[index-1].id = Lscr chunk ID
+     * - ScriptChunk (Lscr) contains the bytecode
+     */
+    public void restoreScriptText() {
+        if (scriptNames == null || scriptContext == null) return;
+
+        int version = config != null ? config.directorVersion() : 1000;
+        boolean bigEndian = endian == ByteOrder.BIG_ENDIAN;
+        LingoDecompiler decompiler = new LingoDecompiler(this, scriptNames);
+
+        // Build a map from script context index (1-based) to Lscr chunk ID
+        Map<Integer, Integer> contextIndexToChunkId = new HashMap<>();
+        List<ScriptContextChunk.ScriptEntry> entries = scriptContext.entries();
+        for (int i = 0; i < entries.size(); i++) {
+            int contextIndex = i + 1; // 1-based index
+            int chunkId = entries.get(i).id();
+            if (chunkId > 0) {
+                contextIndexToChunkId.put(contextIndex, chunkId);
+            }
+        }
+
+        // Build a map of Lscr chunk ID to decompiled text
+        Map<Integer, String> scriptTexts = new HashMap<>();
+        for (ScriptChunk script : scripts) {
+            try {
+                String text = decompiler.decompile(script);
+                scriptTexts.put(script.id(), text);
+            } catch (Exception e) {
+                System.err.println("Failed to decompile script " + script.id() + ": " + e.getMessage());
+            }
+        }
+
+        // Update CastMemberChunks with their script text
+        int updatedCount = 0;
+        for (CastMemberChunk member : castMembers) {
+            if (!member.isScript()) continue;
+
+            // Get the script context index from the member's scriptId
+            int contextIndex = member.scriptId();
+            if (contextIndex <= 0) continue;
+
+            // Look up the Lscr chunk ID from the context index
+            Integer chunkId = contextIndexToChunkId.get(contextIndex);
+            if (chunkId == null) continue;
+
+            // Get the decompiled script text
+            String scriptText = scriptTexts.get(chunkId);
+            if (scriptText == null || scriptText.isEmpty()) continue;
+
+            // Update the raw chunk data for this member
+            byte[] memberData = rawChunkData.get(member.id());
+            if (memberData != null) {
+                byte[] newData = CastMemberChunkWriter.rewriteWithScriptText(
+                    memberData, scriptText, version, bigEndian);
+                rawChunkData.put(member.id(), newData);
+                updatedCount++;
+            }
+        }
+    }
+
     // Loading
 
     public static DirectorFile load(Path path) throws IOException {
@@ -300,6 +421,9 @@ public class DirectorFile {
         // Read imap chunk to find mmap - FourCCs are always 4-byte ASCII (read as big-endian int)
         int imapFourCC = reader.readFourCC();
         int imapLen = reader.readI32();
+
+        // imap data format: version (4), mmapOffset (4), directorVersion (4), unused1-3 (12)
+        int imapVersion = reader.readI32();
         int mmapOffset = reader.readI32();
 
         // Read mmap (memory map)
@@ -340,12 +464,21 @@ public class DirectorFile {
             }
         }
 
-        // Parse all chunks
+        // Parse all chunks and store raw data for writing
         int version = file.config != null ? file.config.directorVersion() : 0;
         boolean capitalX = false;
 
         for (ChunkInfo info : file.chunkInfo.values()) {
             try {
+                // Store raw chunk data for writing
+                byte[] rawData = new byte[info.length];
+                System.arraycopy(reader.peekBytes(info.length), 0, rawData, 0, info.length);
+                int savedPos = reader.getPosition();
+                reader.setPosition(info.offset);
+                rawData = reader.readBytes(info.length);
+                reader.setPosition(savedPos);
+                file.rawChunkData.put(info.id, rawData);
+
                 BinaryReader r = reader.sliceReaderAt(info.offset, info.length);
                 Chunk chunk = file.parseChunkFromReader(r, info, version, capitalX);
                 if (chunk != null) {
@@ -392,7 +525,7 @@ public class DirectorFile {
             }
         }
 
-        // Second pass: parse all chunks with correct version
+        // Second pass: parse all chunks with correct version and store raw data
         for (com.libreshockwave.format.ChunkInfo abInfo : abReader.getChunkInfos()) {
             int fourcc = BinaryReader.fourCC(abInfo.fourCC());
             ChunkInfo info = new ChunkInfo(
@@ -407,6 +540,10 @@ public class DirectorFile {
             // Try to get and parse the chunk data
             try {
                 byte[] chunkData = abReader.getChunkData(abInfo.resourceId());
+
+                // Store raw (decompressed) chunk data for writing
+                file.rawChunkData.put(info.id, chunkData);
+
                 BinaryReader chunkReader = new BinaryReader(chunkData, endian);
 
                 Chunk chunk = file.parseChunkFromReader(chunkReader, info, version, capitalX);
