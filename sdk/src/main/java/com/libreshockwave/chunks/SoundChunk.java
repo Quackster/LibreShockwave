@@ -57,55 +57,6 @@ public record SoundChunk(
     }
 
     /**
-     * Detect header size. Director MX 2004+ uses a 64-byte header.
-     * For MP3 data, the header is always 64 bytes.
-     * For PCM data, we check for audio patterns to determine if header extends further.
-     */
-    private static int detectHeaderSize(byte[] data) {
-        if (data.length < 64) {
-            return data.length;
-        }
-
-        // Check if data at offset 64 looks like MP3 (0xFF 0xFx or 0xFF 0xEx)
-        if (data.length >= 66) {
-            int b0 = data[64] & 0xFF;
-            int b1 = data[65] & 0xFF;
-            if (b0 == 0xFF && (b1 & 0xE0) == 0xE0) {
-                return 64; // MP3 starts at offset 64
-            }
-        }
-
-        // For PCM, check if audio patterns exist at offset 64
-        // PCM audio typically has varied byte values
-        if (data.length >= 128) {
-            // Check if bytes 64-80 look like audio (not all zeros or header-like patterns)
-            boolean looksLikeAudio = false;
-            int nonZeroCount = 0;
-            for (int i = 64; i < 80 && i < data.length; i++) {
-                if (data[i] != 0) nonZeroCount++;
-            }
-            looksLikeAudio = nonZeroCount > 4;
-
-            if (looksLikeAudio) {
-                return 64;
-            }
-
-            // Check offset 96
-            nonZeroCount = 0;
-            for (int i = 96; i < 112 && i < data.length; i++) {
-                if (data[i] != 0) nonZeroCount++;
-            }
-            if (nonZeroCount > 4) {
-                return 96;
-            }
-
-            return 128;
-        }
-
-        return 64;
-    }
-
-    /**
      * Detect codec type from audio data.
      * Searches up to 512 bytes for MP3 sync pattern since there may be
      * additional metadata before the actual audio data.
@@ -136,7 +87,6 @@ public record SoundChunk(
     }
 
     public static SoundChunk read(DirectorFile file, BinaryReader reader, int id) {
-        int startPos = reader.getPosition();
         int totalSize = reader.bytesLeft();
 
         if (totalSize < 64) {
@@ -144,16 +94,10 @@ public record SoundChunk(
             return new SoundChunk(file, id, 22050, 0, 16, 1, new byte[0], "raw_pcm");
         }
 
-        // Read all data first to detect header size
+        // Read ALL data - keep full raw chunk like dirplayer-rs does
         byte[] allData = reader.readBytes(totalSize);
 
-        // Detect header size using audio pattern detection
-        int headerSize = detectHeaderSize(allData);
-
-        // Read header fields in big-endian
-        ByteOrder originalOrder = reader.getOrder();
-
-        // Parse sample rates from header
+        // Parse sample rates from header (big-endian)
         int rateA = 22050; // default
         int rateB = 0;
         int rateC = 0;
@@ -190,26 +134,21 @@ public record SoundChunk(
             sampleRate = 22050; // Default fallback
         }
 
-        // Extract audio data after header
-        byte[] audioData;
-        if (headerSize > 0 && headerSize < allData.length) {
-            audioData = new byte[allData.length - headerSize];
-            System.arraycopy(allData, headerSize, audioData, 0, audioData.length);
-        } else {
-            audioData = new byte[0];
-        }
+        // Keep full raw data (like dirplayer-rs) - don't strip header
+        // The extraction code will find MP3 sync or handle PCM appropriately
+        byte[] audioData = allData;
 
-        // Detect codec
+        // Detect codec by searching for MP3 sync in the full data
         String codec = detectCodec(audioData);
 
         int bitsPerSample = 16;
         int channelCount = 1;
 
-        // Calculate sample count for PCM
+        // Calculate sample count for PCM (approximate, from data after 64-byte header)
         int sampleCount = 0;
-        if (!"mp3".equals(codec) && audioData.length > 0) {
+        if (!"mp3".equals(codec) && audioData.length > 64) {
             int bytesPerSample = bitsPerSample / 8;
-            sampleCount = audioData.length / (bytesPerSample * channelCount);
+            sampleCount = (audioData.length - 64) / (bytesPerSample * channelCount);
         }
 
         return new SoundChunk(file, id, sampleRate, sampleCount, bitsPerSample, channelCount, audioData, codec);

@@ -1102,10 +1102,11 @@ public class SdkFeatureTest {
 
                                     // Handle based on codec type
                                     if (soundChunk.isMp3()) {
-                                        // MP3 - find start and save directly
-                                        int mp3Offset = SoundConverter.findMp3Start(soundChunk.audioData());
-                                        if (mp3Offset >= 0) {
-                                            byte[] mp3Data = Arrays.copyOfRange(soundChunk.audioData(), mp3Offset, soundChunk.audioData().length);
+                                        // MP3 - strip 64-byte header, save rest (like dirplayer-rs)
+                                        byte[] fullData = soundChunk.audioData();
+                                        int headerSize = 64;
+                                        if (fullData.length > headerSize) {
+                                            byte[] mp3Data = Arrays.copyOfRange(fullData, headerSize, fullData.length);
                                             Files.write(outputDir.resolve(name + ".mp3"), mp3Data);
                                             mp3Count++;
                                             System.out.println("    MP3: " + member.name() + " (" + mp3Data.length + " bytes)");

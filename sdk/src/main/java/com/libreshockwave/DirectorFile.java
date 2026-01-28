@@ -82,6 +82,7 @@ public class DirectorFile {
     public List<ScriptChunk> getScripts() { return Collections.unmodifiableList(scripts); }
     public List<PaletteChunk> getPalettes() { return Collections.unmodifiableList(palettes); }
     public Collection<ChunkInfo> getAllChunkInfo() { return Collections.unmodifiableCollection(chunkInfo.values()); }
+    public ChunkInfo getChunkInfo(int id) { return chunkInfo.get(id); }
     public String getBasePath() { return basePath; }
     public ScoreChunk getScoreChunk() { return scoreChunk; }
     public FrameLabelsChunk getFrameLabelsChunk() { return frameLabelsChunk; }

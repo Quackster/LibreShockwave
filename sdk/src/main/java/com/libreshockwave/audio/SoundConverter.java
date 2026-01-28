@@ -18,12 +18,21 @@ public class SoundConverter {
     /**
      * Convert a SoundChunk to WAV format bytes.
      * Handles endianness conversion (Director = big-endian, WAV = little-endian for 16-bit).
+     * Skips the 64-byte snd header to get to the actual PCM audio data.
      *
      * @param sound The SoundChunk to convert
      * @return WAV file bytes ready to be written to a file or played
      */
     public static byte[] toWav(SoundChunk sound) {
-        return toWav(sound.audioData(), sound.sampleRate(), sound.bitsPerSample(),
+        byte[] fullData = sound.audioData();
+        // Skip 64-byte header to get PCM data
+        int headerSize = 64;
+        if (fullData.length <= headerSize) {
+            return createEmptyWav(sound.sampleRate(), sound.bitsPerSample(), sound.channelCount());
+        }
+        byte[] pcmData = new byte[fullData.length - headerSize];
+        System.arraycopy(fullData, headerSize, pcmData, 0, pcmData.length);
+        return toWav(pcmData, sound.sampleRate(), sound.bitsPerSample(),
                      sound.channelCount(), true);
     }
 
