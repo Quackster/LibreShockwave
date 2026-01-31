@@ -21,6 +21,7 @@ public sealed interface Chunk permits
         PaletteChunk,
         TextChunk,
         SoundChunk,
+        MediaChunk,
         RawChunk {
 
     DirectorFile file();
