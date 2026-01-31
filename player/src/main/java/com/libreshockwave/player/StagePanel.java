@@ -1,10 +1,9 @@
 package com.libreshockwave.player;
 
-import com.libreshockwave.DirectorFile;
 import com.libreshockwave.bitmap.Bitmap;
-import com.libreshockwave.cast.MemberType;
 import com.libreshockwave.chunks.CastMemberChunk;
-import com.libreshockwave.chunks.ScoreChunk;
+import com.libreshockwave.player.render.FrameSnapshot;
+import com.libreshockwave.player.render.RenderSprite;
 
 import javax.swing.*;
 import java.awt.*;
@@ -14,7 +13,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Panel that renders the Director stage and sprites.
+ * Swing panel that renders the Director stage using the player-core rendering API.
  */
 public class StagePanel extends JPanel {
 
@@ -44,16 +43,20 @@ public class StagePanel extends JPanel {
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
 
-        // Clear background
-        DirectorFile file = player.getFile();
-        g2d.setColor(Color.WHITE);
+        // Get the frame snapshot from player-core
+        FrameSnapshot snapshot = player.getFrameSnapshot();
+
+        // Draw background
+        g2d.setColor(new Color(snapshot.backgroundColor()));
         g2d.fillRect(0, 0, getWidth(), getHeight());
 
-        // Draw sprites for current frame
-        drawSprites(g2d);
+        // Draw all sprites
+        for (RenderSprite sprite : snapshot.sprites()) {
+            drawSprite(g2d, sprite);
+        }
 
-        // Draw frame info overlay (debug)
-        drawDebugInfo(g2d);
+        // Draw debug info
+        drawDebugInfo(g2d, snapshot);
     }
 
     private void paintNoMovie(Graphics g) {
@@ -69,62 +72,51 @@ public class StagePanel extends JPanel {
         g.drawString(msg, x, y);
     }
 
-    private void drawSprites(Graphics2D g) {
-        DirectorFile file = player.getFile();
-        ScoreChunk score = file.getScoreChunk();
-        if (score == null) return;
-
-        int frameIndex = player.getCurrentFrame() - 1;  // Convert to 0-indexed
-
-        // Find all channel data for this frame
-        for (ScoreChunk.FrameChannelEntry entry : score.frameData().frameChannelData()) {
-            if (entry.frameIndex() == frameIndex) {
-                drawSprite(g, entry.channelIndex(), entry.data());
-            }
-        }
-    }
-
-    private void drawSprite(Graphics2D g, int channel, ScoreChunk.ChannelData data) {
-        DirectorFile file = player.getFile();
-
-        // Skip empty sprites
-        if (data.isEmpty() || data.spriteType() == 0) {
+    private void drawSprite(Graphics2D g, RenderSprite sprite) {
+        if (!sprite.isVisible()) {
             return;
         }
 
-        int x = data.posX();
-        int y = data.posY();
-        int width = data.width();
-        int height = data.height();
+        int x = sprite.getX();
+        int y = sprite.getY();
+        int width = sprite.getWidth();
+        int height = sprite.getHeight();
 
-        // Try to get the cast member
-        CastMemberChunk member = file.getCastMemberByIndex(data.castLib(), data.castMember());
-
-        if (member != null && member.isBitmap()) {
-            // Draw bitmap
-            BufferedImage img = getCachedBitmap(member);
-            if (img != null) {
-                // Calculate actual position (regPoint offset)
-                int drawX = x - (width > 0 ? 0 : img.getWidth() / 2);
-                int drawY = y - (height > 0 ? 0 : img.getHeight() / 2);
-
-                if (width > 0 && height > 0) {
-                    g.drawImage(img, x, y, width, height, null);
-                } else {
-                    g.drawImage(img, drawX, drawY, null);
-                }
-            } else {
-                // Draw placeholder
-                drawPlaceholder(g, x, y, width, height, channel);
-            }
-        } else if (member != null && member.memberType() == MemberType.SHAPE) {
-            // Draw shape (simplified)
-            g.setColor(new Color(data.foreColor(), data.foreColor(), data.foreColor()));
-            g.fillRect(x, y, width > 0 ? width : 50, height > 0 ? height : 50);
-        } else {
-            // Draw placeholder for unknown sprite types
-            drawPlaceholder(g, x, y, width, height, channel);
+        switch (sprite.getType()) {
+            case BITMAP -> drawBitmap(g, sprite, x, y, width, height);
+            case SHAPE -> drawShape(g, sprite, x, y, width, height);
+            case TEXT, BUTTON -> drawPlaceholder(g, x, y, width, height, sprite.getChannel(), "txt");
+            default -> drawPlaceholder(g, x, y, width, height, sprite.getChannel(), "?");
         }
+    }
+
+    private void drawBitmap(Graphics2D g, RenderSprite sprite, int x, int y, int width, int height) {
+        CastMemberChunk member = sprite.getCastMember();
+        if (member == null) {
+            drawPlaceholder(g, x, y, width, height, sprite.getChannel(), "bmp");
+            return;
+        }
+
+        BufferedImage img = getCachedBitmap(member);
+        if (img != null) {
+            // Calculate actual position (regPoint offset)
+            int drawX = x - (width > 0 ? 0 : img.getWidth() / 2);
+            int drawY = y - (height > 0 ? 0 : img.getHeight() / 2);
+
+            if (width > 0 && height > 0) {
+                g.drawImage(img, x, y, width, height, null);
+            } else {
+                g.drawImage(img, drawX, drawY, null);
+            }
+        } else {
+            drawPlaceholder(g, x, y, width, height, sprite.getChannel(), "bmp");
+        }
+    }
+
+    private void drawShape(Graphics2D g, RenderSprite sprite, int x, int y, int width, int height) {
+        int fc = sprite.getForeColor();
+        g.setColor(new Color(fc, fc, fc));
+        g.fillRect(x, y, width > 0 ? width : 50, height > 0 ? height : 50);
     }
 
     private BufferedImage getCachedBitmap(CastMemberChunk member) {
@@ -133,8 +125,11 @@ public class StagePanel extends JPanel {
             return bitmapCache.get(id);
         }
 
-        DirectorFile file = player.getFile();
-        Optional<Bitmap> bitmap = file.decodeBitmap(member);
+        if (player == null || player.getFile() == null) {
+            return null;
+        }
+
+        Optional<Bitmap> bitmap = player.getFile().decodeBitmap(member);
         if (bitmap.isPresent()) {
             BufferedImage img = bitmap.get().toBufferedImage();
             bitmapCache.put(id, img);
@@ -145,7 +140,7 @@ public class StagePanel extends JPanel {
         return null;
     }
 
-    private void drawPlaceholder(Graphics2D g, int x, int y, int width, int height, int channel) {
+    private void drawPlaceholder(Graphics2D g, int x, int y, int width, int height, int channel, String label) {
         int w = width > 0 ? width : 50;
         int h = height > 0 ? height : 50;
 
@@ -155,20 +150,15 @@ public class StagePanel extends JPanel {
         g.setColor(Color.GRAY);
         g.drawRect(x, y, w, h);
 
-        // Draw channel number
+        // Draw channel number and type
         g.setFont(new Font("SansSerif", Font.PLAIN, 10));
-        g.drawString("ch" + channel, x + 2, y + 12);
+        g.drawString(label + channel, x + 2, y + 12);
     }
 
-    private void drawDebugInfo(Graphics2D g) {
-        // Draw current frame number in corner
+    private void drawDebugInfo(Graphics2D g, FrameSnapshot snapshot) {
+        // Draw current frame info in corner
         g.setColor(new Color(0, 0, 0, 128));
         g.setFont(new Font("Monospaced", Font.PLAIN, 12));
-
-        int frame = player.getCurrentFrame();
-        int total = player.getFrameCount();
-        String info = String.format("Frame %d/%d | %s", frame, total, player.getState());
-
-        g.drawString(info, 5, getHeight() - 5);
+        g.drawString(snapshot.debugInfo(), 5, getHeight() - 5);
     }
 }
