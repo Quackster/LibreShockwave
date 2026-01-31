@@ -152,6 +152,7 @@ public class EventDispatcher {
 
     /**
      * Dispatch an event to movie scripts only.
+     * Movie scripts handle movie-level events: prepareMovie, startMovie, stopMovie.
      */
     public void dispatchToMovieScripts(String handlerName, List<Datum> args) {
         if (file == null) return;
@@ -159,22 +160,49 @@ public class EventDispatcher {
         ScriptNamesChunk names = file.getScriptNames();
         if (names == null) return;
 
+        // Log the event dispatch for movie lifecycle events
+        debugMessage("-- " + handlerName + " (movie)");
+
+        int totalScripts = file.getScripts().size();
+        int movieScriptCount = 0;
+        int handlersFound = 0;
+
         for (ScriptChunk script : file.getScripts()) {
-            if (script.scriptType() == ScriptChunk.ScriptType.MOVIE_SCRIPT) {
-                ScriptChunk.Handler handler = script.findHandler(handlerName, names);
-                if (handler != null) {
-                    debugLog("found " + handlerName + " in movie script #" + script.id());
-                    if (debugEnabled) {
-                        System.out.println("[EventDispatcher] Invoking movie script handler: " + handlerName);
-                    }
-                    try {
-                        vm.executeHandler(script, handler, args, null);
-                    } catch (Exception e) {
-                        System.err.println("[EventDispatcher] Error in movie script " + handlerName + ": " + e.getMessage());
-                    }
-                } else {
-                    debugLog("no " + handlerName + " in movie script #" + script.id());
+            boolean isMovieScript = script.scriptType() == ScriptChunk.ScriptType.MOVIE_SCRIPT;
+            if (isMovieScript) {
+                movieScriptCount++;
+            }
+
+            // Only check movie scripts for movie events
+            if (!isMovieScript) {
+                continue;
+            }
+
+            ScriptChunk.Handler handler = script.findHandler(handlerName, names);
+            if (handler != null) {
+                handlersFound++;
+                debugLog("found " + handlerName + " in movie script #" + script.id());
+                if (debugEnabled) {
+                    System.out.println("[EventDispatcher] Invoking movie script handler: " + handlerName);
                 }
+                try {
+                    vm.executeHandler(script, handler, args, null);
+                } catch (Exception e) {
+                    System.err.println("[EventDispatcher] Error in " + handlerName + ": " + e.getMessage());
+                    if (debugEnabled) {
+                        e.printStackTrace();
+                    }
+                }
+            } else {
+                debugLog("no " + handlerName + " in movie script #" + script.id());
+            }
+        }
+
+        if (handlersFound == 0 && movieScriptCount == 0) {
+            debugLog("WARNING: no movie scripts found in " + totalScripts + " total scripts");
+            // Dump script types for debugging
+            for (ScriptChunk script : file.getScripts()) {
+                debugLog("  script #" + script.id() + " type=" + script.scriptType());
             }
         }
     }

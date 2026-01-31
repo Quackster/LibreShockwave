@@ -176,6 +176,24 @@ public record ScriptChunk(
         reader.seek(38);
         int behaviorFlags = reader.readI32();
 
+        // Script type determination:
+        // - Try behaviorFlags low nibble first
+        // - Fall back to scriptNumber if that's 0
+        int scriptTypeCode = behaviorFlags & 0x0F;
+        if (scriptTypeCode == 0) {
+            scriptTypeCode = scriptNumber;
+        }
+
+        // Debug output for script type investigation
+        boolean debugScriptType = Boolean.getBoolean("libreshockwave.debug.scriptType");
+        if (debugScriptType) {
+            System.out.println("[ScriptChunk] id=" + id + " scriptNumber=" + scriptNumber +
+                " behaviorFlags=0x" + Integer.toHexString(behaviorFlags) +
+                " (low nibble=" + (behaviorFlags & 0x0F) + ")" +
+                " -> scriptTypeCode=" + scriptTypeCode +
+                " -> " + ScriptType.fromCode(scriptTypeCode));
+        }
+
         // Seek to handler data at offset 50
         reader.seek(50);
         int handlerVectorsCount = reader.readU16();
@@ -192,7 +210,8 @@ public record ScriptChunk(
         int literalDataLen = reader.readI32();
         int literalDataOffset = reader.readI32();
 
-        int scriptType = scriptNumber; // Actually script number, not type
+        // Use the script type derived from behaviorFlags or scriptNumber
+        int scriptType = scriptTypeCode;
 
         // Read properties
         List<PropertyEntry> properties = new ArrayList<>();

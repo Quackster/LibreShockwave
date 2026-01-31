@@ -1,6 +1,8 @@
 package com.libreshockwave.player;
 
 import com.libreshockwave.DirectorFile;
+import com.libreshockwave.chunks.ScriptChunk;
+import com.libreshockwave.chunks.ScriptNamesChunk;
 import com.libreshockwave.player.behavior.BehaviorManager;
 import com.libreshockwave.player.event.EventDispatcher;
 import com.libreshockwave.player.frame.FrameContext;
@@ -98,6 +100,53 @@ public class Player {
     public void setDebugEnabled(boolean enabled) {
         this.debugEnabled = enabled;
         frameContext.setDebugEnabled(enabled);
+        if (enabled) {
+            dumpScriptInfo();
+        }
+    }
+
+    /**
+     * Dump information about loaded scripts for debugging.
+     */
+    public void dumpScriptInfo() {
+        if (file == null) {
+            System.out.println("[Player] No file loaded");
+            return;
+        }
+
+        ScriptNamesChunk names = file.getScriptNames();
+        System.out.println("[Player] === Script Summary ===");
+        System.out.println("[Player] Total scripts: " + file.getScripts().size());
+
+        int movieScripts = 0;
+        int behaviors = 0;
+        int parents = 0;
+        int unknown = 0;
+
+        for (ScriptChunk script : file.getScripts()) {
+            String typeName = script.scriptType() != null ? script.scriptType().name() : "null";
+            switch (script.scriptType()) {
+                case MOVIE_SCRIPT -> movieScripts++;
+                case BEHAVIOR -> behaviors++;
+                case PARENT -> parents++;
+                default -> unknown++;
+            }
+
+            // List handlers in movie scripts
+            if (script.scriptType() == ScriptChunk.ScriptType.MOVIE_SCRIPT) {
+                System.out.println("[Player] Movie script #" + script.id() + " handlers:");
+                for (ScriptChunk.Handler handler : script.handlers()) {
+                    String handlerName = names != null ? names.getName(handler.nameId()) : "name#" + handler.nameId();
+                    System.out.println("[Player]   - " + handlerName);
+                }
+            }
+        }
+
+        System.out.println("[Player] Movie scripts: " + movieScripts);
+        System.out.println("[Player] Behaviors: " + behaviors);
+        System.out.println("[Player] Parent scripts: " + parents);
+        System.out.println("[Player] Unknown type: " + unknown);
+        System.out.println("[Player] ======================");
     }
 
     // Frame labels (delegated to navigator)

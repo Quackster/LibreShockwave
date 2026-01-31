@@ -33,6 +33,8 @@ public class ScoreNavigator {
         ScoreChunk score = file.getScoreChunk();
         if (score == null) return;
 
+        boolean debug = Boolean.getBoolean("libreshockwave.debug.score");
+
         for (ScoreChunk.FrameInterval interval : score.frameIntervals()) {
             ScoreChunk.FrameIntervalPrimary primary = interval.primary();
             int channel = primary.channelIndex();
@@ -49,9 +51,20 @@ public class ScoreNavigator {
                     secondary.castMember()
                 );
                 span.addBehavior(behavior);
+
+                if (debug) {
+                    String type = channel == 0 ? "frame script" : "sprite behavior";
+                    System.out.println("[ScoreNavigator] " + type + ": channel=" + channel +
+                        " frames=" + startFrame + "-" + endFrame +
+                        " -> castLib=" + secondary.castLib() + " member=" + secondary.castMember());
+                }
             }
 
             spriteSpans.add(span);
+        }
+
+        if (debug) {
+            System.out.println("[ScoreNavigator] Built " + spriteSpans.size() + " sprite spans");
         }
     }
 

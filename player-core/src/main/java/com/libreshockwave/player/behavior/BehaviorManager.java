@@ -192,31 +192,43 @@ public class BehaviorManager {
         // Find the cast member
         CastMemberChunk member = file.getCastMemberByIndex(castLib, castMember);
         if (member == null || !member.isScript()) {
+            if (debugEnabled) {
+                System.err.println("[BehaviorManager] No script member found at castLib=" + castLib + " member=" + castMember);
+            }
             return null;
         }
 
-        // Find the script chunk for this member
+        // Find the script chunk for this member by scriptId
         int scriptId = member.scriptId();
-        for (ScriptChunk script : file.getScripts()) {
-            if (script.id() == scriptId ||
-                script.scriptType() == ScriptChunk.ScriptType.BEHAVIOR) {
-                // Match by script ID or check all behaviors
-                ScriptNamesChunk names = file.getScriptNames();
-                if (names != null) {
-                    // Verify this is the right script
-                    // In a full implementation, we'd match by the script context entry
-                    return script;
-                }
-            }
+        if (debugEnabled) {
+            System.out.println("[BehaviorManager] Looking for script id=" + scriptId + " (member name: " + member.name() + ")");
         }
 
-        // Fallback: return first matching behavior script
+        // First try to find by exact script ID
         for (ScriptChunk script : file.getScripts()) {
-            if (script.scriptType() == ScriptChunk.ScriptType.BEHAVIOR) {
+            if (script.id() == scriptId) {
+                if (debugEnabled) {
+                    System.out.println("[BehaviorManager] Found script #" + script.id() + " type=" + script.scriptType());
+                }
                 return script;
             }
         }
 
+        // If not found by ID, try to match by cast member index
+        // (Some files link scripts differently)
+        for (ScriptChunk script : file.getScripts()) {
+            // Script ID might match cast member number
+            if (script.id() == castMember) {
+                if (debugEnabled) {
+                    System.out.println("[BehaviorManager] Found script #" + script.id() + " by castMember match");
+                }
+                return script;
+            }
+        }
+
+        if (debugEnabled) {
+            System.err.println("[BehaviorManager] No script found for scriptId=" + scriptId);
+        }
         return null;
     }
 
