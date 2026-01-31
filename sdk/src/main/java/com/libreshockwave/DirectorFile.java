@@ -656,6 +656,7 @@ public class DirectorFile {
             case CLUT -> PaletteChunk.read(this, reader, info.id, version);
             case STXT -> TextChunk.read(this, reader, info.id);
             case snd_ -> SoundChunk.read(this, reader, info.id);
+            case ediM -> MediaChunk.read(this, reader, info.id);
             default -> new RawChunk(this, info.id, type, reader.readBytes(reader.bytesLeft()));
         };
     }

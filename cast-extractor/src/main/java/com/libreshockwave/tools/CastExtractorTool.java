@@ -762,6 +762,10 @@ public class CastExtractorTool extends JFrame {
             if (chunk instanceof SoundChunk sc) {
                 return sc;
             }
+            // Also check for MediaChunk (ediM) and convert to SoundChunk
+            if (chunk instanceof com.libreshockwave.chunks.MediaChunk mc) {
+                return mc.toSoundChunk();
+            }
         }
 
         return null;
