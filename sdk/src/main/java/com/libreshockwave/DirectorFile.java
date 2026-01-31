@@ -88,14 +88,18 @@ public class DirectorFile {
      * @return The cast member, or null if not found
      */
     public CastMemberChunk getCastMemberByIndex(int castLib, int castMemberIndex) {
-        // Get the min member offset from the cast list if available
+        // Get the min member offset from the cast list or config
         int minMember = 1;
         if (castList != null && !castList.entries().isEmpty()) {
             int libIndex = Math.max(0, castLib - 1);
             if (libIndex < castList.entries().size()) {
                 minMember = castList.entries().get(libIndex).minMember();
             }
+        } else if (config != null) {
+            // For .cct files without MCsL, use config's minMember
+            minMember = config.minMember();
         }
+        if (minMember <= 0) minMember = 1;
 
         // Calculate the actual member ID considering the offset
         int adjustedMemberId = castMemberIndex + minMember;
@@ -176,10 +180,23 @@ public class DirectorFile {
         int memberNumber = paletteId + 1;
 
         // Try to find the palette cast member by member number in cast arrays
-        for (CastChunk cast : casts) {
+        for (int castIdx = 0; castIdx < casts.size(); castIdx++) {
+            CastChunk cast = casts.get(castIdx);
+
+            // Get minMember for this cast library (like dirplayer-rs does)
+            // Priority: CastListChunk entry > Config chunk > default of 1
+            int minMember = 1;
+            if (castList != null && castIdx < castList.entries().size()) {
+                minMember = castList.entries().get(castIdx).minMember();
+            } else if (config != null) {
+                // For .cct files without MCsL, use config's minMember
+                minMember = config.minMember();
+            }
+            if (minMember <= 0) minMember = 1;
+
             List<Integer> memberIds = cast.memberIds();
-            // Member numbers are 1-based, so index = memberNumber - 1
-            int index = memberNumber - 1;
+            // Member numbers use minMember offset, so index = memberNumber - minMember
+            int index = memberNumber - minMember;
             if (index >= 0 && index < memberIds.size()) {
                 int chunkId = memberIds.get(index);
                 if (chunkId > 0) {
