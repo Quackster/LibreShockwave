@@ -1,13 +1,23 @@
-package com.libreshockwave;
+package com.libreshockwave.tools;
 
+import com.libreshockwave.DirectorFile;
 import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.cast.BitmapInfo;
 import com.libreshockwave.cast.MemberType;
 import com.libreshockwave.cast.ShapeInfo;
 import com.libreshockwave.cast.FilmLoopInfo;
-import com.libreshockwave.chunks.*;
+import com.libreshockwave.chunks.CastMemberChunk;
+import com.libreshockwave.chunks.Chunk;
+import com.libreshockwave.chunks.KeyTableChunk;
+import com.libreshockwave.chunks.PaletteChunk;
+import com.libreshockwave.chunks.ScriptChunk;
+import com.libreshockwave.chunks.ScriptContextChunk;
+import com.libreshockwave.chunks.ScriptNamesChunk;
+import com.libreshockwave.chunks.SoundChunk;
+import com.libreshockwave.chunks.TextChunk;
 import com.libreshockwave.bitmap.Palette;
 import com.libreshockwave.audio.SoundConverter;
+import com.libreshockwave.lingo.Opcode;
 
 import javax.sound.sampled.*;
 
@@ -32,6 +42,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.prefs.Preferences;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -65,7 +76,11 @@ public class CastExtractorTool extends JFrame {
     private JComboBox<String> typeFilterCombo;
     private JButton playButton;
     private JButton stopButton;
+    private JSlider positionSlider;
+    private JLabel timeLabel;
+    private JPanel audioPanel;
     private Clip currentClip;
+    private javax.swing.Timer playbackTimer;
 
     // Lazy loading cache using soft references to allow GC when memory is low
     private final Map<BitmapKey, SoftReference<BufferedImage>> imageCache = new ConcurrentHashMap<>();
@@ -238,8 +253,12 @@ public class CastExtractorTool extends JFrame {
         panel.add(previewContainer, BorderLayout.CENTER);
 
         // Audio controls panel
-        JPanel audioPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        playButton = new JButton("Play Sound");
+        audioPanel = new JPanel(new BorderLayout(5, 5));
+        audioPanel.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
+
+        // Buttons panel
+        JPanel buttonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        playButton = new JButton("Play");
         playButton.setEnabled(false);
         playButton.addActionListener(e -> playCurrentSound());
 
@@ -247,16 +266,52 @@ public class CastExtractorTool extends JFrame {
         stopButton.setEnabled(false);
         stopButton.addActionListener(e -> stopSound());
 
-        audioPanel.add(playButton);
-        audioPanel.add(stopButton);
+        buttonsPanel.add(playButton);
+        buttonsPanel.add(stopButton);
+
+        // Position slider
+        positionSlider = new JSlider(0, 100, 0);
+        positionSlider.setEnabled(false);
+        positionSlider.addChangeListener(e -> {
+            if (positionSlider.getValueIsAdjusting() && currentClip != null) {
+                long newPos = (long) ((positionSlider.getValue() / 100.0) * currentClip.getMicrosecondLength());
+                currentClip.setMicrosecondPosition(newPos);
+            }
+        });
+
+        // Time label
+        timeLabel = new JLabel("0:00 / 0:00");
+        timeLabel.setPreferredSize(new Dimension(100, 20));
+
+        audioPanel.add(buttonsPanel, BorderLayout.WEST);
+        audioPanel.add(positionSlider, BorderLayout.CENTER);
+        audioPanel.add(timeLabel, BorderLayout.EAST);
         audioPanel.setVisible(false);
 
         panel.add(audioPanel, BorderLayout.SOUTH);
+
+        // Timer for updating playback position
+        playbackTimer = new javax.swing.Timer(100, e -> updatePlaybackPosition());
 
         return panel;
     }
 
     private MemberNodeData currentSoundMember = null;
+
+    private void updatePlaybackPosition() {
+        if (currentClip != null && currentClip.isRunning()) {
+            long pos = currentClip.getMicrosecondPosition();
+            long len = currentClip.getMicrosecondLength();
+            int percent = (int) ((pos * 100.0) / len);
+            positionSlider.setValue(percent);
+
+            // Update time label
+            int posSec = (int) (pos / 1_000_000);
+            int lenSec = (int) (len / 1_000_000);
+            timeLabel.setText(String.format("%d:%02d / %d:%02d",
+                    posSec / 60, posSec % 60, lenSec / 60, lenSec % 60));
+        }
+    }
 
     private void playCurrentSound() {
         if (currentSoundMember == null) return;
@@ -271,40 +326,87 @@ public class CastExtractorTool extends JFrame {
 
         try {
             byte[] audioData;
+
             if (soundChunk.isMp3()) {
-                // For MP3, we'd need an MP3 decoder - show message instead
-                statusLabel.setText("MP3 playback not supported - extract and use external player");
-                return;
+                // Extract MP3 data - with mp3spi library, AudioSystem can play MP3
+                audioData = SoundConverter.extractMp3(soundChunk);
+                if (audioData == null || audioData.length == 0) {
+                    statusLabel.setText("Failed to extract MP3 data");
+                    return;
+                }
             } else {
                 // Convert PCM to WAV
                 audioData = SoundConverter.toWav(soundChunk);
             }
 
-            // Play the WAV
+            if (audioData == null || audioData.length <= 44) {
+                statusLabel.setText("No audio data to play");
+                return;
+            }
+
+            // Play the audio (mp3spi adds MP3 support to AudioSystem)
             AudioInputStream audioStream = AudioSystem.getAudioInputStream(
-                    new java.io.ByteArrayInputStream(audioData));
+                    new ByteArrayInputStream(audioData));
+
+            // For MP3, we need to convert to PCM format that Clip can handle
+            AudioFormat baseFormat = audioStream.getFormat();
+            if (baseFormat.getEncoding() != AudioFormat.Encoding.PCM_SIGNED) {
+                AudioFormat decodedFormat = new AudioFormat(
+                        AudioFormat.Encoding.PCM_SIGNED,
+                        baseFormat.getSampleRate(),
+                        16,
+                        baseFormat.getChannels(),
+                        baseFormat.getChannels() * 2,
+                        baseFormat.getSampleRate(),
+                        false
+                );
+                audioStream = AudioSystem.getAudioInputStream(decodedFormat, audioStream);
+            }
+
             currentClip = AudioSystem.getClip();
             currentClip.open(audioStream);
             currentClip.addLineListener(event -> {
                 if (event.getType() == LineEvent.Type.STOP) {
-                    SwingUtilities.invokeLater(() -> stopButton.setEnabled(false));
+                    SwingUtilities.invokeLater(() -> {
+                        stopButton.setEnabled(false);
+                        playButton.setText("Play");
+                        playbackTimer.stop();
+                        positionSlider.setValue(0);
+                        timeLabel.setText("0:00 / 0:00");
+                    });
                 }
             });
+
+            // Update UI
+            positionSlider.setEnabled(true);
+            positionSlider.setValue(0);
+            long lenSec = currentClip.getMicrosecondLength() / 1_000_000;
+            timeLabel.setText(String.format("0:00 / %d:%02d", lenSec / 60, lenSec % 60));
+
             currentClip.start();
+            playButton.setText("Pause");
             stopButton.setEnabled(true);
+            playbackTimer.start();
             statusLabel.setText("Playing: " + currentSoundMember.memberInfo.name);
+
         } catch (Exception ex) {
-            statusLabel.setText("Error playing sound: " + ex.getMessage());
+            statusLabel.setText("Playback error: " + ex.getMessage());
+            ex.printStackTrace();
         }
     }
 
     private void stopSound() {
+        playbackTimer.stop();
         if (currentClip != null) {
             currentClip.stop();
             currentClip.close();
             currentClip = null;
         }
         stopButton.setEnabled(false);
+        playButton.setText("Play");
+        positionSlider.setValue(0);
+        positionSlider.setEnabled(false);
+        timeLabel.setText("0:00 / 0:00");
     }
 
     private JPanel createBottomPanel() {
@@ -384,145 +486,63 @@ public class CastExtractorTool extends JFrame {
         // Clear previous data
         clearData();
 
-        // Scan in background
-        SwingWorker<List<FileNode>, String> worker = new SwingWorker<>() {
+        // Show progress bar
+        progressBar.setVisible(true);
+        progressBar.setIndeterminate(false);
+        progressBar.setValue(0);
+
+        // Scan in background with multi-threading
+        SwingWorker<List<FileNode>, Integer> worker = new SwingWorker<>() {
             @Override
             protected List<FileNode> doInBackground() {
-                List<FileNode> fileNodes = new ArrayList<>();
+                List<FileNode> fileNodes = Collections.synchronizedList(new ArrayList<>());
 
                 try (Stream<Path> paths = Files.walk(inputPath)) {
                     List<Path> files = paths.filter(Files::isRegularFile).toList();
                     int total = files.size();
-                    int processed = 0;
+                    AtomicInteger processed = new AtomicInteger(0);
 
-                    for (Path file : files) {
-                        processed++;
-                        publish("Scanning: " + file.getFileName() + " (" + processed + "/" + total + ")");
-
+                    // Use parallel stream for multi-threaded processing
+                    files.parallelStream().forEach(file -> {
                         try {
-                            DirectorFile dirFile = DirectorFile.load(file);
-                            List<CastMemberInfo> members = new ArrayList<>();
-
-                            // Get all cast members
-                            for (CastMemberChunk member : dirFile.getCastMembers()) {
-                                if (member.memberType() == MemberType.NULL) {
-                                    continue; // Skip null members
-                                }
-
-                                String name = member.name();
-                                if (name == null || name.isEmpty()) {
-                                    name = "Unnamed #" + member.id();
-                                }
-
-                                String details = "";
-                                MemberType type = member.memberType();
-
-                                // Parse type-specific details
-                                if (type == MemberType.BITMAP && member.specificData().length > 0) {
-                                    try {
-                                        BitmapInfo info = BitmapInfo.parse(member.specificData());
-                                        details = String.format("%dx%d, %d-bit", info.width(), info.height(), info.bitDepth());
-                                    } catch (Exception ignored) {}
-                                } else if (type == MemberType.SHAPE && member.specificData().length > 0) {
-                                    try {
-                                        ShapeInfo info = ShapeInfo.parse(member.specificData());
-                                        details = String.format("%s %dx%d", info.shapeType(), info.width(), info.height());
-                                    } catch (Exception ignored) {}
-                                } else if (type == MemberType.FILM_LOOP && member.specificData().length > 0) {
-                                    try {
-                                        FilmLoopInfo info = FilmLoopInfo.parse(member.specificData());
-                                        details = String.format("%dx%d", info.width(), info.height());
-                                    } catch (Exception ignored) {}
-                                } else if (type == MemberType.SCRIPT) {
-                                    // Find the script chunk for this member
-                                    ScriptChunk script = findScriptForMember(dirFile, member);
-                                    if (script != null) {
-                                        ScriptNamesChunk scriptNames = dirFile.getScriptNames();
-                                        String scriptTypeName = getScriptTypeName(script.scriptType());
-                                        // Build handler list summary
-                                        List<String> handlerNames = new ArrayList<>();
-                                        if (scriptNames != null) {
-                                            for (ScriptChunk.Handler h : script.handlers()) {
-                                                String hName = scriptNames.getName(h.nameId());
-                                                if (!hName.startsWith("<")) {
-                                                    handlerNames.add(hName);
-                                                }
-                                            }
-                                        }
-                                        // Format: "Movie Script" or "Parent Script" with handler names
-                                        if (!handlerNames.isEmpty()) {
-                                            String handlers = handlerNames.size() <= 3 ?
-                                                    String.join(", ", handlerNames) :
-                                                    handlerNames.get(0) + ", " + handlerNames.get(1) + "... +" + (handlerNames.size() - 2);
-                                            details = String.format("%s [%s]", scriptTypeName, handlers);
-                                        } else {
-                                            details = scriptTypeName;
-                                        }
-                                    }
-                                } else if (type == MemberType.SOUND) {
-                                    // Try to get sound info from associated chunk
-                                    SoundChunk soundChunk = findSoundForMember(dirFile, member);
-                                    if (soundChunk != null) {
-                                        String codec = soundChunk.isMp3() ? "MP3" : "PCM";
-                                        double duration = soundChunk.durationSeconds();
-                                        details = String.format("%s, %dHz, %.1fs",
-                                                codec, soundChunk.sampleRate(), duration);
-                                    } else {
-                                        details = "sound data";
-                                    }
-                                } else if (type == MemberType.PALETTE) {
-                                    // Try to get palette info
-                                    PaletteChunk paletteChunk = findPaletteForMember(dirFile, member);
-                                    if (paletteChunk != null) {
-                                        details = paletteChunk.colors().length + " colors";
-                                    } else {
-                                        details = "palette";
-                                    }
-                                } else if (type == MemberType.TEXT || type == MemberType.BUTTON) {
-                                    // Try to get text preview
-                                    TextChunk textChunk = findTextForMember(dirFile, member);
-                                    if (textChunk != null) {
-                                        String text = textChunk.text()
-                                                .replace("\r\n", " ")
-                                                .replace("\r", " ")
-                                                .replace("\n", " ")
-                                                .trim();
-                                        if (text.length() > 50) {
-                                            text = text.substring(0, 47) + "...";
-                                        }
-                                        details = "\"" + text + "\"";
-                                    }
-                                }
-
-                                members.add(new CastMemberInfo(
-                                        member.id(), name, member, type, details
-                                ));
-                            }
-
-                            if (!members.isEmpty()) {
-                                loadedFiles.put(file.toString(), dirFile);
-                                fileNodes.add(new FileNode(file.toString(), file.getFileName().toString(), members));
+                            FileNode node = processFile(file);
+                            if (node != null) {
+                                fileNodes.add(node);
                             }
                         } catch (Exception ignored) {
                             // Silently ignore files that fail to parse
                         }
-                    }
+
+                        int current = processed.incrementAndGet();
+                        // Update progress every 10 files or at the end
+                        if (current % 10 == 0 || current == total) {
+                            int percent = (int) ((current * 100.0) / total);
+                            publish(percent);
+                        }
+                    });
+
                 } catch (IOException ex) {
-                    publish("Error scanning directory: " + ex.getMessage());
+                    SwingUtilities.invokeLater(() ->
+                        statusLabel.setText("Error scanning directory: " + ex.getMessage()));
                 }
 
+                // Sort by filename for consistent ordering
+                fileNodes.sort((a, b) -> a.fileName.compareToIgnoreCase(b.fileName));
                 return fileNodes;
             }
 
             @Override
-            protected void process(List<String> chunks) {
+            protected void process(List<Integer> chunks) {
                 if (!chunks.isEmpty()) {
-                    statusLabel.setText(chunks.get(chunks.size() - 1));
+                    int latest = chunks.get(chunks.size() - 1);
+                    progressBar.setValue(latest);
+                    statusLabel.setText("Scanning... " + latest + "%");
                 }
             }
 
             @Override
             protected void done() {
+                progressBar.setVisible(false);
                 try {
                     List<FileNode> fileNodes = get();
                     populateTree(fileNodes);
@@ -559,6 +579,121 @@ public class CastExtractorTool extends JFrame {
 
         statusLabel.setText("Scanning...");
         worker.execute();
+    }
+
+    /**
+     * Process a single file and return a FileNode, or null if no valid members.
+     * This method is thread-safe.
+     */
+    private FileNode processFile(Path file) {
+        try {
+            DirectorFile dirFile = DirectorFile.load(file);
+            List<CastMemberInfo> members = new ArrayList<>();
+
+            // Get all cast members
+            for (CastMemberChunk member : dirFile.getCastMembers()) {
+                if (member.memberType() == MemberType.NULL) {
+                    continue; // Skip null members
+                }
+
+                String name = member.name();
+                if (name == null || name.isEmpty()) {
+                    name = "Unnamed #" + member.id();
+                }
+
+                String details = "";
+                MemberType type = member.memberType();
+
+                // Parse type-specific details
+                if (type == MemberType.BITMAP && member.specificData().length > 0) {
+                    try {
+                        BitmapInfo info = BitmapInfo.parse(member.specificData());
+                        details = String.format("%dx%d, %d-bit", info.width(), info.height(), info.bitDepth());
+                    } catch (Exception ignored) {}
+                } else if (type == MemberType.SHAPE && member.specificData().length > 0) {
+                    try {
+                        ShapeInfo info = ShapeInfo.parse(member.specificData());
+                        details = String.format("%s %dx%d", info.shapeType(), info.width(), info.height());
+                    } catch (Exception ignored) {}
+                } else if (type == MemberType.FILM_LOOP && member.specificData().length > 0) {
+                    try {
+                        FilmLoopInfo info = FilmLoopInfo.parse(member.specificData());
+                        details = String.format("%dx%d", info.width(), info.height());
+                    } catch (Exception ignored) {}
+                } else if (type == MemberType.SCRIPT) {
+                    // Find the script chunk for this member
+                    ScriptChunk script = findScriptForMember(dirFile, member);
+                    if (script != null) {
+                        ScriptNamesChunk scriptNames = dirFile.getScriptNames();
+                        String scriptTypeName = getScriptTypeName(script.scriptType());
+                        // Build handler list summary
+                        List<String> handlerNames = new ArrayList<>();
+                        if (scriptNames != null) {
+                            for (ScriptChunk.Handler h : script.handlers()) {
+                                String hName = scriptNames.getName(h.nameId());
+                                if (!hName.startsWith("<")) {
+                                    handlerNames.add(hName);
+                                }
+                            }
+                        }
+                        // Format: "Movie Script" or "Parent Script" with handler names
+                        if (!handlerNames.isEmpty()) {
+                            String handlers = handlerNames.size() <= 3 ?
+                                    String.join(", ", handlerNames) :
+                                    handlerNames.get(0) + ", " + handlerNames.get(1) + "... +" + (handlerNames.size() - 2);
+                            details = String.format("%s [%s]", scriptTypeName, handlers);
+                        } else {
+                            details = scriptTypeName;
+                        }
+                    }
+                } else if (type == MemberType.SOUND) {
+                    // Try to get sound info from associated chunk
+                    SoundChunk soundChunk = findSoundForMember(dirFile, member);
+                    if (soundChunk != null) {
+                        String codec = soundChunk.isMp3() ? "MP3" : "PCM";
+                        double duration = soundChunk.durationSeconds();
+                        details = String.format("%s, %dHz, %.1fs",
+                                codec, soundChunk.sampleRate(), duration);
+                    } else {
+                        details = "sound data";
+                    }
+                } else if (type == MemberType.PALETTE) {
+                    // Try to get palette info
+                    PaletteChunk paletteChunk = findPaletteForMember(dirFile, member);
+                    if (paletteChunk != null) {
+                        details = paletteChunk.colors().length + " colors";
+                    } else {
+                        details = "palette";
+                    }
+                } else if (type == MemberType.TEXT || type == MemberType.BUTTON) {
+                    // Try to get text preview
+                    TextChunk textChunk = findTextForMember(dirFile, member);
+                    if (textChunk != null) {
+                        String text = textChunk.text()
+                                .replace("\r\n", " ")
+                                .replace("\r", " ")
+                                .replace("\n", " ")
+                                .trim();
+                        if (text.length() > 50) {
+                            text = text.substring(0, 47) + "...";
+                        }
+                        details = "\"" + text + "\"";
+                    }
+                }
+
+                members.add(new CastMemberInfo(
+                        member.id(), name, member, type, details
+                ));
+            }
+
+            if (!members.isEmpty()) {
+                loadedFiles.put(file.toString(), dirFile);
+                return new FileNode(file.toString(), file.getFileName().toString(), members);
+            }
+        } catch (Exception ignored) {
+            // Silently ignore files that fail to parse
+        }
+        return null;
     }
 
     private ScriptChunk findScriptForMember(DirectorFile dirFile, CastMemberChunk member) {
@@ -728,7 +863,7 @@ public class CastExtractorTool extends JFrame {
         stopSound();
 
         // Hide audio controls by default
-        playButton.getParent().setVisible(false);
+        audioPanel.setVisible(false);
         currentSoundMember = null;
 
         if (userObject instanceof MemberNodeData memberData) {
@@ -901,15 +1036,13 @@ public class CastExtractorTool extends JFrame {
             sb.append("Duration: ").append(String.format("%.2f", soundChunk.durationSeconds())).append(" seconds\n");
             sb.append("Audio Data Size: ").append(soundChunk.audioData().length).append(" bytes\n");
 
-            // Show play controls
-            playButton.getParent().setVisible(true);
-            playButton.setEnabled(!soundChunk.isMp3()); // Only enable for PCM (WAV playback)
-            if (soundChunk.isMp3()) {
-                sb.append("\n[MP3 playback not supported - use Extract to save as MP3]\n");
-            }
+            // Show play controls - enabled for all sounds now (mp3spi supports MP3)
+            audioPanel.setVisible(true);
+            playButton.setEnabled(true);
+            playButton.setText("Play");
         } else {
             sb.append("[Sound data not found]\n");
-            playButton.getParent().setVisible(false);
+            audioPanel.setVisible(false);
         }
 
         detailsTextArea.setText(sb.toString());
@@ -973,13 +1106,13 @@ public class CastExtractorTool extends JFrame {
                     }
                 }
             }
-        }
 
-        // Also check for any TextChunk linked to this member
-        for (var entry : keyTable.getEntriesForOwner(member.id())) {
-            var chunk = dirFile.getChunk(entry.sectionId());
-            if (chunk instanceof TextChunk tc) {
-                return tc;
+            // Also check for any TextChunk linked to this member
+            for (var entry : keyTable.getEntriesForOwner(member.id())) {
+                var chunk = dirFile.getChunk(entry.sectionId());
+                if (chunk instanceof TextChunk tc) {
+                    return tc;
+                }
             }
         }
 
@@ -1109,7 +1242,7 @@ public class CastExtractorTool extends JFrame {
         String opName = opcode.name();
 
         // PUSH_CONS - literal constant (string, int, float)
-        if (opcode == com.libreshockwave.lingo.Opcode.PUSH_CONS) {
+        if (opcode == Opcode.PUSH_CONS) {
             if (arg >= 0 && arg < script.literals().size()) {
                 var lit = script.literals().get(arg);
                 Object val = lit.value();
@@ -1130,7 +1263,7 @@ public class CastExtractorTool extends JFrame {
         }
 
         // PUSH_SYMB - symbol name
-        if (opcode == com.libreshockwave.lingo.Opcode.PUSH_SYMB) {
+        if (opcode == Opcode.PUSH_SYMB) {
             if (names != null && arg >= 0 && arg < names.names().size()) {
                 return arg + " #" + names.getName(arg);
             }
@@ -1138,18 +1271,18 @@ public class CastExtractorTool extends JFrame {
 
         // GET/SET variables - resolve names
         if (opName.startsWith("GET_") || opName.startsWith("SET_")) {
-            if (opcode == com.libreshockwave.lingo.Opcode.GET_GLOBAL ||
-                opcode == com.libreshockwave.lingo.Opcode.SET_GLOBAL ||
-                opcode == com.libreshockwave.lingo.Opcode.GET_GLOBAL2 ||
-                opcode == com.libreshockwave.lingo.Opcode.SET_GLOBAL2 ||
-                opcode == com.libreshockwave.lingo.Opcode.GET_PROP ||
-                opcode == com.libreshockwave.lingo.Opcode.SET_PROP ||
-                opcode == com.libreshockwave.lingo.Opcode.GET_OBJ_PROP ||
-                opcode == com.libreshockwave.lingo.Opcode.SET_OBJ_PROP ||
-                opcode == com.libreshockwave.lingo.Opcode.GET_MOVIE_PROP ||
-                opcode == com.libreshockwave.lingo.Opcode.SET_MOVIE_PROP ||
-                opcode == com.libreshockwave.lingo.Opcode.GET_TOP_LEVEL_PROP ||
-                opcode == com.libreshockwave.lingo.Opcode.GET_CHAINED_PROP) {
+            if (opcode == Opcode.GET_GLOBAL ||
+                opcode == Opcode.SET_GLOBAL ||
+                opcode == Opcode.GET_GLOBAL2 ||
+                opcode == Opcode.SET_GLOBAL2 ||
+                opcode == Opcode.GET_PROP ||
+                opcode == Opcode.SET_PROP ||
+                opcode == Opcode.GET_OBJ_PROP ||
+                opcode == Opcode.SET_OBJ_PROP ||
+                opcode == Opcode.GET_MOVIE_PROP ||
+                opcode == Opcode.SET_MOVIE_PROP ||
+                opcode == Opcode.GET_TOP_LEVEL_PROP ||
+                opcode == Opcode.GET_CHAINED_PROP) {
                 if (names != null && arg >= 0 && arg < names.names().size()) {
                     return arg + " (" + names.getName(arg) + ")";
                 }
@@ -1157,41 +1290,41 @@ public class CastExtractorTool extends JFrame {
         }
 
         // Call opcodes - show function/handler name
-        if (opcode == com.libreshockwave.lingo.Opcode.LOCAL_CALL ||
-            opcode == com.libreshockwave.lingo.Opcode.EXT_CALL ||
-            opcode == com.libreshockwave.lingo.Opcode.OBJ_CALL ||
-            opcode == com.libreshockwave.lingo.Opcode.OBJ_CALL_V4 ||
-            opcode == com.libreshockwave.lingo.Opcode.TELL_CALL) {
+        if (opcode == Opcode.LOCAL_CALL ||
+            opcode == Opcode.EXT_CALL ||
+            opcode == Opcode.OBJ_CALL ||
+            opcode == Opcode.OBJ_CALL_V4 ||
+            opcode == Opcode.TELL_CALL) {
             if (names != null && arg >= 0 && arg < names.names().size()) {
                 return arg + " [" + names.getName(arg) + "]";
             }
         }
 
         // PUT/GET - resolve name
-        if (opcode == com.libreshockwave.lingo.Opcode.PUT ||
-            opcode == com.libreshockwave.lingo.Opcode.GET ||
-            opcode == com.libreshockwave.lingo.Opcode.SET) {
+        if (opcode == Opcode.PUT ||
+            opcode == Opcode.GET ||
+            opcode == Opcode.SET) {
             if (names != null && arg >= 0 && arg < names.names().size()) {
                 return arg + " (" + names.getName(arg) + ")";
             }
         }
 
         // THE_BUILTIN - show builtin name
-        if (opcode == com.libreshockwave.lingo.Opcode.THE_BUILTIN) {
+        if (opcode == Opcode.THE_BUILTIN) {
             if (names != null && arg >= 0 && arg < names.names().size()) {
                 return arg + " the " + names.getName(arg);
             }
         }
 
         // NEW_OBJ - parent script name
-        if (opcode == com.libreshockwave.lingo.Opcode.NEW_OBJ) {
+        if (opcode == Opcode.NEW_OBJ) {
             if (names != null && arg >= 0 && arg < names.names().size()) {
                 return arg + " new(" + names.getName(arg) + ")";
             }
         }
 
         // PUSH_VAR_REF - variable reference
-        if (opcode == com.libreshockwave.lingo.Opcode.PUSH_VAR_REF) {
+        if (opcode == Opcode.PUSH_VAR_REF) {
             if (names != null && arg >= 0 && arg < names.names().size()) {
                 return arg + " @" + names.getName(arg);
             }
@@ -1475,6 +1608,10 @@ public class CastExtractorTool extends JFrame {
 
     @Override
     public void dispose() {
+        stopSound();
+        if (playbackTimer != null) {
+            playbackTimer.stop();
+        }
         executor.shutdownNow();
         super.dispose();
     }

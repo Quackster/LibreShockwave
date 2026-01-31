@@ -1,0 +1,56 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+group = 'com.libreshockwave'
+version = '1.0.0'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // LibreShockwave SDK
+    implementation project(':sdk')
+
+    // MP3 playback support
+    implementation 'javazoom:jlayer:1.0.1'
+
+    // MP3 SPI for AudioSystem integration
+    implementation 'com.googlecode.soundlibs:mp3spi:1.9.5.4'
+}
+
+application {
+    mainClass = 'com.libreshockwave.tools.CastExtractorTool'
+}
+
+jar {
+    manifest {
+        attributes(
+            'Main-Class': 'com.libreshockwave.tools.CastExtractorTool',
+            'Class-Path': configurations.runtimeClasspath.collect { it.name }.join(' ')
+        )
+    }
+}
+
+// Create a fat JAR with all dependencies
+tasks.register('fatJar', Jar) {
+    archiveClassifier = 'all'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    manifest {
+        attributes 'Main-Class': 'com.libreshockwave.tools.CastExtractorTool'
+    }
+
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+
+    with jar
+}
