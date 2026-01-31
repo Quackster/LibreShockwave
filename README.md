@@ -37,6 +37,12 @@ A Java library for parsing Macromedia/Adobe Director and Shockwave files (.dir, 
 - Remove protection from protected files
 - Decompile and embed Lingo source into cast members
 
+## Screenshots
+
+### An example piece of software created with this library.
+
+<img width="1127" height="749" alt="image" src="https://github.com/user-attachments/assets/de4f99d2-87ed-4c78-8422-a84bcf9faeca" />
+
 ## Usage
 
 ### Loading a File

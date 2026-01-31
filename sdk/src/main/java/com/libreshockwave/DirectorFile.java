@@ -233,7 +233,7 @@ public class DirectorFile {
             if (bitmapChunk == null) {
                 return Optional.empty();
             }
-
+            
             // Get palette
             // Palette palette = info.paletteId() < 0
             //        ? Palette.getBuiltIn(info.paletteId())
