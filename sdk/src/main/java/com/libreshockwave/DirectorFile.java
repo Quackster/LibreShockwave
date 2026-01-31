@@ -79,6 +79,51 @@ public class DirectorFile {
     public boolean isCapitalX() { return capitalX; }
     public List<CastChunk> getCasts() { return Collections.unmodifiableList(casts); }
     public List<CastMemberChunk> getCastMembers() { return Collections.unmodifiableList(castMembers); }
+
+    /**
+     * Get a cast member by its score index (castLib, castMember).
+     * Handles the minMember offset from the cast list.
+     * @param castLib Cast library (0 for internal, 1+ for external)
+     * @param castMemberIndex 0-based cast member index from score
+     * @return The cast member, or null if not found
+     */
+    public CastMemberChunk getCastMemberByIndex(int castLib, int castMemberIndex) {
+        // Get the min member offset from the cast list if available
+        int minMember = 1;
+        if (castList != null && !castList.entries().isEmpty()) {
+            int libIndex = Math.max(0, castLib - 1);
+            if (libIndex < castList.entries().size()) {
+                minMember = castList.entries().get(libIndex).minMember();
+            }
+        }
+
+        // Calculate the actual member ID considering the offset
+        int adjustedMemberId = castMemberIndex + minMember;
+
+        // Try to find by adjusted ID first
+        for (CastMemberChunk member : castMembers) {
+            if (member.id() == adjustedMemberId) {
+                return member;
+            }
+        }
+
+        // Try direct match with raw index
+        for (CastMemberChunk member : castMembers) {
+            if (member.id() == castMemberIndex) {
+                return member;
+            }
+        }
+
+        // Try +1 offset
+        for (CastMemberChunk member : castMembers) {
+            if (member.id() == castMemberIndex + 1) {
+                return member;
+            }
+        }
+
+        return null;
+    }
+
     public List<ScriptChunk> getScripts() { return Collections.unmodifiableList(scripts); }
     public List<PaletteChunk> getPalettes() { return Collections.unmodifiableList(palettes); }
     public Collection<ChunkInfo> getAllChunkInfo() { return Collections.unmodifiableCollection(chunkInfo.values()); }
