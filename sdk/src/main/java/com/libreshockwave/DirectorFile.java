@@ -115,6 +115,97 @@ public class DirectorFile {
     }
 
     /**
+     * Resolve a palette by ID.
+     * Handles both built-in palettes (negative IDs) and custom cast member palettes (non-negative IDs).
+     * @param paletteId The palette ID from BitmapInfo
+     * @return The resolved Palette, or System Mac palette as fallback
+     */
+    public Palette resolvePalette(int paletteId) {
+        // Negative IDs are built-in palettes
+        if (paletteId < 0) {
+            return Palette.getBuiltIn(paletteId);
+        }
+
+        // Non-negative IDs reference cast member palettes
+        // Strategy 1: paletteId might be the member number - 1 (after BitmapInfo's -1 adjustment)
+        int memberNumber = paletteId + 1;
+
+        // Try to find the palette cast member by member number in cast arrays
+        for (CastChunk cast : casts) {
+            List<Integer> memberIds = cast.memberIds();
+            // Member numbers are 1-based, so index = memberNumber - 1
+            int index = memberNumber - 1;
+            if (index >= 0 && index < memberIds.size()) {
+                int chunkId = memberIds.get(index);
+                if (chunkId > 0) {
+                    Palette resolved = resolvePaletteFromChunkId(chunkId);
+                    if (resolved != null) {
+                        return resolved;
+                    }
+                }
+            }
+        }
+
+        // Strategy 2: paletteId might be directly a chunk section ID for the CastMemberChunk
+        Palette resolved = resolvePaletteFromChunkId(paletteId);
+        if (resolved != null) {
+            return resolved;
+        }
+
+        // Strategy 2b: paletteId might directly reference a PaletteChunk (CLUT) section ID
+        for (PaletteChunk pc : palettes) {
+            if (pc.id() == paletteId || pc.id() == paletteId + 1) {
+                return new Palette(pc.colors(), "Custom Palette #" + pc.id());
+            }
+        }
+
+        // Strategy 3: paletteId might be the 1-based index among palette members
+        int paletteIndex = 0;
+        for (CastMemberChunk member : castMembers) {
+            if (member.memberType() == com.libreshockwave.cast.MemberType.PALETTE) {
+                if (paletteIndex == paletteId) {
+                    resolved = resolvePaletteFromChunkId(member.id());
+                    if (resolved != null) {
+                        return resolved;
+                    }
+                }
+                paletteIndex++;
+            }
+        }
+
+        // Strategy 4: Just return the first available palette if we have any
+        for (PaletteChunk pc : palettes) {
+            return new Palette(pc.colors(), "Custom Palette");
+        }
+
+        // Fallback to System Mac palette
+        return Palette.getBuiltIn(Palette.SYSTEM_MAC);
+    }
+
+    /**
+     * Resolve a palette from a cast member chunk ID.
+     * Finds the CLUT chunk owned by the cast member and builds a Palette from it.
+     */
+    private Palette resolvePaletteFromChunkId(int chunkId) {
+        if (keyTable == null) {
+            return null;
+        }
+
+        // Look for CLUT chunk owned by this cast member
+        for (KeyTableChunk.KeyTableEntry entry : keyTable.getEntriesForOwner(chunkId)) {
+            String fourcc = entry.fourccString();
+            if (fourcc.equals("CLUT") || fourcc.equals("TULC")) {
+                Chunk chunk = getChunk(entry.sectionId());
+                if (chunk instanceof PaletteChunk pc) {
+                    return new Palette(pc.colors(), "Custom Palette");
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Decode a bitmap cast member to a Bitmap object.
      * @param member The cast member chunk (must be a bitmap type)
      * @return Optional containing the decoded bitmap, or empty if decoding fails
@@ -144,9 +235,12 @@ public class DirectorFile {
             }
 
             // Get palette
-            Palette palette = info.paletteId() < 0
-                ? Palette.getBuiltIn(info.paletteId())
-                : Palette.getBuiltIn(Palette.SYSTEM_MAC);
+            // Palette palette = info.paletteId() < 0
+            //        ? Palette.getBuiltIn(info.paletteId())
+            //        : Palette.getBuiltIn(Palette.SYSTEM_MAC);
+
+            // Resolve palette (supports both built-in and custom cast member palettes)
+            Palette palette = resolvePalette(info.paletteId());
 
             // Decode bitmap
             boolean bigEndian = endian == ByteOrder.BIG_ENDIAN;
