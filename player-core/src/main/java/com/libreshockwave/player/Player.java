@@ -1,7 +1,6 @@
 package com.libreshockwave.player;
 
 import com.libreshockwave.DirectorFile;
-import com.libreshockwave.chunks.ScoreChunk;
 import com.libreshockwave.player.behavior.BehaviorManager;
 import com.libreshockwave.player.event.EventDispatcher;
 import com.libreshockwave.player.frame.FrameContext;
@@ -220,43 +219,4 @@ public class Player {
         }
     }
 
-    // Legacy sprite state (for GUI compatibility)
-
-    public static class SpriteState {
-        private final int channel;
-        private final ScoreChunk.ChannelData initialData;
-
-        private int locH;
-        private int locV;
-        private int width;
-        private int height;
-        private boolean visible = true;
-
-        public SpriteState(int channel, ScoreChunk.ChannelData data) {
-            this.channel = channel;
-            this.initialData = data;
-            this.locH = data.posX();
-            this.locV = data.posY();
-            this.width = data.width();
-            this.height = data.height();
-        }
-
-        public int getChannel() { return channel; }
-        public int getLocH() { return locH; }
-        public int getLocV() { return locV; }
-        public int getWidth() { return width; }
-        public int getHeight() { return height; }
-        public boolean isVisible() { return visible; }
-
-        public void setLocH(int locH) { this.locH = locH; }
-        public void setLocV(int locV) { this.locV = locV; }
-        public void setVisible(boolean visible) { this.visible = visible; }
-
-        public ScoreChunk.ChannelData getInitialData() { return initialData; }
-    }
-
-    /**
-     * Information about a player event.
-     */
-    public record PlayerEventInfo(PlayerEvent event, int frame, int data) {}
 }
