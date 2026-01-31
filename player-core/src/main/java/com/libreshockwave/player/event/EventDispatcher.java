@@ -66,14 +66,19 @@ public class EventDispatcher {
 
         // 1. Sprite behaviors (in channel order)
         List<BehaviorInstance> spriteInstances = behaviorManager.getSpriteInstances();
+        debugLog("sprite behaviors: " + spriteInstances.size());
         for (BehaviorInstance instance : spriteInstances) {
-            if (stopPropagation) break;
+            if (stopPropagation) {
+                debugLog("propagation stopped");
+                break;
+            }
             invokeHandler(instance, handlerName, args);
         }
 
         // 2. Frame behavior
         if (!stopPropagation) {
             BehaviorInstance frameInstance = behaviorManager.getFrameScriptInstance();
+            debugLog("frame script: " + (frameInstance != null ? "present" : "none"));
             if (frameInstance != null) {
                 invokeHandler(frameInstance, handlerName, args);
             }
@@ -81,7 +86,10 @@ public class EventDispatcher {
 
         // 3. Movie scripts
         if (!stopPropagation) {
+            debugLog("dispatching to movie scripts");
             dispatchToMovieScripts(handlerName, args);
+        } else {
+            debugLog("skipping movie scripts (propagation stopped)");
         }
     }
 
@@ -155,6 +163,7 @@ public class EventDispatcher {
             if (script.scriptType() == ScriptChunk.ScriptType.MOVIE_SCRIPT) {
                 ScriptChunk.Handler handler = script.findHandler(handlerName, names);
                 if (handler != null) {
+                    debugLog("found " + handlerName + " in movie script #" + script.id());
                     if (debugEnabled) {
                         System.out.println("[EventDispatcher] Invoking movie script handler: " + handlerName);
                     }
@@ -163,6 +172,8 @@ public class EventDispatcher {
                     } catch (Exception e) {
                         System.err.println("[EventDispatcher] Error in movie script " + handlerName + ": " + e.getMessage());
                     }
+                } else {
+                    debugLog("no " + handlerName + " in movie script #" + script.id());
                 }
             }
         }
@@ -184,8 +195,11 @@ public class EventDispatcher {
 
         if (handler == null) {
             // Handler not found in this script - propagation continues
+            debugLog("no " + handlerName + " in script #" + script.id());
             return;
         }
+
+        debugLog("found " + handlerName + " in script #" + script.id());
 
         if (debugEnabled) {
             System.out.println("[EventDispatcher] Invoking handler: " + handlerName +
@@ -234,6 +248,18 @@ public class EventDispatcher {
         var listener = vm.getTraceListener();
         if (listener != null) {
             listener.onDebugMessage(message);
+        }
+    }
+
+    /**
+     * Send a debug message only when debug is enabled.
+     */
+    private void debugLog(String message) {
+        if (debugEnabled) {
+            var listener = vm.getTraceListener();
+            if (listener != null) {
+                listener.onDebugMessage("  [dispatch] " + message);
+            }
         }
     }
 }
