@@ -1681,6 +1681,7 @@ public class CastExtractorTool extends JFrame {
         }
 
         // Build a map of frame intervals (scripts attached to frames)
+        // FrameIntervals frame numbers are 1 higher than the actual frame index
         Map<Integer, String> frameScriptMap = new HashMap<>();
         for (ScoreChunk.FrameInterval fi : scoreChunk.frameIntervals()) {
             var primary = fi.primary();
@@ -1688,8 +1689,10 @@ public class CastExtractorTool extends JFrame {
             if (secondary != null && primary.channelIndex() == 0) {
                 // This is a tempo/frame script
                 String scriptName = resolveCastMemberByNumber(dirFile, secondary.castLib(), secondary.castMember());
-                // Apply to all frames in the range
-                for (int f = primary.startFrame(); f <= primary.endFrame() && f < frameCount; f++) {
+                // Apply to all frames in the range (subtract 1 to align with channel data indices)
+                int startF = primary.startFrame() - 1;
+                int endF = primary.endFrame() - 1;
+                for (int f = startF; f <= endF && f >= 0 && f < frameCount; f++) {
                     frameScriptMap.put(f, scriptName);
                 }
             }
@@ -1774,12 +1777,9 @@ public class CastExtractorTool extends JFrame {
     private String resolveChannelCellName(DirectorFile dirFile, int channelIndex, ScoreChunk.ChannelData data) {
         switch (channelIndex) {
             case 0 -> {
-                // Tempo channel - castMember is the tempo (fps) or wait setting
-                int tempo = data.castMember();
-                if (tempo > 0) {
-                    return tempo + " fps";
-                }
-                return "Tempo";
+                // Tempo channel - scripts come from FrameIntervals, not this data
+                // If we get here, there's no script for this frame
+                return "";
             }
             case 1 -> {
                 // Palette channel - castMember is palette index
@@ -1792,7 +1792,7 @@ public class CastExtractorTool extends JFrame {
                 if (transId > 0) {
                     return "Trans #" + transId;
                 }
-                return "Transition";
+                return "";
             }
             case 3, 4 -> {
                 // Sound channels - these ARE cast member references
@@ -2054,7 +2054,7 @@ public class CastExtractorTool extends JFrame {
                 if (row < 6) {
                     // Special channels - show channel-specific info
                     String tooltip = switch (row) {
-                        case 0 -> String.format("<html>Tempo: %d fps</html>", cellData.castMember);
+                        case 0 -> String.format("<html>Frame Script: %s</html>", cellData.memberName);
                         case 1 -> String.format("<html>Palette: %s</html>", cellData.memberName);
                         case 2 -> String.format("<html>Transition: #%d</html>", cellData.castMember);
                         case 3, 4 -> String.format("<html>Sound<br>Cast: %d, Member: %d<br>%s</html>",
