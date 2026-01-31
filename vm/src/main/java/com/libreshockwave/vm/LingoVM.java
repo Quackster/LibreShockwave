@@ -25,6 +25,12 @@ public class LingoVM {
     private boolean traceEnabled = false;
     private int stepLimit = 100_000;  // Maximum instructions per handler call
 
+    // Event propagation callback (set by EventDispatcher)
+    private Runnable passCallback;
+
+    // Trace listener for debug UI
+    private TraceListener traceListener;
+
     public LingoVM(DirectorFile file) {
         this.file = file;
         this.globals = new HashMap<>();
@@ -39,8 +45,31 @@ public class LingoVM {
         this.traceEnabled = enabled;
     }
 
+    public void setTraceListener(TraceListener listener) {
+        this.traceListener = listener;
+    }
+
+    public TraceListener getTraceListener() {
+        return traceListener;
+    }
+
     public void setStepLimit(int limit) {
         this.stepLimit = limit;
+    }
+
+    /**
+     * Set a callback to be invoked when a script calls pass().
+     * Used by EventDispatcher to stop event propagation.
+     */
+    public void setPassCallback(Runnable callback) {
+        this.passCallback = callback;
+    }
+
+    /**
+     * Clear the pass callback.
+     */
+    public void clearPassCallback() {
+        this.passCallback = null;
     }
 
     // Global variable access
@@ -152,6 +181,31 @@ public class LingoVM {
         Scope scope = new Scope(script, handler, args, receiver);
         callStack.push(scope);
 
+        // Notify trace listener of handler entry
+        TraceListener.HandlerInfo handlerInfo = null;
+        if (traceListener != null || traceEnabled) {
+            String handlerName = resolveName(handler.nameId());
+            String scriptType = script.scriptType() != null ? script.scriptType().name() : "UNKNOWN";
+            handlerInfo = new TraceListener.HandlerInfo(
+                handlerName,
+                script.id(),
+                scriptType,
+                args,
+                receiver,
+                new HashMap<>(globals),
+                script.literals(),
+                handler.localCount(),
+                handler.argCount()
+            );
+
+            if (traceEnabled) {
+                traceHandlerEnter(handlerInfo);
+            }
+            if (traceListener != null) {
+                traceListener.onHandlerEnter(handlerInfo);
+            }
+        }
+
         try {
             int steps = 0;
             while (scope.hasMoreInstructions() && !scope.isReturned()) {
@@ -160,7 +214,23 @@ public class LingoVM {
                 }
                 executeInstruction(scope);
             }
-            return scope.getReturnValue();
+
+            Datum result = scope.getReturnValue();
+
+            // Notify trace listener of handler exit
+            if (traceListener != null && handlerInfo != null) {
+                traceListener.onHandlerExit(handlerInfo, result);
+            }
+            if (traceEnabled && handlerInfo != null) {
+                traceHandlerExit(handlerInfo, result);
+            }
+
+            return result;
+        } catch (Exception e) {
+            if (traceListener != null) {
+                traceListener.onError("Error in " + resolveName(handler.nameId()), e);
+            }
+            throw e;
         } finally {
             callStack.pop();
         }
@@ -176,8 +246,15 @@ public class LingoVM {
             return;
         }
 
-        if (traceEnabled) {
-            trace(scope, instr);
+        // Trace before execution
+        if (traceEnabled || traceListener != null) {
+            TraceListener.InstructionInfo instrInfo = buildInstructionInfo(scope, instr);
+            if (traceEnabled) {
+                traceInstruction(instrInfo);
+            }
+            if (traceListener != null) {
+                traceListener.onInstruction(instrInfo);
+            }
         }
 
         Opcode op = instr.opcode();
@@ -353,7 +430,13 @@ public class LingoVM {
 
             // Variable access
             case GET_LOCAL -> scope.push(scope.getLocal(arg));
-            case SET_LOCAL -> scope.setLocal(arg, scope.pop());
+            case SET_LOCAL -> {
+                Datum value = scope.pop();
+                scope.setLocal(arg, value);
+                if (traceListener != null) {
+                    traceListener.onVariableSet("local", "local" + arg, value);
+                }
+            }
             case GET_PARAM -> scope.push(scope.getParam(arg));
             case SET_PARAM -> {
                 // Parameters are generally read-only in Lingo but we'll support it
@@ -366,7 +449,11 @@ public class LingoVM {
             }
             case SET_GLOBAL, SET_GLOBAL2 -> {
                 String name = resolveName(arg);
-                setGlobal(name, scope.pop());
+                Datum value = scope.pop();
+                setGlobal(name, value);
+                if (traceListener != null) {
+                    traceListener.onVariableSet("global", name, value);
+                }
             }
 
             // Control flow
@@ -492,6 +579,9 @@ public class LingoVM {
                 // For behaviors, set on receiver's properties
                 if (scope.getReceiver() instanceof Datum.ScriptInstance si) {
                     si.properties().put(propName, value);
+                    if (traceListener != null) {
+                        traceListener.onVariableSet("property", "me." + propName, value);
+                    }
                 }
             }
 
@@ -570,9 +660,101 @@ public class LingoVM {
         return a.equals(b);
     }
 
-    private void trace(Scope scope, ScriptChunk.Handler.Instruction instr) {
-        String handlerName = resolveName(scope.getHandler().nameId());
-        System.out.printf("  [%s:%d] %s%n", handlerName, instr.offset(), instr);
+    // Trace helpers
+
+    private TraceListener.InstructionInfo buildInstructionInfo(Scope scope, ScriptChunk.Handler.Instruction instr) {
+        String annotation = buildAnnotation(scope, instr);
+        List<Datum> stackSnapshot = new ArrayList<>();
+        // Capture up to 10 stack items
+        for (int i = 0; i < Math.min(10, scope.stackSize()); i++) {
+            stackSnapshot.add(scope.peek(i));
+        }
+        return new TraceListener.InstructionInfo(
+            scope.getBytecodeIndex(),
+            instr.offset(),
+            instr.opcode().name(),
+            instr.argument(),
+            annotation,
+            scope.stackSize(),
+            stackSnapshot
+        );
+    }
+
+    private String buildAnnotation(Scope scope, ScriptChunk.Handler.Instruction instr) {
+        Opcode op = instr.opcode();
+        int arg = instr.argument();
+
+        return switch (op) {
+            case PUSH_INT8, PUSH_INT16, PUSH_INT32 -> "<" + arg + ">";
+            case PUSH_FLOAT32 -> "<" + Float.intBitsToFloat(arg) + ">";
+            case PUSH_CONS -> {
+                List<ScriptChunk.LiteralEntry> literals = scope.getScript().literals();
+                if (arg >= 0 && arg < literals.size()) {
+                    yield "<" + literals.get(arg).value() + ">";
+                }
+                yield "<literal#" + arg + ">";
+            }
+            case PUSH_SYMB -> "<#" + resolveName(arg) + ">";
+            case GET_LOCAL, SET_LOCAL -> "<local" + arg + ">";
+            case GET_PARAM -> "<param" + arg + ">";
+            case GET_GLOBAL, SET_GLOBAL, GET_GLOBAL2, SET_GLOBAL2 -> "<" + resolveName(arg) + ">";
+            case GET_PROP, SET_PROP -> "<me." + resolveName(arg) + ">";
+            case LOCAL_CALL, EXT_CALL, OBJ_CALL -> "<" + resolveName(arg) + "()>";
+            case JMP, JMP_IF_Z -> "<offset " + arg + " -> " + (instr.offset() + arg) + ">";
+            case END_REPEAT -> "<back " + arg + " -> " + (instr.offset() - arg) + ">";
+            default -> "";
+        };
+    }
+
+    private void traceInstruction(TraceListener.InstructionInfo info) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("  [%3d] %-16s", info.offset(), info.opcode()));
+        if (info.argument() != 0) {
+            sb.append(String.format(" %d", info.argument()));
+        }
+        // Pad with dots
+        while (sb.length() < 35) {
+            sb.append('.');
+        }
+        if (!info.annotation().isEmpty()) {
+            sb.append(' ').append(info.annotation());
+        }
+        sb.append(String.format(" (stack=%d)", info.stackSize()));
+        System.out.println(sb);
+    }
+
+    private void traceHandlerEnter(TraceListener.HandlerInfo info) {
+        System.out.println("=== ENTER: " + info.handlerName() + " ===");
+        System.out.println("  Script: #" + info.scriptId() + " (" + info.scriptType() + ")");
+        System.out.println("  Args: " + info.arguments());
+        if (info.receiver() != null && !(info.receiver() instanceof Datum.Void)) {
+            System.out.println("  Receiver: " + info.receiver());
+        }
+        if (!info.globals().isEmpty()) {
+            System.out.println("  Globals: " + info.globals());
+        }
+        if (!info.literals().isEmpty()) {
+            System.out.println("  Literals: " + formatLiterals(info.literals()));
+        }
+        System.out.println("  Locals: " + info.localCount() + ", ArgCount: " + info.argCount());
+    }
+
+    private void traceHandlerExit(TraceListener.HandlerInfo info, Datum returnValue) {
+        System.out.println("=== EXIT: " + info.handlerName() + " => " + returnValue + " ===");
+    }
+
+    private String formatLiterals(List<ScriptChunk.LiteralEntry> literals) {
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < Math.min(10, literals.size()); i++) {
+            if (i > 0) sb.append(", ");
+            ScriptChunk.LiteralEntry lit = literals.get(i);
+            sb.append(i).append(":").append(lit.value());
+        }
+        if (literals.size() > 10) {
+            sb.append(", ... (").append(literals.size()).append(" total)");
+        }
+        sb.append("]");
+        return sb.toString();
     }
 
     // Builtin handlers
@@ -721,6 +903,14 @@ public class LingoVM {
             int g = args.size() > 1 ? args.get(1).toInt() : 0;
             int b = args.size() > 2 ? args.get(2).toInt() : 0;
             return new Datum.Color(r, g, b);
+        });
+
+        // Event propagation
+        builtins.put("pass", (vm, args) -> {
+            if (vm.passCallback != null) {
+                vm.passCallback.run();
+            }
+            return Datum.VOID;
         });
     }
 

@@ -26,6 +26,9 @@ public class PlayerFrame extends JFrame {
     private JButton stopButton;
     private JButton stepButton;
     private JSlider frameSlider;
+    private DebugPanel debugPanel;
+    private JSplitPane splitPane;
+    private boolean debugVisible = true;
 
     public PlayerFrame() {
         super("LibreShockwave Player");
@@ -43,7 +46,15 @@ public class PlayerFrame extends JFrame {
         stagePanel = new StagePanel();
         stagePanel.setPreferredSize(new Dimension(640, 480));
         stagePanel.setBackground(Color.WHITE);
-        add(stagePanel, BorderLayout.CENTER);
+
+        // Debug panel (right side)
+        debugPanel = new DebugPanel();
+
+        // Split pane for stage and debug
+        splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, stagePanel, debugPanel);
+        splitPane.setResizeWeight(0.6);
+        splitPane.setOneTouchExpandable(true);
+        add(splitPane, BorderLayout.CENTER);
 
         // Control panel (bottom)
         JPanel controlPanel = new JPanel(new BorderLayout());
@@ -167,6 +178,23 @@ public class PlayerFrame extends JFrame {
 
         menuBar.add(playbackMenu);
 
+        // View menu
+        JMenu viewMenu = new JMenu("View");
+        viewMenu.setMnemonic(KeyEvent.VK_V);
+
+        JCheckBoxMenuItem debugItem = new JCheckBoxMenuItem("Debug Panel", true);
+        debugItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_D, InputEvent.CTRL_DOWN_MASK));
+        debugItem.addActionListener(e -> toggleDebugPanel(debugItem.isSelected()));
+        viewMenu.add(debugItem);
+
+        viewMenu.addSeparator();
+
+        JMenuItem clearDebugItem = new JMenuItem("Clear Debug Log");
+        clearDebugItem.addActionListener(e -> debugPanel.clearLog());
+        viewMenu.add(clearDebugItem);
+
+        menuBar.add(viewMenu);
+
         // Help menu
         JMenu helpMenu = new JMenu("Help");
         helpMenu.setMnemonic(KeyEvent.VK_H);
@@ -239,6 +267,10 @@ public class PlayerFrame extends JFrame {
             player.setEventListener(event -> {
                 SwingUtilities.invokeLater(this::updateFrameLabel);
             });
+
+            // Connect debug panel to VM trace
+            player.getVM().setTraceListener(debugPanel);
+            player.setDebugEnabled(true);
 
             stagePanel.setPlayer(player);
 
@@ -386,5 +418,20 @@ public class PlayerFrame extends JFrame {
             "Part of the LibreShockwave project.",
             "About",
             JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    private void toggleDebugPanel(boolean visible) {
+        debugVisible = visible;
+        if (visible) {
+            splitPane.setRightComponent(debugPanel);
+            splitPane.setDividerLocation(0.6);
+        } else {
+            splitPane.setRightComponent(null);
+        }
+        splitPane.revalidate();
+    }
+
+    public DebugPanel getDebugPanel() {
+        return debugPanel;
     }
 }
