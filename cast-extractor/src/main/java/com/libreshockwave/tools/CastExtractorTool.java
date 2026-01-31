@@ -1672,7 +1672,7 @@ public class CastExtractorTool extends JFrame {
 
         // Column names: frame numbers (with labels if present)
         for (int fr = 0; fr < frameCount; fr++) {
-            String label = labelMap.get(fr);
+            String label = labelMap.get(fr + 1);
             if (label != null) {
                 columnNames[fr] = (fr + 1) + " [" + label + "]";
             } else {
