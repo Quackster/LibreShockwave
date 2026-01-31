@@ -648,13 +648,17 @@ public class CastExtractorTool extends JFrame {
                     }
                 } else if (type == MemberType.SOUND) {
                     // Try to get sound info from associated chunk
-                    SoundChunk soundChunk = findSoundForMember(dirFile, member);
-                    if (soundChunk != null) {
-                        String codec = soundChunk.isMp3() ? "MP3" : "PCM";
-                        double duration = soundChunk.durationSeconds();
-                        details = String.format("%s, %dHz, %.1fs",
-                                codec, soundChunk.sampleRate(), duration);
-                    } else {
+                    try {
+                        SoundChunk soundChunk = findSoundForMember(dirFile, member);
+                        if (soundChunk != null) {
+                            String codec = soundChunk.isMp3() ? "MP3" : "PCM";
+                            double duration = soundChunk.durationSeconds();
+                            details = String.format("%s, %dHz, %.1fs",
+                                    codec, soundChunk.sampleRate(), duration);
+                        } else {
+                            details = "sound data";
+                        }
+                    } catch (Exception ignored) {
                         details = "sound data";
                     }
                 } else if (type == MemberType.PALETTE) {
