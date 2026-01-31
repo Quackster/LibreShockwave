@@ -26,12 +26,17 @@ public class EventDispatcher {
     private boolean debugEnabled = false;
 
     // Event propagation control
-    private boolean eventPassed = false;
+    // In Director: if a handler exists and doesn't call pass(), propagation STOPS
+    // If pass() is called, propagation CONTINUES to next handler
+    private boolean stopPropagation = false;
 
     public EventDispatcher(DirectorFile file, LingoVM vm, BehaviorManager behaviorManager) {
         this.file = file;
         this.vm = vm;
         this.behaviorManager = behaviorManager;
+
+        // Register pass callback with VM
+        vm.setPassCallback(this::pass);
     }
 
     public void setDebugEnabled(boolean enabled) {
@@ -50,7 +55,7 @@ public class EventDispatcher {
      * Dispatch a global event by handler name.
      */
     public void dispatchGlobalEvent(String handlerName, List<Datum> args) {
-        eventPassed = false;
+        stopPropagation = false;
 
         if (debugEnabled) {
             System.out.println("[EventDispatcher] Dispatching global event: " + handlerName);
@@ -59,12 +64,12 @@ public class EventDispatcher {
         // 1. Sprite behaviors (in channel order)
         List<BehaviorInstance> spriteInstances = behaviorManager.getSpriteInstances();
         for (BehaviorInstance instance : spriteInstances) {
-            if (eventPassed) break;
+            if (stopPropagation) break;
             invokeHandler(instance, handlerName, args);
         }
 
         // 2. Frame behavior
-        if (!eventPassed) {
+        if (!stopPropagation) {
             BehaviorInstance frameInstance = behaviorManager.getFrameScriptInstance();
             if (frameInstance != null) {
                 invokeHandler(frameInstance, handlerName, args);
@@ -72,7 +77,7 @@ public class EventDispatcher {
         }
 
         // 3. Movie scripts
-        if (!eventPassed) {
+        if (!stopPropagation) {
             dispatchToMovieScripts(handlerName, args);
         }
     }
@@ -89,7 +94,7 @@ public class EventDispatcher {
      * Dispatch an event only to frame and movie scripts.
      */
     public void dispatchFrameAndMovieEvent(String handlerName, List<Datum> args) {
-        eventPassed = false;
+        stopPropagation = false;
 
         if (debugEnabled) {
             System.out.println("[EventDispatcher] Dispatching frame/movie event: " + handlerName);
@@ -102,7 +107,7 @@ public class EventDispatcher {
         }
 
         // Then movie scripts
-        if (!eventPassed) {
+        if (!stopPropagation) {
             dispatchToMovieScripts(handlerName, args);
         }
     }
@@ -156,6 +161,7 @@ public class EventDispatcher {
 
     /**
      * Invoke a handler on a behavior instance.
+     * In Director, if a handler exists and doesn't call pass(), propagation stops.
      */
     private void invokeHandler(BehaviorInstance instance, String handlerName, List<Datum> args) {
         if (instance == null || instance.getScript() == null) return;
@@ -168,7 +174,7 @@ public class EventDispatcher {
         ScriptChunk.Handler handler = script.findHandler(handlerName, names);
 
         if (handler == null) {
-            // Handler not found in this script - not an error
+            // Handler not found in this script - propagation continues
             return;
         }
 
@@ -177,13 +183,15 @@ public class EventDispatcher {
                                " on " + instance);
         }
 
+        // Handler exists - by default, stop propagation unless pass() is called
+        stopPropagation = true;
+
         try {
             // Pass the instance as the receiver ('me')
             Datum receiver = instance.toDatum();
-            Datum result = vm.executeHandler(script, handler, args, receiver);
+            vm.executeHandler(script, handler, args, receiver);
 
-            // Check if pass() was called (would need VM integration)
-            // For now, we continue propagation unless explicitly stopped
+            // If pass() was called during execution, stopPropagation will be false
 
         } catch (Exception e) {
             System.err.println("[EventDispatcher] Error in handler " + handlerName +
@@ -191,21 +199,22 @@ public class EventDispatcher {
             if (debugEnabled) {
                 e.printStackTrace();
             }
+            // On error, stop propagation (handler existed but failed)
         }
     }
 
     /**
      * Called by scripts to pass the event to the next handler.
-     * Not yet implemented - would need VM integration.
+     * This allows propagation to continue to subsequent handlers.
      */
     public void pass() {
-        eventPassed = true;
+        stopPropagation = false;
     }
 
     /**
-     * Check if the current event was passed.
+     * Check if propagation was stopped.
      */
-    public boolean wasEventPassed() {
-        return eventPassed;
+    public boolean isPropagationStopped() {
+        return stopPropagation;
     }
 }
