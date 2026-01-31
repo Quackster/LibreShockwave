@@ -1,6 +1,7 @@
 package com.libreshockwave;
 
 import com.libreshockwave.bitmap.Bitmap;
+import com.libreshockwave.cast.BitmapInfo;
 import com.libreshockwave.chunks.CastMemberChunk;
 
 import javax.imageio.ImageIO;
@@ -281,7 +282,13 @@ public class CastExtractorTool extends JFrame {
                                     if (name == null || name.isEmpty()) {
                                         name = "Unnamed #" + member.id();
                                     }
-                                    bitmaps.add(new BitmapMemberInfo(member.id(), name, member));
+                                    // Parse bitmap info to get dimensions and palette info
+                                    BitmapInfo info = BitmapInfo.parse(member.specificData());
+                                    bitmaps.add(new BitmapMemberInfo(
+                                            member.id(), name, member,
+                                            info.width(), info.height(),
+                                            info.bitDepth(), info.paletteId()
+                                    ));
                                 }
                             }
 
@@ -385,7 +392,7 @@ public class CastExtractorTool extends JFrame {
         if (ref != null) {
             BufferedImage cached = ref.get();
             if (cached != null) {
-                displayImage(cached, bitmapData.bitmapInfo.name);
+                displayImage(cached, bitmapData.bitmapInfo);
                 return;
             }
         }
@@ -411,7 +418,7 @@ public class CastExtractorTool extends JFrame {
                     BufferedImage image = get();
                     if (image != null) {
                         imageCache.put(key, new SoftReference<>(image));
-                        displayImage(image, bitmapData.bitmapInfo.name);
+                        displayImage(image, bitmapData.bitmapInfo);
                     } else {
                         previewLabel.setText("Failed to decode bitmap");
                     }
@@ -424,11 +431,29 @@ public class CastExtractorTool extends JFrame {
         worker.execute();
     }
 
-    private void displayImage(BufferedImage image, String name) {
+    private void displayImage(BufferedImage image, BitmapMemberInfo info) {
         ImageIcon icon = new ImageIcon(image);
         previewLabel.setIcon(icon);
         previewLabel.setText(null);
-        statusLabel.setText(name + " - " + image.getWidth() + "x" + image.getHeight());
+
+        String paletteDesc = getPaletteDescription(info.paletteId);
+        statusLabel.setText(String.format("%s - %dx%d, %d-bit, Palette: %s",
+                info.name, image.getWidth(), image.getHeight(), info.bitDepth, paletteDesc));
+    }
+
+    private String getPaletteDescription(int paletteId) {
+        return switch (paletteId) {
+            case -1 -> "System Mac";
+            case -2 -> "Rainbow";
+            case -3 -> "Grayscale";
+            case -4 -> "Pastels";
+            case -5 -> "Vivid";
+            case -6 -> "NTSC";
+            case -7 -> "Metallic";
+            case -101 -> "System Windows";
+            case -102 -> "System Windows (D4)";
+            default -> paletteId >= 0 ? "Cast Member #" + (paletteId + 1) : "Unknown (" + paletteId + ")";
+        };
     }
 
     private void extractSelected(ActionEvent e) {
@@ -587,13 +612,15 @@ public class CastExtractorTool extends JFrame {
         }
     }
 
-    private record BitmapMemberInfo(int memberNum, String name, CastMemberChunk member) {
+    private record BitmapMemberInfo(int memberNum, String name, CastMemberChunk member,
+                                       int width, int height, int bitDepth, int paletteId) {
     }
 
     private record BitmapNodeData(String filePath, BitmapMemberInfo bitmapInfo) {
         @Override
         public String toString() {
-            return bitmapInfo.name;
+            return String.format("%s (%dx%d, %d-bit)",
+                    bitmapInfo.name, bitmapInfo.width, bitmapInfo.height, bitmapInfo.bitDepth);
         }
     }
 
