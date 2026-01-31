@@ -4,9 +4,10 @@ import com.libreshockwave.DirectorFile;
 import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.chunks.ScriptNamesChunk;
 import com.libreshockwave.lingo.Opcode;
+import com.libreshockwave.vm.builtin.BuiltinRegistry;
+import com.libreshockwave.vm.trace.TracingHelper;
 
 import java.util.*;
-import java.util.function.BiFunction;
 
 /**
  * Lingo Virtual Machine.
@@ -20,7 +21,8 @@ public class LingoVM {
     private final DirectorFile file;
     private final Map<String, Datum> globals;
     private final Deque<Scope> callStack;
-    private final Map<String, BiFunction<LingoVM, List<Datum>, Datum>> builtins;
+    private final BuiltinRegistry builtins;
+    private final TracingHelper tracingHelper;
 
     private boolean traceEnabled = false;
     private int stepLimit = 100_000;  // Maximum instructions per handler call
@@ -35,8 +37,19 @@ public class LingoVM {
         this.file = file;
         this.globals = new HashMap<>();
         this.callStack = new ArrayDeque<>();
-        this.builtins = new HashMap<>();
-        registerBuiltins();
+        this.builtins = new BuiltinRegistry();
+        this.tracingHelper = new TracingHelper(this::resolveName);
+        registerPassBuiltin();
+    }
+
+    private void registerPassBuiltin() {
+        // Register pass separately since it needs access to passCallback
+        builtins.register("pass", (vm, args) -> {
+            if (vm.passCallback != null) {
+                vm.passCallback.run();
+            }
+            return Datum.VOID;
+        });
     }
 
     // Configuration
@@ -145,8 +158,8 @@ public class LingoVM {
      */
     public Datum callHandler(String handlerName, List<Datum> args) {
         // Check builtins first
-        if (builtins.containsKey(handlerName)) {
-            return builtins.get(handlerName).apply(this, args);
+        if (builtins.contains(handlerName)) {
+            return builtins.invoke(handlerName, this, args);
         }
 
         // Then try script handlers
@@ -184,22 +197,10 @@ public class LingoVM {
         // Notify trace listener of handler entry
         TraceListener.HandlerInfo handlerInfo = null;
         if (traceListener != null || traceEnabled) {
-            String handlerName = resolveName(handler.nameId());
-            String scriptType = script.scriptType() != null ? script.scriptType().name() : "UNKNOWN";
-            handlerInfo = new TraceListener.HandlerInfo(
-                handlerName,
-                script.id(),
-                scriptType,
-                args,
-                receiver,
-                new HashMap<>(globals),
-                script.literals(),
-                handler.localCount(),
-                handler.argCount()
-            );
+            handlerInfo = tracingHelper.buildHandlerInfo(script, handler, args, receiver, globals);
 
             if (traceEnabled) {
-                traceHandlerEnter(handlerInfo);
+                tracingHelper.traceHandlerEnter(handlerInfo);
             }
             if (traceListener != null) {
                 traceListener.onHandlerEnter(handlerInfo);
@@ -222,7 +223,7 @@ public class LingoVM {
                 traceListener.onHandlerExit(handlerInfo, result);
             }
             if (traceEnabled && handlerInfo != null) {
-                traceHandlerExit(handlerInfo, result);
+                tracingHelper.traceHandlerExit(handlerInfo, result);
             }
 
             return result;
@@ -248,9 +249,9 @@ public class LingoVM {
 
         // Trace before execution
         if (traceEnabled || traceListener != null) {
-            TraceListener.InstructionInfo instrInfo = buildInstructionInfo(scope, instr);
+            TraceListener.InstructionInfo instrInfo = tracingHelper.buildInstructionInfo(scope, instr);
             if (traceEnabled) {
-                traceInstruction(instrInfo);
+                tracingHelper.traceInstruction(instrInfo);
             }
             if (traceListener != null) {
                 traceListener.onInstruction(instrInfo);
@@ -267,7 +268,6 @@ public class LingoVM {
                 scope.setReturnValue(value);
             }
             case RET_FACTORY -> {
-                // Return factory - just return void for now
                 scope.setReturnValue(Datum.VOID);
             }
 
@@ -276,14 +276,13 @@ public class LingoVM {
             case PUSH_INT8, PUSH_INT16, PUSH_INT32 -> scope.push(Datum.of(arg));
             case PUSH_FLOAT32 -> scope.push(Datum.of(Float.intBitsToFloat(arg)));
             case PUSH_CONS -> {
-                // Push constant from literals table
                 List<ScriptChunk.LiteralEntry> literals = scope.getScript().literals();
                 if (arg >= 0 && arg < literals.size()) {
                     ScriptChunk.LiteralEntry lit = literals.get(arg);
                     Datum value = switch (lit.type()) {
-                        case 1 -> Datum.of((String) lit.value()); // String
-                        case 4 -> Datum.of((Integer) lit.value()); // Int
-                        case 9 -> Datum.of((Double) lit.value()); // Float
+                        case 1 -> Datum.of((String) lit.value());
+                        case 4 -> Datum.of((Integer) lit.value());
+                        case 9 -> Datum.of((Double) lit.value());
                         default -> Datum.VOID;
                     };
                     scope.push(value);
@@ -439,9 +438,7 @@ public class LingoVM {
             }
             case GET_PARAM -> scope.push(scope.getParam(arg));
             case SET_PARAM -> {
-                // Parameters are generally read-only in Lingo but we'll support it
-                // This would require mutable arguments which we don't have
-                scope.pop(); // Just discard
+                scope.pop();
             }
             case GET_GLOBAL, GET_GLOBAL2 -> {
                 String name = resolveName(arg);
@@ -462,7 +459,7 @@ public class LingoVM {
                 int targetIndex = scope.getHandler().getInstructionIndex(target);
                 if (targetIndex >= 0) {
                     scope.setBytecodeIndex(targetIndex);
-                    return; // Don't advance
+                    return;
                 }
             }
             case JMP_IF_Z -> {
@@ -472,7 +469,7 @@ public class LingoVM {
                     int targetIndex = scope.getHandler().getInstructionIndex(target);
                     if (targetIndex >= 0) {
                         scope.setBytecodeIndex(targetIndex);
-                        return; // Don't advance
+                        return;
                     }
                 }
             }
@@ -481,13 +478,12 @@ public class LingoVM {
                 int targetIndex = scope.getHandler().getInstructionIndex(target);
                 if (targetIndex >= 0) {
                     scope.setBytecodeIndex(targetIndex);
-                    return; // Don't advance
+                    return;
                 }
             }
 
             // List operations
             case PUSH_LIST -> {
-                // Pop count items and create list
                 int count = arg;
                 List<Datum> items = new ArrayList<>();
                 for (int i = 0; i < count; i++) {
@@ -496,7 +492,6 @@ public class LingoVM {
                 scope.push(Datum.list(items));
             }
             case PUSH_PROP_LIST -> {
-                // Pop count pairs (value, key) and create prop list
                 int count = arg;
                 Map<String, Datum> props = new LinkedHashMap<>();
                 for (int i = 0; i < count; i++) {
@@ -508,14 +503,11 @@ public class LingoVM {
                 scope.push(Datum.propList(props));
             }
             case PUSH_ARG_LIST, PUSH_ARG_LIST_NO_RET -> {
-                // These are used before function calls - we handle them specially
-                // For now just push a marker with the count
                 scope.push(new Datum.Int(arg));
             }
 
             // Function calls
             case LOCAL_CALL -> {
-                // Call a handler in the same script
                 ScriptChunk.Handler targetHandler = findLocalHandler(scope.getScript(), arg);
                 if (targetHandler != null) {
                     Datum argCountDatum = scope.pop();
@@ -528,45 +520,36 @@ public class LingoVM {
                 }
             }
             case EXT_CALL -> {
-                // Call an external handler by name
                 String handlerName = resolveName(arg);
                 Datum argCountDatum = scope.pop();
                 int argCount = argCountDatum.toInt();
                 List<Datum> args = popArgs(scope, argCount);
 
-                // Try builtin first
-                if (builtins.containsKey(handlerName)) {
-                    Datum result = builtins.get(handlerName).apply(this, args);
+                if (builtins.contains(handlerName)) {
+                    Datum result = builtins.invoke(handlerName, this, args);
                     scope.push(result);
                 } else {
-                    // Try to find handler in scripts
                     HandlerRef ref = findHandler(handlerName);
                     if (ref != null) {
                         Datum result = executeHandler(ref.script(), ref.handler(), args, null);
                         scope.push(result);
                     } else {
-                        // Unknown handler - return void
                         scope.push(Datum.VOID);
                     }
                 }
             }
             case OBJ_CALL -> {
-                // Method call on object
                 String methodName = resolveName(arg);
                 Datum argCountDatum = scope.pop();
                 int argCount = argCountDatum.toInt();
                 List<Datum> args = popArgs(scope, argCount);
                 Datum target = args.isEmpty() ? Datum.VOID : args.remove(0);
-
-                // For now, just return void for object calls
-                // Full implementation would dispatch to the object's script
                 scope.push(Datum.VOID);
             }
 
-            // Property access (simplified)
+            // Property access
             case GET_PROP -> {
                 String propName = resolveName(arg);
-                // For behaviors, get from receiver's properties
                 if (scope.getReceiver() instanceof Datum.ScriptInstance si) {
                     scope.push(si.properties().getOrDefault(propName, Datum.VOID));
                 } else {
@@ -576,7 +559,6 @@ public class LingoVM {
             case SET_PROP -> {
                 String propName = resolveName(arg);
                 Datum value = scope.pop();
-                // For behaviors, set on receiver's properties
                 if (scope.getReceiver() instanceof Datum.ScriptInstance si) {
                     si.properties().put(propName, value);
                     if (traceListener != null) {
@@ -587,11 +569,10 @@ public class LingoVM {
 
             // Movie properties (stubs)
             case GET_MOVIE_PROP -> {
-                // Return stub values for common movie properties
                 scope.push(Datum.VOID);
             }
             case SET_MOVIE_PROP -> {
-                scope.pop(); // Discard value
+                scope.pop();
             }
 
             // Object properties (stubs)
@@ -606,13 +587,11 @@ public class LingoVM {
 
             // Builtins
             case THE_BUILTIN -> {
-                // Get a builtin "the" property
                 scope.push(Datum.VOID);
             }
 
             // Unimplemented opcodes
             default -> {
-                // Log unimplemented opcode but continue
                 if (traceEnabled) {
                     System.err.println("Unimplemented opcode: " + op);
                 }
@@ -659,241 +638,4 @@ public class LingoVM {
         }
         return a.equals(b);
     }
-
-    // Trace helpers
-
-    private TraceListener.InstructionInfo buildInstructionInfo(Scope scope, ScriptChunk.Handler.Instruction instr) {
-        String annotation = buildAnnotation(scope, instr);
-        List<Datum> stackSnapshot = new ArrayList<>();
-        // Capture up to 10 stack items
-        for (int i = 0; i < Math.min(10, scope.stackSize()); i++) {
-            stackSnapshot.add(scope.peek(i));
-        }
-        return new TraceListener.InstructionInfo(
-            scope.getBytecodeIndex(),
-            instr.offset(),
-            instr.opcode().name(),
-            instr.argument(),
-            annotation,
-            scope.stackSize(),
-            stackSnapshot
-        );
-    }
-
-    private String buildAnnotation(Scope scope, ScriptChunk.Handler.Instruction instr) {
-        Opcode op = instr.opcode();
-        int arg = instr.argument();
-
-        return switch (op) {
-            case PUSH_INT8, PUSH_INT16, PUSH_INT32 -> "<" + arg + ">";
-            case PUSH_FLOAT32 -> "<" + Float.intBitsToFloat(arg) + ">";
-            case PUSH_CONS -> {
-                List<ScriptChunk.LiteralEntry> literals = scope.getScript().literals();
-                if (arg >= 0 && arg < literals.size()) {
-                    yield "<" + literals.get(arg).value() + ">";
-                }
-                yield "<literal#" + arg + ">";
-            }
-            case PUSH_SYMB -> "<#" + resolveName(arg) + ">";
-            case GET_LOCAL, SET_LOCAL -> "<local" + arg + ">";
-            case GET_PARAM -> "<param" + arg + ">";
-            case GET_GLOBAL, SET_GLOBAL, GET_GLOBAL2, SET_GLOBAL2 -> "<" + resolveName(arg) + ">";
-            case GET_PROP, SET_PROP -> "<me." + resolveName(arg) + ">";
-            case LOCAL_CALL, EXT_CALL, OBJ_CALL -> "<" + resolveName(arg) + "()>";
-            case JMP, JMP_IF_Z -> "<offset " + arg + " -> " + (instr.offset() + arg) + ">";
-            case END_REPEAT -> "<back " + arg + " -> " + (instr.offset() - arg) + ">";
-            default -> "";
-        };
-    }
-
-    private void traceInstruction(TraceListener.InstructionInfo info) {
-        // dirplayer-rs format: --> [pos] opcode arg ... annotation
-        StringBuilder sb = new StringBuilder();
-        sb.append(String.format("--> [%3d] %-16s", info.offset(), info.opcode()));
-        if (info.argument() != 0) {
-            sb.append(String.format(" %d", info.argument()));
-        }
-        // Pad with dots
-        while (sb.length() < 38) {
-            sb.append('.');
-        }
-        if (!info.annotation().isEmpty()) {
-            sb.append(' ').append(info.annotation());
-        }
-        System.out.println(sb);
-    }
-
-    private void traceHandlerEnter(TraceListener.HandlerInfo info) {
-        // dirplayer-rs format: == Script: (member X of castLib Y) Handler: name
-        System.out.println("== Script: (#" + info.scriptId() + " " + info.scriptType() + ") Handler: " + info.handlerName());
-    }
-
-    private void traceHandlerExit(TraceListener.HandlerInfo info, Datum returnValue) {
-        // Only log if non-void return
-        if (!(returnValue instanceof Datum.Void)) {
-            System.out.println("== " + info.handlerName() + " returned " + returnValue);
-        }
-    }
-
-    // Builtin handlers
-
-    private void registerBuiltins() {
-        // Math functions
-        builtins.put("abs", (vm, args) -> {
-            if (args.isEmpty()) return Datum.ZERO;
-            Datum a = args.get(0);
-            if (a.isFloat()) return Datum.of(Math.abs(a.toDouble()));
-            return Datum.of(Math.abs(a.toInt()));
-        });
-
-        builtins.put("sqrt", (vm, args) -> {
-            if (args.isEmpty()) return Datum.ZERO;
-            return Datum.of(Math.sqrt(args.get(0).toDouble()));
-        });
-
-        builtins.put("sin", (vm, args) -> {
-            if (args.isEmpty()) return Datum.ZERO;
-            return Datum.of(Math.sin(Math.toRadians(args.get(0).toDouble())));
-        });
-
-        builtins.put("cos", (vm, args) -> {
-            if (args.isEmpty()) return Datum.ZERO;
-            return Datum.of(Math.cos(Math.toRadians(args.get(0).toDouble())));
-        });
-
-        builtins.put("random", (vm, args) -> {
-            if (args.isEmpty()) return Datum.of(1);
-            int max = args.get(0).toInt();
-            if (max <= 0) return Datum.of(1);
-            return Datum.of((int) (Math.random() * max) + 1);
-        });
-
-        builtins.put("integer", (vm, args) -> {
-            if (args.isEmpty()) return Datum.ZERO;
-            return Datum.of(args.get(0).toInt());
-        });
-
-        builtins.put("float", (vm, args) -> {
-            if (args.isEmpty()) return Datum.of(0.0);
-            return Datum.of(args.get(0).toDouble());
-        });
-
-        // String functions
-        builtins.put("string", (vm, args) -> {
-            if (args.isEmpty()) return Datum.EMPTY_STRING;
-            return Datum.of(args.get(0).toStr());
-        });
-
-        builtins.put("length", (vm, args) -> {
-            if (args.isEmpty()) return Datum.ZERO;
-            Datum a = args.get(0);
-            if (a instanceof Datum.Str s) {
-                return Datum.of(s.value().length());
-            } else if (a instanceof Datum.List l) {
-                return Datum.of(l.items().size());
-            } else if (a instanceof Datum.PropList p) {
-                return Datum.of(p.properties().size());
-            }
-            return Datum.ZERO;
-        });
-
-        builtins.put("chars", (vm, args) -> {
-            if (args.size() < 3) return Datum.EMPTY_STRING;
-            String str = args.get(0).toStr();
-            int start = args.get(1).toInt() - 1; // Lingo is 1-indexed
-            int end = args.get(2).toInt();
-            if (start < 0) start = 0;
-            if (end > str.length()) end = str.length();
-            if (start >= end) return Datum.EMPTY_STRING;
-            return Datum.of(str.substring(start, end));
-        });
-
-        builtins.put("charToNum", (vm, args) -> {
-            if (args.isEmpty()) return Datum.ZERO;
-            String s = args.get(0).toStr();
-            if (s.isEmpty()) return Datum.ZERO;
-            return Datum.of((int) s.charAt(0));
-        });
-
-        builtins.put("numToChar", (vm, args) -> {
-            if (args.isEmpty()) return Datum.EMPTY_STRING;
-            int code = args.get(0).toInt();
-            return Datum.of(String.valueOf((char) code));
-        });
-
-        // List functions
-        builtins.put("count", (vm, args) -> {
-            if (args.isEmpty()) return Datum.ZERO;
-            Datum a = args.get(0);
-            if (a instanceof Datum.List l) {
-                return Datum.of(l.items().size());
-            } else if (a instanceof Datum.PropList p) {
-                return Datum.of(p.properties().size());
-            }
-            return Datum.ZERO;
-        });
-
-        builtins.put("getAt", (vm, args) -> {
-            if (args.size() < 2) return Datum.VOID;
-            Datum list = args.get(0);
-            int index = args.get(1).toInt() - 1; // Lingo is 1-indexed
-            if (list instanceof Datum.List l) {
-                if (index >= 0 && index < l.items().size()) {
-                    return l.items().get(index);
-                }
-            }
-            return Datum.VOID;
-        });
-
-        // Output (stub)
-        builtins.put("put", (vm, args) -> {
-            // Just log to console
-            for (Datum arg : args) {
-                System.out.print(arg.toStr() + " ");
-            }
-            System.out.println();
-            return Datum.VOID;
-        });
-
-        builtins.put("alert", (vm, args) -> {
-            String msg = args.isEmpty() ? "" : args.get(0).toStr();
-            System.out.println("[ALERT] " + msg);
-            return Datum.VOID;
-        });
-
-        // Constructors
-        builtins.put("point", (vm, args) -> {
-            int x = args.size() > 0 ? args.get(0).toInt() : 0;
-            int y = args.size() > 1 ? args.get(1).toInt() : 0;
-            return new Datum.Point(x, y);
-        });
-
-        builtins.put("rect", (vm, args) -> {
-            int left = args.size() > 0 ? args.get(0).toInt() : 0;
-            int top = args.size() > 1 ? args.get(1).toInt() : 0;
-            int right = args.size() > 2 ? args.get(2).toInt() : 0;
-            int bottom = args.size() > 3 ? args.get(3).toInt() : 0;
-            return new Datum.Rect(left, top, right, bottom);
-        });
-
-        builtins.put("color", (vm, args) -> {
-            int r = args.size() > 0 ? args.get(0).toInt() : 0;
-            int g = args.size() > 1 ? args.get(1).toInt() : 0;
-            int b = args.size() > 2 ? args.get(2).toInt() : 0;
-            return new Datum.Color(r, g, b);
-        });
-
-        // Event propagation
-        builtins.put("pass", (vm, args) -> {
-            if (vm.passCallback != null) {
-                vm.passCallback.run();
-            }
-            return Datum.VOID;
-        });
-    }
-
-    /**
-     * Reference to a handler within a script.
-     */
-    public record HandlerRef(ScriptChunk script, ScriptChunk.Handler handler) {}
 }

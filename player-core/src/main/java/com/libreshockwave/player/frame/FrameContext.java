@@ -331,8 +331,4 @@ public class FrameContext {
         inFrameScript = false;
     }
 
-    /**
-     * Event notification record.
-     */
-    public record FrameEvent(PlayerEvent event, int frame) {}
 }
