@@ -10,6 +10,8 @@ import com.libreshockwave.chunks.CastMemberChunk;
 import com.libreshockwave.chunks.Chunk;
 import com.libreshockwave.chunks.KeyTableChunk;
 import com.libreshockwave.chunks.PaletteChunk;
+import com.libreshockwave.chunks.ScoreChunk;
+import com.libreshockwave.chunks.FrameLabelsChunk;
 import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.chunks.ScriptContextChunk;
 import com.libreshockwave.chunks.ScriptNamesChunk;
@@ -81,6 +83,13 @@ public class CastExtractorTool extends JFrame {
     private JPanel audioPanel;
     private Clip currentClip;
     private javax.swing.Timer playbackTimer;
+
+    // Score viewer components
+    private JTable scoreTable;
+    private JScrollPane scoreScrollPane;
+    private JPanel scorePanel;
+    private JLabel scoreInfoLabel;
+    private JButton viewScoreButton;
 
     // Lazy loading cache using soft references to allow GC when memory is low
     private final Map<BitmapKey, SoftReference<BufferedImage>> imageCache = new ConcurrentHashMap<>();
@@ -219,10 +228,50 @@ public class CastExtractorTool extends JFrame {
         fileTree.setCellRenderer(new FileTreeCellRenderer());
         fileTree.addTreeSelectionListener(this::onTreeSelection);
 
+        // Add right-click context menu
+        JPopupMenu contextMenu = new JPopupMenu();
+        JMenuItem exportItem = new JMenuItem("Export...");
+        exportItem.addActionListener(e -> exportSelectedMember());
+        contextMenu.add(exportItem);
+        JMenuItem viewScoreItem = new JMenuItem("View Score");
+        viewScoreItem.addActionListener(e -> viewScoreForSelectedFile());
+        contextMenu.add(viewScoreItem);
+
+        fileTree.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mousePressed(java.awt.event.MouseEvent e) {
+                if (e.isPopupTrigger()) showContextMenu(e);
+            }
+            @Override
+            public void mouseReleased(java.awt.event.MouseEvent e) {
+                if (e.isPopupTrigger()) showContextMenu(e);
+            }
+            private void showContextMenu(java.awt.event.MouseEvent e) {
+                TreePath path = fileTree.getPathForLocation(e.getX(), e.getY());
+                if (path != null) {
+                    fileTree.setSelectionPath(path);
+                    DefaultMutableTreeNode node = (DefaultMutableTreeNode) path.getLastPathComponent();
+                    Object userObj = node.getUserObject();
+                    // Enable export only for member nodes, view score for both file and member nodes
+                    exportItem.setEnabled(userObj instanceof MemberNodeData);
+                    viewScoreItem.setEnabled(userObj instanceof FileNode || userObj instanceof MemberNodeData);
+                    contextMenu.show(fileTree, e.getX(), e.getY());
+                }
+            }
+        });
+
         JScrollPane scrollPane = new JScrollPane(fileTree);
+
+        // Bottom panel with View Score button
+        JPanel bottomPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        viewScoreButton = new JButton("View Score");
+        viewScoreButton.setEnabled(false);
+        viewScoreButton.addActionListener(e -> viewScoreForSelectedFile());
+        bottomPanel.add(viewScoreButton);
 
         panel.add(filterPanel, BorderLayout.NORTH);
         panel.add(scrollPane, BorderLayout.CENTER);
+        panel.add(bottomPanel, BorderLayout.SOUTH);
 
         return panel;
     }
@@ -247,8 +296,24 @@ public class CastExtractorTool extends JFrame {
         detailsScrollPane = new JScrollPane(detailsTextArea);
         detailsScrollPane.getVerticalScrollBar().setUnitIncrement(16);
 
+        // Score viewer panel
+        scorePanel = new JPanel(new BorderLayout(5, 5));
+        scoreInfoLabel = new JLabel("Select a file to view its score");
+        scoreInfoLabel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+        scorePanel.add(scoreInfoLabel, BorderLayout.NORTH);
+
+        scoreTable = new JTable();
+        scoreTable.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
+        scoreTable.setDefaultRenderer(Object.class, new ScoreCellRenderer());
+        scoreTable.setRowHeight(24);
+        scoreScrollPane = new JScrollPane(scoreTable);
+        scoreScrollPane.getVerticalScrollBar().setUnitIncrement(16);
+        scoreScrollPane.getHorizontalScrollBar().setUnitIncrement(50);
+        scorePanel.add(scoreScrollPane, BorderLayout.CENTER);
+
         previewContainer.add(previewScrollPane, "image");
         previewContainer.add(detailsScrollPane, "text");
+        previewContainer.add(scorePanel, "score");
 
         panel.add(previewContainer, BorderLayout.CENTER);
 
@@ -280,8 +345,8 @@ public class CastExtractorTool extends JFrame {
         });
 
         // Time label
-        timeLabel = new JLabel("0:00 / 0:00");
-        timeLabel.setPreferredSize(new Dimension(100, 20));
+        timeLabel = new JLabel("0.0s / 0.0s");
+        timeLabel.setPreferredSize(new Dimension(120, 20));
 
         audioPanel.add(buttonsPanel, BorderLayout.WEST);
         audioPanel.add(positionSlider, BorderLayout.CENTER);
@@ -305,12 +370,15 @@ public class CastExtractorTool extends JFrame {
             int percent = (int) ((pos * 100.0) / len);
             positionSlider.setValue(percent);
 
-            // Update time label
-            int posSec = (int) (pos / 1_000_000);
-            int lenSec = (int) (len / 1_000_000);
-            timeLabel.setText(String.format("%d:%02d / %d:%02d",
-                    posSec / 60, posSec % 60, lenSec / 60, lenSec % 60));
+            // Update time label with decimal format
+            timeLabel.setText(formatTimeLabel(pos, len));
         }
+    }
+
+    private String formatTimeLabel(long posMicros, long lenMicros) {
+        double posSec = posMicros / 1_000_000.0;
+        double lenSec = lenMicros / 1_000_000.0;
+        return String.format("%.1fs / %.1fs", posSec, lenSec);
     }
 
     private void playCurrentSound() {
@@ -372,7 +440,7 @@ public class CastExtractorTool extends JFrame {
                         playButton.setText("Play");
                         playbackTimer.stop();
                         positionSlider.setValue(0);
-                        timeLabel.setText("0:00 / 0:00");
+                        timeLabel.setText(formatTimeLabel(0, currentClip != null ? currentClip.getMicrosecondLength() : 0));
                     });
                 }
             });
@@ -380,8 +448,7 @@ public class CastExtractorTool extends JFrame {
             // Update UI
             positionSlider.setEnabled(true);
             positionSlider.setValue(0);
-            long lenSec = currentClip.getMicrosecondLength() / 1_000_000;
-            timeLabel.setText(String.format("0:00 / %d:%02d", lenSec / 60, lenSec % 60));
+            timeLabel.setText(formatTimeLabel(0, currentClip.getMicrosecondLength()));
 
             currentClip.start();
             playButton.setText("Pause");
@@ -406,7 +473,7 @@ public class CastExtractorTool extends JFrame {
         playButton.setText("Play");
         positionSlider.setValue(0);
         positionSlider.setEnabled(false);
-        timeLabel.setText("0:00 / 0:00");
+        timeLabel.setText("0.0s / 0.0s");
     }
 
     private JPanel createBottomPanel() {
@@ -871,11 +938,26 @@ public class CastExtractorTool extends JFrame {
         audioPanel.setVisible(false);
         currentSoundMember = null;
 
+        // Enable View Score button for file or member selection
+        String filePath = null;
+        if (userObject instanceof FileNode fileNode) {
+            filePath = fileNode.filePath;
+        } else if (userObject instanceof MemberNodeData memberData) {
+            filePath = memberData.filePath;
+        }
+        boolean hasScore = false;
+        if (filePath != null) {
+            DirectorFile dirFile = loadedFiles.get(filePath);
+            hasScore = dirFile != null && dirFile.hasScore();
+        }
+        viewScoreButton.setEnabled(hasScore);
+
         if (userObject instanceof MemberNodeData memberData) {
             MemberType type = memberData.memberInfo.memberType;
 
-            // Enable extract only for bitmaps
-            extractButton.setEnabled(type == MemberType.BITMAP && !outputDirField.getText().isEmpty());
+            // Enable extract for bitmaps and sounds
+            boolean canExtract = (type == MemberType.BITMAP || type == MemberType.SOUND) && !outputDirField.getText().isEmpty();
+            extractButton.setEnabled(canExtract);
 
             if (type == MemberType.BITMAP) {
                 loadAndDisplayBitmap(memberData);
@@ -1464,6 +1546,254 @@ public class CastExtractorTool extends JFrame {
         };
     }
 
+    // Score viewing methods
+
+    private void showScoreView() {
+        CardLayout cl = (CardLayout) previewContainer.getLayout();
+        cl.show(previewContainer, "score");
+    }
+
+    private void viewScoreForSelectedFile() {
+        TreePath path = fileTree.getSelectionPath();
+        if (path == null) return;
+
+        DefaultMutableTreeNode node = (DefaultMutableTreeNode) path.getLastPathComponent();
+        Object userObject = node.getUserObject();
+
+        String filePath = null;
+        if (userObject instanceof FileNode fileNode) {
+            filePath = fileNode.filePath;
+        } else if (userObject instanceof MemberNodeData memberData) {
+            filePath = memberData.filePath;
+        }
+
+        if (filePath == null) return;
+
+        DirectorFile dirFile = loadedFiles.get(filePath);
+        if (dirFile == null || !dirFile.hasScore()) {
+            statusLabel.setText("No score data available for this file");
+            return;
+        }
+
+        displayScoreForFile(dirFile, Path.of(filePath).getFileName().toString());
+    }
+
+    private void displayScoreForFile(DirectorFile dirFile, String fileName) {
+        showScoreView();
+
+        ScoreChunk scoreChunk = dirFile.getScoreChunk();
+        if (scoreChunk == null) {
+            scoreInfoLabel.setText("No score data");
+            scoreTable.setModel(new javax.swing.table.DefaultTableModel());
+            return;
+        }
+
+        int frameCount = scoreChunk.getFrameCount();
+        int channelCount = scoreChunk.getChannelCount();
+
+        // Get frame labels if available
+        FrameLabelsChunk frameLabels = dirFile.getFrameLabelsChunk();
+        Map<Integer, String> labelMap = new HashMap<>();
+        if (frameLabels != null) {
+            for (FrameLabelsChunk.FrameLabel label : frameLabels.labels()) {
+                labelMap.put(label.frameNum(), label.label());
+            }
+        }
+
+        // Build the score grid data
+        // Rows = channels, Columns = frames
+        Object[][] data = new Object[channelCount][frameCount];
+        String[] columnNames = new String[frameCount];
+
+        // Initialize with empty data
+        for (int ch = 0; ch < channelCount; ch++) {
+            for (int fr = 0; fr < frameCount; fr++) {
+                data[ch][fr] = null;
+            }
+        }
+
+        // Column names: frame numbers (with labels if present)
+        for (int fr = 0; fr < frameCount; fr++) {
+            String label = labelMap.get(fr);
+            if (label != null) {
+                columnNames[fr] = (fr + 1) + " [" + label + "]";
+            } else {
+                columnNames[fr] = String.valueOf(fr + 1);
+            }
+        }
+
+        // Populate with frame channel data
+        ScoreChunk.ScoreFrameData frameData = scoreChunk.frameData();
+        if (frameData != null && frameData.frameChannelData() != null) {
+            for (ScoreChunk.FrameChannelEntry entry : frameData.frameChannelData()) {
+                int fr = entry.frameIndex();
+                int ch = entry.channelIndex();
+                ScoreChunk.ChannelData chData = entry.data();
+
+                if (fr >= 0 && fr < frameCount && ch >= 0 && ch < channelCount && !chData.isEmpty()) {
+                    // Create a cell info object
+                    ScoreCellData cellData = new ScoreCellData(
+                            chData.castLib(),
+                            chData.castMember(),
+                            chData.spriteType(),
+                            chData.ink(),
+                            chData.posX(),
+                            chData.posY(),
+                            chData.width(),
+                            chData.height(),
+                            resolveCastMemberName(dirFile, chData.castLib(), chData.castMember())
+                    );
+                    data[ch][fr] = cellData;
+                }
+            }
+        }
+
+        // Create table model with row headers for channels
+        javax.swing.table.DefaultTableModel model = new javax.swing.table.DefaultTableModel(data, columnNames) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
+        };
+
+        scoreTable.setModel(model);
+
+        // Set column widths
+        for (int i = 0; i < scoreTable.getColumnCount(); i++) {
+            scoreTable.getColumnModel().getColumn(i).setMinWidth(60);
+            scoreTable.getColumnModel().getColumn(i).setPreferredWidth(80);
+        }
+
+        // Add row header for channel numbers
+        JList<String> rowHeader = new JList<>(createChannelLabels(channelCount));
+        rowHeader.setFixedCellWidth(80);
+        rowHeader.setFixedCellHeight(scoreTable.getRowHeight());
+        rowHeader.setCellRenderer(new RowHeaderRenderer(scoreTable));
+        scoreScrollPane.setRowHeaderView(rowHeader);
+
+        // Update info label
+        int spriteCount = 0;
+        for (int ch = 0; ch < channelCount; ch++) {
+            for (int fr = 0; fr < frameCount; fr++) {
+                if (data[ch][fr] != null) spriteCount++;
+            }
+        }
+
+        scoreInfoLabel.setText(String.format("Score: %s - %d frames, %d channels, %d sprite entries",
+                fileName, frameCount, channelCount, spriteCount));
+        statusLabel.setText("Viewing score for: " + fileName);
+    }
+
+    private String resolveCastMemberName(DirectorFile dirFile, int castLib, int castMember) {
+        // Try to find the cast member name
+        for (CastMemberChunk member : dirFile.getCastMembers()) {
+            // Cast member index is usually 0-based, member.id() varies by file format
+            if (member.id() == castMember || member.id() == castMember + 1) {
+                String name = member.name();
+                if (name != null && !name.isEmpty()) {
+                    return name;
+                }
+                return member.memberType().getName() + " #" + castMember;
+            }
+        }
+        return "Member #" + castMember;
+    }
+
+    private String[] createChannelLabels(int channelCount) {
+        String[] labels = new String[channelCount];
+        for (int i = 0; i < channelCount; i++) {
+            if (i < 6) {
+                // First 6 channels are typically special (tempo, palette, transition, sounds)
+                labels[i] = switch (i) {
+                    case 0 -> "Tempo";
+                    case 1 -> "Palette";
+                    case 2 -> "Transition";
+                    case 3 -> "Sound 1";
+                    case 4 -> "Sound 2";
+                    case 5 -> "Script";
+                    default -> "Ch " + (i + 1);
+                };
+            } else {
+                labels[i] = "Ch " + (i - 5);
+            }
+        }
+        return labels;
+    }
+
+    // Data class for score cells
+    private record ScoreCellData(
+            int castLib,
+            int castMember,
+            int spriteType,
+            int ink,
+            int posX,
+            int posY,
+            int width,
+            int height,
+            String memberName
+    ) {
+        @Override
+        public String toString() {
+            return memberName;
+        }
+    }
+
+    // Custom cell renderer for the score table
+    private static class ScoreCellRenderer extends javax.swing.table.DefaultTableCellRenderer {
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value,
+                boolean isSelected, boolean hasFocus, int row, int column) {
+
+            Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+
+            if (value instanceof ScoreCellData cellData) {
+                setText(cellData.memberName);
+                setToolTipText(String.format(
+                        "<html>Cast: %d, Member: %d<br>Type: %d, Ink: %d<br>Pos: (%d, %d)<br>Size: %dx%d</html>",
+                        cellData.castLib, cellData.castMember, cellData.spriteType, cellData.ink,
+                        cellData.posX, cellData.posY, cellData.width, cellData.height
+                ));
+
+                if (!isSelected) {
+                    // Color based on sprite type or channel
+                    if (row < 6) {
+                        // Special channels
+                        setBackground(new Color(255, 255, 220)); // Light yellow
+                    } else {
+                        setBackground(new Color(220, 240, 255)); // Light blue
+                    }
+                }
+            } else {
+                setText("");
+                setToolTipText(null);
+                if (!isSelected) {
+                    setBackground(Color.WHITE);
+                }
+            }
+
+            setHorizontalAlignment(SwingConstants.CENTER);
+            return c;
+        }
+    }
+
+    // Row header renderer for channel names
+    private static class RowHeaderRenderer extends JLabel implements ListCellRenderer<String> {
+        RowHeaderRenderer(JTable table) {
+            setOpaque(true);
+            setBorder(UIManager.getBorder("TableHeader.cellBorder"));
+            setHorizontalAlignment(CENTER);
+            setFont(table.getTableHeader().getFont());
+        }
+
+        @Override
+        public Component getListCellRendererComponent(JList<? extends String> list, String value,
+                int index, boolean isSelected, boolean cellHasFocus) {
+            setText(value);
+            setBackground(UIManager.getColor("TableHeader.background"));
+            return this;
+        }
+    }
+
     private void extractSelected(ActionEvent e) {
         String outputDir = outputDirField.getText();
         if (outputDir.isEmpty()) {
@@ -1481,19 +1811,23 @@ public class CastExtractorTool extends JFrame {
         List<ExtractionTask> tasks = new ArrayList<>();
 
         if (userObject instanceof MemberNodeData memberData) {
-            if (memberData.memberInfo.memberType == MemberType.BITMAP) {
+            MemberType type = memberData.memberInfo.memberType;
+            if (type == MemberType.BITMAP || type == MemberType.SOUND) {
                 tasks.add(new ExtractionTask(memberData.filePath, memberData.memberInfo));
             }
         } else if (userObject instanceof FileNode fileNode) {
             for (CastMemberInfo member : fileNode.members) {
-                if (member.memberType == MemberType.BITMAP) {
+                MemberType type = member.memberType;
+                if (type == MemberType.BITMAP || type == MemberType.SOUND) {
                     tasks.add(new ExtractionTask(fileNode.filePath, member));
                 }
             }
         }
 
         if (!tasks.isEmpty()) {
-            extractBitmaps(tasks, Path.of(outputDir));
+            extractAssets(tasks, Path.of(outputDir));
+        } else {
+            statusLabel.setText("No extractable assets selected (bitmaps or sounds)");
         }
     }
 
@@ -1512,65 +1846,106 @@ public class CastExtractorTool extends JFrame {
             FileNode fileData = (FileNode) fileNode.getUserObject();
 
             for (CastMemberInfo member : fileData.members) {
-                if (member.memberType == MemberType.BITMAP) {
+                MemberType type = member.memberType;
+                if (type == MemberType.BITMAP || type == MemberType.SOUND) {
                     tasks.add(new ExtractionTask(fileData.filePath, member));
                 }
             }
         }
 
         if (!tasks.isEmpty()) {
-            extractBitmaps(tasks, Path.of(outputDir));
+            extractAssets(tasks, Path.of(outputDir));
+        } else {
+            statusLabel.setText("No extractable assets found (bitmaps or sounds)");
         }
     }
 
-    private void extractBitmaps(List<ExtractionTask> tasks, Path outputDir) {
+    private void extractAssets(List<ExtractionTask> tasks, Path outputDir) {
         progressBar.setVisible(true);
         progressBar.setMaximum(tasks.size());
         progressBar.setValue(0);
         extractButton.setEnabled(false);
         extractAllButton.setEnabled(false);
 
-        SwingWorker<Integer, Integer> worker = new SwingWorker<>() {
+        SwingWorker<int[], Integer> worker = new SwingWorker<>() {
             @Override
-            protected Integer doInBackground() {
-                int successful = 0;
+            protected int[] doInBackground() {
+                int bitmapsExtracted = 0;
+                int soundsExtracted = 0;
                 int processed = 0;
 
                 for (ExtractionTask task : tasks) {
                     try {
                         DirectorFile dirFile = loadedFiles.get(task.filePath);
                         if (dirFile != null) {
-                            var bitmapOpt = dirFile.decodeBitmap(task.memberInfo.member);
-                            if (bitmapOpt.isPresent()) {
-                                BufferedImage image = bitmapOpt.get().toBufferedImage();
+                            // Create subdirectory for each source file
+                            String sourceFileName = Path.of(task.filePath).getFileName().toString();
+                            String baseName = sourceFileName.contains(".")
+                                    ? sourceFileName.substring(0, sourceFileName.lastIndexOf('.'))
+                                    : sourceFileName;
 
-                                // Create subdirectory for each source file
-                                String sourceFileName = Path.of(task.filePath).getFileName().toString();
-                                String baseName = sourceFileName.contains(".")
-                                        ? sourceFileName.substring(0, sourceFileName.lastIndexOf('.'))
-                                        : sourceFileName;
+                            Path subDir = outputDir.resolve(baseName);
+                            Files.createDirectories(subDir);
 
-                                Path subDir = outputDir.resolve(baseName);
-                                Files.createDirectories(subDir);
+                            // Sanitize filename
+                            String safeName = task.memberInfo.name
+                                    .replaceAll("[^a-zA-Z0-9._-]", "_");
 
-                                // Sanitize filename
-                                String safeName = task.memberInfo.name
-                                        .replaceAll("[^a-zA-Z0-9._-]", "_");
+                            if (task.memberInfo.memberType == MemberType.BITMAP) {
                                 if (safeName.isEmpty()) {
                                     safeName = "bitmap_" + task.memberInfo.memberNum;
                                 }
 
-                                Path outputFile = subDir.resolve(safeName + ".png");
+                                var bitmapOpt = dirFile.decodeBitmap(task.memberInfo.member);
+                                if (bitmapOpt.isPresent()) {
+                                    BufferedImage image = bitmapOpt.get().toBufferedImage();
 
-                                // Handle duplicates
-                                int counter = 1;
-                                while (Files.exists(outputFile)) {
-                                    outputFile = subDir.resolve(safeName + "_" + counter + ".png");
-                                    counter++;
+                                    Path outputFile = subDir.resolve(safeName + ".png");
+
+                                    // Handle duplicates
+                                    int counter = 1;
+                                    while (Files.exists(outputFile)) {
+                                        outputFile = subDir.resolve(safeName + "_" + counter + ".png");
+                                        counter++;
+                                    }
+
+                                    ImageIO.write(image, "PNG", outputFile.toFile());
+                                    bitmapsExtracted++;
+                                }
+                            } else if (task.memberInfo.memberType == MemberType.SOUND) {
+                                if (safeName.isEmpty()) {
+                                    safeName = "sound_" + task.memberInfo.memberNum;
                                 }
 
-                                ImageIO.write(image, "PNG", outputFile.toFile());
-                                successful++;
+                                SoundChunk soundChunk = findSoundForMember(dirFile, task.memberInfo.member);
+                                if (soundChunk != null) {
+                                    byte[] audioData;
+                                    String extension;
+
+                                    if (soundChunk.isMp3()) {
+                                        // Export as MP3
+                                        audioData = SoundConverter.extractMp3(soundChunk);
+                                        extension = ".mp3";
+                                    } else {
+                                        // Export as WAV
+                                        audioData = SoundConverter.toWav(soundChunk);
+                                        extension = ".wav";
+                                    }
+
+                                    if (audioData != null && audioData.length > 0) {
+                                        Path outputFile = subDir.resolve(safeName + extension);
+
+                                        // Handle duplicates
+                                        int counter = 1;
+                                        while (Files.exists(outputFile)) {
+                                            outputFile = subDir.resolve(safeName + "_" + counter + extension);
+                                            counter++;
+                                        }
+
+                                        Files.write(outputFile, audioData);
+                                        soundsExtracted++;
+                                    }
+                                }
                             }
                         }
                     } catch (Exception ignored) {
@@ -1581,7 +1956,7 @@ public class CastExtractorTool extends JFrame {
                     publish(processed);
                 }
 
-                return successful;
+                return new int[]{bitmapsExtracted, soundsExtracted};
             }
 
             @Override
@@ -1596,8 +1971,23 @@ public class CastExtractorTool extends JFrame {
             @Override
             protected void done() {
                 try {
-                    int successful = get();
-                    statusLabel.setText("Extracted " + successful + " of " + tasks.size() + " bitmaps to " + outputDir);
+                    int[] results = get();
+                    int bitmaps = results[0];
+                    int sounds = results[1];
+                    int total = bitmaps + sounds;
+
+                    StringBuilder msg = new StringBuilder("Extracted ");
+                    if (bitmaps > 0 && sounds > 0) {
+                        msg.append(bitmaps).append(" bitmaps and ").append(sounds).append(" sounds");
+                    } else if (bitmaps > 0) {
+                        msg.append(bitmaps).append(" bitmaps");
+                    } else if (sounds > 0) {
+                        msg.append(sounds).append(" sounds");
+                    } else {
+                        msg.append("0 assets");
+                    }
+                    msg.append(" to ").append(outputDir);
+                    statusLabel.setText(msg.toString());
                 } catch (Exception ex) {
                     statusLabel.setText("Error during extraction: " + ex.getMessage());
                 }
@@ -1609,6 +1999,104 @@ public class CastExtractorTool extends JFrame {
         };
 
         worker.execute();
+    }
+
+    private void exportSelectedMember() {
+        TreePath path = fileTree.getSelectionPath();
+        if (path == null) return;
+
+        DefaultMutableTreeNode node = (DefaultMutableTreeNode) path.getLastPathComponent();
+        Object userObject = node.getUserObject();
+
+        if (!(userObject instanceof MemberNodeData memberData)) {
+            return;
+        }
+
+        MemberType type = memberData.memberInfo.memberType;
+        DirectorFile dirFile = loadedFiles.get(memberData.filePath);
+        if (dirFile == null) {
+            statusLabel.setText("Error: Could not load file");
+            return;
+        }
+
+        // Sanitize name for default filename
+        String safeName = memberData.memberInfo.name.replaceAll("[^a-zA-Z0-9._-]", "_");
+        if (safeName.isEmpty()) {
+            safeName = type.getName() + "_" + memberData.memberInfo.memberNum;
+        }
+
+        JFileChooser chooser = new JFileChooser();
+        String lastOutputDir = outputDirField.getText();
+        if (!lastOutputDir.isEmpty()) {
+            chooser.setCurrentDirectory(new File(lastOutputDir));
+        }
+
+        if (type == MemberType.BITMAP) {
+            chooser.setSelectedFile(new File(safeName + ".png"));
+            chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("PNG Image", "png"));
+
+            if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+                File outputFile = chooser.getSelectedFile();
+                if (!outputFile.getName().toLowerCase().endsWith(".png")) {
+                    outputFile = new File(outputFile.getAbsolutePath() + ".png");
+                }
+
+                try {
+                    var bitmapOpt = dirFile.decodeBitmap(memberData.memberInfo.member);
+                    if (bitmapOpt.isPresent()) {
+                        BufferedImage image = bitmapOpt.get().toBufferedImage();
+                        ImageIO.write(image, "PNG", outputFile);
+                        statusLabel.setText("Exported bitmap to: " + outputFile.getName());
+                    } else {
+                        statusLabel.setText("Failed to decode bitmap");
+                    }
+                } catch (Exception ex) {
+                    statusLabel.setText("Export error: " + ex.getMessage());
+                }
+            }
+        } else if (type == MemberType.SOUND) {
+            SoundChunk soundChunk = findSoundForMember(dirFile, memberData.memberInfo.member);
+            if (soundChunk == null) {
+                statusLabel.setText("Sound data not found");
+                return;
+            }
+
+            String extension = soundChunk.isMp3() ? ".mp3" : ".wav";
+            chooser.setSelectedFile(new File(safeName + extension));
+
+            if (soundChunk.isMp3()) {
+                chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("MP3 Audio", "mp3"));
+            } else {
+                chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("WAV Audio", "wav"));
+            }
+
+            if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+                File outputFile = chooser.getSelectedFile();
+                if (!outputFile.getName().toLowerCase().endsWith(extension)) {
+                    outputFile = new File(outputFile.getAbsolutePath() + extension);
+                }
+
+                try {
+                    byte[] audioData;
+                    if (soundChunk.isMp3()) {
+                        audioData = SoundConverter.extractMp3(soundChunk);
+                    } else {
+                        audioData = SoundConverter.toWav(soundChunk);
+                    }
+
+                    if (audioData != null && audioData.length > 0) {
+                        Files.write(outputFile.toPath(), audioData);
+                        statusLabel.setText("Exported sound to: " + outputFile.getName());
+                    } else {
+                        statusLabel.setText("Failed to export sound");
+                    }
+                } catch (Exception ex) {
+                    statusLabel.setText("Export error: " + ex.getMessage());
+                }
+            }
+        } else {
+            statusLabel.setText("Export not supported for " + type.getName() + " members");
+        }
     }
 
     @Override
@@ -1637,13 +2125,15 @@ public class CastExtractorTool extends JFrame {
     private record MemberNodeData(String filePath, CastMemberInfo memberInfo) {
         @Override
         public String toString() {
+            String idPrefix = "#" + memberInfo.memberNum + " ";
+
             // For scripts, show the script type from details instead of generic "script"
             if (memberInfo.memberType == MemberType.SCRIPT && !memberInfo.details.isEmpty()) {
                 // Details format: "Movie Script [handler1, handler2]" or just "Movie Script"
-                return memberInfo.name + " - " + memberInfo.details;
+                return idPrefix + memberInfo.name + " - " + memberInfo.details;
             }
 
-            String base = memberInfo.name + " [" + memberInfo.memberType.getName() + "]";
+            String base = idPrefix + memberInfo.name + " [" + memberInfo.memberType.getName() + "]";
             if (!memberInfo.details.isEmpty()) {
                 return base + " (" + memberInfo.details + ")";
             }
