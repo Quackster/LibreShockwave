@@ -707,54 +707,32 @@ public class LingoVM {
     }
 
     private void traceInstruction(TraceListener.InstructionInfo info) {
+        // dirplayer-rs format: --> [pos] opcode arg ... annotation
         StringBuilder sb = new StringBuilder();
-        sb.append(String.format("  [%3d] %-16s", info.offset(), info.opcode()));
+        sb.append(String.format("--> [%3d] %-16s", info.offset(), info.opcode()));
         if (info.argument() != 0) {
             sb.append(String.format(" %d", info.argument()));
         }
         // Pad with dots
-        while (sb.length() < 35) {
+        while (sb.length() < 38) {
             sb.append('.');
         }
         if (!info.annotation().isEmpty()) {
             sb.append(' ').append(info.annotation());
         }
-        sb.append(String.format(" (stack=%d)", info.stackSize()));
         System.out.println(sb);
     }
 
     private void traceHandlerEnter(TraceListener.HandlerInfo info) {
-        System.out.println("=== ENTER: " + info.handlerName() + " ===");
-        System.out.println("  Script: #" + info.scriptId() + " (" + info.scriptType() + ")");
-        System.out.println("  Args: " + info.arguments());
-        if (info.receiver() != null && !(info.receiver() instanceof Datum.Void)) {
-            System.out.println("  Receiver: " + info.receiver());
-        }
-        if (!info.globals().isEmpty()) {
-            System.out.println("  Globals: " + info.globals());
-        }
-        if (!info.literals().isEmpty()) {
-            System.out.println("  Literals: " + formatLiterals(info.literals()));
-        }
-        System.out.println("  Locals: " + info.localCount() + ", ArgCount: " + info.argCount());
+        // dirplayer-rs format: == Script: (member X of castLib Y) Handler: name
+        System.out.println("== Script: (#" + info.scriptId() + " " + info.scriptType() + ") Handler: " + info.handlerName());
     }
 
     private void traceHandlerExit(TraceListener.HandlerInfo info, Datum returnValue) {
-        System.out.println("=== EXIT: " + info.handlerName() + " => " + returnValue + " ===");
-    }
-
-    private String formatLiterals(List<ScriptChunk.LiteralEntry> literals) {
-        StringBuilder sb = new StringBuilder("[");
-        for (int i = 0; i < Math.min(10, literals.size()); i++) {
-            if (i > 0) sb.append(", ");
-            ScriptChunk.LiteralEntry lit = literals.get(i);
-            sb.append(i).append(":").append(lit.value());
+        // Only log if non-void return
+        if (!(returnValue instanceof Datum.Void)) {
+            System.out.println("== " + info.handlerName() + " returned " + returnValue);
         }
-        if (literals.size() > 10) {
-            sb.append(", ... (").append(literals.size()).append(" total)");
-        }
-        sb.append("]");
-        return sb.toString();
     }
 
     // Builtin handlers

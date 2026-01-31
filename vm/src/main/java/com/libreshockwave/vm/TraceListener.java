@@ -37,10 +37,10 @@ public interface TraceListener {
     default void onError(String message, Exception error) {}
 
     /**
-     * Called when an event is dispatched (before handler lookup).
-     * This is called even if no handler exists for the event.
+     * Called for general debug messages.
+     * Format follows dirplayer-rs conventions.
      */
-    default void onEventDispatch(String eventName, String target) {}
+    default void onDebugMessage(String message) {}
 
     /**
      * Handler execution information.
