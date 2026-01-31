@@ -6,6 +6,7 @@ import com.libreshockwave.cast.BitmapInfo;
 import com.libreshockwave.cast.MemberType;
 import com.libreshockwave.cast.ShapeInfo;
 import com.libreshockwave.cast.FilmLoopInfo;
+import com.libreshockwave.chunks.CastChunk;
 import com.libreshockwave.chunks.CastMemberChunk;
 import com.libreshockwave.chunks.Chunk;
 import com.libreshockwave.chunks.KeyTableChunk;
@@ -989,7 +990,7 @@ public class CastExtractorTool extends JFrame {
         if (ref != null) {
             BufferedImage cached = ref.get();
             if (cached != null) {
-                displayBitmapImage(cached, memberData.memberInfo);
+                displayBitmapImage(cached, memberData);
                 return;
             }
         }
@@ -1015,7 +1016,7 @@ public class CastExtractorTool extends JFrame {
                     BufferedImage image = get();
                     if (image != null) {
                         imageCache.put(key, new SoftReference<>(image));
-                        displayBitmapImage(image, memberData.memberInfo);
+                        displayBitmapImage(image, memberData);
                     } else {
                         previewLabel.setText("Failed to decode bitmap");
                     }
@@ -1028,21 +1029,34 @@ public class CastExtractorTool extends JFrame {
         worker.execute();
     }
 
-    private void displayBitmapImage(BufferedImage image, CastMemberInfo info) {
+    private void displayBitmapImage(BufferedImage image, MemberNodeData memberData) {
+        CastMemberInfo info = memberData.memberInfo;
         ImageIcon icon = new ImageIcon(image);
         previewLabel.setIcon(icon);
         previewLabel.setText(null);
 
         // Get palette info if available
         String paletteDesc = "N/A";
+        String baseStatus;
         try {
             BitmapInfo bmpInfo = BitmapInfo.parse(info.member.specificData());
             paletteDesc = getPaletteDescription(bmpInfo.paletteId());
-            statusLabel.setText(String.format("%s - %dx%d, %d-bit, Palette: %s",
-                    info.name, image.getWidth(), image.getHeight(), bmpInfo.bitDepth(), paletteDesc));
+            baseStatus = String.format("#%d %s - %dx%d, %d-bit, Palette: %s",
+                    info.memberNum, info.name, image.getWidth(), image.getHeight(), bmpInfo.bitDepth(), paletteDesc);
         } catch (Exception e) {
-            statusLabel.setText(String.format("%s - %dx%d", info.name, image.getWidth(), image.getHeight()));
+            baseStatus = String.format("#%d %s - %dx%d", info.memberNum, info.name, image.getWidth(), image.getHeight());
         }
+
+        // Get frame appearances
+        DirectorFile dirFile = loadedFiles.get(memberData.filePath);
+        if (dirFile != null) {
+            List<FrameAppearance> appearances = findMemberFrameAppearances(dirFile, info.memberNum);
+            if (!appearances.isEmpty()) {
+                baseStatus += " | " + formatFrameAppearances(appearances);
+            }
+        }
+
+        statusLabel.setText(baseStatus);
     }
 
     private void displayPalettePreview(MemberNodeData memberData) {
@@ -1065,11 +1079,11 @@ public class CastExtractorTool extends JFrame {
             ImageIcon icon = new ImageIcon(image);
             previewLabel.setIcon(icon);
             previewLabel.setText(null);
-            statusLabel.setText(String.format("Palette: %s - %d colors", memberData.memberInfo.name, colors.length));
+            statusLabel.setText(String.format("Palette: #%d %s - %d colors", memberData.memberInfo.memberNum, memberData.memberInfo.name, colors.length));
         } else {
             previewLabel.setIcon(null);
             previewLabel.setText("Palette data not found");
-            statusLabel.setText("Palette: " + memberData.memberInfo.name);
+            statusLabel.setText("Palette: #" + memberData.memberInfo.memberNum + " " + memberData.memberInfo.name);
         }
     }
 
@@ -1132,9 +1146,29 @@ public class CastExtractorTool extends JFrame {
             audioPanel.setVisible(false);
         }
 
+        // Show frame appearances from score
+        sb.append("\n--- Score Appearances ---\n");
+        List<FrameAppearance> appearances = findMemberFrameAppearances(dirFile, memberData.memberInfo.memberNum);
+        if (appearances.isEmpty()) {
+            sb.append("Not used in score\n");
+        } else {
+            sb.append(formatFrameAppearances(appearances)).append("\n");
+            // Show detailed list if not too many
+            if (appearances.size() <= 20) {
+                sb.append("\nDetailed appearances:\n");
+                for (FrameAppearance app : appearances) {
+                    sb.append(String.format("  Frame %d, %s", app.frame(), app.channelName()));
+                    if (app.frameLabel() != null) {
+                        sb.append(" [").append(app.frameLabel()).append("]");
+                    }
+                    sb.append("\n");
+                }
+            }
+        }
+
         detailsTextArea.setText(sb.toString());
         detailsTextArea.setCaretPosition(0);
-        statusLabel.setText("Sound: " + memberData.memberInfo.name);
+        statusLabel.setText("Sound: #" + memberData.memberInfo.memberNum + " " + memberData.memberInfo.name);
     }
 
     private void displayTextDetails(MemberNodeData memberData) {
@@ -1177,7 +1211,7 @@ public class CastExtractorTool extends JFrame {
 
         detailsTextArea.setText(sb.toString());
         detailsTextArea.setCaretPosition(0);
-        statusLabel.setText(typeName + ": " + memberData.memberInfo.name);
+        statusLabel.setText(typeName + ": #" + memberData.memberInfo.memberNum + " " + memberData.memberInfo.name);
     }
 
     private TextChunk findTextForMember(DirectorFile dirFile, CastMemberChunk member) {
@@ -1305,7 +1339,7 @@ public class CastExtractorTool extends JFrame {
 
         detailsTextArea.setText(sb.toString());
         detailsTextArea.setCaretPosition(0);
-        statusLabel.setText("Script: " + memberData.memberInfo.name);
+        statusLabel.setText("Script: #" + memberData.memberInfo.memberNum + " " + memberData.memberInfo.name);
     }
 
     private String formatInstruction(ScriptChunk.Handler.Instruction instr, ScriptChunk script, ScriptNamesChunk names) {
@@ -1526,9 +1560,33 @@ public class CastExtractorTool extends JFrame {
             }
         }
 
+        // Show frame appearances from score
+        DirectorFile dirFile = loadedFiles.get(memberData.filePath);
+        if (dirFile != null && dirFile.hasScore()) {
+            sb.append("\n--- Score Appearances ---\n");
+            List<FrameAppearance> appearances = findMemberFrameAppearances(dirFile, info.memberNum);
+            if (appearances.isEmpty()) {
+                sb.append("Not used in score\n");
+            } else {
+                sb.append(formatFrameAppearances(appearances)).append("\n");
+                // Show detailed list if not too many
+                if (appearances.size() <= 20) {
+                    sb.append("\nDetailed appearances:\n");
+                    for (FrameAppearance app : appearances) {
+                        sb.append(String.format("  Frame %d, %s at (%d, %d)",
+                                app.frame(), app.channelName(), app.posX(), app.posY()));
+                        if (app.frameLabel() != null) {
+                            sb.append(" [").append(app.frameLabel()).append("]");
+                        }
+                        sb.append("\n");
+                    }
+                }
+            }
+        }
+
         detailsTextArea.setText(sb.toString());
         detailsTextArea.setCaretPosition(0);
-        statusLabel.setText(info.memberType.getName() + ": " + info.name);
+        statusLabel.setText(info.memberType.getName() + ": #" + info.memberNum + " " + info.name);
     }
 
     private String getPaletteDescription(int paletteId) {
@@ -1622,6 +1680,21 @@ public class CastExtractorTool extends JFrame {
             }
         }
 
+        // Build a map of frame intervals (scripts attached to frames)
+        Map<Integer, String> frameScriptMap = new HashMap<>();
+        for (ScoreChunk.FrameInterval fi : scoreChunk.frameIntervals()) {
+            var primary = fi.primary();
+            var secondary = fi.secondary();
+            if (secondary != null && primary.channelIndex() == 0) {
+                // This is a tempo/frame script
+                String scriptName = resolveCastMemberByNumber(dirFile, secondary.castLib(), secondary.castMember());
+                // Apply to all frames in the range
+                for (int f = primary.startFrame(); f <= primary.endFrame() && f < frameCount; f++) {
+                    frameScriptMap.put(f, scriptName);
+                }
+            }
+        }
+
         // Populate with frame channel data
         ScoreChunk.ScoreFrameData frameData = scoreChunk.frameData();
         if (frameData != null && frameData.frameChannelData() != null) {
@@ -1631,6 +1704,16 @@ public class CastExtractorTool extends JFrame {
                 ScoreChunk.ChannelData chData = entry.data();
 
                 if (fr >= 0 && fr < frameCount && ch >= 0 && ch < channelCount && !chData.isEmpty()) {
+                    // Resolve display name based on channel type
+                    String displayName;
+
+                    // For Tempo channel, prefer the frame script from FrameIntervals
+                    if (ch == 0 && frameScriptMap.containsKey(fr)) {
+                        displayName = frameScriptMap.get(fr);
+                    } else {
+                        displayName = resolveChannelCellName(dirFile, ch, chData);
+                    }
+
                     // Create a cell info object
                     ScoreCellData cellData = new ScoreCellData(
                             chData.castLib(),
@@ -1641,7 +1724,7 @@ public class CastExtractorTool extends JFrame {
                             chData.posY(),
                             chData.width(),
                             chData.height(),
-                            resolveCastMemberName(dirFile, chData.castLib(), chData.castMember())
+                            displayName
                     );
                     data[ch][fr] = cellData;
                 }
@@ -1684,19 +1767,105 @@ public class CastExtractorTool extends JFrame {
         statusLabel.setText("Viewing score for: " + fileName);
     }
 
-    private String resolveCastMemberName(DirectorFile dirFile, int castLib, int castMember) {
-        // Try to find the cast member name
-        for (CastMemberChunk member : dirFile.getCastMembers()) {
-            // Cast member index is usually 0-based, member.id() varies by file format
-            if (member.id() == castMember || member.id() == castMember + 1) {
-                String name = member.name();
-                if (name != null && !name.isEmpty()) {
-                    return name;
+    /**
+     * Resolve the display name for a cell based on channel type.
+     * Special channels (0-5) have different meanings for their data.
+     */
+    private String resolveChannelCellName(DirectorFile dirFile, int channelIndex, ScoreChunk.ChannelData data) {
+        switch (channelIndex) {
+            case 0 -> {
+                // Tempo channel - castMember is the tempo (fps) or wait setting
+                int tempo = data.castMember();
+                if (tempo > 0) {
+                    return tempo + " fps";
                 }
-                return member.memberType().getName() + " #" + castMember;
+                return "Tempo";
+            }
+            case 1 -> {
+                // Palette channel - castMember is palette index
+                int paletteId = data.castMember();
+                return getPaletteDescription(paletteId);
+            }
+            case 2 -> {
+                // Transition channel - castMember is transition ID
+                int transId = data.castMember();
+                if (transId > 0) {
+                    return "Trans #" + transId;
+                }
+                return "Transition";
+            }
+            case 3, 4 -> {
+                // Sound channels - these ARE cast member references
+                return resolveCastMemberName(dirFile, data.castLib(), data.castMember());
+            }
+            case 5 -> {
+                // Script channel - these ARE cast member references (frame scripts)
+                return resolveCastMemberName(dirFile, data.castLib(), data.castMember());
+            }
+            default -> {
+                // Regular sprite channels - cast member references
+                return resolveCastMemberName(dirFile, data.castLib(), data.castMember());
             }
         }
+    }
+
+    private String resolveCastMemberName(DirectorFile dirFile, int castLib, int castMember) {
+        // Use the new DirectorFile method that handles minMember offset properly
+        CastMemberChunk member = dirFile.getCastMemberByIndex(castLib, castMember);
+
+        if (member != null) {
+            String name = member.name();
+            if (name != null && !name.isEmpty()) {
+                return "#" + member.id() + " " + name;
+            }
+            return "#" + member.id() + " " + member.memberType().getName();
+        }
+
         return "Member #" + castMember;
+    }
+
+    /**
+     * Resolve a cast member by its 1-based member number within a cast.
+     * FrameIntervals use this format: castLib + memberNumber (1-based).
+     */
+    private String resolveCastMemberByNumber(DirectorFile dirFile, int castLib, int memberNumber) {
+        // Get the CastChunk array to map member number to chunk ID
+        List<CastChunk> casts = dirFile.getCasts();
+        if (casts.isEmpty()) {
+            return "Member #" + memberNumber;
+        }
+
+        // Member numbers are 1-based, so index = memberNumber - 1
+        int index = memberNumber - 1;
+
+        // Try to find in the first available CastChunk
+        for (CastChunk cast : casts) {
+            if (index >= 0 && index < cast.memberIds().size()) {
+                int chunkId = cast.memberIds().get(index);
+                if (chunkId != 0) {
+                    Chunk chunk = dirFile.getChunk(chunkId);
+                    if (chunk instanceof CastMemberChunk cm) {
+                        String name = cm.name();
+                        if (name != null && !name.isEmpty()) {
+                            return "#" + cm.id() + " " + name;
+                        }
+                        return "#" + cm.id() + " " + cm.memberType().getName();
+                    }
+                }
+            }
+        }
+
+        // Fallback: try direct chunk ID lookup with +1 offset
+        Chunk chunk = dirFile.getChunk(memberNumber);
+        if (chunk instanceof CastMemberChunk cm) {
+            String name = cm.name();
+            if (name != null && !name.isEmpty()) {
+                return "#" + cm.id() + " " + name;
+            }
+            return "#" + cm.id() + " " + cm.memberType().getName();
+        }
+
+        return "Member #" + memberNumber;
     }
 
     private String[] createChannelLabels(int channelCount) {
@@ -1719,6 +1888,138 @@ public class CastExtractorTool extends JFrame {
         }
         return labels;
     }
+
+    /**
+     * Find which frames and channels a cast member appears in from the score.
+     * Returns a list of frame appearances with channel info.
+     */
+    private List<FrameAppearance> findMemberFrameAppearances(DirectorFile dirFile, int memberId) {
+        List<FrameAppearance> appearances = new ArrayList<>();
+
+        if (!dirFile.hasScore()) {
+            return appearances;
+        }
+
+        ScoreChunk scoreChunk = dirFile.getScoreChunk();
+        if (scoreChunk == null || scoreChunk.frameData() == null) {
+            return appearances;
+        }
+
+        ScoreChunk.ScoreFrameData frameData = scoreChunk.frameData();
+        if (frameData.frameChannelData() == null) {
+            return appearances;
+        }
+
+        // Get frame labels
+        FrameLabelsChunk frameLabels = dirFile.getFrameLabelsChunk();
+        Map<Integer, String> labelMap = new HashMap<>();
+        if (frameLabels != null) {
+            for (FrameLabelsChunk.FrameLabel label : frameLabels.labels()) {
+                labelMap.put(label.frameNum(), label.label());
+            }
+        }
+
+        // Find all frames where this member appears
+        for (ScoreChunk.FrameChannelEntry entry : frameData.frameChannelData()) {
+            ScoreChunk.ChannelData data = entry.data();
+
+            // Resolve the score's castMember index to an actual member and check if it matches
+            CastMemberChunk resolvedMember = dirFile.getCastMemberByIndex(data.castLib(), data.castMember());
+            if (resolvedMember != null && resolvedMember.id() == memberId) {
+                String channelName = getChannelName(entry.channelIndex());
+                String frameLabel = labelMap.get(entry.frameIndex());
+                appearances.add(new FrameAppearance(
+                        entry.frameIndex() + 1, // 1-based frame number
+                        entry.channelIndex(),
+                        channelName,
+                        frameLabel,
+                        data.posX(),
+                        data.posY()
+                ));
+            }
+        }
+
+        // Sort by frame number, then channel
+        appearances.sort((a, b) -> {
+            int cmp = Integer.compare(a.frame, b.frame);
+            if (cmp != 0) return cmp;
+            return Integer.compare(a.channel, b.channel);
+        });
+
+        return appearances;
+    }
+
+    private String getChannelName(int channelIndex) {
+        if (channelIndex < 6) {
+            return switch (channelIndex) {
+                case 0 -> "Tempo";
+                case 1 -> "Palette";
+                case 2 -> "Transition";
+                case 3 -> "Sound 1";
+                case 4 -> "Sound 2";
+                case 5 -> "Script";
+                default -> "Ch " + (channelIndex + 1);
+            };
+        }
+        return "Ch " + (channelIndex - 5);
+    }
+
+    private String formatFrameAppearances(List<FrameAppearance> appearances) {
+        if (appearances.isEmpty()) {
+            return "Not used in score";
+        }
+
+        StringBuilder sb = new StringBuilder();
+
+        // Group consecutive frames in the same channel
+        List<String> ranges = new ArrayList<>();
+        int rangeStart = -1;
+        int rangeEnd = -1;
+        int lastChannel = -1;
+        String lastChannelName = null;
+
+        for (FrameAppearance app : appearances) {
+            if (lastChannel == app.channel && rangeEnd + 1 == app.frame) {
+                // Extend current range
+                rangeEnd = app.frame;
+            } else {
+                // Save previous range if any
+                if (rangeStart > 0) {
+                    ranges.add(formatRange(rangeStart, rangeEnd, lastChannelName));
+                }
+                // Start new range
+                rangeStart = app.frame;
+                rangeEnd = app.frame;
+                lastChannel = app.channel;
+                lastChannelName = app.channelName;
+            }
+        }
+        // Don't forget the last range
+        if (rangeStart > 0) {
+            ranges.add(formatRange(rangeStart, rangeEnd, lastChannelName));
+        }
+
+        // Format output
+        if (ranges.size() <= 5) {
+            sb.append(String.join(", ", ranges));
+        } else {
+            // Show first few and count
+            sb.append(String.join(", ", ranges.subList(0, 3)));
+            sb.append(" ... and ").append(ranges.size() - 3).append(" more");
+        }
+
+        return sb.toString();
+    }
+
+    private String formatRange(int start, int end, String channelName) {
+        if (start == end) {
+            return "Frame " + start + " (" + channelName + ")";
+        } else {
+            return "Frames " + start + "-" + end + " (" + channelName + ")";
+        }
+    }
+
+    private record FrameAppearance(int frame, int channel, String channelName, String frameLabel, int posX, int posY) {}
 
     // Data class for score cells
     private record ScoreCellData(
@@ -1748,14 +2049,33 @@ public class CastExtractorTool extends JFrame {
 
             if (value instanceof ScoreCellData cellData) {
                 setText(cellData.memberName);
-                setToolTipText(String.format(
-                        "<html>Cast: %d, Member: %d<br>Type: %d, Ink: %d<br>Pos: (%d, %d)<br>Size: %dx%d</html>",
-                        cellData.castLib, cellData.castMember, cellData.spriteType, cellData.ink,
-                        cellData.posX, cellData.posY, cellData.width, cellData.height
-                ));
+
+                // Different tooltips for special channels vs sprite channels
+                if (row < 6) {
+                    // Special channels - show channel-specific info
+                    String tooltip = switch (row) {
+                        case 0 -> String.format("<html>Tempo: %d fps</html>", cellData.castMember);
+                        case 1 -> String.format("<html>Palette: %s</html>", cellData.memberName);
+                        case 2 -> String.format("<html>Transition: #%d</html>", cellData.castMember);
+                        case 3, 4 -> String.format("<html>Sound<br>Cast: %d, Member: %d<br>%s</html>",
+                                cellData.castLib, cellData.castMember, cellData.memberName);
+                        case 5 -> String.format("<html>Frame Script<br>Cast: %d, Member: %d<br>%s</html>",
+                                cellData.castLib, cellData.castMember, cellData.memberName);
+                        default -> cellData.memberName;
+                    };
+                    setToolTipText(tooltip);
+                } else {
+                    // Regular sprite channels
+                    setToolTipText(String.format(
+                            "<html>%s<br>Cast: %d, Member: %d<br>Type: %d, Ink: %d<br>Pos: (%d, %d)<br>Size: %dx%d</html>",
+                            cellData.memberName,
+                            cellData.castLib, cellData.castMember, cellData.spriteType, cellData.ink,
+                            cellData.posX, cellData.posY, cellData.width, cellData.height
+                    ));
+                }
 
                 if (!isSelected) {
-                    // Color based on sprite type or channel
+                    // Color based on channel type
                     if (row < 6) {
                         // Special channels
                         setBackground(new Color(255, 255, 220)); // Light yellow
