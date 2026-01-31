@@ -6,6 +6,8 @@ import com.libreshockwave.chunks.ScriptNamesChunk;
 import com.libreshockwave.player.behavior.BehaviorManager;
 import com.libreshockwave.player.event.EventDispatcher;
 import com.libreshockwave.player.frame.FrameContext;
+import com.libreshockwave.player.render.FrameSnapshot;
+import com.libreshockwave.player.render.StageRenderer;
 import com.libreshockwave.player.score.ScoreNavigator;
 import com.libreshockwave.vm.LingoVM;
 
@@ -22,6 +24,7 @@ public class Player {
     private final DirectorFile file;
     private final LingoVM vm;
     private final FrameContext frameContext;
+    private final StageRenderer stageRenderer;
 
     private PlayerState state = PlayerState.STOPPED;
     private int tempo;  // Frames per second
@@ -36,6 +39,7 @@ public class Player {
         this.file = file;
         this.vm = new LingoVM(file);
         this.frameContext = new FrameContext(file, vm);
+        this.stageRenderer = new StageRenderer(file);
         this.tempo = file != null ? file.getTempo() : 15;
         if (this.tempo <= 0) this.tempo = 15;
 
@@ -43,6 +47,10 @@ public class Player {
         frameContext.setEventListener(event -> {
             if (eventListener != null) {
                 eventListener.accept(new PlayerEventInfo(event.event(), event.frame(), 0));
+            }
+            // Notify stage renderer of frame changes
+            if (event.event() == PlayerEvent.ENTER_FRAME) {
+                stageRenderer.onFrameEnter(event.frame());
             }
         });
     }
@@ -73,6 +81,10 @@ public class Player {
         return frameContext.getEventDispatcher();
     }
 
+    public StageRenderer getStageRenderer() {
+        return stageRenderer;
+    }
+
     public PlayerState getState() {
         return state;
     }
@@ -91,6 +103,14 @@ public class Player {
 
     public int getFrameCount() {
         return frameContext.getFrameCount();
+    }
+
+    /**
+     * Get a snapshot of the current frame for rendering.
+     * This captures all sprite states at the moment it's called.
+     */
+    public FrameSnapshot getFrameSnapshot() {
+        return FrameSnapshot.capture(stageRenderer, getCurrentFrame(), state.name());
     }
 
     public void setEventListener(Consumer<PlayerEventInfo> listener) {
@@ -200,6 +220,7 @@ public class Player {
             log("stop()");
             dispatchMovieEvent(PlayerEvent.STOP_MOVIE);
             frameContext.reset();
+            stageRenderer.reset();
             state = PlayerState.STOPPED;
         }
     }

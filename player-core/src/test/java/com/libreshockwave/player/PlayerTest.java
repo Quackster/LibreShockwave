@@ -117,7 +117,7 @@ class PlayerTest {
     void testEventListener() {
         Player player = createMockPlayer();
 
-        List<Player.PlayerEventInfo> events = new ArrayList<>();
+        List<PlayerEventInfo> events = new ArrayList<>();
         player.setEventListener(events::add);
 
         player.play();
