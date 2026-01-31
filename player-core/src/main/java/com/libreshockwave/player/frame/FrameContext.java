@@ -269,7 +269,9 @@ public class FrameContext {
         ScoreBehaviorRef frameScript = navigator.getFrameScript(frame);
         if (frameScript != null) {
             behaviorManager.getOrCreateFrameScript(frameScript, frame);
-            logEvent("initializeFrameScript: " + frameScript);
+            logEvent("initializeFrameScript: frame " + frame + " -> " + frameScript);
+        } else {
+            logEvent("initializeFrameScript: frame " + frame + " has no frame script");
         }
     }
 
