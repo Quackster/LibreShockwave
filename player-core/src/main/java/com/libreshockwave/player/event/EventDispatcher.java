@@ -61,8 +61,8 @@ public class EventDispatcher {
             System.out.println("[EventDispatcher] Dispatching global event: " + handlerName);
         }
 
-        // Notify trace listener of event dispatch
-        notifyEventDispatch(handlerName, "global");
+        // Debug: event dispatch
+        debugMessage("-- " + handlerName);
 
         // 1. Sprite behaviors (in channel order)
         List<BehaviorInstance> spriteInstances = behaviorManager.getSpriteInstances();
@@ -103,8 +103,8 @@ public class EventDispatcher {
             System.out.println("[EventDispatcher] Dispatching frame/movie event: " + handlerName);
         }
 
-        // Notify trace listener of event dispatch
-        notifyEventDispatch(handlerName, "frame/movie");
+        // Debug: event dispatch
+        debugMessage("-- " + handlerName);
 
         // Frame behavior first
         BehaviorInstance frameInstance = behaviorManager.getFrameScriptInstance();
@@ -133,8 +133,8 @@ public class EventDispatcher {
             System.out.println("[EventDispatcher] Dispatching sprite event: " + handlerName + " to channel " + channel);
         }
 
-        // Notify trace listener of event dispatch
-        notifyEventDispatch(handlerName, "sprite(" + channel + ")");
+        // Debug: sprite event dispatch
+        debugMessage("-- " + handlerName + " (sprite " + channel + ")");
 
         List<BehaviorInstance> instances = behaviorManager.getInstancesForChannel(channel);
         for (BehaviorInstance instance : instances) {
@@ -228,12 +228,12 @@ public class EventDispatcher {
     }
 
     /**
-     * Notify trace listener of event dispatch.
+     * Send a debug message to the trace listener.
      */
-    private void notifyEventDispatch(String eventName, String target) {
+    private void debugMessage(String message) {
         var listener = vm.getTraceListener();
         if (listener != null) {
-            listener.onEventDispatch(eventName, target);
+            listener.onDebugMessage(message);
         }
     }
 }

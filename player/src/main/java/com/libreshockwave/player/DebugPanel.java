@@ -134,9 +134,11 @@ public class DebugPanel extends JPanel implements TraceListener {
         if (!enabled) return;
 
         SwingUtilities.invokeLater(() -> {
-            appendLog("\n=== ENTER: " + info.handlerName() + " ===\n", handlerStyle);
+            // dirplayer-rs format: == Script: (member X of castLib Y) Handler: name
+            String entry = "== Script: (#" + info.scriptId() + " " + info.scriptType() + ") Handler: " + info.handlerName();
+            appendLog(entry + "\n", handlerStyle);
 
-            // Update handler info panel
+            // Update handler info panel with detailed info
             StringBuilder sb = new StringBuilder();
             sb.append("Handler: ").append(info.handlerName()).append("\n");
             sb.append("Script ID: ").append(info.scriptId()).append("\n");
@@ -164,6 +166,9 @@ public class DebugPanel extends JPanel implements TraceListener {
 
             // Update globals
             updateGlobals(info.globals());
+
+            // Clear locals for new handler
+            localsArea.setText("");
         });
     }
 
@@ -172,8 +177,10 @@ public class DebugPanel extends JPanel implements TraceListener {
         if (!enabled) return;
 
         SwingUtilities.invokeLater(() -> {
-            String retStr = formatDatum(returnValue);
-            appendLog("=== EXIT: " + info.handlerName() + " => " + retStr + " ===\n\n", handlerStyle);
+            // Only log non-void returns (dirplayer-rs style)
+            if (!(returnValue instanceof Datum.Void)) {
+                appendLog("== " + info.handlerName() + " returned " + formatDatum(returnValue) + "\n", handlerStyle);
+            }
         });
     }
 
@@ -182,20 +189,19 @@ public class DebugPanel extends JPanel implements TraceListener {
         if (!enabled) return;
 
         SwingUtilities.invokeLater(() -> {
-            // Format instruction line like dirplayer-rs
+            // dirplayer-rs format: --> [pos] opcode arg ... annotation
             StringBuilder sb = new StringBuilder();
-            sb.append(String.format("[%3d] %-16s", info.offset(), info.opcode()));
+            sb.append(String.format("--> [%3d] %-16s", info.offset(), info.opcode()));
             if (info.argument() != 0) {
                 sb.append(String.format(" %d", info.argument()));
             }
             // Pad with dots
-            while (sb.length() < 30) {
+            while (sb.length() < 38) {
                 sb.append('.');
             }
             if (!info.annotation().isEmpty()) {
                 sb.append(' ').append(info.annotation());
             }
-            sb.append(String.format(" (stk=%d)", info.stackSize()));
             sb.append("\n");
 
             appendLog(sb.toString(), instructionStyle);
@@ -210,12 +216,12 @@ public class DebugPanel extends JPanel implements TraceListener {
         if (!enabled) return;
 
         SwingUtilities.invokeLater(() -> {
-            String msg = "  == " + name + " = " + formatDatum(value) + "\n";
+            // dirplayer-rs format: == varName = value
+            String msg = "== " + name + " = " + formatDatum(value) + "\n";
             appendLog(msg, variableStyle);
 
             if ("local".equals(type)) {
                 String current = localsArea.getText();
-                // Update or append local
                 localsArea.setText(current + name + " = " + formatDatum(value) + "\n");
             }
         });
@@ -234,11 +240,11 @@ public class DebugPanel extends JPanel implements TraceListener {
     }
 
     @Override
-    public void onEventDispatch(String eventName, String target) {
+    public void onDebugMessage(String message) {
         if (!enabled) return;
 
         SwingUtilities.invokeLater(() -> {
-            appendLog(">> " + eventName + " [" + target + "]\n", eventStyle);
+            appendLog(message + "\n", eventStyle);
         });
     }
 
