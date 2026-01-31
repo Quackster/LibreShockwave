@@ -37,6 +37,12 @@ public interface TraceListener {
     default void onError(String message, Exception error) {}
 
     /**
+     * Called when an event is dispatched (before handler lookup).
+     * This is called even if no handler exists for the event.
+     */
+    default void onEventDispatch(String eventName, String target) {}
+
+    /**
      * Handler execution information.
      */
     record HandlerInfo(

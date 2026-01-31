@@ -28,6 +28,7 @@ public class DebugPanel extends JPanel implements TraceListener {
     private final Style instructionStyle;
     private final Style variableStyle;
     private final Style errorStyle;
+    private final Style eventStyle;
 
     private static final int MAX_LOG_LINES = 1000;
     private int lineCount = 0;
@@ -65,6 +66,10 @@ public class DebugPanel extends JPanel implements TraceListener {
         errorStyle = logDoc.addStyle("error", null);
         StyleConstants.setForeground(errorStyle, Color.RED);
         StyleConstants.setBold(errorStyle, true);
+
+        eventStyle = logDoc.addStyle("event", null);
+        StyleConstants.setForeground(eventStyle, new Color(128, 128, 0));  // Olive/dark yellow
+        StyleConstants.setItalic(eventStyle, true);
 
         JScrollPane logScroll = new JScrollPane(logPane);
         logScroll.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
@@ -225,6 +230,15 @@ public class DebugPanel extends JPanel implements TraceListener {
             if (error != null) {
                 appendLog("  " + error.getMessage() + "\n", errorStyle);
             }
+        });
+    }
+
+    @Override
+    public void onEventDispatch(String eventName, String target) {
+        if (!enabled) return;
+
+        SwingUtilities.invokeLater(() -> {
+            appendLog(">> " + eventName + " [" + target + "]\n", eventStyle);
         });
     }
 
