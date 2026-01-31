@@ -79,6 +79,7 @@ public class LingoVM {
      * @return The script and handler, or null if not found
      */
     public HandlerRef findHandler(String handlerName) {
+        if (file == null) return null;
         ScriptNamesChunk names = file.getScriptNames();
         if (names == null) return null;
 
@@ -95,6 +96,7 @@ public class LingoVM {
      * Find a handler in a specific script.
      */
     public HandlerRef findHandler(ScriptChunk script, String handlerName) {
+        if (file == null) return null;
         ScriptNamesChunk names = file.getScriptNames();
         if (names == null) return null;
 
@@ -107,11 +109,18 @@ public class LingoVM {
 
     /**
      * Call a handler by name with arguments.
+     * Checks built-in functions first, then script handlers.
      * @param handlerName The handler name
      * @param args Arguments to pass
      * @return The return value
      */
     public Datum callHandler(String handlerName, List<Datum> args) {
+        // Check builtins first
+        if (builtins.containsKey(handlerName)) {
+            return builtins.get(handlerName).apply(this, args);
+        }
+
+        // Then try script handlers
         HandlerRef ref = findHandler(handlerName);
         if (ref == null) {
             // Handler not found - this is normal for optional event handlers

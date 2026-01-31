@@ -19,8 +19,8 @@ repositories {
 }
 
 dependencies {
-    // Depend on the VM module (which depends on SDK)
-    api project(':vm')
+    // Depend on the player-core module (which depends on VM and SDK)
+    api project(':player-core')
 
     // Test dependencies
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
