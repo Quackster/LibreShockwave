@@ -6,3 +6,5 @@ rootProject.name = 'libreshockwave'
 
 include 'sdk'
 include 'cast-extractor'
+include 'vm'
+include 'player'
