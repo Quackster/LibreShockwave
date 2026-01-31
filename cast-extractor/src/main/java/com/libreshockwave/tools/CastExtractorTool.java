@@ -648,17 +648,13 @@ public class CastExtractorTool extends JFrame {
                     }
                 } else if (type == MemberType.SOUND) {
                     // Try to get sound info from associated chunk
-                    try {
-                        SoundChunk soundChunk = findSoundForMember(dirFile, member);
-                        if (soundChunk != null) {
-                            String codec = soundChunk.isMp3() ? "MP3" : "PCM";
-                            double duration = soundChunk.durationSeconds();
-                            details = String.format("%s, %dHz, %.1fs",
-                                    codec, soundChunk.sampleRate(), duration);
-                        } else {
-                            details = "sound data";
-                        }
-                    } catch (Exception ignored) {
+                    SoundChunk soundChunk = findSoundForMember(dirFile, member);
+                    if (soundChunk != null) {
+                        String codec = soundChunk.isMp3() ? "MP3" : "PCM";
+                        double duration = soundChunk.durationSeconds();
+                        details = String.format("%s, %dHz, %.1fs",
+                                codec, soundChunk.sampleRate(), duration);
+                    } else {
                         details = "sound data";
                     }
                 } else if (type == MemberType.PALETTE) {
@@ -754,14 +750,15 @@ public class CastExtractorTool extends JFrame {
     }
 
     private SoundChunk findSoundForMember(DirectorFile dirFile, CastMemberChunk member) {
-        // Sound data is linked via KeyTableChunk (same approach as SdkFeatureTest)
+        // Sound data is linked via KeyTableChunk
+        // Simply iterate through all entries and find any SoundChunk (same approach as SdkFeatureTest)
         var keyTable = dirFile.getKeyTable();
         if (keyTable == null) {
             return null;
         }
 
         for (var entry : keyTable.getEntriesForOwner(member.id())) {
-            Chunk chunk = dirFile.getChunk(entry.sectionId());
+            var chunk = dirFile.getChunk(entry.sectionId());
             if (chunk instanceof SoundChunk sc) {
                 return sc;
             }
