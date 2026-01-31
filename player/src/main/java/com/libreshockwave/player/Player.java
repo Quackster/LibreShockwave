@@ -38,7 +38,7 @@ public class Player {
     public Player(DirectorFile file) {
         this.file = file;
         this.vm = new LingoVM(file);
-        this.tempo = file.getTempo();
+        this.tempo = file != null ? file.getTempo() : 15;
         if (this.tempo <= 0) this.tempo = 15;  // Default
 
         buildFrameLabelsCache();
@@ -71,6 +71,7 @@ public class Player {
     }
 
     public int getFrameCount() {
+        if (file == null) return 0;
         ScoreChunk score = file.getScoreChunk();
         return score != null ? score.getFrameCount() : 0;
     }
@@ -83,6 +84,7 @@ public class Player {
 
     private void buildFrameLabelsCache() {
         frameLabels = new HashMap<>();
+        if (file == null) return;
         FrameLabelsChunk labels = file.getFrameLabelsChunk();
         if (labels != null) {
             for (FrameLabelsChunk.FrameLabel label : labels.labels()) {
@@ -245,6 +247,7 @@ public class Player {
     // Sprite management
 
     private void beginAllSprites() {
+        if (file == null) return;
         ScoreChunk score = file.getScoreChunk();
         if (score == null) return;
 
@@ -269,6 +272,7 @@ public class Player {
     }
 
     private void beginSpritesEnteringFrame(int frame) {
+        if (file == null) return;
         ScoreChunk score = file.getScoreChunk();
         if (score == null) return;
 
@@ -293,6 +297,8 @@ public class Player {
     // Event dispatch
 
     private void dispatchEvent(PlayerEvent event) {
+        if (file == null) return;
+
         // Find and execute all handlers for this event
         String handlerName = event.getHandlerName();
 
@@ -312,6 +318,8 @@ public class Player {
     }
 
     private void dispatchSpriteEvent(PlayerEvent event, int channel) {
+        if (file == null) return;
+
         String handlerName = event.getHandlerName();
 
         // Find behaviors attached to this sprite/channel
