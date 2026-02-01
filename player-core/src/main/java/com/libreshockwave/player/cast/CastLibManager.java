@@ -29,6 +29,7 @@ public class CastLibManager implements CastLibProvider {
     /**
      * Initialize cast library references from the DirectorFile.
      * This creates CastLib objects but doesn't load their members yet.
+     * Uses CastListChunk as the primary source for cast library info.
      */
     private void ensureInitialized() {
         if (initialized || file == null) {
@@ -37,19 +38,30 @@ public class CastLibManager implements CastLibProvider {
 
         initialized = true;
 
-        List<CastChunk> casts = file.getCasts();
         CastListChunk castList = file.getCastList();
+        List<CastChunk> casts = file.getCasts();
 
-        for (int i = 0; i < casts.size(); i++) {
-            int castLibNumber = i + 1; // 1-based
+        if (castList != null && !castList.entries().isEmpty()) {
+            // Use CastListChunk entries as the source
+            for (int i = 0; i < castList.entries().size(); i++) {
+                CastListChunk.CastListEntry listEntry = castList.entries().get(i);
 
-            CastListChunk.CastListEntry listEntry = null;
-            if (castList != null && i < castList.entries().size()) {
-                listEntry = castList.entries().get(i);
+                // Cast lib number is 1-based index
+                int castLibNumber = i + 1;
+
+                // Get the corresponding CastChunk if available
+                CastChunk castChunk = (i < casts.size()) ? casts.get(i) : null;
+
+                CastLib castLib = new CastLib(castLibNumber, file, castChunk, listEntry);
+                castLibs.put(castLibNumber, castLib);
             }
-
-            CastLib castLib = new CastLib(castLibNumber, file, casts.get(i), listEntry);
-            castLibs.put(castLibNumber, castLib);
+        } else if (!casts.isEmpty()) {
+            // Fallback: use CastChunks directly if no cast list
+            for (int i = 0; i < casts.size(); i++) {
+                int castLibNumber = i + 1;
+                CastLib castLib = new CastLib(castLibNumber, file, casts.get(i), null);
+                castLibs.put(castLibNumber, castLib);
+            }
         }
     }
 

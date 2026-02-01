@@ -16,7 +16,7 @@ public final class ListBuiltins {
 
     public static void register(Map<String, BiFunction<LingoVM, List<Datum>, Datum>> builtins) {
         builtins.put("count", ListBuiltins::count);
-        builtins.put("getAt", ListBuiltins::getAt);
+        builtins.put("getat", ListBuiltins::getAt);
     }
 
     private static Datum count(LingoVM vm, List<Datum> args) {

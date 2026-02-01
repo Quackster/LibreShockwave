@@ -30,6 +30,7 @@ public class CastLib {
     private String fileName;
     private State state = State.NONE;
     private int preloadMode = 0;
+    private Datum selection = Datum.list(); // Selected members as [[start, end], ...]
 
     // Raw member chunks indexed by member number
     private final Map<Integer, CastMemberChunk> memberChunks = new HashMap<>();
