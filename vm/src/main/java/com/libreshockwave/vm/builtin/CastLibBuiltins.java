@@ -101,26 +101,4 @@ public final class CastLibBuiltins {
         return Datum.VOID;
     }
 
-    /**
-     * Get a property from a CastLibRef.
-     * Called by PropertyOpcodes when getting a property on a CastLibRef.
-     */
-    public static Datum getCastLibProp(Datum.CastLibRef castLib, String propName) {
-        CastLibProvider provider = CastLibProvider.getProvider();
-        if (provider == null) {
-            return Datum.VOID;
-        }
-        return provider.getCastLibProp(castLib.castLibNumber(), propName);
-    }
-
-    /**
-     * Set a property on a CastLibRef.
-     */
-    public static boolean setCastLibProp(Datum.CastLibRef castLib, String propName, Datum value) {
-        CastLibProvider provider = CastLibProvider.getProvider();
-        if (provider == null) {
-            return false;
-        }
-        return provider.setCastLibProp(castLib.castLibNumber(), propName, value);
-    }
 }
