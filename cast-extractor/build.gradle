@@ -56,3 +56,90 @@ tasks.register('fatJar', Jar) {
         configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
     }
 }
+
+// Create Windows executable using jpackage (requires JDK 14+)
+// Usage: gradlew :cast-extractor:windowsExe
+// If automatic execution fails, run the generated batch file manually:
+//   cast-extractor/build/jpackage.bat
+tasks.register('windowsExe') {
+    dependsOn fatJar
+
+    def fatJarFile = tasks.fatJar.archiveFile
+    def outputDir = layout.buildDirectory.dir('exe')
+
+    inputs.file(fatJarFile)
+    outputs.dir(outputDir)
+
+    doLast {
+        def javaHome = System.getProperty('java.home')
+        def jpackageExe = new File(javaHome, 'bin/jpackage.exe')
+        if (!jpackageExe.exists()) {
+            jpackageExe = new File(javaHome, 'bin/jpackage')
+        }
+
+        def jarFile = fatJarFile.get().asFile
+        def outDir = outputDir.get().asFile
+
+        // Ensure output directory exists
+        outDir.mkdirs()
+
+        // Clean previous output
+        def existingDir = new File(outDir, 'CastExtractor')
+        if (existingDir.exists()) {
+            existingDir.deleteDir()
+        }
+
+        // Create a batch file to run jpackage
+        def batchFile = new File(layout.buildDirectory.get().asFile, 'jpackage.bat')
+        batchFile.text = """@echo off
+"${jpackageExe.absolutePath}" ^
+    --type app-image ^
+    --name CastExtractor ^
+    --input "${jarFile.parentFile.absolutePath}" ^
+    --main-jar ${jarFile.name} ^
+    --main-class com.libreshockwave.tools.CastExtractorTool ^
+    --dest "${outDir.absolutePath}" ^
+    --win-console ^
+    --java-options "-Xmx2g"
+if %ERRORLEVEL% EQU 0 (
+    echo.
+    echo SUCCESS: Windows executable created at:
+    echo   ${outDir}\\CastExtractor\\CastExtractor.exe
+) else (
+    echo.
+    echo FAILED: jpackage exited with error code %ERRORLEVEL%
+)
+"""
+        println "============================================"
+        println "Batch file created: ${batchFile.absolutePath}"
+        println ""
+        println "To build the Windows executable, run:"
+        println "  ${batchFile.absolutePath}"
+        println ""
+        println "Output will be at:"
+        println "  ${outDir}\\CastExtractor\\CastExtractor.exe"
+        println "============================================"
+
+        // Try to run it, but don't fail if permissions prevent it
+        try {
+            def proc = Runtime.getRuntime().exec(['cmd', '/c', batchFile.absolutePath] as String[], null, projectDir)
+            def output = new StringBuilder()
+            def error = new StringBuilder()
+            proc.consumeProcessOutput(output, error)
+            def exitCode = proc.waitFor()
+
+            if (output.length() > 0) println output.toString()
+            if (error.length() > 0) System.err.println error.toString()
+
+            if (exitCode == 0) {
+                println "Windows executable created at: ${outDir}\\CastExtractor\\CastExtractor.exe"
+            } else {
+                println "Note: Automatic execution failed (exit code ${exitCode})."
+                println "Please run the batch file manually from a Windows command prompt."
+            }
+        } catch (Exception e) {
+            println "Note: Could not execute batch file automatically (${e.message})."
+            println "Please run the batch file manually from a Windows command prompt."
+        }
+    }
+}
