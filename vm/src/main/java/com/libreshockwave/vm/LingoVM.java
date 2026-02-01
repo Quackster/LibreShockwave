@@ -2,7 +2,6 @@ package com.libreshockwave.vm;
 
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.chunks.ScriptChunk;
-import com.libreshockwave.chunks.ScriptNamesChunk;
 import com.libreshockwave.lingo.Opcode;
 import com.libreshockwave.vm.builtin.BuiltinRegistry;
 import com.libreshockwave.vm.opcode.ExecutionContext;
@@ -43,7 +42,7 @@ public class LingoVM {
         this.callStack = new ArrayDeque<>();
         this.builtins = new BuiltinRegistry();
         this.opcodeRegistry = new OpcodeRegistry();
-        this.tracingHelper = new TracingHelper(this::resolveName);
+        this.tracingHelper = new TracingHelper();
         registerPassBuiltin();
     }
 
@@ -130,13 +129,10 @@ public class LingoVM {
     public HandlerRef findHandler(String handlerName) {
         // First search the main file
         if (file != null) {
-            ScriptNamesChunk names = file.getScriptNames();
-            if (names != null) {
-                for (ScriptChunk script : file.getScripts()) {
-                    ScriptChunk.Handler handler = script.findHandler(handlerName, names);
-                    if (handler != null) {
-                        return new HandlerRef(script, handler);
-                    }
+            for (ScriptChunk script : file.getScripts()) {
+                ScriptChunk.Handler handler = script.findHandler(handlerName);
+                if (handler != null) {
+                    return new HandlerRef(script, handler);
                 }
             }
         }
@@ -147,10 +143,6 @@ public class LingoVM {
             var location = provider.findHandler(handlerName);
             if (location != null && location.script() instanceof ScriptChunk script
                     && location.handler() instanceof ScriptChunk.Handler handler) {
-                // Store the external ScriptNamesChunk for name resolution
-                if (location.scriptNames() instanceof ScriptNamesChunk extNames) {
-                    return new HandlerRef(script, handler, extNames);
-                }
                 return new HandlerRef(script, handler);
             }
         }
@@ -162,11 +154,7 @@ public class LingoVM {
      * Find a handler in a specific script.
      */
     public HandlerRef findHandler(ScriptChunk script, String handlerName) {
-        if (file == null) return null;
-        ScriptNamesChunk names = file.getScriptNames();
-        if (names == null) return null;
-
-        ScriptChunk.Handler handler = script.findHandler(handlerName, names);
+        ScriptChunk.Handler handler = script.findHandler(handlerName);
         if (handler != null) {
             return new HandlerRef(script, handler);
         }
@@ -192,7 +180,7 @@ public class LingoVM {
             // Handler not found - this is normal for optional event handlers
             return Datum.VOID;
         }
-        return executeHandler(ref.script(), ref.handler(), args, null, ref.scriptNames());
+        return executeHandler(ref.script(), ref.handler(), args, null);
     }
 
     /**
@@ -203,7 +191,7 @@ public class LingoVM {
         if (ref == null) {
             return Datum.VOID;
         }
-        return executeHandler(ref.script(), ref.handler(), args, receiver, ref.scriptNames());
+        return executeHandler(ref.script(), ref.handler(), args, receiver);
     }
 
     /**
@@ -211,19 +199,11 @@ public class LingoVM {
      */
     public Datum executeHandler(ScriptChunk script, ScriptChunk.Handler handler,
                                 List<Datum> args, Datum receiver) {
-        return executeHandler(script, handler, args, receiver, null);
-    }
-
-    /**
-     * Execute a specific handler with arguments and optional external ScriptNamesChunk.
-     */
-    public Datum executeHandler(ScriptChunk script, ScriptChunk.Handler handler,
-                                List<Datum> args, Datum receiver, ScriptNamesChunk externalScriptNames) {
         if (callStack.size() >= MAX_CALL_STACK_DEPTH) {
             throw new LingoException("Call stack overflow (max " + MAX_CALL_STACK_DEPTH + " frames)");
         }
 
-        Scope scope = new Scope(script, handler, args, receiver, externalScriptNames);
+        Scope scope = new Scope(script, handler, args, receiver);
         callStack.push(scope);
 
         // Notify trace listener of handler entry
@@ -261,7 +241,7 @@ public class LingoVM {
             return result;
         } catch (Exception e) {
             if (traceListener != null) {
-                traceListener.onError("Error in " + resolveName(handler.nameId()), e);
+                traceListener.onError("Error in " + script.getHandlerName(handler), e);
             }
             throw e;
         } finally {
@@ -311,16 +291,9 @@ public class LingoVM {
      * Create an execution context for opcode handlers.
      */
     private ExecutionContext createExecutionContext(Scope scope, ScriptChunk.Handler.Instruction instr) {
-        // Use scope's ScriptNamesChunk if available (external cast), otherwise use file's
-        ScriptNamesChunk names = scope.getScriptNames();
-        if (names == null && file != null) {
-            names = file.getScriptNames();
-        }
-
         return new ExecutionContext(
             scope,
             instr,
-            names,
             builtins,
             traceListener,
             this::executeHandler,
@@ -337,13 +310,5 @@ public class LingoVM {
             },
             (name, args) -> builtins.invoke(name, LingoVM.this, args)
         );
-    }
-
-    private String resolveName(int nameId) {
-        ScriptNamesChunk names = file != null ? file.getScriptNames() : null;
-        if (names != null) {
-            return names.getName(nameId);
-        }
-        return "<unknown:" + nameId + ">";
     }
 }

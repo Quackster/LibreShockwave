@@ -1,7 +1,6 @@
 package com.libreshockwave.vm;
 
 import com.libreshockwave.chunks.ScriptChunk;
-import com.libreshockwave.chunks.ScriptNamesChunk;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -22,7 +21,6 @@ public final class Scope {
     private final Map<Integer, Datum> locals;
     private final Deque<Datum> stack;
     private final Datum receiver;  // 'me' in behavior/parent scripts
-    private final ScriptNamesChunk scriptNames;  // For external cast scripts
 
     private int bytecodeIndex;
     private Datum returnValue;
@@ -32,18 +30,12 @@ public final class Scope {
     private final Deque<Integer> loopReturnIndices;
 
     public Scope(ScriptChunk script, ScriptChunk.Handler handler, List<Datum> arguments, Datum receiver) {
-        this(script, handler, arguments, receiver, null);
-    }
-
-    public Scope(ScriptChunk script, ScriptChunk.Handler handler, List<Datum> arguments,
-                 Datum receiver, ScriptNamesChunk scriptNames) {
         this.script = script;
         this.handler = handler;
         this.arguments = List.copyOf(arguments);
         this.locals = new HashMap<>();
         this.stack = new ArrayDeque<>();
         this.receiver = receiver != null ? receiver : Datum.VOID;
-        this.scriptNames = scriptNames;
         this.bytecodeIndex = 0;
         this.returnValue = Datum.VOID;
         this.returned = false;
@@ -53,13 +45,6 @@ public final class Scope {
         for (int i = 0; i < handler.localCount(); i++) {
             locals.put(i, Datum.VOID);
         }
-    }
-
-    /**
-     * Get the ScriptNamesChunk for this scope (if from external cast).
-     */
-    public ScriptNamesChunk getScriptNames() {
-        return scriptNames;
     }
 
     // Script and handler access

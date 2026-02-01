@@ -1,7 +1,6 @@
 package com.libreshockwave.vm.opcode;
 
 import com.libreshockwave.chunks.ScriptChunk;
-import com.libreshockwave.chunks.ScriptNamesChunk;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.HandlerRef;
 import com.libreshockwave.vm.LingoException;
@@ -21,7 +20,6 @@ public final class ExecutionContext {
     private final Scope scope;
     private final ScriptChunk.Handler.Instruction instruction;
     private final int argument;
-    private final ScriptNamesChunk names;
     private final BuiltinRegistry builtins;
     private final TraceListener traceListener;
 
@@ -34,7 +32,6 @@ public final class ExecutionContext {
     public ExecutionContext(
             Scope scope,
             ScriptChunk.Handler.Instruction instruction,
-            ScriptNamesChunk names,
             BuiltinRegistry builtins,
             TraceListener traceListener,
             HandlerExecutor handlerExecutor,
@@ -44,7 +41,6 @@ public final class ExecutionContext {
         this.scope = scope;
         this.instruction = instruction;
         this.argument = instruction.argument();
-        this.names = names;
         this.builtins = builtins;
         this.traceListener = traceListener;
         this.handlerExecutor = handlerExecutor;
@@ -129,13 +125,10 @@ public final class ExecutionContext {
         scope.setReturned(returned);
     }
 
-    // Name resolution
+    // Name resolution - delegates to ScriptChunk which uses the correct cast lib's names
 
     public String resolveName(int nameId) {
-        if (names != null) {
-            return names.getName(nameId);
-        }
-        return "<unknown:" + nameId + ">";
+        return getScript().resolveName(nameId);
     }
 
     // Script/handler access
