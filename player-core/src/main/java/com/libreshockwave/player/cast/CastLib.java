@@ -7,14 +7,6 @@ import com.libreshockwave.chunks.CastMemberChunk;
 import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.vm.Datum;
 
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URI;
-import java.net.URL;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -485,48 +477,6 @@ public class CastLib {
     }
 
     /**
-     * Fetch external cast data synchronously.
-     * Called by preloadNetThing when the cast URL is requested.
-     * Tries HTTPS first, then HTTP, then local file.
-     * @return true if fetch was successful
-     */
-    public boolean fetchExternal() {
-        if (!isExternal()) {
-            return true; // Not external, nothing to fetch
-        }
-
-        if (sourceFile != null) {
-            return true; // Already fetched
-        }
-
-        // Try fileName first
-        if (fileName != null && !fileName.isEmpty()) {
-            String path = fileName.replace("\\", "/");
-            byte[] data = loadCastData(path);
-            if (data != null) {
-                parseDirectorFile(data);
-                return sourceFile != null;
-            }
-        }
-
-        // Try name as filename
-        if (name != null && !name.isEmpty() && !name.equals("Internal")) {
-            String path = name;
-            if (!path.toLowerCase().endsWith(".cst") && !path.toLowerCase().endsWith(".cct")) {
-                path = path + ".cst";
-            }
-            path = path.replace("\\", "/");
-            byte[] data = loadCastData(path);
-            if (data != null) {
-                parseDirectorFile(data);
-                return sourceFile != null;
-            }
-        }
-
-        return false;
-    }
-
-    /**
      * Get the URL for this external cast (for preloadNetThing).
      */
     public String getExternalUrl() {
@@ -568,127 +518,26 @@ public class CastLib {
     }
 
     /**
-     * Load cast data from a path. Tries HTTPS, then HTTP, then file.
+     * Set the external cast data from preloadNetThing.
+     * @param data The raw file data
+     * @return true if parsing was successful
      */
-    private byte[] loadCastData(String path) {
-        // If it's already a full URL, use it directly
-        if (path.startsWith("http://") || path.startsWith("https://")) {
-            return loadFromUrl(path);
+    public boolean setExternalData(byte[] data) {
+        if (data == null || data.length == 0) {
+            return false;
         }
 
-        // Build the full path using basePath
-        String fullPath = path;
-        if (!basePath.isEmpty() && !path.startsWith("/")) {
-            if (basePath.endsWith("/")) {
-                fullPath = basePath + path;
-            } else {
-                fullPath = basePath + "/" + path;
-            }
-        }
-
-        // Try HTTPS first
-        if (basePath.startsWith("https://") || basePath.startsWith("http://")) {
-            byte[] data = loadFromUrl(fullPath.replace("http://", "https://"));
-            if (data != null) {
-                return data;
-            }
-
-            // Try HTTP
-            data = loadFromUrl(fullPath.replace("https://", "http://"));
-            if (data != null) {
-                return data;
-            }
-        } else {
-            // Try as URL with HTTPS
-            String httpsUrl = "https://" + fullPath;
-            byte[] data = loadFromUrl(httpsUrl);
-            if (data != null) {
-                return data;
-            }
-
-            // Try HTTP
-            String httpUrl = "http://" + fullPath;
-            data = loadFromUrl(httpUrl);
-            if (data != null) {
-                return data;
-            }
-        }
-
-        // Try as local file
-        return loadFromFile(fullPath);
-    }
-
-    /**
-     * Load data from a URL synchronously.
-     */
-    private byte[] loadFromUrl(String urlString) {
-        try {
-            URL url = URI.create(urlString).toURL();
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(30000);
-            conn.setRequestProperty("User-Agent", "LibreShockwave/1.0");
-
-            int responseCode = conn.getResponseCode();
-            if (responseCode != 200) {
-                conn.disconnect();
-                return null;
-            }
-
-            try (InputStream in = conn.getInputStream();
-                 ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-                byte[] buffer = new byte[8192];
-                int bytesRead;
-                while ((bytesRead = in.read(buffer)) != -1) {
-                    out.write(buffer, 0, bytesRead);
-                }
-                return out.toByteArray();
-            } finally {
-                conn.disconnect();
-            }
-        } catch (Exception e) {
-            // Silently fail - will try next method
-            return null;
-        }
-    }
-
-    /**
-     * Load data from a local file.
-     */
-    private byte[] loadFromFile(String filePath) {
-        try {
-            // Try as absolute path first
-            Path path = Path.of(filePath);
-            if (Files.exists(path)) {
-                return Files.readAllBytes(path);
-            }
-
-            // Try relative to current directory
-            File file = new File(filePath);
-            if (file.exists()) {
-                return Files.readAllBytes(file.toPath());
-            }
-
-            return null;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    /**
-     * Parse the loaded data as a DirectorFile.
-     */
-    private void parseDirectorFile(byte[] data) {
         try {
             DirectorFile file = DirectorFile.load(data);
             if (file != null) {
                 this.sourceFile = file;
                 System.out.println("[CastLib] Loaded external cast: " + name + " (" + data.length + " bytes)");
+                return true;
             }
         } catch (Exception e) {
             System.err.println("[CastLib] Failed to parse external cast " + name + ": " + e.getMessage());
         }
+        return false;
     }
 
     @Override

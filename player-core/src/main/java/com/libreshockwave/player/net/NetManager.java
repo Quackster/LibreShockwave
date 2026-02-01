@@ -8,6 +8,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.*;
@@ -33,6 +34,9 @@ public class NetManager implements NetBuiltins.NetProvider {
     private int nextTaskId = 1;
     private String basePath;
 
+    // Callback for when a fetch completes (used to integrate with CastLibManager)
+    private NetCompletionCallback completionCallback;
+
     public NetManager() {
         this.executor = Executors.newCachedThreadPool(r -> {
             Thread t = new Thread(r, "NetManager-worker");
@@ -54,6 +58,22 @@ public class NetManager implements NetBuiltins.NetProvider {
 
     public String getBasePath() {
         return basePath;
+    }
+
+    /**
+     * Callback interface for when a network fetch completes.
+     */
+    @FunctionalInterface
+    public interface NetCompletionCallback {
+        void onComplete(String url, byte[] data);
+    }
+
+    /**
+     * Set a callback to be notified when network requests complete.
+     * Used by Player to integrate with CastLibManager for external casts.
+     */
+    public void setCompletionCallback(NetCompletionCallback callback) {
+        this.completionCallback = callback;
     }
 
     /**
@@ -166,27 +186,57 @@ public class NetManager implements NetBuiltins.NetProvider {
             return url;
         }
 
+        // Normalize path separators
+        url = url.replace("\\", "/");
+
         // Already absolute URL
         if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("file://")) {
             return url;
         }
 
-        // Resolve relative to base path
-        if (basePath != null) {
+        // Check if it's an absolute Windows path (e.g., C:/path or D:\path)
+        if (url.length() > 2 && Character.isLetter(url.charAt(0)) && url.charAt(1) == ':') {
+            return "file:///" + url;
+        }
+
+        // Check if it's an absolute Unix path
+        if (url.startsWith("/")) {
+            return "file://" + url;
+        }
+
+        // Relative path - resolve against base path
+        if (basePath != null && !basePath.isEmpty()) {
             try {
-                URI baseUri = new URI(basePath);
-                return baseUri.resolve(url).toString();
-            } catch (Exception e) {
-                // Fall back to treating as file path
-                Path base = Path.of(basePath);
+                // If base path is a URL
+                if (basePath.startsWith("http://") || basePath.startsWith("https://")) {
+                    URI baseUri = new URI(basePath);
+                    return baseUri.resolve(url).toString();
+                }
+
+                // If base path is a file path
+                String normalizedBase = basePath.replace("\\", "/");
+                if (normalizedBase.startsWith("file://")) {
+                    URI baseUri = new URI(normalizedBase);
+                    Path base = Path.of(baseUri);
+                    if (Files.isRegularFile(base)) {
+                        base = base.getParent();
+                    }
+                    return base.resolve(url).toUri().toString();
+                }
+
+                // Plain file path
+                Path base = Path.of(normalizedBase);
                 if (Files.isRegularFile(base)) {
                     base = base.getParent();
                 }
                 return base.resolve(url).toUri().toString();
+            } catch (Exception e) {
+                System.err.println("[NetManager] Failed to resolve URL: " + url + " - " + e.getMessage());
             }
         }
 
-        return url;
+        // Last resort: treat as file path in current directory
+        return Paths.get(url).toAbsolutePath().toUri().toString();
     }
 
     private void executeTask(NetTask task) {
@@ -197,40 +247,81 @@ public class NetManager implements NetBuiltins.NetProvider {
 
             try {
                 if (url.startsWith("file://")) {
-                    // Handle local file
-                    URI uri = new URI(url);
-                    Path path = Path.of(uri);
-                    byte[] data = Files.readAllBytes(path);
-                    task.complete(data);
-                } else {
+                    // Handle local file URL
+                    loadFromFileUrl(url, task);
+                } else if (url.startsWith("http://") || url.startsWith("https://")) {
                     // HTTP request
-                    HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
-                        .uri(URI.create(url))
-                        .timeout(Duration.ofSeconds(60));
-
-                    if (task.getMethod() == NetTask.Method.POST) {
-                        requestBuilder.header("Content-Type", "application/x-www-form-urlencoded")
-                            .POST(HttpRequest.BodyPublishers.ofString(
-                                task.getPostData() != null ? task.getPostData() : ""));
-                    } else {
-                        requestBuilder.GET();
-                    }
-
-                    HttpResponse<byte[]> response = httpClient.send(
-                        requestBuilder.build(),
-                        HttpResponse.BodyHandlers.ofByteArray()
-                    );
-
-                    int statusCode = response.statusCode();
-                    if (statusCode >= 200 && statusCode < 300) {
-                        task.complete(response.body());
-                    } else {
-                        task.fail(statusCode, "HTTP " + statusCode);
-                    }
+                    loadFromHttp(url, task);
+                } else {
+                    // Treat as direct file path
+                    loadFromFilePath(url, task);
                 }
             } catch (Exception e) {
                 task.fail(-1, e.getMessage());
             }
         });
+    }
+
+    private void loadFromFileUrl(String url, NetTask task) throws Exception {
+        URI uri = new URI(url);
+        Path path = Path.of(uri);
+        if (!Files.exists(path)) {
+            task.fail(404, "File not found: " + path);
+            return;
+        }
+        byte[] data = Files.readAllBytes(path);
+        System.out.println("[NetManager] Loaded file: " + path + " (" + data.length + " bytes)");
+        task.complete(data);
+        notifyCompletion(task.getOriginalUrl(), data);
+    }
+
+    private void loadFromFilePath(String filePath, NetTask task) throws Exception {
+        Path path = Path.of(filePath);
+        if (!Files.exists(path)) {
+            task.fail(404, "File not found: " + path);
+            return;
+        }
+        byte[] data = Files.readAllBytes(path);
+        System.out.println("[NetManager] Loaded file: " + path + " (" + data.length + " bytes)");
+        task.complete(data);
+        notifyCompletion(task.getOriginalUrl(), data);
+    }
+
+    private void loadFromHttp(String url, NetTask task) throws Exception {
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
+            .uri(URI.create(url))
+            .timeout(Duration.ofSeconds(60));
+
+        if (task.getMethod() == NetTask.Method.POST) {
+            requestBuilder.header("Content-Type", "application/x-www-form-urlencoded")
+                .POST(HttpRequest.BodyPublishers.ofString(
+                    task.getPostData() != null ? task.getPostData() : ""));
+        } else {
+            requestBuilder.GET();
+        }
+
+        HttpResponse<byte[]> response = httpClient.send(
+            requestBuilder.build(),
+            HttpResponse.BodyHandlers.ofByteArray()
+        );
+
+        int statusCode = response.statusCode();
+        if (statusCode >= 200 && statusCode < 300) {
+            System.out.println("[NetManager] Loaded URL: " + url + " (" + response.body().length + " bytes)");
+            task.complete(response.body());
+            notifyCompletion(task.getOriginalUrl(), response.body());
+        } else {
+            task.fail(statusCode, "HTTP " + statusCode);
+        }
+    }
+
+    private void notifyCompletion(String url, byte[] data) {
+        if (completionCallback != null && url != null && data != null) {
+            try {
+                completionCallback.onComplete(url, data);
+            } catch (Exception e) {
+                System.err.println("[NetManager] Completion callback error: " + e.getMessage());
+            }
+        }
     }
 }
