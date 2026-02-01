@@ -189,11 +189,17 @@ public class BehaviorManager {
     // Helper methods
 
     private ScriptChunk findScript(int castLib, int castMember) {
-        // Find the cast member
-        CastMemberChunk member = file.getCastMemberByIndex(castLib, castMember);
+        // Find the cast member by number (not index)
+        // The score stores member numbers directly, not indices
+        CastMemberChunk member = file.getCastMemberByNumber(castLib, castMember);
         if (member == null || !member.isScript()) {
             if (debugEnabled) {
                 System.err.println("[BehaviorManager] No script member found at castLib=" + castLib + " member=" + castMember);
+                // Debug: list available cast members
+                System.err.println("[BehaviorManager] Available cast members:");
+                for (var m : file.getCastMembers()) {
+                    System.err.println("[BehaviorManager]   id=" + m.id() + " name=" + m.name() + " type=" + m.memberType() + " isScript=" + m.isScript());
+                }
             }
             return null;
         }
