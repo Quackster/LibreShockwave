@@ -153,48 +153,21 @@ public final class PropertyOpcodes {
      * Get a property from a cast member reference.
      */
     private static Datum getCastMemberProp(Datum.CastMemberRef cmr, String propName) {
-        String prop = propName.toLowerCase();
-
-        // Built-in member reference properties
-        return switch (prop) {
-            case "number" -> Datum.of(cmr.member());
-            case "castlibnum" -> Datum.of(cmr.castLib());
-            case "castlib" -> new Datum.CastLibRef(cmr.castLib());
-            // Other properties need the CastLibProvider to look up the actual member
-            default -> getCastMemberPropFromProvider(cmr, propName);
-        };
-    }
-
-    /**
-     * Get a cast member property from the provider.
-     */
-    private static Datum getCastMemberPropFromProvider(Datum.CastMemberRef cmr, String propName) {
         CastLibProvider provider = CastLibProvider.getProvider();
         if (provider == null) {
-            return Datum.VOID;
+            // Return basic reference properties without provider
+            String prop = propName.toLowerCase();
+            return switch (prop) {
+                case "number" -> Datum.of((cmr.castLib() << 16) | (cmr.member() & 0xFFFF));
+                case "membernum" -> Datum.of(cmr.member());
+                case "castlibnum" -> Datum.of(cmr.castLib());
+                case "castlib" -> new Datum.CastLibRef(cmr.castLib());
+                default -> Datum.VOID;
+            };
         }
 
-        // The provider needs to implement member property access
-        // For now, return VOID for unimplemented properties
-        String prop = propName.toLowerCase();
-
-        // Common member properties that require looking up the actual member
-        // These would need to be implemented in CastLibProvider
-        return switch (prop) {
-            case "name" -> {
-                // TODO: Look up member name from provider
-                yield Datum.EMPTY_STRING;
-            }
-            case "type" -> {
-                // TODO: Look up member type from provider
-                yield Datum.VOID;
-            }
-            case "width", "height", "rect" -> {
-                // TODO: Look up bitmap dimensions from provider
-                yield Datum.VOID;
-            }
-            default -> Datum.VOID;
-        };
+        // Delegate to provider for full property access with lazy loading
+        return provider.getMemberProp(cmr.castLib(), cmr.member(), propName);
     }
 
     /**
@@ -206,17 +179,7 @@ public final class PropertyOpcodes {
             return false;
         }
 
-        // Most cast member properties are read-only during playback
-        // Some properties like "name" might be writable
-        String prop = propName.toLowerCase();
-
-        return switch (prop) {
-            case "name" -> {
-                // TODO: Set member name via provider
-                yield false;
-            }
-            default -> false;
-        };
+        return provider.setMemberProp(cmr.castLib(), cmr.member(), propName, value);
     }
 
     private static boolean theBuiltin(ExecutionContext ctx) {

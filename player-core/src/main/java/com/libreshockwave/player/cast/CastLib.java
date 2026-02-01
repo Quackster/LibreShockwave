@@ -31,8 +31,11 @@ public class CastLib {
     private State state = State.NONE;
     private int preloadMode = 0;
 
-    // Members indexed by member number
-    private final Map<Integer, CastMemberChunk> members = new HashMap<>();
+    // Raw member chunks indexed by member number
+    private final Map<Integer, CastMemberChunk> memberChunks = new HashMap<>();
+
+    // Loaded CastMember objects indexed by member number (lazy)
+    private final Map<Integer, CastMember> members = new HashMap<>();
 
     // Scripts indexed by member number
     private final Map<Integer, ScriptChunk> scripts = new HashMap<>();
@@ -91,7 +94,7 @@ public class CastLib {
             // Find the cast member chunk with this ID
             for (CastMemberChunk member : sourceFile.getCastMembers()) {
                 if (member.id() == chunkId) {
-                    members.put(memberNumber, member);
+                    memberChunks.put(memberNumber, member);
 
                     // If it's a script member, also load the script
                     if (member.isScript() && member.scriptId() > 0) {
@@ -175,30 +178,72 @@ public class CastLib {
         if (!isLoaded()) {
             load();
         }
-        return members.size();
+        return memberChunks.size();
     }
 
     /**
-     * Find a member by number.
+     * Find a member chunk by number (raw chunk, no lazy loading).
      */
     public CastMemberChunk findMemberByNumber(int memberNumber) {
         if (!isLoaded()) {
             load();
         }
-        return members.get(memberNumber);
+        return memberChunks.get(memberNumber);
     }
 
     /**
-     * Find a member by name.
+     * Get or create a CastMember object with lazy loading of media data.
+     */
+    public CastMember getMember(int memberNumber) {
+        if (!isLoaded()) {
+            load();
+        }
+
+        // Check if already created
+        CastMember member = members.get(memberNumber);
+        if (member != null) {
+            return member;
+        }
+
+        // Create from chunk if exists
+        CastMemberChunk chunk = memberChunks.get(memberNumber);
+        if (chunk == null) {
+            return null;
+        }
+
+        // Create and cache the CastMember
+        member = new CastMember(number, memberNumber, chunk, sourceFile);
+        members.put(memberNumber, member);
+        return member;
+    }
+
+    /**
+     * Find a member chunk by name.
      */
     public CastMemberChunk findMemberByName(String name) {
         if (!isLoaded()) {
             load();
         }
 
-        for (CastMemberChunk member : members.values()) {
+        for (CastMemberChunk member : memberChunks.values()) {
             if (member.name() != null && member.name().equalsIgnoreCase(name)) {
                 return member;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Get or create a CastMember by name with lazy loading.
+     */
+    public CastMember getMemberByName(String name) {
+        if (!isLoaded()) {
+            load();
+        }
+
+        for (Map.Entry<Integer, CastMemberChunk> entry : memberChunks.entrySet()) {
+            if (entry.getValue().name() != null && entry.getValue().name().equalsIgnoreCase(name)) {
+                return getMember(entry.getKey());
             }
         }
         return null;
@@ -212,7 +257,7 @@ public class CastLib {
             load();
         }
 
-        for (Map.Entry<Integer, CastMemberChunk> entry : members.entrySet()) {
+        for (Map.Entry<Integer, CastMemberChunk> entry : memberChunks.entrySet()) {
             if (entry.getValue() == member) {
                 return entry.getKey();
             }
@@ -274,6 +319,42 @@ public class CastLib {
                 return false;
             }
         }
+    }
+
+    /**
+     * Get a member property.
+     */
+    public Datum getMemberProp(int memberNumber, String propName) {
+        CastMember member = getMember(memberNumber);
+        if (member == null) {
+            // Return defaults for invalid members
+            return getInvalidMemberProp(propName);
+        }
+        return member.getProp(propName);
+    }
+
+    /**
+     * Set a member property.
+     */
+    public boolean setMemberProp(int memberNumber, String propName, Datum value) {
+        CastMember member = getMember(memberNumber);
+        if (member == null) {
+            return false;
+        }
+        return member.setProp(propName, value);
+    }
+
+    /**
+     * Get a property for an invalid/non-existent member.
+     */
+    private Datum getInvalidMemberProp(String propName) {
+        String prop = propName.toLowerCase();
+        return switch (prop) {
+            case "name" -> Datum.EMPTY_STRING;
+            case "number", "castlibnum", "membernum" -> Datum.of(-1);
+            case "type" -> Datum.of("empty");
+            default -> Datum.VOID;
+        };
     }
 
     @Override

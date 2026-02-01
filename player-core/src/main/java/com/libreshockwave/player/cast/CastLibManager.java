@@ -174,6 +174,38 @@ public class CastLibManager implements CastLibProvider {
         return castLibs.size();
     }
 
+    @Override
+    public Datum getMemberProp(int castLibNumber, int memberNumber, String propName) {
+        CastLib castLib = getCastLib(castLibNumber);
+        if (castLib == null) {
+            // Return defaults for invalid cast lib
+            return getInvalidMemberProp(propName);
+        }
+        return castLib.getMemberProp(memberNumber, propName);
+    }
+
+    @Override
+    public boolean setMemberProp(int castLibNumber, int memberNumber, String propName, Datum value) {
+        CastLib castLib = getCastLib(castLibNumber);
+        if (castLib == null) {
+            return false;
+        }
+        return castLib.setMemberProp(memberNumber, propName, value);
+    }
+
+    /**
+     * Get a property for an invalid member reference.
+     */
+    private Datum getInvalidMemberProp(String propName) {
+        String prop = propName.toLowerCase();
+        return switch (prop) {
+            case "name" -> Datum.EMPTY_STRING;
+            case "number", "castlibnum", "membernum" -> Datum.of(-1);
+            case "type" -> Datum.of("empty");
+            default -> Datum.VOID;
+        };
+    }
+
     /**
      * Get a cast member chunk directly.
      */
