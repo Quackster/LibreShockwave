@@ -63,6 +63,25 @@ public interface CastLibProvider {
      */
     int getCastLibCount();
 
+    /**
+     * Get a cast member property.
+     * @param castLibNumber The cast library number
+     * @param memberNumber The member number
+     * @param propName The property name (name, type, width, height, etc.)
+     * @return The property value
+     */
+    Datum getMemberProp(int castLibNumber, int memberNumber, String propName);
+
+    /**
+     * Set a cast member property.
+     * @param castLibNumber The cast library number
+     * @param memberNumber The member number
+     * @param propName The property name
+     * @param value The value to set
+     * @return true if set successfully
+     */
+    boolean setMemberProp(int castLibNumber, int memberNumber, String propName, Datum value);
+
     // Thread-local provider for VM access
     ThreadLocal<CastLibProvider> CURRENT = new ThreadLocal<>();
 
