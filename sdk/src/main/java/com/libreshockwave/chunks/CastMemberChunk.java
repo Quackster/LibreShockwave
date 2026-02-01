@@ -44,6 +44,20 @@ public record CastMemberChunk(
         return memberType == MemberType.SOUND;
     }
 
+    /**
+     * Get the script type for Script cast members.
+     * The script type is stored in the first u16 of specificData.
+     * @return the script type, or null if not a Script member or data is missing
+     */
+    public ScriptChunk.ScriptType getScriptType() {
+        if (memberType != MemberType.SCRIPT || specificData == null || specificData.length < 2) {
+            return null;
+        }
+        // Read first u16 as big endian
+        int typeCode = ((specificData[0] & 0xFF) << 8) | (specificData[1] & 0xFF);
+        return ScriptChunk.ScriptType.fromCode(typeCode);
+    }
+
     public static CastMemberChunk read(DirectorFile file, BinaryReader reader, int id, int version) {
         // CASt chunks are ALWAYS big endian regardless of file byte order
         reader.setOrder(java.nio.ByteOrder.BIG_ENDIAN);

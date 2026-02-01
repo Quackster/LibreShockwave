@@ -106,11 +106,12 @@ public record ScriptChunk(
     ) {}
 
     public Handler findHandler(String name, ScriptNamesChunk names) {
-        int nameId = names.findName(name);
-        if (nameId < 0) return null;
+        if (names == null) return null;
 
+        // Match dirplayer-rs: look up each handler's name and compare strings
         for (Handler h : handlers) {
-            if (h.nameId == nameId) {
+            String handlerName = names.getName(h.nameId);
+            if (handlerName.equalsIgnoreCase(name)) {
                 return h;
             }
         }
