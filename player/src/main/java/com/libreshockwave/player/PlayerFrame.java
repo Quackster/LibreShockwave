@@ -2,19 +2,27 @@ package com.libreshockwave.player;
 
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.chunks.ScoreChunk;
+import com.libreshockwave.vm.Datum;
 
 import javax.swing.*;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.*;
 import java.awt.event.*;
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.prefs.Preferences;
 
 /**
  * Main window for the LibreShockwave Player.
  * Provides playback controls and stage rendering.
  */
 public class PlayerFrame extends JFrame {
+
+    private static final String PREF_LAST_FILE = "lastFile";
+    private static final String PREF_LAST_DIR = "lastDirectory";
+    private final Preferences prefs = Preferences.userNodeForPackage(PlayerFrame.class);
 
     private Player player;
     private Timer playbackTimer;
@@ -29,14 +37,44 @@ public class PlayerFrame extends JFrame {
     private DebugPanel debugPanel;
     private JSplitPane splitPane;
     private boolean debugVisible = true;
+    private Path lastOpenedFile;
 
     public PlayerFrame() {
         super("LibreShockwave Player");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         initComponents();
         initMenuBar();
+        loadLastFilePreference();
         pack();
         setLocationRelativeTo(null);
+    }
+
+    private void loadLastFilePreference() {
+        String lastFilePath = prefs.get(PREF_LAST_FILE, null);
+        if (lastFilePath != null) {
+            lastOpenedFile = Path.of(lastFilePath);
+            if (lastOpenedFile.toFile().exists()) {
+                statusLabel.setText("Last file: " + lastOpenedFile.getFileName() +
+                    "  \u2022  Press Ctrl+O to open, or drag & drop a file");
+            }
+        }
+    }
+
+    private void saveLastFilePreference(Path path) {
+        lastOpenedFile = path;
+        prefs.put(PREF_LAST_FILE, path.toAbsolutePath().toString());
+        prefs.put(PREF_LAST_DIR, path.getParent().toAbsolutePath().toString());
+    }
+
+    private void reopenLastFile() {
+        if (lastOpenedFile != null && lastOpenedFile.toFile().exists()) {
+            openFile(lastOpenedFile);
+        } else {
+            JOptionPane.showMessageDialog(this,
+                "No recent file to reopen.",
+                "Reopen Last File",
+                JOptionPane.INFORMATION_MESSAGE);
+        }
     }
 
     private void initComponents() {
@@ -129,6 +167,11 @@ public class PlayerFrame extends JFrame {
         openItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, InputEvent.CTRL_DOWN_MASK));
         openItem.addActionListener(e -> openFileDialog());
         fileMenu.add(openItem);
+
+        JMenuItem reopenItem = new JMenuItem("Reopen Last File");
+        reopenItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK));
+        reopenItem.addActionListener(e -> reopenLastFile());
+        fileMenu.add(reopenItem);
 
         fileMenu.addSeparator();
 
@@ -227,6 +270,20 @@ public class PlayerFrame extends JFrame {
             "dir", "dxr", "dcr", "cct", "cst"
         ));
 
+        // Start in the last used directory
+        String lastDir = prefs.get(PREF_LAST_DIR, null);
+        if (lastDir != null) {
+            File dir = new File(lastDir);
+            if (dir.exists() && dir.isDirectory()) {
+                chooser.setCurrentDirectory(dir);
+            }
+        }
+
+        // Pre-select the last file if it exists
+        if (lastOpenedFile != null && lastOpenedFile.toFile().exists()) {
+            chooser.setSelectedFile(lastOpenedFile.toFile());
+        }
+
         if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
             openFile(chooser.getSelectedFile().toPath());
         }
@@ -238,6 +295,9 @@ public class PlayerFrame extends JFrame {
         try {
             DirectorFile file = DirectorFile.load(path);
             player = new Player(file);
+
+            // Save this file as the last opened
+            saveLastFilePreference(path);
 
             // Update UI
             setTitle("LibreShockwave Player - " + path.getFileName());

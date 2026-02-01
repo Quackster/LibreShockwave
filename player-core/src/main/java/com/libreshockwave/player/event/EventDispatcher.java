@@ -168,7 +168,8 @@ public class EventDispatcher {
         int handlersFound = 0;
 
         for (ScriptChunk script : file.getScripts()) {
-            boolean isMovieScript = script.scriptType() == ScriptChunk.ScriptType.MOVIE_SCRIPT;
+            boolean isMovieScript = script.scriptType() == ScriptChunk.ScriptType.MOVIE_SCRIPT ||
+                    script.scriptType() == ScriptChunk.ScriptType.SCORE;
             if (isMovieScript) {
                 movieScriptCount++;
             }

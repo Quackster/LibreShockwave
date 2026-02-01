@@ -146,14 +146,15 @@ public class Player {
         for (ScriptChunk script : file.getScripts()) {
             String typeName = script.scriptType() != null ? script.scriptType().name() : "null";
             switch (script.scriptType()) {
-                case MOVIE_SCRIPT -> movieScripts++;
+                case SCORE, MOVIE_SCRIPT -> movieScripts++;
                 case BEHAVIOR -> behaviors++;
                 case PARENT -> parents++;
                 default -> unknown++;
             }
 
             // List handlers in movie scripts
-            if (script.scriptType() == ScriptChunk.ScriptType.MOVIE_SCRIPT) {
+            if (script.scriptType() == ScriptChunk.ScriptType.MOVIE_SCRIPT ||
+                script.scriptType() == ScriptChunk.ScriptType.SCORE) {
                 System.out.println("[Player] Movie script #" + script.id() + " handlers:");
                 for (ScriptChunk.Handler handler : script.handlers()) {
                     String handlerName = names != null ? names.getName(handler.nameId()) : "name#" + handler.nameId();
@@ -218,7 +219,8 @@ public class Player {
     public void stop() {
         if (state != PlayerState.STOPPED) {
             log("stop()");
-            dispatchMovieEvent(PlayerEvent.STOP_MOVIE);
+            // stopMovie -> dispatched to movie scripts
+            frameContext.getEventDispatcher().dispatchToMovieScripts("stopMovie", List.of());
             frameContext.reset();
             stageRenderer.reset();
             state = PlayerState.STOPPED;
@@ -268,17 +270,33 @@ public class Player {
         return true;
     }
 
-    // Movie lifecycle
+    // Movie lifecycle - follows dirplayer-rs flow exactly
 
     private void prepareMovie() {
         log("prepareMovie()");
-        dispatchMovieEvent(PlayerEvent.PREPARE_MOVIE);
-        frameContext.initializeFirstFrame();
-        dispatchMovieEvent(PlayerEvent.START_MOVIE);
-    }
 
-    private void dispatchMovieEvent(PlayerEvent event) {
-        frameContext.getEventDispatcher().dispatchToMovieScripts(event.getHandlerName(), List.of());
+        // 1. prepareMovie -> dispatched to movie scripts (behaviors not initialized yet)
+        frameContext.getEventDispatcher().dispatchToMovieScripts("prepareMovie", List.of());
+
+        // 2. Initialize sprites for frame 1
+        frameContext.initializeFirstFrame();
+
+        // 3. beginSprite events
+        frameContext.dispatchBeginSpriteEvents();
+
+        // 4. prepareFrame -> dispatched to all behaviors + frame/movie scripts
+        frameContext.getEventDispatcher().dispatchGlobalEvent(PlayerEvent.PREPARE_FRAME, List.of());
+
+        // 5. startMovie -> dispatched to movie scripts
+        frameContext.getEventDispatcher().dispatchToMovieScripts("startMovie", List.of());
+
+        // 6. enterFrame -> dispatched to all behaviors + frame/movie scripts
+        frameContext.getEventDispatcher().dispatchGlobalEvent(PlayerEvent.ENTER_FRAME, List.of());
+
+        // 7. exitFrame -> dispatched to all behaviors + frame/movie scripts
+        frameContext.getEventDispatcher().dispatchGlobalEvent(PlayerEvent.EXIT_FRAME, List.of());
+
+        // Frame loop will handle subsequent frames
     }
 
     // Debug logging

@@ -102,7 +102,10 @@ public record KeyTableChunk(
         for (int i = 0; i < usedCount; i++) {
             int sectionId = reader.readI32();
             int castId = reader.readI32();
-            int fourcc = reader.readFourCC();
+            // FourCC in key table is stored as a u32 in the file's byte order (little-endian).
+            // In LE files, tags are byte-swapped (e.g., "ALFA" stored as "AFLA" bytes).
+            // readI32() with LE byte order produces the correct integer for fourCCToString.
+            int fourcc = reader.readI32();
 
             KeyTableEntry entry = new KeyTableEntry(sectionId, castId, fourcc);
             entries.add(entry);

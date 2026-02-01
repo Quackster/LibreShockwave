@@ -143,7 +143,7 @@ public final class MemberResolver {
      */
     public static String getScriptTypeName(ScriptChunk.ScriptType scriptType) {
         return switch (scriptType) {
-            case MOVIE_SCRIPT -> "Movie Script";
+            case SCORE, MOVIE_SCRIPT -> "Movie Script";
             case BEHAVIOR -> "Behavior";
             case PARENT -> "Parent Script";
             default -> "Script";

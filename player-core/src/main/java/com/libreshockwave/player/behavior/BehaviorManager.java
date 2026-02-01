@@ -210,26 +210,13 @@ public class BehaviorManager {
             System.out.println("[BehaviorManager] Looking for script id=" + scriptId + " (member name: " + member.name() + ")");
         }
 
-        // First try to find by exact script ID
-        for (ScriptChunk script : file.getScripts()) {
-            if (script.id() == scriptId) {
-                if (debugEnabled) {
-                    System.out.println("[BehaviorManager] Found script #" + script.id() + " type=" + script.scriptType());
-                }
-                return script;
+        // Use the Lctx-aware lookup
+        ScriptChunk script = file.getScriptByContextId(scriptId);
+        if (script != null) {
+            if (debugEnabled) {
+                System.out.println("[BehaviorManager] Found script #" + script.id() + " type=" + script.scriptType());
             }
-        }
-
-        // If not found by ID, try to match by cast member index
-        // (Some files link scripts differently)
-        for (ScriptChunk script : file.getScripts()) {
-            // Script ID might match cast member number
-            if (script.id() == castMember) {
-                if (debugEnabled) {
-                    System.out.println("[BehaviorManager] Found script #" + script.id() + " by castMember match");
-                }
-                return script;
-            }
+            return script;
         }
 
         if (debugEnabled) {
