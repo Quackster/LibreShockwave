@@ -196,15 +196,12 @@ public class NetManager implements NetBuiltins.NetProvider {
             String url = task.getUrl();
 
             try {
-                if (url.startsWith("file://")) {
-                    // Handle local file URL
-                    loadFromFileUrl(url, task);
-                } else if (url.startsWith("http://") || url.startsWith("https://")) {
+                if (url.startsWith("http")) {
                     // HTTP request
                     loadFromHttp(url, task);
                 } else {
-                    // Treat as direct file path
-                    loadFromFilePath(url, task);
+                    // Handle local file URL
+                    loadFromFileUrl(url, task);
                 }
             } catch (Exception e) {
                 task.fail(-1, e.getMessage());
