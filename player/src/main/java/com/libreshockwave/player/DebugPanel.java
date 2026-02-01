@@ -154,14 +154,19 @@ public class DebugPanel extends JPanel implements TraceListener {
                 sb.append("\nReceiver (me):\n");
                 sb.append("  ").append(formatDatum(info.receiver())).append("\n");
             }
-            sb.append("\nLiterals:\n");
+            sb.append("\nLiterals (").append(info.literals().size()).append("):\n");
             List<ScriptChunk.LiteralEntry> literals = info.literals();
-            for (int i = 0; i < Math.min(20, literals.size()); i++) {
+            for (int i = 0; i < literals.size(); i++) {
                 ScriptChunk.LiteralEntry lit = literals.get(i);
-                sb.append("  [").append(i).append("] ").append(lit.value()).append("\n");
-            }
-            if (literals.size() > 20) {
-                sb.append("  ... (").append(literals.size()).append(" total)\n");
+                String typeStr = switch (lit.type()) {
+                    case 1 -> "string";
+                    case 4 -> "int";
+                    case 9 -> "float";
+                    default -> "type" + lit.type();
+                };
+                String valueStr = lit.value() instanceof String ?
+                        "\"" + lit.value() + "\"" : String.valueOf(lit.value());
+                sb.append("  [").append(i).append("] ").append(typeStr).append(": ").append(valueStr).append("\n");
             }
             handlerInfoArea.setText(sb.toString());
 
