@@ -288,15 +288,19 @@ public class AfterburnerReader {
 
         ChunkInfo info = chunkInfoMap.get(resourceId);
         if (info == null) {
-            throw new IOException("Unknown resource ID: " + resourceId);
+            return null; // Unknown resource ID - skip silently
         }
 
         // For non-ILS chunks, read from the remaining file data after ILS
         // The offset in ABMP is relative to ilsBodyOffset
         int fileOffset = ilsBodyOffset + info.offset();
-        if (fileOffset >= reader.length()) {
-            throw new IOException("Chunk " + resourceId + " (" + info.fourCC() +
-                ") offset " + fileOffset + " exceeds file length " + reader.length());
+        if (fileOffset >= reader.length() || fileOffset < 0) {
+            return null; // Invalid offset - skip silently
+        }
+
+        // Also check if we have enough bytes to read
+        if (fileOffset + info.compressedSize() > reader.length()) {
+            return null; // Not enough data - skip silently
         }
 
         // Save current position and seek to chunk
