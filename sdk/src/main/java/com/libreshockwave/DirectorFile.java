@@ -880,6 +880,9 @@ public class DirectorFile {
             // Try to get and parse the chunk data
             try {
                 byte[] chunkData = abReader.getChunkData(abInfo.resourceId());
+                if (chunkData == null) {
+                    continue; // Skip chunks with invalid data (truncated file, etc.)
+                }
                 BinaryReader chunkReader = new BinaryReader(chunkData, endian);
 
                 Chunk chunk = file.parseChunkFromReader(chunkReader, info, version, capitalX);
@@ -899,11 +902,7 @@ public class DirectorFile {
                     }
                 }
             } catch (Exception e) {
-                String msg = e.getMessage();
-                if (msg == null) msg = e.getClass().getName();
-                System.err.println("Failed to parse Afterburner chunk " + abInfo.fourCC() +
-                    " (id=" + abInfo.resourceId() + "): " + msg);
-                e.printStackTrace();
+                // Silently skip chunks that fail to parse - may be corrupted data
             }
         }
 
