@@ -201,44 +201,46 @@ public class BitmapDecoder {
 
     /**
      * Decode a 32-bit bitmap (true color).
-     * Director 4+ stores channels separately (all R, then all G, then all B, then all A).
+     * Director 4+ stores channels separately PER SCANLINE:
+     * Each row contains [AAA...][RRR...][GGG...][BBB...] for that row's pixels.
      */
     public static Bitmap decode32Bit(byte[] data, int width, int height, boolean channelsSeparated) {
         Bitmap bitmap = new Bitmap(width, height, 32);
 
         if (channelsSeparated) {
-            // D4+ format: channels are stored separately
-            int pixelCount = width * height;
-            int scanWidth = calculateScanWidth(width, 8); // Each channel is 8 bits
-            int channelSize = scanWidth * height;
+            // D4+ format: channels are stored separately PER SCANLINE
+            // Each row: [Alpha bytes][Red bytes][Green bytes][Blue bytes]
+            // The scan width may include padding for alignment
+            int scanWidth = width;  // Use actual width - D4+ doesn't pad per-channel data
 
             for (int y = 0; y < height; y++) {
-                int rowOffset = y * scanWidth;
-                for (int x = 0; x < width; x++) {
-                    int byteOffset = rowOffset + x;
+                // Each row contains 4 channels worth of data
+                int lineOffset = y * scanWidth * 4;
 
+                for (int x = 0; x < width; x++) {
                     int a = 255;
                     int r = 0, g = 0, b = 0;
 
-                    // Alpha channel (may not always be present)
-                    if (byteOffset < channelSize && byteOffset < data.length) {
-                        a = data[byteOffset] & 0xFF;
+                    // Alpha channel at start of row
+                    int aOffset = lineOffset + x;
+                    if (aOffset < data.length) {
+                        a = data[aOffset] & 0xFF;
                     }
 
-                    // Red channel
-                    int rOffset = channelSize + byteOffset;
+                    // Red channel after alpha
+                    int rOffset = lineOffset + x + scanWidth;
                     if (rOffset < data.length) {
                         r = data[rOffset] & 0xFF;
                     }
 
-                    // Green channel
-                    int gOffset = channelSize * 2 + byteOffset;
+                    // Green channel after red
+                    int gOffset = lineOffset + x + scanWidth * 2;
                     if (gOffset < data.length) {
                         g = data[gOffset] & 0xFF;
                     }
 
-                    // Blue channel
-                    int bOffset = channelSize * 3 + byteOffset;
+                    // Blue channel after green
+                    int bOffset = lineOffset + x + scanWidth * 3;
                     if (bOffset < data.length) {
                         b = data[bOffset] & 0xFF;
                     }
@@ -291,10 +293,10 @@ public class BitmapDecoder {
             int scanWidth = calculateScanWidth(width, bitDepth);
             int expectedSize = scanWidth * height;
 
-            // For 32-bit D4+, channels are stored separately
+            // For 32-bit D4+, channels are stored per-scanline: [A][R][G][B] per row
+            // Each row has width * 4 bytes (width pixels * 4 channels)
             if (bitDepth == 32 && directorVersion >= 400) {
-                int channelScanWidth = calculateScanWidth(width, 8);
-                expectedSize = channelScanWidth * height * 4; // 4 channels
+                expectedSize = width * height * 4; // width pixels * height rows * 4 channels
             }
 
             decompressed = decompressRLE(data, expectedSize);
