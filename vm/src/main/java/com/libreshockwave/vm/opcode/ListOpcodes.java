@@ -46,12 +46,16 @@ public final class ListOpcodes {
     }
 
     private static boolean pushArgList(ExecutionContext ctx) {
-        ctx.push(new Datum.ArgList(ctx.getArgument()));
+        int count = ctx.getArgument();
+        List<Datum> items = ctx.popArgs(count);
+        ctx.push(new Datum.ArgList(items));
         return true;
     }
 
     private static boolean pushArgListNoRet(ExecutionContext ctx) {
-        ctx.push(new Datum.ArgListNoRet(ctx.getArgument()));
+        int count = ctx.getArgument();
+        List<Datum> items = ctx.popArgs(count);
+        ctx.push(new Datum.ArgListNoRet(items));
         return true;
     }
 }

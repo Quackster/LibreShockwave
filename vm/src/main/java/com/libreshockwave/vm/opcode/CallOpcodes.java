@@ -27,8 +27,7 @@ public final class CallOpcodes {
         if (targetHandler != null) {
             Datum argListDatum = ctx.pop();
             boolean noRet = argListDatum instanceof Datum.ArgListNoRet;
-            int argCount = getArgCount(argListDatum);
-            List<Datum> args = ctx.popArgs(argCount);
+            List<Datum> args = getArgs(argListDatum);
             Datum result = ctx.executeHandler(ctx.getScript(), targetHandler, args, ctx.getReceiver());
             if (!noRet) {
                 ctx.push(result);
@@ -41,8 +40,7 @@ public final class CallOpcodes {
         String handlerName = ctx.resolveName(ctx.getArgument());
         Datum argListDatum = ctx.pop();
         boolean noRet = argListDatum instanceof Datum.ArgListNoRet;
-        int argCount = getArgCount(argListDatum);
-        List<Datum> args = ctx.popArgs(argCount);
+        List<Datum> args = getArgs(argListDatum);
 
         Datum result;
         if (ctx.isBuiltin(handlerName)) {
@@ -65,8 +63,7 @@ public final class CallOpcodes {
         String methodName = ctx.resolveName(ctx.getArgument());
         Datum argListDatum = ctx.pop();
         boolean noRet = argListDatum instanceof Datum.ArgListNoRet;
-        int argCount = getArgCount(argListDatum);
-        List<Datum> args = ctx.popArgs(argCount);
+        List<Datum> args = getArgs(argListDatum);
         Datum target = args.isEmpty() ? Datum.VOID : args.remove(0);
         // TODO: implement proper object method calls
         Datum result = Datum.VOID;
@@ -76,14 +73,18 @@ public final class CallOpcodes {
         return true;
     }
 
-    private static int getArgCount(Datum argListDatum) {
+    /**
+     * Extract arguments from an arglist datum.
+     * Arguments are stored directly in the ArgList/ArgListNoRet items.
+     */
+    private static List<Datum> getArgs(Datum argListDatum) {
         if (argListDatum instanceof Datum.ArgList al) {
-            return al.count();
+            return new java.util.ArrayList<>(al.items());
         } else if (argListDatum instanceof Datum.ArgListNoRet al) {
-            return al.count();
+            return new java.util.ArrayList<>(al.items());
         } else {
-            // Fallback for backwards compatibility
-            return argListDatum.toInt();
+            // Fallback - shouldn't happen with correct bytecode
+            return new java.util.ArrayList<>();
         }
     }
 }
