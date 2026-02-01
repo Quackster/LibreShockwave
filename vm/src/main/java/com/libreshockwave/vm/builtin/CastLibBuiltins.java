@@ -1,0 +1,126 @@
+package com.libreshockwave.vm.builtin;
+
+import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.LingoVM;
+
+import java.util.List;
+import java.util.Map;
+import java.util.function.BiFunction;
+
+/**
+ * Cast library builtin functions for Lingo.
+ * Similar to dirplayer-rs player/handlers/cast.rs.
+ *
+ * Provides:
+ * - castLib(number) or castLib("name") - get cast library reference
+ * - member(number) or member("name") - get cast member reference
+ * - member(number, castLib) - get member from specific cast library
+ */
+public final class CastLibBuiltins {
+
+    private CastLibBuiltins() {}
+
+    public static void register(Map<String, BiFunction<LingoVM, List<Datum>, Datum>> builtins) {
+        builtins.put("castlib", CastLibBuiltins::castLib);
+        builtins.put("member", CastLibBuiltins::member);
+    }
+
+    /**
+     * castLib(number) or castLib("name")
+     * Returns a cast library reference.
+     */
+    private static Datum castLib(LingoVM vm, List<Datum> args) {
+        if (args.isEmpty()) {
+            return Datum.VOID;
+        }
+
+        CastLibProvider provider = CastLibProvider.getProvider();
+        if (provider == null) {
+            return Datum.VOID;
+        }
+
+        Datum arg = args.get(0);
+        int castLibNumber;
+
+        if (arg.isInt() || arg.isFloat()) {
+            castLibNumber = provider.getCastLibByNumber(arg.toInt());
+        } else if (arg.isString()) {
+            castLibNumber = provider.getCastLibByName(arg.toStr());
+        } else {
+            return Datum.VOID;
+        }
+
+        if (castLibNumber < 0) {
+            return Datum.VOID;
+        }
+
+        return new Datum.CastLibRef(castLibNumber);
+    }
+
+    /**
+     * member(number) - get member from default cast
+     * member("name") - find member by name in all casts
+     * member(number, castLib) - get member from specific cast
+     * member("name", castLib) - find member by name in specific cast
+     */
+    private static Datum member(LingoVM vm, List<Datum> args) {
+        if (args.isEmpty()) {
+            return Datum.VOID;
+        }
+
+        CastLibProvider provider = CastLibProvider.getProvider();
+        if (provider == null) {
+            // Return a placeholder CastMemberRef
+            return new Datum.CastMemberRef(1, args.get(0).toInt());
+        }
+
+        Datum memberArg = args.get(0);
+        int castLibNumber = 0; // 0 = search all or use default
+
+        // Check for castLib argument
+        if (args.size() > 1) {
+            Datum castArg = args.get(1);
+            if (castArg instanceof Datum.CastLibRef clr) {
+                castLibNumber = clr.castLibNumber();
+            } else if (castArg.isInt()) {
+                castLibNumber = castArg.toInt();
+            }
+        }
+
+        // Get member by number or name
+        if (memberArg.isInt() || memberArg.isFloat()) {
+            int memberNumber = memberArg.toInt();
+            if (castLibNumber == 0) {
+                castLibNumber = 1; // Default to first cast
+            }
+            return provider.getMember(castLibNumber, memberNumber);
+        } else if (memberArg.isString()) {
+            return provider.getMemberByName(castLibNumber, memberArg.toStr());
+        }
+
+        return Datum.VOID;
+    }
+
+    /**
+     * Get a property from a CastLibRef.
+     * Called by PropertyOpcodes when getting a property on a CastLibRef.
+     */
+    public static Datum getCastLibProp(Datum.CastLibRef castLib, String propName) {
+        CastLibProvider provider = CastLibProvider.getProvider();
+        if (provider == null) {
+            return Datum.VOID;
+        }
+        return provider.getCastLibProp(castLib.castLibNumber(), propName);
+    }
+
+    /**
+     * Set a property on a CastLibRef.
+     */
+    public static boolean setCastLibProp(Datum.CastLibRef castLib, String propName, Datum value) {
+        CastLibProvider provider = CastLibProvider.getProvider();
+        if (provider == null) {
+            return false;
+        }
+        return provider.setCastLibProp(castLib.castLibNumber(), propName, value);
+    }
+}

@@ -4,6 +4,7 @@ import com.libreshockwave.DirectorFile;
 import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.chunks.ScriptNamesChunk;
 import com.libreshockwave.player.behavior.BehaviorManager;
+import com.libreshockwave.player.cast.CastLibManager;
 import com.libreshockwave.player.event.EventDispatcher;
 import com.libreshockwave.player.frame.FrameContext;
 import com.libreshockwave.player.net.NetManager;
@@ -11,6 +12,7 @@ import com.libreshockwave.player.render.FrameSnapshot;
 import com.libreshockwave.player.render.StageRenderer;
 import com.libreshockwave.player.score.ScoreNavigator;
 import com.libreshockwave.vm.LingoVM;
+import com.libreshockwave.vm.builtin.CastLibProvider;
 import com.libreshockwave.vm.builtin.MoviePropertyProvider;
 import com.libreshockwave.vm.builtin.NetBuiltins;
 import com.libreshockwave.vm.builtin.XtraBuiltins;
@@ -33,6 +35,7 @@ public class Player {
     private final NetManager netManager;
     private final XtraManager xtraManager;
     private final MovieProperties movieProperties;
+    private final CastLibManager castLibManager;
 
     private PlayerState state = PlayerState.STOPPED;
     private int tempo;  // Frames per second
@@ -51,6 +54,7 @@ public class Player {
         this.netManager = new NetManager();
         this.xtraManager = new XtraManager();
         this.movieProperties = new MovieProperties(this, file);
+        this.castLibManager = new CastLibManager(file);
         this.tempo = file != null ? file.getTempo() : 15;
         if (this.tempo <= 0) this.tempo = 15;
 
@@ -111,6 +115,10 @@ public class Player {
 
     public MovieProperties getMovieProperties() {
         return movieProperties;
+    }
+
+    public CastLibManager getCastLibManager() {
+        return castLibManager;
     }
 
     public PlayerState getState() {
@@ -320,6 +328,7 @@ public class Player {
         NetBuiltins.setProvider(netManager);
         XtraBuiltins.setManager(xtraManager);
         MoviePropertyProvider.setProvider(movieProperties);
+        CastLibProvider.setProvider(castLibManager);
     }
 
     /**
@@ -329,6 +338,7 @@ public class Player {
         NetBuiltins.clearProvider();
         XtraBuiltins.clearManager();
         MoviePropertyProvider.clearProvider();
+        CastLibProvider.clearProvider();
     }
 
     // Movie lifecycle - follows dirplayer-rs flow exactly
