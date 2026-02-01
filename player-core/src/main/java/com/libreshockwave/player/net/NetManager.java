@@ -186,57 +186,7 @@ public class NetManager implements NetBuiltins.NetProvider {
             return url;
         }
 
-        // Normalize path separators
-        url = url.replace("\\", "/");
-
-        // Already absolute URL
-        if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("file://")) {
-            return url;
-        }
-
-        // Check if it's an absolute Windows path (e.g., C:/path or D:\path)
-        if (url.length() > 2 && Character.isLetter(url.charAt(0)) && url.charAt(1) == ':') {
-            return "file:///" + url;
-        }
-
-        // Check if it's an absolute Unix path
-        if (url.startsWith("/")) {
-            return "file://" + url;
-        }
-
-        // Relative path - resolve against base path
-        if (basePath != null && !basePath.isEmpty()) {
-            try {
-                // If base path is a URL
-                if (basePath.startsWith("http://") || basePath.startsWith("https://")) {
-                    URI baseUri = new URI(basePath);
-                    return baseUri.resolve(url).toString();
-                }
-
-                // If base path is a file path
-                String normalizedBase = basePath.replace("\\", "/");
-                if (normalizedBase.startsWith("file://")) {
-                    URI baseUri = new URI(normalizedBase);
-                    Path base = Path.of(baseUri);
-                    if (Files.isRegularFile(base)) {
-                        base = base.getParent();
-                    }
-                    return base.resolve(url).toUri().toString();
-                }
-
-                // Plain file path
-                Path base = Path.of(normalizedBase);
-                if (Files.isRegularFile(base)) {
-                    base = base.getParent();
-                }
-                return base.resolve(url).toUri().toString();
-            } catch (Exception e) {
-                System.err.println("[NetManager] Failed to resolve URL: " + url + " - " + e.getMessage());
-            }
-        }
-
-        // Last resort: treat as file path in current directory
-        return Paths.get(url).toAbsolutePath().toUri().toString();
+        return Paths.get(url).getFileName().toString();
     }
 
     private void executeTask(NetTask task) {
@@ -265,54 +215,175 @@ public class NetManager implements NetBuiltins.NetProvider {
     private void loadFromFileUrl(String url, NetTask task) throws Exception {
         URI uri = new URI(url);
         Path path = Path.of(uri);
-        if (!Files.exists(path)) {
+
+        // Try with extension fallbacks
+        Path resolvedPath = resolvePathWithFallbacks(path);
+        if (resolvedPath == null) {
             task.fail(404, "File not found: " + path);
             return;
         }
-        byte[] data = Files.readAllBytes(path);
-        System.out.println("[NetManager] Loaded file: " + path + " (" + data.length + " bytes)");
+
+        byte[] data = Files.readAllBytes(resolvedPath);
+        System.out.println("[NetManager] Loaded file: " + resolvedPath + " (" + data.length + " bytes)");
         task.complete(data);
-        notifyCompletion(task.getOriginalUrl(), data);
+        notifyCompletion(task.getUrl(), data);
     }
 
     private void loadFromFilePath(String filePath, NetTask task) throws Exception {
         Path path = Path.of(filePath);
-        if (!Files.exists(path)) {
+
+        // Try with extension fallbacks
+        Path resolvedPath = resolvePathWithFallbacks(path);
+        if (resolvedPath == null) {
             task.fail(404, "File not found: " + path);
             return;
         }
-        byte[] data = Files.readAllBytes(path);
-        System.out.println("[NetManager] Loaded file: " + path + " (" + data.length + " bytes)");
+
+        byte[] data = Files.readAllBytes(resolvedPath);
+        System.out.println("[NetManager] Loaded file: " + resolvedPath + " (" + data.length + " bytes)");
         task.complete(data);
-        notifyCompletion(task.getOriginalUrl(), data);
+        notifyCompletion(task.getUrl(), data);
+    }
+
+    /**
+     * Resolve a file path with extension fallbacks.
+     * For cast files (.cst, .cct): try requested, then .cst, then .cct
+     * For movie files (.dcr, .dxr, .dir): try requested, then .dir, then .dcr
+     */
+    private Path resolvePathWithFallbacks(Path path) {
+        // If the file exists, return it directly
+        if (Files.exists(path)) {
+            return path;
+        }
+
+        String fileName = path.getFileName().toString().toLowerCase();
+
+        // Cast file extensions: try .cst first, then .cct
+        if (fileName.endsWith(".cst") || fileName.endsWith(".cct")) {
+            String baseName = getFileBaseName(path);
+            Path parent = path.getParent();
+
+            // Try .cst first
+            Path cstPath = parent != null ? parent.resolve(baseName + ".cst") : Path.of(baseName + ".cst");
+            if (Files.exists(cstPath)) {
+                return cstPath;
+            }
+
+            // Try .cct as fallback
+            Path cctPath = parent != null ? parent.resolve(baseName + ".cct") : Path.of(baseName + ".cct");
+            if (Files.exists(cctPath)) {
+                return cctPath;
+            }
+        }
+
+        // Movie file extensions: try .dir first, then .dcr, then .dxr
+        if (fileName.endsWith(".dcr") || fileName.endsWith(".dxr") || fileName.endsWith(".dir")) {
+            String baseName = getFileBaseName(path);
+            Path parent = path.getParent();
+
+            // Try .dir first
+            Path dirPath = parent != null ? parent.resolve(baseName + ".dir") : Path.of(baseName + ".dir");
+            if (Files.exists(dirPath)) {
+                return dirPath;
+            }
+
+            // Try .dcr as fallback
+            Path dcrPath = parent != null ? parent.resolve(baseName + ".dcr") : Path.of(baseName + ".dcr");
+            if (Files.exists(dcrPath)) {
+                return dcrPath;
+            }
+
+            // Try .dxr as last fallback
+            Path dxrPath = parent != null ? parent.resolve(baseName + ".dxr") : Path.of(baseName + ".dxr");
+            if (Files.exists(dxrPath)) {
+                return dxrPath;
+            }
+        }
+
+        // File not found with any extension
+        return null;
+    }
+
+    /**
+     * Get the base name of a file (without extension).
+     */
+    private String getFileBaseName(Path path) {
+        String fileName = path.getFileName().toString();
+        int dotIndex = fileName.lastIndexOf('.');
+        return dotIndex > 0 ? fileName.substring(0, dotIndex) : fileName;
     }
 
     private void loadFromHttp(String url, NetTask task) throws Exception {
-        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
-            .uri(URI.create(url))
-            .timeout(Duration.ofSeconds(60));
+        // Try the URL with extension fallbacks
+        String[] urlsToTry = getUrlsWithFallbacks(url);
 
-        if (task.getMethod() == NetTask.Method.POST) {
-            requestBuilder.header("Content-Type", "application/x-www-form-urlencoded")
-                .POST(HttpRequest.BodyPublishers.ofString(
-                    task.getPostData() != null ? task.getPostData() : ""));
-        } else {
-            requestBuilder.GET();
+        Exception lastException = null;
+        int lastStatusCode = 0;
+
+        for (String tryUrl : urlsToTry) {
+            try {
+                HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
+                    .uri(URI.create(tryUrl))
+                    .timeout(Duration.ofSeconds(60));
+
+                if (task.getMethod() == NetTask.Method.POST) {
+                    requestBuilder.header("Content-Type", "application/x-www-form-urlencoded")
+                        .POST(HttpRequest.BodyPublishers.ofString(
+                            task.getPostData() != null ? task.getPostData() : ""));
+                } else {
+                    requestBuilder.GET();
+                }
+
+                HttpResponse<byte[]> response = httpClient.send(
+                    requestBuilder.build(),
+                    HttpResponse.BodyHandlers.ofByteArray()
+                );
+
+                int statusCode = response.statusCode();
+                if (statusCode >= 200 && statusCode < 300) {
+                    System.out.println("[NetManager] Loaded URL: " + tryUrl + " (" + response.body().length + " bytes)");
+                    task.complete(response.body());
+                    notifyCompletion(task.getUrl(), response.body());
+                    return;
+                }
+                lastStatusCode = statusCode;
+            } catch (Exception e) {
+                lastException = e;
+            }
         }
 
-        HttpResponse<byte[]> response = httpClient.send(
-            requestBuilder.build(),
-            HttpResponse.BodyHandlers.ofByteArray()
-        );
-
-        int statusCode = response.statusCode();
-        if (statusCode >= 200 && statusCode < 300) {
-            System.out.println("[NetManager] Loaded URL: " + url + " (" + response.body().length + " bytes)");
-            task.complete(response.body());
-            notifyCompletion(task.getOriginalUrl(), response.body());
+        // All URLs failed
+        if (lastStatusCode > 0) {
+            task.fail(lastStatusCode, "HTTP " + lastStatusCode);
+        } else if (lastException != null) {
+            task.fail(-1, lastException.getMessage());
         } else {
-            task.fail(statusCode, "HTTP " + statusCode);
+            task.fail(404, "Not found");
         }
+    }
+
+    /**
+     * Get URLs to try with extension fallbacks.
+     * For cast files (.cst, .cct): try requested, then .cst, then .cct
+     * For movie files (.dcr, .dxr, .dir): try requested, then .dir, then .dcr
+     */
+    private String[] getUrlsWithFallbacks(String url) {
+        String lowerUrl = url.toLowerCase();
+
+        // Cast file extensions
+        if (lowerUrl.endsWith(".cst") || lowerUrl.endsWith(".cct")) {
+            String baseName = url.substring(0, url.length() - 4);
+            return new String[] { url, baseName + ".cst", baseName + ".cct" };
+        }
+
+        // Movie file extensions
+        if (lowerUrl.endsWith(".dcr") || lowerUrl.endsWith(".dxr") || lowerUrl.endsWith(".dir")) {
+            String baseName = url.substring(0, url.length() - 4);
+            return new String[] { url, baseName + ".dir", baseName + ".dcr", baseName + ".dxr" };
+        }
+
+        // No fallbacks
+        return new String[] { url };
     }
 
     private void notifyCompletion(String url, byte[] data) {

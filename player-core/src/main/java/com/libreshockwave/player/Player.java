@@ -63,6 +63,14 @@ public class Player {
             netManager.setBasePath(file.getBasePath());
         }
 
+        // Wire up network completion callback to handle external cast loading
+        netManager.setCompletionCallback((url, data) -> {
+            // Check if this URL matches an external cast library
+            if (castLibManager.setExternalCastDataByUrl(url, data)) {
+                System.out.println("[Player] Loaded external cast from: " + url);
+            }
+        });
+
         // Wire up event notifications
         frameContext.setEventListener(event -> {
             if (eventListener != null) {
