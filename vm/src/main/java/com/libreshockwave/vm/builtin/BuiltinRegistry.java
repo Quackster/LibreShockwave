@@ -28,16 +28,18 @@ public class BuiltinRegistry {
 
     /**
      * Check if a builtin function exists.
+     * Lingo is case-insensitive, so we normalize to lowercase.
      */
     public boolean contains(String name) {
-        return builtins.containsKey(name);
+        return builtins.containsKey(name.toLowerCase());
     }
 
     /**
      * Invoke a builtin function.
+     * Lingo is case-insensitive, so we normalize to lowercase.
      */
     public Datum invoke(String name, LingoVM vm, List<Datum> args) {
-        var func = builtins.get(name);
+        var func = builtins.get(name.toLowerCase());
         if (func != null) {
             return func.apply(vm, args);
         }
@@ -46,9 +48,10 @@ public class BuiltinRegistry {
 
     /**
      * Register a custom builtin function.
+     * Names are normalized to lowercase for case-insensitive lookup.
      */
     public void register(String name, BiFunction<LingoVM, List<Datum>, Datum> func) {
-        builtins.put(name, func);
+        builtins.put(name.toLowerCase(), func);
     }
 
     /**

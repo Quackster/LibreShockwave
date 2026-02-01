@@ -18,8 +18,8 @@ public final class StringBuiltins {
         builtins.put("string", StringBuiltins::string);
         builtins.put("length", StringBuiltins::length);
         builtins.put("chars", StringBuiltins::chars);
-        builtins.put("charToNum", StringBuiltins::charToNum);
-        builtins.put("numToChar", StringBuiltins::numToChar);
+        builtins.put("chartonum", StringBuiltins::charToNum);
+        builtins.put("numtochar", StringBuiltins::numToChar);
     }
 
     private static Datum string(LingoVM vm, List<Datum> args) {
