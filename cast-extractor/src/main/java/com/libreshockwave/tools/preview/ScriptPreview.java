@@ -3,6 +3,7 @@ package com.libreshockwave.tools.preview;
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.chunks.ScriptNamesChunk;
+import com.libreshockwave.format.ScriptFormatUtils;
 import com.libreshockwave.tools.format.InstructionFormatter;
 import com.libreshockwave.tools.model.CastMemberInfo;
 import com.libreshockwave.tools.scanning.MemberResolver;
@@ -29,7 +30,7 @@ public class ScriptPreview {
         if (script == null) {
             sb.append("\n[No bytecode found for this script member]\n");
         } else {
-            sb.append("Script Type: ").append(MemberResolver.getScriptTypeName(script.getScriptType())).append("\n");
+            sb.append("Script Type: ").append(ScriptFormatUtils.getScriptTypeName(script.getScriptType())).append("\n");
             sb.append("Behavior Flags: 0x").append(Integer.toHexString(script.behaviorFlags())).append("\n\n");
 
             // Properties
@@ -63,15 +64,7 @@ public class ScriptPreview {
                 sb.append("--- LITERALS (").append(script.literals().size()).append(") ---\n");
                 int idx = 0;
                 for (ScriptChunk.LiteralEntry lit : script.literals()) {
-                    String typeStr = switch (lit.type()) {
-                        case 1 -> "string";
-                        case 4 -> "int";
-                        case 9 -> "float";
-                        default -> "type" + lit.type();
-                    };
-                    String valueStr = lit.value() instanceof String ?
-                            "\"" + lit.value() + "\"" : String.valueOf(lit.value());
-                    sb.append("  [").append(idx++).append("] ").append(typeStr).append(": ").append(valueStr).append("\n");
+                    sb.append("  [").append(idx++).append("] ").append(ScriptFormatUtils.formatLiteral(lit)).append("\n");
                 }
             }
         }

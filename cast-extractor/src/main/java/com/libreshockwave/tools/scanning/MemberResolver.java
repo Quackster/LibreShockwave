@@ -2,6 +2,7 @@ package com.libreshockwave.tools.scanning;
 
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.chunks.*;
+import com.libreshockwave.format.ScriptFormatUtils;
 
 import java.util.List;
 
@@ -140,13 +141,10 @@ public final class MemberResolver {
 
     /**
      * Gets a human-readable name for a script type.
+     * @deprecated Use {@link ScriptFormatUtils#getScriptTypeName(ScriptChunk.ScriptType)} instead
      */
+    @Deprecated
     public static String getScriptTypeName(ScriptChunk.ScriptType scriptType) {
-        return switch (scriptType) {
-            case MOVIE_SCRIPT -> "Movie Script";
-            case BEHAVIOR -> "Behavior";
-            case PARENT -> "Parent Script";
-            default -> "Script";
-        };
+        return ScriptFormatUtils.getScriptTypeName(scriptType);
     }
 }

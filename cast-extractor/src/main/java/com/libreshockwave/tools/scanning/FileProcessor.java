@@ -6,6 +6,7 @@ import com.libreshockwave.cast.FilmLoopInfo;
 import com.libreshockwave.cast.MemberType;
 import com.libreshockwave.cast.ShapeInfo;
 import com.libreshockwave.chunks.*;
+import com.libreshockwave.format.ScriptFormatUtils;
 import com.libreshockwave.tools.model.CastMemberInfo;
 import com.libreshockwave.tools.model.FileNode;
 
@@ -100,13 +101,13 @@ public class FileProcessor {
         ScriptChunk script = MemberResolver.findScriptForMember(dirFile, member);
         if (script != null) {
             ScriptNamesChunk scriptNames = dirFile.getScriptNames();
-            String scriptTypeName = MemberResolver.getScriptTypeName(script.getScriptType());
+            String scriptTypeName = ScriptFormatUtils.getScriptTypeName(script.getScriptType());
 
             // Build handler list summary
             List<String> handlerNames = new ArrayList<>();
             if (scriptNames != null) {
                 for (ScriptChunk.Handler h : script.handlers()) {
-                    String hName = scriptNames.getName(h.nameId());
+                    String hName = ScriptFormatUtils.resolveName(scriptNames, h.nameId());
                     if (!hName.startsWith("<")) {
                         handlerNames.add(hName);
                     }
@@ -147,14 +148,8 @@ public class FileProcessor {
     private String buildTextDetails(DirectorFile dirFile, CastMemberChunk member) {
         TextChunk textChunk = MemberResolver.findTextForMember(dirFile, member);
         if (textChunk != null) {
-            String text = textChunk.text()
-                    .replace("\r\n", " ")
-                    .replace("\r", " ")
-                    .replace("\n", " ")
-                    .trim();
-            if (text.length() > 50) {
-                text = text.substring(0, 47) + "...";
-            }
+            String text = ScriptFormatUtils.normalizeLineEndings(textChunk.text());
+            text = ScriptFormatUtils.truncate(text, 50);
             return "\"" + text + "\"";
         }
         return "";

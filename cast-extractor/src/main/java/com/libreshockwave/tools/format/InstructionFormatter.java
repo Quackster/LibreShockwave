@@ -2,6 +2,7 @@ package com.libreshockwave.tools.format;
 
 import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.chunks.ScriptNamesChunk;
+import com.libreshockwave.format.ScriptFormatUtils;
 import com.libreshockwave.lingo.Opcode;
 
 /**
@@ -39,20 +40,9 @@ public final class InstructionFormatter {
         if (opcode == Opcode.PUSH_CONS) {
             if (arg >= 0 && arg < script.literals().size()) {
                 var lit = script.literals().get(arg);
-                Object val = lit.value();
-                String typeStr = switch (lit.type()) {
-                    case 1 -> "str";
-                    case 4 -> "int";
-                    case 9 -> "float";
-                    default -> "lit";
-                };
-                if (val instanceof String s) {
-                    // Truncate long strings
-                    String display = s.length() > 40 ? s.substring(0, 37) + "..." : s;
-                    return arg + " <" + typeStr + "> \"" + display + "\"";
-                } else {
-                    return arg + " <" + typeStr + "> " + val;
-                }
+                String typeStr = ScriptFormatUtils.getLiteralTypeNameShort(lit.type());
+                String valueStr = ScriptFormatUtils.formatLiteralValue(lit.value(), 40);
+                return arg + " <" + typeStr + "> " + valueStr;
             }
         }
 
