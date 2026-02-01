@@ -42,12 +42,11 @@ public class CastLib {
     private final Map<Integer, ScriptChunk> scripts = new HashMap<>();
 
     // Reference to the source file
-    private final DirectorFile sourceFile;
+    private DirectorFile sourceFile;
     private final CastChunk castChunk;
 
-    public CastLib(int number, DirectorFile file, CastChunk castChunk, CastListChunk.CastListEntry listEntry) {
+    public CastLib(int number, CastChunk castChunk, CastListChunk.CastListEntry listEntry) {
         this.number = number;
-        this.sourceFile = file;
         this.castChunk = castChunk;
 
         // Set name and fileName from cast list entry
@@ -287,6 +286,7 @@ public class CastLib {
             case "name" -> Datum.of(name);
             case "filename" -> Datum.of(fileName);
             case "preloadmode" -> Datum.of(preloadMode);
+            case "selection" -> selection;
             default -> {
                 if (prop.contains("member")) {
                     yield Datum.of(getMemberCount());
@@ -314,6 +314,15 @@ public class CastLib {
             }
             case "preloadmode" -> {
                 this.preloadMode = value.toInt();
+                return true;
+            }
+            case "selection" -> {
+                // Selection is a list of ranges like [[1, 10], [30, 40]]
+                if (value instanceof Datum.List) {
+                    this.selection = value;
+                } else {
+                    this.selection = Datum.list();
+                }
                 return true;
             }
             default -> {

@@ -52,17 +52,17 @@ public class CastLibManager implements CastLibProvider {
                 // Get the corresponding CastChunk if available
                 CastChunk castChunk = (i < casts.size()) ? casts.get(i) : null;
 
-                CastLib castLib = new CastLib(castLibNumber, file, castChunk, listEntry);
+                CastLib castLib = new CastLib(castLibNumber, castChunk, listEntry);
                 castLibs.put(castLibNumber, castLib);
             }
-        } else if (!casts.isEmpty()) {
+        }/* else if (!casts.isEmpty()) {
             // Fallback: use CastChunks directly if no cast list
             for (int i = 0; i < casts.size(); i++) {
                 int castLibNumber = i + 1;
                 CastLib castLib = new CastLib(castLibNumber, file, casts.get(i), null);
                 castLibs.put(castLibNumber, castLib);
             }
-        }
+        }*/
     }
 
     /**
