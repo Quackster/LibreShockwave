@@ -146,15 +146,14 @@ public class Player {
         for (ScriptChunk script : file.getScripts()) {
             String typeName = script.scriptType() != null ? script.scriptType().name() : "null";
             switch (script.scriptType()) {
-                case SCORE, MOVIE_SCRIPT -> movieScripts++;
+                case MOVIE_SCRIPT -> movieScripts++;
                 case BEHAVIOR -> behaviors++;
                 case PARENT -> parents++;
                 default -> unknown++;
             }
 
             // List handlers in movie scripts
-            if (script.scriptType() == ScriptChunk.ScriptType.MOVIE_SCRIPT ||
-                script.scriptType() == ScriptChunk.ScriptType.SCORE) {
+            if (script.scriptType() == ScriptChunk.ScriptType.MOVIE_SCRIPT) {
                 System.out.println("[Player] Movie script #" + script.id() + " handlers:");
                 for (ScriptChunk.Handler handler : script.handlers()) {
                     String handlerName = names != null ? names.getName(handler.nameId()) : "name#" + handler.nameId();

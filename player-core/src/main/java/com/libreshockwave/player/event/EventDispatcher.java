@@ -163,13 +163,20 @@ public class EventDispatcher {
         // Log the event dispatch for movie lifecycle events
         debugMessage("-- " + handlerName + " (movie)");
 
+        boolean hasHandler = file.getScriptNames().names().stream().anyMatch(x -> x.equalsIgnoreCase(handlerName));
+
+        if (hasHandler) {
+            var debugOnme = 1;
+        }
+
         int totalScripts = file.getScripts().size();
         int movieScriptCount = 0;
         int handlersFound = 0;
 
         for (ScriptChunk script : file.getScripts()) {
-            boolean isMovieScript = script.scriptType() == ScriptChunk.ScriptType.MOVIE_SCRIPT ||
-                    script.scriptType() == ScriptChunk.ScriptType.SCORE;
+            boolean isMovieScript = script.scriptType() == ScriptChunk.ScriptType.MOVIE_SCRIPT;
+
+
             if (isMovieScript) {
                 movieScriptCount++;
             }
