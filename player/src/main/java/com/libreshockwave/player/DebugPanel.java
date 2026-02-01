@@ -24,6 +24,8 @@ public class DebugPanel extends JPanel implements TraceListener {
     private final JTextArea stackArea;
     private final JTextArea globalsArea;
     private final JTextArea localsArea;
+    private final JTextPane bytecodePane;
+    private final StyledDocument bytecodeDoc;
 
     private final Style normalStyle;
     private final Style handlerStyle;
@@ -31,6 +33,9 @@ public class DebugPanel extends JPanel implements TraceListener {
     private final Style variableStyle;
     private final Style errorStyle;
     private final Style eventStyle;
+    private final Style bcOpcodeStyle;
+    private final Style bcStackStyle;
+    private final Style bcHandlerStyle;
 
     private static final int MAX_LOG_LINES = 1000;
     private int lineCount = 0;
@@ -73,6 +78,24 @@ public class DebugPanel extends JPanel implements TraceListener {
         StyleConstants.setForeground(eventStyle, new Color(128, 128, 0));  // Olive/dark yellow
         StyleConstants.setItalic(eventStyle, true);
 
+        // Bytecode execution pane
+        bytecodePane = new JTextPane();
+        bytecodePane.setEditable(false);
+        bytecodePane.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
+        bytecodeDoc = bytecodePane.getStyledDocument();
+
+        bcOpcodeStyle = bytecodeDoc.addStyle("opcode", null);
+        StyleConstants.setForeground(bcOpcodeStyle, new Color(0, 0, 128));
+        StyleConstants.setFontFamily(bcOpcodeStyle, Font.MONOSPACED);
+
+        bcStackStyle = bytecodeDoc.addStyle("stack", null);
+        StyleConstants.setForeground(bcStackStyle, new Color(128, 0, 128));
+        StyleConstants.setFontSize(bcStackStyle, 10);
+
+        bcHandlerStyle = bytecodeDoc.addStyle("bchandler", null);
+        StyleConstants.setForeground(bcHandlerStyle, new Color(0, 100, 0));
+        StyleConstants.setBold(bcHandlerStyle, true);
+
         JScrollPane logScroll = new JScrollPane(logPane);
         logScroll.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
         tabbedPane.addTab("Execution Log", logScroll);
@@ -92,6 +115,11 @@ public class DebugPanel extends JPanel implements TraceListener {
         // Locals tab
         localsArea = createInfoArea();
         tabbedPane.addTab("Locals", new JScrollPane(localsArea));
+
+        // Bytecode execution tab with stack history
+        JScrollPane bytecodeScroll = new JScrollPane(bytecodePane);
+        bytecodeScroll.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
+        tabbedPane.addTab("Bytecode", bytecodeScroll);
 
         add(tabbedPane, BorderLayout.CENTER);
 
@@ -123,6 +151,7 @@ public class DebugPanel extends JPanel implements TraceListener {
     public void clearLog() {
         try {
             logDoc.remove(0, logDoc.getLength());
+            bytecodeDoc.remove(0, bytecodeDoc.getLength());
             lineCount = 0;
         } catch (BadLocationException e) {
             // Ignore
@@ -139,6 +168,9 @@ public class DebugPanel extends JPanel implements TraceListener {
             // dirplayer-rs format: == Script: (member X of castLib Y) Handler: name
             String entry = "== Script: (#" + info.scriptId() + " " + info.scriptType() + ") Handler: " + info.handlerName();
             appendLog(entry + "\n", handlerStyle);
+
+            // Also log to bytecode pane
+            appendBytecode("\n== " + info.handlerName() + " (script #" + info.scriptId() + ")\n", bcHandlerStyle);
 
             // Update handler info panel with detailed info
             StringBuilder sb = new StringBuilder();
@@ -207,6 +239,32 @@ public class DebugPanel extends JPanel implements TraceListener {
 
             // Update stack display
             updateStack(info.stackSnapshot());
+
+            // Log to bytecode pane with stack history
+            StringBuilder bcSb = new StringBuilder();
+            bcSb.append(String.format("[%3d] %-12s", info.offset(), info.opcode()));
+            if (info.argument() != 0) {
+                bcSb.append(String.format(" %-4d", info.argument()));
+            } else {
+                bcSb.append("     ");
+            }
+            if (!info.annotation().isEmpty()) {
+                bcSb.append(" ").append(info.annotation());
+            }
+            bcSb.append("\n");
+            appendBytecode(bcSb.toString(), bcOpcodeStyle);
+
+            // Show stack state after instruction
+            if (!info.stackSnapshot().isEmpty()) {
+                StringBuilder stackSb = new StringBuilder();
+                stackSb.append("       stack: [");
+                for (int i = 0; i < info.stackSnapshot().size(); i++) {
+                    if (i > 0) stackSb.append(", ");
+                    stackSb.append(formatDatum(info.stackSnapshot().get(i)));
+                }
+                stackSb.append("]\n");
+                appendBytecode(stackSb.toString(), bcStackStyle);
+            }
         });
     }
 
@@ -266,6 +324,22 @@ public class DebugPanel extends JPanel implements TraceListener {
 
             // Auto-scroll to bottom
             logPane.setCaretPosition(logDoc.getLength());
+        } catch (BadLocationException e) {
+            // Ignore
+        }
+    }
+
+    private void appendBytecode(String text, Style style) {
+        try {
+            // Trim old content if too large
+            if (bytecodeDoc.getLength() > 50000) {
+                bytecodeDoc.remove(0, 10000);
+            }
+
+            bytecodeDoc.insertString(bytecodeDoc.getLength(), text, style);
+
+            // Auto-scroll to bottom
+            bytecodePane.setCaretPosition(bytecodeDoc.getLength());
         } catch (BadLocationException e) {
             // Ignore
         }
