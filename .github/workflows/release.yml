@@ -28,7 +28,10 @@ jobs:
       - name: Get version from tag
         id: get_version
         shell: bash
-        run: echo "VERSION=${GITHUB_REF#refs/tags/cast-extractor-}" >> $GITHUB_OUTPUT
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/cast-extractor-}"
+          VERSION="${VERSION#v}"  # Strip leading 'v' if present
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Create Windows exe with jpackage
         shell: pwsh
