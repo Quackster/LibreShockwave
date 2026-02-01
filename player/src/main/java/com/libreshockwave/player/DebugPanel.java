@@ -178,7 +178,9 @@ public class DebugPanel extends JPanel implements TraceListener {
             if (bytecodeHandlerCount > MAX_BYTECODE_HANDLERS) {
                 trimBytecodePane();
             }
-            String bcEntry = "\n== " + info.handlerName() + " (script #" + info.scriptId() + " " + info.scriptType() + ")\n";
+            // Only add leading newline if not the first handler
+            String prefix = bytecodeHandlerCount > 1 ? "\n" : "";
+            String bcEntry = prefix + "== " + info.handlerName() + " (script #" + info.scriptId() + " " + info.scriptType() + ")\n";
             appendBytecode(bcEntry, bcHandlerStyle);
 
             // Update handler info panel with detailed info
