@@ -128,6 +128,43 @@ public class DirectorFile {
         return null;
     }
 
+    /**
+     * Get a cast member by its member number (from score behavior references).
+     * Unlike getCastMemberByIndex, this treats the input as the actual member number
+     * without applying any offset transformations.
+     * @param castLib Cast library (1+)
+     * @param memberNumber The member number as stored in the score
+     * @return The cast member, or null if not found
+     */
+    public CastMemberChunk getCastMemberByNumber(int castLib, int memberNumber) {
+        // Try direct match by ID first
+        for (CastMemberChunk member : castMembers) {
+            if (member.id() == memberNumber) {
+                return member;
+            }
+        }
+
+        // Try with cast library filtering if we have multiple casts
+        if (castList != null && !castList.entries().isEmpty() && castLib > 0) {
+            int libIndex = castLib - 1;
+            if (libIndex < castList.entries().size()) {
+                var entry = castList.entries().get(libIndex);
+                int minMember = entry.minMember();
+                int memberCount = entry.memberCount();
+                // Check if memberNumber falls within this cast's range
+                if (memberNumber >= minMember && memberNumber < minMember + memberCount) {
+                    for (CastMemberChunk member : castMembers) {
+                        if (member.id() == memberNumber) {
+                            return member;
+                        }
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
     public List<ScriptChunk> getScripts() { return Collections.unmodifiableList(scripts); }
     public List<PaletteChunk> getPalettes() { return Collections.unmodifiableList(palettes); }
     public Collection<ChunkInfo> getAllChunkInfo() { return Collections.unmodifiableCollection(chunkInfo.values()); }
