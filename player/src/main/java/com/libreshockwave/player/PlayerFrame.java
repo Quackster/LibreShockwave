@@ -158,6 +158,11 @@ public class PlayerFrame extends JFrame {
         stopButton.setEnabled(false);
         transportPanel.add(stopButton);
 
+        JButton closeButton = new JButton("\u23CF");  // Eject symbol
+        closeButton.setToolTipText("Close Movie (Ctrl+W)");
+        closeButton.addActionListener(e -> closeMovie());
+        transportPanel.add(closeButton);
+
         transportPanel.add(Box.createHorizontalStrut(10));
 
         stepButton = new JButton("\u23ED");  // Next frame
@@ -218,6 +223,13 @@ public class PlayerFrame extends JFrame {
         reopenItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK));
         reopenItem.addActionListener(e -> reopenLast());
         fileMenu.add(reopenItem);
+
+        fileMenu.addSeparator();
+
+        JMenuItem closeItem = new JMenuItem("Close Movie");
+        closeItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_W, InputEvent.CTRL_DOWN_MASK));
+        closeItem.addActionListener(e -> closeMovie());
+        fileMenu.add(closeItem);
 
         fileMenu.addSeparator();
 
@@ -471,6 +483,7 @@ public class PlayerFrame extends JFrame {
         player.setDebugEnabled(true);
 
         stagePanel.setPlayer(player);
+        updateButtonStates();
     }
 
     // Playback controls
@@ -499,6 +512,37 @@ public class PlayerFrame extends JFrame {
         updateButtonStates();
         updateFrameLabel();
         stagePanel.repaint();
+    }
+
+    /**
+     * Close/unload the current movie and reset the player.
+     */
+    private void closeMovie() {
+        // Stop playback first
+        stopPlaybackTimer();
+
+        // Shutdown player if exists
+        if (player != null) {
+            player.shutdown();
+            player = null;
+        }
+
+        // Reset UI
+        stagePanel.setPlayer(null);
+        stagePanel.repaint();
+
+        frameSlider.setValue(1);
+        frameSlider.setMaximum(100);
+        frameSlider.setEnabled(false);
+
+        updateButtonStates();
+        updateFrameLabel();
+
+        setTitle("LibreShockwave Player");
+        statusLabel.setText("No file loaded. Open a .dir, .dxr, or .dcr file.");
+
+        // Clear debug panel
+        debugPanel.clearLog();
     }
 
     private void togglePlayPause() {
