@@ -23,7 +23,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Build fat JAR
-        run: ./gradlew :cast-extractor:fatJar
+        run: ./gradlew :sdk:build :cast-extractor:fatJar
 
       - name: Get version from tag
         id: get_version
