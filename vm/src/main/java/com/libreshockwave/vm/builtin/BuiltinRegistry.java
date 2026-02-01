@@ -23,6 +23,7 @@ public class BuiltinRegistry {
         OutputBuiltins.register(builtins);
         NetBuiltins.register(builtins);
         XtraBuiltins.register(builtins);
+        CastLibBuiltins.register(builtins);
     }
 
     /**
