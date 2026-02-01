@@ -30,6 +30,20 @@ public interface MoviePropertyProvider {
      */
     boolean setMovieProp(String propName, Datum value);
 
+    /**
+     * Get the current item delimiter character.
+     * Used for string chunk operations (item...of).
+     * @return The item delimiter, defaults to ','
+     */
+    default char getItemDelimiter() {
+        Datum d = getMovieProp("itemDelimiter");
+        if (d != null && !d.isVoid()) {
+            String s = d.toStr();
+            return s.isEmpty() ? ',' : s.charAt(0);
+        }
+        return ',';
+    }
+
     // Thread-local provider for VM access
     ThreadLocal<MoviePropertyProvider> CURRENT = new ThreadLocal<>();
 

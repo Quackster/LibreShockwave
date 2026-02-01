@@ -15,6 +15,7 @@ import com.libreshockwave.vm.LingoVM;
 import com.libreshockwave.vm.builtin.CastLibProvider;
 import com.libreshockwave.vm.builtin.MoviePropertyProvider;
 import com.libreshockwave.vm.builtin.NetBuiltins;
+import com.libreshockwave.vm.builtin.SpritePropertyProvider;
 import com.libreshockwave.vm.builtin.XtraBuiltins;
 import com.libreshockwave.vm.xtra.XtraManager;
 
@@ -35,6 +36,7 @@ public class Player {
     private final NetManager netManager;
     private final XtraManager xtraManager;
     private final MovieProperties movieProperties;
+    private final SpriteProperties spriteProperties;
     private final CastLibManager castLibManager;
 
     private PlayerState state = PlayerState.STOPPED;
@@ -54,6 +56,7 @@ public class Player {
         this.netManager = new NetManager();
         this.xtraManager = new XtraManager();
         this.movieProperties = new MovieProperties(this, file);
+        this.spriteProperties = new SpriteProperties(stageRenderer.getSpriteRegistry());
         this.castLibManager = new CastLibManager(file);
         this.tempo = file != null ? file.getTempo() : 15;
         if (this.tempo <= 0) this.tempo = 15;
@@ -336,6 +339,7 @@ public class Player {
         NetBuiltins.setProvider(netManager);
         XtraBuiltins.setManager(xtraManager);
         MoviePropertyProvider.setProvider(movieProperties);
+        SpritePropertyProvider.setProvider(spriteProperties);
         CastLibProvider.setProvider(castLibManager);
     }
 
@@ -346,6 +350,7 @@ public class Player {
         NetBuiltins.clearProvider();
         XtraBuiltins.clearManager();
         MoviePropertyProvider.clearProvider();
+        SpritePropertyProvider.clearProvider();
         CastLibProvider.clearProvider();
     }
 

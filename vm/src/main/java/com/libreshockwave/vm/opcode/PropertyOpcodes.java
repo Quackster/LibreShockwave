@@ -1,10 +1,13 @@
 package com.libreshockwave.vm.opcode;
 
 import com.libreshockwave.lingo.Opcode;
+import com.libreshockwave.lingo.StringChunkType;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.builtin.CastLibProvider;
 import com.libreshockwave.vm.builtin.MoviePropertyProvider;
+import com.libreshockwave.vm.builtin.SpritePropertyProvider;
 import com.libreshockwave.vm.builtin.XtraBuiltins;
+import com.libreshockwave.vm.util.StringChunkUtils;
 
 import java.util.Map;
 
@@ -23,6 +26,8 @@ public final class PropertyOpcodes {
         handlers.put(Opcode.GET_OBJ_PROP, PropertyOpcodes::getObjProp);
         handlers.put(Opcode.SET_OBJ_PROP, PropertyOpcodes::setObjProp);
         handlers.put(Opcode.THE_BUILTIN, PropertyOpcodes::theBuiltin);
+        handlers.put(Opcode.GET, PropertyOpcodes::get);
+        handlers.put(Opcode.SET, PropertyOpcodes::set);
     }
 
     private static boolean getProp(ExecutionContext ctx) {
@@ -199,6 +204,126 @@ public final class PropertyOpcodes {
 
         // Fall back to built-in constants
         ctx.push(getBuiltinConstant(propName));
+        return true;
+    }
+
+    /**
+     * GET opcode (0x5C) - Get a property by ID.
+     * Stack: [..., propertyId] -> [..., value]
+     * For some property types, also pops a target (sprite number, etc.)
+     */
+    private static boolean get(ExecutionContext ctx) {
+        int propertyId = ctx.pop().toInt();
+        int propertyType = ctx.getArgument();
+
+        MoviePropertyProvider movieProvider = MoviePropertyProvider.getProvider();
+        SpritePropertyProvider spriteProvider = SpritePropertyProvider.getProvider();
+
+        Datum result = switch (propertyType) {
+            case 0x00 -> {
+                // Movie property or last chunk
+                if (propertyId <= 0x0b) {
+                    String propName = PropertyIdMappings.getMoviePropName(propertyId);
+                    if (propName != null && movieProvider != null) {
+                        yield movieProvider.getMovieProp(propName);
+                    }
+                    yield Datum.VOID;
+                } else {
+                    // Last chunk: propertyId 0x0c=item, 0x0d=word, 0x0e=char, 0x0f=line
+                    String str = ctx.pop().toStr();
+                    int chunkTypeCode = propertyId - 0x0b;
+                    try {
+                        StringChunkType chunkType = StringChunkType.fromCode(chunkTypeCode);
+                        char delimiter = movieProvider != null ? movieProvider.getItemDelimiter() : ',';
+                        String lastChunk = StringChunkUtils.getLastChunk(str, chunkType, delimiter);
+                        yield Datum.of(lastChunk);
+                    } catch (IllegalArgumentException e) {
+                        yield Datum.VOID;
+                    }
+                }
+            }
+            case 0x01 -> {
+                // Number of chunks: propertyId 0x01=item, 0x02=word, 0x03=char, 0x04=line
+                String str = ctx.pop().toStr();
+                try {
+                    StringChunkType chunkType = StringChunkType.fromCode(propertyId);
+                    char delimiter = movieProvider != null ? movieProvider.getItemDelimiter() : ',';
+                    int count = StringChunkUtils.countChunks(str, chunkType, delimiter);
+                    yield Datum.of(count);
+                } catch (IllegalArgumentException e) {
+                    yield Datum.VOID;
+                }
+            }
+            case 0x06 -> {
+                // Sprite property
+                String propName = PropertyIdMappings.getSpritePropName(propertyId);
+                int spriteNum = ctx.pop().toInt();
+                if (propName != null && spriteProvider != null) {
+                    yield spriteProvider.getSpriteProp(spriteNum, propName);
+                }
+                yield Datum.VOID;
+            }
+            case 0x07 -> {
+                // Animation property
+                String propName = PropertyIdMappings.getAnimPropName(propertyId);
+                if (propName != null && movieProvider != null) {
+                    yield movieProvider.getMovieProp(propName);
+                }
+                yield Datum.VOID;
+            }
+            default -> Datum.VOID;
+        };
+
+        ctx.push(result);
+        return true;
+    }
+
+    /**
+     * SET opcode (0x5D) - Set a property by ID.
+     * Stack: [..., value, propertyId] -> [...]
+     * For some property types, also pops a target (sprite number, etc.)
+     */
+    private static boolean set(ExecutionContext ctx) {
+        int propertyId = ctx.pop().toInt();
+        Datum value = ctx.pop();
+        int propertyType = ctx.getArgument();
+
+        MoviePropertyProvider movieProvider = MoviePropertyProvider.getProvider();
+        SpritePropertyProvider spriteProvider = SpritePropertyProvider.getProvider();
+
+        switch (propertyType) {
+            case 0x00 -> {
+                // Movie property
+                if (propertyId <= 0x0b) {
+                    String propName = PropertyIdMappings.getMoviePropName(propertyId);
+                    if (propName != null && movieProvider != null) {
+                        movieProvider.setMovieProp(propName, value);
+                    }
+                }
+            }
+            case 0x04 -> {
+                // Sound channel property
+                String propName = PropertyIdMappings.getSoundPropName(propertyId);
+                int channelNum = ctx.pop().toInt();
+                // Sound channel properties not yet implemented
+            }
+            case 0x06 -> {
+                // Sprite property
+                String propName = PropertyIdMappings.getSpritePropName(propertyId);
+                int spriteNum = ctx.pop().toInt();
+                if (propName != null && spriteProvider != null) {
+                    spriteProvider.setSpriteProp(spriteNum, propName, value);
+                }
+            }
+            case 0x07 -> {
+                // Animation property
+                String propName = PropertyIdMappings.getAnimPropName(propertyId);
+                if (propName != null && movieProvider != null) {
+                    movieProvider.setMovieProp(propName, value);
+                }
+            }
+        }
+
         return true;
     }
 }
