@@ -1,7 +1,6 @@
 package com.libreshockwave.vm.trace;
 
 import com.libreshockwave.chunks.ScriptChunk;
-import com.libreshockwave.chunks.ScriptNamesChunk;
 import com.libreshockwave.lingo.Opcode;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.Scope;
@@ -11,17 +10,14 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
 
 /**
  * Helper for building trace information and annotations.
+ * Name resolution is delegated to ScriptChunk which uses the correct cast lib's names.
  */
 public class TracingHelper {
 
-    private final Function<Integer, String> nameResolver;
-
-    public TracingHelper(Function<Integer, String> nameResolver) {
-        this.nameResolver = nameResolver;
+    public TracingHelper() {
     }
 
     /**
@@ -54,9 +50,8 @@ public class TracingHelper {
             List<Datum> args,
             Datum receiver,
             Map<String, Datum> globals) {
-        String handlerName = nameResolver.apply(handler.nameId());
         return new TraceListener.HandlerInfo(
-            handlerName,
+            script.getHandlerName(handler),
             script.id(),
             script.getDisplayName(),
             args,
@@ -70,8 +65,10 @@ public class TracingHelper {
 
     /**
      * Build annotation string for an instruction.
+     * Uses the scope's script for name resolution.
      */
     public String buildAnnotation(Scope scope, ScriptChunk.Handler.Instruction instr) {
+        ScriptChunk script = scope.getScript();
         Opcode op = instr.opcode();
         int arg = instr.argument();
 
@@ -79,18 +76,18 @@ public class TracingHelper {
             case PUSH_INT8, PUSH_INT16, PUSH_INT32 -> "<" + arg + ">";
             case PUSH_FLOAT32 -> "<" + Float.intBitsToFloat(arg) + ">";
             case PUSH_CONS -> {
-                List<ScriptChunk.LiteralEntry> literals = scope.getScript().literals();
+                List<ScriptChunk.LiteralEntry> literals = script.literals();
                 if (arg >= 0 && arg < literals.size()) {
                     yield "<" + literals.get(arg).value() + ">";
                 }
                 yield "<literal#" + arg + ">";
             }
-            case PUSH_SYMB -> "<#" + nameResolver.apply(arg) + ">";
+            case PUSH_SYMB -> "<#" + script.resolveName(arg) + ">";
             case GET_LOCAL, SET_LOCAL -> "<local" + arg + ">";
             case GET_PARAM -> "<param" + arg + ">";
-            case GET_GLOBAL, SET_GLOBAL, GET_GLOBAL2, SET_GLOBAL2 -> "<" + nameResolver.apply(arg) + ">";
-            case GET_PROP, SET_PROP -> "<me." + nameResolver.apply(arg) + ">";
-            case LOCAL_CALL, EXT_CALL, OBJ_CALL -> "<" + nameResolver.apply(arg) + "()>";
+            case GET_GLOBAL, SET_GLOBAL, GET_GLOBAL2, SET_GLOBAL2 -> "<" + script.resolveName(arg) + ">";
+            case GET_PROP, SET_PROP -> "<me." + script.resolveName(arg) + ">";
+            case LOCAL_CALL, EXT_CALL, OBJ_CALL -> "<" + script.resolveName(arg) + "()>";
             case JMP, JMP_IF_Z -> "<offset " + arg + " -> " + (instr.offset() + arg) + ">";
             case END_REPEAT -> "<back " + arg + " -> " + (instr.offset() - arg) + ">";
             default -> "";

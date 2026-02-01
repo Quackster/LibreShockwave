@@ -140,7 +140,7 @@ public record ScriptChunk(
             }
         }
 
-        return this.getScriptType() + " #" + this.id;
+        return "";
     }
 
     /**
@@ -157,6 +157,30 @@ public record ScriptChunk(
         return type + " #" + id;
     }
 
+    /**
+     * Get the name of a handler using the file's script names.
+     * @param handler The handler to get the name for
+     * @return The handler name, or a fallback like "handler#N"
+     */
+    public String getHandlerName(Handler handler) {
+        if (file != null && file.getScriptNames() != null) {
+            return file.getScriptNames().getName(handler.nameId());
+        }
+        return "handler#" + handler.nameId();
+    }
+
+    /**
+     * Resolve a name ID using the file's script names.
+     * @param nameId The name ID to resolve
+     * @return The resolved name, or a fallback like "#N"
+     */
+    public String resolveName(int nameId) {
+        if (file != null && file.getScriptNames() != null) {
+            return file.getScriptNames().getName(nameId);
+        }
+        return "#" + nameId;
+    }
+
     public Handler findHandler(String name, ScriptNamesChunk names) {
         if (names == null) return null;
 
@@ -168,6 +192,14 @@ public record ScriptChunk(
             }
         }
         return null;
+    }
+
+    /**
+     * Find a handler by name using the file's script names.
+     */
+    public Handler findHandler(String name) {
+        if (file == null) return null;
+        return findHandler(name, file.getScriptNames());
     }
 
     /**
