@@ -201,6 +201,31 @@ public sealed interface Datum {
     default boolean isSymbol() { return this instanceof Symbol; }
     default boolean isList() { return this instanceof List; }
     default boolean isPropList() { return this instanceof PropList; }
+
+    default String typeName() {
+        return switch (this) {
+            case Void v -> "void";
+            case Int i -> "int";
+            case Float f -> "float";
+            case Str s -> "string";
+            case Symbol sym -> "symbol";
+            case List l -> "list";
+            case PropList pl -> "propList";
+            case SpriteRef sr -> "sprite";
+            case CastMemberRef cm -> "member";
+            case ScriptInstance si -> "script";
+            case Point p -> "point";
+            case Rect r -> "rect";
+            case Color c -> "color";
+            case XtraRef xr -> "xtra";
+            case XtraInstance xi -> "xtraInstance";
+            case CastLibRef cl -> "castLib";
+            case StageRef st -> "stage";
+            case WindowRef w -> "window";
+            default -> getClass().getSimpleName().toLowerCase();
+        };
+    }
+
     default boolean isTruthy() {
         return switch (this) {
             case Void v -> false;
