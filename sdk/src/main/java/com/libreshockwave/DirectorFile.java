@@ -35,6 +35,7 @@ public class DirectorFile {
     private KeyTableChunk keyTable;
     private CastListChunk castList;
     private ScriptContextChunk scriptContext;
+    private final List<ScriptContextChunk> allScriptContexts = new ArrayList<>();
     private ScriptNamesChunk scriptNames;  // Default/primary names chunk
     private final Map<Integer, ScriptNamesChunk> scriptNamesById = new HashMap<>();
     private ScoreChunk scoreChunk;
@@ -191,14 +192,19 @@ public class DirectorFile {
      * @return The script chunk, or null if not found
      */
     public ScriptChunk getScriptByContextId(int scriptId) {
-        // The scriptId is an index into the Lctx entries array
-        if (scriptContext != null && scriptId >= 0 && scriptId < scriptContext.entries().size()) {
-            var entry = scriptContext.entries().get(scriptId);
-            int chunkId = entry.id();
-            if (chunkId > 0) {
-                for (ScriptChunk script : scripts) {
-                    if (script.id() == chunkId) {
-                        return script;
+        // scriptId from cast members is 1-based, Lctx entries are 0-based
+        int index = scriptId - 1;
+
+        // Search through all script contexts (there can be one per cast library)
+        for (ScriptContextChunk ctx : allScriptContexts) {
+            if (index >= 0 && index < ctx.entries().size()) {
+                var entry = ctx.entries().get(index);
+                int chunkId = entry.id();
+                if (chunkId > 0) {
+                    for (ScriptChunk script : scripts) {
+                        if (script.id() == chunkId) {
+                            return script;
+                        }
                     }
                 }
             }
@@ -728,6 +734,8 @@ public class DirectorFile {
         // Read imap chunk to find mmap - FourCCs are always 4-byte ASCII (read as big-endian int)
         int imapFourCC = reader.readFourCC();
         int imapLen = reader.readI32();
+        // imap content: numMaps (4), mmapOffset (4), ...
+        int numMaps = reader.readI32();
         int mmapOffset = reader.readI32();
 
         // Read mmap (memory map)
@@ -744,9 +752,14 @@ public class DirectorFile {
         reader.skip(4);
         int freePtr = reader.readI32();
 
-        // Read chunk entries - FourCCs are always 4-byte ASCII (not byte-swapped)
+        // Read chunk entries - FourCCs are stored in file's byte order
+        // Each entry is 20 bytes: fourcc(4) + length(4) + offset(4) + flags(2) + pad(2) + link(4)
         for (int i = 0; i < chunkCountUsed; i++) {
-            int fourcc = reader.readFourCC();  // FourCC is always big-endian
+            if (reader.bytesLeft() < 20) {
+                break;  // Not enough data for another entry
+            }
+            // Read fourcc using file's byte order - readI32 handles endianness
+            int fourcc = reader.readI32();
             int length = reader.readI32();
             int offset = reader.readI32();
             int flags = reader.readI16();
@@ -921,7 +934,9 @@ public class DirectorFile {
             case KeyTableChunk k -> this.keyTable = k;
             case CastListChunk cl -> this.castList = cl;
             case ScriptContextChunk sc -> {
-                // Keep the context with entries (some files have multiple Lctx, one empty)
+                // Store all script contexts (one per cast library)
+                allScriptContexts.add(sc);
+                // Keep the primary context (the one with entries)
                 if (this.scriptContext == null || sc.entries().size() > 0) {
                     this.scriptContext = sc;
                 }
