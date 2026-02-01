@@ -19,7 +19,7 @@ public final class ListOpcodes {
         handlers.put(Opcode.PUSH_LIST, ListOpcodes::pushList);
         handlers.put(Opcode.PUSH_PROP_LIST, ListOpcodes::pushPropList);
         handlers.put(Opcode.PUSH_ARG_LIST, ListOpcodes::pushArgList);
-        handlers.put(Opcode.PUSH_ARG_LIST_NO_RET, ListOpcodes::pushArgList);
+        handlers.put(Opcode.PUSH_ARG_LIST_NO_RET, ListOpcodes::pushArgListNoRet);
     }
 
     private static boolean pushList(ExecutionContext ctx) {
@@ -46,7 +46,12 @@ public final class ListOpcodes {
     }
 
     private static boolean pushArgList(ExecutionContext ctx) {
-        ctx.push(new Datum.Int(ctx.getArgument()));
+        ctx.push(new Datum.ArgList(ctx.getArgument()));
+        return true;
+    }
+
+    private static boolean pushArgListNoRet(ExecutionContext ctx) {
+        ctx.push(new Datum.ArgListNoRet(ctx.getArgument()));
         return true;
     }
 }

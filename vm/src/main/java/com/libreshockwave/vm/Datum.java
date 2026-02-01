@@ -145,6 +145,18 @@ public sealed interface Datum {
         public String toString() { return "window(\"" + name + "\")"; }
     }
 
+    /** Argument list for function calls (expects return value) */
+    record ArgList(int count) implements Datum {
+        @Override
+        public String toString() { return "<arglist:" + count + ">"; }
+    }
+
+    /** Argument list for function calls (no return value expected) */
+    record ArgListNoRet(int count) implements Datum {
+        @Override
+        public String toString() { return "<arglist-noret:" + count + ">"; }
+    }
+
     // Singleton instances for common values
     Datum VOID = new Void();
     Datum ZERO = new Int(0);

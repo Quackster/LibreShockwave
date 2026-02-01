@@ -25,46 +25,65 @@ public final class CallOpcodes {
     private static boolean localCall(ExecutionContext ctx) {
         ScriptChunk.Handler targetHandler = ctx.findLocalHandler(ctx.getArgument());
         if (targetHandler != null) {
-            Datum argCountDatum = ctx.pop();
-            int argCount = argCountDatum.toInt();
+            Datum argListDatum = ctx.pop();
+            boolean noRet = argListDatum instanceof Datum.ArgListNoRet;
+            int argCount = getArgCount(argListDatum);
             List<Datum> args = ctx.popArgs(argCount);
             Datum result = ctx.executeHandler(ctx.getScript(), targetHandler, args, ctx.getReceiver());
-            ctx.push(result);
-        } else {
-            ctx.push(Datum.VOID);
+            if (!noRet) {
+                ctx.push(result);
+            }
         }
         return true;
     }
 
     private static boolean extCall(ExecutionContext ctx) {
         String handlerName = ctx.resolveName(ctx.getArgument());
-        Datum argCountDatum = ctx.pop();
-        int argCount = argCountDatum.toInt();
+        Datum argListDatum = ctx.pop();
+        boolean noRet = argListDatum instanceof Datum.ArgListNoRet;
+        int argCount = getArgCount(argListDatum);
         List<Datum> args = ctx.popArgs(argCount);
 
+        Datum result;
         if (ctx.isBuiltin(handlerName)) {
-            Datum result = ctx.invokeBuiltin(handlerName, args);
-            ctx.push(result);
+            result = ctx.invokeBuiltin(handlerName, args);
         } else {
             HandlerRef ref = ctx.findHandler(handlerName);
             if (ref != null) {
-                Datum result = ctx.executeHandler(ref.script(), ref.handler(), args, null);
-                ctx.push(result);
+                result = ctx.executeHandler(ref.script(), ref.handler(), args, null);
             } else {
-                ctx.push(Datum.VOID);
+                result = Datum.VOID;
             }
+        }
+        if (!noRet) {
+            ctx.push(result);
         }
         return true;
     }
 
     private static boolean objCall(ExecutionContext ctx) {
         String methodName = ctx.resolveName(ctx.getArgument());
-        Datum argCountDatum = ctx.pop();
-        int argCount = argCountDatum.toInt();
+        Datum argListDatum = ctx.pop();
+        boolean noRet = argListDatum instanceof Datum.ArgListNoRet;
+        int argCount = getArgCount(argListDatum);
         List<Datum> args = ctx.popArgs(argCount);
         Datum target = args.isEmpty() ? Datum.VOID : args.remove(0);
         // TODO: implement proper object method calls
-        ctx.push(Datum.VOID);
+        Datum result = Datum.VOID;
+        if (!noRet) {
+            ctx.push(result);
+        }
         return true;
+    }
+
+    private static int getArgCount(Datum argListDatum) {
+        if (argListDatum instanceof Datum.ArgList al) {
+            return al.count();
+        } else if (argListDatum instanceof Datum.ArgListNoRet al) {
+            return al.count();
+        } else {
+            // Fallback for backwards compatibility
+            return argListDatum.toInt();
+        }
     }
 }
