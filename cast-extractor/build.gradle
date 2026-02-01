@@ -99,7 +99,7 @@ tasks.register('windowsExe') {
     --main-jar ${jarFile.name} ^
     --main-class com.libreshockwave.tools.CastExtractorTool ^
     --dest "${outDir.absolutePath}" ^
-    --win-console ^
+    --add-modules java.base,java.desktop,java.prefs,java.logging,jdk.unsupported ^
     --java-options "-Xmx4g"
 if %ERRORLEVEL% EQU 0 (
     echo.
