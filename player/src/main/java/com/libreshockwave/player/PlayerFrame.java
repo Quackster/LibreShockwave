@@ -430,11 +430,16 @@ public class PlayerFrame extends JFrame {
      * Common UI setup after loading a file or URL.
      */
     private void setupPlayerUI(DirectorFile file) {
-        // Update stage size
+        // Update stage canvas size (fixed, independent of window size)
         int width = file.getStageWidth();
         int height = file.getStageHeight();
         if (width > 0 && height > 0) {
-            stagePanel.setPreferredSize(new Dimension(width, height));
+            stagePanel.setStageSize(width, height);
+            // Set minimum preferred size for the panel, but allow window to be larger
+            stagePanel.setPreferredSize(new Dimension(
+                Math.max(width, 640),
+                Math.max(height, 480)
+            ));
             pack();
         }
 

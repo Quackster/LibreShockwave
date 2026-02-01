@@ -14,14 +14,24 @@ import java.util.Optional;
 
 /**
  * Swing panel that renders the Director stage using the player-core rendering API.
+ * The stage canvas maintains a fixed size and is centered within the panel.
+ * Resizing the window does not affect the stage dimensions.
  */
 public class StagePanel extends JPanel {
+
+    private static final Color VIEWPORT_COLOR = new Color(48, 48, 48);
+    private static final Color CANVAS_BORDER_COLOR = new Color(80, 80, 80);
 
     private Player player;
     private final Map<Integer, BufferedImage> bitmapCache = new HashMap<>();
 
+    // Fixed stage dimensions (set from movie)
+    private int stageWidth = 640;
+    private int stageHeight = 480;
+
     public StagePanel() {
         setDoubleBuffered(true);
+        setBackground(VIEWPORT_COLOR);
     }
 
     public void setPlayer(Player player) {
@@ -30,25 +40,69 @@ public class StagePanel extends JPanel {
         repaint();
     }
 
+    /**
+     * Set the fixed stage canvas size.
+     * This determines the actual stage area, independent of panel size.
+     */
+    public void setStageSize(int width, int height) {
+        this.stageWidth = width > 0 ? width : 640;
+        this.stageHeight = height > 0 ? height : 480;
+        repaint();
+    }
+
+    /**
+     * Get the current stage width.
+     */
+    public int getStageWidth() {
+        return stageWidth;
+    }
+
+    /**
+     * Get the current stage height.
+     */
+    public int getStageHeight() {
+        return stageHeight;
+    }
+
     @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
 
+        Graphics2D g2d = (Graphics2D) g;
+
+        // Fill viewport area with dark color
+        g2d.setColor(VIEWPORT_COLOR);
+        g2d.fillRect(0, 0, getWidth(), getHeight());
+
         if (player == null) {
-            paintNoMovie(g);
+            paintNoMovie(g2d);
             return;
         }
 
-        Graphics2D g2d = (Graphics2D) g;
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+
+        // Calculate centered position for the stage canvas
+        int canvasX = (getWidth() - stageWidth) / 2;
+        int canvasY = (getHeight() - stageHeight) / 2;
 
         // Get the frame snapshot from player-core
         FrameSnapshot snapshot = player.getFrameSnapshot();
 
-        // Draw background
+        // Draw canvas border (subtle shadow effect)
+        g2d.setColor(CANVAS_BORDER_COLOR);
+        g2d.drawRect(canvasX - 1, canvasY - 1, stageWidth + 1, stageHeight + 1);
+
+        // Clip to canvas area
+        Shape oldClip = g2d.getClip();
+        g2d.clipRect(canvasX, canvasY, stageWidth, stageHeight);
+
+        // Translate to canvas origin
+        g2d.translate(canvasX, canvasY);
+
+        // Draw stage background
         g2d.setColor(new Color(snapshot.backgroundColor()));
-        g2d.fillRect(0, 0, getWidth(), getHeight());
+        g2d.fillRect(0, 0, stageWidth, stageHeight);
 
         // Draw all sprites
         for (RenderSprite sprite : snapshot.sprites()) {
@@ -57,19 +111,33 @@ public class StagePanel extends JPanel {
 
         // Draw debug info
         drawDebugInfo(g2d, snapshot);
+
+        // Restore transform and clip
+        g2d.translate(-canvasX, -canvasY);
+        g2d.setClip(oldClip);
     }
 
-    private void paintNoMovie(Graphics g) {
-        g.setColor(Color.LIGHT_GRAY);
-        g.fillRect(0, 0, getWidth(), getHeight());
+    private void paintNoMovie(Graphics2D g) {
+        // Calculate centered position for the stage canvas
+        int canvasX = (getWidth() - stageWidth) / 2;
+        int canvasY = (getHeight() - stageHeight) / 2;
 
+        // Draw canvas border
+        g.setColor(CANVAS_BORDER_COLOR);
+        g.drawRect(canvasX - 1, canvasY - 1, stageWidth + 1, stageHeight + 1);
+
+        // Draw placeholder canvas
+        g.setColor(Color.LIGHT_GRAY);
+        g.fillRect(canvasX, canvasY, stageWidth, stageHeight);
+
+        // Draw message centered in canvas
         g.setColor(Color.DARK_GRAY);
         g.setFont(new Font("SansSerif", Font.BOLD, 16));
         String msg = "No movie loaded";
         FontMetrics fm = g.getFontMetrics();
-        int x = (getWidth() - fm.stringWidth(msg)) / 2;
-        int y = (getHeight() + fm.getAscent()) / 2;
-        g.drawString(msg, x, y);
+        int textX = canvasX + (stageWidth - fm.stringWidth(msg)) / 2;
+        int textY = canvasY + (stageHeight + fm.getAscent()) / 2;
+        g.drawString(msg, textX, textY);
     }
 
     private void drawSprite(Graphics2D g, RenderSprite sprite) {
@@ -156,9 +224,9 @@ public class StagePanel extends JPanel {
     }
 
     private void drawDebugInfo(Graphics2D g, FrameSnapshot snapshot) {
-        // Draw current frame info in corner
+        // Draw current frame info in corner of the stage canvas
         g.setColor(new Color(0, 0, 0, 128));
         g.setFont(new Font("Monospaced", Font.PLAIN, 12));
-        g.drawString(snapshot.debugInfo(), 5, getHeight() - 5);
+        g.drawString(snapshot.debugInfo(), 5, stageHeight - 5);
     }
 }
