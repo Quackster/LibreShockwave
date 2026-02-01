@@ -64,10 +64,10 @@ public class Player {
         }
 
         // Wire up network completion callback to handle external cast loading
-        netManager.setCompletionCallback((url, data) -> {
+        netManager.setCompletionCallback((fileName, data) -> {
             // Check if this URL matches an external cast library
-            if (castLibManager.setExternalCastDataByUrl(url, data)) {
-                System.out.println("[Player] Loaded external cast from: " + url);
+            if (castLibManager.setExternalCastDataByUrl(fileName, data)) {
+                System.out.println("[Player] Loaded external cast from: " + fileName); // TODO Normalise
             }
         });
 

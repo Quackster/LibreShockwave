@@ -18,8 +18,8 @@ import java.util.concurrent.*;
  * Similar to dirplayer-rs net_manager.rs.
  *
  * Provides implementations for:
- * - preloadNetThing(url) - Start async GET request
- * - postNetText(url, postData) - Start async POST request
+ * - preloadNetThing(util) - Start async GET request
+ * - postNetText(util, postData) - Start async POST request
  * - netDone(taskId) - Check if request completed
  * - netTextResult(taskId) - Get result text
  * - netError(taskId) - Get error code
@@ -83,7 +83,7 @@ public class NetManager implements NetBuiltins.NetProvider {
      */
     public int preloadNetThing(String url) {
         int taskId = nextTaskId++;
-        NetTask task = NetTask.get(taskId, resolveUrl(url));
+        NetTask task = NetTask.get(taskId, url, resolveUrl(url));
         tasks.put(taskId, task);
         executeTask(task);
         return taskId;
@@ -97,7 +97,7 @@ public class NetManager implements NetBuiltins.NetProvider {
      */
     public int postNetText(String url, String postData) {
         int taskId = nextTaskId++;
-        NetTask task = NetTask.post(taskId, resolveUrl(url), postData);
+        NetTask task = NetTask.post(taskId, url, resolveUrl(url), postData);
         tasks.put(taskId, task);
         executeTask(task);
         return taskId;
@@ -210,8 +210,24 @@ public class NetManager implements NetBuiltins.NetProvider {
     }
 
     private void loadFromFileUrl(String url, NetTask task) throws Exception {
-        URI uri = new URI(url);
-        Path path = Path.of(uri);
+        Path path;
+
+        // Check if it's a file:// URI or a plain path
+        if (url.startsWith("file://")) {
+            URI uri = new URI(url);
+            path = Path.of(uri);
+        } else {
+            // Plain filename - resolve against basePath
+            if (basePath != null && !basePath.isEmpty()) {
+                Path base = Path.of(basePath);
+                if (Files.isRegularFile(base)) {
+                    base = base.getParent();
+                }
+                path = base.resolve(url);
+            } else {
+                path = Path.of(url);
+            }
+        }
 
         // Try with extension fallbacks
         Path resolvedPath = resolvePathWithFallbacks(path);
@@ -223,7 +239,7 @@ public class NetManager implements NetBuiltins.NetProvider {
         byte[] data = Files.readAllBytes(resolvedPath);
         System.out.println("[NetManager] Loaded file: " + resolvedPath + " (" + data.length + " bytes)");
         task.complete(data);
-        notifyCompletion(task.getUrl(), data);
+        notifyCompletion(task.getOriginalUrl(), data);
     }
 
     private void loadFromFilePath(String filePath, NetTask task) throws Exception {
@@ -383,10 +399,10 @@ public class NetManager implements NetBuiltins.NetProvider {
         return new String[] { url };
     }
 
-    private void notifyCompletion(String url, byte[] data) {
-        if (completionCallback != null && url != null && data != null) {
+    private void notifyCompletion(String fileName, byte[] data) {
+        if (completionCallback != null && fileName != null && data != null) {
             try {
-                completionCallback.onComplete(url, data);
+                completionCallback.onComplete(fileName, data);
             } catch (Exception e) {
                 System.err.println("[NetManager] Completion callback error: " + e.getMessage());
             }

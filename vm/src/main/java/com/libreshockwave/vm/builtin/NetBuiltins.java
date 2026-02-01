@@ -61,7 +61,7 @@ public final class NetBuiltins {
     }
 
     /**
-     * preloadNetThing(url)
+     * preloadNetThing(util)
      * Starts an async network request and returns a task ID.
      */
     private static Datum preloadNetThing(LingoVM vm, List<Datum> args) {
@@ -81,7 +81,7 @@ public final class NetBuiltins {
     }
 
     /**
-     * postNetText(url, postData)
+     * postNetText(util, postData)
      * Starts an async POST request and returns a task ID.
      */
     private static Datum postNetText(LingoVM vm, List<Datum> args) {

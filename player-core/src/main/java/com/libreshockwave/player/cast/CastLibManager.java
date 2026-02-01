@@ -4,9 +4,11 @@ import com.libreshockwave.DirectorFile;
 import com.libreshockwave.chunks.CastChunk;
 import com.libreshockwave.chunks.CastListChunk;
 import com.libreshockwave.chunks.CastMemberChunk;
+import com.libreshockwave.util.FileUtil;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.builtin.CastLibProvider;
 
+import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -270,13 +272,23 @@ public class CastLibManager implements CastLibProvider {
     }
 
     @Override
-    public String getCastLibUrl(int castLibNumber) {
+    public String getCastLibName(int castLibNumber) {
         ensureInitialized();
         CastLib castLib = castLibs.get(castLibNumber);
         if (castLib == null) {
             return null;
         }
-        return castLib.getExternalUrl();
+        return castLib.getName();
+    }
+
+    @Override
+    public String getCastLibFileName(int castLibNumber) {
+        ensureInitialized();
+        CastLib castLib = castLibs.get(castLibNumber);
+        if (castLib == null) {
+            return null;
+        }
+        return castLib.getFileName();
     }
 
     @Override
@@ -327,9 +339,11 @@ public class CastLibManager implements CastLibProvider {
     public int getCastLibNumberByUrl(String url) {
         ensureInitialized();
 
+        String fileName = FileUtil.getFileNameWithoutExtension(Paths.get(url).getFileName().toString());
+
         for (CastLib castLib : castLibs.values()) {
-            String castUrl = castLib.getExternalUrl();
-            if (castUrl != null && castUrl.equals(url)) {
+            String castUrl = castLib.getFileName();
+            if (castUrl != null && castLib.getName().equals(fileName)) {
                 return castLib.getNumber();
             }
         }
@@ -353,12 +367,12 @@ public class CastLibManager implements CastLibProvider {
 
     /**
      * Set external cast data by URL from preloadNetThing.
-     * @param url The URL that was fetched
+     * @param fileName The URL that was fetched
      * @param data The raw file data
      * @return true if parsing was successful
      */
-    public boolean setExternalCastDataByUrl(String url, byte[] data) {
-        int castLibNumber = getCastLibNumberByUrl(url);
+    public boolean setExternalCastDataByUrl(String fileName, byte[] data) {
+        int castLibNumber = getCastLibNumberByUrl(fileName);
         if (castLibNumber > 0) {
             return setExternalCastData(castLibNumber, data);
         }

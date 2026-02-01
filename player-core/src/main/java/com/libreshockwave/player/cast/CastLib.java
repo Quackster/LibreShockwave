@@ -477,47 +477,6 @@ public class CastLib {
     }
 
     /**
-     * Get the URL for this external cast (for preloadNetThing).
-     */
-    public String getExternalUrl() {
-        if (!isExternal()) {
-            return null;
-        }
-
-        String path = fileName;
-        if (path == null || path.isEmpty()) {
-            path = name;
-            if (path != null && !path.isEmpty()) {
-                if (!path.toLowerCase().endsWith(".cst") && !path.toLowerCase().endsWith(".cct")) {
-                    path = path + ".cst";
-                }
-            }
-        }
-
-        if (path == null || path.isEmpty()) {
-            return null;
-        }
-
-        path = path.replace("\\", "/");
-
-        // If already a full URL, return it
-        if (path.startsWith("http://") || path.startsWith("https://")) {
-            return path;
-        }
-
-        // Build full URL from basePath
-        if (!basePath.isEmpty()) {
-            if (basePath.endsWith("/")) {
-                return basePath + path;
-            } else {
-                return basePath + "/" + path;
-            }
-        }
-
-        return path;
-    }
-
-    /**
      * Set the external cast data from preloadNetThing.
      * @param data The raw file data
      * @return true if parsing was successful
