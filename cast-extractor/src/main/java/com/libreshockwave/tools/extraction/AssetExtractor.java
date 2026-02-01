@@ -26,6 +26,22 @@ public class AssetExtractor {
     }
 
     /**
+     * Gets a DirectorFile from cache, loading it on demand if not present.
+     */
+    private DirectorFile getDirectorFile(String filePath) {
+        DirectorFile dirFile = loadedFiles.get(filePath);
+        if (dirFile == null) {
+            try {
+                dirFile = DirectorFile.load(Path.of(filePath));
+                loadedFiles.put(filePath, dirFile);
+            } catch (Exception e) {
+                return null;
+            }
+        }
+        return dirFile;
+    }
+
+    /**
      * Result of an extraction operation.
      */
     public record ExtractionResult(int bitmapsExtracted, int soundsExtracted) {}
@@ -35,7 +51,7 @@ public class AssetExtractor {
      */
     public boolean extract(ExtractionTask task, Path outputDir) {
         try {
-            DirectorFile dirFile = loadedFiles.get(task.filePath());
+            DirectorFile dirFile = getDirectorFile(task.filePath());
             if (dirFile == null) {
                 return false;
             }

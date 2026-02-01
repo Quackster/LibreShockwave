@@ -22,9 +22,23 @@ import java.util.concurrent.ConcurrentHashMap;
 public class FileProcessor {
 
     private final Map<String, DirectorFile> loadedFiles;
+    private boolean lazyLoading = false;
 
     public FileProcessor(Map<String, DirectorFile> loadedFiles) {
         this.loadedFiles = loadedFiles;
+    }
+
+    /**
+     * Enable lazy loading mode - don't keep DirectorFiles in memory during scan.
+     * Files will be reloaded on demand when needed for preview/export.
+     * This significantly reduces memory usage for large scans.
+     */
+    public void setLazyLoading(boolean lazyLoading) {
+        this.lazyLoading = lazyLoading;
+    }
+
+    public boolean isLazyLoading() {
+        return lazyLoading;
     }
 
     /**
@@ -55,7 +69,11 @@ public class FileProcessor {
             }
 
             if (!members.isEmpty()) {
-                loadedFiles.put(file.toString(), dirFile);
+                // In lazy loading mode, don't keep the file in memory
+                // It will be reloaded on demand when needed
+                if (!lazyLoading) {
+                    loadedFiles.put(file.toString(), dirFile);
+                }
                 return new FileNode(file.toString(), file.getFileName().toString(), members);
             }
         } catch (Exception ignored) {
