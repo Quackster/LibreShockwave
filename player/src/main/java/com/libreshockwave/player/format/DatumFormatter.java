@@ -1,5 +1,6 @@
 package com.libreshockwave.player.format;
 
+import com.libreshockwave.format.ScriptFormatUtils;
 import com.libreshockwave.vm.Datum;
 
 /**
@@ -17,7 +18,7 @@ public final class DatumFormatter {
         if (d instanceof Datum.Void) return "<void>";
         if (d instanceof Datum.Int i) return String.valueOf(i.value());
         if (d instanceof Datum.Float f) return String.valueOf(f.value());
-        if (d instanceof Datum.Str s) return "\"" + truncate(s.value(), 50) + "\"";
+        if (d instanceof Datum.Str s) return "\"" + ScriptFormatUtils.truncate(s.value(), 50) + "\"";
         if (d instanceof Datum.Symbol sym) return "#" + sym.name();
         if (d instanceof Datum.List list) return "[list:" + list.items().size() + "]";
         if (d instanceof Datum.PropList pl) return "[propList:" + pl.properties().size() + "]";
@@ -30,9 +31,10 @@ public final class DatumFormatter {
 
     /**
      * Truncate a string if it exceeds the maximum length.
+     * @deprecated Use {@link ScriptFormatUtils#truncate(String, int)} instead
      */
+    @Deprecated
     public static String truncate(String s, int max) {
-        if (s.length() <= max) return s;
-        return s.substring(0, max - 3) + "...";
+        return ScriptFormatUtils.truncate(s, max);
     }
 }

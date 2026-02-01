@@ -1,6 +1,7 @@
 package com.libreshockwave.player;
 
 import com.libreshockwave.chunks.ScriptChunk;
+import com.libreshockwave.format.ScriptFormatUtils;
 import com.libreshockwave.player.format.DatumFormatter;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.TraceListener;
@@ -158,15 +159,7 @@ public class DebugPanel extends JPanel implements TraceListener {
             List<ScriptChunk.LiteralEntry> literals = info.literals();
             for (int i = 0; i < literals.size(); i++) {
                 ScriptChunk.LiteralEntry lit = literals.get(i);
-                String typeStr = switch (lit.type()) {
-                    case 1 -> "string";
-                    case 4 -> "int";
-                    case 9 -> "float";
-                    default -> "type" + lit.type();
-                };
-                String valueStr = lit.value() instanceof String ?
-                        "\"" + lit.value() + "\"" : String.valueOf(lit.value());
-                sb.append("  [").append(i).append("] ").append(typeStr).append(": ").append(valueStr).append("\n");
+                sb.append("  [").append(i).append("] ").append(ScriptFormatUtils.formatLiteral(lit)).append("\n");
             }
             handlerInfoArea.setText(sb.toString());
 
