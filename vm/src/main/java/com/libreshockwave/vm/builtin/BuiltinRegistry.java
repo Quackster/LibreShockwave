@@ -21,6 +21,8 @@ public class BuiltinRegistry {
         ListBuiltins.register(builtins);
         ConstructorBuiltins.register(builtins);
         OutputBuiltins.register(builtins);
+        NetBuiltins.register(builtins);
+        XtraBuiltins.register(builtins);
     }
 
     /**

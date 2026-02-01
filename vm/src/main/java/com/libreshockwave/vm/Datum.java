@@ -115,6 +115,18 @@ public sealed interface Datum {
         public String toString() { return "color(" + r + ", " + g + ", " + b + ")"; }
     }
 
+    /** Xtra reference (the Xtra class itself) */
+    record XtraRef(String xtraName) implements Datum {
+        @Override
+        public String toString() { return "<Xtra \"" + xtraName + "\">"; }
+    }
+
+    /** Xtra instance reference */
+    record XtraInstance(String xtraName, int instanceId) implements Datum {
+        @Override
+        public String toString() { return "<XtraInstance \"" + xtraName + "\" #" + instanceId + ">"; }
+    }
+
     // Singleton instances for common values
     Datum VOID = new Void();
     Datum ZERO = new Int(0);
