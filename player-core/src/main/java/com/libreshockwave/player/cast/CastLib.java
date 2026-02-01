@@ -356,6 +356,7 @@ public class CastLib {
             case "filename" -> Datum.of(fileName);
             case "preloadmode" -> Datum.of(preloadMode);
             case "selection" -> selection;
+            case "loaded" -> isLoaded() ? Datum.TRUE : Datum.FALSE;
             default -> {
                 if (prop.contains("member")) {
                     yield Datum.of(getMemberCount());
@@ -515,6 +516,8 @@ public class CastLib {
             if (file != null) {
                 this.sourceFile = file;
                 System.out.println("[CastLib] Loaded external cast: " + name + " (" + data.length + " bytes)");
+                // Load the cast members now that we have the data
+                load();
                 return true;
             }
         } catch (Exception e) {
