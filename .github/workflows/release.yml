@@ -1,0 +1,93 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build fat JAR
+        run: ./gradlew :cast-extractor:fatJar
+
+      - name: Get version from tag
+        id: get_version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Create Windows exe with jpackage
+        shell: pwsh
+        run: |
+          $jarPath = "cast-extractor/build/libs/cast-extractor-1.0.0-all.jar"
+          $outputDir = "cast-extractor/build/installer"
+
+          # Create output directory
+          New-Item -ItemType Directory -Force -Path $outputDir
+
+          # Run jpackage to create Windows exe
+          jpackage `
+            --type app-image `
+            --input cast-extractor/build/libs `
+            --main-jar cast-extractor-1.0.0-all.jar `
+            --name CastExtractor `
+            --app-version ${{ steps.get_version.outputs.VERSION }} `
+            --dest $outputDir `
+            --java-options "-Xmx512m"
+
+      - name: Create ZIP of Windows app
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "cast-extractor/build/installer/CastExtractor" -DestinationPath "cast-extractor/build/CastExtractor-${{ steps.get_version.outputs.VERSION }}-windows.zip"
+
+      - name: Rename fat JAR for release
+        shell: bash
+        run: |
+          cp cast-extractor/build/libs/cast-extractor-1.0.0-all.jar cast-extractor/build/CastExtractor-${{ steps.get_version.outputs.VERSION }}.jar
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: CastExtractor v${{ steps.get_version.outputs.VERSION }}
+          body: |
+            ## CastExtractor v${{ steps.get_version.outputs.VERSION }}
+
+            A GUI tool for extracting and previewing assets from Macromedia Director files (.dir, .dxr, .dcr, .cst, .cct).
+
+            ### Downloads
+
+            - **CastExtractor-${{ steps.get_version.outputs.VERSION }}.jar** - Cross-platform JAR (requires Java 21+)
+            - **CastExtractor-${{ steps.get_version.outputs.VERSION }}-windows.zip** - Windows application (no Java required)
+
+            ### Running the JAR
+            ```bash
+            java -jar CastExtractor-${{ steps.get_version.outputs.VERSION }}.jar
+            ```
+
+            ### Features
+            - Browse and extract cast members (bitmaps, scripts, sounds, text)
+            - Preview scripts with bytecode disassembly
+            - Preview bitmaps with palette support
+            - Play sounds (including MP3)
+            - Score viewer
+          files: |
+            cast-extractor/build/CastExtractor-${{ steps.get_version.outputs.VERSION }}.jar
+            cast-extractor/build/CastExtractor-${{ steps.get_version.outputs.VERSION }}-windows.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
