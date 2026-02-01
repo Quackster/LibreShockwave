@@ -59,8 +59,6 @@ tasks.register('fatJar', Jar) {
 
 // Create Windows executable using jpackage (requires JDK 14+)
 // Usage: gradlew :cast-extractor:windowsExe
-// If automatic execution fails, run the generated batch file manually:
-//   cast-extractor/build/jpackage.bat
 tasks.register('windowsExe') {
     dependsOn fatJar
 
@@ -83,63 +81,42 @@ tasks.register('windowsExe') {
         // Ensure output directory exists
         outDir.mkdirs()
 
-        // Clean previous output
+        // Clean previous output (may fail if files are locked by running process)
         def existingDir = new File(outDir, 'CastExtractor')
         if (existingDir.exists()) {
-            existingDir.deleteDir()
-        }
-
-        // Create a batch file to run jpackage
-        def batchFile = new File(layout.buildDirectory.get().asFile, 'jpackage.bat')
-        batchFile.text = """@echo off
-"${jpackageExe.absolutePath}" ^
-    --type app-image ^
-    --name CastExtractor ^
-    --input "${jarFile.parentFile.absolutePath}" ^
-    --main-jar ${jarFile.name} ^
-    --main-class com.libreshockwave.tools.CastExtractorTool ^
-    --dest "${outDir.absolutePath}" ^
-    --add-modules java.base,java.desktop,java.prefs,java.logging,jdk.unsupported ^
-    --java-options "-Xmx4g"
-if %ERRORLEVEL% EQU 0 (
-    echo.
-    echo SUCCESS: Windows executable created at:
-    echo   ${outDir}\\CastExtractor\\CastExtractor.exe
-) else (
-    echo.
-    echo FAILED: jpackage exited with error code %ERRORLEVEL%
-)
-"""
-        println "============================================"
-        println "Batch file created: ${batchFile.absolutePath}"
-        println ""
-        println "To build the Windows executable, run:"
-        println "  ${batchFile.absolutePath}"
-        println ""
-        println "Output will be at:"
-        println "  ${outDir}\\CastExtractor\\CastExtractor.exe"
-        println "============================================"
-
-        // Try to run it, but don't fail if permissions prevent it
-        try {
-            def proc = Runtime.getRuntime().exec(['cmd', '/c', batchFile.absolutePath] as String[], null, projectDir)
-            def output = new StringBuilder()
-            def error = new StringBuilder()
-            proc.consumeProcessOutput(output, error)
-            def exitCode = proc.waitFor()
-
-            if (output.length() > 0) println output.toString()
-            if (error.length() > 0) System.err.println error.toString()
-
-            if (exitCode == 0) {
-                println "Windows executable created at: ${outDir}\\CastExtractor\\CastExtractor.exe"
-            } else {
-                println "Note: Automatic execution failed (exit code ${exitCode})."
-                println "Please run the batch file manually from a Windows command prompt."
+            try {
+                project.delete(existingDir)
+            } catch (Exception e) {
+                println "Warning: Could not delete existing directory (files may be in use): ${e.message}"
             }
-        } catch (Exception e) {
-            println "Note: Could not execute batch file automatically (${e.message})."
-            println "Please run the batch file manually from a Windows command prompt."
         }
+
+        // Run jpackage
+        def command = [
+            jpackageExe.absolutePath,
+            '--type', 'app-image',
+            '--name', 'CastExtractor',
+            '--input', jarFile.parentFile.absolutePath,
+            '--main-jar', jarFile.name,
+            '--main-class', 'com.libreshockwave.tools.CastExtractorTool',
+            '--dest', outDir.absolutePath,
+            '--add-modules', 'java.base,java.desktop,java.prefs,java.logging,jdk.unsupported',
+            '--java-options', '-Xmx4g'
+        ]
+
+        println "Running: ${command.join(' ')}"
+
+        def process = new ProcessBuilder(command)
+            .redirectErrorStream(true)
+            .start()
+
+        process.inputStream.eachLine { println it }
+
+        def exitCode = process.waitFor()
+        if (exitCode != 0) {
+            throw new GradleException("jpackage failed with exit code ${exitCode}")
+        }
+
+        println "Windows executable created at: ${outDir}/CastExtractor/CastExtractor.exe"
     }
 }
