@@ -121,6 +121,41 @@ public record ScriptChunk(
         return scriptType != null ? scriptType : ScriptType.UNKNOWN;
     }
 
+    /**
+     * Get the name of this script from its associated cast member.
+     * @return The script name, or empty string if not found
+     */
+    public String getScriptName() {
+        if (file == null) return "";
+
+        // Find the cast member that contains this script
+        for (CastMemberChunk member : file.getCastMembers()) {
+            if (member.isScript()) {
+                // Get the script chunk for this member and compare
+                ScriptChunk script = file.getScriptByContextId(member.scriptId());
+                if (script != null && script.id() == this.id) {
+                    String name = member.name();
+                    return name != null ? name : "";
+                }
+            }
+        }
+        return "";
+    }
+
+    /**
+     * Get a display name for this script.
+     * Returns the script name in quotes if available, otherwise falls back to type + id.
+     * @return A formatted display name like "MyScript" (MOVIE_SCRIPT) or MOVIE_SCRIPT #5
+     */
+    public String getDisplayName() {
+        String name = getScriptName();
+        String type = getScriptType().name();
+        if (name != null && !name.isEmpty()) {
+            return "\"" + name + "\" (" + type + ")";
+        }
+        return type + " #" + id;
+    }
+
     public Handler findHandler(String name, ScriptNamesChunk names) {
         if (names == null) return null;
 

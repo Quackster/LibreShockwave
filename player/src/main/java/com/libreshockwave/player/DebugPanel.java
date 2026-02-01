@@ -169,8 +169,10 @@ public class DebugPanel extends JPanel implements TraceListener {
         if (!enabled) return;
 
         SwingUtilities.invokeLater(() -> {
-            // dirplayer-rs format: == Script: (member X of castLib Y) Handler: name
-            String entry = "== Script: (#" + info.scriptId() + " " + info.scriptType() + ") Handler: " + info.handlerName();
+            // Format script identifier: use name if available, otherwise type + id
+            String scriptIdent = formatScriptIdentifier(info);
+
+            String entry = "== Script: " + scriptIdent + " Handler: " + info.handlerName();
             appendLog(entry + "\n", handlerStyle);
 
             // Log handler to bytecode pane, trim old handlers if needed
@@ -180,12 +182,13 @@ public class DebugPanel extends JPanel implements TraceListener {
             }
             // Only add leading newline if not the first handler
             String prefix = bytecodeHandlerCount > 1 ? "\n" : "";
-            String bcEntry = prefix + "== " + info.handlerName() + " (script #" + info.scriptId() + " " + info.scriptType() + ")\n";
+            String bcEntry = prefix + "== " + info.handlerName() + " (" + scriptIdent + ")\n";
             appendBytecode(bcEntry, bcHandlerStyle);
 
             // Update handler info panel with detailed info
             StringBuilder sb = new StringBuilder();
             sb.append("Handler: ").append(info.handlerName()).append("\n");
+            sb.append("Script: ").append(scriptIdent).append("\n");
             sb.append("Script ID: ").append(info.scriptId()).append("\n");
             sb.append("Script Type: ").append(info.scriptType()).append("\n");
             sb.append("Args: ").append(info.argCount()).append("\n");
@@ -382,5 +385,18 @@ public class DebugPanel extends JPanel implements TraceListener {
 
     private String formatDatum(Datum d) {
         return DatumFormatter.format(d);
+    }
+
+    /**
+     * Format script identifier for display.
+     * Shows script name if available, otherwise falls back to type + id.
+     */
+    private String formatScriptIdentifier(HandlerInfo info) {
+        String name = info.scriptName();
+        if (name != null && !name.isEmpty()) {
+            return "\"" + name + "\" (" + info.scriptType() + ")";
+        }
+        // Fallback to type + id
+        return info.scriptType() + " #" + info.scriptId();
     }
 }
