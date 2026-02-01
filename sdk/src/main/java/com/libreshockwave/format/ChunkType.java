@@ -50,6 +50,7 @@ public enum ChunkType {
 
     // Media
     BITD("BITD", "Bitmap Data"),
+    ALFA("ALFA", "Alpha Channel Data"),
     CLUT("CLUT", "Color Lookup Table (Palette)"),
     STXT("STXT", "Styled Text"),
     snd_("snd ", "Sound Data"),         // Note: space in FourCC
