@@ -378,4 +378,34 @@ public class CastLibManager implements CastLibProvider {
         }
         return false;
     }
+
+    /**
+     * Find a handler by name across all cast libraries.
+     * Searches loaded external casts for the handler.
+     */
+    @Override
+    public HandlerLocation findHandler(String handlerName) {
+        ensureInitialized();
+
+        for (CastLib castLib : castLibs.values()) {
+            if (!castLib.isLoaded()) {
+                // Only search loaded casts - don't trigger lazy load for handler search
+                continue;
+            }
+
+            var scriptNames = castLib.getScriptNames();
+            if (scriptNames == null) {
+                continue;
+            }
+
+            for (var script : castLib.getAllScripts()) {
+                var handler = script.findHandler(handlerName, scriptNames);
+                if (handler != null) {
+                    return new HandlerLocation(castLib.getNumber(), script, handler, scriptNames);
+                }
+            }
+        }
+
+        return null;
+    }
 }

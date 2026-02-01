@@ -321,6 +321,30 @@ public class CastLib {
     }
 
     /**
+     * Get all scripts in this cast library.
+     * Returns the scripts from the sourceFile if available.
+     */
+    public java.util.Collection<ScriptChunk> getAllScripts() {
+        if (!isLoaded()) {
+            load();
+        }
+        if (sourceFile != null) {
+            return sourceFile.getScripts();
+        }
+        return scripts.values();
+    }
+
+    /**
+     * Get the ScriptNamesChunk for this cast library.
+     */
+    public com.libreshockwave.chunks.ScriptNamesChunk getScriptNames() {
+        if (sourceFile != null) {
+            return sourceFile.getScriptNames();
+        }
+        return null;
+    }
+
+    /**
      * Get a property value.
      */
     public Datum getProp(String propName) {
