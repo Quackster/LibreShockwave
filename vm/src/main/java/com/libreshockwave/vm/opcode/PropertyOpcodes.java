@@ -2,6 +2,7 @@ package com.libreshockwave.vm.opcode;
 
 import com.libreshockwave.lingo.Opcode;
 import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.builtin.MoviePropertyProvider;
 
 import java.util.Map;
 
@@ -43,15 +44,48 @@ public final class PropertyOpcodes {
     }
 
     private static boolean getMovieProp(ExecutionContext ctx) {
-        // TODO: implement movie property access
-        ctx.push(Datum.VOID);
+        String propName = ctx.resolveName(ctx.getArgument());
+        MoviePropertyProvider provider = MoviePropertyProvider.getProvider();
+
+        if (provider != null) {
+            Datum value = provider.getMovieProp(propName);
+            ctx.push(value);
+        } else {
+            // Fallback for common constants when no provider is available
+            ctx.push(getBuiltinConstant(propName));
+        }
         return true;
     }
 
     private static boolean setMovieProp(ExecutionContext ctx) {
-        // TODO: implement movie property setting
-        ctx.pop();
+        String propName = ctx.resolveName(ctx.getArgument());
+        Datum value = ctx.pop();
+        MoviePropertyProvider provider = MoviePropertyProvider.getProvider();
+
+        if (provider != null) {
+            provider.setMovieProp(propName, value);
+        }
         return true;
+    }
+
+    /**
+     * Get built-in constants that don't require a provider.
+     */
+    private static Datum getBuiltinConstant(String propName) {
+        return switch (propName.toLowerCase()) {
+            case "pi" -> Datum.of(Math.PI);
+            case "true" -> Datum.TRUE;
+            case "false" -> Datum.FALSE;
+            case "void" -> Datum.VOID;
+            case "empty", "emptystring" -> Datum.EMPTY_STRING;
+            case "return" -> Datum.of("\r");
+            case "enter" -> Datum.of("\n");
+            case "tab" -> Datum.of("\t");
+            case "quote" -> Datum.of("\"");
+            case "backspace" -> Datum.of("\b");
+            case "space" -> Datum.of(" ");
+            default -> Datum.VOID;
+        };
     }
 
     private static boolean getObjProp(ExecutionContext ctx) {

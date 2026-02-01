@@ -1,0 +1,231 @@
+package com.libreshockwave.player;
+
+import com.libreshockwave.DirectorFile;
+import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.builtin.MoviePropertyProvider;
+
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+
+/**
+ * Provides movie-level property access for Lingo scripts.
+ * Implements the "the" property expressions like:
+ * - the frame
+ * - the moviePath
+ * - the stageRight/stageLeft/stageTop/stageBottom
+ * - the exitLock
+ * etc.
+ */
+public class MovieProperties implements MoviePropertyProvider {
+
+    private final Player player;
+    private final DirectorFile file;
+
+    // Writable movie properties
+    private boolean exitLock = false;
+    private boolean updateLock = false;
+    private String itemDelimiter = ",";
+    private int puppetTempo = 0;
+    private boolean traceScript = false;
+    private String traceLogFile = "";
+    private boolean allowCustomCaching = false;
+
+    // Timer start time (in millis)
+    private final long startTime;
+
+    public MovieProperties(Player player, DirectorFile file) {
+        this.player = player;
+        this.file = file;
+        this.startTime = System.currentTimeMillis();
+    }
+
+    @Override
+    public Datum getMovieProp(String propName) {
+        // Normalize property name to lowercase for matching
+        String prop = propName.toLowerCase();
+
+        return switch (prop) {
+            // Frame and playback
+            case "frame" -> Datum.of(player.getCurrentFrame());
+            case "lastframe" -> Datum.of(player.getFrameCount());
+            case "lastchannel" -> Datum.of(file != null ? file.getChannelCount() : 0);
+
+            // Stage dimensions
+            case "stageright" -> Datum.of(file != null ? file.getStageWidth() : 0);
+            case "stageleft" -> Datum.of(0);
+            case "stagetop" -> Datum.of(0);
+            case "stagebottom" -> Datum.of(file != null ? file.getStageHeight() : 0);
+
+            // Movie info
+            case "moviename" -> Datum.of(getMovieName());
+            case "moviepath" -> Datum.of(getMoviePath());
+            case "path" -> Datum.of(file != null ? file.getBasePath() : "");
+
+            // System info
+            case "platform" -> Datum.of("Windows,32");
+            case "runmode" -> Datum.of("Plugin");
+            case "productversion" -> Datum.of("10.1");
+            case "environment" -> Datum.of("Java");
+
+            // Date and time
+            case "date" -> Datum.of(LocalDate.now().format(DateTimeFormatter.ofPattern("MM/dd/yyyy")));
+            case "short date" -> Datum.of(LocalDate.now().format(DateTimeFormatter.ofPattern("M/d/yy")));
+            case "long date" -> Datum.of(LocalDate.now().format(DateTimeFormatter.ofPattern("MMMM d, yyyy")));
+            case "time" -> Datum.of(LocalTime.now().format(DateTimeFormatter.ofPattern("h:mm a")));
+            case "short time" -> Datum.of(LocalTime.now().format(DateTimeFormatter.ofPattern("h:mm a")));
+            case "long time" -> Datum.of(LocalTime.now().format(DateTimeFormatter.ofPattern("h:mm:ss a")));
+
+            // Timer (in ticks - 60ths of a second)
+            case "timer" -> {
+                long elapsed = System.currentTimeMillis() - startTime;
+                int ticks = (int) ((elapsed * 60) / 1000);
+                yield Datum.of(ticks);
+            }
+            case "ticks" -> {
+                // System ticks since startup
+                long elapsed = System.currentTimeMillis() - startTime;
+                int ticks = (int) ((elapsed * 60) / 1000);
+                yield Datum.of(ticks);
+            }
+            case "milliseconds" -> Datum.of((int) (System.currentTimeMillis() - startTime));
+
+            // Writable properties
+            case "exitlock" -> Datum.of(exitLock ? 1 : 0);
+            case "updatelock" -> Datum.of(updateLock ? 1 : 0);
+            case "itemdelimiter" -> Datum.of(itemDelimiter);
+            case "puppettempo" -> Datum.of(puppetTempo);
+            case "tracescript" -> Datum.of(traceScript ? 1 : 0);
+            case "tracelogfile" -> Datum.of(traceLogFile);
+            case "allowcustomcaching" -> Datum.of(allowCustomCaching ? 1 : 0);
+
+            // Tempo
+            case "framerate", "tempo" -> Datum.of(player.getTempo());
+
+            // Mouse state (placeholders)
+            case "mousedown" -> Datum.of(0);
+            case "mouseup" -> Datum.of(1);
+            case "mouseh" -> Datum.of(0);
+            case "mousev" -> Datum.of(0);
+            case "clickon" -> Datum.of(0);
+            case "clickloc" -> new Datum.Point(0, 0);
+            case "rollover" -> Datum.of(0);
+
+            // Key state (placeholders)
+            case "key" -> Datum.EMPTY_STRING;
+            case "keycode" -> Datum.of(0);
+            case "keypressed" -> Datum.of(0);
+            case "shiftdown" -> Datum.of(0);
+            case "optiondown", "altdown" -> Datum.of(0);
+            case "commanddown", "controldown" -> Datum.of(0);
+
+            // Color depth
+            case "colordepth" -> Datum.of(32);
+
+            // Misc
+            case "emptystring" -> Datum.EMPTY_STRING;
+            case "pi" -> Datum.of(Math.PI);
+            case "return" -> Datum.of("\r");
+            case "enter" -> Datum.of("\n");
+            case "tab" -> Datum.of("\t");
+            case "quote" -> Datum.of("\"");
+            case "backspace" -> Datum.of("\b");
+            case "space" -> Datum.of(" ");
+            case "true" -> Datum.TRUE;
+            case "false" -> Datum.FALSE;
+            case "void" -> Datum.VOID;
+
+            // Unknown property
+            default -> {
+                System.err.println("[MovieProperties] Unknown property: " + propName);
+                yield Datum.VOID;
+            }
+        };
+    }
+
+    @Override
+    public boolean setMovieProp(String propName, Datum value) {
+        String prop = propName.toLowerCase();
+
+        switch (prop) {
+            case "exitlock" -> {
+                exitLock = value.isTruthy();
+                return true;
+            }
+            case "updatelock" -> {
+                updateLock = value.isTruthy();
+                return true;
+            }
+            case "itemdelimiter" -> {
+                String s = value.toStr();
+                itemDelimiter = s.isEmpty() ? "," : s.substring(0, 1);
+                return true;
+            }
+            case "puppettempo" -> {
+                puppetTempo = value.toInt();
+                return true;
+            }
+            case "tracescript" -> {
+                traceScript = value.isTruthy();
+                return true;
+            }
+            case "tracelogfile" -> {
+                traceLogFile = value.toStr();
+                return true;
+            }
+            case "allowcustomcaching" -> {
+                allowCustomCaching = value.isTruthy();
+                return true;
+            }
+            case "tempo", "framerate" -> {
+                player.setTempo(value.toInt());
+                return true;
+            }
+            default -> {
+                System.err.println("[MovieProperties] Cannot set read-only property: " + propName);
+                return false;
+            }
+        }
+    }
+
+    private String getMovieName() {
+        if (file != null && file.getBasePath() != null) {
+            String path = file.getBasePath();
+            int lastSep = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+            if (lastSep >= 0 && lastSep < path.length() - 1) {
+                return path.substring(lastSep + 1);
+            }
+            return path;
+        }
+        return "";
+    }
+
+    private String getMoviePath() {
+        if (file != null && file.getBasePath() != null) {
+            String path = file.getBasePath();
+            if (!path.endsWith("/") && !path.endsWith("\\")) {
+                path += "/";
+            }
+            return path;
+        }
+        return "";
+    }
+
+    // Accessors for direct property access
+
+    public boolean isExitLock() {
+        return exitLock;
+    }
+
+    public boolean isUpdateLock() {
+        return updateLock;
+    }
+
+    public String getItemDelimiter() {
+        return itemDelimiter;
+    }
+
+    public int getPuppetTempo() {
+        return puppetTempo;
+    }
+}
