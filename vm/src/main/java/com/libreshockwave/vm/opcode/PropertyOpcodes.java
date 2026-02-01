@@ -2,9 +2,9 @@ package com.libreshockwave.vm.opcode;
 
 import com.libreshockwave.lingo.Opcode;
 import com.libreshockwave.vm.Datum;
-import com.libreshockwave.vm.builtin.CastLibBuiltins;
 import com.libreshockwave.vm.builtin.CastLibProvider;
 import com.libreshockwave.vm.builtin.MoviePropertyProvider;
+import com.libreshockwave.vm.builtin.XtraBuiltins;
 
 import java.util.Map;
 
@@ -95,13 +95,10 @@ public final class PropertyOpcodes {
         Datum obj = ctx.pop();
 
         Datum result = switch (obj) {
-            case Datum.CastLibRef clr -> CastLibBuiltins.getCastLibProp(clr, propName);
+            case Datum.CastLibRef clr -> getCastLibProp(clr, propName);
             case Datum.CastMemberRef cmr -> getCastMemberProp(cmr, propName);
             case Datum.ScriptInstance si -> si.properties().getOrDefault(propName, Datum.VOID);
-            case Datum.XtraInstance xi -> {
-                // TODO: Xtra instance property access
-                yield Datum.VOID;
-            }
+            case Datum.XtraInstance xi -> XtraBuiltins.getProperty(xi, propName);
             case Datum.PropList pl -> pl.properties().getOrDefault(propName, Datum.VOID);
             default -> Datum.VOID;
         };
@@ -116,12 +113,13 @@ public final class PropertyOpcodes {
         Datum obj = ctx.pop();
 
         switch (obj) {
-            case Datum.CastLibRef clr -> CastLibBuiltins.setCastLibProp(clr, propName, value);
+            case Datum.CastLibRef clr -> setCastLibProp(clr, propName, value);
             case Datum.CastMemberRef cmr -> setCastMemberProp(cmr, propName, value);
             case Datum.ScriptInstance si -> {
                 si.properties().put(propName, value);
                 ctx.tracePropertySet(propName, value);
             }
+            case Datum.XtraInstance xi -> XtraBuiltins.setProperty(xi, propName, value);
             case Datum.PropList pl -> pl.properties().put(propName, value);
             default -> { /* ignore */ }
         }
@@ -130,26 +128,72 @@ public final class PropertyOpcodes {
     }
 
     /**
+     * Get a property from a cast library reference.
+     */
+    private static Datum getCastLibProp(Datum.CastLibRef clr, String propName) {
+        CastLibProvider provider = CastLibProvider.getProvider();
+        if (provider == null) {
+            return Datum.VOID;
+        }
+        return provider.getCastLibProp(clr.castLibNumber(), propName);
+    }
+
+    /**
+     * Set a property on a cast library reference.
+     */
+    private static boolean setCastLibProp(Datum.CastLibRef clr, String propName, Datum value) {
+        CastLibProvider provider = CastLibProvider.getProvider();
+        if (provider == null) {
+            return false;
+        }
+        return provider.setCastLibProp(clr.castLibNumber(), propName, value);
+    }
+
+    /**
      * Get a property from a cast member reference.
      */
     private static Datum getCastMemberProp(Datum.CastMemberRef cmr, String propName) {
+        String prop = propName.toLowerCase();
+
+        // Built-in member reference properties
+        return switch (prop) {
+            case "number" -> Datum.of(cmr.member());
+            case "castlibnum" -> Datum.of(cmr.castLib());
+            case "castlib" -> new Datum.CastLibRef(cmr.castLib());
+            // Other properties need the CastLibProvider to look up the actual member
+            default -> getCastMemberPropFromProvider(cmr, propName);
+        };
+    }
+
+    /**
+     * Get a cast member property from the provider.
+     */
+    private static Datum getCastMemberPropFromProvider(Datum.CastMemberRef cmr, String propName) {
         CastLibProvider provider = CastLibProvider.getProvider();
         if (provider == null) {
             return Datum.VOID;
         }
 
+        // The provider needs to implement member property access
+        // For now, return VOID for unimplemented properties
         String prop = propName.toLowerCase();
 
-        // Common cast member properties
+        // Common member properties that require looking up the actual member
+        // These would need to be implemented in CastLibProvider
         return switch (prop) {
-            case "number" -> Datum.of(cmr.member());
-            case "castlibnum", "castlib" -> Datum.of(cmr.castLib());
-            // Other properties need to be looked up from the actual cast member
-            // TODO: implement full cast member property access
-            default -> {
-                System.err.println("[PropertyOpcodes] Unknown member property: " + propName);
+            case "name" -> {
+                // TODO: Look up member name from provider
+                yield Datum.EMPTY_STRING;
+            }
+            case "type" -> {
+                // TODO: Look up member type from provider
                 yield Datum.VOID;
             }
+            case "width", "height", "rect" -> {
+                // TODO: Look up bitmap dimensions from provider
+                yield Datum.VOID;
+            }
+            default -> Datum.VOID;
         };
     }
 
@@ -157,9 +201,22 @@ public final class PropertyOpcodes {
      * Set a property on a cast member reference.
      */
     private static boolean setCastMemberProp(Datum.CastMemberRef cmr, String propName, Datum value) {
+        CastLibProvider provider = CastLibProvider.getProvider();
+        if (provider == null) {
+            return false;
+        }
+
         // Most cast member properties are read-only during playback
-        System.err.println("[PropertyOpcodes] Cannot set member property: " + propName);
-        return false;
+        // Some properties like "name" might be writable
+        String prop = propName.toLowerCase();
+
+        return switch (prop) {
+            case "name" -> {
+                // TODO: Set member name via provider
+                yield false;
+            }
+            default -> false;
+        };
     }
 
     private static boolean theBuiltin(ExecutionContext ctx) {
