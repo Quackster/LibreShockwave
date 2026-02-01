@@ -10,6 +10,9 @@ import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.bitmap.BitmapDecoder;
 import com.libreshockwave.bitmap.Palette;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.ByteOrder;
 import java.nio.file.Files;
@@ -130,35 +133,81 @@ public class DirectorFile {
 
     /**
      * Get a cast member by its member number (from score behavior references).
-     * Unlike getCastMemberByIndex, this treats the input as the actual member number
-     * without applying any offset transformations.
+     * The member number is the slot position as seen in Director's cast window.
+     * This uses the CASp chunk to map member numbers to chunk IDs.
      * @param castLib Cast library (1+)
      * @param memberNumber The member number as stored in the score
      * @return The cast member, or null if not found
      */
     public CastMemberChunk getCastMemberByNumber(int castLib, int memberNumber) {
-        // Try direct match by ID first
+        // Get the cast library
+        int libIndex = Math.max(0, castLib - 1);
+        if (libIndex >= casts.size()) {
+            return null;
+        }
+
+        CastChunk cast = casts.get(libIndex);
+        if (cast == null) {
+            return null;
+        }
+
+        // Get minMember offset from cast list
+        int minMember = 1;
+        if (castList != null && !castList.entries().isEmpty()) {
+            if (libIndex < castList.entries().size()) {
+                minMember = castList.entries().get(libIndex).minMember();
+            }
+        } else if (config != null) {
+            minMember = config.minMember();
+        }
+        if (minMember <= 0) minMember = 1;
+
+        // Calculate the index into the cast's member ID array
+        int arrayIndex = memberNumber - minMember;
+        if (arrayIndex < 0 || arrayIndex >= cast.memberIds().size()) {
+            return null;
+        }
+
+        // Get the chunk ID for this member slot
+        int chunkId = cast.memberIds().get(arrayIndex);
+        if (chunkId <= 0) {
+            return null;  // Empty slot
+        }
+
+        // Find the cast member chunk with this ID
         for (CastMemberChunk member : castMembers) {
-            if (member.id() == memberNumber) {
+            if (member.id() == chunkId) {
                 return member;
             }
         }
 
-        // Try with cast library filtering if we have multiple casts
-        if (castList != null && !castList.entries().isEmpty() && castLib > 0) {
-            int libIndex = castLib - 1;
-            if (libIndex < castList.entries().size()) {
-                var entry = castList.entries().get(libIndex);
-                int minMember = entry.minMember();
-                int memberCount = entry.memberCount();
-                // Check if memberNumber falls within this cast's range
-                if (memberNumber >= minMember && memberNumber < minMember + memberCount) {
-                    for (CastMemberChunk member : castMembers) {
-                        if (member.id() == memberNumber) {
-                            return member;
-                        }
+        return null;
+    }
+
+    /**
+     * Get a script by its context ID (the scriptId stored in cast members).
+     * This uses the ScriptContextChunk (Lctx) to map scriptId to chunk ID.
+     * @param scriptId The script ID from the cast member
+     * @return The script chunk, or null if not found
+     */
+    public ScriptChunk getScriptByContextId(int scriptId) {
+        // The scriptId is an index into the Lctx entries array
+        if (scriptContext != null && scriptId >= 0 && scriptId < scriptContext.entries().size()) {
+            var entry = scriptContext.entries().get(scriptId);
+            int chunkId = entry.id();
+            if (chunkId > 0) {
+                for (ScriptChunk script : scripts) {
+                    if (script.id() == chunkId) {
+                        return script;
                     }
                 }
+            }
+        }
+
+        // Fallback: try direct match by ID
+        for (ScriptChunk script : scripts) {
+            if (script.id() == scriptId) {
+                return script;
             }
         }
 
@@ -319,24 +368,41 @@ public class DirectorFile {
 
             // Find BITD chunk via key table
             BitmapChunk bitmapChunk = null;
+            byte[] ediMData = null;
+            byte[] alfaData = null;
+
             for (KeyTableChunk.KeyTableEntry entry : keyTable.getEntriesForOwner(member.id())) {
                 String fourcc = entry.fourccString();
-                if (fourcc.equals("BITD") || fourcc.equals("DTIB")) {
+                if (fourcc.equals("BITD")) {
                     Chunk chunk = getChunk(entry.sectionId());
                     if (chunk instanceof BitmapChunk bc) {
                         bitmapChunk = bc;
-                        break;
+                    }
+                } else if (fourcc.equals("ediM")) {
+                    // ediM chunk contains JPEG-compressed RGB data for 32-bit bitmaps
+                    Chunk chunk = getChunk(entry.sectionId());
+                    if (chunk instanceof MediaChunk mc) {
+                        ediMData = mc.audioData(); // Raw data stored in audioData field
+                    } else if (chunk instanceof RawChunk rc) {
+                        ediMData = rc.data();
+                    }
+                } else if (fourcc.equals("ALFA")) {
+                    // ALFA chunk contains alpha channel data
+                    Chunk chunk = getChunk(entry.sectionId());
+                    if (chunk instanceof RawChunk rc) {
+                        alfaData = rc.data();
                     }
                 }
             }
+
+            // Try ediM + ALFA decoding for 32-bit bitmaps
+            if (bitmapChunk == null && ediMData != null && info.bitDepth() == 32) {
+                return decodeEdiMBitmap(info, ediMData, alfaData);
+            }
+
             if (bitmapChunk == null) {
                 return Optional.empty();
             }
-            
-            // Get palette
-            // Palette palette = info.paletteId() < 0
-            //        ? Palette.getBuiltIn(info.paletteId())
-            //        : Palette.getBuiltIn(Palette.SYSTEM_MAC);
 
             // Resolve palette (supports both built-in and custom cast member palettes)
             Palette palette = resolvePalette(info.paletteId());
@@ -350,6 +416,69 @@ public class DirectorFile {
                 info.width(), info.height(), info.bitDepth(),
                 palette, true, bigEndian, directorVersion
             );
+
+            return Optional.of(bitmap);
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Decode a 32-bit bitmap from ediM (JPEG RGB) + ALFA (alpha channel) chunks.
+     */
+    private Optional<Bitmap> decodeEdiMBitmap(BitmapInfo info, byte[] jpegData, byte[] alfaData) {
+        try {
+            // Decode JPEG RGB data
+            BufferedImage jpegImage = ImageIO.read(new ByteArrayInputStream(jpegData));
+            if (jpegImage == null) {
+                return Optional.empty();
+            }
+
+            int width = info.width();
+            int height = info.height();
+
+            // Create bitmap
+            Bitmap bitmap = new Bitmap(width, height, 32);
+
+            // Copy RGB from JPEG
+            for (int y = 0; y < height && y < jpegImage.getHeight(); y++) {
+                for (int x = 0; x < width && x < jpegImage.getWidth(); x++) {
+                    int rgb = jpegImage.getRGB(x, y);
+                    int r = (rgb >> 16) & 0xFF;
+                    int g = (rgb >> 8) & 0xFF;
+                    int b = rgb & 0xFF;
+                    bitmap.setPixelRGB(x, y, r, g, b);
+                }
+            }
+
+            // Apply alpha channel if present
+            if (alfaData != null && alfaData.length > 0) {
+                // Decompress alpha using RLE
+                int scanWidth = BitmapDecoder.calculateScanWidth(width, 8);
+                int expectedSize = scanWidth * height;
+                byte[] alphaChannel = BitmapDecoder.decompressRLE(alfaData, expectedSize);
+
+                // Apply alpha to bitmap
+                for (int y = 0; y < height; y++) {
+                    int rowOffset = y * scanWidth;
+                    for (int x = 0; x < width; x++) {
+                        int byteIndex = rowOffset + x;
+                        if (byteIndex < alphaChannel.length) {
+                            int alpha = alphaChannel[byteIndex] & 0xFF;
+                            int pixel = bitmap.getPixel(x, y);
+                            bitmap.setPixel(x, y, (alpha << 24) | (pixel & 0x00FFFFFF));
+                        }
+                    }
+                }
+            } else {
+                // No alpha data - set all pixels to fully opaque
+                for (int y = 0; y < height; y++) {
+                    for (int x = 0; x < width; x++) {
+                        int pixel = bitmap.getPixel(x, y);
+                        bitmap.setPixel(x, y, 0xFF000000 | (pixel & 0x00FFFFFF));
+                    }
+                }
+            }
 
             return Optional.of(bitmap);
         } catch (Exception e) {
