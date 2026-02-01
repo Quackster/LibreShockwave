@@ -57,15 +57,10 @@ public class EventDispatcher {
     public void dispatchGlobalEvent(String handlerName, List<Datum> args) {
         stopPropagation = false;
 
-        // Debug: event dispatch
-        debugMessage("-- " + handlerName);
-
         // 1. Sprite behaviors (in channel order)
         List<BehaviorInstance> spriteInstances = behaviorManager.getSpriteInstances();
-        debugLog("sprite behaviors: " + spriteInstances.size());
         for (BehaviorInstance instance : spriteInstances) {
             if (stopPropagation) {
-                debugLog("propagation stopped");
                 break;
             }
             invokeHandler(instance, handlerName, args);
@@ -74,7 +69,6 @@ public class EventDispatcher {
         // 2. Frame behavior
         if (!stopPropagation) {
             BehaviorInstance frameInstance = behaviorManager.getFrameScriptInstance();
-            debugLog("frame script: " + (frameInstance != null ? "present" : "none"));
             if (frameInstance != null) {
                 invokeHandler(frameInstance, handlerName, args);
             }
@@ -82,10 +76,7 @@ public class EventDispatcher {
 
         // 3. Movie scripts
         if (!stopPropagation) {
-            debugLog("dispatching to movie scripts");
             dispatchToMovieScripts(handlerName, args);
-        } else {
-            debugLog("skipping movie scripts (propagation stopped)");
         }
     }
 
@@ -102,9 +93,6 @@ public class EventDispatcher {
      */
     public void dispatchFrameAndMovieEvent(String handlerName, List<Datum> args) {
         stopPropagation = false;
-
-        // Debug: event dispatch
-        debugMessage("-- " + handlerName);
 
         // Frame behavior first
         BehaviorInstance frameInstance = behaviorManager.getFrameScriptInstance();
@@ -129,9 +117,6 @@ public class EventDispatcher {
      * Dispatch an event to a specific sprite's behaviors.
      */
     public void dispatchSpriteEvent(int channel, String handlerName, List<Datum> args) {
-        // Debug: sprite event dispatch
-        debugMessage("-- " + handlerName + " (sprite " + channel + ")");
-
         List<BehaviorInstance> instances = behaviorManager.getInstancesForChannel(channel);
         for (BehaviorInstance instance : instances) {
             invokeHandler(instance, handlerName, args);
@@ -148,36 +133,14 @@ public class EventDispatcher {
         ScriptNamesChunk names = file.getScriptNames();
         if (names == null) return;
 
-        // Log the event dispatch for movie lifecycle events
-        debugMessage("-- " + handlerName + " (movie)");
-
-        boolean hasHandler = file.getScriptNames().names().stream().anyMatch(x -> x.equalsIgnoreCase(handlerName));
-
-        if (hasHandler) {
-            var debugOnme = 1;
-        }
-
-        int totalScripts = file.getScripts().size();
-        int movieScriptCount = 0;
-        int handlersFound = 0;
-
         for (ScriptChunk script : file.getScripts()) {
-            boolean isMovieScript = script.getScriptType() == ScriptChunk.ScriptType.MOVIE_SCRIPT;
-
-
-            if (isMovieScript) {
-                movieScriptCount++;
-            }
-
             // Only check movie scripts for movie events
-            if (!isMovieScript) {
+            if (script.getScriptType() != ScriptChunk.ScriptType.MOVIE_SCRIPT) {
                 continue;
             }
 
             ScriptChunk.Handler handler = script.findHandler(handlerName, names);
             if (handler != null) {
-                handlersFound++;
-                debugLog("found " + handlerName + " in movie script #" + script.id());
                 try {
                     vm.executeHandler(script, handler, args, null);
                 } catch (Exception e) {
@@ -186,16 +149,6 @@ public class EventDispatcher {
                         e.printStackTrace();
                     }
                 }
-            } else {
-                debugLog("no " + handlerName + " in movie script #" + script.id());
-            }
-        }
-
-        if (handlersFound == 0 && movieScriptCount == 0) {
-            debugLog("WARNING: no movie scripts found in " + totalScripts + " total scripts");
-            // Dump script types for debugging
-            for (ScriptChunk script : file.getScripts()) {
-                debugLog("  script #" + script.id() + " type=" + script.getScriptType());
             }
         }
     }
@@ -215,12 +168,8 @@ public class EventDispatcher {
         ScriptChunk.Handler handler = script.findHandler(handlerName, names);
 
         if (handler == null) {
-            // Handler not found in this script - propagation continues
-            debugLog("no " + handlerName + " in script #" + script.id());
             return;
         }
-
-        debugLog("found " + handlerName + " in script #" + script.id());
 
         // Handler exists - by default, stop propagation unless pass() is called
         stopPropagation = true;
@@ -229,16 +178,12 @@ public class EventDispatcher {
             // Pass the instance as the receiver ('me')
             Datum receiver = instance.toDatum();
             vm.executeHandler(script, handler, args, receiver);
-
-            // If pass() was called during execution, stopPropagation will be false
-
         } catch (Exception e) {
             System.err.println("[EventDispatcher] Error in handler " + handlerName +
                                " on " + instance + ": " + e.getMessage());
             if (debugEnabled) {
                 e.printStackTrace();
             }
-            // On error, stop propagation (handler existed but failed)
         }
     }
 
@@ -257,25 +202,4 @@ public class EventDispatcher {
         return stopPropagation;
     }
 
-    /**
-     * Send a debug message to the trace listener.
-     */
-    private void debugMessage(String message) {
-        var listener = vm.getTraceListener();
-        if (listener != null) {
-            listener.onDebugMessage(message);
-        }
-    }
-
-    /**
-     * Send a debug message only when debug is enabled.
-     */
-    private void debugLog(String message) {
-        if (debugEnabled) {
-            var listener = vm.getTraceListener();
-            if (listener != null) {
-                listener.onDebugMessage("  [dispatch] " + message);
-            }
-        }
-    }
 }
