@@ -105,6 +105,22 @@ public record ScriptChunk(
         int nameId
     ) {}
 
+    /**
+     * Get the reliable script type from the associated cast member.
+     * This is the authoritative source - the scriptType() record field is unreliable.
+     * @return The script type from the cast member, or the internal type as fallback
+     */
+    public ScriptType getScriptType() {
+        if (file != null) {
+            ScriptType type = file.getScriptType(this);
+            if (type != null && type != ScriptType.UNKNOWN) {
+                return type;
+            }
+        }
+        // Fallback to internal (unreliable) type
+        return scriptType != null ? scriptType : ScriptType.UNKNOWN;
+    }
+
     public Handler findHandler(String name, ScriptNamesChunk names) {
         if (names == null) return null;
 

@@ -174,7 +174,7 @@ public class EventDispatcher {
         int handlersFound = 0;
 
         for (ScriptChunk script : file.getScripts()) {
-            boolean isMovieScript = script.scriptType() == ScriptChunk.ScriptType.MOVIE_SCRIPT;
+            boolean isMovieScript = script.getScriptType() == ScriptChunk.ScriptType.MOVIE_SCRIPT;
 
 
             if (isMovieScript) {
@@ -210,7 +210,7 @@ public class EventDispatcher {
             debugLog("WARNING: no movie scripts found in " + totalScripts + " total scripts");
             // Dump script types for debugging
             for (ScriptChunk script : file.getScripts()) {
-                debugLog("  script #" + script.id() + " type=" + script.scriptType());
+                debugLog("  script #" + script.id() + " type=" + script.getScriptType());
             }
         }
     }
