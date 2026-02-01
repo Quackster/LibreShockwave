@@ -328,6 +328,14 @@ public class PlayerFrame extends JFrame {
                 SwingUtilities.invokeLater(this::updateFrameLabel);
             });
 
+            // Set stage background color from movie config
+            if (file.getConfig() != null) {
+                int stageColor = file.getConfig().stageColor();
+                // Convert Director palette index to RGB (grayscale for now)
+                int rgb = (stageColor & 0xFF) | ((stageColor & 0xFF) << 8) | ((stageColor & 0xFF) << 16);
+                player.getStageRenderer().setBackgroundColor(rgb);
+            }
+
             // Connect debug panel to VM trace
             player.getVM().setTraceListener(debugPanel);
             player.setDebugEnabled(true);

@@ -57,10 +57,6 @@ public class EventDispatcher {
     public void dispatchGlobalEvent(String handlerName, List<Datum> args) {
         stopPropagation = false;
 
-        if (debugEnabled) {
-            System.out.println("[EventDispatcher] Dispatching global event: " + handlerName);
-        }
-
         // Debug: event dispatch
         debugMessage("-- " + handlerName);
 
@@ -107,10 +103,6 @@ public class EventDispatcher {
     public void dispatchFrameAndMovieEvent(String handlerName, List<Datum> args) {
         stopPropagation = false;
 
-        if (debugEnabled) {
-            System.out.println("[EventDispatcher] Dispatching frame/movie event: " + handlerName);
-        }
-
         // Debug: event dispatch
         debugMessage("-- " + handlerName);
 
@@ -137,10 +129,6 @@ public class EventDispatcher {
      * Dispatch an event to a specific sprite's behaviors.
      */
     public void dispatchSpriteEvent(int channel, String handlerName, List<Datum> args) {
-        if (debugEnabled) {
-            System.out.println("[EventDispatcher] Dispatching sprite event: " + handlerName + " to channel " + channel);
-        }
-
         // Debug: sprite event dispatch
         debugMessage("-- " + handlerName + " (sprite " + channel + ")");
 
@@ -190,9 +178,6 @@ public class EventDispatcher {
             if (handler != null) {
                 handlersFound++;
                 debugLog("found " + handlerName + " in movie script #" + script.id());
-                if (debugEnabled) {
-                    System.out.println("[EventDispatcher] Invoking movie script handler: " + handlerName);
-                }
                 try {
                     vm.executeHandler(script, handler, args, null);
                 } catch (Exception e) {
@@ -236,11 +221,6 @@ public class EventDispatcher {
         }
 
         debugLog("found " + handlerName + " in script #" + script.id());
-
-        if (debugEnabled) {
-            System.out.println("[EventDispatcher] Invoking handler: " + handlerName +
-                               " on " + instance);
-        }
 
         // Handler exists - by default, stop propagation unless pass() is called
         stopPropagation = true;
