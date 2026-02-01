@@ -21,6 +21,7 @@ public class NetTask {
 
     private final int taskId;
     private final String url;
+    private final String originalUrl;
     private final Method method;
     private final String postData;
 
@@ -29,19 +30,20 @@ public class NetTask {
     private int errorCode = 0;
     private String errorMessage;
 
-    public NetTask(int taskId, String url, Method method, String postData) {
+    public NetTask(int taskId, String originalUrl, String url, Method method, String postData) {
         this.taskId = taskId;
         this.url = url;
+        this.originalUrl = originalUrl;
         this.method = method;
         this.postData = postData;
     }
 
-    public static NetTask get(int taskId, String url) {
-        return new NetTask(taskId, url, Method.GET, null);
+    public static NetTask get(int taskId, String originalUrl, String url) {
+        return new NetTask(taskId, originalUrl, url, Method.GET, null);
     }
 
-    public static NetTask post(int taskId, String url, String postData) {
-        return new NetTask(taskId, url, Method.POST, postData);
+    public static NetTask post(int taskId, String originalUrl, String url, String postData) {
+        return new NetTask(taskId, originalUrl, url, Method.POST, postData);
     }
 
     // Accessors
@@ -52,6 +54,10 @@ public class NetTask {
 
     public String getUrl() {
         return url;
+    }
+
+    public String getOriginalUrl() {
+        return originalUrl;
     }
 
     public Method getMethod() {
@@ -119,6 +125,6 @@ public class NetTask {
 
     @Override
     public String toString() {
-        return "NetTask{id=" + taskId + ", url=" + url + ", method=" + method + ", state=" + state + "}";
+        return "NetTask{id=" + taskId + ", util=" + url + ", method=" + method + ", state=" + state + "}";
     }
 }

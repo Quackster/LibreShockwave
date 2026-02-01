@@ -82,12 +82,11 @@ public interface CastLibProvider {
      */
     boolean setMemberProp(int castLibNumber, int memberNumber, String propName, Datum value);
 
-    /**
-     * Get the external URL for a cast library (for preloadNetThing).
-     * @param castLibNumber The cast library number
-     * @return The URL, or null if not an external cast
-     */
-    default String getCastLibUrl(int castLibNumber) {
+    default String getCastLibName(int castLibNumber) {
+        return null;
+    }
+
+    default String getCastLibFileName(int castLibNumber) {
         return null;
     }
 
