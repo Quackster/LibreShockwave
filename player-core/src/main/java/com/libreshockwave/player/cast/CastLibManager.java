@@ -281,12 +281,14 @@ public class CastLibManager implements CastLibProvider {
 
     @Override
     public boolean fetchCastLib(int castLibNumber) {
+        // External cast fetching is now handled by preloadNetThing
+        // This method returns true if the cast is already fetched
         ensureInitialized();
         CastLib castLib = castLibs.get(castLibNumber);
         if (castLib == null) {
             return false;
         }
-        return castLib.fetchExternal();
+        return castLib.isFetched();
     }
 
     @Override
@@ -308,10 +310,7 @@ public class CastLibManager implements CastLibProvider {
 
             // mode 1 = before frame 1, mode 2 = after frame 1
             if (preloadMode == mode) {
-                if (castLib.isExternal() && !castLib.isFetched()) {
-                    // Fetch external cast synchronously
-                    castLib.fetchExternal();
-                }
+                // External casts must be fetched via preloadNetThing first
                 if (castLib.isFetched() && !castLib.isLoaded()) {
                     castLib.load();
                 }
@@ -320,22 +319,49 @@ public class CastLibManager implements CastLibProvider {
     }
 
     /**
-     * Fetch an external cast by URL.
-     * Used by preloadNetThing to load external casts.
-     * @param url The URL to fetch
+     * Find the cast lib number for a URL.
+     * Used by preloadNetThing to identify which cast to load.
+     * @param url The URL to find
      * @return The cast lib number if found, or -1
      */
-    public int fetchCastLibByUrl(String url) {
+    public int getCastLibNumberByUrl(String url) {
         ensureInitialized();
 
         for (CastLib castLib : castLibs.values()) {
             String castUrl = castLib.getExternalUrl();
             if (castUrl != null && castUrl.equals(url)) {
-                if (castLib.fetchExternal()) {
-                    return castLib.getNumber();
-                }
+                return castLib.getNumber();
             }
         }
         return -1;
+    }
+
+    /**
+     * Set external cast data from preloadNetThing.
+     * @param castLibNumber The cast library number
+     * @param data The raw file data
+     * @return true if parsing was successful
+     */
+    public boolean setExternalCastData(int castLibNumber, byte[] data) {
+        ensureInitialized();
+        CastLib castLib = castLibs.get(castLibNumber);
+        if (castLib == null) {
+            return false;
+        }
+        return castLib.setExternalData(data);
+    }
+
+    /**
+     * Set external cast data by URL from preloadNetThing.
+     * @param url The URL that was fetched
+     * @param data The raw file data
+     * @return true if parsing was successful
+     */
+    public boolean setExternalCastDataByUrl(String url, byte[] data) {
+        int castLibNumber = getCastLibNumberByUrl(url);
+        if (castLibNumber > 0) {
+            return setExternalCastData(castLibNumber, data);
+        }
+        return false;
     }
 }
