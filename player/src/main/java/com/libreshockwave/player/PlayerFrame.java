@@ -10,7 +10,13 @@ import java.awt.*;
 import java.awt.event.*;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.prefs.Preferences;
 
@@ -21,8 +27,13 @@ import java.util.prefs.Preferences;
 public class PlayerFrame extends JFrame {
 
     private static final String PREF_LAST_FILE = "lastFile";
+    private static final String PREF_LAST_URL = "lastUrl";
     private static final String PREF_LAST_DIR = "lastDirectory";
     private final Preferences prefs = Preferences.userNodeForPackage(PlayerFrame.class);
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .followRedirects(HttpClient.Redirect.NORMAL)
+            .connectTimeout(Duration.ofSeconds(30))
+            .build();
 
     private Player player;
     private Timer playbackTimer;
@@ -66,14 +77,44 @@ public class PlayerFrame extends JFrame {
         prefs.put(PREF_LAST_DIR, path.getParent().toAbsolutePath().toString());
     }
 
-    private void reopenLastFile() {
+    private void reopenLast() {
+        // Check URL first (most recent if set)
+        String lastUrl = prefs.get(PREF_LAST_URL, null);
+        if (lastUrl != null && !lastUrl.isEmpty()) {
+            openUrl(lastUrl);
+            return;
+        }
+
+        // Fall back to file
         if (lastOpenedFile != null && lastOpenedFile.toFile().exists()) {
             openFile(lastOpenedFile);
         } else {
             JOptionPane.showMessageDialog(this,
-                "No recent file to reopen.",
-                "Reopen Last File",
+                "No recent file or URL to reopen.",
+                "Reopen Last",
                 JOptionPane.INFORMATION_MESSAGE);
+        }
+    }
+
+    private void openUrlDialog() {
+        String lastUrl = prefs.get(PREF_LAST_URL, "");
+        String url = (String) JOptionPane.showInputDialog(
+            this,
+            "Enter the URL of a Director file (.dcr, .dir, .dxr):",
+            "Open URL",
+            JOptionPane.PLAIN_MESSAGE,
+            null,
+            null,
+            lastUrl
+        );
+
+        if (url != null && !url.trim().isEmpty()) {
+            url = url.trim();
+            // Add http:// if no protocol specified
+            if (!url.toLowerCase().startsWith("http://") && !url.toLowerCase().startsWith("https://")) {
+                url = "http://" + url;
+            }
+            openUrl(url);
         }
     }
 
@@ -163,14 +204,19 @@ public class PlayerFrame extends JFrame {
         JMenu fileMenu = new JMenu("File");
         fileMenu.setMnemonic(KeyEvent.VK_F);
 
-        JMenuItem openItem = new JMenuItem("Open...");
+        JMenuItem openItem = new JMenuItem("Open File...");
         openItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, InputEvent.CTRL_DOWN_MASK));
         openItem.addActionListener(e -> openFileDialog());
         fileMenu.add(openItem);
 
-        JMenuItem reopenItem = new JMenuItem("Reopen Last File");
+        JMenuItem openUrlItem = new JMenuItem("Open URL...");
+        openUrlItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_U, InputEvent.CTRL_DOWN_MASK));
+        openUrlItem.addActionListener(e -> openUrlDialog());
+        fileMenu.add(openUrlItem);
+
+        JMenuItem reopenItem = new JMenuItem("Reopen Last");
         reopenItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK));
-        reopenItem.addActionListener(e -> reopenLastFile());
+        reopenItem.addActionListener(e -> reopenLast());
         fileMenu.add(reopenItem);
 
         fileMenu.addSeparator();
@@ -296,8 +342,9 @@ public class PlayerFrame extends JFrame {
             DirectorFile file = DirectorFile.load(path);
             player = new Player(file);
 
-            // Save this file as the last opened
+            // Save this file as the last opened (clear URL preference)
             saveLastFilePreference(path);
+            prefs.remove(PREF_LAST_URL);
 
             // Update UI
             setTitle("LibreShockwave Player - " + path.getFileName());
@@ -305,42 +352,7 @@ public class PlayerFrame extends JFrame {
                 " | Frames: " + player.getFrameCount() +
                 " | Tempo: " + player.getTempo() + " fps");
 
-            // Update stage size
-            int width = file.getStageWidth();
-            int height = file.getStageHeight();
-            if (width > 0 && height > 0) {
-                stagePanel.setPreferredSize(new Dimension(width, height));
-                pack();
-            }
-
-            // Update frame slider
-            int frameCount = player.getFrameCount();
-            if (frameCount > 0) {
-                frameSlider.setMaximum(frameCount);
-                frameSlider.setValue(1);
-                frameSlider.setEnabled(true);
-            }
-
-            updateFrameLabel();
-
-            // Set up player event listener
-            player.setEventListener(event -> {
-                SwingUtilities.invokeLater(this::updateFrameLabel);
-            });
-
-            // Set stage background color from movie config
-            if (file.getConfig() != null) {
-                int stageColor = file.getConfig().stageColor();
-                // Convert Director palette index to RGB (grayscale for now)
-                int rgb = (stageColor & 0xFF) | ((stageColor & 0xFF) << 8) | ((stageColor & 0xFF) << 16);
-                player.getStageRenderer().setBackgroundColor(rgb);
-            }
-
-            // Connect debug panel to VM trace
-            player.getVM().setTraceListener(debugPanel);
-            player.setDebugEnabled(true);
-
-            stagePanel.setPlayer(player);
+            setupPlayerUI(file);
 
         } catch (IOException e) {
             JOptionPane.showMessageDialog(this,
@@ -348,6 +360,112 @@ public class PlayerFrame extends JFrame {
                 "Error",
                 JOptionPane.ERROR_MESSAGE);
         }
+    }
+
+    /**
+     * Open a Director file from an HTTP/HTTPS URL.
+     */
+    public void openUrl(String url) {
+        stop();
+
+        statusLabel.setText("Loading from URL: " + url + " ...");
+        setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
+
+        // Load in background thread
+        new SwingWorker<DirectorFile, Void>() {
+            @Override
+            protected DirectorFile doInBackground() throws Exception {
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(url))
+                        .timeout(Duration.ofSeconds(60))
+                        .GET()
+                        .build();
+
+                HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+
+                if (response.statusCode() != 200) {
+                    throw new IOException("HTTP error: " + response.statusCode());
+                }
+
+                return DirectorFile.load(response.body());
+            }
+
+            @Override
+            protected void done() {
+                setCursor(Cursor.getDefaultCursor());
+                try {
+                    DirectorFile file = get();
+                    player = new Player(file);
+
+                    // Set base path from URL for relative resource loading
+                    String basePath = url.substring(0, url.lastIndexOf('/') + 1);
+                    player.getNetManager().setBasePath(basePath);
+
+                    // Save URL as last opened (clear file preference)
+                    prefs.put(PREF_LAST_URL, url);
+                    prefs.remove(PREF_LAST_FILE);
+
+                    // Get filename from URL
+                    String fileName = url.substring(url.lastIndexOf('/') + 1);
+                    setTitle("LibreShockwave Player - " + fileName);
+                    statusLabel.setText("Loaded: " + fileName +
+                        " | Frames: " + player.getFrameCount() +
+                        " | Tempo: " + player.getTempo() + " fps");
+
+                    setupPlayerUI(file);
+
+                } catch (Exception e) {
+                    String message = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
+                    JOptionPane.showMessageDialog(PlayerFrame.this,
+                        "Failed to load URL: " + message,
+                        "Error",
+                        JOptionPane.ERROR_MESSAGE);
+                    statusLabel.setText("Failed to load: " + url);
+                }
+            }
+        }.execute();
+    }
+
+    /**
+     * Common UI setup after loading a file or URL.
+     */
+    private void setupPlayerUI(DirectorFile file) {
+        // Update stage size
+        int width = file.getStageWidth();
+        int height = file.getStageHeight();
+        if (width > 0 && height > 0) {
+            stagePanel.setPreferredSize(new Dimension(width, height));
+            pack();
+        }
+
+        // Update frame slider
+        int frameCount = player.getFrameCount();
+        if (frameCount > 0) {
+            frameSlider.setMaximum(frameCount);
+            frameSlider.setValue(1);
+            frameSlider.setEnabled(true);
+        }
+
+        updateFrameLabel();
+
+        // Set up player event listener
+        player.setEventListener(event -> {
+            SwingUtilities.invokeLater(this::updateFrameLabel);
+        });
+
+        // Set stage background color from movie config
+        if (file.getConfig() != null) {
+            int stageColor = file.getConfig().stageColor();
+            // Convert Director palette index to RGB (grayscale for now)
+            int rgb = (stageColor & 0xFF) | ((stageColor & 0xFF) << 8) | ((stageColor & 0xFF) << 16);
+            player.getStageRenderer().setBackgroundColor(rgb);
+        }
+
+        // Connect debug panel to VM trace
+        player.getVM().setTraceListener(debugPanel);
+        player.setDebugEnabled(true);
+
+        stagePanel.setPlayer(player);
     }
 
     // Playback controls
