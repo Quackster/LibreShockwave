@@ -7,6 +7,14 @@ import com.libreshockwave.chunks.CastMemberChunk;
 import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.vm.Datum;
 
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -65,7 +73,30 @@ public class CastLib {
     }
 
     /**
+     * Set the source file for this cast library.
+     */
+    public void setSourceFile(DirectorFile file) {
+        this.sourceFile = file;
+    }
+
+    /**
+     * Check if this is an external cast (has a fileName).
+     */
+    public boolean isExternal() {
+        return fileName != null && !fileName.isEmpty();
+    }
+
+    /**
+     * Check if the external cast data has been fetched (via preloadNetThing).
+     */
+    public boolean isFetched() {
+        return sourceFile != null || !isExternal();
+    }
+
+    /**
      * Load the cast library members from the DirectorFile.
+     * For external casts, this only works if the cast has been fetched first
+     * via preloadNetThing() or downloadNetThing().
      */
     public void load() {
         if (state == State.LOADED) {
@@ -74,7 +105,29 @@ public class CastLib {
 
         state = State.LOADING;
 
-        if (sourceFile == null || castChunk == null) {
+        // External casts must be fetched first via preloadNetThing
+        // Don't auto-load them here
+        if (sourceFile == null) {
+            if (isExternal()) {
+                // External cast not yet fetched - stay in LOADING state but don't block
+                // It will be loaded when preloadNetThing completes
+                state = State.NONE;
+                return;
+            }
+            state = State.LOADED;
+            return;
+        }
+
+        if (castChunk == null && sourceFile != null) {
+            // For external casts, use the first cast from the loaded file
+            if (!sourceFile.getCasts().isEmpty()) {
+                loadFromExternalFile();
+            }
+            state = State.LOADED;
+            return;
+        }
+
+        if (castChunk == null) {
             state = State.LOADED;
             return;
         }
@@ -365,6 +418,277 @@ public class CastLib {
             case "type" -> Datum.of("empty");
             default -> Datum.VOID;
         };
+    }
+
+    // ==================== External Cast Loading ====================
+
+    private String basePath = "";
+
+    /**
+     * Set the base path for resolving relative file paths.
+     */
+    public void setBasePath(String basePath) {
+        this.basePath = basePath != null ? basePath : "";
+    }
+
+    /**
+     * Load members from an external DirectorFile that was fetched.
+     * Uses the first cast from the external file.
+     */
+    private void loadFromExternalFile() {
+        if (sourceFile == null) {
+            return;
+        }
+
+        // Get the first cast from the external file
+        if (sourceFile.getCasts().isEmpty()) {
+            return;
+        }
+
+        var externalCasts = sourceFile.getCasts();
+        var externalCastList = sourceFile.getCastList();
+
+        // Get minMember from the external file's config or cast list
+        int minMember = 1;
+        if (externalCastList != null && !externalCastList.entries().isEmpty()) {
+            minMember = externalCastList.entries().get(0).minMember();
+            if (minMember <= 0) minMember = 1;
+        } else if (sourceFile.getConfig() != null) {
+            minMember = sourceFile.getConfig().minMember();
+            if (minMember <= 0) minMember = 1;
+        }
+
+        // Load members from the external cast
+        var extCastChunk = externalCasts.get(0);
+        for (int i = 0; i < extCastChunk.memberIds().size(); i++) {
+            int chunkId = extCastChunk.memberIds().get(i);
+            if (chunkId <= 0) {
+                continue;
+            }
+
+            int memberNumber = i + minMember;
+
+            for (CastMemberChunk member : sourceFile.getCastMembers()) {
+                if (member.id() == chunkId) {
+                    memberChunks.put(memberNumber, member);
+
+                    if (member.isScript() && member.scriptId() > 0) {
+                        ScriptChunk script = sourceFile.getScriptByContextId(member.scriptId());
+                        if (script != null) {
+                            scripts.put(memberNumber, script);
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    /**
+     * Fetch external cast data synchronously.
+     * Called by preloadNetThing when the cast URL is requested.
+     * Tries HTTPS first, then HTTP, then local file.
+     * @return true if fetch was successful
+     */
+    public boolean fetchExternal() {
+        if (!isExternal()) {
+            return true; // Not external, nothing to fetch
+        }
+
+        if (sourceFile != null) {
+            return true; // Already fetched
+        }
+
+        // Try fileName first
+        if (fileName != null && !fileName.isEmpty()) {
+            String path = fileName.replace("\\", "/");
+            byte[] data = loadCastData(path);
+            if (data != null) {
+                parseDirectorFile(data);
+                return sourceFile != null;
+            }
+        }
+
+        // Try name as filename
+        if (name != null && !name.isEmpty() && !name.equals("Internal")) {
+            String path = name;
+            if (!path.toLowerCase().endsWith(".cst") && !path.toLowerCase().endsWith(".cct")) {
+                path = path + ".cst";
+            }
+            path = path.replace("\\", "/");
+            byte[] data = loadCastData(path);
+            if (data != null) {
+                parseDirectorFile(data);
+                return sourceFile != null;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Get the URL for this external cast (for preloadNetThing).
+     */
+    public String getExternalUrl() {
+        if (!isExternal()) {
+            return null;
+        }
+
+        String path = fileName;
+        if (path == null || path.isEmpty()) {
+            path = name;
+            if (path != null && !path.isEmpty()) {
+                if (!path.toLowerCase().endsWith(".cst") && !path.toLowerCase().endsWith(".cct")) {
+                    path = path + ".cst";
+                }
+            }
+        }
+
+        if (path == null || path.isEmpty()) {
+            return null;
+        }
+
+        path = path.replace("\\", "/");
+
+        // If already a full URL, return it
+        if (path.startsWith("http://") || path.startsWith("https://")) {
+            return path;
+        }
+
+        // Build full URL from basePath
+        if (!basePath.isEmpty()) {
+            if (basePath.endsWith("/")) {
+                return basePath + path;
+            } else {
+                return basePath + "/" + path;
+            }
+        }
+
+        return path;
+    }
+
+    /**
+     * Load cast data from a path. Tries HTTPS, then HTTP, then file.
+     */
+    private byte[] loadCastData(String path) {
+        // If it's already a full URL, use it directly
+        if (path.startsWith("http://") || path.startsWith("https://")) {
+            return loadFromUrl(path);
+        }
+
+        // Build the full path using basePath
+        String fullPath = path;
+        if (!basePath.isEmpty() && !path.startsWith("/")) {
+            if (basePath.endsWith("/")) {
+                fullPath = basePath + path;
+            } else {
+                fullPath = basePath + "/" + path;
+            }
+        }
+
+        // Try HTTPS first
+        if (basePath.startsWith("https://") || basePath.startsWith("http://")) {
+            byte[] data = loadFromUrl(fullPath.replace("http://", "https://"));
+            if (data != null) {
+                return data;
+            }
+
+            // Try HTTP
+            data = loadFromUrl(fullPath.replace("https://", "http://"));
+            if (data != null) {
+                return data;
+            }
+        } else {
+            // Try as URL with HTTPS
+            String httpsUrl = "https://" + fullPath;
+            byte[] data = loadFromUrl(httpsUrl);
+            if (data != null) {
+                return data;
+            }
+
+            // Try HTTP
+            String httpUrl = "http://" + fullPath;
+            data = loadFromUrl(httpUrl);
+            if (data != null) {
+                return data;
+            }
+        }
+
+        // Try as local file
+        return loadFromFile(fullPath);
+    }
+
+    /**
+     * Load data from a URL synchronously.
+     */
+    private byte[] loadFromUrl(String urlString) {
+        try {
+            URL url = URI.create(urlString).toURL();
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(10000);
+            conn.setReadTimeout(30000);
+            conn.setRequestProperty("User-Agent", "LibreShockwave/1.0");
+
+            int responseCode = conn.getResponseCode();
+            if (responseCode != 200) {
+                conn.disconnect();
+                return null;
+            }
+
+            try (InputStream in = conn.getInputStream();
+                 ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                byte[] buffer = new byte[8192];
+                int bytesRead;
+                while ((bytesRead = in.read(buffer)) != -1) {
+                    out.write(buffer, 0, bytesRead);
+                }
+                return out.toByteArray();
+            } finally {
+                conn.disconnect();
+            }
+        } catch (Exception e) {
+            // Silently fail - will try next method
+            return null;
+        }
+    }
+
+    /**
+     * Load data from a local file.
+     */
+    private byte[] loadFromFile(String filePath) {
+        try {
+            // Try as absolute path first
+            Path path = Path.of(filePath);
+            if (Files.exists(path)) {
+                return Files.readAllBytes(path);
+            }
+
+            // Try relative to current directory
+            File file = new File(filePath);
+            if (file.exists()) {
+                return Files.readAllBytes(file.toPath());
+            }
+
+            return null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Parse the loaded data as a DirectorFile.
+     */
+    private void parseDirectorFile(byte[] data) {
+        try {
+            DirectorFile file = DirectorFile.load(data);
+            if (file != null) {
+                this.sourceFile = file;
+                System.out.println("[CastLib] Loaded external cast: " + name + " (" + data.length + " bytes)");
+            }
+        } catch (Exception e) {
+            System.err.println("[CastLib] Failed to parse external cast " + name + ": " + e.getMessage());
+        }
     }
 
     @Override

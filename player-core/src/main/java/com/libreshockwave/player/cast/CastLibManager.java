@@ -41,6 +41,8 @@ public class CastLibManager implements CastLibProvider {
         CastListChunk castList = file.getCastList();
         List<CastChunk> casts = file.getCasts();
 
+        String basePath = file.getBasePath();
+
         if (castList != null && !castList.entries().isEmpty()) {
             // Use CastListChunk entries as the source
             for (int i = 0; i < castList.entries().size(); i++) {
@@ -53,16 +55,28 @@ public class CastLibManager implements CastLibProvider {
                 CastChunk castChunk = (i < casts.size()) ? casts.get(i) : null;
 
                 CastLib castLib = new CastLib(castLibNumber, castChunk, listEntry);
+
+                // Set base path for external cast loading
+                castLib.setBasePath(basePath);
+
+                // For internal casts (no external fileName), set the source file directly
+                boolean isExternal = listEntry.path() != null && !listEntry.path().isEmpty();
+                if (!isExternal) {
+                    castLib.setSourceFile(file);
+                }
+
                 castLibs.put(castLibNumber, castLib);
             }
-        }/* else if (!casts.isEmpty()) {
+        } else if (!casts.isEmpty()) {
             // Fallback: use CastChunks directly if no cast list
             for (int i = 0; i < casts.size(); i++) {
                 int castLibNumber = i + 1;
-                CastLib castLib = new CastLib(castLibNumber, file, casts.get(i), null);
+                CastLib castLib = new CastLib(castLibNumber, casts.get(i), null);
+                castLib.setBasePath(basePath);
+                castLib.setSourceFile(file);
                 castLibs.put(castLibNumber, castLib);
             }
-        }*/
+        }
     }
 
     /**
