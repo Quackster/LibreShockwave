@@ -363,7 +363,7 @@ public class DebugPanel extends JPanel implements TraceListener {
         sb.append("Stack (").append(stack.size()).append(" items):\n");
         sb.append("------------------------\n");
         for (int i = 0; i < stack.size(); i++) {
-            sb.append(String.format("[%2d] %s\n", i, formatDatum(stack.get(i))));
+            sb.append(String.format("[%2d] %s\n", i, DatumFormatter.formatWithType(stack.get(i))));
         }
         stackArea.setText(sb.toString());
     }
