@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - 'cast-extractor-*'
 
 jobs:
   build:
@@ -28,7 +28,7 @@ jobs:
       - name: Get version from tag
         id: get_version
         shell: bash
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        run: echo "VERSION=${GITHUB_REF#refs/tags/cast-extractor-}" >> $GITHUB_OUTPUT
 
       - name: Create Windows exe with jpackage
         shell: pwsh
