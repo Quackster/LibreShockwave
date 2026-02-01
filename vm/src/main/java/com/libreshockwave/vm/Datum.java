@@ -146,15 +146,23 @@ public sealed interface Datum {
     }
 
     /** Argument list for function calls (expects return value) */
-    record ArgList(int count) implements Datum {
+    record ArgList(java.util.List<Datum> items) implements Datum {
+        public ArgList {
+            items = new ArrayList<>(items);
+        }
+        public int count() { return items.size(); }
         @Override
-        public String toString() { return "<arglist:" + count + ">"; }
+        public String toString() { return "<arglist:" + items.size() + ">"; }
     }
 
     /** Argument list for function calls (no return value expected) */
-    record ArgListNoRet(int count) implements Datum {
+    record ArgListNoRet(java.util.List<Datum> items) implements Datum {
+        public ArgListNoRet {
+            items = new ArrayList<>(items);
+        }
+        public int count() { return items.size(); }
         @Override
-        public String toString() { return "<arglist-noret:" + count + ">"; }
+        public String toString() { return "<arglist-noret:" + items.size() + ">"; }
     }
 
     // Singleton instances for common values
