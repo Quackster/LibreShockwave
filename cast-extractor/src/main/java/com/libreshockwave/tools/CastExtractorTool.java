@@ -492,14 +492,17 @@ public class CastExtractorTool extends JFrame {
                     List<Path> files = paths.filter(Files::isRegularFile).toList();
                     int total = files.size();
                     AtomicInteger processed = new AtomicInteger(0);
+                    AtomicInteger errors = new AtomicInteger(0);
 
-                    files.parallelStream().forEach(file -> {
+                    // Use sequential stream - parallelStream can have issues with jpackage classloader
+                    for (Path file : files) {
                         try {
                             FileNode node = fileProcessor.processFile(file);
                             if (node != null) {
                                 fileNodes.add(node);
                             }
-                        } catch (Exception ignored) {
+                        } catch (Exception e) {
+                            errors.incrementAndGet();
                         }
 
                         int current = processed.incrementAndGet();
@@ -507,11 +510,16 @@ public class CastExtractorTool extends JFrame {
                             int percent = (int) ((current * 100.0) / total);
                             publish(percent);
                         }
-                    });
+                    }
+
+                    if (errors.get() > 0) {
+                        System.err.println("Scan completed with " + errors.get() + " errors");
+                    }
 
                 } catch (IOException ex) {
                     SwingUtilities.invokeLater(() ->
                         setStatus("Error scanning directory: " + ex.getMessage()));
+                    ex.printStackTrace();
                 }
 
                 fileNodes.sort((a, b) -> a.fileName().compareToIgnoreCase(b.fileName()));
