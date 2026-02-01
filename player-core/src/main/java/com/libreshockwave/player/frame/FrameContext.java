@@ -121,27 +121,33 @@ public class FrameContext {
     }
 
     /**
-     * Execute one frame update cycle.
+     * Execute one frame update cycle (for frame loop, not first frame).
+     * First frame events are handled in Player.prepareMovie().
      * Returns true if frame was executed successfully.
      */
     public boolean executeFrame() {
         logEvent("executeFrame(" + currentFrame + ")");
 
-        // 1. stepFrame event
-        dispatchEvent(PlayerEvent.STEP_FRAME);
+        // 1. stepFrame event (to actorList - not fully implemented yet)
+        // dispatchEvent(PlayerEvent.STEP_FRAME);
 
-        // 2. beginSprite for new sprites
-        dispatchBeginSprite();
-
-        // 3. prepareFrame event
+        // 2. prepareFrame -> all behaviors + frame/movie scripts
         dispatchEvent(PlayerEvent.PREPARE_FRAME);
 
-        // 4. enterFrame event
+        // 3. enterFrame -> all behaviors + frame/movie scripts
         inFrameScript = true;
         dispatchEvent(PlayerEvent.ENTER_FRAME);
         inFrameScript = false;
 
         return true;
+    }
+
+    /**
+     * Dispatch beginSprite events to newly entered sprites.
+     * Called from Player.prepareMovie() for first frame setup.
+     */
+    public void dispatchBeginSpriteEvents() {
+        dispatchBeginSprite();
     }
 
     /**
@@ -201,6 +207,9 @@ public class FrameContext {
 
         // Initialize frame script
         initializeFrameScript(frame);
+
+        // Dispatch beginSprite events to newly entered sprites
+        dispatchBeginSprite();
 
         // Clear entered set for next beginSprite dispatch
         enteredChannels.clear();
@@ -273,6 +282,8 @@ public class FrameContext {
         } else {
             logEvent("initializeFrameScript: frame " + frame + " has no frame script");
         }
+
+
     }
 
     // Event dispatch

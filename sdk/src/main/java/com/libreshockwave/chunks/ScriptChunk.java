@@ -33,9 +33,10 @@ public record ScriptChunk(
     }
 
     public enum ScriptType {
-        MOVIE_SCRIPT(1),
-        BEHAVIOR(3),
-        PARENT(7),
+        SCORE(1),       // Frame/score scripts
+        BEHAVIOR(2),    // Cast member behavior scripts
+        MOVIE_SCRIPT(3), // Movie scripts (prepareMovie, startMovie, etc.)
+        PARENT(7),      // Parent scripts
         UNKNOWN(-1);
 
         private final int code;
