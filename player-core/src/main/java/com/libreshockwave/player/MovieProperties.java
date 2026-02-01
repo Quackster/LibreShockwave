@@ -224,7 +224,12 @@ public class MovieProperties implements MoviePropertyProvider {
         return updateLock;
     }
 
-    public String getItemDelimiter() {
+    @Override
+    public char getItemDelimiter() {
+        return itemDelimiter.isEmpty() ? ',' : itemDelimiter.charAt(0);
+    }
+
+    public String getItemDelimiterString() {
         return itemDelimiter;
     }
 
