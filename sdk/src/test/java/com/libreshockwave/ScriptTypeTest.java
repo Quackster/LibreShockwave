@@ -7,10 +7,12 @@ import com.libreshockwave.cast.MemberType;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 /**
- * Test for verifying script type detection in habbo.dcr.
- * Confirms that scripts are correctly identified as BEHAVIOR or MOVIE_SCRIPT.
+ * Test for verifying script type detection in habbo.dir.
+ * Confirms that scripts are correctly identified as SCORE or MOVIE_SCRIPT,
+ * and that handlers are properly resolved.
  */
 public class ScriptTypeTest {
 
@@ -20,7 +22,7 @@ public class ScriptTypeTest {
     public static void main(String[] args) {
         System.out.println("=== Script Type Test ===\n");
 
-        String testFile = "C:/SourceControl/habbo.dcr";
+        String testFile = "C:/SourceControl/habbo.dir";
         if (args.length > 0) {
             testFile = args[0];
         }
@@ -47,6 +49,7 @@ public class ScriptTypeTest {
 
             DirectorFile file = DirectorFile.load(path);
 
+
             // Test: "Init" is SCORE (attached to sprites in score)
             assertScriptType(file, "Init", ScriptChunk.ScriptType.SCORE);
 
@@ -55,6 +58,9 @@ public class ScriptTypeTest {
 
             // Test: "Initialization" is MOVIE_SCRIPT (global movie script)
             assertScriptType(file, "Initialization", ScriptChunk.ScriptType.MOVIE_SCRIPT);
+
+            // Test: "Initialization" has prepareMovie and stopMovie handlers
+            assertScriptHandlers(file, "Initialization", List.of("prepareMovie", "stopMovie"));
 
             // Print all scripts for debugging
             System.out.println("\n--- All Scripts in File ---");
@@ -104,6 +110,63 @@ public class ScriptTypeTest {
             passed++;
         } else {
             System.out.println("FAILED - Expected " + expectedType + " but got " + actualType);
+            failed++;
+        }
+    }
+
+    private static void assertScriptHandlers(DirectorFile file, String scriptName, List<String> expectedHandlers) {
+        System.out.print("  Testing script '" + scriptName + "' has handlers " + expectedHandlers + "... ");
+
+        // Find cast member with this name and type SCRIPT
+        CastMemberChunk scriptMember = null;
+        for (CastMemberChunk member : file.getCastMembers()) {
+            if (member.memberType() == MemberType.SCRIPT && scriptName.equalsIgnoreCase(member.name())) {
+                scriptMember = member;
+                break;
+            }
+        }
+
+        if (scriptMember == null) {
+            System.out.println("FAILED - Cast member not found");
+            failed++;
+            return;
+        }
+
+        // Get the script chunk
+        ScriptChunk script = file.getScriptByContextId(scriptMember.scriptId());
+        if (script == null) {
+            System.out.println("FAILED - Script not found for scriptId=" + scriptMember.scriptId());
+            failed++;
+            return;
+        }
+
+        // Check handlers
+        var names = file.getScriptNames();
+        if (names == null) {
+            System.out.println("FAILED - No script names available");
+            failed++;
+            return;
+        }
+
+        boolean allFound = true;
+        for (String expectedHandler : expectedHandlers) {
+            ScriptChunk.Handler handler = script.findHandler(expectedHandler, names);
+            if (handler == null) {
+                System.out.println("\n    FAILED - Handler '" + expectedHandler + "' not found");
+                allFound = false;
+            }
+        }
+
+        if (allFound) {
+            System.out.println("PASS");
+            passed++;
+        } else {
+            // Print actual handlers for debugging
+            System.out.print("    Actual handlers: ");
+            for (ScriptChunk.Handler h : script.handlers()) {
+                System.out.print(names.getName(h.nameId()) + " ");
+            }
+            System.out.println();
             failed++;
         }
     }
