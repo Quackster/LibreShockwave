@@ -48,8 +48,7 @@ public interface TraceListener {
     record HandlerInfo(
         String handlerName,
         int scriptId,
-        String scriptName,
-        String scriptType,
+        String scriptDisplayName,
         List<Datum> arguments,
         Datum receiver,
         Map<String, Datum> globals,

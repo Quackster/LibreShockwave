@@ -139,7 +139,8 @@ public record ScriptChunk(
                 }
             }
         }
-        return "";
+
+        return this.getScriptType() + " #" + this.id;
     }
 
     /**

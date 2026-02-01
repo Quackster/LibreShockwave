@@ -55,13 +55,10 @@ public class TracingHelper {
             Datum receiver,
             Map<String, Datum> globals) {
         String handlerName = nameResolver.apply(handler.nameId());
-        String scriptName = script.getScriptName();
-        String scriptType = script.getScriptType() != null ? script.getScriptType().name() : "UNKNOWN";
         return new TraceListener.HandlerInfo(
             handlerName,
             script.id(),
-            scriptName,
-            scriptType,
+            script.getDisplayName(),
             args,
             receiver,
             new HashMap<>(globals),
@@ -122,20 +119,7 @@ public class TracingHelper {
      * Print handler entry trace to console.
      */
     public void traceHandlerEnter(TraceListener.HandlerInfo info) {
-        String scriptIdent = formatScriptIdentifier(info);
-        System.out.println("== Script: " + scriptIdent + " Handler: " + info.handlerName());
-    }
-
-    /**
-     * Format script identifier for display.
-     * Shows script name if available, otherwise falls back to type + id.
-     */
-    private String formatScriptIdentifier(TraceListener.HandlerInfo info) {
-        String name = info.scriptName();
-        if (name != null && !name.isEmpty()) {
-            return "\"" + name + "\" (" + info.scriptType() + ")";
-        }
-        return info.scriptType() + " #" + info.scriptId();
+        System.out.println("== Script: " + info.scriptDisplayName() + " Handler: " + info.handlerName());
     }
 
     /**
