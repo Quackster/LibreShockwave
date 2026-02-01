@@ -9,6 +9,7 @@ import com.libreshockwave.tools.scanning.MemberResolver;
 import javax.sound.sampled.*;
 import javax.swing.*;
 import java.io.ByteArrayInputStream;
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -31,6 +32,22 @@ public class AudioPlaybackController {
     public AudioPlaybackController(Map<String, DirectorFile> loadedFiles) {
         this.loadedFiles = loadedFiles;
         this.playbackTimer = new Timer(100, e -> updatePlaybackPosition());
+    }
+
+    /**
+     * Gets a DirectorFile from cache, loading it on demand if not present.
+     */
+    private DirectorFile getDirectorFile(String filePath) {
+        DirectorFile dirFile = loadedFiles.get(filePath);
+        if (dirFile == null) {
+            try {
+                dirFile = DirectorFile.load(Path.of(filePath));
+                loadedFiles.put(filePath, dirFile);
+            } catch (Exception e) {
+                return null;
+            }
+        }
+        return dirFile;
     }
 
     public void setStatusCallback(Consumer<String> callback) {
@@ -58,7 +75,7 @@ public class AudioPlaybackController {
 
         stop(); // Stop any playing sound
 
-        DirectorFile dirFile = loadedFiles.get(currentSoundMember.filePath());
+        DirectorFile dirFile = getDirectorFile(currentSoundMember.filePath());
         if (dirFile == null) return;
 
         SoundChunk soundChunk = MemberResolver.findSoundForMember(dirFile, currentSoundMember.memberInfo().member());

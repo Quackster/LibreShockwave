@@ -100,7 +100,7 @@ tasks.register('windowsExe') {
     --main-class com.libreshockwave.tools.CastExtractorTool ^
     --dest "${outDir.absolutePath}" ^
     --win-console ^
-    --java-options "-Xmx2g"
+    --java-options "-Xmx4g"
 if %ERRORLEVEL% EQU 0 (
     echo.
     echo SUCCESS: Windows executable created at:

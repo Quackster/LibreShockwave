@@ -12,6 +12,7 @@ import javax.swing.*;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -27,6 +28,22 @@ public class ExportHandler {
         this.loadedFiles = loadedFiles;
     }
 
+    /**
+     * Gets a DirectorFile from cache, loading it on demand if not present.
+     */
+    private DirectorFile getDirectorFile(String filePath) {
+        DirectorFile dirFile = loadedFiles.get(filePath);
+        if (dirFile == null) {
+            try {
+                dirFile = DirectorFile.load(Path.of(filePath));
+                loadedFiles.put(filePath, dirFile);
+            } catch (Exception e) {
+                return null;
+            }
+        }
+        return dirFile;
+    }
+
     public void setStatusCallback(Consumer<String> callback) {
         this.statusCallback = callback;
     }
@@ -36,7 +53,7 @@ public class ExportHandler {
      */
     public void export(JFrame parent, MemberNodeData memberData, String lastOutputDir) {
         MemberType type = memberData.memberInfo().memberType();
-        DirectorFile dirFile = loadedFiles.get(memberData.filePath());
+        DirectorFile dirFile = getDirectorFile(memberData.filePath());
         if (dirFile == null) {
             setStatus("Error: Could not load file");
             return;

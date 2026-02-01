@@ -115,12 +115,32 @@ public class CastExtractorTool extends JFrame {
         this.exportHandler = new ExportHandler(loadedFiles);
         this.audioController = new AudioPlaybackController(loadedFiles);
 
+        // Enable lazy loading to reduce memory usage during large scans
+        this.fileProcessor.setLazyLoading(true);
+
         initializeUI();
         setupServiceCallbacks();
         loadSavedPreferences();
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setSize(1200, 800);
         setLocationRelativeTo(null);
+    }
+
+    /**
+     * Get a DirectorFile, loading it on demand if not already cached.
+     * This supports lazy loading mode where files are not kept in memory during scan.
+     */
+    private DirectorFile getDirectorFile(String filePath) {
+        DirectorFile dirFile = loadedFiles.get(filePath);
+        if (dirFile == null) {
+            try {
+                dirFile = DirectorFile.load(java.nio.file.Path.of(filePath));
+                loadedFiles.put(filePath, dirFile);
+            } catch (Exception e) {
+                return null;
+            }
+        }
+        return dirFile;
     }
 
     private void setupServiceCallbacks() {
@@ -682,7 +702,7 @@ public class CastExtractorTool extends JFrame {
         }
         boolean hasScore = false;
         if (filePath != null) {
-            DirectorFile dirFile = loadedFiles.get(filePath);
+            DirectorFile dirFile = getDirectorFile(filePath);
             hasScore = dirFile != null && dirFile.hasScore();
         }
         viewScoreButton.setEnabled(hasScore);
@@ -694,7 +714,7 @@ public class CastExtractorTool extends JFrame {
                     && !outputDirField.getText().isEmpty();
             extractButton.setEnabled(canExtract);
 
-            DirectorFile dirFile = loadedFiles.get(memberData.filePath());
+            DirectorFile dirFile = getDirectorFile(memberData.filePath());
             if (dirFile == null) {
                 showTextDetails();
                 detailsTextArea.setText("Error: Could not load file");
@@ -741,7 +761,7 @@ public class CastExtractorTool extends JFrame {
         SwingWorker<BufferedImage, Void> worker = new SwingWorker<>() {
             @Override
             protected BufferedImage doInBackground() {
-                DirectorFile dirFile = loadedFiles.get(memberData.filePath());
+                DirectorFile dirFile = getDirectorFile(memberData.filePath());
                 if (dirFile == null) return null;
 
                 return dirFile.decodeBitmap(memberData.memberInfo().member())
@@ -785,7 +805,7 @@ public class CastExtractorTool extends JFrame {
             baseStatus = String.format("#%d %s - %dx%d", info.memberNum(), info.name(), image.getWidth(), image.getHeight());
         }
 
-        DirectorFile dirFile = loadedFiles.get(memberData.filePath());
+        DirectorFile dirFile = getDirectorFile(memberData.filePath());
         if (dirFile != null) {
             List<FrameAppearance> appearances = appearanceFinder.find(dirFile, info.memberNum());
             if (!appearances.isEmpty()) {
@@ -874,7 +894,7 @@ public class CastExtractorTool extends JFrame {
 
         if (filePath == null) return;
 
-        DirectorFile dirFile = loadedFiles.get(filePath);
+        DirectorFile dirFile = getDirectorFile(filePath);
         if (dirFile == null || !dirFile.hasScore()) {
             setStatus("No score data available for this file");
             return;
