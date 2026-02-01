@@ -268,4 +268,74 @@ public class CastLibManager implements CastLibProvider {
         ensureInitialized();
         return castLibs;
     }
+
+    @Override
+    public String getCastLibUrl(int castLibNumber) {
+        ensureInitialized();
+        CastLib castLib = castLibs.get(castLibNumber);
+        if (castLib == null) {
+            return null;
+        }
+        return castLib.getExternalUrl();
+    }
+
+    @Override
+    public boolean fetchCastLib(int castLibNumber) {
+        ensureInitialized();
+        CastLib castLib = castLibs.get(castLibNumber);
+        if (castLib == null) {
+            return false;
+        }
+        return castLib.fetchExternal();
+    }
+
+    @Override
+    public boolean isCastLibExternal(int castLibNumber) {
+        ensureInitialized();
+        CastLib castLib = castLibs.get(castLibNumber);
+        if (castLib == null) {
+            return false;
+        }
+        return castLib.isExternal();
+    }
+
+    @Override
+    public void preloadCasts(int mode) {
+        ensureInitialized();
+
+        for (CastLib castLib : castLibs.values()) {
+            int preloadMode = castLib.getPreloadMode();
+
+            // mode 1 = before frame 1, mode 2 = after frame 1
+            if (preloadMode == mode) {
+                if (castLib.isExternal() && !castLib.isFetched()) {
+                    // Fetch external cast synchronously
+                    castLib.fetchExternal();
+                }
+                if (castLib.isFetched() && !castLib.isLoaded()) {
+                    castLib.load();
+                }
+            }
+        }
+    }
+
+    /**
+     * Fetch an external cast by URL.
+     * Used by preloadNetThing to load external casts.
+     * @param url The URL to fetch
+     * @return The cast lib number if found, or -1
+     */
+    public int fetchCastLibByUrl(String url) {
+        ensureInitialized();
+
+        for (CastLib castLib : castLibs.values()) {
+            String castUrl = castLib.getExternalUrl();
+            if (castUrl != null && castUrl.equals(url)) {
+                if (castLib.fetchExternal()) {
+                    return castLib.getNumber();
+                }
+            }
+        }
+        return -1;
+    }
 }

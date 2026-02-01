@@ -82,6 +82,42 @@ public interface CastLibProvider {
      */
     boolean setMemberProp(int castLibNumber, int memberNumber, String propName, Datum value);
 
+    /**
+     * Get the external URL for a cast library (for preloadNetThing).
+     * @param castLibNumber The cast library number
+     * @return The URL, or null if not an external cast
+     */
+    default String getCastLibUrl(int castLibNumber) {
+        return null;
+    }
+
+    /**
+     * Fetch an external cast library synchronously.
+     * @param castLibNumber The cast library number
+     * @return true if fetch was successful
+     */
+    default boolean fetchCastLib(int castLibNumber) {
+        return false;
+    }
+
+    /**
+     * Check if a cast library is external.
+     * @param castLibNumber The cast library number
+     * @return true if external
+     */
+    default boolean isCastLibExternal(int castLibNumber) {
+        return false;
+    }
+
+    /**
+     * Preload casts based on preloadMode.
+     * Called during movie initialization.
+     * @param mode 1 for before frame 1, 2 for after frame 1
+     */
+    default void preloadCasts(int mode) {
+        // Default: do nothing
+    }
+
     // Thread-local provider for VM access
     ThreadLocal<CastLibProvider> CURRENT = new ThreadLocal<>();
 
