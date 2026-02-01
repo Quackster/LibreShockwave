@@ -127,6 +127,12 @@ public sealed interface Datum {
         public String toString() { return "<XtraInstance \"" + xtraName + "\" #" + instanceId + ">"; }
     }
 
+    /** Cast library reference */
+    record CastLibRef(int castLibNumber) implements Datum {
+        @Override
+        public String toString() { return "castLib(" + castLibNumber + ")"; }
+    }
+
     // Singleton instances for common values
     Datum VOID = new Void();
     Datum ZERO = new Int(0);

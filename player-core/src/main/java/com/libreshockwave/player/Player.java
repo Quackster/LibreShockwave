@@ -11,6 +11,7 @@ import com.libreshockwave.player.render.FrameSnapshot;
 import com.libreshockwave.player.render.StageRenderer;
 import com.libreshockwave.player.score.ScoreNavigator;
 import com.libreshockwave.vm.LingoVM;
+import com.libreshockwave.vm.builtin.MoviePropertyProvider;
 import com.libreshockwave.vm.builtin.NetBuiltins;
 import com.libreshockwave.vm.builtin.XtraBuiltins;
 import com.libreshockwave.vm.xtra.XtraManager;
@@ -31,6 +32,7 @@ public class Player {
     private final StageRenderer stageRenderer;
     private final NetManager netManager;
     private final XtraManager xtraManager;
+    private final MovieProperties movieProperties;
 
     private PlayerState state = PlayerState.STOPPED;
     private int tempo;  // Frames per second
@@ -48,6 +50,7 @@ public class Player {
         this.stageRenderer = new StageRenderer(file);
         this.netManager = new NetManager();
         this.xtraManager = new XtraManager();
+        this.movieProperties = new MovieProperties(this, file);
         this.tempo = file != null ? file.getTempo() : 15;
         if (this.tempo <= 0) this.tempo = 15;
 
@@ -104,6 +107,10 @@ public class Player {
 
     public XtraManager getXtraManager() {
         return xtraManager;
+    }
+
+    public MovieProperties getMovieProperties() {
+        return movieProperties;
     }
 
     public PlayerState getState() {
@@ -312,6 +319,7 @@ public class Player {
     private void setupProviders() {
         NetBuiltins.setProvider(netManager);
         XtraBuiltins.setManager(xtraManager);
+        MoviePropertyProvider.setProvider(movieProperties);
     }
 
     /**
@@ -320,6 +328,7 @@ public class Player {
     private void clearProviders() {
         NetBuiltins.clearProvider();
         XtraBuiltins.clearManager();
+        MoviePropertyProvider.clearProvider();
     }
 
     // Movie lifecycle - follows dirplayer-rs flow exactly
