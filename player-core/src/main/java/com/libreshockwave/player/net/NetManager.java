@@ -32,6 +32,7 @@ public class NetManager implements NetBuiltins.NetProvider {
     private final HttpClient httpClient;
 
     private int nextTaskId = 1;
+    private volatile int lastTaskId = 0;  // Track the most recent task for netDone() with no args
     private String basePath;
 
     // Callback for when a fetch completes (used to integrate with CastLibManager)
@@ -83,6 +84,7 @@ public class NetManager implements NetBuiltins.NetProvider {
      */
     public int preloadNetThing(String url) {
         int taskId = nextTaskId++;
+        lastTaskId = taskId;
         NetTask task = NetTask.get(taskId, url, resolveUrl(url));
         tasks.put(taskId, task);
         executeTask(task);
@@ -97,6 +99,7 @@ public class NetManager implements NetBuiltins.NetProvider {
      */
     public int postNetText(String url, String postData) {
         int taskId = nextTaskId++;
+        lastTaskId = taskId;
         NetTask task = NetTask.post(taskId, url, resolveUrl(url), postData);
         tasks.put(taskId, task);
         executeTask(task);
@@ -163,13 +166,12 @@ public class NetManager implements NetBuiltins.NetProvider {
 
     /**
      * Get a task by ID.
+     * @param taskId The task ID, or null to get the most recent task
      */
     public NetTask getTask(Integer taskId) {
-        if (taskId == null) {
-            // Return latest task
-            return tasks.values().stream()
-                .reduce((a, b) -> b)
-                .orElse(null);
+        if (taskId == null || taskId == 0) {
+            // Return the most recent task
+            return lastTaskId > 0 ? tasks.get(lastTaskId) : null;
         }
         return tasks.get(taskId);
     }
