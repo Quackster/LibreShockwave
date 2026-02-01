@@ -348,6 +348,9 @@ public class Player {
 
         setupProviders();
         try {
+            // 0. Preload casts with preloadMode=1 (before frame 1)
+            castLibManager.preloadCasts(1);
+
             // 1. prepareMovie -> dispatched to movie scripts (behaviors not initialized yet)
             frameContext.getEventDispatcher().dispatchToMovieScripts("prepareMovie", List.of());
 
@@ -368,6 +371,9 @@ public class Player {
 
             // 7. exitFrame -> dispatched to all behaviors + frame/movie scripts
             frameContext.getEventDispatcher().dispatchGlobalEvent(PlayerEvent.EXIT_FRAME, List.of());
+
+            // 8. Preload casts with preloadMode=2 (after frame 1)
+            castLibManager.preloadCasts(2);
 
             // Frame loop will handle subsequent frames
         } finally {
