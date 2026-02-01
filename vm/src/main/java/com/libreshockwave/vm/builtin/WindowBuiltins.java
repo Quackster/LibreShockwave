@@ -62,6 +62,7 @@ public final class WindowBuiltins {
      * Sets the tempo of the movie programmatically.
      * The tempo remains in effect until another puppetTempo call or until
      * the movie encounters a tempo setting in the score.
+     * Set to 0 to return to score tempo.
      */
     private static Datum puppetTempo(LingoVM vm, List<Datum> args) {
         if (args.isEmpty()) {
@@ -70,12 +71,10 @@ public final class WindowBuiltins {
 
         int tempo = args.get(0).toInt();
 
-        // Set the puppetTempo property which the player will use
+        // Set the puppetTempo property which overrides the score tempo
         MoviePropertyProvider provider = MoviePropertyProvider.getProvider();
         if (provider != null) {
             provider.setMovieProp("puppetTempo", Datum.of(tempo));
-            // Also set the actual tempo
-            provider.setMovieProp("tempo", Datum.of(tempo));
         }
 
         return Datum.VOID;

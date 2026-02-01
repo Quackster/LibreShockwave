@@ -140,12 +140,31 @@ public class Player {
         return frameContext.getCurrentFrame();
     }
 
+    /**
+     * Get the effective tempo (frames per second).
+     * puppetTempo overrides the base tempo if set (> 0).
+     */
     public int getTempo() {
+        int puppetTempo = movieProperties.getPuppetTempo();
+        if (puppetTempo > 0) {
+            return puppetTempo;
+        }
         return tempo;
     }
 
+    /**
+     * Set the base tempo (from score).
+     * This can be overridden by puppetTempo.
+     */
     public void setTempo(int tempo) {
         this.tempo = tempo > 0 ? tempo : 15;
+    }
+
+    /**
+     * Get the base tempo (ignoring puppetTempo).
+     */
+    public int getBaseTempo() {
+        return tempo;
     }
 
     public int getFrameCount() {
