@@ -220,6 +220,38 @@ public class DirectorFile {
         return null;
     }
 
+    /**
+     * Get the reliable script type for a script by looking up its associated cast member.
+     * The script type stored in the cast member's specificData is the authoritative source.
+     * @param script The script chunk to get the type for
+     * @return The script type from the cast member, or null if not found
+     */
+    public ScriptChunk.ScriptType getScriptType(ScriptChunk script) {
+        if (script == null) return null;
+
+        // Find the cast member that references this script
+        // We need to find which Lctx index maps to this script's chunk ID,
+        // then find the cast member with that scriptId
+        for (int ctxIdx = 0; ctxIdx < allScriptContexts.size(); ctxIdx++) {
+            ScriptContextChunk ctx = allScriptContexts.get(ctxIdx);
+            for (int i = 0; i < ctx.entries().size(); i++) {
+                if (ctx.entries().get(i).id() == script.id()) {
+                    // Found the entry - scriptId is 1-based
+                    int scriptId = i + 1;
+
+                    // Find the cast member with this scriptId
+                    for (CastMemberChunk member : castMembers) {
+                        if (member.isScript() && member.scriptId() == scriptId) {
+                            return member.getScriptType();
+                        }
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
     public List<ScriptChunk> getScripts() { return Collections.unmodifiableList(scripts); }
     public List<PaletteChunk> getPalettes() { return Collections.unmodifiableList(palettes); }
     public Collection<ChunkInfo> getAllChunkInfo() { return Collections.unmodifiableCollection(chunkInfo.values()); }
@@ -668,7 +700,7 @@ public class DirectorFile {
             result.add(new ScriptInfo(
                 script.id(),
                 scriptIdToName.getOrDefault(script.id(), ""),
-                script.scriptType(),
+                script.getScriptType(),
                 script.getGlobalNames(scriptNames),
                 script.getPropertyNames(scriptNames),
                 handlerNames

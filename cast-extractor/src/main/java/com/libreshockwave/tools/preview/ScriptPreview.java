@@ -29,7 +29,7 @@ public class ScriptPreview {
         if (script == null) {
             sb.append("\n[No bytecode found for this script member]\n");
         } else {
-            sb.append("Script Type: ").append(MemberResolver.getScriptTypeName(script.scriptType())).append("\n");
+            sb.append("Script Type: ").append(MemberResolver.getScriptTypeName(script.getScriptType())).append("\n");
             sb.append("Behavior Flags: 0x").append(Integer.toHexString(script.behaviorFlags())).append("\n\n");
 
             // Properties

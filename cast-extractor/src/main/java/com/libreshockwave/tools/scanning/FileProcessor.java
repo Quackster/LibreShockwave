@@ -100,7 +100,7 @@ public class FileProcessor {
         ScriptChunk script = MemberResolver.findScriptForMember(dirFile, member);
         if (script != null) {
             ScriptNamesChunk scriptNames = dirFile.getScriptNames();
-            String scriptTypeName = MemberResolver.getScriptTypeName(script.scriptType());
+            String scriptTypeName = MemberResolver.getScriptTypeName(script.getScriptType());
 
             // Build handler list summary
             List<String> handlerNames = new ArrayList<>();

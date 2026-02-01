@@ -55,7 +55,7 @@ public class TracingHelper {
             Datum receiver,
             Map<String, Datum> globals) {
         String handlerName = nameResolver.apply(handler.nameId());
-        String scriptType = script.scriptType() != null ? script.scriptType().name() : "UNKNOWN";
+        String scriptType = script.getScriptType() != null ? script.getScriptType().name() : "UNKNOWN";
         return new TraceListener.HandlerInfo(
             handlerName,
             script.id(),
