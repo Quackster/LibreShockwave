@@ -123,20 +123,38 @@ public class LingoVM {
 
     /**
      * Find a handler by name in any script.
+     * Searches the main file first, then external cast libraries.
      * @param handlerName The handler name to find
      * @return The script and handler, or null if not found
      */
     public HandlerRef findHandler(String handlerName) {
-        if (file == null) return null;
-        ScriptNamesChunk names = file.getScriptNames();
-        if (names == null) return null;
+        // First search the main file
+        if (file != null) {
+            ScriptNamesChunk names = file.getScriptNames();
+            if (names != null) {
+                for (ScriptChunk script : file.getScripts()) {
+                    ScriptChunk.Handler handler = script.findHandler(handlerName, names);
+                    if (handler != null) {
+                        return new HandlerRef(script, handler);
+                    }
+                }
+            }
+        }
 
-        for (ScriptChunk script : file.getScripts()) {
-            ScriptChunk.Handler handler = script.findHandler(handlerName, names);
-            if (handler != null) {
+        // Then search external cast libraries via CastLibProvider
+        var provider = com.libreshockwave.vm.builtin.CastLibProvider.getProvider();
+        if (provider != null) {
+            var location = provider.findHandler(handlerName);
+            if (location != null && location.script() instanceof ScriptChunk script
+                    && location.handler() instanceof ScriptChunk.Handler handler) {
+                // Store the external ScriptNamesChunk for name resolution
+                if (location.scriptNames() instanceof ScriptNamesChunk extNames) {
+                    return new HandlerRef(script, handler, extNames);
+                }
                 return new HandlerRef(script, handler);
             }
         }
+
         return null;
     }
 
@@ -174,7 +192,7 @@ public class LingoVM {
             // Handler not found - this is normal for optional event handlers
             return Datum.VOID;
         }
-        return executeHandler(ref.script(), ref.handler(), args, null);
+        return executeHandler(ref.script(), ref.handler(), args, null, ref.scriptNames());
     }
 
     /**
@@ -185,7 +203,7 @@ public class LingoVM {
         if (ref == null) {
             return Datum.VOID;
         }
-        return executeHandler(ref.script(), ref.handler(), args, receiver);
+        return executeHandler(ref.script(), ref.handler(), args, receiver, ref.scriptNames());
     }
 
     /**
@@ -193,11 +211,19 @@ public class LingoVM {
      */
     public Datum executeHandler(ScriptChunk script, ScriptChunk.Handler handler,
                                 List<Datum> args, Datum receiver) {
+        return executeHandler(script, handler, args, receiver, null);
+    }
+
+    /**
+     * Execute a specific handler with arguments and optional external ScriptNamesChunk.
+     */
+    public Datum executeHandler(ScriptChunk script, ScriptChunk.Handler handler,
+                                List<Datum> args, Datum receiver, ScriptNamesChunk externalScriptNames) {
         if (callStack.size() >= MAX_CALL_STACK_DEPTH) {
             throw new LingoException("Call stack overflow (max " + MAX_CALL_STACK_DEPTH + " frames)");
         }
 
-        Scope scope = new Scope(script, handler, args, receiver);
+        Scope scope = new Scope(script, handler, args, receiver, externalScriptNames);
         callStack.push(scope);
 
         // Notify trace listener of handler entry
@@ -285,10 +311,16 @@ public class LingoVM {
      * Create an execution context for opcode handlers.
      */
     private ExecutionContext createExecutionContext(Scope scope, ScriptChunk.Handler.Instruction instr) {
+        // Use scope's ScriptNamesChunk if available (external cast), otherwise use file's
+        ScriptNamesChunk names = scope.getScriptNames();
+        if (names == null && file != null) {
+            names = file.getScriptNames();
+        }
+
         return new ExecutionContext(
             scope,
             instr,
-            file != null ? file.getScriptNames() : null,
+            names,
             builtins,
             traceListener,
             this::executeHandler,

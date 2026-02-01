@@ -117,6 +117,26 @@ public interface CastLibProvider {
         // Default: do nothing
     }
 
+    /**
+     * Find a handler by name across all cast libraries.
+     * Used by LingoVM to locate handlers in external casts.
+     * @param handlerName The handler name to find
+     * @return A HandlerLocation with script info, or null if not found
+     */
+    default HandlerLocation findHandler(String handlerName) {
+        return null;
+    }
+
+    /**
+     * Represents a handler location in a cast library.
+     */
+    record HandlerLocation(
+        int castLibNumber,
+        Object script,          // ScriptChunk
+        Object handler,         // ScriptChunk.Handler
+        Object scriptNames      // ScriptNamesChunk
+    ) {}
+
     // Thread-local provider for VM access
     ThreadLocal<CastLibProvider> CURRENT = new ThreadLocal<>();
 
