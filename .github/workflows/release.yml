@@ -22,8 +22,8 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Build fat JAR
-        run: ./gradlew :sdk:build :cast-extractor:fatJar
+      - name: Build fat JAR and Windows exe
+        run: ./gradlew :sdk:build :cast-extractor:fatJar :cast-extractor:windowsExe
 
       - name: Get version from tag
         id: get_version
@@ -33,29 +33,10 @@ jobs:
           VERSION="${VERSION#v}"  # Strip leading 'v' if present
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Create Windows exe with jpackage
-        shell: pwsh
-        run: |
-          $jarPath = "cast-extractor/build/libs/cast-extractor-1.0.0-all.jar"
-          $outputDir = "cast-extractor/build/installer"
-
-          # Create output directory
-          New-Item -ItemType Directory -Force -Path $outputDir
-
-          # Run jpackage to create Windows exe
-          jpackage `
-            --type app-image `
-            --input cast-extractor/build/libs `
-            --main-jar cast-extractor-1.0.0-all.jar `
-            --name CastExtractor `
-            --app-version ${{ steps.get_version.outputs.VERSION }} `
-            --dest $outputDir `
-            --java-options "-Xmx512m"
-
       - name: Create ZIP of Windows app
         shell: pwsh
         run: |
-          Compress-Archive -Path "cast-extractor/build/installer/CastExtractor" -DestinationPath "cast-extractor/build/CastExtractor-${{ steps.get_version.outputs.VERSION }}-windows.zip"
+          Compress-Archive -Path "cast-extractor/build/exe/CastExtractor" -DestinationPath "cast-extractor/build/CastExtractor-${{ steps.get_version.outputs.VERSION }}-windows.zip"
 
       - name: Rename fat JAR for release
         shell: bash
