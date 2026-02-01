@@ -48,9 +48,11 @@ tasks.register('fatJar', Jar) {
         attributes 'Main-Class': 'com.libreshockwave.tools.CastExtractorTool'
     }
 
+    // Declare inputs to establish proper task dependencies
+    inputs.files(configurations.runtimeClasspath)
+
+    from sourceSets.main.output
     from {
         configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
     }
-
-    with jar
 }
