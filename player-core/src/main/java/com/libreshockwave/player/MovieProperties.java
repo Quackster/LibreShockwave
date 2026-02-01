@@ -122,6 +122,9 @@ public class MovieProperties implements MoviePropertyProvider {
             // Color depth
             case "colordepth" -> Datum.of(32);
 
+            // Window/Stage
+            case "stage" -> Datum.STAGE;
+
             // Misc
             case "emptystring" -> Datum.EMPTY_STRING;
             case "pi" -> Datum.of(Math.PI);

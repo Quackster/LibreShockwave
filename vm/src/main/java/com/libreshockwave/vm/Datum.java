@@ -133,6 +133,18 @@ public sealed interface Datum {
         public String toString() { return "castLib(" + castLibNumber + ")"; }
     }
 
+    /** Stage reference (the stage window) */
+    record StageRef() implements Datum {
+        @Override
+        public String toString() { return "(the stage)"; }
+    }
+
+    /** Window reference */
+    record WindowRef(String name) implements Datum {
+        @Override
+        public String toString() { return "window(\"" + name + "\")"; }
+    }
+
     // Singleton instances for common values
     Datum VOID = new Void();
     Datum ZERO = new Int(0);
@@ -140,6 +152,7 @@ public sealed interface Datum {
     Datum TRUE = new Int(1);
     Datum FALSE = new Int(0);
     Datum EMPTY_STRING = new Str("");
+    Datum STAGE = new StageRef();
 
     // Factory methods
     static Datum of(int value) {
