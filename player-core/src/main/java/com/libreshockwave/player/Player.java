@@ -6,10 +6,14 @@ import com.libreshockwave.chunks.ScriptNamesChunk;
 import com.libreshockwave.player.behavior.BehaviorManager;
 import com.libreshockwave.player.event.EventDispatcher;
 import com.libreshockwave.player.frame.FrameContext;
+import com.libreshockwave.player.net.NetManager;
 import com.libreshockwave.player.render.FrameSnapshot;
 import com.libreshockwave.player.render.StageRenderer;
 import com.libreshockwave.player.score.ScoreNavigator;
 import com.libreshockwave.vm.LingoVM;
+import com.libreshockwave.vm.builtin.NetBuiltins;
+import com.libreshockwave.vm.builtin.XtraBuiltins;
+import com.libreshockwave.vm.xtra.XtraManager;
 
 import java.util.*;
 import java.util.function.Consumer;
@@ -25,6 +29,8 @@ public class Player {
     private final LingoVM vm;
     private final FrameContext frameContext;
     private final StageRenderer stageRenderer;
+    private final NetManager netManager;
+    private final XtraManager xtraManager;
 
     private PlayerState state = PlayerState.STOPPED;
     private int tempo;  // Frames per second
@@ -40,8 +46,15 @@ public class Player {
         this.vm = new LingoVM(file);
         this.frameContext = new FrameContext(file, vm);
         this.stageRenderer = new StageRenderer(file);
+        this.netManager = new NetManager();
+        this.xtraManager = new XtraManager();
         this.tempo = file != null ? file.getTempo() : 15;
         if (this.tempo <= 0) this.tempo = 15;
+
+        // Set base path for network requests from the file location
+        if (file != null && file.getBasePath() != null && !file.getBasePath().isEmpty()) {
+            netManager.setBasePath(file.getBasePath());
+        }
 
         // Wire up event notifications
         frameContext.setEventListener(event -> {
@@ -83,6 +96,14 @@ public class Player {
 
     public StageRenderer getStageRenderer() {
         return stageRenderer;
+    }
+
+    public NetManager getNetManager() {
+        return netManager;
+    }
+
+    public XtraManager getXtraManager() {
+        return xtraManager;
     }
 
     public PlayerState getState() {
@@ -218,8 +239,13 @@ public class Player {
     public void stop() {
         if (state != PlayerState.STOPPED) {
             log("stop()");
-            // stopMovie -> dispatched to movie scripts
-            frameContext.getEventDispatcher().dispatchToMovieScripts("stopMovie", List.of());
+            setupProviders();
+            try {
+                // stopMovie -> dispatched to movie scripts
+                frameContext.getEventDispatcher().dispatchToMovieScripts("stopMovie", List.of());
+            } finally {
+                clearProviders();
+            }
             frameContext.reset();
             stageRenderer.reset();
             state = PlayerState.STOPPED;
@@ -249,8 +275,13 @@ public class Player {
             state = PlayerState.PAUSED;
         }
 
-        frameContext.executeFrame();
-        frameContext.advanceFrame();
+        setupProviders();
+        try {
+            frameContext.executeFrame();
+            frameContext.advanceFrame();
+        } finally {
+            clearProviders();
+        }
     }
 
     // Frame execution (called by external timer/loop)
@@ -264,9 +295,31 @@ public class Player {
             return state == PlayerState.PAUSED;
         }
 
-        frameContext.executeFrame();
-        frameContext.advanceFrame();
+        // Set up thread-local providers before script execution
+        setupProviders();
+        try {
+            frameContext.executeFrame();
+            frameContext.advanceFrame();
+        } finally {
+            clearProviders();
+        }
         return true;
+    }
+
+    /**
+     * Set up thread-local providers for builtin functions.
+     */
+    private void setupProviders() {
+        NetBuiltins.setProvider(netManager);
+        XtraBuiltins.setManager(xtraManager);
+    }
+
+    /**
+     * Clear thread-local providers after script execution.
+     */
+    private void clearProviders() {
+        NetBuiltins.clearProvider();
+        XtraBuiltins.clearManager();
     }
 
     // Movie lifecycle - follows dirplayer-rs flow exactly
@@ -274,28 +327,42 @@ public class Player {
     private void prepareMovie() {
         log("prepareMovie()");
 
-        // 1. prepareMovie -> dispatched to movie scripts (behaviors not initialized yet)
-        frameContext.getEventDispatcher().dispatchToMovieScripts("prepareMovie", List.of());
+        setupProviders();
+        try {
+            // 1. prepareMovie -> dispatched to movie scripts (behaviors not initialized yet)
+            frameContext.getEventDispatcher().dispatchToMovieScripts("prepareMovie", List.of());
 
-        // 2. Initialize sprites for frame 1
-        frameContext.initializeFirstFrame();
+            // 2. Initialize sprites for frame 1
+            frameContext.initializeFirstFrame();
 
-        // 3. beginSprite events
-        frameContext.dispatchBeginSpriteEvents();
+            // 3. beginSprite events
+            frameContext.dispatchBeginSpriteEvents();
 
-        // 4. prepareFrame -> dispatched to all behaviors + frame/movie scripts
-        frameContext.getEventDispatcher().dispatchGlobalEvent(PlayerEvent.PREPARE_FRAME, List.of());
+            // 4. prepareFrame -> dispatched to all behaviors + frame/movie scripts
+            frameContext.getEventDispatcher().dispatchGlobalEvent(PlayerEvent.PREPARE_FRAME, List.of());
 
-        // 5. startMovie -> dispatched to movie scripts
-        frameContext.getEventDispatcher().dispatchToMovieScripts("startMovie", List.of());
+            // 5. startMovie -> dispatched to movie scripts
+            frameContext.getEventDispatcher().dispatchToMovieScripts("startMovie", List.of());
 
-        // 6. enterFrame -> dispatched to all behaviors + frame/movie scripts
-        frameContext.getEventDispatcher().dispatchGlobalEvent(PlayerEvent.ENTER_FRAME, List.of());
+            // 6. enterFrame -> dispatched to all behaviors + frame/movie scripts
+            frameContext.getEventDispatcher().dispatchGlobalEvent(PlayerEvent.ENTER_FRAME, List.of());
 
-        // 7. exitFrame -> dispatched to all behaviors + frame/movie scripts
-        frameContext.getEventDispatcher().dispatchGlobalEvent(PlayerEvent.EXIT_FRAME, List.of());
+            // 7. exitFrame -> dispatched to all behaviors + frame/movie scripts
+            frameContext.getEventDispatcher().dispatchGlobalEvent(PlayerEvent.EXIT_FRAME, List.of());
 
-        // Frame loop will handle subsequent frames
+            // Frame loop will handle subsequent frames
+        } finally {
+            clearProviders();
+        }
+    }
+
+    /**
+     * Shutdown the player and release resources.
+     * Call this when the player is no longer needed.
+     */
+    public void shutdown() {
+        stop();
+        netManager.shutdown();
     }
 
     // Debug logging

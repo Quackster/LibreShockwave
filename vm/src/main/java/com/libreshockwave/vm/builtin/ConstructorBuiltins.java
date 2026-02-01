@@ -18,6 +18,36 @@ public final class ConstructorBuiltins {
         builtins.put("point", ConstructorBuiltins::point);
         builtins.put("rect", ConstructorBuiltins::rect);
         builtins.put("color", ConstructorBuiltins::color);
+        builtins.put("new", ConstructorBuiltins::newInstance);
+    }
+
+    /**
+     * new(obj, args...)
+     * Creates a new instance of an Xtra or parent script.
+     * Example: set instance = new(xtra("Multiuser"))
+     */
+    private static Datum newInstance(LingoVM vm, List<Datum> args) {
+        if (args.isEmpty()) {
+            return Datum.VOID;
+        }
+
+        Datum target = args.get(0);
+        java.util.List<Datum> constructorArgs = args.size() > 1
+            ? args.subList(1, args.size())
+            : java.util.List.of();
+
+        // Handle Xtra instances
+        if (target instanceof Datum.XtraRef xtraRef) {
+            return XtraBuiltins.createInstance(xtraRef, constructorArgs);
+        }
+
+        // Handle parent scripts (ScriptInstance)
+        if (target instanceof Datum.ScriptInstance) {
+            // TODO: Clone/create instance of parent script
+            return Datum.VOID;
+        }
+
+        return Datum.VOID;
     }
 
     private static Datum point(LingoVM vm, List<Datum> args) {
