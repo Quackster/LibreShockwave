@@ -56,6 +56,9 @@ public class EventDispatcher {
      */
     public void dispatchGlobalEvent(String handlerName, List<Datum> args) {
         stopPropagation = false;
+        // Reset error state at start of each event dispatch
+        // This allows execution to continue after errors
+        vm.resetErrorState();
 
         // 1. Sprite behaviors (in channel order)
         List<BehaviorInstance> spriteInstances = behaviorManager.getSpriteInstances();

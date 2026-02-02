@@ -28,6 +28,7 @@ public final class ExecutionContext {
     private final HandlerFinder handlerFinder;
     private final GlobalAccessor globalAccessor;
     private final BuiltinInvoker builtinInvoker;
+    private final ErrorStateSetter errorStateSetter;
 
     public ExecutionContext(
             Scope scope,
@@ -37,7 +38,8 @@ public final class ExecutionContext {
             HandlerExecutor handlerExecutor,
             HandlerFinder handlerFinder,
             GlobalAccessor globalAccessor,
-            BuiltinInvoker builtinInvoker) {
+            BuiltinInvoker builtinInvoker,
+            ErrorStateSetter errorStateSetter) {
         this.scope = scope;
         this.instruction = instruction;
         this.argument = instruction.argument();
@@ -47,6 +49,21 @@ public final class ExecutionContext {
         this.handlerFinder = handlerFinder;
         this.globalAccessor = globalAccessor;
         this.builtinInvoker = builtinInvoker;
+        this.errorStateSetter = errorStateSetter;
+    }
+
+    /**
+     * Set the VM error state. When true, no more handlers will execute.
+     */
+    public void setErrorState(boolean errorState) {
+        if (errorStateSetter != null) {
+            errorStateSetter.setErrorState(errorState);
+        }
+    }
+
+    @FunctionalInterface
+    public interface ErrorStateSetter {
+        void setErrorState(boolean errorState);
     }
 
     // Scope access

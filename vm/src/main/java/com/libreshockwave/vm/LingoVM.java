@@ -17,8 +17,7 @@ import java.util.*;
  * Similar to dirplayer-rs handler_manager.rs.
  */
 public class LingoVM {
-
-    private static final int MAX_CALL_STACK_DEPTH = 50;
+    private static final int MAX_CALL_STACK_DEPTH = 1000;
 
     private final DirectorFile file;
     private final Map<String, Datum> globals;
@@ -35,6 +34,9 @@ public class LingoVM {
 
     // Trace listener for debug UI
     private TraceListener traceListener;
+
+    // Error state - when true, no more handlers will execute (like dirplayer-rs stop())
+    private boolean inErrorState = false;
 
     public LingoVM(DirectorFile file) {
         this.file = file;
@@ -199,6 +201,11 @@ public class LingoVM {
      */
     public Datum executeHandler(ScriptChunk script, ScriptChunk.Handler handler,
                                 List<Datum> args, Datum receiver) {
+        // Like dirplayer-rs: if we're in an error state, don't execute any more handlers
+        if (inErrorState) {
+            return Datum.VOID;
+        }
+
         if (callStack.size() >= MAX_CALL_STACK_DEPTH) {
             throw new LingoException("Call stack overflow (max " + MAX_CALL_STACK_DEPTH + " frames)");
         }
@@ -256,6 +263,29 @@ public class LingoVM {
         } finally {
             callStack.pop();
         }
+    }
+
+    /**
+     * Set the error state. When true, no more handlers will execute.
+     * Like dirplayer-rs stop() behavior.
+     */
+    public void setErrorState(boolean errorState) {
+        this.inErrorState = errorState;
+    }
+
+    /**
+     * Check if VM is in error state.
+     */
+    public boolean isInErrorState() {
+        return inErrorState;
+    }
+
+    /**
+     * Reset the error state to allow execution to continue.
+     * Call this at the start of each frame or event dispatch.
+     */
+    public void resetErrorState() {
+        this.inErrorState = false;
     }
 
     /**
@@ -317,7 +347,8 @@ public class LingoVM {
                     LingoVM.this.setGlobal(name, value);
                 }
             },
-            (name, args) -> builtins.invoke(name, LingoVM.this, args)
+            (name, args) -> builtins.invoke(name, LingoVM.this, args),
+            this::setErrorState
         );
     }
 }

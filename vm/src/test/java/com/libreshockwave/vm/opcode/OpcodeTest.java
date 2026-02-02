@@ -66,7 +66,8 @@ class OpcodeTest {
                     globals.put(name, value);
                 }
             },
-            (name, args) -> Datum.VOID
+            (name, args) -> Datum.VOID,
+            errorState -> {}  // no-op error state setter for tests
         );
     }
 

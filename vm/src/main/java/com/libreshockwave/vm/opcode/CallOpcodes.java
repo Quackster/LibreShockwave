@@ -4,6 +4,7 @@ import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.lingo.Opcode;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.HandlerRef;
+import com.libreshockwave.vm.LingoException;
 import com.libreshockwave.vm.LingoVM;
 import com.libreshockwave.vm.builtin.CastLibProvider;
 
@@ -19,6 +20,24 @@ public final class CallOpcodes {
 
     private CallOpcodes() {}
 
+    /**
+     * Safely execute a handler, catching exceptions and returning VOID on error.
+     * This matches dirplayer-rs behavior where errors stop execution but don't propagate
+     * as exceptions that could trigger recursive error handling.
+     */
+    private static Datum safeExecuteHandler(ExecutionContext ctx, ScriptChunk script,
+                                            ScriptChunk.Handler handler, List<Datum> args, Datum receiver) {
+        try {
+            return ctx.executeHandler(script, handler, args, receiver);
+        } catch (LingoException e) {
+            // Log the error and set error state to prevent further handler execution
+            // This matches dirplayer-rs stop() behavior
+            System.err.println("[Lingo] Error in " + script.getHandlerName(handler) + ": " + e.getMessage());
+            ctx.setErrorState(false);
+            return Datum.VOID;
+        }
+    }
+
     public static void register(Map<Opcode, OpcodeHandler> handlers) {
         handlers.put(Opcode.LOCAL_CALL, CallOpcodes::localCall);
         handlers.put(Opcode.EXT_CALL, CallOpcodes::extCall);
@@ -31,7 +50,7 @@ public final class CallOpcodes {
             Datum argListDatum = ctx.pop();
             boolean noRet = argListDatum instanceof Datum.ArgListNoRet;
             List<Datum> args = getArgs(argListDatum);
-            Datum result = ctx.executeHandler(ctx.getScript(), targetHandler, args, ctx.getReceiver());
+            Datum result = safeExecuteHandler(ctx, ctx.getScript(), targetHandler, args, ctx.getReceiver());
             if (!noRet) {
                 ctx.push(result);
             }
@@ -51,7 +70,7 @@ public final class CallOpcodes {
         } else {
             HandlerRef ref = ctx.findHandler(handlerName);
             if (ref != null) {
-                result = ctx.executeHandler(ref.script(), ref.handler(), args, null);
+                result = safeExecuteHandler(ctx, ref.script(), ref.handler(), args, null);
             } else {
                 result = Datum.VOID;
             }
@@ -414,7 +433,7 @@ public final class CallOpcodes {
                 if (location.script() instanceof ScriptChunk script
                         && location.handler() instanceof ScriptChunk.Handler handler) {
                     // Execute with original instance as receiver (for property access)
-                    return ctx.executeHandler(script, handler, args, instance);
+                    return safeExecuteHandler(ctx, script, handler, args, instance);
                 }
             }
 
