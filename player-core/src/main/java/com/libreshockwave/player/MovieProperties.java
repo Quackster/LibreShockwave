@@ -138,6 +138,19 @@ public class MovieProperties implements MoviePropertyProvider {
             case "false" -> Datum.FALSE;
             case "void" -> Datum.VOID;
 
+            // Execution context properties
+            case "paramcount" -> {
+                // Returns the number of arguments passed to the current handler
+                var vm = player.getVM();
+                if (vm != null) {
+                    var scope = vm.getCurrentScope();
+                    if (scope != null) {
+                        yield Datum.of(scope.getArguments().size());
+                    }
+                }
+                yield Datum.ZERO;
+            }
+
             // Unknown property
             default -> {
                 System.err.println("[MovieProperties] Unknown property: " + propName);

@@ -76,14 +76,6 @@ public final class PropertyOpcodes {
 
     private static boolean getMovieProp(ExecutionContext ctx) {
         String propName = ctx.resolveName(ctx.getArgument());
-
-        // Handle special execution-context-dependent properties first
-        if ("paramCount".equalsIgnoreCase(propName)) {
-            // paramCount returns the number of arguments passed to the current handler
-            ctx.push(Datum.of(ctx.getScope().getArguments().size()));
-            return true;
-        }
-
         MoviePropertyProvider provider = MoviePropertyProvider.getProvider();
 
         if (provider != null) {
