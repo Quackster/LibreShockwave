@@ -5,6 +5,7 @@ import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.cast.MemberType;
 import com.libreshockwave.chunks.CastMemberChunk;
 import com.libreshockwave.chunks.ScriptChunk;
+import com.libreshockwave.chunks.TextChunk;
 import com.libreshockwave.vm.Datum;
 
 /**
@@ -32,6 +33,7 @@ public class CastMember {
     // Loaded media data (lazy)
     private Bitmap bitmap;
     private ScriptChunk script;
+    private String textContent;
 
     // Cached properties
     private String name;
@@ -73,6 +75,7 @@ public class CastMember {
         switch (memberType) {
             case BITMAP -> loadBitmap();
             case SCRIPT -> loadScript();
+            case TEXT, BUTTON -> loadText();
             // Other types can be added as needed
             default -> {}
         }
@@ -99,6 +102,33 @@ public class CastMember {
         }
 
         script = sourceFile.getScriptByContextId(chunk.scriptId());
+    }
+
+    private void loadText() {
+        if (sourceFile == null || chunk == null) {
+            textContent = "";
+            return;
+        }
+
+        // Text content is stored in an STXT chunk associated with this member
+        // The STXT chunk typically shares the same ID as the CASt chunk or
+        // is referenced by a media ID
+        var textChunk = sourceFile.getChunk(chunk.id(), TextChunk.class);
+        if (textChunk.isPresent()) {
+            textContent = textChunk.get().text();
+        } else {
+            textContent = "";
+        }
+    }
+
+    /**
+     * Get the text content for text/field members.
+     */
+    public String getTextContent() {
+        if (!isLoaded()) {
+            load();
+        }
+        return textContent != null ? textContent : "";
     }
 
     // Accessors
@@ -213,9 +243,8 @@ public class CastMember {
     }
 
     private Datum getTextProp(String prop) {
-        // Text properties would need text data loaded
         return switch (prop) {
-            case "text" -> Datum.EMPTY_STRING; // TODO: load text from chunk
+            case "text" -> Datum.of(getTextContent());
             case "width", "height" -> Datum.of(0); // TODO: compute from text
             default -> Datum.VOID;
         };

@@ -26,6 +26,7 @@ public class BuiltinRegistry {
         CastLibBuiltins.register(builtins);
         WindowBuiltins.register(builtins);
         TypeBuiltins.register(builtins);
+        ControlFlowBuiltins.register(builtins);
     }
 
     /**

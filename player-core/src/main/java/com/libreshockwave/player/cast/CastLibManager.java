@@ -379,6 +379,47 @@ public class CastLibManager implements CastLibProvider {
         return false;
     }
 
+    @Override
+    public String getFieldValue(Object memberNameOrNum, int castId) {
+        ensureInitialized();
+
+        CastMember member = null;
+
+        if (memberNameOrNum instanceof String name) {
+            // Find by name
+            if (castId > 0) {
+                CastLib castLib = getCastLib(castId);
+                if (castLib != null) {
+                    member = castLib.getMemberByName(name);
+                }
+            } else {
+                // Search all casts
+                for (CastLib castLib : castLibs.values()) {
+                    if (!castLib.isLoaded()) {
+                        castLib.load();
+                    }
+                    member = castLib.getMemberByName(name);
+                    if (member != null) {
+                        break;
+                    }
+                }
+            }
+        } else if (memberNameOrNum instanceof Integer num) {
+            // Find by number
+            int effectiveCastId = castId > 0 ? castId : 1;
+            CastLib castLib = getCastLib(effectiveCastId);
+            if (castLib != null) {
+                member = castLib.getMember(num);
+            }
+        }
+
+        if (member != null) {
+            return member.getTextContent();
+        }
+
+        return "";
+    }
+
     /**
      * Find a handler by name across all cast libraries.
      * Searches loaded external casts for the handler.
