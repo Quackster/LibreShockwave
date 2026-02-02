@@ -19,6 +19,9 @@ import java.util.*;
 public class LingoVM {
     // Match dirplayer-rs MAX_STACK_SIZE
     private static final int MAX_CALL_STACK_DEPTH = 50;
+    // Default step limit per handler - high enough for complex scripts like dump()
+    // that iterate character-by-character through large property files
+    private static final int DEFAULT_STEP_LIMIT = 1_000_000;
 
     private final DirectorFile file;
     private final Map<String, Datum> globals;
@@ -28,7 +31,7 @@ public class LingoVM {
     private final TracingHelper tracingHelper;
 
     private boolean traceEnabled = false;
-    private int stepLimit = 100_000;  // Maximum instructions per handler call
+    private int stepLimit = DEFAULT_STEP_LIMIT;
 
     // Event propagation callback (set by EventDispatcher)
     private Runnable passCallback;

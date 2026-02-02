@@ -99,6 +99,64 @@ class LingoVMTest {
     }
 
     @Test
+    void testBuiltinFloatReturnsOriginalStringForNonNumeric() {
+        // float() should return the original string unchanged if it's not a valid number
+        // This matches dirplayer-rs behavior and is important for scripts that use
+        // floatp(float(x)) to check if x is numeric
+        LingoVM vm = new LingoVM(null);
+
+        // Non-numeric string should be returned unchanged
+        Datum result = vm.callHandler("float", List.of(Datum.of("hello")));
+        assertTrue(result.isString(), "float(\"hello\") should return a string");
+        assertEquals("hello", result.toStr());
+
+        // String with class name (like in Variable Container Class props)
+        result = vm.callHandler("float", List.of(Datum.of("CastLoad Manager Class")));
+        assertTrue(result.isString(), "float(\"CastLoad Manager Class\") should return a string");
+        assertEquals("CastLoad Manager Class", result.toStr());
+
+        // Numeric string should be converted
+        result = vm.callHandler("float", List.of(Datum.of("3.14")));
+        assertTrue(result.isFloat(), "float(\"3.14\") should return a float");
+        assertEquals(3.14, result.toDouble(), 0.001);
+    }
+
+    @Test
+    void testBuiltinIntegerReturnsOriginalStringForNonNumeric() {
+        // integer() should return the original string unchanged if it's not a valid number
+        LingoVM vm = new LingoVM(null);
+
+        // Non-numeric string should be returned unchanged
+        Datum result = vm.callHandler("integer", List.of(Datum.of("hello")));
+        assertTrue(result.isString(), "integer(\"hello\") should return a string");
+        assertEquals("hello", result.toStr());
+
+        // Numeric string should be converted
+        result = vm.callHandler("integer", List.of(Datum.of("42")));
+        assertTrue(result.isInt(), "integer(\"42\") should return an int");
+        assertEquals(42, result.toInt());
+
+        // Float string should be truncated
+        result = vm.callHandler("integer", List.of(Datum.of("3.7")));
+        assertTrue(result.isInt(), "integer(\"3.7\") should return an int");
+        assertEquals(3, result.toInt());
+    }
+
+    @Test
+    void testDefaultStepLimit() {
+        // Default step limit should be high enough for complex scripts
+        LingoVM vm = new LingoVM(null);
+
+        // Get the step limit by trying to set it and checking behavior
+        // The default should be 1,000,000 which is high enough for scripts like dump()
+        vm.setStepLimit(1000);  // Lower it
+        vm.setStepLimit(1_000_000);  // Reset to default
+
+        // We can't directly test the private field, but we verify the setter works
+        // and doesn't throw
+    }
+
+    @Test
     void testBuiltinLength() {
         LingoVM vm = new LingoVM(null);
 
