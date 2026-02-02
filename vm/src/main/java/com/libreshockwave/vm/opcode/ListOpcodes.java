@@ -28,12 +28,7 @@ public final class ListOpcodes {
         for (int i = 0; i < count; i++) {
             items.add(0, ctx.pop());
         }
-        Datum list = Datum.list(items);
-        // Debug: trace all 2-element list creation
-        if (count == 2) {
-            System.err.println("[PUSH_LIST 2] @" + System.identityHashCode(list) + ": " + list);
-        }
-        ctx.push(list);
+        ctx.push(Datum.list(items));
         return true;
     }
 

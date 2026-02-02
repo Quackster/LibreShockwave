@@ -95,14 +95,9 @@ public final class CastLibBuiltins {
             }
             return provider.getMember(castLibNumber, memberNumber);
         } else if (memberArg.isString()) {
-            Datum result = provider.getMemberByName(castLibNumber, memberArg.toStr());
-            if (result.isVoid()) {
-                System.err.println("[member] NOT FOUND: \"" + memberArg.toStr() + "\" in castLib " + castLibNumber);
-            }
-            return result;
+            return provider.getMemberByName(castLibNumber, memberArg.toStr());
         }
 
-        System.err.println("[member] VOID: arg type=" + memberArg.getClass().getSimpleName() + " val=" + memberArg);
         return Datum.VOID;
     }
 
