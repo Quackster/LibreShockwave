@@ -449,4 +449,38 @@ public class CastLibManager implements CastLibProvider {
 
         return null;
     }
+
+    /**
+     * Find a handler in a specific script by its script ID (cast member number).
+     * Used for method calls on script instances - only searches the instance's parent script.
+     */
+    @Override
+    public HandlerLocation findHandlerInScript(int scriptId, String handlerName) {
+        ensureInitialized();
+
+        for (CastLib castLib : castLibs.values()) {
+            if (!castLib.isLoaded()) {
+                continue;
+            }
+
+            var scriptNames = castLib.getScriptNames();
+            if (scriptNames == null) {
+                continue;
+            }
+
+            // Find the script with matching ID (cast member number)
+            for (var script : castLib.getAllScripts()) {
+                if (script.id() == scriptId) {
+                    var handler = script.findHandler(handlerName, scriptNames);
+                    if (handler != null) {
+                        return new HandlerLocation(castLib.getNumber(), script, handler, scriptNames);
+                    }
+                    // Found the script but no handler - don't continue searching
+                    return null;
+                }
+            }
+        }
+
+        return null;
+    }
 }
