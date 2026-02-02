@@ -493,6 +493,9 @@ public class PlayerFrame extends JFrame {
         player.setDebugController(debugController);
         player.setDebugEnabled(true);
 
+        // Set player reference for preloading casts
+        debuggerPanel.setPlayer(player);
+
         // Populate debugger panel with script/handler list for browsing (from all cast libraries)
         debuggerPanel.setDirectorFile(file, player.getCastLibManager());
 
@@ -502,6 +505,12 @@ public class PlayerFrame extends JFrame {
                 debuggerPanel.refreshScriptList();
             });
         });
+
+        // Automatically preload all external casts so their scripts are available for debugging
+        int preloadCount = player.preloadAllCasts();
+        if (preloadCount > 0) {
+            statusLabel.setText(statusLabel.getText() + " | Preloading " + preloadCount + " external cast(s)...");
+        }
 
         stagePanel.setPlayer(player);
         updateButtonStates();

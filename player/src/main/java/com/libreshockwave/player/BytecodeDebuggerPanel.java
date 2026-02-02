@@ -30,6 +30,9 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
     // Controller
     private DebugController controller;
 
+    // Player reference for preloading casts
+    private Player player;
+
     // Director file for script browsing
     private DirectorFile directorFile;
     private List<ScriptChunk> allScripts = new ArrayList<>();
@@ -256,6 +259,13 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
      */
     public void setController(DebugController controller) {
         this.controller = controller;
+    }
+
+    /**
+     * Set the Player reference for preloading casts.
+     */
+    public void setPlayer(Player player) {
+        this.player = player;
     }
 
     /**
