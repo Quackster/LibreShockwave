@@ -154,6 +154,28 @@ public class Player {
         return castLibManager;
     }
 
+    /**
+     * Preload all external cast libraries.
+     * This triggers async loading of any casts that have external paths/URLs.
+     * Use this to make all scripts available for debugging before playback starts.
+     * @return The number of casts that were queued for loading
+     */
+    public int preloadAllCasts() {
+        int count = 0;
+        for (var entry : castLibManager.getCastLibs().entrySet()) {
+            var castLib = entry.getValue();
+            if (castLib.isExternal() && !castLib.isLoaded()) {
+                String fileName = castLib.getFileName();
+                if (fileName != null && !fileName.isEmpty()) {
+                    netManager.preloadNetThing(fileName);
+                    count++;
+                    System.out.println("[Player] Preloading external cast: " + fileName);
+                }
+            }
+        }
+        return count;
+    }
+
     public PlayerState getState() {
         return state;
     }
