@@ -49,6 +49,9 @@ public class Player {
     // Event listeners for external notification
     private Consumer<PlayerEventInfo> eventListener;
 
+    // Cast loaded listener (called when external cast libraries are loaded)
+    private Runnable castLoadedListener;
+
     // Debug mode
     private boolean debugEnabled = false;
 
@@ -85,7 +88,11 @@ public class Player {
         netManager.setCompletionCallback((fileName, data) -> {
             // Check if this URL matches an external cast library
             if (castLibManager.setExternalCastDataByUrl(fileName, data)) {
-                System.out.println("[Player] Loaded external cast from: " + fileName); // TODO Normalise
+                System.out.println("[Player] Loaded external cast from: " + fileName);
+                // Notify listener that a cast was loaded
+                if (castLoadedListener != null) {
+                    castLoadedListener.run();
+                }
             }
         });
 
@@ -196,6 +203,14 @@ public class Player {
 
     public void setEventListener(Consumer<PlayerEventInfo> listener) {
         this.eventListener = listener;
+    }
+
+    /**
+     * Set a listener to be notified when external cast libraries are loaded.
+     * This is useful for refreshing UI components that display cast contents.
+     */
+    public void setCastLoadedListener(Runnable listener) {
+        this.castLoadedListener = listener;
     }
 
     public void setDebugEnabled(boolean enabled) {
