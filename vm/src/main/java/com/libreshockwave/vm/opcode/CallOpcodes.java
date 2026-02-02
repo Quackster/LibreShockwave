@@ -184,12 +184,21 @@ public final class CallOpcodes {
             case "count" -> Datum.of(propList.properties().size());
             case "getat" -> {
                 if (args.isEmpty()) yield Datum.VOID;
-                int index = args.get(0).toInt();
-                var entries = new ArrayList<>(propList.properties().entrySet());
-                if (index >= 0 && index < entries.size()) {
-                    yield entries.get(index).getValue();
+                Datum keyOrIndex = args.get(0);
+                // Support both string/symbol key lookup and integer index lookup
+                if (keyOrIndex instanceof Datum.Str s) {
+                    yield propList.properties().getOrDefault(s.value(), Datum.VOID);
+                } else if (keyOrIndex instanceof Datum.Symbol sym) {
+                    yield propList.properties().getOrDefault(sym.name(), Datum.VOID);
+                } else {
+                    // Integer index (1-based)
+                    int index = keyOrIndex.toInt() - 1;
+                    var entries = new ArrayList<>(propList.properties().entrySet());
+                    if (index >= 0 && index < entries.size()) {
+                        yield entries.get(index).getValue();
+                    }
+                    yield Datum.VOID;
                 }
-                yield Datum.VOID;
             }
             case "getprop", "getaprop" -> {
                 if (args.isEmpty()) yield Datum.VOID;
