@@ -266,6 +266,60 @@ public final class CallOpcodes {
      */
     private static Datum handleScriptInstanceMethod(ExecutionContext ctx, Datum.ScriptInstance instance,
                                                     String methodName, List<Datum> args) {
+        // Handle built-in property access/modification methods FIRST
+        // These allow Director to set/get properties on script instances (like #ancestor)
+        String method = methodName.toLowerCase();
+        switch (method) {
+            case "setat" -> {
+                // setAt(instance, #propName, value) or instance.setAt(#propName, value)
+                if (args.size() >= 2) {
+                    String propName = getPropertyName(args.get(0));
+                    instance.properties().put(propName, args.get(1));
+                    if (propName.equals("ancestor")) {
+                        System.out.println("[DEBUG] setAt #ancestor on instance " + instance.scriptId() + ": " + args.get(1));
+                    }
+                }
+                return Datum.VOID;
+            }
+            case "setaprop" -> {
+                // setaProp(instance, #propName, value)
+                if (args.size() >= 2) {
+                    String propName = getPropertyName(args.get(0));
+                    instance.properties().put(propName, args.get(1));
+                }
+                return Datum.VOID;
+            }
+            case "getat", "getaprop", "getprop" -> {
+                // getAt(instance, #propName)
+                if (args.isEmpty()) return Datum.VOID;
+                String propName = getPropertyName(args.get(0));
+                return getPropertyFromAncestorChain(instance, propName);
+            }
+            case "addprop" -> {
+                // addProp(instance, #propName, value)
+                if (args.size() >= 2) {
+                    String propName = getPropertyName(args.get(0));
+                    instance.properties().put(propName, args.get(1));
+                }
+                return Datum.VOID;
+            }
+            case "deleteprop" -> {
+                // deleteProp(instance, #propName)
+                if (args.isEmpty()) return Datum.VOID;
+                String propName = getPropertyName(args.get(0));
+                instance.properties().remove(propName);
+                return Datum.VOID;
+            }
+            case "count" -> {
+                // count(instance) - return number of properties
+                return Datum.of(instance.properties().size());
+            }
+            case "ilk" -> {
+                // ilk(instance) - return #instance
+                return new Datum.Symbol("instance");
+            }
+        }
+
         CastLibProvider provider = CastLibProvider.getProvider();
         if (provider == null) {
             return Datum.VOID;
@@ -274,11 +328,32 @@ public final class CallOpcodes {
         // Walk the ancestor chain to find a handler
         // Start with the instance's script, then check ancestors
         Datum.ScriptInstance current = instance;
+        boolean debugDump = methodName.equalsIgnoreCase("dump");
+        if (debugDump) {
+            System.out.println("[DEBUG] Looking for dump() on instance " + instance.scriptId());
+            System.out.println("[DEBUG]   __scriptRef__: " + instance.properties().get("__scriptRef__"));
+            System.out.println("[DEBUG]   ancestor: " + instance.properties().get("ancestor"));
+        }
         for (int i = 0; i < 100; i++) { // Safety limit to prevent infinite loops
-            // Get the script ID from __scriptRef__ if available, otherwise use scriptId
-            int scriptId = getScriptIdFromInstance(current);
+            // Get the script ref from __scriptRef__ if available
+            Datum.ScriptRef scriptRef = getScriptRefFromInstance(current);
 
-            var location = provider.findHandlerInScript(scriptId, methodName);
+            if (debugDump) {
+                System.out.println("[DEBUG]   Iteration " + i + ": current=" + current.scriptId() + ", scriptRef=" + scriptRef);
+            }
+
+            CastLibProvider.HandlerLocation location;
+            if (scriptRef != null) {
+                // Use both cast lib number and member number for precise lookup
+                location = provider.findHandlerInScript(scriptRef.castLib(), scriptRef.member(), methodName);
+            } else {
+                // Fallback to searching all cast libs with just member number
+                location = provider.findHandlerInScript(current.scriptId(), methodName);
+            }
+            if (debugDump) {
+                System.out.println("[DEBUG]   location found: " + (location != null));
+            }
+
             if (location != null && location.script() != null && location.handler() != null) {
                 if (location.script() instanceof ScriptChunk script
                         && location.handler() instanceof ScriptChunk.Handler handler) {
@@ -307,14 +382,35 @@ public final class CallOpcodes {
     }
 
     /**
+     * Get a property name from a Datum (symbol or string).
+     */
+    private static String getPropertyName(Datum datum) {
+        if (datum instanceof Datum.Symbol sym) {
+            return sym.name();
+        }
+        return datum.toStr();
+    }
+
+    /**
+     * Get the ScriptRef from a script instance.
+     * @return The ScriptRef if available, or null
+     */
+    private static Datum.ScriptRef getScriptRefFromInstance(Datum.ScriptInstance instance) {
+        Datum scriptRef = instance.properties().get("__scriptRef__");
+        if (scriptRef instanceof Datum.ScriptRef sr) {
+            return sr;
+        }
+        return null;
+    }
+
+    /**
      * Get the script ID from a script instance.
      * Uses __scriptRef__ if available (for proper handler dispatch), otherwise falls back to scriptId.
      */
     private static int getScriptIdFromInstance(Datum.ScriptInstance instance) {
-        Datum scriptRef = instance.properties().get("__scriptRef__");
-        if (scriptRef instanceof Datum.ScriptRef sr) {
-            // ScriptRef contains the member number which is used for handler lookup
-            return sr.member();
+        Datum.ScriptRef scriptRef = getScriptRefFromInstance(instance);
+        if (scriptRef != null) {
+            return scriptRef.member();
         }
         // Fallback to instance scriptId (may not work for handler dispatch)
         return instance.scriptId();
