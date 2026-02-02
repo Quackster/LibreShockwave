@@ -2,6 +2,7 @@ package com.libreshockwave.player;
 
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.chunks.ScoreChunk;
+import com.libreshockwave.player.debug.DebugController;
 import com.libreshockwave.vm.Datum;
 
 import javax.swing.*;
@@ -45,9 +46,11 @@ public class PlayerFrame extends JFrame {
     private JButton stopButton;
     private JButton stepButton;
     private JSlider frameSlider;
-    private DebugPanel debugPanel;
+    private BytecodeDebuggerPanel debuggerPanel;
+    private DebugController debugController;
     private JSplitPane splitPane;
     private boolean debugVisible = true;
+    private boolean useAsyncExecution = true;  // Use async execution for debugger support
     private Path lastOpenedFile;
 
     public PlayerFrame() {
@@ -126,11 +129,14 @@ public class PlayerFrame extends JFrame {
         stagePanel.setPreferredSize(new Dimension(640, 480));
         stagePanel.setBackground(Color.WHITE);
 
-        // Debug panel (right side)
-        debugPanel = new DebugPanel();
+        // Bytecode debugger panel (right side)
+        debugController = new DebugController();
+        debuggerPanel = new BytecodeDebuggerPanel();
+        debuggerPanel.setController(debugController);
+        debugController.addListener(debuggerPanel);
 
         // Split pane for stage and debug
-        splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, stagePanel, debugPanel);
+        splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, stagePanel, debuggerPanel);
         splitPane.setResizeWeight(0.6);
         splitPane.setOneTouchExpandable(true);
         add(splitPane, BorderLayout.CENTER);
@@ -290,9 +296,9 @@ public class PlayerFrame extends JFrame {
 
         viewMenu.addSeparator();
 
-        JMenuItem clearDebugItem = new JMenuItem("Clear Debug Log");
-        clearDebugItem.addActionListener(e -> debugPanel.clearLog());
-        viewMenu.add(clearDebugItem);
+        JMenuItem clearBpItem = new JMenuItem("Clear All Breakpoints");
+        clearBpItem.addActionListener(e -> debugController.clearAllBreakpoints());
+        viewMenu.add(clearBpItem);
 
         menuBar.add(viewMenu);
 
@@ -316,6 +322,9 @@ public class PlayerFrame extends JFrame {
             KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, 0),
             JComponent.WHEN_IN_FOCUSED_WINDOW
         );
+
+        // Register debugger keyboard shortcuts (F5, F6, F10, F11, Shift+F11)
+        debuggerPanel.registerKeyboardShortcuts(getRootPane());
     }
 
     // File operations
@@ -478,8 +487,10 @@ public class PlayerFrame extends JFrame {
             player.getStageRenderer().setBackgroundColor(rgb);
         }
 
-        // Connect debug panel to VM trace
-        player.getVM().setTraceListener(debugPanel);
+        // Connect debug controller to VM for tracing and debugging
+        // The controller delegates trace events to the panel for UI display
+        debugController.setDelegateListener(debuggerPanel);
+        player.setDebugController(debugController);
         player.setDebugEnabled(true);
 
         stagePanel.setPlayer(player);
@@ -541,8 +552,8 @@ public class PlayerFrame extends JFrame {
         setTitle("LibreShockwave Player");
         statusLabel.setText("No file loaded. Open a .dir, .dxr, or .dcr file.");
 
-        // Clear debug panel
-        debugPanel.clearLog();
+        // Reset debug controller
+        debugController.reset();
     }
 
     private void togglePlayPause() {
@@ -601,12 +612,36 @@ public class PlayerFrame extends JFrame {
 
         int delay = 1000 / player.getTempo();
         playbackTimer = new Timer(delay, e -> {
-            if (player != null && player.tick()) {
-                updateFrameLabel();
-                stagePanel.repaint();
-            } else {
+            if (player == null) {
                 stopPlaybackTimer();
                 updateButtonStates();
+                return;
+            }
+
+            // Check if debugger is paused - don't advance frame
+            if (debugController.isPaused()) {
+                return;
+            }
+
+            if (useAsyncExecution) {
+                // Use async execution to allow debugger to pause VM
+                if (!player.isVmRunning()) {
+                    player.tickAsync(() -> {
+                        SwingUtilities.invokeLater(() -> {
+                            updateFrameLabel();
+                            stagePanel.repaint();
+                        });
+                    });
+                }
+            } else {
+                // Synchronous execution (original behavior)
+                if (player.tick()) {
+                    updateFrameLabel();
+                    stagePanel.repaint();
+                } else {
+                    stopPlaybackTimer();
+                    updateButtonStates();
+                }
             }
         });
         playbackTimer.start();
@@ -658,7 +693,7 @@ public class PlayerFrame extends JFrame {
     private void toggleDebugPanel(boolean visible) {
         debugVisible = visible;
         if (visible) {
-            splitPane.setRightComponent(debugPanel);
+            splitPane.setRightComponent(debuggerPanel);
             splitPane.setDividerLocation(0.6);
         } else {
             splitPane.setRightComponent(null);
@@ -666,7 +701,11 @@ public class PlayerFrame extends JFrame {
         splitPane.revalidate();
     }
 
-    public DebugPanel getDebugPanel() {
-        return debugPanel;
+    public BytecodeDebuggerPanel getDebuggerPanel() {
+        return debuggerPanel;
+    }
+
+    public DebugController getDebugController() {
+        return debugController;
     }
 }

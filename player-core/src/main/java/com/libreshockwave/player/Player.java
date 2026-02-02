@@ -18,8 +18,12 @@ import com.libreshockwave.vm.builtin.NetBuiltins;
 import com.libreshockwave.vm.builtin.SpritePropertyProvider;
 import com.libreshockwave.vm.builtin.XtraBuiltins;
 import com.libreshockwave.vm.xtra.XtraManager;
+import com.libreshockwave.player.debug.DebugController;
 
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 /**
@@ -47,6 +51,17 @@ public class Player {
 
     // Debug mode
     private boolean debugEnabled = false;
+
+    // Debug controller for bytecode debugging
+    private DebugController debugController;
+
+    // Executor for running VM on background thread (required for debugger blocking)
+    private final ExecutorService vmExecutor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "LingoVM-Executor");
+        t.setDaemon(true);
+        return t;
+    });
+    private volatile boolean vmRunning = false;
 
     public Player(DirectorFile file) {
         this.file = file;
@@ -192,6 +207,31 @@ public class Player {
     }
 
     /**
+     * Set the debug controller for bytecode-level debugging.
+     * The controller will receive TraceListener callbacks and can pause/step the VM.
+     */
+    public void setDebugController(DebugController controller) {
+        this.debugController = controller;
+        if (controller != null) {
+            vm.setTraceListener(controller);
+        }
+    }
+
+    /**
+     * Get the debug controller.
+     */
+    public DebugController getDebugController() {
+        return debugController;
+    }
+
+    /**
+     * Check if VM is currently running on background thread.
+     */
+    public boolean isVmRunning() {
+        return vmRunning;
+    }
+
+    /**
      * Dump information about loaded scripts for debugging.
      */
     public void dumpScriptInfo() {
@@ -333,11 +373,17 @@ public class Player {
 
     /**
      * Execute one frame tick. Call this at tempo rate.
+     * This is synchronous - for debugging support, use tickAsync() instead.
      * @return true if still playing, false if stopped/paused
      */
     public boolean tick() {
         if (state != PlayerState.PLAYING) {
             return state == PlayerState.PAUSED;
+        }
+
+        // Update debug controller with current globals
+        if (debugController != null) {
+            debugController.setGlobalsSnapshot(vm.getGlobals());
         }
 
         // Set up thread-local providers before script execution
@@ -349,6 +395,41 @@ public class Player {
             clearProviders();
         }
         return true;
+    }
+
+    /**
+     * Execute one frame tick asynchronously on a background thread.
+     * Use this when the debugger is enabled to allow the VM to be paused
+     * without blocking the UI thread.
+     * @param onComplete Callback invoked on completion (on the VM thread)
+     */
+    public void tickAsync(Runnable onComplete) {
+        if (state != PlayerState.PLAYING || vmRunning) {
+            return;
+        }
+
+        // Update debug controller with current globals
+        if (debugController != null) {
+            debugController.setGlobalsSnapshot(vm.getGlobals());
+        }
+
+        vmRunning = true;
+        vmExecutor.submit(() -> {
+            try {
+                setupProviders();
+                try {
+                    frameContext.executeFrame();
+                    frameContext.advanceFrame();
+                } finally {
+                    clearProviders();
+                }
+            } finally {
+                vmRunning = false;
+                if (onComplete != null) {
+                    onComplete.run();
+                }
+            }
+        });
     }
 
     /**
@@ -420,6 +501,22 @@ public class Player {
     public void shutdown() {
         stop();
         netManager.shutdown();
+
+        // Reset debug controller (releases any blocked threads)
+        if (debugController != null) {
+            debugController.reset();
+        }
+
+        // Shutdown VM executor
+        vmExecutor.shutdown();
+        try {
+            if (!vmExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
+                vmExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            vmExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
     }
 
     // Debug logging

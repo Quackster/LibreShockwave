@@ -151,6 +151,10 @@ public final class CallOpcodes {
                 if (args.size() < 2) yield Datum.VOID;
                 int index = args.get(0).toInt() - 1; // Convert to 0-indexed
                 Datum value = args.get(1);
+                // Debug: trace setAt on 2-elem lists or when storing instances
+                if (list.items().size() == 2 || value instanceof Datum.ScriptInstance) {
+                    System.err.println("[list.setAt] @" + System.identityHashCode(list) + " set [" + (index + 1) + "] = " + value + ", list=" + list);
+                }
                 if (index < 0) yield Datum.VOID;
                 if (index < list.items().size()) {
                     list.items().set(index, value);
@@ -161,6 +165,10 @@ public final class CallOpcodes {
                     }
                     list.items().add(value);
                 }
+                // Debug: trace after modification
+                if (list.items().size() == 2 && list.items().get(1).isVoid()) {
+                    System.err.println("[list.setAt] list after=" + list + " (pos 2 is VOID!)");
+                }
                 yield Datum.VOID;
             }
             case "append", "add" -> {
@@ -170,12 +178,24 @@ public final class CallOpcodes {
             }
             case "addat" -> {
                 // addAt(list, position, value) - insert value at position (1-indexed)
+                // If the element at the target position is VOID, replace it instead of inserting
+                // This allows VOID to act as a placeholder that gets filled in
                 if (args.size() < 2) yield Datum.VOID;
                 int index = args.get(0).toInt() - 1; // Convert to 0-indexed
                 Datum value = args.get(1);
                 if (index < 0) index = 0;
-                if (index > list.items().size()) index = list.items().size();
-                list.items().add(index, value);
+                if (index < list.items().size() && list.items().get(index).isVoid()) {
+                    // Replace VOID placeholder instead of inserting
+                    list.items().set(index, value);
+                } else if (index >= list.items().size()) {
+                    // Pad with VOID if needed, then add
+                    while (list.items().size() < index) {
+                        list.items().add(Datum.VOID);
+                    }
+                    list.items().add(value);
+                } else {
+                    list.items().add(index, value);
+                }
                 yield Datum.VOID;
             }
             case "deleteat" -> {
@@ -235,7 +255,11 @@ public final class CallOpcodes {
                 yield Datum.VOID;
             }
             case "duplicate" -> {
-                yield new Datum.List(new ArrayList<>(list.items()));
+                Datum.List dup = new Datum.List(new ArrayList<>(list.items()));
+                if (list.items().size() == 2) {
+                    System.err.println("[list.duplicate] @" + System.identityHashCode(list) + " -> @" + System.identityHashCode(dup) + ": " + dup);
+                }
+                yield dup;
             }
             default -> Datum.VOID;
         };
@@ -269,7 +293,12 @@ public final class CallOpcodes {
             case "getprop", "getaprop" -> {
                 if (args.isEmpty()) yield Datum.VOID;
                 String key = args.get(0) instanceof Datum.Symbol s ? s.name() : args.get(0).toStr();
-                yield propList.properties().getOrDefault(key, Datum.VOID);
+                Datum result = propList.properties().getOrDefault(key, Datum.VOID);
+                // Debug: trace when 2-element list is retrieved
+                if (result instanceof Datum.List l && l.items().size() == 2) {
+                    System.err.println("[propList.getProp] key=" + key + " retrieved list: " + l);
+                }
+                yield result;
             }
             case "setprop", "setaprop" -> {
                 if (args.size() < 2) yield Datum.VOID;
@@ -303,7 +332,12 @@ public final class CallOpcodes {
                 // setAt(propList, key, value) - add or update a property
                 if (args.size() < 2) yield Datum.VOID;
                 String key = args.get(0) instanceof Datum.Symbol s ? s.name() : args.get(0).toStr();
-                propList.properties().put(key, args.get(1));
+                Datum value = args.get(1);
+                // Debug: trace when list with 2 elements is stored
+                if (value instanceof Datum.List l && l.items().size() == 2) {
+                    System.err.println("[propList.setAt] key=" + key + " storing list: " + l);
+                }
+                propList.properties().put(key, value);
                 yield Datum.VOID;
             }
             case "findpos" -> {
@@ -341,7 +375,14 @@ public final class CallOpcodes {
                 // setAt(instance, #propName, value) or instance.setAt(#propName, value)
                 if (args.size() >= 2) {
                     String propName = getPropertyName(args.get(0));
-                    instance.properties().put(propName, args.get(1));
+                    Datum value = args.get(1);
+                    // Debug: trace when instances are stored in instance properties
+                    if (value instanceof Datum.ScriptInstance si) {
+                        System.err.println("[instance.setAt] prop=" + propName + " storing instance " + si.scriptId() + " in instance " + instance.scriptId());
+                    } else if (value instanceof Datum.List l && l.items().size() == 2) {
+                        System.err.println("[instance.setAt] prop=" + propName + " storing 2-elem list: " + l + " in instance " + instance.scriptId());
+                    }
+                    instance.properties().put(propName, value);
                 }
                 return Datum.VOID;
             }
@@ -350,6 +391,7 @@ public final class CallOpcodes {
                 if (args.size() >= 2) {
                     String propName = getPropertyName(args.get(0));
                     Datum value = args.get(1);
+                    System.err.println("[setaProp] instance=" + instance.scriptId() + ", prop=" + propName + ", value=" + (value instanceof Datum.PropList ? "[propList:" + ((Datum.PropList)value).properties().size() + "]" : value));
                     instance.properties().put(propName, value);
 
                     // Also update pObjectList if it exists (for Object Manager pattern)
@@ -357,6 +399,56 @@ public final class CallOpcodes {
                     Datum pObjectList = instance.properties().get("pObjectList");
                     if (pObjectList instanceof Datum.PropList objList) {
                         objList.properties().put(propName, value);
+                    }
+                }
+                return Datum.VOID;
+            }
+            case "setprop" -> {
+                // setProp(instance, #propName, value) - 2 args: set property directly
+                // setProp(instance, #propName, key, value) - 3 args: nested setting
+                if (args.size() == 2) {
+                    // Simple case: set property directly
+                    String propName = getPropertyName(args.get(0));
+                    Datum value = args.get(1);
+                    instance.properties().put(propName, value);
+                } else if (args.size() == 3) {
+                    // Nested case: me.setProp(#pItemList, key, value)
+                    // Get or create the property, then set a sub-property on it
+                    String localPropName = getPropertyName(args.get(0));
+                    Datum subKey = args.get(1);
+                    Datum value = args.get(2);
+                    String keyName = getPropertyName(subKey);
+
+                    System.err.println("[setProp 3-arg] instance=" + instance.scriptId() +
+                        ", prop=" + localPropName + ", key=" + keyName + ", value=" + value);
+
+                    Datum localProp = instance.properties().get(localPropName);
+
+                    // If the property doesn't exist or is VOID, create an empty PropList
+                    if (localProp == null || localProp.isVoid()) {
+                        localProp = new Datum.PropList(new LinkedHashMap<>());
+                        instance.properties().put(localPropName, localProp);
+                        System.err.println("[setProp 3-arg] created new PropList for " + localPropName);
+                    }
+
+                    // Now do the nested set
+                    if (localProp instanceof Datum.List list) {
+                        // List: use setAt (1-indexed)
+                        int index = subKey.toInt() - 1;
+                        if (index >= 0) {
+                            int oldSize = list.items().size();
+                            while (list.items().size() <= index) {
+                                list.items().add(Datum.VOID);
+                            }
+                            if (list.items().size() > oldSize) {
+                                System.err.println("[setProp 3-arg LIST] padded list from " + oldSize + " to " + list.items().size() + " elements, setting index " + (index + 1) + " = " + value);
+                            }
+                            list.items().set(index, value);
+                        }
+                    } else if (localProp instanceof Datum.PropList pl) {
+                        // PropList: set by key
+                        pl.properties().put(keyName, value);
+                        System.err.println("[setProp 3-arg] stored in propList, now has " + pl.properties().size() + " entries");
                     }
                 }
                 return Datum.VOID;
@@ -385,9 +477,13 @@ public final class CallOpcodes {
                 String localPropName = getPropertyName(args.get(0));
                 Datum localProp = getPropertyFromAncestorChain(instance, localPropName);
 
+                // Debug: trace getProp calls
+                System.err.println("[getProp] instance=" + instance.scriptId() + ", propName=" + localPropName + ", localProp=" + (localProp == null ? "null" : localProp.getClass().getSimpleName()));
+
                 // If there's a second argument, do nested lookup
                 if (args.size() > 1) {
                     Datum subKey = args.get(1);
+                    System.err.println("[getProp] nested lookup: subKey=" + subKey);
                     if (localProp instanceof Datum.List list) {
                         // List: use index (1-based)
                         int index = subKey.toInt() - 1;
@@ -398,19 +494,25 @@ public final class CallOpcodes {
                     } else if (localProp instanceof Datum.PropList pl) {
                         // PropList: look up by key (string or symbol, case-insensitive for symbols)
                         String key = getPropertyName(subKey);
+                        System.err.println("[getProp] looking for key '" + key + "' in propList with " + pl.properties().size() + " entries");
                         // Try exact match first, then case-insensitive
                         if (pl.properties().containsKey(key)) {
-                            return pl.properties().get(key);
+                            Datum result = pl.properties().get(key);
+                            System.err.println("[getProp] found exact match: " + result);
+                            return result;
                         }
                         // Case-insensitive search
                         for (var entry : pl.properties().entrySet()) {
                             if (entry.getKey().equalsIgnoreCase(key)) {
+                                System.err.println("[getProp] found case-insensitive match: " + entry.getKey() + " -> " + entry.getValue());
                                 return entry.getValue();
                             }
                         }
+                        System.err.println("[getProp] key not found, returning VOID");
                         return Datum.VOID;
                     } else {
                         // Cannot get sub-property from non-list/proplist
+                        System.err.println("[getProp] localProp is not list/propList: " + localProp);
                         return Datum.VOID;
                     }
                 }
@@ -484,6 +586,12 @@ public final class CallOpcodes {
                 if (ancestor instanceof Datum.ScriptInstance ancestorInstance) {
                     current = ancestorInstance;
                 } else {
+                    // Debug: log when handler not found
+                    if (methodName.equalsIgnoreCase("resetCastLibs") || methodName.equalsIgnoreCase("resetCastLibHandler")) {
+                        System.err.println("[handleScriptInstanceMethod] handler '" + methodName + "' not found on instance " +
+                            instance.scriptId() + " or ancestors. ScriptRef=" + getScriptRefFromInstance(instance) +
+                            ", ancestor=" + ancestor);
+                    }
                     break;
                 }
             }
@@ -791,14 +899,15 @@ public final class CallOpcodes {
                 yield sb.toString();
             }
             case "item" -> {
-                String[] items = str.split(String.valueOf(itemDelimiter), -1);
-                if (start > items.length) yield "";
+                // Split respecting quotes and brackets - don't split on delimiters inside [] or ""
+                java.util.List<String> items = splitRespectingBrackets(str, itemDelimiter);
+                if (start > items.size()) yield "";
                 int s = start - 1;
-                int e = Math.min(items.length, end);
+                int e = Math.min(items.size(), end);
                 StringBuilder sb = new StringBuilder();
                 for (int i = s; i < e; i++) {
                     if (sb.length() > 0) sb.append(itemDelimiter);
-                    sb.append(items[i]);
+                    sb.append(items.get(i));
                 }
                 yield sb.toString();
             }
@@ -829,8 +938,46 @@ public final class CallOpcodes {
 
     private static int countItems(String str, char delimiter) {
         if (str.isEmpty()) return 0;
-        // Split and count - handle consecutive delimiters
-        return str.split(String.valueOf(delimiter), -1).length;
+        // Use bracket-aware split to correctly count items
+        int count = splitRespectingBrackets(str, delimiter).size();
+        System.err.println("[countItems] delimiter=0x" + Integer.toHexString(delimiter) +
+            ", strLen=" + str.length() + ", count=" + count);
+        return count;
+    }
+
+    /**
+     * Split a string by delimiter, but respect brackets [] and quotes "".
+     * Delimiters inside brackets or quotes are not used as split points.
+     */
+    private static java.util.List<String> splitRespectingBrackets(String str, char delimiter) {
+        java.util.List<String> result = new java.util.ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        int bracketDepth = 0;
+        boolean inQuotes = false;
+
+        for (int i = 0; i < str.length(); i++) {
+            char c = str.charAt(i);
+
+            if (c == '"' && (i == 0 || str.charAt(i - 1) != '\\')) {
+                inQuotes = !inQuotes;
+                current.append(c);
+            } else if (!inQuotes && c == '[') {
+                bracketDepth++;
+                current.append(c);
+            } else if (!inQuotes && c == ']') {
+                bracketDepth = Math.max(0, bracketDepth - 1);
+                current.append(c);
+            } else if (c == delimiter && !inQuotes && bracketDepth == 0) {
+                // This is a real delimiter
+                result.add(current.toString());
+                current = new StringBuilder();
+            } else {
+                current.append(c);
+            }
+        }
+        // Add the last item
+        result.add(current.toString());
+        return result;
     }
 
     /**

@@ -1,0 +1,629 @@
+package com.libreshockwave.player;
+
+import com.libreshockwave.player.debug.DebugController;
+import com.libreshockwave.player.debug.DebugSnapshot;
+import com.libreshockwave.player.debug.DebugStateListener;
+import com.libreshockwave.player.format.DatumFormatter;
+import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.TraceListener;
+
+import javax.swing.*;
+import javax.swing.border.TitledBorder;
+import javax.swing.table.AbstractTableModel;
+import javax.swing.table.DefaultTableCellRenderer;
+import java.awt.*;
+import java.awt.event.*;
+import java.util.*;
+import java.util.List;
+
+/**
+ * Bytecode-level debugger panel for the Lingo VM.
+ * Provides step/continue controls, breakpoint management, and state inspection.
+ */
+public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener, TraceListener {
+
+    // Controller
+    private DebugController controller;
+
+    // UI Components
+    private JList<InstructionDisplayItem> bytecodeList;
+    private DefaultListModel<InstructionDisplayItem> bytecodeModel;
+    private JTable stackTable;
+    private StackTableModel stackTableModel;
+    private JTable localsTable;
+    private LocalsTableModel localsTableModel;
+    private JTable globalsTable;
+    private GlobalsTableModel globalsTableModel;
+    private JLabel statusLabel;
+    private JLabel handlerLabel;
+
+    // Toolbar buttons
+    private JButton stepIntoBtn;
+    private JButton stepOverBtn;
+    private JButton stepOutBtn;
+    private JButton continueBtn;
+    private JButton pauseBtn;
+
+    // Current handler info (for building instruction list)
+    private volatile TraceListener.HandlerInfo currentHandlerInfo;
+    private final List<InstructionDisplayItem> currentInstructions = new ArrayList<>();
+    private int currentInstructionIndex = -1;
+
+    // Track current script ID for breakpoints
+    private int currentScriptId = -1;
+
+    public BytecodeDebuggerPanel() {
+        setLayout(new BorderLayout());
+        setPreferredSize(new Dimension(500, 600));
+
+        initToolbar();
+        initMainContent();
+    }
+
+    private void initToolbar() {
+        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+        toolbar.setBorder(BorderFactory.createEmptyBorder(2, 5, 2, 5));
+
+        stepIntoBtn = new JButton("Step Into");
+        stepIntoBtn.setToolTipText("Step Into (F11)");
+        stepIntoBtn.setEnabled(false);
+        stepIntoBtn.addActionListener(e -> {
+            if (controller != null) controller.stepInto();
+        });
+        toolbar.add(stepIntoBtn);
+
+        stepOverBtn = new JButton("Step Over");
+        stepOverBtn.setToolTipText("Step Over (F10)");
+        stepOverBtn.setEnabled(false);
+        stepOverBtn.addActionListener(e -> {
+            if (controller != null) controller.stepOver();
+        });
+        toolbar.add(stepOverBtn);
+
+        stepOutBtn = new JButton("Step Out");
+        stepOutBtn.setToolTipText("Step Out (Shift+F11)");
+        stepOutBtn.setEnabled(false);
+        stepOutBtn.addActionListener(e -> {
+            if (controller != null) controller.stepOut();
+        });
+        toolbar.add(stepOutBtn);
+
+        toolbar.add(Box.createHorizontalStrut(10));
+
+        continueBtn = new JButton("Continue");
+        continueBtn.setToolTipText("Continue (F5)");
+        continueBtn.setEnabled(false);
+        continueBtn.addActionListener(e -> {
+            if (controller != null) controller.continueExecution();
+        });
+        toolbar.add(continueBtn);
+
+        pauseBtn = new JButton("Pause");
+        pauseBtn.setToolTipText("Pause (F6)");
+        pauseBtn.addActionListener(e -> {
+            if (controller != null) controller.pause();
+        });
+        toolbar.add(pauseBtn);
+
+        toolbar.add(Box.createHorizontalStrut(20));
+
+        JButton clearBpBtn = new JButton("Clear BPs");
+        clearBpBtn.setToolTipText("Clear all breakpoints");
+        clearBpBtn.addActionListener(e -> {
+            if (controller != null) controller.clearAllBreakpoints();
+        });
+        toolbar.add(clearBpBtn);
+
+        add(toolbar, BorderLayout.NORTH);
+    }
+
+    private void initMainContent() {
+        JPanel mainPanel = new JPanel(new BorderLayout(5, 5));
+        mainPanel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+
+        // Top: Status and handler info
+        JPanel statusPanel = new JPanel(new BorderLayout());
+        statusLabel = new JLabel("Status: Running");
+        statusLabel.setFont(statusLabel.getFont().deriveFont(Font.BOLD));
+        statusPanel.add(statusLabel, BorderLayout.NORTH);
+
+        handlerLabel = new JLabel("Handler: -");
+        handlerLabel.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
+        statusPanel.add(handlerLabel, BorderLayout.SOUTH);
+
+        mainPanel.add(statusPanel, BorderLayout.NORTH);
+
+        // Center: Split between bytecode and state
+        JSplitPane mainSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+        mainSplit.setResizeWeight(0.5);
+
+        // Bytecode panel
+        JPanel bytecodePanel = new JPanel(new BorderLayout());
+        bytecodePanel.setBorder(new TitledBorder("Bytecode"));
+
+        bytecodeModel = new DefaultListModel<>();
+        bytecodeList = new JList<>(bytecodeModel);
+        bytecodeList.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
+        bytecodeList.setCellRenderer(new BytecodeCellRenderer());
+        bytecodeList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+
+        // Click to toggle breakpoints
+        bytecodeList.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2 || e.getX() < 20) {
+                    int index = bytecodeList.locationToIndex(e.getPoint());
+                    if (index >= 0 && index < bytecodeModel.size()) {
+                        InstructionDisplayItem item = bytecodeModel.get(index);
+                        if (controller != null && currentScriptId >= 0) {
+                            controller.toggleBreakpoint(currentScriptId, item.offset);
+                            // Update display
+                            item.hasBreakpoint = controller.hasBreakpoint(currentScriptId, item.offset);
+                            bytecodeList.repaint();
+                        }
+                    }
+                }
+            }
+        });
+
+        JScrollPane bytecodeScroll = new JScrollPane(bytecodeList);
+        bytecodeScroll.setPreferredSize(new Dimension(480, 200));
+        bytecodePanel.add(bytecodeScroll, BorderLayout.CENTER);
+
+        // Legend
+        JLabel legend = new JLabel("<html><font color='red'>\u25CF</font> = breakpoint &nbsp; <font color='#FFD700'>\u25B6</font> = current</html>");
+        legend.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 10));
+        bytecodePanel.add(legend, BorderLayout.SOUTH);
+
+        mainSplit.setTopComponent(bytecodePanel);
+
+        // State panels in tabs
+        JTabbedPane stateTabs = new JTabbedPane(JTabbedPane.TOP);
+
+        // Stack table
+        stackTableModel = new StackTableModel();
+        stackTable = new JTable(stackTableModel);
+        stackTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
+        stackTable.getColumnModel().getColumn(0).setPreferredWidth(40);
+        stackTable.getColumnModel().getColumn(1).setPreferredWidth(80);
+        stackTable.getColumnModel().getColumn(2).setPreferredWidth(200);
+        stateTabs.addTab("Stack", new JScrollPane(stackTable));
+
+        // Locals table
+        localsTableModel = new LocalsTableModel();
+        localsTable = new JTable(localsTableModel);
+        localsTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
+        localsTable.getColumnModel().getColumn(0).setPreferredWidth(100);
+        localsTable.getColumnModel().getColumn(1).setPreferredWidth(80);
+        localsTable.getColumnModel().getColumn(2).setPreferredWidth(200);
+        stateTabs.addTab("Locals", new JScrollPane(localsTable));
+
+        // Globals table
+        globalsTableModel = new GlobalsTableModel();
+        globalsTable = new JTable(globalsTableModel);
+        globalsTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
+        globalsTable.getColumnModel().getColumn(0).setPreferredWidth(100);
+        globalsTable.getColumnModel().getColumn(1).setPreferredWidth(80);
+        globalsTable.getColumnModel().getColumn(2).setPreferredWidth(200);
+        stateTabs.addTab("Globals", new JScrollPane(globalsTable));
+
+        mainSplit.setBottomComponent(stateTabs);
+
+        mainPanel.add(mainSplit, BorderLayout.CENTER);
+        add(mainPanel, BorderLayout.CENTER);
+    }
+
+    /**
+     * Set the debug controller.
+     */
+    public void setController(DebugController controller) {
+        this.controller = controller;
+    }
+
+    /**
+     * Register keyboard shortcuts on the given root pane.
+     */
+    public void registerKeyboardShortcuts(JRootPane rootPane) {
+        InputMap inputMap = rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
+        ActionMap actionMap = rootPane.getActionMap();
+
+        // F5 - Continue
+        inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_F5, 0), "debug.continue");
+        actionMap.put("debug.continue", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                if (controller != null && controller.isPaused()) {
+                    controller.continueExecution();
+                }
+            }
+        });
+
+        // F6 - Pause
+        inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_F6, 0), "debug.pause");
+        actionMap.put("debug.pause", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                if (controller != null && !controller.isPaused()) {
+                    controller.pause();
+                }
+            }
+        });
+
+        // F10 - Step Over
+        inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_F10, 0), "debug.stepOver");
+        actionMap.put("debug.stepOver", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                if (controller != null && controller.isPaused()) {
+                    controller.stepOver();
+                }
+            }
+        });
+
+        // F11 - Step Into
+        inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_F11, 0), "debug.stepInto");
+        actionMap.put("debug.stepInto", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                if (controller != null && controller.isPaused()) {
+                    controller.stepInto();
+                }
+            }
+        });
+
+        // Shift+F11 - Step Out
+        inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_F11, InputEvent.SHIFT_DOWN_MASK), "debug.stepOut");
+        actionMap.put("debug.stepOut", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                if (controller != null && controller.isPaused()) {
+                    controller.stepOut();
+                }
+            }
+        });
+    }
+
+    // DebugStateListener implementation
+
+    @Override
+    public void onPaused(DebugSnapshot snapshot) {
+        SwingUtilities.invokeLater(() -> {
+            statusLabel.setText("Status: PAUSED at offset " + snapshot.instructionOffset());
+            handlerLabel.setText("Handler: " + snapshot.handlerName() + " (" + snapshot.scriptName() + ")");
+
+            // Update current instruction highlight
+            currentScriptId = snapshot.scriptId();
+            highlightCurrentInstruction(snapshot.instructionIndex());
+
+            // Update stack
+            stackTableModel.setStack(snapshot.stack());
+
+            // Update locals
+            localsTableModel.setLocals(snapshot.locals());
+
+            // Update globals
+            globalsTableModel.setGlobals(snapshot.globals());
+
+            // Enable step buttons
+            setStepButtonsEnabled(true);
+        });
+    }
+
+    @Override
+    public void onResumed() {
+        SwingUtilities.invokeLater(() -> {
+            statusLabel.setText("Status: Running");
+            setStepButtonsEnabled(false);
+            currentInstructionIndex = -1;
+            bytecodeList.clearSelection();
+        });
+    }
+
+    @Override
+    public void onBreakpointsChanged() {
+        SwingUtilities.invokeLater(() -> {
+            // Update breakpoint markers in the list
+            if (controller != null && currentScriptId >= 0) {
+                for (int i = 0; i < bytecodeModel.size(); i++) {
+                    InstructionDisplayItem item = bytecodeModel.get(i);
+                    item.hasBreakpoint = controller.hasBreakpoint(currentScriptId, item.offset);
+                }
+                bytecodeList.repaint();
+            }
+        });
+    }
+
+    // TraceListener implementation (to capture instruction list)
+
+    @Override
+    public void onHandlerEnter(HandlerInfo info) {
+        currentHandlerInfo = info;
+        currentScriptId = info.scriptId();
+
+        SwingUtilities.invokeLater(() -> {
+            // Clear and prepare for new handler
+            currentInstructions.clear();
+            bytecodeModel.clear();
+            currentInstructionIndex = -1;
+
+            handlerLabel.setText("Handler: " + info.handlerName() + " (" + info.scriptDisplayName() + ")");
+        });
+    }
+
+    @Override
+    public void onHandlerExit(HandlerInfo info, Datum returnValue) {
+        // Optional: could show return value
+    }
+
+    @Override
+    public void onInstruction(InstructionInfo info) {
+        SwingUtilities.invokeLater(() -> {
+            // Add instruction to list if not already present
+            int existingIndex = findInstructionByOffset(info.offset());
+            if (existingIndex < 0) {
+                InstructionDisplayItem item = new InstructionDisplayItem(
+                    info.offset(),
+                    info.bytecodeIndex(),
+                    info.opcode(),
+                    info.argument(),
+                    info.annotation(),
+                    controller != null && currentScriptId >= 0 && controller.hasBreakpoint(currentScriptId, info.offset())
+                );
+                // Insert in order by offset
+                int insertIndex = 0;
+                for (int i = 0; i < bytecodeModel.size(); i++) {
+                    if (bytecodeModel.get(i).offset > info.offset()) {
+                        break;
+                    }
+                    insertIndex = i + 1;
+                }
+                bytecodeModel.add(insertIndex, item);
+                currentInstructions.add(insertIndex, item);
+            }
+
+            // Update current instruction highlight
+            highlightCurrentInstruction(info.bytecodeIndex());
+
+            // Update stack display
+            stackTableModel.setStack(info.stackSnapshot());
+        });
+    }
+
+    private int findInstructionByOffset(int offset) {
+        for (int i = 0; i < bytecodeModel.size(); i++) {
+            if (bytecodeModel.get(i).offset == offset) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private void highlightCurrentInstruction(int bytecodeIndex) {
+        // Find the instruction with matching bytecode index
+        for (int i = 0; i < bytecodeModel.size(); i++) {
+            InstructionDisplayItem item = bytecodeModel.get(i);
+            boolean wasCurrent = item.isCurrent;
+            item.isCurrent = (item.index == bytecodeIndex);
+            if (item.isCurrent && !wasCurrent) {
+                currentInstructionIndex = i;
+                bytecodeList.setSelectedIndex(i);
+                bytecodeList.ensureIndexIsVisible(i);
+            }
+        }
+        bytecodeList.repaint();
+    }
+
+    private void setStepButtonsEnabled(boolean enabled) {
+        stepIntoBtn.setEnabled(enabled);
+        stepOverBtn.setEnabled(enabled);
+        stepOutBtn.setEnabled(enabled);
+        continueBtn.setEnabled(enabled);
+    }
+
+    // Display item for bytecode list
+    private static class InstructionDisplayItem {
+        final int offset;
+        final int index;
+        final String opcode;
+        final int argument;
+        final String annotation;
+        boolean hasBreakpoint;
+        boolean isCurrent;
+
+        InstructionDisplayItem(int offset, int index, String opcode, int argument, String annotation, boolean hasBreakpoint) {
+            this.offset = offset;
+            this.index = index;
+            this.opcode = opcode;
+            this.argument = argument;
+            this.annotation = annotation;
+            this.hasBreakpoint = hasBreakpoint;
+            this.isCurrent = false;
+        }
+
+        @Override
+        public String toString() {
+            StringBuilder sb = new StringBuilder();
+            sb.append(String.format("[%3d] %-14s", offset, opcode));
+            if (argument != 0) {
+                sb.append(String.format(" %-4d", argument));
+            } else {
+                sb.append("     ");
+            }
+            if (annotation != null && !annotation.isEmpty()) {
+                sb.append(" ").append(annotation);
+            }
+            return sb.toString();
+        }
+    }
+
+    // Custom cell renderer for bytecode list
+    private class BytecodeCellRenderer extends DefaultListCellRenderer {
+        @Override
+        public Component getListCellRendererComponent(JList<?> list, Object value, int index,
+                                                      boolean isSelected, boolean cellHasFocus) {
+            JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+
+            if (value instanceof InstructionDisplayItem item) {
+                // Build display text with markers
+                StringBuilder sb = new StringBuilder();
+
+                // Breakpoint marker
+                if (item.hasBreakpoint) {
+                    sb.append("\u25CF ");  // Filled circle
+                } else {
+                    sb.append("  ");
+                }
+
+                // Current instruction marker
+                if (item.isCurrent) {
+                    sb.append("\u25B6 ");  // Right-pointing triangle
+                } else {
+                    sb.append("  ");
+                }
+
+                sb.append(item.toString());
+                label.setText(sb.toString());
+
+                // Highlighting
+                if (item.isCurrent && !isSelected) {
+                    label.setBackground(new Color(255, 255, 200));  // Light yellow
+                    label.setOpaque(true);
+                }
+
+                // Color for breakpoint marker
+                if (item.hasBreakpoint) {
+                    // We'd need HTML for multi-color, but for simplicity just use foreground
+                }
+            }
+
+            return label;
+        }
+    }
+
+    // Table model for stack display
+    private static class StackTableModel extends AbstractTableModel {
+        private List<Datum> stack = new ArrayList<>();
+        private final String[] columns = {"#", "Type", "Value"};
+
+        void setStack(List<Datum> stack) {
+            this.stack = stack != null ? new ArrayList<>(stack) : new ArrayList<>();
+            fireTableDataChanged();
+        }
+
+        @Override
+        public int getRowCount() {
+            return stack.size();
+        }
+
+        @Override
+        public int getColumnCount() {
+            return columns.length;
+        }
+
+        @Override
+        public String getColumnName(int column) {
+            return columns[column];
+        }
+
+        @Override
+        public Object getValueAt(int rowIndex, int columnIndex) {
+            if (rowIndex >= stack.size()) return "";
+            Datum d = stack.get(rowIndex);
+            return switch (columnIndex) {
+                case 0 -> String.valueOf(rowIndex);
+                case 1 -> getTypeName(d);
+                case 2 -> DatumFormatter.format(d);
+                default -> "";
+            };
+        }
+
+        private String getTypeName(Datum d) {
+            if (d == null) return "null";
+            return d.getClass().getSimpleName().replace("$", ".");
+        }
+    }
+
+    // Table model for locals display
+    private static class LocalsTableModel extends AbstractTableModel {
+        private final List<Map.Entry<String, Datum>> locals = new ArrayList<>();
+        private final String[] columns = {"Name", "Type", "Value"};
+
+        void setLocals(Map<String, Datum> localsMap) {
+            this.locals.clear();
+            if (localsMap != null) {
+                this.locals.addAll(localsMap.entrySet());
+            }
+            fireTableDataChanged();
+        }
+
+        @Override
+        public int getRowCount() {
+            return locals.size();
+        }
+
+        @Override
+        public int getColumnCount() {
+            return columns.length;
+        }
+
+        @Override
+        public String getColumnName(int column) {
+            return columns[column];
+        }
+
+        @Override
+        public Object getValueAt(int rowIndex, int columnIndex) {
+            if (rowIndex >= locals.size()) return "";
+            Map.Entry<String, Datum> entry = locals.get(rowIndex);
+            Datum d = entry.getValue();
+            return switch (columnIndex) {
+                case 0 -> entry.getKey();
+                case 1 -> d != null ? d.getClass().getSimpleName().replace("$", ".") : "null";
+                case 2 -> DatumFormatter.format(d);
+                default -> "";
+            };
+        }
+    }
+
+    // Table model for globals display
+    private static class GlobalsTableModel extends AbstractTableModel {
+        private final List<Map.Entry<String, Datum>> globals = new ArrayList<>();
+        private final String[] columns = {"Name", "Type", "Value"};
+
+        void setGlobals(Map<String, Datum> globalsMap) {
+            this.globals.clear();
+            if (globalsMap != null) {
+                this.globals.addAll(globalsMap.entrySet());
+            }
+            fireTableDataChanged();
+        }
+
+        @Override
+        public int getRowCount() {
+            return globals.size();
+        }
+
+        @Override
+        public int getColumnCount() {
+            return columns.length;
+        }
+
+        @Override
+        public String getColumnName(int column) {
+            return columns[column];
+        }
+
+        @Override
+        public Object getValueAt(int rowIndex, int columnIndex) {
+            if (rowIndex >= globals.size()) return "";
+            Map.Entry<String, Datum> entry = globals.get(rowIndex);
+            Datum d = entry.getValue();
+            return switch (columnIndex) {
+                case 0 -> entry.getKey();
+                case 1 -> d != null ? d.getClass().getSimpleName().replace("$", ".") : "null";
+                case 2 -> DatumFormatter.format(d);
+                default -> "";
+            };
+        }
+    }
+}
