@@ -295,9 +295,22 @@ public final class TypeBuiltins {
                 }
             }
         } else if (identifier instanceof Datum.Int num) {
-            // Find script by number - assume cast 1
+            // Find script by number
+            // If the number is a slot number (high bits set), decode it
+            // Slot number format: (castLib << 16) | (memberNum & 0xFFFF)
             if (provider != null) {
-                return new Datum.ScriptRef(1, num.value());
+                int value = num.value();
+                int castLib, memberNum;
+                if (value > 65535) {
+                    // This is a slot number - decode it
+                    castLib = value >> 16;
+                    memberNum = value & 0xFFFF;
+                } else {
+                    // Regular member number - assume cast lib 1
+                    castLib = 1;
+                    memberNum = value;
+                }
+                return new Datum.ScriptRef(castLib, memberNum);
             }
         } else if (identifier instanceof Datum.CastMemberRef cmr) {
             // Already a cast member reference

@@ -333,8 +333,8 @@ public class HabboDebugTest {
         Player player = new Player(file);
         LingoVM vm = player.getVM();
 
-        // Set a lower step limit for faster failure detection
-        vm.setStepLimit(10000);
+        // Set a higher step limit to allow complex handlers to complete
+        vm.setStepLimit(100000);
 
         // Enable tracing
         vm.setTraceEnabled(true);
@@ -418,7 +418,7 @@ public class HabboDebugTest {
         }
 
         // Also find and dump the handlers that failed
-        for (String handlerName : List.of("createManager", "convertToPropList", "create", "dump", "dumpVariableField")) {
+        for (String handlerName : List.of("createManager", "convertToPropList", "create", "dump", "dumpVariableField", "getClassVariable", "getVariable")) {
             var loc = castLibManager.findHandler(handlerName);
             if (loc != null) {
                 System.out.println("\n=== Found " + handlerName + " ===");
