@@ -507,6 +507,8 @@ public class DebugController implements TraceListener {
             targetCallDepth = 0;
             pauseRequested = false;
         }
+        // Drain any stale semaphore permits to avoid unexpected behavior
+        pauseSemaphore.drainPermits();
         synchronized (callStack) {
             callStack.clear();
         }

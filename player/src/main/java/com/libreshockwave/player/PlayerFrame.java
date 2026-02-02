@@ -497,6 +497,10 @@ public class PlayerFrame extends JFrame {
             player.getStageRenderer().setBackgroundColor(rgb);
         }
 
+        // Reset debug controller state before connecting to new player
+        // This clears any stale state (stepMode, breakpoints, etc.) from previous session
+        debugController.reset();
+
         // Connect debug controller to VM for tracing and debugging
         // The controller delegates trace events to the panel for UI display
         debugController.setDelegateListener(debuggerPanel);
