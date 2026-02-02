@@ -48,6 +48,7 @@ public class PlayerFrame extends JFrame {
     private JSlider frameSlider;
     private BytecodeDebuggerPanel debuggerPanel;
     private DebugController debugController;
+    private DetailedStackWindow detailedStackWindow;
     private JSplitPane splitPane;
     private boolean debugVisible = true;
     private boolean useAsyncExecution = true;  // Use async execution for debugger support
@@ -134,6 +135,10 @@ public class PlayerFrame extends JFrame {
         debuggerPanel = new BytecodeDebuggerPanel();
         debuggerPanel.setController(debugController);
         debugController.addListener(debuggerPanel);
+
+        // Detailed stack window (separate toggleable window)
+        detailedStackWindow = new DetailedStackWindow();
+        debugController.addListener(detailedStackWindow);
 
         // Split pane for stage and debug
         splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, stagePanel, debuggerPanel);
@@ -293,6 +298,11 @@ public class PlayerFrame extends JFrame {
         debugItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_D, InputEvent.CTRL_DOWN_MASK));
         debugItem.addActionListener(e -> toggleDebugPanel(debugItem.isSelected()));
         viewMenu.add(debugItem);
+
+        JCheckBoxMenuItem detailedStackItem = new JCheckBoxMenuItem("Detailed Stack Window", false);
+        detailedStackItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK));
+        detailedStackItem.addActionListener(e -> toggleDetailedStackWindow(detailedStackItem.isSelected()));
+        viewMenu.add(detailedStackItem);
 
         viewMenu.addSeparator();
 
@@ -728,6 +738,10 @@ public class PlayerFrame extends JFrame {
             splitPane.setRightComponent(null);
         }
         splitPane.revalidate();
+    }
+
+    private void toggleDetailedStackWindow(boolean visible) {
+        detailedStackWindow.setVisible(visible);
     }
 
     public BytecodeDebuggerPanel getDebuggerPanel() {

@@ -28,7 +28,10 @@ public record DebugSnapshot(
     Map<String, Datum> locals,
     Map<String, Datum> globals,
     List<Datum> arguments,
-    Datum receiver
+    Datum receiver,
+
+    // Call stack (list of frames, most recent last)
+    List<DebugController.CallFrame> callStack
 ) {
     /**
      * Display information for a single instruction.

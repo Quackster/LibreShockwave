@@ -42,6 +42,17 @@ public class DebugController implements TraceListener {
         STEP_OUT
     }
 
+    /**
+     * Represents a single frame in the call stack.
+     */
+    public record CallFrame(
+        int scriptId,
+        String scriptName,
+        String handlerName,
+        List<Datum> arguments,
+        Datum receiver
+    ) {}
+
     // Synchronization - blocks VM thread when paused
     private final Semaphore pauseSemaphore = new Semaphore(0);
     private final Object stateLock = new Object();
@@ -63,6 +74,9 @@ public class DebugController implements TraceListener {
     private volatile ScriptChunk currentScript;
     private volatile ScriptChunk.Handler currentHandler;
     private volatile InstructionInfo currentInstructionInfo;
+
+    // Call stack tracking
+    private final List<CallFrame> callStack = new ArrayList<>();
 
     // Most recent snapshot (for UI)
     private volatile DebugSnapshot currentSnapshot;
@@ -94,6 +108,17 @@ public class DebugController implements TraceListener {
         callDepth++;
         currentHandlerInfo = info;
 
+        // Track call stack
+        synchronized (callStack) {
+            callStack.add(new CallFrame(
+                info.scriptId(),
+                info.scriptDisplayName(),
+                info.handlerName(),
+                new ArrayList<>(info.arguments()),
+                info.receiver()
+            ));
+        }
+
         // Forward to delegate
         TraceListener delegate = delegateListener;
         if (delegate != null) {
@@ -104,6 +129,13 @@ public class DebugController implements TraceListener {
     @Override
     public void onHandlerExit(HandlerInfo info, Datum returnValue) {
         callDepth--;
+
+        // Pop from call stack
+        synchronized (callStack) {
+            if (!callStack.isEmpty()) {
+                callStack.remove(callStack.size() - 1);
+            }
+        }
 
         // Check for step-out completion
         synchronized (stateLock) {
@@ -249,7 +281,8 @@ public class DebugController implements TraceListener {
             locals,
             new LinkedHashMap<>(globalsSnapshot),
             new ArrayList<>(handlerInfo.arguments()),
-            handlerInfo.receiver()
+            handlerInfo.receiver(),
+            getCallStackSnapshot()
         );
     }
 
@@ -474,6 +507,9 @@ public class DebugController implements TraceListener {
             targetCallDepth = 0;
             pauseRequested = false;
         }
+        synchronized (callStack) {
+            callStack.clear();
+        }
         currentHandlerInfo = null;
         currentInstructionInfo = null;
         currentSnapshot = null;
@@ -492,5 +528,15 @@ public class DebugController implements TraceListener {
     public String getCurrentHandlerName() {
         HandlerInfo info = currentHandlerInfo;
         return info != null ? info.handlerName() : null;
+    }
+
+    /**
+     * Get a snapshot of the current call stack.
+     * Returns a copy to avoid concurrency issues.
+     */
+    public List<CallFrame> getCallStackSnapshot() {
+        synchronized (callStack) {
+            return new ArrayList<>(callStack);
+        }
     }
 }
