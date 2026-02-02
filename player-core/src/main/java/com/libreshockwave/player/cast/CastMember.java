@@ -143,6 +143,11 @@ public class CastMember {
     public String getTextContent() {
         if (!isLoaded()) {
             load();
+
+            // Normalize line endings to \n (convert \r\n and \r to \n)
+            if (textContent != null && !textContent.isEmpty()) {
+                textContent = textContent.replace("\r\n", "\n").replace("\r", "\n");
+            }
         }
         return textContent != null ? textContent : "";
     }
