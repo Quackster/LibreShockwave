@@ -158,9 +158,106 @@ class ConvertToPropListTest {
 
     public static void main(String[] args) throws Exception {
         ConvertToPropListTest test = new ConvertToPropListTest();
-        test.setUp();
-        test.testListScripts();
-        test.testConvertToPropListHandlerExists();
-        test.testConvertToPropListSimple();
+        test.runStandalone();
+    }
+
+    /**
+     * Standalone test without JUnit dependencies.
+     */
+    void runStandalone() throws Exception {
+        Path path = Path.of(TEST_FILE);
+        if (!Files.exists(path)) {
+            System.out.println("Test file not found: " + TEST_FILE);
+            return;
+        }
+
+        file = DirectorFile.load(path);
+        if (file == null) {
+            System.out.println("Failed to load test file");
+            return;
+        }
+
+        vm = new LingoVM(file);
+        vm.setTraceEnabled(true);
+
+        // Set up cast lib manager as provider
+        castLibManager = new CastLibManager(file);
+        CastLibProvider.setProvider(castLibManager);
+
+        // Set up basic movie property provider
+        MoviePropertyProvider.setProvider(new MoviePropertyProvider() {
+            private char itemDelimiter = ',';
+
+            @Override
+            public Datum getMovieProp(String propName) {
+                if ("itemdelimiter".equalsIgnoreCase(propName)) {
+                    return Datum.of(String.valueOf(itemDelimiter));
+                }
+                return Datum.VOID;
+            }
+
+            @Override
+            public boolean setMovieProp(String propName, Datum value) {
+                if ("itemdelimiter".equalsIgnoreCase(propName)) {
+                    String s = value.toStr();
+                    if (!s.isEmpty()) {
+                        itemDelimiter = s.charAt(0);
+                    }
+                    return true;
+                }
+                return false;
+            }
+
+            @Override
+            public char getItemDelimiter() {
+                return itemDelimiter;
+            }
+        });
+
+        // Run tests
+        System.out.println("\n=== Running convertToPropList tests ===\n");
+
+        // Test 1: Find handler
+        var ref = vm.findHandler("convertToPropList");
+        if (ref == null) {
+            System.out.println("FAIL: convertToPropList handler not found");
+            return;
+        }
+        System.out.println("PASS: Found handler: " + ref.script().getHandlerName(ref.handler()));
+        System.out.println("      In script: " + ref.script().getScriptName());
+
+        // Test 2: Call with simple input
+        System.out.println("\n--- Calling convertToPropList ---");
+        String testInput = "key1=value1\nkey2=value2\nkey3=value3";
+        String delimiter = "\n";
+
+        Datum result = vm.callHandler("convertToPropList",
+                List.of(Datum.of(testInput), Datum.of(delimiter)));
+
+        System.out.println("\nResult: " + result);
+        System.out.println("Result type: " + result.typeName());
+
+        if (result instanceof Datum.PropList propList) {
+            System.out.println("PropList entries: " + propList.properties().size());
+            if (propList.properties().isEmpty()) {
+                System.out.println("FAIL: PropList is empty - expected entries");
+            } else {
+                System.out.println("PASS: PropList has entries:");
+                propList.properties().forEach((k, v) ->
+                        System.out.println("  " + k + " = " + v));
+            }
+        } else if (result instanceof Datum.List list) {
+            System.out.println("List entries: " + list.items().size());
+            if (list.items().isEmpty()) {
+                System.out.println("FAIL: List is empty - expected entries");
+            } else {
+                System.out.println("PASS: List has entries:");
+                for (int i = 0; i < list.items().size(); i++) {
+                    System.out.println("  [" + i + "] = " + list.items().get(i));
+                }
+            }
+        } else {
+            System.out.println("FAIL: Expected PropList or List, got: " + result.typeName());
+        }
     }
 }
