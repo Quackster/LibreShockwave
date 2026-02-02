@@ -266,16 +266,14 @@ public final class CallOpcodes {
      */
     private static Datum handleScriptInstanceMethod(ExecutionContext ctx, Datum.ScriptInstance instance,
                                                     String methodName, List<Datum> args) {
-        // Look up the script reference from the instance properties
-        Datum scriptRefDatum = instance.properties().get("__scriptRef__");
-
         CastLibProvider provider = CastLibProvider.getProvider();
         if (provider == null) {
             return Datum.VOID;
         }
 
-        // Find the handler in the script
-        var location = provider.findHandler(methodName);
+        // Find the handler in the instance's parent script only (not globally)
+        // This prevents infinite loops where movie script handlers are called instead
+        var location = provider.findHandlerInScript(instance.scriptId(), methodName);
         if (location != null && location.script() != null && location.handler() != null) {
             if (location.script() instanceof ScriptChunk script
                     && location.handler() instanceof ScriptChunk.Handler handler) {

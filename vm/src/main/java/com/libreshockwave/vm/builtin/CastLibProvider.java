@@ -139,6 +139,17 @@ public interface CastLibProvider {
     }
 
     /**
+     * Find a handler in a specific script by its script ID (cast member number).
+     * Used for method calls on script instances.
+     * @param scriptId The script's cast member number
+     * @param handlerName The handler name to find
+     * @return A HandlerLocation if found in that script, or null
+     */
+    default HandlerLocation findHandlerInScript(int scriptId, String handlerName) {
+        return null;
+    }
+
+    /**
      * Represents a handler location in a cast library.
      */
     record HandlerLocation(

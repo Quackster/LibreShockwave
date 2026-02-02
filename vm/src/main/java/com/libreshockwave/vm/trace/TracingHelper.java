@@ -122,7 +122,15 @@ public class TracingHelper {
             case GET_PARAM -> "<param" + arg + ">";
             case GET_GLOBAL, SET_GLOBAL, GET_GLOBAL2, SET_GLOBAL2 -> "<" + script.resolveName(arg) + ">";
             case GET_PROP, SET_PROP -> "<me." + script.resolveName(arg) + ">";
-            case LOCAL_CALL, EXT_CALL, OBJ_CALL -> "<" + script.resolveName(arg) + "()>";
+            case LOCAL_CALL -> {
+                // LOCAL_CALL uses arg as handler index, not name table index
+                var handlers = script.handlers();
+                if (arg >= 0 && arg < handlers.size()) {
+                    yield "<" + script.getHandlerName(handlers.get(arg)) + "()>";
+                }
+                yield "<handler#" + arg + "()>";
+            }
+            case EXT_CALL, OBJ_CALL -> "<" + script.resolveName(arg) + "()>";
             case JMP, JMP_IF_Z -> "<offset " + arg + " -> " + (instr.offset() + arg) + ">";
             case END_REPEAT -> "<back " + arg + " -> " + (instr.offset() - arg) + ">";
             default -> "";
