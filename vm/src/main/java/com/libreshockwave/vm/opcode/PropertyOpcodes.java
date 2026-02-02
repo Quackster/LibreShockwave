@@ -28,6 +28,7 @@ public final class PropertyOpcodes {
         handlers.put(Opcode.THE_BUILTIN, PropertyOpcodes::theBuiltin);
         handlers.put(Opcode.GET, PropertyOpcodes::get);
         handlers.put(Opcode.SET, PropertyOpcodes::set);
+        handlers.put(Opcode.GET_FIELD, PropertyOpcodes::getField);
     }
 
     private static boolean getProp(ExecutionContext ctx) {
@@ -275,6 +276,37 @@ public final class PropertyOpcodes {
         };
 
         ctx.push(result);
+        return true;
+    }
+
+    /**
+     * GET_FIELD opcode (0x1B) - Get the text content of a field.
+     * Stack: [..., fieldNameOrNum, castId?] -> [..., fieldText]
+     * For Director 5+, pops both castId and fieldNameOrNum.
+     * For earlier versions, just pops fieldNameOrNum.
+     */
+    private static boolean getField(ExecutionContext ctx) {
+        // Pop the cast ID first (for D5+), then the field identifier
+        // Note: The order depends on how the bytecode was compiled
+        Datum castIdDatum = ctx.pop();
+        Datum fieldNameOrNum = ctx.pop();
+
+        // Determine cast ID (0 means search all casts)
+        int castId = castIdDatum.toInt();
+
+        CastLibProvider provider = CastLibProvider.getProvider();
+        if (provider == null) {
+            ctx.push(Datum.EMPTY_STRING);
+            return true;
+        }
+
+        // Get the field value
+        Object identifier = fieldNameOrNum instanceof Datum.Str s ? s.value()
+                : fieldNameOrNum instanceof Datum.Int i ? i.value()
+                : fieldNameOrNum.toStr();
+
+        String fieldValue = provider.getFieldValue(identifier, castId);
+        ctx.push(Datum.of(fieldValue));
         return true;
     }
 

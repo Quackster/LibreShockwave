@@ -91,6 +91,17 @@ public interface CastLibProvider {
     }
 
     /**
+     * Get the text content of a field (text cast member).
+     * Used by GET_FIELD opcode for "field memberName" syntax.
+     * @param memberNameOrNum The member name (string) or number
+     * @param castId The cast library (0 for default/all casts)
+     * @return The field text content, or empty string if not found
+     */
+    default String getFieldValue(Object memberNameOrNum, int castId) {
+        return "";
+    }
+
+    /**
      * Fetch an external cast library synchronously.
      * @param castLibNumber The cast library number
      * @return true if fetch was successful
