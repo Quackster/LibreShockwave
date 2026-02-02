@@ -266,6 +266,9 @@ public final class TypeBuiltins {
      * script(identifier)
      * Returns a ScriptRef for the specified script name or number.
      * The script can then be used with new() to create instances.
+     *
+     * If a list of names is passed, returns the ScriptRef for the FIRST valid script found.
+     * This is used in Director for parent script lookup with fallback classes.
      */
     private static Datum script(LingoVM vm, List<Datum> args) {
         if (args.isEmpty()) {
@@ -283,6 +286,14 @@ public final class TypeBuiltins {
                     return new Datum.ScriptRef(cmr.castLib(), cmr.member());
                 }
             }
+        } else if (identifier instanceof Datum.Symbol sym) {
+            // Find script by symbol name
+            if (provider != null) {
+                Datum memberRef = provider.getMemberByName(0, sym.name());
+                if (memberRef instanceof Datum.CastMemberRef cmr) {
+                    return new Datum.ScriptRef(cmr.castLib(), cmr.member());
+                }
+            }
         } else if (identifier instanceof Datum.Int num) {
             // Find script by number - assume cast 1
             if (provider != null) {
@@ -291,6 +302,15 @@ public final class TypeBuiltins {
         } else if (identifier instanceof Datum.CastMemberRef cmr) {
             // Already a cast member reference
             return new Datum.ScriptRef(cmr.castLib(), cmr.member());
+        } else if (identifier instanceof Datum.List list) {
+            // List of script names - return the first valid one found
+            // This is used for class hierarchies like ["Manager Template Class", "Variable Container Class"]
+            for (Datum item : list.items()) {
+                Datum result = script(vm, List.of(item));
+                if (!result.isVoid()) {
+                    return result;
+                }
+            }
         }
 
         return Datum.VOID;
