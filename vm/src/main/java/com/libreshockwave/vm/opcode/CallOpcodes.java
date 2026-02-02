@@ -219,6 +219,13 @@ public final class CallOpcodes {
                 }
                 yield Datum.VOID;
             }
+            case "setat" -> {
+                // setAt(propList, key, value) - add or update a property
+                if (args.size() < 2) yield Datum.VOID;
+                String key = args.get(0) instanceof Datum.Symbol s ? s.name() : args.get(0).toStr();
+                propList.properties().put(key, args.get(1));
+                yield Datum.VOID;
+            }
             case "findpos" -> {
                 // Find position of key
                 if (args.isEmpty()) yield Datum.ZERO;
