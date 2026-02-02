@@ -329,11 +329,12 @@ public final class CallOpcodes {
     /**
      * Handle method calls on script instances.
      * Dispatches to handlers defined in the script.
+     * Matches dirplayer-rs: built-in methods are handled first, then Lingo handlers.
      */
     private static Datum handleScriptInstanceMethod(ExecutionContext ctx, Datum.ScriptInstance instance,
                                                     String methodName, List<Datum> args) {
-        // Handle built-in property access/modification methods FIRST
-        // These allow Director to set/get properties on script instances (like #ancestor)
+        // FIRST: Handle built-in property access/modification methods
+        // This matches dirplayer-rs ScriptInstanceHandlers.call()
         String method = methodName.toLowerCase();
         switch (method) {
             case "setat" -> {
@@ -360,11 +361,60 @@ public final class CallOpcodes {
                 }
                 return Datum.VOID;
             }
-            case "getat", "getaprop", "getprop" -> {
-                // getAt(instance, #propName)
+            case "getat" -> {
+                // getAt(instance, #propName) - like dirplayer-rs: check "ancestor" specially
+                if (args.isEmpty()) return Datum.VOID;
+                String key = getPropertyName(args.get(0));
+                if (key.equalsIgnoreCase("ancestor")) {
+                    Datum ancestor = instance.properties().get("ancestor");
+                    return ancestor != null ? ancestor : Datum.ZERO;
+                }
+                // Otherwise same as getaProp
+                return getPropertyFromAncestorChain(instance, key);
+            }
+            case "getaprop" -> {
+                // getaProp(instance, #propName) - simple single-arg property lookup
                 if (args.isEmpty()) return Datum.VOID;
                 String propName = getPropertyName(args.get(0));
                 return getPropertyFromAncestorChain(instance, propName);
+            }
+            case "getprop", "getpropref" -> {
+                // getProp(instance, #propName) - single arg: get property
+                // getProp(instance, #propName, key) - two args: get property, then look up key in it
+                if (args.isEmpty()) return Datum.VOID;
+                String localPropName = getPropertyName(args.get(0));
+                Datum localProp = getPropertyFromAncestorChain(instance, localPropName);
+
+                // If there's a second argument, do nested lookup
+                if (args.size() > 1) {
+                    Datum subKey = args.get(1);
+                    if (localProp instanceof Datum.List list) {
+                        // List: use index (1-based)
+                        int index = subKey.toInt() - 1;
+                        if (index >= 0 && index < list.items().size()) {
+                            return list.items().get(index);
+                        }
+                        return Datum.VOID;
+                    } else if (localProp instanceof Datum.PropList pl) {
+                        // PropList: look up by key (string or symbol, case-insensitive for symbols)
+                        String key = getPropertyName(subKey);
+                        // Try exact match first, then case-insensitive
+                        if (pl.properties().containsKey(key)) {
+                            return pl.properties().get(key);
+                        }
+                        // Case-insensitive search
+                        for (var entry : pl.properties().entrySet()) {
+                            if (entry.getKey().equalsIgnoreCase(key)) {
+                                return entry.getValue();
+                            }
+                        }
+                        return Datum.VOID;
+                    } else {
+                        // Cannot get sub-property from non-list/proplist
+                        return Datum.VOID;
+                    }
+                }
+                return localProp;
             }
             case "addprop" -> {
                 // addProp(instance, #propName, value)
@@ -408,45 +458,38 @@ public final class CallOpcodes {
             }
         }
 
+        // SECOND: Check for Lingo handlers in the script (and ancestor chain)
+        // This is for non-built-in methods like create(), dump(), etc.
         CastLibProvider provider = CastLibProvider.getProvider();
-        if (provider == null) {
-            return Datum.VOID;
-        }
+        if (provider != null) {
+            Datum.ScriptInstance current = instance;
+            for (int i = 0; i < 100; i++) { // Safety limit to prevent infinite loops
+                Datum.ScriptRef scriptRef = getScriptRefFromInstance(current);
 
-        // Walk the ancestor chain to find a handler
-        // Start with the instance's script, then check ancestors
-        Datum.ScriptInstance current = instance;
-        for (int i = 0; i < 100; i++) { // Safety limit to prevent infinite loops
-            // Get the script ref from __scriptRef__ if available
-            Datum.ScriptRef scriptRef = getScriptRefFromInstance(current);
+                CastLibProvider.HandlerLocation location;
+                if (scriptRef != null) {
+                    location = provider.findHandlerInScript(scriptRef.castLib(), scriptRef.member(), methodName);
+                } else {
+                    location = provider.findHandlerInScript(current.scriptId(), methodName);
+                }
 
-            CastLibProvider.HandlerLocation location;
-            if (scriptRef != null) {
-                // Use both cast lib number and member number for precise lookup
-                location = provider.findHandlerInScript(scriptRef.castLib(), scriptRef.member(), methodName);
-            } else {
-                // Fallback to searching all cast libs with just member number
-                location = provider.findHandlerInScript(current.scriptId(), methodName);
-            }
+                if (location != null && location.script() != null && location.handler() != null) {
+                    if (location.script() instanceof ScriptChunk script
+                            && location.handler() instanceof ScriptChunk.Handler handler) {
+                        return safeExecuteHandler(ctx, script, handler, args, instance);
+                    }
+                }
 
-            if (location != null && location.script() != null && location.handler() != null) {
-                if (location.script() instanceof ScriptChunk script
-                        && location.handler() instanceof ScriptChunk.Handler handler) {
-                    // Execute with original instance as receiver (for property access)
-                    return safeExecuteHandler(ctx, script, handler, args, instance);
+                Datum ancestor = current.properties().get("ancestor");
+                if (ancestor instanceof Datum.ScriptInstance ancestorInstance) {
+                    current = ancestorInstance;
+                } else {
+                    break;
                 }
             }
-
-            // Try ancestor
-            Datum ancestor = current.properties().get("ancestor");
-            if (ancestor instanceof Datum.ScriptInstance ancestorInstance) {
-                current = ancestorInstance;
-            } else {
-                break;
-            }
         }
 
-        // Check if the method is getting a property (walk ancestor chain)
+        // THIRD: Check if the method is getting a property (walk ancestor chain)
         String prop = methodName.toLowerCase();
         Datum propValue = getPropertyFromAncestorChain(instance, prop);
         if (propValue != null && !propValue.isVoid()) {
