@@ -188,22 +188,50 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
         bytecodeList.setCellRenderer(new BytecodeCellRenderer());
         bytecodeList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
 
-        // Click to toggle breakpoints
+        // Click to toggle breakpoints or navigate to call targets
         bytecodeList.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
+                int index = bytecodeList.locationToIndex(e.getPoint());
+                if (index < 0 || index >= bytecodeModel.size()) {
+                    return;
+                }
+
+                InstructionDisplayItem item = bytecodeModel.get(index);
+
+                // Double-click or click on left margin (gutter) -> toggle breakpoint
                 if (e.getClickCount() == 2 || e.getX() < 20) {
-                    int index = bytecodeList.locationToIndex(e.getPoint());
-                    if (index >= 0 && index < bytecodeModel.size()) {
-                        InstructionDisplayItem item = bytecodeModel.get(index);
-                        if (controller != null && currentScriptId >= 0) {
-                            controller.toggleBreakpoint(currentScriptId, item.offset);
-                            // Update display
-                            item.hasBreakpoint = controller.hasBreakpoint(currentScriptId, item.offset);
-                            bytecodeList.repaint();
-                        }
+                    if (controller != null && currentScriptId >= 0) {
+                        controller.toggleBreakpoint(currentScriptId, item.offset);
+                        item.hasBreakpoint = controller.hasBreakpoint(currentScriptId, item.offset);
+                        bytecodeList.repaint();
+                    }
+                    return;
+                }
+
+                // Single click on call instruction -> navigate to handler definition
+                if (e.getClickCount() == 1 && item.isCallInstruction()) {
+                    String targetName = item.getCallTargetName();
+                    if (targetName != null) {
+                        navigateToHandler(targetName);
                     }
                 }
+            }
+        });
+
+        // Change cursor to hand when hovering over clickable call instructions
+        bytecodeList.addMouseMotionListener(new MouseMotionAdapter() {
+            @Override
+            public void mouseMoved(MouseEvent e) {
+                int index = bytecodeList.locationToIndex(e.getPoint());
+                if (index >= 0 && index < bytecodeModel.size()) {
+                    InstructionDisplayItem item = bytecodeModel.get(index);
+                    if (item.isCallInstruction() && item.getCallTargetName() != null && e.getX() >= 20) {
+                        bytecodeList.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+                        return;
+                    }
+                }
+                bytecodeList.setCursor(Cursor.getDefaultCursor());
             }
         });
 
@@ -212,7 +240,7 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
         bytecodePanel.add(bytecodeScroll, BorderLayout.CENTER);
 
         // Legend
-        JLabel legend = new JLabel("<html><font color='red'>\u25CF</font> = breakpoint &nbsp; <font color='#FFD700'>\u25B6</font> = current &nbsp; (double-click or click left margin to toggle breakpoint)</html>");
+        JLabel legend = new JLabel("<html><font color='red'>\u25CF</font> = breakpoint &nbsp; <font color='#DAA520'>\u25B6</font> = current &nbsp; <font color='blue'><u>blue</u></font> = click to navigate &nbsp; (double-click gutter to toggle breakpoint)</html>");
         legend.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 10));
         bytecodePanel.add(legend, BorderLayout.SOUTH);
 
@@ -770,8 +798,59 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
         continueBtn.setEnabled(enabled);
     }
 
+    /**
+     * Navigate to a handler by name, searching all scripts.
+     */
+    private void navigateToHandler(String handlerName) {
+        // Search all scripts for a handler with this name
+        for (ScriptChunk script : allScripts) {
+            ScriptChunk.Handler handler = script.findHandler(handlerName);
+            if (handler != null) {
+                // Found it - update the combo boxes and load bytecode
+                browseMode = true;
+                browseScript = script;
+                browseHandler = handler;
+                currentScriptId = script.id();
+
+                // Select in script combo (without triggering reload)
+                selectScriptInCombo(script);
+
+                // Update handler combo and select the handler
+                handlerModel.removeAllElements();
+                int handlerIndex = 0;
+                int targetIndex = 0;
+                for (ScriptChunk.Handler h : script.handlers()) {
+                    handlerModel.addElement(new HandlerItem(script, h));
+                    if (h == handler) {
+                        targetIndex = handlerIndex;
+                    }
+                    handlerIndex++;
+                }
+
+                // Select handler without triggering reload
+                ActionListener[] listeners = handlerCombo.getActionListeners();
+                for (ActionListener l : listeners) {
+                    handlerCombo.removeActionListener(l);
+                }
+                handlerCombo.setSelectedIndex(targetIndex);
+                for (ActionListener l : listeners) {
+                    handlerCombo.addActionListener(l);
+                }
+
+                // Load the bytecode
+                loadHandlerBytecode(script, handler);
+                return;
+            }
+        }
+
+        // Not found - show message in status
+        statusLabel.setText("Handler '" + handlerName + "' not found");
+    }
+
     // Display item for bytecode list
     private static class InstructionDisplayItem {
+        private static final Set<String> CALL_OPCODES = Set.of("EXT_CALL", "OBJ_CALL", "LOCAL_CALL");
+
         final int offset;
         final int index;
         final String opcode;
@@ -788,6 +867,27 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
             this.annotation = annotation;
             this.hasBreakpoint = hasBreakpoint;
             this.isCurrent = false;
+        }
+
+        /**
+         * Check if this instruction is a call that can be navigated to.
+         */
+        boolean isCallInstruction() {
+            return CALL_OPCODES.contains(opcode);
+        }
+
+        /**
+         * Extract the handler name from the annotation (e.g., "<myHandler()>" -> "myHandler").
+         */
+        String getCallTargetName() {
+            if (annotation == null || annotation.isEmpty()) {
+                return null;
+            }
+            // Annotation format is "<handlerName()>"
+            if (annotation.startsWith("<") && annotation.endsWith("()>")) {
+                return annotation.substring(1, annotation.length() - 3);
+            }
+            return null;
         }
 
         @Override
@@ -814,39 +914,58 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
             JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
 
             if (value instanceof InstructionDisplayItem item) {
-                // Build display text with markers
-                StringBuilder sb = new StringBuilder();
+                // Build display text with markers using HTML for rich formatting
+                StringBuilder sb = new StringBuilder("<html><pre style='margin:0;font-family:monospaced;'>");
 
-                // Breakpoint marker
+                // Breakpoint marker (red)
                 if (item.hasBreakpoint) {
-                    sb.append("\u25CF ");  // Filled circle
+                    sb.append("<font color='red'>\u25CF</font> ");
                 } else {
                     sb.append("  ");
                 }
 
-                // Current instruction marker
+                // Current instruction marker (gold)
                 if (item.isCurrent) {
-                    sb.append("\u25B6 ");  // Right-pointing triangle
+                    sb.append("<font color='#DAA520'>\u25B6</font> ");
                 } else {
                     sb.append("  ");
                 }
 
-                sb.append(item.toString());
+                // Instruction text
+                sb.append(String.format("[%3d] %-14s", item.offset, item.opcode));
+                if (item.argument != 0) {
+                    sb.append(String.format(" %-4d", item.argument));
+                } else {
+                    sb.append("     ");
+                }
+
+                // Annotation - make call targets blue and underlined
+                if (item.annotation != null && !item.annotation.isEmpty()) {
+                    sb.append(" ");
+                    if (item.isCallInstruction() && item.getCallTargetName() != null) {
+                        sb.append("<font color='blue'><u>").append(escapeHtml(item.annotation)).append("</u></font>");
+                    } else {
+                        sb.append(escapeHtml(item.annotation));
+                    }
+                }
+
+                sb.append("</pre></html>");
                 label.setText(sb.toString());
 
-                // Highlighting
+                // Highlighting for current instruction
                 if (item.isCurrent && !isSelected) {
                     label.setBackground(new Color(255, 255, 200));  // Light yellow
                     label.setOpaque(true);
                 }
-
-                // Color for breakpoint marker
-                if (item.hasBreakpoint) {
-                    // We'd need HTML for multi-color, but for simplicity just use foreground
-                }
             }
 
             return label;
+        }
+
+        private String escapeHtml(String text) {
+            return text.replace("&", "&amp;")
+                       .replace("<", "&lt;")
+                       .replace(">", "&gt;");
         }
     }
 
