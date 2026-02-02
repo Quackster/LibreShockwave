@@ -20,6 +20,7 @@ public final class StringBuiltins {
         builtins.put("chars", StringBuiltins::chars);
         builtins.put("chartonum", StringBuiltins::charToNum);
         builtins.put("numtochar", StringBuiltins::numToChar);
+        builtins.put("offset", StringBuiltins::offset);
     }
 
     private static Datum string(LingoVM vm, List<Datum> args) {
@@ -62,5 +63,22 @@ public final class StringBuiltins {
         if (args.isEmpty()) return Datum.EMPTY_STRING;
         int code = args.get(0).toInt();
         return Datum.of(String.valueOf((char) code));
+    }
+
+    /**
+     * offset(substring, string)
+     * Returns the 1-indexed position of substring in string, or 0 if not found.
+     * Case-insensitive search.
+     */
+    private static Datum offset(LingoVM vm, List<Datum> args) {
+        if (args.size() < 2) return Datum.ZERO;
+        String substr = args.get(0).toStr();
+        String str = args.get(1).toStr();
+        if (substr.isEmpty()) return Datum.ZERO;
+
+        // Case-insensitive search (Lingo default)
+        int index = str.toLowerCase().indexOf(substr.toLowerCase());
+        if (index < 0) return Datum.ZERO;
+        return Datum.of(index + 1); // 1-indexed
     }
 }
