@@ -275,7 +275,10 @@ public final class CallOpcodes {
         // Start with the instance's script, then check ancestors
         Datum.ScriptInstance current = instance;
         for (int i = 0; i < 100; i++) { // Safety limit to prevent infinite loops
-            var location = provider.findHandlerInScript(current.scriptId(), methodName);
+            // Get the script ID from __scriptRef__ if available, otherwise use scriptId
+            int scriptId = getScriptIdFromInstance(current);
+
+            var location = provider.findHandlerInScript(scriptId, methodName);
             if (location != null && location.script() != null && location.handler() != null) {
                 if (location.script() instanceof ScriptChunk script
                         && location.handler() instanceof ScriptChunk.Handler handler) {
@@ -301,6 +304,20 @@ public final class CallOpcodes {
         }
 
         return Datum.VOID;
+    }
+
+    /**
+     * Get the script ID from a script instance.
+     * Uses __scriptRef__ if available (for proper handler dispatch), otherwise falls back to scriptId.
+     */
+    private static int getScriptIdFromInstance(Datum.ScriptInstance instance) {
+        Datum scriptRef = instance.properties().get("__scriptRef__");
+        if (scriptRef instanceof Datum.ScriptRef sr) {
+            // ScriptRef contains the member number which is used for handler lookup
+            return sr.member();
+        }
+        // Fallback to instance scriptId (may not work for handler dispatch)
+        return instance.scriptId();
     }
 
     /**

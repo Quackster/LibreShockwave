@@ -458,11 +458,15 @@ public class CastLibManager implements CastLibProvider {
     }
 
     /**
-     * Find a handler in a specific script by its script ID (cast member number).
+     * Find a handler in a specific script by its cast member number.
      * Used for method calls on script instances - only searches the instance's parent script.
+     *
+     * @param memberNumber The cast member number (not the script chunk ID)
+     * @param handlerName The handler name to find
+     * @return The handler location if found, null otherwise
      */
     @Override
-    public HandlerLocation findHandlerInScript(int scriptId, String handlerName) {
+    public HandlerLocation findHandlerInScript(int memberNumber, String handlerName) {
         ensureInitialized();
 
         for (CastLib castLib : castLibs.values()) {
@@ -475,16 +479,43 @@ public class CastLibManager implements CastLibProvider {
                 continue;
             }
 
-            // Find the script with matching ID (cast member number)
-            for (var script : castLib.getAllScripts()) {
-                if (script.id() == scriptId) {
-                    var handler = script.findHandler(handlerName, scriptNames);
-                    if (handler != null) {
-                        return new HandlerLocation(castLib.getNumber(), script, handler, scriptNames);
-                    }
-                    // Found the script but no handler - don't continue searching
-                    return null;
+            // Look up script by member number
+            var script = castLib.getScript(memberNumber);
+            if (script != null) {
+                var handler = script.findHandler(handlerName, scriptNames);
+                if (handler != null) {
+                    return new HandlerLocation(castLib.getNumber(), script, handler, scriptNames);
                 }
+                // Found the script but no handler - don't continue searching
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Find a handler in a specific script in a specific cast library.
+     * Used when we know both the cast lib number and member number.
+     */
+    public HandlerLocation findHandlerInScript(int castLibNumber, int memberNumber, String handlerName) {
+        ensureInitialized();
+
+        CastLib castLib = castLibs.get(castLibNumber);
+        if (castLib == null || !castLib.isLoaded()) {
+            return null;
+        }
+
+        var scriptNames = castLib.getScriptNames();
+        if (scriptNames == null) {
+            return null;
+        }
+
+        var script = castLib.getScript(memberNumber);
+        if (script != null) {
+            var handler = script.findHandler(handlerName, scriptNames);
+            if (handler != null) {
+                return new HandlerLocation(castLib.getNumber(), script, handler, scriptNames);
             }
         }
 
