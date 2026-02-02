@@ -175,6 +175,11 @@ public class MovieProperties implements MoviePropertyProvider {
             case "itemdelimiter" -> {
                 String s = value.toStr();
                 itemDelimiter = s.isEmpty() ? "," : s.substring(0, 1);
+                System.err.println("[MovieProperties] itemDelimiter set to: " +
+                    (itemDelimiter.isEmpty() ? "(empty)" :
+                     itemDelimiter.equals("\r") ? "(RETURN)" :
+                     itemDelimiter.equals("\n") ? "(LF)" :
+                     "'" + itemDelimiter + "' (0x" + Integer.toHexString(itemDelimiter.charAt(0)) + ")"));
                 return true;
             }
             case "puppettempo" -> {

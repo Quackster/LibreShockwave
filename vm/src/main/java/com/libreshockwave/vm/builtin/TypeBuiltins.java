@@ -80,6 +80,10 @@ public final class TypeBuiltins {
 
         // For non-strings, return as-is (matches dirplayer-rs behavior)
         if (!(arg instanceof Datum.Str str)) {
+            // Debug: trace when value() receives a list (already parsed)
+            if (arg instanceof Datum.List l && l.items().size() == 2) {
+                System.err.println("[value] received 2-elem list: " + l + " (returning as-is)");
+            }
             return arg;
         }
 
@@ -193,9 +197,13 @@ public final class TypeBuiltins {
             // Parse as linear list
             java.util.List<Datum> items = new java.util.ArrayList<>();
             for (String element : elements) {
-                items.add(parseLingoExpression(element.trim(), vm));
+                Datum parsed = parseLingoExpression(element.trim(), vm);
+                System.err.println("[value] parsed list element '" + element.trim() + "' -> " + parsed);
+                items.add(parsed);
             }
-            return Datum.list(items);
+            Datum result = Datum.list(items);
+            System.err.println("[value] created list @" + System.identityHashCode(result) + ": " + result);
+            return result;
         }
     }
 
