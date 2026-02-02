@@ -36,12 +36,7 @@ public final class ListBuiltins {
         int index = args.get(1).toInt() - 1; // Lingo is 1-indexed
         if (list instanceof Datum.List l) {
             if (index >= 0 && index < l.items().size()) {
-                Datum result = l.items().get(index);
-                // Debug: trace when getAt returns VOID from 2-elem list with instance at pos 1
-                if (result.isVoid() && l.items().size() == 2 && l.items().get(0) instanceof Datum.ScriptInstance) {
-                    System.err.println("[getAt FAIL] list @" + System.identityHashCode(l) + ": " + l);
-                }
-                return result;
+                return l.items().get(index);
             }
         }
         return Datum.VOID;

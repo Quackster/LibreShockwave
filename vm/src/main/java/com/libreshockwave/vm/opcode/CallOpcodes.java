@@ -82,11 +82,6 @@ public final class CallOpcodes {
     }
 
     private static boolean objCall(ExecutionContext ctx) {
-        if (!ctx.getScope().getScript().getScriptName().equalsIgnoreCase("String Services API")) {
-            if (ctx.getArgument() == 58) {
-                var t = 3;
-            }
-        }
         String methodName = ctx.resolveName(ctx.getArgument());
         Datum argListDatum = ctx.pop();
         boolean noRet = argListDatum instanceof Datum.ArgListNoRet;
@@ -151,10 +146,6 @@ public final class CallOpcodes {
                 if (args.size() < 2) yield Datum.VOID;
                 int index = args.get(0).toInt() - 1; // Convert to 0-indexed
                 Datum value = args.get(1);
-                // Debug: trace setAt on 2-elem lists or when storing instances
-                if (list.items().size() == 2 || value instanceof Datum.ScriptInstance) {
-                    System.err.println("[list.setAt] @" + System.identityHashCode(list) + " set [" + (index + 1) + "] = " + value + ", list=" + list);
-                }
                 if (index < 0) yield Datum.VOID;
                 if (index < list.items().size()) {
                     list.items().set(index, value);
@@ -164,10 +155,6 @@ public final class CallOpcodes {
                         list.items().add(Datum.VOID);
                     }
                     list.items().add(value);
-                }
-                // Debug: trace after modification
-                if (list.items().size() == 2 && list.items().get(1).isVoid()) {
-                    System.err.println("[list.setAt] list after=" + list + " (pos 2 is VOID!)");
                 }
                 yield Datum.VOID;
             }
@@ -255,11 +242,7 @@ public final class CallOpcodes {
                 yield Datum.VOID;
             }
             case "duplicate" -> {
-                Datum.List dup = new Datum.List(new ArrayList<>(list.items()));
-                if (list.items().size() == 2) {
-                    System.err.println("[list.duplicate] @" + System.identityHashCode(list) + " -> @" + System.identityHashCode(dup) + ": " + dup);
-                }
-                yield dup;
+                yield new Datum.List(new ArrayList<>(list.items()));
             }
             default -> Datum.VOID;
         };
@@ -293,12 +276,7 @@ public final class CallOpcodes {
             case "getprop", "getaprop" -> {
                 if (args.isEmpty()) yield Datum.VOID;
                 String key = args.get(0) instanceof Datum.Symbol s ? s.name() : args.get(0).toStr();
-                Datum result = propList.properties().getOrDefault(key, Datum.VOID);
-                // Debug: trace when 2-element list is retrieved
-                if (result instanceof Datum.List l && l.items().size() == 2) {
-                    System.err.println("[propList.getProp] key=" + key + " retrieved list: " + l);
-                }
-                yield result;
+                yield propList.properties().getOrDefault(key, Datum.VOID);
             }
             case "setprop", "setaprop" -> {
                 if (args.size() < 2) yield Datum.VOID;
@@ -333,10 +311,6 @@ public final class CallOpcodes {
                 if (args.size() < 2) yield Datum.VOID;
                 String key = args.get(0) instanceof Datum.Symbol s ? s.name() : args.get(0).toStr();
                 Datum value = args.get(1);
-                // Debug: trace when list with 2 elements is stored
-                if (value instanceof Datum.List l && l.items().size() == 2) {
-                    System.err.println("[propList.setAt] key=" + key + " storing list: " + l);
-                }
                 propList.properties().put(key, value);
                 yield Datum.VOID;
             }
@@ -376,12 +350,6 @@ public final class CallOpcodes {
                 if (args.size() >= 2) {
                     String propName = getPropertyName(args.get(0));
                     Datum value = args.get(1);
-                    // Debug: trace when instances are stored in instance properties
-                    if (value instanceof Datum.ScriptInstance si) {
-                        System.err.println("[instance.setAt] prop=" + propName + " storing instance " + si.scriptId() + " in instance " + instance.scriptId());
-                    } else if (value instanceof Datum.List l && l.items().size() == 2) {
-                        System.err.println("[instance.setAt] prop=" + propName + " storing 2-elem list: " + l + " in instance " + instance.scriptId());
-                    }
                     instance.properties().put(propName, value);
                 }
                 return Datum.VOID;
@@ -391,7 +359,6 @@ public final class CallOpcodes {
                 if (args.size() >= 2) {
                     String propName = getPropertyName(args.get(0));
                     Datum value = args.get(1);
-                    System.err.println("[setaProp] instance=" + instance.scriptId() + ", prop=" + propName + ", value=" + (value instanceof Datum.PropList ? "[propList:" + ((Datum.PropList)value).properties().size() + "]" : value));
                     instance.properties().put(propName, value);
 
                     // Also update pObjectList if it exists (for Object Manager pattern)
@@ -419,16 +386,12 @@ public final class CallOpcodes {
                     Datum value = args.get(2);
                     String keyName = getPropertyName(subKey);
 
-                    System.err.println("[setProp 3-arg] instance=" + instance.scriptId() +
-                        ", prop=" + localPropName + ", key=" + keyName + ", value=" + value);
-
                     Datum localProp = instance.properties().get(localPropName);
 
                     // If the property doesn't exist or is VOID, create an empty PropList
                     if (localProp == null || localProp.isVoid()) {
                         localProp = new Datum.PropList(new LinkedHashMap<>());
                         instance.properties().put(localPropName, localProp);
-                        System.err.println("[setProp 3-arg] created new PropList for " + localPropName);
                     }
 
                     // Now do the nested set
@@ -436,19 +399,14 @@ public final class CallOpcodes {
                         // List: use setAt (1-indexed)
                         int index = subKey.toInt() - 1;
                         if (index >= 0) {
-                            int oldSize = list.items().size();
                             while (list.items().size() <= index) {
                                 list.items().add(Datum.VOID);
-                            }
-                            if (list.items().size() > oldSize) {
-                                System.err.println("[setProp 3-arg LIST] padded list from " + oldSize + " to " + list.items().size() + " elements, setting index " + (index + 1) + " = " + value);
                             }
                             list.items().set(index, value);
                         }
                     } else if (localProp instanceof Datum.PropList pl) {
                         // PropList: set by key
                         pl.properties().put(keyName, value);
-                        System.err.println("[setProp 3-arg] stored in propList, now has " + pl.properties().size() + " entries");
                     }
                 }
                 return Datum.VOID;
@@ -477,13 +435,9 @@ public final class CallOpcodes {
                 String localPropName = getPropertyName(args.get(0));
                 Datum localProp = getPropertyFromAncestorChain(instance, localPropName);
 
-                // Debug: trace getProp calls
-                System.err.println("[getProp] instance=" + instance.scriptId() + ", propName=" + localPropName + ", localProp=" + (localProp == null ? "null" : localProp.getClass().getSimpleName()));
-
                 // If there's a second argument, do nested lookup
                 if (args.size() > 1) {
                     Datum subKey = args.get(1);
-                    System.err.println("[getProp] nested lookup: subKey=" + subKey);
                     if (localProp instanceof Datum.List list) {
                         // List: use index (1-based)
                         int index = subKey.toInt() - 1;
@@ -494,25 +448,19 @@ public final class CallOpcodes {
                     } else if (localProp instanceof Datum.PropList pl) {
                         // PropList: look up by key (string or symbol, case-insensitive for symbols)
                         String key = getPropertyName(subKey);
-                        System.err.println("[getProp] looking for key '" + key + "' in propList with " + pl.properties().size() + " entries");
                         // Try exact match first, then case-insensitive
                         if (pl.properties().containsKey(key)) {
-                            Datum result = pl.properties().get(key);
-                            System.err.println("[getProp] found exact match: " + result);
-                            return result;
+                            return pl.properties().get(key);
                         }
                         // Case-insensitive search
                         for (var entry : pl.properties().entrySet()) {
                             if (entry.getKey().equalsIgnoreCase(key)) {
-                                System.err.println("[getProp] found case-insensitive match: " + entry.getKey() + " -> " + entry.getValue());
                                 return entry.getValue();
                             }
                         }
-                        System.err.println("[getProp] key not found, returning VOID");
                         return Datum.VOID;
                     } else {
                         // Cannot get sub-property from non-list/proplist
-                        System.err.println("[getProp] localProp is not list/propList: " + localProp);
                         return Datum.VOID;
                     }
                 }
@@ -935,10 +883,7 @@ public final class CallOpcodes {
     private static int countItems(String str, char delimiter) {
         if (str.isEmpty()) return 0;
         // Simple split like dirplayer-rs
-        int count = str.split(String.valueOf(delimiter), -1).length;
-        System.err.println("[countItems] delimiter=0x" + Integer.toHexString(delimiter) +
-            ", strLen=" + str.length() + ", count=" + count);
-        return count;
+        return str.split(String.valueOf(delimiter), -1).length;
     }
 
     /**

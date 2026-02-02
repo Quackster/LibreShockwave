@@ -69,8 +69,6 @@ public final class ConstructorBuiltins {
         // Store the script reference for method dispatch
         properties.put("__scriptRef__", scriptRef);
 
-        System.err.println("[createScriptInstance] id=" + instanceId + " scriptRef=" + scriptRef);
-
         Datum.ScriptInstance instance = new Datum.ScriptInstance(instanceId, properties);
 
         // Note: We intentionally do NOT automatically call the "new"/"create" constructor here.

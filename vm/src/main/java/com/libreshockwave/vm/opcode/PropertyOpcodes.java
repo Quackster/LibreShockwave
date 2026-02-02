@@ -68,7 +68,6 @@ public final class PropertyOpcodes {
         String propName = ctx.resolveName(ctx.getArgument());
         Datum value = ctx.pop();
         if (ctx.getReceiver() instanceof Datum.ScriptInstance si) {
-            System.err.println("[SET_PROP] instance=" + si.scriptId() + ", prop=" + propName + ", value=" + (value instanceof Datum.PropList ? "[propList:" + ((Datum.PropList)value).properties().size() + "]" : value.getClass().getSimpleName()));
             si.properties().put(propName, value);
             ctx.tracePropertySet(propName, value);
         }

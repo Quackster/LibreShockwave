@@ -57,20 +57,6 @@ public final class StackOpcodes {
                 default -> Datum.VOID;
             };
 
-            // Debug: trace string literal values with control characters
-            if (lit.type() == 1) {
-                String s = (String) lit.value();
-                if (s.isEmpty() || s.length() <= 2) {
-                    StringBuilder hexBytes = new StringBuilder();
-                    for (char c : s.toCharArray()) {
-                        hexBytes.append(String.format("0x%02X ", (int) c));
-                    }
-                    System.err.println("[PUSH_CONS] literal " + arg + " type=1 string len=" + s.length() +
-                        " hex=[" + hexBytes.toString().trim() + "]" +
-                        (s.equals("\r") ? " (RETURN)" : s.equals("\n") ? " (LF)" : ""));
-                }
-            }
-
             ctx.push(value);
         } else {
             ctx.push(Datum.VOID);

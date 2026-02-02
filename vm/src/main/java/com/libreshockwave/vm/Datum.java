@@ -46,11 +46,6 @@ public sealed interface Datum {
     record List(java.util.List<Datum> items) implements Datum {
         public List {
             items = new ArrayList<>(items);
-            // Debug: trace 2-elem lists with instance at pos 0 and VOID at pos 1
-            if (items.size() == 2 && items.get(0) instanceof ScriptInstance && items.get(1).isVoid()) {
-                System.err.println("[List CTOR] instance+VOID @" + System.identityHashCode(this) + ": " + items);
-                new Exception("List CTOR").printStackTrace(System.err);
-            }
         }
         @Override
         public String toString() {
@@ -212,13 +207,7 @@ public sealed interface Datum {
     }
 
     static Datum list(java.util.List<Datum> items) {
-        List result = new List(items);
-        // Debug: trace creation of 2-elem lists with VOID
-        if (items.size() == 2 && items.stream().anyMatch(Datum::isVoid)) {
-            System.err.println("[Datum.list] created 2-elem with VOID @" + System.identityHashCode(result) + ": " + result);
-            new Exception("List creation").printStackTrace(System.err);
-        }
-        return result;
+        return new List(items);
     }
 
     static Datum propList() {
