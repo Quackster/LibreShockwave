@@ -4,8 +4,10 @@ import com.libreshockwave.DirectorFile;
 import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.cast.MemberType;
 import com.libreshockwave.chunks.CastMemberChunk;
+import com.libreshockwave.chunks.KeyTableChunk;
 import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.chunks.TextChunk;
+import com.libreshockwave.format.ChunkType;
 import com.libreshockwave.vm.Datum;
 
 /**
@@ -110,9 +112,23 @@ public class CastMember {
             return;
         }
 
-        // Text content is stored in an STXT chunk associated with this member
-        // The STXT chunk typically shares the same ID as the CASt chunk or
-        // is referenced by a media ID
+        // Text content is stored in an STXT chunk associated with this member.
+        // Use the KeyTableChunk to find the associated STXT chunk.
+        KeyTableChunk keyTable = sourceFile.getKeyTable();
+        if (keyTable != null) {
+            // The fourcc for STXT in the key table
+            int stxtFourcc = ChunkType.STXT.getFourCC();
+            var entry = keyTable.findEntry(chunk.id(), stxtFourcc);
+            if (entry != null) {
+                var textChunk = sourceFile.getChunk(entry.sectionId(), TextChunk.class);
+                if (textChunk.isPresent()) {
+                    textContent = textChunk.get().text();
+                    return;
+                }
+            }
+        }
+
+        // Fallback: Try to find a text chunk with the same ID as the member
         var textChunk = sourceFile.getChunk(chunk.id(), TextChunk.class);
         if (textChunk.isPresent()) {
             textContent = textChunk.get().text();
