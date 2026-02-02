@@ -164,11 +164,12 @@ public final class ExecutionContext {
 
     // Function calls
 
-    public ScriptChunk.Handler findLocalHandler(int vectorPos) {
-        for (ScriptChunk.Handler handler : getScript().handlers()) {
-            if (handler.handlerVectorPos() == vectorPos) {
-                return handler;
-            }
+    public ScriptChunk.Handler findLocalHandler(int index) {
+        // LOCAL_CALL uses the bytecode argument as an index into the handlers array
+        // (not as a vector position to match against)
+        var handlers = getScript().handlers();
+        if (index >= 0 && index < handlers.size()) {
+            return handlers.get(index);
         }
         return null;
     }
