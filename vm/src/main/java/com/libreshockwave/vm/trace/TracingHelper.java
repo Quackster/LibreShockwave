@@ -8,8 +8,10 @@ import com.libreshockwave.vm.TraceListener;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Helper for building trace information and annotations.
@@ -17,7 +19,40 @@ import java.util.Map;
  */
 public class TracingHelper {
 
+    // Track visited instruction offsets per handler to suppress loop repetitions
+    private final Set<Integer> visitedOffsets = new HashSet<>();
+    private boolean loopSuppressed = false;
+    private int currentHandlerId = -1;
+
     public TracingHelper() {
+    }
+
+    /**
+     * Reset visited tracking for a new handler.
+     */
+    public void resetForHandler(int handlerId) {
+        if (handlerId != currentHandlerId) {
+            visitedOffsets.clear();
+            loopSuppressed = false;
+            currentHandlerId = handlerId;
+        }
+    }
+
+    /**
+     * Check if this instruction has been visited before (for loop suppression).
+     * Returns true if we should skip printing this instruction.
+     */
+    public boolean shouldSuppressInstruction(int offset) {
+        if (visitedOffsets.contains(offset)) {
+            if (!loopSuppressed) {
+                System.out.println("    ... [loop iterations suppressed] ...");
+                loopSuppressed = true;
+            }
+            return true;
+        }
+        visitedOffsets.add(offset);
+        loopSuppressed = false;
+        return false;
     }
 
     /**
@@ -96,8 +131,14 @@ public class TracingHelper {
 
     /**
      * Print instruction trace to console (dirplayer-rs format).
+     * Suppresses repeated loop iterations for readability.
      */
     public void traceInstruction(TraceListener.InstructionInfo info) {
+        // Suppress repeated instructions (loop iterations)
+        if (shouldSuppressInstruction(info.offset())) {
+            return;
+        }
+
         StringBuilder sb = new StringBuilder();
         sb.append(String.format("--> [%3d] %-16s", info.offset(), info.opcode()));
         if (info.argument() != 0) {
@@ -116,6 +157,8 @@ public class TracingHelper {
      * Print handler entry trace to console.
      */
     public void traceHandlerEnter(TraceListener.HandlerInfo info) {
+        // Reset loop tracking for new handler
+        resetForHandler(info.scriptId());
         System.out.println("== Script: " + info.scriptDisplayName() + " Handler: " + info.handlerName());
     }
 
