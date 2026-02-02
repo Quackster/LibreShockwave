@@ -203,7 +203,16 @@ public class LingoVM {
             throw new LingoException("Call stack overflow (max " + MAX_CALL_STACK_DEPTH + " frames)");
         }
 
-        Scope scope = new Scope(script, handler, args, receiver);
+        // If there's a receiver (for parent script methods), prepend it to args as param0
+        // This matches dirplayer-rs behavior where the receiver is included in scope.args
+        List<Datum> effectiveArgs = args;
+        if (receiver != null && !receiver.isVoid()) {
+            effectiveArgs = new java.util.ArrayList<>();
+            effectiveArgs.add(receiver);
+            effectiveArgs.addAll(args);
+        }
+
+        Scope scope = new Scope(script, handler, effectiveArgs, receiver);
         callStack.push(scope);
 
         // Notify trace listener of handler entry

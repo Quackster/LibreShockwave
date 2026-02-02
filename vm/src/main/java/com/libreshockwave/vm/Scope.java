@@ -130,6 +130,11 @@ public final class Scope {
     }
 
     // Parameter access
+    // In Lingo bytecode, parameters are 0-indexed:
+    //   param0 = first argument in args list
+    //   param1 = second argument in args list, etc.
+    // For parent script methods, the receiver ('me') is included as args[0].
+    // For movie script handlers, there's no receiver, so args[0] is the first explicit argument.
 
     public Datum getParam(int index) {
         if (index >= 0 && index < arguments.size()) {
