@@ -63,6 +63,11 @@ public final class CallOpcodes {
     }
 
     private static boolean objCall(ExecutionContext ctx) {
+        if (!ctx.getScope().getScript().getScriptName().equalsIgnoreCase("String Services API")) {
+            if (ctx.getArgument() == 58) {
+                var t = 3;
+            }
+        }
         String methodName = ctx.resolveName(ctx.getArgument());
         Datum argListDatum = ctx.pop();
         boolean noRet = argListDatum instanceof Datum.ArgListNoRet;
@@ -179,7 +184,7 @@ public final class CallOpcodes {
             case "count" -> Datum.of(propList.properties().size());
             case "getat" -> {
                 if (args.isEmpty()) yield Datum.VOID;
-                int index = args.get(0).toInt() - 1;
+                int index = args.get(0).toInt();
                 var entries = new ArrayList<>(propList.properties().entrySet());
                 if (index >= 0 && index < entries.size()) {
                     yield entries.get(index).getValue();

@@ -217,6 +217,28 @@ class ConvertToPropListTest {
         // Run tests
         System.out.println("\n=== Running convertToPropList tests ===\n");
 
+        // Test 0: Verify itemDelimiter can be set and get
+        System.out.println("--- Testing itemDelimiter ---");
+        Datum delimBefore = MoviePropertyProvider.getProvider().getMovieProp("itemDelimiter");
+        System.out.println("Initial itemDelimiter: '" + delimBefore.toStr() + "'");
+
+        // Change delimiter to semicolon
+        MoviePropertyProvider.getProvider().setMovieProp("itemDelimiter", Datum.of(";"));
+        Datum delimAfter = MoviePropertyProvider.getProvider().getMovieProp("itemDelimiter");
+        System.out.println("After set to ';': '" + delimAfter.toStr() + "'");
+
+        char actualDelim = MoviePropertyProvider.getProvider().getItemDelimiter();
+        if (actualDelim == ';') {
+            System.out.println("PASS: itemDelimiter correctly set to ';'");
+        } else {
+            System.out.println("FAIL: itemDelimiter should be ';' but got '" + actualDelim + "'");
+        }
+
+        // Reset back to comma for other tests
+        MoviePropertyProvider.getProvider().setMovieProp("itemDelimiter", Datum.of(","));
+        System.out.println("Reset itemDelimiter back to ','");
+        System.out.println();
+
         // Test 1: Find handler
         var ref = vm.findHandler("convertToPropList");
         if (ref == null) {

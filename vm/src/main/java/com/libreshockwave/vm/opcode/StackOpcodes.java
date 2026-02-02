@@ -56,6 +56,11 @@ public final class StackOpcodes {
                 case 9 -> Datum.of((Double) lit.value());
                 default -> Datum.VOID;
             };
+
+            if (value.toStr().equalsIgnoreCase("object.manager.class")) {
+                var te = 3;
+            }
+
             ctx.push(value);
         } else {
             ctx.push(Datum.VOID);
