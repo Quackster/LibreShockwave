@@ -127,16 +127,36 @@ public final class CallOpcodes {
                 yield Datum.VOID;
             }
             case "setat" -> {
+                // setAt(list, position, value) - set value at position (1-indexed)
+                // Like dirplayer-rs: pads with VOID if index > current length
                 if (args.size() < 2) yield Datum.VOID;
-                int index = args.get(0).toInt() - 1;
-                if (index >= 0 && index < list.items().size()) {
-                    list.items().set(index, args.get(1));
+                int index = args.get(0).toInt() - 1; // Convert to 0-indexed
+                Datum value = args.get(1);
+                if (index < 0) yield Datum.VOID;
+                if (index < list.items().size()) {
+                    list.items().set(index, value);
+                } else {
+                    // Pad with VOID values up to the target index
+                    while (list.items().size() < index) {
+                        list.items().add(Datum.VOID);
+                    }
+                    list.items().add(value);
                 }
                 yield Datum.VOID;
             }
             case "append", "add" -> {
                 if (args.isEmpty()) yield Datum.VOID;
                 list.items().add(args.get(0));
+                yield Datum.VOID;
+            }
+            case "addat" -> {
+                // addAt(list, position, value) - insert value at position (1-indexed)
+                if (args.size() < 2) yield Datum.VOID;
+                int index = args.get(0).toInt() - 1; // Convert to 0-indexed
+                Datum value = args.get(1);
+                if (index < 0) index = 0;
+                if (index > list.items().size()) index = list.items().size();
+                list.items().add(index, value);
                 yield Datum.VOID;
             }
             case "deleteat" -> {
@@ -147,8 +167,8 @@ public final class CallOpcodes {
                 }
                 yield Datum.VOID;
             }
-            case "getone" -> {
-                // Find index of value
+            case "getone", "findpos" -> {
+                // Find 1-based index of value, returns 0 if not found
                 if (args.isEmpty()) yield Datum.ZERO;
                 Datum value = args.get(0);
                 for (int i = 0; i < list.items().size(); i++) {
@@ -157,6 +177,33 @@ public final class CallOpcodes {
                     }
                 }
                 yield Datum.ZERO;
+            }
+            case "getlast" -> {
+                // getLast(list) - return the last element
+                if (list.items().isEmpty()) yield Datum.VOID;
+                yield list.items().get(list.items().size() - 1);
+            }
+            case "deleteone" -> {
+                // deleteOne(list, value) - remove first matching element
+                if (args.isEmpty()) yield Datum.VOID;
+                Datum value = args.get(0);
+                for (int i = 0; i < list.items().size(); i++) {
+                    if (list.items().get(i).equals(value)) {
+                        list.items().remove(i);
+                        break;
+                    }
+                }
+                yield Datum.VOID;
+            }
+            case "join" -> {
+                // join(list, separator) - concatenate elements into string
+                String separator = args.isEmpty() ? "" : args.get(0).toStr();
+                StringBuilder sb = new StringBuilder();
+                for (int i = 0; i < list.items().size(); i++) {
+                    if (i > 0) sb.append(separator);
+                    sb.append(list.items().get(i).toStr());
+                }
+                yield Datum.of(sb.toString());
             }
             case "sort" -> {
                 // Sort list in place (simple implementation)
@@ -275,9 +322,6 @@ public final class CallOpcodes {
                 if (args.size() >= 2) {
                     String propName = getPropertyName(args.get(0));
                     instance.properties().put(propName, args.get(1));
-                    if (propName.equals("ancestor")) {
-                        System.out.println("[DEBUG] setAt #ancestor on instance " + instance.scriptId() + ": " + args.get(1));
-                    }
                 }
                 return Datum.VOID;
             }
@@ -285,7 +329,15 @@ public final class CallOpcodes {
                 // setaProp(instance, #propName, value)
                 if (args.size() >= 2) {
                     String propName = getPropertyName(args.get(0));
-                    instance.properties().put(propName, args.get(1));
+                    Datum value = args.get(1);
+                    instance.properties().put(propName, value);
+
+                    // Also update pObjectList if it exists (for Object Manager pattern)
+                    // This ensures getManager() can find the correct instance
+                    Datum pObjectList = instance.properties().get("pObjectList");
+                    if (pObjectList instanceof Datum.PropList objList) {
+                        objList.properties().put(propName, value);
+                    }
                 }
                 return Datum.VOID;
             }
@@ -318,6 +370,23 @@ public final class CallOpcodes {
                 // ilk(instance) - return #instance
                 return new Datum.Symbol("instance");
             }
+            case "addat" -> {
+                // addAt(instance, position, classList) - set up ancestor chain from class list
+                // This is used by Object Manager to build the class hierarchy
+                // Position 1 = immediate ancestor
+                if (args.size() >= 2) {
+                    int position = args.get(0).toInt();
+                    Datum classList = args.get(1);
+                    if (position == 1 && classList instanceof Datum.List list && !list.items().isEmpty()) {
+                        // Build ancestor chain from the class list
+                        Datum.ScriptInstance ancestorChain = buildAncestorChain(ctx, list.items());
+                        if (ancestorChain != null) {
+                            instance.properties().put("ancestor", ancestorChain);
+                        }
+                    }
+                }
+                return Datum.VOID;
+            }
         }
 
         CastLibProvider provider = CastLibProvider.getProvider();
@@ -328,19 +397,9 @@ public final class CallOpcodes {
         // Walk the ancestor chain to find a handler
         // Start with the instance's script, then check ancestors
         Datum.ScriptInstance current = instance;
-        boolean debugDump = methodName.equalsIgnoreCase("dump");
-        if (debugDump) {
-            System.out.println("[DEBUG] Looking for dump() on instance " + instance.scriptId());
-            System.out.println("[DEBUG]   __scriptRef__: " + instance.properties().get("__scriptRef__"));
-            System.out.println("[DEBUG]   ancestor: " + instance.properties().get("ancestor"));
-        }
         for (int i = 0; i < 100; i++) { // Safety limit to prevent infinite loops
             // Get the script ref from __scriptRef__ if available
             Datum.ScriptRef scriptRef = getScriptRefFromInstance(current);
-
-            if (debugDump) {
-                System.out.println("[DEBUG]   Iteration " + i + ": current=" + current.scriptId() + ", scriptRef=" + scriptRef);
-            }
 
             CastLibProvider.HandlerLocation location;
             if (scriptRef != null) {
@@ -349,9 +408,6 @@ public final class CallOpcodes {
             } else {
                 // Fallback to searching all cast libs with just member number
                 location = provider.findHandlerInScript(current.scriptId(), methodName);
-            }
-            if (debugDump) {
-                System.out.println("[DEBUG]   location found: " + (location != null));
             }
 
             if (location != null && location.script() != null && location.handler() != null) {
@@ -435,6 +491,74 @@ public final class CallOpcodes {
             }
         }
         return Datum.VOID;
+    }
+
+    /**
+     * Build an ancestor chain from a list of class names.
+     * Each class is instantiated and chained to the next.
+     * Returns the first instance in the chain (which will be set as the ancestor).
+     */
+    private static Datum.ScriptInstance buildAncestorChain(ExecutionContext ctx, List<Datum> classNames) {
+        CastLibProvider provider = CastLibProvider.getProvider();
+        if (provider == null || classNames.isEmpty()) {
+            return null;
+        }
+
+        Datum.ScriptInstance previousInstance = null;
+        Datum.ScriptInstance firstInstance = null;
+
+        // Build chain from first class to last
+        for (Datum className : classNames) {
+            String name = className.toStr();
+
+            // Find the script member for this class name
+            Datum memberDatum = provider.getMemberByName(0, name);
+            if (!(memberDatum instanceof Datum.CastMemberRef memberRef)) {
+                continue;
+            }
+
+            // Get the script property from the member (which gives us the slot number)
+            Datum scriptDatum = provider.getMemberProp(memberRef.castLib(), memberRef.member(), "script");
+
+            // If script property is an int (slot number), decode it to ScriptRef
+            if (scriptDatum instanceof Datum.Int slotNum) {
+                int value = slotNum.value();
+                if (value > 65535) {
+                    // Decode slot number
+                    int castLib = value >> 16;
+                    int member = value & 0xFFFF;
+                    scriptDatum = new Datum.ScriptRef(castLib, member);
+                } else {
+                    // Simple member number - assume same cast lib
+                    scriptDatum = new Datum.ScriptRef(memberRef.castLib(), value);
+                }
+            } else if (!(scriptDatum instanceof Datum.ScriptRef)) {
+                // Create ScriptRef from member info directly
+                scriptDatum = new Datum.ScriptRef(memberRef.castLib(), memberRef.member());
+            }
+
+            // Create new instance of the script
+            List<Datum> newArgs = new ArrayList<>();
+            newArgs.add(scriptDatum);
+            Datum newInstance = ctx.invokeBuiltin("new", newArgs);
+
+            if (!(newInstance instanceof Datum.ScriptInstance instance)) {
+                continue;
+            }
+
+            // Set the ancestor of the previous instance to this one
+            if (previousInstance != null) {
+                previousInstance.properties().put("ancestor", instance);
+            }
+
+            if (firstInstance == null) {
+                firstInstance = instance;
+            }
+
+            previousInstance = instance;
+        }
+
+        return firstInstance;
     }
 
     /**
