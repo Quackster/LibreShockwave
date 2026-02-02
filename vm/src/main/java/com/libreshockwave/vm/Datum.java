@@ -145,6 +145,12 @@ public sealed interface Datum {
         public String toString() { return "window(\"" + name + "\")"; }
     }
 
+    /** Script reference (returned by script() function) */
+    record ScriptRef(int castLib, int member) implements Datum {
+        @Override
+        public String toString() { return "<script " + member + ", " + castLib + ">"; }
+    }
+
     /** Argument list for function calls (expects return value) */
     record ArgList(java.util.List<Datum> items) implements Datum {
         public ArgList {
@@ -242,6 +248,7 @@ public sealed interface Datum {
             case CastLibRef cl -> "castLib";
             case StageRef st -> "stage";
             case WindowRef w -> "window";
+            case ScriptRef sr -> "script";
             default -> getClass().getSimpleName().toLowerCase();
         };
     }

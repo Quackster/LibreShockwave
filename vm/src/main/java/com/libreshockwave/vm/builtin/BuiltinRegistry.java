@@ -25,6 +25,7 @@ public class BuiltinRegistry {
         XtraBuiltins.register(builtins);
         CastLibBuiltins.register(builtins);
         WindowBuiltins.register(builtins);
+        TypeBuiltins.register(builtins);
     }
 
     /**
