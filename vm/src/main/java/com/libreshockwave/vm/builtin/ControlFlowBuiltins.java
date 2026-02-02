@@ -10,7 +10,7 @@ import java.util.function.BiFunction;
 
 /**
  * Control flow builtin functions.
- * Includes: return, halt, abort, nothing
+ * Includes: return, halt, abort, nothing, param
  */
 public final class ControlFlowBuiltins {
 
@@ -21,6 +21,7 @@ public final class ControlFlowBuiltins {
         builtins.put("halt", ControlFlowBuiltins::halt);
         builtins.put("abort", ControlFlowBuiltins::abort);
         builtins.put("nothing", ControlFlowBuiltins::nothing);
+        builtins.put("param", ControlFlowBuiltins::param);
     }
 
     /**
@@ -63,6 +64,33 @@ public final class ControlFlowBuiltins {
      * Does nothing - used as a placeholder.
      */
     private static Datum nothing(LingoVM vm, List<Datum> args) {
+        return Datum.VOID;
+    }
+
+    /**
+     * param(n)
+     * Returns the nth parameter passed to the current handler.
+     * Parameter numbers are 1-indexed in Lingo.
+     */
+    private static Datum param(LingoVM vm, List<Datum> args) {
+        if (args.isEmpty()) {
+            return Datum.VOID;
+        }
+
+        Scope scope = vm.getCurrentScope();
+        if (scope == null) {
+            return Datum.VOID;
+        }
+
+        int paramNumber = args.get(0).toInt();
+        List<Datum> handlerArgs = scope.getArguments();
+
+        // Lingo uses 1-indexed parameters
+        int index = paramNumber - 1;
+        if (index >= 0 && index < handlerArgs.size()) {
+            return handlerArgs.get(index);
+        }
+
         return Datum.VOID;
     }
 }
