@@ -33,7 +33,7 @@ public class CastLibManager implements CastLibProvider {
      * This creates CastLib objects but doesn't load their members yet.
      * Uses CastListChunk as the primary source for cast library info.
      */
-    private void ensureInitialized() {
+    private synchronized void ensureInitialized() {
         if (initialized || file == null) {
             return;
         }
@@ -340,13 +340,20 @@ public class CastLibManager implements CastLibProvider {
         ensureInitialized();
 
         String fileName = FileUtil.getFileNameWithoutExtension(Paths.get(url).getFileName().toString());
+        System.out.println("[CastLibManager] getCastLibNumberByUrl: url=" + url + ", fileName=" + fileName);
+        System.out.println("[CastLibManager] castLibs.size()=" + castLibs.size() + ", initialized=" + initialized);
+        System.out.flush();
 
         for (CastLib castLib : castLibs.values()) {
             String castUrl = castLib.getFileName();
-            if (castUrl != null && castLib.getName().equals(fileName)) {
+            if (castUrl != null && !castUrl.isEmpty() && castLib.getName().equalsIgnoreCase(fileName)) {
+                System.out.println("[CastLibManager]   MATCH! castLib " + castLib.getNumber() + " name='" + castLib.getName() + "'");
+                System.out.flush();
                 return castLib.getNumber();
             }
         }
+        System.out.println("[CastLibManager]   NO MATCH, returning -1");
+        System.out.flush();
         return -1;
     }
 

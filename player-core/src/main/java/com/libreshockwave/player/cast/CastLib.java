@@ -507,21 +507,39 @@ public class CastLib {
      * @return true if parsing was successful
      */
     public boolean setExternalData(byte[] data) {
+        System.out.println("[CastLib] setExternalData called for " + name + " with " + (data != null ? data.length : 0) + " bytes");
+        System.out.flush();
+
         if (data == null || data.length == 0) {
+            System.out.println("[CastLib] setExternalData: data is null or empty");
             return false;
         }
 
         try {
+            System.out.println("[CastLib] About to call DirectorFile.load(byte[])");
+            System.out.flush();
             DirectorFile file = DirectorFile.load(data);
+            System.out.println("[CastLib] DirectorFile.load returned: " + (file != null ? "non-null" : "null"));
+            System.out.flush();
             if (file != null) {
                 this.sourceFile = file;
-                System.out.println("[CastLib] Loaded external cast: " + name + " (" + data.length + " bytes)");
+                System.out.println("[CastLib] Loaded external cast: " + name + " (" + data.length + " bytes, " + file.getScripts().size() + " scripts)");
+                System.out.flush();
                 // Load the cast members now that we have the data
                 load();
                 return true;
+            } else {
+                System.out.println("[CastLib] DirectorFile.load returned null");
+                System.out.flush();
             }
         } catch (Exception e) {
             System.err.println("[CastLib] Failed to parse external cast " + name + ": " + e.getMessage());
+            e.printStackTrace();
+            System.err.flush();
+        } catch (Throwable t) {
+            System.err.println("[CastLib] FATAL ERROR parsing external cast " + name + ": " + t.getMessage());
+            t.printStackTrace();
+            System.err.flush();
         }
         return false;
     }
