@@ -17,7 +17,8 @@ import java.util.*;
  * Similar to dirplayer-rs handler_manager.rs.
  */
 public class LingoVM {
-    private static final int MAX_CALL_STACK_DEPTH = 1000;
+    // Match dirplayer-rs MAX_STACK_SIZE
+    private static final int MAX_CALL_STACK_DEPTH = 50;
 
     private final DirectorFile file;
     private final Map<String, Datum> globals;

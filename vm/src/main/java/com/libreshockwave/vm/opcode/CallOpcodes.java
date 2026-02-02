@@ -33,7 +33,7 @@ public final class CallOpcodes {
             // Log the error and set error state to prevent further handler execution
             // This matches dirplayer-rs stop() behavior
             System.err.println("[Lingo] Error in " + script.getHandlerName(handler) + ": " + e.getMessage());
-            ctx.setErrorState(false);
+            ctx.setErrorState(true);
             return Datum.VOID;
         }
     }
