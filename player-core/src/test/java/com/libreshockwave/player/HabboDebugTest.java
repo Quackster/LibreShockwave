@@ -196,6 +196,107 @@ public class HabboDebugTest {
         }
     }
 
+    private static void findObjectManagerCreate(com.libreshockwave.player.cast.CastLibManager castLibMgr) {
+        System.out.println("\nSearching for 'Object Manager Class' script...");
+
+        for (var entry : castLibMgr.getCastLibs().entrySet()) {
+            var castLib = entry.getValue();
+            if (!castLib.isLoaded()) continue;
+
+            var scriptNames = castLib.getScriptNames();
+            for (var script : castLib.getAllScripts()) {
+                if ("Object Manager Class".equals(script.getScriptName())) {
+                    System.out.println("\nFound Object Manager Class!");
+                    System.out.println("  CastLib: " + entry.getKey() + " (" + castLib.getName() + ")");
+                    System.out.println("  Script ID: " + script.id());
+                    System.out.println("  Handlers: " + script.handlers().size());
+
+                    for (var handler : script.handlers()) {
+                        String handlerName = scriptNames != null ? scriptNames.getName(handler.nameId()) : "name#" + handler.nameId();
+                        System.out.println("\n  Handler: " + handlerName + " (" + handler.instructions().size() + " instructions)");
+                        System.out.println("    Args: " + handler.argCount() + ", Locals: " + handler.localCount());
+
+                        // Print arg names
+                        if (!handler.argNameIds().isEmpty() && scriptNames != null) {
+                            System.out.print("    ArgNames: ");
+                            for (int i = 0; i < handler.argNameIds().size(); i++) {
+                                if (i > 0) System.out.print(", ");
+                                System.out.print(scriptNames.getName(handler.argNameIds().get(i)));
+                            }
+                            System.out.println();
+                        }
+
+                        // Print local names
+                        if (!handler.localNameIds().isEmpty() && scriptNames != null) {
+                            System.out.print("    LocalNames: ");
+                            for (int i = 0; i < handler.localNameIds().size(); i++) {
+                                if (i > 0) System.out.print(", ");
+                                System.out.print(scriptNames.getName(handler.localNameIds().get(i)));
+                            }
+                            System.out.println();
+                        }
+
+                        // Disassemble create handler in detail
+                        if ("create".equals(handlerName)) {
+                            System.out.println("\n    === FULL DISASSEMBLY of create ===");
+                            disassembleHandlerFull(script, handler, scriptNames);
+                        }
+                    }
+                    return;
+                }
+            }
+        }
+        System.out.println("Object Manager Class not found!");
+    }
+
+    private static void disassembleHandlerFull(ScriptChunk script, ScriptChunk.Handler handler, ScriptNamesChunk names) {
+        List<ScriptChunk.Handler.Instruction> instructions = handler.instructions();
+
+        for (int i = 0; i < instructions.size(); i++) {
+            ScriptChunk.Handler.Instruction instr = instructions.get(i);
+            StringBuilder line = new StringBuilder();
+            line.append(String.format("    %3d: %-22s %5d", i, instr.opcode(), instr.argument()));
+
+            // Try to resolve name for opcodes that reference names
+            String opName = instr.opcode().name();
+            int arg = instr.argument();
+
+            if (opName.contains("PUSH_NAME") || opName.contains("CALL") || opName.contains("GET") || opName.contains("SET")) {
+                if (names != null && arg > 0 && arg < 1000) {
+                    String resolvedName = names.getName(arg);
+                    if (resolvedName != null) {
+                        line.append(" ; ").append(resolvedName);
+                    }
+                }
+            }
+
+            // For JMP opcodes, show the target
+            if (opName.contains("JMP")) {
+                int target = i + 1 + arg;
+                line.append(" -> ").append(target);
+            }
+
+            // For GET_LOCAL/SET_LOCAL, show the local name
+            if (opName.contains("LOCAL") && !opName.contains("CALL")) {
+                if (names != null && arg >= 0 && arg < handler.localNameIds().size()) {
+                    String localName = names.getName(handler.localNameIds().get(arg));
+                    if (localName != null) {
+                        line.append(" ; ").append(localName);
+                    }
+                }
+            }
+
+            // For PUSH_INT, PUSH_FLOAT, etc, show the value
+            if (opName.equals("PUSH_INT8") || opName.equals("PUSH_INT16") || opName.equals("PUSH_INT32")) {
+                line.append(" ; int ").append(arg);
+            }
+
+            // For constants - ScriptChunk doesn't expose constants, so skip detailed lookup
+
+            System.out.println(line);
+        }
+    }
+
     private static void disassembleHandler(ScriptChunk script, ScriptChunk.Handler handler, ScriptNamesChunk names) {
         System.out.println("\n      Disassembly of exitFrame:");
         List<ScriptChunk.Handler.Instruction> instructions = handler.instructions();
@@ -331,6 +432,12 @@ public class HabboDebugTest {
             }
         }
 
+        // Find and dump Object Manager Class create handler specifically
+        System.out.println("\n\n========================================");
+        System.out.println("=== Analyzing Object Manager Class ===");
+        System.out.println("========================================");
+        findObjectManagerCreate(castLibManager);
+
         player.stop();
 
         // Add a trace listener to catch the loop
@@ -341,6 +448,7 @@ public class HabboDebugTest {
             private boolean inCreateManager = false;
             private boolean inDumpVariableField = false;
             private boolean inDump = false;
+            private java.util.Deque<String> handlerStack = new java.util.ArrayDeque<>();
 
             @Override
             public void onInstruction(InstructionInfo info) {
@@ -354,10 +462,10 @@ public class HabboDebugTest {
                         info.stackSnapshot().size() <= 3 ? info.stackSnapshot() : "[" + info.stackSnapshot().size() + " items]");
                 }
 
-                // Detailed trace for dumpVariableField and dump
-                if (inDumpVariableField || inDump) {
-                    System.out.printf("  [%s:%d] off=%d: %-15s arg=%d stack=%s%n",
-                        currentHandler, instructionCount, info.offset(), info.opcode(), info.argument(),
+                // Detailed trace for dumpVariableField and dump - ALWAYS show when in these handlers
+                if (handlerStack.contains("dumpVariableField") || handlerStack.contains("dump")) {
+                    System.out.printf("  [DVF:%s:%d] idx=%d off=%d: %-15s arg=%d stack=%s%n",
+                        currentHandler, instructionCount, info.bytecodeIndex(), info.offset(), info.opcode(), info.argument(),
                         info.stackSnapshot());
                 }
 
@@ -370,6 +478,7 @@ public class HabboDebugTest {
             @Override
             public void onHandlerEnter(HandlerInfo info) {
                 instructionCount = 0;
+                handlerStack.push(info.handlerName());
                 currentHandler = info.handlerName();
                 inCreateManager = info.handlerName().equals("createManager");
                 inDumpVariableField = info.handlerName().equals("dumpVariableField");
@@ -385,6 +494,8 @@ public class HabboDebugTest {
             @Override
             public void onHandlerExit(HandlerInfo info, Datum result) {
                 System.out.println("<<< Exit " + info.handlerName() + " (" + instructionCount + " instructions) -> " + result);
+                handlerStack.pop();
+                currentHandler = handlerStack.isEmpty() ? "" : handlerStack.peek();
                 if (info.handlerName().equals("createManager")) {
                     inCreateManager = false;
                 }

@@ -150,6 +150,19 @@ public interface CastLibProvider {
     }
 
     /**
+     * Find a handler in a specific script in a specific cast library.
+     * More precise than findHandlerInScript(int, String) when cast lib number is known.
+     * @param castLibNumber The cast library number
+     * @param memberNumber The script's cast member number
+     * @param handlerName The handler name to find
+     * @return A HandlerLocation if found in that script, or null
+     */
+    default HandlerLocation findHandlerInScript(int castLibNumber, int memberNumber, String handlerName) {
+        // Default falls back to searching all cast libs
+        return findHandlerInScript(memberNumber, handlerName);
+    }
+
+    /**
      * Represents a handler location in a cast library.
      */
     record HandlerLocation(

@@ -71,22 +71,19 @@ public final class ConstructorBuiltins {
 
         Datum.ScriptInstance instance = new Datum.ScriptInstance(instanceId, properties);
 
-        // Call the "new" handler on the script if it exists
-        CastLibProvider provider = CastLibProvider.getProvider();
-        if (provider != null) {
-            var location = provider.findHandler("new");
-            if (location != null && location.script() != null && location.handler() != null) {
-                // Call new() with the instance as receiver
-                if (location.script() instanceof com.libreshockwave.chunks.ScriptChunk script
-                        && location.handler() instanceof com.libreshockwave.chunks.ScriptChunk.Handler handler) {
-                    // Add "me" as first argument (the new instance)
-                    java.util.List<Datum> newArgs = new java.util.ArrayList<>();
-                    newArgs.add(instance);
-                    newArgs.addAll(args);
-                    vm.executeHandler(script, handler, newArgs, instance);
-                }
-            }
-        }
+        // Note: We intentionally do NOT automatically call the "new"/"create" constructor here.
+        // In Director, when you call new(script("SomeClass")), the returned instance is passed
+        // back to Lingo code which then calls the appropriate constructor methods explicitly.
+        // The bytecode typically does something like:
+        //   set instance = script("SomeClass").new()  -- creates instance
+        //   instance.create(args...)                  -- Lingo code calls create explicitly
+        //
+        // Automatically calling constructors here would cause:
+        // 1. Double-calling constructors (once here, once by Lingo code)
+        // 2. Infinite recursion when constructors create other instances
+        //
+        // The instance is returned with __scriptRef__ set so that method dispatch
+        // (like create(), dump(), etc.) works correctly via handleScriptInstanceMethod.
 
         return instance;
     }
