@@ -271,23 +271,56 @@ public final class CallOpcodes {
             return Datum.VOID;
         }
 
-        // Find the handler in the instance's parent script only (not globally)
-        // This prevents infinite loops where movie script handlers are called instead
-        var location = provider.findHandlerInScript(instance.scriptId(), methodName);
-        if (location != null && location.script() != null && location.handler() != null) {
-            if (location.script() instanceof ScriptChunk script
-                    && location.handler() instanceof ScriptChunk.Handler handler) {
-                // Execute with instance as receiver
-                return ctx.executeHandler(script, handler, args, instance);
+        // Walk the ancestor chain to find a handler
+        // Start with the instance's script, then check ancestors
+        Datum.ScriptInstance current = instance;
+        for (int i = 0; i < 100; i++) { // Safety limit to prevent infinite loops
+            var location = provider.findHandlerInScript(current.scriptId(), methodName);
+            if (location != null && location.script() != null && location.handler() != null) {
+                if (location.script() instanceof ScriptChunk script
+                        && location.handler() instanceof ScriptChunk.Handler handler) {
+                    // Execute with original instance as receiver (for property access)
+                    return ctx.executeHandler(script, handler, args, instance);
+                }
+            }
+
+            // Try ancestor
+            Datum ancestor = current.properties().get("ancestor");
+            if (ancestor instanceof Datum.ScriptInstance ancestorInstance) {
+                current = ancestorInstance;
+            } else {
+                break;
             }
         }
 
-        // Check if the method is getting a property
+        // Check if the method is getting a property (walk ancestor chain)
         String prop = methodName.toLowerCase();
-        if (instance.properties().containsKey(prop)) {
-            return instance.properties().get(prop);
+        Datum propValue = getPropertyFromAncestorChain(instance, prop);
+        if (propValue != null && !propValue.isVoid()) {
+            return propValue;
         }
 
+        return Datum.VOID;
+    }
+
+    /**
+     * Get a property from an instance, walking the ancestor chain if not found.
+     */
+    private static Datum getPropertyFromAncestorChain(Datum.ScriptInstance instance, String propName) {
+        Datum.ScriptInstance current = instance;
+        for (int i = 0; i < 100; i++) { // Safety limit
+            if (current.properties().containsKey(propName)) {
+                return current.properties().get(propName);
+            }
+
+            // Try ancestor
+            Datum ancestor = current.properties().get("ancestor");
+            if (ancestor instanceof Datum.ScriptInstance ancestorInstance) {
+                current = ancestorInstance;
+            } else {
+                break;
+            }
+        }
         return Datum.VOID;
     }
 
