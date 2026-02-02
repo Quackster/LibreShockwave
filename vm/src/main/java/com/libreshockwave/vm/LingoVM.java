@@ -39,6 +39,12 @@ public class LingoVM {
     // Error state - when true, no more handlers will execute (like dirplayer-rs stop())
     private boolean inErrorState = false;
 
+    // Track if we're currently inside an error handler to prevent recursive error handling
+    private int errorHandlerDepth = 0;
+    private static final Set<String> ERROR_HANDLER_NAMES = Set.of(
+        "error", "executemessage", "executeMessage"
+    );
+
     public LingoVM(DirectorFile file) {
         this.file = file;
         this.globals = new HashMap<>();
@@ -207,6 +213,15 @@ public class LingoVM {
             return Datum.VOID;
         }
 
+        // Prevent recursive error handling - if we're already in an error handler
+        // and trying to call another error handler, return VOID
+        String handlerName = script.getHandlerName(handler);
+        boolean isErrorHandler = ERROR_HANDLER_NAMES.contains(handlerName.toLowerCase());
+        if (isErrorHandler && errorHandlerDepth > 0) {
+            // Already in an error handler, skip recursive call
+            return Datum.VOID;
+        }
+
         if (callStack.size() >= MAX_CALL_STACK_DEPTH) {
             throw new LingoException("Call stack overflow (max " + MAX_CALL_STACK_DEPTH + " frames)");
         }
@@ -222,6 +237,11 @@ public class LingoVM {
 
         Scope scope = new Scope(script, handler, effectiveArgs, receiver);
         callStack.push(scope);
+
+        // Track error handler depth
+        if (isErrorHandler) {
+            errorHandlerDepth++;
+        }
 
         // Notify trace listener of handler entry
         TraceListener.HandlerInfo handlerInfo = null;
@@ -263,6 +283,9 @@ public class LingoVM {
             throw e;
         } finally {
             callStack.pop();
+            if (isErrorHandler) {
+                errorHandlerDepth--;
+            }
         }
     }
 
