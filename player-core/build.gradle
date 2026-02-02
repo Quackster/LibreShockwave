@@ -46,3 +46,15 @@ tasks.register('runPlayerCoreTests', JavaExec) {
         languageVersion = JavaLanguageVersion.of(21)
     }
 }
+
+// Task to run the Habbo debug tests
+tasks.register('runHabboDebugTest', JavaExec) {
+    group = 'verification'
+    description = 'Run Habbo debug tests'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.HabboDebugTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
