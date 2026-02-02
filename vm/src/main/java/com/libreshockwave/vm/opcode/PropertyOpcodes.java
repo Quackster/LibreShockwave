@@ -213,7 +213,10 @@ public final class PropertyOpcodes {
 
     private static boolean theBuiltin(ExecutionContext ctx) {
         // THE_BUILTIN is used for "the" expressions that take an argument
-        // e.g., "the name of member 1"
+        // e.g., "the paramCount", "the name of member 1"
+        // An arglist is pushed before this opcode and must be popped
+        Datum argListDatum = ctx.pop();
+
         String propName = ctx.resolveName(ctx.getArgument());
 
         // First try movie properties
