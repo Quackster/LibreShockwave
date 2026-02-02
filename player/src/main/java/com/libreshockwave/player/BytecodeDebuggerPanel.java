@@ -273,6 +273,7 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
      */
     public void setDirectorFile(DirectorFile file, CastLibManager castLibManager) {
         this.directorFile = file;
+        this.castLibManager = castLibManager;
         this.allScripts.clear();
 
         scriptModel.removeAllElements();
@@ -334,6 +335,48 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
             case SCORE -> 3;
             default -> 4;
         };
+    }
+
+    // Keep references for refresh
+    private CastLibManager castLibManager;
+
+    /**
+     * Refresh the script list from the current DirectorFile and CastLibManager.
+     * Call this when external casts are loaded.
+     */
+    public void refreshScriptList() {
+        if (directorFile == null) {
+            return;
+        }
+
+        // Remember current selection
+        ScriptItem selectedScript = (ScriptItem) scriptCombo.getSelectedItem();
+        HandlerItem selectedHandler = (HandlerItem) handlerCombo.getSelectedItem();
+        int selectedScriptId = selectedScript != null ? selectedScript.script.id() : -1;
+        String selectedHandlerName = selectedHandler != null ? selectedHandler.script.getHandlerName(selectedHandler.handler) : null;
+
+        // Reload scripts
+        setDirectorFile(directorFile, castLibManager);
+
+        // Try to restore selection
+        if (selectedScriptId >= 0) {
+            for (int i = 0; i < scriptModel.getSize(); i++) {
+                if (scriptModel.getElementAt(i).script.id() == selectedScriptId) {
+                    scriptCombo.setSelectedIndex(i);
+                    // Also try to restore handler selection
+                    if (selectedHandlerName != null) {
+                        for (int j = 0; j < handlerModel.getSize(); j++) {
+                            HandlerItem h = handlerModel.getElementAt(j);
+                            if (h.script.getHandlerName(h.handler).equals(selectedHandlerName)) {
+                                handlerCombo.setSelectedIndex(j);
+                                break;
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
+        }
     }
 
     /**

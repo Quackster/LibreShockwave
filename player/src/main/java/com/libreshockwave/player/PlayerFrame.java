@@ -496,6 +496,13 @@ public class PlayerFrame extends JFrame {
         // Populate debugger panel with script/handler list for browsing (from all cast libraries)
         debuggerPanel.setDirectorFile(file, player.getCastLibManager());
 
+        // Refresh debugger panel when external casts are loaded
+        player.setCastLoadedListener(() -> {
+            SwingUtilities.invokeLater(() -> {
+                debuggerPanel.refreshScriptList();
+            });
+        });
+
         stagePanel.setPlayer(player);
         updateButtonStates();
     }

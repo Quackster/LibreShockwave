@@ -333,8 +333,7 @@ public class HabboDebugTest {
         Player player = new Player(file);
         LingoVM vm = player.getVM();
 
-        // Set a higher step limit to allow complex handlers to complete
-        vm.setStepLimit(100000);
+        // Use default step limit (1M) to allow complex handlers like dump() to complete
 
         // Enable tracing
         vm.setTraceEnabled(true);
