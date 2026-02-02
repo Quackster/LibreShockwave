@@ -586,15 +586,11 @@ public final class CallOpcodes {
                 if (ancestor instanceof Datum.ScriptInstance ancestorInstance) {
                     current = ancestorInstance;
                 } else {
-                    // Debug: log when handler not found
-                    if (methodName.equalsIgnoreCase("resetCastLibs") || methodName.equalsIgnoreCase("resetCastLibHandler")) {
-                        System.err.println("[handleScriptInstanceMethod] handler '" + methodName + "' not found on instance " +
-                            instance.scriptId() + " or ancestors. ScriptRef=" + getScriptRefFromInstance(instance) +
-                            ", ancestor=" + ancestor);
-                    }
                     break;
                 }
             }
+            // Handler not found on instance - return VOID
+            // Director doesn't fall back to global handlers for OBJ_CALL on instances
         }
 
         // THIRD: Check if the method is getting a property (walk ancestor chain)
@@ -899,15 +895,15 @@ public final class CallOpcodes {
                 yield sb.toString();
             }
             case "item" -> {
-                // Split respecting quotes and brackets - don't split on delimiters inside [] or ""
-                java.util.List<String> items = splitRespectingBrackets(str, itemDelimiter);
-                if (start > items.size()) yield "";
+                // Simple split like dirplayer-rs - no bracket/quote awareness
+                String[] items = str.split(String.valueOf(itemDelimiter), -1);
+                if (start > items.length) yield "";
                 int s = start - 1;
-                int e = Math.min(items.size(), end);
+                int e = Math.min(items.length, end);
                 StringBuilder sb = new StringBuilder();
                 for (int i = s; i < e; i++) {
                     if (sb.length() > 0) sb.append(itemDelimiter);
-                    sb.append(items.get(i));
+                    sb.append(items[i]);
                 }
                 yield sb.toString();
             }
@@ -938,46 +934,11 @@ public final class CallOpcodes {
 
     private static int countItems(String str, char delimiter) {
         if (str.isEmpty()) return 0;
-        // Use bracket-aware split to correctly count items
-        int count = splitRespectingBrackets(str, delimiter).size();
+        // Simple split like dirplayer-rs
+        int count = str.split(String.valueOf(delimiter), -1).length;
         System.err.println("[countItems] delimiter=0x" + Integer.toHexString(delimiter) +
             ", strLen=" + str.length() + ", count=" + count);
         return count;
-    }
-
-    /**
-     * Split a string by delimiter, but respect brackets [] and quotes "".
-     * Delimiters inside brackets or quotes are not used as split points.
-     */
-    private static java.util.List<String> splitRespectingBrackets(String str, char delimiter) {
-        java.util.List<String> result = new java.util.ArrayList<>();
-        StringBuilder current = new StringBuilder();
-        int bracketDepth = 0;
-        boolean inQuotes = false;
-
-        for (int i = 0; i < str.length(); i++) {
-            char c = str.charAt(i);
-
-            if (c == '"' && (i == 0 || str.charAt(i - 1) != '\\')) {
-                inQuotes = !inQuotes;
-                current.append(c);
-            } else if (!inQuotes && c == '[') {
-                bracketDepth++;
-                current.append(c);
-            } else if (!inQuotes && c == ']') {
-                bracketDepth = Math.max(0, bracketDepth - 1);
-                current.append(c);
-            } else if (c == delimiter && !inQuotes && bracketDepth == 0) {
-                // This is a real delimiter
-                result.add(current.toString());
-                current = new StringBuilder();
-            } else {
-                current.append(c);
-            }
-        }
-        // Add the last item
-        result.add(current.toString());
-        return result;
     }
 
     /**

@@ -78,6 +78,12 @@ public final class TypeBuiltins {
         }
         Datum arg = args.get(0);
 
+        // Debug: trace value() calls for manager/class configs
+        String argStr = arg.toString();
+        if (argStr.contains("CastLoad") || argStr.contains("Manager Class")) {
+            System.err.println("[value] called with: " + arg + " (type=" + arg.getClass().getSimpleName() + ")");
+        }
+
         // For non-strings, return as-is (matches dirplayer-rs behavior)
         if (!(arg instanceof Datum.Str str)) {
             // Debug: trace when value() receives a list (already parsed)
@@ -96,7 +102,12 @@ public final class TypeBuiltins {
         }
 
         try {
-            return parseLingoExpression(expr, vm);
+            Datum result = parseLingoExpression(expr, vm);
+            // Debug: trace value() results for manager/class configs
+            if (expr.contains("CastLoad") || expr.contains("Manager Class")) {
+                System.err.println("[value] parsed '" + expr + "' -> " + result + " (type=" + result.getClass().getSimpleName() + ")");
+            }
+            return result;
         } catch (Exception e) {
             // On parse error, return VOID (matches dirplayer-rs behavior)
             return Datum.VOID;
@@ -286,12 +297,24 @@ public final class TypeBuiltins {
         Datum identifier = args.get(0);
         CastLibProvider provider = CastLibProvider.getProvider();
 
+        // Debug: trace script() calls
+        String idStr = identifier.toString();
+        if (idStr.contains("CastLoad") || idStr.contains("Manager")) {
+            System.err.println("[script] called with: " + identifier + " (type=" + identifier.getClass().getSimpleName() + ")");
+        }
+
         if (identifier instanceof Datum.Str str) {
             // Find script by name
             if (provider != null) {
                 Datum memberRef = provider.getMemberByName(0, str.value());
                 if (memberRef instanceof Datum.CastMemberRef cmr) {
+                    System.err.println("[script] '" + str.value() + "' -> member(" + cmr.member() + ", " + cmr.castLib() + ")");
                     return new Datum.ScriptRef(cmr.castLib(), cmr.member());
+                } else {
+                    // Debug: member not found
+                    if (str.value().contains("CastLoad") || str.value().contains("Manager")) {
+                        System.err.println("[script] '" + str.value() + "' NOT FOUND (returned " + memberRef + ")");
+                    }
                 }
             }
         } else if (identifier instanceof Datum.Symbol sym) {
@@ -326,12 +349,16 @@ public final class TypeBuiltins {
         } else if (identifier instanceof Datum.List list) {
             // List of script names - return the first valid one found
             // This is used for class hierarchies like ["Manager Template Class", "Variable Container Class"]
+            System.err.println("[script] processing list: " + list);
             for (Datum item : list.items()) {
+                System.err.println("[script] trying list item: " + item);
                 Datum result = script(vm, List.of(item));
                 if (!result.isVoid()) {
+                    System.err.println("[script] list item found: " + item + " -> " + result);
                     return result;
                 }
             }
+            System.err.println("[script] no items in list found, returning VOID");
         }
 
         return Datum.VOID;

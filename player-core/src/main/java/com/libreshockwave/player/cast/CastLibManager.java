@@ -510,6 +510,15 @@ public class CastLibManager implements CastLibProvider {
             if (handler != null) {
                 return new HandlerLocation(castLib.getNumber(), script, handler, scriptNames);
             }
+            // Debug: log when handler not found
+            if (handlerName.equalsIgnoreCase("resetCastLibs")) {
+                System.err.println("[findHandlerInScript] handler '" + handlerName + "' not found in script " +
+                    memberNumber + " of castLib " + castLibNumber + " (" + script.getScriptName() + ")");
+                var handlerNames = script.handlers().stream()
+                    .map(h -> scriptNames != null ? scriptNames.getName(h.nameId()) : "id_" + h.nameId())
+                    .toList();
+                System.err.println("  Available handlers: " + handlerNames);
+            }
         }
 
         return null;
