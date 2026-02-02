@@ -289,6 +289,7 @@ public class Player {
 
     /**
      * Start playback from the beginning.
+     * This runs synchronously - use playAsync() when debugger is enabled.
      */
     public void play() {
         if (state == PlayerState.STOPPED) {
@@ -296,6 +297,33 @@ public class Player {
         }
         state = PlayerState.PLAYING;
         log("play()");
+    }
+
+    /**
+     * Start playback asynchronously on background thread.
+     * Use this when the debugger is enabled to prevent UI freezing.
+     * @param onReady Callback when movie is prepared and ready to play (called on VM thread)
+     */
+    public void playAsync(Runnable onReady) {
+        if (state != PlayerState.STOPPED) {
+            state = PlayerState.PLAYING;
+            if (onReady != null) onReady.run();
+            return;
+        }
+
+        vmRunning = true;
+        vmExecutor.submit(() -> {
+            try {
+                prepareMovie();
+                state = PlayerState.PLAYING;
+                log("playAsync()");
+            } finally {
+                vmRunning = false;
+                if (onReady != null) {
+                    onReady.run();
+                }
+            }
+        });
     }
 
     /**
@@ -353,6 +381,7 @@ public class Player {
 
     /**
      * Step forward one frame (manual advance).
+     * This runs synchronously - use stepFrameAsync() when debugger is enabled.
      */
     public void stepFrame() {
         if (state == PlayerState.STOPPED) {
@@ -367,6 +396,45 @@ public class Player {
         } finally {
             clearProviders();
         }
+    }
+
+    /**
+     * Step forward one frame asynchronously on background thread.
+     * Use this when the debugger is enabled to prevent UI freezing.
+     * @param onComplete Callback when frame is complete (called on VM thread)
+     */
+    public void stepFrameAsync(Runnable onComplete) {
+        if (vmRunning) {
+            return;
+        }
+
+        vmRunning = true;
+        vmExecutor.submit(() -> {
+            try {
+                if (state == PlayerState.STOPPED) {
+                    prepareMovie();
+                    state = PlayerState.PAUSED;
+                }
+
+                // Update debug controller with current globals
+                if (debugController != null) {
+                    debugController.setGlobalsSnapshot(vm.getGlobals());
+                }
+
+                setupProviders();
+                try {
+                    frameContext.executeFrame();
+                    frameContext.advanceFrame();
+                } finally {
+                    clearProviders();
+                }
+            } finally {
+                vmRunning = false;
+                if (onComplete != null) {
+                    onComplete.run();
+                }
+            }
+        });
     }
 
     // Frame execution (called by external timer/loop)

@@ -70,3 +70,15 @@ tasks.register('runHabboRunTest', JavaExec) {
         languageVersion = JavaLanguageVersion.of(21)
     }
 }
+
+// Task to debug cast lib scripts
+tasks.register('runCastLibDebugTest', JavaExec) {
+    group = 'verification'
+    description = 'Debug cast lib scripts'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.CastLibDebugTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}

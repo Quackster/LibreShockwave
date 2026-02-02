@@ -493,6 +493,9 @@ public class PlayerFrame extends JFrame {
         player.setDebugController(debugController);
         player.setDebugEnabled(true);
 
+        // Populate debugger panel with script/handler list for browsing (from all cast libraries)
+        debuggerPanel.setDirectorFile(file, player.getCastLibManager());
+
         stagePanel.setPlayer(player);
         updateButtonStates();
     }
@@ -502,9 +505,14 @@ public class PlayerFrame extends JFrame {
     private void play() {
         if (player == null) return;
 
-        player.play();
-        startPlaybackTimer();
-        updateButtonStates();
+        // Use async execution to prevent UI freeze when debugger pauses
+        player.playAsync(() -> {
+            SwingUtilities.invokeLater(() -> {
+                startPlaybackTimer();
+                updateButtonStates();
+            });
+        });
+        updateButtonStates();  // Disable play button immediately
     }
 
     private void pause() {
@@ -552,8 +560,9 @@ public class PlayerFrame extends JFrame {
         setTitle("LibreShockwave Player");
         statusLabel.setText("No file loaded. Open a .dir, .dxr, or .dcr file.");
 
-        // Reset debug controller
+        // Reset debug controller and panel
         debugController.reset();
+        debuggerPanel.setDirectorFile(null);
     }
 
     private void togglePlayPause() {
@@ -569,9 +578,13 @@ public class PlayerFrame extends JFrame {
     private void stepFrame() {
         if (player == null) return;
 
-        player.stepFrame();
-        updateFrameLabel();
-        stagePanel.repaint();
+        // Use async execution to prevent UI freeze when debugger pauses
+        player.stepFrameAsync(() -> {
+            SwingUtilities.invokeLater(() -> {
+                updateFrameLabel();
+                stagePanel.repaint();
+            });
+        });
     }
 
     private void stepBackward() {

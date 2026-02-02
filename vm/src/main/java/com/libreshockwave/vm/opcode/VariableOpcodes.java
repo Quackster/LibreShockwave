@@ -40,7 +40,9 @@ public final class VariableOpcodes {
     }
 
     private static boolean setParam(ExecutionContext ctx) {
-        ctx.pop();
+        int index = ctx.getArgument();
+        Datum value = ctx.pop();
+        ctx.setParam(index, value);
         return true;
     }
 

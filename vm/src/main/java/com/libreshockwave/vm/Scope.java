@@ -17,7 +17,8 @@ public final class Scope {
 
     private final ScriptChunk script;
     private final ScriptChunk.Handler handler;
-    private final List<Datum> arguments;
+    private final List<Datum> originalArguments;
+    private final Map<Integer, Datum> modifiedParams;  // For SET_PARAM modifications
     private final Map<Integer, Datum> locals;
     private final Deque<Datum> stack;
     private final Datum receiver;  // 'me' in behavior/parent scripts
@@ -32,7 +33,8 @@ public final class Scope {
     public Scope(ScriptChunk script, ScriptChunk.Handler handler, List<Datum> arguments, Datum receiver) {
         this.script = script;
         this.handler = handler;
-        this.arguments = List.copyOf(arguments);
+        this.originalArguments = List.copyOf(arguments);
+        this.modifiedParams = new HashMap<>();
         this.locals = new HashMap<>();
         this.stack = new ArrayDeque<>();
         this.receiver = receiver != null ? receiver : Datum.VOID;
@@ -58,7 +60,7 @@ public final class Scope {
     }
 
     public List<Datum> getArguments() {
-        return arguments;
+        return originalArguments;
     }
 
     public Datum getReceiver() {
@@ -137,10 +139,19 @@ public final class Scope {
     // For movie script handlers, there's no receiver, so args[0] is the first explicit argument.
 
     public Datum getParam(int index) {
-        if (index >= 0 && index < arguments.size()) {
-            return arguments.get(index);
+        // Check if param was modified via SET_PARAM
+        if (modifiedParams.containsKey(index)) {
+            return modifiedParams.get(index);
+        }
+        // Otherwise return original argument
+        if (index >= 0 && index < originalArguments.size()) {
+            return originalArguments.get(index);
         }
         return Datum.VOID;
+    }
+
+    public void setParam(int index, Datum value) {
+        modifiedParams.put(index, value);
     }
 
     // Local variable access

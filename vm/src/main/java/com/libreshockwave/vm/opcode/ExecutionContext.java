@@ -119,6 +119,13 @@ public final class ExecutionContext {
         return scope.getParam(index);
     }
 
+    public void setParam(int index, Datum value) {
+        scope.setParam(index, value);
+        if (traceListener != null) {
+            traceListener.onVariableSet("param", "param" + index, value);
+        }
+    }
+
     // Global access
 
     public Datum getGlobal(String name) {

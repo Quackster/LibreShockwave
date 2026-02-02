@@ -1,5 +1,10 @@
 package com.libreshockwave.player;
 
+import com.libreshockwave.DirectorFile;
+import com.libreshockwave.chunks.ScriptChunk;
+import com.libreshockwave.lingo.Opcode;
+import com.libreshockwave.player.cast.CastLib;
+import com.libreshockwave.player.cast.CastLibManager;
 import com.libreshockwave.player.debug.DebugController;
 import com.libreshockwave.player.debug.DebugSnapshot;
 import com.libreshockwave.player.debug.DebugStateListener;
@@ -25,7 +30,17 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
     // Controller
     private DebugController controller;
 
-    // UI Components
+    // Director file for script browsing
+    private DirectorFile directorFile;
+    private List<ScriptChunk> allScripts = new ArrayList<>();
+
+    // UI Components - Script browser
+    private JComboBox<ScriptItem> scriptCombo;
+    private JComboBox<HandlerItem> handlerCombo;
+    private DefaultComboBoxModel<ScriptItem> scriptModel;
+    private DefaultComboBoxModel<HandlerItem> handlerModel;
+
+    // UI Components - Bytecode display
     private JList<InstructionDisplayItem> bytecodeList;
     private DefaultListModel<InstructionDisplayItem> bytecodeModel;
     private JTable stackTable;
@@ -51,6 +66,11 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
 
     // Track current script ID for breakpoints
     private int currentScriptId = -1;
+
+    // Track if we're in "browse mode" (user selected a handler) vs "trace mode" (following execution)
+    private boolean browseMode = false;
+    private ScriptChunk browseScript = null;
+    private ScriptChunk.Handler browseHandler = null;
 
     public BytecodeDebuggerPanel() {
         setLayout(new BorderLayout());
@@ -141,6 +161,24 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
         JPanel bytecodePanel = new JPanel(new BorderLayout());
         bytecodePanel.setBorder(new TitledBorder("Bytecode"));
 
+        // Script/Handler browser panel
+        JPanel browserPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+        browserPanel.add(new JLabel("Script:"));
+        scriptModel = new DefaultComboBoxModel<>();
+        scriptCombo = new JComboBox<>(scriptModel);
+        scriptCombo.setPreferredSize(new Dimension(180, 24));
+        scriptCombo.addActionListener(e -> onScriptSelected());
+        browserPanel.add(scriptCombo);
+
+        browserPanel.add(new JLabel("Handler:"));
+        handlerModel = new DefaultComboBoxModel<>();
+        handlerCombo = new JComboBox<>(handlerModel);
+        handlerCombo.setPreferredSize(new Dimension(140, 24));
+        handlerCombo.addActionListener(e -> onHandlerSelected());
+        browserPanel.add(handlerCombo);
+
+        bytecodePanel.add(browserPanel, BorderLayout.NORTH);
+
         bytecodeModel = new DefaultListModel<>();
         bytecodeList = new JList<>(bytecodeModel);
         bytecodeList.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
@@ -171,7 +209,7 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
         bytecodePanel.add(bytecodeScroll, BorderLayout.CENTER);
 
         // Legend
-        JLabel legend = new JLabel("<html><font color='red'>\u25CF</font> = breakpoint &nbsp; <font color='#FFD700'>\u25B6</font> = current</html>");
+        JLabel legend = new JLabel("<html><font color='red'>\u25CF</font> = breakpoint &nbsp; <font color='#FFD700'>\u25B6</font> = current &nbsp; (double-click or click left margin to toggle breakpoint)</html>");
         legend.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 10));
         bytecodePanel.add(legend, BorderLayout.SOUTH);
 
@@ -218,6 +256,212 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
      */
     public void setController(DebugController controller) {
         this.controller = controller;
+    }
+
+    /**
+     * Set the DirectorFile and populate the script browser.
+     * Call this when a movie is loaded.
+     */
+    public void setDirectorFile(DirectorFile file) {
+        setDirectorFile(file, null);
+    }
+
+    /**
+     * Set the DirectorFile and CastLibManager, populating the script browser
+     * with scripts from all cast libraries.
+     * Call this when a movie is loaded.
+     */
+    public void setDirectorFile(DirectorFile file, CastLibManager castLibManager) {
+        this.directorFile = file;
+        this.allScripts.clear();
+
+        scriptModel.removeAllElements();
+        handlerModel.removeAllElements();
+        bytecodeModel.clear();
+
+        if (file == null) {
+            return;
+        }
+
+        // Collect all scripts from main file
+        Set<Integer> seenScriptIds = new HashSet<>();
+        for (ScriptChunk script : file.getScripts()) {
+            if (!seenScriptIds.contains(script.id())) {
+                allScripts.add(script);
+                seenScriptIds.add(script.id());
+            }
+        }
+
+        // Also collect scripts from all cast libraries
+        if (castLibManager != null) {
+            for (CastLib castLib : castLibManager.getCastLibs().values()) {
+                for (ScriptChunk script : castLib.getAllScripts()) {
+                    if (!seenScriptIds.contains(script.id())) {
+                        allScripts.add(script);
+                        seenScriptIds.add(script.id());
+                    }
+                }
+            }
+        }
+
+        // Sort scripts by type, then by name for easier navigation
+        allScripts.sort((a, b) -> {
+            // First by type (MOVIE_SCRIPT first, then BEHAVIOR, then PARENT)
+            int typeOrder = getScriptTypeOrder(a.getScriptType()) - getScriptTypeOrder(b.getScriptType());
+            if (typeOrder != 0) return typeOrder;
+            // Then by name
+            return a.getDisplayName().compareToIgnoreCase(b.getDisplayName());
+        });
+
+        // Populate script combo
+        for (ScriptChunk script : allScripts) {
+            if (!script.handlers().isEmpty()) {
+                scriptModel.addElement(new ScriptItem(script));
+            }
+        }
+
+        // Auto-select first script if available
+        if (scriptModel.getSize() > 0) {
+            scriptCombo.setSelectedIndex(0);
+        }
+    }
+
+    private int getScriptTypeOrder(ScriptChunk.ScriptType type) {
+        return switch (type) {
+            case MOVIE_SCRIPT -> 0;
+            case BEHAVIOR -> 1;
+            case PARENT -> 2;
+            case SCORE -> 3;
+            default -> 4;
+        };
+    }
+
+    /**
+     * Called when a script is selected in the combo box.
+     */
+    private void onScriptSelected() {
+        ScriptItem selected = (ScriptItem) scriptCombo.getSelectedItem();
+        handlerModel.removeAllElements();
+
+        if (selected == null) {
+            return;
+        }
+
+        ScriptChunk script = selected.script;
+        for (ScriptChunk.Handler handler : script.handlers()) {
+            handlerModel.addElement(new HandlerItem(script, handler));
+        }
+
+        // Auto-select first handler
+        if (handlerModel.getSize() > 0) {
+            handlerCombo.setSelectedIndex(0);
+        }
+    }
+
+    /**
+     * Called when a handler is selected in the combo box.
+     */
+    private void onHandlerSelected() {
+        HandlerItem selected = (HandlerItem) handlerCombo.getSelectedItem();
+        if (selected == null) {
+            return;
+        }
+
+        browseMode = true;
+        browseScript = selected.script;
+        browseHandler = selected.handler;
+        currentScriptId = browseScript.id();
+
+        loadHandlerBytecode(selected.script, selected.handler);
+    }
+
+    /**
+     * Load bytecode for a handler into the bytecode list.
+     */
+    private void loadHandlerBytecode(ScriptChunk script, ScriptChunk.Handler handler) {
+        bytecodeModel.clear();
+        currentInstructions.clear();
+        currentInstructionIndex = -1;
+
+        handlerLabel.setText("Handler: " + script.getHandlerName(handler) + " (" + script.getDisplayName() + ")");
+
+        for (ScriptChunk.Handler.Instruction instr : handler.instructions()) {
+            String annotation = buildAnnotation(script, handler, instr);
+            boolean hasBp = controller != null && controller.hasBreakpoint(script.id(), instr.offset());
+
+            InstructionDisplayItem item = new InstructionDisplayItem(
+                instr.offset(),
+                handler.instructions().indexOf(instr),
+                instr.opcode().name(),
+                instr.argument(),
+                annotation,
+                hasBp
+            );
+            bytecodeModel.addElement(item);
+            currentInstructions.add(item);
+        }
+    }
+
+    /**
+     * Build annotation string for an instruction (similar to TracingHelper).
+     */
+    private String buildAnnotation(ScriptChunk script, ScriptChunk.Handler handler, ScriptChunk.Handler.Instruction instr) {
+        Opcode op = instr.opcode();
+        int arg = instr.argument();
+
+        return switch (op) {
+            case PUSH_INT8, PUSH_INT16, PUSH_INT32 -> "<" + arg + ">";
+            case PUSH_FLOAT32 -> "<" + Float.intBitsToFloat(arg) + ">";
+            case PUSH_CONS -> {
+                List<ScriptChunk.LiteralEntry> literals = script.literals();
+                if (arg >= 0 && arg < literals.size()) {
+                    yield "<" + literals.get(arg).value() + ">";
+                }
+                yield "<literal#" + arg + ">";
+            }
+            case PUSH_SYMB -> "<#" + script.resolveName(arg) + ">";
+            case GET_LOCAL, SET_LOCAL -> {
+                // Try to get local name
+                if (arg >= 0 && arg < handler.localNameIds().size()) {
+                    yield "<" + script.resolveName(handler.localNameIds().get(arg)) + ">";
+                }
+                yield "<local" + arg + ">";
+            }
+            case GET_PARAM -> {
+                if (arg >= 0 && arg < handler.argNameIds().size()) {
+                    yield "<" + script.resolveName(handler.argNameIds().get(arg)) + ">";
+                }
+                yield "<param" + arg + ">";
+            }
+            case GET_GLOBAL, SET_GLOBAL, GET_GLOBAL2, SET_GLOBAL2 -> "<" + script.resolveName(arg) + ">";
+            case GET_PROP, SET_PROP -> "<me." + script.resolveName(arg) + ">";
+            case LOCAL_CALL -> {
+                var handlers = script.handlers();
+                if (arg >= 0 && arg < handlers.size()) {
+                    yield "<" + script.getHandlerName(handlers.get(arg)) + "()>";
+                }
+                yield "<handler#" + arg + "()>";
+            }
+            case EXT_CALL, OBJ_CALL -> "<" + script.resolveName(arg) + "()>";
+            case JMP, JMP_IF_Z -> "<offset " + arg + " -> " + (instr.offset() + arg) + ">";
+            case END_REPEAT -> "<back " + arg + " -> " + (instr.offset() - arg) + ">";
+            default -> "";
+        };
+    }
+
+    /**
+     * Clear the bytecode display and reset browse mode.
+     */
+    public void clear() {
+        bytecodeModel.clear();
+        currentInstructions.clear();
+        browseMode = false;
+        browseScript = null;
+        browseHandler = null;
+        currentScriptId = -1;
+        currentInstructionIndex = -1;
+        statusLabel.setText("Status: Running");
+        handlerLabel.setText("Handler: -");
     }
 
     /**
@@ -341,7 +585,25 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
         currentScriptId = info.scriptId();
 
         SwingUtilities.invokeLater(() -> {
-            // Clear and prepare for new handler
+            // Switch to trace mode - show the handler being executed
+            browseMode = false;
+
+            // Find and load the script's full bytecode
+            ScriptChunk script = findScriptById(info.scriptId());
+            if (script != null) {
+                ScriptChunk.Handler handler = script.findHandler(info.handlerName());
+                if (handler != null) {
+                    // Load full bytecode for the handler
+                    loadHandlerBytecode(script, handler);
+
+                    // Update combo boxes to reflect current handler (without triggering events)
+                    selectScriptInCombo(script);
+                    selectHandlerInCombo(script, handler);
+                    return;
+                }
+            }
+
+            // Fallback: clear and prepare for incremental instruction capture
             currentInstructions.clear();
             bytecodeModel.clear();
             currentInstructionIndex = -1;
@@ -358,35 +620,70 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
     @Override
     public void onInstruction(InstructionInfo info) {
         SwingUtilities.invokeLater(() -> {
-            // Add instruction to list if not already present
-            int existingIndex = findInstructionByOffset(info.offset());
-            if (existingIndex < 0) {
-                InstructionDisplayItem item = new InstructionDisplayItem(
-                    info.offset(),
-                    info.bytecodeIndex(),
-                    info.opcode(),
-                    info.argument(),
-                    info.annotation(),
-                    controller != null && currentScriptId >= 0 && controller.hasBreakpoint(currentScriptId, info.offset())
-                );
-                // Insert in order by offset
-                int insertIndex = 0;
-                for (int i = 0; i < bytecodeModel.size(); i++) {
-                    if (bytecodeModel.get(i).offset > info.offset()) {
-                        break;
-                    }
-                    insertIndex = i + 1;
-                }
-                bytecodeModel.add(insertIndex, item);
-                currentInstructions.add(insertIndex, item);
-            }
-
             // Update current instruction highlight
             highlightCurrentInstruction(info.bytecodeIndex());
 
             // Update stack display
             stackTableModel.setStack(info.stackSnapshot());
         });
+    }
+
+    /**
+     * Find a script by its ID.
+     */
+    private ScriptChunk findScriptById(int scriptId) {
+        for (ScriptChunk script : allScripts) {
+            if (script.id() == scriptId) {
+                return script;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Select a script in the combo box without triggering handler reload.
+     */
+    private void selectScriptInCombo(ScriptChunk script) {
+        for (int i = 0; i < scriptModel.getSize(); i++) {
+            if (scriptModel.getElementAt(i).script == script) {
+                // Remove listener temporarily to avoid triggering reload
+                ActionListener[] listeners = scriptCombo.getActionListeners();
+                for (ActionListener l : listeners) {
+                    scriptCombo.removeActionListener(l);
+                }
+                scriptCombo.setSelectedIndex(i);
+                for (ActionListener l : listeners) {
+                    scriptCombo.addActionListener(l);
+                }
+                break;
+            }
+        }
+    }
+
+    /**
+     * Select a handler in the combo box without triggering bytecode reload.
+     */
+    private void selectHandlerInCombo(ScriptChunk script, ScriptChunk.Handler handler) {
+        // First update handler model to match script
+        handlerModel.removeAllElements();
+        for (ScriptChunk.Handler h : script.handlers()) {
+            handlerModel.addElement(new HandlerItem(script, h));
+        }
+
+        // Find and select the handler
+        for (int i = 0; i < handlerModel.getSize(); i++) {
+            if (handlerModel.getElementAt(i).handler == handler) {
+                ActionListener[] listeners = handlerCombo.getActionListeners();
+                for (ActionListener l : listeners) {
+                    handlerCombo.removeActionListener(l);
+                }
+                handlerCombo.setSelectedIndex(i);
+                for (ActionListener l : listeners) {
+                    handlerCombo.addActionListener(l);
+                }
+                break;
+            }
+        }
     }
 
     private int findInstructionByOffset(int offset) {
@@ -624,6 +921,36 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
                 case 2 -> DatumFormatter.format(d);
                 default -> "";
             };
+        }
+    }
+
+    // Combo box item for scripts
+    private static class ScriptItem {
+        final ScriptChunk script;
+
+        ScriptItem(ScriptChunk script) {
+            this.script = script;
+        }
+
+        @Override
+        public String toString() {
+            return script.getDisplayName();
+        }
+    }
+
+    // Combo box item for handlers
+    private static class HandlerItem {
+        final ScriptChunk script;
+        final ScriptChunk.Handler handler;
+
+        HandlerItem(ScriptChunk script, ScriptChunk.Handler handler) {
+            this.script = script;
+            this.handler = handler;
+        }
+
+        @Override
+        public String toString() {
+            return script.getHandlerName(handler);
         }
     }
 }
