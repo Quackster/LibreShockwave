@@ -72,10 +72,6 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
     private JTable watchesTable;
     private WatchesTableModel watchesTableModel;
 
-    // UI Components - Debug Log
-    private JTextArea debugLogArea;
-    private DefaultListModel<String> debugLogModel;
-
     // State tabs reference for adding watches/log tabs
     private JTabbedPane stateTabs;
 
@@ -343,6 +339,21 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
         stackTable.getColumnModel().getColumn(0).setPreferredWidth(40);
         stackTable.getColumnModel().getColumn(1).setPreferredWidth(80);
         stackTable.getColumnModel().getColumn(2).setPreferredWidth(200);
+        // Double-click to show detailed Datum info
+        stackTable.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2) {
+                    int row = stackTable.getSelectedRow();
+                    if (row >= 0) {
+                        Datum d = stackTableModel.getDatum(row);
+                        if (d != null) {
+                            showDatumDetailsDialog(d, "Stack[" + row + "]");
+                        }
+                    }
+                }
+            }
+        });
         stateTabs.addTab("Stack", new JScrollPane(stackTable));
 
         // Locals table
@@ -365,9 +376,6 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
 
         // Watches table
         stateTabs.addTab("Watches", createWatchesPanel());
-
-        // Debug Log
-        stateTabs.addTab("Debug Log", createDebugLogPanel());
 
         mainSplit.setBottomComponent(stateTabs);
 
@@ -723,30 +731,6 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
     }
 
     /**
-     * Create the debug log panel.
-     */
-    private JPanel createDebugLogPanel() {
-        JPanel panel = new JPanel(new BorderLayout());
-
-        debugLogArea = new JTextArea();
-        debugLogArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
-        debugLogArea.setEditable(false);
-        debugLogArea.setLineWrap(true);
-        debugLogArea.setWrapStyleWord(true);
-
-        panel.add(new JScrollPane(debugLogArea), BorderLayout.CENTER);
-
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        JButton clearBtn = new JButton("Clear");
-        clearBtn.addActionListener(e -> debugLogArea.setText(""));
-        buttonPanel.add(clearBtn);
-
-        panel.add(buttonPanel, BorderLayout.SOUTH);
-
-        return panel;
-    }
-
-    /**
      * Refresh watch expressions display.
      */
     private void refreshWatches() {
@@ -757,14 +741,39 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
     }
 
     /**
-     * Append a message to the debug log.
+     * Show a dialog with detailed information about a Datum value.
      */
-    private void appendToDebugLog(String message) {
-        SwingUtilities.invokeLater(() -> {
-            debugLogArea.append(message + "\n");
-            // Auto-scroll to bottom
-            debugLogArea.setCaretPosition(debugLogArea.getDocument().getLength());
-        });
+    private void showDatumDetailsDialog(Datum d, String title) {
+        JDialog dialog = new JDialog(SwingUtilities.getWindowAncestor(this),
+            "Datum Details: " + title, Dialog.ModalityType.MODELESS);
+        dialog.setLayout(new BorderLayout(10, 10));
+        dialog.setSize(500, 400);
+        dialog.setLocationRelativeTo(this);
+
+        JTextArea textArea = new JTextArea();
+        textArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        textArea.setEditable(false);
+        textArea.setLineWrap(true);
+        textArea.setWrapStyleWord(true);
+
+        // Build detailed display
+        StringBuilder sb = new StringBuilder();
+        sb.append("Type: ").append(com.libreshockwave.vm.DatumFormatter.getTypeName(d)).append("\n\n");
+        sb.append("Value:\n");
+        sb.append(com.libreshockwave.vm.DatumFormatter.formatDetailed(d, 0));
+
+        textArea.setText(sb.toString());
+        textArea.setCaretPosition(0);
+
+        dialog.add(new JScrollPane(textArea), BorderLayout.CENTER);
+
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JButton closeBtn = new JButton("Close");
+        closeBtn.addActionListener(e -> dialog.dispose());
+        buttonPanel.add(closeBtn);
+        dialog.add(buttonPanel, BorderLayout.SOUTH);
+
+        dialog.setVisible(true);
     }
 
     /**
@@ -1513,8 +1522,8 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
 
     @Override
     public void onLogPointHit(Breakpoint bp, String message) {
-        String logLine = String.format("[LogPoint] Script %d, offset %d: %s", bp.scriptId(), bp.offset(), message);
-        appendToDebugLog(logLine);
+        // Log to console since debug log tab was removed
+        System.out.println(String.format("[LogPoint] Script %d, offset %d: %s", bp.scriptId(), bp.offset(), message));
     }
 
     @Override
