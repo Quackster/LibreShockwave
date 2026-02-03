@@ -39,7 +39,18 @@ A Java library for parsing Macromedia/Adobe Director and Shockwave files (.dir, 
 
 ## Screenshots
 
+###
+
+This player is currently in development. The aim is to get it working within our Java Swing UI player and then eventually start a new project where it's compiled using TeaVM into WASM for browser playback.
+
+All "player" functionality is decoupled from the SDK and VM projects so it will be easy to convert in future.
+
+<img width="2174" height="1048" alt="image" src="https://github.com/user-attachments/assets/3c8f0357-0941-4dd4-9795-525a45216644" />
+
+
 ### An example piece of software created with this library.
+
+Cast Extractor (on releases page):
 
 <img width="1127" height="749" alt="image" src="https://github.com/user-attachments/assets/de4f99d2-87ed-4c78-8422-a84bcf9faeca" />
 
