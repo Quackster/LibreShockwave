@@ -41,7 +41,9 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
     private DirectorFile directorFile;
     private List<ScriptChunk> allScripts = new ArrayList<>();
     private List<ScriptItem> allScriptItems = new ArrayList<>();  // All scripts with source info
+    private List<HandlerItem> allHandlerItems = new ArrayList<>();  // All handlers for current script
     private JTextField scriptFilterField;  // Filter field for script combo
+    private JTextField handlerFilterField;  // Filter field for handler combo
 
     // UI Components - Script browser
     private JComboBox<ScriptItem> scriptCombo;
@@ -92,6 +94,11 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
     private boolean browseMode = false;
     private ScriptChunk browseScript = null;
     private ScriptChunk.Handler browseHandler = null;
+
+    // Debounce timers for filter text fields
+    private javax.swing.Timer scriptFilterTimer;
+    private javax.swing.Timer handlerFilterTimer;
+    private static final int FILTER_DEBOUNCE_MS = 150;
 
     public BytecodeDebuggerPanel() {
         setLayout(new BorderLayout());
@@ -182,21 +189,58 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
         JPanel bytecodePanel = new JPanel(new BorderLayout());
         bytecodePanel.setBorder(new TitledBorder("Bytecode"));
 
-        // Script/Handler browser panel
-        JPanel browserPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
-        browserPanel.add(new JLabel("Script:"));
+        // Script/Handler browser panel - use BoxLayout for two rows
+        JPanel browserPanel = new JPanel();
+        browserPanel.setLayout(new BoxLayout(browserPanel, BoxLayout.Y_AXIS));
+
+        // Row 1: Script filter and combo
+        JPanel scriptRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 3, 2));
+        scriptRow.add(new JLabel("Script:"));
+        scriptFilterField = new JTextField(10);
+        scriptFilterField.setToolTipText("Type to filter scripts");
+        scriptFilterTimer = new javax.swing.Timer(FILTER_DEBOUNCE_MS, e -> filterScripts());
+        scriptFilterTimer.setRepeats(false);
+        scriptFilterField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            @Override
+            public void insertUpdate(javax.swing.event.DocumentEvent e) { scriptFilterTimer.restart(); }
+            @Override
+            public void removeUpdate(javax.swing.event.DocumentEvent e) { scriptFilterTimer.restart(); }
+            @Override
+            public void changedUpdate(javax.swing.event.DocumentEvent e) { scriptFilterTimer.restart(); }
+        });
+        scriptRow.add(scriptFilterField);
+
         scriptModel = new DefaultComboBoxModel<>();
         scriptCombo = new JComboBox<>(scriptModel);
-        scriptCombo.setPreferredSize(new Dimension(180, 24));
+        scriptCombo.setPreferredSize(new Dimension(350, 24));
+        scriptCombo.setMaximumRowCount(20);
         scriptCombo.addActionListener(e -> onScriptSelected());
-        browserPanel.add(scriptCombo);
+        scriptRow.add(scriptCombo);
+        browserPanel.add(scriptRow);
 
-        browserPanel.add(new JLabel("Handler:"));
+        // Row 2: Handler filter, combo and details button
+        JPanel handlerRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 3, 2));
+        handlerRow.add(new JLabel("Handler:"));
+
+        handlerFilterField = new JTextField(10);
+        handlerFilterField.setToolTipText("Type to filter handlers");
+        handlerFilterTimer = new javax.swing.Timer(FILTER_DEBOUNCE_MS, e -> filterHandlers());
+        handlerFilterTimer.setRepeats(false);
+        handlerFilterField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            @Override
+            public void insertUpdate(javax.swing.event.DocumentEvent e) { handlerFilterTimer.restart(); }
+            @Override
+            public void removeUpdate(javax.swing.event.DocumentEvent e) { handlerFilterTimer.restart(); }
+            @Override
+            public void changedUpdate(javax.swing.event.DocumentEvent e) { handlerFilterTimer.restart(); }
+        });
+        handlerRow.add(handlerFilterField);
+
         handlerModel = new DefaultComboBoxModel<>();
         handlerCombo = new JComboBox<>(handlerModel);
-        handlerCombo.setPreferredSize(new Dimension(140, 24));
+        handlerCombo.setPreferredSize(new Dimension(200, 24));
         handlerCombo.addActionListener(e -> onHandlerSelected());
-        browserPanel.add(handlerCombo);
+        handlerRow.add(handlerCombo);
 
         JButton viewHandlerDetailsBtn = new JButton("\u2139");  // Info symbol
         viewHandlerDetailsBtn.setToolTipText("View Handler Details");
@@ -207,7 +251,8 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
                 showHandlerDetailsDialog(selected.script.getHandlerName(selected.handler));
             }
         });
-        browserPanel.add(viewHandlerDetailsBtn);
+        handlerRow.add(viewHandlerDetailsBtn);
+        browserPanel.add(handlerRow);
 
         bytecodePanel.add(browserPanel, BorderLayout.NORTH);
 
@@ -1038,10 +1083,18 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
         Set<Integer> seenScriptIds = new HashSet<>();
         int loadOrder = 0;
 
-        // Get main file name
-        String mainFileName = file.getFileName();
-        if (mainFileName == null || mainFileName.isEmpty()) {
-            mainFileName = "Main";
+        // Get main file name from base path
+        String mainFileName = "Main";
+        String basePath = file.getBasePath();
+        if (basePath != null && !basePath.isEmpty()) {
+            // Extract just the filename
+            if (basePath.contains("/")) {
+                mainFileName = basePath.substring(basePath.lastIndexOf('/') + 1);
+            } else if (basePath.contains("\\")) {
+                mainFileName = basePath.substring(basePath.lastIndexOf('\\') + 1);
+            } else {
+                mainFileName = basePath;
+            }
         }
 
         // Collect scripts from main file first
@@ -1101,6 +1154,102 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
     private CastLibManager castLibManager;
 
     /**
+     * Filter scripts based on the filter text field.
+     */
+    private void filterScripts() {
+        String filter = scriptFilterField.getText().trim();
+
+        // Remember current selection
+        ScriptItem currentSelection = (ScriptItem) scriptCombo.getSelectedItem();
+        int currentScriptId = currentSelection != null ? currentSelection.script.id() : -1;
+
+        // Temporarily remove action listener to avoid triggering events during update
+        ActionListener[] listeners = scriptCombo.getActionListeners();
+        for (ActionListener l : listeners) {
+            scriptCombo.removeActionListener(l);
+        }
+
+        // Clear and repopulate with filtered items
+        scriptModel.removeAllElements();
+        ScriptItem firstMatch = null;
+        ScriptItem selectedMatch = null;
+
+        for (ScriptItem item : allScriptItems) {
+            if (item.matchesFilter(filter)) {
+                scriptModel.addElement(item);
+                if (firstMatch == null) {
+                    firstMatch = item;
+                }
+                if (item.script.id() == currentScriptId) {
+                    selectedMatch = item;
+                }
+            }
+        }
+
+        // Restore listeners
+        for (ActionListener l : listeners) {
+            scriptCombo.addActionListener(l);
+        }
+
+        // Select appropriate item
+        if (selectedMatch != null) {
+            scriptCombo.setSelectedItem(selectedMatch);
+        } else if (firstMatch != null) {
+            scriptCombo.setSelectedItem(firstMatch);
+            onScriptSelected();  // Trigger handler update
+        }
+    }
+
+    /**
+     * Filter handlers based on the filter text field.
+     */
+    private void filterHandlers() {
+        String filter = handlerFilterField.getText().trim();
+
+        // Remember current selection
+        HandlerItem currentSelection = (HandlerItem) handlerCombo.getSelectedItem();
+        String currentHandlerName = currentSelection != null ?
+            currentSelection.script.getHandlerName(currentSelection.handler) : null;
+
+        // Temporarily remove action listener to avoid triggering events during update
+        ActionListener[] listeners = handlerCombo.getActionListeners();
+        for (ActionListener l : listeners) {
+            handlerCombo.removeActionListener(l);
+        }
+
+        // Clear and repopulate with filtered items
+        handlerModel.removeAllElements();
+        HandlerItem firstMatch = null;
+        HandlerItem selectedMatch = null;
+
+        for (HandlerItem item : allHandlerItems) {
+            if (item.matchesFilter(filter)) {
+                handlerModel.addElement(item);
+                if (firstMatch == null) {
+                    firstMatch = item;
+                }
+                if (currentHandlerName != null &&
+                    item.script.getHandlerName(item.handler).equals(currentHandlerName)) {
+                    selectedMatch = item;
+                }
+            }
+        }
+
+        // Restore listeners
+        for (ActionListener l : listeners) {
+            handlerCombo.addActionListener(l);
+        }
+
+        // Select appropriate item
+        if (selectedMatch != null) {
+            handlerCombo.setSelectedItem(selectedMatch);
+        } else if (firstMatch != null) {
+            handlerCombo.setSelectedItem(firstMatch);
+            onHandlerSelected();  // Trigger bytecode update
+        }
+    }
+
+    /**
      * Refresh the script list from the current DirectorFile and CastLibManager.
      * Call this when external casts are loaded.
      */
@@ -1145,6 +1294,8 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
     private void onScriptSelected() {
         ScriptItem selected = (ScriptItem) scriptCombo.getSelectedItem();
         handlerModel.removeAllElements();
+        allHandlerItems.clear();
+        handlerFilterField.setText("");
 
         if (selected == null) {
             return;
@@ -1152,7 +1303,9 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
 
         ScriptChunk script = selected.script;
         for (ScriptChunk.Handler handler : script.handlers()) {
-            handlerModel.addElement(new HandlerItem(script, handler));
+            HandlerItem item = new HandlerItem(script, handler);
+            allHandlerItems.add(item);
+            handlerModel.addElement(item);
         }
 
         // Auto-select first handler
@@ -1219,6 +1372,8 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
     public void clear() {
         bytecodeModel.clear();
         currentInstructions.clear();
+        allScriptItems.clear();
+        allHandlerItems.clear();
         browseMode = false;
         browseScript = null;
         browseHandler = null;
@@ -1226,6 +1381,8 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
         currentInstructionIndex = -1;
         statusLabel.setText("Status: Running");
         handlerLabel.setText("Handler: -");
+        scriptFilterField.setText("");
+        handlerFilterField.setText("");
     }
 
     /**
@@ -1862,6 +2019,16 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
         @Override
         public String toString() {
             return script.getHandlerName(handler);
+        }
+
+        /**
+         * Check if this item matches the filter text (case-insensitive).
+         */
+        boolean matchesFilter(String filter) {
+            if (filter == null || filter.isEmpty()) {
+                return true;
+            }
+            return script.getHandlerName(handler).toLowerCase().contains(filter.toLowerCase());
         }
     }
 }
