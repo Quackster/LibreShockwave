@@ -7,6 +7,7 @@ import com.libreshockwave.vm.builtin.CastLibProvider;
 import com.libreshockwave.vm.builtin.MoviePropertyProvider;
 import com.libreshockwave.vm.builtin.SpritePropertyProvider;
 import com.libreshockwave.vm.builtin.XtraBuiltins;
+import com.libreshockwave.vm.util.AncestorChainWalker;
 import com.libreshockwave.vm.util.StringChunkUtils;
 
 import java.util.Map;
@@ -35,33 +36,12 @@ public final class PropertyOpcodes {
         String propName = ctx.resolveName(ctx.getArgument());
         if (ctx.getReceiver() instanceof Datum.ScriptInstance si) {
             // Walk the ancestor chain to find the property
-            Datum value = getPropertyFromAncestorChain(si, propName);
+            Datum value = AncestorChainWalker.getProperty(si, propName);
             ctx.push(value);
         } else {
             ctx.push(Datum.VOID);
         }
         return true;
-    }
-
-    /**
-     * Get a property from a script instance, walking the ancestor chain if not found.
-     */
-    private static Datum getPropertyFromAncestorChain(Datum.ScriptInstance instance, String propName) {
-        Datum.ScriptInstance current = instance;
-        for (int i = 0; i < 100; i++) { // Safety limit
-            if (current.properties().containsKey(propName)) {
-                return current.properties().get(propName);
-            }
-
-            // Try ancestor
-            Datum ancestor = current.properties().get("ancestor");
-            if (ancestor instanceof Datum.ScriptInstance ancestorInstance) {
-                current = ancestorInstance;
-            } else {
-                break;
-            }
-        }
-        return Datum.VOID;
     }
 
     private static boolean setProp(ExecutionContext ctx) {
@@ -126,7 +106,7 @@ public final class PropertyOpcodes {
         Datum result = switch (obj) {
             case Datum.CastLibRef clr -> getCastLibProp(clr, propName);
             case Datum.CastMemberRef cmr -> getCastMemberProp(cmr, propName);
-            case Datum.ScriptInstance si -> getPropertyFromAncestorChain(si, propName);
+            case Datum.ScriptInstance si -> AncestorChainWalker.getProperty(si, propName);
             case Datum.XtraInstance xi -> XtraBuiltins.getProperty(xi, propName);
             case Datum.PropList pl -> pl.properties().getOrDefault(propName, Datum.VOID);
             default -> Datum.VOID;

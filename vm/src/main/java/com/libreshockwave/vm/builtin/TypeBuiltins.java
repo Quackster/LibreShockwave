@@ -3,7 +3,6 @@ package com.libreshockwave.vm.builtin;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.HandlerRef;
 import com.libreshockwave.vm.LingoVM;
-import com.libreshockwave.vm.Scope;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,7 +28,7 @@ public final class TypeBuiltins {
         builtins.put("integerp", TypeBuiltins::integerp);
         builtins.put("floatp", TypeBuiltins::floatp);
         builtins.put("symbolp", TypeBuiltins::symbolp);
-        builtins.put("callancestor", TypeBuiltins::callAncestor);
+        builtins.put("callancestor", AncestorCallHandler::call);
     }
 
     /**
@@ -70,7 +69,15 @@ public final class TypeBuiltins {
      * Evaluates a string expression or returns the value as-is.
      * For strings, attempts to parse and evaluate as Lingo.
      * For non-strings, returns the value unchanged.
-     * Based on dirplayer-rs vm-rust/src/player/handlers/types.rs
+     *
+     * Director behavior: "Expressions that Lingo cannot parse will produce unexpected
+     * results, but will not produce Lingo errors. The result is the value of the
+     * initial portion of the expression up to the first syntax error found in the string."
+     *
+     * Examples:
+     * - value("3 5") returns 3 (parses first token, stops at syntax error)
+     * - value("penny") returns VOID (unknown identifier has no value)
+     * - value("[\"cat\", \"dog\"]") returns ["cat", "dog"]
      */
     private static Datum value(LingoVM vm, List<Datum> args) {
         if (args.isEmpty()) {
@@ -78,7 +85,7 @@ public final class TypeBuiltins {
         }
         Datum arg = args.get(0);
 
-        // For non-strings, return as-is (matches dirplayer-rs behavior)
+        // For non-strings, return as-is
         if (!(arg instanceof Datum.Str str)) {
             return arg;
         }
@@ -91,69 +98,263 @@ public final class TypeBuiltins {
             return Datum.VOID;
         }
 
-        try {
-            return parseLingoExpression(expr, vm);
-        } catch (Exception e) {
-            // On parse error, return VOID (matches dirplayer-rs behavior)
-            return Datum.VOID;
-        }
+        // Use partial parsing - returns the value of the initial valid portion
+        return parseLingoExpressionWithPartial(expr, vm);
     }
 
     /**
-     * Parse a Lingo expression string into a Datum.
+     * Parse a Lingo expression string into a Datum with partial parsing support.
+     * Per Director docs: returns the value of the initial valid portion on syntax error.
      * Handles: integers, floats, symbols, quoted strings, lists, and proplists.
      */
-    private static Datum parseLingoExpression(String expr, LingoVM vm) {
+    private static Datum parseLingoExpressionWithPartial(String expr, LingoVM vm) {
         expr = expr.trim();
 
         if (expr.isEmpty()) {
             return Datum.VOID;
         }
 
-        // Try to parse as integer
-        try {
-            return Datum.of(Integer.parseInt(expr));
-        } catch (NumberFormatException ignored) {}
+        // Try complete expression first (most common case)
+        Datum completeResult = tryParseComplete(expr, vm);
+        if (completeResult != null) {
+            return completeResult;
+        }
 
-        // Try to parse as float
-        try {
-            return Datum.of(Double.parseDouble(expr));
-        } catch (NumberFormatException ignored) {}
+        // Partial parsing: extract and evaluate the first valid token/expression
+        return parseFirstValidExpression(expr, vm);
+    }
 
-        // Try to parse as symbol (#symbol)
-        if (expr.startsWith("#") && expr.length() > 1 && !expr.contains(":")) {
+    /**
+     * Try to parse the complete expression as a single value.
+     * Returns null if the complete string cannot be parsed as-is.
+     */
+    private static Datum tryParseComplete(String expr, LingoVM vm) {
+        // Try to parse as integer (complete match)
+        if (expr.matches("-?\\d+")) {
+            try {
+                return Datum.of(Integer.parseInt(expr));
+            } catch (NumberFormatException ignored) {}
+        }
+
+        // Try to parse as float (complete match)
+        if (expr.matches("-?\\d+\\.\\d+")) {
+            try {
+                return Datum.of(Double.parseDouble(expr));
+            } catch (NumberFormatException ignored) {}
+        }
+
+        // Try to parse as symbol (#symbol) - complete match
+        if (expr.startsWith("#") && expr.length() > 1) {
             String symName = expr.substring(1);
             if (symName.matches("[a-zA-Z_][a-zA-Z0-9_]*")) {
                 return Datum.symbol(symName);
             }
         }
 
-        // Try to parse as quoted string
+        // Try to parse as quoted string - must have matching quotes
         if (expr.startsWith("\"") && expr.endsWith("\"") && expr.length() >= 2) {
-            return Datum.of(expr.substring(1, expr.length() - 1));
+            return Datum.of(unescapeString(expr.substring(1, expr.length() - 1)));
         }
 
         // Try to parse as list or proplist: [...]
         if (expr.startsWith("[") && expr.endsWith("]")) {
-            return parseListOrPropList(expr.substring(1, expr.length() - 1).trim(), vm);
+            try {
+                return parseListOrPropList(expr.substring(1, expr.length() - 1).trim(), vm);
+            } catch (Exception ignored) {
+                // If list parsing fails, fall through to partial parsing
+            }
         }
 
-        // Try to evaluate as a handler call (simple case: just a handler name)
+        // Try to evaluate as a simple identifier (handler call or global variable)
         if (expr.matches("[a-zA-Z_][a-zA-Z0-9_]*")) {
+            // Check global variable first
+            Datum globalValue = vm.getGlobal(expr);
+            if (!globalValue.isVoid()) {
+                return globalValue;
+            }
             // Try to find and call a handler with no arguments
             HandlerRef ref = vm.findHandler(expr);
             if (ref != null) {
                 return vm.executeHandler(ref.script(), ref.handler(), List.of(), null);
             }
-            // Also check if it's a global variable
-            Datum globalValue = vm.getGlobal(expr);
-            if (!globalValue.isVoid()) {
-                return globalValue;
+            // Unknown identifier - return VOID (like "penny" in the docs)
+            return Datum.VOID;
+        }
+
+        // Couldn't parse as a complete simple expression
+        return null;
+    }
+
+    /**
+     * Extract and evaluate the first valid expression from the string.
+     * This handles cases like "3 5" where we should return 3.
+     */
+    private static Datum parseFirstValidExpression(String expr, LingoVM vm) {
+        int pos = 0;
+        int len = expr.length();
+
+        // Skip leading whitespace
+        while (pos < len && Character.isWhitespace(expr.charAt(pos))) {
+            pos++;
+        }
+
+        if (pos >= len) {
+            return Datum.VOID;
+        }
+
+        char first = expr.charAt(pos);
+
+        // Try to parse a number (integer or float)
+        if (Character.isDigit(first) || (first == '-' && pos + 1 < len && Character.isDigit(expr.charAt(pos + 1)))) {
+            int start = pos;
+            if (first == '-') pos++;
+
+            // Parse integer part
+            while (pos < len && Character.isDigit(expr.charAt(pos))) {
+                pos++;
+            }
+
+            // Check for decimal point
+            if (pos < len && expr.charAt(pos) == '.' && pos + 1 < len && Character.isDigit(expr.charAt(pos + 1))) {
+                pos++; // consume '.'
+                while (pos < len && Character.isDigit(expr.charAt(pos))) {
+                    pos++;
+                }
+                // Parsed a float
+                String numStr = expr.substring(start, pos);
+                try {
+                    return Datum.of(Double.parseDouble(numStr));
+                } catch (NumberFormatException e) {
+                    return Datum.VOID;
+                }
+            } else {
+                // Parsed an integer
+                String numStr = expr.substring(start, pos);
+                try {
+                    return Datum.of(Integer.parseInt(numStr));
+                } catch (NumberFormatException e) {
+                    return Datum.VOID;
+                }
             }
         }
 
-        // Return VOID for expressions we can't evaluate
+        // Try to parse a quoted string
+        if (first == '"') {
+            int start = pos;
+            pos++; // skip opening quote
+            StringBuilder sb = new StringBuilder();
+            while (pos < len && expr.charAt(pos) != '"') {
+                if (expr.charAt(pos) == '\\' && pos + 1 < len) {
+                    pos++; // skip backslash
+                    sb.append(expr.charAt(pos));
+                } else {
+                    sb.append(expr.charAt(pos));
+                }
+                pos++;
+            }
+            if (pos < len && expr.charAt(pos) == '"') {
+                return Datum.of(sb.toString());
+            }
+            // Unterminated string - return VOID
+            return Datum.VOID;
+        }
+
+        // Try to parse a symbol
+        if (first == '#') {
+            pos++; // skip #
+            int start = pos;
+            while (pos < len && (Character.isLetterOrDigit(expr.charAt(pos)) || expr.charAt(pos) == '_')) {
+                pos++;
+            }
+            if (pos > start) {
+                return Datum.symbol(expr.substring(start, pos));
+            }
+            return Datum.VOID;
+        }
+
+        // Try to parse a list/proplist - need matching brackets
+        if (first == '[') {
+            int bracketDepth = 1;
+            int start = pos;
+            pos++; // skip opening bracket
+            while (pos < len && bracketDepth > 0) {
+                char c = expr.charAt(pos);
+                if (c == '[') bracketDepth++;
+                else if (c == ']') bracketDepth--;
+                else if (c == '"') {
+                    // Skip quoted strings within the list
+                    pos++;
+                    while (pos < len && expr.charAt(pos) != '"') {
+                        if (expr.charAt(pos) == '\\' && pos + 1 < len) pos++;
+                        pos++;
+                    }
+                }
+                pos++;
+            }
+            if (bracketDepth == 0) {
+                String listExpr = expr.substring(start, pos);
+                try {
+                    return parseListOrPropList(listExpr.substring(1, listExpr.length() - 1).trim(), vm);
+                } catch (Exception ignored) {
+                    return Datum.VOID;
+                }
+            }
+            return Datum.VOID;
+        }
+
+        // Try to parse an identifier
+        if (Character.isLetter(first) || first == '_') {
+            int start = pos;
+            while (pos < len && (Character.isLetterOrDigit(expr.charAt(pos)) || expr.charAt(pos) == '_')) {
+                pos++;
+            }
+            String identifier = expr.substring(start, pos);
+
+            // Check global variable
+            Datum globalValue = vm.getGlobal(identifier);
+            if (!globalValue.isVoid()) {
+                return globalValue;
+            }
+
+            // Try to find and call a handler
+            HandlerRef ref = vm.findHandler(identifier);
+            if (ref != null) {
+                return vm.executeHandler(ref.script(), ref.handler(), List.of(), null);
+            }
+
+            // Unknown identifier - return VOID
+            return Datum.VOID;
+        }
+
+        // Couldn't parse anything valid
         return Datum.VOID;
+    }
+
+    /**
+     * Unescape a string (handle backslash escape sequences).
+     */
+    private static String unescapeString(String s) {
+        if (!s.contains("\\")) {
+            return s;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '\\' && i + 1 < s.length()) {
+                char next = s.charAt(++i);
+                switch (next) {
+                    case 'n' -> sb.append('\n');
+                    case 'r' -> sb.append('\r');
+                    case 't' -> sb.append('\t');
+                    case '"' -> sb.append('"');
+                    case '\\' -> sb.append('\\');
+                    default -> sb.append(next);
+                }
+            } else {
+                sb.append(c);
+            }
+        }
+        return sb.toString();
     }
 
     /**
@@ -184,7 +385,7 @@ public final class TypeBuiltins {
                 if (colonIdx > 0 && element.startsWith("#")) {
                     String key = element.substring(1, colonIdx).trim();
                     String valueStr = element.substring(colonIdx + 1).trim();
-                    Datum value = parseLingoExpression(valueStr, vm);
+                    Datum value = parseLingoExpressionWithPartial(valueStr, vm);
                     props.put(key, value);
                 }
             }
@@ -193,7 +394,7 @@ public final class TypeBuiltins {
             // Parse as linear list
             java.util.List<Datum> items = new java.util.ArrayList<>();
             for (String element : elements) {
-                items.add(parseLingoExpression(element.trim(), vm));
+                items.add(parseLingoExpressionWithPartial(element.trim(), vm));
             }
             return Datum.list(items);
         }
@@ -431,139 +632,4 @@ public final class TypeBuiltins {
         return args.get(0) instanceof Datum.Symbol ? Datum.TRUE : Datum.FALSE;
     }
 
-    /**
-     * callAncestor(#handler, me, arg1, arg2, ...)
-     * Calls a handler on the ancestor of the given script instance.
-     *
-     * In Director, callAncestor:
-     * 1. Finds the ancestor of the 'me' argument (args[1])
-     * 2. Looks up the handler in the ancestor's SCRIPT
-     * 3. Executes the handler with 'me' still being the ORIGINAL instance
-     *
-     * When inside an ancestor's handler (due to callAncestor), a nested callAncestor
-     * should use the CURRENT SCOPE's script to determine which ancestor to call next.
-     */
-    private static Datum callAncestor(LingoVM vm, List<Datum> args) {
-        if (args.size() < 2) {
-            return Datum.VOID;
-        }
-
-        // Get handler name from first argument (symbol or string)
-        Datum handlerArg = args.get(0);
-        String handlerName;
-        if (handlerArg instanceof Datum.Symbol sym) {
-            handlerName = sym.name();
-        } else {
-            handlerName = handlerArg.toStr();
-        }
-
-        // Get the script instance (me)
-        Datum meArg = args.get(1);
-        if (!(meArg instanceof Datum.ScriptInstance instance)) {
-            // Also handle lists of instances
-            if (meArg instanceof Datum.List list) {
-                Datum result = Datum.VOID;
-                for (Datum item : list.items()) {
-                    if (item instanceof Datum.ScriptInstance) {
-                        List<Datum> newArgs = new java.util.ArrayList<>();
-                        newArgs.add(handlerArg);
-                        newArgs.add(item);
-                        newArgs.addAll(args.subList(2, args.size()));
-                        result = callAncestor(vm, newArgs);
-                    }
-                }
-                return result;
-            }
-            return Datum.VOID;
-        }
-
-        // Find the ancestor
-        // If we're already executing in an ancestor's script, we need to find
-        // which level of the ancestor chain we're at and get THAT instance's ancestor
-        Datum ancestor = findAncestorForCall(vm, instance);
-        if (ancestor == null || ancestor.isVoid()) {
-            return Datum.VOID;
-        }
-
-        if (!(ancestor instanceof Datum.ScriptInstance ancestorInstance)) {
-            return Datum.VOID;
-        }
-
-        // Look up the handler in the ancestor's script (or its ancestors)
-        CastLibProvider provider = CastLibProvider.getProvider();
-        if (provider == null) {
-            return Datum.VOID;
-        }
-
-        // Walk the ancestor chain to find a script with the handler
-        Datum.ScriptInstance currentAncestor = ancestorInstance;
-        CastLibProvider.HandlerLocation location = null;
-
-        for (int i = 0; i < 100; i++) { // Safety limit
-            location = provider.findHandlerInScript(currentAncestor.scriptId(), handlerName);
-            if (location != null) {
-                break;
-            }
-            // Try next ancestor
-            Datum nextAncestor = currentAncestor.properties().get("ancestor");
-            if (nextAncestor instanceof Datum.ScriptInstance next) {
-                currentAncestor = next;
-            } else {
-                break;
-            }
-        }
-
-        if (location == null || location.script() == null || location.handler() == null) {
-            return Datum.VOID;
-        }
-
-        // Build call arguments (me + remaining args)
-        List<Datum> callArgs = new java.util.ArrayList<>();
-        callArgs.addAll(args.subList(2, args.size()));
-
-        // Execute the handler with original 'me' as receiver
-        if (location.script() instanceof com.libreshockwave.chunks.ScriptChunk script
-                && location.handler() instanceof com.libreshockwave.chunks.ScriptChunk.Handler handler) {
-            return vm.executeHandler(script, handler, callArgs, instance);
-        }
-
-        return Datum.VOID;
-    }
-
-    /**
-     * Find the appropriate ancestor for a callAncestor call.
-     * If we're already executing in an ancestor's handler, we need to find
-     * which level we're at and return THAT instance's ancestor.
-     */
-    private static Datum findAncestorForCall(LingoVM vm, Datum.ScriptInstance me) {
-        Scope currentScope = vm.getCurrentScope();
-        if (currentScope == null) {
-            // Not in a handler, just return me's ancestor
-            return me.properties().get("ancestor");
-        }
-
-        // Get the script we're currently executing in
-        int currentScriptId = currentScope.getScript().id();
-
-        // Walk me's ancestor chain to find which instance has the script we're in
-        Datum.ScriptInstance walkInstance = me;
-        for (int i = 0; i < 100; i++) { // Safety limit
-            if (walkInstance.scriptId() == currentScriptId) {
-                // Found it - return this instance's ancestor
-                Datum ancestor = walkInstance.properties().get("ancestor");
-                return ancestor != null ? ancestor : Datum.VOID;
-            }
-            // Move to next ancestor
-            Datum nextAncestor = walkInstance.properties().get("ancestor");
-            if (nextAncestor instanceof Datum.ScriptInstance next) {
-                walkInstance = next;
-            } else {
-                break;
-            }
-        }
-
-        // Fallback: return me's direct ancestor
-        Datum ancestor = me.properties().get("ancestor");
-        return ancestor != null ? ancestor : Datum.VOID;
-    }
 }
