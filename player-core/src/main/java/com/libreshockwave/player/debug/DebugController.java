@@ -479,6 +479,18 @@ public class DebugController implements TraceListener {
     }
 
     /**
+     * Check if stepping needs to continue into the next frame.
+     * This returns true when we're in STEPPING state with an active step mode,
+     * meaning a step command was issued but we haven't hit a pause yet
+     * (e.g., because the handler/frame ended before another instruction could pause).
+     */
+    public boolean isAwaitingStepContinuation() {
+        synchronized (stateLock) {
+            return state == DebugState.STEPPING && stepMode != StepMode.NONE;
+        }
+    }
+
+    /**
      * Get current snapshot (may be null if not paused).
      */
     public DebugSnapshot getCurrentSnapshot() {

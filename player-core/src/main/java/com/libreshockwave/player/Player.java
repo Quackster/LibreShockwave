@@ -458,13 +458,18 @@ public class Player {
                     debugController.setGlobalsSnapshot(vm.getGlobals());
                 }
 
-                setupProviders();
-                try {
-                    frameContext.executeFrame();
-                    frameContext.advanceFrame();
-                } finally {
-                    clearProviders();
-                }
+                // Execute frames in a loop - if stepping completes without pausing
+                // (e.g., handler/frame ended on last instruction), continue to
+                // the next frame so stepping can pause on its first instruction
+                do {
+                    setupProviders();
+                    try {
+                        frameContext.executeFrame();
+                        frameContext.advanceFrame();
+                    } finally {
+                        clearProviders();
+                    }
+                } while (debugController != null && debugController.isAwaitingStepContinuation());
             } finally {
                 vmRunning = false;
                 if (onComplete != null) {
@@ -521,13 +526,18 @@ public class Player {
         vmRunning = true;
         vmExecutor.submit(() -> {
             try {
-                setupProviders();
-                try {
-                    frameContext.executeFrame();
-                    frameContext.advanceFrame();
-                } finally {
-                    clearProviders();
-                }
+                // Execute frames in a loop - if stepping completes without pausing
+                // (e.g., handler/frame ended on last instruction), continue to
+                // the next frame so stepping can pause on its first instruction
+                do {
+                    setupProviders();
+                    try {
+                        frameContext.executeFrame();
+                        frameContext.advanceFrame();
+                    } finally {
+                        clearProviders();
+                    }
+                } while (debugController != null && debugController.isAwaitingStepContinuation());
             } finally {
                 vmRunning = false;
                 if (onComplete != null) {
