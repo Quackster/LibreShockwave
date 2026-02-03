@@ -88,7 +88,7 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
 
     // Current handler info (for building instruction list)
     private volatile TraceListener.HandlerInfo currentHandlerInfo;
-    private final java.util.List<InstructionDisplayItem> currentInstructions = new ArrayList<>();
+    private final List<InstructionDisplayItem> currentInstructions = new ArrayList<>();
     private int currentInstructionIndex = -1;
 
     // Track current script ID for breakpoints

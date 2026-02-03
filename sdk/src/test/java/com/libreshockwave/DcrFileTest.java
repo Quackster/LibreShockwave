@@ -5,6 +5,7 @@ import com.libreshockwave.chunks.*;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
 
 /**
@@ -140,7 +141,7 @@ public class DcrFileTest {
 
             // Show cast members summary
             System.out.println("\n  Cast members by type:");
-            var typeCount = new java.util.HashMap<String, Integer>();
+            var typeCount = new HashMap<String, Integer>();
             for (CastMemberChunk member : file.getCastMembers()) {
                 String type = member.type().toString();
                 typeCount.merge(type, 1, Integer::sum);

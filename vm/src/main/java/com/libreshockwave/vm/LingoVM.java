@@ -236,7 +236,7 @@ public class LingoVM {
         // This matches dirplayer-rs behavior where the receiver is included in scope.args
         List<Datum> effectiveArgs = args;
         if (receiver != null && !receiver.isVoid()) {
-            effectiveArgs = new java.util.ArrayList<>();
+            effectiveArgs = new ArrayList<>();
             effectiveArgs.add(receiver);
             effectiveArgs.addAll(args);
         }
