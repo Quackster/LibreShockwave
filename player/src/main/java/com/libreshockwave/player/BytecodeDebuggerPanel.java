@@ -4,9 +4,11 @@ import com.libreshockwave.DirectorFile;
 import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.player.cast.CastLib;
 import com.libreshockwave.player.cast.CastLibManager;
+import com.libreshockwave.player.debug.Breakpoint;
 import com.libreshockwave.player.debug.DebugController;
 import com.libreshockwave.player.debug.DebugSnapshot;
 import com.libreshockwave.player.debug.DebugStateListener;
+import com.libreshockwave.player.debug.WatchExpression;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.DatumFormatter;
 import com.libreshockwave.vm.TraceListener;
@@ -18,6 +20,7 @@ import javax.swing.border.TitledBorder;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
 import java.awt.*;
+import java.awt.Dialog;
 import java.awt.event.*;
 import java.util.*;
 import java.util.List;
@@ -37,6 +40,8 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
     // Director file for script browsing
     private DirectorFile directorFile;
     private List<ScriptChunk> allScripts = new ArrayList<>();
+    private List<ScriptItem> allScriptItems = new ArrayList<>();  // All scripts with source info
+    private JTextField scriptFilterField;  // Filter field for script combo
 
     // UI Components - Script browser
     private JComboBox<ScriptItem> scriptCombo;
@@ -47,6 +52,7 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
     // UI Components - Bytecode display
     private JList<InstructionDisplayItem> bytecodeList;
     private DefaultListModel<InstructionDisplayItem> bytecodeModel;
+    private JPopupMenu bytecodeContextMenu;
     private JTable stackTable;
     private StackTableModel stackTableModel;
     private JTable localsTable;
@@ -55,6 +61,17 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
     private VariablesTableModel globalsTableModel;
     private JLabel statusLabel;
     private JLabel handlerLabel;
+
+    // UI Components - Watches
+    private JTable watchesTable;
+    private WatchesTableModel watchesTableModel;
+
+    // UI Components - Debug Log
+    private JTextArea debugLogArea;
+    private DefaultListModel<String> debugLogModel;
+
+    // State tabs reference for adding watches/log tabs
+    private JTabbedPane stateTabs;
 
     // Toolbar buttons
     private JButton stepIntoBtn;
@@ -181,6 +198,17 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
         handlerCombo.addActionListener(e -> onHandlerSelected());
         browserPanel.add(handlerCombo);
 
+        JButton viewHandlerDetailsBtn = new JButton("\u2139");  // Info symbol
+        viewHandlerDetailsBtn.setToolTipText("View Handler Details");
+        viewHandlerDetailsBtn.setMargin(new Insets(2, 6, 2, 6));
+        viewHandlerDetailsBtn.addActionListener(e -> {
+            HandlerItem selected = (HandlerItem) handlerCombo.getSelectedItem();
+            if (selected != null) {
+                showHandlerDetailsDialog(selected.script.getHandlerName(selected.handler));
+            }
+        });
+        browserPanel.add(viewHandlerDetailsBtn);
+
         bytecodePanel.add(browserPanel, BorderLayout.NORTH);
 
         bytecodeModel = new DefaultListModel<>();
@@ -236,19 +264,28 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
             }
         });
 
+        // Context menu for call instructions
+        initBytecodeContextMenu();
+
         JScrollPane bytecodeScroll = new JScrollPane(bytecodeList);
         bytecodeScroll.setPreferredSize(new Dimension(480, 200));
         bytecodePanel.add(bytecodeScroll, BorderLayout.CENTER);
 
         // Legend
-        JLabel legend = new JLabel("<html><font color='red'>\u25CF</font> = breakpoint &nbsp; <font color='#DAA520'>\u25B6</font> = current &nbsp; <font color='blue'><u>blue</u></font> = click to navigate &nbsp; (double-click gutter to toggle breakpoint)</html>");
+        JLabel legend = new JLabel("<html>" +
+            "<font color='red'>\u25CF</font>=breakpoint &nbsp; " +
+            "<font color='tomato'>\u25CF</font>=conditional &nbsp; " +
+            "<font color='gray'>\u25CB</font>=disabled &nbsp; " +
+            "<font color='orange'>\u25C6</font>=logpoint &nbsp; " +
+            "<font color='#DAA520'>\u25B6</font>=current &nbsp; " +
+            "<font color='blue'><u>blue</u></font>=navigate</html>");
         legend.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 10));
         bytecodePanel.add(legend, BorderLayout.SOUTH);
 
         mainSplit.setTopComponent(bytecodePanel);
 
         // State panels in tabs
-        JTabbedPane stateTabs = new JTabbedPane(JTabbedPane.TOP);
+        stateTabs = new JTabbedPane(JTabbedPane.TOP);
 
         // Stack table
         stackTableModel = new StackTableModel();
@@ -277,10 +314,682 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
         globalsTable.getColumnModel().getColumn(2).setPreferredWidth(200);
         stateTabs.addTab("Globals", new JScrollPane(globalsTable));
 
+        // Watches table
+        stateTabs.addTab("Watches", createWatchesPanel());
+
+        // Debug Log
+        stateTabs.addTab("Debug Log", createDebugLogPanel());
+
         mainSplit.setBottomComponent(stateTabs);
 
         mainPanel.add(mainSplit, BorderLayout.CENTER);
         add(mainPanel, BorderLayout.CENTER);
+    }
+
+    /**
+     * Initialize the right-click context menu for bytecode list.
+     */
+    private void initBytecodeContextMenu() {
+        bytecodeContextMenu = new JPopupMenu();
+
+        // Breakpoint actions
+        JMenuItem toggleBpItem = new JMenuItem("Toggle Breakpoint");
+        toggleBpItem.addActionListener(e -> {
+            int index = bytecodeList.getSelectedIndex();
+            if (index >= 0 && index < bytecodeModel.size() && controller != null && currentScriptId >= 0) {
+                InstructionDisplayItem item = bytecodeModel.get(index);
+                controller.toggleBreakpoint(currentScriptId, item.offset);
+                updateBreakpointDisplay(item);
+            }
+        });
+        bytecodeContextMenu.add(toggleBpItem);
+
+        JMenuItem enableDisableItem = new JMenuItem("Enable/Disable Breakpoint");
+        enableDisableItem.addActionListener(e -> {
+            int index = bytecodeList.getSelectedIndex();
+            if (index >= 0 && index < bytecodeModel.size() && controller != null && currentScriptId >= 0) {
+                InstructionDisplayItem item = bytecodeModel.get(index);
+                Breakpoint bp = controller.getBreakpoint(currentScriptId, item.offset);
+                if (bp != null) {
+                    controller.toggleBreakpointEnabled(currentScriptId, item.offset);
+                    updateBreakpointDisplay(item);
+                }
+            }
+        });
+        bytecodeContextMenu.add(enableDisableItem);
+
+        JMenuItem editBpItem = new JMenuItem("Edit Breakpoint...");
+        editBpItem.addActionListener(e -> {
+            int index = bytecodeList.getSelectedIndex();
+            if (index >= 0 && index < bytecodeModel.size() && controller != null && currentScriptId >= 0) {
+                InstructionDisplayItem item = bytecodeModel.get(index);
+                showBreakpointPropertiesDialog(item.offset);
+            }
+        });
+        bytecodeContextMenu.add(editBpItem);
+
+        JMenuItem addLogPointItem = new JMenuItem("Add Log Point...");
+        addLogPointItem.addActionListener(e -> {
+            int index = bytecodeList.getSelectedIndex();
+            if (index >= 0 && index < bytecodeModel.size() && controller != null && currentScriptId >= 0) {
+                InstructionDisplayItem item = bytecodeModel.get(index);
+                showAddLogPointDialog(item.offset);
+            }
+        });
+        bytecodeContextMenu.add(addLogPointItem);
+
+        JMenuItem resetHitCountItem = new JMenuItem("Reset Hit Count");
+        resetHitCountItem.addActionListener(e -> {
+            int index = bytecodeList.getSelectedIndex();
+            if (index >= 0 && index < bytecodeModel.size() && controller != null && currentScriptId >= 0) {
+                InstructionDisplayItem item = bytecodeModel.get(index);
+                controller.resetBreakpointHitCount(currentScriptId, item.offset);
+            }
+        });
+        bytecodeContextMenu.add(resetHitCountItem);
+
+        bytecodeContextMenu.addSeparator();
+
+        // Navigation actions for call instructions
+        JMenuItem goToDefItem = new JMenuItem("Go to Definition");
+        goToDefItem.addActionListener(e -> {
+            int index = bytecodeList.getSelectedIndex();
+            if (index >= 0 && index < bytecodeModel.size()) {
+                InstructionDisplayItem item = bytecodeModel.get(index);
+                String targetName = item.getCallTargetName();
+                if (targetName != null) {
+                    navigateToHandler(targetName);
+                }
+            }
+        });
+        bytecodeContextMenu.add(goToDefItem);
+
+        JMenuItem viewDetailsItem = new JMenuItem("View Handler Details...");
+        viewDetailsItem.addActionListener(e -> {
+            int index = bytecodeList.getSelectedIndex();
+            if (index >= 0 && index < bytecodeModel.size()) {
+                InstructionDisplayItem item = bytecodeModel.get(index);
+                String targetName = item.getCallTargetName();
+                if (targetName != null) {
+                    showHandlerDetailsDialog(targetName);
+                }
+            }
+        });
+        bytecodeContextMenu.add(viewDetailsItem);
+
+        // Add mouse listener for right-click
+        bytecodeList.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                maybeShowPopup(e);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                maybeShowPopup(e);
+            }
+
+            private void maybeShowPopup(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    int index = bytecodeList.locationToIndex(e.getPoint());
+                    if (index >= 0 && index < bytecodeModel.size()) {
+                        bytecodeList.setSelectedIndex(index);
+                        bytecodeContextMenu.show(bytecodeList, e.getX(), e.getY());
+                    }
+                }
+            }
+        });
+    }
+
+    /**
+     * Update breakpoint display for an item after a change.
+     */
+    private void updateBreakpointDisplay(InstructionDisplayItem item) {
+        if (controller != null && currentScriptId >= 0) {
+            Breakpoint bp = controller.getBreakpoint(currentScriptId, item.offset);
+            item.breakpoint = bp;
+            item.hasBreakpoint = bp != null;
+            bytecodeList.repaint();
+        }
+    }
+
+    /**
+     * Show the breakpoint properties dialog.
+     */
+    private void showBreakpointPropertiesDialog(int offset) {
+        Breakpoint bp = controller.getBreakpoint(currentScriptId, offset);
+        if (bp == null) {
+            // Create a new breakpoint first
+            bp = Breakpoint.simple(currentScriptId, offset);
+            controller.setBreakpoint(bp);
+        }
+
+        JDialog dialog = new JDialog(SwingUtilities.getWindowAncestor(this),
+            "Breakpoint Properties", Dialog.ModalityType.APPLICATION_MODAL);
+        dialog.setLayout(new BorderLayout(10, 10));
+        dialog.setSize(400, 300);
+        dialog.setLocationRelativeTo(this);
+
+        JPanel formPanel = new JPanel(new GridBagLayout());
+        formPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(5, 5, 5, 5);
+        gbc.anchor = GridBagConstraints.WEST;
+
+        // Enabled checkbox
+        gbc.gridx = 0; gbc.gridy = 0;
+        formPanel.add(new JLabel("Enabled:"), gbc);
+        JCheckBox enabledCheck = new JCheckBox();
+        enabledCheck.setSelected(bp.enabled());
+        gbc.gridx = 1;
+        formPanel.add(enabledCheck, gbc);
+
+        // Condition field
+        gbc.gridx = 0; gbc.gridy = 1;
+        formPanel.add(new JLabel("Condition:"), gbc);
+        JTextField conditionField = new JTextField(bp.condition() != null ? bp.condition() : "", 25);
+        conditionField.setToolTipText("Lingo expression, e.g., i > 5");
+        gbc.gridx = 1;
+        formPanel.add(conditionField, gbc);
+
+        // Hit count threshold
+        gbc.gridx = 0; gbc.gridy = 2;
+        formPanel.add(new JLabel("Break after hit count:"), gbc);
+        JSpinner hitThresholdSpinner = new JSpinner(new SpinnerNumberModel(bp.hitCountThreshold(), 0, 10000, 1));
+        hitThresholdSpinner.setToolTipText("0 = always break, >0 = break after N hits");
+        gbc.gridx = 1;
+        formPanel.add(hitThresholdSpinner, gbc);
+
+        // Current hit count (read-only)
+        gbc.gridx = 0; gbc.gridy = 3;
+        formPanel.add(new JLabel("Current hit count:"), gbc);
+        JLabel hitCountLabel = new JLabel(String.valueOf(bp.hitCount()));
+        gbc.gridx = 1;
+        formPanel.add(hitCountLabel, gbc);
+
+        // Reset hit count button
+        JButton resetHitBtn = new JButton("Reset");
+        final Breakpoint bpRef = bp;
+        resetHitBtn.addActionListener(e -> {
+            controller.resetBreakpointHitCount(currentScriptId, offset);
+            hitCountLabel.setText("0");
+        });
+        gbc.gridx = 2;
+        formPanel.add(resetHitBtn, gbc);
+
+        // Log message field
+        gbc.gridx = 0; gbc.gridy = 4;
+        formPanel.add(new JLabel("Log message:"), gbc);
+        JTextField logMessageField = new JTextField(bp.logMessage() != null ? bp.logMessage() : "", 25);
+        logMessageField.setToolTipText("If set, logs message instead of pausing. Use {var} for interpolation.");
+        gbc.gridx = 1; gbc.gridwidth = 2;
+        formPanel.add(logMessageField, gbc);
+
+        gbc.gridx = 0; gbc.gridy = 5; gbc.gridwidth = 3;
+        formPanel.add(new JLabel("<html><small>Log message converts breakpoint to log point (no pause).</small></html>"), gbc);
+
+        dialog.add(formPanel, BorderLayout.CENTER);
+
+        // Buttons
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JButton okBtn = new JButton("OK");
+        okBtn.addActionListener(e -> {
+            String condition = conditionField.getText().trim();
+            String logMessage = logMessageField.getText().trim();
+            int hitThreshold = (Integer) hitThresholdSpinner.getValue();
+
+            Breakpoint updated = new Breakpoint(
+                currentScriptId,
+                offset,
+                enabledCheck.isSelected(),
+                condition.isEmpty() ? null : condition,
+                logMessage.isEmpty() ? null : logMessage,
+                bpRef.hitCount(),
+                hitThreshold
+            );
+            controller.setBreakpoint(updated);
+            dialog.dispose();
+            bytecodeList.repaint();
+        });
+        buttonPanel.add(okBtn);
+
+        JButton cancelBtn = new JButton("Cancel");
+        cancelBtn.addActionListener(e -> dialog.dispose());
+        buttonPanel.add(cancelBtn);
+
+        JButton removeBtn = new JButton("Remove Breakpoint");
+        removeBtn.addActionListener(e -> {
+            controller.removeBreakpoint(currentScriptId, offset);
+            dialog.dispose();
+        });
+        buttonPanel.add(removeBtn);
+
+        dialog.add(buttonPanel, BorderLayout.SOUTH);
+        dialog.setVisible(true);
+    }
+
+    /**
+     * Show dialog to add a log point.
+     */
+    private void showAddLogPointDialog(int offset) {
+        String message = JOptionPane.showInputDialog(
+            this,
+            "Enter log message (use {variable} for interpolation):\nExample: Loop iteration {i}, value = {x}",
+            "Add Log Point",
+            JOptionPane.PLAIN_MESSAGE
+        );
+
+        if (message != null && !message.trim().isEmpty()) {
+            Breakpoint bp = Breakpoint.logPoint(currentScriptId, offset, message.trim());
+            controller.setBreakpoint(bp);
+            bytecodeList.repaint();
+        }
+    }
+
+    /**
+     * Create the watches panel with add/remove buttons.
+     */
+    private JPanel createWatchesPanel() {
+        JPanel panel = new JPanel(new BorderLayout());
+
+        watchesTableModel = new WatchesTableModel();
+        watchesTable = new JTable(watchesTableModel);
+        watchesTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
+        watchesTable.getColumnModel().getColumn(0).setPreferredWidth(150);
+        watchesTable.getColumnModel().getColumn(1).setPreferredWidth(60);
+        watchesTable.getColumnModel().getColumn(2).setPreferredWidth(200);
+
+        // Double-click to edit
+        watchesTable.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2) {
+                    int row = watchesTable.getSelectedRow();
+                    if (row >= 0 && controller != null) {
+                        List<WatchExpression> watches = controller.getWatchExpressions();
+                        if (row < watches.size()) {
+                            WatchExpression watch = watches.get(row);
+                            String newExpr = JOptionPane.showInputDialog(
+                                BytecodeDebuggerPanel.this,
+                                "Edit watch expression:",
+                                watch.expression()
+                            );
+                            if (newExpr != null && !newExpr.trim().isEmpty()) {
+                                controller.updateWatchExpression(watch.id(), newExpr.trim());
+                                refreshWatches();
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        panel.add(new JScrollPane(watchesTable), BorderLayout.CENTER);
+
+        // Buttons
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        JButton addBtn = new JButton("+");
+        addBtn.setToolTipText("Add watch expression");
+        addBtn.addActionListener(e -> {
+            String expr = JOptionPane.showInputDialog(
+                this,
+                "Enter watch expression:",
+                "Add Watch",
+                JOptionPane.PLAIN_MESSAGE
+            );
+            if (expr != null && !expr.trim().isEmpty() && controller != null) {
+                controller.addWatchExpression(expr.trim());
+                refreshWatches();
+            }
+        });
+        buttonPanel.add(addBtn);
+
+        JButton removeBtn = new JButton("-");
+        removeBtn.setToolTipText("Remove selected watch");
+        removeBtn.addActionListener(e -> {
+            int row = watchesTable.getSelectedRow();
+            if (row >= 0 && controller != null) {
+                List<WatchExpression> watches = controller.getWatchExpressions();
+                if (row < watches.size()) {
+                    controller.removeWatchExpression(watches.get(row).id());
+                    refreshWatches();
+                }
+            }
+        });
+        buttonPanel.add(removeBtn);
+
+        JButton clearBtn = new JButton("Clear");
+        clearBtn.setToolTipText("Clear all watches");
+        clearBtn.addActionListener(e -> {
+            if (controller != null) {
+                controller.clearWatchExpressions();
+                refreshWatches();
+            }
+        });
+        buttonPanel.add(clearBtn);
+
+        panel.add(buttonPanel, BorderLayout.SOUTH);
+
+        return panel;
+    }
+
+    /**
+     * Create the debug log panel.
+     */
+    private JPanel createDebugLogPanel() {
+        JPanel panel = new JPanel(new BorderLayout());
+
+        debugLogArea = new JTextArea();
+        debugLogArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
+        debugLogArea.setEditable(false);
+        debugLogArea.setLineWrap(true);
+        debugLogArea.setWrapStyleWord(true);
+
+        panel.add(new JScrollPane(debugLogArea), BorderLayout.CENTER);
+
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        JButton clearBtn = new JButton("Clear");
+        clearBtn.addActionListener(e -> debugLogArea.setText(""));
+        buttonPanel.add(clearBtn);
+
+        panel.add(buttonPanel, BorderLayout.SOUTH);
+
+        return panel;
+    }
+
+    /**
+     * Refresh watch expressions display.
+     */
+    private void refreshWatches() {
+        if (controller != null) {
+            List<WatchExpression> watches = controller.evaluateWatchExpressions();
+            watchesTableModel.setWatches(watches);
+        }
+    }
+
+    /**
+     * Append a message to the debug log.
+     */
+    private void appendToDebugLog(String message) {
+        SwingUtilities.invokeLater(() -> {
+            debugLogArea.append(message + "\n");
+            // Auto-scroll to bottom
+            debugLogArea.setCaretPosition(debugLogArea.getDocument().getLength());
+        });
+    }
+
+    /**
+     * Show a dialog with details about a handler.
+     */
+    private void showHandlerDetailsDialog(String handlerName) {
+        // Find the handler
+        ScriptChunk targetScript = null;
+        ScriptChunk.Handler targetHandler = null;
+
+        for (ScriptChunk script : allScripts) {
+            ScriptChunk.Handler handler = script.findHandler(handlerName);
+            if (handler != null) {
+                targetScript = script;
+                targetHandler = handler;
+                break;
+            }
+        }
+
+        if (targetScript == null || targetHandler == null) {
+            JOptionPane.showMessageDialog(this,
+                "Handler '" + handlerName + "' not found.",
+                "Handler Not Found",
+                JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        // Build the details dialog
+        JDialog dialog = new JDialog(SwingUtilities.getWindowAncestor(this),
+            "Handler: " + handlerName, Dialog.ModalityType.MODELESS);
+        dialog.setLayout(new BorderLayout());
+        dialog.setSize(600, 500);
+        dialog.setLocationRelativeTo(this);
+
+        JTabbedPane tabs = new JTabbedPane();
+
+        // Overview tab
+        tabs.addTab("Overview", createOverviewPanel(targetScript, targetHandler));
+
+        // Bytecode tab
+        tabs.addTab("Bytecode", createBytecodePanel(targetScript, targetHandler));
+
+        // Literals tab (if any)
+        if (!targetScript.literals().isEmpty()) {
+            tabs.addTab("Literals", createLiteralsPanel(targetScript));
+        }
+
+        // Properties tab (if any)
+        if (!targetScript.properties().isEmpty()) {
+            tabs.addTab("Properties", createPropertiesPanel(targetScript));
+        }
+
+        // Globals tab (if any)
+        if (!targetScript.globals().isEmpty()) {
+            tabs.addTab("Globals", createGlobalsPanel(targetScript));
+        }
+
+        dialog.add(tabs, BorderLayout.CENTER);
+
+        // Close button
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JButton closeBtn = new JButton("Close");
+        closeBtn.addActionListener(e -> dialog.dispose());
+        buttonPanel.add(closeBtn);
+        dialog.add(buttonPanel, BorderLayout.SOUTH);
+
+        dialog.setVisible(true);
+    }
+
+    /**
+     * Create the overview panel for handler details dialog.
+     */
+    private JPanel createOverviewPanel(ScriptChunk script, ScriptChunk.Handler handler) {
+        JPanel panel = new JPanel(new BorderLayout(5, 5));
+        panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("<html><body style='font-family: monospace; font-size: 11px;'>");
+
+        // Handler name and script
+        sb.append("<h3>").append(StringUtils.escapeHtml(script.getHandlerName(handler))).append("</h3>");
+        sb.append("<b>Script:</b> ").append(StringUtils.escapeHtml(script.getDisplayName())).append("<br>");
+        sb.append("<b>Script Type:</b> ").append(script.getScriptType()).append("<br>");
+        sb.append("<b>Script ID:</b> ").append(script.id()).append("<br><br>");
+
+        // Handler info
+        sb.append("<b>Bytecode Length:</b> ").append(handler.bytecodeLength()).append(" bytes<br>");
+        sb.append("<b>Instruction Count:</b> ").append(handler.instructions().size()).append("<br><br>");
+
+        // Arguments
+        sb.append("<b>Arguments (").append(handler.argCount()).append("):</b><br>");
+        if (handler.argCount() > 0) {
+            sb.append("<ul>");
+            for (int i = 0; i < handler.argNameIds().size(); i++) {
+                String argName = script.resolveName(handler.argNameIds().get(i));
+                sb.append("<li>").append(StringUtils.escapeHtml(argName)).append("</li>");
+            }
+            sb.append("</ul>");
+        } else {
+            sb.append("&nbsp;&nbsp;(none)<br>");
+        }
+
+        // Local variables
+        sb.append("<b>Local Variables (").append(handler.localCount()).append("):</b><br>");
+        if (handler.localCount() > 0) {
+            sb.append("<ul>");
+            for (int i = 0; i < handler.localNameIds().size(); i++) {
+                String localName = script.resolveName(handler.localNameIds().get(i));
+                sb.append("<li>").append(StringUtils.escapeHtml(localName)).append("</li>");
+            }
+            sb.append("</ul>");
+        } else {
+            sb.append("&nbsp;&nbsp;(none)<br>");
+        }
+
+        // Globals used
+        sb.append("<b>Globals Used:</b> ").append(handler.globalsCount()).append("<br>");
+
+        sb.append("</body></html>");
+
+        JLabel infoLabel = new JLabel(sb.toString());
+        infoLabel.setVerticalAlignment(JLabel.TOP);
+
+        JScrollPane scroll = new JScrollPane(infoLabel);
+        scroll.setBorder(null);
+        panel.add(scroll, BorderLayout.CENTER);
+
+        return panel;
+    }
+
+    /**
+     * Create the bytecode panel for handler details dialog.
+     */
+    private JPanel createBytecodePanel(ScriptChunk script, ScriptChunk.Handler handler) {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+
+        DefaultListModel<String> model = new DefaultListModel<>();
+        for (ScriptChunk.Handler.Instruction instr : handler.instructions()) {
+            String annotation = InstructionAnnotator.annotate(script, handler, instr, true);
+            StringBuilder line = new StringBuilder();
+            line.append(String.format("[%3d] %-14s", instr.offset(), instr.opcode().name()));
+            if (instr.argument() != 0 || instr.rawOpcode() >= 0x40) {
+                line.append(String.format(" %-4d", instr.argument()));
+            } else {
+                line.append("     ");
+            }
+            if (annotation != null && !annotation.isEmpty()) {
+                line.append(" ").append(annotation);
+            }
+            model.addElement(line.toString());
+        }
+
+        JList<String> list = new JList<>(model);
+        list.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
+        list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+
+        JScrollPane scroll = new JScrollPane(list);
+        panel.add(scroll, BorderLayout.CENTER);
+
+        return panel;
+    }
+
+    /**
+     * Create the literals panel for handler details dialog.
+     */
+    private JPanel createLiteralsPanel(ScriptChunk script) {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+
+        String[] columns = {"#", "Type", "Value"};
+        Object[][] data = new Object[script.literals().size()][3];
+
+        for (int i = 0; i < script.literals().size(); i++) {
+            ScriptChunk.LiteralEntry lit = script.literals().get(i);
+            data[i][0] = i;
+            data[i][1] = getLiteralTypeName(lit.type());
+            data[i][2] = formatLiteralValue(lit);
+        }
+
+        JTable table = new JTable(data, columns);
+        table.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
+        table.getColumnModel().getColumn(0).setPreferredWidth(40);
+        table.getColumnModel().getColumn(1).setPreferredWidth(80);
+        table.getColumnModel().getColumn(2).setPreferredWidth(300);
+
+        JScrollPane scroll = new JScrollPane(table);
+        panel.add(scroll, BorderLayout.CENTER);
+
+        return panel;
+    }
+
+    /**
+     * Create the properties panel for handler details dialog.
+     */
+    private JPanel createPropertiesPanel(ScriptChunk script) {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+
+        DefaultListModel<String> model = new DefaultListModel<>();
+        List<String> propNames = script.getPropertyNames(directorFile != null ? directorFile.getScriptNames() : null);
+        for (int i = 0; i < propNames.size(); i++) {
+            model.addElement(String.format("[%d] %s", i, propNames.get(i)));
+        }
+
+        JList<String> list = new JList<>(model);
+        list.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
+
+        JScrollPane scroll = new JScrollPane(list);
+        panel.add(scroll, BorderLayout.CENTER);
+
+        return panel;
+    }
+
+    /**
+     * Create the globals panel for handler details dialog.
+     */
+    private JPanel createGlobalsPanel(ScriptChunk script) {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+
+        DefaultListModel<String> model = new DefaultListModel<>();
+        List<String> globalNames = script.getGlobalNames(directorFile != null ? directorFile.getScriptNames() : null);
+        for (int i = 0; i < globalNames.size(); i++) {
+            model.addElement(String.format("[%d] %s", i, globalNames.get(i)));
+        }
+
+        JList<String> list = new JList<>(model);
+        list.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
+
+        JScrollPane scroll = new JScrollPane(list);
+        panel.add(scroll, BorderLayout.CENTER);
+
+        return panel;
+    }
+
+    /**
+     * Get a human-readable name for a literal type.
+     */
+    private String getLiteralTypeName(int type) {
+        return switch (type) {
+            case 1 -> "String";
+            case 4 -> "Int";
+            case 9 -> "Float";
+            default -> "Type " + type;
+        };
+    }
+
+    /**
+     * Format a literal value for display.
+     */
+    private String formatLiteralValue(ScriptChunk.LiteralEntry lit) {
+        Object value = lit.value();
+        if (value == null) {
+            return "(null)";
+        }
+        if (value instanceof String s) {
+            // Escape and quote strings
+            return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"")
+                         .replace("\n", "\\n").replace("\r", "\\r") + "\"";
+        }
+        if (value instanceof byte[] bytes) {
+            if (bytes.length <= 20) {
+                StringBuilder sb = new StringBuilder("bytes[");
+                for (int i = 0; i < bytes.length; i++) {
+                    if (i > 0) sb.append(" ");
+                    sb.append(String.format("%02X", bytes[i] & 0xFF));
+                }
+                sb.append("]");
+                return sb.toString();
+            }
+            return "bytes[" + bytes.length + "]";
+        }
+        return String.valueOf(value);
     }
 
     /**
@@ -314,66 +1023,78 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
         this.directorFile = file;
         this.castLibManager = castLibManager;
         this.allScripts.clear();
+        this.allScriptItems.clear();
 
         scriptModel.removeAllElements();
         handlerModel.removeAllElements();
         bytecodeModel.clear();
+        scriptFilterField.setText("");
 
         if (file == null) {
             return;
         }
 
-        // Collect all scripts from main file
+        // Collect all scripts with their source info, in load order
         Set<Integer> seenScriptIds = new HashSet<>();
+        int loadOrder = 0;
+
+        // Get main file name
+        String mainFileName = file.getFileName();
+        if (mainFileName == null || mainFileName.isEmpty()) {
+            mainFileName = "Main";
+        }
+
+        // Collect scripts from main file first
         for (ScriptChunk script : file.getScripts()) {
             if (!seenScriptIds.contains(script.id())) {
                 allScripts.add(script);
                 seenScriptIds.add(script.id());
+                if (!script.handlers().isEmpty()) {
+                    allScriptItems.add(new ScriptItem(script, mainFileName, loadOrder++));
+                }
             }
         }
 
-        // Also collect scripts from all cast libraries
+        // Then collect scripts from all cast libraries (in their load order)
         if (castLibManager != null) {
             for (CastLib castLib : castLibManager.getCastLibs().values()) {
+                // Determine source name: prefer file name, then cast name
+                String sourceName = castLib.getFileName();
+                if (sourceName == null || sourceName.isEmpty()) {
+                    sourceName = castLib.getName();
+                }
+                if (sourceName == null || sourceName.isEmpty()) {
+                    sourceName = "Cast " + castLib.getNumber();
+                }
+                // Extract just the filename without path
+                if (sourceName.contains("/")) {
+                    sourceName = sourceName.substring(sourceName.lastIndexOf('/') + 1);
+                }
+                if (sourceName.contains("\\")) {
+                    sourceName = sourceName.substring(sourceName.lastIndexOf('\\') + 1);
+                }
+
                 for (ScriptChunk script : castLib.getAllScripts()) {
                     if (!seenScriptIds.contains(script.id())) {
                         allScripts.add(script);
                         seenScriptIds.add(script.id());
+                        if (!script.handlers().isEmpty()) {
+                            allScriptItems.add(new ScriptItem(script, sourceName, loadOrder++));
+                        }
                     }
                 }
             }
         }
 
-        // Sort scripts by type, then by name for easier navigation
-        allScripts.sort((a, b) -> {
-            // First by type (MOVIE_SCRIPT first, then BEHAVIOR, then PARENT)
-            int typeOrder = getScriptTypeOrder(a.getScriptType()) - getScriptTypeOrder(b.getScriptType());
-            if (typeOrder != 0) return typeOrder;
-            // Then by name
-            return a.getDisplayName().compareToIgnoreCase(b.getDisplayName());
-        });
-
-        // Populate script combo
-        for (ScriptChunk script : allScripts) {
-            if (!script.handlers().isEmpty()) {
-                scriptModel.addElement(new ScriptItem(script));
-            }
+        // Populate script combo (no sorting - use load order)
+        for (ScriptItem item : allScriptItems) {
+            scriptModel.addElement(item);
         }
 
         // Auto-select first script if available
         if (scriptModel.getSize() > 0) {
             scriptCombo.setSelectedIndex(0);
         }
-    }
-
-    private int getScriptTypeOrder(ScriptChunk.ScriptType type) {
-        return switch (type) {
-            case MOVIE_SCRIPT -> 0;
-            case BEHAVIOR -> 1;
-            case PARENT -> 2;
-            case SCORE -> 3;
-            default -> 4;
-        };
     }
 
     // Keep references for refresh
@@ -469,7 +1190,7 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
 
         for (ScriptChunk.Handler.Instruction instr : handler.instructions()) {
             String annotation = buildAnnotation(script, handler, instr);
-            boolean hasBp = controller != null && controller.hasBreakpoint(script.id(), instr.offset());
+            Breakpoint bp = controller != null ? controller.getBreakpoint(script.id(), instr.offset()) : null;
 
             InstructionDisplayItem item = new InstructionDisplayItem(
                 instr.offset(),
@@ -477,8 +1198,9 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
                 instr.opcode().name(),
                 instr.argument(),
                 annotation,
-                hasBp
+                bp != null
             );
+            item.breakpoint = bp;
             bytecodeModel.addElement(item);
             currentInstructions.add(item);
         }
@@ -590,6 +1312,13 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
             // Update globals
             globalsTableModel.setVariables(snapshot.globals());
 
+            // Update watches
+            if (snapshot.watchResults() != null) {
+                watchesTableModel.setWatches(snapshot.watchResults());
+            } else {
+                refreshWatches();
+            }
+
             // Enable step buttons
             setStepButtonsEnabled(true);
         });
@@ -612,11 +1341,24 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
             if (controller != null && currentScriptId >= 0) {
                 for (int i = 0; i < bytecodeModel.size(); i++) {
                     InstructionDisplayItem item = bytecodeModel.get(i);
-                    item.hasBreakpoint = controller.hasBreakpoint(currentScriptId, item.offset);
+                    Breakpoint bp = controller.getBreakpoint(currentScriptId, item.offset);
+                    item.breakpoint = bp;
+                    item.hasBreakpoint = bp != null;
                 }
                 bytecodeList.repaint();
             }
         });
+    }
+
+    @Override
+    public void onLogPointHit(Breakpoint bp, String message) {
+        String logLine = String.format("[LogPoint] Script %d, offset %d: %s", bp.scriptId(), bp.offset(), message);
+        appendToDebugLog(logLine);
+    }
+
+    @Override
+    public void onWatchExpressionsChanged() {
+        refreshWatches();
     }
 
     // TraceListener implementation (to capture instruction list)
@@ -818,6 +1560,7 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
         final int argument;
         final String annotation;
         boolean hasBreakpoint;
+        Breakpoint breakpoint;  // Full breakpoint info for rendering
         boolean isCurrent;
 
         InstructionDisplayItem(int offset, int index, String opcode, int argument, String annotation, boolean hasBreakpoint) {
@@ -827,6 +1570,7 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
             this.argument = argument;
             this.annotation = annotation;
             this.hasBreakpoint = hasBreakpoint;
+            this.breakpoint = null;
             this.isCurrent = false;
         }
 
@@ -878,12 +1622,8 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
                 // Build display text with markers using HTML for rich formatting
                 StringBuilder sb = new StringBuilder("<html><pre style='margin:0;font-family:monospaced;'>");
 
-                // Breakpoint marker (red)
-                if (item.hasBreakpoint) {
-                    sb.append("<font color='red'>\u25CF</font> ");
-                } else {
-                    sb.append("  ");
-                }
+                // Breakpoint marker - different symbols/colors based on type
+                sb.append(getBreakpointMarker(item));
 
                 // Current instruction marker (gold)
                 if (item.isCurrent) {
@@ -921,6 +1661,39 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
             }
 
             return label;
+        }
+
+        /**
+         * Get the appropriate breakpoint marker based on breakpoint type.
+         */
+        private String getBreakpointMarker(InstructionDisplayItem item) {
+            if (!item.hasBreakpoint || item.breakpoint == null) {
+                if (item.hasBreakpoint) {
+                    // Fallback for old-style breakpoints without full info
+                    return "<font color='red'>\u25CF</font> ";
+                }
+                return "  ";
+            }
+
+            Breakpoint bp = item.breakpoint;
+
+            // Disabled breakpoint - gray hollow circle
+            if (!bp.enabled()) {
+                return "<font color='gray'>\u25CB</font> ";
+            }
+
+            // Log point - orange diamond
+            if (bp.isLogPoint()) {
+                return "<font color='orange'>\u25C6</font> ";
+            }
+
+            // Conditional breakpoint - tomato filled circle
+            if (bp.isConditional()) {
+                return "<font color='tomato'>\u25CF</font> ";
+            }
+
+            // Normal enabled breakpoint - red filled circle
+            return "<font color='red'>\u25CF</font> ";
         }
     }
 
@@ -1004,17 +1777,75 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
         }
     }
 
+    // Table model for watch expressions display
+    private static class WatchesTableModel extends AbstractTableModel {
+        private List<WatchExpression> watches = new ArrayList<>();
+        private final String[] columns = {"Expression", "Type", "Value"};
+
+        void setWatches(List<WatchExpression> watches) {
+            this.watches = watches != null ? new ArrayList<>(watches) : new ArrayList<>();
+            fireTableDataChanged();
+        }
+
+        @Override
+        public int getRowCount() {
+            return watches.size();
+        }
+
+        @Override
+        public int getColumnCount() {
+            return columns.length;
+        }
+
+        @Override
+        public String getColumnName(int column) {
+            return columns[column];
+        }
+
+        @Override
+        public Object getValueAt(int rowIndex, int columnIndex) {
+            if (rowIndex >= watches.size()) return "";
+            WatchExpression watch = watches.get(rowIndex);
+            return switch (columnIndex) {
+                case 0 -> watch.expression();
+                case 1 -> watch.getTypeName();
+                case 2 -> watch.getResultDisplay();
+                default -> "";
+            };
+        }
+    }
+
     // Combo box item for scripts
     private static class ScriptItem {
         final ScriptChunk script;
+        final String sourceName;  // Cast library name or file name
+        final int loadOrder;
 
-        ScriptItem(ScriptChunk script) {
+        ScriptItem(ScriptChunk script, String sourceName, int loadOrder) {
             this.script = script;
+            this.sourceName = sourceName;
+            this.loadOrder = loadOrder;
         }
 
         @Override
         public String toString() {
-            return script.getDisplayName();
+            String name = script.getDisplayName();
+            if (sourceName != null && !sourceName.isEmpty()) {
+                return name + " (" + sourceName + ")";
+            }
+            return name;
+        }
+
+        /**
+         * Check if this item matches the filter text (case-insensitive).
+         */
+        boolean matchesFilter(String filter) {
+            if (filter == null || filter.isEmpty()) {
+                return true;
+            }
+            String lowerFilter = filter.toLowerCase();
+            return script.getDisplayName().toLowerCase().contains(lowerFilter)
+                || (sourceName != null && sourceName.toLowerCase().contains(lowerFilter));
         }
     }
 

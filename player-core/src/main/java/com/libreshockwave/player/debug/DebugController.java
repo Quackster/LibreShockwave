@@ -1,18 +1,24 @@
 package com.libreshockwave.player.debug;
 
-import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.TraceListener;
 
 import javax.swing.*;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Semaphore;
 
 /**
  * Core debugging controller that implements TraceListener.
  * Blocks VM execution when paused by using a Semaphore in onInstruction().
+ *
+ * Supports:
+ * - Simple breakpoints
+ * - Conditional breakpoints with expression evaluation
+ * - Log points (log message without pausing)
+ * - Breakpoint enable/disable
+ * - Hit count tracking and thresholds
+ * - Watch expressions
  */
 public class DebugController implements TraceListener {
 
@@ -66,13 +72,17 @@ public class DebugController implements TraceListener {
     // Request to pause on next instruction (when Pause button is clicked)
     private volatile boolean pauseRequested = false;
 
-    // Breakpoints: scriptId -> set of instruction offsets
-    private final Map<Integer, Set<Integer>> breakpoints = new ConcurrentHashMap<>();
+    // Breakpoint manager (replaces old Map<Integer, Set<Integer>>)
+    private final BreakpointManager breakpointManager = new BreakpointManager();
+
+    // Expression evaluator for conditions and watches
+    private final ExpressionEvaluator expressionEvaluator = new ExpressionEvaluator();
+
+    // Watch expressions
+    private final List<WatchExpression> watchExpressions = new CopyOnWriteArrayList<>();
 
     // Current handler context (for snapshot creation)
     private volatile HandlerInfo currentHandlerInfo;
-    private volatile ScriptChunk currentScript;
-    private volatile ScriptChunk.Handler currentHandler;
     private volatile InstructionInfo currentInstructionInfo;
 
     // Call stack tracking
@@ -87,6 +97,9 @@ public class DebugController implements TraceListener {
     // Globals accessor (set by Player)
     private volatile Map<String, Datum> globalsSnapshot = Collections.emptyMap();
 
+    // Locals accessor (set by Player when pausing)
+    private volatile Map<String, Datum> localsSnapshot = Collections.emptyMap();
+
     // Delegate trace listener (for UI updates)
     private volatile TraceListener delegateListener;
 
@@ -99,6 +112,13 @@ public class DebugController implements TraceListener {
      */
     public void setDelegateListener(TraceListener listener) {
         this.delegateListener = listener;
+    }
+
+    /**
+     * Get the breakpoint manager.
+     */
+    public BreakpointManager getBreakpointManager() {
+        return breakpointManager;
     }
 
     // TraceListener implementation
@@ -163,7 +183,8 @@ public class DebugController implements TraceListener {
         }
 
         // Check if we should break
-        if (shouldBreak(info)) {
+        BreakResult result = checkBreak(info);
+        if (result.shouldPause) {
             pauseExecution(info);
         }
     }
@@ -196,29 +217,115 @@ public class DebugController implements TraceListener {
     }
 
     /**
-     * Determine if we should break at this instruction.
+     * Result of checking whether to break at an instruction.
      */
-    private boolean shouldBreak(InstructionInfo info) {
+    private record BreakResult(boolean shouldPause, Breakpoint breakpoint) {
+        static BreakResult noBreak() { return new BreakResult(false, null); }
+        static BreakResult pause(Breakpoint bp) { return new BreakResult(true, bp); }
+        static BreakResult pauseNoBreakpoint() { return new BreakResult(true, null); }
+    }
+
+    /**
+     * Check if we should break at this instruction.
+     * Handles breakpoint conditions, log points, and hit counts.
+     */
+    private BreakResult checkBreak(InstructionInfo info) {
         synchronized (stateLock) {
-            // Check pause request
+            // Check pause request first
             if (pauseRequested) {
                 pauseRequested = false;
-                return true;
+                return BreakResult.pauseNoBreakpoint();
             }
 
             // Check breakpoints
-            if (currentHandlerInfo != null && hasBreakpoint(currentHandlerInfo.scriptId(), info.offset())) {
-                return true;
+            if (currentHandlerInfo != null) {
+                Breakpoint bp = breakpointManager.getBreakpoint(currentHandlerInfo.scriptId(), info.offset());
+                if (bp != null) {
+                    BreakResult result = evaluateBreakpoint(bp, info);
+                    if (result.shouldPause || bp.isLogPoint()) {
+                        return result;
+                    }
+                }
             }
 
             // Check stepping modes
-            return switch (stepMode) {
+            boolean shouldStep = switch (stepMode) {
                 case STEP_INTO -> true;  // Always break
                 case STEP_OVER -> callDepth <= targetCallDepth;
                 case STEP_OUT -> false;  // Handled in onHandlerExit
                 case NONE -> false;
             };
+
+            return shouldStep ? BreakResult.pauseNoBreakpoint() : BreakResult.noBreak();
         }
+    }
+
+    /**
+     * Evaluate a breakpoint to determine if we should pause.
+     * Handles enabled/disabled, hit counts, conditions, and log points.
+     */
+    private BreakResult evaluateBreakpoint(Breakpoint bp, InstructionInfo info) {
+        // Check if enabled
+        if (!bp.enabled()) {
+            return BreakResult.noBreak();
+        }
+
+        // Increment hit count
+        bp = breakpointManager.incrementHitCount(bp.scriptId(), bp.offset());
+        if (bp == null) {
+            return BreakResult.noBreak();
+        }
+
+        // Check hit count threshold
+        if (bp.hitCountThreshold() > 0 && bp.hitCount() < bp.hitCountThreshold()) {
+            return BreakResult.noBreak();
+        }
+
+        // Build evaluation context for conditions
+        ExpressionEvaluator.EvaluationContext ctx = buildEvaluationContext();
+
+        // Check condition
+        if (bp.isConditional()) {
+            boolean conditionMet = expressionEvaluator.evaluateCondition(bp.condition(), ctx);
+            if (!conditionMet) {
+                return BreakResult.noBreak();
+            }
+        }
+
+        // Handle log point (log message without pausing)
+        if (bp.isLogPoint()) {
+            String message = expressionEvaluator.interpolateLogMessage(bp.logMessage(), ctx);
+            notifyLogPointHit(bp, message);
+            return BreakResult.noBreak();  // Log points don't pause
+        }
+
+        // Normal breakpoint - pause execution
+        return BreakResult.pause(bp);
+    }
+
+    /**
+     * Build an evaluation context from current state.
+     */
+    private ExpressionEvaluator.EvaluationContext buildEvaluationContext() {
+        HandlerInfo handlerInfo = currentHandlerInfo;
+        Datum receiver = handlerInfo != null ? handlerInfo.receiver() : null;
+
+        // Build params map from handler arguments
+        // Note: We use arg0, arg1, etc. as parameter names since HandlerInfo doesn't include names
+        Map<String, Datum> params = new LinkedHashMap<>();
+        if (handlerInfo != null && handlerInfo.arguments() != null) {
+            List<Datum> args = handlerInfo.arguments();
+            for (int i = 0; i < args.size(); i++) {
+                params.put("arg" + i, args.get(i));
+            }
+        }
+
+        return new ExpressionEvaluator.EvaluationContext(
+            localsSnapshot,
+            params,
+            globalsSnapshot,
+            receiver
+        );
     }
 
     /**
@@ -231,7 +338,7 @@ public class DebugController implements TraceListener {
             stepMode = StepMode.NONE;
         }
 
-        // Capture snapshot
+        // Capture snapshot with evaluated watches
         currentSnapshot = captureSnapshot(info);
 
         // Notify UI on EDT
@@ -264,8 +371,10 @@ public class DebugController implements TraceListener {
 
         // Build locals map from current scope
         // Note: We only have info from HandlerInfo, not direct scope access
-        Map<String, Datum> locals = new LinkedHashMap<>();
-        // Locals would need to be captured from the scope
+        Map<String, Datum> locals = new LinkedHashMap<>(localsSnapshot);
+
+        // Evaluate watch expressions
+        List<WatchExpression> evaluatedWatches = evaluateWatchExpressions();
 
         return new DebugSnapshot(
             handlerInfo.scriptId(),
@@ -282,7 +391,8 @@ public class DebugController implements TraceListener {
             new LinkedHashMap<>(globalsSnapshot),
             new ArrayList<>(handlerInfo.arguments()),
             handlerInfo.receiver(),
-            getCallStackSnapshot()
+            getCallStackSnapshot(),
+            evaluatedWatches
         );
     }
 
@@ -375,31 +485,23 @@ public class DebugController implements TraceListener {
         return currentSnapshot;
     }
 
-    // Breakpoint management
+    // Breakpoint management (delegates to BreakpointManager for compatibility)
 
     /**
      * Toggle a breakpoint at the given script and offset.
      * @return true if breakpoint was added, false if removed
      */
     public boolean toggleBreakpoint(int scriptId, int offset) {
-        Set<Integer> offsets = breakpoints.computeIfAbsent(scriptId, k -> ConcurrentHashMap.newKeySet());
-        boolean added;
-        if (offsets.contains(offset)) {
-            offsets.remove(offset);
-            added = false;
-        } else {
-            offsets.add(offset);
-            added = true;
-        }
+        Breakpoint result = breakpointManager.toggleBreakpoint(scriptId, offset);
         notifyBreakpointsChanged();
-        return added;
+        return result != null;
     }
 
     /**
      * Add a breakpoint.
      */
     public void addBreakpoint(int scriptId, int offset) {
-        breakpoints.computeIfAbsent(scriptId, k -> ConcurrentHashMap.newKeySet()).add(offset);
+        breakpointManager.addBreakpoint(scriptId, offset);
         notifyBreakpointsChanged();
     }
 
@@ -407,108 +509,192 @@ public class DebugController implements TraceListener {
      * Remove a breakpoint.
      */
     public void removeBreakpoint(int scriptId, int offset) {
-        Set<Integer> offsets = breakpoints.get(scriptId);
-        if (offsets != null) {
-            offsets.remove(offset);
-            notifyBreakpointsChanged();
-        }
+        breakpointManager.removeBreakpoint(scriptId, offset);
+        notifyBreakpointsChanged();
     }
 
     /**
      * Check if a breakpoint exists.
      */
     public boolean hasBreakpoint(int scriptId, int offset) {
-        Set<Integer> offsets = breakpoints.get(scriptId);
-        return offsets != null && offsets.contains(offset);
+        return breakpointManager.hasBreakpoint(scriptId, offset);
     }
 
     /**
-     * Get all breakpoints.
+     * Get a specific breakpoint.
+     */
+    public Breakpoint getBreakpoint(int scriptId, int offset) {
+        return breakpointManager.getBreakpoint(scriptId, offset);
+    }
+
+    /**
+     * Update or add a breakpoint with full properties.
+     */
+    public void setBreakpoint(Breakpoint bp) {
+        breakpointManager.setBreakpoint(bp);
+        notifyBreakpointsChanged();
+    }
+
+    /**
+     * Toggle enabled state of a breakpoint.
+     * @return the updated breakpoint, or null if no breakpoint exists
+     */
+    public Breakpoint toggleBreakpointEnabled(int scriptId, int offset) {
+        Breakpoint bp = breakpointManager.toggleEnabled(scriptId, offset);
+        if (bp != null) {
+            notifyBreakpointsChanged();
+        }
+        return bp;
+    }
+
+    /**
+     * Reset hit count for a breakpoint.
+     * @return the updated breakpoint, or null if no breakpoint exists
+     */
+    public Breakpoint resetBreakpointHitCount(int scriptId, int offset) {
+        Breakpoint bp = breakpointManager.resetHitCount(scriptId, offset);
+        if (bp != null) {
+            notifyBreakpointsChanged();
+        }
+        return bp;
+    }
+
+    /**
+     * Get all breakpoints as a map (scriptId -> set of offsets).
+     * For backward compatibility.
      */
     public Map<Integer, Set<Integer>> getBreakpoints() {
-        Map<Integer, Set<Integer>> result = new HashMap<>();
-        for (Map.Entry<Integer, Set<Integer>> entry : breakpoints.entrySet()) {
-            result.put(entry.getKey(), new HashSet<>(entry.getValue()));
-        }
-        return result;
+        return breakpointManager.toOffsetMap();
     }
 
     /**
      * Clear all breakpoints.
      */
     public void clearAllBreakpoints() {
-        breakpoints.clear();
+        breakpointManager.clearAll();
+        notifyBreakpointsChanged();
+    }
+
+    /**
+     * Reset all hit counts.
+     */
+    public void resetAllHitCounts() {
+        breakpointManager.resetAllHitCounts();
         notifyBreakpointsChanged();
     }
 
     /**
      * Set all breakpoints from a map (used for loading saved breakpoints).
+     * For backward compatibility with old format.
      */
     public void setBreakpoints(Map<Integer, Set<Integer>> newBreakpoints) {
-        breakpoints.clear();
-        if (newBreakpoints != null) {
-            for (Map.Entry<Integer, Set<Integer>> entry : newBreakpoints.entrySet()) {
-                breakpoints.put(entry.getKey(), ConcurrentHashMap.newKeySet());
-                breakpoints.get(entry.getKey()).addAll(entry.getValue());
-            }
-        }
+        breakpointManager.setFromOffsetMap(newBreakpoints);
         notifyBreakpointsChanged();
     }
 
     /**
      * Serialize breakpoints to a string for persistence.
-     * Format: "scriptId:offset,offset;scriptId:offset,offset;..."
+     * Uses new JSON format with backward compatibility.
      */
     public String serializeBreakpoints() {
-        StringBuilder sb = new StringBuilder();
-        boolean first = true;
-        for (Map.Entry<Integer, Set<Integer>> entry : breakpoints.entrySet()) {
-            if (entry.getValue().isEmpty()) continue;
-            if (!first) sb.append(";");
-            first = false;
-            sb.append(entry.getKey()).append(":");
-            boolean firstOffset = true;
-            for (Integer offset : entry.getValue()) {
-                if (!firstOffset) sb.append(",");
-                firstOffset = false;
-                sb.append(offset);
-            }
-        }
-        return sb.toString();
+        return breakpointManager.serialize();
     }
 
     /**
      * Deserialize breakpoints from a string.
-     * Format: "scriptId:offset,offset;scriptId:offset,offset;..."
+     * Supports both new JSON format and legacy format.
      */
-    public static Map<Integer, Set<Integer>> deserializeBreakpoints(String data) {
-        Map<Integer, Set<Integer>> result = new HashMap<>();
-        if (data == null || data.isEmpty()) {
-            return result;
+    public void deserializeBreakpoints(String data) {
+        breakpointManager.deserialize(data);
+        notifyBreakpointsChanged();
+    }
+
+    /**
+     * Deserialize breakpoints from a string (static version for backward compatibility).
+     * @deprecated Use instance method deserializeBreakpoints() instead.
+     */
+    @Deprecated
+    public static Map<Integer, Set<Integer>> deserializeBreakpointsLegacy(String data) {
+        BreakpointManager temp = new BreakpointManager();
+        temp.deserialize(data);
+        return temp.toOffsetMap();
+    }
+
+    // Watch expression management
+
+    /**
+     * Add a watch expression.
+     * @return the created watch expression
+     */
+    public WatchExpression addWatchExpression(String expression) {
+        WatchExpression watch = WatchExpression.create(expression);
+        watchExpressions.add(watch);
+        notifyWatchExpressionsChanged();
+        return watch;
+    }
+
+    /**
+     * Remove a watch expression by ID.
+     * @return true if removed, false if not found
+     */
+    public boolean removeWatchExpression(String id) {
+        boolean removed = watchExpressions.removeIf(w -> w.id().equals(id));
+        if (removed) {
+            notifyWatchExpressionsChanged();
         }
-        try {
-            String[] scripts = data.split(";");
-            for (String script : scripts) {
-                if (script.isEmpty()) continue;
-                String[] parts = script.split(":");
-                if (parts.length != 2) continue;
-                int scriptId = Integer.parseInt(parts[0]);
-                Set<Integer> offsets = new HashSet<>();
-                String[] offsetStrs = parts[1].split(",");
-                for (String offsetStr : offsetStrs) {
-                    if (!offsetStr.isEmpty()) {
-                        offsets.add(Integer.parseInt(offsetStr));
-                    }
-                }
-                if (!offsets.isEmpty()) {
-                    result.put(scriptId, offsets);
-                }
+        return removed;
+    }
+
+    /**
+     * Update a watch expression.
+     * @return the updated watch, or null if not found
+     */
+    public WatchExpression updateWatchExpression(String id, String newExpression) {
+        for (int i = 0; i < watchExpressions.size(); i++) {
+            WatchExpression w = watchExpressions.get(i);
+            if (w.id().equals(id)) {
+                WatchExpression updated = w.withExpression(newExpression);
+                watchExpressions.set(i, updated);
+                notifyWatchExpressionsChanged();
+                return updated;
             }
-        } catch (NumberFormatException e) {
-            // Return empty map on parse error
-            return new HashMap<>();
         }
-        return result;
+        return null;
+    }
+
+    /**
+     * Get all watch expressions.
+     */
+    public List<WatchExpression> getWatchExpressions() {
+        return new ArrayList<>(watchExpressions);
+    }
+
+    /**
+     * Evaluate all watch expressions with current context.
+     * @return list of evaluated watches with values/errors populated
+     */
+    public List<WatchExpression> evaluateWatchExpressions() {
+        ExpressionEvaluator.EvaluationContext ctx = buildEvaluationContext();
+        List<WatchExpression> evaluated = new ArrayList<>();
+
+        for (WatchExpression watch : watchExpressions) {
+            ExpressionEvaluator.EvalResult result = expressionEvaluator.evaluate(watch.expression(), ctx);
+            WatchExpression updated = switch (result) {
+                case ExpressionEvaluator.EvalResult.Success s -> watch.withValue(s.value());
+                case ExpressionEvaluator.EvalResult.Error e -> watch.withError(e.message());
+            };
+            evaluated.add(updated);
+        }
+
+        return evaluated;
+    }
+
+    /**
+     * Clear all watch expressions.
+     */
+    public void clearWatchExpressions() {
+        watchExpressions.clear();
+        notifyWatchExpressionsChanged();
     }
 
     // Listener management
@@ -551,6 +737,22 @@ public class DebugController implements TraceListener {
         });
     }
 
+    private void notifyLogPointHit(Breakpoint bp, String message) {
+        SwingUtilities.invokeLater(() -> {
+            for (DebugStateListener listener : listeners) {
+                listener.onLogPointHit(bp, message);
+            }
+        });
+    }
+
+    private void notifyWatchExpressionsChanged() {
+        SwingUtilities.invokeLater(() -> {
+            for (DebugStateListener listener : listeners) {
+                listener.onWatchExpressionsChanged();
+            }
+        });
+    }
+
     // State injection (called by Player)
 
     /**
@@ -559,6 +761,14 @@ public class DebugController implements TraceListener {
      */
     public void setGlobalsSnapshot(Map<String, Datum> globals) {
         this.globalsSnapshot = globals != null ? new LinkedHashMap<>(globals) : Collections.emptyMap();
+    }
+
+    /**
+     * Update the locals snapshot for debugging.
+     * Called by Player when pausing.
+     */
+    public void setLocalsSnapshot(Map<String, Datum> locals) {
+        this.localsSnapshot = locals != null ? new LinkedHashMap<>(locals) : Collections.emptyMap();
     }
 
     /**
@@ -585,6 +795,8 @@ public class DebugController implements TraceListener {
         currentHandlerInfo = null;
         currentInstructionInfo = null;
         currentSnapshot = null;
+        // Reset all hit counts when movie is reset
+        breakpointManager.resetAllHitCounts();
     }
 
     /**

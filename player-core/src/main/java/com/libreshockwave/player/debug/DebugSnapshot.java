@@ -31,8 +31,35 @@ public record DebugSnapshot(
     Datum receiver,
 
     // Call stack (list of frames, most recent last)
-    List<DebugController.CallFrame> callStack
+    List<DebugController.CallFrame> callStack,
+
+    // Watch expression results (evaluated when paused)
+    List<WatchExpression> watchResults
 ) {
+    /**
+     * Constructor for backward compatibility (without watch results).
+     */
+    public DebugSnapshot(
+        int scriptId,
+        String scriptName,
+        String handlerName,
+        int instructionOffset,
+        int instructionIndex,
+        String opcode,
+        int argument,
+        String annotation,
+        List<InstructionDisplay> allInstructions,
+        List<Datum> stack,
+        Map<String, Datum> locals,
+        Map<String, Datum> globals,
+        List<Datum> arguments,
+        Datum receiver,
+        List<DebugController.CallFrame> callStack
+    ) {
+        this(scriptId, scriptName, handlerName, instructionOffset, instructionIndex,
+             opcode, argument, annotation, allInstructions, stack, locals, globals,
+             arguments, receiver, callStack, List.of());
+    }
     /**
      * Display information for a single instruction.
      */

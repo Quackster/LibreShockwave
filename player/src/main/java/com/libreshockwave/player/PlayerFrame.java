@@ -813,6 +813,7 @@ public class PlayerFrame extends JFrame {
 
     /**
      * Load breakpoints from preferences for the given movie key.
+     * Supports both new JSON format and legacy format.
      */
     private void loadBreakpoints(String movieKey) {
         if (movieKey == null || movieKey.isEmpty()) {
@@ -821,8 +822,7 @@ public class PlayerFrame extends JFrame {
         String prefKey = PREF_BREAKPOINTS_PREFIX + sanitizeKey(movieKey);
         String serialized = prefs.get(prefKey, "");
         if (!serialized.isEmpty()) {
-            Map<Integer, Set<Integer>> breakpoints = DebugController.deserializeBreakpoints(serialized);
-            debugController.setBreakpoints(breakpoints);
+            debugController.deserializeBreakpoints(serialized);
         }
     }
 
