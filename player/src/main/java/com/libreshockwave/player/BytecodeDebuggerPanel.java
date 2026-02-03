@@ -8,8 +8,9 @@ import com.libreshockwave.player.cast.CastLibManager;
 import com.libreshockwave.player.debug.DebugController;
 import com.libreshockwave.player.debug.DebugSnapshot;
 import com.libreshockwave.player.debug.DebugStateListener;
-import com.libreshockwave.player.format.DatumFormatter;
 import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.DatumFormatter;
+import com.libreshockwave.vm.util.StringUtils;
 import com.libreshockwave.vm.TraceListener;
 
 import javax.swing.*;
@@ -943,9 +944,9 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
                 if (item.annotation != null && !item.annotation.isEmpty()) {
                     sb.append(" ");
                     if (item.isCallInstruction() && item.getCallTargetName() != null) {
-                        sb.append("<font color='blue'><u>").append(escapeHtml(item.annotation)).append("</u></font>");
+                        sb.append("<font color='blue'><u>").append(StringUtils.escapeHtml(item.annotation)).append("</u></font>");
                     } else {
-                        sb.append(escapeHtml(item.annotation));
+                        sb.append(StringUtils.escapeHtml(item.annotation));
                     }
                 }
 
@@ -960,12 +961,6 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
             }
 
             return label;
-        }
-
-        private String escapeHtml(String text) {
-            return text.replace("&", "&amp;")
-                       .replace("<", "&lt;")
-                       .replace(">", "&gt;");
         }
     }
 
@@ -1000,15 +995,10 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
             Datum d = stack.get(rowIndex);
             return switch (columnIndex) {
                 case 0 -> String.valueOf(rowIndex);
-                case 1 -> getTypeName(d);
+                case 1 -> DatumFormatter.getTypeName(d);
                 case 2 -> DatumFormatter.format(d);
                 default -> "";
             };
-        }
-
-        private String getTypeName(Datum d) {
-            if (d == null) return "null";
-            return d.getClass().getSimpleName().replace("$", ".");
         }
     }
 
@@ -1047,7 +1037,7 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
             Datum d = entry.getValue();
             return switch (columnIndex) {
                 case 0 -> entry.getKey();
-                case 1 -> d != null ? d.getClass().getSimpleName().replace("$", ".") : "null";
+                case 1 -> DatumFormatter.getTypeName(d);
                 case 2 -> DatumFormatter.format(d);
                 default -> "";
             };
@@ -1089,7 +1079,7 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
             Datum d = entry.getValue();
             return switch (columnIndex) {
                 case 0 -> entry.getKey();
-                case 1 -> d != null ? d.getClass().getSimpleName().replace("$", ".") : "null";
+                case 1 -> DatumFormatter.getTypeName(d);
                 case 2 -> DatumFormatter.format(d);
                 default -> "";
             };

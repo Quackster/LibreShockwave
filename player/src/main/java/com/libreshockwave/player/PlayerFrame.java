@@ -3,7 +3,12 @@ package com.libreshockwave.player;
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.chunks.ScoreChunk;
 import com.libreshockwave.player.debug.DebugController;
+import com.libreshockwave.player.debug.DebugSnapshot;
+import com.libreshockwave.player.debug.DebugStateListener;
 import com.libreshockwave.vm.Datum;
+
+import java.util.Map;
+import java.util.Set;
 
 import javax.swing.*;
 import javax.swing.filechooser.FileNameExtensionFilter;
@@ -30,6 +35,7 @@ public class PlayerFrame extends JFrame {
     private static final String PREF_LAST_FILE = "lastFile";
     private static final String PREF_LAST_URL = "lastUrl";
     private static final String PREF_LAST_DIR = "lastDirectory";
+    private static final String PREF_BREAKPOINTS_PREFIX = "breakpoints:";
     private final Preferences prefs = Preferences.userNodeForPackage(PlayerFrame.class);
     private final HttpClient httpClient = HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.NORMAL)
@@ -53,6 +59,7 @@ public class PlayerFrame extends JFrame {
     private boolean debugVisible = true;
     private boolean useAsyncExecution = true;  // Use async execution for debugger support
     private Path lastOpenedFile;
+    private String currentMovieKey;  // Key for saving/loading breakpoints (file path or URL)
 
     public PlayerFrame() {
         super("LibreShockwave Player");
@@ -139,6 +146,18 @@ public class PlayerFrame extends JFrame {
         // Detailed stack window (separate toggleable window)
         detailedStackWindow = new DetailedStackWindow();
         debugController.addListener(detailedStackWindow);
+
+        // Listen for breakpoint changes to save them
+        debugController.addListener(new DebugStateListener() {
+            @Override
+            public void onPaused(DebugSnapshot snapshot) {}
+            @Override
+            public void onResumed() {}
+            @Override
+            public void onBreakpointsChanged() {
+                saveBreakpoints();
+            }
+        });
 
         // Split pane for stage and debug
         splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, stagePanel, debuggerPanel);
@@ -307,7 +326,10 @@ public class PlayerFrame extends JFrame {
         viewMenu.addSeparator();
 
         JMenuItem clearBpItem = new JMenuItem("Clear All Breakpoints");
-        clearBpItem.addActionListener(e -> debugController.clearAllBreakpoints());
+        clearBpItem.addActionListener(e -> {
+            debugController.clearAllBreakpoints();
+            clearSavedBreakpoints();
+        });
         viewMenu.add(clearBpItem);
 
         menuBar.add(viewMenu);
@@ -377,6 +399,9 @@ public class PlayerFrame extends JFrame {
             saveLastFilePreference(path);
             prefs.remove(PREF_LAST_URL);
 
+            // Set movie key for breakpoint persistence
+            currentMovieKey = path.toAbsolutePath().toString();
+
             // Update UI
             setTitle("LibreShockwave Player - " + path.getFileName());
             statusLabel.setText("Loaded: " + path.getFileName() +
@@ -384,6 +409,9 @@ public class PlayerFrame extends JFrame {
                 " | Tempo: " + player.getTempo() + " fps");
 
             setupPlayerUI(file);
+
+            // Load saved breakpoints for this movie
+            loadBreakpoints(currentMovieKey);
 
         } catch (IOException e) {
             JOptionPane.showMessageDialog(this,
@@ -436,6 +464,9 @@ public class PlayerFrame extends JFrame {
                     prefs.put(PREF_LAST_URL, url);
                     prefs.remove(PREF_LAST_FILE);
 
+                    // Set movie key for breakpoint persistence
+                    currentMovieKey = url;
+
                     // Get filename from URL
                     String fileName = url.substring(url.lastIndexOf('/') + 1);
                     setTitle("LibreShockwave Player - " + fileName);
@@ -444,6 +475,9 @@ public class PlayerFrame extends JFrame {
                         " | Tempo: " + player.getTempo() + " fps");
 
                     setupPlayerUI(file);
+
+                    // Load saved breakpoints for this movie
+                    loadBreakpoints(currentMovieKey);
 
                 } catch (Exception e) {
                     String message = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
@@ -589,6 +623,9 @@ public class PlayerFrame extends JFrame {
 
         setTitle("LibreShockwave Player");
         statusLabel.setText("No file loaded. Open a .dir, .dxr, or .dcr file.");
+
+        // Clear movie key (but don't clear saved breakpoints - they persist)
+        currentMovieKey = null;
 
         // Reset debug controller and panel
         debugController.reset();
@@ -754,5 +791,61 @@ public class PlayerFrame extends JFrame {
 
     public DebugController getDebugController() {
         return debugController;
+    }
+
+    // Breakpoint persistence
+
+    /**
+     * Save current breakpoints to preferences for the current movie.
+     */
+    private void saveBreakpoints() {
+        if (currentMovieKey == null || currentMovieKey.isEmpty()) {
+            return;
+        }
+        String serialized = debugController.serializeBreakpoints();
+        String prefKey = PREF_BREAKPOINTS_PREFIX + sanitizeKey(currentMovieKey);
+        if (serialized.isEmpty()) {
+            prefs.remove(prefKey);
+        } else {
+            prefs.put(prefKey, serialized);
+        }
+    }
+
+    /**
+     * Load breakpoints from preferences for the given movie key.
+     */
+    private void loadBreakpoints(String movieKey) {
+        if (movieKey == null || movieKey.isEmpty()) {
+            return;
+        }
+        String prefKey = PREF_BREAKPOINTS_PREFIX + sanitizeKey(movieKey);
+        String serialized = prefs.get(prefKey, "");
+        if (!serialized.isEmpty()) {
+            Map<Integer, Set<Integer>> breakpoints = DebugController.deserializeBreakpoints(serialized);
+            debugController.setBreakpoints(breakpoints);
+        }
+    }
+
+    /**
+     * Clear saved breakpoints for the current movie.
+     */
+    private void clearSavedBreakpoints() {
+        if (currentMovieKey == null || currentMovieKey.isEmpty()) {
+            return;
+        }
+        String prefKey = PREF_BREAKPOINTS_PREFIX + sanitizeKey(currentMovieKey);
+        prefs.remove(prefKey);
+    }
+
+    /**
+     * Sanitize a key for use in preferences (remove problematic characters).
+     */
+    private String sanitizeKey(String key) {
+        // Preferences keys have a max length and can't contain certain chars
+        // Use a hash for long keys, and replace problematic characters
+        if (key.length() > 80) {
+            return "hash_" + key.hashCode();
+        }
+        return key.replace("/", "_").replace("\\", "_").replace(":", "_");
     }
 }

@@ -4,11 +4,11 @@ import com.libreshockwave.player.debug.DebugController;
 import com.libreshockwave.player.debug.DebugSnapshot;
 import com.libreshockwave.player.debug.DebugStateListener;
 import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.DatumFormatter;
 
 import javax.swing.*;
 import java.awt.*;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Detailed stack inspection window for the debugger.
@@ -133,7 +133,7 @@ public class DetailedStackWindow extends JFrame implements DebugStateListener {
             if (frame.arguments() != null && !frame.arguments().isEmpty()) {
                 for (int j = 0; j < frame.arguments().size(); j++) {
                     if (j > 0) sb.append(", ");
-                    sb.append(formatDatumBrief(frame.arguments().get(j)));
+                    sb.append(DatumFormatter.formatBrief(frame.arguments().get(j)));
                 }
             }
             sb.append(")\n");
@@ -143,7 +143,7 @@ public class DetailedStackWindow extends JFrame implements DebugStateListener {
 
             // Receiver if present
             if (frame.receiver() != null) {
-                sb.append("     me: ").append(formatDatumBrief(frame.receiver())).append("\n");
+                sb.append("     me: ").append(DatumFormatter.formatBrief(frame.receiver())).append("\n");
             }
 
             sb.append("\n");
@@ -164,137 +164,10 @@ public class DetailedStackWindow extends JFrame implements DebugStateListener {
         for (int i = 0; i < stack.size(); i++) {
             Datum d = stack.get(i);
             sb.append(String.format("[%3d] ", i));
-            sb.append(formatDatumDetailed(d, 0));
+            sb.append(DatumFormatter.formatDetailed(d, 0));
             sb.append("\n");
         }
         return sb.toString();
-    }
-
-    /**
-     * Format a Datum with full details, expanding arglists and nested structures.
-     */
-    private String formatDatumDetailed(Datum d, int indent) {
-        if (d == null) return "<null>";
-
-        String indentStr = "      " + "  ".repeat(indent);
-
-        return switch (d) {
-            case Datum.Void v -> "<Void>";
-            case Datum.Int i -> "Int: " + i.value();
-            case Datum.Float f -> "Float: " + f.value();
-            case Datum.Str s -> "Str: \"" + escapeString(s.value()) + "\"";
-            case Datum.Symbol sym -> "Symbol: #" + sym.name();
-
-            case Datum.ArgList argList -> {
-                StringBuilder sb = new StringBuilder();
-                sb.append("ArgList (expects return) [").append(argList.count()).append(" items]");
-                if (!argList.items().isEmpty()) {
-                    sb.append(" {");
-                    for (int i = 0; i < argList.items().size(); i++) {
-                        sb.append("\n").append(indentStr).append("  [").append(i).append("] ");
-                        sb.append(formatDatumDetailed(argList.items().get(i), indent + 1));
-                    }
-                    sb.append("\n").append(indentStr).append("}");
-                }
-                yield sb.toString();
-            }
-
-            case Datum.ArgListNoRet argList -> {
-                StringBuilder sb = new StringBuilder();
-                sb.append("ArgListNoRet (no return) [").append(argList.count()).append(" items]");
-                if (!argList.items().isEmpty()) {
-                    sb.append(" {");
-                    for (int i = 0; i < argList.items().size(); i++) {
-                        sb.append("\n").append(indentStr).append("  [").append(i).append("] ");
-                        sb.append(formatDatumDetailed(argList.items().get(i), indent + 1));
-                    }
-                    sb.append("\n").append(indentStr).append("}");
-                }
-                yield sb.toString();
-            }
-
-            case Datum.List list -> {
-                StringBuilder sb = new StringBuilder();
-                sb.append("List [").append(list.items().size()).append(" items]");
-                if (!list.items().isEmpty() && list.items().size() <= 10) {
-                    sb.append(" {");
-                    for (int i = 0; i < list.items().size(); i++) {
-                        sb.append("\n").append(indentStr).append("  [").append(i).append("] ");
-                        sb.append(formatDatumDetailed(list.items().get(i), indent + 1));
-                    }
-                    sb.append("\n").append(indentStr).append("}");
-                } else if (!list.items().isEmpty()) {
-                    sb.append(" (too large to expand)");
-                }
-                yield sb.toString();
-            }
-
-            case Datum.PropList propList -> {
-                StringBuilder sb = new StringBuilder();
-                sb.append("PropList [").append(propList.properties().size()).append(" props]");
-                if (!propList.properties().isEmpty() && propList.properties().size() <= 10) {
-                    sb.append(" {");
-                    for (Map.Entry<String, Datum> entry : propList.properties().entrySet()) {
-                        sb.append("\n").append(indentStr).append("  #").append(entry.getKey()).append(": ");
-                        sb.append(formatDatumDetailed(entry.getValue(), indent + 1));
-                    }
-                    sb.append("\n").append(indentStr).append("}");
-                } else if (!propList.properties().isEmpty()) {
-                    sb.append(" (too large to expand)");
-                }
-                yield sb.toString();
-            }
-
-            case Datum.ScriptInstance si -> {
-                StringBuilder sb = new StringBuilder();
-                sb.append("ScriptInstance #").append(si.scriptId());
-                if (!si.properties().isEmpty() && si.properties().size() <= 5) {
-                    sb.append(" {");
-                    for (Map.Entry<String, Datum> entry : si.properties().entrySet()) {
-                        sb.append("\n").append(indentStr).append("  .").append(entry.getKey()).append(" = ");
-                        sb.append(formatDatumBrief(entry.getValue()));
-                    }
-                    sb.append("\n").append(indentStr).append("}");
-                } else if (!si.properties().isEmpty()) {
-                    sb.append(" [").append(si.properties().size()).append(" properties]");
-                }
-                yield sb.toString();
-            }
-
-            case Datum.Point p -> "Point: (" + p.x() + ", " + p.y() + ")";
-            case Datum.Rect r -> "Rect: (" + r.left() + ", " + r.top() + ", " + r.right() + ", " + r.bottom() + ")";
-            case Datum.Color c -> "Color: rgb(" + c.r() + ", " + c.g() + ", " + c.b() + ")";
-            case Datum.SpriteRef sr -> "SpriteRef: sprite(" + sr.channel() + ")";
-            case Datum.CastMemberRef cm -> "CastMemberRef: member(" + cm.member() + ", " + cm.castLib() + ")";
-            case Datum.CastLibRef cl -> "CastLibRef: castLib(" + cl.castLibNumber() + ")";
-            case Datum.StageRef sr -> "StageRef: (the stage)";
-            case Datum.WindowRef w -> "WindowRef: window(\"" + w.name() + "\")";
-            case Datum.XtraRef xr -> "XtraRef: xtra(\"" + xr.xtraName() + "\")";
-            case Datum.XtraInstance xi -> "XtraInstance: \"" + xi.xtraName() + "\" #" + xi.instanceId();
-            case Datum.ScriptRef sr -> "ScriptRef: script(" + sr.member() + ", " + sr.castLib() + ")";
-            default -> d.getClass().getSimpleName() + ": " + d.toString();
-        };
-    }
-
-    /**
-     * Format a Datum briefly (for nested display).
-     */
-    private String formatDatumBrief(Datum d) {
-        if (d == null) return "<null>";
-
-        return switch (d) {
-            case Datum.Void v -> "<Void>";
-            case Datum.Int i -> String.valueOf(i.value());
-            case Datum.Float f -> String.valueOf(f.value());
-            case Datum.Str s -> "\"" + truncate(escapeString(s.value()), 30) + "\"";
-            case Datum.Symbol sym -> "#" + sym.name();
-            case Datum.List list -> "[list:" + list.items().size() + "]";
-            case Datum.PropList pl -> "[propList:" + pl.properties().size() + "]";
-            case Datum.ArgList al -> "<arglist:" + al.count() + ">";
-            case Datum.ArgListNoRet al -> "<arglist-noret:" + al.count() + ">";
-            case Datum.ScriptInstance si -> "<script#" + si.scriptId() + ">";
-            default -> d.toString();
-        };
     }
 
     /**
@@ -308,7 +181,7 @@ public class DetailedStackWindow extends JFrame implements DebugStateListener {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < arguments.size(); i++) {
             sb.append("arg").append(i + 1).append(" = ");
-            sb.append(formatDatumDetailed(arguments.get(i), 0));
+            sb.append(DatumFormatter.formatDetailed(arguments.get(i), 0));
             sb.append("\n");
         }
         return sb.toString();
@@ -321,21 +194,7 @@ public class DetailedStackWindow extends JFrame implements DebugStateListener {
         if (receiver == null) {
             return "(no receiver)";
         }
-        return formatDatumDetailed(receiver, 0);
-    }
-
-    private String escapeString(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
-    }
-
-    private String truncate(String s, int max) {
-        if (s == null) return "";
-        if (s.length() <= max) return s;
-        return s.substring(0, max - 3) + "...";
+        return DatumFormatter.formatDetailed(receiver, 0);
     }
 
     // DebugStateListener implementation

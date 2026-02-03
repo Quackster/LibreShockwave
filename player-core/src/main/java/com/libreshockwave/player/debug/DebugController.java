@@ -441,6 +441,76 @@ public class DebugController implements TraceListener {
         notifyBreakpointsChanged();
     }
 
+    /**
+     * Set all breakpoints from a map (used for loading saved breakpoints).
+     */
+    public void setBreakpoints(Map<Integer, Set<Integer>> newBreakpoints) {
+        breakpoints.clear();
+        if (newBreakpoints != null) {
+            for (Map.Entry<Integer, Set<Integer>> entry : newBreakpoints.entrySet()) {
+                breakpoints.put(entry.getKey(), ConcurrentHashMap.newKeySet());
+                breakpoints.get(entry.getKey()).addAll(entry.getValue());
+            }
+        }
+        notifyBreakpointsChanged();
+    }
+
+    /**
+     * Serialize breakpoints to a string for persistence.
+     * Format: "scriptId:offset,offset;scriptId:offset,offset;..."
+     */
+    public String serializeBreakpoints() {
+        StringBuilder sb = new StringBuilder();
+        boolean first = true;
+        for (Map.Entry<Integer, Set<Integer>> entry : breakpoints.entrySet()) {
+            if (entry.getValue().isEmpty()) continue;
+            if (!first) sb.append(";");
+            first = false;
+            sb.append(entry.getKey()).append(":");
+            boolean firstOffset = true;
+            for (Integer offset : entry.getValue()) {
+                if (!firstOffset) sb.append(",");
+                firstOffset = false;
+                sb.append(offset);
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Deserialize breakpoints from a string.
+     * Format: "scriptId:offset,offset;scriptId:offset,offset;..."
+     */
+    public static Map<Integer, Set<Integer>> deserializeBreakpoints(String data) {
+        Map<Integer, Set<Integer>> result = new HashMap<>();
+        if (data == null || data.isEmpty()) {
+            return result;
+        }
+        try {
+            String[] scripts = data.split(";");
+            for (String script : scripts) {
+                if (script.isEmpty()) continue;
+                String[] parts = script.split(":");
+                if (parts.length != 2) continue;
+                int scriptId = Integer.parseInt(parts[0]);
+                Set<Integer> offsets = new HashSet<>();
+                String[] offsetStrs = parts[1].split(",");
+                for (String offsetStr : offsetStrs) {
+                    if (!offsetStr.isEmpty()) {
+                        offsets.add(Integer.parseInt(offsetStr));
+                    }
+                }
+                if (!offsets.isEmpty()) {
+                    result.put(scriptId, offsets);
+                }
+            }
+        } catch (NumberFormatException e) {
+            // Return empty map on parse error
+            return new HashMap<>();
+        }
+        return result;
+    }
+
     // Listener management
 
     /**
