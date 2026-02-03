@@ -9,16 +9,20 @@ import com.libreshockwave.player.debug.DebugController;
 import com.libreshockwave.player.debug.DebugSnapshot;
 import com.libreshockwave.player.debug.DebugStateListener;
 import com.libreshockwave.player.debug.WatchExpression;
+import com.libreshockwave.player.debug.ui.BytecodeCellRenderer;
+import com.libreshockwave.player.debug.ui.HandlerItem;
+import com.libreshockwave.player.debug.ui.InstructionDisplayItem;
+import com.libreshockwave.player.debug.ui.ScriptItem;
+import com.libreshockwave.player.debug.ui.StackTableModel;
+import com.libreshockwave.player.debug.ui.VariablesTableModel;
+import com.libreshockwave.player.debug.ui.WatchesTableModel;
 import com.libreshockwave.vm.Datum;
-import com.libreshockwave.vm.DatumFormatter;
 import com.libreshockwave.vm.TraceListener;
 import com.libreshockwave.vm.trace.InstructionAnnotator;
 import com.libreshockwave.vm.util.StringUtils;
 
 import javax.swing.*;
 import javax.swing.border.TitledBorder;
-import javax.swing.table.AbstractTableModel;
-import javax.swing.table.DefaultTableCellRenderer;
 import java.awt.*;
 import java.awt.Dialog;
 import java.awt.event.*;
@@ -84,7 +88,7 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
 
     // Current handler info (for building instruction list)
     private volatile TraceListener.HandlerInfo currentHandlerInfo;
-    private final List<InstructionDisplayItem> currentInstructions = new ArrayList<>();
+    private final java.util.List<InstructionDisplayItem> currentInstructions = new ArrayList<>();
     private int currentInstructionIndex = -1;
 
     // Track current script ID for breakpoints
@@ -248,7 +252,7 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
         viewHandlerDetailsBtn.addActionListener(e -> {
             HandlerItem selected = (HandlerItem) handlerCombo.getSelectedItem();
             if (selected != null) {
-                showHandlerDetailsDialog(selected.script.getHandlerName(selected.handler));
+                showHandlerDetailsDialog(selected.getScript().getHandlerName(selected.getHandler()));
             }
         });
         handlerRow.add(viewHandlerDetailsBtn);
@@ -276,8 +280,8 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
                 // Double-click or click on left margin (gutter) -> toggle breakpoint
                 if (e.getClickCount() == 2 || e.getX() < 20) {
                     if (controller != null && currentScriptId >= 0) {
-                        controller.toggleBreakpoint(currentScriptId, item.offset);
-                        item.hasBreakpoint = controller.hasBreakpoint(currentScriptId, item.offset);
+                        controller.toggleBreakpoint(currentScriptId, item.getOffset());
+                        item.setHasBreakpoint(controller.hasBreakpoint(currentScriptId, item.getOffset()));
                         bytecodeList.repaint();
                     }
                     return;
@@ -383,7 +387,7 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
             int index = bytecodeList.getSelectedIndex();
             if (index >= 0 && index < bytecodeModel.size() && controller != null && currentScriptId >= 0) {
                 InstructionDisplayItem item = bytecodeModel.get(index);
-                controller.toggleBreakpoint(currentScriptId, item.offset);
+                controller.toggleBreakpoint(currentScriptId, item.getOffset());
                 updateBreakpointDisplay(item);
             }
         });
@@ -394,9 +398,9 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
             int index = bytecodeList.getSelectedIndex();
             if (index >= 0 && index < bytecodeModel.size() && controller != null && currentScriptId >= 0) {
                 InstructionDisplayItem item = bytecodeModel.get(index);
-                Breakpoint bp = controller.getBreakpoint(currentScriptId, item.offset);
+                Breakpoint bp = controller.getBreakpoint(currentScriptId, item.getOffset());
                 if (bp != null) {
-                    controller.toggleBreakpointEnabled(currentScriptId, item.offset);
+                    controller.toggleBreakpointEnabled(currentScriptId, item.getOffset());
                     updateBreakpointDisplay(item);
                 }
             }
@@ -408,7 +412,7 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
             int index = bytecodeList.getSelectedIndex();
             if (index >= 0 && index < bytecodeModel.size() && controller != null && currentScriptId >= 0) {
                 InstructionDisplayItem item = bytecodeModel.get(index);
-                showBreakpointPropertiesDialog(item.offset);
+                showBreakpointPropertiesDialog(item.getOffset());
             }
         });
         bytecodeContextMenu.add(editBpItem);
@@ -418,7 +422,7 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
             int index = bytecodeList.getSelectedIndex();
             if (index >= 0 && index < bytecodeModel.size() && controller != null && currentScriptId >= 0) {
                 InstructionDisplayItem item = bytecodeModel.get(index);
-                showAddLogPointDialog(item.offset);
+                showAddLogPointDialog(item.getOffset());
             }
         });
         bytecodeContextMenu.add(addLogPointItem);
@@ -428,7 +432,7 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
             int index = bytecodeList.getSelectedIndex();
             if (index >= 0 && index < bytecodeModel.size() && controller != null && currentScriptId >= 0) {
                 InstructionDisplayItem item = bytecodeModel.get(index);
-                controller.resetBreakpointHitCount(currentScriptId, item.offset);
+                controller.resetBreakpointHitCount(currentScriptId, item.getOffset());
             }
         });
         bytecodeContextMenu.add(resetHitCountItem);
@@ -491,9 +495,9 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
      */
     private void updateBreakpointDisplay(InstructionDisplayItem item) {
         if (controller != null && currentScriptId >= 0) {
-            Breakpoint bp = controller.getBreakpoint(currentScriptId, item.offset);
-            item.breakpoint = bp;
-            item.hasBreakpoint = bp != null;
+            Breakpoint bp = controller.getBreakpoint(currentScriptId, item.getOffset());
+            item.setBreakpoint(bp);
+            item.setHasBreakpoint(bp != null);
             bytecodeList.repaint();
         }
     }
@@ -1161,7 +1165,7 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
 
         // Remember current selection
         ScriptItem currentSelection = (ScriptItem) scriptCombo.getSelectedItem();
-        int currentScriptId = currentSelection != null ? currentSelection.script.id() : -1;
+        int currentScriptId = currentSelection != null ? currentSelection.getScript().id() : -1;
 
         // Temporarily remove action listener to avoid triggering events during update
         ActionListener[] listeners = scriptCombo.getActionListeners();
@@ -1180,7 +1184,7 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
                 if (firstMatch == null) {
                     firstMatch = item;
                 }
-                if (item.script.id() == currentScriptId) {
+                if (item.getScript().id() == currentScriptId) {
                     selectedMatch = item;
                 }
             }
@@ -1209,7 +1213,7 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
         // Remember current selection
         HandlerItem currentSelection = (HandlerItem) handlerCombo.getSelectedItem();
         String currentHandlerName = currentSelection != null ?
-            currentSelection.script.getHandlerName(currentSelection.handler) : null;
+            currentSelection.getScript().getHandlerName(currentSelection.getHandler()) : null;
 
         // Temporarily remove action listener to avoid triggering events during update
         ActionListener[] listeners = handlerCombo.getActionListeners();
@@ -1229,7 +1233,7 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
                     firstMatch = item;
                 }
                 if (currentHandlerName != null &&
-                    item.script.getHandlerName(item.handler).equals(currentHandlerName)) {
+                    item.getScript().getHandlerName(item.getHandler()).equals(currentHandlerName)) {
                     selectedMatch = item;
                 }
             }
@@ -1261,8 +1265,8 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
         // Remember current selection
         ScriptItem selectedScript = (ScriptItem) scriptCombo.getSelectedItem();
         HandlerItem selectedHandler = (HandlerItem) handlerCombo.getSelectedItem();
-        int selectedScriptId = selectedScript != null ? selectedScript.script.id() : -1;
-        String selectedHandlerName = selectedHandler != null ? selectedHandler.script.getHandlerName(selectedHandler.handler) : null;
+        int selectedScriptId = selectedScript != null ? selectedScript.getScript().id() : -1;
+        String selectedHandlerName = selectedHandler != null ? selectedHandler.getScript().getHandlerName(selectedHandler.getHandler()) : null;
 
         // Reload scripts
         setDirectorFile(directorFile, castLibManager);
@@ -1270,13 +1274,13 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
         // Try to restore selection
         if (selectedScriptId >= 0) {
             for (int i = 0; i < scriptModel.getSize(); i++) {
-                if (scriptModel.getElementAt(i).script.id() == selectedScriptId) {
+                if (scriptModel.getElementAt(i).getScript().id() == selectedScriptId) {
                     scriptCombo.setSelectedIndex(i);
                     // Also try to restore handler selection
                     if (selectedHandlerName != null) {
                         for (int j = 0; j < handlerModel.getSize(); j++) {
                             HandlerItem h = handlerModel.getElementAt(j);
-                            if (h.script.getHandlerName(h.handler).equals(selectedHandlerName)) {
+                            if (h.getScript().getHandlerName(h.getHandler()).equals(selectedHandlerName)) {
                                 handlerCombo.setSelectedIndex(j);
                                 break;
                             }
@@ -1301,7 +1305,7 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
             return;
         }
 
-        ScriptChunk script = selected.script;
+        ScriptChunk script = selected.getScript();
         for (ScriptChunk.Handler handler : script.handlers()) {
             HandlerItem item = new HandlerItem(script, handler);
             allHandlerItems.add(item);
@@ -1324,11 +1328,11 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
         }
 
         browseMode = true;
-        browseScript = selected.script;
-        browseHandler = selected.handler;
+        browseScript = selected.getScript();
+        browseHandler = selected.getHandler();
         currentScriptId = browseScript.id();
 
-        loadHandlerBytecode(selected.script, selected.handler);
+        loadHandlerBytecode(selected.getScript(), selected.getHandler());
     }
 
     /**
@@ -1353,7 +1357,7 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
                 annotation,
                 bp != null
             );
-            item.breakpoint = bp;
+            item.setBreakpoint(bp);
             bytecodeModel.addElement(item);
             currentInstructions.add(item);
         }
@@ -1498,9 +1502,9 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
             if (controller != null && currentScriptId >= 0) {
                 for (int i = 0; i < bytecodeModel.size(); i++) {
                     InstructionDisplayItem item = bytecodeModel.get(i);
-                    Breakpoint bp = controller.getBreakpoint(currentScriptId, item.offset);
-                    item.breakpoint = bp;
-                    item.hasBreakpoint = bp != null;
+                    Breakpoint bp = controller.getBreakpoint(currentScriptId, item.getOffset());
+                    item.setBreakpoint(bp);
+                    item.setHasBreakpoint(bp != null);
                 }
                 bytecodeList.repaint();
             }
@@ -1586,7 +1590,7 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
      */
     private void selectScriptInCombo(ScriptChunk script) {
         for (int i = 0; i < scriptModel.getSize(); i++) {
-            if (scriptModel.getElementAt(i).script == script) {
+            if (scriptModel.getElementAt(i).getScript() == script) {
                 // Remove listener temporarily to avoid triggering reload
                 ActionListener[] listeners = scriptCombo.getActionListeners();
                 for (ActionListener l : listeners) {
@@ -1613,7 +1617,7 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
 
         // Find and select the handler
         for (int i = 0; i < handlerModel.getSize(); i++) {
-            if (handlerModel.getElementAt(i).handler == handler) {
+            if (handlerModel.getElementAt(i).getHandler() == handler) {
                 ActionListener[] listeners = handlerCombo.getActionListeners();
                 for (ActionListener l : listeners) {
                     handlerCombo.removeActionListener(l);
@@ -1629,7 +1633,7 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
 
     private int findInstructionByOffset(int offset) {
         for (int i = 0; i < bytecodeModel.size(); i++) {
-            if (bytecodeModel.get(i).offset == offset) {
+            if (bytecodeModel.get(i).getOffset() == offset) {
                 return i;
             }
         }
@@ -1640,9 +1644,9 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
         // Find the instruction with matching bytecode index
         for (int i = 0; i < bytecodeModel.size(); i++) {
             InstructionDisplayItem item = bytecodeModel.get(i);
-            boolean wasCurrent = item.isCurrent;
-            item.isCurrent = (item.index == bytecodeIndex);
-            if (item.isCurrent && !wasCurrent) {
+            boolean wasCurrent = item.isCurrent();
+            item.setCurrent(item.getIndex() == bytecodeIndex);
+            if (item.isCurrent() && !wasCurrent) {
                 currentInstructionIndex = i;
                 bytecodeList.setSelectedIndex(i);
                 bytecodeList.ensureIndexIsVisible(i);
@@ -1707,328 +1711,4 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
         statusLabel.setText("Handler '" + handlerName + "' not found");
     }
 
-    // Display item for bytecode list
-    private static class InstructionDisplayItem {
-        private static final Set<String> CALL_OPCODES = Set.of("EXT_CALL", "OBJ_CALL", "LOCAL_CALL");
-
-        final int offset;
-        final int index;
-        final String opcode;
-        final int argument;
-        final String annotation;
-        boolean hasBreakpoint;
-        Breakpoint breakpoint;  // Full breakpoint info for rendering
-        boolean isCurrent;
-
-        InstructionDisplayItem(int offset, int index, String opcode, int argument, String annotation, boolean hasBreakpoint) {
-            this.offset = offset;
-            this.index = index;
-            this.opcode = opcode;
-            this.argument = argument;
-            this.annotation = annotation;
-            this.hasBreakpoint = hasBreakpoint;
-            this.breakpoint = null;
-            this.isCurrent = false;
-        }
-
-        /**
-         * Check if this instruction is a call that can be navigated to.
-         */
-        boolean isCallInstruction() {
-            return CALL_OPCODES.contains(opcode);
-        }
-
-        /**
-         * Extract the handler name from the annotation (e.g., "<myHandler()>" -> "myHandler").
-         */
-        String getCallTargetName() {
-            if (annotation == null || annotation.isEmpty()) {
-                return null;
-            }
-            // Annotation format is "<handlerName()>"
-            if (annotation.startsWith("<") && annotation.endsWith("()>")) {
-                return annotation.substring(1, annotation.length() - 3);
-            }
-            return null;
-        }
-
-        @Override
-        public String toString() {
-            StringBuilder sb = new StringBuilder();
-            sb.append(String.format("[%3d] %-14s", offset, opcode));
-            if (argument != 0) {
-                sb.append(String.format(" %-4d", argument));
-            } else {
-                sb.append("     ");
-            }
-            if (annotation != null && !annotation.isEmpty()) {
-                sb.append(" ").append(annotation);
-            }
-            return sb.toString();
-        }
-    }
-
-    // Custom cell renderer for bytecode list
-    private class BytecodeCellRenderer extends DefaultListCellRenderer {
-        @Override
-        public Component getListCellRendererComponent(JList<?> list, Object value, int index,
-                                                      boolean isSelected, boolean cellHasFocus) {
-            JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-
-            if (value instanceof InstructionDisplayItem item) {
-                // Build display text with markers using HTML for rich formatting
-                StringBuilder sb = new StringBuilder("<html><pre style='margin:0;font-family:monospaced;'>");
-
-                // Breakpoint marker - different symbols/colors based on type
-                sb.append(getBreakpointMarker(item));
-
-                // Current instruction marker (gold)
-                if (item.isCurrent) {
-                    sb.append("<font color='#DAA520'>\u25B6</font> ");
-                } else {
-                    sb.append("  ");
-                }
-
-                // Instruction text
-                sb.append(String.format("[%3d] %-14s", item.offset, item.opcode));
-                if (item.argument != 0) {
-                    sb.append(String.format(" %-4d", item.argument));
-                } else {
-                    sb.append("     ");
-                }
-
-                // Annotation - make call targets blue and underlined
-                if (item.annotation != null && !item.annotation.isEmpty()) {
-                    sb.append(" ");
-                    if (item.isCallInstruction() && item.getCallTargetName() != null) {
-                        sb.append("<font color='blue'><u>").append(StringUtils.escapeHtml(item.annotation)).append("</u></font>");
-                    } else {
-                        sb.append(StringUtils.escapeHtml(item.annotation));
-                    }
-                }
-
-                sb.append("</pre></html>");
-                label.setText(sb.toString());
-
-                // Highlighting for current instruction
-                if (item.isCurrent && !isSelected) {
-                    label.setBackground(new Color(255, 255, 200));  // Light yellow
-                    label.setOpaque(true);
-                }
-            }
-
-            return label;
-        }
-
-        /**
-         * Get the appropriate breakpoint marker based on breakpoint type.
-         */
-        private String getBreakpointMarker(InstructionDisplayItem item) {
-            if (!item.hasBreakpoint || item.breakpoint == null) {
-                if (item.hasBreakpoint) {
-                    // Fallback for old-style breakpoints without full info
-                    return "<font color='red'>\u25CF</font> ";
-                }
-                return "  ";
-            }
-
-            Breakpoint bp = item.breakpoint;
-
-            // Disabled breakpoint - gray hollow circle
-            if (!bp.enabled()) {
-                return "<font color='gray'>\u25CB</font> ";
-            }
-
-            // Log point - orange diamond
-            if (bp.isLogPoint()) {
-                return "<font color='orange'>\u25C6</font> ";
-            }
-
-            // Conditional breakpoint - tomato filled circle
-            if (bp.isConditional()) {
-                return "<font color='tomato'>\u25CF</font> ";
-            }
-
-            // Normal enabled breakpoint - red filled circle
-            return "<font color='red'>\u25CF</font> ";
-        }
-    }
-
-    // Table model for stack display
-    private static class StackTableModel extends AbstractTableModel {
-        private List<Datum> stack = new ArrayList<>();
-        private final String[] columns = {"#", "Type", "Value"};
-
-        void setStack(List<Datum> stack) {
-            this.stack = stack != null ? new ArrayList<>(stack) : new ArrayList<>();
-            fireTableDataChanged();
-        }
-
-        @Override
-        public int getRowCount() {
-            return stack.size();
-        }
-
-        @Override
-        public int getColumnCount() {
-            return columns.length;
-        }
-
-        @Override
-        public String getColumnName(int column) {
-            return columns[column];
-        }
-
-        @Override
-        public Object getValueAt(int rowIndex, int columnIndex) {
-            if (rowIndex >= stack.size()) return "";
-            Datum d = stack.get(rowIndex);
-            return switch (columnIndex) {
-                case 0 -> String.valueOf(rowIndex);
-                case 1 -> DatumFormatter.getTypeName(d);
-                case 2 -> DatumFormatter.format(d);
-                default -> "";
-            };
-        }
-    }
-
-    // Table model for named variables display (locals, globals)
-    private static class VariablesTableModel extends AbstractTableModel {
-        private final List<Map.Entry<String, Datum>> variables = new ArrayList<>();
-        private final String[] columns = {"Name", "Type", "Value"};
-
-        void setVariables(Map<String, Datum> variablesMap) {
-            this.variables.clear();
-            if (variablesMap != null) {
-                this.variables.addAll(variablesMap.entrySet());
-            }
-            fireTableDataChanged();
-        }
-
-        @Override
-        public int getRowCount() {
-            return variables.size();
-        }
-
-        @Override
-        public int getColumnCount() {
-            return columns.length;
-        }
-
-        @Override
-        public String getColumnName(int column) {
-            return columns[column];
-        }
-
-        @Override
-        public Object getValueAt(int rowIndex, int columnIndex) {
-            if (rowIndex >= variables.size()) return "";
-            Map.Entry<String, Datum> entry = variables.get(rowIndex);
-            Datum d = entry.getValue();
-            return switch (columnIndex) {
-                case 0 -> entry.getKey();
-                case 1 -> DatumFormatter.getTypeName(d);
-                case 2 -> DatumFormatter.format(d);
-                default -> "";
-            };
-        }
-    }
-
-    // Table model for watch expressions display
-    private static class WatchesTableModel extends AbstractTableModel {
-        private List<WatchExpression> watches = new ArrayList<>();
-        private final String[] columns = {"Expression", "Type", "Value"};
-
-        void setWatches(List<WatchExpression> watches) {
-            this.watches = watches != null ? new ArrayList<>(watches) : new ArrayList<>();
-            fireTableDataChanged();
-        }
-
-        @Override
-        public int getRowCount() {
-            return watches.size();
-        }
-
-        @Override
-        public int getColumnCount() {
-            return columns.length;
-        }
-
-        @Override
-        public String getColumnName(int column) {
-            return columns[column];
-        }
-
-        @Override
-        public Object getValueAt(int rowIndex, int columnIndex) {
-            if (rowIndex >= watches.size()) return "";
-            WatchExpression watch = watches.get(rowIndex);
-            return switch (columnIndex) {
-                case 0 -> watch.expression();
-                case 1 -> watch.getTypeName();
-                case 2 -> watch.getResultDisplay();
-                default -> "";
-            };
-        }
-    }
-
-    // Combo box item for scripts
-    private static class ScriptItem {
-        final ScriptChunk script;
-        final String sourceName;  // Cast library name or file name
-        final int loadOrder;
-
-        ScriptItem(ScriptChunk script, String sourceName, int loadOrder) {
-            this.script = script;
-            this.sourceName = sourceName;
-            this.loadOrder = loadOrder;
-        }
-
-        @Override
-        public String toString() {
-            String name = script.getDisplayName();
-            if (sourceName != null && !sourceName.isEmpty()) {
-                return name + " (" + sourceName + ")";
-            }
-            return name;
-        }
-
-        /**
-         * Check if this item matches the filter text (case-insensitive).
-         */
-        boolean matchesFilter(String filter) {
-            if (filter == null || filter.isEmpty()) {
-                return true;
-            }
-            String lowerFilter = filter.toLowerCase();
-            return script.getDisplayName().toLowerCase().contains(lowerFilter)
-                || (sourceName != null && sourceName.toLowerCase().contains(lowerFilter));
-        }
-    }
-
-    // Combo box item for handlers
-    private static class HandlerItem {
-        final ScriptChunk script;
-        final ScriptChunk.Handler handler;
-
-        HandlerItem(ScriptChunk script, ScriptChunk.Handler handler) {
-            this.script = script;
-            this.handler = handler;
-        }
-
-        @Override
-        public String toString() {
-            return script.getHandlerName(handler);
-        }
-
-        /**
-         * Check if this item matches the filter text (case-insensitive).
-         */
-        boolean matchesFilter(String filter) {
-            if (filter == null || filter.isEmpty()) {
-                return true;
-            }
-            return script.getHandlerName(handler).toLowerCase().contains(filter.toLowerCase());
-        }
-    }
 }

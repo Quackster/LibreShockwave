@@ -9,6 +9,9 @@ import com.libreshockwave.lingo.Opcode;
 import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.bitmap.BitmapDecoder;
 import com.libreshockwave.bitmap.Palette;
+import com.libreshockwave.lookup.CastMemberLookup;
+import com.libreshockwave.lookup.PaletteResolver;
+import com.libreshockwave.lookup.ScriptLookup;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -48,6 +51,11 @@ public class DirectorFile {
     private final List<ScriptChunk> scripts = new ArrayList<>();
     private final List<PaletteChunk> palettes = new ArrayList<>();
     private boolean capitalX = false;  // True if file uses LctX (capital X) format
+
+    // Lazy-initialized helper classes
+    private PaletteResolver paletteResolver;
+    private CastMemberLookup castMemberLookup;
+    private ScriptLookup scriptLookup;
 
     public record ChunkInfo(
         int id,
@@ -92,44 +100,14 @@ public class DirectorFile {
      * @return The cast member, or null if not found
      */
     public CastMemberChunk getCastMemberByIndex(int castLib, int castMemberIndex) {
-        // Get the min member offset from the cast list or config
-        int minMember = 1;
-        if (castList != null && !castList.entries().isEmpty()) {
-            int libIndex = Math.max(0, castLib - 1);
-            if (libIndex < castList.entries().size()) {
-                minMember = castList.entries().get(libIndex).minMember();
-            }
-        } else if (config != null) {
-            // For .cct files without MCsL, use config's minMember
-            minMember = config.minMember();
+        return getCastMemberLookup().getByIndex(castLib, castMemberIndex);
+    }
+
+    private CastMemberLookup getCastMemberLookup() {
+        if (castMemberLookup == null) {
+            castMemberLookup = new CastMemberLookup(casts, castMembers, castList, config);
         }
-        if (minMember <= 0) minMember = 1;
-
-        // Calculate the actual member ID considering the offset
-        int adjustedMemberId = castMemberIndex + minMember;
-
-        // Try to find by adjusted ID first
-        for (CastMemberChunk member : castMembers) {
-            if (member.id() == adjustedMemberId) {
-                return member;
-            }
-        }
-
-        // Try direct match with raw index
-        for (CastMemberChunk member : castMembers) {
-            if (member.id() == castMemberIndex) {
-                return member;
-            }
-        }
-
-        // Try +1 offset
-        for (CastMemberChunk member : castMembers) {
-            if (member.id() == castMemberIndex + 1) {
-                return member;
-            }
-        }
-
-        return null;
+        return castMemberLookup;
     }
 
     /**
@@ -141,48 +119,7 @@ public class DirectorFile {
      * @return The cast member, or null if not found
      */
     public CastMemberChunk getCastMemberByNumber(int castLib, int memberNumber) {
-        // Get the cast library
-        int libIndex = Math.max(0, castLib - 1);
-        if (libIndex >= casts.size()) {
-            return null;
-        }
-
-        CastChunk cast = casts.get(libIndex);
-        if (cast == null) {
-            return null;
-        }
-
-        // Get minMember offset from cast list
-        int minMember = 1;
-        if (castList != null && !castList.entries().isEmpty()) {
-            if (libIndex < castList.entries().size()) {
-                minMember = castList.entries().get(libIndex).minMember();
-            }
-        } else if (config != null) {
-            minMember = config.minMember();
-        }
-        if (minMember <= 0) minMember = 1;
-
-        // Calculate the index into the cast's member ID array
-        int arrayIndex = memberNumber - minMember;
-        if (arrayIndex < 0 || arrayIndex >= cast.memberIds().size()) {
-            return null;
-        }
-
-        // Get the chunk ID for this member slot
-        int chunkId = cast.memberIds().get(arrayIndex);
-        if (chunkId <= 0) {
-            return null;  // Empty slot
-        }
-
-        // Find the cast member chunk with this ID
-        for (CastMemberChunk member : castMembers) {
-            if (member.id() == chunkId) {
-                return member;
-            }
-        }
-
-        return null;
+        return getCastMemberLookup().getByNumber(castLib, memberNumber);
     }
 
     /**
@@ -192,32 +129,7 @@ public class DirectorFile {
      * @return The script chunk, or null if not found
      */
     public ScriptChunk getScriptByContextId(int scriptId) {
-        // scriptId from cast members is 1-based, Lctx entries are 0-based
-        int index = scriptId - 1;
-
-        // Search through all script contexts (there can be one per cast library)
-        for (ScriptContextChunk ctx : allScriptContexts) {
-            if (index >= 0 && index < ctx.entries().size()) {
-                var entry = ctx.entries().get(index);
-                int chunkId = entry.id();
-                if (chunkId > 0) {
-                    for (ScriptChunk script : scripts) {
-                        if (script.id() == chunkId) {
-                            return script;
-                        }
-                    }
-                }
-            }
-        }
-
-        // Fallback: try direct match by ID
-        for (ScriptChunk script : scripts) {
-            if (script.id() == scriptId) {
-                return script;
-            }
-        }
-
-        return null;
+        return getScriptLookup().getByContextId(scriptId);
     }
 
     /**
@@ -227,29 +139,14 @@ public class DirectorFile {
      * @return The script type from the cast member, or null if not found
      */
     public ScriptChunk.ScriptType getScriptType(ScriptChunk script) {
-        if (script == null) return null;
+        return getScriptLookup().getScriptType(script);
+    }
 
-        // Find the cast member that references this script
-        // We need to find which Lctx index maps to this script's chunk ID,
-        // then find the cast member with that scriptId
-        for (int ctxIdx = 0; ctxIdx < allScriptContexts.size(); ctxIdx++) {
-            ScriptContextChunk ctx = allScriptContexts.get(ctxIdx);
-            for (int i = 0; i < ctx.entries().size(); i++) {
-                if (ctx.entries().get(i).id() == script.id()) {
-                    // Found the entry - scriptId is 1-based
-                    int scriptId = i + 1;
-
-                    // Find the cast member with this scriptId
-                    for (CastMemberChunk member : castMembers) {
-                        if (member.isScript() && member.scriptId() == scriptId) {
-                            return member.getScriptType();
-                        }
-                    }
-                }
-            }
+    private ScriptLookup getScriptLookup() {
+        if (scriptLookup == null) {
+            scriptLookup = new ScriptLookup(scripts, allScriptContexts, castMembers);
         }
-
-        return null;
+        return scriptLookup;
     }
 
     public List<ScriptChunk> getScripts() { return Collections.unmodifiableList(scripts); }
@@ -294,101 +191,15 @@ public class DirectorFile {
      * @return The resolved Palette, or System Mac palette as fallback
      */
     public Palette resolvePalette(int paletteId) {
-        // Negative IDs are built-in palettes
-        if (paletteId < 0) {
-            return Palette.getBuiltIn(paletteId);
-        }
-
-        // Non-negative IDs reference cast member palettes
-        // Strategy 1: paletteId might be the member number - 1 (after BitmapInfo's -1 adjustment)
-        int memberNumber = paletteId + 1;
-
-        // Try to find the palette cast member by member number in cast arrays
-        for (int castIdx = 0; castIdx < casts.size(); castIdx++) {
-            CastChunk cast = casts.get(castIdx);
-
-            // Get minMember for this cast library (like dirplayer-rs does)
-            // Priority: CastListChunk entry > Config chunk > default of 1
-            int minMember = 1;
-            if (castList != null && castIdx < castList.entries().size()) {
-                minMember = castList.entries().get(castIdx).minMember();
-            } else if (config != null) {
-                // For .cct files without MCsL, use config's minMember
-                minMember = config.minMember();
-            }
-            if (minMember <= 0) minMember = 1;
-
-            List<Integer> memberIds = cast.memberIds();
-            // Member numbers use minMember offset, so index = memberNumber - minMember
-            int index = memberNumber - minMember;
-            if (index >= 0 && index < memberIds.size()) {
-                int chunkId = memberIds.get(index);
-                if (chunkId > 0) {
-                    Palette resolved = resolvePaletteFromChunkId(chunkId);
-                    if (resolved != null) {
-                        return resolved;
-                    }
-                }
-            }
-        }
-
-        // Strategy 2: paletteId might be directly a chunk section ID for the CastMemberChunk
-        Palette resolved = resolvePaletteFromChunkId(paletteId);
-        if (resolved != null) {
-            return resolved;
-        }
-
-        // Strategy 2b: paletteId might directly reference a PaletteChunk (CLUT) section ID
-        for (PaletteChunk pc : palettes) {
-            if (pc.id() == paletteId || pc.id() == paletteId + 1) {
-                return new Palette(pc.colors(), "Custom Palette #" + pc.id());
-            }
-        }
-
-        // Strategy 3: paletteId might be the 1-based index among palette members
-        int paletteIndex = 0;
-        for (CastMemberChunk member : castMembers) {
-            if (member.memberType() == com.libreshockwave.cast.MemberType.PALETTE) {
-                if (paletteIndex == paletteId) {
-                    resolved = resolvePaletteFromChunkId(member.id());
-                    if (resolved != null) {
-                        return resolved;
-                    }
-                }
-                paletteIndex++;
-            }
-        }
-
-        // Strategy 4: Just return the first available palette if we have any
-        for (PaletteChunk pc : palettes) {
-            return new Palette(pc.colors(), "Custom Palette");
-        }
-
-        // Fallback to System Mac palette
-        return Palette.getBuiltIn(Palette.SYSTEM_MAC);
+        return getPaletteResolver().resolve(paletteId);
     }
 
-    /**
-     * Resolve a palette from a cast member chunk ID.
-     * Finds the CLUT chunk owned by the cast member and builds a Palette from it.
-     */
-    private Palette resolvePaletteFromChunkId(int chunkId) {
-        if (keyTable == null) {
-            return null;
+    private PaletteResolver getPaletteResolver() {
+        if (paletteResolver == null) {
+            paletteResolver = new PaletteResolver(casts, castMembers, palettes, castList,
+                config, keyTable, this::getChunk);
         }
-
-        // Look for CLUT chunk owned by this cast member
-        for (KeyTableChunk.KeyTableEntry entry : keyTable.getEntriesForOwner(chunkId)) {
-            String fourcc = entry.fourccString();
-            if (fourcc.equals("CLUT") || fourcc.equals("TULC")) {
-                Chunk chunk = getChunk(entry.sectionId());
-                if (chunk instanceof PaletteChunk pc) {
-                    return new Palette(pc.colors(), "Custom Palette");
-                }
-            }
-        }
-
-        return null;
+        return paletteResolver;
     }
 
     /**
