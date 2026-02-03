@@ -35,6 +35,8 @@ public final class DatumFormatter {
         if (d instanceof Datum.Symbol sym) return "#" + sym.name();
         if (d instanceof Datum.List list) return "[list:" + list.items().size() + "]";
         if (d instanceof Datum.PropList pl) return "[propList:" + pl.properties().size() + "]";
+        if (d instanceof Datum.ArgList al) return "<arglist:" + al.count() + ">";
+        if (d instanceof Datum.ArgListNoRet al) return "<arglist-noret:" + al.count() + ">";
         if (d instanceof Datum.Point p) return "point(" + p.x() + ", " + p.y() + ")";
         if (d instanceof Datum.Rect r) return "rect(" + r.left() + ", " + r.top() + ", " + r.right() + ", " + r.bottom() + ")";
         if (d instanceof Datum.Color c) return "color(" + c.r() + ", " + c.g() + ", " + c.b() + ")";

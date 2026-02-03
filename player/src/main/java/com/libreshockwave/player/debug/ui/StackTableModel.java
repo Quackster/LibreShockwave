@@ -19,6 +19,16 @@ public class StackTableModel extends AbstractTableModel {
         fireTableDataChanged();
     }
 
+    /**
+     * Get the Datum at a specific row index.
+     */
+    public Datum getDatum(int rowIndex) {
+        if (rowIndex >= 0 && rowIndex < stack.size()) {
+            return stack.get(rowIndex);
+        }
+        return null;
+    }
+
     @Override
     public int getRowCount() {
         return stack.size();
