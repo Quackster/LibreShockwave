@@ -26,9 +26,9 @@ public class TracingHelper {
     public TraceListener.InstructionInfo buildInstructionInfo(Scope scope, ScriptChunk.Handler.Instruction instr) {
         String annotation = buildAnnotation(scope, instr);
         List<Datum> stackSnapshot = new ArrayList<>();
-        // Capture up to 10 stack items
+        // Capture up to 10 stack items with deep copy to prevent mutation issues
         for (int i = 0; i < Math.min(10, scope.stackSize()); i++) {
-            stackSnapshot.add(scope.peek(i));
+            stackSnapshot.add(scope.peek(i).deepCopy());
         }
         return new TraceListener.InstructionInfo(
             scope.getBytecodeIndex(),

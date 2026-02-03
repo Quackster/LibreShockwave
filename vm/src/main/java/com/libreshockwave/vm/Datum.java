@@ -304,4 +304,71 @@ public sealed interface Datum {
             default -> toString();
         };
     }
+
+    /**
+     * Create a deep copy of this Datum.
+     * For immutable types (Int, Float, Str, Symbol, etc.), returns the same instance.
+     * For mutable types (List, PropList, ScriptInstance, ArgList, ArgListNoRet),
+     * creates a new instance with deep-copied contents.
+     */
+    default Datum deepCopy() {
+        return switch (this) {
+            // Immutable types - return same instance
+            case Void v -> v;
+            case Int i -> i;
+            case Float f -> f;
+            case Str s -> s;
+            case Symbol sym -> sym;
+            case Point p -> p;
+            case Rect r -> r;
+            case Color c -> c;
+            case SpriteRef sr -> sr;
+            case CastMemberRef cm -> cm;
+            case CastLibRef cl -> cl;
+            case StageRef st -> st;
+            case WindowRef w -> w;
+            case ScriptRef sr -> sr;
+            case XtraRef xr -> xr;
+            case XtraInstance xi -> xi;
+
+            // Mutable types - deep copy
+            case List list -> {
+                java.util.List<Datum> copiedItems = new ArrayList<>(list.items().size());
+                for (Datum item : list.items()) {
+                    copiedItems.add(item.deepCopy());
+                }
+                yield new List(copiedItems);
+            }
+            case PropList pl -> {
+                Map<String, Datum> copiedProps = new LinkedHashMap<>();
+                for (Map.Entry<String, Datum> entry : pl.properties().entrySet()) {
+                    copiedProps.put(entry.getKey(), entry.getValue().deepCopy());
+                }
+                yield new PropList(copiedProps);
+            }
+            case ScriptInstance si -> {
+                Map<String, Datum> copiedProps = new LinkedHashMap<>();
+                for (Map.Entry<String, Datum> entry : si.properties().entrySet()) {
+                    // Don't deep copy property values to avoid infinite recursion
+                    // with circular references like 'ancestor' chains
+                    copiedProps.put(entry.getKey(), entry.getValue());
+                }
+                yield new ScriptInstance(si.scriptId(), copiedProps);
+            }
+            case ArgList al -> {
+                java.util.List<Datum> copiedItems = new ArrayList<>(al.items().size());
+                for (Datum item : al.items()) {
+                    copiedItems.add(item.deepCopy());
+                }
+                yield new ArgList(copiedItems);
+            }
+            case ArgListNoRet al -> {
+                java.util.List<Datum> copiedItems = new ArrayList<>(al.items().size());
+                for (Datum item : al.items()) {
+                    copiedItems.add(item.deepCopy());
+                }
+                yield new ArgListNoRet(copiedItems);
+            }
+        };
+    }
 }
