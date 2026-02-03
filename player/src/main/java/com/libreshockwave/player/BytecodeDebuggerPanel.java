@@ -2,7 +2,6 @@ package com.libreshockwave.player;
 
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.chunks.ScriptChunk;
-import com.libreshockwave.lingo.Opcode;
 import com.libreshockwave.player.cast.CastLib;
 import com.libreshockwave.player.cast.CastLibManager;
 import com.libreshockwave.player.debug.DebugController;
@@ -10,8 +9,9 @@ import com.libreshockwave.player.debug.DebugSnapshot;
 import com.libreshockwave.player.debug.DebugStateListener;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.DatumFormatter;
-import com.libreshockwave.vm.util.StringUtils;
 import com.libreshockwave.vm.TraceListener;
+import com.libreshockwave.vm.trace.InstructionAnnotator;
+import com.libreshockwave.vm.util.StringUtils;
 
 import javax.swing.*;
 import javax.swing.border.TitledBorder;
@@ -50,9 +50,9 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
     private JTable stackTable;
     private StackTableModel stackTableModel;
     private JTable localsTable;
-    private LocalsTableModel localsTableModel;
+    private VariablesTableModel localsTableModel;
     private JTable globalsTable;
-    private GlobalsTableModel globalsTableModel;
+    private VariablesTableModel globalsTableModel;
     private JLabel statusLabel;
     private JLabel handlerLabel;
 
@@ -260,7 +260,7 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
         stateTabs.addTab("Stack", new JScrollPane(stackTable));
 
         // Locals table
-        localsTableModel = new LocalsTableModel();
+        localsTableModel = new VariablesTableModel();
         localsTable = new JTable(localsTableModel);
         localsTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
         localsTable.getColumnModel().getColumn(0).setPreferredWidth(100);
@@ -269,7 +269,7 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
         stateTabs.addTab("Locals", new JScrollPane(localsTable));
 
         // Globals table
-        globalsTableModel = new GlobalsTableModel();
+        globalsTableModel = new VariablesTableModel();
         globalsTable = new JTable(globalsTableModel);
         globalsTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
         globalsTable.getColumnModel().getColumn(0).setPreferredWidth(100);
@@ -485,50 +485,10 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
     }
 
     /**
-     * Build annotation string for an instruction (similar to TracingHelper).
+     * Build annotation string for an instruction.
      */
     private String buildAnnotation(ScriptChunk script, ScriptChunk.Handler handler, ScriptChunk.Handler.Instruction instr) {
-        Opcode op = instr.opcode();
-        int arg = instr.argument();
-
-        return switch (op) {
-            case PUSH_INT8, PUSH_INT16, PUSH_INT32 -> "<" + arg + ">";
-            case PUSH_FLOAT32 -> "<" + Float.intBitsToFloat(arg) + ">";
-            case PUSH_CONS -> {
-                List<ScriptChunk.LiteralEntry> literals = script.literals();
-                if (arg >= 0 && arg < literals.size()) {
-                    yield "<" + literals.get(arg).value() + ">";
-                }
-                yield "<literal#" + arg + ">";
-            }
-            case PUSH_SYMB -> "<#" + script.resolveName(arg) + ">";
-            case GET_LOCAL, SET_LOCAL -> {
-                // Try to get local name
-                if (arg >= 0 && arg < handler.localNameIds().size()) {
-                    yield "<" + script.resolveName(handler.localNameIds().get(arg)) + ">";
-                }
-                yield "<local" + arg + ">";
-            }
-            case GET_PARAM -> {
-                if (arg >= 0 && arg < handler.argNameIds().size()) {
-                    yield "<" + script.resolveName(handler.argNameIds().get(arg)) + ">";
-                }
-                yield "<param" + arg + ">";
-            }
-            case GET_GLOBAL, SET_GLOBAL, GET_GLOBAL2, SET_GLOBAL2 -> "<" + script.resolveName(arg) + ">";
-            case GET_PROP, SET_PROP -> "<me." + script.resolveName(arg) + ">";
-            case LOCAL_CALL -> {
-                var handlers = script.handlers();
-                if (arg >= 0 && arg < handlers.size()) {
-                    yield "<" + script.getHandlerName(handlers.get(arg)) + "()>";
-                }
-                yield "<handler#" + arg + "()>";
-            }
-            case EXT_CALL, OBJ_CALL -> "<" + script.resolveName(arg) + "()>";
-            case JMP, JMP_IF_Z -> "<offset " + arg + " -> " + (instr.offset() + arg) + ">";
-            case END_REPEAT -> "<back " + arg + " -> " + (instr.offset() - arg) + ">";
-            default -> "";
-        };
+        return InstructionAnnotator.annotate(script, handler, instr, true);
     }
 
     /**
@@ -625,10 +585,10 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
             stackTableModel.setStack(snapshot.stack());
 
             // Update locals
-            localsTableModel.setLocals(snapshot.locals());
+            localsTableModel.setVariables(snapshot.locals());
 
             // Update globals
-            globalsTableModel.setGlobals(snapshot.globals());
+            globalsTableModel.setVariables(snapshot.globals());
 
             // Enable step buttons
             setStepButtonsEnabled(true);
@@ -1002,22 +962,22 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
         }
     }
 
-    // Table model for locals display
-    private static class LocalsTableModel extends AbstractTableModel {
-        private final List<Map.Entry<String, Datum>> locals = new ArrayList<>();
+    // Table model for named variables display (locals, globals)
+    private static class VariablesTableModel extends AbstractTableModel {
+        private final List<Map.Entry<String, Datum>> variables = new ArrayList<>();
         private final String[] columns = {"Name", "Type", "Value"};
 
-        void setLocals(Map<String, Datum> localsMap) {
-            this.locals.clear();
-            if (localsMap != null) {
-                this.locals.addAll(localsMap.entrySet());
+        void setVariables(Map<String, Datum> variablesMap) {
+            this.variables.clear();
+            if (variablesMap != null) {
+                this.variables.addAll(variablesMap.entrySet());
             }
             fireTableDataChanged();
         }
 
         @Override
         public int getRowCount() {
-            return locals.size();
+            return variables.size();
         }
 
         @Override
@@ -1032,50 +992,8 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
 
         @Override
         public Object getValueAt(int rowIndex, int columnIndex) {
-            if (rowIndex >= locals.size()) return "";
-            Map.Entry<String, Datum> entry = locals.get(rowIndex);
-            Datum d = entry.getValue();
-            return switch (columnIndex) {
-                case 0 -> entry.getKey();
-                case 1 -> DatumFormatter.getTypeName(d);
-                case 2 -> DatumFormatter.format(d);
-                default -> "";
-            };
-        }
-    }
-
-    // Table model for globals display
-    private static class GlobalsTableModel extends AbstractTableModel {
-        private final List<Map.Entry<String, Datum>> globals = new ArrayList<>();
-        private final String[] columns = {"Name", "Type", "Value"};
-
-        void setGlobals(Map<String, Datum> globalsMap) {
-            this.globals.clear();
-            if (globalsMap != null) {
-                this.globals.addAll(globalsMap.entrySet());
-            }
-            fireTableDataChanged();
-        }
-
-        @Override
-        public int getRowCount() {
-            return globals.size();
-        }
-
-        @Override
-        public int getColumnCount() {
-            return columns.length;
-        }
-
-        @Override
-        public String getColumnName(int column) {
-            return columns[column];
-        }
-
-        @Override
-        public Object getValueAt(int rowIndex, int columnIndex) {
-            if (rowIndex >= globals.size()) return "";
-            Map.Entry<String, Datum> entry = globals.get(rowIndex);
+            if (rowIndex >= variables.size()) return "";
+            Map.Entry<String, Datum> entry = variables.get(rowIndex);
             Datum d = entry.getValue();
             return switch (columnIndex) {
                 case 0 -> entry.getKey();

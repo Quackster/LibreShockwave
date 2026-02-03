@@ -7,6 +7,7 @@ import com.libreshockwave.vm.builtin.BuiltinRegistry;
 import com.libreshockwave.vm.opcode.ExecutionContext;
 import com.libreshockwave.vm.opcode.OpcodeHandler;
 import com.libreshockwave.vm.opcode.OpcodeRegistry;
+import com.libreshockwave.vm.trace.ConsoleTracePrinter;
 import com.libreshockwave.vm.trace.TracingHelper;
 
 import java.util.*;
@@ -29,6 +30,7 @@ public class LingoVM {
     private final BuiltinRegistry builtins;
     private final OpcodeRegistry opcodeRegistry;
     private final TracingHelper tracingHelper;
+    private final ConsoleTracePrinter consolePrinter;
 
     private boolean traceEnabled = false;
     private int stepLimit = DEFAULT_STEP_LIMIT;
@@ -55,6 +57,7 @@ public class LingoVM {
         this.builtins = new BuiltinRegistry();
         this.opcodeRegistry = new OpcodeRegistry();
         this.tracingHelper = new TracingHelper();
+        this.consolePrinter = new ConsoleTracePrinter();
         registerPassBuiltin();
     }
 
@@ -252,7 +255,7 @@ public class LingoVM {
             handlerInfo = tracingHelper.buildHandlerInfo(script, handler, args, receiver, globals);
 
             if (traceEnabled) {
-                tracingHelper.traceHandlerEnter(handlerInfo);
+                consolePrinter.onHandlerEnter(handlerInfo);
             }
             if (traceListener != null) {
                 traceListener.onHandlerEnter(handlerInfo);
@@ -275,7 +278,7 @@ public class LingoVM {
                 traceListener.onHandlerExit(handlerInfo, result);
             }
             if (traceEnabled && handlerInfo != null) {
-                tracingHelper.traceHandlerExit(handlerInfo, result);
+                consolePrinter.onHandlerExit(handlerInfo, result);
             }
 
             return result;
@@ -329,7 +332,7 @@ public class LingoVM {
         if (traceEnabled || traceListener != null) {
             TraceListener.InstructionInfo instrInfo = tracingHelper.buildInstructionInfo(scope, instr);
             if (traceEnabled) {
-                tracingHelper.traceInstruction(instrInfo);
+                consolePrinter.onInstruction(instrInfo);
             }
             if (traceListener != null) {
                 traceListener.onInstruction(instrInfo);
