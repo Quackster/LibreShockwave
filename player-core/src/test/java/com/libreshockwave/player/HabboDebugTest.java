@@ -12,6 +12,8 @@ import com.libreshockwave.vm.builtin.CastLibProvider.HandlerLocation;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -447,7 +449,7 @@ public class HabboDebugTest {
             private boolean inCreateManager = false;
             private boolean inDumpVariableField = false;
             private boolean inDump = false;
-            private java.util.Deque<String> handlerStack = new java.util.ArrayDeque<>();
+            private Deque<String> handlerStack = new ArrayDeque<>();
 
             @Override
             public void onInstruction(InstructionInfo info) {

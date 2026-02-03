@@ -3,6 +3,8 @@ package com.libreshockwave.vm.builtin;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.LingoVM;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiFunction;
@@ -33,9 +35,9 @@ public final class ConstructorBuiltins {
         }
 
         Datum target = args.get(0);
-        java.util.List<Datum> constructorArgs = args.size() > 1
-            ? new java.util.ArrayList<>(args.subList(1, args.size()))
-            : new java.util.ArrayList<>();
+        List<Datum> constructorArgs = args.size() > 1
+            ? new ArrayList<>(args.subList(1, args.size()))
+            : new ArrayList<>();
 
         // Handle Xtra instances
         if (target instanceof Datum.XtraRef xtraRef) {
@@ -61,10 +63,10 @@ public final class ConstructorBuiltins {
      * Looks up the script by cast member reference and creates an instance.
      */
     private static Datum createScriptInstance(LingoVM vm, Datum.ScriptRef scriptRef,
-                                               java.util.List<Datum> args) {
+                                               List<Datum> args) {
         // Create a new ScriptInstance with unique ID
         int instanceId = nextInstanceId++;
-        java.util.Map<String, Datum> properties = new java.util.LinkedHashMap<>();
+        Map<String, Datum> properties = new LinkedHashMap<>();
 
         // Store the script reference for method dispatch
         properties.put("__scriptRef__", scriptRef);

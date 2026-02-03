@@ -7,6 +7,7 @@ import com.libreshockwave.chunks.CastMemberChunk;
 import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.vm.Datum;
 
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -324,7 +325,7 @@ public class CastLib {
      * Get all scripts in this cast library.
      * Returns the scripts from the sourceFile if available.
      */
-    public java.util.Collection<ScriptChunk> getAllScripts() {
+    public Collection<ScriptChunk> getAllScripts() {
         if (!isLoaded()) {
             load();
         }

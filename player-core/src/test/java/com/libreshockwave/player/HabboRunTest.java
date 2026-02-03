@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.List;
 
 /**
  * Test that runs habbo.dcr until it reaches getThreadManager().create(#core, #core).
@@ -99,7 +100,7 @@ public class HabboRunTest {
                 }
             }
 
-            private String formatStack(java.util.List<Datum> stack) {
+            private String formatStack(List<Datum> stack) {
                 if (stack.size() <= 5) {
                     return stack.toString();
                 }

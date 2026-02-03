@@ -4,6 +4,7 @@ import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.HandlerRef;
 import com.libreshockwave.vm.LingoVM;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -368,7 +369,7 @@ public final class TypeBuiltins {
         }
 
         // Split by commas (respecting nested brackets and quoted strings)
-        java.util.List<String> elements = splitListElements(content);
+        List<String> elements = splitListElements(content);
 
         if (elements.isEmpty()) {
             return Datum.list();
@@ -392,7 +393,7 @@ public final class TypeBuiltins {
             return Datum.propList(props);
         } else {
             // Parse as linear list
-            java.util.List<Datum> items = new java.util.ArrayList<>();
+            List<Datum> items = new ArrayList<>();
             for (String element : elements) {
                 items.add(parseLingoExpressionWithPartial(element.trim(), vm));
             }
@@ -403,8 +404,8 @@ public final class TypeBuiltins {
     /**
      * Split list content by commas, respecting nested brackets and quoted strings.
      */
-    private static java.util.List<String> splitListElements(String content) {
-        java.util.List<String> elements = new java.util.ArrayList<>();
+    private static List<String> splitListElements(String content) {
+        List<String> elements = new ArrayList<>();
         StringBuilder current = new StringBuilder();
         int bracketDepth = 0;
         boolean inQuote = false;

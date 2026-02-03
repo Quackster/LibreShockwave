@@ -9,6 +9,8 @@ import java.io.IOException;
 import java.nio.ByteOrder;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Integration tests for Director file loading and parsing.
@@ -227,7 +229,7 @@ public class DirectorFileTest {
             System.out.println("  Cast Members: " + file.getCastMembers().size());
 
             // Build a map from scriptId to cast member name
-            java.util.Map<Integer, String> scriptIdToName = new java.util.HashMap<>();
+            Map<Integer, String> scriptIdToName = new HashMap<>();
             for (CastMemberChunk cm : file.getCastMembers()) {
                 if (cm.isScript() && cm.scriptId() > 0) {
                     scriptIdToName.put(cm.scriptId(), cm.name());

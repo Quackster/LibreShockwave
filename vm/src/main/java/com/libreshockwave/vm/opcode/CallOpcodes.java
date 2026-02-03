@@ -185,12 +185,12 @@ public final class CallOpcodes {
      */
     private static List<Datum> getArgs(Datum argListDatum) {
         if (argListDatum instanceof Datum.ArgList al) {
-            return new java.util.ArrayList<>(al.items());
+            return new ArrayList<>(al.items());
         } else if (argListDatum instanceof Datum.ArgListNoRet al) {
-            return new java.util.ArrayList<>(al.items());
+            return new ArrayList<>(al.items());
         } else {
             // Fallback - shouldn't happen with correct bytecode
-            return new java.util.ArrayList<>();
+            return new ArrayList<>();
         }
     }
 }
