@@ -20,7 +20,6 @@ public class BytecodeContextMenu extends JPopupMenu {
     public interface BytecodeListListener {
         void onBreakpointToggleRequested(int offset);
         void onNavigateToHandler(String handlerName);
-        void onShowBreakpointProperties(int offset);
     }
 
     private final JList<InstructionDisplayItem> bytecodeList;
@@ -28,7 +27,6 @@ public class BytecodeContextMenu extends JPopupMenu {
     private DebugController controller;
     private int currentScriptId = -1;
     private BytecodeListListener listener;
-    private Component parentComponent;
 
     public BytecodeContextMenu(JList<InstructionDisplayItem> bytecodeList,
                                 DefaultListModel<InstructionDisplayItem> bytecodeModel) {
@@ -62,41 +60,6 @@ public class BytecodeContextMenu extends JPopupMenu {
             }
         });
         add(enableDisableItem);
-
-        JMenuItem editBpItem = new JMenuItem("Edit Breakpoint...");
-        editBpItem.addActionListener(e -> {
-            InstructionDisplayItem item = getSelectedItem();
-            if (item != null && controller != null && currentScriptId >= 0) {
-                if (listener != null) {
-                    listener.onShowBreakpointProperties(item.getOffset());
-                } else if (parentComponent != null) {
-                    BreakpointPropertiesDialog.show(parentComponent, controller, currentScriptId, item.getOffset());
-                    bytecodeList.repaint();
-                }
-            }
-        });
-        add(editBpItem);
-
-        JMenuItem addLogPointItem = new JMenuItem("Add Log Point...");
-        addLogPointItem.addActionListener(e -> {
-            InstructionDisplayItem item = getSelectedItem();
-            if (item != null && controller != null && currentScriptId >= 0 && parentComponent != null) {
-                if (BreakpointPropertiesDialog.showAddLogPointDialog(
-                        parentComponent, controller, currentScriptId, item.getOffset())) {
-                    bytecodeList.repaint();
-                }
-            }
-        });
-        add(addLogPointItem);
-
-        JMenuItem resetHitCountItem = new JMenuItem("Reset Hit Count");
-        resetHitCountItem.addActionListener(e -> {
-            InstructionDisplayItem item = getSelectedItem();
-            if (item != null && controller != null && currentScriptId >= 0) {
-                controller.resetBreakpointHitCount(currentScriptId, item.getOffset());
-            }
-        });
-        add(resetHitCountItem);
 
         addSeparator();
 
@@ -186,12 +149,5 @@ public class BytecodeContextMenu extends JPopupMenu {
      */
     public void setListener(BytecodeListListener listener) {
         this.listener = listener;
-    }
-
-    /**
-     * Set the parent component for dialogs.
-     */
-    public void setParentComponent(Component parent) {
-        this.parentComponent = parent;
     }
 }

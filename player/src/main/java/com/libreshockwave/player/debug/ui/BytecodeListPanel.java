@@ -25,7 +25,6 @@ public class BytecodeListPanel extends JPanel {
     public interface BytecodeListListener {
         void onBreakpointToggleRequested(int offset);
         void onNavigateToHandler(String handlerName);
-        void onShowBreakpointProperties(int offset);
         void onShowHandlerDetails(String handlerName);
     }
 
@@ -61,9 +60,7 @@ public class BytecodeListPanel extends JPanel {
         // Legend
         JLabel legend = new JLabel("<html>" +
             "<font color='red'>\u25CF</font>=breakpoint &nbsp; " +
-            "<font color='tomato'>\u25CF</font>=conditional &nbsp; " +
             "<font color='gray'>\u25CB</font>=disabled &nbsp; " +
-            "<font color='orange'>\u25C6</font>=logpoint &nbsp; " +
             "<font color='#DAA520'>\u25B6</font>=current &nbsp; " +
             "<font color='blue'><u>blue</u></font>=navigate</html>");
         legend.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 10));
@@ -246,19 +243,7 @@ public class BytecodeListPanel extends JPanel {
             public void onNavigateToHandler(String handlerName) {
                 listener.onNavigateToHandler(handlerName);
             }
-
-            @Override
-            public void onShowBreakpointProperties(int offset) {
-                listener.onShowBreakpointProperties(offset);
-            }
         });
-    }
-
-    /**
-     * Set the parent component for dialogs.
-     */
-    public void setParentComponent(Component parent) {
-        contextMenu.setParentComponent(parent);
     }
 
     /**

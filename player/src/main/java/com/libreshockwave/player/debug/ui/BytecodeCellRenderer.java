@@ -64,7 +64,7 @@ public class BytecodeCellRenderer extends DefaultListCellRenderer {
     }
 
     /**
-     * Get the appropriate breakpoint marker based on breakpoint type.
+     * Get the appropriate breakpoint marker based on breakpoint state.
      */
     private String getBreakpointMarker(InstructionDisplayItem item) {
         if (!item.hasBreakpoint() || item.getBreakpoint() == null) {
@@ -80,16 +80,6 @@ public class BytecodeCellRenderer extends DefaultListCellRenderer {
         // Disabled breakpoint - gray hollow circle
         if (!bp.enabled()) {
             return "<font color='gray'>\u25CB</font> ";
-        }
-
-        // Log point - orange diamond
-        if (bp.isLogPoint()) {
-            return "<font color='orange'>\u25C6</font> ";
-        }
-
-        // Conditional breakpoint - tomato filled circle
-        if (bp.isConditional()) {
-            return "<font color='tomato'>\u25CF</font> ";
         }
 
         // Normal enabled breakpoint - red filled circle

@@ -3,12 +3,10 @@ package com.libreshockwave.player;
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.player.cast.CastLibManager;
-import com.libreshockwave.player.debug.Breakpoint;
 import com.libreshockwave.player.debug.DebugController;
 import com.libreshockwave.player.debug.DebugSnapshot;
 import com.libreshockwave.player.debug.DebugStateListener;
 import com.libreshockwave.player.debug.WatchExpression;
-import com.libreshockwave.player.debug.ui.BreakpointPropertiesDialog;
 import com.libreshockwave.player.debug.ui.BytecodeListPanel;
 import com.libreshockwave.player.debug.ui.DatumDetailsDialog;
 import com.libreshockwave.player.debug.ui.DebugKeyboardHandler;
@@ -117,7 +115,6 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
         topPanel.add(scriptBrowser, BorderLayout.NORTH);
 
         bytecodePanel = new BytecodeListPanel();
-        bytecodePanel.setParentComponent(this);
         bytecodePanel.setListener(new BytecodeListPanel.BytecodeListListener() {
             @Override
             public void onBreakpointToggleRequested(int offset) {
@@ -127,15 +124,6 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
             @Override
             public void onNavigateToHandler(String handlerName) {
                 navigateToHandler(handlerName);
-            }
-
-            @Override
-            public void onShowBreakpointProperties(int offset) {
-                if (controller != null && bytecodePanel.getCurrentScriptId() >= 0) {
-                    BreakpointPropertiesDialog.show(BytecodeDebuggerPanel.this, controller,
-                        bytecodePanel.getCurrentScriptId(), offset);
-                    bytecodePanel.refreshBreakpointMarkers();
-                }
             }
 
             @Override
@@ -340,12 +328,6 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
     @Override
     public void onBreakpointsChanged() {
         SwingUtilities.invokeLater(() -> bytecodePanel.refreshBreakpointMarkers());
-    }
-
-    @Override
-    public void onLogPointHit(Breakpoint bp, String message) {
-        System.out.println(String.format("[LogPoint] Script %d, offset %d: %s",
-            bp.scriptId(), bp.offset(), message));
     }
 
     @Override
