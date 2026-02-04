@@ -28,6 +28,11 @@ public class BytecodeContextMenu extends JPopupMenu {
     private int currentScriptId = -1;
     private BytecodeListListener listener;
 
+    // Navigation menu items (shown only for navigable calls)
+    private JMenuItem goToDefItem;
+    private JMenuItem viewDetailsItem;
+    private JSeparator navigationSeparator;
+
     public BytecodeContextMenu(JList<InstructionDisplayItem> bytecodeList,
                                 DefaultListModel<InstructionDisplayItem> bytecodeModel) {
         this.bytecodeList = bytecodeList;
@@ -61,10 +66,11 @@ public class BytecodeContextMenu extends JPopupMenu {
         });
         add(enableDisableItem);
 
-        addSeparator();
+        // Navigation separator and items (only shown for navigable calls)
+        navigationSeparator = new JSeparator();
+        add(navigationSeparator);
 
-        // Navigation actions for navigable call instructions (not builtins)
-        JMenuItem goToDefItem = new JMenuItem("Go to Definition");
+        goToDefItem = new JMenuItem("Go to Definition");
         goToDefItem.addActionListener(e -> {
             InstructionDisplayItem item = getSelectedItem();
             if (item != null && item.isNavigableCall()) {
@@ -76,7 +82,7 @@ public class BytecodeContextMenu extends JPopupMenu {
         });
         add(goToDefItem);
 
-        JMenuItem viewDetailsItem = new JMenuItem("View Handler Details...");
+        viewDetailsItem = new JMenuItem("View Handler Details...");
         viewDetailsItem.addActionListener(e -> {
             InstructionDisplayItem item = getSelectedItem();
             if (item != null && item.isNavigableCall()) {
@@ -106,6 +112,14 @@ public class BytecodeContextMenu extends JPopupMenu {
                     int index = bytecodeList.locationToIndex(e.getPoint());
                     if (index >= 0 && index < bytecodeModel.size()) {
                         bytecodeList.setSelectedIndex(index);
+
+                        // Show navigation items only for navigable calls
+                        InstructionDisplayItem item = bytecodeModel.get(index);
+                        boolean isNavigable = item != null && item.isNavigableCall();
+                        navigationSeparator.setVisible(isNavigable);
+                        goToDefItem.setVisible(isNavigable);
+                        viewDetailsItem.setVisible(isNavigable);
+
                         show(bytecodeList, e.getX(), e.getY());
                     }
                 }
