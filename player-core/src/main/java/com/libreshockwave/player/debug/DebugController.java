@@ -14,10 +14,7 @@ import java.util.concurrent.Semaphore;
  *
  * Supports:
  * - Simple breakpoints
- * - Conditional breakpoints with expression evaluation
- * - Log points (log message without pausing)
  * - Breakpoint enable/disable
- * - Hit count tracking and thresholds
  * - Watch expressions
  */
 public class DebugController implements TraceListener {
@@ -75,7 +72,7 @@ public class DebugController implements TraceListener {
     // Breakpoint manager (replaces old Map<Integer, Set<Integer>>)
     private final BreakpointManager breakpointManager = new BreakpointManager();
 
-    // Expression evaluator for conditions and watches
+    // Expression evaluator for watches
     private final ExpressionEvaluator expressionEvaluator = new ExpressionEvaluator();
 
     // Watch expressions
@@ -227,7 +224,6 @@ public class DebugController implements TraceListener {
 
     /**
      * Check if we should break at this instruction.
-     * Handles breakpoint conditions, log points, and hit counts.
      */
     private BreakResult checkBreak(InstructionInfo info) {
         synchronized (stateLock) {
@@ -240,11 +236,8 @@ public class DebugController implements TraceListener {
             // Check breakpoints
             if (currentHandlerInfo != null) {
                 Breakpoint bp = breakpointManager.getBreakpoint(currentHandlerInfo.scriptId(), info.offset());
-                if (bp != null) {
-                    BreakResult result = evaluateBreakpoint(bp, info);
-                    if (result.shouldPause || bp.isLogPoint()) {
-                        return result;
-                    }
+                if (bp != null && bp.enabled()) {
+                    return BreakResult.pause(bp);
                 }
             }
 
@@ -258,74 +251,6 @@ public class DebugController implements TraceListener {
 
             return shouldStep ? BreakResult.pauseNoBreakpoint() : BreakResult.noBreak();
         }
-    }
-
-    /**
-     * Evaluate a breakpoint to determine if we should pause.
-     * Handles enabled/disabled, hit counts, conditions, and log points.
-     */
-    private BreakResult evaluateBreakpoint(Breakpoint bp, InstructionInfo info) {
-        // Check if enabled
-        if (!bp.enabled()) {
-            return BreakResult.noBreak();
-        }
-
-        // Increment hit count
-        bp = breakpointManager.incrementHitCount(bp.scriptId(), bp.offset());
-        if (bp == null) {
-            return BreakResult.noBreak();
-        }
-
-        // Check hit count threshold
-        if (bp.hitCountThreshold() > 0 && bp.hitCount() < bp.hitCountThreshold()) {
-            return BreakResult.noBreak();
-        }
-
-        // Build evaluation context for conditions
-        ExpressionEvaluator.EvaluationContext ctx = buildEvaluationContext();
-
-        // Check condition
-        if (bp.isConditional()) {
-            boolean conditionMet = expressionEvaluator.evaluateCondition(bp.condition(), ctx);
-            if (!conditionMet) {
-                return BreakResult.noBreak();
-            }
-        }
-
-        // Handle log point (log message without pausing)
-        if (bp.isLogPoint()) {
-            String message = expressionEvaluator.interpolateLogMessage(bp.logMessage(), ctx);
-            notifyLogPointHit(bp, message);
-            return BreakResult.noBreak();  // Log points don't pause
-        }
-
-        // Normal breakpoint - pause execution
-        return BreakResult.pause(bp);
-    }
-
-    /**
-     * Build an evaluation context from current state.
-     */
-    private ExpressionEvaluator.EvaluationContext buildEvaluationContext() {
-        HandlerInfo handlerInfo = currentHandlerInfo;
-        Datum receiver = handlerInfo != null ? handlerInfo.receiver() : null;
-
-        // Build params map from handler arguments
-        // Note: We use arg0, arg1, etc. as parameter names since HandlerInfo doesn't include names
-        Map<String, Datum> params = new LinkedHashMap<>();
-        if (handlerInfo != null && handlerInfo.arguments() != null) {
-            List<Datum> args = handlerInfo.arguments();
-            for (int i = 0; i < args.size(); i++) {
-                params.put("arg" + i, args.get(i));
-            }
-        }
-
-        return new ExpressionEvaluator.EvaluationContext(
-            localsSnapshot,
-            params,
-            globalsSnapshot,
-            receiver
-        );
     }
 
     /**
@@ -560,18 +485,6 @@ public class DebugController implements TraceListener {
     }
 
     /**
-     * Reset hit count for a breakpoint.
-     * @return the updated breakpoint, or null if no breakpoint exists
-     */
-    public Breakpoint resetBreakpointHitCount(int scriptId, int offset) {
-        Breakpoint bp = breakpointManager.resetHitCount(scriptId, offset);
-        if (bp != null) {
-            notifyBreakpointsChanged();
-        }
-        return bp;
-    }
-
-    /**
      * Get all breakpoints as a map (scriptId -> set of offsets).
      * For backward compatibility.
      */
@@ -584,14 +497,6 @@ public class DebugController implements TraceListener {
      */
     public void clearAllBreakpoints() {
         breakpointManager.clearAll();
-        notifyBreakpointsChanged();
-    }
-
-    /**
-     * Reset all hit counts.
-     */
-    public void resetAllHitCounts() {
-        breakpointManager.resetAllHitCounts();
         notifyBreakpointsChanged();
     }
 
@@ -682,6 +587,30 @@ public class DebugController implements TraceListener {
     }
 
     /**
+     * Build an evaluation context from current state.
+     */
+    private ExpressionEvaluator.EvaluationContext buildEvaluationContext() {
+        HandlerInfo handlerInfo = currentHandlerInfo;
+        Datum receiver = handlerInfo != null ? handlerInfo.receiver() : null;
+
+        // Build params map from handler arguments
+        Map<String, Datum> params = new LinkedHashMap<>();
+        if (handlerInfo != null && handlerInfo.arguments() != null) {
+            List<Datum> args = handlerInfo.arguments();
+            for (int i = 0; i < args.size(); i++) {
+                params.put("arg" + i, args.get(i));
+            }
+        }
+
+        return new ExpressionEvaluator.EvaluationContext(
+            localsSnapshot,
+            params,
+            globalsSnapshot,
+            receiver
+        );
+    }
+
+    /**
      * Evaluate all watch expressions with current context.
      * @return list of evaluated watches with values/errors populated
      */
@@ -749,14 +678,6 @@ public class DebugController implements TraceListener {
         });
     }
 
-    private void notifyLogPointHit(Breakpoint bp, String message) {
-        SwingUtilities.invokeLater(() -> {
-            for (DebugStateListener listener : listeners) {
-                listener.onLogPointHit(bp, message);
-            }
-        });
-    }
-
     private void notifyWatchExpressionsChanged() {
         SwingUtilities.invokeLater(() -> {
             for (DebugStateListener listener : listeners) {
@@ -807,8 +728,6 @@ public class DebugController implements TraceListener {
         currentHandlerInfo = null;
         currentInstructionInfo = null;
         currentSnapshot = null;
-        // Reset all hit counts when movie is reset
-        breakpointManager.resetAllHitCounts();
     }
 
     /**

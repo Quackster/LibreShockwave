@@ -5,7 +5,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
- * Manages breakpoints with support for conditions, log points, enable/disable, and hit counts.
+ * Manages breakpoints with support for enable/disable.
  * Thread-safe for concurrent access from UI and VM threads.
  */
 public class BreakpointManager {
@@ -97,24 +97,6 @@ public class BreakpointManager {
     }
 
     /**
-     * Reset the hit count of a breakpoint to 0.
-     * @return the updated breakpoint, or null if no breakpoint exists
-     */
-    public Breakpoint resetHitCount(int scriptId, int offset) {
-        BreakpointKey key = BreakpointKey.of(scriptId, offset);
-        return breakpoints.computeIfPresent(key, (k, bp) -> bp.withResetHitCount());
-    }
-
-    /**
-     * Increment and update the hit count of a breakpoint.
-     * @return the updated breakpoint with incremented hit count, or null if no breakpoint exists
-     */
-    public Breakpoint incrementHitCount(int scriptId, int offset) {
-        BreakpointKey key = BreakpointKey.of(scriptId, offset);
-        return breakpoints.computeIfPresent(key, (k, bp) -> bp.withIncrementedHitCount());
-    }
-
-    /**
      * Get all breakpoints.
      */
     public Collection<Breakpoint> getAllBreakpoints() {
@@ -145,13 +127,6 @@ public class BreakpointManager {
      */
     public void clearAll() {
         breakpoints.clear();
-    }
-
-    /**
-     * Reset all hit counts to 0.
-     */
-    public void resetAllHitCounts() {
-        breakpoints.replaceAll((key, bp) -> bp.withResetHitCount());
     }
 
     /**
@@ -200,11 +175,7 @@ public class BreakpointManager {
             sb.append("{");
             sb.append("\"scriptId\":").append(bp.scriptId()).append(",");
             sb.append("\"offset\":").append(bp.offset()).append(",");
-            sb.append("\"enabled\":").append(bp.enabled()).append(",");
-            sb.append("\"condition\":").append(jsonString(bp.condition())).append(",");
-            sb.append("\"logMessage\":").append(jsonString(bp.logMessage())).append(",");
-            sb.append("\"hitCountThreshold\":").append(bp.hitCountThreshold());
-            // Note: hitCount is not serialized (runtime state only)
+            sb.append("\"enabled\":").append(bp.enabled());
             sb.append("}");
         }
 
@@ -279,11 +250,8 @@ public class BreakpointManager {
             int scriptId = parseJsonInt(json, "scriptId", 0);
             int offset = parseJsonInt(json, "offset", 0);
             boolean enabled = parseJsonBoolean(json, "enabled", true);
-            String condition = parseJsonString(json, "condition");
-            String logMessage = parseJsonString(json, "logMessage");
-            int hitCountThreshold = parseJsonInt(json, "hitCountThreshold", 0);
 
-            return new Breakpoint(scriptId, offset, enabled, condition, logMessage, 0, hitCountThreshold);
+            return new Breakpoint(scriptId, offset, enabled);
         } catch (Exception e) {
             return null;
         }
@@ -317,43 +285,6 @@ public class BreakpointManager {
         if (json.regionMatches(start, "true", 0, 4)) return true;
         if (json.regionMatches(start, "false", 0, 5)) return false;
         return defaultValue;
-    }
-
-    private String parseJsonString(String json, String key) {
-        String pattern = "\"" + key + "\":";
-        int idx = json.indexOf(pattern);
-        if (idx < 0) return null;
-
-        int start = idx + pattern.length();
-        // Skip whitespace
-        while (start < json.length() && Character.isWhitespace(json.charAt(start))) start++;
-
-        if (start >= json.length()) return null;
-
-        // Check for null
-        if (json.regionMatches(start, "null", 0, 4)) return null;
-
-        // Check for string
-        if (json.charAt(start) != '"') return null;
-
-        start++; // skip opening quote
-        StringBuilder sb = new StringBuilder();
-        while (start < json.length()) {
-            char c = json.charAt(start);
-            if (c == '"') break;
-            if (c == '\\' && start + 1 < json.length()) {
-                char next = json.charAt(start + 1);
-                switch (next) {
-                    case '"', '\\', '/' -> { sb.append(next); start += 2; continue; }
-                    case 'n' -> { sb.append('\n'); start += 2; continue; }
-                    case 'r' -> { sb.append('\r'); start += 2; continue; }
-                    case 't' -> { sb.append('\t'); start += 2; continue; }
-                }
-            }
-            sb.append(c);
-            start++;
-        }
-        return sb.toString();
     }
 
     private void deserializeLegacy(String data) {
@@ -398,23 +329,6 @@ public class BreakpointManager {
                 sb.append(offset);
             }
         }
-        return sb.toString();
-    }
-
-    private String jsonString(String s) {
-        if (s == null) return "null";
-        StringBuilder sb = new StringBuilder("\"");
-        for (char c : s.toCharArray()) {
-            switch (c) {
-                case '"' -> sb.append("\\\"");
-                case '\\' -> sb.append("\\\\");
-                case '\n' -> sb.append("\\n");
-                case '\r' -> sb.append("\\r");
-                case '\t' -> sb.append("\\t");
-                default -> sb.append(c);
-            }
-        }
-        sb.append("\"");
         return sb.toString();
     }
 }
