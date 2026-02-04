@@ -8,7 +8,6 @@ import com.libreshockwave.util.FileUtil;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.builtin.CastLibProvider;
 
-import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -339,7 +338,8 @@ public class CastLibManager implements CastLibProvider {
     public int getCastLibNumberByUrl(String url) {
         ensureInitialized();
 
-        String fileName = FileUtil.getFileNameWithoutExtension(Paths.get(url).getFileName().toString());
+        String extractedFileName = FileUtil.getFileName(url);
+        String fileName = FileUtil.getFileNameWithoutExtension(extractedFileName);
 
         for (CastLib castLib : castLibs.values()) {
             String castUrl = castLib.getFileName();

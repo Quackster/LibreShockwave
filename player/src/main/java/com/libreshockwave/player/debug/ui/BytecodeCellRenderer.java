@@ -39,11 +39,11 @@ public class BytecodeCellRenderer extends DefaultListCellRenderer {
                 sb.append("     ");
             }
 
-            // Annotation - make call targets blue and underlined
+            // Annotation - make navigable call targets blue and underlined
             String annotation = item.getAnnotation();
             if (annotation != null && !annotation.isEmpty()) {
                 sb.append(" ");
-                if (item.isCallInstruction() && item.getCallTargetName() != null) {
+                if (item.isNavigableCall()) {
                     sb.append("<font color='blue'><u>").append(StringUtils.escapeHtml(annotation)).append("</u></font>");
                 } else {
                     sb.append(StringUtils.escapeHtml(annotation));

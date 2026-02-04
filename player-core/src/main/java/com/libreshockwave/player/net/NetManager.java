@@ -1,5 +1,6 @@
 package com.libreshockwave.player.net;
 
+import com.libreshockwave.util.FileUtil;
 import com.libreshockwave.vm.builtin.NetBuiltins;
 
 import java.net.URI;
@@ -28,6 +29,7 @@ import java.util.concurrent.*;
 public class NetManager implements NetBuiltins.NetProvider {
 
     private final Map<Integer, NetTask> tasks = new ConcurrentHashMap<>();
+    private final Map<String, byte[]> urlCache = new ConcurrentHashMap<>();  // Cache for loaded URLs
     private final ExecutorService executor;
     private final HttpClient httpClient;
 
@@ -195,15 +197,33 @@ public class NetManager implements NetBuiltins.NetProvider {
         executor.submit(() -> {
             task.markInProgress();
 
-            String url = task.getUrl();
+            String url = task.getOriginalUrl();
+            String cacheKey = FileUtil.getFileName(url);
+
+            // Check cache first
+            byte[] cached = urlCache.get(cacheKey);
+            if (cached != null) {
+                System.out.println("[NetManager] Using cached: " + cacheKey + " (" + cached.length + " bytes)");
+                task.complete(cached);
+                notifyCompletion(task.getOriginalUrl(), cached);
+                return;
+            }
 
             try {
-                if (url.startsWith("http")) {
-                    // HTTP request
-                    loadFromHttp(url, task);
-                } else {
-                    // Handle local file URL
-                    loadFromFileUrl(url, task);
+                // Check if it's already a full HTTP URL
+                if (url.startsWith("http://") || url.startsWith("https://")) {
+                    loadFromHttp(url, task, cacheKey);
+                }
+                // Check if basePath is an HTTP URL - need to construct full URL
+                else if (basePath != null && (basePath.startsWith("http://") || basePath.startsWith("https://"))) {
+                    // Extract just the filename - the path may be an absolute Windows path from the DCR
+                    String fileName = FileUtil.getFileName(url);
+                    String fullUrl = basePath + fileName;
+                    loadFromHttp(fullUrl, task, cacheKey);
+                }
+                // Handle local file URL
+                else {
+                    loadFromFileUrl(url, task, cacheKey);
                 }
             } catch (Exception e) {
                 task.fail(-1, e.getMessage());
@@ -211,7 +231,7 @@ public class NetManager implements NetBuiltins.NetProvider {
         });
     }
 
-    private void loadFromFileUrl(String url, NetTask task) throws Exception {
+    private void loadFromFileUrl(String url, NetTask task, String cacheKey) throws Exception {
         Path path;
 
         // Check if it's a file:// URI or a plain path
@@ -239,6 +259,7 @@ public class NetManager implements NetBuiltins.NetProvider {
         }
 
         byte[] data = Files.readAllBytes(resolvedPath);
+        urlCache.put(cacheKey, data);  // Cache the result
         System.out.println("[NetManager] Loaded file: " + resolvedPath + " (" + data.length + " bytes)");
         task.complete(data);
         notifyCompletion(task.getOriginalUrl(), data);
@@ -328,7 +349,7 @@ public class NetManager implements NetBuiltins.NetProvider {
         return dotIndex > 0 ? fileName.substring(0, dotIndex) : fileName;
     }
 
-    private void loadFromHttp(String url, NetTask task) throws Exception {
+    private void loadFromHttp(String url, NetTask task, String cacheKey) throws Exception {
         // Try the URL with extension fallbacks
         String[] urlsToTry = getUrlsWithFallbacks(url);
 
@@ -356,9 +377,11 @@ public class NetManager implements NetBuiltins.NetProvider {
 
                 int statusCode = response.statusCode();
                 if (statusCode >= 200 && statusCode < 300) {
-                    System.out.println("[NetManager] Loaded URL: " + tryUrl + " (" + response.body().length + " bytes)");
-                    task.complete(response.body());
-                    notifyCompletion(task.getUrl(), response.body());
+                    byte[] data = response.body();
+                    urlCache.put(cacheKey, data);  // Cache the result
+                    System.out.println("[NetManager] Loaded URL: " + tryUrl + " (" + data.length + " bytes)");
+                    task.complete(data);
+                    notifyCompletion(task.getUrl(), data);
                     return;
                 }
                 lastStatusCode = statusCode;
@@ -369,32 +392,36 @@ public class NetManager implements NetBuiltins.NetProvider {
 
         // All URLs failed
         if (lastStatusCode > 0) {
+            System.err.println("[NetManager] HTTP request failed: " + url + " - HTTP " + lastStatusCode);
             task.fail(lastStatusCode, "HTTP " + lastStatusCode);
         } else if (lastException != null) {
+            System.err.println("[NetManager] HTTP request failed: " + url + " - " + lastException.getMessage());
             task.fail(-1, lastException.getMessage());
         } else {
+            System.err.println("[NetManager] HTTP request failed: " + url + " - Not found");
             task.fail(404, "Not found");
         }
     }
 
     /**
-     * Get URLs to try with extension fallbacks.
-     * For cast files (.cst, .cct): try requested, then .cst, then .cct
-     * For movie files (.dcr, .dxr, .dir): try requested, then .dir, then .dcr
+     * Get URLs to try with extension fallbacks for HTTP loading.
+     * Prioritizes Shockwave formats (.dcr, .cct) which are typically deployed on the web.
+     * For cast files: try requested, then .cct, then .cst
+     * For movie files: try requested, then .dcr, then .dxr, then .dir
      */
     private String[] getUrlsWithFallbacks(String url) {
         String lowerUrl = url.toLowerCase();
 
-        // Cast file extensions
+        // Cast file extensions - try .cct first (Shockwave protected cast)
         if (lowerUrl.endsWith(".cst") || lowerUrl.endsWith(".cct")) {
             String baseName = url.substring(0, url.length() - 4);
-            return new String[] { url, baseName + ".cst", baseName + ".cct" };
+            return new String[] { url, baseName + ".cct", baseName + ".cst" };
         }
 
-        // Movie file extensions
+        // Movie file extensions - try .dcr first (Shockwave format)
         if (lowerUrl.endsWith(".dcr") || lowerUrl.endsWith(".dxr") || lowerUrl.endsWith(".dir")) {
             String baseName = url.substring(0, url.length() - 4);
-            return new String[] { url, baseName + ".dir", baseName + ".dcr", baseName + ".dxr" };
+            return new String[] { url, baseName + ".dcr", baseName + ".dxr", baseName + ".dir" };
         }
 
         // No fallbacks

@@ -164,9 +164,10 @@ public class Player {
         int count = 0;
         for (var entry : castLibManager.getCastLibs().entrySet()) {
             var castLib = entry.getValue();
-            if (castLib.isExternal() && !castLib.isLoaded()) {
+            if (castLib.isExternal() && !castLib.isLoaded() && !castLib.isFetching()) {
                 String fileName = castLib.getFileName();
                 if (fileName != null && !fileName.isEmpty()) {
+                    castLib.markFetching();
                     netManager.preloadNetThing(fileName);
                     count++;
                     System.out.println("[Player] Preloading external cast: " + fileName);

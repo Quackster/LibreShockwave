@@ -22,6 +22,7 @@ public class CastLib {
 
     public enum State {
         NONE,
+        FETCHING,  // External cast fetch in progress
         LOADING,
         LOADED
     }
@@ -215,6 +216,20 @@ public class CastLib {
 
     public boolean isLoaded() {
         return state == State.LOADED;
+    }
+
+    public boolean isFetching() {
+        return state == State.FETCHING;
+    }
+
+    /**
+     * Mark this external cast as being fetched.
+     * Prevents duplicate fetch requests.
+     */
+    public void markFetching() {
+        if (state == State.NONE) {
+            state = State.FETCHING;
+        }
     }
 
     /**

@@ -19,6 +19,7 @@ public class InstructionDisplayItem {
     private boolean hasBreakpoint;
     private Breakpoint breakpoint;  // Full breakpoint info for rendering
     private boolean isCurrent;
+    private boolean navigable;  // True if call target exists in the CCT (not a builtin)
 
     public InstructionDisplayItem(int offset, int index, String opcode, int argument,
                                    String annotation, boolean hasBreakpoint) {
@@ -76,11 +77,26 @@ public class InstructionDisplayItem {
         isCurrent = current;
     }
 
+    public boolean isNavigable() {
+        return navigable;
+    }
+
+    public void setNavigable(boolean navigable) {
+        this.navigable = navigable;
+    }
+
     /**
-     * Check if this instruction is a call that can be navigated to.
+     * Check if this instruction is a call opcode (EXT_CALL, OBJ_CALL, LOCAL_CALL).
      */
     public boolean isCallInstruction() {
         return CALL_OPCODES.contains(opcode);
+    }
+
+    /**
+     * Check if this instruction is a call that can be navigated to (exists in CCT, not a builtin).
+     */
+    public boolean isNavigableCall() {
+        return isCallInstruction() && navigable && getCallTargetName() != null;
     }
 
     /**
