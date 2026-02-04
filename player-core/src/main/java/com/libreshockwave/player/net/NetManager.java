@@ -210,20 +210,35 @@ public class NetManager implements NetBuiltins.NetProvider {
             }
 
             try {
-                // Check if it's already a full HTTP URL
+                // Extract just the filename - the path inside the DCR may be an absolute path
+                // from the author's machine, we want to resolve relative to where the DCR was loaded from
+                String fileName = FileUtil.getFileName(url);
+
+                // Always try local file first if we have a basePath (the DCR/DIR location)
+                if (basePath != null && !basePath.isEmpty()) {
+                    Path base = Path.of(basePath);
+                    if (Files.isRegularFile(base)) {
+                        base = base.getParent();
+                    }
+
+                    // Try loading from file with fallbacks
+                    byte[] data = tryLoadFromFile(base.resolve(fileName), cacheKey);
+                    if (data != null) {
+                        task.complete(data);
+                        notifyCompletion(task.getOriginalUrl(), data);
+                        return;
+                    }
+                }
+
+                // File load failed or no basePath - try HTTP if URL is HTTP or basePath is HTTP
                 if (url.startsWith("http://") || url.startsWith("https://")) {
                     loadFromHttp(url, task, cacheKey);
-                }
-                // Check if basePath is an HTTP URL - need to construct full URL
-                else if (basePath != null && (basePath.startsWith("http://") || basePath.startsWith("https://"))) {
-                    // Extract just the filename - the path may be an absolute Windows path from the DCR
-                    String fileName = FileUtil.getFileName(url);
+                } else if (basePath != null && (basePath.startsWith("http://") || basePath.startsWith("https://"))) {
                     String fullUrl = basePath + fileName;
                     loadFromHttp(fullUrl, task, cacheKey);
-                }
-                // Handle local file URL
-                else {
-                    loadFromFileUrl(url, task, cacheKey);
+                } else {
+                    // No HTTP fallback available
+                    task.fail(404, "File not found: " + fileName);
                 }
             } catch (Exception e) {
                 task.fail(-1, e.getMessage());
@@ -231,54 +246,24 @@ public class NetManager implements NetBuiltins.NetProvider {
         });
     }
 
-    private void loadFromFileUrl(String url, NetTask task, String cacheKey) throws Exception {
-        Path path;
-
-        // Check if it's a file:// URI or a plain path
-        if (url.startsWith("file://")) {
-            URI uri = new URI(url);
-            path = Path.of(uri);
-        } else {
-            // Plain filename - resolve against basePath
-            if (basePath != null && !basePath.isEmpty()) {
-                Path base = Path.of(basePath);
-                if (Files.isRegularFile(base)) {
-                    base = base.getParent();
-                }
-                path = base.resolve(url);
-            } else {
-                path = Path.of(url);
+    /**
+     * Try to load a file with extension fallbacks. Returns data if found, null otherwise.
+     */
+    private byte[] tryLoadFromFile(Path path, String cacheKey) {
+        try {
+            Path resolvedPath = resolvePathWithFallbacks(path);
+            if (resolvedPath == null) {
+                return null;
             }
+
+            byte[] data = Files.readAllBytes(resolvedPath);
+            urlCache.put(cacheKey, data);  // Cache the result
+            System.out.println("[NetManager] Loaded file: " + resolvedPath + " (" + data.length + " bytes)");
+            return data;
+        } catch (Exception e) {
+            System.out.println("[NetManager] File load failed: " + path + " - " + e.getMessage());
+            return null;
         }
-
-        // Try with extension fallbacks
-        Path resolvedPath = resolvePathWithFallbacks(path);
-        if (resolvedPath == null) {
-            task.fail(404, "File not found: " + path);
-            return;
-        }
-
-        byte[] data = Files.readAllBytes(resolvedPath);
-        urlCache.put(cacheKey, data);  // Cache the result
-        System.out.println("[NetManager] Loaded file: " + resolvedPath + " (" + data.length + " bytes)");
-        task.complete(data);
-        notifyCompletion(task.getOriginalUrl(), data);
-    }
-
-    private void loadFromFilePath(String filePath, NetTask task) throws Exception {
-        Path path = Path.of(filePath);
-
-        // Try with extension fallbacks
-        Path resolvedPath = resolvePathWithFallbacks(path);
-        if (resolvedPath == null) {
-            task.fail(404, "File not found: " + path);
-            return;
-        }
-
-        byte[] data = Files.readAllBytes(resolvedPath);
-        System.out.println("[NetManager] Loaded file: " + resolvedPath + " (" + data.length + " bytes)");
-        task.complete(data);
-        notifyCompletion(task.getUrl(), data);
     }
 
     /**
