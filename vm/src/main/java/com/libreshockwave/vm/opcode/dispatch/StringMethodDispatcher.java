@@ -96,22 +96,26 @@ public final class StringMethodDispatcher {
 
     /**
      * Get a chunk from a string.
+     * Handles edge cases: end == 0 means single element (set end = start),
+     * end == -1 means to-end (set end = chunk count).
      */
     private static String getStringChunk(String str, String chunkType, int start, int end, char itemDelimiter) {
         if (str.isEmpty() || start < 1) return "";
 
         return switch (chunkType) {
             case "char" -> {
+                int actualEnd = resolveEnd(end, start, str.length());
                 int s = Math.max(0, start - 1);
-                int e = Math.min(str.length(), end);
+                int e = Math.min(str.length(), actualEnd);
                 if (s >= str.length() || s >= e) yield "";
                 yield str.substring(s, e);
             }
             case "word" -> {
                 String[] words = str.trim().split("\\s+");
+                int actualEnd = resolveEnd(end, start, words.length);
                 if (start > words.length) yield "";
                 int s = start - 1;
-                int e = Math.min(words.length, end);
+                int e = Math.min(words.length, actualEnd);
                 StringBuilder sb = new StringBuilder();
                 for (int i = s; i < e; i++) {
                     if (sb.length() > 0) sb.append(" ");
@@ -120,13 +124,15 @@ public final class StringMethodDispatcher {
                 yield sb.toString();
             }
             case "line" -> {
-                String[] lines = str.split("\r\n|\r|\n", -1);
+                String lineDelimiter = pickLineDelimiter(str);
+                String[] lines = str.split(java.util.regex.Pattern.quote(lineDelimiter), -1);
+                int actualEnd = resolveEnd(end, start, lines.length);
                 if (start > lines.length) yield "";
                 int s = start - 1;
-                int e = Math.min(lines.length, end);
+                int e = Math.min(lines.length, actualEnd);
                 StringBuilder sb = new StringBuilder();
                 for (int i = s; i < e; i++) {
-                    if (sb.length() > 0) sb.append("\n");
+                    if (sb.length() > 0) sb.append("\r\n");
                     sb.append(lines[i]);
                 }
                 yield sb.toString();
@@ -134,9 +140,10 @@ public final class StringMethodDispatcher {
             case "item" -> {
                 // Simple split like dirplayer-rs - no bracket/quote awareness
                 String[] items = str.split(String.valueOf(itemDelimiter), -1);
+                int actualEnd = resolveEnd(end, start, items.length);
                 if (start > items.length) yield "";
                 int s = start - 1;
-                int e = Math.min(items.length, end);
+                int e = Math.min(items.length, actualEnd);
                 StringBuilder sb = new StringBuilder();
                 for (int i = s; i < e; i++) {
                     if (sb.length() > 0) sb.append(itemDelimiter);
@@ -148,18 +155,40 @@ public final class StringMethodDispatcher {
         };
     }
 
+    /**
+     * Resolve the end parameter for chunk ranges.
+     * end == 0 means single element (return start), end == -1 means to-end (return count).
+     */
+    private static int resolveEnd(int end, int start, int count) {
+        if (end == 0) return start;
+        if (end == -1) return count;
+        return end;
+    }
+
+    /**
+     * Pick ONE line delimiter for the entire string, matching dirplayer-rs algorithm.
+     * Check for \r\n first, then \n, then \r.
+     */
+    private static String pickLineDelimiter(String str) {
+        if (str.contains("\r\n")) return "\r\n";
+        if (str.contains("\n")) return "\n";
+        if (str.contains("\r")) return "\r";
+        return "\r\n"; // default
+    }
+
     private static int countWords(String str) {
         if (str.isEmpty()) return 0;
         return str.trim().split("\\s+").length;
     }
 
     private static int countLines(String str) {
-        if (str.isEmpty()) return 0;
-        return str.split("\r\n|\r|\n", -1).length;
+        if (str.isEmpty()) return 1;
+        String lineDelimiter = pickLineDelimiter(str);
+        return str.split(java.util.regex.Pattern.quote(lineDelimiter), -1).length;
     }
 
     private static int countItems(String str, char delimiter) {
-        if (str.isEmpty()) return 0;
+        if (str.isEmpty()) return 1;
         // Simple split like dirplayer-rs
         return str.split(String.valueOf(delimiter), -1).length;
     }

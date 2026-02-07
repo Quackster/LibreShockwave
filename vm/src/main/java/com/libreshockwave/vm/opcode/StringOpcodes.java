@@ -35,8 +35,7 @@ public final class StringOpcodes {
     private static boolean containsStr(ExecutionContext ctx) {
         Datum needle = ctx.pop();
         Datum haystack = ctx.pop();
-        boolean contains = haystack.toStr().toLowerCase()
-            .contains(needle.toStr().toLowerCase());
+        boolean contains = haystack.toStr().contains(needle.toStr());
         ctx.push(contains ? Datum.TRUE : Datum.FALSE);
         return true;
     }

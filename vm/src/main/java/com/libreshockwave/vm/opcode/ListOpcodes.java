@@ -23,21 +23,40 @@ public final class ListOpcodes {
     }
 
     private static boolean pushList(ExecutionContext ctx) {
-        int count = ctx.getArgument();
-        List<Datum> items = new ArrayList<>();
-        for (int i = 0; i < count; i++) {
-            items.add(0, ctx.pop());
+        // Pop one ArgList from the stack and convert to List
+        Datum argListDatum = ctx.pop();
+        List<Datum> items;
+        if (argListDatum instanceof Datum.ArgList al) {
+            items = new ArrayList<>(al.items());
+        } else if (argListDatum instanceof Datum.ArgListNoRet al) {
+            items = new ArrayList<>(al.items());
+        } else {
+            // Fallback: single item
+            items = new ArrayList<>();
+            if (!argListDatum.isVoid()) {
+                items.add(argListDatum);
+            }
         }
         ctx.push(Datum.list(items));
         return true;
     }
 
     private static boolean pushPropList(ExecutionContext ctx) {
-        int count = ctx.getArgument();
+        // Pop one ArgList from the stack, split into key-value pairs
+        Datum argListDatum = ctx.pop();
         Map<String, Datum> props = new LinkedHashMap<>();
-        for (int i = 0; i < count; i++) {
-            Datum value = ctx.pop();
-            Datum key = ctx.pop();
+        List<Datum> items;
+        if (argListDatum instanceof Datum.ArgList al) {
+            items = al.items();
+        } else if (argListDatum instanceof Datum.ArgListNoRet al) {
+            items = al.items();
+        } else {
+            items = List.of();
+        }
+        // Items come in key, value, key, value order
+        for (int i = 0; i + 1 < items.size(); i += 2) {
+            Datum key = items.get(i);
+            Datum value = items.get(i + 1);
             String keyStr = key instanceof Datum.Symbol s ? s.name() : key.toStr();
             props.put(keyStr, value);
         }

@@ -24,23 +24,26 @@ public final class VariableOpcodes {
     }
 
     private static boolean getLocal(ExecutionContext ctx) {
-        ctx.push(ctx.getLocal(ctx.getArgument()));
+        int index = ctx.getArgument() / ctx.getVariableMultiplier();
+        ctx.push(ctx.getLocal(index));
         return true;
     }
 
     private static boolean setLocal(ExecutionContext ctx) {
+        int index = ctx.getArgument() / ctx.getVariableMultiplier();
         Datum value = ctx.pop();
-        ctx.setLocal(ctx.getArgument(), value);
+        ctx.setLocal(index, value);
         return true;
     }
 
     private static boolean getParam(ExecutionContext ctx) {
-        ctx.push(ctx.getParam(ctx.getArgument()));
+        int index = ctx.getArgument() / ctx.getVariableMultiplier();
+        ctx.push(ctx.getParam(index));
         return true;
     }
 
     private static boolean setParam(ExecutionContext ctx) {
-        int index = ctx.getArgument();
+        int index = ctx.getArgument() / ctx.getVariableMultiplier();
         Datum value = ctx.pop();
         ctx.setParam(index, value);
         return true;

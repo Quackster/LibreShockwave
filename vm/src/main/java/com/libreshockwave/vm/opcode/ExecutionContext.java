@@ -1,5 +1,6 @@
 package com.libreshockwave.vm.opcode;
 
+import com.libreshockwave.DirectorFile;
 import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.HandlerRef;
@@ -78,6 +79,25 @@ public final class ExecutionContext {
 
     public ScriptChunk.Handler.Instruction getInstruction() {
         return instruction;
+    }
+
+    /**
+     * Get the variable multiplier for the current script's Director version.
+     * capitalX → 1, dirVersion >= 500 → 8, else → 6.
+     */
+    public int getVariableMultiplier() {
+        ScriptChunk script = scope.getScript();
+        if (script != null && script.file() != null) {
+            DirectorFile file = script.file();
+            if (file.isCapitalX()) {
+                return 1;
+            }
+            if (file.getConfig() != null && file.getConfig().directorVersion() >= 500) {
+                return 8;
+            }
+            return 6;
+        }
+        return 1; // Default when no file info available
     }
 
     // Stack operations (delegated to scope)

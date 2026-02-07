@@ -123,6 +123,17 @@ public final class PropertyIdMappings {
     );
 
     /**
+     * Animation2 property names (property type 0x08).
+     */
+    public static final Map<Integer, String> ANIM2_PROPS = Map.of(
+        0x01, "perFrameHook",
+        0x02, "number of castMembers",
+        0x03, "number of menus",
+        0x04, "number of castLibs",
+        0x05, "number of xtras"
+    );
+
+    /**
      * Sound channel property names (property type 0x04).
      */
     public static final Map<Integer, String> SOUND_PROPS = Map.of(
@@ -145,6 +156,10 @@ public final class PropertyIdMappings {
 
     public static String getAnimPropName(int id) {
         return ANIM_PROPS.get(id);
+    }
+
+    public static String getAnim2PropName(int id) {
+        return ANIM2_PROPS.get(id);
     }
 
     public static String getSoundPropName(int id) {

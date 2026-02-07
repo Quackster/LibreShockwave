@@ -1,6 +1,7 @@
 package com.libreshockwave.vm.opcode.dispatch;
 
 import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.LingoException;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -22,10 +23,10 @@ public final class ListMethodDispatcher {
             case "getat" -> {
                 if (args.isEmpty()) yield Datum.VOID;
                 int index = args.get(0).toInt() - 1; // 1-indexed
-                if (index >= 0 && index < list.items().size()) {
-                    yield list.items().get(index);
+                if (index < 0 || index >= list.items().size()) {
+                    throw new LingoException("getAt: index out of range");
                 }
-                yield Datum.VOID;
+                yield list.items().get(index);
             }
             case "setat" -> {
                 // setAt(list, position, value) - set value at position (1-indexed)
@@ -52,20 +53,11 @@ public final class ListMethodDispatcher {
             }
             case "addat" -> {
                 // addAt(list, position, value) - insert value at position (1-indexed)
-                // If the element at the target position is VOID, replace it instead of inserting
-                // This allows VOID to act as a placeholder that gets filled in
                 if (args.size() < 2) yield Datum.VOID;
                 int index = args.get(0).toInt() - 1; // Convert to 0-indexed
                 Datum value = args.get(1);
                 if (index < 0) index = 0;
-                if (index < list.items().size() && list.items().get(index).isVoid()) {
-                    // Replace VOID placeholder instead of inserting
-                    list.items().set(index, value);
-                } else if (index >= list.items().size()) {
-                    // Pad with VOID if needed, then add
-                    while (list.items().size() < index) {
-                        list.items().add(Datum.VOID);
-                    }
+                if (index >= list.items().size()) {
                     list.items().add(value);
                 } else {
                     list.items().add(index, value);
@@ -98,19 +90,22 @@ public final class ListMethodDispatcher {
             }
             case "deleteone" -> {
                 // deleteOne(list, value) - remove first matching element
-                if (args.isEmpty()) yield Datum.VOID;
+                // Check reference equality first, then value equality
+                if (args.isEmpty()) yield Datum.FALSE;
                 Datum value = args.get(0);
+                boolean found = false;
                 for (int i = 0; i < list.items().size(); i++) {
-                    if (list.items().get(i).equals(value)) {
+                    if (list.items().get(i) == value || list.items().get(i).equals(value)) {
                         list.items().remove(i);
+                        found = true;
                         break;
                     }
                 }
-                yield Datum.VOID;
+                yield found ? Datum.TRUE : Datum.FALSE;
             }
             case "join" -> {
                 // join(list, separator) - concatenate elements into string
-                String separator = args.isEmpty() ? "" : args.get(0).toStr();
+                String separator = args.isEmpty() ? "&" : args.get(0).toStr();
                 StringBuilder sb = new StringBuilder();
                 for (int i = 0; i < list.items().size(); i++) {
                     if (i > 0) sb.append(separator);
