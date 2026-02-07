@@ -491,7 +491,8 @@ class OpcodeTest {
         }
 
         @Test
-        void containsStringCaseInsensitive() {
+        void containsStringCaseSensitive() {
+            // containsStr is case-sensitive (matching dirplayer-rs)
             scope.push(Datum.of("Hello World"));
             scope.push(Datum.of("WORLD"));
 
@@ -499,7 +500,7 @@ class OpcodeTest {
             boolean advance = handler.execute(createContext(0));
 
             assertTrue(advance);
-            assertEquals(Datum.TRUE, scope.pop());
+            assertEquals(Datum.FALSE, scope.pop());
         }
 
         @Test
@@ -630,12 +631,11 @@ class OpcodeTest {
 
         @Test
         void pushListWithItems() {
-            scope.push(Datum.of(1));
-            scope.push(Datum.of(2));
-            scope.push(Datum.of(3));
+            // PUSH_LIST now pops an ArgList and converts to List
+            scope.push(new Datum.ArgList(List.of(Datum.of(1), Datum.of(2), Datum.of(3))));
 
             OpcodeHandler handler = registry.get(Opcode.PUSH_LIST);
-            boolean advance = handler.execute(createContext(3));
+            boolean advance = handler.execute(createContext(0));
 
             assertTrue(advance);
             Datum result = scope.pop();
@@ -649,13 +649,14 @@ class OpcodeTest {
 
         @Test
         void pushPropList() {
-            scope.push(Datum.symbol("x"));
-            scope.push(Datum.of(10));
-            scope.push(Datum.symbol("y"));
-            scope.push(Datum.of(20));
+            // PUSH_PROP_LIST now pops an ArgList with key-value pairs
+            scope.push(new Datum.ArgList(List.of(
+                Datum.symbol("x"), Datum.of(10),
+                Datum.symbol("y"), Datum.of(20)
+            )));
 
             OpcodeHandler handler = registry.get(Opcode.PUSH_PROP_LIST);
-            boolean advance = handler.execute(createContext(2));
+            boolean advance = handler.execute(createContext(0));
 
             assertTrue(advance);
             Datum result = scope.pop();

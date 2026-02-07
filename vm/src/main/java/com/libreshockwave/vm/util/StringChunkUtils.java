@@ -71,6 +71,7 @@ public final class StringChunkUtils {
 
     /**
      * Count the number of chunks in a string.
+     * Returns 1 for empty strings when chunk type is ITEM or LINE.
      * @param str The source string
      * @param chunkType The type of chunk
      * @param itemDelimiter The item delimiter character
@@ -78,6 +79,10 @@ public final class StringChunkUtils {
      */
     public static int countChunks(String str, StringChunkType chunkType, char itemDelimiter) {
         if (str == null || str.isEmpty()) {
+            // Match dirplayer-rs: items and lines count as 1 even for empty strings
+            if (chunkType == StringChunkType.ITEM || chunkType == StringChunkType.LINE) {
+                return 1;
+            }
             return 0;
         }
         return splitIntoChunks(str, chunkType, itemDelimiter).size();
@@ -120,28 +125,19 @@ public final class StringChunkUtils {
                 yield words;
             }
             case LINE -> {
-                // Lines are separated by CR, LF, or CRLF
+                // Match dirplayer-rs: pick ONE delimiter for the whole string
+                String lineDelim = pickLineDelimiter(str);
                 List<String> lines = new ArrayList<>();
-                StringBuilder current = new StringBuilder();
-                for (int i = 0; i < str.length(); i++) {
-                    char c = str.charAt(i);
-                    if (c == '\r') {
-                        lines.add(current.toString());
-                        current.setLength(0);
-                        // Skip LF if CRLF
-                        if (i + 1 < str.length() && str.charAt(i + 1) == '\n') {
-                            i++;
-                        }
-                    } else if (c == '\n') {
-                        lines.add(current.toString());
-                        current.setLength(0);
-                    } else {
-                        current.append(c);
+                int start = 0;
+                int delimLen = lineDelim.length();
+                while (true) {
+                    int idx = str.indexOf(lineDelim, start);
+                    if (idx == -1) {
+                        lines.add(str.substring(start));
+                        break;
                     }
-                }
-                // Add remaining content as final line
-                if (current.length() > 0) {
-                    lines.add(current.toString());
+                    lines.add(str.substring(start, idx));
+                    start = idx + delimLen;
                 }
                 yield lines;
             }
@@ -172,8 +168,19 @@ public final class StringChunkUtils {
         return switch (chunkType) {
             case CHAR -> "";
             case WORD -> " ";
-            case LINE -> "\n";
+            case LINE -> "\r\n";
             case ITEM -> String.valueOf(itemDelimiter);
         };
+    }
+
+    /**
+     * Pick ONE line delimiter for the entire string, matching dirplayer-rs algorithm.
+     * Check for \r\n first, then \n, then \r.
+     */
+    private static String pickLineDelimiter(String str) {
+        if (str.contains("\r\n")) return "\r\n";
+        if (str.contains("\n")) return "\n";
+        if (str.contains("\r")) return "\r";
+        return "\r\n"; // default
     }
 }

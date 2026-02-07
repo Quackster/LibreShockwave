@@ -30,6 +30,8 @@ public final class PropertyOpcodes {
         handlers.put(Opcode.GET, PropertyOpcodes::get);
         handlers.put(Opcode.SET, PropertyOpcodes::set);
         handlers.put(Opcode.GET_FIELD, PropertyOpcodes::getField);
+        handlers.put(Opcode.GET_CHAINED_PROP, PropertyOpcodes::getChainedProp);
+        handlers.put(Opcode.GET_TOP_LEVEL_PROP, PropertyOpcodes::getTopLevelProp);
     }
 
     private static boolean getProp(ExecutionContext ctx) {
@@ -199,6 +201,17 @@ public final class PropertyOpcodes {
 
         String propName = ctx.resolveName(ctx.getArgument());
 
+        // Handle paramCount and result directly
+        String propLower = propName.toLowerCase();
+        if (propLower.equals("paramcount")) {
+            ctx.push(Datum.of(ctx.getScope().getArguments().size()));
+            return true;
+        }
+        if (propLower.equals("result")) {
+            ctx.push(ctx.getScope().getReturnValue());
+            return true;
+        }
+
         // First try movie properties
         MoviePropertyProvider provider = MoviePropertyProvider.getProvider();
         if (provider != null) {
@@ -276,6 +289,29 @@ public final class PropertyOpcodes {
                 if (propName != null && movieProvider != null) {
                     yield movieProvider.getMovieProp(propName);
                 }
+                yield Datum.VOID;
+            }
+            case 0x08 -> {
+                // Anim2 property
+                String propName = PropertyIdMappings.getAnim2PropName(propertyId);
+                if (propName != null && movieProvider != null) {
+                    yield movieProvider.getMovieProp(propName);
+                }
+                yield Datum.VOID;
+            }
+            case 0x09 -> {
+                // Alias to 0x07 (animation properties)
+                String propName = PropertyIdMappings.getAnimPropName(propertyId);
+                if (propName != null && movieProvider != null) {
+                    yield movieProvider.getMovieProp(propName);
+                }
+                yield Datum.VOID;
+            }
+            case 0x0b -> {
+                // Sound channel property
+                String propName = PropertyIdMappings.getSoundPropName(propertyId);
+                int channelNum = ctx.pop().toInt();
+                // TODO: delegate to sound provider when available
                 yield Datum.VOID;
             }
             default -> Datum.VOID;
@@ -362,6 +398,23 @@ public final class PropertyOpcodes {
             }
         }
 
+        return true;
+    }
+
+    private static boolean getChainedProp(ExecutionContext ctx) {
+        // GET_CHAINED_PROP - stub: pop the object, push VOID
+        String propName = ctx.resolveName(ctx.getArgument());
+        Datum obj = ctx.pop();
+        System.err.println("[WARN] GET_CHAINED_PROP not fully implemented: " + propName);
+        ctx.push(Datum.VOID);
+        return true;
+    }
+
+    private static boolean getTopLevelProp(ExecutionContext ctx) {
+        // GET_TOP_LEVEL_PROP - stub: push VOID
+        String propName = ctx.resolveName(ctx.getArgument());
+        System.err.println("[WARN] GET_TOP_LEVEL_PROP not fully implemented: " + propName);
+        ctx.push(Datum.VOID);
         return true;
     }
 }

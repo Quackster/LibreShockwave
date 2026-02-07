@@ -69,16 +69,27 @@ public final class PropListMethodDispatcher {
                 yield Datum.VOID;
             }
             case "setat" -> {
-                // setAt(propList, key, value) - add or update a property
+                // setAt(propList, position/key, value)
+                // For integer keys, do positional indexing (1-based → 0-based)
                 if (args.size() < 2) yield Datum.VOID;
-                String key = args.get(0) instanceof Datum.Symbol s ? s.name() : args.get(0).toStr();
+                Datum keyOrIndex = args.get(0);
                 Datum value = args.get(1);
-                propList.properties().put(key, value);
+                if (keyOrIndex instanceof Datum.Int intKey) {
+                    int index = intKey.value() - 1;
+                    var entries = new ArrayList<>(propList.properties().entrySet());
+                    if (index >= 0 && index < entries.size()) {
+                        String existingKey = entries.get(index).getKey();
+                        propList.properties().put(existingKey, value);
+                    }
+                } else {
+                    String key = keyOrIndex instanceof Datum.Symbol s ? s.name() : keyOrIndex.toStr();
+                    propList.properties().put(key, value);
+                }
                 yield Datum.VOID;
             }
             case "findpos" -> {
-                // Find position of key
-                if (args.isEmpty()) yield Datum.ZERO;
+                // Find position of key, return VOID if not found
+                if (args.isEmpty()) yield Datum.VOID;
                 String key = args.get(0) instanceof Datum.Symbol s ? s.name() : args.get(0).toStr();
                 int pos = 1;
                 for (String k : propList.properties().keySet()) {
@@ -87,7 +98,7 @@ public final class PropListMethodDispatcher {
                     }
                     pos++;
                 }
-                yield Datum.ZERO;
+                yield Datum.VOID;
             }
             case "duplicate" -> {
                 yield new Datum.PropList(new LinkedHashMap<>(propList.properties()));
