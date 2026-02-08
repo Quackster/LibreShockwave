@@ -11,10 +11,21 @@ public final class DatumFormatter {
 
     private static final int DEFAULT_MAX_STRING_LENGTH = 50;
     private static final int DEFAULT_BRIEF_STRING_LENGTH = 30;
-    private static final int MAX_ITEMS_TO_EXPAND = 10;
-    private static final int MAX_PROPS_TO_SHOW = 5;
 
     private DatumFormatter() {}
+
+    /**
+     * Escape special characters for detailed display.
+     * Uses visible tokens like [CR], [LF], [TAB] instead of backslash sequences.
+     */
+    private static String escapeForDetailedDisplay(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\")
+                .replace("\r\n", "[CR][LF]")
+                .replace("\r", "[CR]")
+                .replace("\n", "[LF]")
+                .replace("\t", "[TAB]");
+    }
 
     /**
      * Format a Datum value as a string.
@@ -98,7 +109,7 @@ public final class DatumFormatter {
             case Datum.Void v -> "<Void>";
             case Datum.Int i -> "Int: " + i.value();
             case Datum.Float f -> "Float: " + f.value();
-            case Datum.Str s -> "Str: \"" + StringUtils.escapeForDisplay(s.value()) + "\"";
+            case Datum.Str s -> "Str: \"" + escapeForDetailedDisplay(s.value()) + "\"";
             case Datum.Symbol sym -> "Symbol: #" + sym.name();
 
             case Datum.ArgList argList -> {
@@ -132,15 +143,13 @@ public final class DatumFormatter {
             case Datum.List list -> {
                 StringBuilder sb = new StringBuilder();
                 sb.append("List [").append(list.items().size()).append(" items]");
-                if (!list.items().isEmpty() && list.items().size() <= MAX_ITEMS_TO_EXPAND) {
+                if (!list.items().isEmpty()) {
                     sb.append(" {");
                     for (int i = 0; i < list.items().size(); i++) {
                         sb.append("\n").append(indentStr).append("  [").append(i).append("] ");
                         sb.append(formatDetailed(list.items().get(i), indent + 1));
                     }
                     sb.append("\n").append(indentStr).append("}");
-                } else if (!list.items().isEmpty()) {
-                    sb.append(" (too large to expand)");
                 }
                 yield sb.toString();
             }
@@ -148,15 +157,13 @@ public final class DatumFormatter {
             case Datum.PropList propList -> {
                 StringBuilder sb = new StringBuilder();
                 sb.append("PropList [").append(propList.properties().size()).append(" props]");
-                if (!propList.properties().isEmpty() && propList.properties().size() <= MAX_ITEMS_TO_EXPAND) {
+                if (!propList.properties().isEmpty()) {
                     sb.append(" {");
                     for (Map.Entry<String, Datum> entry : propList.properties().entrySet()) {
                         sb.append("\n").append(indentStr).append("  #").append(entry.getKey()).append(": ");
                         sb.append(formatDetailed(entry.getValue(), indent + 1));
                     }
                     sb.append("\n").append(indentStr).append("}");
-                } else if (!propList.properties().isEmpty()) {
-                    sb.append(" (too large to expand)");
                 }
                 yield sb.toString();
             }
@@ -164,15 +171,13 @@ public final class DatumFormatter {
             case Datum.ScriptInstance si -> {
                 StringBuilder sb = new StringBuilder();
                 sb.append("ScriptInstance #").append(si.scriptId());
-                if (!si.properties().isEmpty() && si.properties().size() <= MAX_PROPS_TO_SHOW) {
+                if (!si.properties().isEmpty()) {
                     sb.append(" {");
                     for (Map.Entry<String, Datum> entry : si.properties().entrySet()) {
                         sb.append("\n").append(indentStr).append("  .").append(entry.getKey()).append(" = ");
-                        sb.append(formatBrief(entry.getValue()));
+                        sb.append(formatDetailed(entry.getValue(), indent + 1));
                     }
                     sb.append("\n").append(indentStr).append("}");
-                } else if (!si.properties().isEmpty()) {
-                    sb.append(" [").append(si.properties().size()).append(" properties]");
                 }
                 yield sb.toString();
             }

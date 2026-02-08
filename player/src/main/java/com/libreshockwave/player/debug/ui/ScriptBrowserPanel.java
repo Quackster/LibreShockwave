@@ -381,6 +381,13 @@ public class ScriptBrowserPanel extends JPanel {
      * Also updates the handler model for the given script.
      */
     public void selectHandlerSilently(ScriptChunk script, ScriptChunk.Handler handler) {
+        // Remove action listeners for the entire operation to prevent
+        // spurious onHandlerSelected events during model rebuild
+        ActionListener[] listeners = handlerCombo.getActionListeners();
+        for (ActionListener l : listeners) {
+            handlerCombo.removeActionListener(l);
+        }
+
         // Update handler model
         handlerModel.removeAllElements();
         allHandlerItems.clear();
@@ -393,16 +400,14 @@ public class ScriptBrowserPanel extends JPanel {
         // Select handler
         for (int i = 0; i < handlerModel.getSize(); i++) {
             if (handlerModel.getElementAt(i).getHandler() == handler) {
-                ActionListener[] listeners = handlerCombo.getActionListeners();
-                for (ActionListener l : listeners) {
-                    handlerCombo.removeActionListener(l);
-                }
                 handlerCombo.setSelectedIndex(i);
-                for (ActionListener l : listeners) {
-                    handlerCombo.addActionListener(l);
-                }
                 break;
             }
+        }
+
+        // Restore action listeners
+        for (ActionListener l : listeners) {
+            handlerCombo.addActionListener(l);
         }
     }
 

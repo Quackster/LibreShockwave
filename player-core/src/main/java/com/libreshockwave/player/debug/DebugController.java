@@ -7,6 +7,8 @@ import javax.swing.*;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Semaphore;
+import java.util.ArrayDeque;
+import java.util.Deque;
 
 /**
  * Core debugging controller that implements TraceListener.
@@ -82,6 +84,9 @@ public class DebugController implements TraceListener {
     private volatile HandlerInfo currentHandlerInfo;
     private volatile InstructionInfo currentInstructionInfo;
 
+    // Stack of handler info for restoring context after nested calls
+    private final Deque<HandlerInfo> handlerInfoStack = new ArrayDeque<>();
+
     // Call stack tracking
     private final List<CallFrame> callStack = new ArrayList<>();
 
@@ -124,6 +129,7 @@ public class DebugController implements TraceListener {
     public void onHandlerEnter(HandlerInfo info) {
         callDepth++;
         currentHandlerInfo = info;
+        handlerInfoStack.push(info);
 
         // Track call stack
         synchronized (callStack) {
@@ -146,6 +152,12 @@ public class DebugController implements TraceListener {
     @Override
     public void onHandlerExit(HandlerInfo info, Datum returnValue) {
         callDepth--;
+
+        // Restore currentHandlerInfo to the parent handler
+        if (!handlerInfoStack.isEmpty()) {
+            handlerInfoStack.pop();
+        }
+        currentHandlerInfo = handlerInfoStack.isEmpty() ? null : handlerInfoStack.peek();
 
         // Pop from call stack
         synchronized (callStack) {
@@ -725,6 +737,7 @@ public class DebugController implements TraceListener {
         synchronized (callStack) {
             callStack.clear();
         }
+        handlerInfoStack.clear();
         currentHandlerInfo = null;
         currentInstructionInfo = null;
         currentSnapshot = null;

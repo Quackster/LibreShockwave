@@ -23,6 +23,8 @@ import com.libreshockwave.vm.TraceListener;
 
 import javax.swing.*;
 import java.awt.*;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.List;
 
 /**
@@ -48,6 +50,7 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
 
     // Current handler info (for building instruction list)
     private volatile TraceListener.HandlerInfo currentHandlerInfo;
+    private final Deque<TraceListener.HandlerInfo> handlerInfoStack = new ArrayDeque<>();
 
     // Track if we're in "browse mode" (user selected a handler) vs "trace mode" (following execution)
     private boolean browseMode = false;
@@ -340,6 +343,7 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
     @Override
     public void onHandlerEnter(HandlerInfo info) {
         currentHandlerInfo = info;
+        handlerInfoStack.push(info);
         bytecodePanel.setCurrentScriptId(info.scriptId());
 
         SwingUtilities.invokeLater(() -> {
@@ -363,7 +367,11 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
 
     @Override
     public void onHandlerExit(HandlerInfo info, Datum returnValue) {
-        // Optional: could show return value
+        // Restore currentHandlerInfo to the parent handler
+        if (!handlerInfoStack.isEmpty()) {
+            handlerInfoStack.pop();
+        }
+        currentHandlerInfo = handlerInfoStack.isEmpty() ? null : handlerInfoStack.peek();
     }
 
     @Override
