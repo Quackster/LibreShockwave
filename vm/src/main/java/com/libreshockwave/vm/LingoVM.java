@@ -262,6 +262,7 @@ public class LingoVM {
             }
         }
 
+        Datum result = Datum.VOID;
         try {
             int steps = 0;
             while (scope.hasMoreInstructions() && !scope.isReturned()) {
@@ -271,28 +272,28 @@ public class LingoVM {
                 executeInstruction(scope);
             }
 
-            Datum result = scope.getReturnValue();
-
-            // Notify trace listener of handler exit
-            if (traceListener != null && handlerInfo != null) {
-                traceListener.onHandlerExit(handlerInfo, result);
-            }
-            if (traceEnabled && handlerInfo != null) {
-                consolePrinter.onHandlerExit(handlerInfo, result);
-            }
-
-            return result;
+            result = scope.getReturnValue();
         } catch (Exception e) {
             if (traceListener != null) {
                 traceListener.onError("Error in " + script.getHandlerName(handler), e);
             }
             throw e;
         } finally {
+            // Always notify handler exit, even on exception path.
+            // Critical for debugger callDepth tracking - without this,
+            // exceptions cause callDepth to drift and break step-over.
+            if (traceListener != null && handlerInfo != null) {
+                traceListener.onHandlerExit(handlerInfo, result);
+            }
+            if (traceEnabled && handlerInfo != null) {
+                consolePrinter.onHandlerExit(handlerInfo, result);
+            }
             callStack.pop();
             if (isErrorHandler) {
                 errorHandlerDepth--;
             }
         }
+        return result;
     }
 
     /**
