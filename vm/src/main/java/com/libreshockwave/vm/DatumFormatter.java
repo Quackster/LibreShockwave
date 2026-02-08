@@ -11,16 +11,18 @@ public final class DatumFormatter {
 
     private static final int DEFAULT_MAX_STRING_LENGTH = 50;
     private static final int DEFAULT_BRIEF_STRING_LENGTH = 30;
+    private static final String INDENT = "  ";
 
     private DatumFormatter() {}
 
     /**
-     * Escape special characters for detailed display.
-     * Uses visible tokens like [CR], [LF], [TAB] instead of backslash sequences.
+     * Escape special characters for JSON string display.
+     * Uses visible tokens like [CR], [LF], [TAB] for control characters.
      */
-    private static String escapeForDetailedDisplay(String s) {
+    private static String escapeForJson(String s) {
         if (s == null) return "";
         return s.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
                 .replace("\r\n", "[CR][LF]")
                 .replace("\r", "[CR]")
                 .replace("\n", "[LF]")
@@ -93,107 +95,124 @@ public final class DatumFormatter {
     }
 
     /**
-     * Format a Datum with full details, expanding arglists and nested structures.
-     * Useful for debugging/inspection UIs.
+     * Format a Datum as pretty-printed JSON.
      *
      * @param d the Datum to format
      * @param indent current indentation level (0 for top-level)
-     * @return detailed formatted string
+     * @return JSON-formatted string
      */
     public static String formatDetailed(Datum d, int indent) {
-        if (d == null) return "<null>";
+        if (d == null) return "null";
 
-        String indentStr = "      " + "  ".repeat(indent);
+        String pad = INDENT.repeat(indent);
+        String innerPad = INDENT.repeat(indent + 1);
 
         return switch (d) {
-            case Datum.Void v -> "<Void>";
-            case Datum.Int i -> "Int: " + i.value();
-            case Datum.Float f -> "Float: " + f.value();
-            case Datum.Str s -> "Str: \"" + escapeForDetailedDisplay(s.value()) + "\"";
-            case Datum.Symbol sym -> "Symbol: #" + sym.name();
+            case Datum.Void v -> "null";
+            case Datum.Int i -> String.valueOf(i.value());
+            case Datum.Float f -> String.valueOf(f.value());
+            case Datum.Str s -> "\"" + escapeForJson(s.value()) + "\"";
+            case Datum.Symbol sym -> "\"#" + sym.name() + "\"";
 
             case Datum.ArgList argList -> {
-                StringBuilder sb = new StringBuilder();
-                sb.append("ArgList (expects return) [").append(argList.count()).append(" items]");
-                if (!argList.items().isEmpty()) {
-                    sb.append(" {");
-                    for (int i = 0; i < argList.items().size(); i++) {
-                        sb.append("\n").append(indentStr).append("  [").append(i).append("] ");
-                        sb.append(formatDetailed(argList.items().get(i), indent + 1));
-                    }
-                    sb.append("\n").append(indentStr).append("}");
+                if (argList.items().isEmpty()) {
+                    yield "[]";
                 }
+                StringBuilder sb = new StringBuilder();
+                sb.append("[\n");
+                for (int i = 0; i < argList.items().size(); i++) {
+                    sb.append(innerPad).append(formatDetailed(argList.items().get(i), indent + 1));
+                    if (i < argList.items().size() - 1) sb.append(",");
+                    sb.append("\n");
+                }
+                sb.append(pad).append("]");
                 yield sb.toString();
             }
 
             case Datum.ArgListNoRet argList -> {
-                StringBuilder sb = new StringBuilder();
-                sb.append("ArgListNoRet (no return) [").append(argList.count()).append(" items]");
-                if (!argList.items().isEmpty()) {
-                    sb.append(" {");
-                    for (int i = 0; i < argList.items().size(); i++) {
-                        sb.append("\n").append(indentStr).append("  [").append(i).append("] ");
-                        sb.append(formatDetailed(argList.items().get(i), indent + 1));
-                    }
-                    sb.append("\n").append(indentStr).append("}");
+                if (argList.items().isEmpty()) {
+                    yield "[]";
                 }
+                StringBuilder sb = new StringBuilder();
+                sb.append("[\n");
+                for (int i = 0; i < argList.items().size(); i++) {
+                    sb.append(innerPad).append(formatDetailed(argList.items().get(i), indent + 1));
+                    if (i < argList.items().size() - 1) sb.append(",");
+                    sb.append("\n");
+                }
+                sb.append(pad).append("]");
                 yield sb.toString();
             }
 
             case Datum.List list -> {
-                StringBuilder sb = new StringBuilder();
-                sb.append("List [").append(list.items().size()).append(" items]");
-                if (!list.items().isEmpty()) {
-                    sb.append(" {");
-                    for (int i = 0; i < list.items().size(); i++) {
-                        sb.append("\n").append(indentStr).append("  [").append(i).append("] ");
-                        sb.append(formatDetailed(list.items().get(i), indent + 1));
-                    }
-                    sb.append("\n").append(indentStr).append("}");
+                if (list.items().isEmpty()) {
+                    yield "[]";
                 }
+                StringBuilder sb = new StringBuilder();
+                sb.append("[\n");
+                for (int i = 0; i < list.items().size(); i++) {
+                    sb.append(innerPad).append(formatDetailed(list.items().get(i), indent + 1));
+                    if (i < list.items().size() - 1) sb.append(",");
+                    sb.append("\n");
+                }
+                sb.append(pad).append("]");
                 yield sb.toString();
             }
 
             case Datum.PropList propList -> {
-                StringBuilder sb = new StringBuilder();
-                sb.append("PropList [").append(propList.properties().size()).append(" props]");
-                if (!propList.properties().isEmpty()) {
-                    sb.append(" {");
-                    for (Map.Entry<String, Datum> entry : propList.properties().entrySet()) {
-                        sb.append("\n").append(indentStr).append("  #").append(entry.getKey()).append(": ");
-                        sb.append(formatDetailed(entry.getValue(), indent + 1));
-                    }
-                    sb.append("\n").append(indentStr).append("}");
+                if (propList.properties().isEmpty()) {
+                    yield "{}";
                 }
+                StringBuilder sb = new StringBuilder();
+                sb.append("{\n");
+                var entries = propList.properties().entrySet().toArray(new Map.Entry[0]);
+                for (int i = 0; i < entries.length; i++) {
+                    @SuppressWarnings("unchecked")
+                    Map.Entry<String, Datum> entry = entries[i];
+                    sb.append(innerPad).append("\"#").append(escapeForJson(entry.getKey())).append("\": ");
+                    sb.append(formatDetailed(entry.getValue(), indent + 1));
+                    if (i < entries.length - 1) sb.append(",");
+                    sb.append("\n");
+                }
+                sb.append(pad).append("}");
                 yield sb.toString();
             }
 
             case Datum.ScriptInstance si -> {
                 StringBuilder sb = new StringBuilder();
-                sb.append("ScriptInstance #").append(si.scriptId());
+                sb.append("{\n");
+                sb.append(innerPad).append("\"_type\": \"ScriptInstance\",\n");
+                sb.append(innerPad).append("\"_scriptId\": ").append(si.scriptId());
                 if (!si.properties().isEmpty()) {
-                    sb.append(" {");
-                    for (Map.Entry<String, Datum> entry : si.properties().entrySet()) {
-                        sb.append("\n").append(indentStr).append("  .").append(entry.getKey()).append(" = ");
+                    sb.append(",\n");
+                    var entries = si.properties().entrySet().toArray(new Map.Entry[0]);
+                    for (int i = 0; i < entries.length; i++) {
+                        @SuppressWarnings("unchecked")
+                        Map.Entry<String, Datum> entry = entries[i];
+                        sb.append(innerPad).append("\"").append(escapeForJson(entry.getKey())).append("\": ");
                         sb.append(formatDetailed(entry.getValue(), indent + 1));
+                        if (i < entries.length - 1) sb.append(",");
+                        sb.append("\n");
                     }
-                    sb.append("\n").append(indentStr).append("}");
+                } else {
+                    sb.append("\n");
                 }
+                sb.append(pad).append("}");
                 yield sb.toString();
             }
 
-            case Datum.Point p -> "Point: (" + p.x() + ", " + p.y() + ")";
-            case Datum.Rect r -> "Rect: (" + r.left() + ", " + r.top() + ", " + r.right() + ", " + r.bottom() + ")";
-            case Datum.Color c -> "Color: rgb(" + c.r() + ", " + c.g() + ", " + c.b() + ")";
-            case Datum.SpriteRef sr -> "SpriteRef: sprite(" + sr.channel() + ")";
-            case Datum.CastMemberRef cm -> "CastMemberRef: member(" + cm.member() + ", " + cm.castLib() + ")";
-            case Datum.CastLibRef cl -> "CastLibRef: castLib(" + cl.castLibNumber() + ")";
-            case Datum.StageRef sr -> "StageRef: (the stage)";
-            case Datum.WindowRef w -> "WindowRef: window(\"" + w.name() + "\")";
-            case Datum.XtraRef xr -> "XtraRef: xtra(\"" + xr.xtraName() + "\")";
-            case Datum.XtraInstance xi -> "XtraInstance: \"" + xi.xtraName() + "\" #" + xi.instanceId();
-            case Datum.ScriptRef sr -> "ScriptRef: script(" + sr.member() + ", " + sr.castLib() + ")";
-            default -> d.getClass().getSimpleName() + ": " + d.toString();
+            case Datum.Point p -> "{ \"x\": " + p.x() + ", \"y\": " + p.y() + " }";
+            case Datum.Rect r -> "{ \"left\": " + r.left() + ", \"top\": " + r.top() + ", \"right\": " + r.right() + ", \"bottom\": " + r.bottom() + " }";
+            case Datum.Color c -> "{ \"r\": " + c.r() + ", \"g\": " + c.g() + ", \"b\": " + c.b() + " }";
+            case Datum.SpriteRef sr -> "\"sprite(" + sr.channel() + ")\"";
+            case Datum.CastMemberRef cm -> "\"member(" + cm.member() + ", " + cm.castLib() + ")\"";
+            case Datum.CastLibRef cl -> "\"castLib(" + cl.castLibNumber() + ")\"";
+            case Datum.StageRef sr -> "\"(the stage)\"";
+            case Datum.WindowRef w -> "\"window(\\\"" + escapeForJson(w.name()) + "\\\")\"";
+            case Datum.XtraRef xr -> "\"xtra(\\\"" + escapeForJson(xr.xtraName()) + "\\\")\"";
+            case Datum.XtraInstance xi -> "\"XtraInstance \\\"" + escapeForJson(xi.xtraName()) + "\\\" #" + xi.instanceId() + "\"";
+            case Datum.ScriptRef sr -> "\"script(" + sr.member() + ", " + sr.castLib() + ")\"";
+            default -> "\"" + escapeForJson(d.toString()) + "\"";
         };
     }
 
