@@ -122,6 +122,23 @@ public class MovieProperties implements MoviePropertyProvider {
             // Color depth
             case "colordepth" -> Datum.of(32);
 
+            // Anim2 properties
+            case "perframehook" -> Datum.VOID;
+            case "number of castmembers" -> {
+                if (file != null) {
+                    yield Datum.of(file.getCastMembers().size());
+                }
+                yield Datum.ZERO;
+            }
+            case "number of menus" -> Datum.ZERO;
+            case "number of castlibs" -> {
+                if (file != null) {
+                    yield Datum.of(file.getCasts().size());
+                }
+                yield Datum.ZERO;
+            }
+            case "number of xtras" -> Datum.ZERO;
+
             // Window/Stage
             case "stage" -> Datum.STAGE;
 
