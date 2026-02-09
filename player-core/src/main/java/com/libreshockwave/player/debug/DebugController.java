@@ -245,8 +245,14 @@ public class DebugController implements TraceListener {
                 return BreakResult.pauseNoBreakpoint();
             }
 
-            // Check breakpoints
-            if (currentHandlerInfo != null) {
+            // When stepping over or out, suppress breakpoints in deeper call frames
+            // so we don't lose the step context by pausing inside a nested handler
+            boolean suppressBreakpoints =
+                (stepMode == StepMode.STEP_OVER || stepMode == StepMode.STEP_OUT)
+                    && callDepth > targetCallDepth;
+
+            // Check breakpoints (unless suppressed by step mode)
+            if (!suppressBreakpoints && currentHandlerInfo != null) {
                 Breakpoint bp = breakpointManager.getBreakpoint(currentHandlerInfo.scriptId(), info.offset());
                 if (bp != null && bp.enabled()) {
                     return BreakResult.pause(bp);
