@@ -27,7 +27,7 @@ public final class AncestorChainWalker {
             }
 
             // Try ancestor
-            Datum ancestor = current.properties().get("ancestor");
+            Datum ancestor = current.properties().get(Datum.PROP_ANCESTOR);
             if (ancestor instanceof Datum.ScriptInstance ancestorInstance) {
                 current = ancestorInstance;
             } else {
@@ -51,7 +51,7 @@ public final class AncestorChainWalker {
             }
 
             // Try ancestor
-            Datum ancestor = current.properties().get("ancestor");
+            Datum ancestor = current.properties().get(Datum.PROP_ANCESTOR);
             if (ancestor instanceof Datum.ScriptInstance ancestorInstance) {
                 current = ancestorInstance;
             } else {
@@ -75,7 +75,7 @@ public final class AncestorChainWalker {
             }
 
             // Try ancestor
-            Datum ancestor = current.properties().get("ancestor");
+            Datum ancestor = current.properties().get(Datum.PROP_ANCESTOR);
             if (ancestor instanceof Datum.ScriptInstance ancestorInstance) {
                 current = ancestorInstance;
             } else {
@@ -98,7 +98,7 @@ public final class AncestorChainWalker {
 
         Datum.ScriptInstance current = instance;
         for (int i = 0; i < depth && i < MAX_ANCESTOR_DEPTH; i++) {
-            Datum ancestor = current.properties().get("ancestor");
+            Datum ancestor = current.properties().get(Datum.PROP_ANCESTOR);
             if (ancestor instanceof Datum.ScriptInstance ancestorInstance) {
                 current = ancestorInstance;
             } else {
@@ -118,7 +118,7 @@ public final class AncestorChainWalker {
         Datum.ScriptInstance current = instance;
 
         for (int i = 0; i < MAX_ANCESTOR_DEPTH; i++) {
-            Datum ancestor = current.properties().get("ancestor");
+            Datum ancestor = current.properties().get(Datum.PROP_ANCESTOR);
             if (ancestor instanceof Datum.ScriptInstance ancestorInstance) {
                 depth++;
                 current = ancestorInstance;

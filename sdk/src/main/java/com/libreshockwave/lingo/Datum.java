@@ -12,6 +12,9 @@ import java.util.Objects;
  */
 public sealed interface Datum {
 
+    // Common property key constants
+    String PROP_ANCESTOR = "ancestor";
+
     DatumType type();
 
     default String typeString() {
@@ -254,7 +257,7 @@ public sealed interface Datum {
 
         public Datum getProperty(String name) {
             // Check for ancestor property
-            if ("ancestor".equalsIgnoreCase(name)) {
+            if (PROP_ANCESTOR.equalsIgnoreCase(name)) {
                 return ancestor != null ? ancestor : Void.INSTANCE;
             }
             // Check local properties first
@@ -271,7 +274,7 @@ public sealed interface Datum {
 
         public void setProperty(String name, Datum value) {
             // Handle ancestor property
-            if ("ancestor".equalsIgnoreCase(name)) {
+            if (PROP_ANCESTOR.equalsIgnoreCase(name)) {
                 if (value instanceof ScriptInstanceRef ancestorRef) {
                     this.ancestor = ancestorRef;
                 } else if (value instanceof Void) {

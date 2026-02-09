@@ -69,7 +69,7 @@ public final class ConstructorBuiltins {
         Map<String, Datum> properties = new LinkedHashMap<>();
 
         // Store the script reference for method dispatch
-        properties.put("__scriptRef__", scriptRef);
+        properties.put(Datum.PROP_SCRIPT_REF, scriptRef);
 
         Datum.ScriptInstance instance = new Datum.ScriptInstance(instanceId, properties);
 
