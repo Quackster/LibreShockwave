@@ -193,6 +193,11 @@ public class PlayerFrame extends JFrame {
         closeButton.addActionListener(e -> closeMovie());
         transportPanel.add(closeButton);
 
+        JButton restartButton = new JButton("\u21BB");  // Clockwise arrow symbol
+        restartButton.setToolTipText("Restart Movie (Ctrl+R)");
+        restartButton.addActionListener(e -> restartMovie());
+        transportPanel.add(restartButton);
+
         transportPanel.add(Box.createHorizontalStrut(10));
 
         stepButton = new JButton("\u23ED");  // Next frame
@@ -260,6 +265,11 @@ public class PlayerFrame extends JFrame {
         closeItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_W, InputEvent.CTRL_DOWN_MASK));
         closeItem.addActionListener(e -> closeMovie());
         fileMenu.add(closeItem);
+
+        JMenuItem restartItem = new JMenuItem("Restart Movie");
+        restartItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_R, InputEvent.CTRL_DOWN_MASK));
+        restartItem.addActionListener(e -> restartMovie());
+        fileMenu.add(restartItem);
 
         fileMenu.addSeparator();
 
@@ -630,6 +640,14 @@ public class PlayerFrame extends JFrame {
         // Reset debug controller and panel
         debugController.reset();
         debuggerPanel.setDirectorFile(null);
+    }
+
+    /**
+     * Restart the current movie by closing and reopening it.
+     */
+    private void restartMovie() {
+        closeMovie();
+        reopenLast();
     }
 
     private void togglePlayPause() {
