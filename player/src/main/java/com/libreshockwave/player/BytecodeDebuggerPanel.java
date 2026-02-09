@@ -345,24 +345,6 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
         currentHandlerInfo = info;
         handlerInfoStack.push(info);
         bytecodePanel.setCurrentScriptId(info.scriptId());
-
-        SwingUtilities.invokeLater(() -> {
-            browseMode = false;
-
-            if (navigator != null) {
-                HandlerNavigator.HandlerLocation location =
-                    navigator.findHandlerInScript(info.scriptId(), info.handlerName());
-                if (location.found()) {
-                    bytecodePanel.loadHandlerBytecode(location.script(), location.handler());
-                    scriptBrowser.selectScriptSilently(location.script());
-                    scriptBrowser.selectHandlerSilently(location.script(), location.handler());
-                    return;
-                }
-            }
-
-            bytecodePanel.clear();
-            handlerLabel.setText("Handler: " + info.handlerName() + " (" + info.scriptDisplayName() + ")");
-        });
     }
 
     @Override
@@ -376,9 +358,6 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
 
     @Override
     public void onInstruction(InstructionInfo info) {
-        SwingUtilities.invokeLater(() -> {
-            bytecodePanel.highlightCurrentInstruction(info.bytecodeIndex());
-            stateTabs.setStack(info.stackSnapshot());
-        });
+        // Only update UI on pause/breakpoint (see onPaused), not during live execution
     }
 }

@@ -14,7 +14,6 @@ public class DebugToolbar extends JPanel {
     private final JButton stepOverBtn;
     private final JButton stepOutBtn;
     private final JButton continueBtn;
-    private final JButton pauseBtn;
     private final JButton clearBpBtn;
 
     private DebugController controller;
@@ -56,13 +55,6 @@ public class DebugToolbar extends JPanel {
             if (controller != null) controller.continueExecution();
         });
         add(continueBtn);
-
-        pauseBtn = new JButton("Pause");
-        pauseBtn.setToolTipText("Pause (F6)");
-        pauseBtn.addActionListener(e -> {
-            if (controller != null) controller.pause();
-        });
-        add(pauseBtn);
 
         add(Box.createHorizontalStrut(20));
 
