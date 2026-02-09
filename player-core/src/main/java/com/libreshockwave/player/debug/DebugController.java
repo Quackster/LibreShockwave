@@ -312,11 +312,20 @@ public class DebugController implements TraceListener {
             // We'll build from the current instruction info for now
         }
 
-        // Build locals map from current scope
-        // Note: We only have info from HandlerInfo, not direct scope access
-        Map<String, Datum> locals = new LinkedHashMap<>(localsSnapshot);
+        // Use fresh locals/globals from InstructionInfo (captured at pause time)
+        Map<String, Datum> locals = info.localsSnapshot() != null
+            ? new LinkedHashMap<>(info.localsSnapshot())
+            : new LinkedHashMap<>(localsSnapshot);
 
-        // Evaluate watch expressions
+        Map<String, Datum> globals = info.globalsSnapshot() != null && !info.globalsSnapshot().isEmpty()
+            ? new LinkedHashMap<>(info.globalsSnapshot())
+            : new LinkedHashMap<>(globalsSnapshot);
+
+        // Update the snapshot fields so watch expression evaluation uses fresh data
+        this.localsSnapshot = locals;
+        this.globalsSnapshot = globals;
+
+        // Evaluate watch expressions (uses localsSnapshot/globalsSnapshot via buildEvaluationContext)
         List<WatchExpression> evaluatedWatches = evaluateWatchExpressions();
 
         return new DebugSnapshot(
@@ -331,7 +340,7 @@ public class DebugController implements TraceListener {
             instructions,  // Will be populated when we have script access
             new ArrayList<>(info.stackSnapshot()),
             locals,
-            new LinkedHashMap<>(globalsSnapshot),
+            globals,
             new ArrayList<>(handlerInfo.arguments()),
             handlerInfo.receiver(),
             getCallStackSnapshot(),

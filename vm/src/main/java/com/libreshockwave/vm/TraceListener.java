@@ -67,6 +67,8 @@ public interface TraceListener {
         int argument,
         String annotation,
         int stackSize,
-        List<Datum> stackSnapshot
+        List<Datum> stackSnapshot,
+        Map<String, Datum> localsSnapshot,
+        Map<String, Datum> globalsSnapshot
     ) {}
 }
