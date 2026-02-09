@@ -9,7 +9,7 @@ import com.libreshockwave.vm.Datum;
  */
 public final class AncestorChainWalker {
 
-    private static final int MAX_ANCESTOR_DEPTH = 100;
+    public static final int MAX_ANCESTOR_DEPTH = 100;
 
     private AncestorChainWalker() {}
 

@@ -194,7 +194,7 @@ public final class ScriptInstanceMethodDispatcher {
         CastLibProvider provider = CastLibProvider.getProvider();
         if (provider != null) {
             Datum.ScriptInstance current = instance;
-            for (int i = 0; i < 100; i++) { // Safety limit to prevent infinite loops
+            for (int i = 0; i < AncestorChainWalker.MAX_ANCESTOR_DEPTH; i++) { // Safety limit to prevent infinite loops
                 Datum.ScriptRef scriptRef = getScriptRefFromInstance(current);
 
                 CastLibProvider.HandlerLocation location;

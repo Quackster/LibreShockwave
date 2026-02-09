@@ -393,7 +393,7 @@ public class Player {
             setupProviders();
             try {
                 // stopMovie -> dispatched to movie scripts
-                frameContext.getEventDispatcher().dispatchToMovieScripts("stopMovie", List.of());
+                frameContext.getEventDispatcher().dispatchToMovieScripts(PlayerEvent.STOP_MOVIE, List.of());
             } finally {
                 clearProviders();
             }
@@ -581,7 +581,7 @@ public class Player {
             castLibManager.preloadCasts(1);
 
             // 1. prepareMovie -> dispatched to movie scripts (behaviors not initialized yet)
-            frameContext.getEventDispatcher().dispatchToMovieScripts("prepareMovie", List.of());
+            frameContext.getEventDispatcher().dispatchToMovieScripts(PlayerEvent.PREPARE_MOVIE, List.of());
 
             // 2. Initialize sprites for frame 1
             frameContext.initializeFirstFrame();
@@ -593,7 +593,7 @@ public class Player {
             frameContext.getEventDispatcher().dispatchGlobalEvent(PlayerEvent.PREPARE_FRAME, List.of());
 
             // 5. startMovie -> dispatched to movie scripts
-            frameContext.getEventDispatcher().dispatchToMovieScripts("startMovie", List.of());
+            frameContext.getEventDispatcher().dispatchToMovieScripts(PlayerEvent.START_MOVIE, List.of());
 
             // 6. enterFrame -> dispatched to all behaviors + frame/movie scripts
             frameContext.getEventDispatcher().dispatchGlobalEvent(PlayerEvent.ENTER_FRAME, List.of());

@@ -127,6 +127,13 @@ public class EventDispatcher {
     }
 
     /**
+     * Dispatch an event to movie scripts only using a PlayerEvent constant.
+     */
+    public void dispatchToMovieScripts(PlayerEvent event, List<Datum> args) {
+        dispatchToMovieScripts(event.getHandlerName(), args);
+    }
+
+    /**
      * Dispatch an event to movie scripts only.
      * Movie scripts handle movie-level events: prepareMovie, startMovie, stopMovie.
      */

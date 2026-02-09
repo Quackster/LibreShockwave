@@ -4,6 +4,7 @@ import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.LingoVM;
 import com.libreshockwave.vm.Scope;
+import com.libreshockwave.vm.util.AncestorChainWalker;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -84,7 +85,7 @@ public final class AncestorCallHandler {
         Datum.ScriptInstance currentAncestor = ancestorInstance;
         CastLibProvider.HandlerLocation location = null;
 
-        for (int i = 0; i < 100; i++) { // Safety limit
+        for (int i = 0; i < AncestorChainWalker.MAX_ANCESTOR_DEPTH; i++) { // Safety limit
             location = provider.findHandlerInScript(currentAncestor.scriptId(), handlerName);
             if (location != null) {
                 break;
@@ -132,7 +133,7 @@ public final class AncestorCallHandler {
 
         // Walk me's ancestor chain to find which instance has the script we're in
         Datum.ScriptInstance walkInstance = me;
-        for (int i = 0; i < 100; i++) { // Safety limit
+        for (int i = 0; i < AncestorChainWalker.MAX_ANCESTOR_DEPTH; i++) { // Safety limit
             if (walkInstance.scriptId() == currentScriptId) {
                 // Found it - return this instance's ancestor
                 Datum ancestor = walkInstance.properties().get(Datum.PROP_ANCESTOR);
