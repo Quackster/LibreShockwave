@@ -180,6 +180,10 @@ public sealed interface Datum {
     Datum EMPTY_STRING = new Str("");
     Datum STAGE = new StageRef();
 
+    // Common property key constants
+    String PROP_ANCESTOR = "ancestor";
+    String PROP_SCRIPT_REF = "__scriptRef__";
+
     // Factory methods
     static Datum of(int value) {
         return switch (value) {

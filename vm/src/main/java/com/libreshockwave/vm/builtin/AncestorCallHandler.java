@@ -90,7 +90,7 @@ public final class AncestorCallHandler {
                 break;
             }
             // Try next ancestor
-            Datum nextAncestor = currentAncestor.properties().get("ancestor");
+            Datum nextAncestor = currentAncestor.properties().get(Datum.PROP_ANCESTOR);
             if (nextAncestor instanceof Datum.ScriptInstance next) {
                 currentAncestor = next;
             } else {
@@ -124,7 +124,7 @@ public final class AncestorCallHandler {
         Scope currentScope = vm.getCurrentScope();
         if (currentScope == null) {
             // Not in a handler, just return me's ancestor
-            return me.properties().get("ancestor");
+            return me.properties().get(Datum.PROP_ANCESTOR);
         }
 
         // Get the script we're currently executing in
@@ -135,11 +135,11 @@ public final class AncestorCallHandler {
         for (int i = 0; i < 100; i++) { // Safety limit
             if (walkInstance.scriptId() == currentScriptId) {
                 // Found it - return this instance's ancestor
-                Datum ancestor = walkInstance.properties().get("ancestor");
+                Datum ancestor = walkInstance.properties().get(Datum.PROP_ANCESTOR);
                 return ancestor != null ? ancestor : Datum.VOID;
             }
             // Move to next ancestor
-            Datum nextAncestor = walkInstance.properties().get("ancestor");
+            Datum nextAncestor = walkInstance.properties().get(Datum.PROP_ANCESTOR);
             if (nextAncestor instanceof Datum.ScriptInstance next) {
                 walkInstance = next;
             } else {
@@ -148,7 +148,7 @@ public final class AncestorCallHandler {
         }
 
         // Fallback: return me's direct ancestor
-        Datum ancestor = me.properties().get("ancestor");
+        Datum ancestor = me.properties().get(Datum.PROP_ANCESTOR);
         return ancestor != null ? ancestor : Datum.VOID;
     }
 }

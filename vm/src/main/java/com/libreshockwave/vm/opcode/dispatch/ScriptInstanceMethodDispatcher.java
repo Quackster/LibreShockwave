@@ -96,8 +96,8 @@ public final class ScriptInstanceMethodDispatcher {
                 // getAt(instance, #propName) - like dirplayer-rs: check "ancestor" specially
                 if (args.isEmpty()) return Datum.VOID;
                 String key = getPropertyName(args.get(0));
-                if (key.equalsIgnoreCase("ancestor")) {
-                    Datum ancestor = instance.properties().get("ancestor");
+                if (key.equalsIgnoreCase(Datum.PROP_ANCESTOR)) {
+                    Datum ancestor = instance.properties().get(Datum.PROP_ANCESTOR);
                     return ancestor != null ? ancestor : Datum.ZERO;
                 }
                 // Otherwise same as getaProp
@@ -181,7 +181,7 @@ public final class ScriptInstanceMethodDispatcher {
                         // Build ancestor chain from the class list
                         Datum.ScriptInstance ancestorChain = buildAncestorChain(ctx, list.items());
                         if (ancestorChain != null) {
-                            instance.properties().put("ancestor", ancestorChain);
+                            instance.properties().put(Datum.PROP_ANCESTOR, ancestorChain);
                         }
                     }
                 }
@@ -211,7 +211,7 @@ public final class ScriptInstanceMethodDispatcher {
                     }
                 }
 
-                Datum ancestor = current.properties().get("ancestor");
+                Datum ancestor = current.properties().get(Datum.PROP_ANCESTOR);
                 if (ancestor instanceof Datum.ScriptInstance ancestorInstance) {
                     current = ancestorInstance;
                 } else {
@@ -247,7 +247,7 @@ public final class ScriptInstanceMethodDispatcher {
      * @return The ScriptRef if available, or null
      */
     private static Datum.ScriptRef getScriptRefFromInstance(Datum.ScriptInstance instance) {
-        Datum scriptRef = instance.properties().get("__scriptRef__");
+        Datum scriptRef = instance.properties().get(Datum.PROP_SCRIPT_REF);
         if (scriptRef instanceof Datum.ScriptRef sr) {
             return sr;
         }
@@ -309,7 +309,7 @@ public final class ScriptInstanceMethodDispatcher {
 
             // Set the ancestor of the previous instance to this one
             if (previousInstance != null) {
-                previousInstance.properties().put("ancestor", instance);
+                previousInstance.properties().put(Datum.PROP_ANCESTOR, instance);
             }
 
             if (firstInstance == null) {
