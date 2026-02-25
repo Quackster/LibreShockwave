@@ -24,6 +24,7 @@ public class StagePanel extends JPanel {
 
     private Player player;
     private final Map<Integer, BufferedImage> bitmapCache = new HashMap<>();
+    private final LoadingScreen loadingScreen = new LoadingScreen();
 
     // Fixed stage dimensions (set from movie)
     private int stageWidth = 640;
@@ -37,7 +38,12 @@ public class StagePanel extends JPanel {
     public void setPlayer(Player player) {
         this.player = player;
         bitmapCache.clear();
+        loadingScreen.reset();
         repaint();
+    }
+
+    public LoadingScreen getLoadingScreen() {
+        return loadingScreen;
     }
 
     /**
@@ -76,6 +82,13 @@ public class StagePanel extends JPanel {
 
         if (player == null) {
             paintNoMovie(g2d);
+            return;
+        }
+
+        if (loadingScreen.isActive()) {
+            int canvasX = (getWidth() - stageWidth) / 2;
+            int canvasY = (getHeight() - stageHeight) / 2;
+            loadingScreen.paint(g2d, canvasX, canvasY, stageWidth, stageHeight);
             return;
         }
 
