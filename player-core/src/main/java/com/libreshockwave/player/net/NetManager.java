@@ -30,6 +30,7 @@ public class NetManager implements NetBuiltins.NetProvider {
 
     private final Map<Integer, NetTask> tasks = new ConcurrentHashMap<>();
     private final Map<String, byte[]> urlCache = new ConcurrentHashMap<>();  // Cache for loaded URLs
+    private final Map<String, CompletableFuture<byte[]>> inFlightLoads = new ConcurrentHashMap<>();  // Dedup in-flight requests
     private final ExecutorService executor;
     private final HttpClient httpClient;
 
@@ -89,6 +90,18 @@ public class NetManager implements NetBuiltins.NetProvider {
         lastTaskId = taskId;
         NetTask task = NetTask.get(taskId, url, resolveUrl(url));
         tasks.put(taskId, task);
+
+        // Check cache synchronously - if already loaded, complete immediately
+        String cacheKey = FileUtil.getFileName(url);
+        byte[] cached = urlCache.get(cacheKey);
+        if (cached != null) {
+            System.out.println("[NetManager] Using cached: " + cacheKey + " (" + cached.length + " bytes)");
+            task.markInProgress();
+            task.complete(cached);
+            notifyCompletion(url, cached);
+            return taskId;
+        }
+
         executeTask(task);
         return taskId;
     }
@@ -104,7 +117,7 @@ public class NetManager implements NetBuiltins.NetProvider {
         lastTaskId = taskId;
         NetTask task = NetTask.post(taskId, url, resolveUrl(url), postData);
         tasks.put(taskId, task);
-        executeTask(task);
+        executePostTask(task);
         return taskId;
     }
 
@@ -200,51 +213,78 @@ public class NetManager implements NetBuiltins.NetProvider {
             String url = task.getOriginalUrl();
             String cacheKey = FileUtil.getFileName(url);
 
+            // Use inFlightLoads to deduplicate: only one actual load per cacheKey
+            CompletableFuture<byte[]> future = inFlightLoads.computeIfAbsent(cacheKey, k -> {
+                CompletableFuture<byte[]> f = new CompletableFuture<>();
+                executor.submit(() -> doLoad(url, cacheKey, f));
+                return f;
+            });
+
+            try {
+                byte[] data = future.get();
+                if (data != null) {
+                    task.complete(data);
+                    notifyCompletion(task.getOriginalUrl(), data);
+                } else {
+                    task.fail(404, "Load returned no data");
+                }
+            } catch (Exception e) {
+                Throwable cause = e.getCause() != null ? e.getCause() : e;
+                task.fail(-1, cause.getMessage());
+            }
+        });
+    }
+
+    /**
+     * Perform the actual load for a cache key. Called only once per unique URL.
+     */
+    private void doLoad(String url, String cacheKey, CompletableFuture<byte[]> future) {
+        try {
             // Check cache first
             byte[] cached = urlCache.get(cacheKey);
             if (cached != null) {
                 System.out.println("[NetManager] Using cached: " + cacheKey + " (" + cached.length + " bytes)");
-                task.complete(cached);
-                notifyCompletion(task.getOriginalUrl(), cached);
+                future.complete(cached);
                 return;
             }
 
-            try {
-                // Extract just the filename - the path inside the DCR may be an absolute path
-                // from the author's machine, we want to resolve relative to where the DCR was loaded from
-                String fileName = FileUtil.getFileName(url);
+            // Extract just the filename - the path inside the DCR may be an absolute path
+            // from the author's machine, we want to resolve relative to where the DCR was loaded from
+            String fileName = FileUtil.getFileName(url);
 
-                // Always try local file first if we have a basePath (the DCR/DIR location)
-                if (basePath != null && !basePath.isEmpty()
-                        && !basePath.startsWith("http://") && !basePath.startsWith("https://")) {
-                    Path base = Path.of(basePath);
-                    if (Files.isRegularFile(base)) {
-                        base = base.getParent();
-                    }
-
-                    // Try loading from file with fallbacks
-                    byte[] data = tryLoadFromFile(base.resolve(fileName), cacheKey);
-                    if (data != null) {
-                        task.complete(data);
-                        notifyCompletion(task.getOriginalUrl(), data);
-                        return;
-                    }
+            // Always try local file first if we have a basePath (the DCR/DIR location)
+            if (basePath != null && !basePath.isEmpty()
+                    && !basePath.startsWith("http://") && !basePath.startsWith("https://")) {
+                Path base = Path.of(basePath);
+                if (Files.isRegularFile(base)) {
+                    base = base.getParent();
                 }
 
-                // File load failed or no basePath - try HTTP if URL is HTTP or basePath is HTTP
-                if (url.startsWith("http://") || url.startsWith("https://")) {
-                    loadFromHttp(url, task, cacheKey);
-                } else if (basePath != null && (basePath.startsWith("http://") || basePath.startsWith("https://"))) {
-                    String fullUrl = basePath + fileName;
-                    loadFromHttp(fullUrl, task, cacheKey);
-                } else {
-                    // No HTTP fallback available
-                    task.fail(404, "File not found: " + fileName);
+                // Try loading from file with fallbacks
+                byte[] data = tryLoadFromFile(base.resolve(fileName), cacheKey);
+                if (data != null) {
+                    future.complete(data);
+                    return;
                 }
-            } catch (Exception e) {
-                task.fail(-1, e.getMessage());
             }
-        });
+
+            // File load failed or no basePath - try HTTP if URL is HTTP or basePath is HTTP
+            if (url.startsWith("http://") || url.startsWith("https://")) {
+                byte[] data = loadFromHttpAndCache(url, cacheKey);
+                future.complete(data);
+            } else if (basePath != null && (basePath.startsWith("http://") || basePath.startsWith("https://"))) {
+                String fullUrl = basePath + fileName;
+                byte[] data = loadFromHttpAndCache(fullUrl, cacheKey);
+                future.complete(data);
+            } else {
+                // No HTTP fallback available
+                future.completeExceptionally(new RuntimeException("File not found: " + fileName));
+            }
+        } catch (Exception e) {
+            future.completeExceptionally(e);
+        } finally {
+            inFlightLoads.remove(cacheKey);
+        }
     }
 
     /**
@@ -333,6 +373,79 @@ public class NetManager implements NetBuiltins.NetProvider {
         String fileName = path.getFileName().toString();
         int dotIndex = fileName.lastIndexOf('.');
         return dotIndex > 0 ? fileName.substring(0, dotIndex) : fileName;
+    }
+
+    /**
+     * Execute a POST task directly (no caching/dedup).
+     */
+    private void executePostTask(NetTask task) {
+        executor.submit(() -> {
+            task.markInProgress();
+            String url = task.getOriginalUrl();
+            String fileName = FileUtil.getFileName(url);
+            String cacheKey = fileName;
+            try {
+                if (url.startsWith("http://") || url.startsWith("https://")) {
+                    loadFromHttp(url, task, cacheKey);
+                } else if (basePath != null && (basePath.startsWith("http://") || basePath.startsWith("https://"))) {
+                    String fullUrl = basePath + fileName;
+                    loadFromHttp(fullUrl, task, cacheKey);
+                } else {
+                    task.fail(404, "No HTTP URL for POST");
+                }
+            } catch (Exception e) {
+                task.fail(-1, e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * Load from HTTP, cache the result, and return the bytes.
+     * Used by doLoad for GET requests.
+     */
+    private byte[] loadFromHttpAndCache(String url, String cacheKey) throws Exception {
+        String[] urlsToTry = getUrlsWithFallbacks(url);
+
+        Exception lastException = null;
+        int lastStatusCode = 0;
+
+        for (String tryUrl : urlsToTry) {
+            try {
+                HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(tryUrl))
+                    .timeout(Duration.ofSeconds(60))
+                    .GET()
+                    .build();
+
+                HttpResponse<byte[]> response = httpClient.send(
+                    request,
+                    HttpResponse.BodyHandlers.ofByteArray()
+                );
+
+                int statusCode = response.statusCode();
+                if (statusCode >= 200 && statusCode < 300) {
+                    byte[] data = response.body();
+                    urlCache.put(cacheKey, data);
+                    System.out.println("[NetManager] Loaded URL: " + tryUrl + " (" + data.length + " bytes)");
+                    return data;
+                }
+                lastStatusCode = statusCode;
+            } catch (Exception e) {
+                lastException = e;
+            }
+        }
+
+        // All URLs failed
+        String msg;
+        if (lastStatusCode > 0) {
+            msg = "HTTP " + lastStatusCode;
+        } else if (lastException != null) {
+            msg = lastException.getMessage();
+        } else {
+            msg = "Not found";
+        }
+        System.err.println("[NetManager] HTTP request failed: " + url + " - " + msg);
+        throw new RuntimeException(msg);
     }
 
     private void loadFromHttp(String url, NetTask task, String cacheKey) throws Exception {
