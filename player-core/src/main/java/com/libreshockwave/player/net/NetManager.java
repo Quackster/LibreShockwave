@@ -215,7 +215,8 @@ public class NetManager implements NetBuiltins.NetProvider {
                 String fileName = FileUtil.getFileName(url);
 
                 // Always try local file first if we have a basePath (the DCR/DIR location)
-                if (basePath != null && !basePath.isEmpty()) {
+                if (basePath != null && !basePath.isEmpty()
+                        && !basePath.startsWith("http://") && !basePath.startsWith("https://")) {
                     Path base = Path.of(basePath);
                     if (Files.isRegularFile(base)) {
                         base = base.getParent();
