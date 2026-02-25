@@ -31,8 +31,9 @@ public class NetManager implements NetBuiltins.NetProvider {
     private final Map<Integer, NetTask> tasks = new ConcurrentHashMap<>();
     private final Map<String, byte[]> urlCache = new ConcurrentHashMap<>();  // Cache for loaded URLs
     private final Map<String, CompletableFuture<byte[]>> inFlightLoads = new ConcurrentHashMap<>();  // Dedup in-flight requests
-    private final ExecutorService executor;
-    private final HttpClient httpClient;
+    // Lazy-initialized to avoid creating threads/HTTP clients in environments that don't support them (e.g. TeaVM)
+    private ExecutorService executor;
+    private HttpClient httpClient;
 
     private int nextTaskId = 1;
     private volatile int lastTaskId = 0;  // Track the most recent task for netDone() with no args
@@ -42,15 +43,28 @@ public class NetManager implements NetBuiltins.NetProvider {
     private NetCompletionCallback completionCallback;
 
     public NetManager() {
-        this.executor = Executors.newCachedThreadPool(r -> {
-            Thread t = new Thread(r, "NetManager-worker");
-            t.setDaemon(true);
-            return t;
-        });
-        this.httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(30))
-            .followRedirects(HttpClient.Redirect.NORMAL)
-            .build();
+        // Fields are lazy-initialized on first use via getExecutor() and getHttpClient()
+    }
+
+    private ExecutorService getExecutor() {
+        if (executor == null) {
+            executor = Executors.newCachedThreadPool(r -> {
+                Thread t = new Thread(r, "NetManager-worker");
+                t.setDaemon(true);
+                return t;
+            });
+        }
+        return executor;
+    }
+
+    private HttpClient getHttpClient() {
+        if (httpClient == null) {
+            httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(30))
+                .followRedirects(HttpClient.Redirect.NORMAL)
+                .build();
+        }
+        return httpClient;
     }
 
     /**
@@ -195,7 +209,9 @@ public class NetManager implements NetBuiltins.NetProvider {
      * Shutdown the network manager.
      */
     public void shutdown() {
-        executor.shutdownNow();
+        if (executor != null) {
+            executor.shutdownNow();
+        }
     }
 
     private String resolveUrl(String url) {
@@ -207,7 +223,7 @@ public class NetManager implements NetBuiltins.NetProvider {
     }
 
     private void executeTask(NetTask task) {
-        executor.submit(() -> {
+        getExecutor().submit(() -> {
             task.markInProgress();
 
             String url = task.getOriginalUrl();
@@ -216,7 +232,7 @@ public class NetManager implements NetBuiltins.NetProvider {
             // Use inFlightLoads to deduplicate: only one actual load per cacheKey
             CompletableFuture<byte[]> future = inFlightLoads.computeIfAbsent(cacheKey, k -> {
                 CompletableFuture<byte[]> f = new CompletableFuture<>();
-                executor.submit(() -> doLoad(url, cacheKey, f));
+                getExecutor().submit(() -> doLoad(url, cacheKey, f));
                 return f;
             });
 
@@ -379,7 +395,7 @@ public class NetManager implements NetBuiltins.NetProvider {
      * Execute a POST task directly (no caching/dedup).
      */
     private void executePostTask(NetTask task) {
-        executor.submit(() -> {
+        getExecutor().submit(() -> {
             task.markInProgress();
             String url = task.getOriginalUrl();
             String fileName = FileUtil.getFileName(url);
@@ -417,7 +433,7 @@ public class NetManager implements NetBuiltins.NetProvider {
                     .GET()
                     .build();
 
-                HttpResponse<byte[]> response = httpClient.send(
+                HttpResponse<byte[]> response = getHttpClient().send(
                     request,
                     HttpResponse.BodyHandlers.ofByteArray()
                 );
@@ -469,7 +485,7 @@ public class NetManager implements NetBuiltins.NetProvider {
                     requestBuilder.GET();
                 }
 
-                HttpResponse<byte[]> response = httpClient.send(
+                HttpResponse<byte[]> response = getHttpClient().send(
                     requestBuilder.build(),
                     HttpResponse.BodyHandlers.ofByteArray()
                 );

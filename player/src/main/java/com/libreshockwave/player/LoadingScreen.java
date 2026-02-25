@@ -18,27 +18,41 @@ public class LoadingScreen {
     private static final Color TITLE_COLOR = new Color(255, 255, 255);
 
     private boolean active = false;
+    private boolean complete = false;
     private int total = 0;
     private int progress = 0;
+    private Runnable onComplete;
 
     /**
      * Enter loading mode with the given total number of items to load.
      */
     public void start(int total) {
         this.active = true;
+        this.complete = false;
         this.total = total;
         this.progress = 0;
     }
 
     /**
      * Increment progress by one.
-     * Automatically deactivates when progress reaches total.
+     * When progress reaches total, marks as complete and fires the onComplete callback.
+     * The screen stays visible (showing a full bar) until dismiss() is called.
      */
     public void incrementProgress() {
         progress++;
-        if (progress >= total) {
-            active = false;
+        if (progress >= total && !complete) {
+            complete = true;
+            if (onComplete != null) {
+                onComplete.run();
+            }
         }
+    }
+
+    /**
+     * Dismiss the loading screen. Call this after the completion delay.
+     */
+    public void dismiss() {
+        active = false;
     }
 
     /**
@@ -46,12 +60,22 @@ public class LoadingScreen {
      */
     public void reset() {
         active = false;
+        complete = false;
         total = 0;
         progress = 0;
+        onComplete = null;
     }
 
     public boolean isActive() {
         return active;
+    }
+
+    /**
+     * Set a callback for when loading completes (progress reaches total).
+     * The loading screen remains visible after this fires — call dismiss() to hide it.
+     */
+    public void setOnComplete(Runnable onComplete) {
+        this.onComplete = onComplete;
     }
 
     /**
@@ -102,7 +126,9 @@ public class LoadingScreen {
         // Progress text
         g.setFont(new Font("SansSerif", Font.PLAIN, 14));
         FontMetrics fmText = g.getFontMetrics();
-        String progressText = "Loading... " + progress + "/" + total;
+        String progressText = complete
+                ? "Complete (" + total + "/" + total + ")"
+                : "Loading... " + progress + "/" + total;
         g.setColor(TEXT_COLOR);
         g.drawString(progressText, cx - fmText.stringWidth(progressText) / 2, barY + barHeight + 24);
     }

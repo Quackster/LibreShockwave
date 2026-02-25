@@ -565,6 +565,17 @@ public class PlayerFrame extends JFrame {
         if (preloadCount > 0) {
             statusLabel.setText(statusLabel.getText() + " | Preloading " + preloadCount + " external cast(s)...");
             loadingScreen.start(preloadCount);
+
+            // When loading completes, show full bar for 1 second before dismissing
+            loadingScreen.setOnComplete(() -> {
+                Timer dismissTimer = new Timer(1000, e -> {
+                    loadingScreen.dismiss();
+                    stagePanel.repaint();
+                });
+                dismissTimer.setRepeats(false);
+                dismissTimer.start();
+            });
+
             stagePanel.repaint();
         }
 

@@ -41,9 +41,9 @@ A Java library for parsing Macromedia/Adobe Director and Shockwave files (.dir, 
 
 ###
 
-This player is currently in development. The aim is to get it working within our Java Swing UI player and then eventually start a new project where it's compiled using TeaVM into WASM for browser playback.
+The Swing desktop player is in active development. A browser-based web player (`player-wasm`) is also available, compiled to WebAssembly via TeaVM's WasmGC backend.
 
-All "player" functionality is decoupled from the SDK and VM projects so it will be easy to convert in future.
+All player functionality is decoupled from the SDK and VM projects via the `player-core` module, which provides platform-independent playback logic.
 
 <img width="2174" height="1048" alt="image" src="https://github.com/user-attachments/assets/3c8f0357-0941-4dd4-9795-525a45216644" />
 
@@ -278,6 +278,59 @@ file.save(Path.of("unprotected.dir"));
 byte[] rifxData = file.saveToBytes();
 ```
 
+## Web Player (player-wasm)
+
+The `player-wasm` module compiles the player for the browser using [TeaVM](https://teavm.org/) v0.13's WasmGC backend. It produces a `.wasm` file with JS glue code that runs in Chrome 119+ and Firefox 120+.
+
+### Building
+
+```bash
+# Build WasmGC output (primary)
+./gradlew :player-wasm:generateWasmGC
+
+# Build JavaScript fallback (broader compatibility)
+./gradlew :player-wasm:generateJavaScript
+```
+
+### Running
+
+Serve the output directory with any HTTP server and open `index.html`:
+
+```bash
+cd player-wasm/build/generated/teavm/wasmGC/
+python -m http.server 8080
+# Open http://localhost:8080
+```
+
+The web player provides:
+- File picker for local `.dcr`/`.dir` files
+- URL input for remote movies
+- Play/Pause/Stop controls
+- HTML5 Canvas 2D rendering of bitmaps, shapes, and placeholders
+- Browser `fetch()` API for loading external cast libraries
+
+### Module Structure
+
+```
+player-wasm/
+  build.gradle                          # TeaVM plugin config
+  src/main/java/.../wasm/
+    WasmPlayerApp.java                  # Entry point + @JSExport API
+    WasmPlayer.java                     # requestAnimationFrame game loop
+    canvas/CanvasStageRenderer.java     # Canvas 2D renderer
+    net/FetchNetManager.java            # Browser fetch() NetProvider
+  src/main/resources/web/
+    index.html                          # Host page
+    libreshockwave.css                  # Styling
+```
+
+### Known Limitations
+
+- No debugger UI in browser
+- No mouse/keyboard event forwarding to Lingo VM (planned)
+- 32-bit JPEG-based bitmaps (ediM+ALFA) render as placeholders
+- Requires Chrome 119+ or Firefox 120+ for WasmGC support (JS fallback available)
+
 ## Tools
 
 ### Cast Extractor GUI
@@ -296,7 +349,18 @@ byte[] rifxData = file.saveToBytes();
 
 ## Architecture
 
-The library is organised into the following packages:
+### Modules
+
+| Module | Description |
+|--------|-------------|
+| `sdk` | Core library for parsing Director/Shockwave files |
+| `vm` | Lingo bytecode virtual machine |
+| `player-core` | Platform-independent playback engine (score, events, rendering data) |
+| `player` | Desktop player with Swing UI and debugger |
+| `player-wasm` | Browser player compiled to WebAssembly via TeaVM |
+| `cast-extractor` | GUI tool for extracting assets from Director files |
+
+### SDK Packages
 
 - `com.libreshockwave` - Main `DirectorFile` class
 - `com.libreshockwave.chunks` - Chunk type parsers (CASt, Lscr, BITD, STXT, etc.)
