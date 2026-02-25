@@ -62,12 +62,12 @@ public class Player {
     private DebugController debugController;
 
     // Executor for running VM on background thread (required for debugger blocking)
-    private final ExecutorService vmExecutor = Executors.newSingleThreadExecutor(r -> {
-        Thread t = new Thread(r, "LingoVM-Executor");
-        t.setDaemon(true);
-        return t;
-    });
+    // Lazy-initialized to avoid creating threads in environments that don't support them (e.g. TeaVM)
+    private ExecutorService vmExecutor;
     private volatile boolean vmRunning = false;
+
+    // Optional override for the network provider (used by player-wasm to substitute FetchNetManager)
+    private NetBuiltins.NetProvider overrideNetProvider;
 
     public Player(DirectorFile file) {
         this.file = file;
@@ -286,6 +286,30 @@ public class Player {
     }
 
     /**
+     * Get or lazily create the VM executor service.
+     * Only used by async methods (playAsync, tickAsync, stepFrameAsync, shutdown).
+     */
+    private ExecutorService getVmExecutor() {
+        if (vmExecutor == null) {
+            vmExecutor = Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r, "LingoVM-Executor");
+                t.setDaemon(true);
+                return t;
+            });
+        }
+        return vmExecutor;
+    }
+
+    /**
+     * Set an override network provider. When set, this provider is used
+     * instead of the default NetManager in setupProviders().
+     * Used by player-wasm to substitute FetchNetManager for browser fetch().
+     */
+    public void setNetProvider(NetBuiltins.NetProvider provider) {
+        this.overrideNetProvider = provider;
+    }
+
+    /**
      * Dump information about loaded scripts for debugging.
      */
     public void dumpScriptInfo() {
@@ -366,7 +390,7 @@ public class Player {
         }
 
         vmRunning = true;
-        vmExecutor.submit(() -> {
+        getVmExecutor().submit(() -> {
             try {
                 prepareMovie();
                 state = PlayerState.PLAYING;
@@ -463,7 +487,7 @@ public class Player {
         }
 
         vmRunning = true;
-        vmExecutor.submit(() -> {
+        getVmExecutor().submit(() -> {
             try {
                 if (state == PlayerState.STOPPED) {
                     prepareMovie();
@@ -541,7 +565,7 @@ public class Player {
         }
 
         vmRunning = true;
-        vmExecutor.submit(() -> {
+        getVmExecutor().submit(() -> {
             try {
                 // Execute frames in a loop - if stepping completes without pausing
                 // (e.g., handler/frame ended on last instruction), continue to
@@ -568,7 +592,7 @@ public class Player {
      * Set up thread-local providers for builtin functions.
      */
     private void setupProviders() {
-        NetBuiltins.setProvider(netManager);
+        NetBuiltins.setProvider(overrideNetProvider != null ? overrideNetProvider : netManager);
         XtraBuiltins.setManager(xtraManager);
         MoviePropertyProvider.setProvider(movieProperties);
         SpritePropertyProvider.setProvider(spriteProperties);
@@ -639,15 +663,17 @@ public class Player {
             debugController.reset();
         }
 
-        // Shutdown VM executor
-        vmExecutor.shutdown();
-        try {
-            if (!vmExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
+        // Shutdown VM executor (only if it was created)
+        if (vmExecutor != null) {
+            vmExecutor.shutdown();
+            try {
+                if (!vmExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
+                    vmExecutor.shutdownNow();
+                }
+            } catch (InterruptedException e) {
                 vmExecutor.shutdownNow();
+                Thread.currentThread().interrupt();
             }
-        } catch (InterruptedException e) {
-            vmExecutor.shutdownNow();
-            Thread.currentThread().interrupt();
         }
     }
 

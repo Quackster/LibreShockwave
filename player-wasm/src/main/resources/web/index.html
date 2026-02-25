@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LibreShockwave Web Player</title>
+    <link rel="stylesheet" href="libreshockwave.css">
+</head>
+<body>
+    <div class="container">
+        <h1>LibreShockwave</h1>
+
+        <div class="controls">
+            <div class="file-controls">
+                <label class="file-label">
+                    <input type="file" id="file-picker" accept=".dcr,.dir,.dxr,.cct,.cst">
+                    Choose File
+                </label>
+                <span class="or">or</span>
+                <input type="text" id="url-input" placeholder="Enter URL to .dcr/.dir file">
+                <button id="load-url-btn">Load URL</button>
+            </div>
+
+            <div class="playback-controls">
+                <button id="play-btn" disabled>Play</button>
+                <button id="pause-btn" disabled>Pause</button>
+                <button id="stop-btn" disabled>Stop</button>
+                <span id="frame-info" class="frame-info"></span>
+            </div>
+        </div>
+
+        <div class="stage-wrapper">
+            <canvas id="shockwave-stage" width="640" height="480"></canvas>
+        </div>
+
+        <div id="status" class="status">Waiting for a movie file...</div>
+    </div>
+
+    <!-- TeaVM WasmGC output -->
+    <script src="classes.wasm-runtime.js"></script>
+    <script>
+        // Wait for TeaVM to initialize
+        async function initPlayer() {
+            const status = document.getElementById('status');
+            const filePicker = document.getElementById('file-picker');
+            const urlInput = document.getElementById('url-input');
+            const loadUrlBtn = document.getElementById('load-url-btn');
+            const playBtn = document.getElementById('play-btn');
+            const pauseBtn = document.getElementById('pause-btn');
+            const stopBtn = document.getElementById('stop-btn');
+            const frameInfo = document.getElementById('frame-info');
+
+            // Load TeaVM module
+            try {
+                const teavm = await TeaVM.wasmGC.load('classes.wasm');
+                const exports = teavm.exports;
+                exports.main([]);
+                status.textContent = 'Ready. Load a movie file to begin.';
+
+                function enableControls() {
+                    playBtn.disabled = false;
+                    pauseBtn.disabled = false;
+                    stopBtn.disabled = false;
+                }
+
+                function updateFrameInfo() {
+                    const current = exports.getCurrentFrame();
+                    const total = exports.getFrameCount();
+                    if (total > 0) {
+                        frameInfo.textContent = 'Frame ' + current + ' / ' + total;
+                    }
+                }
+
+                // File picker handler
+                filePicker.addEventListener('change', function(e) {
+                    const file = e.target.files[0];
+                    if (!file) return;
+
+                    status.textContent = 'Loading ' + file.name + '...';
+                    const reader = new FileReader();
+                    reader.onload = function() {
+                        const bytes = new Int8Array(reader.result);
+                        exports.loadMovieFromBytes(bytes, file.name);
+                        status.textContent = 'Loaded: ' + file.name;
+                        enableControls();
+                        updateFrameInfo();
+                    };
+                    reader.readAsArrayBuffer(file);
+                });
+
+                // URL loader handler
+                loadUrlBtn.addEventListener('click', function() {
+                    const url = urlInput.value.trim();
+                    if (!url) return;
+
+                    status.textContent = 'Fetching ' + url + '...';
+                    fetch(url)
+                        .then(function(r) {
+                            if (!r.ok) throw new Error('HTTP ' + r.status);
+                            return r.arrayBuffer();
+                        })
+                        .then(function(buf) {
+                            const bytes = new Int8Array(buf);
+                            exports.loadMovieFromBytes(bytes, url);
+                            status.textContent = 'Loaded from URL';
+                            enableControls();
+                            updateFrameInfo();
+                        })
+                        .catch(function(err) {
+                            status.textContent = 'Error: ' + err.message;
+                        });
+                });
+
+                // Playback controls
+                playBtn.addEventListener('click', function() {
+                    exports.play();
+                    status.textContent = 'Playing';
+                });
+
+                pauseBtn.addEventListener('click', function() {
+                    exports.pause();
+                    status.textContent = 'Paused';
+                    updateFrameInfo();
+                });
+
+                stopBtn.addEventListener('click', function() {
+                    exports.stop();
+                    status.textContent = 'Stopped';
+                    updateFrameInfo();
+                });
+
+                // Periodic frame info update during playback
+                setInterval(updateFrameInfo, 250);
+
+            } catch (e) {
+                status.textContent = 'Failed to initialize WASM: ' + e.message;
+                console.error('TeaVM init error:', e);
+            }
+        }
+
+        initPlayer();
+    </script>
+</body>
+</html>

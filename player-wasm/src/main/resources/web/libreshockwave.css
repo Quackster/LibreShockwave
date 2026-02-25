@@ -1,0 +1,127 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background: #1a1a2e;
+    color: #e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 20px;
+}
+
+.container {
+    max-width: 900px;
+    width: 100%;
+}
+
+h1 {
+    font-size: 24px;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 16px;
+}
+
+.controls {
+    margin-bottom: 16px;
+}
+
+.file-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+
+.file-label {
+    display: inline-block;
+    padding: 6px 14px;
+    background: #0f3460;
+    color: #e0e0e0;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    border: 1px solid #16213e;
+}
+
+.file-label:hover {
+    background: #1a4a7a;
+}
+
+.file-label input[type="file"] {
+    display: none;
+}
+
+.or {
+    color: #888;
+    font-size: 13px;
+}
+
+#url-input {
+    flex: 1;
+    min-width: 200px;
+    padding: 6px 10px;
+    background: #16213e;
+    color: #e0e0e0;
+    border: 1px solid #0f3460;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+#url-input::placeholder {
+    color: #666;
+}
+
+.playback-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+button {
+    padding: 6px 16px;
+    background: #0f3460;
+    color: #e0e0e0;
+    border: 1px solid #16213e;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+button:hover:not(:disabled) {
+    background: #1a4a7a;
+}
+
+button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.frame-info {
+    margin-left: 12px;
+    font-size: 13px;
+    color: #888;
+    font-family: monospace;
+}
+
+.stage-wrapper {
+    background: #303030;
+    border: 1px solid #505050;
+    display: inline-block;
+    line-height: 0;
+}
+
+canvas {
+    display: block;
+}
+
+.status {
+    margin-top: 10px;
+    font-size: 13px;
+    color: #888;
+}
