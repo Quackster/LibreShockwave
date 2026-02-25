@@ -13,9 +13,6 @@ import com.libreshockwave.lookup.CastMemberLookup;
 import com.libreshockwave.lookup.PaletteResolver;
 import com.libreshockwave.lookup.ScriptLookup;
 
-import javax.imageio.ImageIO;
-import java.awt.image.BufferedImage;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.ByteOrder;
 import java.nio.file.Files;
@@ -56,6 +53,22 @@ public class DirectorFile {
     private PaletteResolver paletteResolver;
     private CastMemberLookup castMemberLookup;
     private ScriptLookup scriptLookup;
+
+    /**
+     * Pluggable JPEG decoder for ediM bitmap support.
+     * Must be set by the runtime environment (e.g. AWT ImageIO for desktop, JS for browser).
+     * If not set, ediM bitmaps (32-bit JPEG-compressed) will be skipped.
+     */
+    @FunctionalInterface
+    public interface JpegDecoder {
+        Bitmap decode(byte[] jpegData);
+    }
+
+    private static volatile JpegDecoder jpegDecoder;
+
+    public static void setJpegDecoder(JpegDecoder decoder) {
+        jpegDecoder = decoder;
+    }
 
     public record ChunkInfo(
         int id,
@@ -277,9 +290,13 @@ public class DirectorFile {
      */
     private Optional<Bitmap> decodeEdiMBitmap(BitmapInfo info, byte[] jpegData, byte[] alfaData) {
         try {
-            // Decode JPEG RGB data
-            BufferedImage jpegImage = ImageIO.read(new ByteArrayInputStream(jpegData));
-            if (jpegImage == null) {
+            if (jpegDecoder == null) {
+                return Optional.empty();
+            }
+
+            // Decode JPEG RGB data via pluggable decoder
+            Bitmap jpegBitmap = jpegDecoder.decode(jpegData);
+            if (jpegBitmap == null) {
                 return Optional.empty();
             }
 
@@ -289,10 +306,10 @@ public class DirectorFile {
             // Create bitmap
             Bitmap bitmap = new Bitmap(width, height, 32);
 
-            // Copy RGB from JPEG
-            for (int y = 0; y < height && y < jpegImage.getHeight(); y++) {
-                for (int x = 0; x < width && x < jpegImage.getWidth(); x++) {
-                    int rgb = jpegImage.getRGB(x, y);
+            // Copy RGB from decoded JPEG
+            for (int y = 0; y < height && y < jpegBitmap.getHeight(); y++) {
+                for (int x = 0; x < width && x < jpegBitmap.getWidth(); x++) {
+                    int rgb = jpegBitmap.getPixel(x, y);
                     int r = (rgb >> 16) & 0xFF;
                     int g = (rgb >> 8) & 0xFF;
                     int b = rgb & 0xFF;

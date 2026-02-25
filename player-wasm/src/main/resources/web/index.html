@@ -36,25 +36,25 @@
         <div id="status" class="status">Waiting for a movie file...</div>
     </div>
 
-    <!-- TeaVM WasmGC output -->
-    <script src="classes.wasm-runtime.js"></script>
+    <!-- TeaVM standard WASM runtime + player bridge -->
+    <script src="player-wasm.wasm-runtime.js"></script>
+    <script src="player-bridge.js"></script>
     <script>
-        // Wait for TeaVM to initialize
         async function initPlayer() {
-            const status = document.getElementById('status');
-            const filePicker = document.getElementById('file-picker');
-            const urlInput = document.getElementById('url-input');
-            const loadUrlBtn = document.getElementById('load-url-btn');
-            const playBtn = document.getElementById('play-btn');
-            const pauseBtn = document.getElementById('pause-btn');
-            const stopBtn = document.getElementById('stop-btn');
-            const frameInfo = document.getElementById('frame-info');
+            var status = document.getElementById('status');
+            var filePicker = document.getElementById('file-picker');
+            var urlInput = document.getElementById('url-input');
+            var loadUrlBtn = document.getElementById('load-url-btn');
+            var playBtn = document.getElementById('play-btn');
+            var pauseBtn = document.getElementById('pause-btn');
+            var stopBtn = document.getElementById('stop-btn');
+            var frameInfo = document.getElementById('frame-info');
+            var canvas = document.getElementById('shockwave-stage');
 
-            // Load TeaVM module
             try {
-                const teavm = await TeaVM.wasmGC.load('classes.wasm');
-                const exports = teavm.exports;
-                exports.main([]);
+                var player = new LibreShockwavePlayer();
+                player.setCanvas(canvas);
+                await player.init();
                 status.textContent = 'Ready. Load a movie file to begin.';
 
                 function enableControls() {
@@ -64,8 +64,8 @@
                 }
 
                 function updateFrameInfo() {
-                    const current = exports.getCurrentFrame();
-                    const total = exports.getFrameCount();
+                    var current = player.getCurrentFrame();
+                    var total = player.getFrameCount();
                     if (total > 0) {
                         frameInfo.textContent = 'Frame ' + current + ' / ' + total;
                     }
@@ -73,24 +73,27 @@
 
                 // File picker handler
                 filePicker.addEventListener('change', function(e) {
-                    const file = e.target.files[0];
+                    var file = e.target.files[0];
                     if (!file) return;
 
                     status.textContent = 'Loading ' + file.name + '...';
-                    const reader = new FileReader();
+                    var reader = new FileReader();
                     reader.onload = function() {
-                        const bytes = new Int8Array(reader.result);
-                        exports.loadMovieFromBytes(bytes, file.name);
-                        status.textContent = 'Loaded: ' + file.name;
-                        enableControls();
-                        updateFrameInfo();
+                        var bytes = new Uint8Array(reader.result);
+                        if (player.loadMovie(bytes, file.name)) {
+                            status.textContent = 'Loaded: ' + file.name;
+                            enableControls();
+                            updateFrameInfo();
+                        } else {
+                            status.textContent = 'Error: failed to parse ' + file.name;
+                        }
                     };
                     reader.readAsArrayBuffer(file);
                 });
 
                 // URL loader handler
                 loadUrlBtn.addEventListener('click', function() {
-                    const url = urlInput.value.trim();
+                    var url = urlInput.value.trim();
                     if (!url) return;
 
                     status.textContent = 'Fetching ' + url + '...';
@@ -100,11 +103,14 @@
                             return r.arrayBuffer();
                         })
                         .then(function(buf) {
-                            const bytes = new Int8Array(buf);
-                            exports.loadMovieFromBytes(bytes, url);
-                            status.textContent = 'Loaded from URL';
-                            enableControls();
-                            updateFrameInfo();
+                            var bytes = new Uint8Array(buf);
+                            if (player.loadMovie(bytes, url)) {
+                                status.textContent = 'Loaded from URL';
+                                enableControls();
+                                updateFrameInfo();
+                            } else {
+                                status.textContent = 'Error: failed to parse movie from URL';
+                            }
                         })
                         .catch(function(err) {
                             status.textContent = 'Error: ' + err.message;
@@ -113,18 +119,18 @@
 
                 // Playback controls
                 playBtn.addEventListener('click', function() {
-                    exports.play();
+                    player.play();
                     status.textContent = 'Playing';
                 });
 
                 pauseBtn.addEventListener('click', function() {
-                    exports.pause();
+                    player.pause();
                     status.textContent = 'Paused';
                     updateFrameInfo();
                 });
 
                 stopBtn.addEventListener('click', function() {
-                    exports.stop();
+                    player.stop();
                     status.textContent = 'Stopped';
                     updateFrameInfo();
                 });

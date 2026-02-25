@@ -3,113 +3,89 @@ package com.libreshockwave.player.wasm;
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.player.Player;
 import com.libreshockwave.player.PlayerState;
-import com.libreshockwave.player.wasm.canvas.CanvasStageRenderer;
-import com.libreshockwave.player.wasm.net.FetchNetManager;
-
-import org.teavm.jso.browser.Window;
-import org.teavm.jso.dom.html.HTMLCanvasElement;
-import org.teavm.jso.dom.html.HTMLDocument;
+import com.libreshockwave.player.wasm.net.WasmNetManager;
+import com.libreshockwave.player.wasm.render.SoftwareRenderer;
 
 /**
- * Single-threaded wrapper around Player for browser execution.
- * Uses requestAnimationFrame for the game loop instead of Swing Timer.
- * All VM execution is synchronous on the main thread.
+ * Thin wrapper around Player for WASM execution.
+ * No browser/DOM dependencies - all rendering is done via SoftwareRenderer
+ * and the animation loop is managed by JavaScript.
  */
 public class WasmPlayer {
 
-    private final String canvasId;
     private Player player;
-    private CanvasStageRenderer renderer;
-    private FetchNetManager fetchNetManager;
-    private boolean playing = false;
-    private double lastFrameTime = 0;
+    private SoftwareRenderer renderer;
+    private WasmNetManager netManager;
 
-    public WasmPlayer(String canvasId) {
-        this.canvasId = canvasId;
+    public WasmPlayer() {
     }
 
     /**
      * Load a Director movie from raw bytes.
+     * @return true if loaded successfully
      */
-    public void loadMovie(byte[] data, String basePath) {
-        DirectorFile file = DirectorFile.fromBytes(data);
-        if (file == null) {
-            System.err.println("[WasmPlayer] Failed to parse Director file");
-            return;
+    public boolean loadMovie(byte[] data, String basePath) {
+        DirectorFile file;
+        try {
+            file = DirectorFile.load(data);
+        } catch (Exception e) {
+            System.err.println("[WasmPlayer] Failed to parse Director file: " + e.getMessage());
+            return false;
         }
 
-        player = new Player(file);
-
-        // Set up browser fetch as the network provider
-        fetchNetManager = new FetchNetManager(basePath);
-        player.setNetProvider(fetchNetManager);
-
-        // Set up the canvas renderer
-        HTMLDocument doc = Window.current().getDocument();
-        HTMLCanvasElement canvas = (HTMLCanvasElement) doc.getElementById(canvasId);
-        if (canvas == null) {
-            System.err.println("[WasmPlayer] Canvas element not found: " + canvasId);
-            return;
-        }
+        netManager = new WasmNetManager(basePath);
+        player = new Player(file, netManager);
 
         int stageWidth = player.getStageRenderer().getStageWidth();
         int stageHeight = player.getStageRenderer().getStageHeight();
-        canvas.setWidth(stageWidth);
-        canvas.setHeight(stageHeight);
-
-        renderer = new CanvasStageRenderer(canvas, player);
+        renderer = new SoftwareRenderer(player, stageWidth, stageHeight);
 
         System.out.println("[WasmPlayer] Movie loaded: " + stageWidth + "x" + stageHeight
                 + ", " + player.getFrameCount() + " frames, tempo=" + player.getTempo());
 
-        // Render the initial state
+        // Render the initial frame
         renderer.render();
+        return true;
     }
 
     /**
-     * Start or resume playback.
+     * Advance one frame. Only ticks if the player is in PLAYING state.
+     * @return true if still playing
      */
-    public void play() {
-        if (player == null) return;
-
-        player.play();
-        if (!playing) {
-            playing = true;
-            lastFrameTime = 0;
-            requestFrame();
-        }
+    public boolean tick() {
+        if (player == null || player.getState() != PlayerState.PLAYING) return false;
+        return player.tick();
     }
 
-    /**
-     * Pause playback.
-     */
-    public void pause() {
-        if (player == null) return;
-        player.pause();
-        playing = false;
-    }
-
-    /**
-     * Stop playback and reset.
-     */
-    public void stop() {
-        if (player == null) return;
-        player.stop();
-        playing = false;
+    public void render() {
         if (renderer != null) {
             renderer.render();
         }
     }
 
-    /**
-     * Jump to a specific frame.
-     */
+    public byte[] getFrameBuffer() {
+        return renderer != null ? renderer.getFrameBuffer() : null;
+    }
+
+    public void play() {
+        if (player != null) player.play();
+    }
+
+    public void pause() {
+        if (player != null) player.pause();
+    }
+
+    public void stop() {
+        if (player != null) {
+            player.stop();
+            if (renderer != null) renderer.render();
+        }
+    }
+
     public void goToFrame(int frame) {
         if (player != null) {
             player.goToFrame(frame);
-            if (renderer != null) {
-                renderer.render();
-            }
+            if (renderer != null) renderer.render();
         }
     }
 
@@ -121,56 +97,21 @@ public class WasmPlayer {
         return player != null ? player.getFrameCount() : 0;
     }
 
-    /**
-     * Shut down the player and release resources.
-     */
+    public int getTempo() {
+        return player != null ? player.getTempo() : 15;
+    }
+
+    public int getStageWidth() {
+        return player != null ? player.getStageRenderer().getStageWidth() : 640;
+    }
+
+    public int getStageHeight() {
+        return player != null ? player.getStageRenderer().getStageHeight() : 480;
+    }
+
     public void shutdown() {
-        playing = false;
         if (player != null) {
             player.shutdown();
         }
-    }
-
-    /**
-     * Request the next animation frame from the browser.
-     */
-    private void requestFrame() {
-        Window.requestAnimationFrame(this::onAnimationFrame);
-    }
-
-    /**
-     * Animation frame callback. Enforces tempo-based frame rate.
-     */
-    private void onAnimationFrame(double timestamp) {
-        if (!playing || player == null || player.getState() != PlayerState.PLAYING) {
-            playing = false;
-            return;
-        }
-
-        // Enforce tempo-based frame rate
-        double msPerFrame = 1000.0 / player.getTempo();
-        if (lastFrameTime == 0) {
-            lastFrameTime = timestamp;
-        }
-
-        double elapsed = timestamp - lastFrameTime;
-        if (elapsed >= msPerFrame) {
-            lastFrameTime = timestamp - (elapsed % msPerFrame);
-
-            // Tick the player (synchronous)
-            boolean stillPlaying = player.tick();
-            if (!stillPlaying) {
-                playing = false;
-                return;
-            }
-
-            // Render the frame
-            if (renderer != null) {
-                renderer.render();
-            }
-        }
-
-        // Continue the loop
-        requestFrame();
     }
 }

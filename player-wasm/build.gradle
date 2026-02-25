@@ -17,29 +17,20 @@ dependencies {
     // Depend on the player-core module (which depends on VM and SDK)
     implementation project(':player-core')
 
-    // TeaVM JSO interop APIs (for Canvas, DOM, fetch)
-    implementation 'org.teavm:teavm-jso:0.13.0'
-    implementation 'org.teavm:teavm-jso-apis:0.13.0'
+    // TeaVM interop for @Export/@Import (standard WASM target)
+    implementation 'org.teavm:teavm-interop:0.13.0'
 }
 
 teavm {
-    // Primary target: WasmGC (Chrome 119+ / Firefox 120+)
-    wasmGC {
+    // Standard Wasm target (broad browser support, MVP)
+    wasm {
         mainClass = 'com.libreshockwave.player.wasm.WasmPlayerApp'
-        minHeapSize = 4
-        maxHeapSize = 64
         // Generate debug info for development
         debugInformation = true
     }
 
-    // Secondary target: JavaScript fallback for broader compatibility
-    js {
-        mainClass = 'com.libreshockwave.player.wasm.WasmPlayerApp'
-        obfuscated = false
-    }
-
     all {
-        // Preserve @JSExport methods
+        // Preserve exported entry point class
         preservedClasses = ['com.libreshockwave.player.wasm.WasmPlayerApp']
     }
 }
@@ -47,18 +38,9 @@ teavm {
 // Copy web resources alongside generated output
 tasks.register('copyWebResources', Copy) {
     from 'src/main/resources/web'
-    into layout.buildDirectory.dir('generated/teavm/wasmGC')
+    into layout.buildDirectory.dir('generated/teavm/wasm')
 }
 
-tasks.register('copyWebResourcesJS', Copy) {
-    from 'src/main/resources/web'
-    into layout.buildDirectory.dir('generated/teavm/js')
-}
-
-tasks.matching { it.name == 'generateWasmGC' }.configureEach {
+tasks.matching { it.name == 'generateWasm' }.configureEach {
     finalizedBy 'copyWebResources'
-}
-
-tasks.matching { it.name == 'generateJavaScript' }.configureEach {
-    finalizedBy 'copyWebResourcesJS'
 }

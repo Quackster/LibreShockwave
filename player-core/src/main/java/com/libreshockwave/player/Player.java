@@ -20,6 +20,11 @@ import com.libreshockwave.vm.builtin.XtraBuiltins;
 import com.libreshockwave.vm.xtra.XtraManager;
 import com.libreshockwave.player.debug.DebugController;
 
+import com.libreshockwave.bitmap.Bitmap;
+
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -37,7 +42,7 @@ public class Player {
     private final LingoVM vm;
     private final FrameContext frameContext;
     private final StageRenderer stageRenderer;
-    private final NetManager netManager;
+    private final NetManager netManager;  // null when using external NetProvider (e.g. TeaVM)
     private final XtraManager xtraManager;
     private final MovieProperties movieProperties;
     private final SpriteProperties spriteProperties;
@@ -64,6 +69,7 @@ public class Player {
     // Executor for running VM on background thread (required for debugger blocking)
     // Lazy-initialized to avoid creating threads in environments that don't support them (e.g. TeaVM)
     private ExecutorService vmExecutor;
+    private Runnable vmExecutorShutdown;  // Shutdown hook, avoids referencing ExecutorService in shutdown()
     private volatile boolean vmRunning = false;
 
     // Optional override for the network provider (used by player-wasm to substitute FetchNetManager)
@@ -81,6 +87,23 @@ public class Player {
         this.castLibManager = new CastLibManager(file);
         this.tempo = file != null ? file.getTempo() : 15;
         if (this.tempo <= 0) this.tempo = 15;
+
+        // Set up AWT JPEG decoder for ediM bitmap support (desktop only)
+        DirectorFile.setJpegDecoder(jpegData -> {
+            try {
+                BufferedImage img = ImageIO.read(new ByteArrayInputStream(jpegData));
+                if (img == null) return null;
+                Bitmap bmp = new Bitmap(img.getWidth(), img.getHeight(), 32);
+                for (int y = 0; y < img.getHeight(); y++) {
+                    for (int x = 0; x < img.getWidth(); x++) {
+                        bmp.setPixel(x, y, img.getRGB(x, y));
+                    }
+                }
+                return bmp;
+            } catch (Exception e) {
+                return null;
+            }
+        });
 
         // Set base path for network requests from the file location
         if (file != null && file.getBasePath() != null && !file.getBasePath().isEmpty()) {
@@ -102,6 +125,36 @@ public class Player {
                 preloadProgressListener.run();
             }
         });
+
+        // Wire up event notifications
+        frameContext.setEventListener(event -> {
+            if (eventListener != null) {
+                eventListener.accept(new PlayerEventInfo(event.event(), event.frame(), 0));
+            }
+            // Notify stage renderer of frame changes
+            if (event.event() == PlayerEvent.ENTER_FRAME) {
+                stageRenderer.onFrameEnter(event.frame());
+            }
+        });
+    }
+
+    /**
+     * Constructor for environments that provide their own NetProvider (e.g. TeaVM/browser).
+     * Skips creating the JVM NetManager to avoid pulling in java.util.concurrent classes.
+     */
+    public Player(DirectorFile file, NetBuiltins.NetProvider netProvider) {
+        this.file = file;
+        this.vm = new LingoVM(file);
+        this.frameContext = new FrameContext(file, vm);
+        this.stageRenderer = new StageRenderer(file);
+        this.netManager = null;
+        this.overrideNetProvider = netProvider;
+        this.xtraManager = new XtraManager();
+        this.movieProperties = new MovieProperties(this, file);
+        this.spriteProperties = new SpriteProperties(stageRenderer.getSpriteRegistry());
+        this.castLibManager = new CastLibManager(file);
+        this.tempo = file != null ? file.getTempo() : 15;
+        if (this.tempo <= 0) this.tempo = 15;
 
         // Wire up event notifications
         frameContext.setEventListener(event -> {
@@ -168,6 +221,8 @@ public class Player {
      * @return The number of casts that were queued for loading
      */
     public int preloadAllCasts() {
+        NetBuiltins.NetProvider provider = overrideNetProvider != null ? overrideNetProvider : netManager;
+        if (provider == null) return 0;
         int count = 0;
         for (var entry : castLibManager.getCastLibs().entrySet()) {
             var castLib = entry.getValue();
@@ -175,7 +230,7 @@ public class Player {
                 String fileName = castLib.getFileName();
                 if (fileName != null && !fileName.isEmpty()) {
                     castLib.markFetching();
-                    netManager.preloadNetThing(fileName);
+                    provider.preloadNetThing(fileName);
                     count++;
                     System.out.println("[Player] Preloading external cast: " + fileName);
                 }
@@ -291,11 +346,23 @@ public class Player {
      */
     private ExecutorService getVmExecutor() {
         if (vmExecutor == null) {
-            vmExecutor = Executors.newSingleThreadExecutor(r -> {
+            ExecutorService exec = Executors.newSingleThreadExecutor(r -> {
                 Thread t = new Thread(r, "LingoVM-Executor");
                 t.setDaemon(true);
                 return t;
             });
+            vmExecutor = exec;
+            vmExecutorShutdown = () -> {
+                exec.shutdown();
+                try {
+                    if (!exec.awaitTermination(2, TimeUnit.SECONDS)) {
+                        exec.shutdownNow();
+                    }
+                } catch (InterruptedException e) {
+                    exec.shutdownNow();
+                    Thread.currentThread().interrupt();
+                }
+            };
         }
         return vmExecutor;
     }
@@ -656,7 +723,9 @@ public class Player {
      */
     public void shutdown() {
         stop();
-        netManager.shutdown();
+        if (netManager != null) {
+            netManager.shutdown();
+        }
 
         // Reset debug controller (releases any blocked threads)
         if (debugController != null) {
@@ -664,16 +733,8 @@ public class Player {
         }
 
         // Shutdown VM executor (only if it was created)
-        if (vmExecutor != null) {
-            vmExecutor.shutdown();
-            try {
-                if (!vmExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
-                    vmExecutor.shutdownNow();
-                }
-            } catch (InterruptedException e) {
-                vmExecutor.shutdownNow();
-                Thread.currentThread().interrupt();
-            }
+        if (vmExecutorShutdown != null) {
+            vmExecutorShutdown.run();
         }
     }
 

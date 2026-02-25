@@ -1,29 +1,33 @@
 package com.libreshockwave.player.wasm.net;
 
+import com.libreshockwave.player.wasm.WasmPlayerApp;
 import com.libreshockwave.vm.builtin.NetBuiltins;
-
-import org.teavm.jso.JSBody;
-import org.teavm.jso.JSFunctor;
-import org.teavm.jso.JSObject;
-import org.teavm.jso.typedarrays.Int8Array;
+import org.teavm.interop.Import;
 
 import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Browser fetch()-based implementation of NetProvider.
- * Uses @JSBody + @JSFunctor callbacks to call the Fetch API from Java via TeaVM.
- * Results arrive asynchronously via functor callbacks passed to JavaScript.
+ * Network provider for standard WASM target.
+ * Uses @Import to call JavaScript fetch operations through the WASM import mechanism.
+ * URLs are passed via a shared string buffer; results arrive via exported callback methods.
  */
-public class FetchNetManager implements NetBuiltins.NetProvider {
+public class WasmNetManager implements NetBuiltins.NetProvider {
+
+    private static WasmNetManager instance;
 
     private final String basePath;
     private final Map<Integer, NetTask> tasks = new HashMap<>();
     private int nextTaskId = 1;
     private int lastTaskId = 0;
 
-    public FetchNetManager(String basePath) {
+    public WasmNetManager(String basePath) {
         this.basePath = basePath;
+        instance = this;
+    }
+
+    public static WasmNetManager getInstance() {
+        return instance;
     }
 
     @Override
@@ -35,25 +39,13 @@ public class FetchNetManager implements NetBuiltins.NetProvider {
         NetTask task = new NetTask(taskId, resolvedUrl);
         tasks.put(taskId, task);
 
-        System.out.println("[FetchNetManager] Fetching: " + resolvedUrl + " (task " + taskId + ")");
+        System.out.println("[WasmNetManager] Fetching: " + resolvedUrl + " (task " + taskId + ")");
 
-        FetchSuccessCallback onSuccess = (Int8Array data) -> {
-            byte[] bytes = new byte[data.getLength()];
-            for (int i = 0; i < bytes.length; i++) {
-                bytes[i] = data.get(i);
-            }
-            task.data = bytes;
-            task.done = true;
-            System.out.println("[FetchNetManager] Complete: task " + taskId + " (" + bytes.length + " bytes)");
-        };
+        // Write URL to shared string buffer for JS to read
+        WasmPlayerApp.writeStringToBuffer(resolvedUrl);
+        byte[] urlBytes = resolvedUrl.getBytes();
+        jsFetchGet(taskId, urlBytes.length);
 
-        FetchErrorCallback onError = (int status) -> {
-            task.errorCode = status != 0 ? status : -1;
-            task.done = true;
-            System.err.println("[FetchNetManager] Error: task " + taskId + " (HTTP " + status + ")");
-        };
-
-        jsFetchGet(resolvedUrl, onSuccess, onError);
         return taskId;
     }
 
@@ -66,22 +58,47 @@ public class FetchNetManager implements NetBuiltins.NetProvider {
         NetTask task = new NetTask(taskId, resolvedUrl);
         tasks.put(taskId, task);
 
-        FetchSuccessCallback onSuccess = (Int8Array data) -> {
-            byte[] bytes = new byte[data.getLength()];
-            for (int i = 0; i < bytes.length; i++) {
-                bytes[i] = data.get(i);
-            }
-            task.data = bytes;
-            task.done = true;
-        };
+        String post = postData != null ? postData : "";
+        byte[] urlBytes = resolvedUrl.getBytes();
+        byte[] postBytes = post.getBytes();
 
-        FetchErrorCallback onError = (int status) -> {
+        // Write URL then post data to shared string buffer
+        byte[] stringBuf = WasmPlayerApp.stringBuffer;
+        int urlLen = Math.min(urlBytes.length, stringBuf.length);
+        System.arraycopy(urlBytes, 0, stringBuf, 0, urlLen);
+        int postOffset = urlLen;
+        int postLen = Math.min(postBytes.length, stringBuf.length - postOffset);
+        if (postLen > 0) {
+            System.arraycopy(postBytes, 0, stringBuf, postOffset, postLen);
+        }
+
+        jsFetchPost(taskId, urlBytes.length, postBytes.length);
+
+        return taskId;
+    }
+
+    /**
+     * Called from WasmPlayerApp.onFetchComplete export when JS delivers fetch results.
+     */
+    public void onFetchComplete(int taskId, byte[] data) {
+        NetTask task = tasks.get(taskId);
+        if (task != null) {
+            task.data = data;
+            task.done = true;
+            System.out.println("[WasmNetManager] Complete: task " + taskId + " (" + data.length + " bytes)");
+        }
+    }
+
+    /**
+     * Called from WasmPlayerApp.onFetchError export when JS reports a fetch error.
+     */
+    public void onFetchError(int taskId, int status) {
+        NetTask task = tasks.get(taskId);
+        if (task != null) {
             task.errorCode = status != 0 ? status : -1;
             task.done = true;
-        };
-
-        jsFetchPost(resolvedUrl, postData != null ? postData : "", onSuccess, onError);
-        return taskId;
+            System.err.println("[WasmNetManager] Error: task " + taskId + " (HTTP " + status + ")");
+        }
     }
 
     @Override
@@ -151,46 +168,13 @@ public class FetchNetManager implements NetBuiltins.NetProvider {
         return fileName;
     }
 
-    // === JS interop via @JSFunctor callbacks ===
+    // === WASM imports - provided by JavaScript via installImports ===
 
-    @JSFunctor
-    public interface FetchSuccessCallback extends JSObject {
-        void onSuccess(Int8Array data);
-    }
+    @Import(name = "fetchGet", module = "libreshockwave")
+    private static native void jsFetchGet(int taskId, int urlLength);
 
-    @JSFunctor
-    public interface FetchErrorCallback extends JSObject {
-        void onError(int status);
-    }
-
-    @JSBody(params = {"url", "onSuccess", "onError"}, script =
-        "fetch(url)" +
-        "  .then(function(r) {" +
-        "    if (!r.ok) throw r.status;" +
-        "    return r.arrayBuffer();" +
-        "  })" +
-        "  .then(function(buf) {" +
-        "    onSuccess(new Int8Array(buf));" +
-        "  })" +
-        "  .catch(function(e) {" +
-        "    onError(typeof e === 'number' ? e : 0);" +
-        "  });")
-    private static native void jsFetchGet(String url, FetchSuccessCallback onSuccess, FetchErrorCallback onError);
-
-    @JSBody(params = {"url", "postData", "onSuccess", "onError"}, script =
-        "fetch(url, {method:'POST', body:postData," +
-        "  headers:{'Content-Type':'application/x-www-form-urlencoded'}})" +
-        "  .then(function(r) {" +
-        "    if (!r.ok) throw r.status;" +
-        "    return r.arrayBuffer();" +
-        "  })" +
-        "  .then(function(buf) {" +
-        "    onSuccess(new Int8Array(buf));" +
-        "  })" +
-        "  .catch(function(e) {" +
-        "    onError(typeof e === 'number' ? e : 0);" +
-        "  });")
-    private static native void jsFetchPost(String url, String postData, FetchSuccessCallback onSuccess, FetchErrorCallback onError);
+    @Import(name = "fetchPost", module = "libreshockwave")
+    private static native void jsFetchPost(int taskId, int urlLength, int postDataLength);
 
     // Simple task data holder
     static class NetTask {
