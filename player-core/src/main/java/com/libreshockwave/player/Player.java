@@ -18,7 +18,7 @@ import com.libreshockwave.vm.builtin.NetBuiltins;
 import com.libreshockwave.vm.builtin.SpritePropertyProvider;
 import com.libreshockwave.vm.builtin.XtraBuiltins;
 import com.libreshockwave.vm.xtra.XtraManager;
-import com.libreshockwave.player.debug.DebugController;
+import com.libreshockwave.player.debug.DebugControllerApi;
 
 import com.libreshockwave.bitmap.Bitmap;
 
@@ -64,7 +64,7 @@ public class Player {
     private boolean debugEnabled = false;
 
     // Debug controller for bytecode debugging
-    private DebugController debugController;
+    private DebugControllerApi debugController;
 
     // Executor for running VM on background thread (required for debugger blocking)
     // Lazy-initialized to avoid creating threads in environments that don't support them (e.g. TeaVM)
@@ -319,7 +319,7 @@ public class Player {
      * Set the debug controller for bytecode-level debugging.
      * The controller will receive TraceListener callbacks and can pause/step the VM.
      */
-    public void setDebugController(DebugController controller) {
+    public void setDebugController(DebugControllerApi controller) {
         this.debugController = controller;
         if (controller != null) {
             vm.setTraceListener(controller);
@@ -329,7 +329,7 @@ public class Player {
     /**
      * Get the debug controller.
      */
-    public DebugController getDebugController() {
+    public DebugControllerApi getDebugController() {
         return debugController;
     }
 

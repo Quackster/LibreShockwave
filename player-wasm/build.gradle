@@ -31,7 +31,10 @@ teavm {
 
     all {
         // Preserve exported entry point class
-        preservedClasses = ['com.libreshockwave.player.wasm.WasmPlayerApp']
+        preservedClasses = [
+            'com.libreshockwave.player.wasm.WasmPlayerApp',
+            'com.libreshockwave.player.wasm.debug.WasmDebugController'
+        ]
     }
 }
 

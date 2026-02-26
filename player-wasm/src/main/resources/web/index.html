@@ -3,13 +3,62 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin">
+    <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp">
     <title>LibreShockwave Web Player</title>
     <link rel="stylesheet" href="libreshockwave.css">
 </head>
 <body>
-    <div class="container">
-        <h1>LibreShockwave</h1>
+    <!-- Loading overlay -->
+    <div id="loading-overlay" class="loading-overlay" style="display:none;">
+        <div class="loading-title">LibreShockwave</div>
+        <div class="loading-bar-container">
+            <div class="loading-bar" id="loading-bar"></div>
+        </div>
+        <div class="loading-text" id="loading-text">Loading...</div>
+    </div>
 
+    <!-- Menu bar -->
+    <div class="menu-bar">
+        <div class="menu-item" id="menu-file">
+            File
+            <div class="menu-dropdown" id="dropdown-file">
+                <div class="menu-entry" id="menu-open-file">Open File<span class="shortcut">Ctrl+O</span></div>
+                <div class="menu-entry" id="menu-open-url">Open URL<span class="shortcut">Ctrl+U</span></div>
+                <div class="menu-entry" id="menu-reopen">Reopen Last<span class="shortcut">Ctrl+Shift+O</span></div>
+                <div class="menu-separator"></div>
+                <div class="menu-entry" id="menu-close">Close<span class="shortcut">Ctrl+W</span></div>
+                <div class="menu-entry" id="menu-restart">Restart<span class="shortcut">Ctrl+R</span></div>
+            </div>
+        </div>
+        <div class="menu-item" id="menu-playback">
+            Playback
+            <div class="menu-dropdown" id="dropdown-playback">
+                <div class="menu-entry" id="menu-play-pause">Play / Pause<span class="shortcut">Space</span></div>
+                <div class="menu-entry" id="menu-stop">Stop<span class="shortcut">Esc</span></div>
+                <div class="menu-separator"></div>
+                <div class="menu-entry" id="menu-step-fwd">Step Forward<span class="shortcut">Right</span></div>
+                <div class="menu-entry" id="menu-step-back">Step Backward<span class="shortcut">Left</span></div>
+                <div class="menu-separator"></div>
+                <div class="menu-entry" id="menu-goto-frame">Go to Frame...</div>
+            </div>
+        </div>
+        <div class="menu-item" id="menu-view">
+            View
+            <div class="menu-dropdown" id="dropdown-view">
+                <div class="menu-entry" id="menu-toggle-debug">Toggle Debug Panel<span class="shortcut">Ctrl+D</span></div>
+            </div>
+        </div>
+        <div class="menu-item" id="menu-help">
+            Help
+            <div class="menu-dropdown" id="dropdown-help">
+                <div class="menu-entry" id="menu-about">About</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- File controls -->
         <div class="controls">
             <div class="file-controls">
                 <label class="file-label">
@@ -20,47 +69,180 @@
                 <input type="text" id="url-input" placeholder="Enter URL to .dcr/.dir file">
                 <button id="load-url-btn">Load URL</button>
             </div>
+        </div>
 
-            <div class="playback-controls">
-                <button id="play-btn" disabled>Play</button>
-                <button id="pause-btn" disabled>Pause</button>
-                <button id="stop-btn" disabled>Stop</button>
-                <span id="frame-info" class="frame-info"></span>
+        <!-- Main content area: stage + debug panel -->
+        <div id="main-content" class="main-content">
+            <div class="stage-area">
+                <div class="stage-wrapper">
+                    <canvas id="shockwave-stage" width="640" height="480"></canvas>
+                </div>
+            </div>
+
+            <!-- Debug panel (hidden by default) -->
+            <div id="debug-panel" class="debug-panel" style="display:none;">
+                <div class="debug-toolbar">
+                    <button id="debug-step-into" disabled title="Step Into (F11)">Step Into</button>
+                    <button id="debug-step-over" disabled title="Step Over (F10)">Step Over</button>
+                    <button id="debug-step-out" disabled title="Step Out (Shift+F11)">Step Out</button>
+                    <button id="debug-continue" disabled title="Continue (F5)">Continue</button>
+                    <button id="debug-clear-bp" title="Clear All Breakpoints">Clear BPs</button>
+                </div>
+                <div id="debug-status" class="debug-status">Status: Not debugging</div>
+
+                <!-- Script browser -->
+                <div class="script-browser">
+                    <input type="text" id="script-filter" class="script-filter" placeholder="Filter scripts...">
+                    <select id="script-select" class="script-select">
+                        <option value="">-- Select Script --</option>
+                    </select>
+                    <select id="handler-select" class="handler-select">
+                        <option value="">-- Select Handler --</option>
+                    </select>
+                    <button id="handler-info-btn" class="info-btn" title="Handler Details">Info</button>
+                </div>
+
+                <!-- Bytecode panel -->
+                <div id="bytecode-list" class="bytecode-list"></div>
+
+                <!-- State tabs -->
+                <div class="state-tabs">
+                    <div class="tab-bar">
+                        <button class="tab-btn active" data-tab="stack">Stack</button>
+                        <button class="tab-btn" data-tab="locals">Locals</button>
+                        <button class="tab-btn" data-tab="globals">Globals</button>
+                        <button class="tab-btn" data-tab="watches">Watches</button>
+                        <button class="tab-btn" data-tab="callstack">Call Stack</button>
+                    </div>
+
+                    <div id="tab-stack" class="tab-content" style="display:block;">
+                        <table class="debug-table">
+                            <thead><tr><th>#</th><th>Type</th><th>Value</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+
+                    <div id="tab-locals" class="tab-content" style="display:none;">
+                        <table class="debug-table">
+                            <thead><tr><th>Name</th><th>Type</th><th>Value</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+
+                    <div id="tab-globals" class="tab-content" style="display:none;">
+                        <table class="debug-table">
+                            <thead><tr><th>Name</th><th>Type</th><th>Value</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+
+                    <div id="tab-watches" class="tab-content" style="display:none;">
+                        <div class="watch-controls">
+                            <button id="watch-add-btn">Add Watch</button>
+                            <button id="watch-clear-btn">Clear All</button>
+                        </div>
+                        <table class="debug-table">
+                            <thead><tr><th>Expression</th><th>Type</th><th>Value</th><th></th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+
+                    <div id="tab-callstack" class="tab-content" style="display:none;">
+                        <pre id="tab-callstack-content" class="callstack-content">(empty)</pre>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <div class="stage-wrapper">
-            <canvas id="shockwave-stage" width="640" height="480"></canvas>
+        <!-- Transport controls -->
+        <div class="transport-controls">
+            <button id="step-back-btn" disabled title="Step Backward (Left)">|&lt;</button>
+            <button id="play-btn" disabled title="Play (Space)">&#9654;</button>
+            <button id="pause-btn" disabled title="Pause (Space)">&#9646;&#9646;</button>
+            <button id="stop-btn" disabled title="Stop (Esc)">&#9632;</button>
+            <button id="step-fwd-btn" disabled title="Step Forward (Right)">&gt;|</button>
+            <input type="range" id="frame-slider" min="1" max="1" value="1" disabled>
+            <span id="frame-info" class="frame-info"></span>
         </div>
 
         <div id="status" class="status">Waiting for a movie file...</div>
     </div>
 
+    <!-- Handler details modal -->
+    <div id="details-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span>Handler Details</span>
+                <button class="modal-close" id="details-modal-close">&times;</button>
+            </div>
+            <div id="details-modal-content" class="modal-body"></div>
+        </div>
+    </div>
+
+    <!-- About modal -->
+    <div id="about-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span>About LibreShockwave</span>
+                <button class="modal-close" id="about-modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>LibreShockwave Web Player</p>
+                <p>An open-source Macromedia/Adobe Director movie player.</p>
+            </div>
+        </div>
+    </div>
+
+    <input type="file" id="hidden-file-picker" accept=".dcr,.dir,.dxr,.cct,.cst" style="display:none;">
+
     <!-- TeaVM standard WASM runtime + player bridge -->
     <script src="player-wasm.wasm-runtime.js"></script>
     <script src="player-bridge.js"></script>
     <script>
+        var player = null;
+        var debugPanel = null;
+        var isPlaying = false;
+        var movieSource = null; // {type: 'file'|'url', name, basePath}
+
         async function initPlayer() {
             var status = document.getElementById('status');
             var filePicker = document.getElementById('file-picker');
+            var hiddenFilePicker = document.getElementById('hidden-file-picker');
             var urlInput = document.getElementById('url-input');
             var loadUrlBtn = document.getElementById('load-url-btn');
             var playBtn = document.getElementById('play-btn');
             var pauseBtn = document.getElementById('pause-btn');
             var stopBtn = document.getElementById('stop-btn');
+            var stepFwdBtn = document.getElementById('step-fwd-btn');
+            var stepBackBtn = document.getElementById('step-back-btn');
+            var frameSlider = document.getElementById('frame-slider');
             var frameInfo = document.getElementById('frame-info');
             var canvas = document.getElementById('shockwave-stage');
 
             try {
-                var player = new LibreShockwavePlayer();
+                player = new LibreShockwavePlayer();
                 player.setCanvas(canvas);
+
+                // Set up debug panel
+                debugPanel = new DebugPanelManager(player);
+                player.debugPanel = debugPanel;
+
                 await player.init();
                 status.textContent = 'Ready. Load a movie file to begin.';
+
+                // Initialize debug panel listeners
+                debugPanel.init();
+
+                // Enable debug by default
+                player.enableDebug();
 
                 function enableControls() {
                     playBtn.disabled = false;
                     pauseBtn.disabled = false;
                     stopBtn.disabled = false;
+                    stepFwdBtn.disabled = false;
+                    stepBackBtn.disabled = false;
+                    frameSlider.disabled = false;
                 }
 
                 function updateFrameInfo() {
@@ -68,34 +250,71 @@
                     var total = player.getFrameCount();
                     if (total > 0) {
                         frameInfo.textContent = 'Frame ' + current + ' / ' + total;
+                        frameSlider.max = total;
+                        frameSlider.value = current;
                     }
                 }
 
-                // File picker handler
-                filePicker.addEventListener('change', function(e) {
-                    var file = e.target.files[0];
-                    if (!file) return;
+                // Callbacks
+                player._onMovieLoaded = function(msg) {
+                    status.textContent = 'Loaded: ' + (movieSource ? movieSource.name : '') +
+                        ' (' + msg.width + 'x' + msg.height + ', ' + msg.frameCount + ' frames)';
+                    enableControls();
+                    frameSlider.max = msg.frameCount;
+                    player._lastTempo = msg.tempo;
+                    player._lastFrameCount = msg.frameCount;
 
+                    // Save to localStorage for reopen
+                    if (movieSource) {
+                        try {
+                            localStorage.setItem('ls_lastMovie', JSON.stringify({
+                                source: movieSource,
+                                timestamp: Date.now()
+                            }));
+                        } catch (e) {}
+                    }
+
+                    // Dismiss loading screen
+                    dismissLoading();
+                };
+
+                player._onFrameUpdate = function(frame, total) {
+                    frameInfo.textContent = 'Frame ' + frame + ' / ' + total;
+                    frameSlider.max = total;
+                    frameSlider.value = frame;
+                };
+
+                player._onDebugPaused = function(snapshot) {
+                    isPlaying = false;
+                    status.textContent = 'Debug: paused at ' +
+                        (snapshot ? snapshot.handlerName + ' [' + snapshot.instructionOffset + ']' : 'unknown');
+                    updateFrameInfo();
+                };
+
+                player._onError = function(msg) {
+                    status.textContent = 'Error: ' + msg;
+                    dismissLoading();
+                };
+
+                // Loading screen support
+                player._onPreloadStarted = function(count) {
+                    if (count > 0) showLoading(count);
+                };
+
+                // === File loading ===
+
+                function loadFromFile(file) {
+                    movieSource = { type: 'file', name: file.name, basePath: file.name };
                     status.textContent = 'Loading ' + file.name + '...';
                     var reader = new FileReader();
                     reader.onload = function() {
-                        var bytes = new Uint8Array(reader.result);
-                        if (player.loadMovie(bytes, file.name)) {
-                            status.textContent = 'Loaded: ' + file.name;
-                            enableControls();
-                            updateFrameInfo();
-                        } else {
-                            status.textContent = 'Error: failed to parse ' + file.name;
-                        }
+                        player.loadMovie(new Uint8Array(reader.result), file.name);
                     };
                     reader.readAsArrayBuffer(file);
-                });
+                }
 
-                // URL loader handler
-                loadUrlBtn.addEventListener('click', function() {
-                    var url = urlInput.value.trim();
-                    if (!url) return;
-
+                function loadFromUrl(url) {
+                    movieSource = { type: 'url', name: url, basePath: url };
                     status.textContent = 'Fetching ' + url + '...';
                     fetch(url)
                         .then(function(r) {
@@ -103,45 +322,273 @@
                             return r.arrayBuffer();
                         })
                         .then(function(buf) {
-                            var bytes = new Uint8Array(buf);
-                            if (player.loadMovie(bytes, url)) {
-                                status.textContent = 'Loaded from URL';
-                                enableControls();
-                                updateFrameInfo();
-                            } else {
-                                status.textContent = 'Error: failed to parse movie from URL';
-                            }
+                            player.loadMovie(new Uint8Array(buf), url);
                         })
                         .catch(function(err) {
                             status.textContent = 'Error: ' + err.message;
                         });
+                }
+
+                filePicker.addEventListener('change', function(e) {
+                    if (e.target.files[0]) loadFromFile(e.target.files[0]);
                 });
 
-                // Playback controls
-                playBtn.addEventListener('click', function() {
+                hiddenFilePicker.addEventListener('change', function(e) {
+                    if (e.target.files[0]) loadFromFile(e.target.files[0]);
+                });
+
+                loadUrlBtn.addEventListener('click', function() {
+                    var url = urlInput.value.trim();
+                    if (url) loadFromUrl(url);
+                });
+
+                urlInput.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter') {
+                        var url = urlInput.value.trim();
+                        if (url) loadFromUrl(url);
+                    }
+                });
+
+                // === Playback controls ===
+
+                playBtn.addEventListener('click', function() { doPlay(); });
+                pauseBtn.addEventListener('click', function() { doPause(); });
+                stopBtn.addEventListener('click', function() { doStop(); });
+                stepFwdBtn.addEventListener('click', function() { doStepForward(); });
+                stepBackBtn.addEventListener('click', function() { doStepBackward(); });
+
+                frameSlider.addEventListener('input', function() {
+                    player.goToFrame(parseInt(this.value));
+                });
+
+                function doPlay() {
                     player.play();
+                    isPlaying = true;
                     status.textContent = 'Playing';
-                });
+                }
 
-                pauseBtn.addEventListener('click', function() {
+                function doPause() {
                     player.pause();
+                    isPlaying = false;
                     status.textContent = 'Paused';
                     updateFrameInfo();
-                });
+                }
 
-                stopBtn.addEventListener('click', function() {
+                function doStop() {
                     player.stop();
+                    isPlaying = false;
                     status.textContent = 'Stopped';
                     updateFrameInfo();
+                }
+
+                function doStepForward() {
+                    player.stepForward();
+                }
+
+                function doStepBackward() {
+                    player.stepBackward();
+                }
+
+                function togglePlayPause() {
+                    if (isPlaying) doPause(); else doPlay();
+                }
+
+                // === Menu handlers ===
+
+                document.getElementById('menu-open-file').addEventListener('click', function() {
+                    hiddenFilePicker.click();
+                    closeMenus();
+                });
+                document.getElementById('menu-open-url').addEventListener('click', function() {
+                    urlInput.focus();
+                    closeMenus();
+                });
+                document.getElementById('menu-reopen').addEventListener('click', function() {
+                    closeMenus();
+                    reopenLast();
+                });
+                document.getElementById('menu-close').addEventListener('click', function() {
+                    closeMenus();
+                    doStop();
+                });
+                document.getElementById('menu-restart').addEventListener('click', function() {
+                    closeMenus();
+                    doStop();
+                    setTimeout(doPlay, 100);
+                });
+                document.getElementById('menu-play-pause').addEventListener('click', function() {
+                    closeMenus();
+                    togglePlayPause();
+                });
+                document.getElementById('menu-stop').addEventListener('click', function() {
+                    closeMenus();
+                    doStop();
+                });
+                document.getElementById('menu-step-fwd').addEventListener('click', function() {
+                    closeMenus();
+                    doStepForward();
+                });
+                document.getElementById('menu-step-back').addEventListener('click', function() {
+                    closeMenus();
+                    doStepBackward();
+                });
+                document.getElementById('menu-goto-frame').addEventListener('click', function() {
+                    closeMenus();
+                    var f = prompt('Go to frame:');
+                    if (f) player.goToFrame(parseInt(f));
+                });
+                document.getElementById('menu-toggle-debug').addEventListener('click', function() {
+                    closeMenus();
+                    debugPanel.toggle();
+                });
+                document.getElementById('menu-about').addEventListener('click', function() {
+                    closeMenus();
+                    document.getElementById('about-modal').style.display = 'flex';
                 });
 
-                // Periodic frame info update during playback
-                setInterval(updateFrameInfo, 250);
+                // Menu open/close
+                var menuItems = document.querySelectorAll('.menu-item');
+                for (var i = 0; i < menuItems.length; i++) {
+                    menuItems[i].addEventListener('click', function(e) {
+                        var dropdown = this.querySelector('.menu-dropdown');
+                        var wasVisible = dropdown.classList.contains('visible');
+                        closeMenus();
+                        if (!wasVisible) dropdown.classList.add('visible');
+                        e.stopPropagation();
+                    });
+                }
+                document.addEventListener('click', function() { closeMenus(); });
+
+                function closeMenus() {
+                    var dropdowns = document.querySelectorAll('.menu-dropdown');
+                    for (var i = 0; i < dropdowns.length; i++) {
+                        dropdowns[i].classList.remove('visible');
+                    }
+                }
+
+                // Modal close buttons
+                document.getElementById('details-modal-close').addEventListener('click', function() {
+                    document.getElementById('details-modal').style.display = 'none';
+                });
+                document.getElementById('about-modal-close').addEventListener('click', function() {
+                    document.getElementById('about-modal').style.display = 'none';
+                });
+
+                // Close modals on overlay click
+                document.querySelectorAll('.modal-overlay').forEach(function(overlay) {
+                    overlay.addEventListener('click', function(e) {
+                        if (e.target === this) this.style.display = 'none';
+                    });
+                });
+
+                // === Keyboard shortcuts ===
+
+                document.addEventListener('keydown', function(e) {
+                    // Don't intercept when typing in input fields
+                    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+
+                    if (e.key === ' ') {
+                        e.preventDefault();
+                        togglePlayPause();
+                    } else if (e.key === 'Escape') {
+                        doStop();
+                    } else if (e.key === 'ArrowRight' && !e.ctrlKey) {
+                        e.preventDefault();
+                        doStepForward();
+                    } else if (e.key === 'ArrowLeft' && !e.ctrlKey) {
+                        e.preventDefault();
+                        doStepBackward();
+                    } else if (e.key === 'Home') {
+                        e.preventDefault();
+                        player.goToFrame(1);
+                    } else if (e.key === 'End') {
+                        e.preventDefault();
+                        player.goToFrame(player.getFrameCount());
+                    } else if (e.key === 'o' && e.ctrlKey && !e.shiftKey) {
+                        e.preventDefault();
+                        hiddenFilePicker.click();
+                    } else if (e.key === 'O' && e.ctrlKey && e.shiftKey) {
+                        e.preventDefault();
+                        reopenLast();
+                    } else if (e.key === 'u' && e.ctrlKey) {
+                        e.preventDefault();
+                        urlInput.focus();
+                    } else if (e.key === 'd' && e.ctrlKey) {
+                        e.preventDefault();
+                        debugPanel.toggle();
+                    } else if (e.key === 'w' && e.ctrlKey) {
+                        e.preventDefault();
+                        doStop();
+                    } else if (e.key === 'r' && e.ctrlKey) {
+                        e.preventDefault();
+                        doStop();
+                        setTimeout(doPlay, 100);
+                    } else if (e.key === 'F5') {
+                        e.preventDefault();
+                        player.debugContinue();
+                    } else if (e.key === 'F10') {
+                        e.preventDefault();
+                        player.debugStepOver();
+                    } else if (e.key === 'F11' && !e.shiftKey) {
+                        e.preventDefault();
+                        player.debugStepInto();
+                    } else if (e.key === 'F11' && e.shiftKey) {
+                        e.preventDefault();
+                        player.debugStepOut();
+                    }
+                });
+
+                // === Session recovery ===
+
+                function reopenLast() {
+                    try {
+                        var last = JSON.parse(localStorage.getItem('ls_lastMovie'));
+                        if (last && last.source) {
+                            if (last.source.type === 'url') {
+                                loadFromUrl(last.source.name);
+                            } else {
+                                status.textContent = 'Cannot reopen local file (use file picker)';
+                            }
+                        } else {
+                            status.textContent = 'No previous movie to reopen';
+                        }
+                    } catch (e) {
+                        status.textContent = 'No previous movie to reopen';
+                    }
+                }
+
+                // Periodic frame info update (for when worker sends data)
+                setInterval(updateFrameInfo, 500);
 
             } catch (e) {
-                status.textContent = 'Failed to initialize WASM: ' + e.message;
-                console.error('TeaVM init error:', e);
+                status.textContent = 'Failed to initialize: ' + e.message;
+                console.error('Init error:', e);
             }
+        }
+
+        // === Loading screen ===
+
+        var loadingTotal = 0;
+        var loadingCount = 0;
+
+        function showLoading(total) {
+            loadingTotal = total;
+            loadingCount = 0;
+            document.getElementById('loading-overlay').style.display = 'flex';
+            document.getElementById('loading-bar').style.width = '0%';
+            document.getElementById('loading-text').textContent = 'Loading... 0/' + total;
+        }
+
+        function updateLoadingProgress() {
+            loadingCount++;
+            var pct = Math.min(100, (loadingCount / loadingTotal) * 100);
+            document.getElementById('loading-bar').style.width = pct + '%';
+            document.getElementById('loading-text').textContent =
+                (loadingCount >= loadingTotal ? 'Complete' : 'Loading...') + ' ' + loadingCount + '/' + loadingTotal;
+        }
+
+        function dismissLoading() {
+            document.getElementById('loading-overlay').style.display = 'none';
         }
 
         initPlayer();

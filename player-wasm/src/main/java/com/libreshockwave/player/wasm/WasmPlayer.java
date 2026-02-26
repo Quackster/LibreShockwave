@@ -1,10 +1,17 @@
 package com.libreshockwave.player.wasm;
 
 import com.libreshockwave.DirectorFile;
+import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.player.Player;
 import com.libreshockwave.player.PlayerState;
+import com.libreshockwave.player.cast.CastLibManager;
+import com.libreshockwave.player.debug.DebugControllerApi;
+import com.libreshockwave.player.wasm.debug.WasmDebugController;
 import com.libreshockwave.player.wasm.net.WasmNetManager;
 import com.libreshockwave.player.wasm.render.SoftwareRenderer;
+import com.libreshockwave.player.wasm.render.SpriteDataExporter;
+
+import java.util.List;
 
 /**
  * Thin wrapper around Player for WASM execution.
@@ -15,7 +22,9 @@ public class WasmPlayer {
 
     private Player player;
     private SoftwareRenderer renderer;
+    private SpriteDataExporter spriteExporter;
     private WasmNetManager netManager;
+    private WasmDebugController debugController;
 
     public WasmPlayer() {
     }
@@ -39,6 +48,7 @@ public class WasmPlayer {
         int stageWidth = player.getStageRenderer().getStageWidth();
         int stageHeight = player.getStageRenderer().getStageHeight();
         renderer = new SoftwareRenderer(player, stageWidth, stageHeight);
+        spriteExporter = new SpriteDataExporter(player);
 
         System.out.println("[WasmPlayer] Movie loaded: " + stageWidth + "x" + stageHeight
                 + ", " + player.getFrameCount() + " frames, tempo=" + player.getTempo());
@@ -89,6 +99,16 @@ public class WasmPlayer {
         }
     }
 
+    /**
+     * Step forward one frame (manual advance for frame-level stepping).
+     */
+    public void stepFrame() {
+        if (player != null) {
+            player.stepFrame();
+            if (renderer != null) renderer.render();
+        }
+    }
+
     public int getCurrentFrame() {
         return player != null ? player.getCurrentFrame() : 0;
     }
@@ -107,6 +127,51 @@ public class WasmPlayer {
 
     public int getStageHeight() {
         return player != null ? player.getStageRenderer().getStageHeight() : 480;
+    }
+
+    // === Debug support ===
+
+    /**
+     * Enable debug mode and create a WasmDebugController.
+     */
+    public void enableDebug() {
+        if (player == null) return;
+        debugController = new WasmDebugController();
+        player.setDebugController(debugController);
+        player.setDebugEnabled(true);
+    }
+
+    public WasmDebugController getDebugController() {
+        return debugController;
+    }
+
+    public Player getPlayer() {
+        return player;
+    }
+
+    public DirectorFile getFile() {
+        return player != null ? player.getFile() : null;
+    }
+
+    public List<ScriptChunk> getAllScripts() {
+        return player != null && player.getFile() != null
+            ? player.getFile().getScripts() : List.of();
+    }
+
+    public CastLibManager getCastLibManager() {
+        return player != null ? player.getCastLibManager() : null;
+    }
+
+    public SpriteDataExporter getSpriteExporter() {
+        return spriteExporter;
+    }
+
+    /**
+     * Preload all external cast libraries.
+     * @return number of casts queued for loading
+     */
+    public int preloadAllCasts() {
+        return player != null ? player.preloadAllCasts() : 0;
     }
 
     public void shutdown() {

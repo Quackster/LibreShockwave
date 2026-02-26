@@ -19,7 +19,7 @@ import java.util.Deque;
  * - Breakpoint enable/disable
  * - Watch expressions
  */
-public class DebugController implements TraceListener {
+public class DebugController implements DebugControllerApi {
 
     /**
      * Current debug state.
