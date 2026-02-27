@@ -9,6 +9,7 @@
 class LibreShockwavePlayer {
     constructor() {
         this.worker = null;
+        this.workerUrl = 'worker.js';
         this.canvas = null;
         this.ctx = null;
         this.playing = false;
@@ -48,6 +49,10 @@ class LibreShockwavePlayer {
         this.ctx = canvas.getContext('2d');
     }
 
+    setWorkerUrl(url) {
+        this.workerUrl = url;
+    }
+
     /**
      * Initialize the WebWorker and WASM module.
      */
@@ -63,7 +68,7 @@ class LibreShockwavePlayer {
         }
 
         return new Promise(function(resolve, reject) {
-            self.worker = new Worker('worker.js');
+            self.worker = new Worker(self.workerUrl);
             self.worker.onmessage = function(e) {
                 self._onWorkerMessage(e.data);
             };

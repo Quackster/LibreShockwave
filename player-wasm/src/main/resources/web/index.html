@@ -276,6 +276,9 @@
 
                     // Dismiss loading screen
                     dismissLoading();
+
+                    // Refresh debug script list for the new movie
+                    player.getScriptList();
                 };
 
                 player._onFrameUpdate = function(frame, total) {

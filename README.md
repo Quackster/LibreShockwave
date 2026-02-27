@@ -290,13 +290,17 @@ The `player-wasm` module compiles the player for the browser using [TeaVM](https
 
 ### Running
 
-Serve the output directory with any HTTP server and open `index.html`:
+Serve the output directory using the included `serve.py` script, which sets the required `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy` headers for `SharedArrayBuffer` support:
 
 ```bash
 cd player-wasm/build/generated/teavm/wasm/
-python -m http.server 8080
+python serve.py
 # Open http://localhost:8080
 ```
+
+Two player pages are available:
+- `http://localhost:8080/` — Full player with debug panel (script browser, bytecode viewer, breakpoints, stack/variable inspection)
+- `http://localhost:8080/basic/` — Basic player with just the stage and transport controls
 
 The web player provides:
 - File picker for local `.dcr`/`.dir` files
@@ -304,6 +308,7 @@ The web player provides:
 - Play/Pause/Stop controls
 - HTML5 Canvas 2D rendering of bitmaps, shapes, and placeholders
 - Browser `fetch()` API for loading external cast libraries
+- Lingo debugger with breakpoints and instruction stepping (debug player)
 
 ### Module Structure
 
@@ -316,14 +321,15 @@ player-wasm/
     render/SoftwareRenderer.java        # RGBA pixel buffer renderer
     net/WasmNetManager.java             # @Import-based fetch NetProvider
   src/main/resources/web/
-    index.html                          # Host page
+    index.html                          # Debug player page
+    basic/index.html                    # Basic player page (no debug panel)
     player-bridge.js                    # JS bridge (Canvas, rAF, fetch, WASM I/O)
     libreshockwave.css                  # Styling
+    serve.py                            # Dev server with COOP/COEP headers
 ```
 
 ### Known Limitations
 
-- No debugger UI in browser
 - No mouse/keyboard event forwarding to Lingo VM (planned)
 - 32-bit JPEG-based bitmaps (ediM+ALFA) render as placeholders
 

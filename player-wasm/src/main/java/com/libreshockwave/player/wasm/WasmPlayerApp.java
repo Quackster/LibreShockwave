@@ -19,6 +19,7 @@ import java.util.List;
 public class WasmPlayerApp {
 
     private static WasmPlayer wasmPlayer;
+    private static boolean debugRequested = false;
 
     // Shared buffers for JS <-> WASM data transfer
     static byte[] movieBuffer;
@@ -69,6 +70,10 @@ public class WasmPlayerApp {
         wasmPlayer = new WasmPlayer();
         if (!wasmPlayer.loadMovie(data, basePath)) {
             return 0;
+        }
+
+        if (debugRequested) {
+            wasmPlayer.enableDebug();
         }
 
         int w = wasmPlayer.getStageWidth();
@@ -232,6 +237,7 @@ public class WasmPlayerApp {
 
     @Export(name = "enableDebug")
     public static void enableDebug() {
+        debugRequested = true;
         if (wasmPlayer != null) wasmPlayer.enableDebug();
     }
 
