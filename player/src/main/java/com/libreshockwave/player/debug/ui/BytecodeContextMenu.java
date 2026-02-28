@@ -26,6 +26,7 @@ public class BytecodeContextMenu extends JPopupMenu {
     private final DefaultListModel<InstructionDisplayItem> bytecodeModel;
     private DebugController controller;
     private int currentScriptId = -1;
+    private String currentHandlerName = null;
     private BytecodeListListener listener;
 
     // Navigation menu items (shown only for navigable calls)
@@ -46,8 +47,8 @@ public class BytecodeContextMenu extends JPopupMenu {
         JMenuItem toggleBpItem = new JMenuItem("Toggle Breakpoint");
         toggleBpItem.addActionListener(e -> {
             InstructionDisplayItem item = getSelectedItem();
-            if (item != null && controller != null && currentScriptId >= 0) {
-                controller.toggleBreakpoint(currentScriptId, item.getOffset());
+            if (item != null && controller != null && currentScriptId >= 0 && currentHandlerName != null) {
+                controller.toggleBreakpoint(currentScriptId, currentHandlerName, item.getOffset());
                 updateBreakpointDisplay(item);
             }
         });
@@ -56,10 +57,10 @@ public class BytecodeContextMenu extends JPopupMenu {
         JMenuItem enableDisableItem = new JMenuItem("Enable/Disable Breakpoint");
         enableDisableItem.addActionListener(e -> {
             InstructionDisplayItem item = getSelectedItem();
-            if (item != null && controller != null && currentScriptId >= 0) {
-                Breakpoint bp = controller.getBreakpoint(currentScriptId, item.getOffset());
+            if (item != null && controller != null && currentScriptId >= 0 && currentHandlerName != null) {
+                Breakpoint bp = controller.getBreakpoint(currentScriptId, currentHandlerName, item.getOffset());
                 if (bp != null) {
-                    controller.toggleBreakpointEnabled(currentScriptId, item.getOffset());
+                    controller.toggleBreakpointEnabled(currentScriptId, currentHandlerName, item.getOffset());
                     updateBreakpointDisplay(item);
                 }
             }
@@ -136,8 +137,8 @@ public class BytecodeContextMenu extends JPopupMenu {
     }
 
     private void updateBreakpointDisplay(InstructionDisplayItem item) {
-        if (controller != null && currentScriptId >= 0) {
-            Breakpoint bp = controller.getBreakpoint(currentScriptId, item.getOffset());
+        if (controller != null && currentScriptId >= 0 && currentHandlerName != null) {
+            Breakpoint bp = controller.getBreakpoint(currentScriptId, currentHandlerName, item.getOffset());
             item.setBreakpoint(bp);
             item.setHasBreakpoint(bp != null);
             bytecodeList.repaint();
@@ -156,6 +157,13 @@ public class BytecodeContextMenu extends JPopupMenu {
      */
     public void setCurrentScriptId(int scriptId) {
         this.currentScriptId = scriptId;
+    }
+
+    /**
+     * Set the current handler name.
+     */
+    public void setCurrentHandlerName(String handlerName) {
+        this.currentHandlerName = handlerName;
     }
 
     /**

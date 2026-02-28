@@ -11,20 +11,20 @@ import java.util.stream.Collectors;
 public class BreakpointManager {
 
     /**
-     * Key for breakpoint lookup (scriptId:offset).
+     * Key for breakpoint lookup (scriptId:handlerName:offset).
      */
-    public record BreakpointKey(int scriptId, int offset) {
-        public static BreakpointKey of(int scriptId, int offset) {
-            return new BreakpointKey(scriptId, offset);
+    public record BreakpointKey(int scriptId, String handlerName, int offset) {
+        public static BreakpointKey of(int scriptId, String handlerName, int offset) {
+            return new BreakpointKey(scriptId, handlerName, offset);
         }
 
         public static BreakpointKey of(Breakpoint bp) {
-            return new BreakpointKey(bp.scriptId(), bp.offset());
+            return new BreakpointKey(bp.scriptId(), bp.handlerName(), bp.offset());
         }
 
         @Override
         public String toString() {
-            return scriptId + ":" + offset;
+            return scriptId + ":" + handlerName + ":" + offset;
         }
     }
 
@@ -33,15 +33,15 @@ public class BreakpointManager {
     /**
      * Get a breakpoint at the specified location, or null if none exists.
      */
-    public Breakpoint getBreakpoint(int scriptId, int offset) {
-        return breakpoints.get(BreakpointKey.of(scriptId, offset));
+    public Breakpoint getBreakpoint(int scriptId, String handlerName, int offset) {
+        return breakpoints.get(BreakpointKey.of(scriptId, handlerName, offset));
     }
 
     /**
      * Check if a breakpoint exists at the specified location.
      */
-    public boolean hasBreakpoint(int scriptId, int offset) {
-        return breakpoints.containsKey(BreakpointKey.of(scriptId, offset));
+    public boolean hasBreakpoint(int scriptId, String handlerName, int offset) {
+        return breakpoints.containsKey(BreakpointKey.of(scriptId, handlerName, offset));
     }
 
     /**
@@ -54,8 +54,8 @@ public class BreakpointManager {
     /**
      * Add a simple breakpoint. If one already exists, it will be replaced.
      */
-    public Breakpoint addBreakpoint(int scriptId, int offset) {
-        Breakpoint bp = Breakpoint.simple(scriptId, offset);
+    public Breakpoint addBreakpoint(int scriptId, String handlerName, int offset) {
+        Breakpoint bp = Breakpoint.simple(scriptId, handlerName, offset);
         setBreakpoint(bp);
         return bp;
     }
@@ -64,8 +64,8 @@ public class BreakpointManager {
      * Remove a breakpoint.
      * @return the removed breakpoint, or null if none existed
      */
-    public Breakpoint removeBreakpoint(int scriptId, int offset) {
-        return breakpoints.remove(BreakpointKey.of(scriptId, offset));
+    public Breakpoint removeBreakpoint(int scriptId, String handlerName, int offset) {
+        return breakpoints.remove(BreakpointKey.of(scriptId, handlerName, offset));
     }
 
     /**
@@ -74,14 +74,14 @@ public class BreakpointManager {
      * If a breakpoint exists, removes it.
      * @return the new breakpoint if added, or null if removed
      */
-    public Breakpoint toggleBreakpoint(int scriptId, int offset) {
-        BreakpointKey key = BreakpointKey.of(scriptId, offset);
+    public Breakpoint toggleBreakpoint(int scriptId, String handlerName, int offset) {
+        BreakpointKey key = BreakpointKey.of(scriptId, handlerName, offset);
         Breakpoint existing = breakpoints.get(key);
         if (existing != null) {
             breakpoints.remove(key);
             return null;
         } else {
-            Breakpoint bp = Breakpoint.simple(scriptId, offset);
+            Breakpoint bp = Breakpoint.simple(scriptId, handlerName, offset);
             breakpoints.put(key, bp);
             return bp;
         }
@@ -91,8 +91,8 @@ public class BreakpointManager {
      * Toggle the enabled state of a breakpoint.
      * @return the updated breakpoint, or null if no breakpoint exists
      */
-    public Breakpoint toggleEnabled(int scriptId, int offset) {
-        BreakpointKey key = BreakpointKey.of(scriptId, offset);
+    public Breakpoint toggleEnabled(int scriptId, String handlerName, int offset) {
+        BreakpointKey key = BreakpointKey.of(scriptId, handlerName, offset);
         return breakpoints.computeIfPresent(key, (k, bp) -> bp.withEnabled(!bp.enabled()));
     }
 
@@ -143,7 +143,7 @@ public class BreakpointManager {
 
     /**
      * Set breakpoints from an offset map (old format).
-     * Creates simple enabled breakpoints for each entry.
+     * Creates simple enabled breakpoints for each entry with empty handler name.
      */
     public void setFromOffsetMap(Map<Integer, Set<Integer>> offsetMap) {
         clearAll();
@@ -151,7 +151,7 @@ public class BreakpointManager {
             for (Map.Entry<Integer, Set<Integer>> entry : offsetMap.entrySet()) {
                 int scriptId = entry.getKey();
                 for (int offset : entry.getValue()) {
-                    setBreakpoint(Breakpoint.simple(scriptId, offset));
+                    setBreakpoint(Breakpoint.simple(scriptId, "", offset));
                 }
             }
         }
@@ -166,7 +166,7 @@ public class BreakpointManager {
         }
 
         StringBuilder sb = new StringBuilder();
-        sb.append("{\"version\":2,\"breakpoints\":[");
+        sb.append("{\"version\":3,\"breakpoints\":[");
 
         boolean first = true;
         for (Breakpoint bp : breakpoints.values()) {
@@ -174,12 +174,30 @@ public class BreakpointManager {
             first = false;
             sb.append("{");
             sb.append("\"scriptId\":").append(bp.scriptId()).append(",");
+            sb.append("\"handlerName\":\"").append(escapeJson(bp.handlerName())).append("\",");
             sb.append("\"offset\":").append(bp.offset()).append(",");
             sb.append("\"enabled\":").append(bp.enabled());
             sb.append("}");
         }
 
         sb.append("]}");
+        return sb.toString();
+    }
+
+    private static String escapeJson(String s) {
+        if (s == null) return "";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '"' -> sb.append("\\\"");
+                case '\\' -> sb.append("\\\\");
+                case '\n' -> sb.append("\\n");
+                case '\r' -> sb.append("\\r");
+                case '\t' -> sb.append("\\t");
+                default -> sb.append(c);
+            }
+        }
         return sb.toString();
     }
 
@@ -206,7 +224,7 @@ public class BreakpointManager {
     private void deserializeJson(String json) {
         try {
             // Simple JSON parsing (no external dependencies)
-            // Expected format: {"version":2,"breakpoints":[{...},{...}]}
+            // Expected format: {"version":N,"breakpoints":[{...},{...}]}
 
             // Find breakpoints array
             int breakpointsStart = json.indexOf("\"breakpoints\":[");
@@ -248,10 +266,11 @@ public class BreakpointManager {
     private Breakpoint parseBreakpointJson(String json) {
         try {
             int scriptId = parseJsonInt(json, "scriptId", 0);
+            String handlerName = parseJsonString(json, "handlerName", "");
             int offset = parseJsonInt(json, "offset", 0);
             boolean enabled = parseJsonBoolean(json, "enabled", true);
 
-            return new Breakpoint(scriptId, offset, enabled);
+            return new Breakpoint(scriptId, handlerName, offset, enabled);
         } catch (Exception e) {
             return null;
         }
@@ -274,6 +293,37 @@ public class BreakpointManager {
         } catch (NumberFormatException e) {
             return defaultValue;
         }
+    }
+
+    private String parseJsonString(String json, String key, String defaultValue) {
+        String pattern = "\"" + key + "\":\"";
+        int idx = json.indexOf(pattern);
+        if (idx < 0) return defaultValue;
+
+        int start = idx + pattern.length();
+        StringBuilder sb = new StringBuilder();
+        boolean escaped = false;
+        for (int i = start; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (escaped) {
+                switch (c) {
+                    case '"' -> sb.append('"');
+                    case '\\' -> sb.append('\\');
+                    case 'n' -> sb.append('\n');
+                    case 'r' -> sb.append('\r');
+                    case 't' -> sb.append('\t');
+                    default -> sb.append(c);
+                }
+                escaped = false;
+            } else if (c == '\\') {
+                escaped = true;
+            } else if (c == '"') {
+                return sb.toString();
+            } else {
+                sb.append(c);
+            }
+        }
+        return defaultValue;
     }
 
     private boolean parseJsonBoolean(String json, String key, boolean defaultValue) {
@@ -300,7 +350,7 @@ public class BreakpointManager {
                 for (String offsetStr : offsetStrs) {
                     if (!offsetStr.isEmpty()) {
                         int offset = Integer.parseInt(offsetStr);
-                        setBreakpoint(Breakpoint.simple(scriptId, offset));
+                        setBreakpoint(Breakpoint.simple(scriptId, "", offset));
                     }
                 }
             }
