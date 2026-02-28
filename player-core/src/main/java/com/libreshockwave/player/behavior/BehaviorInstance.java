@@ -97,6 +97,6 @@ public class BehaviorInstance {
     @Override
     public String toString() {
         return "BehaviorInstance{id=" + id + ", spriteNum=" + spriteNum +
-               ", script=" + (script != null ? script.id() : "null") + "}";
+               ", script=" + (script != null ? "\"" + script.getScriptName() + "\" #" + script.id() : "null") + "}";
     }
 }

@@ -214,7 +214,7 @@ public class BehaviorManager {
         ScriptChunk script = file.getScriptByContextId(scriptId);
         if (script != null) {
             if (debugEnabled) {
-                System.out.println("[BehaviorManager] Found script #" + script.id() + " type=" + script.getScriptType());
+                System.out.println("[BehaviorManager] Found script \"" + member.name() + "\" #" + script.id() + " type=" + script.getScriptType());
             }
             return script;
         }
