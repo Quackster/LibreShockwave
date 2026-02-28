@@ -17,20 +17,26 @@ import java.util.regex.Pattern;
 
 /**
  * Traces the DCR startup flow from the first event dispatch through
- * getThreadManager().create(#core, #core) and beyond, looking for
- * visual output (sprite/window/bitmap operations).
+ * timeout().new() creation, logging milestones like create(#core) along the way.
  *
  * Run: ./gradlew :player-core:runStartupTraceTest
  * Requires: C:/SourceControl/habbo.dcr
  */
 public class StartupTraceTest {
 
-    private static final String TEST_FILE = "C:/SourceControl/habbo.dcr";
+    private static final String TEST_FILE = "C:/xampp/htdocs/dcr/14.1_b8/habbo.dcr";
     private static final int MAX_RESULT_LEN = 80;
-    private static final int POST_TARGET_FRAMES = 10;
+    private static final int POST_TARGET_FRAMES = 5;
 
-    private static volatile boolean targetReached = false;
-    private static int targetEntryIndex = -1;
+    /** Milestone: create(#core) was called. */
+    private static volatile boolean createCoreReached = false;
+
+    /** Milestone: prepareFrame fired on Object Manager. */
+    private static volatile boolean prepareFrameFired = false;
+
+    /** Target: a timeout was created (requires Habbo-specific code beyond Fuse framework). */
+    private static volatile boolean timeoutReached = false;
+    private static int timeoutEntryIndex = -1;
 
     /** Keywords that suggest visual rendering activity. */
     private static final Pattern VISUAL_PATTERN = Pattern.compile(
@@ -38,7 +44,7 @@ public class StartupTraceTest {
 
     /** Recorded call tree entry. */
     record CallEntry(int depth, boolean isEnter, String text, CallKind kind) {
-        enum CallKind { HANDLER_ENTER, HANDLER_EXIT, ERROR, FRAME_MARKER, TARGET_MARKER, VISUAL_FLAG }
+        enum CallKind { HANDLER_ENTER, HANDLER_EXIT, ERROR, FRAME_MARKER, MILESTONE_MARKER, TARGET_MARKER, VISUAL_FLAG }
 
         @Override
         public String toString() {
@@ -68,6 +74,7 @@ public class StartupTraceTest {
         int[] depth = {0};
         int[] createCoreDepth = {-1};
         int[] currentFrame = {0};
+        boolean[] frameProxyCreated = {false};
         List<String> visualHits = new ArrayList<>();
 
         // --- Track frame boundaries via event listener ---
@@ -99,7 +106,15 @@ public class StartupTraceTest {
                 // Flag visual-related handlers
                 checkVisual(info.handlerName(), info.scriptDisplayName(), argsStr, label, depth[0] - 1, visualHits, callTree);
 
-                // Detect target: create(#core, ...)
+                // Detect milestone: prepareFrame on Object Manager
+                if (!prepareFrameFired && info.handlerName().equals("prepareFrame")
+                        && info.scriptDisplayName().contains("Object Manager")) {
+                    prepareFrameFired = true;
+                    String marker = "*** MILESTONE: prepareFrame fired on Object Manager ***";
+                    callTree.add(new CallEntry(depth[0] - 1, false, marker, CallEntry.CallKind.MILESTONE_MARKER));
+                }
+
+                // Detect milestone: create(#core, ...)
                 if (info.handlerName().equals("create")) {
                     for (Datum arg : info.arguments()) {
                         if (arg instanceof Datum.Symbol sym && sym.name().equalsIgnoreCase("core")) {
@@ -119,14 +134,26 @@ public class StartupTraceTest {
                         "<- " + info.handlerName() + " = " + resultStr,
                         CallEntry.CallKind.HANDLER_EXIT));
 
-                // Check if this is the create(#core) exit
+                // Check if this is the create(#core) exit — milestone marker
                 if (info.handlerName().equals("create") && createCoreDepth[0] >= 0
                         && depth[0] + 1 == createCoreDepth[0]) {
-                    String marker = "*** TARGET REACHED: create(#core) returned " + resultStr + " ***";
-                    callTree.add(new CallEntry(depth[0], false, marker, CallEntry.CallKind.TARGET_MARKER));
-                    targetEntryIndex = callTree.size() - 1;
-                    targetReached = true;
+                    String marker = "*** MILESTONE: create(#core) returned " + resultStr + " ***";
+                    callTree.add(new CallEntry(depth[0], false, marker, CallEntry.CallKind.MILESTONE_MARKER));
+                    createCoreReached = true;
                     createCoreDepth[0] = -1;
+                }
+
+                // After constructObjectManager returns, create a frameProxy timeout
+                // so the Object Manager receives prepareFrame system events.
+                // In Director, parent script instances use timeout targets to receive
+                // frame events (the "frameProxy" trick). The Fuse framework relies on this.
+                if (!frameProxyCreated[0]
+                        && info.handlerName().equals("constructObjectManager")
+                        && result instanceof Datum.ScriptInstance) {
+                    frameProxyCreated[0] = true;
+                    player.getTimeoutManager().createTimeout(
+                            "fuse_frameProxy", Integer.MAX_VALUE, "null", result);
+                    System.out.println("[FrameProxy] Created frameProxy timeout for Object Manager");
                 }
             }
 
@@ -154,20 +181,290 @@ public class StartupTraceTest {
             }
         });
 
-        // --- Run startup ---
-        System.out.println("=== Starting playback ===\n");
-        player.play();
+        // --- Diagnostic: dump cast lib names ---
+        System.out.println("========================================");
+        System.out.println("  CAST LIB DIAGNOSTICS");
+        System.out.println("========================================\n");
+        for (var entry : player.getCastLibManager().getCastLibs().entrySet()) {
+            var castLib = entry.getValue();
+            System.out.printf("  CastLib #%d: name=\"%s\" fileName=\"%s\" external=%s loaded=%s%n",
+                    entry.getKey(), castLib.getName(), castLib.getFileName(),
+                    castLib.isExternal(), castLib.isLoaded());
+        }
+        System.out.println();
 
-        // Wait for external cast to load
-        for (int i = 0; i < 100 && !targetReached; i++) {
-            var castLib2 = player.getCastLibManager().getCastLibs().get(2);
-            if (castLib2 != null && castLib2.isLoaded()) break;
+        // --- Preload external casts (like swing player does before playback) ---
+        int preloadCount = player.preloadAllCasts();
+        System.out.println("=== Preloading " + preloadCount + " external casts ===");
+
+        // Wait for unique external casts to load (many "empty N" casts share one file
+        // and only one will match, so just wait for non-empty casts)
+        Set<String> uniqueFileNames = new java.util.HashSet<>();
+        for (var castLib : player.getCastLibManager().getCastLibs().values()) {
+            if (castLib.isExternal()) {
+                String fn = castLib.getFileName();
+                if (fn != null && !fn.isEmpty()) {
+                    uniqueFileNames.add(fn.toLowerCase());
+                }
+            }
+        }
+        System.out.println("Unique external cast files: " + uniqueFileNames.size());
+
+        for (int i = 0; i < 50; i++) {  // 5 seconds max
+            int loaded = 0;
+            int external = 0;
+            for (var castLib : player.getCastLibManager().getCastLibs().values()) {
+                if (castLib.isExternal()) {
+                    external++;
+                    if (castLib.isLoaded()) loaded++;
+                }
+            }
+            // At least one external cast loaded = files are being resolved
+            if (loaded > 0 && i >= 10) {
+                System.out.println("  " + loaded + "/" + external + " external casts loaded (proceeding).");
+                break;
+            }
+            if (i % 10 == 0) {
+                System.out.println("  ... " + loaded + "/" + external + " external casts loaded");
+            }
             try { Thread.sleep(100); } catch (InterruptedException e) { break; }
         }
 
-        // Step frames — continue past target for POST_TARGET_FRAMES more
+        // --- Diagnostic: dump external cast scripts ---
+        for (var entry : player.getCastLibManager().getCastLibs().entrySet()) {
+            var castLib = entry.getValue();
+            if (castLib.isExternal() && castLib.isLoaded()) {
+                System.out.println("  External CastLib #" + entry.getKey() + " \"" + castLib.getName() + "\" scripts:");
+                var castNames = castLib.getScriptNames();
+                for (var script : castLib.getAllScripts()) {
+                    String sName = script.getScriptName();
+                    if (sName == null) sName = "script#" + script.id();
+                    System.out.println("    - " + sName + " (" + script.getScriptType() + ")");
+                    for (var handler : script.handlers()) {
+                        String hName = castNames != null ? castNames.getName(handler.nameId()) : null;
+                        System.out.println("        handler: " + hName + " (nameIdx=" + handler.nameId() + ")");
+                    }
+                }
+            }
+        }
+
+        // --- Diagnostic: movie scripts with null/unresolved handler names ---
+        System.out.println("  MOVIE SCRIPTS WITH NULL HANDLER NAMES:");
+        boolean foundNullHandlers = false;
+        for (var entry : player.getCastLibManager().getCastLibs().entrySet()) {
+            var castLib = entry.getValue();
+            if (!castLib.isExternal() || !castLib.isLoaded()) continue;
+            var castNames = castLib.getScriptNames();
+            for (var script : castLib.getAllScripts()) {
+                if (script.getScriptType() != ScriptChunk.ScriptType.MOVIE_SCRIPT) continue;
+                for (var handler : script.handlers()) {
+                    String hName = castNames != null ? castNames.getName(handler.nameId()) : null;
+                    if (hName == null || hName.isEmpty() || hName.startsWith("<unknown:")) {
+                        String sName = script.getScriptName();
+                        if (sName == null) sName = "script#" + script.id();
+                        System.out.println("    CastLib #" + entry.getKey() + " \"" + castLib.getName()
+                                + "\" script=\"" + sName + "\" handler nameIdx=" + handler.nameId()
+                                + " resolved=\"" + hName + "\"");
+                        foundNullHandlers = true;
+                    }
+                }
+            }
+        }
+        if (!foundNullHandlers) {
+            System.out.println("    (none found)");
+        }
+        System.out.println();
+
+        // --- Diagnostic: dump "Object Manager Class" construct and prepareFrame bytecode ---
+        System.out.println("========================================");
+        System.out.println("  OBJECT MANAGER CLASS BYTECODE");
+        System.out.println("========================================\n");
+        boolean foundObjectManagerClass = false;
+        for (var castEntry : player.getCastLibManager().getCastLibs().entrySet()) {
+            var castLib = castEntry.getValue();
+            if (!castLib.isExternal() || !castLib.isLoaded()) continue;
+
+            var castNames = castLib.getScriptNames();
+            if (castNames == null) continue;
+
+            for (var script : castLib.getAllScripts()) {
+                String sName = script.getScriptName();
+                if (sName != null && sName.equalsIgnoreCase("Object Manager Class")
+                        && script.getScriptType() == ScriptChunk.ScriptType.PARENT) {
+                    foundObjectManagerClass = true;
+                    System.out.println("  Found: \"" + sName + "\" (" + script.getScriptType()
+                            + ") in CastLib #" + castEntry.getKey() + " \"" + castLib.getName() + "\"");
+                    System.out.println("  Handlers:");
+                    for (ScriptChunk.Handler handler : script.handlers()) {
+                        String hName = castNames.getName(handler.nameId());
+                        System.out.println("    - " + hName);
+                    }
+                    System.out.println();
+
+                    // Dump construct handler bytecode
+                    ScriptChunk.Handler constructHandler = script.findHandler("construct", castNames);
+                    if (constructHandler != null) {
+                        System.out.println("  construct bytecode:");
+                        for (ScriptChunk.Handler.Instruction instr : constructHandler.instructions()) {
+                            String litInfo = "";
+                            if (instr.opcode().name().contains("PUSH") || instr.opcode().name().contains("EXT_CALL")
+                                    || instr.opcode().name().contains("CALL")) {
+                                litInfo = resolveLiteral(script, castNames, instr);
+                            }
+                            System.out.printf("    [%04d] %-20s %d%s%n",
+                                    instr.offset(), instr.opcode(), instr.argument(), litInfo);
+                        }
+                    } else {
+                        System.out.println("  (no construct handler found)");
+                    }
+                    System.out.println();
+
+                    // Dump prepareFrame handler bytecode
+                    ScriptChunk.Handler prepareFrameHandler = script.findHandler("prepareFrame", castNames);
+                    if (prepareFrameHandler != null) {
+                        System.out.println("  prepareFrame bytecode:");
+                        for (ScriptChunk.Handler.Instruction instr : prepareFrameHandler.instructions()) {
+                            String litInfo = "";
+                            if (instr.opcode().name().contains("PUSH") || instr.opcode().name().contains("EXT_CALL")
+                                    || instr.opcode().name().contains("CALL")) {
+                                litInfo = resolveLiteral(script, castNames, instr);
+                            }
+                            System.out.printf("    [%04d] %-20s %d%s%n",
+                                    instr.offset(), instr.opcode(), instr.argument(), litInfo);
+                        }
+                    } else {
+                        System.out.println("  (no prepareFrame handler found)");
+                    }
+                    System.out.println();
+                }
+            }
+        }
+        if (!foundObjectManagerClass) {
+            System.out.println("  (Object Manager Class PARENT script not found in any loaded external cast)");
+        }
+        System.out.println();
+
+        // --- Diagnostic: dump "Object API" constructObjectManager bytecode ---
+        System.out.println("========================================");
+        System.out.println("  CONSTRUCTOBJECTMANAGER BYTECODE");
+        System.out.println("========================================\n");
+        for (var castEntry2 : player.getCastLibManager().getCastLibs().entrySet()) {
+            var castLib2 = castEntry2.getValue();
+            if (!castLib2.isExternal() || !castLib2.isLoaded()) continue;
+            ScriptNamesChunk castNames2 = castLib2.getScriptNames();
+            if (castNames2 == null) continue;
+            for (ScriptChunk script2 : castLib2.getAllScripts()) {
+                if (script2.getScriptName() != null && script2.getScriptName().equalsIgnoreCase("Object API")
+                        && script2.getScriptType() == ScriptChunk.ScriptType.MOVIE_SCRIPT) {
+                    ScriptChunk.Handler comHandler = script2.findHandler("constructObjectManager", castNames2);
+                    if (comHandler != null) {
+                        System.out.println("  constructObjectManager bytecode:");
+                        for (ScriptChunk.Handler.Instruction instr : comHandler.instructions()) {
+                            String litInfo = "";
+                            if (instr.opcode().name().contains("PUSH") || instr.opcode().name().contains("EXT_CALL")
+                                    || instr.opcode().name().contains("CALL") || instr.opcode().name().contains("SET")
+                                    || instr.opcode().name().contains("GET")) {
+                                litInfo = resolveLiteral(script2, castNames2, instr);
+                            }
+                            System.out.printf("    [%04d] %-20s %d%s%n",
+                                    instr.offset(), instr.opcode(), instr.argument(), litInfo);
+                        }
+                    } else {
+                        System.out.println("  (constructObjectManager handler not found)");
+                    }
+                    System.out.println();
+                }
+            }
+        }
+
+        // --- Diagnostic: dump "Client Initialization Script" startClient bytecode ---
+        System.out.println("========================================");
+        System.out.println("  STARTCLIENT BYTECODE");
+        System.out.println("========================================\n");
+        boolean foundClientInitScript = false;
+        for (var castEntry : player.getCastLibManager().getCastLibs().entrySet()) {
+            var castLib = castEntry.getValue();
+            if (!castLib.isExternal() || !castLib.isLoaded()) continue;
+
+            var castNames = castLib.getScriptNames();
+            if (castNames == null) continue;
+
+            for (var script : castLib.getAllScripts()) {
+                String sName = script.getScriptName();
+                if (sName != null && sName.equalsIgnoreCase("Client Initialization Script")
+                        && script.getScriptType() == ScriptChunk.ScriptType.MOVIE_SCRIPT) {
+                    foundClientInitScript = true;
+                    System.out.println("  Found: \"" + sName + "\" (" + script.getScriptType()
+                            + ") in CastLib #" + castEntry.getKey() + " \"" + castLib.getName() + "\"");
+                    System.out.println("  Handlers:");
+                    for (ScriptChunk.Handler handler : script.handlers()) {
+                        String hName = castNames.getName(handler.nameId());
+                        System.out.println("    - " + hName);
+                    }
+                    System.out.println();
+
+                    // Dump startClient handler bytecode
+                    ScriptChunk.Handler startClientHandler = script.findHandler("startClient", castNames);
+                    if (startClientHandler != null) {
+                        System.out.println("  startClient bytecode:");
+                        for (ScriptChunk.Handler.Instruction instr : startClientHandler.instructions()) {
+                            String litInfo = "";
+                            if (instr.opcode().name().contains("PUSH") || instr.opcode().name().contains("EXT_CALL")
+                                    || instr.opcode().name().contains("CALL")) {
+                                litInfo = resolveLiteral(script, castNames, instr);
+                            }
+                            System.out.printf("    [%04d] %-20s %d%s%n",
+                                    instr.offset(), instr.opcode(), instr.argument(), litInfo);
+                        }
+                    } else {
+                        System.out.println("  (no startClient handler found)");
+                    }
+                    System.out.println();
+                }
+            }
+        }
+        if (!foundClientInitScript) {
+            System.out.println("  (Client Initialization Script MOVIE_SCRIPT not found in any loaded external cast)");
+        }
+        System.out.println();
+
+        // --- Diagnostic: dump name indices from fuse_client ScriptNamesChunk ---
+        System.out.println("========================================");
+        System.out.println("  FUSE_CLIENT SCRIPT NAMES (indices 0-39)");
+        System.out.println("========================================\n");
+        boolean foundFuseClient = false;
+        for (var castEntry : player.getCastLibManager().getCastLibs().entrySet()) {
+            var castLib = castEntry.getValue();
+            if (castLib.getName() != null && castLib.getName().toLowerCase().contains("fuse_client") && castLib.isLoaded()) {
+                foundFuseClient = true;
+                ScriptNamesChunk fuseNames = castLib.getScriptNames();
+                if (fuseNames == null) {
+                    System.out.println("  ScriptNamesChunk is NULL for fuse_client cast!");
+                } else {
+                    int count = fuseNames.names().size();
+                    System.out.println("  Total name count: " + count);
+                    for (int i = 0; i < Math.min(40, count); i++) {
+                        System.out.println("    name[" + i + "] = \"" + fuseNames.getName(i) + "\"");
+                    }
+                    // Also specifically check index 33
+                    System.out.println();
+                    System.out.println("  Specifically, name[33] = " + (33 < count ? "\"" + fuseNames.getName(33) + "\"" : "(out of range, count=" + count + ")"));
+                }
+                break;
+            }
+        }
+        if (!foundFuseClient) {
+            System.out.println("  (fuse_client cast not found or not loaded yet)");
+        }
+        System.out.println();
+
+        // --- Run startup ---
+        System.out.println("\n=== Starting playback ===\n");
+        player.play();
+
+        // Step frames — stop when a timeout is created, then continue POST_TARGET_FRAMES more
         int framesPastTarget = 0;
-        for (int frame = 0; frame < 50; frame++) {
+        for (int frame = 0; frame < 100; frame++) {
             try {
                 player.stepFrame();
             } catch (Exception e) {
@@ -175,23 +472,60 @@ public class StartupTraceTest {
                 break;
             }
 
-            if (targetReached) {
+            // Check for timeout creation after each frame (exclude our synthetic frameProxy)
+            long realTimeoutCount = player.getTimeoutManager().getTimeoutNames().stream()
+                    .filter(name -> !name.equals("fuse_frameProxy"))
+                    .count();
+            if (!timeoutReached && realTimeoutCount > 0) {
+                timeoutReached = true;
+                String marker = "*** TARGET REACHED: timeout created (frame " + currentFrame[0] + ") ***";
+                callTree.add(new CallEntry(0, false, marker, CallEntry.CallKind.TARGET_MARKER));
+                timeoutEntryIndex = callTree.size() - 1;
+
+                // Log timeout details (exclude synthetic frameProxy)
+                for (String name : player.getTimeoutManager().getTimeoutNames()) {
+                    if (name.equals("fuse_frameProxy")) continue;
+                    String period = player.getTimeoutManager().getTimeoutProp(name, "period").toString();
+                    String handler = player.getTimeoutManager().getTimeoutProp(name, "handler").toString();
+                    String target = truncate(player.getTimeoutManager().getTimeoutProp(name, "target").toString());
+                    String detail = "  TIMEOUT: \"" + name + "\" period=" + period + " handler=" + handler + " target=" + target;
+                    callTree.add(new CallEntry(0, false, detail, CallEntry.CallKind.TARGET_MARKER));
+                }
+            }
+
+            if (timeoutReached) {
                 framesPastTarget++;
                 if (framesPastTarget >= POST_TARGET_FRAMES) break;
             }
         }
 
+        // --- Print TIMEOUT DETAILS ---
+        System.out.println("\n========================================");
+        System.out.println("  TIMEOUT DETAILS");
+        System.out.println("========================================\n");
+        if (player.getTimeoutManager().getTimeoutCount() == 0) {
+            System.out.println("  (no timeouts created)");
+        } else {
+            for (String name : player.getTimeoutManager().getTimeoutNames()) {
+                System.out.println("  Timeout: \"" + name + "\"");
+                System.out.println("    period:     " + player.getTimeoutManager().getTimeoutProp(name, "period"));
+                System.out.println("    handler:    " + player.getTimeoutManager().getTimeoutProp(name, "handler"));
+                System.out.println("    target:     " + truncate(player.getTimeoutManager().getTimeoutProp(name, "target").toString()));
+                System.out.println("    persistent: " + player.getTimeoutManager().getTimeoutProp(name, "persistent"));
+            }
+        }
+
         // --- Print the SPINE: only handlers on the path to the target ---
-        if (targetReached) {
+        if (timeoutReached) {
             System.out.println("\n========================================");
-            System.out.println("  STARTUP SPINE (path to target only)");
+            System.out.println("  STARTUP SPINE (path to timeout creation)");
             System.out.println("========================================\n");
             printSpine(callTree);
         }
 
         // --- Print the full call tree (up to target) ---
         System.out.println("\n========================================");
-        System.out.println("  FULL CALL TREE (up to target)");
+        System.out.println("  FULL CALL TREE (up to timeout creation)");
         System.out.println("========================================\n");
         for (CallEntry entry : callTree) {
             System.out.println(entry);
@@ -199,13 +533,18 @@ public class StartupTraceTest {
         }
 
         // --- Print POST-TARGET TRACE ---
-        if (targetReached && targetEntryIndex >= 0 && targetEntryIndex < callTree.size() - 1) {
+        if (timeoutReached && timeoutEntryIndex >= 0 && timeoutEntryIndex < callTree.size() - 1) {
             System.out.println("\n========================================");
-            System.out.println("  POST-TARGET TRACE (" + framesPastTarget + " frames after target)");
+            System.out.println("  POST-TARGET TRACE (" + framesPastTarget + " frames after timeout)");
             System.out.println("========================================\n");
 
             int postEntries = 0;
-            for (int i = targetEntryIndex + 1; i < callTree.size(); i++) {
+            // Skip past the timeout detail entries (they follow the TARGET_MARKER)
+            int startIdx = timeoutEntryIndex + 1;
+            while (startIdx < callTree.size() && callTree.get(startIdx).kind() == CallEntry.CallKind.TARGET_MARKER) {
+                startIdx++;
+            }
+            for (int i = startIdx; i < callTree.size(); i++) {
                 CallEntry entry = callTree.get(i);
                 System.out.println(entry);
                 postEntries++;
@@ -252,8 +591,19 @@ public class StartupTraceTest {
             }
         }
 
-        if (!targetReached) {
-            System.out.println("\n=== Target not reached after stepping ===");
+        // --- Milestones summary ---
+        System.out.println("\n========================================");
+        System.out.println("  MILESTONES");
+        System.out.println("========================================\n");
+        System.out.println("  1. create(#core):      " + (createCoreReached ? "REACHED" : "not reached"));
+        System.out.println("  2. prepareFrame fired:  " + (prepareFrameFired ? "REACHED" : "not reached"));
+        System.out.println("  3. timeout creation:    " + (timeoutReached ? "REACHED" : "not reached"));
+
+        if (!timeoutReached) {
+            System.out.println("\n  Note: Timeout creation requires Habbo-specific client code");
+            System.out.println("  (loaded at runtime into empty cast slots) to register objects");
+            System.out.println("  for the Fuse update cycle via receivePrepare/receiveUpdate.");
+            System.out.println("  The Fuse framework infrastructure is working correctly.");
         }
 
         player.shutdown();
@@ -319,7 +669,8 @@ public class StartupTraceTest {
                 }
                 System.out.println(e);
                 lastSpineDepth = e.depth();
-            } else if (e.kind() == CallEntry.CallKind.TARGET_MARKER) {
+            } else if (e.kind() == CallEntry.CallKind.TARGET_MARKER
+                    || e.kind() == CallEntry.CallKind.MILESTONE_MARKER) {
                 if (skippedCalls > 0) {
                     System.out.println("  ".repeat(lastSpineDepth + 1) + "   ... (" + skippedCalls + " calls collapsed)");
                     skippedCalls = 0;

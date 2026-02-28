@@ -6,6 +6,8 @@ import com.libreshockwave.chunks.ScriptNamesChunk;
 import com.libreshockwave.player.PlayerEvent;
 import com.libreshockwave.player.behavior.BehaviorInstance;
 import com.libreshockwave.player.behavior.BehaviorManager;
+import com.libreshockwave.player.cast.CastLib;
+import com.libreshockwave.player.cast.CastLibManager;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.LingoVM;
 
@@ -21,6 +23,7 @@ public class EventDispatcher {
     private final DirectorFile file;
     private final LingoVM vm;
     private final BehaviorManager behaviorManager;
+    private CastLibManager castLibManager;
 
     // Debug logging
     private boolean debugEnabled = false;
@@ -37,6 +40,10 @@ public class EventDispatcher {
 
         // Register pass callback with VM
         vm.setPassCallback(this::pass);
+    }
+
+    public void setCastLibManager(CastLibManager castLibManager) {
+        this.castLibManager = castLibManager;
     }
 
     public void setDebugEnabled(boolean enabled) {
@@ -136,27 +143,53 @@ public class EventDispatcher {
     /**
      * Dispatch an event to movie scripts only.
      * Movie scripts handle movie-level events: prepareMovie, startMovie, stopMovie.
+     * Searches the main DCR and all loaded external casts.
      */
     public void dispatchToMovieScripts(String handlerName, List<Datum> args) {
         if (file == null) return;
 
+        // 1. Main DCR movie scripts
         ScriptNamesChunk names = file.getScriptNames();
-        if (names == null) return;
-
-        for (ScriptChunk script : file.getScripts()) {
-            // Only check movie scripts for movie events
-            if (script.getScriptType() != ScriptChunk.ScriptType.MOVIE_SCRIPT) {
-                continue;
+        if (names != null) {
+            for (ScriptChunk script : file.getScripts()) {
+                if (script.getScriptType() != ScriptChunk.ScriptType.MOVIE_SCRIPT) {
+                    continue;
+                }
+                ScriptChunk.Handler handler = script.findHandler(handlerName, names);
+                if (handler != null) {
+                    try {
+                        vm.executeHandler(script, handler, args, null);
+                    } catch (Exception e) {
+                        System.err.println("[EventDispatcher] Error in " + handlerName + ": " + e.getMessage());
+                        if (debugEnabled) {
+                            e.printStackTrace();
+                        }
+                    }
+                }
             }
+        }
 
-            ScriptChunk.Handler handler = script.findHandler(handlerName, names);
-            if (handler != null) {
-                try {
-                    vm.executeHandler(script, handler, args, null);
-                } catch (Exception e) {
-                    System.err.println("[EventDispatcher] Error in " + handlerName + ": " + e.getMessage());
-                    if (debugEnabled) {
-                        e.printStackTrace();
+        // 2. External cast movie scripts
+        if (castLibManager != null) {
+            for (CastLib castLib : castLibManager.getCastLibs().values()) {
+                if (!castLib.isExternal() || !castLib.isLoaded()) continue;
+                ScriptNamesChunk castNames = castLib.getScriptNames();
+                if (castNames == null) continue;
+                for (ScriptChunk script : castLib.getAllScripts()) {
+                    if (script.getScriptType() != ScriptChunk.ScriptType.MOVIE_SCRIPT) {
+                        continue;
+                    }
+                    ScriptChunk.Handler handler = script.findHandler(handlerName, castNames);
+                    if (handler != null) {
+                        try {
+                            vm.executeHandler(script, handler, args, null);
+                        } catch (Exception e) {
+                            System.err.println("[EventDispatcher] Error in " + handlerName
+                                    + " (external cast " + castLib.getName() + "): " + e.getMessage());
+                            if (debugEnabled) {
+                                e.printStackTrace();
+                            }
+                        }
                     }
                 }
             }

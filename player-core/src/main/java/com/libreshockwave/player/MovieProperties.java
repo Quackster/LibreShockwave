@@ -31,6 +31,9 @@ public class MovieProperties implements MoviePropertyProvider {
     private String traceLogFile = "";
     private boolean allowCustomCaching = false;
 
+    // actorList: objects in this list receive stepFrame on each frame advance
+    private Datum actorList = new Datum.List(new java.util.ArrayList<>());
+
     // Timer start time (in millis)
     private final long startTime;
 
@@ -98,6 +101,9 @@ public class MovieProperties implements MoviePropertyProvider {
             case "tracescript" -> Datum.of(traceScript ? 1 : 0);
             case "tracelogfile" -> Datum.of(traceLogFile);
             case "allowcustomcaching" -> Datum.of(allowCustomCaching ? 1 : 0);
+
+            // actorList
+            case "actorlist" -> actorList;
 
             // Tempo
             case "framerate", "tempo" -> Datum.of(player.getTempo());
@@ -215,6 +221,10 @@ public class MovieProperties implements MoviePropertyProvider {
                 allowCustomCaching = value.isTruthy();
                 return true;
             }
+            case "actorlist" -> {
+                actorList = value;
+                return true;
+            }
             case "tempo", "framerate" -> {
                 player.setTempo(value.toInt());
                 return true;
@@ -270,5 +280,9 @@ public class MovieProperties implements MoviePropertyProvider {
 
     public int getPuppetTempo() {
         return puppetTempo;
+    }
+
+    public Datum getActorList() {
+        return actorList;
     }
 }

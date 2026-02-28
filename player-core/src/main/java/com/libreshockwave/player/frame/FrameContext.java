@@ -9,8 +9,10 @@ import com.libreshockwave.player.score.ScoreBehaviorRef;
 import com.libreshockwave.player.score.ScoreNavigator;
 import com.libreshockwave.player.score.SpriteSpan;
 import com.libreshockwave.player.timeout.TimeoutManager;
+import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.LingoVM;
+import com.libreshockwave.vm.builtin.CastLibProvider;
 
 import java.util.*;
 import java.util.function.Consumer;
@@ -28,6 +30,7 @@ public class FrameContext {
     private final EventDispatcher eventDispatcher;
 
     private TimeoutManager timeoutManager;  // Set by Player for system event forwarding
+    private java.util.function.Supplier<Datum> actorListSupplier;  // Provides _movie.actorList
 
     private int currentFrame = 1;
     private Integer pendingFrame = null;  // Set by go/jump commands
@@ -61,6 +64,10 @@ public class FrameContext {
 
     public void setTimeoutManager(TimeoutManager timeoutManager) {
         this.timeoutManager = timeoutManager;
+    }
+
+    public void setActorListSupplier(java.util.function.Supplier<Datum> supplier) {
+        this.actorListSupplier = supplier;
     }
 
     public int getCurrentFrame() {
@@ -135,7 +142,20 @@ public class FrameContext {
     public boolean executeFrame() {
         logEvent("executeFrame(" + currentFrame + ")");
 
-        // 1. stepFrame event (to actorList and behaviors)
+        // 1. stepFrame to actorList members (Director calls stepFrame on each object)
+        if (actorListSupplier != null) {
+            Datum list = actorListSupplier.get();
+            if (list instanceof Datum.List actors) {
+                List<Datum> snapshot = new ArrayList<>(actors.items());
+                for (Datum actor : snapshot) {
+                    if (actor instanceof Datum.ScriptInstance instance) {
+                        dispatchStepFrameToInstance(instance);
+                    }
+                }
+            }
+        }
+
+        // 2. stepFrame event (to behaviors)
         dispatchEvent(PlayerEvent.STEP_FRAME);
 
         // 2. prepareFrame -> timeout targets first, then behaviors + frame/movie scripts
@@ -297,6 +317,45 @@ public class FrameContext {
         }
 
 
+    }
+
+    /**
+     * Dispatch stepFrame to a script instance by walking its ancestor chain.
+     * Used for actorList members — silently skips if stepFrame isn't found.
+     */
+    private void dispatchStepFrameToInstance(Datum.ScriptInstance instance) {
+        CastLibProvider provider = CastLibProvider.getProvider();
+        if (provider == null) return;
+
+        Datum.ScriptInstance current = instance;
+        for (int i = 0; i < 20; i++) {
+            Datum scriptRefDatum = current.properties().get(Datum.PROP_SCRIPT_REF);
+            CastLibProvider.HandlerLocation location;
+
+            if (scriptRefDatum instanceof Datum.ScriptRef sr) {
+                location = provider.findHandlerInScript(sr.castLib(), sr.member(), "stepFrame");
+            } else {
+                location = provider.findHandlerInScript(current.scriptId(), "stepFrame");
+            }
+
+            if (location != null && location.script() instanceof ScriptChunk script
+                    && location.handler() instanceof ScriptChunk.Handler handler) {
+                try {
+                    vm.executeHandler(script, handler, List.of(instance), instance);
+                } catch (Exception e) {
+                    // Silently skip errors in actorList stepFrame
+                }
+                return;
+            }
+
+            // Walk to ancestor
+            Datum ancestor = current.properties().get(Datum.PROP_ANCESTOR);
+            if (ancestor instanceof Datum.ScriptInstance ancestorInstance) {
+                current = ancestorInstance;
+            } else {
+                break;
+            }
+        }
     }
 
     // Event dispatch

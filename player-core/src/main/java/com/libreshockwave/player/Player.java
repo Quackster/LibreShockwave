@@ -90,6 +90,8 @@ public class Player {
         this.castLibManager = new CastLibManager(file);
         this.timeoutManager = new TimeoutManager();
         this.frameContext.setTimeoutManager(timeoutManager);
+        this.frameContext.getEventDispatcher().setCastLibManager(castLibManager);
+        this.frameContext.setActorListSupplier(movieProperties::getActorList);
         this.tempo = file != null ? file.getTempo() : 15;
         if (this.tempo <= 0) this.tempo = 15;
 
@@ -160,6 +162,8 @@ public class Player {
         this.castLibManager = new CastLibManager(file);
         this.timeoutManager = new TimeoutManager();
         this.frameContext.setTimeoutManager(timeoutManager);
+        this.frameContext.getEventDispatcher().setCastLibManager(castLibManager);
+        this.frameContext.setActorListSupplier(movieProperties::getActorList);
         this.tempo = file != null ? file.getTempo() : 15;
         if (this.tempo <= 0) this.tempo = 15;
 
