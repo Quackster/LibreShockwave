@@ -27,6 +27,7 @@ public class BuiltinRegistry {
         WindowBuiltins.register(builtins);
         TypeBuiltins.register(builtins);
         ControlFlowBuiltins.register(builtins);
+        TimeoutBuiltins.register(builtins);
     }
 
     /**

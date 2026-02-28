@@ -6,6 +6,7 @@ import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.builtin.CastLibProvider;
 import com.libreshockwave.vm.builtin.MoviePropertyProvider;
 import com.libreshockwave.vm.builtin.SpritePropertyProvider;
+import com.libreshockwave.vm.builtin.TimeoutBuiltins;
 import com.libreshockwave.vm.builtin.XtraBuiltins;
 import com.libreshockwave.vm.util.AncestorChainWalker;
 import com.libreshockwave.vm.util.StringChunkUtils;
@@ -110,6 +111,7 @@ public final class PropertyOpcodes {
             case Datum.CastMemberRef cmr -> getCastMemberProp(cmr, propName);
             case Datum.ScriptInstance si -> AncestorChainWalker.getProperty(si, propName);
             case Datum.XtraInstance xi -> XtraBuiltins.getProperty(xi, propName);
+            case Datum.TimeoutRef tr -> TimeoutBuiltins.getProperty(tr, propName);
             case Datum.PropList pl -> pl.properties().getOrDefault(propName, Datum.VOID);
             case Datum.List list -> getListProp(list, propName);
             case Datum.Str str -> getStringProp(str, propName);
@@ -195,6 +197,7 @@ public final class PropertyOpcodes {
                 ctx.tracePropertySet(propName, value);
             }
             case Datum.XtraInstance xi -> XtraBuiltins.setProperty(xi, propName, value);
+            case Datum.TimeoutRef tr -> TimeoutBuiltins.setProperty(tr, propName, value);
             case Datum.PropList pl -> pl.properties().put(propName, value);
             case Datum.MovieRef m -> {
                 MoviePropertyProvider provider = MoviePropertyProvider.getProvider();
@@ -571,6 +574,7 @@ public final class PropertyOpcodes {
                 };
             }
             case Datum.XtraInstance xi -> XtraBuiltins.getProperty(xi, propName);
+            case Datum.TimeoutRef tr -> TimeoutBuiltins.getProperty(tr, propName);
             default -> getChainedObjProp(obj, propName);
         };
 

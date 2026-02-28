@@ -16,7 +16,9 @@ import com.libreshockwave.vm.builtin.CastLibProvider;
 import com.libreshockwave.vm.builtin.MoviePropertyProvider;
 import com.libreshockwave.vm.builtin.NetBuiltins;
 import com.libreshockwave.vm.builtin.SpritePropertyProvider;
+import com.libreshockwave.vm.builtin.TimeoutProvider;
 import com.libreshockwave.vm.builtin.XtraBuiltins;
+import com.libreshockwave.player.timeout.TimeoutManager;
 import com.libreshockwave.vm.xtra.XtraManager;
 import com.libreshockwave.player.debug.DebugControllerApi;
 
@@ -47,6 +49,7 @@ public class Player {
     private final MovieProperties movieProperties;
     private final SpriteProperties spriteProperties;
     private final CastLibManager castLibManager;
+    private final TimeoutManager timeoutManager;
 
     private PlayerState state = PlayerState.STOPPED;
     private int tempo;  // Frames per second
@@ -85,6 +88,7 @@ public class Player {
         this.movieProperties = new MovieProperties(this, file);
         this.spriteProperties = new SpriteProperties(stageRenderer.getSpriteRegistry());
         this.castLibManager = new CastLibManager(file);
+        this.timeoutManager = new TimeoutManager();
         this.tempo = file != null ? file.getTempo() : 15;
         if (this.tempo <= 0) this.tempo = 15;
 
@@ -153,6 +157,7 @@ public class Player {
         this.movieProperties = new MovieProperties(this, file);
         this.spriteProperties = new SpriteProperties(stageRenderer.getSpriteRegistry());
         this.castLibManager = new CastLibManager(file);
+        this.timeoutManager = new TimeoutManager();
         this.tempo = file != null ? file.getTempo() : 15;
         if (this.tempo <= 0) this.tempo = 15;
 
@@ -506,6 +511,7 @@ public class Player {
             }
             frameContext.reset();
             stageRenderer.reset();
+            timeoutManager.clear();
             state = PlayerState.STOPPED;
         }
     }
@@ -537,6 +543,7 @@ public class Player {
         setupProviders();
         try {
             frameContext.executeFrame();
+            timeoutManager.processTimeouts(vm, System.currentTimeMillis());
             frameContext.advanceFrame();
         } finally {
             clearProviders();
@@ -573,6 +580,7 @@ public class Player {
                     setupProviders();
                     try {
                         frameContext.executeFrame();
+                        timeoutManager.processTimeouts(vm, System.currentTimeMillis());
                         frameContext.advanceFrame();
                     } finally {
                         clearProviders();
@@ -608,6 +616,7 @@ public class Player {
         setupProviders();
         try {
             frameContext.executeFrame();
+            timeoutManager.processTimeouts(vm, System.currentTimeMillis());
             frameContext.advanceFrame();
         } finally {
             clearProviders();
@@ -641,6 +650,7 @@ public class Player {
                     setupProviders();
                     try {
                         frameContext.executeFrame();
+                        timeoutManager.processTimeouts(vm, System.currentTimeMillis());
                         frameContext.advanceFrame();
                     } finally {
                         clearProviders();
@@ -664,6 +674,7 @@ public class Player {
         MoviePropertyProvider.setProvider(movieProperties);
         SpritePropertyProvider.setProvider(spriteProperties);
         CastLibProvider.setProvider(castLibManager);
+        TimeoutProvider.setProvider(timeoutManager);
     }
 
     /**
@@ -675,6 +686,7 @@ public class Player {
         MoviePropertyProvider.clearProvider();
         SpritePropertyProvider.clearProvider();
         CastLibProvider.clearProvider();
+        TimeoutProvider.clearProvider();
     }
 
     // Movie lifecycle - follows dirplayer-rs flow exactly

@@ -163,6 +163,12 @@ public sealed interface Datum {
         public String toString() { return "<script " + member + ", " + castLib + ">"; }
     }
 
+    /** Timeout reference (returned by timeout() builtin) */
+    record TimeoutRef(String name) implements Datum {
+        @Override
+        public String toString() { return "timeout(\"" + name + "\")"; }
+    }
+
     /** Argument list for function calls (expects return value) */
     record ArgList(java.util.List<Datum> items) implements Datum {
         public ArgList {
@@ -269,6 +275,7 @@ public sealed interface Datum {
             case PlayerRef p -> "player";
             case WindowRef w -> "window";
             case ScriptRef sr -> "script";
+            case TimeoutRef tr -> "timeout";
             default -> getClass().getSimpleName().toLowerCase();
         };
     }
@@ -352,6 +359,7 @@ public sealed interface Datum {
             case ScriptRef sr -> sr;
             case XtraRef xr -> xr;
             case XtraInstance xi -> xi;
+            case TimeoutRef tr -> tr;
 
             // Mutable types - deep copy
             case List list -> {
