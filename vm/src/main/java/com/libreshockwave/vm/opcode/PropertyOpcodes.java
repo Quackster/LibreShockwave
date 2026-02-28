@@ -111,6 +111,11 @@ public final class PropertyOpcodes {
             case Datum.ScriptInstance si -> AncestorChainWalker.getProperty(si, propName);
             case Datum.XtraInstance xi -> XtraBuiltins.getProperty(xi, propName);
             case Datum.PropList pl -> pl.properties().getOrDefault(propName, Datum.VOID);
+            case Datum.MovieRef m -> {
+                MoviePropertyProvider provider = MoviePropertyProvider.getProvider();
+                yield provider != null ? provider.getMovieProp(propName) : Datum.VOID;
+            }
+            case Datum.PlayerRef p -> getBuiltinConstant(propName);
             default -> Datum.VOID;
         };
 
@@ -132,6 +137,12 @@ public final class PropertyOpcodes {
             }
             case Datum.XtraInstance xi -> XtraBuiltins.setProperty(xi, propName, value);
             case Datum.PropList pl -> pl.properties().put(propName, value);
+            case Datum.MovieRef m -> {
+                MoviePropertyProvider provider = MoviePropertyProvider.getProvider();
+                if (provider != null) {
+                    provider.setMovieProp(propName, value);
+                }
+            }
             default -> { /* ignore */ }
         }
 
@@ -401,20 +412,143 @@ public final class PropertyOpcodes {
         return true;
     }
 
+    /**
+     * GET_CHAINED_PROP (0x70) - Get a property from a chained object.
+     * Used for expressions like obj.prop, list[1], str.length.
+     * Stack: [..., obj] -> [..., value]
+     */
     private static boolean getChainedProp(ExecutionContext ctx) {
-        // GET_CHAINED_PROP - stub: pop the object, push VOID
         String propName = ctx.resolveName(ctx.getArgument());
         Datum obj = ctx.pop();
-        System.err.println("[WARN] GET_CHAINED_PROP not fully implemented: " + propName);
-        ctx.push(Datum.VOID);
+
+        // Check if propName is a numeric index
+        boolean isNumericIndex = false;
+        int numericIndex = 0;
+        try {
+            numericIndex = Integer.parseInt(propName);
+            isNumericIndex = true;
+        } catch (NumberFormatException e) {
+            // Not numeric
+        }
+
+        Datum result = switch (obj) {
+            case Datum.ScriptInstance si -> {
+                if (isNumericIndex) {
+                    yield Datum.VOID;
+                }
+                yield AncestorChainWalker.getProperty(si, propName);
+            }
+            case Datum.List list -> {
+                if (isNumericIndex) {
+                    // Lingo uses 1-based indexing
+                    int zeroIndex = numericIndex - 1;
+                    if (zeroIndex >= 0 && zeroIndex < list.items().size()) {
+                        yield list.items().get(zeroIndex);
+                    }
+                    yield Datum.VOID;
+                }
+                yield getChainedObjProp(obj, propName);
+            }
+            case Datum.PropList pl -> getChainedObjProp(obj, propName);
+            case Datum.Str str -> {
+                if ("length".equals(propName)) {
+                    yield Datum.of(str.value().length());
+                }
+                yield getChainedObjProp(obj, propName);
+            }
+            case Datum.SpriteRef sr -> {
+                SpritePropertyProvider spriteProvider = SpritePropertyProvider.getProvider();
+                if (spriteProvider != null) {
+                    yield spriteProvider.getSpriteProp(sr.channel(), propName);
+                }
+                yield Datum.VOID;
+            }
+            case Datum.CastMemberRef cmr -> getCastMemberProp(cmr, propName);
+            case Datum.CastLibRef clr -> getCastLibProp(clr, propName);
+            case Datum.MovieRef m -> {
+                MoviePropertyProvider provider = MoviePropertyProvider.getProvider();
+                if (provider != null) {
+                    yield provider.getMovieProp(propName);
+                }
+                yield Datum.VOID;
+            }
+            case Datum.PlayerRef p -> {
+                // Player properties - limited set
+                yield getBuiltinConstant(propName);
+            }
+            case Datum.Point point -> {
+                yield switch (propName.toLowerCase()) {
+                    case "loch", "x" -> Datum.of(point.x());
+                    case "locv", "y" -> Datum.of(point.y());
+                    default -> Datum.VOID;
+                };
+            }
+            case Datum.Rect rect -> {
+                yield switch (propName.toLowerCase()) {
+                    case "left" -> Datum.of(rect.left());
+                    case "top" -> Datum.of(rect.top());
+                    case "right" -> Datum.of(rect.right());
+                    case "bottom" -> Datum.of(rect.bottom());
+                    case "width" -> Datum.of(rect.right() - rect.left());
+                    case "height" -> Datum.of(rect.bottom() - rect.top());
+                    default -> Datum.VOID;
+                };
+            }
+            case Datum.Color color -> {
+                yield switch (propName.toLowerCase()) {
+                    case "red" -> Datum.of(color.r());
+                    case "green" -> Datum.of(color.g());
+                    case "blue" -> Datum.of(color.b());
+                    default -> Datum.VOID;
+                };
+            }
+            case Datum.XtraInstance xi -> XtraBuiltins.getProperty(xi, propName);
+            default -> getChainedObjProp(obj, propName);
+        };
+
+        ctx.push(result);
         return true;
     }
 
+    /**
+     * Helper for GET_CHAINED_PROP: get property from common object types.
+     */
+    private static Datum getChainedObjProp(Datum obj, String propName) {
+        return switch (obj) {
+            case Datum.PropList pl -> {
+                // Search by key (case-insensitive symbol/string match)
+                for (Map.Entry<String, Datum> entry : pl.properties().entrySet()) {
+                    if (entry.getKey().equalsIgnoreCase(propName)) {
+                        yield entry.getValue();
+                    }
+                }
+                yield Datum.VOID;
+            }
+            case Datum.ScriptInstance si -> AncestorChainWalker.getProperty(si, propName);
+            case Datum.CastMemberRef cmr -> getCastMemberProp(cmr, propName);
+            case Datum.CastLibRef clr -> getCastLibProp(clr, propName);
+            default -> Datum.VOID;
+        };
+    }
+
+    /**
+     * GET_TOP_LEVEL_PROP (0x72) - Get a top-level property.
+     * Used for _movie, _player access.
+     * Stack: [...] -> [..., value]
+     */
     private static boolean getTopLevelProp(ExecutionContext ctx) {
-        // GET_TOP_LEVEL_PROP - stub: push VOID
         String propName = ctx.resolveName(ctx.getArgument());
-        System.err.println("[WARN] GET_TOP_LEVEL_PROP not fully implemented: " + propName);
-        ctx.push(Datum.VOID);
+
+        Datum result = switch (propName) {
+            case "_player" -> Datum.PLAYER;
+            case "_movie" -> Datum.MOVIE;
+            default -> {
+                System.err.println("[WARN] GET_TOP_LEVEL_PROP: unknown prop: " + propName);
+                yield Datum.VOID;
+            }
+        };
+
+        ctx.push(result);
         return true;
     }
 }

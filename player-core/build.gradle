@@ -71,6 +71,18 @@ tasks.register('runHabboRunTest', JavaExec) {
     }
 }
 
+// Task to run Habbo preload test
+tasks.register('runHabboPreloadTest', JavaExec) {
+    group = 'verification'
+    description = 'Test external cast preloading with habbo.dcr'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.HabboPreloadTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
 // Task to debug cast lib scripts
 tasks.register('runCastLibDebugTest', JavaExec) {
     group = 'verification'

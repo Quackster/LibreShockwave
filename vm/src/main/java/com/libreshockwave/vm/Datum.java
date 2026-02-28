@@ -139,6 +139,18 @@ public sealed interface Datum {
         public String toString() { return "(the stage)"; }
     }
 
+    /** Movie reference (_movie) */
+    record MovieRef() implements Datum {
+        @Override
+        public String toString() { return "(the movie)"; }
+    }
+
+    /** Player reference (_player) */
+    record PlayerRef() implements Datum {
+        @Override
+        public String toString() { return "(the player)"; }
+    }
+
     /** Window reference */
     record WindowRef(String name) implements Datum {
         @Override
@@ -179,6 +191,8 @@ public sealed interface Datum {
     Datum FALSE = new Int(0);
     Datum EMPTY_STRING = new Str("");
     Datum STAGE = new StageRef();
+    Datum MOVIE = new MovieRef();
+    Datum PLAYER = new PlayerRef();
 
     // Common property key constants
     String PROP_ANCESTOR = "ancestor";
@@ -251,6 +265,8 @@ public sealed interface Datum {
             case XtraInstance xi -> "xtraInstance";
             case CastLibRef cl -> "castLib";
             case StageRef st -> "stage";
+            case MovieRef m -> "movie";
+            case PlayerRef p -> "player";
             case WindowRef w -> "window";
             case ScriptRef sr -> "script";
             default -> getClass().getSimpleName().toLowerCase();
@@ -330,6 +346,8 @@ public sealed interface Datum {
             case CastMemberRef cm -> cm;
             case CastLibRef cl -> cl;
             case StageRef st -> st;
+            case MovieRef m -> m;
+            case PlayerRef p -> p;
             case WindowRef w -> w;
             case ScriptRef sr -> sr;
             case XtraRef xr -> xr;

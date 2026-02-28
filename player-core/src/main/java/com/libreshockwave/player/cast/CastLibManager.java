@@ -57,6 +57,9 @@ public class CastLibManager implements CastLibProvider {
 
                 CastLib castLib = new CastLib(castLibNumber, castChunk, listEntry);
 
+                // Set preload mode from cast list entry
+                castLib.setPreloadMode(listEntry.preloadSettings());
+
                 // Set base path for external cast loading
                 castLib.setBasePath(basePath);
 
@@ -319,7 +322,7 @@ public class CastLibManager implements CastLibProvider {
         for (CastLib castLib : castLibs.values()) {
             int preloadMode = castLib.getPreloadMode();
 
-            // mode 1 = before frame 1, mode 2 = after frame 1
+            // mode 1 = AfterFrameOne, mode 2 = BeforeFrameOne (MovieLoaded)
             if (preloadMode == mode) {
                 // External casts must be fetched via preloadNetThing first
                 if (castLib.isFetched() && !castLib.isLoaded()) {

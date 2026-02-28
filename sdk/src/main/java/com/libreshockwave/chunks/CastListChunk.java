@@ -29,6 +29,7 @@ public record CastListChunk(
     public record CastListEntry(
         String name,
         String path,
+        int preloadSettings,
         int minMember,
         int maxMember,
         int memberCount,
@@ -110,6 +111,13 @@ public record CastListChunk(
                     }
                 }
             }
+            int preloadSettings = 0;
+            if (itemsPerCast >= 3 && i * itemsPerCast + 3 < offsetTableLen) {
+                byte[] preloadData = items[i * itemsPerCast + 3];
+                if (preloadData.length >= 2) {
+                    preloadSettings = ((preloadData[0] & 0xFF) << 8) | (preloadData[1] & 0xFF);
+                }
+            }
             if (itemsPerCast >= 4 && i * itemsPerCast + 4 < offsetTableLen) {
                 byte[] memberData = items[i * itemsPerCast + 4];
                 if (memberData.length >= 8) {
@@ -124,7 +132,7 @@ public record CastListChunk(
                 memberCount = maxMember - minMember + 1;
             }
 
-            entries.add(new CastListEntry(name, path, minMember, maxMember, memberCount, castId));
+            entries.add(new CastListEntry(name, path, preloadSettings, minMember, maxMember, memberCount, castId));
         }
 
         return new CastListChunk(file, id, dataOffset, itemsPerCast, castCount, entries);

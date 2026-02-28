@@ -684,32 +684,36 @@ public class Player {
 
         setupProviders();
         try {
-            // 0. Preload casts with preloadMode=1 (before frame 1)
-            castLibManager.preloadCasts(1);
+            // 0. Initiate fetch of all external casts (async network requests)
+            preloadAllCasts();
 
-            // 1. prepareMovie -> dispatched to movie scripts (behaviors not initialized yet)
+            // 1. Preload casts with preloadMode=2 (BeforeFrameOne / MovieLoaded)
+            // dirplayer-rs: Mode 2 = BeforeFrameOne, Mode 1 = AfterFrameOne
+            castLibManager.preloadCasts(2);
+
+            // 2. prepareMovie -> dispatched to movie scripts (behaviors not initialized yet)
             frameContext.getEventDispatcher().dispatchToMovieScripts(PlayerEvent.PREPARE_MOVIE, List.of());
 
-            // 2. Initialize sprites for frame 1
+            // 3. Initialize sprites for frame 1
             frameContext.initializeFirstFrame();
 
-            // 3. beginSprite events
+            // 4. beginSprite events
             frameContext.dispatchBeginSpriteEvents();
 
-            // 4. prepareFrame -> dispatched to all behaviors + frame/movie scripts
+            // 5. prepareFrame -> dispatched to all behaviors + frame/movie scripts
             frameContext.getEventDispatcher().dispatchGlobalEvent(PlayerEvent.PREPARE_FRAME, List.of());
 
-            // 5. startMovie -> dispatched to movie scripts
+            // 6. startMovie -> dispatched to movie scripts
             frameContext.getEventDispatcher().dispatchToMovieScripts(PlayerEvent.START_MOVIE, List.of());
 
-            // 6. enterFrame -> dispatched to all behaviors + frame/movie scripts
+            // 7. enterFrame -> dispatched to all behaviors + frame/movie scripts
             frameContext.getEventDispatcher().dispatchGlobalEvent(PlayerEvent.ENTER_FRAME, List.of());
 
-            // 7. exitFrame -> dispatched to all behaviors + frame/movie scripts
+            // 8. exitFrame -> dispatched to all behaviors + frame/movie scripts
             frameContext.getEventDispatcher().dispatchGlobalEvent(PlayerEvent.EXIT_FRAME, List.of());
 
-            // 8. Preload casts with preloadMode=2 (after frame 1)
-            castLibManager.preloadCasts(2);
+            // 9. Preload casts with preloadMode=1 (AfterFrameOne)
+            castLibManager.preloadCasts(1);
 
             // Frame loop will handle subsequent frames
         } finally {

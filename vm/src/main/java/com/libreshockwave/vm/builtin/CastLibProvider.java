@@ -122,7 +122,7 @@ public interface CastLibProvider {
     /**
      * Preload casts based on preloadMode.
      * Called during movie initialization.
-     * @param mode 1 for before frame 1, 2 for after frame 1
+     * @param mode 1 for AfterFrameOne, 2 for BeforeFrameOne (MovieLoaded)
      */
     default void preloadCasts(int mode) {
         // Default: do nothing
