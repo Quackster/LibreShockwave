@@ -29,6 +29,7 @@ public final class TypeBuiltins {
         builtins.put("integerp", TypeBuiltins::integerp);
         builtins.put("floatp", TypeBuiltins::floatp);
         builtins.put("symbolp", TypeBuiltins::symbolp);
+        builtins.put("symbol", TypeBuiltins::symbol);
         builtins.put("callancestor", AncestorCallHandler::call);
     }
 
@@ -580,13 +581,15 @@ public final class TypeBuiltins {
 
     /**
      * listp(value)
-     * Returns TRUE if value is a linear list.
+     * Returns TRUE if value is a list (linear list or property list).
+     * Matches dirplayer-rs: both Datum::List and Datum::PropList return true.
      */
     private static Datum listp(LingoVM vm, List<Datum> args) {
         if (args.isEmpty()) {
             return Datum.FALSE;
         }
-        return args.get(0) instanceof Datum.List ? Datum.TRUE : Datum.FALSE;
+        Datum value = args.get(0);
+        return (value instanceof Datum.List || value instanceof Datum.PropList) ? Datum.TRUE : Datum.FALSE;
     }
 
     /**
@@ -620,6 +623,35 @@ public final class TypeBuiltins {
             return Datum.FALSE;
         }
         return args.get(0) instanceof Datum.Float ? Datum.TRUE : Datum.FALSE;
+    }
+
+    /**
+     * symbol(value)
+     * Converts a string to a symbol. Matches dirplayer-rs behavior:
+     * - If already a symbol, returns it unchanged
+     * - If a string starting with "#", returns Symbol("#")
+     * - If an empty string, returns Symbol("")
+     * - Otherwise, creates Symbol from the string content
+     */
+    private static Datum symbol(LingoVM vm, List<Datum> args) {
+        if (args.isEmpty()) {
+            return Datum.VOID;
+        }
+        Datum arg = args.get(0);
+        if (arg instanceof Datum.Symbol) {
+            return arg;
+        }
+        if (arg instanceof Datum.Str str) {
+            String s = str.value();
+            if (s.isEmpty()) {
+                return Datum.symbol("");
+            }
+            if (s.startsWith("#")) {
+                return Datum.symbol("#");
+            }
+            return Datum.symbol(s);
+        }
+        return Datum.VOID;
     }
 
     /**

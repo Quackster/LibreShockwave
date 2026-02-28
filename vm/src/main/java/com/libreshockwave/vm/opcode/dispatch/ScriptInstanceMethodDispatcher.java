@@ -31,23 +31,17 @@ public final class ScriptInstanceMethodDispatcher {
                 if (args.size() >= 2) {
                     String propName = getPropertyName(args.get(0));
                     Datum value = args.get(1);
-                    instance.properties().put(propName, value);
+                    AncestorChainWalker.setProperty(instance, propName, value);
                 }
                 return Datum.VOID;
             }
             case "setaprop" -> {
                 // setaProp(instance, #propName, value)
+                // Matches dirplayer-rs: walks ancestor chain via script_set_prop
                 if (args.size() >= 2) {
                     String propName = getPropertyName(args.get(0));
                     Datum value = args.get(1);
-                    instance.properties().put(propName, value);
-
-                    // Also update pObjectList if it exists (for Object Manager pattern)
-                    // This ensures getManager() can find the correct instance
-                    Datum pObjectList = instance.properties().get("pObjectList");
-                    if (pObjectList instanceof Datum.PropList objList) {
-                        objList.properties().put(propName, value);
-                    }
+                    AncestorChainWalker.setProperty(instance, propName, value);
                 }
                 return Datum.VOID;
             }
@@ -55,10 +49,10 @@ public final class ScriptInstanceMethodDispatcher {
                 // setProp(instance, #propName, value) - 2 args: set property directly
                 // setProp(instance, #propName, key, value) - 3 args: nested setting
                 if (args.size() == 2) {
-                    // Simple case: set property directly
+                    // Simple case: set property directly (walks ancestor chain)
                     String propName = getPropertyName(args.get(0));
                     Datum value = args.get(1);
-                    instance.properties().put(propName, value);
+                    AncestorChainWalker.setProperty(instance, propName, value);
                 } else if (args.size() == 3) {
                     // Nested case: me.setProp(#pItemList, key, value)
                     // Get or create the property, then set a sub-property on it
