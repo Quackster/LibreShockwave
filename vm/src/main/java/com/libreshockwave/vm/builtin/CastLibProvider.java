@@ -129,6 +129,17 @@ public interface CastLibProvider {
     }
 
     /**
+     * Get the declared property names for a script member.
+     * Used to pre-initialize script instance properties to VOID.
+     * @param castLib The cast library number
+     * @param member The member number
+     * @return List of property names declared in the script, or empty list
+     */
+    default java.util.List<String> getScriptPropertyNames(int castLib, int member) {
+        return java.util.List.of();
+    }
+
+    /**
      * Find a handler by name across all cast libraries.
      * Used by LingoVM to locate handlers in external casts.
      * @param handlerName The handler name to find

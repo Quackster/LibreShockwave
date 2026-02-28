@@ -50,7 +50,7 @@ public final class PropertyOpcodes {
         String propName = ctx.resolveName(ctx.getArgument());
         Datum value = ctx.pop();
         if (ctx.getReceiver() instanceof Datum.ScriptInstance si) {
-            si.properties().put(propName, value);
+            AncestorChainWalker.setProperty(si, propName, value);
             ctx.tracePropertySet(propName, value);
         }
         return true;
@@ -191,7 +191,7 @@ public final class PropertyOpcodes {
             case Datum.CastLibRef clr -> setCastLibProp(clr, propName, value);
             case Datum.CastMemberRef cmr -> setCastMemberProp(cmr, propName, value);
             case Datum.ScriptInstance si -> {
-                si.properties().put(propName, value);
+                AncestorChainWalker.setProperty(si, propName, value);
                 ctx.tracePropertySet(propName, value);
             }
             case Datum.XtraInstance xi -> XtraBuiltins.setProperty(xi, propName, value);

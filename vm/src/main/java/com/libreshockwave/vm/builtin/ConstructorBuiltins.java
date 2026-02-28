@@ -71,6 +71,16 @@ public final class ConstructorBuiltins {
         // Store the script reference for method dispatch
         properties.put(Datum.PROP_SCRIPT_REF, scriptRef);
 
+        // Pre-initialize declared properties to VOID (matching dirplayer-rs behavior)
+        CastLibProvider provider = CastLibProvider.getProvider();
+        if (provider != null) {
+            java.util.List<String> propNames = provider.getScriptPropertyNames(
+                scriptRef.castLib(), scriptRef.member());
+            for (String name : propNames) {
+                properties.put(name, Datum.VOID);
+            }
+        }
+
         Datum.ScriptInstance instance = new Datum.ScriptInstance(instanceId, properties);
 
         // Note: We intentionally do NOT automatically call the "new"/"create" constructor here.

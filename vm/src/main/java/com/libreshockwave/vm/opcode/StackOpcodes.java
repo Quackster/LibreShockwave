@@ -158,6 +158,12 @@ public final class StackOpcodes {
         // Store the script reference for method dispatch
         if (memberRef instanceof Datum.CastMemberRef cmr) {
             properties.put(Datum.PROP_SCRIPT_REF, new Datum.ScriptRef(cmr.castLib(), cmr.member()));
+
+            // Pre-initialize declared properties to VOID (matching dirplayer-rs behavior)
+            List<String> propNames = provider.getScriptPropertyNames(cmr.castLib(), cmr.member());
+            for (String name : propNames) {
+                properties.put(name, Datum.VOID);
+            }
         }
 
         Datum.ScriptInstance instance = new Datum.ScriptInstance(instanceId, properties);

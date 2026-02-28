@@ -109,6 +109,24 @@ public final class AncestorChainWalker {
     }
 
     /**
+     * Set a property on a script instance, walking the ancestor chain to find the owner.
+     * If the property exists on the current instance or an ancestor, sets it there.
+     * If not found anywhere, adds to the current instance.
+     * @param instance The script instance to start searching from
+     * @param propName The property name to set
+     * @param value The value to set
+     */
+    public static void setProperty(Datum.ScriptInstance instance, String propName, Datum value) {
+        Datum.ScriptInstance owner = findOwner(instance, propName);
+        if (owner != null) {
+            owner.properties().put(propName, value);
+        } else {
+            // Property not declared anywhere - add to current instance
+            instance.properties().put(propName, value);
+        }
+    }
+
+    /**
      * Count the depth of the ancestor chain.
      * @param instance The script instance to start from
      * @return The number of ancestors (0 if no ancestors)

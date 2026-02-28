@@ -517,4 +517,35 @@ public class CastLibManager implements CastLibProvider {
 
         return null;
     }
+
+    @Override
+    public java.util.List<String> getScriptPropertyNames(int castLibNumber, int memberNumber) {
+        ensureInitialized();
+
+        // If castLibNumber is 0, search all cast libs
+        if (castLibNumber == 0) {
+            for (CastLib castLib : castLibs.values()) {
+                if (!castLib.isLoaded()) continue;
+                var script = castLib.getScript(memberNumber);
+                if (script != null && script.hasProperties()) {
+                    var scriptNames = castLib.getScriptNames();
+                    return script.getPropertyNames(scriptNames);
+                }
+            }
+            return java.util.List.of();
+        }
+
+        CastLib castLib = castLibs.get(castLibNumber);
+        if (castLib == null || !castLib.isLoaded()) {
+            return java.util.List.of();
+        }
+
+        var script = castLib.getScript(memberNumber);
+        if (script == null || !script.hasProperties()) {
+            return java.util.List.of();
+        }
+
+        var scriptNames = castLib.getScriptNames();
+        return script.getPropertyNames(scriptNames);
+    }
 }
