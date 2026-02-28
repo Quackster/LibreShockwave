@@ -221,6 +221,10 @@ public class Player {
         return castLibManager;
     }
 
+    public TimeoutManager getTimeoutManager() {
+        return timeoutManager;
+    }
+
     /**
      * Preload all external cast libraries.
      * This triggers async loading of any casts that have external paths/URLs.

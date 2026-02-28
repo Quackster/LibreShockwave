@@ -4,6 +4,7 @@ import com.libreshockwave.player.debug.WatchExpression;
 import com.libreshockwave.vm.Datum;
 
 import javax.swing.*;
+import javax.swing.event.ChangeListener;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -26,12 +27,14 @@ public class StateInspectionTabs extends JTabbedPane {
     private final VariablesTableModel localsTableModel;
     private final VariablesTableModel globalsTableModel;
     private final WatchesPanel watchesPanel;
+    private final ObjectsPanel objectsPanel;
 
     private final JTable stackTable;
     private final JTable localsTable;
     private final JTable globalsTable;
 
     private DatumClickListener datumClickListener;
+    private int objectsTabIndex;
 
     public StateInspectionTabs() {
         super(JTabbedPane.TOP);
@@ -110,6 +113,11 @@ public class StateInspectionTabs extends JTabbedPane {
         // Watches panel
         watchesPanel = new WatchesPanel();
         addTab("Watches", watchesPanel);
+
+        // Objects panel
+        objectsPanel = new ObjectsPanel();
+        addTab("Objects", objectsPanel);
+        objectsTabIndex = getTabCount() - 1;
     }
 
     /**
@@ -117,6 +125,7 @@ public class StateInspectionTabs extends JTabbedPane {
      */
     public void setDatumClickListener(DatumClickListener listener) {
         this.datumClickListener = listener;
+        objectsPanel.setDatumClickListener(listener);
     }
 
     /**
@@ -173,5 +182,37 @@ public class StateInspectionTabs extends JTabbedPane {
      */
     public VariablesTableModel getGlobalsTableModel() {
         return globalsTableModel;
+    }
+
+    /**
+     * Get the objects panel.
+     */
+    public ObjectsPanel getObjectsPanel() {
+        return objectsPanel;
+    }
+
+    /**
+     * Check if the Objects tab is currently selected.
+     */
+    public boolean isObjectsTabSelected() {
+        return getSelectedIndex() == objectsTabIndex;
+    }
+
+    /**
+     * Get the index of the Objects tab.
+     */
+    public int getObjectsTabIndex() {
+        return objectsTabIndex;
+    }
+
+    /**
+     * Update the Objects panel with snapshot data.
+     */
+    public void setObjects(List<TimeoutTableModel.TimeoutSnapshot> timeouts,
+                           Map<String, Datum> globals,
+                           List<Map.Entry<String, Datum>> movieProps) {
+        objectsPanel.setTimeouts(timeouts);
+        objectsPanel.setGlobals(globals);
+        objectsPanel.setMovieProperties(movieProps);
     }
 }

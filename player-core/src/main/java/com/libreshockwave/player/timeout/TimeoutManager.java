@@ -268,6 +268,13 @@ public class TimeoutManager implements TimeoutProvider {
     }
 
     /**
+     * Get the names of all active timeouts.
+     */
+    public List<String> getTimeoutNames() {
+        return new ArrayList<>(timeouts.keySet());
+    }
+
+    /**
      * Get the number of active timeouts.
      */
     public int getTimeoutCount() {

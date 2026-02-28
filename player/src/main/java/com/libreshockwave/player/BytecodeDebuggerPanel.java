@@ -17,14 +17,18 @@ import com.libreshockwave.player.debug.ui.HandlerNavigator;
 import com.libreshockwave.player.debug.ui.ScriptBrowserPanel;
 import com.libreshockwave.player.debug.ui.ScriptItem;
 import com.libreshockwave.player.debug.ui.StateInspectionTabs;
+import com.libreshockwave.player.debug.ui.TimeoutTableModel;
 import com.libreshockwave.player.debug.ui.WatchesPanel;
+import com.libreshockwave.player.timeout.TimeoutManager;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.TraceListener;
+import com.libreshockwave.vm.builtin.MoviePropertyProvider;
 
 import javax.swing.*;
+import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
 import java.awt.*;
-import java.util.ArrayDeque;
-import java.util.Deque;
+import java.util.*;
 import java.util.List;
 
 /**
@@ -179,6 +183,15 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
             }
         });
 
+        // Tab change listener: capture snapshot when Objects tab is selected
+        stateTabs.addChangeListener(e -> {
+            if (stateTabs.isObjectsTabSelected() && player != null
+                    && player.getState() == PlayerState.PLAYING) {
+                player.pause();
+                captureObjectsSnapshot();
+            }
+        });
+
         mainSplit.setBottomComponent(stateTabs);
 
         mainPanel.add(mainSplit, BorderLayout.CENTER);
@@ -190,6 +203,46 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
             List<WatchExpression> watches = controller.evaluateWatchExpressions();
             stateTabs.setWatches(watches);
         }
+    }
+
+    private static final String[] MOVIE_PROP_NAMES = {
+        "frame", "lastFrame", "tempo", "timer", "ticks",
+        "movieName", "platform", "exitLock", "itemDelimiter", "puppetTempo"
+    };
+
+    /**
+     * Capture a snapshot of runtime objects and populate the Objects tab.
+     */
+    private void captureObjectsSnapshot() {
+        if (player == null) return;
+
+        // Timeouts
+        TimeoutManager tm = player.getTimeoutManager();
+        List<String> names = tm.getTimeoutNames();
+        List<TimeoutTableModel.TimeoutSnapshot> timeoutSnapshots = new ArrayList<>();
+        for (String name : names) {
+            Datum periodDatum = tm.getTimeoutProp(name, "period");
+            Datum handlerDatum = tm.getTimeoutProp(name, "handler");
+            Datum target = tm.getTimeoutProp(name, "target");
+            Datum persistentDatum = tm.getTimeoutProp(name, "persistent");
+            int period = periodDatum instanceof Datum.Int i ? i.value() : 0;
+            String handler = handlerDatum instanceof Datum.Symbol s ? s.name() : handlerDatum.toStr();
+            boolean persistent = persistentDatum.isTruthy();
+            timeoutSnapshots.add(new TimeoutTableModel.TimeoutSnapshot(name, period, handler, target, persistent));
+        }
+
+        // Globals
+        Map<String, Datum> globals = player.getVM().getGlobals();
+
+        // Movie properties
+        MoviePropertyProvider movieProps = player.getMovieProperties();
+        List<Map.Entry<String, Datum>> moviePropEntries = new ArrayList<>();
+        for (String prop : MOVIE_PROP_NAMES) {
+            Datum value = movieProps.getMovieProp(prop);
+            moviePropEntries.add(Map.entry(prop, value));
+        }
+
+        stateTabs.setObjects(timeoutSnapshots, globals, moviePropEntries);
     }
 
     private void navigateToHandler(String handlerName) {
@@ -314,6 +367,9 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
             } else {
                 refreshWatches();
             }
+
+            // Also refresh Objects tab so it's available without re-pausing
+            captureObjectsSnapshot();
 
             toolbar.setStepButtonsEnabled(true);
         });
