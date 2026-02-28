@@ -83,6 +83,30 @@ tasks.register('runHabboPreloadTest', JavaExec) {
     }
 }
 
+// Task to trace DCR startup flow
+tasks.register('runStartupTraceTest', JavaExec) {
+    group = 'verification'
+    description = 'Trace startup call tree from first event to create(#core, #core)'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.StartupTraceTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+// Task to scan for timeout usage in DCR
+tasks.register('runTimeoutScanTest', JavaExec) {
+    group = 'verification'
+    description = 'Scan habbo.dcr scripts for timeout references'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.TimeoutScanTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
 // Task to debug cast lib scripts
 tasks.register('runCastLibDebugTest', JavaExec) {
     group = 'verification'

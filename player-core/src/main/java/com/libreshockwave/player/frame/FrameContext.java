@@ -128,8 +128,8 @@ public class FrameContext {
     public boolean executeFrame() {
         logEvent("executeFrame(" + currentFrame + ")");
 
-        // 1. stepFrame event (to actorList - not fully implemented yet)
-        // dispatchEvent(PlayerEvent.STEP_FRAME);
+        // 1. stepFrame event (to actorList and behaviors)
+        dispatchEvent(PlayerEvent.STEP_FRAME);
 
         // 2. prepareFrame -> all behaviors + frame/movie scripts
         dispatchEvent(PlayerEvent.PREPARE_FRAME);
