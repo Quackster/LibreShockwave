@@ -27,11 +27,15 @@ public final class ScriptInstanceMethodDispatcher {
         String method = methodName.toLowerCase();
         switch (method) {
             case "setat" -> {
-                // setAt(instance, #propName, value) or instance.setAt(#propName, value)
+                // setAt on ScriptInstance: only "ancestor" key is allowed (dirplayer-rs)
                 if (args.size() >= 2) {
                     String propName = getPropertyName(args.get(0));
                     Datum value = args.get(1);
-                    AncestorChainWalker.setProperty(instance, propName, value);
+                    if (propName.equalsIgnoreCase("ancestor") || propName.equals(Datum.PROP_ANCESTOR)) {
+                        instance.properties().put(Datum.PROP_ANCESTOR, value);
+                    } else {
+                        throw new LingoException("Cannot setAt property " + propName + " on script instance");
+                    }
                 }
                 return Datum.VOID;
             }
