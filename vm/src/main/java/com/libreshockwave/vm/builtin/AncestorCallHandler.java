@@ -127,6 +127,9 @@ public final class AncestorCallHandler {
      * Find the appropriate ancestor for a callAncestor call.
      * If we're already executing in an ancestor's handler, we need to find
      * which level we're at and return THAT instance's ancestor.
+     *
+     * Matches dirplayer-rs: compares __scriptRef__ (CastMemberRef) against
+     * the current scope's script (Lscr chunk ID) to find the right ancestor level.
      */
     private static Datum findAncestorForCall(LingoVM vm, Datum.ScriptInstance me) {
         Scope currentScope = vm.getCurrentScope();
@@ -135,16 +138,20 @@ public final class AncestorCallHandler {
             return me.properties().get(Datum.PROP_ANCESTOR);
         }
 
-        // Get the script we're currently executing in
-        int currentScriptId = currentScope.getScript().id();
+        int currentLscrId = currentScope.getScript().id();
+        CastLibProvider provider = CastLibProvider.getProvider();
 
         // Walk me's ancestor chain to find which instance has the script we're in
         Datum.ScriptInstance walkInstance = me;
-        for (int i = 0; i < AncestorChainWalker.MAX_ANCESTOR_DEPTH; i++) { // Safety limit
-            if (walkInstance.scriptId() == currentScriptId) {
-                // Found it - return this instance's ancestor
-                Datum ancestor = walkInstance.properties().get(Datum.PROP_ANCESTOR);
-                return ancestor != null ? ancestor : Datum.VOID;
+        for (int i = 0; i < AncestorChainWalker.MAX_ANCESTOR_DEPTH; i++) {
+            // Compare using __scriptRef__ resolved to Lscr chunk ID
+            Datum scriptRefDatum = walkInstance.properties().get(Datum.PROP_SCRIPT_REF);
+            if (scriptRefDatum instanceof Datum.ScriptRef ref && provider != null) {
+                int lscrId = provider.getScriptChunkId(ref.castLib(), ref.member());
+                if (lscrId == currentLscrId) {
+                    Datum ancestor = walkInstance.properties().get(Datum.PROP_ANCESTOR);
+                    return ancestor != null ? ancestor : Datum.VOID;
+                }
             }
             // Move to next ancestor
             Datum nextAncestor = walkInstance.properties().get(Datum.PROP_ANCESTOR);

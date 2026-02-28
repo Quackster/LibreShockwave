@@ -229,11 +229,25 @@ public class MovieProperties implements MoviePropertyProvider {
                 player.setTempo(value.toInt());
                 return true;
             }
+            case "debugplaybackenabled" -> {
+                // Accepted as no-op (matching dirplayer-rs TODO)
+                return true;
+            }
             default -> {
                 System.err.println("[MovieProperties] Cannot set read-only property: " + propName);
                 return false;
             }
         }
+    }
+
+    @Override
+    public void goToFrame(int frame) {
+        player.goToFrame(frame);
+    }
+
+    @Override
+    public void goToLabel(String label) {
+        player.goToLabel(label);
     }
 
     private String getMovieName() {

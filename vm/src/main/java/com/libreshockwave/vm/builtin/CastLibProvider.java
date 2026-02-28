@@ -149,6 +149,17 @@ public interface CastLibProvider {
     }
 
     /**
+     * Get the Lscr chunk ID for a script at a specific cast lib and member number.
+     * Used to compare script identity (e.g. in findAncestorForCall).
+     * @param castLibNumber The cast library number
+     * @param memberNumber The member number
+     * @return The Lscr chunk ID, or -1 if not found
+     */
+    default int getScriptChunkId(int castLibNumber, int memberNumber) {
+        return -1;
+    }
+
+    /**
      * Find a handler by name across all cast libraries.
      * Used by LingoVM to locate handlers in external casts.
      * @param handlerName The handler name to find

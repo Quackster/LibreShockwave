@@ -462,6 +462,17 @@ public class CastLibManager implements CastLibProvider {
         return null;
     }
 
+    @Override
+    public int getScriptChunkId(int castLibNumber, int memberNumber) {
+        ensureInitialized();
+        CastLib castLib = castLibs.get(castLibNumber);
+        if (castLib == null || !castLib.isLoaded()) {
+            return -1;
+        }
+        var script = castLib.getScript(memberNumber);
+        return script != null ? script.id() : -1;
+    }
+
     /**
      * Find a handler in a specific script by its cast member number.
      * Used for method calls on script instances - only searches the instance's parent script.

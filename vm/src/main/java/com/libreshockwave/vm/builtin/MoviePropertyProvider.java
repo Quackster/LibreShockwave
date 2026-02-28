@@ -53,6 +53,22 @@ public interface MoviePropertyProvider {
         setMovieProp("itemDelimiter", Datum.of(String.valueOf(delimiter)));
     }
 
+    /**
+     * Go to a specific frame number.
+     * @param frame The 1-based frame number to go to
+     */
+    default void goToFrame(int frame) {
+        // Default: no-op
+    }
+
+    /**
+     * Go to a labeled frame.
+     * @param label The frame label to go to
+     */
+    default void goToLabel(String label) {
+        // Default: no-op
+    }
+
     // Thread-local provider for VM access
     ThreadLocal<MoviePropertyProvider> CURRENT = new ThreadLocal<>();
 

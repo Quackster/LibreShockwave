@@ -7,7 +7,6 @@ import com.libreshockwave.vm.builtin.CastLibProvider;
 import com.libreshockwave.vm.opcode.ExecutionContext;
 import com.libreshockwave.vm.util.AncestorChainWalker;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 
@@ -169,20 +168,8 @@ public final class ScriptInstanceMethodDispatcher {
                 return new Datum.Symbol("instance");
             }
             case "addat" -> {
-                // addAt(instance, position, classList) - set up ancestor chain from class list
-                // This is used by Object Manager to build the class hierarchy
-                // Position 1 = immediate ancestor
-                if (args.size() >= 2) {
-                    int position = args.get(0).toInt();
-                    Datum classList = args.get(1);
-                    if (position == 1 && classList instanceof Datum.List list && !list.items().isEmpty()) {
-                        // Build ancestor chain from the class list
-                        Datum.ScriptInstance ancestorChain = buildAncestorChain(ctx, list.items());
-                        if (ancestorChain != null) {
-                            instance.properties().put(Datum.PROP_ANCESTOR, ancestorChain);
-                        }
-                    }
-                }
+                // addAt on ScriptInstance is a no-op (matching dirplayer-rs)
+                // In dirplayer-rs, addAt checks if datum is a List; for non-List types it returns Void
                 return Datum.VOID;
             }
         }
@@ -250,74 +237,6 @@ public final class ScriptInstanceMethodDispatcher {
             return sr;
         }
         return null;
-    }
-
-    /**
-     * Build an ancestor chain from a list of class names.
-     * Each class is instantiated and chained to the next.
-     * Returns the first instance in the chain (which will be set as the ancestor).
-     */
-    private static Datum.ScriptInstance buildAncestorChain(ExecutionContext ctx, List<Datum> classNames) {
-        CastLibProvider provider = CastLibProvider.getProvider();
-        if (provider == null || classNames.isEmpty()) {
-            return null;
-        }
-
-        Datum.ScriptInstance previousInstance = null;
-        Datum.ScriptInstance firstInstance = null;
-
-        // Build chain from first class to last
-        for (Datum className : classNames) {
-            String name = className.toStr();
-
-            // Find the script member for this class name
-            Datum memberDatum = provider.getMemberByName(0, name);
-            if (!(memberDatum instanceof Datum.CastMemberRef memberRef)) {
-                continue;
-            }
-
-            // Get the script property from the member (which gives us the slot number)
-            Datum scriptDatum = provider.getMemberProp(memberRef.castLib(), memberRef.member(), "script");
-
-            // If script property is an int (slot number), decode it to ScriptRef
-            if (scriptDatum instanceof Datum.Int slotNum) {
-                int value = slotNum.value();
-                if (value > 65535) {
-                    // Decode slot number
-                    int castLib = value >> 16;
-                    int member = value & 0xFFFF;
-                    scriptDatum = new Datum.ScriptRef(castLib, member);
-                } else {
-                    // Simple member number - assume same cast lib
-                    scriptDatum = new Datum.ScriptRef(memberRef.castLib(), value);
-                }
-            } else if (!(scriptDatum instanceof Datum.ScriptRef)) {
-                // Create ScriptRef from member info directly
-                scriptDatum = new Datum.ScriptRef(memberRef.castLib(), memberRef.member());
-            }
-
-            // Create new instance of the script
-            List<Datum> newArgs = new ArrayList<>();
-            newArgs.add(scriptDatum);
-            Datum newInstance = ctx.invokeBuiltin("new", newArgs);
-
-            if (!(newInstance instanceof Datum.ScriptInstance instance)) {
-                continue;
-            }
-
-            // Set the ancestor of the previous instance to this one
-            if (previousInstance != null) {
-                previousInstance.properties().put(Datum.PROP_ANCESTOR, instance);
-            }
-
-            if (firstInstance == null) {
-                firstInstance = instance;
-            }
-
-            previousInstance = instance;
-        }
-
-        return firstInstance;
     }
 
     /**

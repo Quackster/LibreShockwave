@@ -22,6 +22,7 @@ public final class ControlFlowBuiltins {
         builtins.put("abort", ControlFlowBuiltins::abort);
         builtins.put("nothing", ControlFlowBuiltins::nothing);
         builtins.put("param", ControlFlowBuiltins::param);
+        builtins.put("go", ControlFlowBuiltins::go);
     }
 
     /**
@@ -64,6 +65,38 @@ public final class ControlFlowBuiltins {
      * Does nothing - used as a placeholder.
      */
     private static Datum nothing(LingoVM vm, List<Datum> args) {
+        return Datum.VOID;
+    }
+
+    /**
+     * go(frameOrLabel)
+     * Navigate to a frame by number, label, or symbol (#next, #previous, #loop).
+     * Matches dirplayer-rs MovieHandlers::go().
+     */
+    private static Datum go(LingoVM vm, List<Datum> args) {
+        if (args.isEmpty()) return Datum.VOID;
+        MoviePropertyProvider provider = MoviePropertyProvider.getProvider();
+        if (provider == null) return Datum.VOID;
+
+        Datum arg = args.get(0);
+        if (arg instanceof Datum.Int i) {
+            provider.goToFrame(i.value());
+        } else if (arg instanceof Datum.Symbol sym) {
+            switch (sym.name().toLowerCase()) {
+                case "next" -> provider.goToFrame(provider.getMovieProp("frame").toInt() + 1);
+                case "previous" -> provider.goToFrame(Math.max(1, provider.getMovieProp("frame").toInt() - 1));
+                case "loop" -> provider.goToFrame(provider.getMovieProp("frame").toInt());
+                default -> provider.goToLabel(sym.name());
+            }
+        } else if (arg instanceof Datum.Str s) {
+            provider.goToLabel(s.value());
+        } else {
+            // Fallback: try as int
+            int frame = arg.toInt();
+            if (frame > 0) {
+                provider.goToFrame(frame);
+            }
+        }
         return Datum.VOID;
     }
 

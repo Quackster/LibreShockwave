@@ -17,6 +17,7 @@ public final class ListBuiltins {
     public static void register(Map<String, BiFunction<LingoVM, List<Datum>, Datum>> builtins) {
         builtins.put("count", ListBuiltins::count);
         builtins.put("getat", ListBuiltins::getAt);
+        builtins.put("addat", ListBuiltins::addAt);
     }
 
     private static Datum count(LingoVM vm, List<Datum> args) {
@@ -39,6 +40,25 @@ public final class ListBuiltins {
                 return l.items().get(index);
             }
         }
+        return Datum.VOID;
+    }
+
+    /**
+     * addAt(list, position, value) - insert value at position in a list.
+     * Matching dirplayer-rs: if first arg is not a List, return VOID (no-op).
+     */
+    private static Datum addAt(LingoVM vm, List<Datum> args) {
+        if (args.size() < 3) return Datum.VOID;
+        Datum datum = args.get(0);
+        if (!(datum instanceof Datum.List list)) {
+            // Non-list types: no-op, return VOID (matches dirplayer-rs)
+            return Datum.VOID;
+        }
+        int position = args.get(1).toInt() - 1; // Lingo is 1-indexed
+        Datum value = args.get(2);
+        if (position < 0) position = 0;
+        if (position > list.items().size()) position = list.items().size();
+        list.items().add(position, value);
         return Datum.VOID;
     }
 }
