@@ -167,10 +167,11 @@ public class HabboPreloadTest {
         Player player = new Player(file);
         LingoVM vm = player.getVM();
 
-        // Track handler executions and errors
+        // Track handler executions, return values, and errors
         Set<String> executedHandlers = new LinkedHashSet<>();
         Set<String> unimplementedOpcodes = new LinkedHashSet<>();
         List<String> errors = new ArrayList<>();
+        Datum[] dumpReturnValue = {null};
 
         vm.setTraceListener(new TraceListener() {
             @Override
@@ -180,7 +181,9 @@ public class HabboPreloadTest {
 
             @Override
             public void onHandlerExit(HandlerInfo info, Datum result) {
-                // no-op
+                if ("dump".equals(info.handlerName())) {
+                    dumpReturnValue[0] = result;
+                }
             }
 
             @Override
@@ -267,9 +270,30 @@ public class HabboPreloadTest {
 
         player.shutdown();
 
-        // We pass if dump() was found, even if there are some errors during execution
-        // (some errors are expected due to missing network resources)
-        System.out.println("PASS: dump() handler found and movie executed");
+        // Verify dump() was executed
+        if (!executedHandlers.contains("dump")) {
+            System.out.println("FAIL: dump() handler was never executed");
+            return false;
+        }
+
+        // Verify dump() returned 1 (true)
+        System.out.println("\n  dump() return value: " + dumpReturnValue[0]);
+        if (dumpReturnValue[0] == null) {
+            System.out.println("FAIL: dump() return value was not captured");
+            return false;
+        }
+        if (dumpReturnValue[0].toInt() != 1) {
+            System.out.println("FAIL: dump() returned " + dumpReturnValue[0] + " (expected 1/true)");
+            return false;
+        }
+
+        // Verify no errors occurred
+        if (!errors.isEmpty()) {
+            System.out.println("FAIL: " + errors.size() + " error(s) occurred during execution");
+            return false;
+        }
+
+        System.out.println("PASS: dump() returned 1 with no errors");
         return true;
     }
 }

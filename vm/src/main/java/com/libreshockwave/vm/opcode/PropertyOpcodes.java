@@ -111,16 +111,75 @@ public final class PropertyOpcodes {
             case Datum.ScriptInstance si -> AncestorChainWalker.getProperty(si, propName);
             case Datum.XtraInstance xi -> XtraBuiltins.getProperty(xi, propName);
             case Datum.PropList pl -> pl.properties().getOrDefault(propName, Datum.VOID);
+            case Datum.List list -> getListProp(list, propName);
+            case Datum.Str str -> getStringProp(str, propName);
             case Datum.MovieRef m -> {
                 MoviePropertyProvider provider = MoviePropertyProvider.getProvider();
                 yield provider != null ? provider.getMovieProp(propName) : Datum.VOID;
             }
             case Datum.PlayerRef p -> getBuiltinConstant(propName);
+            case Datum.SpriteRef sr -> {
+                SpritePropertyProvider spriteProvider = SpritePropertyProvider.getProvider();
+                yield spriteProvider != null ? spriteProvider.getSpriteProp(sr.channel(), propName) : Datum.VOID;
+            }
+            case Datum.Point point -> {
+                yield switch (propName.toLowerCase()) {
+                    case "loch", "x" -> Datum.of(point.x());
+                    case "locv", "y" -> Datum.of(point.y());
+                    default -> Datum.VOID;
+                };
+            }
+            case Datum.Rect rect -> {
+                yield switch (propName.toLowerCase()) {
+                    case "left" -> Datum.of(rect.left());
+                    case "top" -> Datum.of(rect.top());
+                    case "right" -> Datum.of(rect.right());
+                    case "bottom" -> Datum.of(rect.bottom());
+                    case "width" -> Datum.of(rect.right() - rect.left());
+                    case "height" -> Datum.of(rect.bottom() - rect.top());
+                    default -> Datum.VOID;
+                };
+            }
             default -> Datum.VOID;
         };
 
         ctx.push(result);
         return true;
+    }
+
+    /**
+     * Get a built-in property from a list.
+     */
+    private static Datum getListProp(Datum.List list, String propName) {
+        String prop = propName.toLowerCase();
+        return switch (prop) {
+            case "count", "length" -> Datum.of(list.items().size());
+            case "ilk" -> Datum.symbol("list");
+            default -> {
+                // Try numeric index (1-based)
+                try {
+                    int index = Integer.parseInt(propName) - 1;
+                    if (index >= 0 && index < list.items().size()) {
+                        yield list.items().get(index);
+                    }
+                } catch (NumberFormatException e) {
+                    // not a number
+                }
+                yield Datum.VOID;
+            }
+        };
+    }
+
+    /**
+     * Get a built-in property from a string.
+     */
+    private static Datum getStringProp(Datum.Str str, String propName) {
+        String prop = propName.toLowerCase();
+        return switch (prop) {
+            case "length" -> Datum.of(str.value().length());
+            case "ilk" -> Datum.symbol("string");
+            default -> Datum.VOID;
+        };
     }
 
     private static boolean setObjProp(ExecutionContext ctx) {

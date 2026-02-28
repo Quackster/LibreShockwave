@@ -24,7 +24,9 @@ public final class ListMethodDispatcher {
                 if (args.isEmpty()) yield Datum.VOID;
                 int index = args.get(0).toInt() - 1; // 1-indexed
                 if (index < 0 || index >= list.items().size()) {
-                    throw new LingoException("getAt: index out of range");
+                    throw new LingoException("getAt: index " + (index + 1)
+                        + " out of range (list size: " + list.items().size()
+                        + ", list: " + list + ")");
                 }
                 yield list.items().get(index);
             }
