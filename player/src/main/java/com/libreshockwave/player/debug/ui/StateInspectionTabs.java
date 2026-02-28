@@ -66,6 +66,21 @@ public class StateInspectionTabs extends JTabbedPane {
         localsTable.getColumnModel().getColumn(0).setPreferredWidth(100);
         localsTable.getColumnModel().getColumn(1).setPreferredWidth(80);
         localsTable.getColumnModel().getColumn(2).setPreferredWidth(200);
+        localsTable.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2 && datumClickListener != null) {
+                    int row = localsTable.getSelectedRow();
+                    if (row >= 0) {
+                        Datum d = localsTableModel.getDatum(row);
+                        String name = localsTableModel.getName(row);
+                        if (d != null) {
+                            datumClickListener.onDatumDoubleClicked(d, "Local: " + name);
+                        }
+                    }
+                }
+            }
+        });
         addTab("Locals", new JScrollPane(localsTable));
 
         // Globals table
@@ -75,6 +90,21 @@ public class StateInspectionTabs extends JTabbedPane {
         globalsTable.getColumnModel().getColumn(0).setPreferredWidth(100);
         globalsTable.getColumnModel().getColumn(1).setPreferredWidth(80);
         globalsTable.getColumnModel().getColumn(2).setPreferredWidth(200);
+        globalsTable.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2 && datumClickListener != null) {
+                    int row = globalsTable.getSelectedRow();
+                    if (row >= 0) {
+                        Datum d = globalsTableModel.getDatum(row);
+                        String name = globalsTableModel.getName(row);
+                        if (d != null) {
+                            datumClickListener.onDatumDoubleClicked(d, "Global: " + name);
+                        }
+                    }
+                }
+            }
+        });
         addTab("Globals", new JScrollPane(globalsTable));
 
         // Watches panel

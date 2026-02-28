@@ -38,6 +38,20 @@ public class VariablesTableModel extends AbstractTableModel {
         return columns[column];
     }
 
+    public Datum getDatum(int row) {
+        if (row >= 0 && row < variables.size()) {
+            return variables.get(row).getValue();
+        }
+        return null;
+    }
+
+    public String getName(int row) {
+        if (row >= 0 && row < variables.size()) {
+            return variables.get(row).getKey();
+        }
+        return null;
+    }
+
     @Override
     public Object getValueAt(int rowIndex, int columnIndex) {
         if (rowIndex >= variables.size()) return "";
