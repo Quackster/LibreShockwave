@@ -20,6 +20,9 @@ public class HabboRunTest {
     private static final String TEST_FILE = "C:/SourceControl/habbo.dcr";
     private static volatile boolean targetReached = false;
     private static volatile String stopReason = null;
+    private static volatile int startClientReturnValue = -1;
+    private static volatile int createCoreReturnValue = -1;
+    private static volatile boolean insideCreateCore = false;
 
     public static void main(String[] args) throws IOException {
         Path path = Path.of(TEST_FILE);
@@ -77,6 +80,7 @@ public class HabboRunTest {
                         if (arg instanceof Datum.Symbol sym && sym.name().equalsIgnoreCase("core")) {
                             System.out.println("*** TARGET REACHED: create(#core, ...) ***");
                             targetReached = true;
+                            insideCreateCore = true;
                             stopReason = "Target reached: create(#core)";
                         }
                     }
@@ -86,6 +90,17 @@ public class HabboRunTest {
             @Override
             public void onHandlerExit(HandlerInfo info, Datum result) {
                 System.out.println("<< Exit " + info.handlerName() + " -> " + result);
+                // Capture create(#core) return value
+                if (info.handlerName().equals("create") && insideCreateCore) {
+                    createCoreReturnValue = result.toInt();
+                    insideCreateCore = false;
+                    System.out.println("*** create(#core) returned: " + createCoreReturnValue + " ***");
+                }
+                // Capture startClient return value
+                if (info.handlerName().equals("startClient")) {
+                    startClientReturnValue = result.toInt();
+                    System.out.println("*** startClient returned: " + startClientReturnValue + " ***");
+                }
                 if (!handlerStack.isEmpty()) {
                     handlerStack.pop();
                 }
@@ -142,6 +157,20 @@ public class HabboRunTest {
         } else {
             System.out.println("\n=== Target not reached after 20 frames ===");
         }
+
+        // Assert startClient returned 1 (TRUE)
+        // The full startClient flow must complete:
+        //   constructObjectManager(), dumpVariableField("System Props"),
+        //   resetCastLibs(0,0), getResourceManager().preIndexMembers(),
+        //   dumpTextField("System Texts"), getThreadManager().create(#core, #core)
+        // If any step fails, startClient returns stopClient() which returns 0.
+        // Only if ALL steps succeed does startClient return 1.
+        if (startClientReturnValue != 1) {
+            System.err.println("\n=== FAIL: startClient returned " + startClientReturnValue + " (expected 1) ===");
+            player.shutdown();
+            System.exit(1);
+        }
+        System.out.println("\n=== PASS: startClient returned 1 ===");
 
         player.shutdown();
     }

@@ -129,6 +129,15 @@ public interface CastLibProvider {
     }
 
     /**
+     * Get the number of members in a specific cast library.
+     * @param castLibNumber The cast library number
+     * @return The member count, or 0 if not found
+     */
+    default int getMemberCount(int castLibNumber) {
+        return 0;
+    }
+
+    /**
      * Get the declared property names for a script member.
      * Used to pre-initialize script instance properties to VOID.
      * @param castLib The cast library number

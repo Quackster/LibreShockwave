@@ -363,6 +363,15 @@ public final class PropertyOpcodes {
             }
             case 0x08 -> {
                 // Anim2 property
+                if (propertyId == 0x02) {
+                    // "number of castMembers of castLib N" - pops cast lib number from stack
+                    int castLibNum = ctx.pop().toInt();
+                    CastLibProvider castProvider = CastLibProvider.getProvider();
+                    if (castProvider != null) {
+                        yield Datum.of(castProvider.getMemberCount(castLibNum));
+                    }
+                    yield Datum.ZERO;
+                }
                 String propName = PropertyIdMappings.getAnim2PropName(propertyId);
                 if (propName != null && movieProvider != null) {
                     yield movieProvider.getMovieProp(propName);

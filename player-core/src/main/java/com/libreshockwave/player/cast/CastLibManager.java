@@ -205,6 +205,15 @@ public class CastLibManager implements CastLibProvider {
     }
 
     @Override
+    public int getMemberCount(int castLibNumber) {
+        CastLib castLib = getCastLib(castLibNumber);
+        if (castLib == null) {
+            return 0;
+        }
+        return castLib.getMemberCount();
+    }
+
+    @Override
     public Datum getMemberProp(int castLibNumber, int memberNumber, String propName) {
         CastLib castLib = getCastLib(castLibNumber);
         if (castLib == null) {

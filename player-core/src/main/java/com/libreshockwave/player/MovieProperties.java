@@ -132,6 +132,11 @@ public class MovieProperties implements MoviePropertyProvider {
             }
             case "number of menus" -> Datum.ZERO;
             case "number of castlibs" -> {
+                com.libreshockwave.vm.builtin.CastLibProvider castProvider =
+                    com.libreshockwave.vm.builtin.CastLibProvider.getProvider();
+                if (castProvider != null) {
+                    yield Datum.of(castProvider.getCastLibCount());
+                }
                 if (file != null) {
                     yield Datum.of(file.getCasts().size());
                 }
