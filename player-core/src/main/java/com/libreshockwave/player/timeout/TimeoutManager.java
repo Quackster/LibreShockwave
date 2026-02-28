@@ -203,6 +203,71 @@ public class TimeoutManager implements TimeoutProvider {
     }
 
     /**
+     * Dispatch a system event to all active timeout targets.
+     * Called for frame lifecycle events (prepareFrame, exitFrame, etc.) so that
+     * timeout targets (like the Fuse Object Manager) receive these events.
+     *
+     * Key differences from periodic firing (fireTimeout):
+     * - Calls the event handler name (e.g. "prepareFrame"), NOT the timeout's own handler
+     * - Passes no args (empty list), not the TimeoutRef
+     * - Silently skips if the handler isn't found on the target
+     */
+    public void dispatchSystemEvent(LingoVM vm, String handlerName) {
+        if (timeouts.isEmpty()) return;
+
+        // Snapshot targets to avoid ConcurrentModificationException
+        List<TimeoutEntry> targets = new ArrayList<>(timeouts.values());
+        for (TimeoutEntry entry : targets) {
+            if (entry.target instanceof Datum.ScriptInstance target) {
+                invokeOnScriptInstanceQuiet(vm, target, handlerName, List.of());
+            }
+        }
+    }
+
+    /**
+     * Invoke a handler on a script instance quietly (no global fallback, no error on missing handler).
+     * Used for system event forwarding where targets may not define every handler.
+     */
+    private void invokeOnScriptInstanceQuiet(LingoVM vm, Datum.ScriptInstance target,
+                                              String handlerName, List<Datum> args) {
+        CastLibProvider provider = CastLibProvider.getProvider();
+        if (provider == null) return;
+
+        Datum.ScriptInstance current = target;
+        for (int i = 0; i < 20; i++) {  // Safety limit
+            Datum scriptRefDatum = current.properties().get(Datum.PROP_SCRIPT_REF);
+            CastLibProvider.HandlerLocation location;
+
+            if (scriptRefDatum instanceof Datum.ScriptRef sr) {
+                location = provider.findHandlerInScript(sr.castLib(), sr.member(), handlerName);
+            } else {
+                location = provider.findHandlerInScript(current.scriptId(), handlerName);
+            }
+
+            if (location != null && location.script() instanceof ScriptChunk script
+                    && location.handler() instanceof ScriptChunk.Handler handler) {
+                try {
+                    vm.executeHandler(script, handler, args, target);
+                } catch (Exception e) {
+                    System.err.println("[TimeoutManager] Error in system event '"
+                            + handlerName + "': " + e.getMessage());
+                }
+                return;
+            }
+
+            // Walk to ancestor
+            Datum ancestor = current.properties().get(Datum.PROP_ANCESTOR);
+            if (ancestor instanceof Datum.ScriptInstance ancestorInstance) {
+                current = ancestorInstance;
+            } else {
+                break;
+            }
+        }
+
+        // Handler not found — silently return (no global fallback)
+    }
+
+    /**
      * Get the number of active timeouts.
      */
     public int getTimeoutCount() {

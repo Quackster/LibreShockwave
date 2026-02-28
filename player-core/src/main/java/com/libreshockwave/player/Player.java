@@ -89,6 +89,7 @@ public class Player {
         this.spriteProperties = new SpriteProperties(stageRenderer.getSpriteRegistry());
         this.castLibManager = new CastLibManager(file);
         this.timeoutManager = new TimeoutManager();
+        this.frameContext.setTimeoutManager(timeoutManager);
         this.tempo = file != null ? file.getTempo() : 15;
         if (this.tempo <= 0) this.tempo = 15;
 
@@ -158,6 +159,7 @@ public class Player {
         this.spriteProperties = new SpriteProperties(stageRenderer.getSpriteRegistry());
         this.castLibManager = new CastLibManager(file);
         this.timeoutManager = new TimeoutManager();
+        this.frameContext.setTimeoutManager(timeoutManager);
         this.tempo = file != null ? file.getTempo() : 15;
         if (this.tempo <= 0) this.tempo = 15;
 
@@ -504,7 +506,8 @@ public class Player {
             log("stop()");
             setupProviders();
             try {
-                // stopMovie -> dispatched to movie scripts
+                // stopMovie -> timeout targets first, then movie scripts
+                timeoutManager.dispatchSystemEvent(vm, "stopMovie");
                 frameContext.getEventDispatcher().dispatchToMovieScripts(PlayerEvent.STOP_MOVIE, List.of());
             } finally {
                 clearProviders();
@@ -703,7 +706,8 @@ public class Player {
             // dirplayer-rs: Mode 2 = BeforeFrameOne, Mode 1 = AfterFrameOne
             castLibManager.preloadCasts(2);
 
-            // 2. prepareMovie -> dispatched to movie scripts (behaviors not initialized yet)
+            // 2. prepareMovie -> timeout targets first, then movie scripts
+            timeoutManager.dispatchSystemEvent(vm, "prepareMovie");
             frameContext.getEventDispatcher().dispatchToMovieScripts(PlayerEvent.PREPARE_MOVIE, List.of());
 
             // 3. Initialize sprites for frame 1
@@ -712,16 +716,19 @@ public class Player {
             // 4. beginSprite events
             frameContext.dispatchBeginSpriteEvents();
 
-            // 5. prepareFrame -> dispatched to all behaviors + frame/movie scripts
+            // 5. prepareFrame -> timeout targets first, then behaviors + frame/movie scripts
+            timeoutManager.dispatchSystemEvent(vm, "prepareFrame");
             frameContext.getEventDispatcher().dispatchGlobalEvent(PlayerEvent.PREPARE_FRAME, List.of());
 
-            // 6. startMovie -> dispatched to movie scripts
+            // 6. startMovie -> movie scripts first, then timeout targets
             frameContext.getEventDispatcher().dispatchToMovieScripts(PlayerEvent.START_MOVIE, List.of());
+            timeoutManager.dispatchSystemEvent(vm, "startMovie");
 
             // 7. enterFrame -> dispatched to all behaviors + frame/movie scripts
             frameContext.getEventDispatcher().dispatchGlobalEvent(PlayerEvent.ENTER_FRAME, List.of());
 
-            // 8. exitFrame -> dispatched to all behaviors + frame/movie scripts
+            // 8. exitFrame -> timeout targets first, then behaviors + frame/movie scripts
+            timeoutManager.dispatchSystemEvent(vm, "exitFrame");
             frameContext.getEventDispatcher().dispatchGlobalEvent(PlayerEvent.EXIT_FRAME, List.of());
 
             // 9. Preload casts with preloadMode=1 (AfterFrameOne)

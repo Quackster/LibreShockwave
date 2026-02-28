@@ -8,6 +8,7 @@ import com.libreshockwave.player.event.EventDispatcher;
 import com.libreshockwave.player.score.ScoreBehaviorRef;
 import com.libreshockwave.player.score.ScoreNavigator;
 import com.libreshockwave.player.score.SpriteSpan;
+import com.libreshockwave.player.timeout.TimeoutManager;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.LingoVM;
 
@@ -25,6 +26,8 @@ public class FrameContext {
     private final ScoreNavigator navigator;
     private final BehaviorManager behaviorManager;
     private final EventDispatcher eventDispatcher;
+
+    private TimeoutManager timeoutManager;  // Set by Player for system event forwarding
 
     private int currentFrame = 1;
     private Integer pendingFrame = null;  // Set by go/jump commands
@@ -54,6 +57,10 @@ public class FrameContext {
 
     public void setEventListener(Consumer<FrameEvent> listener) {
         this.eventListener = listener;
+    }
+
+    public void setTimeoutManager(TimeoutManager timeoutManager) {
+        this.timeoutManager = timeoutManager;
     }
 
     public int getCurrentFrame() {
@@ -131,7 +138,10 @@ public class FrameContext {
         // 1. stepFrame event (to actorList and behaviors)
         dispatchEvent(PlayerEvent.STEP_FRAME);
 
-        // 2. prepareFrame -> all behaviors + frame/movie scripts
+        // 2. prepareFrame -> timeout targets first, then behaviors + frame/movie scripts
+        if (timeoutManager != null) {
+            timeoutManager.dispatchSystemEvent(vm, "prepareFrame");
+        }
         dispatchEvent(PlayerEvent.PREPARE_FRAME);
 
         // 3. enterFrame -> all behaviors + frame/movie scripts
@@ -188,7 +198,10 @@ public class FrameContext {
      * Exit the current frame (cleanup).
      */
     private void exitFrame(int oldFrame, int newFrame) {
-        // exitFrame event
+        // exitFrame -> timeout targets first, then behaviors
+        if (timeoutManager != null) {
+            timeoutManager.dispatchSystemEvent(vm, "exitFrame");
+        }
         dispatchEvent(PlayerEvent.EXIT_FRAME);
 
         // End sprites that are leaving
