@@ -8,31 +8,51 @@ import com.libreshockwave.lingo.Opcode;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Scans all scripts in habbo.dcr for any reference to "timeout" —
- * in handler names, ext_call targets, obj_call targets, literals,
+ * Scans all scripts in habbo.dcr AND fuse_client.cct for any reference to
+ * "timeout" — in handler names, ext_call targets, obj_call targets, literals,
  * and the global script names table.
  *
  * Run: ./gradlew :player-core:runTimeoutScanTest
  */
 public class TimeoutScanTest {
 
-    private static final String TEST_FILE = "C:/SourceControl/habbo.dcr";
+    private static final String DCR_FILE = "C:/SourceControl/habbo.dcr";
+    private static final String CCT_FILE = "C:/SourceControl/fuse_client.cct";
 
     public static void main(String[] args) throws IOException {
-        Path path = Path.of(TEST_FILE);
-        if (!Files.exists(path)) {
-            System.err.println("Test file not found: " + TEST_FILE);
+        List<String[]> filesToScan = new ArrayList<>();
+        filesToScan.add(new String[]{DCR_FILE, "habbo.dcr"});
+        filesToScan.add(new String[]{CCT_FILE, "fuse_client.cct"});
+
+        for (String[] entry : filesToScan) {
+            String filePath = entry[0];
+            String label = entry[1];
+
+            Path path = Path.of(filePath);
+            if (!Files.exists(path)) {
+                System.err.println("File not found: " + filePath);
+                continue;
+            }
+
+            DirectorFile file = DirectorFile.load(path);
+            scanFile(file, label);
+        }
+    }
+
+    private static void scanFile(DirectorFile file, String label) {
+        ScriptNamesChunk names = file.getScriptNames();
+        if (names == null) {
+            System.out.println("[" + label + "] No script names chunk — skipping\n");
             return;
         }
 
-        DirectorFile file = DirectorFile.load(path);
-        ScriptNamesChunk names = file.getScriptNames();
-
         System.out.println("========================================");
-        System.out.println("  TIMEOUT SCAN — habbo.dcr");
+        System.out.println("  TIMEOUT SCAN -- " + label);
+        System.out.println("  (" + file.getScripts().size() + " scripts, " + names.names().size() + " names)");
         System.out.println("========================================\n");
 
         // 1. Scan the global names table for anything containing "timeout"
@@ -52,8 +72,7 @@ public class TimeoutScanTest {
         System.out.println("--- Bytecode references to 'timeout' names ---");
         int codeHits = 0;
         for (ScriptChunk script : file.getScripts()) {
-            String scriptName = script.getScriptName();
-            if (scriptName == null) scriptName = "script#" + script.id();
+            String scriptName = getScriptLabel(script);
 
             for (ScriptChunk.Handler handler : script.handlers()) {
                 String handlerName = script.getHandlerName(handler);
@@ -77,8 +96,7 @@ public class TimeoutScanTest {
         System.out.println("--- Literals containing 'timeout' ---");
         int litHits = 0;
         for (ScriptChunk script : file.getScripts()) {
-            String scriptName = script.getScriptName();
-            if (scriptName == null) scriptName = "script#" + script.id();
+            String scriptName = getScriptLabel(script);
 
             for (int i = 0; i < script.literals().size(); i++) {
                 ScriptChunk.LiteralEntry lit = script.literals().get(i);
@@ -95,8 +113,7 @@ public class TimeoutScanTest {
         System.out.println("--- Handlers with 'timeout' in name ---");
         int handlerHits = 0;
         for (ScriptChunk script : file.getScripts()) {
-            String scriptName = script.getScriptName();
-            if (scriptName == null) scriptName = "script#" + script.id();
+            String scriptName = getScriptLabel(script);
 
             for (ScriptChunk.Handler handler : script.handlers()) {
                 String handlerName = script.getHandlerName(handler);
@@ -109,12 +126,12 @@ public class TimeoutScanTest {
         if (handlerHits == 0) System.out.println("  (none)");
         System.out.println();
 
-        // 5. Also scan for "timer", "idle", "tick", "run", "schedule", "interval"
+        // 5. Scan for scheduling-related names: timer, idle, tick, run, cycle, etc.
         System.out.println("--- Names table: scheduling-related entries ---");
         int schedHits = 0;
         for (int i = 0; i < names.names().size(); i++) {
             String name = names.names().get(i).toLowerCase();
-            if (name.contains("timer") || name.contains("idle") || name.contains("tick")
+            if (name.contains("timer") || name.contains("idle") || name.equals("tick")
                     || name.equals("run") || name.contains("schedule") || name.contains("interval")
                     || name.contains("cycle") || name.contains("heartbeat") || name.contains("poll")) {
                 System.out.printf("  [%d] %s%n", i, names.names().get(i));
@@ -124,21 +141,45 @@ public class TimeoutScanTest {
         if (schedHits == 0) System.out.println("  (none)");
         System.out.println();
 
-        // 6. Summary
+        // 6. Dump Thread Manager Class and Thread Instance Class handlers
+        System.out.println("--- Thread-related script handlers ---");
+        int threadHits = 0;
+        for (ScriptChunk script : file.getScripts()) {
+            String scriptName = getScriptLabel(script);
+            if (scriptName.toLowerCase().contains("thread")) {
+                System.out.println("  " + scriptName + " (" + script.getScriptType() + "):");
+                for (ScriptChunk.Handler handler : script.handlers()) {
+                    String handlerName = script.getHandlerName(handler);
+                    System.out.println("    - " + handlerName);
+                    threadHits++;
+                }
+            }
+        }
+        if (threadHits == 0) System.out.println("  (none)");
+        System.out.println();
+
+        // 7. Summary
         System.out.println("========================================");
-        System.out.println("  SUMMARY");
+        System.out.println("  SUMMARY for " + label);
         System.out.println("========================================");
         System.out.printf("  Names table 'timeout' hits: %d%n", nameHits);
         System.out.printf("  Bytecode 'timeout' refs:    %d%n", codeHits);
         System.out.printf("  Literal 'timeout' refs:     %d%n", litHits);
         System.out.printf("  Handler 'timeout' names:    %d%n", handlerHits);
         System.out.printf("  Scheduling-related names:   %d%n", schedHits);
+        System.out.printf("  Thread script handlers:     %d%n", threadHits);
 
         if (nameHits + codeHits + litHits + handlerHits == 0) {
-            System.out.println("\n  *** NO timeout references found in DCR ***");
+            System.out.println("\n  *** NO timeout references found ***");
         } else {
             System.out.println("\n  *** TIMEOUT usage CONFIRMED ***");
         }
+        System.out.println();
+    }
+
+    private static String getScriptLabel(ScriptChunk script) {
+        String name = script.getScriptName();
+        return name != null ? name : "script#" + script.id();
     }
 
     /**
