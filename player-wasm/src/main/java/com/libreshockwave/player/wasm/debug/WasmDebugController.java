@@ -90,7 +90,11 @@ public class WasmDebugController implements DebugControllerApi {
 
         // Check breakpoints
         if (!suppressBreakpoints && currentHandlerInfo != null) {
-            Breakpoint bp = breakpointManager.getBreakpoint(currentHandlerInfo.scriptId(), info.offset());
+            Breakpoint bp = breakpointManager.getBreakpoint(
+                currentHandlerInfo.scriptId(),
+                currentHandlerInfo.handlerName(),
+                info.offset()
+            );
             if (bp != null && bp.enabled()) {
                 return true;
             }
@@ -259,8 +263,8 @@ public class WasmDebugController implements DebugControllerApi {
     // === Breakpoints ===
 
     @Override
-    public boolean toggleBreakpoint(int scriptId, int offset) {
-        Breakpoint result = breakpointManager.toggleBreakpoint(scriptId, offset);
+    public boolean toggleBreakpoint(int scriptId, String handlerName, int offset) {
+        Breakpoint result = breakpointManager.toggleBreakpoint(scriptId, handlerName, offset);
         return result != null;
     }
 
@@ -270,13 +274,13 @@ public class WasmDebugController implements DebugControllerApi {
     }
 
     @Override
-    public boolean hasBreakpoint(int scriptId, int offset) {
-        return breakpointManager.hasBreakpoint(scriptId, offset);
+    public boolean hasBreakpoint(int scriptId, String handlerName, int offset) {
+        return breakpointManager.hasBreakpoint(scriptId, handlerName, offset);
     }
 
     @Override
-    public Breakpoint getBreakpoint(int scriptId, int offset) {
-        return breakpointManager.getBreakpoint(scriptId, offset);
+    public Breakpoint getBreakpoint(int scriptId, String handlerName, int offset) {
+        return breakpointManager.getBreakpoint(scriptId, handlerName, offset);
     }
 
     @Override

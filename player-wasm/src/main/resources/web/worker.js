@@ -293,7 +293,7 @@ self.onmessage = function(e) {
             break;
 
         case 'toggleBreakpoint':
-            var added = exports.toggleBreakpoint(msg.scriptId, msg.offset);
+            var added = exports.toggleBreakpoint(msg.scriptId, msg.handlerIndex, msg.offset);
             self.postMessage({ type: 'breakpointToggled', scriptId: msg.scriptId, offset: msg.offset, added: added === 1 });
             break;
 

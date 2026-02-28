@@ -306,10 +306,19 @@ public class WasmPlayerApp {
     }
 
     @Export(name = "toggleBreakpoint")
-    public static int toggleBreakpoint(int scriptId, int offset) {
+    public static int toggleBreakpoint(int scriptId, int handlerIndex, int offset) {
         WasmDebugController ctrl = wasmPlayer != null ? wasmPlayer.getDebugController() : null;
         if (ctrl == null) return 0;
-        return ctrl.toggleBreakpoint(scriptId, offset) ? 1 : 0;
+        String handlerName = resolveHandlerName(scriptId, handlerIndex);
+        return ctrl.toggleBreakpoint(scriptId, handlerName, offset) ? 1 : 0;
+    }
+
+    private static String resolveHandlerName(int scriptId, int handlerIndex) {
+        if (wasmPlayer == null || wasmPlayer.getFile() == null) return "";
+        ScriptChunk script = findScript(scriptId);
+        if (script == null || script.handlers() == null ||
+            handlerIndex < 0 || handlerIndex >= script.handlers().size()) return "";
+        return script.getHandlerName(script.handlers().get(handlerIndex));
     }
 
     @Export(name = "clearBreakpoints")

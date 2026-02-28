@@ -36,6 +36,7 @@ public class BytecodeListPanel extends JPanel {
     private DebugController controller;
     private HandlerNavigator navigator;
     private int currentScriptId = -1;
+    private String currentHandlerName = null;
     private int currentInstructionIndex = -1;
     private BytecodeListListener listener;
 
@@ -81,9 +82,9 @@ public class BytecodeListPanel extends JPanel {
 
                 // Double-click or click on left margin (gutter) -> toggle breakpoint
                 if (e.getClickCount() == 2 || e.getX() < 20) {
-                    if (controller != null && currentScriptId >= 0) {
-                        controller.toggleBreakpoint(currentScriptId, item.getOffset());
-                        item.setHasBreakpoint(controller.hasBreakpoint(currentScriptId, item.getOffset()));
+                    if (controller != null && currentScriptId >= 0 && currentHandlerName != null) {
+                        controller.toggleBreakpoint(currentScriptId, currentHandlerName, item.getOffset());
+                        item.setHasBreakpoint(controller.hasBreakpoint(currentScriptId, currentHandlerName, item.getOffset()));
                         bytecodeList.repaint();
                     }
                     return;
@@ -124,10 +125,11 @@ public class BytecodeListPanel extends JPanel {
         currentInstructions.clear();
         currentInstructionIndex = -1;
         currentScriptId = script.id();
+        currentHandlerName = script.getHandlerName(handler);
 
         for (ScriptChunk.Handler.Instruction instr : handler.instructions()) {
             String annotation = InstructionAnnotator.annotate(script, handler, instr, true);
-            Breakpoint bp = controller != null ? controller.getBreakpoint(script.id(), instr.offset()) : null;
+            Breakpoint bp = controller != null ? controller.getBreakpoint(script.id(), currentHandlerName, instr.offset()) : null;
 
             InstructionDisplayItem item = new InstructionDisplayItem(
                 instr.offset(),
@@ -153,6 +155,7 @@ public class BytecodeListPanel extends JPanel {
         }
 
         contextMenu.setCurrentScriptId(script.id());
+        contextMenu.setCurrentHandlerName(currentHandlerName);
     }
 
     /**
@@ -176,10 +179,10 @@ public class BytecodeListPanel extends JPanel {
      * Update breakpoint markers for all instructions.
      */
     public void refreshBreakpointMarkers() {
-        if (controller != null && currentScriptId >= 0) {
+        if (controller != null && currentScriptId >= 0 && currentHandlerName != null) {
             for (int i = 0; i < bytecodeModel.size(); i++) {
                 InstructionDisplayItem item = bytecodeModel.get(i);
-                Breakpoint bp = controller.getBreakpoint(currentScriptId, item.getOffset());
+                Breakpoint bp = controller.getBreakpoint(currentScriptId, currentHandlerName, item.getOffset());
                 item.setBreakpoint(bp);
                 item.setHasBreakpoint(bp != null);
             }
@@ -195,6 +198,7 @@ public class BytecodeListPanel extends JPanel {
         currentInstructions.clear();
         currentInstructionIndex = -1;
         currentScriptId = -1;
+        currentHandlerName = null;
         bytecodeList.clearSelection();
     }
 
@@ -226,6 +230,21 @@ public class BytecodeListPanel extends JPanel {
      */
     public int getCurrentScriptId() {
         return currentScriptId;
+    }
+
+    /**
+     * Set the current handler name.
+     */
+    public void setCurrentHandlerName(String handlerName) {
+        this.currentHandlerName = handlerName;
+        contextMenu.setCurrentHandlerName(handlerName);
+    }
+
+    /**
+     * Get the current handler name.
+     */
+    public String getCurrentHandlerName() {
+        return currentHandlerName;
     }
 
     /**

@@ -32,10 +32,10 @@ public interface DebugControllerApi extends TraceListener {
     void pause();
 
     // Breakpoints
-    boolean toggleBreakpoint(int scriptId, int offset);
+    boolean toggleBreakpoint(int scriptId, String handlerName, int offset);
     void clearAllBreakpoints();
-    boolean hasBreakpoint(int scriptId, int offset);
-    Breakpoint getBreakpoint(int scriptId, int offset);
+    boolean hasBreakpoint(int scriptId, String handlerName, int offset);
+    Breakpoint getBreakpoint(int scriptId, String handlerName, int offset);
     BreakpointManager getBreakpointManager();
     String serializeBreakpoints();
     void deserializeBreakpoints(String data);

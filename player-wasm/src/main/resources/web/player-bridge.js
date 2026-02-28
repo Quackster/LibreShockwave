@@ -255,8 +255,8 @@ class LibreShockwavePlayer {
         this._sendCmd('enableDebug');
     }
 
-    toggleBreakpoint(scriptId, offset) {
-        this._sendCmd('toggleBreakpoint', { scriptId: scriptId, offset: offset });
+    toggleBreakpoint(scriptId, handlerIndex, offset) {
+        this._sendCmd('toggleBreakpoint', { scriptId: scriptId, handlerIndex: handlerIndex, offset: offset });
     }
 
     clearBreakpoints() {
@@ -759,12 +759,12 @@ class DebugPanelManager {
             } else {
                 gutter.textContent = '\u00A0';
             }
-            gutter.addEventListener('click', (function(sid, off) {
+            gutter.addEventListener('click', (function(sid, hIdx, off) {
                 return function(e) {
                     e.stopPropagation();
-                    self.player.toggleBreakpoint(sid, off);
+                    self.player.toggleBreakpoint(sid, hIdx, off);
                 };
-            })(scriptId, instr.offset));
+            })(scriptId, self.currentHandlerIndex, instr.offset));
             row.appendChild(gutter);
 
             // Current marker

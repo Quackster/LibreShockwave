@@ -253,7 +253,11 @@ public class DebugController implements DebugControllerApi {
 
             // Check breakpoints (unless suppressed by step mode)
             if (!suppressBreakpoints && currentHandlerInfo != null) {
-                Breakpoint bp = breakpointManager.getBreakpoint(currentHandlerInfo.scriptId(), info.offset());
+                Breakpoint bp = breakpointManager.getBreakpoint(
+                    currentHandlerInfo.scriptId(),
+                    currentHandlerInfo.handlerName(),
+                    info.offset()
+                );
                 if (bp != null && bp.enabled()) {
                     return BreakResult.pause(bp);
                 }
@@ -452,11 +456,11 @@ public class DebugController implements DebugControllerApi {
     // Breakpoint management (delegates to BreakpointManager for compatibility)
 
     /**
-     * Toggle a breakpoint at the given script and offset.
+     * Toggle a breakpoint at the given script, handler, and offset.
      * @return true if breakpoint was added, false if removed
      */
-    public boolean toggleBreakpoint(int scriptId, int offset) {
-        Breakpoint result = breakpointManager.toggleBreakpoint(scriptId, offset);
+    public boolean toggleBreakpoint(int scriptId, String handlerName, int offset) {
+        Breakpoint result = breakpointManager.toggleBreakpoint(scriptId, handlerName, offset);
         notifyBreakpointsChanged();
         return result != null;
     }
@@ -464,31 +468,31 @@ public class DebugController implements DebugControllerApi {
     /**
      * Add a breakpoint.
      */
-    public void addBreakpoint(int scriptId, int offset) {
-        breakpointManager.addBreakpoint(scriptId, offset);
+    public void addBreakpoint(int scriptId, String handlerName, int offset) {
+        breakpointManager.addBreakpoint(scriptId, handlerName, offset);
         notifyBreakpointsChanged();
     }
 
     /**
      * Remove a breakpoint.
      */
-    public void removeBreakpoint(int scriptId, int offset) {
-        breakpointManager.removeBreakpoint(scriptId, offset);
+    public void removeBreakpoint(int scriptId, String handlerName, int offset) {
+        breakpointManager.removeBreakpoint(scriptId, handlerName, offset);
         notifyBreakpointsChanged();
     }
 
     /**
      * Check if a breakpoint exists.
      */
-    public boolean hasBreakpoint(int scriptId, int offset) {
-        return breakpointManager.hasBreakpoint(scriptId, offset);
+    public boolean hasBreakpoint(int scriptId, String handlerName, int offset) {
+        return breakpointManager.hasBreakpoint(scriptId, handlerName, offset);
     }
 
     /**
      * Get a specific breakpoint.
      */
-    public Breakpoint getBreakpoint(int scriptId, int offset) {
-        return breakpointManager.getBreakpoint(scriptId, offset);
+    public Breakpoint getBreakpoint(int scriptId, String handlerName, int offset) {
+        return breakpointManager.getBreakpoint(scriptId, handlerName, offset);
     }
 
     /**
@@ -503,8 +507,8 @@ public class DebugController implements DebugControllerApi {
      * Toggle enabled state of a breakpoint.
      * @return the updated breakpoint, or null if no breakpoint exists
      */
-    public Breakpoint toggleBreakpointEnabled(int scriptId, int offset) {
-        Breakpoint bp = breakpointManager.toggleEnabled(scriptId, offset);
+    public Breakpoint toggleBreakpointEnabled(int scriptId, String handlerName, int offset) {
+        Breakpoint bp = breakpointManager.toggleEnabled(scriptId, handlerName, offset);
         if (bp != null) {
             notifyBreakpointsChanged();
         }
