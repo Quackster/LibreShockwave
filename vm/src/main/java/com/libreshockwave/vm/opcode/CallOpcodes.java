@@ -110,6 +110,13 @@ public final class CallOpcodes {
             case Datum.Point point -> handlePointMethod(point, methodName, args);
             case Datum.Rect rect -> handleRectMethod(rect, methodName, args);
             case Datum.Str str -> StringMethodDispatcher.dispatch(str, methodName, args);
+            case Datum.MovieRef m -> {
+                // Method calls on _movie - try as builtin with args
+                if (ctx.isBuiltin(methodName)) {
+                    yield ctx.invokeBuiltin(methodName, args);
+                }
+                yield Datum.VOID;
+            }
             default -> {
                 // Try to find the method as a global handler (with target as first arg)
                 if (ctx.isBuiltin(methodName)) {

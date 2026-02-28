@@ -3,7 +3,11 @@ package com.libreshockwave.vm.opcode;
 import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.lingo.Opcode;
 import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.HandlerRef;
+import com.libreshockwave.vm.builtin.CastLibProvider;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -28,6 +32,9 @@ public final class StackOpcodes {
         handlers.put(Opcode.SWAP, StackOpcodes::swap);
         handlers.put(Opcode.POP, StackOpcodes::pop);
         handlers.put(Opcode.PEEK, StackOpcodes::peek);
+
+        // Object creation
+        handlers.put(Opcode.NEW_OBJ, StackOpcodes::newObj);
     }
 
     private static boolean pushZero(ExecutionContext ctx) {
@@ -90,6 +97,95 @@ public final class StackOpcodes {
     private static boolean peek(ExecutionContext ctx) {
         Datum value = ctx.peek(ctx.getArgument());
         ctx.push(value);
+        return true;
+    }
+
+    private static int nextInstanceId = 1;
+
+    /**
+     * NEW_OBJ (0x73) - Create a new script instance.
+     * The argument is the name ID of the object type (typically "script").
+     * Stack: [..., arglist] -> [..., scriptInstance]
+     */
+    private static boolean newObj(ExecutionContext ctx) {
+        String objType = ctx.resolveName(ctx.getArgument());
+
+        if (!"script".equalsIgnoreCase(objType)) {
+            System.err.println("[WARN] NEW_OBJ: Cannot create non-script: " + objType);
+            ctx.push(Datum.VOID);
+            return true;
+        }
+
+        // Pop the argument list
+        Datum argListDatum = ctx.pop();
+        List<Datum> args;
+        if (argListDatum instanceof Datum.ArgList al) {
+            args = al.items();
+        } else if (argListDatum instanceof Datum.ArgListNoRet al) {
+            args = al.items();
+        } else {
+            args = List.of();
+        }
+
+        if (args.isEmpty()) {
+            System.err.println("[WARN] NEW_OBJ: requires at least a script name argument");
+            ctx.push(Datum.VOID);
+            return true;
+        }
+
+        // First arg is the script name (or a script reference)
+        Datum firstArg = args.get(0);
+        String scriptName;
+        if (firstArg instanceof Datum.Str s) {
+            scriptName = s.value();
+        } else if (firstArg instanceof Datum.Symbol sym) {
+            scriptName = sym.name();
+        } else {
+            scriptName = firstArg.toStr();
+        }
+
+        // Find the script by name to get a member reference
+        CastLibProvider provider = CastLibProvider.getProvider();
+        Datum memberRef = null;
+        if (provider != null) {
+            memberRef = provider.getMemberByName(0, scriptName);
+        }
+
+        // Create the script instance
+        int instanceId = nextInstanceId++;
+        Map<String, Datum> properties = new LinkedHashMap<>();
+
+        // Store the script reference for method dispatch
+        if (memberRef instanceof Datum.CastMemberRef cmr) {
+            properties.put(Datum.PROP_SCRIPT_REF, new Datum.ScriptRef(cmr.castLib(), cmr.member()));
+        }
+
+        Datum.ScriptInstance instance = new Datum.ScriptInstance(instanceId, properties);
+
+        // Get extra args for the "new" handler (skip the script name)
+        List<Datum> extraArgs = new ArrayList<>();
+        for (int i = 1; i < args.size(); i++) {
+            extraArgs.add(args.get(i));
+        }
+
+        // Call the "new" handler on the script instance if it exists
+        if (memberRef instanceof Datum.CastMemberRef cmr) {
+            CastLibProvider.HandlerLocation loc = provider.findHandlerInScript(
+                cmr.castLib(), cmr.member(), "new");
+            if (loc != null) {
+                try {
+                    ctx.executeHandler(
+                        (com.libreshockwave.chunks.ScriptChunk) loc.script(),
+                        (ScriptChunk.Handler) loc.handler(),
+                        extraArgs,
+                        instance);
+                } catch (Exception e) {
+                    System.err.println("[WARN] NEW_OBJ: error calling 'new' handler: " + e.getMessage());
+                }
+            }
+        }
+
+        ctx.push(instance);
         return true;
     }
 }
