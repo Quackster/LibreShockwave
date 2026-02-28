@@ -31,14 +31,7 @@ public final class WindowBuiltins {
      * Commonly used with "the stage".
      */
     private static Datum moveToFront(LingoVM vm, List<Datum> args) {
-        // In a plugin/projector context, this brings the stage window to front
-        // For now, this is a no-op since we handle windowing externally
-        if (!args.isEmpty()) {
-            Datum arg = args.get(0);
-            if (arg instanceof Datum.StageRef) {
-                System.out.println("[WindowBuiltins] moveToFront(stage)");
-            }
-        }
+        // No-op - windowing is handled externally
         return Datum.VOID;
     }
 
@@ -47,13 +40,7 @@ public final class WindowBuiltins {
      * Sends the specified window to the back of the window stack.
      */
     private static Datum moveToBack(LingoVM vm, List<Datum> args) {
-        // No-op for now
-        if (!args.isEmpty()) {
-            Datum arg = args.get(0);
-            if (arg instanceof Datum.StageRef) {
-                System.out.println("[WindowBuiltins] moveToBack(stage)");
-            }
-        }
+        // No-op - windowing is handled externally
         return Datum.VOID;
     }
 

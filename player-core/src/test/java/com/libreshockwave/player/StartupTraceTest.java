@@ -153,7 +153,6 @@ public class StartupTraceTest {
                     frameProxyCreated[0] = true;
                     player.getTimeoutManager().createTimeout(
                             "fuse_frameProxy", Integer.MAX_VALUE, "null", result);
-                    System.out.println("[FrameProxy] Created frameProxy timeout for Object Manager");
                 }
             }
 
@@ -344,6 +343,130 @@ public class StartupTraceTest {
         }
         System.out.println();
 
+        // --- Diagnostic: dump "Thread Manager Class" create/initThread bytecode ---
+        System.out.println("========================================");
+        System.out.println("  THREAD MANAGER CLASS BYTECODE");
+        System.out.println("========================================\n");
+        boolean foundThreadManagerClass = false;
+        for (var castEntry : player.getCastLibManager().getCastLibs().entrySet()) {
+            var castLib = castEntry.getValue();
+            if (!castLib.isExternal() || !castLib.isLoaded()) continue;
+            var castNames = castLib.getScriptNames();
+            if (castNames == null) continue;
+            for (var script : castLib.getAllScripts()) {
+                String sName = script.getScriptName();
+                if (sName != null && sName.equalsIgnoreCase("Thread Manager Class")
+                        && script.getScriptType() == ScriptChunk.ScriptType.PARENT) {
+                    foundThreadManagerClass = true;
+                    // File diagnostics
+                    DirectorFile scriptFile = script.file();
+                    System.out.println("  Found: \"" + sName + "\" (" + script.getScriptType()
+                            + ") in CastLib #" + castEntry.getKey() + " \"" + castLib.getName() + "\"");
+                    System.out.println("  script.file() = " + (scriptFile != null ? scriptFile.getClass().getSimpleName() : "NULL"));
+                    if (scriptFile != null) {
+                        System.out.println("  capitalX = " + scriptFile.isCapitalX());
+                        System.out.println("  directorVersion = " + (scriptFile.getConfig() != null ? scriptFile.getConfig().directorVersion() : "NULL config"));
+                        int mult = scriptFile.isCapitalX() ? 1
+                                : (scriptFile.getConfig() != null && scriptFile.getConfig().directorVersion() >= 500 ? 8 : 6);
+                        System.out.println("  computed multiplier = " + mult);
+                    }
+                    System.out.println("  Handlers:");
+                    for (ScriptChunk.Handler handler : script.handlers()) {
+                        String hName = castNames.getName(handler.nameId());
+                        System.out.println("    - " + hName);
+                    }
+                    System.out.println();
+
+                    // Dump declared properties
+                    if (script.hasProperties()) {
+                        System.out.println("  Declared properties:");
+                        for (String propName : script.getPropertyNames(castNames)) {
+                            System.out.println("    - " + propName);
+                        }
+                    }
+                    System.out.println();
+
+                    // Dump construct handler bytecode
+                    ScriptChunk.Handler tmConstructHandler = script.findHandler("construct", castNames);
+                    if (tmConstructHandler != null) {
+                        System.out.println("  construct bytecode (argCount=" + tmConstructHandler.argCount() + " localCount=" + tmConstructHandler.localCount() + "):");
+                        for (ScriptChunk.Handler.Instruction instr : tmConstructHandler.instructions()) {
+                            String litInfo = "";
+                            if (instr.opcode().name().contains("PUSH") || instr.opcode().name().contains("EXT_CALL")
+                                    || instr.opcode().name().contains("CALL") || instr.opcode().name().contains("GET")
+                                    || instr.opcode().name().contains("SET")) {
+                                litInfo = resolveLiteral(script, castNames, instr);
+                            }
+                            System.out.printf("    [%04d] %-20s %d%s%n",
+                                    instr.offset(), instr.opcode(), instr.argument(), litInfo);
+                        }
+                    }
+                    System.out.println();
+
+                    // Dump create handler bytecode
+                    ScriptChunk.Handler createHandler = script.findHandler("create", castNames);
+                    if (createHandler != null) {
+                        System.out.println("  create bytecode (argCount=" + createHandler.argCount() + " localCount=" + createHandler.localCount() + "):");
+                        for (ScriptChunk.Handler.Instruction instr : createHandler.instructions()) {
+                            String litInfo = "";
+                            if (instr.opcode().name().contains("PUSH") || instr.opcode().name().contains("EXT_CALL")
+                                    || instr.opcode().name().contains("CALL") || instr.opcode().name().contains("GET")
+                                    || instr.opcode().name().contains("SET")) {
+                                litInfo = resolveLiteral(script, castNames, instr);
+                            }
+                            System.out.printf("    [%04d] %-20s %d%s%n",
+                                    instr.offset(), instr.opcode(), instr.argument(), litInfo);
+                        }
+                    }
+                    System.out.println();
+
+                    // Dump initThread handler bytecode
+                    ScriptChunk.Handler initThreadHandler = script.findHandler("initThread", castNames);
+                    if (initThreadHandler != null) {
+                        System.out.println("  initThread bytecode (argCount=" + initThreadHandler.argCount() + " localCount=" + initThreadHandler.localCount() + "):");
+                        for (ScriptChunk.Handler.Instruction instr : initThreadHandler.instructions()) {
+                            String litInfo = "";
+                            if (instr.opcode().name().contains("PUSH") || instr.opcode().name().contains("EXT_CALL")
+                                    || instr.opcode().name().contains("CALL") || instr.opcode().name().contains("GET")
+                                    || instr.opcode().name().contains("SET")) {
+                                litInfo = resolveLiteral(script, castNames, instr);
+                            }
+                            System.out.printf("    [%04d] %-20s %d%s%n",
+                                    instr.offset(), instr.opcode(), instr.argument(), litInfo);
+                        }
+                    } else {
+                        System.out.println("  (no initThread handler found)");
+                    }
+                    System.out.println();
+                }
+            }
+        }
+        if (!foundThreadManagerClass) {
+            System.out.println("  (Thread Manager Class PARENT script not found)");
+        }
+        System.out.println();
+
+        // --- Diagnostic: external cast file properties ---
+        System.out.println("========================================");
+        System.out.println("  EXTERNAL CAST FILE PROPERTIES");
+        System.out.println("========================================\n");
+        for (var castEntry : player.getCastLibManager().getCastLibs().entrySet()) {
+            var castLib = castEntry.getValue();
+            if (!castLib.isExternal() || !castLib.isLoaded()) continue;
+            // Check first script's file reference
+            var allScripts = castLib.getAllScripts();
+            if (!allScripts.isEmpty()) {
+                ScriptChunk firstScript = allScripts.iterator().next();
+                DirectorFile sf = firstScript.file();
+                System.out.printf("  CastLib #%d \"%s\": file=%s capitalX=%s dirVer=%s%n",
+                        castEntry.getKey(), castLib.getName(),
+                        sf != null ? "present" : "NULL",
+                        sf != null ? String.valueOf(sf.isCapitalX()) : "N/A",
+                        sf != null && sf.getConfig() != null ? String.valueOf(sf.getConfig().directorVersion()) : "N/A");
+            }
+        }
+        System.out.println();
+
         // --- Diagnostic: dump "Object API" constructObjectManager bytecode ---
         System.out.println("========================================");
         System.out.println("  CONSTRUCTOBJECTMANAGER BYTECODE");
@@ -446,15 +569,63 @@ public class StartupTraceTest {
                     for (int i = 0; i < Math.min(40, count); i++) {
                         System.out.println("    name[" + i + "] = \"" + fuseNames.getName(i) + "\"");
                     }
-                    // Also specifically check index 33
+                    // Specifically check thread-related indices
                     System.out.println();
-                    System.out.println("  Specifically, name[33] = " + (33 < count ? "\"" + fuseNames.getName(33) + "\"" : "(out of range, count=" + count + ")"));
+                    for (int idx : new int[]{33, 664, 703, 704, 707}) {
+                        System.out.println("  name[" + idx + "] = " + (idx < count ? "\"" + fuseNames.getName(idx) + "\"" : "(out of range, count=" + count + ")"));
+                    }
                 }
                 break;
             }
         }
         if (!foundFuseClient) {
             System.out.println("  (fuse_client cast not found or not loaded yet)");
+        }
+        System.out.println();
+
+        // --- Diagnostic: dump "System Props" field content ---
+        System.out.println("========================================");
+        System.out.println("  SYSTEM PROPS FIELD CONTENT");
+        System.out.println("========================================\n");
+        String sysPropsContent = player.getCastLibManager().getFieldValue("System Props", 0);
+        if (sysPropsContent != null && !sysPropsContent.isEmpty()) {
+            // Show first 2000 chars
+            String display = sysPropsContent.length() > 2000 ? sysPropsContent.substring(0, 2000) + "..." : sysPropsContent;
+            System.out.println(display);
+            // Search for thread-related entries
+            if (sysPropsContent.contains("thread")) {
+                System.out.println("\n  Thread-related entries found in System Props!");
+            } else {
+                System.out.println("\n  NO thread-related entries in System Props");
+            }
+        } else {
+            System.out.println("  (System Props field is empty or not found)");
+        }
+        System.out.println();
+
+        // --- Diagnostic: list ALL member names in fuse_client ---
+        System.out.println("========================================");
+        System.out.println("  FUSE_CLIENT CAST MEMBERS (all types)");
+        System.out.println("========================================\n");
+        for (var castEntry : player.getCastLibManager().getCastLibs().entrySet()) {
+            var castLib = castEntry.getValue();
+            if (castLib.getName() != null && castLib.getName().toLowerCase().contains("fuse_client") && castLib.isLoaded()) {
+                int memberCount = castLib.getMemberCount();
+                System.out.println("  Total member count: " + memberCount);
+                // List all members with names
+                int namedCount = 0;
+                for (int m = 1; m <= 1000; m++) {
+                    var chunk = castLib.findMemberByNumber(m);
+                    if (chunk != null) {
+                        String memberName = chunk.name() != null ? chunk.name() : "(null)";
+                        String memberType = chunk.isScript() ? "SCRIPT" : "type=" + chunk.memberType();
+                        System.out.println("    member[" + m + "] = \"" + memberName + "\" (" + memberType + ")");
+                        namedCount++;
+                    }
+                }
+                System.out.println("  Found " + namedCount + " members in range 1-1000");
+                break;
+            }
         }
         System.out.println();
 

@@ -82,11 +82,18 @@ public final class AncestorCallHandler {
         }
 
         // Walk the ancestor chain to find a script with the handler
+        // Use __scriptRef__ (ScriptRef with castLib/member) for handler lookup,
+        // NOT scriptId() which is just the auto-incrementing instance counter.
         Datum.ScriptInstance currentAncestor = ancestorInstance;
         CastLibProvider.HandlerLocation location = null;
 
         for (int i = 0; i < AncestorChainWalker.MAX_ANCESTOR_DEPTH; i++) { // Safety limit
-            location = provider.findHandlerInScript(currentAncestor.scriptId(), handlerName);
+            Datum scriptRefDatum = currentAncestor.properties().get(Datum.PROP_SCRIPT_REF);
+            if (scriptRefDatum instanceof Datum.ScriptRef ref) {
+                location = provider.findHandlerInScript(ref.castLib(), ref.member(), handlerName);
+            } else {
+                location = provider.findHandlerInScript(currentAncestor.scriptId(), handlerName);
+            }
             if (location != null) {
                 break;
             }
