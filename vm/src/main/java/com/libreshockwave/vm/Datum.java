@@ -169,6 +169,18 @@ public sealed interface Datum {
         public String toString() { return "timeout(\"" + name + "\")"; }
     }
 
+    /** Mutable reference to a VM variable (for chunk mutation operations like delete) */
+    record VarRef(int varType, int rawIndex) implements Datum {
+        @Override
+        public String toString() { return "<varref:" + varType + "," + rawIndex + ">"; }
+    }
+
+    /** Reference to a chunk range within a variable (used by delete/put chunk operations) */
+    record ChunkRef(int varType, int rawIndex, String chunkType, int start, int end) implements Datum {
+        @Override
+        public String toString() { return "<chunkref:" + chunkType + "[" + start + ".." + end + "]>"; }
+    }
+
     /** Argument list for function calls (expects return value) */
     record ArgList(java.util.List<Datum> items) implements Datum {
         public ArgList {
@@ -360,6 +372,8 @@ public sealed interface Datum {
             case XtraRef xr -> xr;
             case XtraInstance xi -> xi;
             case TimeoutRef tr -> tr;
+            case VarRef vr -> vr;
+            case ChunkRef cr -> cr;
 
             // Mutable types - deep copy
             case List list -> {

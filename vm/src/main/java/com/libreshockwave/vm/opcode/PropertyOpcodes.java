@@ -112,7 +112,7 @@ public final class PropertyOpcodes {
             case Datum.ScriptInstance si -> AncestorChainWalker.getProperty(si, propName);
             case Datum.XtraInstance xi -> XtraBuiltins.getProperty(xi, propName);
             case Datum.TimeoutRef tr -> TimeoutBuiltins.getProperty(tr, propName);
-            case Datum.PropList pl -> pl.properties().getOrDefault(propName, Datum.VOID);
+            case Datum.PropList pl -> getPropListProp(pl, propName);
             case Datum.List list -> getListProp(list, propName);
             case Datum.Str str -> getStringProp(str, propName);
             case Datum.MovieRef m -> {
@@ -169,6 +169,19 @@ public final class PropertyOpcodes {
                 }
                 yield Datum.VOID;
             }
+        };
+    }
+
+    /**
+     * Get a property from a PropList, supporting built-in properties (count, ilk)
+     * as well as key lookup.
+     */
+    private static Datum getPropListProp(Datum.PropList pl, String propName) {
+        String prop = propName.toLowerCase();
+        return switch (prop) {
+            case "count", "length" -> Datum.of(pl.properties().size());
+            case "ilk" -> Datum.symbol("propList");
+            default -> pl.properties().getOrDefault(propName, Datum.VOID);
         };
     }
 

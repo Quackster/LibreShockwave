@@ -154,6 +154,31 @@ public class StartupTraceTest {
                     player.getTimeoutManager().createTimeout(
                             "fuse_frameProxy", Integer.MAX_VALUE, "null", result);
                 }
+
+                // Dump Object Manager properties after registerManager exits
+                if (info.handlerName().equals("registerManager")
+                        && info.scriptDisplayName().contains("Object Manager")) {
+                    // Find the Object Manager instance (it's the 'me' receiver)
+                    var ctx = info.receiver();
+                    if (ctx instanceof Datum.ScriptInstance si) {
+                        callTree.add(new CallEntry(depth[0], false,
+                                "[DIAG] Object Manager props after registerManager("
+                                + formatArgs(info.arguments()) + "):",
+                                CallEntry.CallKind.ERROR));
+                        for (var propEntry : si.properties().entrySet()) {
+                            String key = propEntry.getKey();
+                            Datum val = propEntry.getValue();
+                            String valStr = val instanceof Datum.List list
+                                    ? "List[" + list.items().size() + "]=" + truncate(val.toString())
+                                    : val instanceof Datum.PropList pl
+                                            ? "PropList[" + pl.properties().size() + "]"
+                                            : truncate(val.toString());
+                            callTree.add(new CallEntry(depth[0] + 1, false,
+                                    key + " = " + valStr,
+                                    CallEntry.CallKind.ERROR));
+                        }
+                    }
+                }
             }
 
             @Override
@@ -335,6 +360,65 @@ public class StartupTraceTest {
                         System.out.println("  (no prepareFrame handler found)");
                     }
                     System.out.println();
+
+                    // Dump registerManager handler bytecode
+                    ScriptChunk.Handler regMgrHandler = script.findHandler("registerManager", castNames);
+                    if (regMgrHandler != null) {
+                        System.out.println("  registerManager bytecode:");
+                        for (ScriptChunk.Handler.Instruction instr : regMgrHandler.instructions()) {
+                            String litInfo = "";
+                            if (instr.opcode().name().contains("PUSH") || instr.opcode().name().contains("CALL")
+                                    || instr.opcode().name().contains("PROP") || instr.opcode().name().contains("SET")) {
+                                litInfo = resolveLiteral(script, castNames, instr);
+                            }
+                            System.out.printf("    [%04d] %-20s %d%s%n",
+                                    instr.offset(), instr.opcode(), instr.argument(), litInfo);
+                        }
+                    }
+                    System.out.println();
+
+                    // Dump receiveUpdate handler bytecode
+                    ScriptChunk.Handler recvUpdateHandler = script.findHandler("receiveUpdate", castNames);
+                    if (recvUpdateHandler != null) {
+                        System.out.println("  receiveUpdate bytecode:");
+                        for (ScriptChunk.Handler.Instruction instr : recvUpdateHandler.instructions()) {
+                            String litInfo = "";
+                            if (instr.opcode().name().contains("PUSH") || instr.opcode().name().contains("CALL")
+                                    || instr.opcode().name().contains("PROP") || instr.opcode().name().contains("SET")) {
+                                litInfo = resolveLiteral(script, castNames, instr);
+                            }
+                            System.out.printf("    [%04d] %-20s %d%s%n",
+                                    instr.offset(), instr.opcode(), instr.argument(), litInfo);
+                        }
+                    }
+                    System.out.println();
+
+                    // Dump create handler bytecode
+                    ScriptChunk.Handler createOmHandler = script.findHandler("create", castNames);
+                    if (createOmHandler != null) {
+                        System.out.println("  create bytecode (argCount=" + createOmHandler.argCount()
+                                + " localCount=" + createOmHandler.localCount() + "):");
+                        for (ScriptChunk.Handler.Instruction instr : createOmHandler.instructions()) {
+                            String litInfo = "";
+                            if (instr.opcode().name().contains("PUSH") || instr.opcode().name().contains("CALL")
+                                    || instr.opcode().name().contains("PROP") || instr.opcode().name().contains("SET")) {
+                                litInfo = resolveLiteral(script, castNames, instr);
+                            }
+                            System.out.printf("    [%04d] %-20s %d%s%n",
+                                    instr.offset(), instr.opcode(), instr.argument(), litInfo);
+                        }
+                    }
+                    System.out.println();
+
+                    // Dump declared properties
+                    if (script.hasProperties()) {
+                        System.out.println("  Declared properties:");
+                        var propNames = script.getPropertyNames(castNames);
+                        for (int pi = 0; pi < propNames.size(); pi++) {
+                            System.out.println("    - " + propNames.get(pi));
+                        }
+                        System.out.println();
+                    }
                 }
             }
         }
@@ -626,6 +710,190 @@ public class StartupTraceTest {
                 System.out.println("  Found " + namedCount + " members in range 1-1000");
                 break;
             }
+        }
+        System.out.println();
+
+        // --- Diagnostic: find ALL handlers that call receiveUpdate/receivePrepare ---
+        System.out.println("========================================");
+        System.out.println("  HANDLERS CALLING receiveUpdate/receivePrepare");
+        System.out.println("========================================\n");
+        for (var castEntry : player.getCastLibManager().getCastLibs().entrySet()) {
+            var castLib = castEntry.getValue();
+            if (!castLib.isExternal() || !castLib.isLoaded()) continue;
+            var castNames = castLib.getScriptNames();
+            if (castNames == null) continue;
+            // Find nameIdx for receiveUpdate and receivePrepare
+            int recvUpdateIdx = -1, recvPrepareIdx = -1;
+            for (int i = 0; i < castNames.names().size(); i++) {
+                String n = castNames.getName(i);
+                if ("receiveUpdate".equals(n)) recvUpdateIdx = i;
+                if ("receivePrepare".equals(n)) recvPrepareIdx = i;
+            }
+            System.out.println("  CastLib #" + castEntry.getKey() + " \"" + castLib.getName()
+                    + "\": receiveUpdate nameIdx=" + recvUpdateIdx + ", receivePrepare nameIdx=" + recvPrepareIdx);
+            for (var script : castLib.getAllScripts()) {
+                String sName = script.getScriptName();
+                if (sName == null) sName = "script#" + script.id();
+                for (var handler : script.handlers()) {
+                    String hName = castNames.getName(handler.nameId());
+                    for (var instr : handler.instructions()) {
+                        String opName = instr.opcode().name();
+                        int arg = instr.argument();
+                        boolean match = false;
+                        if (opName.contains("EXT_CALL") && (arg == recvUpdateIdx || arg == recvPrepareIdx)) {
+                            match = true;
+                        }
+                        // Also check OBJ_CALL with those indices
+                        if (opName.contains("OBJ_CALL") && (arg == recvUpdateIdx || arg == recvPrepareIdx)) {
+                            match = true;
+                        }
+                        if (match) {
+                            String calledName = arg == recvUpdateIdx ? "receiveUpdate" : "receivePrepare";
+                            System.out.println("    FOUND: " + sName + "." + hName + " calls " + calledName
+                                    + " via " + opName + " at offset " + instr.offset());
+                        }
+                    }
+                }
+            }
+        }
+        System.out.println();
+
+        // --- Diagnostic: dump constructDownloadManager bytecode ---
+        System.out.println("========================================");
+        System.out.println("  CONSTRUCT DOWNLOAD MANAGER BYTECODE");
+        System.out.println("========================================\n");
+        for (var castEntry : player.getCastLibManager().getCastLibs().entrySet()) {
+            var castLib = castEntry.getValue();
+            if (!castLib.isExternal() || !castLib.isLoaded()) continue;
+            var castNames = castLib.getScriptNames();
+            if (castNames == null) continue;
+            for (var script : castLib.getAllScripts()) {
+                String sName = script.getScriptName();
+                if (sName != null && sName.equalsIgnoreCase("Download API")
+                        && script.getScriptType() == ScriptChunk.ScriptType.MOVIE_SCRIPT) {
+                    ScriptChunk.Handler cdm = script.findHandler("constructDownloadManager", castNames);
+                    if (cdm != null) {
+                        System.out.println("  constructDownloadManager bytecode (argCount=" + cdm.argCount()
+                                + " localCount=" + cdm.localCount() + "):");
+                        for (var instr : cdm.instructions()) {
+                            String litInfo = resolveLiteral(script, castNames, instr);
+                            System.out.printf("    [%04d] %-20s %d%s%n",
+                                    instr.offset(), instr.opcode(), instr.argument(), litInfo);
+                        }
+                    }
+                    System.out.println();
+                    // Also dump the queueDownload handler
+                    ScriptChunk.Handler qd = script.findHandler("queueDownload", castNames);
+                    if (qd != null) {
+                        System.out.println("  queueDownload bytecode (argCount=" + qd.argCount()
+                                + " localCount=" + qd.localCount() + "):");
+                        for (var instr : qd.instructions()) {
+                            String litInfo = resolveLiteral(script, castNames, instr);
+                            System.out.printf("    [%04d] %-20s %d%s%n",
+                                    instr.offset(), instr.opcode(), instr.argument(), litInfo);
+                        }
+                    }
+                }
+                // Also dump Download Manager Class construct
+                if (sName != null && sName.equalsIgnoreCase("Download Manager Class")
+                        && script.getScriptType() == ScriptChunk.ScriptType.PARENT) {
+                    ScriptChunk.Handler dmConstruct = script.findHandler("construct", castNames);
+                    if (dmConstruct != null) {
+                        System.out.println("  Download Manager Class construct bytecode (argCount="
+                                + dmConstruct.argCount() + " localCount=" + dmConstruct.localCount() + "):");
+                        for (var instr : dmConstruct.instructions()) {
+                            String litInfo = resolveLiteral(script, castNames, instr);
+                            System.out.printf("    [%04d] %-20s %d%s%n",
+                                    instr.offset(), instr.opcode(), instr.argument(), litInfo);
+                        }
+                    }
+                    System.out.println();
+                    // Dump updateQueue handler (calls receiveUpdate!)
+                    ScriptChunk.Handler dmUpdateQueue = script.findHandler("updateQueue", castNames);
+                    if (dmUpdateQueue != null) {
+                        System.out.println("  Download Manager Class updateQueue bytecode (argCount="
+                                + dmUpdateQueue.argCount() + " localCount=" + dmUpdateQueue.localCount() + "):");
+                        for (var instr : dmUpdateQueue.instructions()) {
+                            String litInfo = resolveLiteral(script, castNames, instr);
+                            System.out.printf("    [%04d] %-20s %d%s%n",
+                                    instr.offset(), instr.opcode(), instr.argument(), litInfo);
+                        }
+                    }
+                    System.out.println();
+                    // Also dump update handler
+                    ScriptChunk.Handler dmUpdate = script.findHandler("update", castNames);
+                    if (dmUpdate != null) {
+                        System.out.println("  Download Manager Class update bytecode (argCount="
+                                + dmUpdate.argCount() + " localCount=" + dmUpdate.localCount() + "):");
+                        for (var instr : dmUpdate.instructions()) {
+                            String litInfo = resolveLiteral(script, castNames, instr);
+                            System.out.printf("    [%04d] %-20s %d%s%n",
+                                    instr.offset(), instr.opcode(), instr.argument(), litInfo);
+                        }
+                    }
+                }
+            }
+        }
+        System.out.println();
+
+        // --- Diagnostic: dump "String Services Class" replaceChunks/convertSpecialChars bytecode ---
+        System.out.println("========================================");
+        System.out.println("  STRING SERVICES CLASS BYTECODE");
+        System.out.println("========================================\n");
+        boolean foundStringServicesClass = false;
+        for (var castEntry : player.getCastLibManager().getCastLibs().entrySet()) {
+            var castLib = castEntry.getValue();
+            if (!castLib.isExternal() || !castLib.isLoaded()) continue;
+            var castNames = castLib.getScriptNames();
+            if (castNames == null) continue;
+            for (var script : castLib.getAllScripts()) {
+                String sName = script.getScriptName();
+                if (sName != null && sName.equalsIgnoreCase("String Services Class")
+                        && script.getScriptType() == ScriptChunk.ScriptType.PARENT) {
+                    foundStringServicesClass = true;
+                    System.out.println("  Found: \"" + sName + "\" (" + script.getScriptType()
+                            + ") in CastLib #" + castEntry.getKey() + " \"" + castLib.getName() + "\"");
+                    System.out.println("  Handlers:");
+                    for (ScriptChunk.Handler handler : script.handlers()) {
+                        String hName = castNames.getName(handler.nameId());
+                        System.out.println("    - " + hName);
+                    }
+                    System.out.println();
+
+                    // Dump replaceChunks handler bytecode
+                    ScriptChunk.Handler replaceChunksHandler = script.findHandler("replaceChunks", castNames);
+                    if (replaceChunksHandler != null) {
+                        System.out.println("  replaceChunks bytecode (argCount=" + replaceChunksHandler.argCount()
+                                + " localCount=" + replaceChunksHandler.localCount() + "):");
+                        for (var instr : replaceChunksHandler.instructions()) {
+                            String litInfo = resolveLiteral(script, castNames, instr);
+                            System.out.printf("    [%04d] %-20s %d%s%n",
+                                    instr.offset(), instr.opcode(), instr.argument(), litInfo);
+                        }
+                    } else {
+                        System.out.println("  (no replaceChunks handler found)");
+                    }
+                    System.out.println();
+
+                    // Dump convertSpecialChars handler bytecode
+                    ScriptChunk.Handler convertSpecialCharsHandler = script.findHandler("convertSpecialChars", castNames);
+                    if (convertSpecialCharsHandler != null) {
+                        System.out.println("  convertSpecialChars bytecode (argCount=" + convertSpecialCharsHandler.argCount()
+                                + " localCount=" + convertSpecialCharsHandler.localCount() + "):");
+                        for (var instr : convertSpecialCharsHandler.instructions()) {
+                            String litInfo = resolveLiteral(script, castNames, instr);
+                            System.out.printf("    [%04d] %-20s %d%s%n",
+                                    instr.offset(), instr.opcode(), instr.argument(), litInfo);
+                        }
+                    } else {
+                        System.out.println("  (no convertSpecialChars handler found)");
+                    }
+                    System.out.println();
+                }
+            }
+        }
+        if (!foundStringServicesClass) {
+            System.out.println("  (String Services Class PARENT script not found)");
         }
         System.out.println();
 

@@ -28,6 +28,9 @@ public final class StackOpcodes {
         handlers.put(Opcode.PUSH_CONS, StackOpcodes::pushCons);
         handlers.put(Opcode.PUSH_SYMB, StackOpcodes::pushSymb);
 
+        // Variable references (for chunk mutation)
+        handlers.put(Opcode.PUSH_CHUNK_VAR_REF, StackOpcodes::pushChunkVarRef);
+
         // Stack manipulation
         handlers.put(Opcode.SWAP, StackOpcodes::swap);
         handlers.put(Opcode.POP, StackOpcodes::pop);
@@ -74,6 +77,18 @@ public final class StackOpcodes {
     private static boolean pushSymb(ExecutionContext ctx) {
         String name = ctx.resolveName(ctx.getArgument());
         ctx.push(Datum.symbol(name));
+        return true;
+    }
+
+    /**
+     * PUSH_CHUNK_VAR_REF (0x6D) - Push a mutable variable reference for chunk operations.
+     * Pops the variable index from the stack, creates a VarRef with the var type from the argument.
+     * Used by 'delete char X to Y of varName' and similar chunk mutation operations.
+     */
+    private static boolean pushChunkVarRef(ExecutionContext ctx) {
+        int varType = ctx.getArgument();
+        int rawIndex = ctx.pop().toInt();
+        ctx.push(new Datum.VarRef(varType, rawIndex));
         return true;
     }
 
