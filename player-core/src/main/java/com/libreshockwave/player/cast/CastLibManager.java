@@ -168,6 +168,15 @@ public class CastLibManager implements CastLibProvider {
     }
 
     @Override
+    public boolean memberExists(int castLibNumber, int memberNumber) {
+        CastLib castLib = getCastLib(castLibNumber);
+        if (castLib == null) {
+            return false;
+        }
+        return castLib.getMember(memberNumber) != null;
+    }
+
+    @Override
     public Datum getMemberByName(int castLibNumber, String memberName) {
         ensureInitialized();
 

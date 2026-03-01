@@ -33,7 +33,7 @@ public class RenderTraceTest {
 
     private static final String TEST_FILE = "C:/xampp/htdocs/dcr/14.1_b8/habbo.dcr";
     private static final int MAX_RESULT_LEN = 80;
-    private static final int MAX_FRAMES = 5000;
+    private static final int MAX_FRAMES = 500;
     private static final int POST_ALERT_FRAMES = 50;
     private static final int IDLE_REPORT_INTERVAL = 50;
 
@@ -241,13 +241,6 @@ public class RenderTraceTest {
                             CallEntry.CallKind.MILESTONE_MARKER));
                 }
 
-                // Dump ALL handler calls during frames 4-7 for debugging state machine
-                if (currentFrame[0] >= 4 && currentFrame[0] <= 7) {
-                    callTree.add(new CallEntry(depth[0] - 1, false,
-                            ">>> DEBUG_F" + currentFrame[0] + ": " + info.handlerName() + "(" + argsStr + ") [" + info.scriptDisplayName() + "]",
-                            CallEntry.CallKind.RENDER_RELATED));
-                }
-
                 // Track rendering-related handlers
                 String combined = info.handlerName() + " " + info.scriptDisplayName();
                 if (RENDER_HANDLER_PATTERN.matcher(combined).find()) {
@@ -352,7 +345,8 @@ public class RenderTraceTest {
         player.play();
 
         int totalFramesStepped = 0;
-        int framesAfterAlert = 0;
+        int framesAfterMilestone = 0;
+        boolean milestoneStopTriggered = false;
 
         for (int frame = 0; frame < MAX_FRAMES; frame++) {
             try {
@@ -407,11 +401,20 @@ public class RenderTraceTest {
                 }
             }
 
-            // Stop conditions
-            if (firstAlertReached) {
-                framesAfterAlert++;
-                if (framesAfterAlert >= POST_ALERT_FRAMES) {
-                    System.out.println("  [stop] " + POST_ALERT_FRAMES + " frames after first alert.");
+            // Stop conditions: stop N frames after the highest milestone is reached
+            boolean hitMilestone = firstAlertReached || createWindowReached || firstSpritesReached;
+            if (hitMilestone) {
+                if (!milestoneStopTriggered) {
+                    milestoneStopTriggered = true;
+                    String reason = firstAlertReached ? "alert()" :
+                                    createWindowReached ? "createWindow" :
+                                    "sprites";
+                    System.out.println("  [milestone] " + reason + " reached at frame " + currentFrame[0]
+                            + ", running " + POST_ALERT_FRAMES + " more frames...");
+                }
+                framesAfterMilestone++;
+                if (framesAfterMilestone >= POST_ALERT_FRAMES) {
+                    System.out.println("  [stop] " + POST_ALERT_FRAMES + " frames after milestone.");
                     break;
                 }
             }

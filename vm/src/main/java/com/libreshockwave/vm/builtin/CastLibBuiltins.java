@@ -90,10 +90,18 @@ public final class CastLibBuiltins {
         // Get member by number or name
         if (memberArg.isInt() || memberArg.isFloat()) {
             int memberNumber = memberArg.toInt();
-            if (castLibNumber == 0) {
-                castLibNumber = 1; // Default to first cast
+            if (castLibNumber > 0) {
+                return provider.getMember(castLibNumber, memberNumber);
             }
-            return provider.getMember(castLibNumber, memberNumber);
+            // No cast lib specified — search all casts for the member
+            int totalCasts = provider.getCastLibCount();
+            for (int i = 1; i <= totalCasts; i++) {
+                if (provider.memberExists(i, memberNumber)) {
+                    return provider.getMember(i, memberNumber);
+                }
+            }
+            // Not found in any cast — return ref in cast 1 (Director fallback)
+            return provider.getMember(1, memberNumber);
         } else if (memberArg.isString()) {
             return provider.getMemberByName(castLibNumber, memberArg.toStr());
         }
