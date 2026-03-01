@@ -2,15 +2,17 @@ package com.libreshockwave.player;
 
 import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.chunks.CastMemberChunk;
+import com.libreshockwave.player.cast.CastLibManager;
+import com.libreshockwave.player.cast.CastMember;
 import com.libreshockwave.player.render.FrameSnapshot;
 import com.libreshockwave.player.render.RenderSprite;
 
 import javax.swing.*;
 import java.awt.*;
 import java.awt.image.BufferedImage;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Swing panel that renders the Director stage using the player-core rendering API.
@@ -23,7 +25,7 @@ public class StagePanel extends JPanel {
     private static final Color CANVAS_BORDER_COLOR = new Color(80, 80, 80);
 
     private Player player;
-    private final Map<Integer, BufferedImage> bitmapCache = new HashMap<>();
+    private final Map<Integer, BufferedImage> bitmapCache = new ConcurrentHashMap<>();
 
     // Fixed stage dimensions (set from movie)
     private int stageWidth = 640;
@@ -150,53 +152,178 @@ public class StagePanel extends JPanel {
         int width = sprite.getWidth();
         int height = sprite.getHeight();
 
+        // Apply blend (opacity) if not 100%
+        Composite oldComposite = null;
+        int blend = sprite.getBlend();
+        if (blend >= 0 && blend < 100) {
+            oldComposite = g.getComposite();
+            g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, blend / 100f));
+        }
+
         switch (sprite.getType()) {
             case BITMAP -> drawBitmap(g, sprite, x, y, width, height);
             case SHAPE -> drawShape(g, sprite, x, y, width, height);
-            case TEXT, BUTTON -> drawPlaceholder(g, x, y, width, height, sprite.getChannel(), "txt");
-            default -> drawPlaceholder(g, x, y, width, height, sprite.getChannel(), "?");
+            case TEXT, BUTTON -> drawText(g, sprite, x, y, width, height);
+            default -> {} // Skip unknown types silently
+        }
+
+        if (oldComposite != null) {
+            g.setComposite(oldComposite);
         }
     }
 
     private void drawBitmap(Graphics2D g, RenderSprite sprite, int x, int y, int width, int height) {
         CastMemberChunk member = sprite.getCastMember();
         if (member == null) {
-            drawPlaceholder(g, x, y, width, height, sprite.getChannel(), "bmp");
             return;
         }
 
         BufferedImage img = getCachedBitmap(member);
-        if (img != null) {
-            // Calculate actual position (regPoint offset)
-            int drawX = x - (width > 0 ? 0 : img.getWidth() / 2);
-            int drawY = y - (height > 0 ? 0 : img.getHeight() / 2);
+        if (img == null) {
+            return;
+        }
 
-            if (width > 0 && height > 0) {
-                g.drawImage(img, x, y, width, height, null);
-            } else {
-                g.drawImage(img, drawX, drawY, null);
-            }
+        int ink = sprite.getInk();
+
+        // Apply Background Transparent ink (36): make the backColor transparent
+        if (ink == 36) {
+            img = applyBackgroundTransparent(img, sprite.getBackColor());
+        }
+
+        // Calculate actual position (regPoint offset)
+        int drawX = x - (width > 0 ? 0 : img.getWidth() / 2);
+        int drawY = y - (height > 0 ? 0 : img.getHeight() / 2);
+
+        if (width > 0 && height > 0) {
+            g.drawImage(img, x, y, width, height, null);
         } else {
-            drawPlaceholder(g, x, y, width, height, sprite.getChannel(), "bmp");
+            g.drawImage(img, drawX, drawY, null);
+        }
+    }
+
+    /**
+     * Apply Background Transparent ink: pixels matching the background color become transparent.
+     * This is Director's ink type 36, commonly used for sprite compositing.
+     */
+    private BufferedImage applyBackgroundTransparent(BufferedImage src, int backColor) {
+        // Check if we've already processed this image (cached version is ARGB)
+        if (src.getType() == BufferedImage.TYPE_INT_ARGB) {
+            return src;
+        }
+
+        int w = src.getWidth();
+        int h = src.getHeight();
+        BufferedImage result = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+
+        // Determine the background color to make transparent.
+        // In Director, backColor 255 = white (0xFFFFFF), 0 = black.
+        int bgRgb;
+        if (backColor > 255) {
+            bgRgb = backColor & 0xFFFFFF;
+        } else {
+            int gray = 255 - backColor;
+            bgRgb = (gray << 16) | (gray << 8) | gray;
+        }
+
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                int pixel = src.getRGB(x, y);
+                int rgb = pixel & 0xFFFFFF;
+                if (rgb == bgRgb) {
+                    result.setRGB(x, y, 0x00000000); // Fully transparent
+                } else {
+                    result.setRGB(x, y, pixel | 0xFF000000); // Fully opaque
+                }
+            }
+        }
+
+        // Replace in cache so we don't reprocess every frame
+        CastMemberChunk member = null; // We can't easily get member here, so skip cache update
+        return result;
+    }
+
+    private void drawText(Graphics2D g, RenderSprite sprite, int x, int y, int width, int height) {
+        CastMemberChunk member = sprite.getCastMember();
+        String text = null;
+
+        // Try to get text content from the cast member
+        if (member != null && player != null) {
+            CastLibManager clm = player.getCastLibManager();
+            if (clm != null) {
+                // Get the CastMember object which has text content
+                int castLib = sprite.getCastMember() != null ? 0 : 0;
+                // Use getFieldValue to find text content
+                text = clm.getFieldValue(member.name(), 0);
+            }
+        }
+
+        if (text == null || text.isEmpty()) {
+            return; // Nothing to render
+        }
+
+        int w = width > 0 ? width : 200;
+        int h = height > 0 ? height : 20;
+
+        // Draw text with foreColor
+        int fc = sprite.getForeColor();
+        g.setColor(foreColorToAwtColor(fc));
+        g.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        FontMetrics fm = g.getFontMetrics();
+
+        // Simple multi-line text rendering
+        String[] lines = text.split("[\r\n]+");
+        int textY = y + fm.getAscent();
+        for (String line : lines) {
+            if (textY > y + h) break;
+            g.drawString(line, x, textY);
+            textY += fm.getHeight();
         }
     }
 
     private void drawShape(Graphics2D g, RenderSprite sprite, int x, int y, int width, int height) {
         int fc = sprite.getForeColor();
-        g.setColor(new Color(fc, fc, fc));
-        g.fillRect(x, y, width > 0 ? width : 50, height > 0 ? height : 50);
+        g.setColor(foreColorToAwtColor(fc));
+        int w = width > 0 ? width : 50;
+        int h = height > 0 ? height : 50;
+        g.fillRect(x, y, w, h);
+    }
+
+    /**
+     * Convert a Director foreColor value to an AWT Color.
+     * If the value is > 255, it's a packed RGB int (set via sprite.color = rgb(r,g,b)).
+     * If <= 255, treat as a Director palette index (approximate: 0=white, 255=black).
+     */
+    private static Color foreColorToAwtColor(int fc) {
+        if (fc > 255) {
+            // Packed RGB from rgb(r,g,b)
+            return new Color(fc);
+        }
+        // Director palette: 0 = white, 255 = black (inverted grayscale approximation)
+        int gray = 255 - fc;
+        return new Color(gray, gray, gray);
+    }
+
+    /**
+     * Clear the bitmap cache, forcing bitmaps to be re-decoded on next repaint.
+     * Call this when external casts are loaded so newly available bitmaps are picked up.
+     */
+    public void clearBitmapCache() {
+        bitmapCache.clear();
     }
 
     private BufferedImage getCachedBitmap(CastMemberChunk member) {
         int id = member.id();
-        if (bitmapCache.containsKey(id)) {
-            return bitmapCache.get(id);
+        BufferedImage cached = bitmapCache.get(id);
+        if (cached != null) {
+            return cached;
         }
 
         if (player == null) {
             return null;
         }
 
+        // Don't re-attempt if already in the cache as null — but we no longer cache null.
+        // This means we retry every repaint until the bitmap is available (e.g., cast loads).
         Optional<Bitmap> bitmap = player.decodeBitmap(member);
         if (bitmap.isPresent()) {
             BufferedImage img = bitmap.get().toBufferedImage();
@@ -204,7 +331,7 @@ public class StagePanel extends JPanel {
             return img;
         }
 
-        bitmapCache.put(id, null);
+        // Don't cache null — retry on next repaint when cast may have loaded
         return null;
     }
 

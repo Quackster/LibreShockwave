@@ -617,9 +617,13 @@ public class PlayerFrame extends JFrame {
             statusLabel.setText(statusLabel.getText() + " | Preloading " + preloadCount + " external cast(s)...");
         }
 
-        // Refresh debugger panel when external casts are successfully loaded and matched
+        // Refresh debugger panel and invalidate bitmap cache when external casts load.
+        // Bitmaps from newly-loaded casts become available — clear the cache so
+        // they're decoded on the next repaint instead of showing as missing.
         player.setCastLoadedListener(() -> {
             SwingUtilities.invokeLater(() -> {
+                stagePanel.clearBitmapCache();
+                stagePanel.repaint();
                 debuggerPanel.refreshScriptList();
             });
         });
@@ -632,14 +636,15 @@ public class PlayerFrame extends JFrame {
     private void play() {
         if (player == null) return;
 
-        // Use async execution to prevent UI freeze when debugger pauses
+        // Start rendering immediately so the loading bar and initial sprites
+        // are visible while prepareMovie() runs on the background thread.
+        startPlaybackTimer();
+        updateButtonStates();
+
+        // Run prepareMovie async — rendering continues in the timer while this runs
         player.playAsync(() -> {
-            SwingUtilities.invokeLater(() -> {
-                startPlaybackTimer();
-                updateButtonStates();
-            });
+            SwingUtilities.invokeLater(this::updateButtonStates);
         });
-        updateButtonStates();  // Disable play button immediately
     }
 
     private void pause() {
@@ -775,8 +780,12 @@ public class PlayerFrame extends JFrame {
             }
 
             if (useAsyncExecution) {
-                // Use async execution to allow debugger to pause VM
-                if (!player.isVmRunning()) {
+                if (player.isVmRunning()) {
+                    // VM is busy (prepareMovie or previous tick still running).
+                    // Still repaint to show sprites set up during loading.
+                    stagePanel.repaint();
+                } else {
+                    // VM is free — tick and repaint
                     player.tickAsync(() -> {
                         SwingUtilities.invokeLater(() -> {
                             updateFrameLabel();

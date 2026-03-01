@@ -3,9 +3,9 @@ package com.libreshockwave.player.render;
 import com.libreshockwave.chunks.ScoreChunk;
 import com.libreshockwave.player.sprite.SpriteState;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Registry of runtime sprite states.
@@ -14,7 +14,7 @@ import java.util.Map;
  */
 public class SpriteRegistry {
 
-    private final Map<Integer, SpriteState> sprites = new HashMap<>();
+    private final Map<Integer, SpriteState> sprites = new ConcurrentHashMap<>();
 
     /**
      * Get or create a sprite state for a channel from Score data.

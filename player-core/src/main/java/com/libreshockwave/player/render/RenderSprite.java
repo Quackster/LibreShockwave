@@ -19,6 +19,7 @@ public final class RenderSprite {
     private final int foreColor;
     private final int backColor;
     private final int ink;
+    private final int blend;
 
     public RenderSprite(
             int channel,
@@ -27,7 +28,7 @@ public final class RenderSprite {
             boolean visible,
             SpriteType type,
             CastMemberChunk castMember,
-            int foreColor, int backColor, int ink) {
+            int foreColor, int backColor, int ink, int blend) {
         this.channel = channel;
         this.x = x;
         this.y = y;
@@ -39,6 +40,7 @@ public final class RenderSprite {
         this.foreColor = foreColor;
         this.backColor = backColor;
         this.ink = ink;
+        this.blend = blend;
     }
 
     public int getChannel() { return channel; }
@@ -52,6 +54,7 @@ public final class RenderSprite {
     public int getForeColor() { return foreColor; }
     public int getBackColor() { return backColor; }
     public int getInk() { return ink; }
+    public int getBlend() { return blend; }
 
     /**
      * Get the cast member ID, or -1 if no member.
