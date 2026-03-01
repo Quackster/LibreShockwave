@@ -51,10 +51,7 @@ public final class ListBuiltins {
         if (args.size() < 2) return Datum.VOID;
         Datum datum = args.get(0);
         if (datum instanceof Datum.List list) {
-            System.out.println("[ListBuiltins] append() to list (size=" + list.items().size() + "): " + args.get(1).getClass().getSimpleName());
             list.items().add(args.get(1));
-        } else {
-            System.out.println("[ListBuiltins] append() on non-list: " + datum.getClass().getSimpleName());
         }
         return Datum.VOID;
     }

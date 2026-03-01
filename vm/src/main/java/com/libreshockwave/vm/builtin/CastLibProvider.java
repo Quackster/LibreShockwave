@@ -138,6 +138,18 @@ public interface CastLibProvider {
     }
 
     /**
+     * Check if a member exists in a specific cast library.
+     * Unlike getMember() which always returns a CastMemberRef,
+     * this returns true only if the member is actually present.
+     * @param castLibNumber The cast library number
+     * @param memberNumber The member number
+     * @return true if the member exists
+     */
+    default boolean memberExists(int castLibNumber, int memberNumber) {
+        return false;
+    }
+
+    /**
      * Get the declared property names for a script member.
      * Used to pre-initialize script instance properties to VOID.
      * @param castLib The cast library number
