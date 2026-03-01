@@ -17,19 +17,60 @@ public class BitmapExtractTest {
     public static void main(String[] args) {
         System.out.println("=== Bitmap Extract Test ===\n");
 
-        String testFile = "C:/SourceControl/habbo.dcr";
-        String targetName = "Logo";
-
-        if (args.length > 0) {
+        String testFile = "C:/xampp/htdocs/dcr/14.1_b8/hh_entry_au.cct";
+        if (args.length > 0 && !args[0].isEmpty() && !args[0].equals("sdk")) {
             testFile = args[0];
         }
-        if (args.length > 1) {
-            targetName = args[1];
-        }
 
-        extractBitmapByName(testFile, targetName);
+        extractAllBitmaps(testFile);
 
         System.out.println("\n=== Bitmap Extract Test Complete ===");
+    }
+
+    private static void extractAllBitmaps(String filePath) {
+        System.out.println("--- Extracting ALL bitmaps from: " + filePath + " ---");
+        try {
+            Path path = Path.of(filePath);
+            if (!Files.exists(path)) {
+                System.out.println("  SKIP: File not found: " + filePath);
+                return;
+            }
+
+            DirectorFile file = DirectorFile.load(path);
+            System.out.println("  File loaded successfully");
+
+            Path outDir = Path.of("build/extracted-bitmaps");
+            Files.createDirectories(outDir);
+
+            int total = 0, success = 0, fail = 0;
+            for (CastMemberChunk member : file.getCastMembers()) {
+                if (!member.isBitmap()) continue;
+                total++;
+                try {
+                    var bitmapOpt = file.decodeBitmap(member);
+                    if (bitmapOpt.isPresent()) {
+                        Bitmap bitmap = bitmapOpt.get();
+                        String safeName = member.name().replaceAll("[^a-zA-Z0-9_.-]", "_");
+                        if (safeName.isEmpty()) safeName = "unnamed_" + member.id();
+                        File outputFile = outDir.resolve(safeName + ".png").toFile();
+                        ImageIO.write(bitmap.toBufferedImage(), "PNG", outputFile);
+                        System.out.printf("  OK: %s (%dx%d %dbit) → %s%n",
+                            member.name(), bitmap.getWidth(), bitmap.getHeight(), bitmap.getBitDepth(),
+                            outputFile.getName());
+                        success++;
+                    } else {
+                        System.out.println("  FAIL: " + member.name() + " (decode returned empty)");
+                        fail++;
+                    }
+                } catch (Exception e) {
+                    System.out.println("  FAIL: " + member.name() + " (" + e.getMessage() + ")");
+                    fail++;
+                }
+            }
+            System.out.printf("  Total: %d, Success: %d, Fail: %d%n", total, success, fail);
+        } catch (IOException e) {
+            System.out.println("  FAILED: " + e.getMessage());
+        }
     }
 
     private static void extractBitmapByName(String filePath, String targetName) {

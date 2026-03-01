@@ -226,7 +226,8 @@ public class DirectorFile {
         }
 
         try {
-            BitmapInfo info = BitmapInfo.parse(member.specificData());
+            int directorVersion = config != null ? config.directorVersion() : 1200;
+            BitmapInfo info = BitmapInfo.parse(member.specificData(), directorVersion);
 
             // Find BITD chunk via key table
             BitmapChunk bitmapChunk = null;
@@ -269,14 +270,13 @@ public class DirectorFile {
             // Resolve palette (supports both built-in and custom cast member palettes)
             Palette palette = resolvePalette(info.paletteId());
 
-            // Decode bitmap
+            // Decode bitmap with pitch info for accurate scan width
             boolean bigEndian = endian == ByteOrder.BIG_ENDIAN;
-            int directorVersion = config != null ? config.directorVersion() : 500;
 
             Bitmap bitmap = BitmapDecoder.decode(
                 bitmapChunk.data(),
                 info.width(), info.height(), info.bitDepth(),
-                palette, true, bigEndian, directorVersion
+                palette, bigEndian, directorVersion, info.pitch()
             );
 
             return Optional.of(bitmap);

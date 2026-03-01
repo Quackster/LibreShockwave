@@ -1,90 +1,143 @@
 package com.libreshockwave.bitmap;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-
 /**
  * Decoder for Director bitmap data.
- * Handles RLE decompression and various bit depths.
+ * Handles RLE (PackBits) decompression and various bit depths.
+ * Ported from dirplayer-rs bitmap.rs reference implementation.
  */
 public class BitmapDecoder {
 
     /**
-     * Decompress RLE-compressed bitmap data.
-     * Director uses a simple RLE scheme:
+     * Decompress RLE-compressed bitmap data (PackBits format).
      * - If byte < 0x80: copy (byte + 1) literal bytes
-     * - If byte >= 0x80: repeat next byte (0x101 - byte) times
+     * - If byte == 0x80: no-op (PackBits standard)
+     * - If byte > 0x80: repeat next byte (0x101 - byte) times
      */
     public static byte[] decompressRLE(byte[] compressed, int expectedSize) {
-        // Guard against negative or excessive sizes
         if (expectedSize <= 0) {
             return new byte[0];
         }
-        if (expectedSize > 100_000_000) { // 100MB max
+        if (expectedSize > 100_000_000) {
             expectedSize = 100_000_000;
         }
-        List<Byte> result = new ArrayList<>(Math.min(expectedSize, 65536));
+
+        byte[] result = new byte[expectedSize];
         int pos = 0;
+        int outPos = 0;
 
-        while (pos < compressed.length && result.size() < expectedSize) {
-            int rLen = compressed[pos++] & 0xFF;
+        while (pos < compressed.length && outPos < expectedSize) {
+            int control = compressed[pos++] & 0xFF;
 
-            if (rLen < 0x80) {
-                // Literal run: copy (rLen + 1) bytes
-                int count = rLen + 1;
-                for (int i = 0; i < count && pos < compressed.length && result.size() < expectedSize; i++) {
-                    result.add(compressed[pos++]);
+            if (control < 0x80) {
+                // Literal run: copy (control + 1) bytes
+                int count = control + 1;
+                for (int i = 0; i < count && pos < compressed.length && outPos < expectedSize; i++) {
+                    result[outPos++] = compressed[pos++];
                 }
+            } else if (control == 0x80) {
+                // No-op: skip (PackBits standard)
+                continue;
             } else {
-                // Repeat run: repeat next byte (0x101 - rLen) times
-                int count = 0x101 - rLen;
+                // Repeat run: repeat next byte (257 - control) times
+                int count = 257 - control;
                 if (pos < compressed.length) {
                     byte val = compressed[pos++];
-                    for (int i = 0; i < count && result.size() < expectedSize; i++) {
-                        result.add(val);
+                    for (int i = 0; i < count && outPos < expectedSize; i++) {
+                        result[outPos++] = val;
                     }
                 }
             }
         }
 
-        byte[] output = new byte[result.size()];
-        for (int i = 0; i < result.size(); i++) {
-            output[i] = result.get(i);
+        // Return exact-sized result if we filled less than expected
+        if (outPos < expectedSize) {
+            byte[] trimmed = new byte[outPos];
+            System.arraycopy(result, 0, trimmed, 0, outPos);
+            return trimmed;
         }
-        return output;
+        return result;
     }
 
     /**
-     * Calculate the scan width (row stride) for a bitmap.
-     * Rows are aligned to word boundaries.
+     * Get alignment width in PIXELS for a given bit depth.
+     * Matches dirplayer-rs get_alignment_width().
+     */
+    private static int getAlignmentWidth(int bitDepth) {
+        return switch (bitDepth) {
+            case 1 -> 16;       // 1-bit: rows aligned to 16-pixel boundary
+            case 4, 32 -> 4;   // 4-bit and 32-bit: 4-pixel alignment
+            case 2, 8 -> 2;    // 2-bit and 8-bit: 2-pixel alignment
+            case 16 -> 1;      // 16-bit: no alignment needed
+            default -> 2;
+        };
+    }
+
+    /**
+     * Get number of channels for a bit depth.
+     */
+    private static int getNumChannels(int bitDepth) {
+        return switch (bitDepth) {
+            case 32 -> 4;
+            case 16 -> 2;
+            default -> 1;
+        };
+    }
+
+    /**
+     * Calculate scan width in PIXELS using pixel alignment.
+     * This replaces the old byte-based calculateScanWidth.
+     */
+    public static int calculateScanWidthPixels(int width, int bitDepth, int pitch) {
+        if (pitch > 0 && bitDepth > 0) {
+            // Pitch is the row byte stride. Convert to pixel width:
+            return (pitch * 8) / bitDepth;
+        }
+
+        int alignmentWidth = getAlignmentWidth(bitDepth);
+        if (width % alignmentWidth == 0) {
+            return width;
+        }
+        return alignmentWidth * ((width + alignmentWidth - 1) / alignmentWidth);
+    }
+
+    /**
+     * Calculate the scan width in BYTES for a bitmap row.
+     * Kept for backward compatibility with alpha channel decoding.
      */
     public static int calculateScanWidth(int width, int bitDepth) {
         int bitsPerRow = width * bitDepth;
         // Align to 16-bit boundary (2 bytes)
-        int bytesPerRow = (bitsPerRow + 15) / 16 * 2;
-        return bytesPerRow;
+        return (bitsPerRow + 15) / 16 * 2;
     }
 
     /**
      * Decode a 1-bit bitmap (monochrome).
+     * Output: each pixel becomes 0x00 (white/palette[0]) or 0xFF (black/palette[255]).
      */
-    public static Bitmap decode1Bit(byte[] data, int width, int height, Palette palette) {
+    public static Bitmap decode1Bit(byte[] data, int width, int height, int scanWidth, Palette palette) {
         Bitmap bitmap = new Bitmap(width, height, 1);
-        int scanWidth = calculateScanWidth(width, 1);
 
+        // Expand 1-bit data to 8-bit values
+        int expandedLen = data.length * 8;
+        byte[] expanded = new byte[expandedLen];
+        int p = 0;
+        for (byte datum : data) {
+            int b = datum & 0xFF;
+            for (int j = 1; j <= 8; j++) {
+                int bit = (b & (0x1 << (8 - j))) >> (8 - j);
+                expanded[p++] = (byte) (bit == 1 ? 0xFF : 0x00);
+            }
+        }
+
+        // Copy from scan-width-padded data to pixel-width output
         for (int y = 0; y < height; y++) {
-            int rowOffset = y * scanWidth;
             for (int x = 0; x < width; x++) {
-                int byteIndex = rowOffset + x / 8;
-                int bitIndex = 7 - (x % 8);
-
-                if (byteIndex < data.length) {
-                    int bit = (data[byteIndex] >> bitIndex) & 1;
-                    int[] rgb = palette != null ? palette.getRGB(bit == 0 ? 255 : 0) : new int[]{bit * 255, bit * 255, bit * 255};
-                    bitmap.setPixelRGB(x, y, rgb[0], rgb[1], rgb[2]);
-                }
+                int scanIndex = y * scanWidth + x;
+                if (scanIndex >= expanded.length) break;
+                int colorIndex = expanded[scanIndex] & 0xFF;
+                int[] rgb = palette != null ? palette.getRGB(colorIndex)
+                    : new int[]{colorIndex, colorIndex, colorIndex};
+                bitmap.setPixelRGB(x, y, rgb[0], rgb[1], rgb[2]);
             }
         }
         return bitmap;
@@ -93,23 +146,27 @@ public class BitmapDecoder {
     /**
      * Decode a 2-bit bitmap (4 colors).
      */
-    public static Bitmap decode2Bit(byte[] data, int width, int height, Palette palette) {
+    public static Bitmap decode2Bit(byte[] data, int width, int height, int scanWidth, Palette palette) {
         Bitmap bitmap = new Bitmap(width, height, 2);
-        int scanWidth = calculateScanWidth(width, 2);
+
+        // Expand 2-bit data: each byte → 4 pixel values (0-255 range)
+        byte[] expanded = new byte[data.length * 4];
+        for (int i = 0; i < data.length; i++) {
+            int val = data[i] & 0xFF;
+            expanded[i * 4]     = (byte) Math.round(((val & 0xC0) >> 6) / 3.0f * 255.0f);
+            expanded[i * 4 + 1] = (byte) Math.round(((val & 0x30) >> 4) / 3.0f * 255.0f);
+            expanded[i * 4 + 2] = (byte) Math.round(((val & 0x0C) >> 2) / 3.0f * 255.0f);
+            expanded[i * 4 + 3] = (byte) Math.round((val & 0x03) / 3.0f * 255.0f);
+        }
 
         for (int y = 0; y < height; y++) {
-            int rowOffset = y * scanWidth;
             for (int x = 0; x < width; x++) {
-                int byteIndex = rowOffset + x / 4;
-                int shift = 6 - (x % 4) * 2;
-
-                if (byteIndex < data.length) {
-                    int colorIndex = (data[byteIndex] >> shift) & 0x03;
-                    // Map 2-bit to 8-bit palette range
-                    int paletteIndex = colorIndex * 85; // 0, 85, 170, 255
-                    int[] rgb = palette != null ? palette.getRGB(paletteIndex) : new int[]{paletteIndex, paletteIndex, paletteIndex};
-                    bitmap.setPixelRGB(x, y, rgb[0], rgb[1], rgb[2]);
-                }
+                int scanIndex = y * scanWidth + x;
+                if (scanIndex >= expanded.length) break;
+                int colorIndex = expanded[scanIndex] & 0xFF;
+                int[] rgb = palette != null ? palette.getRGB(colorIndex)
+                    : new int[]{colorIndex, colorIndex, colorIndex};
+                bitmap.setPixelRGB(x, y, rgb[0], rgb[1], rgb[2]);
             }
         }
         return bitmap;
@@ -117,24 +174,27 @@ public class BitmapDecoder {
 
     /**
      * Decode a 4-bit bitmap (16 colors).
+     * Each byte contains two 4-bit palette indices.
      */
-    public static Bitmap decode4Bit(byte[] data, int width, int height, Palette palette) {
+    public static Bitmap decode4Bit(byte[] data, int width, int height, int scanWidth, Palette palette) {
         Bitmap bitmap = new Bitmap(width, height, 4);
-        int scanWidth = calculateScanWidth(width, 4);
+
+        // Expand 4-bit data: each byte → 2 pixel values (0-15 palette indices)
+        byte[] expanded = new byte[data.length * 2];
+        for (int i = 0; i < data.length; i++) {
+            int val = data[i] & 0xFF;
+            expanded[i * 2] = (byte) ((val & 0xF0) >> 4);
+            expanded[i * 2 + 1] = (byte) (val & 0x0F);
+        }
 
         for (int y = 0; y < height; y++) {
-            int rowOffset = y * scanWidth;
             for (int x = 0; x < width; x++) {
-                int byteIndex = rowOffset + x / 2;
-                int shift = (x % 2 == 0) ? 4 : 0;
-
-                if (byteIndex < data.length) {
-                    int colorIndex = (data[byteIndex] >> shift) & 0x0F;
-                    // Map 4-bit to 8-bit palette range
-                    int paletteIndex = colorIndex * 17; // 0, 17, 34, ..., 255
-                    int[] rgb = palette != null ? palette.getRGB(paletteIndex) : new int[]{paletteIndex, paletteIndex, paletteIndex};
-                    bitmap.setPixelRGB(x, y, rgb[0], rgb[1], rgb[2]);
-                }
+                int scanIndex = y * scanWidth + x;
+                if (scanIndex >= expanded.length) break;
+                int colorIndex = expanded[scanIndex] & 0xFF;
+                int[] rgb = palette != null ? palette.getRGB(colorIndex)
+                    : new int[]{colorIndex, colorIndex, colorIndex};
+                bitmap.setPixelRGB(x, y, rgb[0], rgb[1], rgb[2]);
             }
         }
         return bitmap;
@@ -143,57 +203,67 @@ public class BitmapDecoder {
     /**
      * Decode an 8-bit bitmap (256 colors, palette-indexed).
      */
-    public static Bitmap decode8Bit(byte[] data, int width, int height, Palette palette) {
+    public static Bitmap decode8Bit(byte[] data, int width, int height, int scanWidth, Palette palette) {
         Bitmap bitmap = new Bitmap(width, height, 8);
-        int scanWidth = calculateScanWidth(width, 8);
 
         if (palette == null) {
             palette = Palette.SYSTEM_MAC_PALETTE;
         }
 
         for (int y = 0; y < height; y++) {
-            int rowOffset = y * scanWidth;
             for (int x = 0; x < width; x++) {
-                int byteIndex = rowOffset + x;
-
-                if (byteIndex < data.length) {
-                    int colorIndex = data[byteIndex] & 0xFF;
-                    int[] rgb = palette.getRGB(colorIndex);
-                    bitmap.setPixelRGB(x, y, rgb[0], rgb[1], rgb[2]);
-                }
+                int scanIndex = y * scanWidth + x;
+                if (scanIndex >= data.length) break;
+                int colorIndex = data[scanIndex] & 0xFF;
+                int[] rgb = palette.getRGB(colorIndex);
+                bitmap.setPixelRGB(x, y, rgb[0], rgb[1], rgb[2]);
             }
         }
         return bitmap;
     }
 
     /**
-     * Decode a 16-bit bitmap (high color).
-     * Format is typically 1-5-5-5 ARGB or 5-6-5 RGB.
+     * Decode a 16-bit bitmap (high color, RGB555).
+     * When compressed, data is planar per scanline: [high bytes][low bytes] per row.
+     * When uncompressed, data is sequential: high,low per pixel.
      */
-    public static Bitmap decode16Bit(byte[] data, int width, int height, boolean bigEndian) {
+    public static Bitmap decode16Bit(byte[] data, int width, int height, int scanWidth,
+                                      boolean skipCompression) {
         Bitmap bitmap = new Bitmap(width, height, 16);
-        int scanWidth = calculateScanWidth(width, 16);
 
         for (int y = 0; y < height; y++) {
-            int rowOffset = y * scanWidth;
             for (int x = 0; x < width; x++) {
-                int byteIndex = rowOffset + x * 2;
-
-                if (byteIndex + 1 < data.length) {
-                    int pixel;
-                    if (bigEndian) {
-                        pixel = ((data[byteIndex] & 0xFF) << 8) | (data[byteIndex + 1] & 0xFF);
-                    } else {
-                        pixel = (data[byteIndex] & 0xFF) | ((data[byteIndex + 1] & 0xFF) << 8);
-                    }
-
-                    // Assume 1-5-5-5 format (common in Director)
-                    int r = ((pixel >> 10) & 0x1F) * 255 / 31;
-                    int g = ((pixel >> 5) & 0x1F) * 255 / 31;
-                    int b = (pixel & 0x1F) * 255 / 31;
-
-                    bitmap.setPixelRGB(x, y, r, g, b);
+                int pixel16;
+                if (skipCompression) {
+                    // Uncompressed: sequential bytes, 2 per pixel
+                    int offset = (y * scanWidth + x) * 2;
+                    if (offset + 1 >= data.length) continue;
+                    int high = data[offset] & 0xFF;
+                    int low = data[offset + 1] & 0xFF;
+                    pixel16 = (high << 8) | low;
+                } else {
+                    // Compressed (RLE-decoded): planar per scanline
+                    // Each row: all high bytes, then all low bytes
+                    int rowOffset = y * scanWidth * 2;
+                    int highIdx = rowOffset + x;
+                    int lowIdx = rowOffset + scanWidth + x;
+                    if (highIdx >= data.length || lowIdx >= data.length) continue;
+                    int high = data[highIdx] & 0xFF;
+                    int low = data[lowIdx] & 0xFF;
+                    pixel16 = (high << 8) | low;
                 }
+
+                // RGB555 - extract 5-bit components
+                int r5 = (pixel16 >> 10) & 0x1F;
+                int g5 = (pixel16 >> 5) & 0x1F;
+                int b5 = pixel16 & 0x1F;
+
+                // Convert 5-bit to 8-bit
+                int r = (r5 << 3) | (r5 >> 2);
+                int g = (g5 << 3) | (g5 >> 2);
+                int b = (b5 << 3) | (b5 >> 2);
+
+                bitmap.setPixelRGB(x, y, r, g, b);
             }
         }
         return bitmap;
@@ -201,70 +271,47 @@ public class BitmapDecoder {
 
     /**
      * Decode a 32-bit bitmap (true color).
-     * Director 4+ stores channels separately PER SCANLINE:
-     * Each row contains [AAA...][RRR...][GGG...][BBB...] for that row's pixels.
+     * D4+ format: channels stored separately PER SCANLINE as [A][R][G][B].
+     * D3 and earlier: interleaved ARGB per pixel.
      */
-    public static Bitmap decode32Bit(byte[] data, int width, int height, boolean channelsSeparated) {
+    public static Bitmap decode32Bit(byte[] data, int width, int height, int scanWidth,
+                                      boolean channelsSeparated) {
         Bitmap bitmap = new Bitmap(width, height, 32);
 
         if (channelsSeparated) {
-            // D4+ format: channels are stored separately PER SCANLINE
-            // Each row: [Alpha bytes][Red bytes][Green bytes][Blue bytes]
-            // The scan width may include padding for alignment
-            int scanWidth = width;  // Use actual width - D4+ doesn't pad per-channel data
-
+            // D4+ format: each scanline has channels laid out as [A...][R...][G...][B...]
             for (int y = 0; y < height; y++) {
-                // Each row contains 4 channels worth of data
                 int lineOffset = y * scanWidth * 4;
 
                 for (int x = 0; x < width; x++) {
-                    int a = 255;
-                    int r = 0, g = 0, b = 0;
+                    int aIdx = lineOffset + x;
+                    int rIdx = lineOffset + x + scanWidth;
+                    int gIdx = lineOffset + x + scanWidth * 2;
+                    int bIdx = lineOffset + x + scanWidth * 3;
 
-                    // Alpha channel at start of row
-                    int aOffset = lineOffset + x;
-                    if (aOffset < data.length) {
-                        a = data[aOffset] & 0xFF;
-                    }
+                    if (bIdx >= data.length) continue;
 
-                    // Red channel after alpha
-                    int rOffset = lineOffset + x + scanWidth;
-                    if (rOffset < data.length) {
-                        r = data[rOffset] & 0xFF;
-                    }
-
-                    // Green channel after red
-                    int gOffset = lineOffset + x + scanWidth * 2;
-                    if (gOffset < data.length) {
-                        g = data[gOffset] & 0xFF;
-                    }
-
-                    // Blue channel after green
-                    int bOffset = lineOffset + x + scanWidth * 3;
-                    if (bOffset < data.length) {
-                        b = data[bOffset] & 0xFF;
-                    }
+                    int a = data[aIdx] & 0xFF;
+                    int r = data[rIdx] & 0xFF;
+                    int g = data[gIdx] & 0xFF;
+                    int b = data[bIdx] & 0xFF;
 
                     bitmap.setPixelRGBA(x, y, r, g, b, a);
                 }
             }
         } else {
-            // Standard ARGB interleaved format
-            int scanWidth = calculateScanWidth(width, 32);
-
+            // Standard ARGB interleaved format (D3)
             for (int y = 0; y < height; y++) {
-                int rowOffset = y * scanWidth;
                 for (int x = 0; x < width; x++) {
-                    int byteIndex = rowOffset + x * 4;
+                    int byteIndex = (y * scanWidth + x) * 4;
+                    if (byteIndex + 3 >= data.length) continue;
 
-                    if (byteIndex + 3 < data.length) {
-                        int a = data[byteIndex] & 0xFF;
-                        int r = data[byteIndex + 1] & 0xFF;
-                        int g = data[byteIndex + 2] & 0xFF;
-                        int b = data[byteIndex + 3] & 0xFF;
+                    int a = data[byteIndex] & 0xFF;
+                    int r = data[byteIndex + 1] & 0xFF;
+                    int g = data[byteIndex + 2] & 0xFF;
+                    int b = data[byteIndex + 3] & 0xFF;
 
-                        bitmap.setPixelRGBA(x, y, r, g, b, a);
-                    }
+                    bitmap.setPixelRGBA(x, y, r, g, b, a);
                 }
             }
         }
@@ -272,54 +319,106 @@ public class BitmapDecoder {
     }
 
     /**
-     * Decode bitmap data with automatic bit depth detection.
+     * Decode bitmap data with automatic bit depth detection and compression handling.
      *
-     * @param data Raw (possibly compressed) bitmap data
+     * @param data Raw bitmap data (BITD chunk)
      * @param width Bitmap width in pixels
      * @param height Bitmap height in pixels
      * @param bitDepth Bits per pixel (1, 2, 4, 8, 16, or 32)
      * @param palette Color palette for indexed formats
-     * @param compressed Whether the data is RLE compressed
      * @param bigEndian Whether multi-byte values are big-endian
-     * @param directorVersion Director version (affects 32-bit format)
+     * @param directorVersion Director version (our internal format: 1000=D4, 1200=D6, etc.)
+     * @param pitch Row byte stride from BitmapInfo (0 if not available)
      * @return Decoded Bitmap
+     */
+    public static Bitmap decode(byte[] data, int width, int height, int bitDepth,
+                                 Palette palette, boolean bigEndian,
+                                 int directorVersion, int pitch) {
+        if (width <= 0 || height <= 0 || data == null || data.length == 0) {
+            return new Bitmap(Math.max(1, width), Math.max(1, height), bitDepth);
+        }
+
+        int numChannels = getNumChannels(bitDepth);
+        int alignmentWidth = getAlignmentWidth(bitDepth);
+
+        // Calculate initial scan width (in pixels)
+        int scanWidth;
+        if (pitch > 0 && bitDepth > 0) {
+            scanWidth = (pitch * 8) / bitDepth;
+        } else if (width % alignmentWidth == 0) {
+            scanWidth = width;
+        } else {
+            scanWidth = alignmentWidth * ((width + alignmentWidth - 1) / alignmentWidth);
+        }
+
+        // Calculate expected decompressed size in bytes
+        int expectedLen;
+        if (bitDepth == 32 && directorVersion >= 1000) {
+            expectedLen = scanWidth * height * numChannels;
+        } else if (bitDepth == 1) {
+            expectedLen = (scanWidth / 8) * height;
+        } else if (bitDepth == 2) {
+            expectedLen = (scanWidth / 4) * height;
+        } else if (bitDepth == 4) {
+            expectedLen = (scanWidth / 2) * height;
+        } else {
+            expectedLen = scanWidth * height * numChannels;
+        }
+
+        // Detect whether data is compressed or not
+        boolean skipCompression = data.length >= expectedLen;
+        byte[] decompressed;
+
+        if (skipCompression) {
+            // Data is uncompressed — use raw bytes (up to expectedLen)
+            if (data.length > expectedLen) {
+                decompressed = new byte[expectedLen];
+                System.arraycopy(data, 0, decompressed, 0, expectedLen);
+            } else {
+                decompressed = data;
+            }
+        } else {
+            decompressed = decompressRLE(data, expectedLen);
+        }
+
+        // Post-decompression scan_width recalculation
+        if (pitch > 0) {
+            // Keep pitch-based scan_width
+        } else if (decompressed.length == width * height * numChannels) {
+            scanWidth = width;
+        } else if (bitDepth == 32 && directorVersion >= 1000) {
+            scanWidth = width;
+        } else if (width % alignmentWidth == 0) {
+            scanWidth = width;
+        } else {
+            scanWidth = alignmentWidth * ((width + alignmentWidth - 1) / alignmentWidth);
+        }
+
+        return switch (bitDepth) {
+            case 1 -> decode1Bit(decompressed, width, height, scanWidth, palette);
+            case 2 -> decode2Bit(decompressed, width, height, scanWidth, palette);
+            case 4 -> decode4Bit(decompressed, width, height, scanWidth, palette);
+            case 8 -> decode8Bit(decompressed, width, height, scanWidth, palette);
+            case 16 -> decode16Bit(decompressed, width, height, scanWidth, skipCompression);
+            case 32 -> decode32Bit(decompressed, width, height, scanWidth,
+                directorVersion >= 1000); // D4+ uses separated channels
+            default -> decode8Bit(decompressed, width, height, scanWidth, palette);
+        };
+    }
+
+    /**
+     * Backward-compatible decode with defaults.
      */
     public static Bitmap decode(byte[] data, int width, int height, int bitDepth,
                                  Palette palette, boolean compressed, boolean bigEndian,
                                  int directorVersion) {
-        byte[] decompressed = data;
-
-        if (compressed) {
-            int scanWidth = calculateScanWidth(width, bitDepth);
-            int expectedSize = scanWidth * height;
-
-            // For 32-bit D4+, channels are stored per-scanline: [A][R][G][B] per row
-            // Each row has width * 4 bytes (width pixels * 4 channels)
-            if (bitDepth == 32 && directorVersion >= 400) {
-                expectedSize = width * height * 4; // width pixels * height rows * 4 channels
-            }
-
-            decompressed = decompressRLE(data, expectedSize);
-        }
-
-        return switch (bitDepth) {
-            case 1 -> decode1Bit(decompressed, width, height, palette);
-            case 2 -> decode2Bit(decompressed, width, height, palette);
-            case 4 -> decode4Bit(decompressed, width, height, palette);
-            case 8 -> decode8Bit(decompressed, width, height, palette);
-            case 16 -> decode16Bit(decompressed, width, height, bigEndian);
-            case 32 -> decode32Bit(decompressed, width, height, directorVersion >= 400);
-            default -> {
-                // Default to 8-bit
-                yield decode8Bit(decompressed, width, height, palette);
-            }
-        };
+        return decode(data, width, height, bitDepth, palette, bigEndian, directorVersion, 0);
     }
 
     /**
      * Simple decode with defaults.
      */
     public static Bitmap decode(byte[] data, int width, int height, int bitDepth, Palette palette) {
-        return decode(data, width, height, bitDepth, palette, true, true, 500);
+        return decode(data, width, height, bitDepth, palette, true, 1200, 0);
     }
 }

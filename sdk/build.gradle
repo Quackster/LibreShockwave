@@ -72,6 +72,22 @@ tasks.register('runFeatureTests', JavaExec) {
     }
 }
 
+// Extract a single bitmap by name from a Director file
+// Usage: ./gradlew :sdk:extractBitmap -Pfile=path/to/file.cct -Pname=bitmapName
+tasks.register('extractBitmap', JavaExec) {
+    group = 'tools'
+    description = 'Extract a single bitmap by name'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.BitmapExtractTest'
+    def fileArg = project.hasProperty('file') ? project.property('file') : ''
+    def nameArg = project.hasProperty('name') ? project.property('name') : 'Logo'
+    args fileArg, nameArg
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
 // GUI Tool to extract bitmaps and text from .cct cast files
 // Usage: ./gradlew :sdk:extractCasts
 tasks.register('extractCasts', JavaExec) {

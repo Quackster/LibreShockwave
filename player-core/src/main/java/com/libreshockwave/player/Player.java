@@ -285,22 +285,33 @@ public class Player {
 
     /**
      * Decode a bitmap from any loaded source — main file or external casts.
+     * Uses the member's own file reference to avoid chunk ID collisions.
      */
     public Optional<Bitmap> decodeBitmap(CastMemberChunk member) {
-        // Try main file first
-        if (file != null) {
+        // Each CastMemberChunk stores a reference to the DirectorFile it was loaded from.
+        // Use that file first to avoid cross-file chunk ID collisions.
+        DirectorFile memberFile = member.file();
+        if (memberFile != null) {
+            Optional<Bitmap> result = memberFile.decodeBitmap(member);
+            if (result.isPresent()) {
+                return result;
+            }
+        }
+
+        // Fallback: try main file
+        if (file != null && file != memberFile) {
             Optional<Bitmap> result = file.decodeBitmap(member);
             if (result.isPresent()) {
                 return result;
             }
         }
 
-        // Search external casts for the member's source file
+        // Last resort: try all external casts
         if (castLibManager != null) {
             for (CastLib castLib : castLibManager.getCastLibs().values()) {
                 if (!castLib.isLoaded()) continue;
                 DirectorFile src = castLib.getSourceFile();
-                if (src != null && src != file) {
+                if (src != null && src != memberFile && src != file) {
                     Optional<Bitmap> result = src.decodeBitmap(member);
                     if (result.isPresent()) {
                         return result;
