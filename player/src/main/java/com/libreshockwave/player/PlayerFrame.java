@@ -21,6 +21,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -433,9 +434,30 @@ public class PlayerFrame extends JFrame {
             // (e.g., if file is under C:/xampp/htdocs/..., set htdocs as the root)
             String absPath = path.toAbsolutePath().toString().replace('\\', '/');
             int htdocsIdx = absPath.toLowerCase().indexOf("/htdocs/");
+            String httpRoot = null;
             if (htdocsIdx >= 0) {
-                String httpRoot = absPath.substring(0, htdocsIdx + "/htdocs".length());
+                httpRoot = absPath.substring(0, htdocsIdx + "/htdocs".length());
                 player.getNetManager().setLocalHttpRoot(httpRoot);
+            }
+
+            // Auto-detect sw1 external params if none were saved by the user.
+            // Looks for gamedata/external_variables.txt and external_texts.txt
+            // under the HTTP root and builds the sw1 param string.
+            if (currentExternalParams.isEmpty() && httpRoot != null) {
+                StringBuilder sw1 = new StringBuilder();
+                Path varsFile = Path.of(httpRoot, "gamedata", "external_variables.txt");
+                Path textsFile = Path.of(httpRoot, "gamedata", "external_texts.txt");
+                if (Files.exists(varsFile)) {
+                    sw1.append("external.variables.txt=http://localhost/gamedata/external_variables.txt");
+                }
+                if (Files.exists(textsFile)) {
+                    if (sw1.length() > 0) sw1.append(";");
+                    sw1.append("external.texts.txt=http://localhost/gamedata/external_texts.txt");
+                }
+                if (sw1.length() > 0) {
+                    currentExternalParams.put("sw1", sw1.toString());
+                    player.setExternalParams(currentExternalParams);
+                }
             }
 
             // Update UI

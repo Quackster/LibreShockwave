@@ -108,7 +108,7 @@ public class MovieProperties implements MoviePropertyProvider {
             case "actorlist" -> actorList;
 
             // Tempo
-            case "framerate", "tempo" -> Datum.of(player.getTempo());
+            case "framerate", "tempo", "frametempo" -> Datum.of(player.getTempo());
 
             // Mouse state (placeholders)
             case "mousedown" -> Datum.of(0);
@@ -227,8 +227,12 @@ public class MovieProperties implements MoviePropertyProvider {
                 actorList = value;
                 return true;
             }
-            case "tempo", "framerate" -> {
+            case "tempo", "framerate", "frametempo" -> {
                 player.setTempo(value.toInt());
+                return true;
+            }
+            case "keyboardfocussprite" -> {
+                // Accept keyboard focus changes (stub — no focus system yet)
                 return true;
             }
             case "alerthook" -> {

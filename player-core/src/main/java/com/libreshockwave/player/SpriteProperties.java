@@ -120,6 +120,16 @@ public class SpriteProperties implements SpritePropertyProvider {
                 }
                 return false;
             }
+            case "rect" -> {
+                if (value instanceof Datum.Rect r) {
+                    sprite.setLocH(r.left());
+                    sprite.setLocV(r.top());
+                    sprite.setWidth(r.right() - r.left());
+                    sprite.setHeight(r.bottom() - r.top());
+                    return true;
+                }
+                return false;
+            }
             case "visible" -> {
                 sprite.setVisible(value.isTruthy());
                 return true;
