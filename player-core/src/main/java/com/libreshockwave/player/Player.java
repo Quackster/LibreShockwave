@@ -16,6 +16,7 @@ import com.libreshockwave.player.render.StageRenderer;
 import com.libreshockwave.player.score.ScoreNavigator;
 import com.libreshockwave.vm.LingoVM;
 import com.libreshockwave.vm.builtin.CastLibProvider;
+import com.libreshockwave.vm.builtin.ExternalParamProvider;
 import com.libreshockwave.vm.builtin.MoviePropertyProvider;
 import com.libreshockwave.vm.builtin.NetBuiltins;
 import com.libreshockwave.vm.builtin.SpritePropertyProvider;
@@ -33,6 +34,8 @@ import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.util.*;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -79,6 +82,41 @@ public class Player {
     private ExecutorService vmExecutor;
     private Runnable vmExecutorShutdown;  // Shutdown hook, avoids referencing ExecutorService in shutdown()
     private volatile boolean vmRunning = false;
+
+    // External parameters (Shockwave PARAM tags)
+    private final Map<String, String> externalParams = new LinkedHashMap<>();
+    private final ExternalParamProvider externalParamProvider = new ExternalParamProvider() {
+        @Override
+        public String getParamValue(String name) {
+            for (var entry : externalParams.entrySet()) {
+                if (entry.getKey().equalsIgnoreCase(name)) {
+                    return entry.getValue();
+                }
+            }
+            return null;
+        }
+
+        @Override
+        public String getParamName(int index) {
+            if (index < 1 || index > externalParams.size()) return null;
+            int i = 1;
+            for (String key : externalParams.keySet()) {
+                if (i == index) return key;
+                i++;
+            }
+            return null;
+        }
+
+        @Override
+        public int getParamCount() {
+            return externalParams.size();
+        }
+
+        @Override
+        public Map<String, String> getAllParams() {
+            return Collections.unmodifiableMap(externalParams);
+        }
+    };
 
     // Optional override for the network provider (used by player-wasm to substitute FetchNetManager)
     private NetBuiltins.NetProvider overrideNetProvider;
@@ -232,6 +270,24 @@ public class Player {
 
     public CastLibManager getCastLibManager() {
         return castLibManager;
+    }
+
+    /**
+     * Set external parameters (Shockwave PARAM tags).
+     * These are accessible to Lingo scripts via externalParamValue(), etc.
+     */
+    public void setExternalParams(Map<String, String> params) {
+        externalParams.clear();
+        if (params != null) {
+            externalParams.putAll(params);
+        }
+    }
+
+    /**
+     * Get external parameters.
+     */
+    public Map<String, String> getExternalParams() {
+        return Collections.unmodifiableMap(externalParams);
     }
 
     /**
@@ -724,6 +780,7 @@ public class Player {
         SpritePropertyProvider.setProvider(spriteProperties);
         CastLibProvider.setProvider(castLibManager);
         TimeoutProvider.setProvider(timeoutManager);
+        ExternalParamProvider.setProvider(externalParamProvider);
     }
 
     /**
@@ -736,6 +793,7 @@ public class Player {
         SpritePropertyProvider.clearProvider();
         CastLibProvider.clearProvider();
         TimeoutProvider.clearProvider();
+        ExternalParamProvider.clearProvider();
     }
 
     // Movie lifecycle - follows dirplayer-rs flow exactly

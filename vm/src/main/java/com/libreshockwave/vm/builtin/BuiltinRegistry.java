@@ -28,6 +28,7 @@ public class BuiltinRegistry {
         TypeBuiltins.register(builtins);
         ControlFlowBuiltins.register(builtins);
         TimeoutBuiltins.register(builtins);
+        ExternalParamBuiltins.register(builtins);
     }
 
     /**

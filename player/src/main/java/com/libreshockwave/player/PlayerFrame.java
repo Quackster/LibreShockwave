@@ -7,8 +7,8 @@ import com.libreshockwave.player.debug.DebugSnapshot;
 import com.libreshockwave.player.debug.DebugStateListener;
 import com.libreshockwave.vm.Datum;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Set;
 
 import javax.swing.*;
 import javax.swing.filechooser.FileNameExtensionFilter;
@@ -36,6 +36,7 @@ public class PlayerFrame extends JFrame {
     private static final String PREF_LAST_URL = "lastUrl";
     private static final String PREF_LAST_DIR = "lastDirectory";
     private static final String PREF_BREAKPOINTS_PREFIX = "breakpoints:";
+    private static final String PREF_EXTPARAMS_PREFIX = "extparams:";
     private final Preferences prefs = Preferences.userNodeForPackage(PlayerFrame.class);
     private final HttpClient httpClient = HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.NORMAL)
@@ -59,7 +60,8 @@ public class PlayerFrame extends JFrame {
     private boolean debugVisible = true;
     private boolean useAsyncExecution = true;  // Use async execution for debugger support
     private Path lastOpenedFile;
-    private String currentMovieKey;  // Key for saving/loading breakpoints (file path or URL)
+    private String currentMovieKey;  // Key for saving/loading breakpoints and external params
+    private Map<String, String> currentExternalParams = new LinkedHashMap<>();
 
     public PlayerFrame() {
         super("LibreShockwave Player");
@@ -279,6 +281,17 @@ public class PlayerFrame extends JFrame {
 
         menuBar.add(fileMenu);
 
+        // Movie menu
+        JMenu movieMenu = new JMenu("Movie");
+        movieMenu.setMnemonic(KeyEvent.VK_M);
+
+        JMenuItem extParamsItem = new JMenuItem("External Params...");
+        extParamsItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_E, InputEvent.CTRL_DOWN_MASK));
+        extParamsItem.addActionListener(e -> showExternalParamsDialog());
+        movieMenu.add(extParamsItem);
+
+        menuBar.add(movieMenu);
+
         // Playback menu
         JMenu playbackMenu = new JMenu("Playback");
         playbackMenu.setMnemonic(KeyEvent.VK_P);
@@ -409,8 +422,12 @@ public class PlayerFrame extends JFrame {
             saveLastFilePreference(path);
             prefs.remove(PREF_LAST_URL);
 
-            // Set movie key for breakpoint persistence
+            // Set movie key for breakpoint/extparam persistence
             currentMovieKey = path.toAbsolutePath().toString();
+
+            // Load and apply saved external params
+            loadExternalParams(currentMovieKey);
+            player.setExternalParams(currentExternalParams);
 
             // Update UI
             setTitle("LibreShockwave Player - " + path.getFileName());
@@ -474,8 +491,12 @@ public class PlayerFrame extends JFrame {
                     prefs.put(PREF_LAST_URL, url);
                     prefs.remove(PREF_LAST_FILE);
 
-                    // Set movie key for breakpoint persistence
+                    // Set movie key for breakpoint/extparam persistence
                     currentMovieKey = url;
+
+                    // Load and apply saved external params
+                    loadExternalParams(currentMovieKey);
+                    player.setExternalParams(currentExternalParams);
 
                     // Get filename from URL
                     String fileName = url.substring(url.lastIndexOf('/') + 1);
@@ -834,6 +855,58 @@ public class PlayerFrame extends JFrame {
 
     public DebugController getDebugController() {
         return debugController;
+    }
+
+    // External params dialog and persistence
+
+    private void showExternalParamsDialog() {
+        ExternalParamsDialog dialog = new ExternalParamsDialog(this, currentExternalParams);
+        Map<String, String> result = dialog.showDialog();
+        if (result != null) {
+            currentExternalParams = result;
+            // Apply to current player if loaded
+            if (player != null) {
+                player.setExternalParams(currentExternalParams);
+            }
+            // Save to preferences
+            saveExternalParams(currentMovieKey);
+        }
+    }
+
+    private void saveExternalParams(String movieKey) {
+        if (movieKey == null || movieKey.isEmpty()) {
+            return;
+        }
+        String prefKey = PREF_EXTPARAMS_PREFIX + sanitizeKey(movieKey);
+        if (currentExternalParams.isEmpty()) {
+            prefs.remove(prefKey);
+        } else {
+            // Serialize as key1=value1\nkey2=value2\n...
+            StringBuilder sb = new StringBuilder();
+            for (var entry : currentExternalParams.entrySet()) {
+                sb.append(entry.getKey()).append("=").append(entry.getValue()).append("\n");
+            }
+            prefs.put(prefKey, sb.toString());
+        }
+    }
+
+    private void loadExternalParams(String movieKey) {
+        currentExternalParams = new LinkedHashMap<>();
+        if (movieKey == null || movieKey.isEmpty()) {
+            return;
+        }
+        String prefKey = PREF_EXTPARAMS_PREFIX + sanitizeKey(movieKey);
+        String serialized = prefs.get(prefKey, "");
+        if (!serialized.isEmpty()) {
+            for (String line : serialized.split("\n")) {
+                int eq = line.indexOf('=');
+                if (eq > 0) {
+                    String key = line.substring(0, eq);
+                    String value = line.substring(eq + 1);
+                    currentExternalParams.put(key, value);
+                }
+            }
+        }
     }
 
     // Breakpoint persistence
