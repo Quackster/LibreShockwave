@@ -429,6 +429,15 @@ public class PlayerFrame extends JFrame {
             loadExternalParams(currentMovieKey);
             player.setExternalParams(currentExternalParams);
 
+            // Auto-detect local HTTP root for localhost URL resolution
+            // (e.g., if file is under C:/xampp/htdocs/..., set htdocs as the root)
+            String absPath = path.toAbsolutePath().toString().replace('\\', '/');
+            int htdocsIdx = absPath.toLowerCase().indexOf("/htdocs/");
+            if (htdocsIdx >= 0) {
+                String httpRoot = absPath.substring(0, htdocsIdx + "/htdocs".length());
+                player.getNetManager().setLocalHttpRoot(httpRoot);
+            }
+
             // Update UI
             setTitle("LibreShockwave Player - " + path.getFileName());
             statusLabel.setText("Loaded: " + path.getFileName() +

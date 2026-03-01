@@ -22,6 +22,11 @@ public final class MathBuiltins {
         builtins.put("random", MathBuiltins::random);
         builtins.put("integer", MathBuiltins::integer);
         builtins.put("float", MathBuiltins::toFloat);
+        builtins.put("bitand", MathBuiltins::bitAnd);
+        builtins.put("bitor", MathBuiltins::bitOr);
+        builtins.put("bitxor", MathBuiltins::bitXor);
+        builtins.put("bitnot", MathBuiltins::bitNot);
+        builtins.put("power", MathBuiltins::power);
     }
 
     private static Datum abs(LingoVM vm, List<Datum> args) {
@@ -83,6 +88,37 @@ public final class MathBuiltins {
 
         // For other types, use standard conversion
         return Datum.of(arg.toInt());
+    }
+
+    private static Datum bitAnd(LingoVM vm, List<Datum> args) {
+        if (args.size() < 2) return Datum.ZERO;
+        return Datum.of(args.get(0).toInt() & args.get(1).toInt());
+    }
+
+    private static Datum bitOr(LingoVM vm, List<Datum> args) {
+        if (args.size() < 2) return Datum.ZERO;
+        return Datum.of(args.get(0).toInt() | args.get(1).toInt());
+    }
+
+    private static Datum bitXor(LingoVM vm, List<Datum> args) {
+        if (args.size() < 2) return Datum.ZERO;
+        return Datum.of(args.get(0).toInt() ^ args.get(1).toInt());
+    }
+
+    private static Datum bitNot(LingoVM vm, List<Datum> args) {
+        if (args.isEmpty()) return Datum.ZERO;
+        return Datum.of(~args.get(0).toInt());
+    }
+
+    private static Datum power(LingoVM vm, List<Datum> args) {
+        if (args.size() < 2) return Datum.ZERO;
+        double base = args.get(0).toDouble();
+        double exponent = args.get(1).toDouble();
+        double result = Math.pow(base, exponent);
+        if (result == (int) result && !args.get(0).isFloat() && !args.get(1).isFloat()) {
+            return Datum.of((int) result);
+        }
+        return Datum.of(result);
     }
 
     /**

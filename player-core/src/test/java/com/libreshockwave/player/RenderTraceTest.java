@@ -39,8 +39,8 @@ public class RenderTraceTest {
 
     private static final String TEST_FILE = "C:/xampp/htdocs/dcr/14.1_b8/habbo.dcr";
     private static final int MAX_RESULT_LEN = 80;
-    private static final int MAX_FRAMES = 500;
-    private static final int POST_ALERT_FRAMES = 50;
+    private static final int MAX_FRAMES = 2000;
+    private static final int POST_ALERT_FRAMES = 500;
     private static final int IDLE_REPORT_INTERVAL = 50;
 
     // --- Milestones ---
@@ -109,6 +109,18 @@ public class RenderTraceTest {
         System.out.println("=== RenderTraceTest: Loading habbo.dcr ===");
         DirectorFile file = DirectorFile.load(path);
         Player player = new Player(file);
+
+        // Set external params (Shockwave PARAM tags) — these feed the Habbo client
+        // the URLs for external_variables.txt and external_texts.txt, which override
+        // the Finnish defaults baked into the DCR with the AU locale entries.
+        player.setExternalParams(Map.of(
+            "sw1", "external.variables.txt=http://localhost/gamedata/external_variables.txt;" +
+                   "external.texts.txt=http://localhost/gamedata/external_texts.txt"
+        ));
+
+        // Resolve localhost HTTP URLs to local filesystem (no web server needed)
+        player.getNetManager().setLocalHttpRoot("C:/xampp/htdocs");
+
         LingoVM vm = player.getVM();
         vm.setStepLimit(2_000_000);
 
