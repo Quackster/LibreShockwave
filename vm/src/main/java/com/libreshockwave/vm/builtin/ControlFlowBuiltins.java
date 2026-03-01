@@ -151,9 +151,25 @@ public final class ControlFlowBuiltins {
         Datum targetList = args.get(1);
         List<Datum> extraArgs = args.size() > 2 ? args.subList(2, args.size()) : List.of();
 
+        if (handlerName.equalsIgnoreCase("update") || handlerName.equalsIgnoreCase("netDone")) {
+            if (targetList instanceof Datum.List list) {
+                System.out.println("[call] #" + handlerName + " on list of size " + list.items().size());
+            } else {
+                System.out.println("[call] #" + handlerName + " on non-list: " + targetList.getClass().getSimpleName());
+            }
+        }
+
         if (targetList instanceof Datum.List list) {
             // Snapshot the list to avoid ConcurrentModificationException if handlers modify it
             List<Datum> snapshot = new ArrayList<>(list.items());
+            for (Datum target : snapshot) {
+                if (target instanceof Datum.ScriptInstance instance) {
+                    callHandlerOnInstance(vm, instance, handlerName, extraArgs);
+                }
+            }
+        } else if (targetList instanceof Datum.PropList propList) {
+            // Director also supports call(#handler, propList) — iterates through values
+            List<Datum> snapshot = new ArrayList<>(propList.properties().values());
             for (Datum target : snapshot) {
                 if (target instanceof Datum.ScriptInstance instance) {
                     callHandlerOnInstance(vm, instance, handlerName, extraArgs);

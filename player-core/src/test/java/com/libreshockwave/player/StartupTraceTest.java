@@ -11,7 +11,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -26,7 +28,9 @@ public class StartupTraceTest {
 
     private static final String TEST_FILE = "C:/xampp/htdocs/dcr/14.1_b8/habbo.dcr";
     private static final int MAX_RESULT_LEN = 80;
-    private static final int POST_TARGET_FRAMES = 5;
+    private static final int POST_TARGET_FRAMES = 500;
+    private static final int MAX_FRAMES = 600;
+    private static final int IDLE_REPORT_INTERVAL = 50;
 
     /** Milestone: create(#core) was called. */
     private static volatile boolean createCoreReached = false;
@@ -38,13 +42,44 @@ public class StartupTraceTest {
     private static volatile boolean timeoutReached = false;
     private static int timeoutEntryIndex = -1;
 
+    /** Milestone 4: first visual object creation. */
+    private static volatile boolean visualMilestoneReached = false;
+    private static int visualMilestoneFrame = -1;
+    private static String visualMilestoneDetail = "";
+
+    /** State machine transitions (updateState/changeState/setState calls). */
+    private static final List<String> stateTransitions = new ArrayList<>();
+
+    /** Network completion events (netDone returns true). */
+    private static final List<String> netCompletions = new ArrayList<>();
+
+    /** Handler call frequency counter for post-target phase. */
+    private static final Map<String, Integer> postTargetHandlerCounts = new LinkedHashMap<>();
+
+    /** Frames with non-idle activity. */
+    private static final List<Integer> interestingFrames = new ArrayList<>();
+
+    /** New ScriptInstance creations by script name. */
+    private static final List<String> instanceCreations = new ArrayList<>();
+
+    /** Whether we are in the post-target phase. */
+    private static volatile boolean inPostTargetPhase = false;
+
     /** Keywords that suggest visual rendering activity. */
     private static final Pattern VISUAL_PATTERN = Pattern.compile(
             "(?i)(visualiz|window|sprite|draw|render|image|bitmap|room|view|loading|bar|stage|display|screen|pixel|rect|quad)");
 
+    /** Specific visual milestone indicators. */
+    private static final Pattern VISUAL_MILESTONE_PATTERN = Pattern.compile(
+            "(?i)(constructVisualizerManager|createWindow|Loading Bar|Visualizer Instance|Window Instance)");
+
+    /** State machine handler patterns. */
+    private static final Pattern STATE_HANDLER_PATTERN = Pattern.compile(
+            "(?i)(updateState|changeState|setState|stateChange)");
+
     /** Recorded call tree entry. */
     record CallEntry(int depth, boolean isEnter, String text, CallKind kind) {
-        enum CallKind { HANDLER_ENTER, HANDLER_EXIT, ERROR, FRAME_MARKER, MILESTONE_MARKER, TARGET_MARKER, VISUAL_FLAG }
+        enum CallKind { HANDLER_ENTER, HANDLER_EXIT, ERROR, FRAME_MARKER, MILESTONE_MARKER, TARGET_MARKER, VISUAL_FLAG, NET_DONE }
 
         @Override
         public String toString() {
@@ -68,7 +103,7 @@ public class StartupTraceTest {
         Player player = new Player(file);
         LingoVM vm = player.getVM();
 
-        vm.setStepLimit(500_000);
+        vm.setStepLimit(2_000_000);
 
         List<CallEntry> callTree = new ArrayList<>();
         int[] depth = {0};
@@ -123,6 +158,32 @@ public class StartupTraceTest {
                         }
                     }
                 }
+
+                // Track state machine transitions
+                if (STATE_HANDLER_PATTERN.matcher(info.handlerName()).find()) {
+                    String entry = "[Frame " + currentFrame[0] + "] " + info.handlerName()
+                            + "(" + argsStr + ") [" + info.scriptDisplayName() + "]";
+                    stateTransitions.add(entry);
+                    callTree.add(new CallEntry(depth[0] - 1, false,
+                            "*** STATE: " + info.handlerName() + "(" + argsStr + ") ***",
+                            CallEntry.CallKind.MILESTONE_MARKER));
+                }
+
+                // Detect Milestone 4: visual object creation
+                String combined4 = info.handlerName() + " " + info.scriptDisplayName();
+                if (!visualMilestoneReached && VISUAL_MILESTONE_PATTERN.matcher(combined4).find()) {
+                    visualMilestoneReached = true;
+                    visualMilestoneFrame = currentFrame[0];
+                    visualMilestoneDetail = info.handlerName() + " [" + info.scriptDisplayName() + "]";
+                    String marker = "*** MILESTONE 4: Visual creation — " + visualMilestoneDetail + " ***";
+                    callTree.add(new CallEntry(depth[0] - 1, false, marker, CallEntry.CallKind.MILESTONE_MARKER));
+                }
+
+                // Handler frequency tracking in post-target phase
+                if (inPostTargetPhase) {
+                    String key = info.handlerName() + " [" + info.scriptDisplayName() + "]";
+                    postTargetHandlerCounts.merge(key, 1, Integer::sum);
+                }
             }
 
             @Override
@@ -153,6 +214,31 @@ public class StartupTraceTest {
                     frameProxyCreated[0] = true;
                     player.getTimeoutManager().createTimeout(
                             "fuse_frameProxy", Integer.MAX_VALUE, "null", result);
+                }
+
+                // Track netDone returning true
+                if (info.handlerName().equals("netDone") && result != null
+                        && !(result instanceof Datum.Int i && i.value() == 0)
+                        && !(result instanceof Datum.Void)) {
+                    String entry = "[Frame " + currentFrame[0] + "] netDone() = " + resultStr
+                            + " [" + info.scriptDisplayName() + "]";
+                    netCompletions.add(entry);
+                    callTree.add(new CallEntry(depth[0], false,
+                            "*** NET_DONE: " + resultStr + " ***",
+                            CallEntry.CallKind.NET_DONE));
+                }
+
+                // Track script instance creation via construct
+                if (info.handlerName().equals("construct") && result instanceof Datum.ScriptInstance si) {
+                    String scriptName = info.scriptDisplayName();
+                    String entry = "[Frame " + currentFrame[0] + "] new " + scriptName;
+                    instanceCreations.add(entry);
+                    // Flag if it's a visual-related instance
+                    if (VISUAL_PATTERN.matcher(scriptName).find()) {
+                        callTree.add(new CallEntry(depth[0], false,
+                                ">>> VISUAL_INSTANCE: " + scriptName,
+                                CallEntry.CallKind.VISUAL_FLAG));
+                    }
                 }
 
                 // Dump Object Manager properties after registerManager exits
@@ -903,13 +989,22 @@ public class StartupTraceTest {
 
         // Step frames — stop when a timeout is created, then continue POST_TARGET_FRAMES more
         int framesPastTarget = 0;
-        for (int frame = 0; frame < 100; frame++) {
+        int totalFramesStepped = 0;
+        int idleStreak = 0;
+        int visualContextFrames = 0;  // extra frames after visual milestone
+
+        for (int frame = 0; frame < MAX_FRAMES; frame++) {
+            int callTreeSizeBefore = callTree.size();
+
             try {
                 player.stepFrame();
             } catch (Exception e) {
                 System.err.println("Error at frame step " + frame + ": " + e.getMessage());
+                e.printStackTrace(System.err);
                 break;
             }
+
+            totalFramesStepped++;
 
             // Check for timeout creation after each frame (exclude our synthetic frameProxy)
             long realTimeoutCount = player.getTimeoutManager().getTimeoutNames().stream()
@@ -917,6 +1012,7 @@ public class StartupTraceTest {
                     .count();
             if (!timeoutReached && realTimeoutCount > 0) {
                 timeoutReached = true;
+                inPostTargetPhase = true;
                 String marker = "*** TARGET REACHED: timeout created (frame " + currentFrame[0] + ") ***";
                 callTree.add(new CallEntry(0, false, marker, CallEntry.CallKind.TARGET_MARKER));
                 timeoutEntryIndex = callTree.size() - 1;
@@ -932,9 +1028,37 @@ public class StartupTraceTest {
                 }
             }
 
-            if (timeoutReached) {
+            // Detect idle vs interesting frames
+            int newEntries = callTree.size() - callTreeSizeBefore;
+            if (newEntries > 15) {
+                interestingFrames.add(currentFrame[0]);
+                idleStreak = 0;
+            } else {
+                idleStreak++;
+            }
+
+            // Progress logging
+            if (totalFramesStepped % IDLE_REPORT_INTERVAL == 0) {
+                System.out.println("  [progress] Frame " + totalFramesStepped + "/" + MAX_FRAMES
+                        + " | idle streak: " + idleStreak
+                        + " | callTree size: " + callTree.size()
+                        + " | interesting frames: " + interestingFrames.size()
+                        + " | state transitions: " + stateTransitions.size());
+            }
+
+            // Stop conditions (in priority order)
+            if (visualMilestoneReached) {
+                visualContextFrames++;
+                if (visualContextFrames >= 10) {
+                    System.out.println("  [stop] Visual milestone reached, ran 10 context frames.");
+                    break;
+                }
+            } else if (timeoutReached) {
                 framesPastTarget++;
-                if (framesPastTarget >= POST_TARGET_FRAMES) break;
+                if (framesPastTarget >= POST_TARGET_FRAMES) {
+                    System.out.println("  [stop] POST_TARGET_FRAMES (" + POST_TARGET_FRAMES + ") exceeded.");
+                    break;
+                }
             }
         }
 
@@ -962,22 +1086,27 @@ public class StartupTraceTest {
             printSpine(callTree);
         }
 
-        // --- Print the full call tree (up to target) ---
+        // --- Print the full call tree (up to target only — pre-target flow is understood) ---
         System.out.println("\n========================================");
         System.out.println("  FULL CALL TREE (up to timeout creation)");
         System.out.println("========================================\n");
         for (CallEntry entry : callTree) {
+            if (entry.kind() == CallEntry.CallKind.TARGET_MARKER) {
+                System.out.println(entry);
+                break;
+            }
             System.out.println(entry);
-            if (entry.kind() == CallEntry.CallKind.TARGET_MARKER) break;
         }
 
-        // --- Print POST-TARGET TRACE ---
+        // --- Print CONDENSED POST-TARGET TRACE ---
         if (timeoutReached && timeoutEntryIndex >= 0 && timeoutEntryIndex < callTree.size() - 1) {
             System.out.println("\n========================================");
-            System.out.println("  POST-TARGET TRACE (" + framesPastTarget + " frames after timeout)");
+            System.out.println("  CONDENSED POST-TARGET TRACE (" + framesPastTarget + " frames, "
+                    + totalFramesStepped + " total stepped)");
             System.out.println("========================================\n");
 
             int postEntries = 0;
+            int skippedIdle = 0;
             // Skip past the timeout detail entries (they follow the TARGET_MARKER)
             int startIdx = timeoutEntryIndex + 1;
             while (startIdx < callTree.size() && callTree.get(startIdx).kind() == CallEntry.CallKind.TARGET_MARKER) {
@@ -985,13 +1114,127 @@ public class StartupTraceTest {
             }
             for (int i = startIdx; i < callTree.size(); i++) {
                 CallEntry entry = callTree.get(i);
-                System.out.println(entry);
-                postEntries++;
+
+                // Always show milestone, visual, target, net_done, and error entries
+                if (entry.kind() == CallEntry.CallKind.MILESTONE_MARKER
+                        || entry.kind() == CallEntry.CallKind.VISUAL_FLAG
+                        || entry.kind() == CallEntry.CallKind.TARGET_MARKER
+                        || entry.kind() == CallEntry.CallKind.NET_DONE
+                        || entry.kind() == CallEntry.CallKind.ERROR) {
+                    if (skippedIdle > 0) {
+                        System.out.println("    ... (" + skippedIdle + " idle entries skipped)");
+                        skippedIdle = 0;
+                    }
+                    System.out.println(entry);
+                    postEntries++;
+                } else if (entry.kind() == CallEntry.CallKind.FRAME_MARKER) {
+                    // Show frame markers only for interesting frames
+                    String text = entry.text();
+                    boolean isInteresting = false;
+                    for (int f : interestingFrames) {
+                        if (text.contains("Frame " + f + " ")) {
+                            isInteresting = true;
+                            break;
+                        }
+                    }
+                    if (isInteresting) {
+                        if (skippedIdle > 0) {
+                            System.out.println("    ... (" + skippedIdle + " idle entries skipped)");
+                            skippedIdle = 0;
+                        }
+                        System.out.println(entry);
+                        postEntries++;
+                    } else {
+                        skippedIdle++;
+                    }
+                } else if (entry.depth() > 2) {
+                    // Show handler enter/exit deeper than routine prepareFrame->update
+                    if (skippedIdle > 0) {
+                        System.out.println("    ... (" + skippedIdle + " idle entries skipped)");
+                        skippedIdle = 0;
+                    }
+                    System.out.println(entry);
+                    postEntries++;
+                } else {
+                    skippedIdle++;
+                }
+            }
+            if (skippedIdle > 0) {
+                System.out.println("    ... (" + skippedIdle + " idle entries skipped)");
             }
 
             if (postEntries == 0) {
-                System.out.println("  (no handler activity after target)");
+                System.out.println("  (no interesting handler activity after target)");
             }
+        }
+
+        // --- Print STATE MACHINE TRANSITIONS ---
+        System.out.println("\n========================================");
+        System.out.println("  STATE MACHINE TRANSITIONS");
+        System.out.println("========================================\n");
+        if (stateTransitions.isEmpty()) {
+            System.out.println("  (no state transitions detected)");
+        } else {
+            for (String st : stateTransitions) {
+                System.out.println("  " + st);
+            }
+        }
+
+        // --- Print NETWORK COMPLETIONS ---
+        System.out.println("\n========================================");
+        System.out.println("  NETWORK COMPLETIONS");
+        System.out.println("========================================\n");
+        if (netCompletions.isEmpty()) {
+            System.out.println("  (no network completions detected)");
+        } else {
+            for (String nc : netCompletions) {
+                System.out.println("  " + nc);
+            }
+        }
+
+        // --- Print SCRIPT INSTANCE CREATIONS ---
+        System.out.println("\n========================================");
+        System.out.println("  SCRIPT INSTANCE CREATIONS");
+        System.out.println("========================================\n");
+        if (instanceCreations.isEmpty()) {
+            System.out.println("  (no script instance creations tracked)");
+        } else {
+            // Group by script name with count, first/last frame
+            var creationGroups = new LinkedHashMap<String, int[]>();  // name -> [count, firstFrame, lastFrame]
+            for (String ic : instanceCreations) {
+                // Format: "[Frame N] new ScriptName"
+                int frameStart = ic.indexOf("[Frame ") + 7;
+                int frameEnd = ic.indexOf(']', frameStart);
+                int frameNum = Integer.parseInt(ic.substring(frameStart, frameEnd));
+                String scriptName = ic.substring(ic.indexOf("new ") + 4);
+                creationGroups.compute(scriptName, (k, v) -> {
+                    if (v == null) return new int[]{1, frameNum, frameNum};
+                    v[0]++;
+                    v[2] = frameNum;
+                    return v;
+                });
+            }
+            for (var entry : creationGroups.entrySet()) {
+                int[] info = entry.getValue();
+                if (info[0] == 1) {
+                    System.out.println("  " + entry.getKey() + " (1x, frame " + info[1] + ")");
+                } else {
+                    System.out.println("  " + entry.getKey() + " (" + info[0] + "x, frames " + info[1] + "-" + info[2] + ")");
+                }
+            }
+        }
+
+        // --- Print POST-TARGET HANDLER FREQUENCY ---
+        System.out.println("\n========================================");
+        System.out.println("  POST-TARGET HANDLER FREQUENCY (top 30)");
+        System.out.println("========================================\n");
+        if (postTargetHandlerCounts.isEmpty()) {
+            System.out.println("  (no post-target handler calls tracked)");
+        } else {
+            postTargetHandlerCounts.entrySet().stream()
+                    .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                    .limit(30)
+                    .forEach(entry -> System.out.printf("  %6d  %s%n", entry.getValue(), entry.getKey()));
         }
 
         // --- Print visual hits summary ---
@@ -1017,7 +1260,7 @@ public class StartupTraceTest {
             System.out.println("  (no errors)");
         } else {
             // Deduplicate errors and count them
-            var errorCounts = new java.util.LinkedHashMap<String, Integer>();
+            var errorCounts = new LinkedHashMap<String, Integer>();
             for (CallEntry e : errors) {
                 errorCounts.merge(e.text(), 1, Integer::sum);
             }
@@ -1037,6 +1280,9 @@ public class StartupTraceTest {
         System.out.println("  1. create(#core):      " + (createCoreReached ? "REACHED" : "not reached"));
         System.out.println("  2. prepareFrame fired:  " + (prepareFrameFired ? "REACHED" : "not reached"));
         System.out.println("  3. timeout creation:    " + (timeoutReached ? "REACHED" : "not reached"));
+        System.out.println("  4. visual creation:     " + (visualMilestoneReached
+                ? "REACHED (frame " + visualMilestoneFrame + ") — " + visualMilestoneDetail
+                : "not reached in " + totalFramesStepped + " frames"));
 
         if (!timeoutReached) {
             System.out.println("\n  Note: Timeout creation requires Habbo-specific client code");
@@ -1044,6 +1290,10 @@ public class StartupTraceTest {
             System.out.println("  for the Fuse update cycle via receivePrepare/receiveUpdate.");
             System.out.println("  The Fuse framework infrastructure is working correctly.");
         }
+
+        System.out.println("\n  Total frames stepped: " + totalFramesStepped);
+        System.out.println("  Call tree entries: " + callTree.size());
+        System.out.println("  Interesting frames: " + interestingFrames.size());
 
         player.shutdown();
     }

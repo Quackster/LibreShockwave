@@ -30,6 +30,10 @@ public final class OutputBuiltins {
 
     private static Datum alert(LingoVM vm, List<Datum> args) {
         String msg = args.isEmpty() ? "" : args.get(0).toStr();
+        // Try alertHook first — if it handles the alert, suppress the default output
+        if (vm.fireAlertHook(msg)) {
+            return Datum.VOID;
+        }
         System.out.println("[ALERT] " + msg);
         return Datum.VOID;
     }

@@ -61,7 +61,7 @@ public class NetManager implements NetBuiltins.NetProvider {
     private HttpClient getHttpClient() {
         if (httpClient == null) {
             httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(30))
+                .connectTimeout(Duration.ofSeconds(2))
                 .followRedirects(HttpClient.Redirect.NORMAL)
                 .build();
         }
@@ -270,12 +270,15 @@ public class NetManager implements NetBuiltins.NetProvider {
                 byte[] data = future.get();
                 if (data != null) {
                     task.complete(data);
+                    System.out.println("[NetManager] Task " + task.getTaskId() + " completed: " + url + " (" + data.length + " bytes)");
                     notifyCompletion(task.getOriginalUrl(), data);
                 } else {
+                    System.out.println("[NetManager] Task " + task.getTaskId() + " failed (no data): " + url);
                     task.fail(404, "Load returned no data");
                 }
             } catch (Exception e) {
                 Throwable cause = e.getCause() != null ? e.getCause() : e;
+                System.out.println("[NetManager] Task " + task.getTaskId() + " failed: " + url + " — " + cause.getMessage());
                 task.fail(-1, cause.getMessage());
             }
         });
@@ -459,7 +462,7 @@ public class NetManager implements NetBuiltins.NetProvider {
             try {
                 HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(tryUrl))
-                    .timeout(Duration.ofSeconds(60))
+                    .timeout(Duration.ofSeconds(3))
                     .GET()
                     .build();
 
@@ -505,7 +508,7 @@ public class NetManager implements NetBuiltins.NetProvider {
             try {
                 HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                     .uri(URI.create(tryUrl))
-                    .timeout(Duration.ofSeconds(60));
+                    .timeout(Duration.ofSeconds(3));
 
                 if (task.getMethod() == NetTask.Method.POST) {
                     requestBuilder.header("Content-Type", "application/x-www-form-urlencoded")
