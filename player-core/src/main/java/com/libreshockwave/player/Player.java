@@ -1,9 +1,12 @@
 package com.libreshockwave.player;
 
 import com.libreshockwave.DirectorFile;
+import com.libreshockwave.bitmap.Bitmap;
+import com.libreshockwave.chunks.CastMemberChunk;
 import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.chunks.ScriptNamesChunk;
 import com.libreshockwave.player.behavior.BehaviorManager;
+import com.libreshockwave.player.cast.CastLib;
 import com.libreshockwave.player.cast.CastLibManager;
 import com.libreshockwave.player.event.EventDispatcher;
 import com.libreshockwave.player.frame.FrameContext;
@@ -16,6 +19,8 @@ import com.libreshockwave.vm.builtin.CastLibProvider;
 import com.libreshockwave.vm.builtin.MoviePropertyProvider;
 import com.libreshockwave.vm.builtin.NetBuiltins;
 import com.libreshockwave.vm.builtin.SpritePropertyProvider;
+
+import java.util.Optional;
 import com.libreshockwave.vm.builtin.TimeoutProvider;
 import com.libreshockwave.vm.builtin.XtraBuiltins;
 import com.libreshockwave.player.timeout.TimeoutManager;
@@ -88,6 +93,7 @@ public class Player {
         this.movieProperties = new MovieProperties(this, file);
         this.spriteProperties = new SpriteProperties(stageRenderer.getSpriteRegistry());
         this.castLibManager = new CastLibManager(file);
+        this.stageRenderer.setCastLibManager(castLibManager);
         this.timeoutManager = new TimeoutManager();
         this.frameContext.setTimeoutManager(timeoutManager);
         this.frameContext.getEventDispatcher().setCastLibManager(castLibManager);
@@ -119,6 +125,8 @@ public class Player {
 
         // Wire up network completion callback to handle external cast loading
         netManager.setCompletionCallback((fileName, data) -> {
+            // Always cache downloaded cast files for later use by CastLoad Manager
+            castLibManager.cacheFileData(fileName, data);
             // Check if this URL matches an external cast library
             if (castLibManager.setExternalCastDataByUrl(fileName, data)) {
                 System.out.println("[Player] Loaded external cast from: " + fileName);
@@ -160,6 +168,7 @@ public class Player {
         this.movieProperties = new MovieProperties(this, file);
         this.spriteProperties = new SpriteProperties(stageRenderer.getSpriteRegistry());
         this.castLibManager = new CastLibManager(file);
+        this.stageRenderer.setCastLibManager(castLibManager);
         this.timeoutManager = new TimeoutManager();
         this.frameContext.setTimeoutManager(timeoutManager);
         this.frameContext.getEventDispatcher().setCastLibManager(castLibManager);
@@ -223,6 +232,35 @@ public class Player {
 
     public CastLibManager getCastLibManager() {
         return castLibManager;
+    }
+
+    /**
+     * Decode a bitmap from any loaded source — main file or external casts.
+     */
+    public Optional<Bitmap> decodeBitmap(CastMemberChunk member) {
+        // Try main file first
+        if (file != null) {
+            Optional<Bitmap> result = file.decodeBitmap(member);
+            if (result.isPresent()) {
+                return result;
+            }
+        }
+
+        // Search external casts for the member's source file
+        if (castLibManager != null) {
+            for (CastLib castLib : castLibManager.getCastLibs().values()) {
+                if (!castLib.isLoaded()) continue;
+                DirectorFile src = castLib.getSourceFile();
+                if (src != null && src != file) {
+                    Optional<Bitmap> result = src.decodeBitmap(member);
+                    if (result.isPresent()) {
+                        return result;
+                    }
+                }
+            }
+        }
+
+        return Optional.empty();
     }
 
     public TimeoutManager getTimeoutManager() {

@@ -100,6 +100,24 @@ public final class PropListMethodDispatcher {
                 }
                 yield Datum.VOID;
             }
+            case "deleteat" -> {
+                if (args.isEmpty()) yield Datum.VOID;
+                int index = args.get(0).toInt() - 1;
+                var keys = new ArrayList<>(propList.properties().keySet());
+                if (index >= 0 && index < keys.size()) {
+                    propList.properties().remove(keys.get(index));
+                }
+                yield Datum.VOID;
+            }
+            case "getlast" -> {
+                if (propList.properties().isEmpty()) yield Datum.VOID;
+                var values = new ArrayList<>(propList.properties().values());
+                yield values.get(values.size() - 1);
+            }
+            case "getfirst" -> {
+                if (propList.properties().isEmpty()) yield Datum.VOID;
+                yield propList.properties().values().iterator().next();
+            }
             case "duplicate" -> {
                 yield new Datum.PropList(new LinkedHashMap<>(propList.properties()));
             }

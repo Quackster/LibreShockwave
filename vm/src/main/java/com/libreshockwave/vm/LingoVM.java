@@ -192,7 +192,6 @@ public class LingoVM {
         // Then try script handlers
         HandlerRef ref = findHandler(handlerName);
         if (ref == null) {
-            // Handler not found - this is normal for optional event handlers
             return Datum.VOID;
         }
         return executeHandler(ref.script(), ref.handler(), args, null);
@@ -222,7 +221,8 @@ public class LingoVM {
         // Prevent recursive error handling - if we're already in an error handler
         // and trying to call another error handler, return VOID
         String handlerName = script.getHandlerName(handler);
-        boolean isErrorHandler = ERROR_HANDLER_NAMES.contains(handlerName.toLowerCase());
+        String hn = handlerName.toLowerCase();
+        boolean isErrorHandler = ERROR_HANDLER_NAMES.contains(hn);
         if (isErrorHandler && errorHandlerDepth > 0) {
             // Already in an error handler, skip recursive call
             return Datum.VOID;
@@ -235,13 +235,22 @@ public class LingoVM {
         // If there's a receiver (for parent script methods), prepend it to args as param0
         // This matches dirplayer-rs behavior where the receiver is included in scope.args
         List<Datum> effectiveArgs = args;
+        Datum scopeReceiver = receiver;
         if (receiver != null && !receiver.isVoid()) {
             effectiveArgs = new ArrayList<>();
             effectiveArgs.add(receiver);
             effectiveArgs.addAll(args);
+        } else {
+            // No explicit receiver — derive from first arg if it's a ScriptInstance.
+            // This handles LOCAL_CALL where the Lingo code explicitly passes 'me'
+            // (e.g., searchTask(me, arg)). args[0] IS 'me' and should be used
+            // as the receiver for property access within the handler.
+            if (!args.isEmpty() && args.get(0) instanceof Datum.ScriptInstance) {
+                scopeReceiver = args.get(0);
+            }
         }
 
-        Scope scope = new Scope(script, handler, effectiveArgs, receiver);
+        Scope scope = new Scope(script, handler, effectiveArgs, scopeReceiver);
         callStack.push(scope);
 
         // Track error handler depth

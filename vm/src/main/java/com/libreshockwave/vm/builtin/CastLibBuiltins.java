@@ -23,6 +23,7 @@ public final class CastLibBuiltins {
     public static void register(Map<String, BiFunction<LingoVM, List<Datum>, Datum>> builtins) {
         builtins.put("castlib", CastLibBuiltins::castLib);
         builtins.put("member", CastLibBuiltins::member);
+        builtins.put("field", CastLibBuiltins::field);
     }
 
     /**
@@ -93,6 +94,17 @@ public final class CastLibBuiltins {
             if (castLibNumber > 0) {
                 return provider.getMember(castLibNumber, memberNumber);
             }
+
+            // Check if this is a slot number (castLib << 16 | memberNum) from member.number
+            int encodedCast = (memberNumber >> 16) & 0xFFFF;
+            int encodedMember = memberNumber & 0xFFFF;
+            if (encodedCast > 0 && encodedMember > 0) {
+                // Decode slot number: direct lookup in the encoded cast lib
+                if (provider.memberExists(encodedCast, encodedMember)) {
+                    return provider.getMember(encodedCast, encodedMember);
+                }
+            }
+
             // No cast lib specified — search all casts for the member
             int totalCasts = provider.getCastLibCount();
             for (int i = 1; i <= totalCasts; i++) {
@@ -107,6 +119,41 @@ public final class CastLibBuiltins {
         }
 
         return Datum.VOID;
+    }
+
+    /**
+     * field(nameOrNum) or field(nameOrNum, castLib)
+     * Returns the text content of a field/text cast member.
+     * In Director, field("name") is equivalent to member("name").text
+     */
+    private static Datum field(LingoVM vm, List<Datum> args) {
+        if (args.isEmpty()) {
+            return Datum.EMPTY_STRING;
+        }
+
+        CastLibProvider provider = CastLibProvider.getProvider();
+        if (provider == null) {
+            return Datum.EMPTY_STRING;
+        }
+
+        Datum fieldArg = args.get(0);
+        int castId = 0; // 0 = search all casts
+
+        if (args.size() > 1) {
+            Datum castArg = args.get(1);
+            if (castArg instanceof Datum.CastLibRef clr) {
+                castId = clr.castLibNumber();
+            } else if (castArg.isInt()) {
+                castId = castArg.toInt();
+            }
+        }
+
+        Object identifier = fieldArg instanceof Datum.Str s ? s.value()
+                : fieldArg instanceof Datum.Int i ? i.value()
+                : fieldArg.toStr();
+
+        String fieldValue = provider.getFieldValue(identifier, castId);
+        return Datum.of(fieldValue);
     }
 
 }

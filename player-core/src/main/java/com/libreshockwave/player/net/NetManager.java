@@ -249,7 +249,15 @@ public class NetManager implements NetBuiltins.NetProvider {
             return url;
         }
 
-        return Paths.get(url).getFileName().toString();
+        // Strip query parameters before resolving as file path
+        // (URLs like "file.txt?random=123" are invalid file paths on Windows)
+        String cleanUrl = url;
+        int queryIdx = cleanUrl.indexOf('?');
+        if (queryIdx >= 0) {
+            cleanUrl = cleanUrl.substring(0, queryIdx);
+        }
+
+        return Paths.get(cleanUrl).getFileName().toString();
     }
 
     private void executeTask(NetTask task) {

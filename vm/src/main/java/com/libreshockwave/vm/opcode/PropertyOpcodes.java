@@ -218,6 +218,12 @@ public final class PropertyOpcodes {
                     provider.setMovieProp(propName, value);
                 }
             }
+            case Datum.SpriteRef sr -> {
+                SpritePropertyProvider spriteProvider = SpritePropertyProvider.getProvider();
+                if (spriteProvider != null) {
+                    spriteProvider.setSpriteProp(sr.channel(), propName, value);
+                }
+            }
             default -> { /* ignore */ }
         }
 
@@ -384,7 +390,8 @@ public final class PropertyOpcodes {
                     int castLibNum = ctx.pop().toInt();
                     CastLibProvider castProvider = CastLibProvider.getProvider();
                     if (castProvider != null) {
-                        yield Datum.of(castProvider.getMemberCount(castLibNum));
+                        int count = castProvider.getMemberCount(castLibNum);
+                        yield Datum.of(count);
                     }
                     yield Datum.ZERO;
                 }

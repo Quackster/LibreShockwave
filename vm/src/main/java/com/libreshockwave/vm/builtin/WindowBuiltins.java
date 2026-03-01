@@ -23,7 +23,10 @@ public final class WindowBuiltins {
         builtins.put("movetofront", WindowBuiltins::moveToFront);
         builtins.put("movetoback", WindowBuiltins::moveToBack);
         builtins.put("puppettempo", WindowBuiltins::puppetTempo);
+        builtins.put("puppetsprite", WindowBuiltins::puppetSprite);
         builtins.put("cursor", (vm, args) -> Datum.VOID);  // No-op stub
+        builtins.put("pauseupdate", (vm, args) -> Datum.VOID);  // No-op stub
+        builtins.put("updatestage", (vm, args) -> Datum.VOID);  // No-op stub
     }
 
     /**
@@ -42,6 +45,27 @@ public final class WindowBuiltins {
      */
     private static Datum moveToBack(LingoVM vm, List<Datum> args) {
         // No-op - windowing is handled externally
+        return Datum.VOID;
+    }
+
+    /**
+     * puppetSprite(spriteNum, enabled)
+     * Takes programmatic control of a sprite channel.
+     * When puppet is TRUE, the sprite is controlled by script instead of the score.
+     */
+    private static Datum puppetSprite(LingoVM vm, List<Datum> args) {
+        if (args.size() < 2) {
+            return Datum.VOID;
+        }
+
+        int spriteNum = args.get(0).toInt();
+        boolean enabled = args.get(1).isTruthy();
+
+        SpritePropertyProvider provider = SpritePropertyProvider.getProvider();
+        if (provider != null) {
+            provider.setSpriteProp(spriteNum, "puppet", Datum.of(enabled ? 1 : 0));
+        }
+
         return Datum.VOID;
     }
 

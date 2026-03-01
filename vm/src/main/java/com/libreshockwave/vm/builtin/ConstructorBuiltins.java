@@ -21,6 +21,8 @@ public final class ConstructorBuiltins {
         builtins.put("point", ConstructorBuiltins::point);
         builtins.put("rect", ConstructorBuiltins::rect);
         builtins.put("color", ConstructorBuiltins::color);
+        builtins.put("rgb", ConstructorBuiltins::rgb);
+        builtins.put("sprite", ConstructorBuiltins::sprite);
         builtins.put("new", ConstructorBuiltins::newInstance);
     }
 
@@ -135,5 +137,52 @@ public final class ConstructorBuiltins {
         int g = args.size() > 1 ? args.get(1).toInt() : 0;
         int b = args.size() > 2 ? args.get(2).toInt() : 0;
         return new Datum.Color(r, g, b);
+    }
+
+    /**
+     * rgb(r, g, b) - create color from RGB components
+     * rgb("#RRGGBB") - create color from hex string
+     * rgb(paletteIndex) - create color from palette index (treated as grayscale)
+     */
+    private static Datum rgb(LingoVM vm, List<Datum> args) {
+        if (args.isEmpty()) {
+            return new Datum.Color(0, 0, 0);
+        }
+        Datum first = args.get(0);
+        // rgb("#RRGGBB") - hex string
+        if (first.isString()) {
+            String hex = first.toStr().trim();
+            if (hex.startsWith("#")) {
+                hex = hex.substring(1);
+            }
+            try {
+                int colorVal = Integer.parseInt(hex, 16);
+                int r = (colorVal >> 16) & 0xFF;
+                int g = (colorVal >> 8) & 0xFF;
+                int b = colorVal & 0xFF;
+                return new Datum.Color(r, g, b);
+            } catch (NumberFormatException e) {
+                return new Datum.Color(0, 0, 0);
+            }
+        }
+        // rgb(r, g, b) - three integer components
+        if (args.size() >= 3) {
+            return new Datum.Color(args.get(0).toInt(), args.get(1).toInt(), args.get(2).toInt());
+        }
+        // rgb(paletteIndex) - single integer, treat as grayscale or palette
+        int val = first.toInt();
+        return new Datum.Color((val >> 16) & 0xFF, (val >> 8) & 0xFF, val & 0xFF);
+    }
+
+    /**
+     * sprite(channelNum) - return a sprite reference for the given channel number.
+     * In Director, sprite(n) returns a reference to sprite channel n.
+     */
+    private static Datum sprite(LingoVM vm, List<Datum> args) {
+        if (args.isEmpty()) {
+            return Datum.VOID;
+        }
+        int channel = args.get(0).toInt();
+        return new Datum.SpriteRef(channel);
     }
 }

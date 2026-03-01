@@ -74,7 +74,7 @@ public final class ListMethodDispatcher {
                 }
                 yield Datum.VOID;
             }
-            case "getone", "findpos" -> {
+            case "getone", "findpos", "getpos" -> {
                 // Find 1-based index of value, returns 0 if not found
                 if (args.isEmpty()) yield Datum.ZERO;
                 Datum value = args.get(0);

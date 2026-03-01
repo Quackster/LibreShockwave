@@ -206,11 +206,11 @@ public class StagePanel extends JPanel {
             return bitmapCache.get(id);
         }
 
-        if (player == null || player.getFile() == null) {
+        if (player == null) {
             return null;
         }
 
-        Optional<Bitmap> bitmap = player.getFile().decodeBitmap(member);
+        Optional<Bitmap> bitmap = player.decodeBitmap(member);
         if (bitmap.isPresent()) {
             BufferedImage img = bitmap.get().toBufferedImage();
             bitmapCache.put(id, img);

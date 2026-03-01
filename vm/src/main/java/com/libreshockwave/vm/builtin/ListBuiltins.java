@@ -3,12 +3,15 @@ package com.libreshockwave.vm.builtin;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.LingoVM;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiFunction;
 
 /**
- * List-related builtin functions.
+ * List and PropList builtin functions.
+ * Handles global getAt/setAt/getaProp/setaProp/addProp/deleteProp calls.
+ * Matches dirplayer-rs manager.rs handler dispatch.
  */
 public final class ListBuiltins {
 
@@ -17,8 +20,23 @@ public final class ListBuiltins {
     public static void register(Map<String, BiFunction<LingoVM, List<Datum>, Datum>> builtins) {
         builtins.put("count", ListBuiltins::count);
         builtins.put("getat", ListBuiltins::getAt);
+        builtins.put("setat", ListBuiltins::setAt);
         builtins.put("addat", ListBuiltins::addAt);
+        builtins.put("deleteat", ListBuiltins::deleteAt);
         builtins.put("append", ListBuiltins::append);
+        builtins.put("getaprop", ListBuiltins::getaProp);
+        builtins.put("setaprop", ListBuiltins::setaProp);
+        builtins.put("addprop", ListBuiltins::addProp);
+        builtins.put("deleteprop", ListBuiltins::deleteProp);
+        builtins.put("getpropat", ListBuiltins::getPropAt);
+        builtins.put("findpos", ListBuiltins::findPos);
+        builtins.put("getone", ListBuiltins::getOne);
+        builtins.put("getpos", ListBuiltins::getOne);
+        builtins.put("deleteone", ListBuiltins::deleteOne);
+        builtins.put("sort", ListBuiltins::sort);
+        builtins.put("listp", ListBuiltins::listP);
+        builtins.put("list", ListBuiltins::listConstructor);
+        builtins.put("getlast", ListBuiltins::getLast);
     }
 
     private static Datum count(LingoVM vm, List<Datum> args) {
@@ -32,15 +50,101 @@ public final class ListBuiltins {
         return Datum.ZERO;
     }
 
+    /**
+     * getAt(container, keyOrIndex) - Get element from list or proplist.
+     * For List: integer index (1-based).
+     * For PropList: integer index (1-based positional) or symbol/string key.
+     */
     private static Datum getAt(LingoVM vm, List<Datum> args) {
         if (args.size() < 2) return Datum.VOID;
-        Datum list = args.get(0);
-        int index = args.get(1).toInt() - 1; // Lingo is 1-indexed
-        if (list instanceof Datum.List l) {
+        Datum container = args.get(0);
+        Datum keyOrIndex = args.get(1);
+        if (container instanceof Datum.List l) {
+            int index = keyOrIndex.toInt() - 1;
             if (index >= 0 && index < l.items().size()) {
                 return l.items().get(index);
             }
+            return Datum.VOID;
         }
+
+        if (container instanceof Datum.PropList pl) {
+            // Try key-based lookup first for symbols and strings
+            if (keyOrIndex instanceof Datum.Symbol sym) {
+                return pl.properties().getOrDefault(sym.name(), Datum.VOID);
+            }
+            if (keyOrIndex instanceof Datum.Str s) {
+                return pl.properties().getOrDefault(s.value(), Datum.VOID);
+            }
+            // Integer positional access (1-based)
+            int index = keyOrIndex.toInt() - 1;
+            var entries = new ArrayList<>(pl.properties().entrySet());
+            if (index >= 0 && index < entries.size()) {
+                return entries.get(index).getValue();
+            }
+            return Datum.VOID;
+        }
+
+        if (container instanceof Datum.Point point) {
+            int index = keyOrIndex.toInt();
+            return switch (index) {
+                case 1 -> Datum.of(point.x());
+                case 2 -> Datum.of(point.y());
+                default -> Datum.VOID;
+            };
+        }
+
+        if (container instanceof Datum.Rect rect) {
+            int index = keyOrIndex.toInt();
+            return switch (index) {
+                case 1 -> Datum.of(rect.left());
+                case 2 -> Datum.of(rect.top());
+                case 3 -> Datum.of(rect.right());
+                case 4 -> Datum.of(rect.bottom());
+                default -> Datum.VOID;
+            };
+        }
+
+        return Datum.VOID;
+    }
+
+    /**
+     * setAt(container, keyOrIndex, value) - Set element in list or proplist.
+     * For List: integer index (1-based).
+     * For PropList: integer index (1-based positional) or symbol/string key.
+     */
+    private static Datum setAt(LingoVM vm, List<Datum> args) {
+        if (args.size() < 3) return Datum.VOID;
+        Datum container = args.get(0);
+        Datum keyOrIndex = args.get(1);
+        Datum value = args.get(2);
+        if (container instanceof Datum.List l) {
+            int index = keyOrIndex.toInt() - 1;
+            if (index >= 0 && index < l.items().size()) {
+                l.items().set(index, value);
+            }
+            return Datum.VOID;
+        }
+
+        if (container instanceof Datum.PropList pl) {
+            // Try key-based set for symbols and strings
+            if (keyOrIndex instanceof Datum.Symbol sym) {
+                pl.properties().put(sym.name(), value);
+                return Datum.VOID;
+            }
+            if (keyOrIndex instanceof Datum.Str s) {
+                pl.properties().put(s.value(), value);
+                return Datum.VOID;
+            }
+            // Integer positional set (1-based)
+            int index = keyOrIndex.toInt() - 1;
+            var entries = new ArrayList<>(pl.properties().entrySet());
+            if (index >= 0 && index < entries.size()) {
+                String existingKey = entries.get(index).getKey();
+                pl.properties().put(existingKey, value);
+            }
+            return Datum.VOID;
+        }
+
         return Datum.VOID;
     }
 
@@ -58,20 +162,209 @@ public final class ListBuiltins {
 
     /**
      * addAt(list, position, value) - insert value at position in a list.
-     * Matching dirplayer-rs: if first arg is not a List, return VOID (no-op).
      */
     private static Datum addAt(LingoVM vm, List<Datum> args) {
         if (args.size() < 3) return Datum.VOID;
         Datum datum = args.get(0);
         if (!(datum instanceof Datum.List list)) {
-            // Non-list types: no-op, return VOID (matches dirplayer-rs)
             return Datum.VOID;
         }
-        int position = args.get(1).toInt() - 1; // Lingo is 1-indexed
+        int position = args.get(1).toInt() - 1;
         Datum value = args.get(2);
         if (position < 0) position = 0;
         if (position > list.items().size()) position = list.items().size();
         list.items().add(position, value);
+        return Datum.VOID;
+    }
+
+    /**
+     * deleteAt(container, position) - delete element at position.
+     */
+    private static Datum deleteAt(LingoVM vm, List<Datum> args) {
+        if (args.size() < 2) return Datum.VOID;
+        Datum container = args.get(0);
+        int position = args.get(1).toInt() - 1;
+
+        if (container instanceof Datum.List l) {
+            if (position >= 0 && position < l.items().size()) {
+                l.items().remove(position);
+            }
+        } else if (container instanceof Datum.PropList pl) {
+            var keys = new ArrayList<>(pl.properties().keySet());
+            if (position >= 0 && position < keys.size()) {
+                pl.properties().remove(keys.get(position));
+            }
+        }
+        return Datum.VOID;
+    }
+
+    /**
+     * getaProp(propList, key) - Get property by key from a PropList.
+     */
+    private static Datum getaProp(LingoVM vm, List<Datum> args) {
+        if (args.size() < 2) return Datum.VOID;
+        Datum container = args.get(0);
+        if (!(container instanceof Datum.PropList pl)) return Datum.VOID;
+
+        String key = args.get(1) instanceof Datum.Symbol s ? s.name() : args.get(1).toStr();
+        return pl.properties().getOrDefault(key, Datum.VOID);
+    }
+
+    /**
+     * setaProp(propList, key, value) - Set property by key in a PropList.
+     */
+    private static Datum setaProp(LingoVM vm, List<Datum> args) {
+        if (args.size() < 3) return Datum.VOID;
+        Datum container = args.get(0);
+        if (!(container instanceof Datum.PropList pl)) return Datum.VOID;
+
+        String key = args.get(1) instanceof Datum.Symbol s ? s.name() : args.get(1).toStr();
+        pl.properties().put(key, args.get(2));
+        return Datum.VOID;
+    }
+
+    /**
+     * addProp(propList, key, value) - Add property to a PropList.
+     */
+    private static Datum addProp(LingoVM vm, List<Datum> args) {
+        if (args.size() < 3) return Datum.VOID;
+        Datum container = args.get(0);
+        if (!(container instanceof Datum.PropList pl)) return Datum.VOID;
+
+        String key = args.get(1) instanceof Datum.Symbol s ? s.name() : args.get(1).toStr();
+        pl.properties().put(key, args.get(2));
+        return Datum.VOID;
+    }
+
+    /**
+     * deleteProp(propList, key) - Delete property from a PropList.
+     */
+    private static Datum deleteProp(LingoVM vm, List<Datum> args) {
+        if (args.size() < 2) return Datum.VOID;
+        Datum container = args.get(0);
+        if (!(container instanceof Datum.PropList pl)) return Datum.VOID;
+
+        String key = args.get(1) instanceof Datum.Symbol s ? s.name() : args.get(1).toStr();
+        pl.properties().remove(key);
+        return Datum.VOID;
+    }
+
+    /**
+     * getPropAt(propList, position) - Get the key at a position (1-based).
+     */
+    private static Datum getPropAt(LingoVM vm, List<Datum> args) {
+        if (args.size() < 2) return Datum.VOID;
+        Datum container = args.get(0);
+        if (!(container instanceof Datum.PropList pl)) return Datum.VOID;
+
+        int index = args.get(1).toInt() - 1;
+        var keys = new ArrayList<>(pl.properties().keySet());
+        if (index >= 0 && index < keys.size()) {
+            return Datum.symbol(keys.get(index));
+        }
+        return Datum.VOID;
+    }
+
+    /**
+     * findPos(propList, key) - Find position of key in PropList (1-based).
+     */
+    private static Datum findPos(LingoVM vm, List<Datum> args) {
+        if (args.size() < 2) return Datum.VOID;
+        Datum container = args.get(0);
+        if (!(container instanceof Datum.PropList pl)) return Datum.VOID;
+
+        String key = args.get(1) instanceof Datum.Symbol s ? s.name() : args.get(1).toStr();
+        int pos = 1;
+        for (String k : pl.properties().keySet()) {
+            if (k.equalsIgnoreCase(key)) {
+                return Datum.of(pos);
+            }
+            pos++;
+        }
+        return Datum.VOID;
+    }
+
+    /**
+     * getOne(list, value) - Find position of value in list (1-based).
+     */
+    private static Datum getOne(LingoVM vm, List<Datum> args) {
+        if (args.size() < 2) return Datum.ZERO;
+        Datum container = args.get(0);
+        Datum target = args.get(1);
+
+        if (container instanceof Datum.List l) {
+            for (int i = 0; i < l.items().size(); i++) {
+                if (l.items().get(i).equals(target)) {
+                    return Datum.of(i + 1);
+                }
+            }
+        }
+        return Datum.ZERO;
+    }
+
+    /**
+     * deleteOne(list, value) - Delete first occurrence of value from list.
+     */
+    private static Datum deleteOne(LingoVM vm, List<Datum> args) {
+        if (args.size() < 2) return Datum.VOID;
+        Datum container = args.get(0);
+        Datum target = args.get(1);
+
+        if (container instanceof Datum.List l) {
+            l.items().remove(target);
+        }
+        return Datum.VOID;
+    }
+
+    /**
+     * sort(list) - Sort a list in place.
+     */
+    private static Datum sort(LingoVM vm, List<Datum> args) {
+        if (args.isEmpty()) return Datum.VOID;
+        Datum container = args.get(0);
+        if (container instanceof Datum.List l) {
+            l.items().sort((a, b) -> {
+                if (a instanceof Datum.Int ai && b instanceof Datum.Int bi) {
+                    return Integer.compare(ai.value(), bi.value());
+                }
+                return a.toStr().compareToIgnoreCase(b.toStr());
+            });
+        }
+        return Datum.VOID;
+    }
+
+    /**
+     * listP(value) - Returns true if value is a list or proplist.
+     */
+    private static Datum listP(LingoVM vm, List<Datum> args) {
+        if (args.isEmpty()) return Datum.FALSE;
+        Datum v = args.get(0);
+        return (v instanceof Datum.List || v instanceof Datum.PropList) ? Datum.TRUE : Datum.FALSE;
+    }
+
+    /**
+     * list(args...) - Creates a new linear list from arguments.
+     * list() returns [], list(1,2,3) returns [1,2,3].
+     */
+    private static Datum listConstructor(LingoVM vm, List<Datum> args) {
+        return Datum.list(new ArrayList<>(args));
+    }
+
+    /**
+     * getLast(container) - Returns the last element of a list or proplist.
+     */
+    private static Datum getLast(LingoVM vm, List<Datum> args) {
+        if (args.isEmpty()) return Datum.VOID;
+        Datum container = args.get(0);
+        if (container instanceof Datum.List l) {
+            if (l.items().isEmpty()) return Datum.VOID;
+            return l.items().get(l.items().size() - 1);
+        }
+        if (container instanceof Datum.PropList pl) {
+            if (pl.properties().isEmpty()) return Datum.VOID;
+            var values = new ArrayList<>(pl.properties().values());
+            return values.get(values.size() - 1);
+        }
         return Datum.VOID;
     }
 }

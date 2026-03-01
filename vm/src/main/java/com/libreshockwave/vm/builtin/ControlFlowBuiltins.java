@@ -200,11 +200,7 @@ public final class ControlFlowBuiltins {
 
             if (location != null && location.script() instanceof ScriptChunk script
                     && location.handler() instanceof ScriptChunk.Handler handler) {
-                try {
-                    vm.executeHandler(script, handler, handlerArgs, instance);
-                } catch (Exception e) {
-                    // Silently skip errors - call() continues to next object
-                }
+                vm.executeHandler(script, handler, handlerArgs, instance);
                 return;
             }
 

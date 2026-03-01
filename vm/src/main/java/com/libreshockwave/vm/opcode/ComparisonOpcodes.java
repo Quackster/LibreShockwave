@@ -64,14 +64,17 @@ public final class ComparisonOpcodes {
     }
 
     private static boolean datumEquals(Datum a, Datum b) {
+        // Director treats VOID as 0 in numeric comparisons: VOID = 0 is TRUE
+        if ((a.isVoid() && b.isNumber()) || (a.isNumber() && b.isVoid())) {
+            return a.toDouble() == b.toDouble();
+        }
         if (a.isNumber() && b.isNumber()) {
             return a.toDouble() == b.toDouble();
         }
-        if (a.isString() && b.isString()) {
+        // Director treats strings and symbols as comparable:
+        // #foo = "foo" evaluates to TRUE (case-insensitive)
+        if ((a.isString() || a.isSymbol()) && (b.isString() || b.isSymbol())) {
             return a.toStr().equalsIgnoreCase(b.toStr());
-        }
-        if (a.isSymbol() && b.isSymbol()) {
-            return ((Datum.Symbol) a).name().equalsIgnoreCase(((Datum.Symbol) b).name());
         }
         return a.equals(b);
     }

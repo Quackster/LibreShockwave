@@ -297,15 +297,24 @@ public class CastLib {
 
     /**
      * Get or create a CastMember by name with lazy loading.
+     * Searches both file-loaded members (memberChunks) and dynamic members.
      */
     public CastMember getMemberByName(String name) {
         if (!isLoaded()) {
             load();
         }
 
+        // Search file-loaded members first
         for (Map.Entry<Integer, CastMemberChunk> entry : memberChunks.entrySet()) {
             if (entry.getValue().name() != null && entry.getValue().name().equalsIgnoreCase(name)) {
                 return getMember(entry.getKey());
+            }
+        }
+
+        // Search dynamic members (created at runtime via new(#field, castLib))
+        for (CastMember member : members.values()) {
+            if (member.getName() != null && member.getName().equalsIgnoreCase(name)) {
+                return member;
             }
         }
         return null;
@@ -335,6 +344,13 @@ public class CastLib {
             load();
         }
         return scripts.get(memberNumber);
+    }
+
+    /**
+     * Get the DirectorFile that contains this cast's data.
+     */
+    public DirectorFile getSourceFile() {
+        return sourceFile;
     }
 
     /**
@@ -532,7 +548,12 @@ public class CastLib {
             DirectorFile file = DirectorFile.load(data);
             if (file != null) {
                 this.sourceFile = file;
-                // Load the cast members now that we have the data
+                // Reset state so load() will re-parse with the new data
+                // (the cast may have been previously loaded with different data, e.g. empty.cst)
+                this.state = State.NONE;
+                this.memberChunks.clear();
+                this.members.clear();
+                this.scripts.clear();
                 load();
                 return true;
             }

@@ -4,24 +4,39 @@ import com.libreshockwave.chunks.ScoreChunk;
 import com.libreshockwave.player.sprite.SpriteState;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
  * Registry of runtime sprite states.
  * Tracks sprite properties that can be modified by scripts (position, visibility, etc.).
+ * Supports both Score-based sprites and dynamically created/puppeted sprites.
  */
 public class SpriteRegistry {
 
     private final Map<Integer, SpriteState> sprites = new HashMap<>();
 
     /**
-     * Get or create a sprite state for a channel.
+     * Get or create a sprite state for a channel from Score data.
      * If the sprite doesn't exist, creates it from the channel data.
      */
     public SpriteState getOrCreate(int channel, ScoreChunk.ChannelData data) {
         SpriteState state = sprites.get(channel);
         if (state == null) {
             state = new SpriteState(channel, data);
+            sprites.put(channel, state);
+        }
+        return state;
+    }
+
+    /**
+     * Get or create a dynamic sprite for a channel (no Score data required).
+     * Used when scripts puppet a sprite channel or set properties on it.
+     */
+    public SpriteState getOrCreateDynamic(int channel) {
+        SpriteState state = sprites.get(channel);
+        if (state == null) {
+            state = new SpriteState(channel);
             sprites.put(channel, state);
         }
         return state;
@@ -39,10 +54,8 @@ public class SpriteRegistry {
      */
     public void updateFromScore(int channel, ScoreChunk.ChannelData data) {
         SpriteState state = sprites.get(channel);
-        if (state != null) {
-            // Update from score data while preserving script modifications
-            // Note: In a full implementation, we'd track which properties were
-            // modified by scripts vs. which should follow the score
+        if (state != null && !state.isPuppet()) {
+            // Only update from score if the sprite is not puppeted
             state.setLocH(data.posX());
             state.setLocV(data.posY());
         }
@@ -67,5 +80,22 @@ public class SpriteRegistry {
      */
     public boolean contains(int channel) {
         return sprites.containsKey(channel);
+    }
+
+    /**
+     * Get all dynamic/puppeted sprites that have members assigned.
+     * Used by StageRenderer to include dynamically created sprites in rendering.
+     */
+    public List<SpriteState> getDynamicSprites() {
+        return sprites.values().stream()
+            .filter(s -> s.hasDynamicMember() || s.isDynamic())
+            .toList();
+    }
+
+    /**
+     * Get all registered sprites.
+     */
+    public Map<Integer, SpriteState> getAll() {
+        return sprites;
     }
 }

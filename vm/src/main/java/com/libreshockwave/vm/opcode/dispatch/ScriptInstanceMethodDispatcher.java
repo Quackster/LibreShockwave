@@ -31,7 +31,10 @@ public final class ScriptInstanceMethodDispatcher {
                     String propName = getPropertyName(args.get(0));
                     Datum value = args.get(1);
                     if (propName.equalsIgnoreCase("ancestor") || propName.equals(Datum.PROP_ANCESTOR)) {
-                        instance.properties().put(Datum.PROP_ANCESTOR, value);
+                        // Match dirplayer-rs: ancestor can only be set to a ScriptInstance
+                        if (value instanceof Datum.ScriptInstance) {
+                            instance.properties().put(Datum.PROP_ANCESTOR, value);
+                        }
                     } else {
                         throw new LingoException("Cannot setAt property " + propName + " on script instance");
                     }
@@ -195,7 +198,7 @@ public final class ScriptInstanceMethodDispatcher {
         CastLibProvider provider = CastLibProvider.getProvider();
         if (provider != null) {
             Datum.ScriptInstance current = instance;
-            for (int i = 0; i < AncestorChainWalker.MAX_ANCESTOR_DEPTH; i++) { // Safety limit to prevent infinite loops
+            for (int i = 0; i < AncestorChainWalker.MAX_ANCESTOR_DEPTH; i++) {
                 Datum.ScriptRef scriptRef = getScriptRefFromInstance(current);
 
                 CastLibProvider.HandlerLocation location;

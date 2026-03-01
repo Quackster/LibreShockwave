@@ -4,28 +4,23 @@ import com.libreshockwave.DirectorFile;
 import com.libreshockwave.cast.MemberType;
 import com.libreshockwave.chunks.CastMemberChunk;
 import com.libreshockwave.chunks.ScoreChunk;
+import com.libreshockwave.player.cast.CastLibManager;
 import com.libreshockwave.player.sprite.SpriteState;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Computes what sprites to render for the current frame.
- * This is the main rendering API for player-core that UI implementations can use.
- *
- * Usage:
- * <pre>
- *   StageRenderer renderer = player.getStageRenderer();
- *   List<RenderSprite> sprites = renderer.getSpritesForFrame(currentFrame);
- *   for (RenderSprite sprite : sprites) {
- *       // Draw sprite using your UI framework
- *   }
- * </pre>
+ * Supports both Score-based sprites and dynamically puppeted sprites.
  */
 public class StageRenderer {
 
     private final DirectorFile file;
     private final SpriteRegistry spriteRegistry;
+    private CastLibManager castLibManager;
 
     private int backgroundColor = 0xFFFFFF;  // White default
 
@@ -34,66 +29,73 @@ public class StageRenderer {
         this.spriteRegistry = new SpriteRegistry();
     }
 
-    /**
-     * Get the sprite registry for runtime state access.
-     */
+    public void setCastLibManager(CastLibManager castLibManager) {
+        this.castLibManager = castLibManager;
+    }
+
     public SpriteRegistry getSpriteRegistry() {
         return spriteRegistry;
     }
 
-    /**
-     * Get the stage width from the Director file.
-     */
     public int getStageWidth() {
         return file != null ? file.getStageWidth() : 640;
     }
 
-    /**
-     * Get the stage height from the Director file.
-     */
     public int getStageHeight() {
         return file != null ? file.getStageHeight() : 480;
     }
 
-    /**
-     * Get the background color (RGB).
-     */
     public int getBackgroundColor() {
         return backgroundColor;
     }
 
-    /**
-     * Set the background color (RGB).
-     */
     public void setBackgroundColor(int color) {
         this.backgroundColor = color;
     }
 
     /**
      * Get all sprites to render for the given frame.
-     * Sprites are returned in channel order (lower channels draw first).
-     *
-     * @param frame The 1-indexed frame number
-     * @return List of sprites to render
+     * Includes both Score-based sprites and dynamically created/puppeted sprites.
      */
     public List<RenderSprite> getSpritesForFrame(int frame) {
         List<RenderSprite> sprites = new ArrayList<>();
+        Set<Integer> renderedChannels = new HashSet<>();
 
-        if (file == null) {
-            return sprites;
+        // 1. Collect Score-based sprites
+        if (file != null) {
+            ScoreChunk score = file.getScoreChunk();
+            if (score != null) {
+                int frameIndex = frame - 1;  // Convert to 0-indexed
+
+                for (ScoreChunk.FrameChannelEntry entry : score.frameData().frameChannelData()) {
+                    if (entry.frameIndex() == frameIndex) {
+                        int channel = entry.channelIndex();
+                        SpriteState state = spriteRegistry.get(channel);
+
+                        // Check if this channel has a dynamic member override
+                        if (state != null && state.hasDynamicMember()) {
+                            RenderSprite sprite = createDynamicRenderSprite(state);
+                            if (sprite != null) {
+                                sprites.add(sprite);
+                                renderedChannels.add(channel);
+                            }
+                        } else {
+                            RenderSprite sprite = createRenderSprite(entry.channelIndex(), entry.data());
+                            if (sprite != null) {
+                                sprites.add(sprite);
+                                renderedChannels.add(channel);
+                            }
+                        }
+                    }
+                }
+            }
         }
 
-        ScoreChunk score = file.getScoreChunk();
-        if (score == null) {
-            return sprites;
-        }
-
-        int frameIndex = frame - 1;  // Convert to 0-indexed
-
-        // Collect all channel data for this frame
-        for (ScoreChunk.FrameChannelEntry entry : score.frameData().frameChannelData()) {
-            if (entry.frameIndex() == frameIndex) {
-                RenderSprite sprite = createRenderSprite(entry.channelIndex(), entry.data());
+        // 2. Add dynamically created/puppeted sprites not in the Score
+        for (SpriteState state : spriteRegistry.getDynamicSprites()) {
+            int channel = state.getChannel();
+            if (!renderedChannels.contains(channel) && state.hasDynamicMember()) {
+                RenderSprite sprite = createDynamicRenderSprite(state);
                 if (sprite != null) {
                     sprites.add(sprite);
                 }
@@ -107,7 +109,7 @@ public class StageRenderer {
     }
 
     /**
-     * Create a RenderSprite from channel data.
+     * Create a RenderSprite from Score channel data.
      */
     private RenderSprite createRenderSprite(int channel, ScoreChunk.ChannelData data) {
         // Skip empty sprites
@@ -118,7 +120,6 @@ public class StageRenderer {
         // Get or create runtime state
         SpriteState state = spriteRegistry.getOrCreate(channel, data);
 
-        // Use runtime position (may be modified by scripts)
         int x = state.getLocH();
         int y = state.getLocV();
         int width = state.getWidth();
@@ -128,30 +129,59 @@ public class StageRenderer {
         // Get cast member
         CastMemberChunk member = file.getCastMemberByIndex(data.castLib(), data.castMember());
 
-        // Determine sprite type
         RenderSprite.SpriteType type = determineSpriteType(member, data);
 
         return new RenderSprite(
-            channel,
-            x, y,
-            width, height,
-            visible,
-            type,
-            member,
-            data.foreColor(),
-            data.backColor(),
-            data.ink()
+            channel, x, y, width, height, visible, type, member,
+            data.foreColor(), data.backColor(), data.ink()
         );
     }
 
     /**
-     * Determine the sprite type from the cast member.
+     * Create a RenderSprite from a dynamically modified sprite state.
      */
+    private RenderSprite createDynamicRenderSprite(SpriteState state) {
+        if (!state.isVisible()) {
+            return null;
+        }
+
+        int castLib = state.getEffectiveCastLib();
+        int castMember = state.getEffectiveCastMember();
+
+        if (castMember <= 0) {
+            return null;
+        }
+
+        // Look up the cast member - try original DCR first, then dynamic casts
+        CastMemberChunk member = file != null
+            ? file.getCastMemberByIndex(castLib, castMember) : null;
+        if (member == null && castLibManager != null) {
+            member = castLibManager.getCastMember(castLib, castMember);
+        }
+
+        RenderSprite.SpriteType type = RenderSprite.SpriteType.UNKNOWN;
+        if (member != null) {
+            type = determineSpriteTypeFromMember(member);
+        }
+
+        return new RenderSprite(
+            state.getChannel(),
+            state.getLocH(), state.getLocV(),
+            state.getWidth(), state.getHeight(),
+            state.isVisible(),
+            type, member,
+            state.getForeColor(), state.getBackColor(), state.getInk()
+        );
+    }
+
     private RenderSprite.SpriteType determineSpriteType(CastMemberChunk member, ScoreChunk.ChannelData data) {
         if (member == null) {
             return RenderSprite.SpriteType.UNKNOWN;
         }
+        return determineSpriteTypeFromMember(member);
+    }
 
+    private RenderSprite.SpriteType determineSpriteTypeFromMember(CastMemberChunk member) {
         if (member.isBitmap()) {
             return RenderSprite.SpriteType.BITMAP;
         }
@@ -169,23 +199,14 @@ public class StageRenderer {
         };
     }
 
-    /**
-     * Clear all sprite states (called on movie stop/reset).
-     */
     public void reset() {
         spriteRegistry.clear();
     }
 
-    /**
-     * Called when a sprite leaves the stage.
-     */
     public void onSpriteEnd(int channel) {
         spriteRegistry.remove(channel);
     }
 
-    /**
-     * Called when entering a new frame to update sprite positions from score.
-     */
     public void onFrameEnter(int frame) {
         if (file == null) return;
 

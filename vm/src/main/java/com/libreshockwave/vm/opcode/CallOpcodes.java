@@ -52,7 +52,15 @@ public final class CallOpcodes {
             Datum argListDatum = ctx.pop();
             boolean noRet = argListDatum instanceof Datum.ArgListNoRet;
             List<Datum> args = getArgs(argListDatum);
-            Datum result = safeExecuteHandler(ctx, ctx.getScript(), targetHandler, args, ctx.getReceiver());
+            // If the Lingo source explicitly passes 'me' as the first arg
+            // (e.g., searchTask(me, arg)), the args already include the receiver.
+            // Pass null as receiver to prevent executeHandler from double-prepending it.
+            // The receiver for property access will be derived from args[0] in executeHandler.
+            Datum receiver = ctx.getReceiver();
+            if (!args.isEmpty() && args.get(0) == receiver) {
+                receiver = null;
+            }
+            Datum result = safeExecuteHandler(ctx, ctx.getScript(), targetHandler, args, receiver);
             if (!noRet) {
                 ctx.push(result);
             }

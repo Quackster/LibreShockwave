@@ -1,6 +1,8 @@
 package com.libreshockwave.player;
 
 import com.libreshockwave.DirectorFile;
+import com.libreshockwave.bitmap.Bitmap;
+import com.libreshockwave.chunks.CastMemberChunk;
 import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.chunks.ScriptNamesChunk;
 import com.libreshockwave.player.render.FrameSnapshot;
@@ -9,6 +11,10 @@ import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.LingoVM;
 import com.libreshockwave.vm.TraceListener;
 
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -75,7 +81,8 @@ public class RenderTraceTest {
     private static final Pattern RENDER_HANDLER_PATTERN = Pattern.compile(
             "(?i)(alert|alertHook|puppet|puppetSprite|constructVisualizerManager|createWindow|drawRect|" +
             "image|sprite|bitmap|draw|render|display|screen|pixel|rect|quad|" +
-            "visualiz|window|room|view|loading|bar|stage|updateState|showErrorDialog|download)");
+            "visualiz|window|room|view|loading|bar|stage|updateState|showErrorDialog|download|" +
+            "initAll|initThread|executeMessage|construct|resetClient|startClient|create)");
 
     // --- Call tree ---
     private static int[] currentFrame = {0};
@@ -561,6 +568,82 @@ public class RenderTraceTest {
         System.out.println("  Total sprite changes: " + spriteStateChanges.size());
         System.out.println("  Total rendering errors: " + renderingErrors.size());
         System.out.println("  Call tree entries: " + callTree.size());
+
+        // --- BITMAP DECODING VERIFICATION ---
+        System.out.println("\n========================================");
+        System.out.println("  BITMAP DECODING VERIFICATION");
+        System.out.println("========================================\n");
+        FrameSnapshot finalSnapshot = player.getFrameSnapshot();
+        if (finalSnapshot != null && finalSnapshot.sprites() != null) {
+            int decoded = 0;
+            int failed = 0;
+            for (RenderSprite sprite : finalSnapshot.sprites()) {
+                CastMemberChunk member = sprite.getCastMember();
+                if (member != null && sprite.getType() == RenderSprite.SpriteType.BITMAP) {
+                    java.util.Optional<Bitmap> bmp = player.decodeBitmap(member);
+                    if (bmp.isPresent()) {
+                        Bitmap b = bmp.get();
+                        System.out.println("  ch" + sprite.getChannel() + ": DECODED "
+                                + b.getWidth() + "x" + b.getHeight() + " (chunkId=" + member.id()
+                                + " name=" + member.name() + ")");
+                        decoded++;
+                    } else {
+                        System.out.println("  ch" + sprite.getChannel() + ": FAILED to decode"
+                                + " (chunkId=" + member.id() + " name=" + member.name() + ")");
+                        failed++;
+                    }
+                }
+            }
+            System.out.println("  Decoded: " + decoded + ", Failed: " + failed);
+
+            // --- HEADLESS RENDER TO PNG ---
+            if (decoded > 0) {
+                System.out.println("\n  Rendering frame to PNG...");
+                int stageW = finalSnapshot.stageWidth() > 0 ? finalSnapshot.stageWidth() : 640;
+                int stageH = finalSnapshot.stageHeight() > 0 ? finalSnapshot.stageHeight() : 480;
+                BufferedImage canvas = new BufferedImage(stageW, stageH, BufferedImage.TYPE_INT_ARGB);
+                Graphics2D g = canvas.createGraphics();
+                g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+
+                // Fill background
+                g.setColor(new Color(finalSnapshot.backgroundColor()));
+                g.fillRect(0, 0, stageW, stageH);
+
+                // Draw sprites
+                int spritesDrawn = 0;
+                for (RenderSprite sprite : finalSnapshot.sprites()) {
+                    if (!sprite.isVisible()) continue;
+                    CastMemberChunk m = sprite.getCastMember();
+                    if (m != null && sprite.getType() == RenderSprite.SpriteType.BITMAP) {
+                        java.util.Optional<Bitmap> bmp = player.decodeBitmap(m);
+                        if (bmp.isPresent()) {
+                            BufferedImage img = bmp.get().toBufferedImage();
+                            int x = sprite.getX();
+                            int y = sprite.getY();
+                            int w = sprite.getWidth() > 0 ? sprite.getWidth() : img.getWidth();
+                            int h = sprite.getHeight() > 0 ? sprite.getHeight() : img.getHeight();
+                            g.drawImage(img, x, y, w, h, null);
+                            spritesDrawn++;
+                            System.out.println("  Drew ch" + sprite.getChannel() + " at (" + x + "," + y + ") "
+                                    + w + "x" + h);
+                        }
+                    }
+                }
+                g.dispose();
+
+                // Save to PNG
+                Path pngPath = Path.of("build/render-output.png");
+                try {
+                    javax.imageio.ImageIO.write(canvas, "PNG", pngPath.toFile());
+                    System.out.println("  Saved " + stageW + "x" + stageH + " render to: " + pngPath.toAbsolutePath());
+                    System.out.println("  Sprites drawn: " + spritesDrawn);
+                } catch (Exception e) {
+                    System.err.println("  Failed to save PNG: " + e.getMessage());
+                }
+            }
+        } else {
+            System.out.println("  (no sprites in final snapshot)");
+        }
 
         player.shutdown();
     }

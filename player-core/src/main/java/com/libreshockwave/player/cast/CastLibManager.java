@@ -11,6 +11,7 @@ import com.libreshockwave.vm.builtin.CastLibProvider;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Manages cast libraries for the player.
@@ -22,6 +23,11 @@ public class CastLibManager implements CastLibProvider {
     private final DirectorFile file;
     private final Map<Integer, CastLib> castLibs = new HashMap<>();
     private boolean initialized = false;
+
+    // Cache of downloaded file data, keyed by filename (without extension, lowercase).
+    // Used by the CastLoad Manager flow: when Lingo sets castLib.fileName to a new URL,
+    // we look up the data here and load it into the cast.
+    private final Map<String, byte[]> fileCache = new ConcurrentHashMap<>();
 
     public CastLibManager(DirectorFile file) {
         this.file = file;
@@ -146,7 +152,40 @@ public class CastLibManager implements CastLibProvider {
         if (castLib == null) {
             return false;
         }
-        return castLib.setProp(propName, value);
+        boolean result = castLib.setProp(propName, value);
+
+        // When Lingo's CastLoad Manager sets castLib.fileName to a new URL (after downloading
+        // the .cct file), we need to reload the cast from the cached downloaded data.
+        // In real Director, setting castLib.fileName triggers an automatic reload.
+        if (result && "filename".equalsIgnoreCase(propName)) {
+            tryLoadCastFromCache(castLibNumber, value.toStr());
+        }
+
+        return result;
+    }
+
+    /**
+     * Cache downloaded file data for later use by the CastLoad Manager flow.
+     * Called by the Player's NetManager completion callback for every download.
+     */
+    public void cacheFileData(String url, byte[] data) {
+        if (url == null || data == null) return;
+        String key = FileUtil.getFileNameWithoutExtension(FileUtil.getFileName(url)).toLowerCase();
+        fileCache.put(key, data);
+    }
+
+    /**
+     * Try to load a cast from cached file data when its fileName is changed.
+     * This implements Director's behavior where setting castLib.fileName triggers a reload.
+     */
+    private void tryLoadCastFromCache(int castLibNumber, String newFileName) {
+        if (newFileName == null || newFileName.isEmpty()) return;
+
+        String key = FileUtil.getFileNameWithoutExtension(FileUtil.getFileName(newFileName)).toLowerCase();
+        byte[] data = fileCache.get(key);
+        if (data != null) {
+            setExternalCastData(castLibNumber, data);
+        }
     }
 
     @Override
@@ -351,27 +390,6 @@ public class CastLibManager implements CastLibProvider {
     }
 
     /**
-     * Find the cast lib number for a URL.
-     * Used by preloadNetThing to identify which cast to load.
-     * @param url The URL to find
-     * @return The cast lib number if found, or -1
-     */
-    public int getCastLibNumberByUrl(String url) {
-        ensureInitialized();
-
-        String extractedFileName = FileUtil.getFileName(url);
-        String fileName = FileUtil.getFileNameWithoutExtension(extractedFileName);
-
-        for (CastLib castLib : castLibs.values()) {
-            String castUrl = castLib.getFileName();
-            if (castUrl != null && !castUrl.isEmpty() && castLib.getName().equalsIgnoreCase(fileName)) {
-                return castLib.getNumber();
-            }
-        }
-        return -1;
-    }
-
-    /**
      * Set external cast data from preloadNetThing.
      * @param castLibNumber The cast library number
      * @param data The raw file data
@@ -388,16 +406,33 @@ public class CastLibManager implements CastLibProvider {
 
     /**
      * Set external cast data by URL from preloadNetThing.
-     * @param fileName The URL that was fetched
+     * Multiple cast libraries may reference the same external file (e.g. empty.cst).
+     * This loads the data into ALL matching casts, not just the first one.
+     * Matching is done by comparing the filename portion of the cast's path with the URL.
+     * @param url The URL that was fetched
      * @param data The raw file data
-     * @return true if parsing was successful
+     * @return true if at least one cast was loaded successfully
      */
-    public boolean setExternalCastDataByUrl(String fileName, byte[] data) {
-        int castLibNumber = getCastLibNumberByUrl(fileName);
-        if (castLibNumber > 0) {
-            return setExternalCastData(castLibNumber, data);
+    public boolean setExternalCastDataByUrl(String url, byte[] data) {
+        ensureInitialized();
+
+        String extractedFileName = FileUtil.getFileName(url);
+        String fileNameNoExt = FileUtil.getFileNameWithoutExtension(extractedFileName);
+
+        boolean anyLoaded = false;
+        for (CastLib castLib : castLibs.values()) {
+            String castPath = castLib.getFileName();
+            if (castPath == null || castPath.isEmpty()) continue;
+
+            String castFileNoExt = FileUtil.getFileNameWithoutExtension(
+                    FileUtil.getFileName(castPath));
+            if (castFileNoExt.equalsIgnoreCase(fileNameNoExt)) {
+                if (setExternalCastData(castLib.getNumber(), data)) {
+                    anyLoaded = true;
+                }
+            }
         }
-        return false;
+        return anyLoaded;
     }
 
     @Override
@@ -427,7 +462,7 @@ public class CastLibManager implements CastLibProvider {
                     member = castLib.getMemberByName(name);
                 }
             } else {
-                // Search all casts
+                // Search all casts — also check dynamic members in each cast
                 for (CastLib castLib : castLibs.values()) {
                     if (!castLib.isLoaded()) {
                         castLib.load();
