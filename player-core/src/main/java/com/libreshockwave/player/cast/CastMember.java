@@ -279,6 +279,18 @@ public class CastMember {
                 int h = bmp != null ? bmp.getHeight() : 0;
                 yield new Datum.Rect(0, 0, w, h);
             }
+            case "image" -> {
+                if (bmp == null && chunk == null) {
+                    // Dynamic bitmap member - create a default 1x1 bitmap
+                    bitmap = new Bitmap(1, 1, 32);
+                    bitmap.fill(0xFFFFFFFF);
+                    bmp = bitmap;
+                }
+                if (bmp != null) {
+                    yield new Datum.ImageRef(bmp);
+                }
+                yield Datum.VOID;
+            }
             default -> Datum.VOID;
         };
     }
@@ -287,6 +299,13 @@ public class CastMember {
         return switch (prop) {
             case "text" -> Datum.of(getTextContent());
             case "width", "height" -> Datum.of(0); // TODO: compute from text
+            case "image" -> {
+                // Text members can have an image representation
+                if (bitmap != null) {
+                    yield new Datum.ImageRef(bitmap);
+                }
+                yield Datum.VOID;
+            }
             default -> Datum.VOID;
         };
     }
@@ -325,7 +344,11 @@ public class CastMember {
                 return true;
             }
             case "regpoint" -> {
-                // TODO: parse Point datum
+                if (value instanceof Datum.Point p) {
+                    this.regPointX = p.x();
+                    this.regPointY = p.y();
+                    return true;
+                }
                 return false;
             }
             default -> {
@@ -339,7 +362,42 @@ public class CastMember {
             this.dynamicText = value.toStr();
             return true;
         }
+        if (memberType == MemberType.BITMAP) {
+            return setBitmapProp(prop, value);
+        }
         return false;
+    }
+
+    private boolean setBitmapProp(String prop, Datum value) {
+        return switch (prop) {
+            case "image" -> {
+                if (value instanceof Datum.ImageRef ir) {
+                    this.bitmap = ir.bitmap();
+                    yield true;
+                }
+                yield false;
+            }
+            case "width" -> {
+                // Create a new bitmap with the given width (preserving height)
+                int newW = value.toInt();
+                int h = bitmap != null ? bitmap.getHeight() : 1;
+                if (newW > 0) {
+                    this.bitmap = new Bitmap(newW, h, bitmap != null ? bitmap.getBitDepth() : 32);
+                    this.bitmap.fill(0xFFFFFFFF);
+                }
+                yield true;
+            }
+            case "height" -> {
+                int w = bitmap != null ? bitmap.getWidth() : 1;
+                int newH = value.toInt();
+                if (newH > 0) {
+                    this.bitmap = new Bitmap(w, newH, bitmap != null ? bitmap.getBitDepth() : 32);
+                    this.bitmap.fill(0xFFFFFFFF);
+                }
+                yield true;
+            }
+            default -> false;
+        };
     }
 
     /**

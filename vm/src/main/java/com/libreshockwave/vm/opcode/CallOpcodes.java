@@ -6,6 +6,7 @@ import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.HandlerRef;
 import com.libreshockwave.vm.LingoException;
 import com.libreshockwave.vm.builtin.TimeoutBuiltins;
+import com.libreshockwave.vm.opcode.dispatch.ImageMethodDispatcher;
 import com.libreshockwave.vm.opcode.dispatch.ListMethodDispatcher;
 import com.libreshockwave.vm.opcode.dispatch.PropListMethodDispatcher;
 import com.libreshockwave.vm.opcode.dispatch.ScriptInstanceMethodDispatcher;
@@ -120,6 +121,7 @@ public final class CallOpcodes {
             case Datum.Rect rect -> handleRectMethod(rect, methodName, args);
             case Datum.Str str -> StringMethodDispatcher.dispatch(str, methodName, args);
             case Datum.TimeoutRef ref -> TimeoutBuiltins.handleMethod(ref, methodName, args);
+            case Datum.ImageRef imageRef -> ImageMethodDispatcher.dispatch(imageRef, methodName, args);
             case Datum.VarRef varRef -> handleVarRefMethod(ctx, varRef, methodName, args);
             case Datum.ChunkRef chunkRef -> handleChunkRefMethod(ctx, chunkRef, methodName, args);
             case Datum.MovieRef m -> {

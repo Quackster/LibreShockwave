@@ -102,11 +102,17 @@ public class StagePanel extends JPanel {
         // Translate to canvas origin
         g2d.translate(canvasX, canvasY);
 
-        // Draw stage background
-        g2d.setColor(new Color(snapshot.backgroundColor()));
-        g2d.fillRect(0, 0, stageWidth, stageHeight);
+        // Draw stage background (or stage image if scripts have drawn on it)
+        if (snapshot.stageImage() != null) {
+            // Stage image contains the background + any script drawing (loading bar, etc.)
+            BufferedImage stageImg = snapshot.stageImage().toBufferedImage();
+            g2d.drawImage(stageImg, 0, 0, null);
+        } else {
+            g2d.setColor(new Color(snapshot.backgroundColor()));
+            g2d.fillRect(0, 0, stageWidth, stageHeight);
+        }
 
-        // Draw all sprites
+        // Draw all sprites on top of the stage image
         for (RenderSprite sprite : snapshot.sprites()) {
             drawSprite(g2d, sprite);
         }

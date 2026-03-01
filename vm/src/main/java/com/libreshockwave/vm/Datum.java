@@ -1,5 +1,7 @@
 package com.libreshockwave.vm;
 
+import com.libreshockwave.bitmap.Bitmap;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -113,6 +115,12 @@ public sealed interface Datum {
     record Color(int r, int g, int b) implements Datum {
         @Override
         public String toString() { return "color(" + r + ", " + g + ", " + b + ")"; }
+    }
+
+    /** Image reference (wraps a bitmap for Director's image API) */
+    record ImageRef(Bitmap bitmap) implements Datum {
+        @Override
+        public String toString() { return "(image " + bitmap.getWidth() + "x" + bitmap.getHeight() + ")"; }
     }
 
     /** Xtra reference (the Xtra class itself) */
@@ -263,6 +271,7 @@ public sealed interface Datum {
     default boolean isSymbol() { return this instanceof Symbol; }
     default boolean isList() { return this instanceof List; }
     default boolean isPropList() { return this instanceof PropList; }
+    default boolean isImage() { return this instanceof ImageRef; }
 
     default String typeName() {
         return switch (this) {
@@ -279,6 +288,7 @@ public sealed interface Datum {
             case Point p -> "point";
             case Rect r -> "rect";
             case Color c -> "color";
+            case ImageRef ir -> "image";
             case XtraRef xr -> "xtra";
             case XtraInstance xi -> "xtraInstance";
             case CastLibRef cl -> "castLib";
@@ -361,6 +371,7 @@ public sealed interface Datum {
             case Point p -> p;
             case Rect r -> r;
             case Color c -> c;
+            case ImageRef ir -> new ImageRef(ir.bitmap().copy());
             case SpriteRef sr -> sr;
             case CastMemberRef cm -> cm;
             case CastLibRef cl -> cl;
