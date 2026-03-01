@@ -40,6 +40,16 @@ public final class ConstructorBuiltins {
             ? new ArrayList<>(args.subList(1, args.size()))
             : new ArrayList<>();
 
+        // Handle new(#memberType, castLib) - create new cast member
+        if (target instanceof Datum.Symbol typeSymbol && !constructorArgs.isEmpty()
+                && constructorArgs.get(0) instanceof Datum.CastLibRef clr) {
+            CastLibProvider provider = CastLibProvider.getProvider();
+            if (provider != null) {
+                return provider.createMember(clr.castLibNumber(), typeSymbol.name());
+            }
+            return Datum.VOID;
+        }
+
         // Handle Xtra instances
         if (target instanceof Datum.XtraRef xtraRef) {
             return XtraBuiltins.createInstance(xtraRef, constructorArgs);

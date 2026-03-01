@@ -149,6 +149,15 @@ public interface CastLibProvider {
     }
 
     /**
+     * Create a new cast member of the given type in a cast library.
+     * Used by Director's new(#type, castLib) syntax.
+     * @param castLibNumber The cast library number
+     * @param memberType The member type name (e.g. "field", "text", "bitmap")
+     * @return A CastMemberRef datum, or VOID if creation failed
+     */
+    default Datum createMember(int castLibNumber, String memberType) { return Datum.VOID; }
+
+    /**
      * Get the Lscr chunk ID for a script at a specific cast lib and member number.
      * Used to compare script identity (e.g. in findAncestorForCall).
      * @param castLibNumber The cast library number

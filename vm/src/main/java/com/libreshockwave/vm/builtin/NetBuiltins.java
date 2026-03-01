@@ -29,6 +29,21 @@ public final class NetBuiltins {
         String netTextResult(Integer taskId);
         int netError(Integer taskId);
         String getStreamStatus(Integer taskId);
+
+        /**
+         * Get stream status as a PropList with #bytesSoFar, #bytesTotal, #state, #error keys.
+         * Director's getStreamStatus() returns a PropList, not a string.
+         */
+        default Datum getStreamStatusDatum(Integer taskId) {
+            String status = getStreamStatus(taskId);
+            var props = new java.util.LinkedHashMap<String, Datum>();
+            props.put("URL", Datum.EMPTY_STRING);
+            props.put("state", Datum.of(status));
+            props.put("bytesSoFar", Datum.ZERO);
+            props.put("bytesTotal", Datum.ZERO);
+            props.put("error", Datum.of("OK"));
+            return Datum.propList(props);
+        }
     }
 
     // Thread-local provider for VM access
@@ -52,6 +67,7 @@ public final class NetBuiltins {
     public static void register(Map<String, BiFunction<LingoVM, List<Datum>, Datum>> builtins) {
         builtins.put("preloadnetthing", NetBuiltins::preloadNetThing);
         builtins.put("getnetthing", NetBuiltins::preloadNetThing);  // Alias
+        builtins.put("getnettext", NetBuiltins::preloadNetThing);   // Alias - same async download
         builtins.put("postnetthing", NetBuiltins::postNetText);
         builtins.put("postnettext", NetBuiltins::postNetText);
         builtins.put("netdone", NetBuiltins::netDone);
@@ -133,31 +149,38 @@ public final class NetBuiltins {
 
     /**
      * netError(taskId)
-     * Returns the error code (0 = no error).
+     * Director returns "OK" for success, error code as string for errors.
+     * Lingo scripts compare: netError(id) = "OK"
      */
     private static Datum netError(LingoVM vm, List<Datum> args) {
         NetProvider provider = currentProvider.get();
         if (provider == null) {
-            return Datum.ZERO;
+            return Datum.of("OK");
         }
 
         Integer taskId = args.isEmpty() ? null : args.get(0).toInt();
         int error = provider.netError(taskId);
-        return Datum.of(error);
+        return error == 0 ? Datum.of("OK") : Datum.of(String.valueOf(error));
     }
 
     /**
      * getStreamStatus(taskId)
-     * Returns the status string: "Connecting", "Loading", "Complete", "Error"
+     * Returns a PropList: [#URL: url, #state: status, #bytesSoFar: n, #bytesTotal: n, #error: "OK"]
+     * Director returns a PropList, not a string. Scripts access tStreamStatus[#bytesSoFar].
      */
     private static Datum getStreamStatus(LingoVM vm, List<Datum> args) {
         NetProvider provider = currentProvider.get();
         if (provider == null) {
-            return Datum.of("Error");
+            var props = new java.util.LinkedHashMap<String, Datum>();
+            props.put("URL", Datum.EMPTY_STRING);
+            props.put("state", Datum.of("Error"));
+            props.put("bytesSoFar", Datum.ZERO);
+            props.put("bytesTotal", Datum.ZERO);
+            props.put("error", Datum.of("OK"));
+            return Datum.propList(props);
         }
 
         Integer taskId = args.isEmpty() ? null : args.get(0).toInt();
-        String status = provider.getStreamStatus(taskId);
-        return Datum.of(status);
+        return provider.getStreamStatusDatum(taskId);
     }
 }
