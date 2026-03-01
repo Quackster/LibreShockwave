@@ -172,6 +172,22 @@ public final class ScriptInstanceMethodDispatcher {
                 // In dirplayer-rs, addAt checks if datum is a List; for non-List types it returns Void
                 return Datum.VOID;
             }
+            case "handler" -> {
+                // handler(#handlerName) - check if this script instance has the named handler
+                // Returns TRUE (1) if found, FALSE (0) if not
+                if (args.isEmpty()) return Datum.ZERO;
+                String handlerName = args.get(0) instanceof Datum.Symbol sym ? sym.name() : args.get(0).toStr();
+                CastLibProvider provider = CastLibProvider.getProvider();
+                if (provider != null) {
+                    Datum.ScriptRef scriptRef = getScriptRefFromInstance(instance);
+                    if (scriptRef != null) {
+                        CastLibProvider.HandlerLocation loc = provider.findHandlerInScript(
+                                scriptRef.castLib(), scriptRef.member(), handlerName);
+                        return loc != null && loc.handler() != null ? Datum.TRUE : Datum.FALSE;
+                    }
+                }
+                return Datum.ZERO;
+            }
         }
 
         // SECOND: Check for Lingo handlers in the script (and ancestor chain)
