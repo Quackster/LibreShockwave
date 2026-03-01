@@ -1,6 +1,7 @@
 package com.libreshockwave.player.net;
 
 import com.libreshockwave.util.FileUtil;
+import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.builtin.NetBuiltins;
 
 import java.net.URI;
@@ -180,6 +181,35 @@ public class NetManager implements NetBuiltins.NetProvider {
     public String getStreamStatus(Integer taskId) {
         NetTask task = getTask(taskId);
         return task != null ? task.getStreamStatus() : "Error";
+    }
+
+    /**
+     * Get stream status as a PropList with #URL, #state, #bytesSoFar, #bytesTotal, #error keys.
+     * Director's getStreamStatus() returns a PropList that scripts access via tStreamStatus[#bytesSoFar].
+     */
+    @Override
+    public Datum getStreamStatusDatum(Integer taskId) {
+        NetTask task = getTask(taskId);
+        var props = new java.util.LinkedHashMap<String, Datum>();
+
+        if (task == null) {
+            props.put("URL", Datum.EMPTY_STRING);
+            props.put("state", Datum.of("Error"));
+            props.put("bytesSoFar", Datum.ZERO);
+            props.put("bytesTotal", Datum.ZERO);
+            props.put("error", Datum.of("OK"));
+            return Datum.propList(props);
+        }
+
+        int bytesSoFar = task.getResult() != null ? task.getResult().length : 0;
+        int bytesTotal = bytesSoFar; // For completed tasks, soFar == total
+
+        props.put("URL", Datum.of(task.getOriginalUrl() != null ? task.getOriginalUrl() : ""));
+        props.put("state", Datum.of(task.getStreamStatus()));
+        props.put("bytesSoFar", Datum.of(bytesSoFar));
+        props.put("bytesTotal", Datum.of(bytesTotal));
+        props.put("error", task.getErrorCode() == 0 ? Datum.of("OK") : Datum.of(String.valueOf(task.getErrorCode())));
+        return Datum.propList(props);
     }
 
     /**

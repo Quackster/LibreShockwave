@@ -392,6 +392,19 @@ public class CastLibManager implements CastLibProvider {
     }
 
     @Override
+    public Datum createMember(int castLibNumber, String memberType) {
+        CastLib castLib = getCastLib(castLibNumber);
+        if (castLib == null) {
+            return Datum.VOID;
+        }
+        CastMember member = castLib.createDynamicMember(memberType);
+        if (member == null) {
+            return Datum.VOID;
+        }
+        return new Datum.CastMemberRef(castLibNumber, member.getMemberNumber());
+    }
+
+    @Override
     public String getFieldValue(Object memberNameOrNum, int castId) {
         ensureInitialized();
 

@@ -1,6 +1,7 @@
 package com.libreshockwave.player.cast;
 
 import com.libreshockwave.DirectorFile;
+import com.libreshockwave.cast.MemberType;
 import com.libreshockwave.chunks.CastChunk;
 import com.libreshockwave.chunks.CastListChunk;
 import com.libreshockwave.chunks.CastMemberChunk;
@@ -539,6 +540,39 @@ public class CastLib {
             System.err.println("[CastLib] Failed to parse external cast " + name + ": " + e.getMessage());
         }
         return false;
+    }
+
+    // Track next dynamic member number for new members created at runtime
+    private int nextDynamicMember = 10000;
+
+    /**
+     * Create a new dynamic cast member of the given type.
+     * Used by Director's new(#type, castLib) syntax.
+     * @param typeName The member type name (e.g. "field", "text", "bitmap")
+     * @return The new CastMember, or null if creation failed
+     */
+    public CastMember createDynamicMember(String typeName) {
+        if (!isLoaded()) {
+            load();
+        }
+
+        // Find the next available member number
+        int memberNum = nextDynamicMember++;
+
+        // Map type name to MemberType
+        MemberType type = switch (typeName.toLowerCase()) {
+            case "field", "text" -> MemberType.TEXT;
+            case "bitmap" -> MemberType.BITMAP;
+            case "script" -> MemberType.SCRIPT;
+            case "button" -> MemberType.BUTTON;
+            case "shape" -> MemberType.SHAPE;
+            case "sound" -> MemberType.SOUND;
+            default -> MemberType.TEXT; // Default to text for unknown types
+        };
+
+        CastMember member = new CastMember(number, memberNum, type);
+        members.put(memberNum, member);
+        return member;
     }
 
     @Override

@@ -43,6 +43,9 @@ public class CastMember {
     private int regPointX;
     private int regPointY;
 
+    // Dynamic text content (for dynamically created field/text members)
+    private String dynamicText;
+
     public CastMember(int castLibNumber, int memberNumber, CastMemberChunk chunk, DirectorFile sourceFile) {
         this.castLibNumber = castLibNumber;
         this.memberNumber = memberNumber;
@@ -54,6 +57,19 @@ public class CastMember {
         this.memberType = chunk.memberType();
         this.regPointX = chunk.regPointX();
         this.regPointY = chunk.regPointY();
+    }
+
+    /**
+     * Constructor for dynamically created members (via new(#type, castLib)).
+     */
+    public CastMember(int castLibNumber, int memberNumber, MemberType memberType) {
+        this.castLibNumber = castLibNumber;
+        this.memberNumber = memberNumber;
+        this.chunk = null;
+        this.sourceFile = null;
+        this.name = "";
+        this.memberType = memberType;
+        this.state = State.LOADED; // Dynamic members are immediately ready
     }
 
     /**
@@ -139,8 +155,12 @@ public class CastMember {
 
     /**
      * Get the text content for text/field members.
+     * Returns dynamicText if set (via member.text = value), otherwise the loaded text content.
      */
     public String getTextContent() {
+        if (dynamicText != null) {
+            return dynamicText;
+        }
         if (!isLoaded()) {
             load();
 
@@ -315,8 +335,10 @@ public class CastMember {
     }
 
     private boolean setTypeProp(String prop, Datum value) {
-        // Type-specific property setting
-        // Most cast member properties are read-only during playback
+        if ("text".equals(prop) && (memberType == MemberType.TEXT || memberType == MemberType.BUTTON)) {
+            this.dynamicText = value.toStr();
+            return true;
+        }
         return false;
     }
 

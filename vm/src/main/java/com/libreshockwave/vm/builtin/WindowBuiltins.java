@@ -23,6 +23,7 @@ public final class WindowBuiltins {
         builtins.put("movetofront", WindowBuiltins::moveToFront);
         builtins.put("movetoback", WindowBuiltins::moveToBack);
         builtins.put("puppettempo", WindowBuiltins::puppetTempo);
+        builtins.put("cursor", (vm, args) -> Datum.VOID);  // No-op stub
     }
 
     /**
