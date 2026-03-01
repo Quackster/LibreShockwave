@@ -183,11 +183,21 @@ public class FrameContext {
     /**
      * Advance to the next frame (or pending frame if set).
      * Returns the new frame number.
+     *
+     * Matching dirplayer-rs: exitFrame events fire BEFORE computing the destination,
+     * so that go(the frame) during exitFrame correctly sets pendingFrame for this cycle.
      */
     public int advanceFrame() {
         int oldFrame = currentFrame;
-        int newFrame;
 
+        // 1. Dispatch exitFrame events FIRST (scripts may call go() here)
+        if (timeoutManager != null) {
+            timeoutManager.dispatchSystemEvent(vm, "exitFrame");
+        }
+        dispatchEvent(PlayerEvent.EXIT_FRAME);
+
+        // 2. NOW decide destination (picks up pendingFrame set by go() during exitFrame)
+        int newFrame;
         if (pendingFrame != null) {
             newFrame = pendingFrame;
             pendingFrame = null;
@@ -200,35 +210,18 @@ public class FrameContext {
             newFrame = 1;  // Loop
         }
 
+        // 3. Transition sprites and enter new frame
         if (newFrame != oldFrame) {
             logEvent("advanceFrame: " + oldFrame + " -> " + newFrame);
 
-            // Exit old frame
-            exitFrame(oldFrame, newFrame);
+            endSpritesLeavingFrame(oldFrame, newFrame);
+            behaviorManager.clearFrameScript();
 
-            // Enter new frame
             currentFrame = newFrame;
             enterFrame(newFrame);
         }
 
         return currentFrame;
-    }
-
-    /**
-     * Exit the current frame (cleanup).
-     */
-    private void exitFrame(int oldFrame, int newFrame) {
-        // exitFrame -> timeout targets first, then behaviors
-        if (timeoutManager != null) {
-            timeoutManager.dispatchSystemEvent(vm, "exitFrame");
-        }
-        dispatchEvent(PlayerEvent.EXIT_FRAME);
-
-        // End sprites that are leaving
-        endSpritesLeavingFrame(oldFrame, newFrame);
-
-        // Clear frame script
-        behaviorManager.clearFrameScript();
     }
 
     /**

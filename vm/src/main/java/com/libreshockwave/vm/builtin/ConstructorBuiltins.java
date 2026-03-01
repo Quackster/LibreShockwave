@@ -1,5 +1,6 @@
 package com.libreshockwave.vm.builtin;
 
+import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.LingoVM;
 
@@ -83,19 +84,22 @@ public final class ConstructorBuiltins {
 
         Datum.ScriptInstance instance = new Datum.ScriptInstance(instanceId, properties);
 
-        // Note: We intentionally do NOT automatically call the "new"/"create" constructor here.
-        // In Director, when you call new(script("SomeClass")), the returned instance is passed
-        // back to Lingo code which then calls the appropriate constructor methods explicitly.
-        // The bytecode typically does something like:
-        //   set instance = script("SomeClass").new()  -- creates instance
-        //   instance.create(args...)                  -- Lingo code calls create explicitly
-        //
-        // Automatically calling constructors here would cause:
-        // 1. Double-calling constructors (once here, once by Lingo code)
-        // 2. Infinite recursion when constructors create other instances
-        //
-        // The instance is returned with __scriptRef__ set so that method dispatch
-        // (like create(), dump(), etc.) works correctly via handleScriptInstanceMethod.
+        // Call the script's "new" handler if it exists (matching dirplayer-rs script.rs:208-231).
+        // This is how ancestor chains get built:
+        //   on new me → me.ancestor = new(script("ParentClass")) → return me
+        // No infinite recursion because each level is a different script.
+        if (provider != null) {
+            CastLibProvider.HandlerLocation location = provider.findHandlerInScript(
+                scriptRef.castLib(), scriptRef.member(), "new");
+            if (location != null && location.script() instanceof ScriptChunk script
+                    && location.handler() instanceof ScriptChunk.Handler handler) {
+                Datum result = vm.executeHandler(script, handler, args, instance);
+                // Return handler's return value (usually 'me' after ancestor setup)
+                if (result != null && !result.isVoid()) {
+                    return result;
+                }
+            }
+        }
 
         return instance;
     }
