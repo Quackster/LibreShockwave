@@ -417,11 +417,18 @@ public class CastLibManager implements CastLibProvider {
                 }
             }
         } else if (memberNameOrNum instanceof Integer num) {
-            // Find by number
-            int effectiveCastId = castId > 0 ? castId : 1;
+            // Find by number - decode combined slot numbers (castLib << 16 | member)
+            int effectiveCastId, effectiveMemberNum;
+            if (num > 65535) {
+                effectiveCastId = num >> 16;
+                effectiveMemberNum = num & 0xFFFF;
+            } else {
+                effectiveCastId = castId > 0 ? castId : 1;
+                effectiveMemberNum = num;
+            }
             CastLib castLib = getCastLib(effectiveCastId);
             if (castLib != null) {
-                member = castLib.getMember(num);
+                member = castLib.getMember(effectiveMemberNum);
             }
         }
 
