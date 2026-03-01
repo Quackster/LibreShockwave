@@ -112,6 +112,8 @@ public final class CallOpcodes {
             case Datum.Rect rect -> handleRectMethod(rect, methodName, args);
             case Datum.Str str -> StringMethodDispatcher.dispatch(str, methodName, args);
             case Datum.TimeoutRef ref -> TimeoutBuiltins.handleMethod(ref, methodName, args);
+            case Datum.VarRef varRef -> handleVarRefMethod(ctx, varRef, methodName, args);
+            case Datum.ChunkRef chunkRef -> handleChunkRefMethod(ctx, chunkRef, methodName, args);
             case Datum.MovieRef m -> {
                 // Method calls on _movie - try as builtin with args
                 if (ctx.isBuiltin(methodName)) {
@@ -185,6 +187,150 @@ public final class CallOpcodes {
                 };
             }
             default -> Datum.VOID;
+        };
+    }
+
+    /**
+     * Handle method calls on a VarRef (mutable variable reference).
+     * Supports getPropRef and getProp to create chunk references or extract chunk values.
+     */
+    private static Datum handleVarRefMethod(ExecutionContext ctx, Datum.VarRef varRef,
+                                            String methodName, List<Datum> args) {
+        String method = methodName.toLowerCase();
+        // Resolve the variable value
+        Datum value = resolveVarRef(ctx, varRef);
+        String str = value.toStr();
+
+        return switch (method) {
+            case "getpropref" -> {
+                // getPropRef(#chunkType, startIdx, endIdx)
+                if (args.size() < 2) yield Datum.VOID;
+                String chunkType = args.get(0) instanceof Datum.Symbol s ? s.name().toLowerCase() : "char";
+                int start = args.get(1).toInt();
+                int end = args.size() >= 3 ? args.get(2).toInt() : start;
+                yield new Datum.ChunkRef(varRef.varType(), varRef.rawIndex(), chunkType, start, end);
+            }
+            case "getprop" -> {
+                // getProp(#chunkType, startIdx, endIdx) - returns the value (no mutation)
+                if (args.size() < 2) yield Datum.EMPTY_STRING;
+                String chunkType = args.get(0) instanceof Datum.Symbol s ? s.name().toLowerCase() : "char";
+                int start = args.get(1).toInt();
+                int end = args.size() >= 3 ? args.get(2).toInt() : start;
+                yield Datum.of(getStringChunk(str, chunkType, start, end));
+            }
+            default -> {
+                // Delegate to string dispatch for other methods
+                if (value instanceof Datum.Str s) {
+                    yield StringMethodDispatcher.dispatch(s, methodName, args);
+                }
+                yield Datum.VOID;
+            }
+        };
+    }
+
+    /**
+     * Handle method calls on a ChunkRef (chunk range within a variable).
+     * Supports delete to remove the referenced chunk from the original variable.
+     */
+    private static Datum handleChunkRefMethod(ExecutionContext ctx, Datum.ChunkRef chunkRef,
+                                              String methodName, List<Datum> args) {
+        String method = methodName.toLowerCase();
+        return switch (method) {
+            case "delete" -> {
+                // Read current value
+                Datum.VarRef varRef = new Datum.VarRef(chunkRef.varType(), chunkRef.rawIndex());
+                Datum value = resolveVarRef(ctx, varRef);
+                String str = value.toStr();
+
+                // Delete the chunk range
+                String newStr = deleteChunkRange(str, chunkRef.chunkType(), chunkRef.start(), chunkRef.end());
+
+                // Write back to the original variable
+                setVarRef(ctx, varRef, Datum.of(newStr));
+                yield Datum.VOID;
+            }
+            default -> Datum.VOID;
+        };
+    }
+
+    /**
+     * Resolve a VarRef to its current value.
+     */
+    private static Datum resolveVarRef(ExecutionContext ctx, Datum.VarRef varRef) {
+        int variableMultiplier = ctx.getVariableMultiplier();
+        int index = varRef.rawIndex() / variableMultiplier;
+        return switch (varRef.varType()) {
+            case 0x5 -> ctx.getLocal(index);   // LOCAL
+            case 0x4 -> ctx.getParam(index);   // ARG/PARAM
+            case 0x3 -> {                       // PROPERTY
+                Datum receiver = ctx.getReceiver();
+                if (receiver instanceof Datum.ScriptInstance si) {
+                    String propName = ctx.resolveName(varRef.rawIndex());
+                    Datum v = si.properties().get(propName);
+                    yield v != null ? v : Datum.VOID;
+                }
+                yield Datum.VOID;
+            }
+            case 0x1, 0x2 -> {                 // GLOBAL
+                String name = ctx.resolveName(varRef.rawIndex());
+                yield ctx.getGlobal(name);
+            }
+            default -> Datum.VOID;
+        };
+    }
+
+    /**
+     * Set the value of a VarRef.
+     */
+    private static void setVarRef(ExecutionContext ctx, Datum.VarRef varRef, Datum value) {
+        int variableMultiplier = ctx.getVariableMultiplier();
+        int index = varRef.rawIndex() / variableMultiplier;
+        switch (varRef.varType()) {
+            case 0x5 -> ctx.setLocal(index, value);   // LOCAL
+            case 0x4 -> ctx.setParam(index, value);   // ARG/PARAM
+            case 0x3 -> {                               // PROPERTY
+                Datum receiver = ctx.getReceiver();
+                if (receiver instanceof Datum.ScriptInstance si) {
+                    String propName = ctx.resolveName(varRef.rawIndex());
+                    si.properties().put(propName, value);
+                }
+            }
+            case 0x1, 0x2 -> {                         // GLOBAL
+                String name = ctx.resolveName(varRef.rawIndex());
+                ctx.setGlobal(name, value);
+            }
+        }
+    }
+
+    /**
+     * Get a chunk range from a string.
+     */
+    private static String getStringChunk(String str, String chunkType, int start, int end) {
+        if (str.isEmpty() || start < 1) return "";
+        return switch (chunkType) {
+            case "char" -> {
+                int s = Math.max(0, start - 1);
+                int e = Math.min(str.length(), end);
+                if (s >= str.length() || s >= e) yield "";
+                yield str.substring(s, e);
+            }
+            default -> str; // Other chunk types can be added as needed
+        };
+    }
+
+    /**
+     * Delete a chunk range from a string and return the result.
+     */
+    private static String deleteChunkRange(String str, String chunkType, int start, int end) {
+        if (str.isEmpty() || start < 1) return str;
+        return switch (chunkType) {
+            case "char" -> {
+                int s = Math.max(0, start - 1);
+                int e = Math.min(str.length(), end);
+                if (s >= str.length()) yield str;
+                yield str.substring(0, s) + str.substring(e);
+            }
+            default -> str;
         };
     }
 
