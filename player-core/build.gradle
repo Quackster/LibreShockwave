@@ -107,6 +107,18 @@ tasks.register('runTimeoutScanTest', JavaExec) {
     }
 }
 
+// Task to trace rendering activity
+tasks.register('runRenderTraceTest', JavaExec) {
+    group = 'verification'
+    description = 'Trace rendering/drawing activity in habbo.dcr beyond startup'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.RenderTraceTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
 // Task to debug cast lib scripts
 tasks.register('runCastLibDebugTest', JavaExec) {
     group = 'verification'

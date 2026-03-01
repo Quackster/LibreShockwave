@@ -18,6 +18,7 @@ public final class ListBuiltins {
         builtins.put("count", ListBuiltins::count);
         builtins.put("getat", ListBuiltins::getAt);
         builtins.put("addat", ListBuiltins::addAt);
+        builtins.put("append", ListBuiltins::append);
     }
 
     private static Datum count(LingoVM vm, List<Datum> args) {
@@ -39,6 +40,21 @@ public final class ListBuiltins {
             if (index >= 0 && index < l.items().size()) {
                 return l.items().get(index);
             }
+        }
+        return Datum.VOID;
+    }
+
+    /**
+     * append(list, value) - add value to the end of a list.
+     */
+    private static Datum append(LingoVM vm, List<Datum> args) {
+        if (args.size() < 2) return Datum.VOID;
+        Datum datum = args.get(0);
+        if (datum instanceof Datum.List list) {
+            System.out.println("[ListBuiltins] append() to list (size=" + list.items().size() + "): " + args.get(1).getClass().getSimpleName());
+            list.items().add(args.get(1));
+        } else {
+            System.out.println("[ListBuiltins] append() on non-list: " + datum.getClass().getSimpleName());
         }
         return Datum.VOID;
     }

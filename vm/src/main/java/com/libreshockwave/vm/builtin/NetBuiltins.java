@@ -92,6 +92,7 @@ public final class NetBuiltins {
         }
 
         String url = args.get(0).toStr();
+        System.out.println("[NetBuiltins] preloadNetThing: " + url);
         int taskId = provider.preloadNetThing(url);
         return Datum.of(taskId);
     }
@@ -129,6 +130,9 @@ public final class NetBuiltins {
 
         Integer taskId = args.isEmpty() ? null : args.get(0).toInt();
         boolean done = provider.netDone(taskId);
+        if (done || (taskId != null && taskId >= 40)) {
+            System.out.println("[NetBuiltins] netDone(" + taskId + ") = " + done);
+        }
         return done ? Datum.TRUE : Datum.FALSE;
     }
 

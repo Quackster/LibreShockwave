@@ -30,6 +30,7 @@ public class MovieProperties implements MoviePropertyProvider {
     private boolean traceScript = false;
     private String traceLogFile = "";
     private boolean allowCustomCaching = false;
+    private Datum alertHook = Datum.VOID;
 
     // actorList: objects in this list receive stepFrame on each frame advance
     private Datum actorList = new Datum.List(new java.util.ArrayList<>());
@@ -101,6 +102,7 @@ public class MovieProperties implements MoviePropertyProvider {
             case "tracescript" -> Datum.of(traceScript ? 1 : 0);
             case "tracelogfile" -> Datum.of(traceLogFile);
             case "allowcustomcaching" -> Datum.of(allowCustomCaching ? 1 : 0);
+            case "alerthook" -> alertHook;
 
             // actorList
             case "actorlist" -> actorList;
@@ -229,6 +231,10 @@ public class MovieProperties implements MoviePropertyProvider {
                 player.setTempo(value.toInt());
                 return true;
             }
+            case "alerthook" -> {
+                alertHook = value;
+                return true;
+            }
             case "debugplaybackenabled" -> {
                 // Accepted as no-op (matching dirplayer-rs TODO)
                 return true;
@@ -298,5 +304,9 @@ public class MovieProperties implements MoviePropertyProvider {
 
     public Datum getActorList() {
         return actorList;
+    }
+
+    public Datum getAlertHook() {
+        return alertHook;
     }
 }
