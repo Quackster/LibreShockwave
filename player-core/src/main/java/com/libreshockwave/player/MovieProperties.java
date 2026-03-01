@@ -32,6 +32,9 @@ public class MovieProperties implements MoviePropertyProvider {
     private boolean allowCustomCaching = false;
     private Datum alertHook = Datum.VOID;
 
+    // Stage properties
+    private String stageTitle = "";
+
     // actorList: objects in this list receive stepFrame on each frame advance
     private Datum actorList = new Datum.List(new java.util.ArrayList<>());
 
@@ -248,6 +251,53 @@ public class MovieProperties implements MoviePropertyProvider {
                 return false;
             }
         }
+    }
+
+    @Override
+    public Datum getStageProp(String propName) {
+        String prop = propName.toLowerCase();
+        return switch (prop) {
+            case "rect" -> {
+                int w = file != null ? file.getStageWidth() : 640;
+                int h = file != null ? file.getStageHeight() : 480;
+                yield new Datum.Rect(0, 0, w, h);
+            }
+            case "sourcerect" -> {
+                int w = file != null ? file.getStageWidth() : 640;
+                int h = file != null ? file.getStageHeight() : 480;
+                yield new Datum.Rect(0, 0, w, h);
+            }
+            case "drawrect" -> {
+                int w = file != null ? file.getStageWidth() : 640;
+                int h = file != null ? file.getStageHeight() : 480;
+                yield new Datum.Rect(0, 0, w, h);
+            }
+            case "title" -> Datum.of(stageTitle);
+            case "visible" -> Datum.TRUE;
+            case "bgcolor" -> Datum.of(player.getStageRenderer().getBackgroundColor());
+            case "image" -> Datum.VOID; // TODO: stage image object
+            default -> getMovieProp(propName);
+        };
+    }
+
+    @Override
+    public boolean setStageProp(String propName, Datum value) {
+        String prop = propName.toLowerCase();
+        return switch (prop) {
+            case "title" -> {
+                stageTitle = value.toStr();
+                yield true;
+            }
+            case "visible" -> true; // no-op, always visible
+            case "bgcolor" -> {
+                if (value instanceof Datum.Color c) {
+                    player.getStageRenderer().setBackgroundColor(
+                        (c.r() << 16) | (c.g() << 8) | c.b());
+                }
+                yield true;
+            }
+            default -> setMovieProp(propName, value);
+        };
     }
 
     @Override

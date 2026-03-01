@@ -223,10 +223,16 @@ public class CastLibManager implements CastLibProvider {
             // Search in specific cast
             CastLib castLib = getCastLib(castLibNumber);
             if (castLib != null) {
+                // Search file members first
                 CastMemberChunk member = castLib.findMemberByName(memberName);
                 if (member != null) {
                     int memberNumber = castLib.getMemberNumber(member);
                     return new Datum.CastMemberRef(castLibNumber, memberNumber);
+                }
+                // Search dynamic members (created at runtime via new(#type, castLib))
+                CastMember dynamic = castLib.getMemberByName(memberName);
+                if (dynamic != null) {
+                    return new Datum.CastMemberRef(castLibNumber, dynamic.getMemberNumber());
                 }
             }
         } else {
@@ -239,6 +245,14 @@ public class CastLibManager implements CastLibProvider {
                 if (member != null) {
                     int memberNumber = castLib.getMemberNumber(member);
                     return new Datum.CastMemberRef(castLib.getNumber(), memberNumber);
+                }
+            }
+            // If not found in file members, search dynamic members in all casts
+            for (CastLib castLib : castLibs.values()) {
+                if (!castLib.isLoaded()) continue;
+                CastMember dynamic = castLib.getMemberByName(memberName);
+                if (dynamic != null) {
+                    return new Datum.CastMemberRef(castLib.getNumber(), dynamic.getMemberNumber());
                 }
             }
         }
@@ -302,6 +316,18 @@ public class CastLibManager implements CastLibProvider {
             return null;
         }
         return castLib.findMemberByNumber(memberNumber);
+    }
+
+    /**
+     * Get a dynamic CastMember object (created at runtime via new(#type, castLib)).
+     * Used by the renderer when CastMemberChunk lookup fails for dynamically created members.
+     */
+    public CastMember getDynamicMember(int castLibNumber, int memberNumber) {
+        CastLib castLib = getCastLib(castLibNumber);
+        if (castLib == null) {
+            return null;
+        }
+        return castLib.getMember(memberNumber);
     }
 
     /**

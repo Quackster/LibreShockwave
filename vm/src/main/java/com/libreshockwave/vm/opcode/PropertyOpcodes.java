@@ -124,6 +124,10 @@ public final class PropertyOpcodes {
                 SpritePropertyProvider spriteProvider = SpritePropertyProvider.getProvider();
                 yield spriteProvider != null ? spriteProvider.getSpriteProp(sr.channel(), propName) : Datum.VOID;
             }
+            case Datum.StageRef s -> {
+                MoviePropertyProvider stageProvider = MoviePropertyProvider.getProvider();
+                yield stageProvider != null ? stageProvider.getStageProp(propName) : Datum.VOID;
+            }
             case Datum.Point point -> {
                 yield switch (propName.toLowerCase()) {
                     case "loch", "x" -> Datum.of(point.x());
@@ -222,6 +226,12 @@ public final class PropertyOpcodes {
                 SpritePropertyProvider spriteProvider = SpritePropertyProvider.getProvider();
                 if (spriteProvider != null) {
                     spriteProvider.setSpriteProp(sr.channel(), propName, value);
+                }
+            }
+            case Datum.StageRef s -> {
+                MoviePropertyProvider stageProvider = MoviePropertyProvider.getProvider();
+                if (stageProvider != null) {
+                    stageProvider.setStageProp(propName, value);
                 }
             }
             default -> { /* ignore */ }
@@ -595,6 +605,10 @@ public final class PropertyOpcodes {
             }
             case Datum.XtraInstance xi -> XtraBuiltins.getProperty(xi, propName);
             case Datum.TimeoutRef tr -> TimeoutBuiltins.getProperty(tr, propName);
+            case Datum.StageRef s -> {
+                MoviePropertyProvider stageProvider = MoviePropertyProvider.getProvider();
+                yield stageProvider != null ? stageProvider.getStageProp(propName) : Datum.VOID;
+            }
             default -> getChainedObjProp(obj, propName);
         };
 
@@ -619,6 +633,10 @@ public final class PropertyOpcodes {
             case Datum.ScriptInstance si -> AncestorChainWalker.getProperty(si, propName);
             case Datum.CastMemberRef cmr -> getCastMemberProp(cmr, propName);
             case Datum.CastLibRef clr -> getCastLibProp(clr, propName);
+            case Datum.StageRef s -> {
+                MoviePropertyProvider stageProvider = MoviePropertyProvider.getProvider();
+                yield stageProvider != null ? stageProvider.getStageProp(propName) : Datum.VOID;
+            }
             default -> Datum.VOID;
         };
     }

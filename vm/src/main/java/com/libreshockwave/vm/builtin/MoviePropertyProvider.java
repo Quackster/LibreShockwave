@@ -54,6 +54,25 @@ public interface MoviePropertyProvider {
     }
 
     /**
+     * Get a stage object property (e.g., (the stage).rect, (the stage).title).
+     * @param propName The property name
+     * @return The property value, or VOID if not found
+     */
+    default Datum getStageProp(String propName) {
+        return getMovieProp(propName);
+    }
+
+    /**
+     * Set a stage object property (e.g., (the stage).title = "...").
+     * @param propName The property name
+     * @param value The value to set
+     * @return true if the property was set
+     */
+    default boolean setStageProp(String propName, Datum value) {
+        return setMovieProp(propName, value);
+    }
+
+    /**
      * Go to a specific frame number.
      * @param frame The 1-based frame number to go to
      */

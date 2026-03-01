@@ -4,7 +4,9 @@ import com.libreshockwave.DirectorFile;
 import com.libreshockwave.cast.MemberType;
 import com.libreshockwave.chunks.CastMemberChunk;
 import com.libreshockwave.chunks.ScoreChunk;
+import com.libreshockwave.player.cast.CastLib;
 import com.libreshockwave.player.cast.CastLibManager;
+import com.libreshockwave.player.cast.CastMember;
 import com.libreshockwave.player.sprite.SpriteState;
 
 import java.util.ArrayList;
@@ -152,16 +154,23 @@ public class StageRenderer {
             return null;
         }
 
-        // Look up the cast member - try original DCR first, then dynamic casts
+        // Look up the cast member - try original DCR first, then external casts
         CastMemberChunk member = file != null
             ? file.getCastMemberByIndex(castLib, castMember) : null;
         if (member == null && castLibManager != null) {
             member = castLibManager.getCastMember(castLib, castMember);
         }
 
+        // If still not found, check dynamic members (created at runtime by window system, etc.)
+        CastMember dynamicMember = null;
         RenderSprite.SpriteType type = RenderSprite.SpriteType.UNKNOWN;
         if (member != null) {
             type = determineSpriteTypeFromMember(member);
+        } else if (castLibManager != null) {
+            dynamicMember = castLibManager.getDynamicMember(castLib, castMember);
+            if (dynamicMember != null) {
+                type = determineSpriteTypeFromDynamic(dynamicMember);
+            }
         }
 
         return new RenderSprite(
@@ -169,9 +178,26 @@ public class StageRenderer {
             state.getLocH(), state.getLocV(),
             state.getWidth(), state.getHeight(),
             state.isVisible(),
-            type, member,
+            type, member, dynamicMember,
             state.getForeColor(), state.getBackColor(), state.getInk(), state.getBlend()
         );
+    }
+
+    /**
+     * Determine sprite type from a dynamic CastMember (runtime-created member).
+     */
+    private RenderSprite.SpriteType determineSpriteTypeFromDynamic(CastMember member) {
+        MemberType memberType = member.getMemberType();
+        if (memberType == null) {
+            return RenderSprite.SpriteType.UNKNOWN;
+        }
+        return switch (memberType) {
+            case BITMAP -> RenderSprite.SpriteType.BITMAP;
+            case SHAPE -> RenderSprite.SpriteType.SHAPE;
+            case TEXT -> RenderSprite.SpriteType.TEXT;
+            case BUTTON -> RenderSprite.SpriteType.BUTTON;
+            default -> RenderSprite.SpriteType.UNKNOWN;
+        };
     }
 
     private RenderSprite.SpriteType determineSpriteType(CastMemberChunk member, ScoreChunk.ChannelData data) {

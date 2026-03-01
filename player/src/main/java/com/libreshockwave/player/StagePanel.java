@@ -243,17 +243,23 @@ public class StagePanel extends JPanel {
     }
 
     private void drawText(Graphics2D g, RenderSprite sprite, int x, int y, int width, int height) {
-        CastMemberChunk member = sprite.getCastMember();
         String text = null;
 
-        // Try to get text content from the cast member
-        if (member != null && player != null) {
+        if (player != null) {
             CastLibManager clm = player.getCastLibManager();
             if (clm != null) {
-                // Get the CastMember object which has text content
-                int castLib = sprite.getCastMember() != null ? 0 : 0;
-                // Use getFieldValue to find text content
-                text = clm.getFieldValue(member.name(), 0);
+                // Try dynamic member first (runtime-created text/field members)
+                CastMember dynMember = sprite.getDynamicMember();
+                if (dynMember != null) {
+                    text = dynMember.getTextContent();
+                }
+                // Fall back to file-loaded member lookup by name
+                if ((text == null || text.isEmpty()) && sprite.getCastMember() != null) {
+                    String memberName = sprite.getCastMember().name();
+                    if (memberName != null && !memberName.isEmpty()) {
+                        text = clm.getFieldValue(memberName, 0);
+                    }
+                }
             }
         }
 
