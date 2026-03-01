@@ -39,6 +39,7 @@ public class NetManager implements NetBuiltins.NetProvider {
     private int nextTaskId = 1;
     private volatile int lastTaskId = 0;  // Track the most recent task for netDone() with no args
     private String basePath;
+    private String localHttpRoot;  // For resolving localhost HTTP URLs to local filesystem
 
     // Callback for when a fetch completes (used to integrate with CastLibManager)
     private NetCompletionCallback completionCallback;
@@ -77,6 +78,15 @@ public class NetManager implements NetBuiltins.NetProvider {
 
     public String getBasePath() {
         return basePath;
+    }
+
+    /**
+     * Set a local filesystem root for resolving localhost HTTP URLs.
+     * When set, URLs like http://localhost/path/file.txt will be resolved
+     * to localHttpRoot/path/file.txt on the filesystem.
+     */
+    public void setLocalHttpRoot(String root) {
+        this.localHttpRoot = root;
     }
 
     /**
@@ -257,7 +267,28 @@ public class NetManager implements NetBuiltins.NetProvider {
             cleanUrl = cleanUrl.substring(0, queryIdx);
         }
 
-        return Paths.get(cleanUrl).getFileName().toString();
+        // For HTTP(S) URLs, extract just the filename from the URL path
+        // (Paths.get() fails on Windows for URLs like "http://localhost/path/file.txt")
+        if (cleanUrl.startsWith("http://") || cleanUrl.startsWith("https://")) {
+            int lastSlash = cleanUrl.lastIndexOf('/');
+            if (lastSlash >= 0 && lastSlash < cleanUrl.length() - 1) {
+                return cleanUrl.substring(lastSlash + 1);
+            }
+            return cleanUrl;
+        }
+
+        try {
+            return Paths.get(cleanUrl).getFileName().toString();
+        } catch (Exception e) {
+            // Fallback: extract filename from last path separator
+            int lastSlash = cleanUrl.lastIndexOf('/');
+            int lastBackslash = cleanUrl.lastIndexOf('\\');
+            int lastSep = Math.max(lastSlash, lastBackslash);
+            if (lastSep >= 0 && lastSep < cleanUrl.length() - 1) {
+                return cleanUrl.substring(lastSep + 1);
+            }
+            return cleanUrl;
+        }
     }
 
     private void executeTask(NetTask task) {
@@ -302,11 +333,26 @@ public class NetManager implements NetBuiltins.NetProvider {
                 return;
             }
 
+            // For localhost HTTP URLs with a localHttpRoot, resolve the URL path
+            // against the local filesystem root FIRST (preserves the URL path structure)
+            if (localHttpRoot != null && !localHttpRoot.isEmpty()
+                    && (url.startsWith("http://localhost") || url.startsWith("http://127.0.0.1"))) {
+                String urlPath = extractUrlPath(url);
+                if (urlPath != null) {
+                    Path localPath = Path.of(localHttpRoot).resolve(urlPath.startsWith("/") ? urlPath.substring(1) : urlPath);
+                    byte[] data = tryLoadFromFile(localPath, cacheKey);
+                    if (data != null) {
+                        future.complete(data);
+                        return;
+                    }
+                }
+            }
+
             // Extract just the filename - the path inside the DCR may be an absolute path
             // from the author's machine, we want to resolve relative to where the DCR was loaded from
             String fileName = FileUtil.getFileName(url);
 
-            // Always try local file first if we have a basePath (the DCR/DIR location)
+            // Try local file from basePath (the DCR/DIR location)
             if (basePath != null && !basePath.isEmpty()
                     && !basePath.startsWith("http://") && !basePath.startsWith("https://")) {
                 Path base = Path.of(basePath);
@@ -579,6 +625,28 @@ public class NetManager implements NetBuiltins.NetProvider {
 
         // No fallbacks
         return new String[] { url };
+    }
+
+    /**
+     * Extract the path component from an HTTP URL (stripping host, port, and query params).
+     */
+    private String extractUrlPath(String url) {
+        try {
+            // Strip query parameters
+            String cleanUrl = url;
+            int queryIdx = cleanUrl.indexOf('?');
+            if (queryIdx >= 0) {
+                cleanUrl = cleanUrl.substring(0, queryIdx);
+            }
+            // Find the path after host:port
+            int schemeEnd = cleanUrl.indexOf("://");
+            if (schemeEnd < 0) return null;
+            int pathStart = cleanUrl.indexOf('/', schemeEnd + 3);
+            if (pathStart < 0) return "/";
+            return cleanUrl.substring(pathStart);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private void notifyCompletion(String fileName, byte[] data) {

@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Test that runs habbo.dcr until it reaches getThreadManager().create(#core, #core).
@@ -36,6 +37,17 @@ public class HabboRunTest {
         System.out.println("Loaded. Scripts: " + file.getScripts().size());
 
         Player player = new Player(file);
+
+        // Set external params — feeds external_variables.txt URL to override
+        // the Finnish defaults baked into the DCR with AU locale entries.
+        player.setExternalParams(Map.of(
+            "sw1", "external.variables.txt=http://localhost/gamedata/external_variables.txt;" +
+                   "external.texts.txt=http://localhost/gamedata/external_texts.txt"
+        ));
+
+        // Resolve localhost HTTP URLs to local filesystem (no web server needed)
+        player.getNetManager().setLocalHttpRoot("C:/xampp/htdocs");
+
         LingoVM vm = player.getVM();
 
         // Set high step limit
