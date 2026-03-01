@@ -566,6 +566,7 @@ public final class TypeBuiltins {
             case Datum.Point p -> "point";
             case Datum.Rect r -> "rect";
             case Datum.Color c -> "color";
+            case Datum.ImageRef ir -> "image";
             case Datum.SpriteRef s -> "sprite";
             case Datum.CastMemberRef c -> "member";
             case Datum.CastLibRef c -> "castLib";

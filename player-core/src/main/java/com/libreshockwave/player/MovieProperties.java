@@ -1,6 +1,7 @@
 package com.libreshockwave.player;
 
 import com.libreshockwave.DirectorFile;
+import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.builtin.MoviePropertyProvider;
 
@@ -275,7 +276,10 @@ public class MovieProperties implements MoviePropertyProvider {
             case "title" -> Datum.of(stageTitle);
             case "visible" -> Datum.TRUE;
             case "bgcolor" -> Datum.of(player.getStageRenderer().getBackgroundColor());
-            case "image" -> Datum.VOID; // TODO: stage image object
+            case "image" -> {
+                Bitmap stageImage = player.getStageRenderer().getStageImage();
+                yield new Datum.ImageRef(stageImage);
+            }
             default -> getMovieProp(propName);
         };
     }

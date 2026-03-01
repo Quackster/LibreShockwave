@@ -8,6 +8,7 @@ import com.libreshockwave.vm.builtin.MoviePropertyProvider;
 import com.libreshockwave.vm.builtin.SpritePropertyProvider;
 import com.libreshockwave.vm.builtin.TimeoutBuiltins;
 import com.libreshockwave.vm.builtin.XtraBuiltins;
+import com.libreshockwave.vm.opcode.dispatch.ImageMethodDispatcher;
 import com.libreshockwave.vm.util.AncestorChainWalker;
 import com.libreshockwave.vm.util.StringChunkUtils;
 
@@ -128,6 +129,7 @@ public final class PropertyOpcodes {
                 MoviePropertyProvider stageProvider = MoviePropertyProvider.getProvider();
                 yield stageProvider != null ? stageProvider.getStageProp(propName) : Datum.VOID;
             }
+            case Datum.ImageRef ir -> ImageMethodDispatcher.getProperty(ir, propName);
             case Datum.Point point -> {
                 yield switch (propName.toLowerCase()) {
                     case "loch", "x" -> Datum.of(point.x());
@@ -609,6 +611,7 @@ public final class PropertyOpcodes {
                 MoviePropertyProvider stageProvider = MoviePropertyProvider.getProvider();
                 yield stageProvider != null ? stageProvider.getStageProp(propName) : Datum.VOID;
             }
+            case Datum.ImageRef ir -> ImageMethodDispatcher.getProperty(ir, propName);
             default -> getChainedObjProp(obj, propName);
         };
 
@@ -637,6 +640,7 @@ public final class PropertyOpcodes {
                 MoviePropertyProvider stageProvider = MoviePropertyProvider.getProvider();
                 yield stageProvider != null ? stageProvider.getStageProp(propName) : Datum.VOID;
             }
+            case Datum.ImageRef ir -> ImageMethodDispatcher.getProperty(ir, propName);
             default -> Datum.VOID;
         };
     }

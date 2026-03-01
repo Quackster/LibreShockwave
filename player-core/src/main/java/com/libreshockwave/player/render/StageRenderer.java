@@ -1,6 +1,7 @@
 package com.libreshockwave.player.render;
 
 import com.libreshockwave.DirectorFile;
+import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.cast.MemberType;
 import com.libreshockwave.chunks.CastMemberChunk;
 import com.libreshockwave.chunks.ScoreChunk;
@@ -25,6 +26,9 @@ public class StageRenderer {
     private CastLibManager castLibManager;
 
     private int backgroundColor = 0xFFFFFF;  // White default
+
+    // Stage image buffer - used by (the stage).image for direct pixel drawing
+    private Bitmap stageImage;
 
     public StageRenderer(DirectorFile file) {
         this.file = file;
@@ -53,6 +57,29 @@ public class StageRenderer {
 
     public void setBackgroundColor(int color) {
         this.backgroundColor = color;
+    }
+
+    /**
+     * Get the stage image buffer for direct pixel drawing.
+     * Creates the buffer on first access, sized to the stage dimensions.
+     * Filled with background color - Lingo scripts expect an opaque stage image.
+     */
+    public Bitmap getStageImage() {
+        if (stageImage == null) {
+            int w = getStageWidth();
+            int h = getStageHeight();
+            stageImage = new Bitmap(w, h, 32);
+            // Fill with background color (opaque) - Director's stage image is opaque
+            stageImage.fill(0xFF000000 | (backgroundColor & 0xFFFFFF));
+        }
+        return stageImage;
+    }
+
+    /**
+     * Check whether the stage image buffer has been created (i.e., scripts have used it).
+     */
+    public boolean hasStageImage() {
+        return stageImage != null;
     }
 
     /**

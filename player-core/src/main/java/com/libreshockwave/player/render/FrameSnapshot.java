@@ -1,5 +1,7 @@
 package com.libreshockwave.player.render;
 
+import com.libreshockwave.bitmap.Bitmap;
+
 import java.util.List;
 
 /**
@@ -12,7 +14,8 @@ public record FrameSnapshot(
     int stageHeight,
     int backgroundColor,
     List<RenderSprite> sprites,
-    String debugInfo
+    String debugInfo,
+    Bitmap stageImage
 ) {
     /**
      * Create a snapshot from the stage renderer.
@@ -27,7 +30,8 @@ public record FrameSnapshot(
             renderer.getStageHeight(),
             renderer.getBackgroundColor(),
             List.copyOf(sprites),
-            debug
+            debug,
+            renderer.hasStageImage() ? renderer.getStageImage() : null
         );
     }
 }
