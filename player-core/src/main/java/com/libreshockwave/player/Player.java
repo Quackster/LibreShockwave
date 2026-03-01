@@ -68,9 +68,6 @@ public class Player {
     // Cast loaded listener (called when external cast libraries are loaded and matched)
     private Runnable castLoadedListener;
 
-    // Preload progress listener (called for every net completion from preloadAllCasts)
-    private Runnable preloadProgressListener;
-
     // Debug mode
     private boolean debugEnabled = false;
 
@@ -172,10 +169,6 @@ public class Player {
                 if (castLoadedListener != null) {
                     castLoadedListener.run();
                 }
-            }
-            // Always notify preload progress (for loading screen)
-            if (preloadProgressListener != null) {
-                preloadProgressListener.run();
             }
         });
 
@@ -405,15 +398,6 @@ public class Player {
      */
     public void setCastLoadedListener(Runnable listener) {
         this.castLoadedListener = listener;
-    }
-
-    /**
-     * Set a listener to be notified on each preload network completion.
-     * Fires for every completed preloadNetThing task, regardless of whether
-     * the cast was successfully matched. Used for loading screen progress.
-     */
-    public void setPreloadProgressListener(Runnable listener) {
-        this.preloadProgressListener = listener;
     }
 
     public void setDebugEnabled(boolean enabled) {

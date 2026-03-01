@@ -611,40 +611,16 @@ public class PlayerFrame extends JFrame {
 
         stagePanel.setPlayer(player);
 
-        // Automatically preload all external casts so their scripts are available for debugging
+        // Preload all external casts so their scripts are available for debugging
         int preloadCount = player.preloadAllCasts();
-        LoadingScreen loadingScreen = stagePanel.getLoadingScreen();
         if (preloadCount > 0) {
             statusLabel.setText(statusLabel.getText() + " | Preloading " + preloadCount + " external cast(s)...");
-            loadingScreen.start(preloadCount);
-
-            // When loading completes, show full bar for 1 second before dismissing
-            loadingScreen.setOnComplete(() -> {
-                Timer dismissTimer = new Timer(1000, e -> {
-                    loadingScreen.dismiss();
-                    stagePanel.repaint();
-                });
-                dismissTimer.setRepeats(false);
-                dismissTimer.start();
-            });
-
-            stagePanel.repaint();
         }
 
         // Refresh debugger panel when external casts are successfully loaded and matched
         player.setCastLoadedListener(() -> {
             SwingUtilities.invokeLater(() -> {
                 debuggerPanel.refreshScriptList();
-            });
-        });
-
-        // Update loading screen progress for every preload completion (even unmatched casts)
-        player.setPreloadProgressListener(() -> {
-            SwingUtilities.invokeLater(() -> {
-                if (loadingScreen.isActive()) {
-                    loadingScreen.incrementProgress();
-                    stagePanel.repaint();
-                }
             });
         });
 
