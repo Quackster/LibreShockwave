@@ -90,7 +90,12 @@ public class WasmPlayerApp {
     @Export(name = "tick")
     public static int tick() {
         if (wasmPlayer == null) return 0;
-        return wasmPlayer.tick() ? 1 : 0;
+        try {
+            return wasmPlayer.tick() ? 1 : 0;
+        } catch (Exception e) {
+            System.err.println("[WasmPlayerApp] Error in tick(): " + e.getMessage());
+            return 0;
+        }
     }
 
     /**
@@ -100,14 +105,24 @@ public class WasmPlayerApp {
     @Export(name = "render")
     public static int render() {
         if (wasmPlayer == null) return 0;
-        wasmPlayer.render();
-        byte[] buf = wasmPlayer.getFrameBuffer();
-        return buf != null ? Address.ofData(buf).toInt() : 0;
+        try {
+            wasmPlayer.render();
+            byte[] buf = wasmPlayer.getFrameBuffer();
+            return buf != null ? Address.ofData(buf).toInt() : 0;
+        } catch (Exception e) {
+            System.err.println("[WasmPlayerApp] Error in render(): " + e.getMessage());
+            return 0;
+        }
     }
 
     @Export(name = "play")
     public static void play() {
-        if (wasmPlayer != null) wasmPlayer.play();
+        if (wasmPlayer == null) return;
+        try {
+            wasmPlayer.play();
+        } catch (Exception e) {
+            System.err.println("[WasmPlayerApp] Error in play(): " + e.getMessage());
+        }
     }
 
     @Export(name = "pause")
@@ -206,8 +221,13 @@ public class WasmPlayerApp {
     @Export(name = "getFrameDataJson")
     public static int getFrameDataJson() {
         if (wasmPlayer == null || wasmPlayer.getSpriteExporter() == null) return 0;
-        String json = wasmPlayer.getSpriteExporter().exportFrameData();
-        return writeJsonToLargeBuffer(json);
+        try {
+            String json = wasmPlayer.getSpriteExporter().exportFrameData();
+            return writeJsonToLargeBuffer(json);
+        } catch (Exception e) {
+            System.err.println("[WasmPlayerApp] Error in getFrameDataJson(): " + e.getMessage());
+            return 0;
+        }
     }
 
     /**

@@ -1,11 +1,13 @@
 package com.libreshockwave.player.wasm.render;
 
+import com.libreshockwave.DirectorFile;
 import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.chunks.CastMemberChunk;
 import com.libreshockwave.chunks.KeyTableChunk;
 import com.libreshockwave.chunks.TextChunk;
 import com.libreshockwave.format.ChunkType;
 import com.libreshockwave.player.Player;
+import com.libreshockwave.player.cast.CastLib;
 import com.libreshockwave.player.render.FrameSnapshot;
 import com.libreshockwave.player.render.RenderSprite;
 
@@ -22,8 +24,11 @@ public class SpriteDataExporter {
 
     private final Player player;
 
-    // Cache decoded bitmaps by cast member ID (same pattern as SoftwareRenderer)
+    // Cache decoded bitmaps by cast member ID (keyed by castMember.id() chunk ID)
     private final Map<Integer, CachedBitmap> bitmapCache = new HashMap<>();
+
+    // Member chunk lookup built from the most recent snapshot (for getBitmapData calls)
+    private final Map<Integer, CastMemberChunk> recentMembers = new HashMap<>();
 
     public SpriteDataExporter(Player player) {
         this.player = player;
@@ -32,9 +37,34 @@ public class SpriteDataExporter {
     /**
      * Export current frame data as JSON.
      * Returns: {bg, frame, frameCount, sprites: [{channel, type, x, y, w, h, memberId, ...}]}
+     *
+     * Also caches baked bitmaps from the snapshot so getBitmapRGBA() can serve them
+     * without needing to search across files by chunk ID.
      */
     public String exportFrameData() {
         FrameSnapshot snapshot = player.getFrameSnapshot();
+
+        // Index members and cache baked bitmaps from snapshot for later getBitmapData() calls.
+        // The baked bitmaps are decoded by BitmapCache using player.decodeBitmap(), which
+        // correctly handles external cast members — so this avoids the cross-file search problem.
+        recentMembers.clear();
+        for (RenderSprite sprite : snapshot.sprites()) {
+            if (sprite.getType() != RenderSprite.SpriteType.BITMAP) continue;
+            int mid = sprite.getCastMemberId();
+            if (mid <= 0) continue;
+
+            if (sprite.getCastMember() != null) {
+                recentMembers.put(mid, sprite.getCastMember());
+            }
+
+            // Cache baked bitmap if we don't already have a valid entry
+            if (!bitmapCache.containsKey(mid)) {
+                Bitmap baked = sprite.getBakedBitmap();
+                if (baked != null) {
+                    bitmapCache.put(mid, toBitmapCache(baked));
+                }
+            }
+        }
 
         StringBuilder sb = new StringBuilder(2048);
         sb.append("{\"bg\":").append(snapshot.backgroundColor());
@@ -67,7 +97,6 @@ public class SpriteDataExporter {
                 if (text != null && !text.isEmpty()) {
                     sb.append(",\"textContent\":\"").append(escapeJson(text)).append('"');
                 }
-                // Include font info from the cast member
                 sb.append(",\"fontSize\":").append(12); // Default
                 sb.append(",\"fontStyle\":\"normal\"");
             }
@@ -103,15 +132,11 @@ public class SpriteDataExporter {
             return bitmapCache.get(memberId);
         }
 
-        if (player.getFile() == null) return null;
-
-        // Find the CastMemberChunk by ID
-        CastMemberChunk member = null;
-        for (CastMemberChunk m : player.getFile().getCastMembers()) {
-            if (m.id() == memberId) {
-                member = m;
-                break;
-            }
+        // Find the CastMemberChunk: try recent snapshot members first (avoids cross-file search),
+        // then fall back to searching all loaded files.
+        CastMemberChunk member = recentMembers.get(memberId);
+        if (member == null) {
+            member = findMemberInAllFiles(memberId);
         }
 
         if (member == null) {
@@ -119,31 +144,61 @@ public class SpriteDataExporter {
             return null;
         }
 
-        Optional<Bitmap> bitmap = player.getFile().decodeBitmap(member);
+        // Use player.decodeBitmap() which handles external cast members correctly
+        Optional<Bitmap> bitmap = player.decodeBitmap(member);
         if (bitmap.isPresent()) {
-            Bitmap bmp = bitmap.get();
-            int bw = bmp.getWidth();
-            int bh = bmp.getHeight();
-            int[] argbPixels = bmp.getPixels();
-
-            // Convert ARGB int[] to RGBA byte[]
-            byte[] rgba = new byte[bw * bh * 4];
-            for (int i = 0; i < argbPixels.length; i++) {
-                int argb = argbPixels[i];
-                int off = i * 4;
-                rgba[off] = (byte) ((argb >> 16) & 0xFF);     // R
-                rgba[off + 1] = (byte) ((argb >> 8) & 0xFF);  // G
-                rgba[off + 2] = (byte) (argb & 0xFF);          // B
-                rgba[off + 3] = (byte) ((argb >> 24) & 0xFF);  // A
-            }
-
-            CachedBitmap cached = new CachedBitmap(rgba, bw, bh);
+            CachedBitmap cached = toBitmapCache(bitmap.get());
             bitmapCache.put(memberId, cached);
             return cached;
         }
 
         bitmapCache.put(memberId, null);
         return null;
+    }
+
+    /**
+     * Search all loaded DirectorFiles for a CastMemberChunk with the given chunk ID.
+     */
+    private CastMemberChunk findMemberInAllFiles(int memberId) {
+        // Search main file
+        if (player.getFile() != null) {
+            for (CastMemberChunk m : player.getFile().getCastMembers()) {
+                if (m.id() == memberId) return m;
+            }
+        }
+
+        // Search external cast files
+        if (player.getCastLibManager() != null) {
+            for (CastLib castLib : player.getCastLibManager().getCastLibs().values()) {
+                DirectorFile src = castLib.getSourceFile();
+                if (src != null) {
+                    for (CastMemberChunk m : src.getCastMembers()) {
+                        if (m.id() == memberId) return m;
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Convert a Bitmap (ARGB int[]) to a CachedBitmap (RGBA byte[]).
+     */
+    private static CachedBitmap toBitmapCache(Bitmap bmp) {
+        int bw = bmp.getWidth();
+        int bh = bmp.getHeight();
+        int[] argbPixels = bmp.getPixels();
+        byte[] rgba = new byte[bw * bh * 4];
+        for (int i = 0; i < argbPixels.length; i++) {
+            int argb = argbPixels[i];
+            int off = i * 4;
+            rgba[off]     = (byte) ((argb >> 16) & 0xFF);  // R
+            rgba[off + 1] = (byte) ((argb >> 8) & 0xFF);   // G
+            rgba[off + 2] = (byte) (argb & 0xFF);           // B
+            rgba[off + 3] = (byte) ((argb >> 24) & 0xFF);  // A
+        }
+        return new CachedBitmap(rgba, bw, bh);
     }
 
     private String getTextContent(CastMemberChunk memberChunk) {
