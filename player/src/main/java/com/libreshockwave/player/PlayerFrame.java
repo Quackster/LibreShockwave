@@ -71,6 +71,20 @@ public class PlayerFrame extends JFrame {
         initMenuBar();
         loadLastFilePreference();
         pack();
+        centerOnCurrentMonitor();
+    }
+
+    private void centerOnCurrentMonitor() {
+        Point mouse = MouseInfo.getPointerInfo().getLocation();
+        for (GraphicsDevice gd : GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()) {
+            Rectangle bounds = gd.getDefaultConfiguration().getBounds();
+            if (bounds.contains(mouse)) {
+                int x = bounds.x + (bounds.width - getWidth()) / 2;
+                int y = bounds.y + (bounds.height - getHeight()) / 2;
+                setLocation(x, y);
+                return;
+            }
+        }
         setLocationRelativeTo(null);
     }
 

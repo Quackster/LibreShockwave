@@ -50,6 +50,7 @@ public final class ImageMethodDispatcher {
             case "height" -> Datum.of(bmp.getHeight());
             case "depth" -> Datum.of(bmp.getBitDepth());
             case "ilk" -> Datum.symbol("image");
+            case "image" -> imageRef; // Self-reference for .image on an image
             default -> Datum.VOID;
         };
     }

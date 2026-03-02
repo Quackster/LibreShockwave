@@ -1,8 +1,10 @@
 package com.libreshockwave.vm.builtin;
 
+import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.LingoVM;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiFunction;
@@ -14,6 +16,9 @@ import java.util.function.BiFunction;
  * - moveToFront(window) - bring window to front
  * - moveToBack(window) - send window to back
  * - puppetTempo(rate) - set the tempo programmatically
+ * - createWindow(id, template) - create a window with a bitmap buffer
+ * - getWindow(id) - get a window reference
+ * - removeWindow(id) - remove a window
  */
 public final class WindowBuiltins {
 
@@ -24,9 +29,54 @@ public final class WindowBuiltins {
         builtins.put("movetoback", WindowBuiltins::moveToBack);
         builtins.put("puppettempo", WindowBuiltins::puppetTempo);
         builtins.put("puppetsprite", WindowBuiltins::puppetSprite);
+        builtins.put("createwindow", WindowBuiltins::createWindow);
+        builtins.put("getwindow", WindowBuiltins::getWindow);
+        builtins.put("removewindow", WindowBuiltins::removeWindow);
         builtins.put("cursor", (vm, args) -> Datum.VOID);  // No-op stub
         builtins.put("pauseupdate", (vm, args) -> Datum.VOID);  // No-op stub
         builtins.put("updatestage", (vm, args) -> Datum.VOID);  // No-op stub
+    }
+
+    /**
+     * Dispatch method calls on WindowRef objects.
+     * Supports: resizeTo, center, getElement.
+     *
+     * The getElement("drag").getProperty(#buffer).image chain is used by the Loading Bar
+     * to get a bitmap buffer for drawing.
+     */
+    public static Datum dispatchMethod(Datum.WindowRef windowRef, String methodName, List<Datum> args) {
+        String method = methodName.toLowerCase();
+        WindowProvider provider = WindowProvider.getProvider();
+        if (provider == null) {
+            return Datum.VOID;
+        }
+
+        return switch (method) {
+            case "resizeto" -> {
+                if (args.size() >= 2) {
+                    provider.resizeWindow(windowRef.name(), args.get(0).toInt(), args.get(1).toInt());
+                }
+                yield Datum.VOID;
+            }
+            case "center" -> {
+                provider.centerWindow(windowRef.name());
+                yield Datum.VOID;
+            }
+            case "getelement" -> {
+                // Returns a PropList wrapping the window's bitmap buffer.
+                // Chain: getElement("drag").getProperty(#buffer).image → ImageRef
+                Bitmap bmp = provider.getWindowBitmap(windowRef.name());
+                if (bmp != null) {
+                    // Build nested structure: [#buffer: ImageRef(bitmap)]
+                    // So .getProperty(#buffer) returns ImageRef, and .image returns itself
+                    Map<String, Datum> elementProps = new LinkedHashMap<>();
+                    elementProps.put("buffer", new Datum.ImageRef(bmp));
+                    yield new Datum.PropList(elementProps);
+                }
+                yield Datum.VOID;
+            }
+            default -> Datum.VOID;
+        };
     }
 
     /**
@@ -64,6 +114,65 @@ public final class WindowBuiltins {
         SpritePropertyProvider provider = SpritePropertyProvider.getProvider();
         if (provider != null) {
             provider.setSpriteProp(spriteNum, "puppet", Datum.of(enabled ? 1 : 0));
+        }
+
+        return Datum.VOID;
+    }
+
+    /**
+     * createWindow(id, template)
+     * Creates a new window with a bitmap buffer.
+     * Used by Lingo scripts (e.g., Loading Bar) to create off-screen render targets.
+     */
+    private static Datum createWindow(LingoVM vm, List<Datum> args) {
+        if (args.size() < 2) {
+            return Datum.VOID;
+        }
+
+        String windowId = args.get(0).toStr();
+        String template = args.get(1).toStr();
+
+        WindowProvider provider = WindowProvider.getProvider();
+        if (provider != null) {
+            provider.createWindow(windowId, template);
+        }
+
+        return Datum.VOID;
+    }
+
+    /**
+     * getWindow(id)
+     * Returns a reference to a window by ID.
+     */
+    private static Datum getWindow(LingoVM vm, List<Datum> args) {
+        if (args.isEmpty()) {
+            return Datum.VOID;
+        }
+
+        String windowId = args.get(0).toStr();
+
+        WindowProvider provider = WindowProvider.getProvider();
+        if (provider != null) {
+            return provider.getWindow(windowId);
+        }
+
+        return Datum.VOID;
+    }
+
+    /**
+     * removeWindow(id)
+     * Removes a window and its bitmap buffer.
+     */
+    private static Datum removeWindow(LingoVM vm, List<Datum> args) {
+        if (args.isEmpty()) {
+            return Datum.VOID;
+        }
+
+        String windowId = args.get(0).toStr();
+
+        WindowProvider provider = WindowProvider.getProvider();
+        if (provider != null) {
+            provider.removeWindow(windowId);
         }
 
         return Datum.VOID;

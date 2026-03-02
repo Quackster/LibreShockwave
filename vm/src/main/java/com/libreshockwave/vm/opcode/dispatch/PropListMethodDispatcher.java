@@ -35,7 +35,7 @@ public final class PropListMethodDispatcher {
                     yield Datum.VOID;
                 }
             }
-            case "getprop", "getaprop" -> {
+            case "getprop", "getaprop", "getproperty" -> {
                 if (args.isEmpty()) yield Datum.VOID;
                 String key = args.get(0) instanceof Datum.Symbol s ? s.name() : args.get(0).toStr();
                 yield propList.properties().getOrDefault(key, Datum.VOID);
