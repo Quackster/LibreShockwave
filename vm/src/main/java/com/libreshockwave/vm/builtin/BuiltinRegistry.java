@@ -24,7 +24,7 @@ public class BuiltinRegistry {
         NetBuiltins.register(builtins);
         XtraBuiltins.register(builtins);
         CastLibBuiltins.register(builtins);
-        WindowBuiltins.register(builtins);
+        SpriteBuiltins.register(builtins);
         TypeBuiltins.register(builtins);
         ControlFlowBuiltins.register(builtins);
         TimeoutBuiltins.register(builtins);

@@ -450,6 +450,11 @@ public class WasmPlayerApp {
         if (url != null) {
             tryLoadExternalCast(url, data);
         }
+
+        // Every completed fetch may unblock deferred play
+        if (wasmPlayer != null) {
+            wasmPlayer.onCastFetchDone();
+        }
     }
 
     private static void tryLoadExternalCast(String url, byte[] data) {
@@ -473,6 +478,10 @@ public class WasmPlayerApp {
         WasmNetManager mgr = WasmNetManager.getInstance();
         if (mgr != null) {
             mgr.onFetchError(taskId, status);
+        }
+        // Failed fetch still counts as "done" — may unblock deferred play
+        if (wasmPlayer != null) {
+            wasmPlayer.onCastFetchDone();
         }
     }
 

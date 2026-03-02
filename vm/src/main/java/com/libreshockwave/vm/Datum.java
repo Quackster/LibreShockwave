@@ -191,12 +191,6 @@ public sealed interface Datum {
         public String toString() { return "(the player)"; }
     }
 
-    /** Window reference */
-    record WindowRef(String name) implements Datum {
-        @Override
-        public String toString() { return "window(\"" + name + "\")"; }
-    }
-
     /** Script reference (returned by script() function) */
     record ScriptRef(int castLib, int member) implements Datum {
         @Override
@@ -327,7 +321,6 @@ public sealed interface Datum {
             case StageRef st -> "stage";
             case MovieRef m -> "movie";
             case PlayerRef p -> "player";
-            case WindowRef w -> "window";
             case ScriptRef sr -> "script";
             case TimeoutRef tr -> "timeout";
             default -> getClass().getSimpleName().toLowerCase();
@@ -410,7 +403,6 @@ public sealed interface Datum {
             case StageRef st -> st;
             case MovieRef m -> m;
             case PlayerRef p -> p;
-            case WindowRef w -> w;
             case ScriptRef sr -> sr;
             case XtraRef xr -> xr;
             case XtraInstance xi -> xi;

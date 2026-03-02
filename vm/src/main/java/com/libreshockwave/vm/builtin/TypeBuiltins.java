@@ -575,7 +575,6 @@ public final class TypeBuiltins {
             case Datum.XtraRef x -> "xtra";
             case Datum.XtraInstance x -> "xtraInstance";
             case Datum.StageRef s -> "stage";
-            case Datum.WindowRef w -> "window";
             default -> "object";
         };
     }

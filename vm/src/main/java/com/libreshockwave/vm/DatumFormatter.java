@@ -58,7 +58,6 @@ public final class DatumFormatter {
         if (d instanceof Datum.CastMemberRef cm) return "member(" + cm.member() + ", " + cm.castLib() + ")";
         if (d instanceof Datum.CastLibRef cl) return "castLib(" + cl.castLibNumber() + ")";
         if (d instanceof Datum.StageRef) return "(the stage)";
-        if (d instanceof Datum.WindowRef w) return "window(\"" + w.name() + "\")";
         if (d instanceof Datum.XtraRef xr) return "<Xtra \"" + xr.xtraName() + "\">";
         if (d instanceof Datum.XtraInstance xi) return "<XtraInstance \"" + xi.xtraName() + "\" #" + xi.instanceId() + ">";
         return d.toString();
@@ -208,7 +207,6 @@ public final class DatumFormatter {
             case Datum.CastMemberRef cm -> "\"member(" + cm.member() + ", " + cm.castLib() + ")\"";
             case Datum.CastLibRef cl -> "\"castLib(" + cl.castLibNumber() + ")\"";
             case Datum.StageRef sr -> "\"(the stage)\"";
-            case Datum.WindowRef w -> "\"window(\\\"" + escapeForJson(w.name()) + "\\\")\"";
             case Datum.XtraRef xr -> "\"xtra(\\\"" + escapeForJson(xr.xtraName()) + "\\\")\"";
             case Datum.XtraInstance xi -> "\"XtraInstance \\\"" + escapeForJson(xi.xtraName()) + "\\\" #" + xi.instanceId() + "\"";
             case Datum.ScriptRef sr -> "\"script(" + sr.member() + ", " + sr.castLib() + ")\"";
