@@ -36,14 +36,18 @@ public class WasmNetManager implements NetBuiltins.NetProvider {
         lastTaskId = taskId;
 
         String resolvedUrl = resolveUrl(url);
+        String[] fallbacks = getUrlsWithFallbacks(resolvedUrl);
+        String fetchUrl = fallbacks[0]; // Preferred extension first
+
         NetTask task = new NetTask(taskId, resolvedUrl);
+        task.fallbackUrls = fallbacks;
+        task.fallbackIndex = 0;
         tasks.put(taskId, task);
 
-        System.out.println("[WasmNetManager] Fetching: " + resolvedUrl + " (task " + taskId + ")");
+        System.out.println("[WasmNetManager] Fetching: " + fetchUrl + " (task " + taskId + ")");
 
-        // Write URL to shared string buffer for JS to read
-        WasmPlayerApp.writeStringToBuffer(resolvedUrl);
-        byte[] urlBytes = resolvedUrl.getBytes();
+        WasmPlayerApp.writeStringToBuffer(fetchUrl);
+        byte[] urlBytes = fetchUrl.getBytes();
         jsFetchGet(taskId, urlBytes.length);
 
         return taskId;
@@ -91,14 +95,27 @@ public class WasmNetManager implements NetBuiltins.NetProvider {
 
     /**
      * Called from WasmPlayerApp.onFetchError export when JS reports a fetch error.
+     * If there are fallback URLs remaining, tries the next one before marking the task as failed.
      */
     public void onFetchError(int taskId, int status) {
         NetTask task = tasks.get(taskId);
-        if (task != null) {
-            task.errorCode = status != 0 ? status : -1;
-            task.done = true;
-            System.err.println("[WasmNetManager] Error: task " + taskId + " (HTTP " + status + ")");
+        if (task == null) return;
+
+        // Try next fallback URL if available
+        if (task.fallbackUrls != null && task.fallbackIndex + 1 < task.fallbackUrls.length) {
+            task.fallbackIndex++;
+            String nextUrl = task.fallbackUrls[task.fallbackIndex];
+            System.out.println("[WasmNetManager] Fallback: " + nextUrl + " (task " + taskId + ")");
+
+            WasmPlayerApp.writeStringToBuffer(nextUrl);
+            byte[] urlBytes = nextUrl.getBytes();
+            jsFetchGet(taskId, urlBytes.length);
+            return;
         }
+
+        task.errorCode = status != 0 ? status : -1;
+        task.done = true;
+        System.err.println("[WasmNetManager] Error: task " + taskId + " (HTTP " + status + ")");
     }
 
     @Override
@@ -176,6 +193,24 @@ public class WasmNetManager implements NetBuiltins.NetProvider {
     @Import(name = "fetchPost", module = "libreshockwave")
     private static native void jsFetchPost(int taskId, int urlLength, int postDataLength);
 
+    /**
+     * Build a list of URLs to try, with the preferred extension first.
+     * Cast files: .cct first, then .cst
+     * Movie files: .dcr first, then .dxr, then .dir
+     */
+    private String[] getUrlsWithFallbacks(String url) {
+        String lower = url.toLowerCase();
+        if (lower.endsWith(".cst") || lower.endsWith(".cct")) {
+            String base = url.substring(0, url.length() - 4);
+            return new String[] { base + ".cct", base + ".cst" };
+        }
+        if (lower.endsWith(".dir") || lower.endsWith(".dcr") || lower.endsWith(".dxr")) {
+            String base = url.substring(0, url.length() - 4);
+            return new String[] { base + ".dcr", base + ".dxr", base + ".dir" };
+        }
+        return new String[] { url };
+    }
+
     // Simple task data holder
     static class NetTask {
         final int id;
@@ -183,6 +218,8 @@ public class WasmNetManager implements NetBuiltins.NetProvider {
         byte[] data;
         int errorCode;
         boolean done;
+        String[] fallbackUrls;
+        int fallbackIndex;
 
         NetTask(int id, String url) {
             this.id = id;

@@ -172,9 +172,12 @@ public class StageRenderer {
 
         RenderSprite.SpriteType type = determineSpriteType(member, data);
 
-        // Score spriteType 2-8 are tool-palette shapes (rect, oval, line)
-        // Even if member type doesn't match SHAPE, the Score says to render as a shape
-        if (type == RenderSprite.SpriteType.UNKNOWN && data.spriteType() >= 2 && data.spriteType() <= 8) {
+        // Score spriteType 2-8 are tool-palette shapes (rect, oval, line).
+        // Only promote to SHAPE if the cast member is actually a Shape type.
+        // Flash (SWF) members, scripts, and other non-shape types that happen to
+        // be on shape sprite channels must NOT be rendered as solid fills.
+        if (type == RenderSprite.SpriteType.UNKNOWN && data.spriteType() >= 2 && data.spriteType() <= 8
+                && member != null && member.memberType() == com.libreshockwave.cast.MemberType.SHAPE) {
             type = RenderSprite.SpriteType.SHAPE;
         }
 
