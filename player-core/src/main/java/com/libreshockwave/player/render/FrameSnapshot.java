@@ -61,6 +61,14 @@ public record FrameSnapshot(
                 if (b == null && s.getDynamicMember() != null) {
                     b = cache.getProcessedDynamic(s.getDynamicMember(), s.getInk(), s.getBackColor());
                 }
+                // Apply Director's sprite-level foreColor/backColor colorization
+                // for dynamic member bitmaps (window system buffers).
+                // The Lingo window system creates white bitmap buffers and uses
+                // sprite.color to control their visual color at render time.
+                if (b != null && s.getDynamicMember() != null
+                        && InkProcessor.allowsColorize(s.getInk())) {
+                    b = InkProcessor.applyForeColorRemap(b, s.getForeColor(), s.getBackColor());
+                }
                 baked.add(s.withBakedBitmap(b));
             } else {
                 baked.add(s);

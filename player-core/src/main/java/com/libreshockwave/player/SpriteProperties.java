@@ -139,11 +139,17 @@ public class SpriteProperties implements SpritePropertyProvider {
                 return true;
             }
             case "ink" -> {
-                sprite.setInk(value.toInt());
+                // Director ignores VOID values - keeps the current ink
+                if (!value.isVoid()) {
+                    sprite.setInk(value.toInt());
+                }
                 return true;
             }
             case "blend" -> {
-                sprite.setBlend(value.toInt());
+                // Director ignores VOID values - keeps the current blend (default 100)
+                if (!value.isVoid()) {
+                    sprite.setBlend(value.toInt());
+                }
                 return true;
             }
             case "stretch" -> {
@@ -159,11 +165,15 @@ public class SpriteProperties implements SpritePropertyProvider {
                 return true;
             }
             case "forecolor" -> {
-                sprite.setForeColor(value.toInt());
+                if (!value.isVoid()) {
+                    sprite.setForeColor(value.toInt());
+                }
                 return true;
             }
             case "backcolor" -> {
-                sprite.setBackColor(value.toInt());
+                if (!value.isVoid()) {
+                    sprite.setBackColor(value.toInt());
+                }
                 return true;
             }
             case "member" -> {
@@ -188,20 +198,24 @@ public class SpriteProperties implements SpritePropertyProvider {
                 return true;
             }
             case "color" -> {
-                // sprite.color = rgb(...) — maps to foreColor
-                if (value instanceof com.libreshockwave.vm.Datum.Color c) {
-                    sprite.setForeColor((c.r() << 16) | (c.g() << 8) | c.b());
-                } else {
-                    sprite.setForeColor(value.toInt());
+                // sprite.color = rgb(...) — maps to foreColor; Director ignores VOID
+                if (!value.isVoid()) {
+                    if (value instanceof com.libreshockwave.vm.Datum.Color c) {
+                        sprite.setForeColor((c.r() << 16) | (c.g() << 8) | c.b());
+                    } else {
+                        sprite.setForeColor(value.toInt());
+                    }
                 }
                 return true;
             }
             case "bgcolor" -> {
-                // sprite.bgColor = rgb(...) — maps to backColor
-                if (value instanceof com.libreshockwave.vm.Datum.Color c) {
-                    sprite.setBackColor((c.r() << 16) | (c.g() << 8) | c.b());
-                } else {
-                    sprite.setBackColor(value.toInt());
+                // sprite.bgColor = rgb(...) — maps to backColor; Director ignores VOID
+                if (!value.isVoid()) {
+                    if (value instanceof com.libreshockwave.vm.Datum.Color c) {
+                        sprite.setBackColor((c.r() << 16) | (c.g() << 8) | c.b());
+                    } else {
+                        sprite.setBackColor(value.toInt());
+                    }
                 }
                 return true;
             }
