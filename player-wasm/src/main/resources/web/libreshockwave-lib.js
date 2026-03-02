@@ -105,6 +105,9 @@ var LibreShockwave = (function() {
             case 'bitmapData':
                 this._onBitmapData(msg);
                 break;
+            case 'bitmapNotFound':
+                this.pendingBitmaps.delete(msg.memberId);  // Allow retry next frame
+                break;
             case 'fetchRequest':
                 this._handleFetch(msg);
                 break;
@@ -206,24 +209,31 @@ var LibreShockwave = (function() {
 
     PlayerEngine.prototype._drawBitmap = function(ctx, sp) {
         var bmp = this.bitmapCache.get(sp.memberId);
-        if (bmp) { ctx.drawImage(bmp, sp.x, sp.y, sp.w > 0 ? sp.w : bmp.width, sp.h > 0 ? sp.h : bmp.height); }
-        else { ctx.fillStyle = '#c8c8c8'; ctx.globalAlpha = 0.5; ctx.fillRect(sp.x, sp.y, sp.w > 0 ? sp.w : 50, sp.h > 0 ? sp.h : 50); ctx.globalAlpha = 1.0; }
+        if (!bmp) return;  // Skip — no placeholder, retry next frame
+        var prevAlpha = ctx.globalAlpha;
+        if (sp.blend !== undefined && sp.blend < 100) ctx.globalAlpha = sp.blend / 100;
+        ctx.drawImage(bmp, sp.x, sp.y, sp.w > 0 ? sp.w : bmp.width, sp.h > 0 ? sp.h : bmp.height);
+        ctx.globalAlpha = prevAlpha;
     };
 
     PlayerEngine.prototype._drawText = function(ctx, sp) {
-        if (sp.textContent) {
-            var fs = sp.fontSize || 12; ctx.font = fs + 'px serif';
-            ctx.fillStyle = '#' + ((sp.foreColor || 0) & 0xFFFFFF).toString(16).padStart(6, '0');
-            var lines = sp.textContent.split(/\r\n|\r|\n/);
-            for (var j = 0; j < lines.length; j++) ctx.fillText(lines[j], sp.x, sp.y + fs + j * (fs + 2));
-        } else {
-            ctx.fillStyle = '#c8c8c8'; ctx.globalAlpha = 0.5; ctx.fillRect(sp.x, sp.y, sp.w > 0 ? sp.w : 50, sp.h > 0 ? sp.h : 20); ctx.globalAlpha = 1.0;
-        }
+        if (!sp.textContent) return;
+        var prevAlpha = ctx.globalAlpha;
+        if (sp.blend !== undefined && sp.blend < 100) ctx.globalAlpha = sp.blend / 100;
+        var fs = sp.fontSize || 12;
+        ctx.font = fs + 'px serif';
+        ctx.fillStyle = '#' + ((sp.foreColor || 0) & 0xFFFFFF).toString(16).padStart(6, '0');
+        var lines = sp.textContent.split(/\r\n|\r|\n/);
+        for (var j = 0; j < lines.length; j++) ctx.fillText(lines[j], sp.x, sp.y + fs + j * (fs + 2));
+        ctx.globalAlpha = prevAlpha;
     };
 
     PlayerEngine.prototype._drawShape = function(ctx, sp) {
+        var prevAlpha = ctx.globalAlpha;
+        if (sp.blend !== undefined && sp.blend < 100) ctx.globalAlpha = sp.blend / 100;
         ctx.fillStyle = '#' + ((sp.foreColor || 0) & 0xFFFFFF).toString(16).padStart(6, '0');
         ctx.fillRect(sp.x, sp.y, sp.w > 0 ? sp.w : 50, sp.h > 0 ? sp.h : 50);
+        ctx.globalAlpha = prevAlpha;
     };
 
     PlayerEngine.prototype._renderPixels = function(px) {

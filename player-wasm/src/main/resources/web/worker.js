@@ -11,6 +11,7 @@ var teavm = null;
 var exports = null;
 var debugSab = null;   // SharedArrayBuffer (4 bytes) for debug pause/resume
 var debugView = null;  // Int32Array view of debugSab
+var _tickCount = 0;    // For debug logging
 
 /**
  * Get the WASM memory ArrayBuffer (must be refreshed after any allocation).
@@ -135,69 +136,89 @@ async function initWasm(sabuffer) {
  * Load a movie from transferred bytes.
  */
 function loadMovie(movieBytes, basePath) {
-    var basePathBytes = new TextEncoder().encode(basePath || '');
+    try {
+        console.log('[Worker] loadMovie start, bytes=' + movieBytes.length + ' basePath=' + basePath);
+        var basePathBytes = new TextEncoder().encode(basePath || '');
 
-    // Write basePath to string buffer
-    var stringBufAddr = exports.getStringBufferAddress();
-    var stringBuf = new Uint8Array(getMemory(), stringBufAddr, 4096);
-    stringBuf.set(basePathBytes);
+        // Write basePath to string buffer
+        var stringBufAddr = exports.getStringBufferAddress();
+        var stringBuf = new Uint8Array(getMemory(), stringBufAddr, 4096);
+        stringBuf.set(basePathBytes);
 
-    // Allocate and write movie bytes
-    exports.allocateMovieBuffer(movieBytes.length);
-    var movieBufAddr = exports.getMovieBufferAddress();
-    var movieBuf = new Uint8Array(getMemory(), movieBufAddr, movieBytes.length);
-    movieBuf.set(movieBytes);
+        // Allocate and write movie bytes
+        exports.allocateMovieBuffer(movieBytes.length);
+        var movieBufAddr = exports.getMovieBufferAddress();
+        var movieBuf = new Uint8Array(getMemory(), movieBufAddr, movieBytes.length);
+        movieBuf.set(movieBytes);
 
-    var result = exports.loadMovie(movieBytes.length, basePathBytes.length);
-    if (result === 0) {
-        self.postMessage({ type: 'error', message: 'Failed to load movie' });
-        return;
+        var result = exports.loadMovie(movieBytes.length, basePathBytes.length);
+        if (result === 0) {
+            self.postMessage({ type: 'error', message: 'Failed to load movie' });
+            return;
+        }
+
+        var width = (result >> 16) & 0xFFFF;
+        var height = result & 0xFFFF;
+        console.log('[Worker] movie loaded: ' + width + 'x' + height);
+
+        self.postMessage({
+            type: 'movieLoaded',
+            width: width,
+            height: height,
+            frameCount: exports.getFrameCount(),
+            tempo: exports.getTempo()
+        });
+    } catch (e) {
+        console.error('[Worker] loadMovie exception:', e);
+        self.postMessage({ type: 'error', message: 'loadMovie failed: ' + e.message });
     }
-
-    var width = (result >> 16) & 0xFFFF;
-    var height = result & 0xFFFF;
-
-    self.postMessage({
-        type: 'movieLoaded',
-        width: width,
-        height: height,
-        frameCount: exports.getFrameCount(),
-        tempo: exports.getTempo()
-    });
 }
 
 /**
  * Tick one frame and return frame data.
  */
 function tickFrame() {
-    var stillPlaying = exports.tick();
+    try {
+        var stillPlaying = exports.tick();
 
-    // Get frame data (sprite-based or pixel-based)
-    var frameJsonLen = exports.getFrameDataJson();
-    var frameData = null;
-    if (frameJsonLen > 0) {
-        frameData = readJsonFromLargeBuffer(frameJsonLen);
+        // Get frame data (sprite-based or pixel-based)
+        var frameJsonLen = exports.getFrameDataJson();
+        var frameData = null;
+        if (frameJsonLen > 0) {
+            frameData = readJsonFromLargeBuffer(frameJsonLen);
+        }
+
+        if (_tickCount <= 5) {
+            console.log('[Worker] tick=' + _tickCount + ' frameJsonLen=' + frameJsonLen +
+                ' sprites=' + (frameData && frameData.sprites ? frameData.sprites.length : 'null') +
+                ' stillPlaying=' + stillPlaying);
+        }
+        _tickCount++;
+
+        // Also get pixel buffer for fallback rendering
+        var pixelPtr = exports.render();
+        var pixels = null;
+        if (pixelPtr > 0) {
+            var w = exports.getStageWidth();
+            var h = exports.getStageHeight();
+            var src = new Uint8ClampedArray(getMemory(), pixelPtr, w * h * 4);
+            pixels = new Uint8ClampedArray(src.length);
+            pixels.set(src); // Copy since memory may be detached
+        }
+
+        self.postMessage({
+            type: 'frameData',
+            stillPlaying: stillPlaying !== 0,
+            frame: exports.getCurrentFrame(),
+            frameCount: exports.getFrameCount(),
+            frameData: frameData,
+            pixels: pixels
+        }, pixels ? [pixels.buffer] : []);
+    } catch (e) {
+        console.error('[Worker] tickFrame exception:', e);
+        // Send a safe response so animation loop doesn't hang
+        self.postMessage({ type: 'frameData', stillPlaying: true, frame: 0, frameCount: 0, frameData: null, pixels: null });
     }
-
-    // Also get pixel buffer for fallback rendering
-    var pixelPtr = exports.render();
-    var pixels = null;
-    if (pixelPtr > 0) {
-        var w = exports.getStageWidth();
-        var h = exports.getStageHeight();
-        var src = new Uint8ClampedArray(getMemory(), pixelPtr, w * h * 4);
-        pixels = new Uint8ClampedArray(src.length);
-        pixels.set(src); // Copy since memory may be detached
-    }
-
-    self.postMessage({
-        type: 'frameData',
-        stillPlaying: stillPlaying !== 0,
-        frame: exports.getCurrentFrame(),
-        frameCount: exports.getFrameCount(),
-        frameData: frameData,
-        pixels: pixels
-    }, pixels ? [pixels.buffer] : []);
 }
 
 /**
@@ -205,7 +226,10 @@ function tickFrame() {
  */
 function sendBitmapData(memberId) {
     var ptr = exports.getBitmapData(memberId);
-    if (ptr === 0) return;
+    if (ptr === 0) {
+        self.postMessage({ type: 'bitmapNotFound', memberId: memberId });
+        return;
+    }
 
     var w = exports.getBitmapWidth(memberId);
     var h = exports.getBitmapHeight(memberId);
@@ -254,7 +278,13 @@ self.onmessage = function(e) {
             break;
 
         case 'play':
-            exports.play();
+            _tickCount = 0;
+            try {
+                exports.play();
+                console.log('[Worker] play() called successfully');
+            } catch(e) {
+                console.error('[Worker] play() threw:', e);
+            }
             self.postMessage({ type: 'stateChange', state: 'playing' });
             break;
 

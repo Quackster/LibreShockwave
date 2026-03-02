@@ -47,3 +47,16 @@ tasks.register('copyWebResources', Copy) {
 tasks.matching { it.name == 'generateWasm' }.configureEach {
     finalizedBy 'copyWebResources'
 }
+
+// Integration test for the WASM sprite export pipeline (runs on JVM, not WASM)
+tasks.register('runWasmSpriteExporterTest', JavaExec) {
+    group = 'verification'
+    description = 'Test SpriteDataExporter JSON output and bitmap decoding with habbo.dcr'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.wasm.WasmSpriteExporterTest'
+    jvmArgs '-Xmx512m'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}

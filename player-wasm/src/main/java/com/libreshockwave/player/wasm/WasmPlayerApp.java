@@ -441,7 +441,23 @@ public class WasmPlayerApp {
         if (mgr != null && netBuffer != null) {
             byte[] data = new byte[dataSize];
             System.arraycopy(netBuffer, 0, data, 0, dataSize);
+            String url = mgr.getTaskUrl(taskId);
             mgr.onFetchComplete(taskId, data);
+            // Process external cast files: load them into the cast library
+            if (url != null && wasmPlayer != null && wasmPlayer.getPlayer() != null) {
+                try {
+                    boolean loaded = wasmPlayer.getPlayer().getCastLibManager()
+                            .setExternalCastDataByUrl(url, data);
+                    if (loaded) {
+                        System.out.println("[WasmPlayerApp] Loaded external cast: " + url);
+                        wasmPlayer.getPlayer().getBitmapCache().clear();
+                        SpriteDataExporter exporter = wasmPlayer.getSpriteExporter();
+                        if (exporter != null) exporter.clearBitmapCache();
+                    }
+                } catch (Exception e) {
+                    System.err.println("[WasmPlayerApp] Cast load error for " + url + ": " + e.getMessage());
+                }
+            }
         }
     }
 

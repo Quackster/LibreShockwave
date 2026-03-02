@@ -127,6 +127,10 @@ class LibreShockwavePlayer {
                 this._onBitmapData(msg);
                 break;
 
+            case 'bitmapNotFound':
+                this.pendingBitmaps.delete(msg.memberId);  // Allow retry next frame
+                break;
+
             case 'stateChange':
                 if (this._onStateChange) this._onStateChange(msg.state);
                 break;
@@ -420,7 +424,7 @@ class LibreShockwavePlayer {
         if (!ctx) return;
 
         // Background
-        var bg = frameData.bg || 0xFFFFFF;
+        var bg = (typeof frameData.bg === 'number') ? frameData.bg : 0xFFFFFF;
         ctx.fillStyle = '#' + (bg & 0xFFFFFF).toString(16).padStart(6, '0');
         ctx.fillRect(0, 0, this.stageWidth, this.stageHeight);
 
@@ -457,50 +461,39 @@ class LibreShockwavePlayer {
 
     _drawBitmap(ctx, sprite) {
         var bmp = this.bitmapCache.get(sprite.memberId);
-        if (bmp) {
-            var w = sprite.w > 0 ? sprite.w : bmp.width;
-            var h = sprite.h > 0 ? sprite.h : bmp.height;
-            ctx.drawImage(bmp, sprite.x, sprite.y, w, h);
-        } else {
-            // Placeholder while bitmap loads
-            ctx.fillStyle = '#c8c8c8';
-            ctx.globalAlpha = 0.5;
-            ctx.fillRect(sprite.x, sprite.y,
-                sprite.w > 0 ? sprite.w : 50,
-                sprite.h > 0 ? sprite.h : 50);
-            ctx.globalAlpha = 1.0;
-        }
+        if (!bmp) return;  // Skip — no placeholder, retry next frame
+        var prevAlpha = ctx.globalAlpha;
+        if (sprite.blend !== undefined && sprite.blend < 100) ctx.globalAlpha = sprite.blend / 100;
+        var w = sprite.w > 0 ? sprite.w : bmp.width;
+        var h = sprite.h > 0 ? sprite.h : bmp.height;
+        ctx.drawImage(bmp, sprite.x, sprite.y, w, h);
+        ctx.globalAlpha = prevAlpha;
     }
 
     _drawText(ctx, sprite) {
-        var text = sprite.textContent;
-        if (text) {
-            var fontSize = sprite.fontSize || 12;
-            ctx.font = fontSize + 'px serif';
-            var fc = sprite.foreColor || 0;
-            ctx.fillStyle = '#' + (fc & 0xFFFFFF).toString(16).padStart(6, '0');
-            // Simple line splitting
-            var lines = text.split(/\r\n|\r|\n/);
-            for (var j = 0; j < lines.length; j++) {
-                ctx.fillText(lines[j], sprite.x, sprite.y + fontSize + j * (fontSize + 2));
-            }
-        } else {
-            // Placeholder for text without content
-            ctx.fillStyle = '#c8c8c8';
-            ctx.globalAlpha = 0.5;
-            ctx.fillRect(sprite.x, sprite.y,
-                sprite.w > 0 ? sprite.w : 50,
-                sprite.h > 0 ? sprite.h : 20);
-            ctx.globalAlpha = 1.0;
+        if (!sprite.textContent) return;
+        var prevAlpha = ctx.globalAlpha;
+        if (sprite.blend !== undefined && sprite.blend < 100) ctx.globalAlpha = sprite.blend / 100;
+        var fontSize = sprite.fontSize || 12;
+        ctx.font = fontSize + 'px serif';
+        var fc = sprite.foreColor || 0;
+        ctx.fillStyle = '#' + (fc & 0xFFFFFF).toString(16).padStart(6, '0');
+        var lines = sprite.textContent.split(/\r\n|\r|\n/);
+        for (var j = 0; j < lines.length; j++) {
+            ctx.fillText(lines[j], sprite.x, sprite.y + fontSize + j * (fontSize + 2));
         }
+        ctx.globalAlpha = prevAlpha;
     }
 
     _drawShape(ctx, sprite) {
+        var prevAlpha = ctx.globalAlpha;
+        if (sprite.blend !== undefined && sprite.blend < 100) ctx.globalAlpha = sprite.blend / 100;
         var fc = sprite.foreColor || 0;
         ctx.fillStyle = '#' + (fc & 0xFFFFFF).toString(16).padStart(6, '0');
         ctx.fillRect(sprite.x, sprite.y,
             sprite.w > 0 ? sprite.w : 50,
             sprite.h > 0 ? sprite.h : 50);
+        ctx.globalAlpha = prevAlpha;
     }
 
     /**

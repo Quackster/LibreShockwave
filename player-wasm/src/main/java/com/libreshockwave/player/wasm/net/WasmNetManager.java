@@ -147,6 +147,14 @@ public class WasmNetManager implements NetBuiltins.NetProvider {
         return "Loading";
     }
 
+    /**
+     * Get the URL for a task (used by WasmPlayerApp to process cast data).
+     */
+    public String getTaskUrl(int taskId) {
+        NetTask task = tasks.get(taskId);
+        return task != null ? task.url : null;
+    }
+
     private NetTask getTask(Integer taskId) {
         if (taskId == null || taskId == 0) {
             return lastTaskId > 0 ? tasks.get(lastTaskId) : null;

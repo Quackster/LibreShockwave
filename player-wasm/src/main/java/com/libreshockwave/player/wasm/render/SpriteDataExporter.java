@@ -88,6 +88,7 @@ public class SpriteDataExporter {
             sb.append(",\"foreColor\":").append(sprite.getForeColor());
             sb.append(",\"backColor\":").append(sprite.getBackColor());
             sb.append(",\"ink\":").append(sprite.getInk());
+            sb.append(",\"blend\":").append(sprite.getBlend());
 
             // For text/button sprites, include text content
             if ((sprite.getType() == RenderSprite.SpriteType.TEXT ||
@@ -106,6 +107,14 @@ public class SpriteDataExporter {
 
         sb.append("]}");
         return sb.toString();
+    }
+
+    /**
+     * Clear all cached bitmaps (called when a new external cast is loaded).
+     */
+    public void clearBitmapCache() {
+        bitmapCache.clear();
+        recentMembers.clear();
     }
 
     /**
@@ -224,11 +233,18 @@ public class SpriteDataExporter {
 
     private static String escapeJson(String s) {
         if (s == null) return "";
-        return s.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
+        StringBuilder sb = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '"') sb.append("\\\"");
+            else if (c == '\\') sb.append("\\\\");
+            else if (c == '\n') sb.append("\\n");
+            else if (c == '\r') sb.append("\\r");
+            else if (c == '\t') sb.append("\\t");
+            else if (c < 0x20) sb.append(String.format("\\u%04x", (int) c));
+            else sb.append(c);
+        }
+        return sb.toString();
     }
 
     private static class CachedBitmap {

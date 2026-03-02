@@ -59,11 +59,14 @@ public class WasmPlayer {
     }
 
     /**
-     * Advance one frame. Only ticks if the player is in PLAYING state.
-     * @return true if still playing
+     * Advance one frame. Returns false only when STOPPED (keeps JS loop alive for PAUSED).
+     * @return true if animation loop should continue (PLAYING or PAUSED), false if STOPPED
      */
     public boolean tick() {
-        if (player == null || player.getState() != PlayerState.PLAYING) return false;
+        if (player == null) return false;
+        PlayerState state = player.getState();
+        if (state == PlayerState.STOPPED) return false;
+        if (state == PlayerState.PAUSED) return true;  // Keep loop alive, don't advance
         return player.tick();
     }
 
