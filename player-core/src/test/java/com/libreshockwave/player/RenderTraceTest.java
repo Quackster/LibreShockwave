@@ -593,25 +593,23 @@ public class RenderTraceTest {
         System.out.println("========================================\n");
         for (var castLib : player.getCastLibManager().getCastLibs().values()) {
             int memberCount = castLib.getMemberChunks().size();
-            if (memberCount == 0 && !castLib.isLoaded()) continue; // Skip truly empty
-            boolean hasWindowMembers = false;
+            if (memberCount == 0 && !castLib.isLoaded()) continue;
+            // Show font members and summary
+            boolean headerPrinted = false;
             for (var entry : castLib.getMemberChunks().entrySet()) {
                 var mc = entry.getValue();
-                String mName = mc.name();
-                if (mName != null && (mName.contains("bg_") || mName.contains("close")
-                        || mName.contains("title") || mName.contains("modal"))) {
-                    if (!hasWindowMembers) {
+                if (mc.memberType() == com.libreshockwave.cast.MemberType.FONT) {
+                    if (!headerPrinted) {
                         System.out.println("  Cast " + castLib.getNumber() + " (" + castLib.getName()
-                                + "): " + memberCount + " members, slots=" + castLib.getMemberCount());
-                        hasWindowMembers = true;
+                                + "): " + memberCount + " members");
+                        headerPrinted = true;
                     }
-                    System.out.println("    #" + entry.getKey() + " name=\"" + mName
-                            + "\" type=" + mc.memberType());
+                    System.out.println("    FONT #" + entry.getKey() + " name=\"" + mc.name() + "\"");
                 }
             }
-            if (!hasWindowMembers && memberCount > 0) {
+            if (!headerPrinted && memberCount > 0) {
                 System.out.println("  Cast " + castLib.getNumber() + " (" + castLib.getName()
-                        + "): " + memberCount + " members, slots=" + castLib.getMemberCount());
+                        + "): " + memberCount + " members");
             }
         }
 

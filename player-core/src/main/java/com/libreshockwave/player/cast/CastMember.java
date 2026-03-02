@@ -394,12 +394,18 @@ public class CastMember {
         g2d.setColor(new java.awt.Color(textBgColor, true));
         g2d.fillRect(0, 0, width, height);
 
-        // Set font
+        // Set font (resolve Director font names to system fonts)
         int fontStyleAwt = Font.PLAIN;
         String style = textFontStyle.toLowerCase();
         if (style.contains("bold")) fontStyleAwt |= Font.BOLD;
         if (style.contains("italic")) fontStyleAwt |= Font.ITALIC;
-        Font font = new Font(textFont, fontStyleAwt, textFontSize);
+        Font font = resolveDirectorFont(textFont, fontStyleAwt, textFontSize);
+        // Apply underline via font attributes if needed
+        if (style.contains("underline")) {
+            java.util.Map<java.awt.font.TextAttribute, Object> attrs = new java.util.HashMap<>();
+            attrs.put(java.awt.font.TextAttribute.UNDERLINE, java.awt.font.TextAttribute.UNDERLINE_ON);
+            font = font.deriveFont(attrs);
+        }
         g2d.setFont(font);
 
         // Set text color
@@ -502,6 +508,114 @@ public class CastMember {
         if (current.length() > 0) {
             out.add(current.toString());
         }
+    }
+
+    /**
+     * Resolve a Director font name to a Java AWT Font.
+     * Director movies often use short font aliases (from fontmap.txt or embedded fonts).
+     * This method maps common aliases to system fonts and handles bold-embedded names.
+     */
+    private static Font resolveDirectorFont(String directorName, int style, int size) {
+        if (directorName == null || directorName.isEmpty()) {
+            return new Font("SansSerif", style, size);
+        }
+
+        // Check if the requested font exists in the system
+        String resolved = resolveDirectorFontName(directorName);
+
+        // If the font name itself implies a style (e.g., "vb" = Verdana Bold),
+        // extract the style and merge with the provided style
+        int extraStyle = extractFontStyle(directorName);
+        if (extraStyle != Font.PLAIN) {
+            style |= extraStyle;
+        }
+
+        return new Font(resolved, style, size);
+    }
+
+    /** Cache of available system font names (lowercase → actual name) */
+    private static volatile java.util.Map<String, String> systemFontCache;
+
+    private static java.util.Map<String, String> getSystemFontCache() {
+        if (systemFontCache == null) {
+            synchronized (CastMember.class) {
+                if (systemFontCache == null) {
+                    java.util.Map<String, String> cache = new java.util.HashMap<>();
+                    for (String fontName : GraphicsEnvironment.getLocalGraphicsEnvironment()
+                            .getAvailableFontFamilyNames()) {
+                        cache.put(fontName.toLowerCase(), fontName);
+                    }
+                    systemFontCache = cache;
+                }
+            }
+        }
+        return systemFontCache;
+    }
+
+    /**
+     * Resolve a Director font name to an actual system font name.
+     * Handles:
+     * - Full system font names (pass through)
+     * - Short Director aliases like "v" → "Verdana", "vb" → "Verdana"
+     * - Common Director font conventions
+     */
+    private static String resolveDirectorFontName(String name) {
+        var cache = getSystemFontCache();
+
+        // 1. Exact match (case-insensitive)
+        String exact = cache.get(name.toLowerCase());
+        if (exact != null) return exact;
+
+        // 2. Strip trailing style indicators (b=bold, i=italic, bi=bold-italic)
+        String baseName = name.replaceAll("(?i)[bi]+$", "");
+        if (!baseName.isEmpty() && !baseName.equals(name)) {
+            exact = cache.get(baseName.toLowerCase());
+            if (exact != null) return exact;
+        }
+
+        // 3. Try prefix matching for very short names (common Director fontmap aliases)
+        // e.g., "v" → "Verdana", "a" → "Arial", "t" → "Tahoma"
+        if (name.length() <= 3) {
+            String prefix = baseName.isEmpty() ? name.toLowerCase() : baseName.toLowerCase();
+            // Prioritized list of common Director fonts
+            String[] commonFonts = {
+                "Verdana", "Arial", "Tahoma", "Times New Roman", "Courier New",
+                "Georgia", "Helvetica", "Trebuchet MS", "Comic Sans MS"
+            };
+            for (String candidate : commonFonts) {
+                if (candidate.toLowerCase().startsWith(prefix)) {
+                    String resolved = cache.get(candidate.toLowerCase());
+                    if (resolved != null) return resolved;
+                }
+            }
+            // Fallback: try any system font starting with this prefix
+            for (var entry : cache.entrySet()) {
+                if (entry.getKey().startsWith(prefix)) {
+                    return entry.getValue();
+                }
+            }
+        }
+
+        // 4. Fall back to SansSerif (always available in Java)
+        return "SansSerif";
+    }
+
+    /**
+     * Extract font style from Director font name conventions.
+     * e.g., "vb" → Bold, "vi" → Italic, "vbi" → Bold+Italic
+     */
+    private static int extractFontStyle(String name) {
+        if (name.length() <= 1) return Font.PLAIN;
+
+        // Check if the name ends with style indicators after a base name
+        String baseName = name.replaceAll("(?i)[bi]+$", "");
+        if (baseName.length() == name.length()) return Font.PLAIN;
+
+        String suffix = name.substring(baseName.length()).toLowerCase();
+        int style = Font.PLAIN;
+        if (suffix.contains("b")) style |= Font.BOLD;
+        if (suffix.contains("i")) style |= Font.ITALIC;
+        return style;
     }
 
     private Datum getScriptProp(String prop) {
@@ -765,7 +879,7 @@ public class CastMember {
                 String style = textFontStyle.toLowerCase();
                 if (style.contains("bold")) fontStyleAwt |= Font.BOLD;
                 if (style.contains("italic")) fontStyleAwt |= Font.ITALIC;
-                Font font = new Font(textFont, fontStyleAwt, textFontSize);
+                Font font = resolveDirectorFont(textFont, fontStyleAwt, textFontSize);
 
                 // Use a temporary image to get FontMetrics
                 BufferedImage tmpImg = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);

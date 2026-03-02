@@ -415,68 +415,85 @@ public class PlayerFrame extends JFrame {
     public void openFile(Path path) {
         stop();
 
-        try {
-            DirectorFile file = DirectorFile.load(path);
-            player = new Player(file);
+        statusLabel.setText("Loading: " + path.getFileName() + " ...");
+        setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
 
-            // Save this file as the last opened (clear URL preference)
-            saveLastFilePreference(path);
-            prefs.remove(PREF_LAST_URL);
-
-            // Set movie key for breakpoint/extparam persistence
-            currentMovieKey = path.toAbsolutePath().toString();
-
-            // Load and apply saved external params
-            loadExternalParams(currentMovieKey);
-            player.setExternalParams(currentExternalParams);
-
-            // Auto-detect local HTTP root for localhost URL resolution
-            // (e.g., if file is under C:/xampp/htdocs/..., set htdocs as the root)
-            String absPath = path.toAbsolutePath().toString().replace('\\', '/');
-            int htdocsIdx = absPath.toLowerCase().indexOf("/htdocs/");
-            String httpRoot = null;
-            if (htdocsIdx >= 0) {
-                httpRoot = absPath.substring(0, htdocsIdx + "/htdocs".length());
-                player.getNetManager().setLocalHttpRoot(httpRoot);
+        // Load file in background thread to avoid blocking the UI
+        new SwingWorker<DirectorFile, Void>() {
+            @Override
+            protected DirectorFile doInBackground() throws Exception {
+                return DirectorFile.load(path);
             }
 
-            // Auto-detect sw1 external params if none were saved by the user.
-            // Looks for gamedata/external_variables.txt and external_texts.txt
-            // under the HTTP root and builds the sw1 param string.
-            if (currentExternalParams.isEmpty() && httpRoot != null) {
-                StringBuilder sw1 = new StringBuilder();
-                Path varsFile = Path.of(httpRoot, "gamedata", "external_variables.txt");
-                Path textsFile = Path.of(httpRoot, "gamedata", "external_texts.txt");
-                if (Files.exists(varsFile)) {
-                    sw1.append("external.variables.txt=http://localhost/gamedata/external_variables.txt");
-                }
-                if (Files.exists(textsFile)) {
-                    if (sw1.length() > 0) sw1.append(";");
-                    sw1.append("external.texts.txt=http://localhost/gamedata/external_texts.txt");
-                }
-                if (sw1.length() > 0) {
-                    currentExternalParams.put("sw1", sw1.toString());
+            @Override
+            protected void done() {
+                setCursor(Cursor.getDefaultCursor());
+                try {
+                    DirectorFile file = get();
+                    player = new Player(file);
+
+                    // Save this file as the last opened (clear URL preference)
+                    saveLastFilePreference(path);
+                    prefs.remove(PREF_LAST_URL);
+
+                    // Set movie key for breakpoint/extparam persistence
+                    currentMovieKey = path.toAbsolutePath().toString();
+
+                    // Load and apply saved external params
+                    loadExternalParams(currentMovieKey);
                     player.setExternalParams(currentExternalParams);
+
+                    // Auto-detect local HTTP root for localhost URL resolution
+                    // (e.g., if file is under C:/xampp/htdocs/..., set htdocs as the root)
+                    String absPath = path.toAbsolutePath().toString().replace('\\', '/');
+                    int htdocsIdx = absPath.toLowerCase().indexOf("/htdocs/");
+                    String httpRoot = null;
+                    if (htdocsIdx >= 0) {
+                        httpRoot = absPath.substring(0, htdocsIdx + "/htdocs".length());
+                        player.getNetManager().setLocalHttpRoot(httpRoot);
+                    }
+
+                    // Auto-detect sw1 external params if none were saved by the user.
+                    // Looks for gamedata/external_variables.txt and external_texts.txt
+                    // under the HTTP root and builds the sw1 param string.
+                    if (currentExternalParams.isEmpty() && httpRoot != null) {
+                        StringBuilder sw1 = new StringBuilder();
+                        Path varsFile = Path.of(httpRoot, "gamedata", "external_variables.txt");
+                        Path textsFile = Path.of(httpRoot, "gamedata", "external_texts.txt");
+                        if (Files.exists(varsFile)) {
+                            sw1.append("external.variables.txt=http://localhost/gamedata/external_variables.txt");
+                        }
+                        if (Files.exists(textsFile)) {
+                            if (sw1.length() > 0) sw1.append(";");
+                            sw1.append("external.texts.txt=http://localhost/gamedata/external_texts.txt");
+                        }
+                        if (sw1.length() > 0) {
+                            currentExternalParams.put("sw1", sw1.toString());
+                            player.setExternalParams(currentExternalParams);
+                        }
+                    }
+
+                    // Update UI
+                    setTitle("LibreShockwave Player - " + path.getFileName());
+                    statusLabel.setText("Loaded: " + path.getFileName() +
+                        " | Frames: " + player.getFrameCount() +
+                        " | Tempo: " + player.getTempo() + " fps");
+
+                    setupPlayerUI(file);
+
+                    // Load saved breakpoints for this movie
+                    loadBreakpoints(currentMovieKey);
+
+                } catch (Exception e) {
+                    String message = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
+                    JOptionPane.showMessageDialog(PlayerFrame.this,
+                        "Failed to load file: " + message,
+                        "Error",
+                        JOptionPane.ERROR_MESSAGE);
+                    statusLabel.setText("Failed to load: " + path.getFileName());
                 }
             }
-
-            // Update UI
-            setTitle("LibreShockwave Player - " + path.getFileName());
-            statusLabel.setText("Loaded: " + path.getFileName() +
-                " | Frames: " + player.getFrameCount() +
-                " | Tempo: " + player.getTempo() + " fps");
-
-            setupPlayerUI(file);
-
-            // Load saved breakpoints for this movie
-            loadBreakpoints(currentMovieKey);
-
-        } catch (IOException e) {
-            JOptionPane.showMessageDialog(this,
-                "Failed to load file: " + e.getMessage(),
-                "Error",
-                JOptionPane.ERROR_MESSAGE);
-        }
+        }.execute();
     }
 
     /**

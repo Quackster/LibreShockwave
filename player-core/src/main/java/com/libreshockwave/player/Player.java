@@ -77,6 +77,12 @@ public class Player {
     // Executor for running VM on background thread (required for debugger blocking)
     // Lazy-initialized to avoid creating threads in environments that don't support them (e.g. TeaVM)
     private ExecutorService vmExecutor;
+
+    // Executor for parsing external cast files off the network thread
+    private final ExecutorService castParserExecutor = Executors.newFixedThreadPool(
+        Math.max(2, Runtime.getRuntime().availableProcessors() / 2),
+        r -> { Thread t = new Thread(r, "CastParser"); t.setDaemon(true); return t; }
+    );
     private Runnable vmExecutorShutdown;  // Shutdown hook, avoids referencing ExecutorService in shutdown()
     private volatile boolean vmRunning = false;
 
@@ -162,14 +168,16 @@ public class Player {
         netManager.setCompletionCallback((fileName, data) -> {
             // Always cache downloaded cast files for later use by CastLoad Manager
             castLibManager.cacheFileData(fileName, data);
-            // Check if this URL matches an external cast library
-            if (castLibManager.setExternalCastDataByUrl(fileName, data)) {
-                System.out.println("[Player] Loaded external cast from: " + fileName);
-                // Notify listener that a cast was loaded (for debugger refresh)
-                if (castLoadedListener != null) {
-                    castLoadedListener.run();
+            // Offload heavy DirectorFile.load() + CastLib.load() to dedicated thread pool
+            // so the NetManager worker can immediately handle more downloads
+            castParserExecutor.submit(() -> {
+                if (castLibManager.setExternalCastDataByUrl(fileName, data)) {
+                    System.out.println("[Player] Loaded external cast from: " + fileName);
+                    if (castLoadedListener != null) {
+                        castLoadedListener.run();
+                    }
                 }
-            }
+            });
         });
 
         // Wire up event notifications
@@ -848,6 +856,9 @@ public class Player {
         if (netManager != null) {
             netManager.shutdown();
         }
+
+        // Shutdown cast parser executor
+        castParserExecutor.shutdownNow();
 
         // Reset debug controller (releases any blocked threads)
         if (debugController != null) {

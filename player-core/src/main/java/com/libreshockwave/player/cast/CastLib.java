@@ -560,7 +560,7 @@ public class CastLib {
      * @param data The raw file data
      * @return true if parsing was successful
      */
-    public boolean setExternalData(byte[] data) {
+    public synchronized boolean setExternalData(byte[] data) {
         if (data == null || data.length == 0) {
             return false;
         }

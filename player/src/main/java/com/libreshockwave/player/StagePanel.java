@@ -12,7 +12,10 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * Swing panel that renders the Director stage using the player-core rendering API.
@@ -26,6 +29,18 @@ public class StagePanel extends JPanel {
 
     private Player player;
     private final Map<Integer, BufferedImage> bitmapCache = new ConcurrentHashMap<>();
+    private final ExecutorService bitmapDecoder = Executors.newFixedThreadPool(
+        Math.max(2, Runtime.getRuntime().availableProcessors() / 2),
+        r -> {
+            Thread t = new Thread(r, "BitmapDecoder");
+            t.setDaemon(true);
+            return t;
+        }
+    );
+    private final Set<Integer> decoding = ConcurrentHashMap.newKeySet();
+    private final Set<Integer> decodeFailed = ConcurrentHashMap.newKeySet();
+    private final Map<Long, BufferedImage> transparentCache = new ConcurrentHashMap<>();
+    private volatile int playerVersion = 0;
 
     // Fixed stage dimensions (set from movie)
     private int stageWidth = 640;
@@ -38,7 +53,11 @@ public class StagePanel extends JPanel {
 
     public void setPlayer(Player player) {
         this.player = player;
+        playerVersion++;
         bitmapCache.clear();
+        transparentCache.clear();
+        decoding.clear();
+        decodeFailed.clear();
         repaint();
     }
 
@@ -203,7 +222,7 @@ public class StagePanel extends JPanel {
 
         // Apply Background Transparent ink (36): make the backColor transparent
         if (ink == 36) {
-            img = applyBackgroundTransparent(img, sprite.getBackColor());
+            img = applyBackgroundTransparent(img, sprite.getBackColor(), member != null ? member.id() : -1);
         }
 
         // Calculate actual position (regPoint offset)
@@ -220,11 +239,21 @@ public class StagePanel extends JPanel {
     /**
      * Apply Background Transparent ink: pixels matching the background color become transparent.
      * This is Director's ink type 36, commonly used for sprite compositing.
+     * Results are cached by (memberId, backColor) to avoid reprocessing every frame.
      */
-    private BufferedImage applyBackgroundTransparent(BufferedImage src, int backColor) {
+    private BufferedImage applyBackgroundTransparent(BufferedImage src, int backColor, int memberId) {
         // Check if we've already processed this image (cached version is ARGB)
         if (src.getType() == BufferedImage.TYPE_INT_ARGB) {
             return src;
+        }
+
+        // Check transparent cache
+        if (memberId >= 0) {
+            long key = ((long) memberId << 32) | (backColor & 0xFFFFFFFFL);
+            BufferedImage cached = transparentCache.get(key);
+            if (cached != null) {
+                return cached;
+            }
         }
 
         int w = src.getWidth();
@@ -253,8 +282,12 @@ public class StagePanel extends JPanel {
             }
         }
 
-        // Replace in cache so we don't reprocess every frame
-        CastMemberChunk member = null; // We can't easily get member here, so skip cache update
+        // Cache the result
+        if (memberId >= 0) {
+            long key = ((long) memberId << 32) | (backColor & 0xFFFFFFFFL);
+            transparentCache.put(key, result);
+        }
+
         return result;
     }
 
@@ -331,6 +364,9 @@ public class StagePanel extends JPanel {
      */
     public void clearBitmapCache() {
         bitmapCache.clear();
+        transparentCache.clear();
+        decoding.clear();
+        decodeFailed.clear();
     }
 
     private BufferedImage getCachedBitmap(CastMemberChunk member) {
@@ -340,20 +376,31 @@ public class StagePanel extends JPanel {
             return cached;
         }
 
-        if (player == null) {
+        // Skip if no player, already decoding, or previously failed (retry after cache clear)
+        if (player == null || decodeFailed.contains(id) || !decoding.add(id)) {
             return null;
         }
 
-        // Don't re-attempt if already in the cache as null — but we no longer cache null.
-        // This means we retry every repaint until the bitmap is available (e.g., cast loads).
-        Optional<Bitmap> bitmap = player.decodeBitmap(member);
-        if (bitmap.isPresent()) {
-            BufferedImage img = bitmap.get().toBufferedImage();
-            bitmapCache.put(id, img);
-            return img;
-        }
+        // Decode asynchronously to avoid blocking the EDT
+        Player p = player;
+        int version = playerVersion;
+        bitmapDecoder.submit(() -> {
+            try {
+                if (version != playerVersion) return;
+                Optional<Bitmap> bitmap = p.decodeBitmap(member);
+                if (version != playerVersion) return;
+                if (bitmap.isPresent()) {
+                    BufferedImage img = bitmap.get().toBufferedImage();
+                    bitmapCache.put(id, img);
+                    SwingUtilities.invokeLater(this::repaint);
+                } else {
+                    decodeFailed.add(id);
+                }
+            } finally {
+                decoding.remove(id);
+            }
+        });
 
-        // Don't cache null — retry on next repaint when cast may have loaded
         return null;
     }
 
