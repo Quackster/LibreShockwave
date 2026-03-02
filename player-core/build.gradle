@@ -214,3 +214,15 @@ tasks.register('runSpritePipelineTest', JavaExec) {
         languageVersion = JavaLanguageVersion.of(21)
     }
 }
+
+// Task to diagnose and validate login window rendering
+tasks.register('runLoginWindowTest', JavaExec) {
+    group = 'verification'
+    description = 'Diagnose login window black background vs working error dialog'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.LoginWindowTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
