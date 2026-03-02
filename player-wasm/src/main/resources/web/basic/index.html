@@ -53,222 +53,143 @@
         <div id="status" class="status">Waiting for a movie file...</div>
     </div>
 
-    <script src="../player-bridge.js"></script>
+    <script src="../shockwave-lib.js"></script>
     <script>
         var player = null;
         var isPlaying = false;
 
-        async function initPlayer() {
-            var status = document.getElementById('status');
-            var filePicker = document.getElementById('file-picker');
-            var urlInput = document.getElementById('url-input');
-            var loadUrlBtn = document.getElementById('load-url-btn');
-            var playBtn = document.getElementById('play-btn');
-            var pauseBtn = document.getElementById('pause-btn');
-            var stopBtn = document.getElementById('stop-btn');
-            var stepFwdBtn = document.getElementById('step-fwd-btn');
-            var stepBackBtn = document.getElementById('step-back-btn');
-            var frameSlider = document.getElementById('frame-slider');
-            var frameInfo = document.getElementById('frame-info');
-            var canvas = document.getElementById('shockwave-stage');
+        var statusEl = document.getElementById('status');
+        var filePicker = document.getElementById('file-picker');
+        var urlInput = document.getElementById('url-input');
+        var loadUrlBtn = document.getElementById('load-url-btn');
+        var playBtn = document.getElementById('play-btn');
+        var pauseBtn = document.getElementById('pause-btn');
+        var stopBtn = document.getElementById('stop-btn');
+        var stepFwdBtn = document.getElementById('step-fwd-btn');
+        var stepBackBtn = document.getElementById('step-back-btn');
+        var frameSlider = document.getElementById('frame-slider');
+        var frameInfo = document.getElementById('frame-info');
 
-            try {
-                player = new LibreShockwavePlayer();
-                player.setCanvas(canvas);
-                player.setWorkerUrl('../worker.js');
-
-                await player.init();
-                status.textContent = 'Ready. Load a movie file to begin.';
-
-                function enableControls() {
-                    playBtn.disabled = false;
-                    pauseBtn.disabled = false;
-                    stopBtn.disabled = false;
-                    stepFwdBtn.disabled = false;
-                    stepBackBtn.disabled = false;
-                    frameSlider.disabled = false;
-                }
-
-                function updateFrameInfo() {
-                    var current = player.getCurrentFrame();
-                    var total = player.getFrameCount();
-                    if (total > 0) {
-                        frameInfo.textContent = 'Frame ' + current + ' / ' + total;
-                        frameSlider.max = total;
-                        frameSlider.value = current;
-                    }
-                }
-
-                // Callbacks
-                player._onMovieLoaded = function(msg) {
-                    status.textContent = 'Loaded (' + msg.width + 'x' + msg.height + ', ' + msg.frameCount + ' frames)';
-                    enableControls();
-                    frameSlider.max = msg.frameCount;
-                    player._lastTempo = msg.tempo;
-                    player._lastFrameCount = msg.frameCount;
-                    dismissLoading();
-                };
-
-                player._onFrameUpdate = function(frame, total) {
-                    frameInfo.textContent = 'Frame ' + frame + ' / ' + total;
-                    frameSlider.max = total;
-                    frameSlider.value = frame;
-                };
-
-                player._onError = function(msg) {
-                    status.textContent = 'Error: ' + msg;
-                    dismissLoading();
-                };
-
-                player._onPreloadStarted = function(count) {
-                    if (count > 0) showLoading(count);
-                };
-
-                // === File loading ===
-
-                function loadFromFile(file) {
-                    status.textContent = 'Loading ' + file.name + '...';
-                    var reader = new FileReader();
-                    reader.onload = function() {
-                        player.loadMovie(new Uint8Array(reader.result), file.name);
-                    };
-                    reader.readAsArrayBuffer(file);
-                }
-
-                function loadFromUrl(url) {
-                    status.textContent = 'Fetching ' + url + '...';
-                    fetch(url)
-                        .then(function(r) {
-                            if (!r.ok) throw new Error('HTTP ' + r.status);
-                            return r.arrayBuffer();
-                        })
-                        .then(function(buf) {
-                            player.loadMovie(new Uint8Array(buf), url);
-                        })
-                        .catch(function(err) {
-                            status.textContent = 'Error: ' + err.message;
-                        });
-                }
-
-                filePicker.addEventListener('change', function(e) {
-                    if (e.target.files[0]) loadFromFile(e.target.files[0]);
-                });
-
-                loadUrlBtn.addEventListener('click', function() {
-                    var url = urlInput.value.trim();
-                    if (url) loadFromUrl(url);
-                });
-
-                urlInput.addEventListener('keydown', function(e) {
-                    if (e.key === 'Enter') {
-                        var url = urlInput.value.trim();
-                        if (url) loadFromUrl(url);
-                    }
-                });
-
-                // === Playback controls ===
-
-                playBtn.addEventListener('click', function() { doPlay(); });
-                pauseBtn.addEventListener('click', function() { doPause(); });
-                stopBtn.addEventListener('click', function() { doStop(); });
-                stepFwdBtn.addEventListener('click', function() { doStepForward(); });
-                stepBackBtn.addEventListener('click', function() { doStepBackward(); });
-
-                frameSlider.addEventListener('input', function() {
-                    player.goToFrame(parseInt(this.value));
-                });
-
-                function doPlay() {
-                    player.play();
-                    isPlaying = true;
-                    status.textContent = 'Playing';
-                }
-
-                function doPause() {
-                    player.pause();
-                    isPlaying = false;
-                    status.textContent = 'Paused';
-                    updateFrameInfo();
-                }
-
-                function doStop() {
-                    player.stop();
-                    isPlaying = false;
-                    status.textContent = 'Stopped';
-                    updateFrameInfo();
-                }
-
-                function doStepForward() {
-                    player.stepForward();
-                }
-
-                function doStepBackward() {
-                    player.stepBackward();
-                }
-
-                function togglePlayPause() {
-                    if (isPlaying) doPause(); else doPlay();
-                }
-
-                // === Keyboard shortcuts ===
-
-                document.addEventListener('keydown', function(e) {
-                    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
-
-                    if (e.key === ' ') {
-                        e.preventDefault();
-                        togglePlayPause();
-                    } else if (e.key === 'Escape') {
-                        doStop();
-                    } else if (e.key === 'ArrowRight' && !e.ctrlKey) {
-                        e.preventDefault();
-                        doStepForward();
-                    } else if (e.key === 'ArrowLeft' && !e.ctrlKey) {
-                        e.preventDefault();
-                        doStepBackward();
-                    } else if (e.key === 'Home') {
-                        e.preventDefault();
-                        player.goToFrame(1);
-                    } else if (e.key === 'End') {
-                        e.preventDefault();
-                        player.goToFrame(player.getFrameCount());
-                    }
-                });
-
-                setInterval(updateFrameInfo, 500);
-
-            } catch (e) {
-                status.textContent = 'Failed to initialize: ' + e.message;
-                console.error('Init error:', e);
-            }
-        }
-
-        // === Loading screen ===
-
-        var loadingTotal = 0;
-        var loadingCount = 0;
-
-        function showLoading(total) {
-            loadingTotal = total;
-            loadingCount = 0;
-            document.getElementById('loading-overlay').style.display = 'flex';
-            document.getElementById('loading-bar').style.width = '0%';
-            document.getElementById('loading-text').textContent = 'Loading... 0/' + total;
-        }
-
-        function updateLoadingProgress() {
-            loadingCount++;
-            var pct = Math.min(100, (loadingCount / loadingTotal) * 100);
-            document.getElementById('loading-bar').style.width = pct + '%';
-            document.getElementById('loading-text').textContent =
-                (loadingCount >= loadingTotal ? 'Complete' : 'Loading...') + ' ' + loadingCount + '/' + loadingTotal;
+        function enableControls() {
+            playBtn.disabled = false;
+            pauseBtn.disabled = false;
+            stopBtn.disabled = false;
+            stepFwdBtn.disabled = false;
+            stepBackBtn.disabled = false;
+            frameSlider.disabled = false;
         }
 
         function dismissLoading() {
             document.getElementById('loading-overlay').style.display = 'none';
         }
 
-        initPlayer();
+        // Create the player using shockwave-lib's unified API
+        player = LibreShockwave.create('shockwave-stage', {
+            basePath: '../',
+            autoplay: false,
+            onLoad: function(info) {
+                statusEl.textContent = 'Loaded (' + info.width + 'x' + info.height + ', ' + info.frameCount + ' frames)';
+                enableControls();
+                frameSlider.max = info.frameCount;
+                dismissLoading();
+            },
+            onFrame: function(frame, total) {
+                frameInfo.textContent = 'Frame ' + frame + ' / ' + total;
+                frameSlider.max = total;
+                frameSlider.value = frame;
+            },
+            onError: function(msg) {
+                statusEl.textContent = 'Error: ' + msg;
+                dismissLoading();
+            }
+        });
+
+        statusEl.textContent = 'Ready. Load a movie file to begin.';
+
+        // === File loading ===
+
+        filePicker.addEventListener('change', function(e) {
+            if (e.target.files[0]) {
+                statusEl.textContent = 'Loading ' + e.target.files[0].name + '...';
+                player.loadFile(e.target.files[0]);
+            }
+        });
+
+        function loadFromUrl(url) {
+            statusEl.textContent = 'Fetching ' + url + '...';
+            player.load(url);
+        }
+
+        loadUrlBtn.addEventListener('click', function() {
+            var url = urlInput.value.trim();
+            if (url) loadFromUrl(url);
+        });
+
+        urlInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                var url = urlInput.value.trim();
+                if (url) loadFromUrl(url);
+            }
+        });
+
+        // === Playback controls ===
+
+        function doPlay() {
+            player.play();
+            isPlaying = true;
+            statusEl.textContent = 'Playing';
+        }
+
+        function doPause() {
+            player.pause();
+            isPlaying = false;
+            statusEl.textContent = 'Paused';
+        }
+
+        function doStop() {
+            player.stop();
+            isPlaying = false;
+            statusEl.textContent = 'Stopped';
+        }
+
+        function togglePlayPause() {
+            if (isPlaying) doPause(); else doPlay();
+        }
+
+        playBtn.addEventListener('click', doPlay);
+        pauseBtn.addEventListener('click', doPause);
+        stopBtn.addEventListener('click', doStop);
+        stepFwdBtn.addEventListener('click', function() { player.stepForward(); });
+        stepBackBtn.addEventListener('click', function() { player.stepBackward(); });
+
+        frameSlider.addEventListener('input', function() {
+            player.goToFrame(parseInt(this.value));
+        });
+
+        // === Keyboard shortcuts ===
+
+        document.addEventListener('keydown', function(e) {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+
+            if (e.key === ' ') {
+                e.preventDefault();
+                togglePlayPause();
+            } else if (e.key === 'Escape') {
+                doStop();
+            } else if (e.key === 'ArrowRight' && !e.ctrlKey) {
+                e.preventDefault();
+                player.stepForward();
+            } else if (e.key === 'ArrowLeft' && !e.ctrlKey) {
+                e.preventDefault();
+                player.stepBackward();
+            } else if (e.key === 'Home') {
+                e.preventDefault();
+                player.goToFrame(1);
+            } else if (e.key === 'End') {
+                e.preventDefault();
+                player.goToFrame(player.getFrameCount());
+            }
+        });
     </script>
 </body>
 </html>

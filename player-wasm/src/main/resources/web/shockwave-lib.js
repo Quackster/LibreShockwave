@@ -250,6 +250,7 @@ var LibreShockwave = (function() {
 '',
 'function deliverFetchResult(taskId, data) {',
 '    var bytes = new Uint8Array(data);',
+'    console.log("[Worker] deliverFetchResult task=" + taskId + " rawType=" + (data && data.constructor && data.constructor.name) + " byteLength=" + (data && data.byteLength) + " wrappedLen=" + bytes.length);',
 '    exports.allocateNetBuffer(bytes.length);',
 '    var netBufAddr = exports.getNetBufferAddress();',
 '    var netBuf = new Uint8Array(getMemory(), netBufAddr, bytes.length);',
@@ -677,10 +678,17 @@ var LibreShockwave = (function() {
         var self = this;
         var opts = {};
         if (msg.method === 'POST') { opts.method = 'POST'; opts.body = msg.postData; opts.headers = { 'Content-Type': 'application/x-www-form-urlencoded' }; }
+        console.log('[FetchRelay] Fetching task ' + msg.taskId + ': ' + msg.url);
         fetch(msg.url, opts)
             .then(function(r) { if (!r.ok) throw r.status; return r.arrayBuffer(); })
-            .then(function(buf) { self.worker.postMessage({ cmd: 'fetchComplete', taskId: msg.taskId, data: buf }, [buf]); })
-            .catch(function(e) { self.worker.postMessage({ cmd: 'fetchError', taskId: msg.taskId, status: typeof e === 'number' ? e : 0 }); });
+            .then(function(buf) {
+                console.log('[FetchRelay] task ' + msg.taskId + ' got ' + buf.byteLength + ' bytes');
+                self.worker.postMessage({ cmd: 'fetchComplete', taskId: msg.taskId, data: buf }, [buf]);
+            })
+            .catch(function(e) {
+                console.error('[FetchRelay] task ' + msg.taskId + ' FAILED:', e);
+                self.worker.postMessage({ cmd: 'fetchError', taskId: msg.taskId, status: typeof e === 'number' ? e : 0 });
+            });
     };
 
     PlayerEngine.prototype.destroy = function() {
