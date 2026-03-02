@@ -7,61 +7,13 @@
     <link rel="stylesheet" href="libreshockwave.css">
 </head>
 <body>
-    <!-- Loading overlay -->
-    <div id="loading-overlay" class="loading-overlay" style="display:none;">
-        <div class="loading-title">LibreShockwave</div>
-        <div class="loading-bar-container">
-            <div class="loading-bar" id="loading-bar"></div>
-        </div>
-        <div class="loading-text" id="loading-text">Loading...</div>
-    </div>
 
     <table class="page-table" cellspacing="0" cellpadding="0">
         <tr>
             <td class="page-cell">
 
-                <!-- Header -->
                 <div class="header">
                     <span class="header-title">LibreShockwave Web Player</span>
-                </div>
-
-                <!-- Menu bar -->
-                <div class="menu-bar">
-                    <div class="menu-item" id="menu-file">
-                        File
-                        <div class="menu-dropdown" id="dropdown-file">
-                            <div class="menu-entry" id="menu-open-file">Open File...<span class="shortcut">Ctrl+O</span></div>
-                            <div class="menu-entry" id="menu-open-url">Open URL<span class="shortcut">Ctrl+U</span></div>
-                            <div class="menu-entry" id="menu-reopen">Reopen Last<span class="shortcut">Ctrl+Shift+O</span></div>
-                            <div class="menu-separator"></div>
-                            <div class="menu-entry" id="menu-close">Close</div>
-                            <div class="menu-entry" id="menu-restart">Restart<span class="shortcut">Ctrl+R</span></div>
-                        </div>
-                    </div>
-                    <div class="menu-item" id="menu-playback">
-                        Playback
-                        <div class="menu-dropdown" id="dropdown-playback">
-                            <div class="menu-entry" id="menu-play-pause">Play / Pause<span class="shortcut">Space</span></div>
-                            <div class="menu-entry" id="menu-stop">Stop<span class="shortcut">Esc</span></div>
-                            <div class="menu-separator"></div>
-                            <div class="menu-entry" id="menu-step-fwd">Step Forward<span class="shortcut">Right</span></div>
-                            <div class="menu-entry" id="menu-step-back">Step Backward<span class="shortcut">Left</span></div>
-                            <div class="menu-separator"></div>
-                            <div class="menu-entry" id="menu-goto-frame">Go to Frame...</div>
-                        </div>
-                    </div>
-                    <div class="menu-item" id="menu-movie">
-                        Movie
-                        <div class="menu-dropdown" id="dropdown-movie">
-                            <div class="menu-entry" id="menu-ext-params">External Params...<span class="shortcut">Ctrl+E</span></div>
-                        </div>
-                    </div>
-                    <div class="menu-item" id="menu-help">
-                        Help
-                        <div class="menu-dropdown" id="dropdown-help">
-                            <div class="menu-entry" id="menu-about">About LibreShockwave</div>
-                        </div>
-                    </div>
                 </div>
 
                 <!-- Toolbar -->
@@ -73,22 +25,23 @@
                     <span class="toolbar-sep">URL:</span>
                     <input type="text" id="url-input" class="url-input" value="">
                     <button id="load-url-btn" class="btn">Go</button>
+                    <button id="params-btn" class="btn">Params...</button>
                 </div>
 
-                <!-- Stage area -->
+                <!-- Stage -->
                 <div class="stage-panel">
                     <div class="stage-inset">
-                        <canvas id="shockwave-stage" width="640" height="480"></canvas>
+                        <canvas id="stage" width="640" height="480"></canvas>
                     </div>
                 </div>
 
-                <!-- Transport controls -->
+                <!-- Transport -->
                 <div class="transport">
-                    <button id="step-back-btn" class="btn transport-btn" disabled title="Step Backward">|&lt;</button>
-                    <button id="play-btn" class="btn transport-btn" disabled title="Play">&#9654; Play</button>
-                    <button id="pause-btn" class="btn transport-btn" disabled title="Pause">&#9646;&#9646; Pause</button>
-                    <button id="stop-btn" class="btn transport-btn" disabled title="Stop">&#9632; Stop</button>
-                    <button id="step-fwd-btn" class="btn transport-btn" disabled title="Step Forward">&gt;|</button>
+                    <button id="step-back-btn" class="btn transport-btn" disabled>|&lt;</button>
+                    <button id="play-btn" class="btn transport-btn" disabled>&#9654; Play</button>
+                    <button id="pause-btn" class="btn transport-btn" disabled>&#9646;&#9646;</button>
+                    <button id="stop-btn" class="btn transport-btn" disabled>&#9632; Stop</button>
+                    <button id="step-fwd-btn" class="btn transport-btn" disabled>&gt;|</button>
                     <input type="range" id="frame-slider" min="1" max="1" value="1" disabled>
                     <span id="frame-info" class="frame-info"></span>
                 </div>
@@ -110,13 +63,9 @@
                 <button class="modal-close-btn" id="params-modal-close">X</button>
             </div>
             <div class="modal-body">
-                <p class="modal-hint">Shockwave PARAM tags (sw1-sw9, etc.)</p>
+                <p class="modal-hint">Shockwave PARAM tags (sw1-sw9)</p>
                 <table id="params-table" class="params-table" cellspacing="0" cellpadding="0">
-                    <thead><tr>
-                        <th>Key</th>
-                        <th>Value</th>
-                        <th style="width:24px;"></th>
-                    </tr></thead>
+                    <thead><tr><th>Key</th><th>Value</th><th style="width:24px;"></th></tr></thead>
                     <tbody id="params-body"></tbody>
                 </table>
                 <div class="modal-buttons">
@@ -129,463 +78,126 @@
         </div>
     </div>
 
-    <!-- About modal -->
-    <div id="about-modal" class="modal-overlay" style="display:none;">
-        <div class="modal-window" style="width:340px;">
-            <div class="modal-titlebar">
-                <span>About LibreShockwave</span>
-                <button class="modal-close-btn" id="about-modal-close">X</button>
-            </div>
-            <div class="modal-body" style="text-align:center;padding:16px;">
-                <p><b>LibreShockwave Web Player</b></p>
-                <p>An open-source Macromedia Director movie player.</p>
-                <br>
-                <button class="btn" onclick="document.getElementById('about-modal').style.display='none'">OK</button>
-            </div>
-        </div>
-    </div>
-
-    <input type="file" id="hidden-file-picker" accept=".dcr,.dir,.dxr,.cct,.cst" style="display:none;">
-
-    <!-- TeaVM standard WASM runtime + player bridge -->
-    <script src="player-wasm.wasm-runtime.js"></script>
-    <script src="player-bridge.js"></script>
+    <script src="libreshockwave-lib.js"></script>
     <script>
-        var player = null;
-        var isPlaying = false;
-        var movieSource = null;
-
-        async function initPlayer() {
-            var status = document.getElementById('status');
-            var filePicker = document.getElementById('file-picker');
-            var hiddenFilePicker = document.getElementById('hidden-file-picker');
-            var urlInput = document.getElementById('url-input');
-            var loadUrlBtn = document.getElementById('load-url-btn');
-            var playBtn = document.getElementById('play-btn');
-            var pauseBtn = document.getElementById('pause-btn');
-            var stopBtn = document.getElementById('stop-btn');
-            var stepFwdBtn = document.getElementById('step-fwd-btn');
-            var stepBackBtn = document.getElementById('step-back-btn');
-            var frameSlider = document.getElementById('frame-slider');
-            var frameInfo = document.getElementById('frame-info');
-            var canvas = document.getElementById('shockwave-stage');
-
-            // Restore saved URL input
-            try {
-                var savedUrl = localStorage.getItem('ls_urlInput');
-                if (savedUrl) urlInput.value = savedUrl;
-            } catch(e) {}
-
-            try {
-                player = new LibreShockwavePlayer();
-                player.setCanvas(canvas);
-                await player.init();
-                status.textContent = 'Ready. Open a movie file or enter a URL.';
-
-                function enableControls() {
-                    playBtn.disabled = false;
-                    pauseBtn.disabled = false;
-                    stopBtn.disabled = false;
-                    stepFwdBtn.disabled = false;
-                    stepBackBtn.disabled = false;
-                    frameSlider.disabled = false;
-                }
-
-                function updateFrameInfo() {
-                    var current = player.getCurrentFrame();
-                    var total = player.getFrameCount();
-                    if (total > 0) {
-                        frameInfo.textContent = 'Frame ' + current + ' / ' + total;
-                        frameSlider.max = total;
-                        frameSlider.value = current;
-                    }
-                }
-
-                // Callbacks
-                player._onMovieLoaded = function(msg) {
-                    status.textContent = 'Loaded: ' + (movieSource ? movieSource.name : '') +
-                        ' (' + msg.width + 'x' + msg.height + ', ' + msg.frameCount + ' frames)';
-                    enableControls();
-                    frameSlider.max = msg.frameCount;
-                    player._lastTempo = msg.tempo;
-                    player._lastFrameCount = msg.frameCount;
-
-                    // Save to localStorage for reopen
-                    if (movieSource) {
-                        try {
-                            localStorage.setItem('ls_lastMovie', JSON.stringify({
-                                source: movieSource,
-                                timestamp: Date.now()
-                            }));
-                        } catch (e) {}
-                    }
-
-                    dismissLoading();
-
-                    // Apply saved external params
-                    if (extParams && Object.keys(extParams).length > 0) {
-                        player.clearExternalParams();
-                        for (var key in extParams) {
-                            player.setExternalParam(key, extParams[key]);
-                        }
-                    }
-                };
-
-                player._onFrameUpdate = function(frame, total) {
-                    frameInfo.textContent = 'Frame ' + frame + ' / ' + total;
-                    frameSlider.max = total;
-                    frameSlider.value = frame;
-                };
-
-                player._onError = function(msg) {
-                    status.textContent = 'Error: ' + msg;
-                    dismissLoading();
-                };
-
-                player._onPreloadStarted = function(count) {
-                    if (count > 0) showLoading(count);
-                };
-
-                // === File loading ===
-
-                function loadFromFile(file) {
-                    movieSource = { type: 'file', name: file.name, basePath: file.name };
-                    status.textContent = 'Loading ' + file.name + '...';
-                    var reader = new FileReader();
-                    reader.onload = function() {
-                        player.loadMovie(new Uint8Array(reader.result), file.name);
-                    };
-                    reader.readAsArrayBuffer(file);
-                }
-
-                function loadFromUrl(url) {
-                    movieSource = { type: 'url', name: url, basePath: url };
-                    status.textContent = 'Fetching ' + url + '...';
-                    // Save URL to localStorage
-                    try { localStorage.setItem('ls_urlInput', url); } catch(e) {}
-                    fetch(url)
-                        .then(function(r) {
-                            if (!r.ok) throw new Error('HTTP ' + r.status);
-                            return r.arrayBuffer();
-                        })
-                        .then(function(buf) {
-                            player.loadMovie(new Uint8Array(buf), url);
-                        })
-                        .catch(function(err) {
-                            status.textContent = 'Error: ' + err.message;
-                        });
-                }
-
-                filePicker.addEventListener('change', function(e) {
-                    if (e.target.files[0]) loadFromFile(e.target.files[0]);
-                });
-
-                hiddenFilePicker.addEventListener('change', function(e) {
-                    if (e.target.files[0]) loadFromFile(e.target.files[0]);
-                });
-
-                loadUrlBtn.addEventListener('click', function() {
-                    var url = urlInput.value.trim();
-                    if (url) loadFromUrl(url);
-                });
-
-                urlInput.addEventListener('keydown', function(e) {
-                    if (e.key === 'Enter') {
-                        var url = urlInput.value.trim();
-                        if (url) loadFromUrl(url);
-                    }
-                });
-
-                // Save URL input on blur too
-                urlInput.addEventListener('blur', function() {
-                    try { localStorage.setItem('ls_urlInput', urlInput.value); } catch(e) {}
-                });
-
-                // === Playback controls ===
-
-                playBtn.addEventListener('click', function() { doPlay(); });
-                pauseBtn.addEventListener('click', function() { doPause(); });
-                stopBtn.addEventListener('click', function() { doStop(); });
-                stepFwdBtn.addEventListener('click', function() { doStepForward(); });
-                stepBackBtn.addEventListener('click', function() { doStepBackward(); });
-
-                frameSlider.addEventListener('input', function() {
-                    player.goToFrame(parseInt(this.value));
-                });
-
-                function doPlay() {
-                    player.play();
-                    isPlaying = true;
-                    status.textContent = 'Playing';
-                }
-
-                function doPause() {
-                    player.pause();
-                    isPlaying = false;
-                    status.textContent = 'Paused';
-                    updateFrameInfo();
-                }
-
-                function doStop() {
-                    player.stop();
-                    isPlaying = false;
-                    status.textContent = 'Stopped';
-                    updateFrameInfo();
-                }
-
-                function doStepForward() { player.stepForward(); }
-                function doStepBackward() { player.stepBackward(); }
-
-                function togglePlayPause() {
-                    if (isPlaying) doPause(); else doPlay();
-                }
-
-                // === Menu handlers ===
-
-                document.getElementById('menu-open-file').addEventListener('click', function() {
-                    hiddenFilePicker.click();
-                    closeMenus();
-                });
-                document.getElementById('menu-open-url').addEventListener('click', function() {
-                    urlInput.focus();
-                    closeMenus();
-                });
-                document.getElementById('menu-reopen').addEventListener('click', function() {
-                    closeMenus();
-                    reopenLast();
-                });
-                document.getElementById('menu-close').addEventListener('click', function() {
-                    closeMenus();
-                    doStop();
-                });
-                document.getElementById('menu-restart').addEventListener('click', function() {
-                    closeMenus();
-                    doStop();
-                    setTimeout(doPlay, 100);
-                });
-                document.getElementById('menu-play-pause').addEventListener('click', function() {
-                    closeMenus();
-                    togglePlayPause();
-                });
-                document.getElementById('menu-stop').addEventListener('click', function() {
-                    closeMenus();
-                    doStop();
-                });
-                document.getElementById('menu-step-fwd').addEventListener('click', function() {
-                    closeMenus();
-                    doStepForward();
-                });
-                document.getElementById('menu-step-back').addEventListener('click', function() {
-                    closeMenus();
-                    doStepBackward();
-                });
-                document.getElementById('menu-goto-frame').addEventListener('click', function() {
-                    closeMenus();
-                    var f = prompt('Go to frame:');
-                    if (f) player.goToFrame(parseInt(f));
-                });
-                document.getElementById('menu-ext-params').addEventListener('click', function() {
-                    closeMenus();
-                    openParamsDialog();
-                });
-                document.getElementById('menu-about').addEventListener('click', function() {
-                    closeMenus();
-                    document.getElementById('about-modal').style.display = 'flex';
-                });
-
-                // Menu open/close
-                var menuItems = document.querySelectorAll('.menu-item');
-                for (var i = 0; i < menuItems.length; i++) {
-                    menuItems[i].addEventListener('click', function(e) {
-                        var dropdown = this.querySelector('.menu-dropdown');
-                        var wasVisible = dropdown.classList.contains('visible');
-                        closeMenus();
-                        if (!wasVisible) dropdown.classList.add('visible');
-                        e.stopPropagation();
-                    });
-                }
-                document.addEventListener('click', function() { closeMenus(); });
-
-                function closeMenus() {
-                    var dropdowns = document.querySelectorAll('.menu-dropdown');
-                    for (var i = 0; i < dropdowns.length; i++) {
-                        dropdowns[i].classList.remove('visible');
-                    }
-                }
-
-                // Modal close buttons
-                document.getElementById('about-modal-close').addEventListener('click', function() {
-                    document.getElementById('about-modal').style.display = 'none';
-                });
-                document.getElementById('params-modal-close').addEventListener('click', function() {
-                    document.getElementById('params-modal').style.display = 'none';
-                });
-
-                // Close modals on overlay click
-                document.querySelectorAll('.modal-overlay').forEach(function(overlay) {
-                    overlay.addEventListener('click', function(e) {
-                        if (e.target === this) this.style.display = 'none';
-                    });
-                });
-
-                // === Keyboard shortcuts ===
-
-                document.addEventListener('keydown', function(e) {
-                    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
-
-                    if (e.key === ' ') {
-                        e.preventDefault();
-                        togglePlayPause();
-                    } else if (e.key === 'Escape') {
-                        doStop();
-                    } else if (e.key === 'ArrowRight' && !e.ctrlKey) {
-                        e.preventDefault();
-                        doStepForward();
-                    } else if (e.key === 'ArrowLeft' && !e.ctrlKey) {
-                        e.preventDefault();
-                        doStepBackward();
-                    } else if (e.key === 'Home') {
-                        e.preventDefault();
-                        player.goToFrame(1);
-                    } else if (e.key === 'End') {
-                        e.preventDefault();
-                        player.goToFrame(player.getFrameCount());
-                    } else if (e.key === 'o' && e.ctrlKey && !e.shiftKey) {
-                        e.preventDefault();
-                        hiddenFilePicker.click();
-                    } else if (e.key === 'O' && e.ctrlKey && e.shiftKey) {
-                        e.preventDefault();
-                        reopenLast();
-                    } else if (e.key === 'u' && e.ctrlKey) {
-                        e.preventDefault();
-                        urlInput.focus();
-                    } else if (e.key === 'e' && e.ctrlKey) {
-                        e.preventDefault();
-                        openParamsDialog();
-                    } else if (e.key === 'r' && e.ctrlKey) {
-                        e.preventDefault();
-                        doStop();
-                        setTimeout(doPlay, 100);
-                    }
-                });
-
-                // === Session recovery ===
-
-                function reopenLast() {
-                    try {
-                        var last = JSON.parse(localStorage.getItem('ls_lastMovie'));
-                        if (last && last.source) {
-                            if (last.source.type === 'url') {
-                                urlInput.value = last.source.name;
-                                loadFromUrl(last.source.name);
-                            } else {
-                                status.textContent = 'Cannot reopen local file (use file picker)';
-                            }
-                        } else {
-                            status.textContent = 'No previous movie to reopen';
-                        }
-                    } catch (e) {
-                        status.textContent = 'No previous movie to reopen';
-                    }
-                }
-
-                setInterval(updateFrameInfo, 500);
-
-            } catch (e) {
-                status.textContent = 'Failed to initialize: ' + e.message;
-                console.error('Init error:', e);
+        // Create the player
+        var player = LibreShockwave.create("stage", {
+            autoplay: true,
+            remember: true,
+            onLoad: function(info) {
+                status.textContent = 'Loaded (' + info.width + 'x' + info.height + ', ' + info.frameCount + ' frames)';
+                enableControls();
+                frameSlider.max = info.frameCount;
+            },
+            onError: function(msg) {
+                status.textContent = 'Error: ' + msg;
+            },
+            onFrame: function(frame, total) {
+                frameInfo.textContent = 'Frame ' + frame + ' / ' + total;
+                frameSlider.max = total;
+                frameSlider.value = frame;
             }
+        });
+
+        // DOM refs
+        var status = document.getElementById('status');
+        var urlInput = document.getElementById('url-input');
+        var frameSlider = document.getElementById('frame-slider');
+        var frameInfo = document.getElementById('frame-info');
+
+        // Restore saved URL
+        try { var s = localStorage.getItem('ls_urlInput'); if (s) urlInput.value = s; } catch(e) {}
+
+        function enableControls() {
+            ['play-btn','pause-btn','stop-btn','step-fwd-btn','step-back-btn','frame-slider']
+                .forEach(function(id) { document.getElementById(id).disabled = false; });
         }
 
-        // === Loading screen ===
+        // File picker
+        document.getElementById('file-picker').addEventListener('change', function(e) {
+            if (e.target.files[0]) {
+                status.textContent = 'Loading ' + e.target.files[0].name + '...';
+                player.loadFile(e.target.files[0]);
+            }
+        });
 
-        var loadingTotal = 0;
-        var loadingCount = 0;
-
-        function showLoading(total) {
-            loadingTotal = total;
-            loadingCount = 0;
-            document.getElementById('loading-overlay').style.display = 'flex';
-            document.getElementById('loading-bar').style.width = '0%';
-            document.getElementById('loading-text').textContent = 'Loading... 0/' + total;
+        // URL load
+        function loadUrl() {
+            var url = urlInput.value.trim();
+            if (!url) return;
+            status.textContent = 'Fetching...';
+            player.load(url);
         }
+        document.getElementById('load-url-btn').addEventListener('click', loadUrl);
+        urlInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') loadUrl(); });
+        urlInput.addEventListener('blur', function() {
+            try { localStorage.setItem('ls_urlInput', urlInput.value); } catch(e) {}
+        });
 
-        function updateLoadingProgress() {
-            loadingCount++;
-            var pct = Math.min(100, (loadingCount / loadingTotal) * 100);
-            document.getElementById('loading-bar').style.width = pct + '%';
-            document.getElementById('loading-text').textContent =
-                (loadingCount >= loadingTotal ? 'Complete' : 'Loading...') + ' ' + loadingCount + '/' + loadingTotal;
-        }
-
-        function dismissLoading() {
-            document.getElementById('loading-overlay').style.display = 'none';
-        }
+        // Transport
+        document.getElementById('play-btn').addEventListener('click', function() { player.play(); status.textContent = 'Playing'; });
+        document.getElementById('pause-btn').addEventListener('click', function() { player.pause(); status.textContent = 'Paused'; });
+        document.getElementById('stop-btn').addEventListener('click', function() { player.stop(); status.textContent = 'Stopped'; });
+        document.getElementById('step-fwd-btn').addEventListener('click', function() { player.stepForward(); });
+        document.getElementById('step-back-btn').addEventListener('click', function() { player.stepBackward(); });
+        frameSlider.addEventListener('input', function() { player.goToFrame(parseInt(this.value)); });
 
         // === External Params Dialog ===
 
-        var extParams = {};
-
-        function openParamsDialog() {
-            var body = document.getElementById('params-body');
-            body.innerHTML = '';
-            for (var key in extParams) {
-                addParamRow(key, extParams[key]);
-            }
-            if (Object.keys(extParams).length === 0) {
-                addParamRow('sw1', '');
-            }
-            document.getElementById('params-modal').style.display = 'flex';
-        }
+        function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
         function addParamRow(key, value) {
             var body = document.getElementById('params-body');
             var tr = document.createElement('tr');
-            tr.innerHTML = '<td><input type="text" value="' + escHtml(key) + '" class="param-input"></td>' +
-                '<td><input type="text" value="' + escHtml(value) + '" class="param-input param-value"></td>' +
-                '<td><button class="btn btn-sm" title="Remove">X</button></td>';
+            tr.innerHTML = '<td><input type="text" value="' + esc(key) + '" class="param-input"></td>' +
+                '<td><input type="text" value="' + esc(value) + '" class="param-input param-value"></td>' +
+                '<td><button class="btn btn-sm">X</button></td>';
             tr.querySelector('button').addEventListener('click', function() { tr.remove(); });
             body.appendChild(tr);
         }
 
-        function escHtml(s) {
-            return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        }
-
-        document.getElementById('params-add-btn').addEventListener('click', function() {
-            addParamRow('', '');
-        });
-
-        document.getElementById('params-habbo-btn').addEventListener('click', function() {
+        function openParams() {
             var body = document.getElementById('params-body');
             body.innerHTML = '';
+            var params = player._params || {};
+            var keys = Object.keys(params);
+            if (keys.length === 0) { addParamRow('sw1', ''); }
+            else { keys.forEach(function(k) { addParamRow(k, params[k]); }); }
+            document.getElementById('params-modal').style.display = 'flex';
+        }
+
+        document.getElementById('params-btn').addEventListener('click', openParams);
+        document.getElementById('params-modal-close').addEventListener('click', function() {
+            document.getElementById('params-modal').style.display = 'none';
+        });
+        document.getElementById('params-modal').addEventListener('click', function(e) {
+            if (e.target === this) this.style.display = 'none';
+        });
+        document.getElementById('params-add-btn').addEventListener('click', function() { addParamRow('', ''); });
+        document.getElementById('params-habbo-btn').addEventListener('click', function() {
+            document.getElementById('params-body').innerHTML = '';
             addParamRow('sw1', 'external.variables.txt=http://localhost/gamedata/external_variables.txt;external.texts.txt=http://localhost/gamedata/external_texts.txt');
         });
-
         document.getElementById('params-apply-btn').addEventListener('click', function() {
-            extParams = {};
-            if (player) player.clearExternalParams();
-            var rows = document.querySelectorAll('#params-body tr');
-            for (var i = 0; i < rows.length; i++) {
-                var inputs = rows[i].querySelectorAll('input');
+            var newParams = {};
+            document.querySelectorAll('#params-body tr').forEach(function(tr) {
+                var inputs = tr.querySelectorAll('input');
                 var k = inputs[0].value.trim();
-                var v = inputs[1].value;
-                if (k) {
-                    extParams[k] = v;
-                    if (player) player.setExternalParam(k, v);
-                }
-            }
-            try { localStorage.setItem('ls_extParams', JSON.stringify(extParams)); } catch(e) {}
+                if (k) newParams[k] = inputs[1].value;
+            });
+            player._params = newParams;
+            player.setParams(newParams);
             document.getElementById('params-modal').style.display = 'none';
         });
 
-        // Load saved params
-        try {
-            var saved = JSON.parse(localStorage.getItem('ls_extParams'));
-            if (saved) extParams = saved;
-        } catch(e) {}
-
-        initPlayer();
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+            if (e.key === ' ') { e.preventDefault(); player._engine && player._engine.playing ? player.pause() : player.play(); }
+            else if (e.key === 'Escape') player.stop();
+            else if (e.key === 'ArrowRight' && !e.ctrlKey) { e.preventDefault(); player.stepForward(); }
+            else if (e.key === 'ArrowLeft' && !e.ctrlKey) { e.preventDefault(); player.stepBackward(); }
+        });
     </script>
 </body>
 </html>

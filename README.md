@@ -287,7 +287,7 @@ byte[] rifxData = file.saveToBytes();
 
 ## Web Player (player-wasm)
 
-The `player-wasm` module compiles the player for the browser using [TeaVM](https://teavm.org/) v0.13's standard WebAssembly backend. It produces a `.wasm` file with a JS runtime and bridge that runs in all modern browsers.
+The `player-wasm` module compiles the player for the browser using [TeaVM](https://teavm.org/) v0.13's standard WebAssembly backend. It produces a `.wasm` file with a JavaScript library that runs in all modern browsers.
 
 ### Building
 
@@ -295,27 +295,81 @@ The `player-wasm` module compiles the player for the browser using [TeaVM](https
 ./gradlew :player-wasm:generateWasm
 ```
 
-### Running
+The build output goes to `player-wasm/build/generated/teavm/wasm/`.
 
-Serve the output directory with any static HTTP server:
+### Embedding in Any Web Page
+
+Include `libreshockwave-lib.js` and add a `<canvas>`. That's it.
+
+```html
+<canvas id="stage" width="640" height="480"></canvas>
+<script src="libreshockwave-lib.js"></script>
+<script>
+  var player = LibreShockwave.create("stage");
+  player.load("http://example.com/movie.dcr");
+</script>
+```
+
+The following files must be served from the same directory as the script:
+
+| File | Purpose |
+|------|---------|
+| `libreshockwave-lib.js` | Player library (the only `<script>` you need) |
+| `worker.js` | WebWorker that runs the WASM VM |
+| `player-wasm.wasm` | Compiled player engine |
+| `player-wasm.wasm-runtime.js` | TeaVM runtime (loaded by the worker) |
+
+### API
+
+```js
+// Create a player on a <canvas> element (by ID or element reference)
+var player = LibreShockwave.create("my-canvas", {
+    basePath:  "/wasm/",                 // where the WASM files live (auto-detected by default)
+    params:    { sw1: "key=value" },     // Shockwave <PARAM> tags
+    autoplay:  true,                     // start playing after load (default: true)
+    remember:  true,                     // persist params in localStorage (default: false)
+    onLoad:    function(info) {},        // { width, height, frameCount, tempo }
+    onError:   function(msg) {},         // error message string
+    onFrame:   function(frame, total) {} // called each frame
+});
+
+// Load a movie
+player.load("http://localhost/movie.dcr");  // from URL
+player.loadFile(fileInput.files[0]);        // from <input type="file">
+
+// Playback
+player.play();
+player.pause();
+player.stop();
+player.goToFrame(10);
+player.stepForward();
+player.stepBackward();
+
+// External parameters (Shockwave PARAM tags)
+player.setParam("sw1", "external.variables.txt=http://localhost/gamedata/external_variables.txt");
+player.setParams({ sw1: "...", sw2: "..." });
+
+// State
+player.getCurrentFrame();  // current frame number
+player.getFrameCount();    // total frames
+
+// Clean up
+player.destroy();
+```
+
+### Running the Built-in Player Page
 
 ```bash
 cd player-wasm/build/generated/teavm/wasm/
 npx serve .
-# Open the URL printed by serve (usually http://localhost:3000)
+# Open http://localhost:3000
 ```
 
-Two player pages are available:
-- `http://localhost:8080/` — Full player with debug panel (script browser, bytecode viewer, breakpoints, stack/variable inspection)
-- `http://localhost:8080/basic/` — Basic player with just the stage and transport controls
+The included `index.html` is a ready-made player page with file picker, URL bar, transport controls, and a params editor.
 
-The web player provides:
-- File picker for local `.dcr`/`.dir` files
-- URL input for remote movies
-- Play/Pause/Stop controls
-- HTML5 Canvas 2D rendering of bitmaps, shapes, and placeholders
-- Browser `fetch()` API for loading external cast libraries
-- Lingo debugger with breakpoints and instruction stepping (debug player)
+### External Parameters
+
+Shockwave movies read `<PARAM>` tags from the embedding HTML (e.g. `sw1` through `sw9`). Pass these via `params` in `create()` or call `setParam()` / `setParams()` at any time. With `remember: true`, params persist in `localStorage` across sessions.
 
 ### Module Structure
 
@@ -324,55 +378,16 @@ player-wasm/
   build.gradle                          # TeaVM plugin config (standard WASM target)
   src/main/java/.../wasm/
     WasmPlayerApp.java                  # Entry point + @Export API
-    WasmPlayer.java                     # Player wrapper (no browser deps)
+    WasmPlayer.java                     # Player wrapper
     render/SoftwareRenderer.java        # RGBA pixel buffer renderer
     net/WasmNetManager.java             # @Import-based fetch NetProvider
   src/main/resources/web/
-    index.html                          # Debug player page
-    basic/index.html                    # Basic player page (no debug panel)
-    player-bridge.js                    # JS bridge (Canvas, rAF, fetch, WASM I/O)
+    index.html                          # Player page (uses the lib)
+    libreshockwave-lib.js               # Embeddable player library
+    player-bridge.js                    # Low-level bridge (used by basic/ page)
     libreshockwave.css                  # Styling
     worker.js                           # WebWorker (runs WASM VM)
 ```
-
-### Testing the Web Player
-
-1. **Build the WASM output:**
-   ```bash
-   ./gradlew :player-wasm:generateWasm
-   ```
-
-2. **Start any HTTP server** (plain `file://` won't work due to worker/fetch restrictions):
-   ```bash
-   cd player-wasm/build/generated/teavm/wasm/
-   npx serve .
-   ```
-
-3. **Load a movie:**
-   - **Local file** — click **Choose File** or press `Ctrl+O` and pick a `.dcr`/`.dir`/`.dxr` file.
-   - **URL** — paste a URL into the text box and click **Load URL** (or press `Ctrl+U` then `Enter`).
-
-4. **Playback controls:**
-   | Action | Button | Shortcut |
-   |--------|--------|----------|
-   | Play / Pause | ▶ / ❚❚ | `Space` |
-   | Stop | ■ | `Escape` |
-   | Step forward | >&#124; | `Right` |
-   | Step backward | &#124;< | `Left` |
-   | First frame | — | `Home` |
-   | Last frame | — | `End` |
-
-5. **Set external parameters** (Shockwave `<PARAM>` tags):
-   - Open **Movie > External Params** (or press `Ctrl+E`).
-   - Add key/value rows. For Habbo movies click **Habbo Preset** to auto-fill `sw1` with the standard `external_variables.txt` and `external_texts.txt` URLs.
-   - Click **Apply**. Parameters are saved in `localStorage` and re-applied on every movie load.
-
-6. **Debugger** (main player page only):
-   - Press `Ctrl+D` to toggle the debug panel.
-   - Set breakpoints by clicking the gutter in the bytecode view.
-   - `F5` Continue, `F10` Step Over, `F11` Step Into, `Shift+F11` Step Out.
-
-All settings (last opened movie URL, external parameters) persist across sessions via `localStorage`.
 
 ### Known Limitations
 
