@@ -215,6 +215,18 @@ tasks.register('runSpritePipelineTest', JavaExec) {
     }
 }
 
+// Task to diagnose window style rendering pipeline
+tasks.register('runWindowStyleTest', JavaExec) {
+    group = 'verification'
+    description = 'Diagnostic test for window element rendering pipeline'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.WindowStyleTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
 // Task to diagnose and validate login window rendering
 tasks.register('runLoginWindowTest', JavaExec) {
     group = 'verification'

@@ -184,7 +184,11 @@ var LibreShockwave = (function() {
         this._lastFrame = msg.frame;
         this._lastFrameCount = msg.frameCount;
         if (this.onFrameUpdate) this.onFrameUpdate(msg.frame, msg.frameCount);
-        if (!msg.stillPlaying && this.playing) { this.playing = false; this._stopLoop(); }
+        // Don't stop the loop on transient errors - keep trying.
+        // Only stop if the movie genuinely reports not playing AND we got valid frame data.
+        if (!msg.stillPlaying && this.playing && msg.frameData) {
+            this.playing = false; this._stopLoop();
+        }
         if (msg.frameData && msg.frameData.sprites) this._renderSprites(msg.frameData);
         else if (msg.pixels) this._renderPixels(msg.pixels);
     };

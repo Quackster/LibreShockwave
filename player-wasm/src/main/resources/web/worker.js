@@ -21,6 +21,21 @@ function getMemory() {
 }
 
 /**
+ * Clear any pending Java exception from the TeaVM runtime.
+ * TeaVM wraps teavm_* exports with exception checking but NOT user @Export functions.
+ * If an exception escapes a Java try-catch (e.g., Error vs Exception), the pending
+ * exception flag stays set and corrupts subsequent calls. This clears it.
+ */
+function clearPendingException() {
+    if (teavm && teavm.instance && teavm.instance.exports.teavm_catchException) {
+        var ex = teavm.instance.exports.teavm_catchException();
+        if (ex !== 0) {
+            console.warn('[Worker] Cleared pending Java exception (ptr=' + ex + ')');
+        }
+    }
+}
+
+/**
  * Read a string from the string buffer at the given address.
  */
 function readStringFromBuffer(length) {
@@ -152,6 +167,7 @@ function loadMovie(movieBytes, basePath) {
         movieBuf.set(movieBytes);
 
         var result = exports.loadMovie(movieBytes.length, basePathBytes.length);
+        clearPendingException();
         if (result === 0) {
             self.postMessage({ type: 'error', message: 'Failed to load movie' });
             return;
@@ -175,17 +191,43 @@ function loadMovie(movieBytes, basePath) {
 }
 
 /**
+ * Check for and log any WASM-side error.
+ */
+function checkAndLogError() {
+    try {
+        var errLen = exports.getLastError();
+        if (errLen > 0) {
+            var errMsg = readStringFromBuffer(errLen);
+            console.error('[Worker] WASM error: ' + errMsg);
+            return errMsg;
+        }
+    } catch (e) {
+        // getLastError itself failed
+    }
+    return null;
+}
+
+/**
  * Tick one frame and return frame data.
  */
 function tickFrame() {
     try {
         var stillPlaying = exports.tick();
+        clearPendingException();
+
+        // Check for tick errors
+        if (stillPlaying === 0) {
+            checkAndLogError();
+        }
 
         // Get frame data (sprite-based or pixel-based)
         var frameJsonLen = exports.getFrameDataJson();
+        clearPendingException();
         var frameData = null;
         if (frameJsonLen > 0) {
             frameData = readJsonFromLargeBuffer(frameJsonLen);
+        } else if (frameJsonLen === 0) {
+            checkAndLogError();
         }
 
         if (_tickCount <= 5) {
@@ -197,6 +239,7 @@ function tickFrame() {
 
         // Also get pixel buffer for fallback rendering
         var pixelPtr = exports.render();
+        clearPendingException();
         var pixels = null;
         if (pixelPtr > 0) {
             var w = exports.getStageWidth();
@@ -257,10 +300,12 @@ function deliverFetchResult(taskId, data) {
     var netBuf = new Uint8Array(getMemory(), netBufAddr, data.length);
     netBuf.set(new Uint8Array(data));
     exports.onFetchComplete(taskId, data.length);
+    clearPendingException();
 }
 
 function deliverFetchError(taskId, status) {
     exports.onFetchError(taskId, status || 0);
+    clearPendingException();
 }
 
 // === Message handler ===
@@ -281,20 +326,25 @@ self.onmessage = function(e) {
             _tickCount = 0;
             try {
                 exports.play();
-                console.log('[Worker] play() called successfully');
+                clearPendingException();
+                var playErr = checkAndLogError();
+                console.log('[Worker] play() called' + (playErr ? ' WITH ERROR: ' + playErr : ' successfully'));
             } catch(e) {
                 console.error('[Worker] play() threw:', e);
+                clearPendingException();
             }
             self.postMessage({ type: 'stateChange', state: 'playing' });
             break;
 
         case 'pause':
             exports.pause();
+            clearPendingException();
             self.postMessage({ type: 'stateChange', state: 'paused' });
             break;
 
         case 'stop':
             exports.stop();
+            clearPendingException();
             self.postMessage({ type: 'stateChange', state: 'stopped' });
             break;
 
@@ -451,11 +501,13 @@ self.onmessage = function(e) {
             sbuf.set(keyBytes);
             sbuf.set(valueBytes, keyBytes.length);
             exports.setExternalParam(keyBytes.length, valueBytes.length);
+            clearPendingException();
             break;
         }
 
         case 'clearExternalParams':
             exports.clearExternalParams();
+            clearPendingException();
             break;
 
         default:

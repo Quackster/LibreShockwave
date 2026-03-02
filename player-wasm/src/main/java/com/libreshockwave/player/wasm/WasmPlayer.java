@@ -65,7 +65,10 @@ public class WasmPlayer {
     public boolean tick() {
         if (player == null) return false;
         PlayerState state = player.getState();
-        if (state == PlayerState.STOPPED) return false;
+        if (state == PlayerState.STOPPED) {
+            System.out.println("[WasmPlayer] tick() skipped - state is STOPPED");
+            return false;
+        }
         if (state == PlayerState.PAUSED) return true;  // Keep loop alive, don't advance
         return player.tick();
     }
@@ -81,7 +84,11 @@ public class WasmPlayer {
     }
 
     public void play() {
-        if (player != null) player.play();
+        if (player != null) {
+            System.out.println("[WasmPlayer] play() - state before: " + player.getState());
+            player.play();
+            System.out.println("[WasmPlayer] play() - state after: " + player.getState());
+        }
     }
 
     public void pause() {

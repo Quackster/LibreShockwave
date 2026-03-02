@@ -20,6 +20,7 @@ public class WasmPlayerApp {
 
     private static WasmPlayer wasmPlayer;
     private static boolean debugRequested = false;
+    private static String lastError = null;
 
     // Shared buffers for JS <-> WASM data transfer
     static byte[] movieBuffer;
@@ -91,9 +92,10 @@ public class WasmPlayerApp {
     public static int tick() {
         if (wasmPlayer == null) return 0;
         try {
+            lastError = null;
             return wasmPlayer.tick() ? 1 : 0;
-        } catch (Exception e) {
-            System.err.println("[WasmPlayerApp] Error in tick(): " + e.getMessage());
+        } catch (Throwable e) {
+            captureError("tick", e);
             return 0;
         }
     }
@@ -109,8 +111,8 @@ public class WasmPlayerApp {
             wasmPlayer.render();
             byte[] buf = wasmPlayer.getFrameBuffer();
             return buf != null ? Address.ofData(buf).toInt() : 0;
-        } catch (Exception e) {
-            System.err.println("[WasmPlayerApp] Error in render(): " + e.getMessage());
+        } catch (Throwable e) {
+            captureError("render", e);
             return 0;
         }
     }
@@ -119,9 +121,10 @@ public class WasmPlayerApp {
     public static void play() {
         if (wasmPlayer == null) return;
         try {
+            lastError = null;
             wasmPlayer.play();
-        } catch (Exception e) {
-            System.err.println("[WasmPlayerApp] Error in play(): " + e.getMessage());
+        } catch (Throwable e) {
+            captureError("play", e);
         }
     }
 
@@ -224,8 +227,8 @@ public class WasmPlayerApp {
         try {
             String json = wasmPlayer.getSpriteExporter().exportFrameData();
             return writeJsonToLargeBuffer(json);
-        } catch (Exception e) {
-            System.err.println("[WasmPlayerApp] Error in getFrameDataJson(): " + e.getMessage());
+        } catch (Throwable e) {
+            captureError("getFrameDataJson", e);
             return 0;
         }
     }
@@ -492,6 +495,41 @@ public class WasmPlayerApp {
     public static void clearExternalParams() {
         if (wasmPlayer == null || wasmPlayer.getPlayer() == null) return;
         wasmPlayer.getPlayer().setExternalParams(null);
+    }
+
+    // === Error tracking ===
+
+    /**
+     * Get the last error message. Returns byte length written to stringBuffer, or 0 if no error.
+     */
+    @Export(name = "getLastError")
+    public static int getLastError() {
+        if (lastError == null) return 0;
+        byte[] bytes = lastError.getBytes();
+        int len = Math.min(bytes.length, stringBuffer.length);
+        System.arraycopy(bytes, 0, stringBuffer, 0, len);
+        return len;
+    }
+
+    private static void captureError(String context, Throwable e) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("[").append(context).append("] ").append(e.getClass().getName());
+        if (e.getMessage() != null) {
+            sb.append(": ").append(e.getMessage());
+        }
+        // Capture cause chain
+        Throwable cause = e.getCause();
+        int depth = 0;
+        while (cause != null && depth < 5) {
+            sb.append(" <- ").append(cause.getClass().getName());
+            if (cause.getMessage() != null) {
+                sb.append(": ").append(cause.getMessage());
+            }
+            cause = cause.getCause();
+            depth++;
+        }
+        lastError = sb.toString();
+        System.err.println(lastError);
     }
 
     // === Internal helpers ===
