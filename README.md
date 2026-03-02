@@ -299,11 +299,11 @@ The build output goes to `player-wasm/build/generated/teavm/wasm/`.
 
 ### Embedding in Any Web Page
 
-Include `libreshockwave-lib.js` and add a `<canvas>`. That's it.
+Include `shockwave-lib.js` and add a `<canvas>`. That's it.
 
 ```html
 <canvas id="stage" width="640" height="480"></canvas>
-<script src="libreshockwave-lib.js"></script>
+<script src="shockwave-lib.js"></script>
 <script>
   var player = LibreShockwave.create("stage");
   player.load("http://example.com/movie.dcr");
@@ -314,8 +314,7 @@ The following files must be served from the same directory as the script:
 
 | File | Purpose |
 |------|---------|
-| `libreshockwave-lib.js` | Player library (the only `<script>` you need) |
-| `worker.js` | WebWorker that runs the WASM VM |
+| `shockwave-lib.js` | Player library (the only `<script>` you need) |
 | `player-wasm.wasm` | Compiled player engine |
 | `player-wasm.wasm-runtime.js` | TeaVM runtime (loaded by the worker) |
 
@@ -383,10 +382,8 @@ player-wasm/
     net/WasmNetManager.java             # @Import-based fetch NetProvider
   src/main/resources/web/
     index.html                          # Player page (uses the lib)
-    libreshockwave-lib.js               # Embeddable player library
-    player-bridge.js                    # Low-level bridge (used by basic/ page)
+    shockwave-lib.js                    # Embeddable player library (worker inlined)
     libreshockwave.css                  # Styling
-    worker.js                           # WebWorker (runs WASM VM)
 ```
 
 ### Known Limitations
