@@ -41,7 +41,7 @@ public class SpriteState {
         this.height = data.height();
         this.ink = data.ink();
         this.foreColor = data.resolvedForeColor();
-        this.backColor = data.resolvedBackColor();
+        this.backColor = data.backColor();
     }
 
     /**

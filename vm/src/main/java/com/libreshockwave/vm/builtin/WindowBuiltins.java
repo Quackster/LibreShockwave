@@ -29,9 +29,11 @@ public final class WindowBuiltins {
         builtins.put("movetoback", WindowBuiltins::moveToBack);
         builtins.put("puppettempo", WindowBuiltins::puppetTempo);
         builtins.put("puppetsprite", WindowBuiltins::puppetSprite);
-        builtins.put("createwindow", WindowBuiltins::createWindow);
-        builtins.put("getwindow", WindowBuiltins::getWindow);
-        builtins.put("removewindow", WindowBuiltins::removeWindow);
+        // NOTE: createWindow, getWindow, removeWindow are NOT registered as builtins.
+        // These are Lingo handlers (in "Window API" movie script) that perform complex
+        // window creation: layout parsing, sprite allocation, bitmap member creation.
+        // Registering them as builtins would shadow the Lingo handlers and break
+        // the window system (error dialogs, loading bars, etc.)
         builtins.put("cursor", (vm, args) -> Datum.VOID);  // No-op stub
         builtins.put("pauseupdate", (vm, args) -> Datum.VOID);  // No-op stub
         builtins.put("updatestage", (vm, args) -> Datum.VOID);  // No-op stub
