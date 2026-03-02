@@ -188,7 +188,7 @@ var LibreShockwave = (function() {
 
     PlayerEngine.prototype._renderSprites = function(fd) {
         var ctx = this.ctx; if (!ctx) return;
-        var bg = fd.bg || 0xFFFFFF;
+        var bg = (typeof fd.bg === 'number') ? fd.bg : 0xFFFFFF;
         ctx.fillStyle = '#' + (bg & 0xFFFFFF).toString(16).padStart(6, '0');
         ctx.fillRect(0, 0, this.stageWidth, this.stageHeight);
         var sprites = fd.sprites; if (!sprites) return;
