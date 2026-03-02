@@ -1,8 +1,6 @@
 package com.libreshockwave.player;
 
 import com.libreshockwave.bitmap.Bitmap;
-import com.libreshockwave.player.cast.CastLibManager;
-import com.libreshockwave.player.cast.CastMember;
 import com.libreshockwave.player.render.FrameSnapshot;
 import com.libreshockwave.player.render.RenderConfig;
 import com.libreshockwave.player.render.RenderSprite;
@@ -161,10 +159,13 @@ public class StagePanel extends JPanel {
             return;
         }
 
+        Bitmap baked = sprite.getBakedBitmap();
+        if (baked == null) {
+            return;
+        }
+
         int x = sprite.getX();
         int y = sprite.getY();
-        int width = sprite.getWidth();
-        int height = sprite.getHeight();
 
         // Apply blend (opacity) if not 100%
         Composite oldComposite = null;
@@ -174,95 +175,14 @@ public class StagePanel extends JPanel {
             g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, blend / 100f));
         }
 
-        switch (sprite.getType()) {
-            case BITMAP -> drawBitmap(g, sprite, x, y, width, height);
-            case SHAPE -> drawShape(g, sprite, x, y, width, height);
-            case TEXT, BUTTON -> drawText(g, sprite, x, y, width, height);
-            default -> {} // Skip unknown types silently
-        }
+        BufferedImage img = baked.toBufferedImage();
+        int w = sprite.getWidth() > 0 ? sprite.getWidth() : img.getWidth();
+        int h = sprite.getHeight() > 0 ? sprite.getHeight() : img.getHeight();
+        g.drawImage(img, x, y, w, h, null);
 
         if (oldComposite != null) {
             g.setComposite(oldComposite);
         }
-    }
-
-    private void drawBitmap(Graphics2D g, RenderSprite sprite, int x, int y, int width, int height) {
-        Bitmap baked = sprite.getBakedBitmap();
-        if (baked == null) {
-            return;
-        }
-
-        BufferedImage img = baked.toBufferedImage();
-        int w = width > 0 ? width : img.getWidth();
-        int h = height > 0 ? height : img.getHeight();
-        g.drawImage(img, x, y, w, h, null);
-    }
-
-    private void drawText(Graphics2D g, RenderSprite sprite, int x, int y, int width, int height) {
-        String text = null;
-
-        if (player != null) {
-            CastLibManager clm = player.getCastLibManager();
-            if (clm != null) {
-                // Try dynamic member first (runtime-created text/field members)
-                CastMember dynMember = sprite.getDynamicMember();
-                if (dynMember != null) {
-                    text = dynMember.getTextContent();
-                }
-                // Fall back to file-loaded member lookup by name
-                if ((text == null || text.isEmpty()) && sprite.getCastMember() != null) {
-                    String memberName = sprite.getCastMember().name();
-                    if (memberName != null && !memberName.isEmpty()) {
-                        text = clm.getFieldValue(memberName, 0);
-                    }
-                }
-            }
-        }
-
-        if (text == null || text.isEmpty()) {
-            return; // Nothing to render
-        }
-
-        int w = width > 0 ? width : 200;
-        int h = height > 0 ? height : 20;
-
-        // Draw text with foreColor
-        int fc = sprite.getForeColor();
-        g.setColor(foreColorToAwtColor(fc));
-        g.setFont(new Font("SansSerif", Font.PLAIN, 12));
-        FontMetrics fm = g.getFontMetrics();
-
-        // Simple multi-line text rendering
-        String[] lines = text.split("[\r\n]+");
-        int textY = y + fm.getAscent();
-        for (String line : lines) {
-            if (textY > y + h) break;
-            g.drawString(line, x, textY);
-            textY += fm.getHeight();
-        }
-    }
-
-    private void drawShape(Graphics2D g, RenderSprite sprite, int x, int y, int width, int height) {
-        int fc = sprite.getForeColor();
-        g.setColor(foreColorToAwtColor(fc));
-        int w = width > 0 ? width : 50;
-        int h = height > 0 ? height : 50;
-        g.fillRect(x, y, w, h);
-    }
-
-    /**
-     * Convert a Director foreColor value to an AWT Color.
-     * If the value is > 255, it's a packed RGB int (set via sprite.color = rgb(r,g,b)).
-     * If <= 255, treat as a Director palette index (approximate: 0=white, 255=black).
-     */
-    private static Color foreColorToAwtColor(int fc) {
-        if (fc > 255) {
-            // Packed RGB from rgb(r,g,b)
-            return new Color(fc);
-        }
-        // Director palette: 0 = white, 255 = black (inverted grayscale approximation)
-        int gray = 255 - fc;
-        return new Color(gray, gray, gray);
     }
 
     /**

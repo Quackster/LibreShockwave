@@ -8,7 +8,6 @@ import com.libreshockwave.player.render.RenderSprite;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * Software renderer that draws Director frames into an RGBA byte[] buffer.
@@ -21,8 +20,9 @@ public class SoftwareRenderer {
     private final int height;
     private final byte[] frameBuffer; // RGBA, 4 bytes per pixel
 
-    // Cache decoded bitmaps by cast member ID (fallback when baked bitmap not in snapshot)
-    private final Map<Integer, CachedBitmap> bitmapCache = new HashMap<>();
+    // Cache decoded bitmaps by cast member ID (fallback when baked bitmap not in snapshot).
+    // Null values are sentinels for members that failed to decode, to avoid retrying.
+    private final Map<Integer, Bitmap> bitmapCache = new HashMap<>();
 
     public SoftwareRenderer(Player player, int width, int height) {
         this.player = player;
@@ -68,37 +68,26 @@ public class SoftwareRenderer {
         int w = sprite.getWidth();
         int h = sprite.getHeight();
 
-        switch (sprite.getType()) {
-            case BITMAP -> drawBitmap(sprite, x, y, w, h);
-            case SHAPE -> drawShape(sprite, x, y, w, h);
-            case TEXT, BUTTON -> drawPlaceholder(x, y, w, h);
-            default -> drawPlaceholder(x, y, w, h);
-        }
-    }
-
-    private void drawBitmap(RenderSprite sprite, int x, int y, int w, int h) {
-        // Use baked bitmap from FrameSnapshot first — already decoded correctly by
-        // BitmapCache using player.decodeBitmap() which handles external cast members.
+        // All sprite types arrive pre-baked from SpriteBaker
         Bitmap baked = sprite.getBakedBitmap();
         if (baked != null) {
             blitArgb(baked.getPixels(), baked.getWidth(), baked.getHeight(), x, y, w, h);
             return;
         }
 
-        // Fallback: decode from cast member directly
-        CastMemberChunk member = sprite.getCastMember();
-        if (member == null) {
-            drawPlaceholder(x, y, w, h);
-            return;
+        // Fallback: decode BITMAP from cast member directly (edge case)
+        if (sprite.getType() == RenderSprite.SpriteType.BITMAP) {
+            CastMemberChunk member = sprite.getCastMember();
+            if (member != null) {
+                Bitmap cached = getCachedBitmap(member);
+                if (cached != null) {
+                    blitArgb(cached.getPixels(), cached.getWidth(), cached.getHeight(), x, y, w, h);
+                    return;
+                }
+            }
         }
 
-        CachedBitmap cached = getCachedBitmap(member);
-        if (cached == null) {
-            drawPlaceholder(x, y, w, h);
-            return;
-        }
-
-        blitRgba(cached, x, y, w, h);
+        drawPlaceholder(x, y, w, h);
     }
 
     /**
@@ -112,14 +101,14 @@ public class SoftwareRenderer {
             int dstY = y + dy;
             if (dstY < 0 || dstY >= height) continue;
 
-            int srcY = dstH > 0 ? dy * srcH / dstH : dy;
+            int srcY = dy * srcH / dstH;
             if (srcY >= srcH) continue;
 
             for (int dx = 0; dx < dstW; dx++) {
                 int dstX = x + dx;
                 if (dstX < 0 || dstX >= width) continue;
 
-                int srcX = dstW > 0 ? dx * srcW / dstW : dx;
+                int srcX = dx * srcW / dstW;
                 if (srcX >= srcW) continue;
 
                 int argb = argbPixels[srcY * srcW + srcX];
@@ -148,65 +137,6 @@ public class SoftwareRenderer {
         }
     }
 
-    /**
-     * Blit a cached RGBA byte[] bitmap into the frame buffer.
-     */
-    private void blitRgba(CachedBitmap cached, int x, int y, int w, int h) {
-        int srcW = cached.width;
-        int srcH = cached.height;
-        int dstW = w > 0 ? w : srcW;
-        int dstH = h > 0 ? h : srcH;
-
-        for (int dy = 0; dy < dstH; dy++) {
-            int dstY = y + dy;
-            if (dstY < 0 || dstY >= height) continue;
-
-            int srcY = dstH > 0 ? dy * srcH / dstH : dy;
-            if (srcY >= srcH) continue;
-
-            for (int dx = 0; dx < dstW; dx++) {
-                int dstX = x + dx;
-                if (dstX < 0 || dstX >= width) continue;
-
-                int srcX = dstW > 0 ? dx * srcW / dstW : dx;
-                if (srcX >= srcW) continue;
-
-                int srcOff = (srcY * srcW + srcX) * 4;
-                int dstOff = (dstY * this.width + dstX) * 4;
-
-                int alpha = cached.rgba[srcOff + 3] & 0xFF;
-                if (alpha == 0) continue;
-
-                if (alpha == 255) {
-                    frameBuffer[dstOff]     = cached.rgba[srcOff];
-                    frameBuffer[dstOff + 1] = cached.rgba[srcOff + 1];
-                    frameBuffer[dstOff + 2] = cached.rgba[srcOff + 2];
-                    frameBuffer[dstOff + 3] = (byte) 0xFF;
-                } else {
-                    int sr = cached.rgba[srcOff] & 0xFF;
-                    int sg = cached.rgba[srcOff + 1] & 0xFF;
-                    int sb = cached.rgba[srcOff + 2] & 0xFF;
-                    int dr = frameBuffer[dstOff] & 0xFF;
-                    int dg = frameBuffer[dstOff + 1] & 0xFF;
-                    int db = frameBuffer[dstOff + 2] & 0xFF;
-                    frameBuffer[dstOff]     = (byte) (sr + (dr * (255 - alpha)) / 255);
-                    frameBuffer[dstOff + 1] = (byte) (sg + (dg * (255 - alpha)) / 255);
-                    frameBuffer[dstOff + 2] = (byte) (sb + (db * (255 - alpha)) / 255);
-                    frameBuffer[dstOff + 3] = (byte) 0xFF;
-                }
-            }
-        }
-    }
-
-    private void drawShape(RenderSprite sprite, int x, int y, int w, int h) {
-        int fc = sprite.getForeColor();
-        byte r = (byte) ((fc >> 16) & 0xFF);
-        byte g = (byte) ((fc >> 8) & 0xFF);
-        byte b = (byte) (fc & 0xFF);
-
-        fillRect(x, y, w > 0 ? w : 50, h > 0 ? h : 50, r, g, b, (byte) 0xFF);
-    }
-
     private void drawPlaceholder(int x, int y, int w, int h) {
         fillRect(x, y, w > 0 ? w : 50, h > 0 ? h : 50,
                 (byte) 200, (byte) 200, (byte) 200, (byte) 128);
@@ -228,49 +158,15 @@ public class SoftwareRenderer {
         }
     }
 
-    private CachedBitmap getCachedBitmap(CastMemberChunk member) {
+    private Bitmap getCachedBitmap(CastMemberChunk member) {
         int id = member.id();
         if (bitmapCache.containsKey(id)) {
             return bitmapCache.get(id);
         }
 
         // Use player.decodeBitmap() which handles cross-file decoding (external casts)
-        Optional<Bitmap> bitmap = player.decodeBitmap(member);
-        if (bitmap.isPresent()) {
-            Bitmap bmp = bitmap.get();
-            int bw = bmp.getWidth();
-            int bh = bmp.getHeight();
-            int[] argbPixels = bmp.getPixels();
-
-            // Convert ARGB int[] to RGBA byte[]
-            byte[] rgba = new byte[bw * bh * 4];
-            for (int i = 0; i < argbPixels.length; i++) {
-                int argb = argbPixels[i];
-                int off = i * 4;
-                rgba[off]     = (byte) ((argb >> 16) & 0xFF);  // R
-                rgba[off + 1] = (byte) ((argb >> 8) & 0xFF);   // G
-                rgba[off + 2] = (byte) (argb & 0xFF);           // B
-                rgba[off + 3] = (byte) ((argb >> 24) & 0xFF);  // A
-            }
-
-            CachedBitmap cached = new CachedBitmap(rgba, bw, bh);
-            bitmapCache.put(id, cached);
-            return cached;
-        }
-
-        bitmapCache.put(id, null);
-        return null;
-    }
-
-    private static class CachedBitmap {
-        final byte[] rgba;
-        final int width;
-        final int height;
-
-        CachedBitmap(byte[] rgba, int width, int height) {
-            this.rgba = rgba;
-            this.width = width;
-            this.height = height;
-        }
+        Bitmap result = player.decodeBitmap(member).orElse(null);
+        bitmapCache.put(id, result);
+        return result;
     }
 }

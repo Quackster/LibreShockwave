@@ -13,6 +13,7 @@ import com.libreshockwave.player.frame.FrameContext;
 import com.libreshockwave.player.net.NetManager;
 import com.libreshockwave.player.render.BitmapCache;
 import com.libreshockwave.player.render.FrameSnapshot;
+import com.libreshockwave.player.render.SpriteBaker;
 import com.libreshockwave.player.render.StageRenderer;
 import com.libreshockwave.player.render.WindowManager;
 import com.libreshockwave.player.score.ScoreNavigator;
@@ -64,6 +65,7 @@ public class Player {
     private final CastLibManager castLibManager;
     private final TimeoutManager timeoutManager;
     private final BitmapCache bitmapCache;
+    private final SpriteBaker spriteBaker;
     private final WindowManager windowManager;
 
     private final PlayerTraceListener playerTraceListener;
@@ -150,6 +152,7 @@ public class Player {
         this.spriteProperties.setCastLibManager(castLibManager);
         this.timeoutManager = new TimeoutManager();
         this.bitmapCache = new BitmapCache();
+        this.spriteBaker = new SpriteBaker(bitmapCache, castLibManager, this);
         this.windowManager = new WindowManager();
         this.windowManager.setStageSize(stageRenderer.getStageWidth(), stageRenderer.getStageHeight());
         this.frameContext.setTimeoutManager(timeoutManager);
@@ -245,6 +248,7 @@ public class Player {
         this.spriteProperties.setCastLibManager(castLibManager);
         this.timeoutManager = new TimeoutManager();
         this.bitmapCache = new BitmapCache(false); // Synchronous mode for TeaVM
+        this.spriteBaker = new SpriteBaker(bitmapCache, castLibManager, this);
         // Set simple text renderer for TeaVM/WASM (no AWT)
         com.libreshockwave.player.cast.CastMember.setTextRenderer(new com.libreshockwave.player.render.SimpleTextRenderer());
         this.windowManager = new WindowManager();
@@ -447,7 +451,7 @@ public class Player {
      * This captures all sprite states at the moment it's called.
      */
     public FrameSnapshot getFrameSnapshot() {
-        return FrameSnapshot.capture(stageRenderer, getCurrentFrame(), state.name(), bitmapCache, this);
+        return FrameSnapshot.capture(stageRenderer, getCurrentFrame(), state.name(), spriteBaker, this);
     }
 
     /**

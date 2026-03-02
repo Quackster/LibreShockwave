@@ -23,6 +23,7 @@ import java.util.Optional;
 public class SpriteDataExporter {
 
     private final Player player;
+    private int exportCount = 0;
 
     // Cache decoded bitmaps by cast member ID (keyed by castMember.id() chunk ID)
     private final Map<Integer, CachedBitmap> bitmapCache = new HashMap<>();
@@ -44,12 +45,21 @@ public class SpriteDataExporter {
     public String exportFrameData() {
         FrameSnapshot snapshot = player.getFrameSnapshot();
 
+        // Diagnostic: log sprite pipeline state
+        int dynamicCount = player.getStageRenderer().getSpriteRegistry().getDynamicSprites().size();
+        if (snapshot.sprites().isEmpty() && exportCount < 10) {
+            System.out.println("[SpriteExporter] frame=" + snapshot.frameNumber()
+                + " sprites=" + snapshot.sprites().size()
+                + " dynamicInRegistry=" + dynamicCount
+                + " state=" + player.getState()
+                + " scoreNull=" + (player.getFile().getScoreChunk() == null));
+        }
+        exportCount++;
+
         // Index members and cache baked bitmaps from snapshot for later getBitmapData() calls.
-        // The baked bitmaps are decoded by BitmapCache using player.decodeBitmap(), which
-        // correctly handles external cast members — so this avoids the cross-file search problem.
+        // SpriteBaker pre-bakes all sprite types (BITMAP, TEXT, SHAPE), so we cache them all.
         recentMembers.clear();
         for (RenderSprite sprite : snapshot.sprites()) {
-            if (sprite.getType() != RenderSprite.SpriteType.BITMAP) continue;
             int mid = sprite.getCastMemberId();
             if (mid <= 0) continue;
 
@@ -61,7 +71,7 @@ public class SpriteDataExporter {
             if (!bitmapCache.containsKey(mid)) {
                 Bitmap baked = sprite.getBakedBitmap();
                 if (baked != null) {
-                    bitmapCache.put(mid, toBitmapCache(baked));
+                    bitmapCache.put(mid, toCachedBitmap(baked));
                 }
             }
         }
@@ -154,15 +164,11 @@ public class SpriteDataExporter {
         }
 
         // Use player.decodeBitmap() which handles external cast members correctly
-        Optional<Bitmap> bitmap = player.decodeBitmap(member);
-        if (bitmap.isPresent()) {
-            CachedBitmap cached = toBitmapCache(bitmap.get());
-            bitmapCache.put(memberId, cached);
-            return cached;
-        }
-
-        bitmapCache.put(memberId, null);
-        return null;
+        CachedBitmap cached = player.decodeBitmap(member)
+                .map(SpriteDataExporter::toCachedBitmap)
+                .orElse(null);
+        bitmapCache.put(memberId, cached);
+        return cached;
     }
 
     /**
@@ -194,7 +200,7 @@ public class SpriteDataExporter {
     /**
      * Convert a Bitmap (ARGB int[]) to a CachedBitmap (RGBA byte[]).
      */
-    private static CachedBitmap toBitmapCache(Bitmap bmp) {
+    private static CachedBitmap toCachedBitmap(Bitmap bmp) {
         int bw = bmp.getWidth();
         int bh = bmp.getHeight();
         int[] argbPixels = bmp.getPixels();
@@ -226,9 +232,10 @@ public class SpriteDataExporter {
             }
         }
 
-        // Fallback
-        var textChunk = player.getFile().getChunk(memberChunk.id(), TextChunk.class);
-        return textChunk.isPresent() ? textChunk.get().text() : "";
+        // Fallback: look up by member chunk ID directly
+        return player.getFile().getChunk(memberChunk.id(), TextChunk.class)
+                .map(TextChunk::text)
+                .orElse("");
     }
 
     private static String escapeJson(String s) {
@@ -247,15 +254,5 @@ public class SpriteDataExporter {
         return sb.toString();
     }
 
-    private static class CachedBitmap {
-        final byte[] rgba;
-        final int width;
-        final int height;
-
-        CachedBitmap(byte[] rgba, int width, int height) {
-            this.rgba = rgba;
-            this.width = width;
-            this.height = height;
-        }
-    }
+    private record CachedBitmap(byte[] rgba, int width, int height) {}
 }

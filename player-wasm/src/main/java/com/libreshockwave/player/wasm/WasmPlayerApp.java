@@ -9,7 +9,9 @@ import com.libreshockwave.player.wasm.render.SpriteDataExporter;
 import org.teavm.interop.Address;
 import org.teavm.interop.Export;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Entry point and exported API for the standard WASM player.
@@ -203,16 +205,19 @@ public class WasmPlayerApp {
     }
 
     /**
-     * Write a JSON string to the large buffer, allocating if needed.
+     * Write raw bytes to the large buffer, allocating if needed.
      * @return the byte length written
      */
-    private static int writeJsonToLargeBuffer(String json) {
-        byte[] bytes = json.getBytes();
+    private static int writeBytesToLargeBuffer(byte[] bytes) {
         if (largeBuffer == null || largeBuffer.length < bytes.length) {
             largeBuffer = new byte[Math.max(bytes.length, 8192)];
         }
         System.arraycopy(bytes, 0, largeBuffer, 0, bytes.length);
         return bytes.length;
+    }
+
+    private static int writeJsonToLargeBuffer(String json) {
+        return writeBytesToLargeBuffer(json.getBytes());
     }
 
     // === Sprite data export (for Canvas 2D rendering) ===
@@ -223,10 +228,10 @@ public class WasmPlayerApp {
      */
     @Export(name = "getFrameDataJson")
     public static int getFrameDataJson() {
-        if (wasmPlayer == null || wasmPlayer.getSpriteExporter() == null) return 0;
+        SpriteDataExporter exporter = spriteExporter();
+        if (exporter == null) return 0;
         try {
-            String json = wasmPlayer.getSpriteExporter().exportFrameData();
-            return writeJsonToLargeBuffer(json);
+            return writeJsonToLargeBuffer(exporter.exportFrameData());
         } catch (Throwable e) {
             captureError("getFrameDataJson", e);
             return 0;
@@ -239,21 +244,22 @@ public class WasmPlayerApp {
      */
     @Export(name = "getBitmapData")
     public static int getBitmapData(int memberId) {
-        if (wasmPlayer == null || wasmPlayer.getSpriteExporter() == null) return 0;
-        byte[] rgba = wasmPlayer.getSpriteExporter().getBitmapRGBA(memberId);
+        SpriteDataExporter exporter = spriteExporter();
+        if (exporter == null) return 0;
+        byte[] rgba = exporter.getBitmapRGBA(memberId);
         return rgba != null ? Address.ofData(rgba).toInt() : 0;
     }
 
     @Export(name = "getBitmapWidth")
     public static int getBitmapWidth(int memberId) {
-        if (wasmPlayer == null || wasmPlayer.getSpriteExporter() == null) return 0;
-        return wasmPlayer.getSpriteExporter().getBitmapWidth(memberId);
+        SpriteDataExporter exporter = spriteExporter();
+        return exporter != null ? exporter.getBitmapWidth(memberId) : 0;
     }
 
     @Export(name = "getBitmapHeight")
     public static int getBitmapHeight(int memberId) {
-        if (wasmPlayer == null || wasmPlayer.getSpriteExporter() == null) return 0;
-        return wasmPlayer.getSpriteExporter().getBitmapHeight(memberId);
+        SpriteDataExporter exporter = spriteExporter();
+        return exporter != null ? exporter.getBitmapHeight(memberId) : 0;
     }
 
     // === Debug controller ===
@@ -266,8 +272,9 @@ public class WasmPlayerApp {
 
     @Export(name = "getDebugState")
     public static int getDebugState() {
-        if (wasmPlayer == null || wasmPlayer.getDebugController() == null) return 0;
-        return switch (wasmPlayer.getDebugController().getState()) {
+        WasmDebugController ctrl = debugCtrl();
+        if (ctrl == null) return 0;
+        return switch (ctrl.getState()) {
             case RUNNING -> 0;
             case PAUSED -> 1;
             case STEPPING -> 2;
@@ -276,7 +283,7 @@ public class WasmPlayerApp {
 
     @Export(name = "getDebugSnapshot")
     public static int getDebugSnapshot() {
-        WasmDebugController ctrl = wasmPlayer != null ? wasmPlayer.getDebugController() : null;
+        WasmDebugController ctrl = debugCtrl();
         if (ctrl == null || ctrl.getCurrentSnapshot() == null) return 0;
         String json = WasmDebugSerializer.serializeSnapshot(ctrl.getCurrentSnapshot());
         return writeJsonToLargeBuffer(json);
@@ -284,14 +291,9 @@ public class WasmPlayerApp {
 
     @Export(name = "getDebugPausedJson")
     public static int getDebugPausedJson() {
-        WasmDebugController ctrl = wasmPlayer != null ? wasmPlayer.getDebugController() : null;
+        WasmDebugController ctrl = debugCtrl();
         if (ctrl == null || ctrl.notifyPausedBytes == null) return 0;
-        byte[] bytes = ctrl.notifyPausedBytes;
-        if (largeBuffer == null || largeBuffer.length < bytes.length) {
-            largeBuffer = new byte[Math.max(bytes.length, 8192)];
-        }
-        System.arraycopy(bytes, 0, largeBuffer, 0, bytes.length);
-        return bytes.length;
+        return writeBytesToLargeBuffer(ctrl.notifyPausedBytes);
     }
 
     @Export(name = "getScriptList")
@@ -306,12 +308,11 @@ public class WasmPlayerApp {
     public static int getHandlerBytecode(int scriptId, int handlerIndex) {
         if (wasmPlayer == null || wasmPlayer.getFile() == null) return 0;
         ScriptChunk script = findScript(scriptId);
-        if (script == null || script.handlers() == null ||
-            handlerIndex < 0 || handlerIndex >= script.handlers().size()) return 0;
+        if (!isValidHandler(script, handlerIndex)) return 0;
 
         ScriptChunk.Handler handler = script.handlers().get(handlerIndex);
-        BreakpointManager bpMgr = wasmPlayer.getDebugController() != null
-            ? wasmPlayer.getDebugController().getBreakpointManager() : null;
+        WasmDebugController dbg = debugCtrl();
+        BreakpointManager bpMgr = dbg != null ? dbg.getBreakpointManager() : null;
         String json = WasmDebugSerializer.serializeHandlerBytecode(script, handler, bpMgr);
         return writeJsonToLargeBuffer(json);
     }
@@ -320,8 +321,7 @@ public class WasmPlayerApp {
     public static int getHandlerDetails(int scriptId, int handlerIndex) {
         if (wasmPlayer == null || wasmPlayer.getFile() == null) return 0;
         ScriptChunk script = findScript(scriptId);
-        if (script == null || script.handlers() == null ||
-            handlerIndex < 0 || handlerIndex >= script.handlers().size()) return 0;
+        if (!isValidHandler(script, handlerIndex)) return 0;
 
         ScriptChunk.Handler handler = script.handlers().get(handlerIndex);
         String json = WasmDebugSerializer.serializeHandlerDetails(script, handler);
@@ -330,7 +330,7 @@ public class WasmPlayerApp {
 
     @Export(name = "toggleBreakpoint")
     public static int toggleBreakpoint(int scriptId, int handlerIndex, int offset) {
-        WasmDebugController ctrl = wasmPlayer != null ? wasmPlayer.getDebugController() : null;
+        WasmDebugController ctrl = debugCtrl();
         if (ctrl == null) return 0;
         String handlerName = resolveHandlerName(scriptId, handlerIndex);
         return ctrl.toggleBreakpoint(scriptId, handlerName, offset) ? 1 : 0;
@@ -339,20 +339,19 @@ public class WasmPlayerApp {
     private static String resolveHandlerName(int scriptId, int handlerIndex) {
         if (wasmPlayer == null || wasmPlayer.getFile() == null) return "";
         ScriptChunk script = findScript(scriptId);
-        if (script == null || script.handlers() == null ||
-            handlerIndex < 0 || handlerIndex >= script.handlers().size()) return "";
+        if (!isValidHandler(script, handlerIndex)) return "";
         return script.getHandlerName(script.handlers().get(handlerIndex));
     }
 
     @Export(name = "clearBreakpoints")
     public static void clearBreakpoints() {
-        WasmDebugController ctrl = wasmPlayer != null ? wasmPlayer.getDebugController() : null;
+        WasmDebugController ctrl = debugCtrl();
         if (ctrl != null) ctrl.clearAllBreakpoints();
     }
 
     @Export(name = "serializeBreakpoints")
     public static int serializeBreakpoints() {
-        WasmDebugController ctrl = wasmPlayer != null ? wasmPlayer.getDebugController() : null;
+        WasmDebugController ctrl = debugCtrl();
         if (ctrl == null) return 0;
         String json = ctrl.serializeBreakpoints();
         return writeJsonToLargeBuffer(json);
@@ -360,7 +359,7 @@ public class WasmPlayerApp {
 
     @Export(name = "deserializeBreakpoints")
     public static void deserializeBreakpoints(int dataLen) {
-        WasmDebugController ctrl = wasmPlayer != null ? wasmPlayer.getDebugController() : null;
+        WasmDebugController ctrl = debugCtrl();
         if (ctrl == null || dataLen <= 0) return;
         String data = new String(stringBuffer, 0, dataLen);
         ctrl.deserializeBreakpoints(data);
@@ -368,37 +367,37 @@ public class WasmPlayerApp {
 
     @Export(name = "debugStepInto")
     public static void debugStepInto() {
-        WasmDebugController ctrl = wasmPlayer != null ? wasmPlayer.getDebugController() : null;
+        WasmDebugController ctrl = debugCtrl();
         if (ctrl != null) ctrl.stepInto();
     }
 
     @Export(name = "debugStepOver")
     public static void debugStepOver() {
-        WasmDebugController ctrl = wasmPlayer != null ? wasmPlayer.getDebugController() : null;
+        WasmDebugController ctrl = debugCtrl();
         if (ctrl != null) ctrl.stepOver();
     }
 
     @Export(name = "debugStepOut")
     public static void debugStepOut() {
-        WasmDebugController ctrl = wasmPlayer != null ? wasmPlayer.getDebugController() : null;
+        WasmDebugController ctrl = debugCtrl();
         if (ctrl != null) ctrl.stepOut();
     }
 
     @Export(name = "debugContinue")
     public static void debugContinue() {
-        WasmDebugController ctrl = wasmPlayer != null ? wasmPlayer.getDebugController() : null;
+        WasmDebugController ctrl = debugCtrl();
         if (ctrl != null) ctrl.continueExecution();
     }
 
     @Export(name = "debugPause")
     public static void debugPause() {
-        WasmDebugController ctrl = wasmPlayer != null ? wasmPlayer.getDebugController() : null;
+        WasmDebugController ctrl = debugCtrl();
         if (ctrl != null) ctrl.pause();
     }
 
     @Export(name = "addWatch")
     public static void addWatch(int expressionLen) {
-        WasmDebugController ctrl = wasmPlayer != null ? wasmPlayer.getDebugController() : null;
+        WasmDebugController ctrl = debugCtrl();
         if (ctrl == null || expressionLen <= 0) return;
         String expression = new String(stringBuffer, 0, expressionLen);
         ctrl.addWatchExpression(expression);
@@ -406,7 +405,7 @@ public class WasmPlayerApp {
 
     @Export(name = "removeWatch")
     public static void removeWatch(int idLen) {
-        WasmDebugController ctrl = wasmPlayer != null ? wasmPlayer.getDebugController() : null;
+        WasmDebugController ctrl = debugCtrl();
         if (ctrl == null || idLen <= 0) return;
         String id = new String(stringBuffer, 0, idLen);
         ctrl.removeWatchExpression(id);
@@ -414,13 +413,13 @@ public class WasmPlayerApp {
 
     @Export(name = "clearWatches")
     public static void clearWatches() {
-        WasmDebugController ctrl = wasmPlayer != null ? wasmPlayer.getDebugController() : null;
+        WasmDebugController ctrl = debugCtrl();
         if (ctrl != null) ctrl.clearWatchExpressions();
     }
 
     @Export(name = "getWatches")
     public static int getWatches() {
-        WasmDebugController ctrl = wasmPlayer != null ? wasmPlayer.getDebugController() : null;
+        WasmDebugController ctrl = debugCtrl();
         if (ctrl == null) return 0;
         String json = WasmDebugSerializer.serializeWatchesStandalone(ctrl.evaluateWatchExpressions());
         return writeJsonToLargeBuffer(json);
@@ -441,26 +440,31 @@ public class WasmPlayerApp {
     @Export(name = "onFetchComplete")
     public static void onFetchComplete(int taskId, int dataSize) {
         WasmNetManager mgr = WasmNetManager.getInstance();
-        if (mgr != null && netBuffer != null) {
-            byte[] data = new byte[dataSize];
-            System.arraycopy(netBuffer, 0, data, 0, dataSize);
-            String url = mgr.getTaskUrl(taskId);
-            mgr.onFetchComplete(taskId, data);
-            // Process external cast files: load them into the cast library
-            if (url != null && wasmPlayer != null && wasmPlayer.getPlayer() != null) {
-                try {
-                    boolean loaded = wasmPlayer.getPlayer().getCastLibManager()
-                            .setExternalCastDataByUrl(url, data);
-                    if (loaded) {
-                        System.out.println("[WasmPlayerApp] Loaded external cast: " + url);
-                        wasmPlayer.getPlayer().getBitmapCache().clear();
-                        SpriteDataExporter exporter = wasmPlayer.getSpriteExporter();
-                        if (exporter != null) exporter.clearBitmapCache();
-                    }
-                } catch (Exception e) {
-                    System.err.println("[WasmPlayerApp] Cast load error for " + url + ": " + e.getMessage());
-                }
+        if (mgr == null || netBuffer == null) return;
+
+        byte[] data = new byte[dataSize];
+        System.arraycopy(netBuffer, 0, data, 0, dataSize);
+        String url = mgr.getTaskUrl(taskId);
+        mgr.onFetchComplete(taskId, data);
+
+        if (url != null) {
+            tryLoadExternalCast(url, data);
+        }
+    }
+
+    private static void tryLoadExternalCast(String url, byte[] data) {
+        if (wasmPlayer == null || wasmPlayer.getPlayer() == null) return;
+        try {
+            boolean loaded = wasmPlayer.getPlayer().getCastLibManager()
+                    .setExternalCastDataByUrl(url, data);
+            if (loaded) {
+                System.out.println("[WasmPlayerApp] Loaded external cast: " + url);
+                wasmPlayer.getPlayer().getBitmapCache().clear();
+                SpriteDataExporter exporter = wasmPlayer.getSpriteExporter();
+                if (exporter != null) exporter.clearBitmapCache();
             }
+        } catch (Exception e) {
+            System.err.println("[WasmPlayerApp] Cast load error for " + url + ": " + e.getMessage());
         }
     }
 
@@ -483,7 +487,7 @@ public class WasmPlayerApp {
         if (wasmPlayer == null || wasmPlayer.getPlayer() == null) return;
         String key = new String(stringBuffer, 0, keyLen);
         String value = new String(stringBuffer, keyLen, valueLen);
-        java.util.Map<String, String> current = new java.util.LinkedHashMap<>(wasmPlayer.getPlayer().getExternalParams());
+        Map<String, String> current = new LinkedHashMap<>(wasmPlayer.getPlayer().getExternalParams());
         current.put(key, value);
         wasmPlayer.getPlayer().setExternalParams(current);
     }
@@ -534,6 +538,14 @@ public class WasmPlayerApp {
 
     // === Internal helpers ===
 
+    private static WasmDebugController debugCtrl() {
+        return wasmPlayer != null ? wasmPlayer.getDebugController() : null;
+    }
+
+    private static SpriteDataExporter spriteExporter() {
+        return wasmPlayer != null ? wasmPlayer.getSpriteExporter() : null;
+    }
+
     /**
      * Write a string to the shared string buffer (for URL passing to JS).
      */
@@ -541,6 +553,11 @@ public class WasmPlayerApp {
         byte[] bytes = s.getBytes();
         int len = Math.min(bytes.length, stringBuffer.length);
         System.arraycopy(bytes, 0, stringBuffer, 0, len);
+    }
+
+    private static boolean isValidHandler(ScriptChunk script, int handlerIndex) {
+        return script != null && script.handlers() != null &&
+               handlerIndex >= 0 && handlerIndex < script.handlers().size();
     }
 
     private static ScriptChunk findScript(int scriptId) {

@@ -380,7 +380,7 @@ public class CastMember {
      * Delegates to the platform-specific TextRenderer.
      * This implements Director's text member .image property.
      */
-    private Bitmap renderTextToImage() {
+    public Bitmap renderTextToImage() {
         // Return cached image if still valid
         if (textRenderedImage != null && !textImageDirty) {
             return textRenderedImage;

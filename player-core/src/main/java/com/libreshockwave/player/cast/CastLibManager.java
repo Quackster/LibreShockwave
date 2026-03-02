@@ -345,6 +345,41 @@ public class CastLibManager implements CastLibProvider {
     }
 
     /**
+     * Find a CastMember object by name across all loaded cast libraries.
+     * Searches dynamic members first (runtime-created), then file members wrapped as CastMember.
+     * Returns null if not found.
+     */
+    public CastMember findCastMemberByName(String name) {
+        ensureInitialized();
+
+        // Search dynamic members first (runtime-created via new(#type, castLib))
+        for (CastLib castLib : castLibs.values()) {
+            if (!castLib.isLoaded()) continue;
+            CastMember dynamic = castLib.getMemberByName(name);
+            if (dynamic != null) {
+                return dynamic;
+            }
+        }
+
+        // Search file members — return from CastLib.getMember() to get a full CastMember
+        for (CastLib castLib : castLibs.values()) {
+            if (!castLib.isLoaded()) {
+                castLib.load();
+            }
+            CastMemberChunk chunk = castLib.findMemberByName(name);
+            if (chunk != null) {
+                int memberNumber = castLib.getMemberNumber(chunk);
+                CastMember member = castLib.getMember(memberNumber);
+                if (member != null) {
+                    return member;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Get a cast member chunk by name.
      */
     public CastMemberChunk getCastMemberByName(String name) {

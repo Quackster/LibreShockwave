@@ -4,7 +4,6 @@ import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.player.Player;
 import com.libreshockwave.vm.builtin.WindowProvider;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -43,38 +42,15 @@ public record FrameSnapshot(
     }
 
     /**
-     * Create a snapshot with ink-processed (baked) bitmaps.
-     * Each BITMAP sprite gets its decoded+ink-processed bitmap attached via {@link RenderSprite#withBakedBitmap}.
+     * Create a snapshot with baked bitmaps for all sprite types.
+     * SpriteBaker handles BITMAP, TEXT, SHAPE → pre-rendered pixels.
      */
     public static FrameSnapshot capture(StageRenderer renderer, int frame, String state,
-                                         BitmapCache cache, Player player) {
+                                         SpriteBaker baker, Player player) {
         List<RenderSprite> sprites = renderer.getSpritesForFrame(frame);
         String debug = String.format("Frame %d | %s", frame, state);
 
-        List<RenderSprite> baked = new ArrayList<>(sprites.size());
-        for (RenderSprite s : sprites) {
-            if (s.getType() == RenderSprite.SpriteType.BITMAP) {
-                Bitmap b = null;
-                if (s.getCastMember() != null) {
-                    b = cache.getProcessed(s.getCastMember(), s.getInk(), s.getBackColor(), player);
-                }
-                if (b == null && s.getDynamicMember() != null) {
-                    b = cache.getProcessedDynamic(s.getDynamicMember(), s.getInk(), s.getBackColor());
-                }
-                // Apply Director's sprite-level foreColor/backColor colorization.
-                // Only applied when Lingo has explicitly set foreColor or backColor
-                // on the sprite (via sprite.color, sprite.foreColor, sprite.backColor, etc.).
-                // Sprites with default colors (foreColor=0, backColor=0xFFFFFF) from Score
-                // data are NOT colorized — matching Director's actual behavior.
-                if (b != null && (s.hasForeColor() || s.hasBackColor())
-                        && InkProcessor.allowsColorize(s.getInk())) {
-                    b = InkProcessor.applyForeColorRemap(b, s.getForeColor(), s.getBackColor());
-                }
-                baked.add(s.withBakedBitmap(b));
-            } else {
-                baked.add(s);
-            }
-        }
+        List<RenderSprite> baked = baker.bakeSprites(sprites);
 
         // Capture window buffers for rendering
         Map<String, WindowProvider.WindowBuffer> windowBuffers = Collections.emptyMap();
