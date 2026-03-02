@@ -145,6 +145,21 @@ public final class ListBuiltins {
             return Datum.VOID;
         }
 
+        // Rect and Point are mutable - setAt modifies them in place (Director behavior)
+        if (container instanceof Datum.Rect rect) {
+            int index = keyOrIndex.toInt();
+            int val = value.toInt();
+            rect.setComponent(index, val);
+            return Datum.VOID;
+        }
+
+        if (container instanceof Datum.Point point) {
+            int index = keyOrIndex.toInt();
+            int val = value.toInt();
+            point.setComponent(index, val);
+            return Datum.VOID;
+        }
+
         return Datum.VOID;
     }
 

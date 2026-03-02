@@ -10,6 +10,9 @@ import com.libreshockwave.chunks.TextChunk;
 import com.libreshockwave.format.ChunkType;
 import com.libreshockwave.vm.Datum;
 
+import java.awt.*;
+import java.awt.image.BufferedImage;
+
 /**
  * Represents a loaded cast member with lazy loading of media data.
  * Similar to dirplayer-rs player/cast_member.rs.
@@ -45,6 +48,25 @@ public class CastMember {
 
     // Dynamic text content (for dynamically created field/text members)
     private String dynamicText;
+
+    // Text rendering properties (set by Lingo scripts via member.font, member.fontSize, etc.)
+    private String textFont = "Arial";
+    private int textFontSize = 12;
+    private String textFontStyle = "plain";
+    private String textAlignment = "left";
+    private int textColor = 0xFF000000; // ARGB black
+    private int textBgColor = 0xFFFFFFFF; // ARGB white
+    private boolean textWordWrap = false;
+    private boolean textAntialias = true;
+    private int textBoxType = 0; // 0 = adjust to fit, 1 = fixed
+    private int textRectLeft = 0;
+    private int textRectTop = 0;
+    private int textRectRight = 480;
+    private int textRectBottom = 480;
+    private int textFixedLineSpace = 0;
+    private int textTopSpacing = 0;
+    private boolean textImageDirty = true; // Re-render when properties change
+    private Bitmap textRenderedImage; // Cached rendered text image
 
     public CastMember(int castLibNumber, int memberNumber, CastMemberChunk chunk, DirectorFile sourceFile) {
         this.castLibNumber = castLibNumber;
@@ -298,16 +320,188 @@ public class CastMember {
     private Datum getTextProp(String prop) {
         return switch (prop) {
             case "text" -> Datum.of(getTextContent());
-            case "width", "height" -> Datum.of(0); // TODO: compute from text
+            case "width" -> Datum.of(textRectRight - textRectLeft);
+            case "height" -> {
+                // Return the height needed to display the text
+                // If text has been rendered, use that height; otherwise use rect height
+                if (textRenderedImage != null && !textImageDirty) {
+                    yield Datum.of(textRenderedImage.getHeight());
+                }
+                yield Datum.of(textRectBottom - textRectTop);
+            }
+            case "rect" -> new Datum.Rect(textRectLeft, textRectTop, textRectRight, textRectBottom);
             case "image" -> {
-                // Text members can have an image representation
-                if (bitmap != null) {
-                    yield new Datum.ImageRef(bitmap);
+                // Render text content to a bitmap image
+                Bitmap img = renderTextToImage();
+                if (img != null) {
+                    yield new Datum.ImageRef(img);
                 }
                 yield Datum.VOID;
             }
+            case "font" -> Datum.of(textFont);
+            case "fontsize" -> Datum.of(textFontSize);
+            case "fontstyle" -> Datum.of(textFontStyle);
+            case "alignment" -> Datum.symbol(textAlignment);
+            case "color" -> new Datum.Color(
+                    (textColor >> 16) & 0xFF,
+                    (textColor >> 8) & 0xFF,
+                    textColor & 0xFF);
+            case "bgcolor" -> new Datum.Color(
+                    (textBgColor >> 16) & 0xFF,
+                    (textBgColor >> 8) & 0xFF,
+                    textBgColor & 0xFF);
+            case "wordwrap" -> Datum.of(textWordWrap ? 1 : 0);
+            case "antialias" -> Datum.of(textAntialias ? 1 : 0);
+            case "boxtype" -> Datum.of(textBoxType);
+            case "fixedlinespace" -> Datum.of(textFixedLineSpace);
+            case "topspacing" -> Datum.of(textTopSpacing);
+            case "charposttoloc" -> Datum.VOID; // handled as method, not property
             default -> Datum.VOID;
         };
+    }
+
+    /**
+     * Render the text content of this member to a Bitmap.
+     * Uses Java AWT Graphics2D for text layout and rendering.
+     * This implements Director's text member .image property.
+     */
+    private Bitmap renderTextToImage() {
+        // Return cached image if still valid
+        if (textRenderedImage != null && !textImageDirty) {
+            return textRenderedImage;
+        }
+
+        String text = getTextContent();
+        if (text == null) text = "";
+
+        int width = textRectRight - textRectLeft;
+        int height = textRectBottom - textRectTop;
+        if (width <= 0) width = 200;
+        if (height <= 0) height = 20;
+
+        // Create a temporary BufferedImage to render text with AWT
+        BufferedImage bufImg = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2d = bufImg.createGraphics();
+
+        // Set rendering hints
+        if (textAntialias) {
+            g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
+                    RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        }
+        g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+
+        // Fill background
+        g2d.setColor(new java.awt.Color(textBgColor, true));
+        g2d.fillRect(0, 0, width, height);
+
+        // Set font
+        int fontStyleAwt = Font.PLAIN;
+        String style = textFontStyle.toLowerCase();
+        if (style.contains("bold")) fontStyleAwt |= Font.BOLD;
+        if (style.contains("italic")) fontStyleAwt |= Font.ITALIC;
+        Font font = new Font(textFont, fontStyleAwt, textFontSize);
+        g2d.setFont(font);
+
+        // Set text color
+        g2d.setColor(new java.awt.Color(textColor, true));
+
+        FontMetrics fm = g2d.getFontMetrics();
+        int lineHeight = textFixedLineSpace > 0 ? textFixedLineSpace : fm.getHeight();
+        int ascent = fm.getAscent();
+
+        // Split text into lines
+        String[] rawLines = text.split("[\r\n]+");
+        if (rawLines.length == 0) rawLines = new String[]{""};
+
+        // Word wrap if enabled
+        java.util.List<String> lines = new java.util.ArrayList<>();
+        if (textWordWrap) {
+            for (String rawLine : rawLines) {
+                wrapLine(rawLine, fm, width, lines);
+            }
+        } else {
+            for (String rawLine : rawLines) {
+                lines.add(rawLine);
+            }
+        }
+
+        // Compute needed height
+        int neededHeight = lines.size() * lineHeight + textTopSpacing;
+        if (neededHeight > height) {
+            // Expand the image to fit all text
+            g2d.dispose();
+            bufImg = new BufferedImage(width, neededHeight, BufferedImage.TYPE_INT_ARGB);
+            g2d = bufImg.createGraphics();
+            if (textAntialias) {
+                g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
+                        RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+            }
+            g2d.setColor(new java.awt.Color(textBgColor, true));
+            g2d.fillRect(0, 0, width, neededHeight);
+            g2d.setFont(font);
+            g2d.setColor(new java.awt.Color(textColor, true));
+            height = neededHeight;
+        }
+
+        // Draw lines
+        int y = ascent + textTopSpacing;
+        for (String line : lines) {
+            if (y > height) break;
+
+            int x = 0;
+            switch (textAlignment) {
+                case "center" -> x = (width - fm.stringWidth(line)) / 2;
+                case "right" -> x = width - fm.stringWidth(line);
+                default -> x = 0; // left
+            }
+
+            g2d.drawString(line, x, y);
+            y += lineHeight;
+        }
+
+        g2d.dispose();
+
+        // Convert BufferedImage to our Bitmap format
+        int[] pixels = bufImg.getRGB(0, 0, bufImg.getWidth(), bufImg.getHeight(),
+                null, 0, bufImg.getWidth());
+        textRenderedImage = new Bitmap(bufImg.getWidth(), bufImg.getHeight(), 32, pixels);
+        textImageDirty = false;
+
+        return textRenderedImage;
+    }
+
+    /**
+     * Word-wrap a single line of text to fit within maxWidth pixels.
+     */
+    private static void wrapLine(String text, FontMetrics fm, int maxWidth,
+                                 java.util.List<String> out) {
+        if (text.isEmpty()) {
+            out.add("");
+            return;
+        }
+        if (fm.stringWidth(text) <= maxWidth) {
+            out.add(text);
+            return;
+        }
+
+        String[] words = text.split("\\s+");
+        StringBuilder current = new StringBuilder();
+        for (String word : words) {
+            if (current.length() == 0) {
+                current.append(word);
+            } else {
+                String candidate = current + " " + word;
+                if (fm.stringWidth(candidate) <= maxWidth) {
+                    current.append(" ").append(word);
+                } else {
+                    out.add(current.toString());
+                    current = new StringBuilder(word);
+                }
+            }
+        }
+        if (current.length() > 0) {
+            out.add(current.toString());
+        }
     }
 
     private Datum getScriptProp(String prop) {
@@ -358,14 +552,155 @@ public class CastMember {
     }
 
     private boolean setTypeProp(String prop, Datum value) {
-        if ("text".equals(prop) && (memberType == MemberType.TEXT || memberType == MemberType.BUTTON)) {
-            this.dynamicText = value.toStr();
-            return true;
+        if (memberType == MemberType.TEXT || memberType == MemberType.BUTTON) {
+            return setTextProp(prop, value);
         }
         if (memberType == MemberType.BITMAP) {
             return setBitmapProp(prop, value);
         }
         return false;
+    }
+
+    /**
+     * Set a property on a text/field member.
+     * Handles font, fontSize, alignment, color, rect, text, image, and more.
+     */
+    private boolean setTextProp(String prop, Datum value) {
+        switch (prop) {
+            case "text" -> {
+                this.dynamicText = value.toStr();
+                textImageDirty = true;
+                return true;
+            }
+            case "html" -> {
+                // Strip HTML tags for now (basic support)
+                String html = value.toStr();
+                this.dynamicText = html.replaceAll("<[^>]*>", "");
+                textImageDirty = true;
+                return true;
+            }
+            case "font" -> {
+                this.textFont = value.toStr();
+                textImageDirty = true;
+                return true;
+            }
+            case "fontsize" -> {
+                this.textFontSize = value.toInt();
+                textImageDirty = true;
+                return true;
+            }
+            case "fontstyle" -> {
+                if (value instanceof Datum.List list) {
+                    // Director fontStyle is a list like [#bold, #italic]
+                    StringBuilder sb = new StringBuilder();
+                    for (Datum item : list.items()) {
+                        if (sb.length() > 0) sb.append(",");
+                        sb.append(item.toStr());
+                    }
+                    this.textFontStyle = sb.toString();
+                } else {
+                    this.textFontStyle = value.toStr();
+                }
+                textImageDirty = true;
+                return true;
+            }
+            case "alignment" -> {
+                if (value instanceof Datum.Symbol s) {
+                    this.textAlignment = s.name().toLowerCase();
+                } else {
+                    this.textAlignment = value.toStr().toLowerCase();
+                }
+                textImageDirty = true;
+                return true;
+            }
+            case "color" -> {
+                this.textColor = datumToArgb(value);
+                textImageDirty = true;
+                return true;
+            }
+            case "bgcolor" -> {
+                this.textBgColor = datumToArgb(value);
+                textImageDirty = true;
+                return true;
+            }
+            case "wordwrap" -> {
+                this.textWordWrap = value.toInt() != 0;
+                textImageDirty = true;
+                return true;
+            }
+            case "antialias" -> {
+                this.textAntialias = value.toInt() != 0;
+                textImageDirty = true;
+                return true;
+            }
+            case "boxtype" -> {
+                this.textBoxType = value.toInt();
+                textImageDirty = true;
+                return true;
+            }
+            case "rect" -> {
+                if (value instanceof Datum.Rect r) {
+                    this.textRectLeft = r.left();
+                    this.textRectTop = r.top();
+                    this.textRectRight = r.right();
+                    this.textRectBottom = r.bottom();
+                    textImageDirty = true;
+                    return true;
+                }
+                return false;
+            }
+            case "width" -> {
+                this.textRectRight = this.textRectLeft + value.toInt();
+                textImageDirty = true;
+                return true;
+            }
+            case "height" -> {
+                this.textRectBottom = this.textRectTop + value.toInt();
+                textImageDirty = true;
+                return true;
+            }
+            case "fixedlinespace" -> {
+                this.textFixedLineSpace = value.toInt();
+                textImageDirty = true;
+                return true;
+            }
+            case "topspacing" -> {
+                this.textTopSpacing = value.toInt();
+                textImageDirty = true;
+                return true;
+            }
+            case "image" -> {
+                // Allow setting the bitmap directly (used by some scripts)
+                if (value instanceof Datum.ImageRef ir) {
+                    this.bitmap = ir.bitmap();
+                    this.textRenderedImage = ir.bitmap();
+                    this.textImageDirty = false;
+                    return true;
+                }
+                return false;
+            }
+            default -> {
+                return false;
+            }
+        }
+    }
+
+    /**
+     * Convert a Datum color to ARGB int.
+     */
+    private static int datumToArgb(Datum colorDatum) {
+        if (colorDatum instanceof Datum.Color c) {
+            return 0xFF000000 | (c.r() << 16) | (c.g() << 8) | c.b();
+        } else if (colorDatum instanceof Datum.Int i) {
+            int val = i.value();
+            if (val > 255) {
+                return 0xFF000000 | (val & 0xFFFFFF);
+            } else {
+                int gray = 255 - val;
+                return 0xFF000000 | (gray << 16) | (gray << 8) | gray;
+            }
+        }
+        return 0xFF000000;
     }
 
     private boolean setBitmapProp(String prop, Datum value) {
@@ -405,6 +740,70 @@ public class CastMember {
      */
     public int getSlotNumber() {
         return (castLibNumber << 16) | (memberNumber & 0xFFFF);
+    }
+
+    /**
+     * Call a method on this cast member.
+     * Handles Director member methods like charPosToLoc.
+     */
+    public Datum callMethod(String methodName, java.util.List<Datum> args) {
+        String method = methodName.toLowerCase();
+        return switch (method) {
+            case "charposttoloc", "charpostoloc" -> {
+                // charPosToLoc(charIndex) → point(x, y)
+                // Returns the pixel position of the character at the given index
+                if (args.isEmpty()) yield new Datum.Point(0, 0);
+                int charIndex = args.get(0).toInt();
+
+                // Use AWT to measure text position
+                String text = getTextContent();
+                if (text == null || text.isEmpty() || charIndex <= 0) {
+                    yield new Datum.Point(0, 0);
+                }
+
+                int fontStyleAwt = Font.PLAIN;
+                String style = textFontStyle.toLowerCase();
+                if (style.contains("bold")) fontStyleAwt |= Font.BOLD;
+                if (style.contains("italic")) fontStyleAwt |= Font.ITALIC;
+                Font font = new Font(textFont, fontStyleAwt, textFontSize);
+
+                // Use a temporary image to get FontMetrics
+                BufferedImage tmpImg = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
+                Graphics2D g2d = tmpImg.createGraphics();
+                g2d.setFont(font);
+                FontMetrics fm = g2d.getFontMetrics();
+
+                // Clamp charIndex to text length
+                int idx = Math.min(charIndex, text.length());
+                String substr = text.substring(0, idx);
+
+                // Find which line the character is on
+                String[] lines = text.split("[\r\n]");
+                int lineNum = 0;
+                int charsSoFar = 0;
+                String lineText = lines.length > 0 ? lines[0] : "";
+                for (int i = 0; i < lines.length; i++) {
+                    int lineLen = lines[i].length() + 1; // +1 for line break
+                    if (charsSoFar + lineLen >= idx) {
+                        lineNum = i;
+                        lineText = lines[i];
+                        break;
+                    }
+                    charsSoFar += lineLen;
+                }
+
+                int charsOnLine = idx - charsSoFar;
+                if (charsOnLine > lineText.length()) charsOnLine = lineText.length();
+                String lineSubstr = lineText.substring(0, charsOnLine);
+                int x = fm.stringWidth(lineSubstr);
+                int lineHeight = textFixedLineSpace > 0 ? textFixedLineSpace : fm.getHeight();
+                int y = lineNum * lineHeight + fm.getAscent();
+
+                g2d.dispose();
+                yield new Datum.Point(x, y);
+            }
+            default -> Datum.VOID;
+        };
     }
 
     @Override

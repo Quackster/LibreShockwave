@@ -168,17 +168,25 @@ public final class ImageMethodDispatcher {
      * Copies pixels from source to this image with optional ink and blend.
      */
     private static Datum copyPixels(Bitmap dest, List<Datum> args) {
-        if (args.size() < 3) return Datum.VOID;
+        if (args.size() < 3) {
+            return Datum.VOID;
+        }
 
         Datum srcDatum = args.get(0);
-        if (!(srcDatum instanceof Datum.ImageRef srcRef)) return Datum.VOID;
+        if (!(srcDatum instanceof Datum.ImageRef srcRef)) {
+            return Datum.VOID;
+        }
         Bitmap src = srcRef.bitmap();
 
         Datum destRectDatum = args.get(1);
         Datum srcRectDatum = args.get(2);
 
-        if (!(destRectDatum instanceof Datum.Rect destRect)) return Datum.VOID;
-        if (!(srcRectDatum instanceof Datum.Rect srcRect)) return Datum.VOID;
+        if (!(destRectDatum instanceof Datum.Rect destRect)) {
+            return Datum.VOID;
+        }
+        if (!(srcRectDatum instanceof Datum.Rect srcRect)) {
+            return Datum.VOID;
+        }
 
         // Optional propList with ink and blend
         Palette.InkMode ink = Palette.InkMode.COPY;

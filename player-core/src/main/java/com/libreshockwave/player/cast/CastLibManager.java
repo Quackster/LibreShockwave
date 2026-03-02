@@ -294,6 +294,20 @@ public class CastLibManager implements CastLibProvider {
         return castLib.setMemberProp(memberNumber, propName, value);
     }
 
+    @Override
+    public Datum callMemberMethod(int castLibNumber, int memberNumber,
+                                   String methodName, java.util.List<Datum> args) {
+        CastLib castLib = getCastLib(castLibNumber);
+        if (castLib == null) {
+            return Datum.VOID;
+        }
+        CastMember member = castLib.getMember(memberNumber);
+        if (member == null) {
+            return Datum.VOID;
+        }
+        return member.callMethod(methodName, args);
+    }
+
     /**
      * Get a property for an invalid member reference.
      */

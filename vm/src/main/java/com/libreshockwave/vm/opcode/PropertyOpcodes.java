@@ -236,6 +236,22 @@ public final class PropertyOpcodes {
                     stageProvider.setStageProp(propName, value);
                 }
             }
+            case Datum.Rect rect -> {
+                int v = value.toInt();
+                switch (propName.toLowerCase()) {
+                    case "left" -> rect.setLeft(v);
+                    case "top" -> rect.setTop(v);
+                    case "right" -> rect.setRight(v);
+                    case "bottom" -> rect.setBottom(v);
+                }
+            }
+            case Datum.Point point -> {
+                int v = value.toInt();
+                switch (propName.toLowerCase()) {
+                    case "loch", "x" -> point.setX(v);
+                    case "locv", "y" -> point.setY(v);
+                }
+            }
             default -> { /* ignore */ }
         }
 

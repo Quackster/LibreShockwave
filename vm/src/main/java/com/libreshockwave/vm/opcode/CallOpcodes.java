@@ -5,6 +5,7 @@ import com.libreshockwave.lingo.Opcode;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.HandlerRef;
 import com.libreshockwave.vm.LingoException;
+import com.libreshockwave.vm.builtin.CastLibProvider;
 import com.libreshockwave.vm.builtin.TimeoutBuiltins;
 import com.libreshockwave.vm.opcode.dispatch.ImageMethodDispatcher;
 import com.libreshockwave.vm.opcode.dispatch.ListMethodDispatcher;
@@ -122,6 +123,14 @@ public final class CallOpcodes {
             case Datum.Str str -> StringMethodDispatcher.dispatch(str, methodName, args);
             case Datum.TimeoutRef ref -> TimeoutBuiltins.handleMethod(ref, methodName, args);
             case Datum.ImageRef imageRef -> ImageMethodDispatcher.dispatch(imageRef, methodName, args);
+            case Datum.CastMemberRef cmr -> {
+                // Method calls on cast member references (e.g., member.charPosToLoc)
+                CastLibProvider provider = CastLibProvider.getProvider();
+                if (provider != null) {
+                    yield provider.callMemberMethod(cmr.castLib(), cmr.member(), methodName, args);
+                }
+                yield Datum.VOID;
+            }
             case Datum.VarRef varRef -> handleVarRefMethod(ctx, varRef, methodName, args);
             case Datum.ChunkRef chunkRef -> handleChunkRefMethod(ctx, chunkRef, methodName, args);
             case Datum.MovieRef m -> {
@@ -175,6 +184,13 @@ public final class CallOpcodes {
                     default -> Datum.VOID;
                 };
             }
+            case "setat" -> {
+                if (args.size() < 2) yield Datum.VOID;
+                int index = args.get(0).toInt();
+                int value = args.get(1).toInt();
+                point.setComponent(index, value);
+                yield Datum.VOID;
+            }
             default -> Datum.VOID;
         };
     }
@@ -195,6 +211,13 @@ public final class CallOpcodes {
                     case 4 -> Datum.of(rect.bottom());
                     default -> Datum.VOID;
                 };
+            }
+            case "setat" -> {
+                if (args.size() < 2) yield Datum.VOID;
+                int index = args.get(0).toInt();
+                int value = args.get(1).toInt();
+                rect.setComponent(index, value);
+                yield Datum.VOID;
             }
             default -> Datum.VOID;
         };

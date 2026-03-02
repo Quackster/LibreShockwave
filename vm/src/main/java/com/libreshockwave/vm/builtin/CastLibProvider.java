@@ -224,6 +224,20 @@ public interface CastLibProvider {
         Object scriptNames      // ScriptNamesChunk
     ) {}
 
+    /**
+     * Call a method on a cast member.
+     * Used for member methods like charPosToLoc.
+     * @param castLibNumber The cast library number
+     * @param memberNumber The member number
+     * @param methodName The method name
+     * @param args The method arguments
+     * @return The method result
+     */
+    default Datum callMemberMethod(int castLibNumber, int memberNumber,
+                                    String methodName, java.util.List<Datum> args) {
+        return Datum.VOID;
+    }
+
     // Thread-local provider for VM access
     ThreadLocal<CastLibProvider> CURRENT = new ThreadLocal<>();
 
