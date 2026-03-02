@@ -7,7 +7,6 @@ import com.libreshockwave.vm.HandlerRef;
 import com.libreshockwave.vm.LingoException;
 import com.libreshockwave.vm.builtin.CastLibProvider;
 import com.libreshockwave.vm.builtin.TimeoutBuiltins;
-import com.libreshockwave.vm.builtin.WindowBuiltins;
 import com.libreshockwave.vm.opcode.dispatch.ImageMethodDispatcher;
 import com.libreshockwave.vm.opcode.dispatch.ListMethodDispatcher;
 import com.libreshockwave.vm.opcode.dispatch.PropListMethodDispatcher;
@@ -124,7 +123,6 @@ public final class CallOpcodes {
             case Datum.Str str -> StringMethodDispatcher.dispatch(str, methodName, args);
             case Datum.TimeoutRef ref -> TimeoutBuiltins.handleMethod(ref, methodName, args);
             case Datum.ImageRef imageRef -> ImageMethodDispatcher.dispatch(imageRef, methodName, args);
-            case Datum.WindowRef windowRef -> WindowBuiltins.dispatchMethod(windowRef, methodName, args);
             case Datum.CastMemberRef cmr -> {
                 // Method calls on cast member references (e.g., member.charPosToLoc)
                 CastLibProvider provider = CastLibProvider.getProvider();

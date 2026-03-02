@@ -26,6 +26,10 @@ public class WasmPlayer {
     private SpriteDataExporter spriteExporter;
     private WasmNetManager netManager;
     private WasmDebugController debugController;
+    private boolean playRequested = false;
+    private boolean moviePrepared = false;
+    private int expectedCasts = 0;
+    private int completedCasts = 0;
 
     /**
      * Load a Director movie from raw bytes.
@@ -51,9 +55,26 @@ public class WasmPlayer {
         System.out.println("[WasmPlayer] Movie loaded: " + stageWidth + "x" + stageHeight
                 + ", " + player.getFrameCount() + " frames, tempo=" + player.getTempo());
 
+        // Preload external casts NOW (during load, not during play)
+        // This gives fetch requests a head start before the user presses play
+        expectedCasts = player.preloadAllCasts();
+        System.out.println("[WasmPlayer] Preloading " + expectedCasts + " external casts");
+
         // Render the initial frame
         renderer.render();
         return true;
+    }
+
+    /**
+     * Called from WasmPlayerApp when a fetch completes (success or error).
+     * Tracks completion count and triggers deferred play when all casts are done.
+     */
+    public void onCastFetchDone() {
+        completedCasts++;
+        if (playRequested && !moviePrepared && completedCasts >= expectedCasts) {
+            System.out.println("[WasmPlayer] All " + completedCasts + " casts fetched, starting deferred play");
+            doPlay();
+        }
     }
 
     /**
@@ -116,50 +137,53 @@ public class WasmPlayer {
     public void play() {
         if (player == null) return;
 
-        System.out.println("[WasmPlayer] play() - state before: " + player.getState());
+        if (completedCasts >= expectedCasts) {
+            System.out.println("[WasmPlayer] play() - all casts ready (" + completedCasts + "/" + expectedCasts + "), starting immediately");
+            doPlay();
+        } else {
+            // Defer play until all external casts have been fetched
+            playRequested = true;
+            System.out.println("[WasmPlayer] play() - deferring until casts loaded ("
+                + completedCasts + "/" + expectedCasts + " done)");
+        }
+    }
+
+    private void doPlay() {
+        playRequested = false;
+        moviePrepared = true;
+        tickCount = 0;
+
+        // Enable debug logging during prepareMovie to trace behavior dispatch
+        player.setDebugEnabled(true);
+
+        System.out.println("[WasmPlayer] doPlay() - state before: " + player.getState());
         player.play();
 
-        // Diagnostic: check external cast loading state and script types
-        var clm = player.getCastLibManager();
-        int loadedExternal = 0;
-        int movieViaGetType = 0;
-        int movieViaRawType = 0;
-        int parentScripts = 0;
-        int scoreScripts = 0;
-        int otherScripts = 0;
-        int totalExternalScripts = 0;
-        for (var castLib : clm.getCastLibs().values()) {
-            if (!castLib.isExternal()) continue;
-            if (!castLib.isLoaded()) continue;
-            loadedExternal++;
-            for (var script : castLib.getAllScripts()) {
-                totalExternalScripts++;
-                var authType = script.getScriptType();
-                var rawType = script.scriptType();
-                if (authType == ScriptChunk.ScriptType.MOVIE_SCRIPT) movieViaGetType++;
-                if (rawType == ScriptChunk.ScriptType.MOVIE_SCRIPT) movieViaRawType++;
-                if (authType == ScriptChunk.ScriptType.PARENT) parentScripts++;
-                if (authType == ScriptChunk.ScriptType.SCORE) scoreScripts++;
-                if (authType != ScriptChunk.ScriptType.MOVIE_SCRIPT
-                    && authType != ScriptChunk.ScriptType.PARENT
-                    && authType != ScriptChunk.ScriptType.SCORE) {
-                    otherScripts++;
-                    System.out.println("[WasmPlayer]   script id=" + script.id()
-                        + " authType=" + authType + " rawType=" + rawType
-                        + " handlers=" + script.handlers().size()
-                        + " file=" + (script.file() != null));
-                }
-            }
+        // Check what happened during prepareMovie
+        var vm = player.getVM();
+        int globalCount = vm != null ? vm.getGlobals().size() : -1;
+        var globals = vm != null ? vm.getGlobals().keySet() : java.util.Set.of();
+        var timeoutMgr = player.getTimeoutManager();
+        int timeoutCount = timeoutMgr != null ? timeoutMgr.getTimeoutCount() : -1;
+        var timeoutNames = timeoutMgr != null ? timeoutMgr.getTimeoutNames() : java.util.List.of();
+        System.out.println("[WasmPlayer] doPlay() - state after: " + player.getState()
+            + " frame=" + player.getCurrentFrame()
+            + " dynSprites=" + player.getStageRenderer().getSpriteRegistry().getDynamicSprites().size()
+            + " globals=" + globalCount
+            + " timeouts=" + timeoutCount);
+        // Print global names to see if startClient ran
+        int count = 0;
+        for (var g : globals) {
+            if (count++ >= 20) { System.out.println("[WasmPlayer]   ... and " + (globalCount - 20) + " more"); break; }
+            System.out.println("[WasmPlayer]   global: " + g);
+        }
+        // Print timeout names - the Object Manager uses timeouts for per-frame dispatch
+        for (var t : timeoutNames) {
+            System.out.println("[WasmPlayer]   timeout: " + t);
         }
 
-        System.out.println("[WasmPlayer] play() - state=" + player.getState()
-            + " frame=" + player.getCurrentFrame()
-            + " loadedExt=" + loadedExternal + "/" + clm.getCastLibs().size()
-            + " extScripts=" + totalExternalScripts
-            + " movieAuth=" + movieViaGetType + " movieRaw=" + movieViaRawType
-            + " parent=" + parentScripts + " score=" + scoreScripts
-            + " other=" + otherScripts
-            + " dynSprites=" + player.getStageRenderer().getSpriteRegistry().getDynamicSprites().size());
+        // Disable verbose debug after prepareMovie
+        player.setDebugEnabled(false);
     }
 
     public void pause() {
@@ -281,9 +305,13 @@ public class WasmPlayer {
                 for (var script : file.getScripts()) {
                     var type = script.getScriptType();
                     if (type == ScriptChunk.ScriptType.MOVIE_SCRIPT) {
-                        var h = script.findHandler("enterFrame", names);
                         System.out.println("[WasmPlayer]   MOVIE id=" + script.id()
-                            + " enterFrame=" + (h != null));
+                            + " handlers=" + script.handlers().size()
+                            + " hasStartMovie=" + (script.findHandler("startMovie", names) != null)
+                            + " hasPrepareMovie=" + (script.findHandler("prepareMovie", names) != null));
+                        for (var h : script.handlers()) {
+                            System.out.println("[WasmPlayer]     handler: '" + script.getHandlerName(h) + "'");
+                        }
                     }
                 }
             }
