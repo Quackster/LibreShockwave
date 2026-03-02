@@ -1,7 +1,6 @@
 package com.libreshockwave.player;
 
 import com.libreshockwave.bitmap.Bitmap;
-import com.libreshockwave.chunks.CastMemberChunk;
 import com.libreshockwave.player.cast.CastLibManager;
 import com.libreshockwave.player.cast.CastMember;
 import com.libreshockwave.player.render.FrameSnapshot;
@@ -10,17 +9,14 @@ import com.libreshockwave.player.render.RenderSprite;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.image.BufferedImage;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
  * Swing panel that renders the Director stage using the player-core rendering API.
  * The stage canvas maintains a fixed size and is centered within the panel.
  * Resizing the window does not affect the stage dimensions.
+ *
+ * Ink processing (matte, background transparent, etc.) is handled by the Player's
+ * BitmapCache and baked into each RenderSprite before it reaches this panel.
  */
 public class StagePanel extends JPanel {
 
@@ -28,19 +24,6 @@ public class StagePanel extends JPanel {
     private static final Color CANVAS_BORDER_COLOR = new Color(80, 80, 80);
 
     private Player player;
-    private final Map<Integer, BufferedImage> bitmapCache = new ConcurrentHashMap<>();
-    private final ExecutorService bitmapDecoder = Executors.newFixedThreadPool(
-        Math.max(2, Runtime.getRuntime().availableProcessors() / 2),
-        r -> {
-            Thread t = new Thread(r, "BitmapDecoder");
-            t.setDaemon(true);
-            return t;
-        }
-    );
-    private final Set<Integer> decoding = ConcurrentHashMap.newKeySet();
-    private final Set<Integer> decodeFailed = ConcurrentHashMap.newKeySet();
-    private final Map<Long, BufferedImage> transparentCache = new ConcurrentHashMap<>();
-    private volatile int playerVersion = 0;
 
     // Fixed stage dimensions (set from movie)
     private int stageWidth = 640;
@@ -53,11 +36,6 @@ public class StagePanel extends JPanel {
 
     public void setPlayer(Player player) {
         this.player = player;
-        playerVersion++;
-        bitmapCache.clear();
-        transparentCache.clear();
-        decoding.clear();
-        decodeFailed.clear();
         repaint();
     }
 
@@ -107,7 +85,7 @@ public class StagePanel extends JPanel {
         int canvasX = (getWidth() - stageWidth) / 2;
         int canvasY = (getHeight() - stageHeight) / 2;
 
-        // Get the frame snapshot from player-core
+        // Get the frame snapshot from player-core (bitmaps are already ink-processed)
         FrameSnapshot snapshot = player.getFrameSnapshot();
 
         // Draw canvas border (subtle shadow effect)
@@ -198,92 +176,15 @@ public class StagePanel extends JPanel {
     }
 
     private void drawBitmap(Graphics2D g, RenderSprite sprite, int x, int y, int width, int height) {
-        BufferedImage img = null;
-
-        // Try file-loaded cast member first
-        CastMemberChunk member = sprite.getCastMember();
-        if (member != null) {
-            img = getCachedBitmap(member);
-        }
-
-        // Fall back to dynamic member bitmap (window system, runtime-created members)
-        if (img == null && sprite.getDynamicMember() != null) {
-            Bitmap bmp = sprite.getDynamicMember().getBitmap();
-            if (bmp != null) {
-                img = bmp.toBufferedImage();
-            }
-        }
-
-        if (img == null) {
+        Bitmap baked = sprite.getBakedBitmap();
+        if (baked == null) {
             return;
         }
 
-        int ink = sprite.getInk();
-
-        // Apply Background Transparent ink (36): make the backColor transparent
-        if (ink == 36) {
-            img = applyBackgroundTransparent(img, sprite.getBackColor(), member != null ? member.id() : -1);
-        }
-
-        // Draw at x/y directly — regPoint offset is already applied by StageRenderer
+        BufferedImage img = baked.toBufferedImage();
         int w = width > 0 ? width : img.getWidth();
         int h = height > 0 ? height : img.getHeight();
         g.drawImage(img, x, y, w, h, null);
-    }
-
-    /**
-     * Apply Background Transparent ink: pixels matching the background color become transparent.
-     * This is Director's ink type 36, commonly used for sprite compositing.
-     * Results are cached by (memberId, backColor) to avoid reprocessing every frame.
-     */
-    private BufferedImage applyBackgroundTransparent(BufferedImage src, int backColor, int memberId) {
-        // Check if we've already processed this image (cached version is ARGB)
-        if (src.getType() == BufferedImage.TYPE_INT_ARGB) {
-            return src;
-        }
-
-        // Check transparent cache
-        if (memberId >= 0) {
-            long key = ((long) memberId << 32) | (backColor & 0xFFFFFFFFL);
-            BufferedImage cached = transparentCache.get(key);
-            if (cached != null) {
-                return cached;
-            }
-        }
-
-        int w = src.getWidth();
-        int h = src.getHeight();
-        BufferedImage result = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
-
-        // Determine the background color to make transparent.
-        // In Director, backColor 255 = white (0xFFFFFF), 0 = black.
-        int bgRgb;
-        if (backColor > 255) {
-            bgRgb = backColor & 0xFFFFFF;
-        } else {
-            int gray = 255 - backColor;
-            bgRgb = (gray << 16) | (gray << 8) | gray;
-        }
-
-        for (int y = 0; y < h; y++) {
-            for (int x = 0; x < w; x++) {
-                int pixel = src.getRGB(x, y);
-                int rgb = pixel & 0xFFFFFF;
-                if (rgb == bgRgb) {
-                    result.setRGB(x, y, 0x00000000); // Fully transparent
-                } else {
-                    result.setRGB(x, y, pixel | 0xFF000000); // Fully opaque
-                }
-            }
-        }
-
-        // Cache the result
-        if (memberId >= 0) {
-            long key = ((long) memberId << 32) | (backColor & 0xFFFFFFFFL);
-            transparentCache.put(key, result);
-        }
-
-        return result;
     }
 
     private void drawText(Graphics2D g, RenderSprite sprite, int x, int y, int width, int height) {
@@ -355,63 +256,12 @@ public class StagePanel extends JPanel {
 
     /**
      * Clear the bitmap cache, forcing bitmaps to be re-decoded on next repaint.
-     * Call this when external casts are loaded so newly available bitmaps are picked up.
+     * Delegates to the Player's BitmapCache.
      */
     public void clearBitmapCache() {
-        bitmapCache.clear();
-        transparentCache.clear();
-        decoding.clear();
-        decodeFailed.clear();
-    }
-
-    private BufferedImage getCachedBitmap(CastMemberChunk member) {
-        int id = member.id();
-        BufferedImage cached = bitmapCache.get(id);
-        if (cached != null) {
-            return cached;
+        if (player != null) {
+            player.getBitmapCache().clear();
         }
-
-        // Skip if no player, already decoding, or previously failed (retry after cache clear)
-        if (player == null || decodeFailed.contains(id) || !decoding.add(id)) {
-            return null;
-        }
-
-        // Decode asynchronously to avoid blocking the EDT
-        Player p = player;
-        int version = playerVersion;
-        bitmapDecoder.submit(() -> {
-            try {
-                if (version != playerVersion) return;
-                Optional<Bitmap> bitmap = p.decodeBitmap(member);
-                if (version != playerVersion) return;
-                if (bitmap.isPresent()) {
-                    BufferedImage img = bitmap.get().toBufferedImage();
-                    bitmapCache.put(id, img);
-                    SwingUtilities.invokeLater(this::repaint);
-                } else {
-                    decodeFailed.add(id);
-                }
-            } finally {
-                decoding.remove(id);
-            }
-        });
-
-        return null;
-    }
-
-    private void drawPlaceholder(Graphics2D g, int x, int y, int width, int height, int channel, String label) {
-        int w = width > 0 ? width : 50;
-        int h = height > 0 ? height : 50;
-
-        // Draw a simple placeholder box
-        g.setColor(new Color(200, 200, 200, 128));
-        g.fillRect(x, y, w, h);
-        g.setColor(Color.GRAY);
-        g.drawRect(x, y, w, h);
-
-        // Draw channel number and type
-        g.setFont(new Font("SansSerif", Font.PLAIN, 10));
-        g.drawString(label + channel, x + 2, y + 12);
     }
 
     private void drawDebugInfo(Graphics2D g, FrameSnapshot snapshot) {

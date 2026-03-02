@@ -1,5 +1,6 @@
 package com.libreshockwave.player.render;
 
+import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.chunks.CastMemberChunk;
 import com.libreshockwave.player.cast.CastMember;
 
@@ -23,6 +24,7 @@ public final class RenderSprite {
     private final int backColor;
     private final int ink;
     private final int blend;
+    private final Bitmap bakedBitmap;
 
     public RenderSprite(
             int channel,
@@ -33,7 +35,7 @@ public final class RenderSprite {
             CastMemberChunk castMember,
             int foreColor, int backColor, int ink, int blend) {
         this(channel, x, y, width, height, 0, visible, type, castMember, null,
-             foreColor, backColor, ink, blend);
+             foreColor, backColor, ink, blend, null);
     }
 
     public RenderSprite(
@@ -45,7 +47,8 @@ public final class RenderSprite {
             SpriteType type,
             CastMemberChunk castMember,
             CastMember dynamicMember,
-            int foreColor, int backColor, int ink, int blend) {
+            int foreColor, int backColor, int ink, int blend,
+            Bitmap bakedBitmap) {
         this.channel = channel;
         this.x = x;
         this.y = y;
@@ -60,6 +63,7 @@ public final class RenderSprite {
         this.backColor = backColor;
         this.ink = ink;
         this.blend = blend;
+        this.bakedBitmap = bakedBitmap;
     }
 
     public int getChannel() { return channel; }
@@ -76,6 +80,15 @@ public final class RenderSprite {
     public int getBackColor() { return backColor; }
     public int getInk() { return ink; }
     public int getBlend() { return blend; }
+    public Bitmap getBakedBitmap() { return bakedBitmap; }
+
+    /**
+     * Return a new RenderSprite with all fields copied but with the given baked bitmap.
+     */
+    public RenderSprite withBakedBitmap(Bitmap baked) {
+        return new RenderSprite(channel, x, y, width, height, locZ, visible, type,
+            castMember, dynamicMember, foreColor, backColor, ink, blend, baked);
+    }
 
     /**
      * Get the cast member ID, or -1 if no member.

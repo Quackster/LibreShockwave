@@ -174,7 +174,7 @@ public class StageRenderer {
 
         return new RenderSprite(
             channel, x, y, width, height, locZ, visible, type, member, null,
-            data.foreColor(), data.backColor(), data.ink(), state.getBlend()
+            data.foreColor(), data.backColor(), data.ink(), state.getBlend(), null
         );
     }
 
@@ -233,7 +233,7 @@ public class StageRenderer {
             locZ,
             state.isVisible(),
             type, member, dynamicMember,
-            state.getForeColor(), state.getBackColor(), state.getInk(), state.getBlend()
+            state.getForeColor(), state.getBackColor(), state.getInk(), state.getBlend(), null
         );
     }
 

@@ -11,6 +11,7 @@ import com.libreshockwave.player.cast.CastLibManager;
 import com.libreshockwave.player.event.EventDispatcher;
 import com.libreshockwave.player.frame.FrameContext;
 import com.libreshockwave.player.net.NetManager;
+import com.libreshockwave.player.render.BitmapCache;
 import com.libreshockwave.player.render.FrameSnapshot;
 import com.libreshockwave.player.render.StageRenderer;
 import com.libreshockwave.player.score.ScoreNavigator;
@@ -60,6 +61,7 @@ public class Player {
     private final SpriteProperties spriteProperties;
     private final CastLibManager castLibManager;
     private final TimeoutManager timeoutManager;
+    private final BitmapCache bitmapCache;
 
     private final PlayerTraceListener playerTraceListener;
 
@@ -83,10 +85,8 @@ public class Player {
     private ExecutorService vmExecutor;
 
     // Executor for parsing external cast files off the network thread
-    private final ExecutorService castParserExecutor = Executors.newFixedThreadPool(
-        Math.max(2, Runtime.getRuntime().availableProcessors() / 2),
-        r -> { Thread t = new Thread(r, "CastParser"); t.setDaemon(true); return t; }
-    );
+    // Lazy-initialized to avoid pulling in java.util.concurrent in TeaVM environments
+    private ExecutorService castParserExecutor;
     private Runnable vmExecutorShutdown;  // Shutdown hook, avoids referencing ExecutorService in shutdown()
     private volatile boolean vmRunning = false;
 
@@ -140,6 +140,7 @@ public class Player {
         this.castLibManager = new CastLibManager(file);
         this.stageRenderer.setCastLibManager(castLibManager);
         this.timeoutManager = new TimeoutManager();
+        this.bitmapCache = new BitmapCache();
         this.frameContext.setTimeoutManager(timeoutManager);
         this.frameContext.getEventDispatcher().setCastLibManager(castLibManager);
         this.frameContext.setActorListSupplier(movieProperties::getActorList);
@@ -166,6 +167,12 @@ public class Player {
             }
         });
 
+        // Initialize cast parser executor (only needed for desktop player with NetManager)
+        this.castParserExecutor = Executors.newFixedThreadPool(
+            Math.max(2, Runtime.getRuntime().availableProcessors() / 2),
+            r -> { Thread t = new Thread(r, "CastParser"); t.setDaemon(true); return t; }
+        );
+
         // Set base path for network requests from the file location
         if (file != null && file.getBasePath() != null && !file.getBasePath().isEmpty()) {
             netManager.setBasePath(file.getBasePath());
@@ -180,6 +187,7 @@ public class Player {
             castParserExecutor.submit(() -> {
                 if (castLibManager.setExternalCastDataByUrl(fileName, data)) {
                     System.out.println("[Player] Loaded external cast from: " + fileName);
+                    bitmapCache.clear();
                     if (castLoadedListener != null) {
                         castLoadedListener.run();
                     }
@@ -216,6 +224,7 @@ public class Player {
         this.castLibManager = new CastLibManager(file);
         this.stageRenderer.setCastLibManager(castLibManager);
         this.timeoutManager = new TimeoutManager();
+        this.bitmapCache = new BitmapCache(false); // Synchronous mode for TeaVM
         this.frameContext.setTimeoutManager(timeoutManager);
         this.frameContext.getEventDispatcher().setCastLibManager(castLibManager);
         this.frameContext.setActorListSupplier(movieProperties::getActorList);
@@ -414,7 +423,14 @@ public class Player {
      * This captures all sprite states at the moment it's called.
      */
     public FrameSnapshot getFrameSnapshot() {
-        return FrameSnapshot.capture(stageRenderer, getCurrentFrame(), state.name());
+        return FrameSnapshot.capture(stageRenderer, getCurrentFrame(), state.name(), bitmapCache, this);
+    }
+
+    /**
+     * Get the bitmap cache (for external cache management).
+     */
+    public BitmapCache getBitmapCache() {
+        return bitmapCache;
     }
 
     public void setEventListener(Consumer<PlayerEventInfo> listener) {
@@ -868,8 +884,13 @@ public class Player {
             netManager.shutdown();
         }
 
-        // Shutdown cast parser executor
-        castParserExecutor.shutdownNow();
+        // Shutdown bitmap cache decoder
+        bitmapCache.shutdown();
+
+        // Shutdown cast parser executor (only exists in desktop player)
+        if (castParserExecutor != null) {
+            castParserExecutor.shutdownNow();
+        }
 
         // Reset debug controller (releases any blocked threads)
         if (debugController != null) {

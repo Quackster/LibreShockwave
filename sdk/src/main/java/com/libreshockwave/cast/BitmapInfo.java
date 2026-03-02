@@ -15,7 +15,8 @@ public record BitmapInfo(
     int regY,
     int bitDepth,
     int paletteId,
-    int pitch
+    int pitch,
+    boolean useAlpha
 ) implements Dimensioned {
 
     /**
@@ -32,7 +33,7 @@ public record BitmapInfo(
      */
     public static BitmapInfo parse(byte[] data, int directorVersion) {
         if (data == null || data.length < 10) {
-            return new BitmapInfo(0, 0, 0, 0, 1, 0, 0);
+            return new BitmapInfo(0, 0, 0, 0, 1, 0, 0, false);
         }
 
         BinaryReader reader = new BinaryReader(data, ByteOrder.BIG_ENDIAN);
@@ -53,6 +54,7 @@ public record BitmapInfo(
         int bitDepth = 1;
         int paletteId = 0;
         int pitch = 0;
+        boolean useAlpha = false;
 
         if (directorVersion < 1200) {
             // D4/D5 format
@@ -93,8 +95,11 @@ public record BitmapInfo(
             if (reader.bytesLeft() >= 2) regY = reader.readI16();
             if (reader.bytesLeft() >= 2) regX = reader.readI16();
 
-            // Byte 22: updateFlags
-            if (reader.bytesLeft() >= 1) reader.skip(1); // updateFlags (not currently used)
+            // Byte 22: updateFlags (bit 4 = useAlpha for 32-bit bitmaps)
+            if (reader.bytesLeft() >= 1) {
+                int updateFlags = reader.readU8();
+                useAlpha = (updateFlags & 0x10) != 0;
+            }
 
             // D6+: color image flag is pitch & 0x8000
             if ((rawPitch & 0x8000) != 0) {
@@ -124,7 +129,7 @@ public record BitmapInfo(
         regX -= left;
         regY -= top;
 
-        return new BitmapInfo(width, height, regX, regY, bitDepth, paletteId, pitch);
+        return new BitmapInfo(width, height, regX, regY, bitDepth, paletteId, pitch, useAlpha);
     }
 
     public int bytesPerPixel() {

@@ -5,6 +5,7 @@ import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.chunks.CastMemberChunk;
 import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.chunks.ScriptNamesChunk;
+import com.libreshockwave.player.cast.CastMember;
 import com.libreshockwave.player.render.FrameSnapshot;
 import com.libreshockwave.player.render.RenderSprite;
 import com.libreshockwave.vm.Datum;
@@ -112,6 +113,13 @@ public class RenderTraceTest {
         System.out.println("=== RenderTraceTest: Loading habbo.dcr ===");
         DirectorFile file = DirectorFile.load(path);
         Player player = new Player(file);
+
+        // Set stage background color from movie config
+        if (file.getConfig() != null) {
+            int stageColor = file.getConfig().stageColor();
+            int rgb = (stageColor & 0xFF) | ((stageColor & 0xFF) << 8) | ((stageColor & 0xFF) << 16);
+            player.getStageRenderer().setBackgroundColor(rgb);
+        }
 
         // Set external params (Shockwave PARAM tags) — these feed the Habbo client
         // the URLs for external_variables.txt and external_texts.txt, which override
@@ -365,6 +373,117 @@ public class RenderTraceTest {
         // --- Start playback ---
         System.out.println("\n=== Starting playback ===\n");
         player.play();
+
+        // --- Capture loading snapshot (post-prepareMovie, before frame loop) ---
+        FrameSnapshot loadingSnapshot = null;
+        try {
+            loadingSnapshot = player.getFrameSnapshot();
+            dumpAllSprites(loadingSnapshot, "POST-PREPARE (loading bar)");
+        } catch (Exception e) {
+            System.out.println("  (could not capture loading snapshot: " + e.getMessage() + ")");
+        }
+
+        // Render loading snapshot to PNG
+        if (loadingSnapshot != null) {
+            System.out.println("\n  Rendering loading frame to PNG...");
+            int loadW = loadingSnapshot.stageWidth() > 0 ? loadingSnapshot.stageWidth() : 640;
+            int loadH = loadingSnapshot.stageHeight() > 0 ? loadingSnapshot.stageHeight() : 480;
+            BufferedImage loadCanvas = new BufferedImage(loadW, loadH, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D loadG = loadCanvas.createGraphics();
+            loadG.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+
+            // Background: stageImage or flat color
+            if (loadingSnapshot.stageImage() != null) {
+                BufferedImage stageImg = loadingSnapshot.stageImage().toBufferedImage();
+                loadG.drawImage(stageImg, 0, 0, null);
+                System.out.println("  Drew stage image as background " + stageImg.getWidth() + "x" + stageImg.getHeight());
+            } else {
+                loadG.setColor(new Color(loadingSnapshot.backgroundColor()));
+                loadG.fillRect(0, 0, loadW, loadH);
+            }
+
+            // Draw sprites (same logic as main render)
+            int loadSpritesDrawn = 0;
+            if (loadingSnapshot.sprites() != null) {
+                for (RenderSprite sprite : loadingSnapshot.sprites()) {
+                    if (!sprite.isVisible()) continue;
+                    int x = sprite.getX();
+                    int y = sprite.getY();
+
+                    if (sprite.getType() == RenderSprite.SpriteType.BITMAP) {
+                        Bitmap baked = sprite.getBakedBitmap();
+                        String bitmapName = sprite.getMemberName();
+                        if (bitmapName == null || bitmapName.isEmpty()) {
+                            bitmapName = "m" + sprite.getCastMemberId();
+                        }
+
+                        if (baked != null) {
+                            BufferedImage img = baked.toBufferedImage();
+                            int w = sprite.getWidth() > 0 ? sprite.getWidth() : img.getWidth();
+                            int h = sprite.getHeight() > 0 ? sprite.getHeight() : img.getHeight();
+
+                            int blend = sprite.getBlend();
+                            Composite oldComposite = null;
+                            if (blend >= 0 && blend < 100) {
+                                oldComposite = loadG.getComposite();
+                                loadG.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, blend / 100f));
+                            }
+
+                            loadG.drawImage(img, x, y, w, h, null);
+
+                            if (oldComposite != null) {
+                                loadG.setComposite(oldComposite);
+                            }
+
+                            loadSpritesDrawn++;
+                            System.out.println("  Drew ch" + sprite.getChannel() + " at (" + x + "," + y + ") "
+                                    + w + "x" + h + " [BITMAP:" + bitmapName + "]");
+                        }
+                    } else if (sprite.getType() == RenderSprite.SpriteType.SHAPE) {
+                        int w = sprite.getWidth() > 0 ? sprite.getWidth() : 50;
+                        int h = sprite.getHeight() > 0 ? sprite.getHeight() : 50;
+                        int fc = sprite.getForeColor();
+                        int gray = fc > 255 ? fc : (255 - fc);
+                        loadG.setColor(new Color((gray >> 16) & 0xFF, (gray >> 8) & 0xFF, gray & 0xFF));
+                        loadG.fillRect(x, y, w, h);
+                        loadSpritesDrawn++;
+                        System.out.println("  Drew ch" + sprite.getChannel() + " at (" + x + "," + y + ") "
+                                + w + "x" + h + " [SHAPE]");
+                    } else if (sprite.getType() == RenderSprite.SpriteType.TEXT
+                            || sprite.getType() == RenderSprite.SpriteType.BUTTON) {
+                        String text = null;
+                        if (sprite.getDynamicMember() != null) {
+                            text = sprite.getDynamicMember().getTextContent();
+                        }
+                        if ((text == null || text.isEmpty()) && sprite.getMemberName() != null) {
+                            text = player.getCastLibManager().getFieldValue(sprite.getMemberName(), 0);
+                        }
+                        int w = sprite.getWidth() > 0 ? sprite.getWidth() : 200;
+                        int h = sprite.getHeight() > 0 ? sprite.getHeight() : 20;
+                        loadG.setColor(new Color(240, 240, 240));
+                        loadG.fillRect(x, y, w, h);
+                        loadG.setColor(Color.BLACK);
+                        loadG.setFont(new Font("SansSerif", Font.PLAIN, 12));
+                        if (text != null && !text.isEmpty()) {
+                            loadG.drawString(text, x + 2, y + 14);
+                        }
+                        loadSpritesDrawn++;
+                        System.out.println("  Drew ch" + sprite.getChannel() + " at (" + x + "," + y + ") "
+                                + w + "x" + h + " [TEXT:" + sprite.getMemberName() + "]");
+                    }
+                }
+            }
+            loadG.dispose();
+
+            Path loadPngPath = Path.of("build/render-loading.png");
+            try {
+                javax.imageio.ImageIO.write(loadCanvas, "PNG", loadPngPath.toFile());
+                System.out.println("  Saved " + loadW + "x" + loadH + " loading render to: " + loadPngPath.toAbsolutePath());
+                System.out.println("  Loading sprites drawn: " + loadSpritesDrawn);
+            } catch (Exception e) {
+                System.err.println("  Failed to save loading PNG: " + e.getMessage());
+            }
+        }
 
         int totalFramesStepped = 0;
         int framesAfterMilestone = 0;
@@ -698,41 +817,16 @@ public class RenderTraceTest {
                     int y = sprite.getY();
 
                     if (sprite.getType() == RenderSprite.SpriteType.BITMAP) {
-                        BufferedImage img = null;
-                        String bitmapName = "?";
-
-                        // Try file-loaded cast member first
-                        CastMemberChunk m = sprite.getCastMember();
-                        if (m != null) {
-                            java.util.Optional<Bitmap> bmp = player.decodeBitmap(m);
-                            if (bmp.isPresent()) {
-                                img = bmp.get().toBufferedImage();
-                                bitmapName = m.name();
-                            }
+                        Bitmap baked = sprite.getBakedBitmap();
+                        String bitmapName = sprite.getMemberName();
+                        if (bitmapName == null || bitmapName.isEmpty()) {
+                            bitmapName = "m" + sprite.getCastMemberId();
                         }
 
-                        // Fall back to dynamic member bitmap (window system, runtime-created)
-                        if (img == null && sprite.getDynamicMember() != null) {
-                            Bitmap dynBmp = sprite.getDynamicMember().getBitmap();
-                            if (dynBmp != null) {
-                                img = dynBmp.toBufferedImage();
-                                bitmapName = sprite.getDynamicMember().getName();
-                                if (bitmapName == null || bitmapName.isEmpty()) {
-                                    bitmapName = "dynamic-m" + sprite.getCastMemberId();
-                                }
-                            }
-                        }
-
-                        if (img != null) {
+                        if (baked != null) {
+                            BufferedImage img = baked.toBufferedImage();
                             int w = sprite.getWidth() > 0 ? sprite.getWidth() : img.getWidth();
                             int h = sprite.getHeight() > 0 ? sprite.getHeight() : img.getHeight();
-
-                            // Apply ink effects (like StagePanel)
-                            int ink = sprite.getInk();
-                            if (ink == 36) {
-                                // Background Transparent: make backColor transparent
-                                img = applyBackgroundTransparent(img, sprite.getBackColor());
-                            }
 
                             // Apply blend (opacity)
                             int blend = sprite.getBlend();
@@ -836,31 +930,92 @@ public class RenderTraceTest {
 
         // --- LOGO RENDER (loading screen) ---
         if (logoSnapshot != null && logoSnapshot.sprites() != null) {
+            dumpAllSprites(logoSnapshot, "LOGO (first sprites frame)");
             System.out.println("\n  Rendering logo frame to PNG...");
             int logoW = logoSnapshot.stageWidth() > 0 ? logoSnapshot.stageWidth() : 640;
             int logoH = logoSnapshot.stageHeight() > 0 ? logoSnapshot.stageHeight() : 480;
             BufferedImage logoCanvas = new BufferedImage(logoW, logoH, BufferedImage.TYPE_INT_ARGB);
             Graphics2D lg = logoCanvas.createGraphics();
             lg.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-            lg.setColor(new Color(logoSnapshot.backgroundColor()));
-            lg.fillRect(0, 0, logoW, logoH);
 
+            // Background: stageImage or flat color
+            if (logoSnapshot.stageImage() != null) {
+                BufferedImage stageImg = logoSnapshot.stageImage().toBufferedImage();
+                lg.drawImage(stageImg, 0, 0, null);
+                System.out.println("  Drew stage image as background " + stageImg.getWidth() + "x" + stageImg.getHeight());
+            } else {
+                lg.setColor(new Color(logoSnapshot.backgroundColor()));
+                lg.fillRect(0, 0, logoW, logoH);
+            }
+
+            int logoSpritesDrawn = 0;
             for (RenderSprite sprite : logoSnapshot.sprites()) {
                 if (!sprite.isVisible()) continue;
-                CastMemberChunk m = sprite.getCastMember();
-                if (m != null && sprite.getType() == RenderSprite.SpriteType.BITMAP) {
-                    java.util.Optional<Bitmap> bmp = player.decodeBitmap(m);
-                    if (bmp.isPresent()) {
-                        BufferedImage img = bmp.get().toBufferedImage();
-                        int lx = sprite.getX();
-                        int ly = sprite.getY();
+                int lx = sprite.getX();
+                int ly = sprite.getY();
+
+                if (sprite.getType() == RenderSprite.SpriteType.BITMAP) {
+                    Bitmap bakedLogo = sprite.getBakedBitmap();
+                    String bitmapName = sprite.getMemberName();
+                    if (bitmapName == null || bitmapName.isEmpty()) {
+                        bitmapName = "m" + sprite.getCastMemberId();
+                    }
+
+                    if (bakedLogo != null) {
+                        BufferedImage img = bakedLogo.toBufferedImage();
                         int lw = sprite.getWidth() > 0 ? sprite.getWidth() : img.getWidth();
                         int lh = sprite.getHeight() > 0 ? sprite.getHeight() : img.getHeight();
+
+                        int blend = sprite.getBlend();
+                        Composite oldComposite = null;
+                        if (blend >= 0 && blend < 100) {
+                            oldComposite = lg.getComposite();
+                            lg.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, blend / 100f));
+                        }
+
                         lg.drawImage(img, lx, ly, lw, lh, null);
+
+                        if (oldComposite != null) {
+                            lg.setComposite(oldComposite);
+                        }
+
+                        logoSpritesDrawn++;
                         System.out.println("  Logo sprite ch" + sprite.getChannel()
                                 + " at (" + lx + "," + ly + ") " + lw + "x" + lh
-                                + " name=" + m.name());
+                                + " [BITMAP:" + bitmapName + "]");
                     }
+                } else if (sprite.getType() == RenderSprite.SpriteType.SHAPE) {
+                    int lw = sprite.getWidth() > 0 ? sprite.getWidth() : 50;
+                    int lh = sprite.getHeight() > 0 ? sprite.getHeight() : 50;
+                    int fc = sprite.getForeColor();
+                    int gray = fc > 255 ? fc : (255 - fc);
+                    lg.setColor(new Color((gray >> 16) & 0xFF, (gray >> 8) & 0xFF, gray & 0xFF));
+                    lg.fillRect(lx, ly, lw, lh);
+                    logoSpritesDrawn++;
+                    System.out.println("  Logo sprite ch" + sprite.getChannel()
+                            + " at (" + lx + "," + ly + ") " + lw + "x" + lh + " [SHAPE]");
+                } else if (sprite.getType() == RenderSprite.SpriteType.TEXT
+                        || sprite.getType() == RenderSprite.SpriteType.BUTTON) {
+                    String text = null;
+                    if (sprite.getDynamicMember() != null) {
+                        text = sprite.getDynamicMember().getTextContent();
+                    }
+                    if ((text == null || text.isEmpty()) && sprite.getMemberName() != null) {
+                        text = player.getCastLibManager().getFieldValue(sprite.getMemberName(), 0);
+                    }
+                    int lw = sprite.getWidth() > 0 ? sprite.getWidth() : 200;
+                    int lh = sprite.getHeight() > 0 ? sprite.getHeight() : 20;
+                    lg.setColor(new Color(240, 240, 240));
+                    lg.fillRect(lx, ly, lw, lh);
+                    lg.setColor(Color.BLACK);
+                    lg.setFont(new Font("SansSerif", Font.PLAIN, 12));
+                    if (text != null && !text.isEmpty()) {
+                        lg.drawString(text, lx + 2, ly + 14);
+                    }
+                    logoSpritesDrawn++;
+                    System.out.println("  Logo sprite ch" + sprite.getChannel()
+                            + " at (" + lx + "," + ly + ") " + lw + "x" + lh
+                            + " [TEXT:" + sprite.getMemberName() + "]");
                 }
             }
             lg.dispose();
@@ -869,43 +1024,13 @@ public class RenderTraceTest {
             try {
                 javax.imageio.ImageIO.write(logoCanvas, "PNG", logoPngPath.toFile());
                 System.out.println("  Saved logo render to: " + logoPngPath.toAbsolutePath());
+                System.out.println("  Logo sprites drawn: " + logoSpritesDrawn);
             } catch (Exception e) {
                 System.err.println("  Failed to save logo PNG: " + e.getMessage());
             }
         }
 
         player.shutdown();
-    }
-
-    /**
-     * Apply Background Transparent ink: pixels matching the background color become transparent.
-     */
-    private static BufferedImage applyBackgroundTransparent(BufferedImage src, int backColor) {
-        if (src.getType() == BufferedImage.TYPE_INT_ARGB) {
-            return src; // Already processed
-        }
-        int w = src.getWidth();
-        int h = src.getHeight();
-        BufferedImage result = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
-        int bgRgb;
-        if (backColor > 255) {
-            bgRgb = backColor & 0xFFFFFF;
-        } else {
-            int gray = 255 - backColor;
-            bgRgb = (gray << 16) | (gray << 8) | gray;
-        }
-        for (int y = 0; y < h; y++) {
-            for (int x = 0; x < w; x++) {
-                int pixel = src.getRGB(x, y);
-                int rgb = pixel & 0xFFFFFF;
-                if (rgb == bgRgb) {
-                    result.setRGB(x, y, 0x00000000);
-                } else {
-                    result.setRGB(x, y, pixel | 0xFF000000);
-                }
-            }
-        }
-        return result;
     }
 
     /**
@@ -933,6 +1058,51 @@ public class RenderTraceTest {
             shown++;
         }
         return sb.toString();
+    }
+
+    /**
+     * Dump all sprites in a snapshot with full diagnostics.
+     */
+    private static void dumpAllSprites(FrameSnapshot snapshot, String label) {
+        System.out.println("\n  --- " + label + " sprite dump ---");
+        if (snapshot == null || snapshot.sprites() == null || snapshot.sprites().isEmpty()) {
+            System.out.println("  (no sprites)");
+            return;
+        }
+        System.out.println("  Stage: " + snapshot.stageWidth() + "x" + snapshot.stageHeight()
+                + " bg=0x" + Integer.toHexString(snapshot.backgroundColor())
+                + " stageImage=" + (snapshot.stageImage() != null));
+        for (RenderSprite sprite : snapshot.sprites()) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("  ch").append(sprite.getChannel())
+              .append(": ").append(sprite.getType())
+              .append(" at (").append(sprite.getX()).append(",").append(sprite.getY()).append(")")
+              .append(" ").append(sprite.getWidth()).append("x").append(sprite.getHeight())
+              .append(sprite.isVisible() ? " VISIBLE" : " HIDDEN")
+              .append(" ink=").append(sprite.getInk())
+              .append(" blend=").append(sprite.getBlend());
+
+            CastMemberChunk fileMember = sprite.getCastMember();
+            if (fileMember != null) {
+                sb.append(" [FILE chunkId=").append(fileMember.id())
+                  .append(" name=").append(fileMember.name()).append("]");
+            }
+
+            CastMember dynMember = sprite.getDynamicMember();
+            if (dynMember != null) {
+                sb.append(" [DYNAMIC m").append(dynMember.getMemberNumber())
+                  .append(" name=").append(dynMember.getName())
+                  .append(" hasBitmap=").append(dynMember.getBitmap() != null)
+                  .append(" hasText=").append(dynMember.getTextContent() != null).append("]");
+            }
+
+            if (fileMember == null && dynMember == null) {
+                sb.append(" [NO_MEMBER m").append(sprite.getCastMemberId()).append("]");
+            }
+
+            System.out.println(sb);
+        }
+        System.out.println("  Total: " + snapshot.sprites().size() + " sprites");
     }
 
     private static String truncate(String s) {
