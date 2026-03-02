@@ -596,6 +596,59 @@ public class RenderTraceTest {
         // Restore original System.out
         System.setOut(originalOut);
 
+        // Re-render loading PNG if we captured a better snapshot (with window buffers) during stepping
+        if (loadingSnapshot != null && loadingSnapshot.windowBuffers() != null && !loadingSnapshot.windowBuffers().isEmpty()) {
+            System.out.println("\n  Re-rendering loading frame with window buffers...");
+            int loadW = loadingSnapshot.stageWidth() > 0 ? loadingSnapshot.stageWidth() : 640;
+            int loadH = loadingSnapshot.stageHeight() > 0 ? loadingSnapshot.stageHeight() : 480;
+            BufferedImage loadCanvas = new BufferedImage(loadW, loadH, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D loadG = loadCanvas.createGraphics();
+            loadG.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+
+            // Background: stageImage or flat color
+            if (loadingSnapshot.stageImage() != null) {
+                BufferedImage stageImg = loadingSnapshot.stageImage().toBufferedImage();
+                loadG.drawImage(stageImg, 0, 0, null);
+            } else {
+                loadG.setColor(new Color(loadingSnapshot.backgroundColor()));
+                loadG.fillRect(0, 0, loadW, loadH);
+            }
+
+            // Draw sprites
+            if (loadingSnapshot.sprites() != null) {
+                for (RenderSprite sprite : loadingSnapshot.sprites()) {
+                    if (!sprite.isVisible()) continue;
+                    if (sprite.getType() == RenderSprite.SpriteType.BITMAP && sprite.getBakedBitmap() != null) {
+                        BufferedImage img = sprite.getBakedBitmap().toBufferedImage();
+                        int w = sprite.getWidth() > 0 ? sprite.getWidth() : img.getWidth();
+                        int h = sprite.getHeight() > 0 ? sprite.getHeight() : img.getHeight();
+                        loadG.drawImage(img, sprite.getX(), sprite.getY(), w, h, null);
+                    }
+                }
+            }
+
+            // Draw window buffers (loading bar)
+            int windowsDrawn = 0;
+            for (Map.Entry<String, WindowProvider.WindowBuffer> entry : loadingSnapshot.windowBuffers().entrySet()) {
+                WindowProvider.WindowBuffer wb = entry.getValue();
+                BufferedImage wbImg = wb.bitmap().toBufferedImage();
+                loadG.drawImage(wbImg, wb.x(), wb.y(), null);
+                windowsDrawn++;
+                System.out.println("  Drew loading bar window '" + entry.getKey() + "' at (" + wb.x() + "," + wb.y() + ") "
+                        + wbImg.getWidth() + "x" + wbImg.getHeight());
+            }
+            loadG.dispose();
+
+            Path loadPngPath = Path.of("build/render-loading.png");
+            try {
+                javax.imageio.ImageIO.write(loadCanvas, "PNG", loadPngPath.toFile());
+                System.out.println("  Re-saved " + loadW + "x" + loadH + " loading render to: " + loadPngPath.toAbsolutePath());
+                System.out.println("  Windows drawn: " + windowsDrawn);
+            } catch (Exception e) {
+                System.err.println("  Failed to save loading PNG: " + e.getMessage());
+            }
+        }
+
         // ========================================
         //  REPORTS
         // ========================================
