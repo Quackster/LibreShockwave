@@ -172,6 +172,12 @@ public class StageRenderer {
 
         RenderSprite.SpriteType type = determineSpriteType(member, data);
 
+        // Score spriteType 2-8 are tool-palette shapes (rect, oval, line)
+        // Even if member type doesn't match SHAPE, the Score says to render as a shape
+        if (type == RenderSprite.SpriteType.UNKNOWN && data.spriteType() >= 2 && data.spriteType() <= 8) {
+            type = RenderSprite.SpriteType.SHAPE;
+        }
+
         return new RenderSprite(
             channel, x, y, width, height, locZ, visible, type, member, null,
             data.resolvedForeColor(), data.backColor(), data.ink(), state.getBlend(), null

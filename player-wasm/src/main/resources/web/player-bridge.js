@@ -327,6 +327,20 @@ class LibreShockwavePlayer {
         this._sendCmd('preloadAllCasts');
     }
 
+    /**
+     * Set an external parameter (Shockwave PARAM tag).
+     */
+    setExternalParam(key, value) {
+        this._sendCmd('setExternalParam', { key: key, value: value });
+    }
+
+    /**
+     * Clear all external parameters.
+     */
+    clearExternalParams() {
+        this._sendCmd('clearExternalParams');
+    }
+
     requestBitmap(memberId) {
         if (this.bitmapCache.has(memberId) || this.pendingBitmaps.has(memberId)) return;
         this.pendingBitmaps.add(memberId);

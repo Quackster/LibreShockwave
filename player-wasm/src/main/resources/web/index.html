@@ -3,8 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin">
-    <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp">
     <title>LibreShockwave Web Player</title>
     <link rel="stylesheet" href="libreshockwave.css">
 </head>
@@ -41,6 +39,12 @@
                 <div class="menu-entry" id="menu-step-back">Step Backward<span class="shortcut">Left</span></div>
                 <div class="menu-separator"></div>
                 <div class="menu-entry" id="menu-goto-frame">Go to Frame...</div>
+            </div>
+        </div>
+        <div class="menu-item" id="menu-movie">
+            Movie
+            <div class="menu-dropdown" id="dropdown-movie">
+                <div class="menu-entry" id="menu-ext-params">External Params<span class="shortcut">Ctrl+E</span></div>
             </div>
         </div>
         <div class="menu-item" id="menu-view">
@@ -179,6 +183,33 @@
         </div>
     </div>
 
+    <!-- External Params modal -->
+    <div id="params-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-content" style="width:500px;">
+            <div class="modal-header">
+                <span>External Parameters</span>
+                <button class="modal-close" id="params-modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="margin:0 0 8px;font-size:12px;color:#999;">Shockwave PARAM tags (sw1-sw9, etc.)</p>
+                <table id="params-table" style="width:100%;border-collapse:collapse;margin-bottom:8px;">
+                    <thead><tr>
+                        <th style="text-align:left;padding:4px;border-bottom:1px solid #555;">Key</th>
+                        <th style="text-align:left;padding:4px;border-bottom:1px solid #555;">Value</th>
+                        <th style="width:30px;"></th>
+                    </tr></thead>
+                    <tbody id="params-body"></tbody>
+                </table>
+                <div style="display:flex;gap:6px;">
+                    <button id="params-add-btn" style="padding:4px 8px;">Add</button>
+                    <button id="params-habbo-btn" style="padding:4px 8px;">Habbo Preset</button>
+                    <span style="flex:1;"></span>
+                    <button id="params-apply-btn" style="padding:4px 12px;font-weight:bold;">Apply</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- About modal -->
     <div id="about-modal" class="modal-overlay" style="display:none;">
         <div class="modal-content">
@@ -276,6 +307,14 @@
 
                     // Dismiss loading screen
                     dismissLoading();
+
+                    // Apply saved external params
+                    if (extParams && Object.keys(extParams).length > 0) {
+                        player.clearExternalParams();
+                        for (var key in extParams) {
+                            player.setExternalParam(key, extParams[key]);
+                        }
+                    }
 
                     // Refresh debug script list for the new movie
                     player.getScriptList();
@@ -440,6 +479,10 @@
                     var f = prompt('Go to frame:');
                     if (f) player.goToFrame(parseInt(f));
                 });
+                document.getElementById('menu-ext-params').addEventListener('click', function() {
+                    closeMenus();
+                    openParamsDialog();
+                });
                 document.getElementById('menu-toggle-debug').addEventListener('click', function() {
                     closeMenus();
                     debugPanel.toggle();
@@ -475,6 +518,9 @@
                 });
                 document.getElementById('about-modal-close').addEventListener('click', function() {
                     document.getElementById('about-modal').style.display = 'none';
+                });
+                document.getElementById('params-modal-close').addEventListener('click', function() {
+                    document.getElementById('params-modal').style.display = 'none';
                 });
 
                 // Close modals on overlay click
@@ -516,6 +562,9 @@
                     } else if (e.key === 'u' && e.ctrlKey) {
                         e.preventDefault();
                         urlInput.focus();
+                    } else if (e.key === 'e' && e.ctrlKey) {
+                        e.preventDefault();
+                        openParamsDialog();
                     } else if (e.key === 'd' && e.ctrlKey) {
                         e.preventDefault();
                         debugPanel.toggle();
@@ -593,6 +642,71 @@
         function dismissLoading() {
             document.getElementById('loading-overlay').style.display = 'none';
         }
+
+        // === External Params Dialog ===
+
+        var extParams = {}; // Current external params {key: value}
+
+        function openParamsDialog() {
+            var body = document.getElementById('params-body');
+            body.innerHTML = '';
+            for (var key in extParams) {
+                addParamRow(key, extParams[key]);
+            }
+            if (Object.keys(extParams).length === 0) {
+                addParamRow('sw1', '');
+            }
+            document.getElementById('params-modal').style.display = 'flex';
+        }
+
+        function addParamRow(key, value) {
+            var body = document.getElementById('params-body');
+            var tr = document.createElement('tr');
+            tr.innerHTML = '<td><input type="text" value="' + escHtml(key) + '" style="width:100%;box-sizing:border-box;padding:3px;background:#333;color:#eee;border:1px solid #555;"></td>' +
+                '<td><input type="text" value="' + escHtml(value) + '" style="width:100%;box-sizing:border-box;padding:3px;background:#333;color:#eee;border:1px solid #555;"></td>' +
+                '<td><button style="padding:2px 6px;cursor:pointer;" title="Remove">&times;</button></td>';
+            tr.querySelector('button').addEventListener('click', function() { tr.remove(); });
+            body.appendChild(tr);
+        }
+
+        function escHtml(s) {
+            return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        }
+
+        document.getElementById('params-add-btn').addEventListener('click', function() {
+            addParamRow('', '');
+        });
+
+        document.getElementById('params-habbo-btn').addEventListener('click', function() {
+            var body = document.getElementById('params-body');
+            body.innerHTML = '';
+            addParamRow('sw1', 'external.variables.txt=http://localhost/gamedata/external_variables.txt;external.texts.txt=http://localhost/gamedata/external_texts.txt');
+        });
+
+        document.getElementById('params-apply-btn').addEventListener('click', function() {
+            // Collect params from table
+            extParams = {};
+            if (player) player.clearExternalParams();
+            var rows = document.querySelectorAll('#params-body tr');
+            for (var i = 0; i < rows.length; i++) {
+                var inputs = rows[i].querySelectorAll('input');
+                var k = inputs[0].value.trim();
+                var v = inputs[1].value;
+                if (k) {
+                    extParams[k] = v;
+                    if (player) player.setExternalParam(k, v);
+                }
+            }
+            // Save to localStorage
+            try { localStorage.setItem('ls_extParams', JSON.stringify(extParams)); } catch(e) {}
+            document.getElementById('params-modal').style.display = 'none';
+        });
+
+        // Load saved params
+        try {
+            var saved = JSON.parse(localStorage.getItem('ls_extParams'));
+            if (saved) extParams = saved;
+        } catch(e) {}
 
         initPlayer();
     </script>

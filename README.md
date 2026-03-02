@@ -297,12 +297,12 @@ The `player-wasm` module compiles the player for the browser using [TeaVM](https
 
 ### Running
 
-Serve the output directory using the included `serve.py` script, which sets the required `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy` headers for `SharedArrayBuffer` support:
+Serve the output directory with any static HTTP server:
 
 ```bash
 cd player-wasm/build/generated/teavm/wasm/
-python serve.py
-# Open http://localhost:8080
+npx serve .
+# Open the URL printed by serve (usually http://localhost:3000)
 ```
 
 Two player pages are available:
@@ -332,8 +332,47 @@ player-wasm/
     basic/index.html                    # Basic player page (no debug panel)
     player-bridge.js                    # JS bridge (Canvas, rAF, fetch, WASM I/O)
     libreshockwave.css                  # Styling
-    serve.py                            # Dev server with COOP/COEP headers
+    worker.js                           # WebWorker (runs WASM VM)
 ```
+
+### Testing the Web Player
+
+1. **Build the WASM output:**
+   ```bash
+   ./gradlew :player-wasm:generateWasm
+   ```
+
+2. **Start any HTTP server** (plain `file://` won't work due to worker/fetch restrictions):
+   ```bash
+   cd player-wasm/build/generated/teavm/wasm/
+   npx serve .
+   ```
+
+3. **Load a movie:**
+   - **Local file** — click **Choose File** or press `Ctrl+O` and pick a `.dcr`/`.dir`/`.dxr` file.
+   - **URL** — paste a URL into the text box and click **Load URL** (or press `Ctrl+U` then `Enter`).
+
+4. **Playback controls:**
+   | Action | Button | Shortcut |
+   |--------|--------|----------|
+   | Play / Pause | ▶ / ❚❚ | `Space` |
+   | Stop | ■ | `Escape` |
+   | Step forward | >&#124; | `Right` |
+   | Step backward | &#124;< | `Left` |
+   | First frame | — | `Home` |
+   | Last frame | — | `End` |
+
+5. **Set external parameters** (Shockwave `<PARAM>` tags):
+   - Open **Movie > External Params** (or press `Ctrl+E`).
+   - Add key/value rows. For Habbo movies click **Habbo Preset** to auto-fill `sw1` with the standard `external_variables.txt` and `external_texts.txt` URLs.
+   - Click **Apply**. Parameters are saved in `localStorage` and re-applied on every movie load.
+
+6. **Debugger** (main player page only):
+   - Press `Ctrl+D` to toggle the debug panel.
+   - Set breakpoints by clicking the gutter in the bytecode view.
+   - `F5` Continue, `F10` Step Over, `F11` Step Into, `Shift+F11` Step Out.
+
+All settings (last opened movie URL, external parameters) persist across sessions via `localStorage`.
 
 ### Known Limitations
 
@@ -351,9 +390,17 @@ player-wasm/
 ### Running Tests
 
 ```bash
+# Unit tests per module
 ./gradlew :sdk:test
-./gradlew :sdk:runTests          # Integration tests
-./gradlew :sdk:runFeatureTests   # Feature tests
+./gradlew :vm:test
+./gradlew :player-core:test
+
+# SDK integration / feature tests
+./gradlew :sdk:runTests
+./gradlew :sdk:runFeatureTests
+
+# Compile the WASM player (no runtime tests — verify in browser)
+./gradlew :player-wasm:generateWasm
 ```
 
 ## Architecture

@@ -412,6 +412,22 @@ self.onmessage = function(e) {
             break;
         }
 
+        case 'setExternalParam': {
+            // Write key + value to string buffer: key at offset 0, value at offset keyLen
+            var keyBytes = new TextEncoder().encode(msg.key);
+            var valueBytes = new TextEncoder().encode(msg.value);
+            var sbAddr = exports.getStringBufferAddress();
+            var sbuf = new Uint8Array(getMemory(), sbAddr, 4096);
+            sbuf.set(keyBytes);
+            sbuf.set(valueBytes, keyBytes.length);
+            exports.setExternalParam(keyBytes.length, valueBytes.length);
+            break;
+        }
+
+        case 'clearExternalParams':
+            exports.clearExternalParams();
+            break;
+
         default:
             console.warn('[Worker] Unknown command:', msg.cmd);
     }

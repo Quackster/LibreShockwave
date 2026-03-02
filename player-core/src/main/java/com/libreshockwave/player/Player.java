@@ -90,6 +90,7 @@ public class Player {
     // Executor for parsing external cast files off the network thread
     // Lazy-initialized to avoid pulling in java.util.concurrent in TeaVM environments
     private ExecutorService castParserExecutor;
+    private Runnable castParserShutdown;  // Shutdown hook, avoids referencing ExecutorService in shutdown()
     private Runnable vmExecutorShutdown;  // Shutdown hook, avoids referencing ExecutorService in shutdown()
     private volatile boolean vmRunning = false;
 
@@ -177,6 +178,10 @@ public class Player {
             Math.max(2, Runtime.getRuntime().availableProcessors() / 2),
             r -> { Thread t = new Thread(r, "CastParser"); t.setDaemon(true); return t; }
         );
+        this.castParserShutdown = () -> castParserExecutor.shutdownNow();
+
+        // Set AWT text renderer for desktop environment
+        com.libreshockwave.player.cast.CastMember.setTextRenderer(new com.libreshockwave.player.render.AwtTextRenderer());
 
         // Set base path for network requests from the file location
         if (file != null && file.getBasePath() != null && !file.getBasePath().isEmpty()) {
@@ -230,6 +235,8 @@ public class Player {
         this.stageRenderer.setCastLibManager(castLibManager);
         this.timeoutManager = new TimeoutManager();
         this.bitmapCache = new BitmapCache(false); // Synchronous mode for TeaVM
+        // Set simple text renderer for TeaVM/WASM (no AWT)
+        com.libreshockwave.player.cast.CastMember.setTextRenderer(new com.libreshockwave.player.render.SimpleTextRenderer());
         this.windowManager = new WindowManager();
         this.windowManager.setStageSize(stageRenderer.getStageWidth(), stageRenderer.getStageHeight());
         this.frameContext.setTimeoutManager(timeoutManager);
@@ -901,8 +908,8 @@ public class Player {
         bitmapCache.shutdown();
 
         // Shutdown cast parser executor (only exists in desktop player)
-        if (castParserExecutor != null) {
-            castParserExecutor.shutdownNow();
+        if (castParserShutdown != null) {
+            castParserShutdown.run();
         }
 
         // Reset debug controller (releases any blocked threads)

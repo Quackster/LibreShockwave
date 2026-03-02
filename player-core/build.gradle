@@ -119,30 +119,6 @@ tasks.register('runRenderTraceTest', JavaExec) {
     }
 }
 
-// Task to test window and loading bar rendering
-tasks.register('runWindowRenderTest', JavaExec) {
-    group = 'verification'
-    description = 'Diagnostic test for window/loading bar rendering in habbo.dcr'
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'com.libreshockwave.player.WindowRenderTest'
-    dependsOn compileTestJava
-    javaLauncher = javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
-}
-
-// Task to step through frames and validate window rendering
-tasks.register('runWindowStepTest', JavaExec) {
-    group = 'verification'
-    description = 'Step-through test that validates error dialog window rendering'
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'com.libreshockwave.player.WindowStepTest'
-    dependsOn compileTestJava
-    javaLauncher = javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
-}
-
 // Task to debug cast lib scripts
 tasks.register('runCastLibDebugTest', JavaExec) {
     group = 'verification'

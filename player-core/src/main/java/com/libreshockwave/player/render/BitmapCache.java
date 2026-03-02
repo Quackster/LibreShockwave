@@ -8,31 +8,40 @@ import com.libreshockwave.chunks.CastMemberChunk;
 import com.libreshockwave.player.Player;
 import com.libreshockwave.player.cast.CastMember;
 
+import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 /**
  * Caches ink-processed bitmaps for rendering.
  * Handles async decode from file-loaded cast members and sync decode from dynamic members.
  * Thread-safe: decoding happens on a background thread pool while rendering reads from cache.
+ * <p>
+ * Uses functional interfaces (Consumer/Runnable) instead of direct ExecutorService references
+ * so that TeaVM can compile this class without pulling in java.util.concurrent.ExecutorService.
  */
 public class BitmapCache {
 
     private final Map<Long, Bitmap> cache = new ConcurrentHashMap<>();
-    private final Set<Integer> decoding = ConcurrentHashMap.newKeySet();
-    private final Set<Integer> decodeFailed = ConcurrentHashMap.newKeySet();
-    private final ExecutorService decoder;
+    private final Set<Integer> decoding = Collections.newSetFromMap(new ConcurrentHashMap<>());
+    private final Set<Integer> decodeFailed = Collections.newSetFromMap(new ConcurrentHashMap<>());
+
+    /** Submits a task for async decoding. Null in synchronous mode. */
+    private final Consumer<Runnable> taskSubmitter;
+
+    /** Shuts down the decoder thread pool. Null in synchronous mode. */
+    private final Runnable shutdownCallback;
 
     /**
      * Create a BitmapCache with async decoding (desktop player).
+     * The ExecutorService is fully contained within this constructor and the lambdas it creates,
+     * so TeaVM never traces into it (only the TeaVM constructor is reachable from WASM).
      */
     public BitmapCache() {
-        this.decoder = Executors.newFixedThreadPool(
+        java.util.concurrent.ExecutorService exec = java.util.concurrent.Executors.newFixedThreadPool(
             Math.max(2, Runtime.getRuntime().availableProcessors() / 2),
             r -> {
                 Thread t = new Thread(r, "BitmapCache-Decoder");
@@ -40,14 +49,27 @@ public class BitmapCache {
                 return t;
             }
         );
+        this.taskSubmitter = task -> exec.submit(task);
+        this.shutdownCallback = () -> {
+            exec.shutdown();
+            try {
+                if (!exec.awaitTermination(2, java.util.concurrent.TimeUnit.SECONDS)) {
+                    exec.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                exec.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+        };
     }
 
     /**
      * Create a BitmapCache with synchronous decoding (for TeaVM/WASM environments).
-     * Pass false to avoid pulling in java.util.concurrent classes.
+     * No ExecutorService is created or referenced.
      */
     public BitmapCache(boolean async) {
-        this.decoder = null;
+        this.taskSubmitter = null;
+        this.shutdownCallback = null;
     }
 
     /**
@@ -76,7 +98,7 @@ public class BitmapCache {
             return null;
         }
 
-        // Decode bitmap (sync when no executor available, async otherwise)
+        // Decode bitmap (sync when no submitter available, async otherwise)
         Runnable decodeTask = () -> {
             try {
                 Optional<Bitmap> bitmap = player.decodeBitmap(member);
@@ -112,8 +134,8 @@ public class BitmapCache {
             }
         };
 
-        if (decoder != null) {
-            decoder.submit(decodeTask);
+        if (taskSubmitter != null) {
+            taskSubmitter.accept(decodeTask);
             return null;
         } else {
             // Synchronous mode (TeaVM/WASM)
@@ -152,15 +174,8 @@ public class BitmapCache {
      * Shutdown the decoder thread pool.
      */
     public void shutdown() {
-        if (decoder == null) return;
-        decoder.shutdown();
-        try {
-            if (!decoder.awaitTermination(2, TimeUnit.SECONDS)) {
-                decoder.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            decoder.shutdownNow();
-            Thread.currentThread().interrupt();
+        if (shutdownCallback != null) {
+            shutdownCallback.run();
         }
     }
 }

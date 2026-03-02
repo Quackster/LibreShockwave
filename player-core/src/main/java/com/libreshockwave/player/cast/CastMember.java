@@ -9,10 +9,8 @@ import com.libreshockwave.chunks.KeyTableChunk;
 import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.chunks.TextChunk;
 import com.libreshockwave.format.ChunkType;
+import com.libreshockwave.player.render.TextRenderer;
 import com.libreshockwave.vm.Datum;
-
-import java.awt.*;
-import java.awt.image.BufferedImage;
 
 /**
  * Represents a loaded cast member with lazy loading of media data.
@@ -22,6 +20,13 @@ import java.awt.image.BufferedImage;
  * optionally load their media data (bitmap pixels, text, etc.) on demand.
  */
 public class CastMember {
+
+    /** Platform-specific text renderer. Set by Player on startup. */
+    private static TextRenderer textRenderer;
+
+    public static void setTextRenderer(TextRenderer renderer) {
+        textRenderer = renderer;
+    }
 
     public enum State {
         NONE,
@@ -371,7 +376,7 @@ public class CastMember {
 
     /**
      * Render the text content of this member to a Bitmap.
-     * Uses Java AWT Graphics2D for text layout and rendering.
+     * Delegates to the platform-specific TextRenderer.
      * This implements Director's text member .image property.
      */
     private Bitmap renderTextToImage() {
@@ -380,251 +385,22 @@ public class CastMember {
             return textRenderedImage;
         }
 
-        String text = getTextContent();
-        if (text == null) text = "";
+        if (textRenderer == null) {
+            return null;
+        }
 
+        String text = getTextContent();
         int width = textRectRight - textRectLeft;
         int height = textRectBottom - textRectTop;
-        if (width <= 0) width = 200;
-        if (height <= 0) height = 20;
 
-        // Create a temporary BufferedImage to render text with AWT
-        BufferedImage bufImg = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g2d = bufImg.createGraphics();
-
-        // Set rendering hints
-        if (textAntialias) {
-            g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
-                    RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-        }
-        g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-
-        // Fill background
-        g2d.setColor(new java.awt.Color(textBgColor, true));
-        g2d.fillRect(0, 0, width, height);
-
-        // Set font (resolve Director font names to system fonts)
-        int fontStyleAwt = Font.PLAIN;
-        String style = textFontStyle.toLowerCase();
-        if (style.contains("bold")) fontStyleAwt |= Font.BOLD;
-        if (style.contains("italic")) fontStyleAwt |= Font.ITALIC;
-        Font font = resolveDirectorFont(textFont, fontStyleAwt, textFontSize);
-        // Apply underline via font attributes if needed
-        if (style.contains("underline")) {
-            java.util.Map<java.awt.font.TextAttribute, Object> attrs = new java.util.HashMap<>();
-            attrs.put(java.awt.font.TextAttribute.UNDERLINE, java.awt.font.TextAttribute.UNDERLINE_ON);
-            font = font.deriveFont(attrs);
-        }
-        g2d.setFont(font);
-
-        // Set text color
-        g2d.setColor(new java.awt.Color(textColor, true));
-
-        FontMetrics fm = g2d.getFontMetrics();
-        int lineHeight = textFixedLineSpace > 0 ? textFixedLineSpace : fm.getHeight();
-        int ascent = fm.getAscent();
-
-        // Split text into lines
-        String[] rawLines = text.split("[\r\n]+");
-        if (rawLines.length == 0) rawLines = new String[]{""};
-
-        // Word wrap if enabled
-        java.util.List<String> lines = new java.util.ArrayList<>();
-        if (textWordWrap) {
-            for (String rawLine : rawLines) {
-                wrapLine(rawLine, fm, width, lines);
-            }
-        } else {
-            for (String rawLine : rawLines) {
-                lines.add(rawLine);
-            }
-        }
-
-        // Compute needed height
-        int neededHeight = lines.size() * lineHeight + textTopSpacing;
-        if (neededHeight > height) {
-            // Expand the image to fit all text
-            g2d.dispose();
-            bufImg = new BufferedImage(width, neededHeight, BufferedImage.TYPE_INT_ARGB);
-            g2d = bufImg.createGraphics();
-            if (textAntialias) {
-                g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
-                        RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-            }
-            g2d.setColor(new java.awt.Color(textBgColor, true));
-            g2d.fillRect(0, 0, width, neededHeight);
-            g2d.setFont(font);
-            g2d.setColor(new java.awt.Color(textColor, true));
-            height = neededHeight;
-        }
-
-        // Draw lines
-        int y = ascent + textTopSpacing;
-        for (String line : lines) {
-            if (y > height) break;
-
-            int x = 0;
-            switch (textAlignment) {
-                case "center" -> x = (width - fm.stringWidth(line)) / 2;
-                case "right" -> x = width - fm.stringWidth(line);
-                default -> x = 0; // left
-            }
-
-            g2d.drawString(line, x, y);
-            y += lineHeight;
-        }
-
-        g2d.dispose();
-
-        // Convert BufferedImage to our Bitmap format
-        int[] pixels = bufImg.getRGB(0, 0, bufImg.getWidth(), bufImg.getHeight(),
-                null, 0, bufImg.getWidth());
-        textRenderedImage = new Bitmap(bufImg.getWidth(), bufImg.getHeight(), 32, pixels);
+        textRenderedImage = textRenderer.renderText(text, width, height,
+                textFont, textFontSize, textFontStyle,
+                textAlignment, textColor, textBgColor,
+                textWordWrap, textAntialias,
+                textFixedLineSpace, textTopSpacing);
         textImageDirty = false;
 
         return textRenderedImage;
-    }
-
-    /**
-     * Word-wrap a single line of text to fit within maxWidth pixels.
-     */
-    private static void wrapLine(String text, FontMetrics fm, int maxWidth,
-                                 java.util.List<String> out) {
-        if (text.isEmpty()) {
-            out.add("");
-            return;
-        }
-        if (fm.stringWidth(text) <= maxWidth) {
-            out.add(text);
-            return;
-        }
-
-        String[] words = text.split("\\s+");
-        StringBuilder current = new StringBuilder();
-        for (String word : words) {
-            if (current.length() == 0) {
-                current.append(word);
-            } else {
-                String candidate = current + " " + word;
-                if (fm.stringWidth(candidate) <= maxWidth) {
-                    current.append(" ").append(word);
-                } else {
-                    out.add(current.toString());
-                    current = new StringBuilder(word);
-                }
-            }
-        }
-        if (current.length() > 0) {
-            out.add(current.toString());
-        }
-    }
-
-    /**
-     * Resolve a Director font name to a Java AWT Font.
-     * Director movies often use short font aliases (from fontmap.txt or embedded fonts).
-     * This method maps common aliases to system fonts and handles bold-embedded names.
-     */
-    private static Font resolveDirectorFont(String directorName, int style, int size) {
-        if (directorName == null || directorName.isEmpty()) {
-            return new Font("SansSerif", style, size);
-        }
-
-        // Check if the requested font exists in the system
-        String resolved = resolveDirectorFontName(directorName);
-
-        // If the font name itself implies a style (e.g., "vb" = Verdana Bold),
-        // extract the style and merge with the provided style
-        int extraStyle = extractFontStyle(directorName);
-        if (extraStyle != Font.PLAIN) {
-            style |= extraStyle;
-        }
-
-        return new Font(resolved, style, size);
-    }
-
-    /** Cache of available system font names (lowercase → actual name) */
-    private static volatile java.util.Map<String, String> systemFontCache;
-
-    private static java.util.Map<String, String> getSystemFontCache() {
-        if (systemFontCache == null) {
-            synchronized (CastMember.class) {
-                if (systemFontCache == null) {
-                    java.util.Map<String, String> cache = new java.util.HashMap<>();
-                    for (String fontName : GraphicsEnvironment.getLocalGraphicsEnvironment()
-                            .getAvailableFontFamilyNames()) {
-                        cache.put(fontName.toLowerCase(), fontName);
-                    }
-                    systemFontCache = cache;
-                }
-            }
-        }
-        return systemFontCache;
-    }
-
-    /**
-     * Resolve a Director font name to an actual system font name.
-     * Handles:
-     * - Full system font names (pass through)
-     * - Short Director aliases like "v" → "Verdana", "vb" → "Verdana"
-     * - Common Director font conventions
-     */
-    private static String resolveDirectorFontName(String name) {
-        var cache = getSystemFontCache();
-
-        // 1. Exact match (case-insensitive)
-        String exact = cache.get(name.toLowerCase());
-        if (exact != null) return exact;
-
-        // 2. Strip trailing style indicators (b=bold, i=italic, bi=bold-italic)
-        String baseName = name.replaceAll("(?i)[bi]+$", "");
-        if (!baseName.isEmpty() && !baseName.equals(name)) {
-            exact = cache.get(baseName.toLowerCase());
-            if (exact != null) return exact;
-        }
-
-        // 3. Try prefix matching for very short names (common Director fontmap aliases)
-        // e.g., "v" → "Verdana", "a" → "Arial", "t" → "Tahoma"
-        if (name.length() <= 3) {
-            String prefix = baseName.isEmpty() ? name.toLowerCase() : baseName.toLowerCase();
-            // Prioritized list of common Director fonts
-            String[] commonFonts = {
-                "Verdana", "Arial", "Tahoma", "Times New Roman", "Courier New",
-                "Georgia", "Helvetica", "Trebuchet MS", "Comic Sans MS"
-            };
-            for (String candidate : commonFonts) {
-                if (candidate.toLowerCase().startsWith(prefix)) {
-                    String resolved = cache.get(candidate.toLowerCase());
-                    if (resolved != null) return resolved;
-                }
-            }
-            // Fallback: try any system font starting with this prefix
-            for (var entry : cache.entrySet()) {
-                if (entry.getKey().startsWith(prefix)) {
-                    return entry.getValue();
-                }
-            }
-        }
-
-        // 4. Fall back to SansSerif (always available in Java)
-        return "SansSerif";
-    }
-
-    /**
-     * Extract font style from Director font name conventions.
-     * e.g., "vb" → Bold, "vi" → Italic, "vbi" → Bold+Italic
-     */
-    private static int extractFontStyle(String name) {
-        if (name.length() <= 1) return Font.PLAIN;
-
-        // Check if the name ends with style indicators after a base name
-        String baseName = name.replaceAll("(?i)[bi]+$", "");
-        if (baseName.length() == name.length()) return Font.PLAIN;
-
-        String suffix = name.substring(baseName.length()).toLowerCase();
-        int style = Font.PLAIN;
-        if (suffix.contains("b")) style |= Font.BOLD;
-        if (suffix.contains("i")) style |= Font.ITALIC;
-        return style;
     }
 
     private Datum getScriptProp(String prop) {
@@ -874,56 +650,21 @@ public class CastMember {
         return switch (method) {
             case "charposttoloc", "charpostoloc" -> {
                 // charPosToLoc(charIndex) → point(x, y)
-                // Returns the pixel position of the character at the given index
                 if (args.isEmpty()) yield new Datum.Point(0, 0);
                 int charIndex = args.get(0).toInt();
 
-                // Use AWT to measure text position
                 String text = getTextContent();
                 if (text == null || text.isEmpty() || charIndex <= 0) {
                     yield new Datum.Point(0, 0);
                 }
 
-                int fontStyleAwt = Font.PLAIN;
-                String style = textFontStyle.toLowerCase();
-                if (style.contains("bold")) fontStyleAwt |= Font.BOLD;
-                if (style.contains("italic")) fontStyleAwt |= Font.ITALIC;
-                Font font = resolveDirectorFont(textFont, fontStyleAwt, textFontSize);
-
-                // Use a temporary image to get FontMetrics
-                BufferedImage tmpImg = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
-                Graphics2D g2d = tmpImg.createGraphics();
-                g2d.setFont(font);
-                FontMetrics fm = g2d.getFontMetrics();
-
-                // Clamp charIndex to text length
-                int idx = Math.min(charIndex, text.length());
-                String substr = text.substring(0, idx);
-
-                // Find which line the character is on
-                String[] lines = text.split("[\r\n]");
-                int lineNum = 0;
-                int charsSoFar = 0;
-                String lineText = lines.length > 0 ? lines[0] : "";
-                for (int i = 0; i < lines.length; i++) {
-                    int lineLen = lines[i].length() + 1; // +1 for line break
-                    if (charsSoFar + lineLen >= idx) {
-                        lineNum = i;
-                        lineText = lines[i];
-                        break;
-                    }
-                    charsSoFar += lineLen;
+                if (textRenderer == null) {
+                    yield new Datum.Point(0, 0);
                 }
 
-                int charsOnLine = idx - charsSoFar;
-                if (charsOnLine > lineText.length()) charsOnLine = lineText.length();
-                String lineSubstr = lineText.substring(0, charsOnLine);
-                int x = fm.stringWidth(lineSubstr);
-                int lineHeight = textFixedLineSpace > 0 ? textFixedLineSpace : fm.getHeight();
-                int y = lineNum * lineHeight + fm.getAscent();
-
-                g2d.dispose();
-                yield new Datum.Point(x, y);
+                int[] pos = textRenderer.charPosToLoc(text, charIndex,
+                        textFont, textFontSize, textFontStyle, textFixedLineSpace);
+                yield new Datum.Point(pos[0], pos[1]);
             }
             default -> Datum.VOID;
         };

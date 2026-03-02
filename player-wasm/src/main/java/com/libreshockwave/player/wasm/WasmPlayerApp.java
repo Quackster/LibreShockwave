@@ -433,6 +433,31 @@ public class WasmPlayerApp {
         }
     }
 
+    // === External parameters ===
+
+    /**
+     * Set an external parameter (Shockwave PARAM tag).
+     * Key is written to stringBuffer[0..keyLen), value follows at stringBuffer[keyLen..keyLen+valueLen).
+     */
+    @Export(name = "setExternalParam")
+    public static void setExternalParam(int keyLen, int valueLen) {
+        if (wasmPlayer == null || wasmPlayer.getPlayer() == null) return;
+        String key = new String(stringBuffer, 0, keyLen);
+        String value = new String(stringBuffer, keyLen, valueLen);
+        java.util.Map<String, String> current = new java.util.LinkedHashMap<>(wasmPlayer.getPlayer().getExternalParams());
+        current.put(key, value);
+        wasmPlayer.getPlayer().setExternalParams(current);
+    }
+
+    /**
+     * Clear all external parameters.
+     */
+    @Export(name = "clearExternalParams")
+    public static void clearExternalParams() {
+        if (wasmPlayer == null || wasmPlayer.getPlayer() == null) return;
+        wasmPlayer.getPlayer().setExternalParams(null);
+    }
+
     // === Internal helpers ===
 
     /**
