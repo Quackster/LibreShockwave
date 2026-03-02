@@ -37,22 +37,29 @@ A Java library for parsing Macromedia/Adobe Director and Shockwave files (.dir, 
 - Remove protection from protected files
 - Decompile and embed Lingo source into cast members
 
+## Player & Lingo VM
+
+LibreShockwave includes a Lingo bytecode virtual machine and player that can load and run Director movies. The VM executes compiled Lingo scripts, handles score playback, sprite rendering, and external cast loading — bringing `.dcr` and `.dir` files back to life.
+
+<p align="center">
+  <img src="https://i.imgur.com/9AcSQQt.gif" alt="LibreShockwave player running a Director movie" />
+</p>
+
+The player is available in two forms:
+- **Desktop** (`player`) — Swing-based UI with an integrated Lingo debugger
+- **Web** (`player-wasm`) — Compiled to WebAssembly via TeaVM, runs in any modern browser
+
+All player functionality is decoupled from the SDK and VM via the `player-core` module, which provides platform-independent playback logic (score traversal, event dispatch, sprite management, bitmap decoding).
+
+<img width="2174" height="1048" alt="Desktop player and web player side by side" src="https://github.com/user-attachments/assets/3c8f0357-0941-4dd4-9795-525a45216644" />
+
 ## Screenshots
 
-###
+### Cast Extractor
 
-The Swing desktop player is in active development. A browser-based web player (`player-wasm`) is also available, compiled to WebAssembly via TeaVM's standard WebAssembly backend.
+A GUI tool for browsing and extracting assets from Director files (available on the releases page).
 
-All player functionality is decoupled from the SDK and VM projects via the `player-core` module, which provides platform-independent playback logic.
-
-<img width="2174" height="1048" alt="image" src="https://github.com/user-attachments/assets/3c8f0357-0941-4dd4-9795-525a45216644" />
-
-
-### An example piece of software created with this library.
-
-Cast Extractor (on releases page):
-
-<img width="1127" height="749" alt="image" src="https://github.com/user-attachments/assets/de4f99d2-87ed-4c78-8422-a84bcf9faeca" />
+<img width="1127" height="749" alt="Cast Extractor" src="https://github.com/user-attachments/assets/de4f99d2-87ed-4c78-8422-a84bcf9faeca" />
 
 ## Usage
 
