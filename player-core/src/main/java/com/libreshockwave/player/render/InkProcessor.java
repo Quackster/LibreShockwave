@@ -287,9 +287,11 @@ public final class InkProcessor {
 
     /**
      * Returns true if the given ink mode supports sprite-level foreColor/backColor colorization.
-     * Director applies colorization for Copy (0) and Matte (8/9) inks only.
+     * Only Copy ink (0) supports colorization. Matte ink (8/9) is for transparency only —
+     * applying colorization to Matte sprites incorrectly remaps colored bitmap content
+     * (e.g., window chrome teal becomes dark gray when foreColor=BLACK).
      */
     public static boolean allowsColorize(int ink) {
-        return ink == 0 || ink == 8 || ink == 9;
+        return ink == 0;
     }
 }
