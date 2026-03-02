@@ -5,10 +5,12 @@ import com.libreshockwave.player.cast.CastLibManager;
 import com.libreshockwave.player.cast.CastMember;
 import com.libreshockwave.player.render.FrameSnapshot;
 import com.libreshockwave.player.render.RenderSprite;
+import com.libreshockwave.vm.builtin.WindowProvider;
 
 import javax.swing.*;
 import java.awt.*;
 import java.awt.image.BufferedImage;
+import java.util.Map;
 
 /**
  * Swing panel that renders the Director stage using the player-core rendering API.
@@ -113,6 +115,9 @@ public class StagePanel extends JPanel {
         for (RenderSprite sprite : snapshot.sprites()) {
             drawSprite(g2d, sprite);
         }
+
+        // Draw window buffers on top of sprites (e.g., loading bar window)
+        drawWindowBuffers(g2d, snapshot);
 
         // Draw debug info
         drawDebugInfo(g2d, snapshot);
@@ -261,6 +266,17 @@ public class StagePanel extends JPanel {
     public void clearBitmapCache() {
         if (player != null) {
             player.getBitmapCache().clear();
+        }
+    }
+
+    private void drawWindowBuffers(Graphics2D g, FrameSnapshot snapshot) {
+        if (snapshot.windowBuffers() == null || snapshot.windowBuffers().isEmpty()) {
+            return;
+        }
+        for (Map.Entry<String, WindowProvider.WindowBuffer> entry : snapshot.windowBuffers().entrySet()) {
+            WindowProvider.WindowBuffer wb = entry.getValue();
+            BufferedImage img = wb.bitmap().toBufferedImage();
+            g.drawImage(img, wb.x(), wb.y(), null);
         }
     }
 

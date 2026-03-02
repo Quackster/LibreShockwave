@@ -122,6 +122,22 @@ public record ScoreChunk(
                 && castLib == 0 && castMember == 0 && posY == 0 && posX == 0
                 && height == 0 && width == 0;
         }
+
+        /** Resolve foreColor: assemble RGB when colorFlag/G/B indicate it, else palette index. */
+        public int resolvedForeColor() {
+            if ((colorFlag & 0x1) != 0 || foreColorG != 0 || foreColorB != 0) {
+                return (foreColor << 16) | (foreColorG << 8) | foreColorB;
+            }
+            return foreColor;
+        }
+
+        /** Resolve backColor: assemble RGB when colorFlag/G/B indicate it, else palette index. */
+        public int resolvedBackColor() {
+            if ((colorFlag & 0x2) != 0 || backColorG != 0 || backColorB != 0) {
+                return (backColor << 16) | (backColorG << 8) | backColorB;
+            }
+            return backColor;
+        }
     }
 
     /**

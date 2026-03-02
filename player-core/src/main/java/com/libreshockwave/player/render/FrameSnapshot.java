@@ -2,9 +2,12 @@ package com.libreshockwave.player.render;
 
 import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.player.Player;
+import com.libreshockwave.vm.builtin.WindowProvider;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Complete snapshot of what to render for a single frame.
@@ -17,7 +20,8 @@ public record FrameSnapshot(
     int backgroundColor,
     List<RenderSprite> sprites,
     String debugInfo,
-    Bitmap stageImage
+    Bitmap stageImage,
+    Map<String, WindowProvider.WindowBuffer> windowBuffers
 ) {
     /**
      * Create a snapshot from the stage renderer.
@@ -33,7 +37,8 @@ public record FrameSnapshot(
             renderer.getBackgroundColor(),
             List.copyOf(sprites),
             debug,
-            renderer.hasStageImage() ? renderer.getStageImage() : null
+            renderer.hasStageImage() ? renderer.getStageImage() : null,
+            Collections.emptyMap()
         );
     }
 
@@ -62,6 +67,13 @@ public record FrameSnapshot(
             }
         }
 
+        // Capture window buffers for rendering
+        Map<String, WindowProvider.WindowBuffer> windowBuffers = Collections.emptyMap();
+        WindowManager wm = player.getWindowManager();
+        if (wm != null && wm.hasWindows()) {
+            windowBuffers = wm.getWindowBuffers();
+        }
+
         return new FrameSnapshot(
             frame,
             renderer.getStageWidth(),
@@ -69,7 +81,8 @@ public record FrameSnapshot(
             renderer.getBackgroundColor(),
             List.copyOf(baked),
             debug,
-            renderer.hasStageImage() ? renderer.getStageImage() : null
+            renderer.hasStageImage() ? renderer.getStageImage() : null,
+            windowBuffers
         );
     }
 }

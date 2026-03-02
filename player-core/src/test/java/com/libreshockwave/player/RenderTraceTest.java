@@ -11,6 +11,7 @@ import com.libreshockwave.player.render.RenderSprite;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.LingoVM;
 import com.libreshockwave.vm.TraceListener;
+import com.libreshockwave.vm.builtin.WindowProvider;
 
 import java.awt.AlphaComposite;
 import java.awt.Color;
@@ -473,6 +474,18 @@ public class RenderTraceTest {
                     }
                 }
             }
+
+            // Draw window buffers (e.g., loading bar window)
+            if (loadingSnapshot.windowBuffers() != null && !loadingSnapshot.windowBuffers().isEmpty()) {
+                for (Map.Entry<String, WindowProvider.WindowBuffer> entry : loadingSnapshot.windowBuffers().entrySet()) {
+                    WindowProvider.WindowBuffer wb = entry.getValue();
+                    BufferedImage wbImg = wb.bitmap().toBufferedImage();
+                    loadG.drawImage(wbImg, wb.x(), wb.y(), null);
+                    loadSpritesDrawn++;
+                    System.out.println("  Drew window buffer '" + entry.getKey() + "' at (" + wb.x() + "," + wb.y() + ") "
+                            + wbImg.getWidth() + "x" + wbImg.getHeight() + " [WINDOW]");
+                }
+            }
             loadG.dispose();
 
             Path loadPngPath = Path.of("build/render-loading.png");
@@ -504,6 +517,22 @@ public class RenderTraceTest {
             // --- Check sprite state after each frame ---
             try {
                 FrameSnapshot snapshot = player.getFrameSnapshot();
+
+                // Check for window buffers (loading bar, error dialog, etc.)
+                if (snapshot != null && snapshot.windowBuffers() != null && !snapshot.windowBuffers().isEmpty()) {
+                    if (loadingSnapshot == null || loadingSnapshot.windowBuffers() == null || loadingSnapshot.windowBuffers().isEmpty()) {
+                        // Capture first snapshot that has window buffers (loading bar)
+                        loadingSnapshot = snapshot;
+                        System.out.println("  [loading-bar] Captured window buffer snapshot at frame " + currentFrame[0]
+                                + " with " + snapshot.windowBuffers().size() + " windows:");
+                        for (var entry : snapshot.windowBuffers().entrySet()) {
+                            var wb = entry.getValue();
+                            System.out.println("    Window '" + entry.getKey() + "' at (" + wb.x() + "," + wb.y() + ") "
+                                    + wb.bitmap().getWidth() + "x" + wb.bitmap().getHeight());
+                        }
+                    }
+                }
+
                 if (snapshot != null && snapshot.sprites() != null && !snapshot.sprites().isEmpty()) {
                     String spriteDesc = describeSpriteState(snapshot);
                     if (!spriteDesc.equals(lastSpriteSnapshot)) {
@@ -909,6 +938,18 @@ public class RenderTraceTest {
                         System.out.println("  Drew ch" + sprite.getChannel() + " at (" + x + "," + y + ") "
                                 + w + "x" + h + " [TEXT:" + (memberName != null ? memberName : "?")
                                 + " = \"" + (text != null ? text : "") + "\"]");
+                    }
+                }
+
+                // Draw window buffers (e.g., loading bar window)
+                if (finalSnapshot.windowBuffers() != null && !finalSnapshot.windowBuffers().isEmpty()) {
+                    for (Map.Entry<String, WindowProvider.WindowBuffer> entry : finalSnapshot.windowBuffers().entrySet()) {
+                        WindowProvider.WindowBuffer wb = entry.getValue();
+                        BufferedImage wbImg = wb.bitmap().toBufferedImage();
+                        g.drawImage(wbImg, wb.x(), wb.y(), null);
+                        spritesDrawn++;
+                        System.out.println("  Drew window buffer '" + entry.getKey() + "' at (" + wb.x() + "," + wb.y() + ") "
+                                + wbImg.getWidth() + "x" + wbImg.getHeight() + " [WINDOW]");
                     }
                 }
 

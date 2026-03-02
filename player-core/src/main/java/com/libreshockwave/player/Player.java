@@ -14,6 +14,7 @@ import com.libreshockwave.player.net.NetManager;
 import com.libreshockwave.player.render.BitmapCache;
 import com.libreshockwave.player.render.FrameSnapshot;
 import com.libreshockwave.player.render.StageRenderer;
+import com.libreshockwave.player.render.WindowManager;
 import com.libreshockwave.player.score.ScoreNavigator;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.LingoVM;
@@ -23,6 +24,7 @@ import com.libreshockwave.vm.builtin.ExternalParamProvider;
 import com.libreshockwave.vm.builtin.MoviePropertyProvider;
 import com.libreshockwave.vm.builtin.NetBuiltins;
 import com.libreshockwave.vm.builtin.SpritePropertyProvider;
+import com.libreshockwave.vm.builtin.WindowProvider;
 
 import java.util.Optional;
 import com.libreshockwave.vm.builtin.TimeoutProvider;
@@ -62,6 +64,7 @@ public class Player {
     private final CastLibManager castLibManager;
     private final TimeoutManager timeoutManager;
     private final BitmapCache bitmapCache;
+    private final WindowManager windowManager;
 
     private final PlayerTraceListener playerTraceListener;
 
@@ -141,6 +144,8 @@ public class Player {
         this.stageRenderer.setCastLibManager(castLibManager);
         this.timeoutManager = new TimeoutManager();
         this.bitmapCache = new BitmapCache();
+        this.windowManager = new WindowManager();
+        this.windowManager.setStageSize(stageRenderer.getStageWidth(), stageRenderer.getStageHeight());
         this.frameContext.setTimeoutManager(timeoutManager);
         this.frameContext.getEventDispatcher().setCastLibManager(castLibManager);
         this.frameContext.setActorListSupplier(movieProperties::getActorList);
@@ -225,6 +230,8 @@ public class Player {
         this.stageRenderer.setCastLibManager(castLibManager);
         this.timeoutManager = new TimeoutManager();
         this.bitmapCache = new BitmapCache(false); // Synchronous mode for TeaVM
+        this.windowManager = new WindowManager();
+        this.windowManager.setStageSize(stageRenderer.getStageWidth(), stageRenderer.getStageHeight());
         this.frameContext.setTimeoutManager(timeoutManager);
         this.frameContext.getEventDispatcher().setCastLibManager(castLibManager);
         this.frameContext.setActorListSupplier(movieProperties::getActorList);
@@ -431,6 +438,10 @@ public class Player {
      */
     public BitmapCache getBitmapCache() {
         return bitmapCache;
+    }
+
+    public WindowManager getWindowManager() {
+        return windowManager;
     }
 
     public void setEventListener(Consumer<PlayerEventInfo> listener) {
@@ -811,6 +822,7 @@ public class Player {
         CastLibProvider.setProvider(castLibManager);
         TimeoutProvider.setProvider(timeoutManager);
         ExternalParamProvider.setProvider(externalParamProvider);
+        WindowProvider.setProvider(windowManager);
     }
 
     /**
@@ -824,6 +836,7 @@ public class Player {
         CastLibProvider.clearProvider();
         TimeoutProvider.clearProvider();
         ExternalParamProvider.clearProvider();
+        WindowProvider.clearProvider();
     }
 
     // Movie lifecycle - follows dirplayer-rs flow exactly
