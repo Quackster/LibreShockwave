@@ -187,4 +187,79 @@ public final class InkProcessor {
             queue.add(idx);
         }
     }
+
+    /**
+     * Apply Director's sprite-level foreColor/backColor colorization.
+     * <p>
+     * In Director, bitmap sprites with Copy (0) or Matte (8) ink have their pixels
+     * remapped based on the sprite's foreColor and backColor properties. This is how
+     * the window system creates dark backgrounds from white bitmap buffers:
+     * <ul>
+     *   <li>White pixels (grayscale 255) → foreColor</li>
+     *   <li>Black pixels (grayscale 0) → backColor</li>
+     *   <li>Gray pixels → interpolated between backColor and foreColor</li>
+     * </ul>
+     * This mimics Director's paletted bitmap behavior where palette index 0 (white)
+     * maps to foreColor and index 255 (black) maps to backColor.
+     *
+     * @param src       Source bitmap (ARGB pixels)
+     * @param foreColor Sprite foreColor as packed RGB (e.g., 0x000000 for black)
+     * @param backColor Sprite backColor as packed RGB (e.g., 0xFFFFFF for white)
+     * @return A new bitmap with colorization applied
+     */
+    public static Bitmap applyForeColorRemap(Bitmap src, int foreColor, int backColor) {
+        if (src == null || src.getWidth() == 0 || src.getHeight() == 0) {
+            return src;
+        }
+
+        // Skip if foreColor=BLACK and backColor=WHITE (identity remap for most images)
+        // But NOT for paletted-style bitmaps where white→foreColor is important.
+        // We always apply to ensure window system bitmaps get correct colors.
+
+        int fr = (foreColor >> 16) & 0xFF;
+        int fg = (foreColor >> 8) & 0xFF;
+        int fb = foreColor & 0xFF;
+        int br = (backColor >> 16) & 0xFF;
+        int bg = (backColor >> 8) & 0xFF;
+        int bb = backColor & 0xFF;
+
+        int w = src.getWidth();
+        int h = src.getHeight();
+        int[] srcPixels = src.getPixels();
+        int[] result = new int[w * h];
+
+        for (int i = 0; i < srcPixels.length; i++) {
+            int alpha = (srcPixels[i] >>> 24);
+            if (alpha == 0) {
+                result[i] = 0;
+                continue;
+            }
+
+            int r = (srcPixels[i] >> 16) & 0xFF;
+            int g = (srcPixels[i] >> 8) & 0xFF;
+            int b = srcPixels[i] & 0xFF;
+
+            // Grayscale intensity: 0=black, 255=white
+            int gray = (r + g + b) / 3;
+
+            // Director's palette remap: white (gray=255) → foreColor, black (gray=0) → backColor
+            // t = gray/255: 0=black→backColor, 1=white→foreColor
+            float t = gray / 255.0f;
+            int nr = (int) (t * fr + (1 - t) * br + 0.5f);
+            int ng = (int) (t * fg + (1 - t) * bg + 0.5f);
+            int nb = (int) (t * fb + (1 - t) * bb + 0.5f);
+
+            result[i] = (alpha << 24) | (nr << 16) | (ng << 8) | nb;
+        }
+
+        return new Bitmap(w, h, src.getBitDepth(), result);
+    }
+
+    /**
+     * Returns true if the given ink mode supports sprite-level foreColor/backColor colorization.
+     * Director applies colorization for Copy (0) and Matte (8/9) inks only.
+     */
+    public static boolean allowsColorize(int ink) {
+        return ink == 0 || ink == 8 || ink == 9;
+    }
 }
