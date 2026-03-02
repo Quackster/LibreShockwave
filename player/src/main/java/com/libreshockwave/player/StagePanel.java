@@ -225,15 +225,10 @@ public class StagePanel extends JPanel {
             img = applyBackgroundTransparent(img, sprite.getBackColor(), member != null ? member.id() : -1);
         }
 
-        // Calculate actual position (regPoint offset)
-        int drawX = x - (width > 0 ? 0 : img.getWidth() / 2);
-        int drawY = y - (height > 0 ? 0 : img.getHeight() / 2);
-
-        if (width > 0 && height > 0) {
-            g.drawImage(img, x, y, width, height, null);
-        } else {
-            g.drawImage(img, drawX, drawY, null);
-        }
+        // Draw at x/y directly — regPoint offset is already applied by StageRenderer
+        int w = width > 0 ? width : img.getWidth();
+        int h = height > 0 ? height : img.getHeight();
+        g.drawImage(img, x, y, w, h, null);
     }
 
     /**

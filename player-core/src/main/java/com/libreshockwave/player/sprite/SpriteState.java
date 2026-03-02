@@ -67,23 +67,32 @@ public class SpriteState {
     public int getForeColor() { return foreColor; }
     public int getBackColor() { return backColor; }
 
-    public void setLocH(int locH) { this.locH = locH; }
-    public void setLocV(int locV) { this.locV = locV; }
-    public void setLocZ(int locZ) { this.locZ = locZ; }
-    public void setWidth(int width) { this.width = width; }
-    public void setHeight(int height) { this.height = height; }
-    public void setVisible(boolean visible) { this.visible = visible; }
-    public void setPuppet(boolean puppet) { this.puppet = puppet; }
-    public void setInk(int ink) { this.ink = ink; }
-    public void setBlend(int blend) { this.blend = blend; }
-    public void setStretch(int stretch) { this.stretch = stretch; }
-    public void setForeColor(int foreColor) { this.foreColor = foreColor; }
-    public void setBackColor(int backColor) { this.backColor = backColor; }
+    public synchronized void setLocH(int locH) { this.locH = locH; }
+    public synchronized void setLocV(int locV) { this.locV = locV; }
+    public synchronized void setLocZ(int locZ) { this.locZ = locZ; }
+    public synchronized void setWidth(int width) { this.width = width; }
+    public synchronized void setHeight(int height) { this.height = height; }
+    public synchronized void setVisible(boolean visible) { this.visible = visible; }
+    public synchronized void setPuppet(boolean puppet) { this.puppet = puppet; }
+    public synchronized void setInk(int ink) { this.ink = ink; }
+    public synchronized void setBlend(int blend) { this.blend = blend; }
+    public synchronized void setStretch(int stretch) { this.stretch = stretch; }
+    public synchronized void setForeColor(int foreColor) { this.foreColor = foreColor; }
+    public synchronized void setBackColor(int backColor) { this.backColor = backColor; }
+
+    /**
+     * Atomically capture all mutable position fields to prevent torn reads
+     * when the VM thread updates position mid-render.
+     * @return array of [locH, locV, locZ, width, height]
+     */
+    public synchronized int[] snapshotPosition() {
+        return new int[]{ locH, locV, locZ, width, height };
+    }
 
     /**
      * Set a dynamic cast member (overrides Score data).
      */
-    public void setDynamicMember(int castLib, int member) {
+    public synchronized void setDynamicMember(int castLib, int member) {
         this.dynamicCastLib = castLib;
         this.dynamicCastMember = member;
         this.hasDynamicMember = true;

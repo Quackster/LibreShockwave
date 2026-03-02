@@ -2,6 +2,7 @@ package com.libreshockwave.player.cast;
 
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.bitmap.Bitmap;
+import com.libreshockwave.cast.BitmapInfo;
 import com.libreshockwave.cast.MemberType;
 import com.libreshockwave.chunks.CastMemberChunk;
 import com.libreshockwave.chunks.KeyTableChunk;
@@ -79,6 +80,14 @@ public class CastMember {
         this.memberType = chunk.memberType();
         this.regPointX = chunk.regPointX();
         this.regPointY = chunk.regPointY();
+
+        // Fallback: parse regPoint from BitmapInfo for members that may have bypassed CastMemberChunk.read()
+        if (regPointX == 0 && regPointY == 0 && chunk.isBitmap()
+                && chunk.specificData() != null && chunk.specificData().length >= 22) {
+            BitmapInfo bi = BitmapInfo.parse(chunk.specificData());
+            regPointX = bi.regX();
+            regPointY = bi.regY();
+        }
     }
 
     /**

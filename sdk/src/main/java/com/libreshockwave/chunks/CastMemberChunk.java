@@ -1,6 +1,7 @@
 package com.libreshockwave.chunks;
 
 import com.libreshockwave.DirectorFile;
+import com.libreshockwave.cast.BitmapInfo;
 import com.libreshockwave.cast.MemberType;
 import com.libreshockwave.format.ChunkType;
 import com.libreshockwave.io.BinaryReader;
@@ -99,6 +100,13 @@ public record CastMemberChunk(
 
         if (dataLen > 0 && reader.bytesLeft() >= dataLen) {
             specificData = reader.readBytes(dataLen);
+        }
+
+        // Parse regPoint from BitmapInfo for bitmap members
+        if (memberType == MemberType.BITMAP && specificData.length >= 22) {
+            BitmapInfo bi = BitmapInfo.parse(specificData);
+            regPointX = bi.regX();
+            regPointY = bi.regY();
         }
 
         // Parse CastInfoChunk (ListChunk structure) to extract name and scriptId

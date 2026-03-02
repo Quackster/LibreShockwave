@@ -14,6 +14,7 @@ public final class RenderSprite {
     private final int y;
     private final int width;
     private final int height;
+    private final int locZ;
     private final boolean visible;
     private final SpriteType type;
     private final CastMemberChunk castMember;
@@ -31,7 +32,7 @@ public final class RenderSprite {
             SpriteType type,
             CastMemberChunk castMember,
             int foreColor, int backColor, int ink, int blend) {
-        this(channel, x, y, width, height, visible, type, castMember, null,
+        this(channel, x, y, width, height, 0, visible, type, castMember, null,
              foreColor, backColor, ink, blend);
     }
 
@@ -39,6 +40,7 @@ public final class RenderSprite {
             int channel,
             int x, int y,
             int width, int height,
+            int locZ,
             boolean visible,
             SpriteType type,
             CastMemberChunk castMember,
@@ -49,6 +51,7 @@ public final class RenderSprite {
         this.y = y;
         this.width = width;
         this.height = height;
+        this.locZ = locZ;
         this.visible = visible;
         this.type = type;
         this.castMember = castMember;
@@ -64,6 +67,7 @@ public final class RenderSprite {
     public int getY() { return y; }
     public int getWidth() { return width; }
     public int getHeight() { return height; }
+    public int getLocZ() { return locZ; }
     public boolean isVisible() { return visible; }
     public SpriteType getType() { return type; }
     public CastMemberChunk getCastMember() { return castMember; }

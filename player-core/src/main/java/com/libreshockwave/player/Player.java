@@ -14,7 +14,9 @@ import com.libreshockwave.player.net.NetManager;
 import com.libreshockwave.player.render.FrameSnapshot;
 import com.libreshockwave.player.render.StageRenderer;
 import com.libreshockwave.player.score.ScoreNavigator;
+import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.LingoVM;
+import com.libreshockwave.vm.TraceListener;
 import com.libreshockwave.vm.builtin.CastLibProvider;
 import com.libreshockwave.vm.builtin.ExternalParamProvider;
 import com.libreshockwave.vm.builtin.MoviePropertyProvider;
@@ -58,6 +60,8 @@ public class Player {
     private final SpriteProperties spriteProperties;
     private final CastLibManager castLibManager;
     private final TimeoutManager timeoutManager;
+
+    private final PlayerTraceListener playerTraceListener;
 
     private PlayerState state = PlayerState.STOPPED;
     private int tempo;  // Frames per second
@@ -139,6 +143,9 @@ public class Player {
         this.frameContext.setTimeoutManager(timeoutManager);
         this.frameContext.getEventDispatcher().setCastLibManager(castLibManager);
         this.frameContext.setActorListSupplier(movieProperties::getActorList);
+        this.playerTraceListener = new PlayerTraceListener();
+        vm.setTraceListener(playerTraceListener);
+
         this.tempo = file != null ? file.getTempo() : 15;
         if (this.tempo <= 0) this.tempo = 15;
 
@@ -212,6 +219,9 @@ public class Player {
         this.frameContext.setTimeoutManager(timeoutManager);
         this.frameContext.getEventDispatcher().setCastLibManager(castLibManager);
         this.frameContext.setActorListSupplier(movieProperties::getActorList);
+        this.playerTraceListener = new PlayerTraceListener();
+        vm.setTraceListener(playerTraceListener);
+
         this.tempo = file != null ? file.getTempo() : 15;
         if (this.tempo <= 0) this.tempo = 15;
 
@@ -430,12 +440,12 @@ public class Player {
     /**
      * Set the debug controller for bytecode-level debugging.
      * The controller will receive TraceListener callbacks and can pause/step the VM.
+     * The controller is installed as a delegate inside our PlayerTraceListener so that
+     * the constructObjectManager interception continues to work alongside debugging.
      */
     public void setDebugController(DebugControllerApi controller) {
         this.debugController = controller;
-        if (controller != null) {
-            vm.setTraceListener(controller);
-        }
+        playerTraceListener.setDelegate(controller);
     }
 
     /**
@@ -620,6 +630,7 @@ public class Player {
             frameContext.reset();
             stageRenderer.reset();
             timeoutManager.clear();
+            playerTraceListener.reset();
             state = PlayerState.STOPPED;
         }
     }
@@ -876,6 +887,68 @@ public class Player {
     private void log(String message) {
         if (debugEnabled) {
             System.out.println("[Player] " + message);
+        }
+    }
+
+    /**
+     * Delegating TraceListener that intercepts constructObjectManager handler exit
+     * to auto-create the fuse_frameProxy timeout. This enables the Fuse Object Manager
+     * to receive prepareFrame system events each frame (the "frameProxy" trick).
+     *
+     * An optional delegate (typically a DebugControllerApi) receives all callbacks
+     * so debugging works alongside this interception.
+     */
+    private class PlayerTraceListener implements TraceListener {
+
+        private TraceListener delegate;
+        private boolean frameProxyCreated;
+
+        void setDelegate(TraceListener delegate) {
+            this.delegate = delegate;
+        }
+
+        void reset() {
+            frameProxyCreated = false;
+        }
+
+        @Override
+        public void onHandlerEnter(HandlerInfo info) {
+            if (delegate != null) delegate.onHandlerEnter(info);
+        }
+
+        @Override
+        public void onHandlerExit(HandlerInfo info, Datum returnValue) {
+            // Intercept: when constructObjectManager returns a ScriptInstance,
+            // register it as a timeout target so it receives prepareFrame events.
+            if (!frameProxyCreated
+                    && info.handlerName().equals("constructObjectManager")
+                    && returnValue instanceof Datum.ScriptInstance) {
+                frameProxyCreated = true;
+                timeoutManager.createTimeout(
+                        "fuse_frameProxy", Integer.MAX_VALUE, "null", returnValue);
+            }
+
+            if (delegate != null) delegate.onHandlerExit(info, returnValue);
+        }
+
+        @Override
+        public void onInstruction(InstructionInfo info) {
+            if (delegate != null) delegate.onInstruction(info);
+        }
+
+        @Override
+        public void onVariableSet(String type, String name, Datum value) {
+            if (delegate != null) delegate.onVariableSet(type, name, value);
+        }
+
+        @Override
+        public void onError(String message, Exception error) {
+            if (delegate != null) delegate.onError(message, error);
+        }
+
+        @Override
+        public void onDebugMessage(String message) {
+            if (delegate != null) delegate.onDebugMessage(message);
         }
     }
 

@@ -131,8 +131,11 @@ public class StageRenderer {
             }
         }
 
-        // Sort by channel (lower channels draw first/behind)
-        sprites.sort((a, b) -> Integer.compare(a.getChannel(), b.getChannel()));
+        // Sort by locZ first, then channel (lower values draw first/behind)
+        sprites.sort((a, b) -> {
+            int cmp = Integer.compare(a.getLocZ(), b.getLocZ());
+            return cmp != 0 ? cmp : Integer.compare(a.getChannel(), b.getChannel());
+        });
 
         return sprites;
     }
@@ -149,19 +152,28 @@ public class StageRenderer {
         // Get or create runtime state
         SpriteState state = spriteRegistry.getOrCreate(channel, data);
 
-        int x = state.getLocH();
-        int y = state.getLocV();
-        int width = state.getWidth();
-        int height = state.getHeight();
+        // Snapshot position atomically to prevent torn reads from VM thread
+        int[] pos = state.snapshotPosition();
+        int x = pos[0];
+        int y = pos[1];
+        int locZ = pos[2];
+        int width = pos[3];
+        int height = pos[4];
         boolean visible = state.isVisible();
 
         // Get cast member
         CastMemberChunk member = file.getCastMemberByIndex(data.castLib(), data.castMember());
 
+        // Apply registration point offset
+        if (member != null) {
+            x -= member.regPointX();
+            y -= member.regPointY();
+        }
+
         RenderSprite.SpriteType type = determineSpriteType(member, data);
 
         return new RenderSprite(
-            channel, x, y, width, height, visible, type, member,
+            channel, x, y, width, height, locZ, visible, type, member, null,
             data.foreColor(), data.backColor(), data.ink(), state.getBlend()
         );
     }
@@ -181,6 +193,14 @@ public class StageRenderer {
             return null;
         }
 
+        // Snapshot position atomically to prevent torn reads from VM thread
+        int[] pos = state.snapshotPosition();
+        int x = pos[0];
+        int y = pos[1];
+        int locZ = pos[2];
+        int width = pos[3];
+        int height = pos[4];
+
         // Look up the cast member - try original DCR first, then external casts
         CastMemberChunk member = file != null
             ? file.getCastMemberByIndex(castLib, castMember) : null;
@@ -193,17 +213,24 @@ public class StageRenderer {
         RenderSprite.SpriteType type = RenderSprite.SpriteType.UNKNOWN;
         if (member != null) {
             type = determineSpriteTypeFromMember(member);
+            // Apply registration point offset from file-loaded member
+            x -= member.regPointX();
+            y -= member.regPointY();
         } else if (castLibManager != null) {
             dynamicMember = castLibManager.getDynamicMember(castLib, castMember);
             if (dynamicMember != null) {
                 type = determineSpriteTypeFromDynamic(dynamicMember);
+                // Apply registration point offset from dynamic member
+                x -= dynamicMember.getRegPointX();
+                y -= dynamicMember.getRegPointY();
             }
         }
 
         return new RenderSprite(
             state.getChannel(),
-            state.getLocH(), state.getLocV(),
-            state.getWidth(), state.getHeight(),
+            x, y,
+            width, height,
+            locZ,
             state.isVisible(),
             type, member, dynamicMember,
             state.getForeColor(), state.getBackColor(), state.getInk(), state.getBlend()
