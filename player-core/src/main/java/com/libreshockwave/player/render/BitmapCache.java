@@ -125,6 +125,7 @@ public class BitmapCache {
     /**
      * Get an ink-processed bitmap for a dynamic (runtime-created) cast member.
      * Synchronous — dynamic members already have their bitmap decoded.
+     * NOT cached because dynamic member bitmaps are mutable (window system updates them).
      */
     public Bitmap getProcessedDynamic(CastMember dynMember, int ink, int backColor) {
         Bitmap bmp = dynMember.getBitmap();
@@ -132,17 +133,10 @@ public class BitmapCache {
             return null;
         }
 
-        int id = dynMember.getMemberNumber();
-        long key = cacheKey(id, ink, backColor);
-
-        Bitmap cached = cache.get(key);
-        if (cached != null) {
-            return cached;
+        if (InkProcessor.shouldProcessInk(ink)) {
+            return InkProcessor.applyInk(bmp, ink, backColor, false, null);
         }
-
-        Bitmap processed = InkProcessor.applyInk(bmp, ink, backColor, false, null);
-        cache.put(key, processed);
-        return processed;
+        return bmp;
     }
 
     /**
