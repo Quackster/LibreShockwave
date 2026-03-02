@@ -1,5 +1,10 @@
 package com.libreshockwave.player;
 
+import com.libreshockwave.cast.BitmapInfo;
+import com.libreshockwave.cast.MemberType;
+import com.libreshockwave.chunks.CastMemberChunk;
+import com.libreshockwave.player.cast.CastLibManager;
+import com.libreshockwave.player.cast.CastMember;
 import com.libreshockwave.player.render.SpriteRegistry;
 import com.libreshockwave.player.sprite.SpriteState;
 import com.libreshockwave.vm.Datum;
@@ -16,9 +21,14 @@ import com.libreshockwave.vm.builtin.SpritePropertyProvider;
 public class SpriteProperties implements SpritePropertyProvider {
 
     private final SpriteRegistry registry;
+    private CastLibManager castLibManager;
 
     public SpriteProperties(SpriteRegistry registry) {
         this.registry = registry;
+    }
+
+    public void setCastLibManager(CastLibManager clm) {
+        this.castLibManager = clm;
     }
 
     @Override
@@ -179,8 +189,10 @@ public class SpriteProperties implements SpritePropertyProvider {
             case "member" -> {
                 if (value instanceof Datum.CastMemberRef cmr) {
                     sprite.setDynamicMember(cmr.castLib(), cmr.member());
+                    autoSizeSprite(sprite, cmr.castLib(), cmr.member());
                 } else {
                     sprite.setDynamicMember(0, value.toInt());
+                    autoSizeSprite(sprite, 0, value.toInt());
                 }
                 return true;
             }
@@ -192,8 +204,11 @@ public class SpriteProperties implements SpritePropertyProvider {
                 int encodedMember = num & 0xFFFF;
                 if (encodedCast > 0 && encodedMember > 0) {
                     sprite.setDynamicMember(encodedCast, encodedMember);
+                    autoSizeSprite(sprite, encodedCast, encodedMember);
                 } else {
-                    sprite.setDynamicMember(sprite.getEffectiveCastLib(), num);
+                    int cl = sprite.getEffectiveCastLib();
+                    sprite.setDynamicMember(cl, num);
+                    autoSizeSprite(sprite, cl, num);
                 }
                 return true;
             }
@@ -251,6 +266,40 @@ public class SpriteProperties implements SpritePropertyProvider {
                 }
                 return false;
             }
+        }
+    }
+
+    /**
+     * Auto-size the sprite to match its member's natural dimensions.
+     * Director automatically adjusts sprite width/height when member is assigned.
+     * This enables Lingo-created sprites (e.g. Logo during loading) to render
+     * at their correct size without explicit width/height setting.
+     */
+    private void autoSizeSprite(SpriteState sprite, int castLib, int memberNum) {
+        if (castLibManager == null || memberNum <= 0) return;
+
+        // Try file-loaded member first (CastMemberChunk)
+        CastMemberChunk chunk = castLibManager.getCastMember(castLib, memberNum);
+        if (chunk != null) {
+            if (chunk.isBitmap() && chunk.specificData() != null && chunk.specificData().length >= 10) {
+                BitmapInfo bi = BitmapInfo.parse(chunk.specificData());
+                sprite.applyIntrinsicSize(bi.width(), bi.height());
+                return;
+            }
+            // For text/button members, use member type specific dimensions
+            if (chunk.memberType() == MemberType.TEXT || chunk.memberType() == MemberType.BUTTON) {
+                CastMember dm = castLibManager.getDynamicMember(castLib, memberNum);
+                if (dm != null) {
+                    sprite.applyIntrinsicSize(dm.getProp("width").toInt(), dm.getProp("height").toInt());
+                }
+            }
+            return;
+        }
+
+        // Try dynamic member (created at runtime via new(#type, castLib))
+        CastMember dm = castLibManager.getDynamicMember(castLib, memberNum);
+        if (dm != null) {
+            sprite.applyIntrinsicSize(dm.getProp("width").toInt(), dm.getProp("height").toInt());
         }
     }
 }

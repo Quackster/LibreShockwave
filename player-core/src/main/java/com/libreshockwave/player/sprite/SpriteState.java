@@ -23,6 +23,9 @@ public class SpriteState {
     private int stretch = 0;
     private int foreColor = 0;
     private int backColor = 0xFFFFFF;
+    private boolean hasForeColor = false;
+    private boolean hasBackColor = false;
+    private boolean hasSizeChanged = false;
 
     // Dynamic member assignment (overrides Score data when set)
     private int dynamicCastLib = -1;
@@ -66,19 +69,21 @@ public class SpriteState {
     public int getStretch() { return stretch; }
     public int getForeColor() { return foreColor; }
     public int getBackColor() { return backColor; }
+    public boolean hasForeColor() { return hasForeColor; }
+    public boolean hasBackColor() { return hasBackColor; }
 
     public synchronized void setLocH(int locH) { this.locH = locH; }
     public synchronized void setLocV(int locV) { this.locV = locV; }
     public synchronized void setLocZ(int locZ) { this.locZ = locZ; }
-    public synchronized void setWidth(int width) { this.width = width; }
-    public synchronized void setHeight(int height) { this.height = height; }
+    public synchronized void setWidth(int width) { this.width = width; this.hasSizeChanged = true; }
+    public synchronized void setHeight(int height) { this.height = height; this.hasSizeChanged = true; }
     public synchronized void setVisible(boolean visible) { this.visible = visible; }
     public synchronized void setPuppet(boolean puppet) { this.puppet = puppet; }
     public synchronized void setInk(int ink) { this.ink = ink; }
     public synchronized void setBlend(int blend) { this.blend = blend; }
     public synchronized void setStretch(int stretch) { this.stretch = stretch; }
-    public synchronized void setForeColor(int foreColor) { this.foreColor = foreColor; }
-    public synchronized void setBackColor(int backColor) { this.backColor = backColor; }
+    public synchronized void setForeColor(int foreColor) { this.foreColor = foreColor; this.hasForeColor = true; }
+    public synchronized void setBackColor(int backColor) { this.backColor = backColor; this.hasBackColor = true; }
 
     /**
      * Atomically capture all mutable position fields to prevent torn reads
@@ -120,6 +125,18 @@ public class SpriteState {
 
     public boolean hasDynamicMember() { return hasDynamicMember; }
     public boolean isDynamic() { return initialData == null; }
+    public boolean hasSizeChanged() { return hasSizeChanged; }
+
+    /**
+     * Apply intrinsic dimensions from a member (e.g., bitmap width/height).
+     * Only applies if the script hasn't explicitly set width/height.
+     */
+    public synchronized void applyIntrinsicSize(int w, int h) {
+        if (!hasSizeChanged && w > 0 && h > 0) {
+            this.width = w;
+            this.height = h;
+        }
+    }
 
     public ScoreChunk.ChannelData getInitialData() { return initialData; }
 }

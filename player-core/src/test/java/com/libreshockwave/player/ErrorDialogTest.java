@@ -3,6 +3,7 @@ package com.libreshockwave.player;
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.player.render.FrameSnapshot;
+import com.libreshockwave.player.render.RenderConfig;
 import com.libreshockwave.player.render.RenderSprite;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.LingoVM;
@@ -52,9 +53,7 @@ public class ErrorDialogTest {
         Player player = new Player(file);
 
         if (file.getConfig() != null) {
-            int stageColor = file.getConfig().stageColor();
-            int rgb = (stageColor & 0xFF) | ((stageColor & 0xFF) << 8) | ((stageColor & 0xFF) << 16);
-            player.getStageRenderer().setBackgroundColor(rgb);
+            player.getStageRenderer().setBackgroundColor(file.getConfig().stageColorRGB());
         }
 
         player.setExternalParams(Map.of(
@@ -413,8 +412,13 @@ public class ErrorDialogTest {
         int h = snapshot.stageHeight() > 0 ? snapshot.stageHeight() : 540;
         BufferedImage canvas = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = canvas.createGraphics();
-        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-        g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        if (RenderConfig.isAntialias()) {
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        } else {
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+            g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_OFF);
+        }
 
         // Background
         g.setColor(new Color(snapshot.backgroundColor()));

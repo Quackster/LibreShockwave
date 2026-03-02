@@ -3,6 +3,7 @@ package com.libreshockwave.player;
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.player.render.FrameSnapshot;
+import com.libreshockwave.player.render.RenderConfig;
 import com.libreshockwave.player.render.RenderSprite;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.LingoVM;
@@ -49,9 +50,7 @@ public class WindowBorderTest {
         Player player = new Player(file);
 
         if (file.getConfig() != null) {
-            int stageColor = file.getConfig().stageColor();
-            int rgb = (stageColor & 0xFF) | ((stageColor & 0xFF) << 8) | ((stageColor & 0xFF) << 16);
-            player.getStageRenderer().setBackgroundColor(rgb);
+            player.getStageRenderer().setBackgroundColor(file.getConfig().stageColorRGB());
         }
 
         player.setExternalParams(Map.of(
@@ -329,7 +328,11 @@ public class WindowBorderTest {
     private static BufferedImage renderComposite(FrameSnapshot snapshot, int w, int h) {
         BufferedImage canvas = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = canvas.createGraphics();
-        g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        if (RenderConfig.isAntialias()) {
+            g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        } else {
+            g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_OFF);
+        }
 
         g.setColor(new Color(snapshot.backgroundColor()));
         g.fillRect(0, 0, w, h);

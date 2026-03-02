@@ -618,10 +618,7 @@ public class PlayerFrame extends JFrame {
 
         // Set stage background color from movie config
         if (file.getConfig() != null) {
-            int stageColor = file.getConfig().stageColor();
-            // Convert Director palette index to RGB (grayscale for now)
-            int rgb = (stageColor & 0xFF) | ((stageColor & 0xFF) << 8) | ((stageColor & 0xFF) << 16);
-            player.getStageRenderer().setBackgroundColor(rgb);
+            player.getStageRenderer().setBackgroundColor(file.getConfig().stageColorRGB());
         }
 
         // Reset debug controller state before connecting to new player

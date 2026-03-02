@@ -22,6 +22,8 @@ public final class RenderSprite {
     private final CastMember dynamicMember; // For runtime-created members (window system, etc.)
     private final int foreColor;
     private final int backColor;
+    private final boolean hasForeColor;
+    private final boolean hasBackColor;
     private final int ink;
     private final int blend;
     private final Bitmap bakedBitmap;
@@ -35,7 +37,7 @@ public final class RenderSprite {
             CastMemberChunk castMember,
             int foreColor, int backColor, int ink, int blend) {
         this(channel, x, y, width, height, 0, visible, type, castMember, null,
-             foreColor, backColor, ink, blend, null);
+             foreColor, backColor, false, false, ink, blend, null);
     }
 
     public RenderSprite(
@@ -47,7 +49,9 @@ public final class RenderSprite {
             SpriteType type,
             CastMemberChunk castMember,
             CastMember dynamicMember,
-            int foreColor, int backColor, int ink, int blend,
+            int foreColor, int backColor,
+            boolean hasForeColor, boolean hasBackColor,
+            int ink, int blend,
             Bitmap bakedBitmap) {
         this.channel = channel;
         this.x = x;
@@ -61,6 +65,8 @@ public final class RenderSprite {
         this.dynamicMember = dynamicMember;
         this.foreColor = foreColor;
         this.backColor = backColor;
+        this.hasForeColor = hasForeColor;
+        this.hasBackColor = hasBackColor;
         this.ink = ink;
         this.blend = blend;
         this.bakedBitmap = bakedBitmap;
@@ -78,6 +84,8 @@ public final class RenderSprite {
     public CastMember getDynamicMember() { return dynamicMember; }
     public int getForeColor() { return foreColor; }
     public int getBackColor() { return backColor; }
+    public boolean hasForeColor() { return hasForeColor; }
+    public boolean hasBackColor() { return hasBackColor; }
     public int getInk() { return ink; }
     public int getBlend() { return blend; }
     public Bitmap getBakedBitmap() { return bakedBitmap; }
@@ -87,7 +95,8 @@ public final class RenderSprite {
      */
     public RenderSprite withBakedBitmap(Bitmap baked) {
         return new RenderSprite(channel, x, y, width, height, locZ, visible, type,
-            castMember, dynamicMember, foreColor, backColor, ink, blend, baked);
+            castMember, dynamicMember, foreColor, backColor, hasForeColor, hasBackColor,
+            ink, blend, baked);
     }
 
     /**

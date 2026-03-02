@@ -1,6 +1,7 @@
 package com.libreshockwave.chunks;
 
 import com.libreshockwave.DirectorFile;
+import com.libreshockwave.bitmap.Palette;
 import com.libreshockwave.format.ChunkType;
 import com.libreshockwave.io.BinaryReader;
 
@@ -23,6 +24,7 @@ public record ConfigChunk(
     int tempo,
     int bgColor,
     int stageColor,
+    int stageColorRGB,
     int commentFont,
     int commentSize,
     int commentStyle,
@@ -51,6 +53,8 @@ public record ConfigChunk(
         // First read directorVersion from offset 36 to determine format
         reader.seek(36);
         int directorVersion = reader.readI16() & 0xFFFF;
+        // Director 7+ uses raw version >= 0x208 (520)
+        boolean isD7Plus = directorVersion >= 0x208;
 
         // Now read from the beginning
         reader.seek(0);
@@ -64,11 +68,40 @@ public record ConfigChunk(
         /* 12 */ int minMember = reader.readI16();
         /* 14 */ int maxMember = reader.readI16();
         /* 16 */ reader.skip(2); // field9, field10
-        /* 18 */ reader.skip(2); // preD7field11 or D7stageColorGB
+
+        // Offset 18-19: D7+ stores stage color G and B bytes here
+        int d7StageColorG = 0, d7StageColorB = 0;
+        if (isD7Plus) {
+            /* 18 */ d7StageColorG = reader.readU8();
+            /* 19 */ d7StageColorB = reader.readU8();
+        } else {
+            /* 18 */ reader.skip(2); // preD7field11
+        }
+
         /* 20 */ int commentFont = reader.readI16();
         /* 22 */ int commentSize = reader.readI16();
         /* 24 */ int commentStyle = reader.readU16();
-        /* 26 */ int stageColor = reader.readI16(); // preD7stageColor or D7stageColorIsRGB+R
+
+        // Offset 26-27: D7+ stores isRGB flag + R byte; pre-D7 stores palette index as u16
+        int stageColor;
+        int stageColorRGB;
+        if (isD7Plus) {
+            int d7IsRgb = reader.readU8();    // offset 26
+            int d7StageColorR = reader.readU8(); // offset 27
+            stageColor = (d7IsRgb << 8) | d7StageColorR; // raw value for backward compat
+            if (d7IsRgb != 0) {
+                // RGB mode: use the color components directly
+                stageColorRGB = (d7StageColorR << 16) | (d7StageColorG << 8) | d7StageColorB;
+            } else {
+                // Palette index mode: resolve via Mac system palette
+                stageColorRGB = Palette.SYSTEM_MAC_PALETTE.getColor(d7StageColorR & 0xFF);
+            }
+        } else {
+            /* 26 */ stageColor = reader.readI16();
+            // Pre-D7: palette index stored as u16, resolve via Mac system palette
+            stageColorRGB = Palette.SYSTEM_MAC_PALETTE.getColor(stageColor & 0xFF);
+        }
+
         /* 28 */ int bgColor = reader.readI16(); // bitDepth
         /* 30 */ reader.skip(2); // field17, field18
         /* 32 */ reader.skip(4); // field19
@@ -90,7 +123,7 @@ public record ConfigChunk(
             directorVersion,
             stageTop, stageLeft, stageBottom, stageRight,
             minMember, maxMember,
-            tempo, bgColor, stageColor,
+            tempo, bgColor, stageColor, stageColorRGB,
             commentFont, commentSize, commentStyle,
             defaultPalette, movieVersion, platform
         );

@@ -61,11 +61,12 @@ public record FrameSnapshot(
                 if (b == null && s.getDynamicMember() != null) {
                     b = cache.getProcessedDynamic(s.getDynamicMember(), s.getInk(), s.getBackColor());
                 }
-                // Apply Director's sprite-level foreColor/backColor colorization
-                // for dynamic member bitmaps (window system buffers).
-                // The Lingo window system creates white bitmap buffers and uses
-                // sprite.color to control their visual color at render time.
-                if (b != null && s.getDynamicMember() != null
+                // Apply Director's sprite-level foreColor/backColor colorization.
+                // Only applied when Lingo has explicitly set foreColor or backColor
+                // on the sprite (via sprite.color, sprite.foreColor, sprite.backColor, etc.).
+                // Sprites with default colors (foreColor=0, backColor=0xFFFFFF) from Score
+                // data are NOT colorized — matching Director's actual behavior.
+                if (b != null && (s.hasForeColor() || s.hasBackColor())
                         && InkProcessor.allowsColorize(s.getInk())) {
                     b = InkProcessor.applyForeColorRemap(b, s.getForeColor(), s.getBackColor());
                 }

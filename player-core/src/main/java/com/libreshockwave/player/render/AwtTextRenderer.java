@@ -33,12 +33,13 @@ public class AwtTextRenderer implements TextRenderer {
         BufferedImage bufImg = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g2d = bufImg.createGraphics();
 
-        // Set rendering hints
-        if (antialias) {
+        // Set rendering hints — use global config, allow per-member override
+        boolean aa = antialias || RenderConfig.isAntialias();
+        if (aa) {
             g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
                     RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+            g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
         }
-        g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
 
         // Fill background
         g2d.setColor(new Color(bgColor, true));
@@ -86,7 +87,7 @@ public class AwtTextRenderer implements TextRenderer {
             g2d.dispose();
             bufImg = new BufferedImage(width, neededHeight, BufferedImage.TYPE_INT_ARGB);
             g2d = bufImg.createGraphics();
-            if (antialias) {
+            if (aa) {
                 g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
                         RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
             }

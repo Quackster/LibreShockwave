@@ -137,12 +137,17 @@ public class Player {
         this.vm = new LingoVM(file);
         this.frameContext = new FrameContext(file, vm);
         this.stageRenderer = new StageRenderer(file);
+        // Apply stage background color from movie config (palette-aware)
+        if (file != null && file.getConfig() != null) {
+            this.stageRenderer.setBackgroundColor(file.getConfig().stageColorRGB());
+        }
         this.netManager = new NetManager();
         this.xtraManager = new XtraManager();
         this.movieProperties = new MovieProperties(this, file);
         this.spriteProperties = new SpriteProperties(stageRenderer.getSpriteRegistry());
         this.castLibManager = new CastLibManager(file);
         this.stageRenderer.setCastLibManager(castLibManager);
+        this.spriteProperties.setCastLibManager(castLibManager);
         this.timeoutManager = new TimeoutManager();
         this.bitmapCache = new BitmapCache();
         this.windowManager = new WindowManager();
@@ -226,6 +231,10 @@ public class Player {
         this.vm = new LingoVM(file);
         this.frameContext = new FrameContext(file, vm);
         this.stageRenderer = new StageRenderer(file);
+        // Apply stage background color from movie config (palette-aware)
+        if (file != null && file.getConfig() != null) {
+            this.stageRenderer.setBackgroundColor(file.getConfig().stageColorRGB());
+        }
         this.netManager = null;
         this.overrideNetProvider = netProvider;
         this.xtraManager = new XtraManager();
@@ -233,6 +242,7 @@ public class Player {
         this.spriteProperties = new SpriteProperties(stageRenderer.getSpriteRegistry());
         this.castLibManager = new CastLibManager(file);
         this.stageRenderer.setCastLibManager(castLibManager);
+        this.spriteProperties.setCastLibManager(castLibManager);
         this.timeoutManager = new TimeoutManager();
         this.bitmapCache = new BitmapCache(false); // Synchronous mode for TeaVM
         // Set simple text renderer for TeaVM/WASM (no AWT)
@@ -593,10 +603,11 @@ public class Player {
      * This runs synchronously - use playAsync() when debugger is enabled.
      */
     public void play() {
-        if (state == PlayerState.STOPPED) {
+        boolean wasStopped = state == PlayerState.STOPPED;
+        state = PlayerState.PLAYING;  // Set first so tick() works even if prepareMovie errors
+        if (wasStopped) {
             prepareMovie();
         }
-        state = PlayerState.PLAYING;
         log("play()");
     }
 

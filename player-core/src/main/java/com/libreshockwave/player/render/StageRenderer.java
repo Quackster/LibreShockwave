@@ -183,7 +183,9 @@ public class StageRenderer {
 
         return new RenderSprite(
             channel, x, y, width, height, locZ, visible, type, member, null,
-            data.resolvedForeColor(), data.backColor(), data.ink(), state.getBlend(), null
+            data.resolvedForeColor(), data.backColor(),
+            state.hasForeColor(), state.hasBackColor(),
+            data.ink(), state.getBlend(), null
         );
     }
 
@@ -225,6 +227,13 @@ public class StageRenderer {
             // Apply registration point offset from file-loaded member
             x -= member.regPointX();
             y -= member.regPointY();
+            // Fallback auto-size: if sprite still has 0x0 dimensions, derive from member
+            if (width == 0 && height == 0 && member.isBitmap()
+                    && member.specificData() != null && member.specificData().length >= 10) {
+                var bi = com.libreshockwave.cast.BitmapInfo.parse(member.specificData());
+                width = bi.width();
+                height = bi.height();
+            }
         } else if (castLibManager != null) {
             dynamicMember = castLibManager.getDynamicMember(castLib, castMember);
             if (dynamicMember != null) {
@@ -232,6 +241,15 @@ public class StageRenderer {
                 // Apply registration point offset from dynamic member
                 x -= dynamicMember.getRegPointX();
                 y -= dynamicMember.getRegPointY();
+                // Fallback auto-size for dynamic members
+                if (width == 0 && height == 0) {
+                    int dw = dynamicMember.getProp("width").toInt();
+                    int dh = dynamicMember.getProp("height").toInt();
+                    if (dw > 0 && dh > 0) {
+                        width = dw;
+                        height = dh;
+                    }
+                }
             }
         }
 
@@ -242,7 +260,9 @@ public class StageRenderer {
             locZ,
             state.isVisible(),
             type, member, dynamicMember,
-            state.getForeColor(), state.getBackColor(), state.getInk(), state.getBlend(), null
+            state.getForeColor(), state.getBackColor(),
+            state.hasForeColor(), state.hasBackColor(),
+            state.getInk(), state.getBlend(), null
         );
     }
 

@@ -115,6 +115,10 @@ public final class InkProcessor {
 
     /**
      * Apply Background Transparent ink: pixels matching bgColorRGB become fully transparent.
+     * <p>
+     * For 32-bit bitmaps, uses graduated alpha for pixels near the background color.
+     * This converts AWT's RGB-domain anti-aliasing into proper alpha-domain anti-aliasing,
+     * avoiding white halo artifacts around anti-aliased text glyphs.
      */
     static Bitmap applyBackgroundTransparent(Bitmap src, int bgColorRGB) {
         int w = src.getWidth();
@@ -122,12 +126,38 @@ public final class InkProcessor {
         int[] srcPixels = src.getPixels();
         int[] result = new int[w * h];
 
-        for (int i = 0; i < srcPixels.length; i++) {
-            int rgb = srcPixels[i] & 0xFFFFFF;
-            if (rgb == bgColorRGB) {
-                result[i] = 0x00000000; // Fully transparent
-            } else {
-                result[i] = srcPixels[i] | 0xFF000000; // Fully opaque
+        if (src.getBitDepth() == 32) {
+            // Graduated alpha: near-bg pixels get proportional transparency
+            int bgR = (bgColorRGB >> 16) & 0xFF;
+            int bgG = (bgColorRGB >> 8) & 0xFF;
+            int bgB = bgColorRGB & 0xFF;
+            int threshold = 32;
+
+            for (int i = 0; i < srcPixels.length; i++) {
+                int r = (srcPixels[i] >> 16) & 0xFF;
+                int g = (srcPixels[i] >> 8) & 0xFF;
+                int b = srcPixels[i] & 0xFF;
+                int maxDiff = Math.max(Math.abs(r - bgR),
+                              Math.max(Math.abs(g - bgG), Math.abs(b - bgB)));
+                if (maxDiff == 0) {
+                    result[i] = 0x00000000; // Exact match: fully transparent
+                } else if (maxDiff < threshold) {
+                    // Graduated: proportional alpha
+                    int alpha = maxDiff * 255 / threshold;
+                    result[i] = (alpha << 24) | (srcPixels[i] & 0xFFFFFF);
+                } else {
+                    result[i] = srcPixels[i] | 0xFF000000; // Fully opaque
+                }
+            }
+        } else {
+            // Paletted/indexed bitmaps: exact matching only
+            for (int i = 0; i < srcPixels.length; i++) {
+                int rgb = srcPixels[i] & 0xFFFFFF;
+                if (rgb == bgColorRGB) {
+                    result[i] = 0x00000000; // Fully transparent
+                } else {
+                    result[i] = srcPixels[i] | 0xFF000000; // Fully opaque
+                }
             }
         }
 

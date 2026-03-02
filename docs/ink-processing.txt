@@ -1,0 +1,180 @@
+LibreShockwave Ink Processing
+==============================
+
+This document describes how LibreShockwave implements Director's ink effects,
+including implementation-specific behavior that differs from or extends the
+original Director runtime.
+
+Source files:
+  player-core/.../render/RenderConfig.java      -- global AA toggle (single source of truth)
+  player-core/.../render/InkProcessor.java       -- ink effects and graduated alpha
+  player-core/.../render/AwtTextRenderer.java    -- AWT text rendering (reads RenderConfig)
+  player-core/.../render/FrameSnapshot.java      -- frame capture, triggers ink processing
+  player-core/.../cast/CastMember.java           -- per-member antialias property
+  player/src/.../StagePanel.java                 -- Swing compositor (reads RenderConfig)
+
+Director reference: docs/Scripting_Reference.txt (ink property, line ~57213)
+
+
+Ink Modes Processed
+-------------------
+
+The following ink modes receive per-pixel transparency processing:
+
+  7  - Not Ghost
+  8  - Matte
+  33 - Add Pin
+  35 - Subtract Pin
+  36 - Background Transparent
+  40 - Lighten
+  41 - Darken
+
+Ink 8 (Matte) uses BFS flood-fill from image edges to make border-connected
+background pixels transparent while preserving interior pixels of the same
+color. See InkProcessor.applyMatte().
+
+Inks 7, 33, 35, 36, 40, 41 use color-keying: pixels matching the resolved
+background color become transparent. See InkProcessor.applyBackgroundTransparent().
+
+Ink processing is triggered during frame capture in FrameSnapshot.capture(),
+which calls InkProcessor.applyInk() for sprites whose ink mode requires it.
+
+
+Background Color Resolution
+---------------------------
+
+For color-keyed inks (36 etc.), the background color is resolved as follows:
+
+  1. If the bitmap is 32-bit with native alpha (useAlpha flag), ink processing
+     is skipped entirely -- the bitmap's own alpha channel is used as-is.
+
+  2. If backColor > 255, it is treated as a packed RGB value (backColor &
+     0xFFFFFF).
+
+  3. For 32-bit bitmaps without alpha and non-Copy ink, white (0xFFFFFF) is
+     forced as the background color.
+
+  4. Otherwise, backColor is treated as a Director palette index where
+     0 = white (255,255,255) and 255 = black (0,0,0).
+
+
+Graduated Alpha for Background Transparent (ink 36)
+----------------------------------------------------
+
+Director's ink 36 removes pixels matching the sprite's backColor, making them
+fully transparent. In the original Director runtime, bitmaps are typically
+paletted (indexed color), so background pixels are an exact color match.
+
+LibreShockwave generates some bitmaps dynamically at runtime using Java AWT
+(e.g., text member .image rendering via AwtTextRenderer). AWT renders anti-
+aliased text onto an opaque background, producing sub-pixel edge blending in
+the RGB domain. For example, black text on a white background creates near-
+white edge pixels (e.g., RGB 254,254,254) that do not exactly match the white
+background key color (255,255,255).
+
+With exact-match color keying, these near-background edge pixels remain fully
+opaque, creating visible white halo artifacts around text glyphs. This is
+especially noticeable when the text is composited over a non-white surface
+(e.g., a colorized window background).
+
+To solve this, LibreShockwave uses graduated alpha for 32-bit bitmaps in
+Background Transparent mode:
+
+  - Exact match with bg color  -->  fully transparent (alpha = 0)
+  - Within threshold of bg     -->  proportional alpha (smooth fade)
+  - Beyond threshold           -->  fully opaque (alpha = 255)
+
+The threshold is 32 (out of 255). Alpha is calculated as:
+
+    maxDiff = max(|R - bgR|, |G - bgG|, |B - bgB|)
+    alpha   = maxDiff * 255 / threshold
+
+This effectively converts AWT's RGB-domain anti-aliasing into proper alpha-
+domain anti-aliasing, producing clean text edges when composited.
+
+Scope of graduated alpha:
+
+  - Only applies to 32-bit bitmaps. Paletted/indexed bitmaps (bitDepth <= 8)
+    use exact matching only, preserving original Director behavior.
+
+  - 32-bit bitmaps with native alpha (useAlpha=true) are already skipped
+    before reaching this code path, so they are unaffected.
+
+  - File-loaded 32-bit bitmaps without alpha rarely have anti-aliased edges
+    near the background color, so the effect is negligible for non-text
+    content.
+
+
+AWT Text Rendering and Anti-Aliasing Artifacts
+------------------------------------------------
+
+LibreShockwave renders dynamic text members using Java AWT. See
+AwtTextRenderer.renderText() which creates a BufferedImage (TYPE_INT_ARGB),
+fills it with the background color, and draws text using Graphics2D. The
+rendered bitmap is returned via CastMember's .image property handler, which
+Lingo scripts use to blit text into sprite buffers (e.g., the Writer class
+pattern: new(#bitmap) -> copyPixels from text .image).
+
+AWT's anti-aliasing blends glyph edges with the background color in the RGB
+domain. For black text on white, this produces a fringe of near-white pixels
+(e.g., 254,254,254 or 250,252,251) around each glyph. These pixels are fully
+opaque -- the anti-aliasing lives in the color channels, not the alpha channel.
+
+When these text bitmaps are displayed with ink 36 (Background Transparent), the
+ink processor must remove the white background. Without graduated alpha, the
+near-white fringe pixels survive the exact-match color key and appear as a
+visible white halo around every letter. This halo is especially obvious when
+the text is composited over a dark or colored surface (e.g., a window
+background that has been colorized via foreColor/backColor remapping).
+
+The graduated alpha approach (described above) converts the RGB-domain fringe
+into alpha-domain transparency, producing clean glyph edges that blend smoothly
+with whatever surface is behind them.
+
+Global Anti-Aliasing Control (RenderConfig)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+All anti-aliasing behavior is controlled from a single place:
+
+    RenderConfig.isAntialias()   -- returns the global flag
+    RenderConfig.setAntialias()  -- changes it at runtime
+
+See: player-core/.../render/RenderConfig.java
+
+The flag defaults to false. When false:
+
+  - AwtTextRenderer skips text AA hints (crisp pixel text)
+  - StagePanel uses VALUE_ANTIALIAS_OFF and NEAREST_NEIGHBOR interpolation
+  - Test harnesses (ErrorDialogTest, WindowBorderTest) use the same setting
+
+When true:
+
+  - AwtTextRenderer enables VALUE_TEXT_ANTIALIAS_ON
+  - StagePanel enables VALUE_ANTIALIAS_ON and BILINEAR interpolation
+  - The graduated alpha in InkProcessor handles the resulting fringe pixels
+
+Per-member override: CastMember.textAntialias (Lingo: member.antialias) can
+enable AA for individual text members regardless of the global setting.
+AwtTextRenderer uses (perMemberAA || RenderConfig.isAntialias()).
+
+Director's original runtime rendered text without sub-pixel smoothing, and the
+combination of anti-aliased edges with color-key transparency creates more
+problems than it solves. Director was a pixel-art-era authoring tool and its
+content expects crisp, unsmoothed compositing.
+
+
+ForeColor / BackColor Colorization
+-----------------------------------
+
+Separate from ink processing, Director supports sprite-level foreColor/backColor
+colorization for Copy (ink 0) and Matte (ink 8/9) modes. This remaps bitmap
+pixels based on grayscale intensity:
+
+  - White pixels (gray = 255) --> foreColor
+  - Black pixels (gray = 0)   --> backColor
+  - Gray pixels               --> interpolated between backColor and foreColor
+
+This is how Director's window system creates dark borders from white bitmap
+pieces (foreColor=BLACK) and preserves white content areas (foreColor=WHITE).
+
+See InkProcessor.applyForeColorRemap() and InkProcessor.allowsColorize().

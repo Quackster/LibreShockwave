@@ -9,6 +9,7 @@ import com.libreshockwave.chunks.KeyTableChunk;
 import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.chunks.TextChunk;
 import com.libreshockwave.format.ChunkType;
+import com.libreshockwave.player.render.RenderConfig;
 import com.libreshockwave.player.render.TextRenderer;
 import com.libreshockwave.vm.Datum;
 
@@ -63,7 +64,7 @@ public class CastMember {
     private int textColor = 0xFF000000; // ARGB black
     private int textBgColor = 0xFFFFFFFF; // ARGB white
     private boolean textWordWrap = false;
-    private boolean textAntialias = true;
+    private boolean textAntialias = false;
     private int textBoxType = 0; // 0 = adjust to fit, 1 = fixed
     private int textRectLeft = 0;
     private int textRectTop = 0;

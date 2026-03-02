@@ -143,12 +143,72 @@ tasks.register('runWindowStepTest', JavaExec) {
     }
 }
 
+// Task to run error dialog diagnostic test
+tasks.register('runErrorDialogTest', JavaExec) {
+    group = 'verification'
+    description = 'Diagnostic test for error dialog window rendering'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.ErrorDialogTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+// Task to validate window border rendering (foreColor colorization)
+tasks.register('runWindowBorderTest', JavaExec) {
+    group = 'verification'
+    description = 'Validate error dialog window borders render with correct colors'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.WindowBorderTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+// Task to validate stage background color and Lingo sprite pipeline
+tasks.register('runStageBackgroundTest', JavaExec) {
+    group = 'verification'
+    description = 'Validate stage background color (D7+ palette-aware) and Lingo sprite pipeline'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.StageBackgroundTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+// Task to dump config chunk bytes for debugging
+tasks.register('runConfigDumpTest', JavaExec) {
+    group = 'verification'
+    description = 'Dump raw config chunk bytes for D7+ stage color verification'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.ConfigDumpTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
 // Task to debug cast lib scripts
 tasks.register('runCastLibDebugTest', JavaExec) {
     group = 'verification'
     description = 'Debug cast lib scripts'
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'com.libreshockwave.player.CastLibDebugTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+// Task to validate Lingo sprite pipeline (property flow, sizing, z-order, ink)
+tasks.register('runSpritePipelineTest', JavaExec) {
+    group = 'verification'
+    description = 'Validate Lingo sprite creation pipeline and rendering order'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.SpritePipelineTest'
     dependsOn compileTestJava
     javaLauncher = javaToolchains.launcherFor {
         languageVersion = JavaLanguageVersion.of(21)
