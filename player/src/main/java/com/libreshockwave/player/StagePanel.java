@@ -179,12 +179,22 @@ public class StagePanel extends JPanel {
     }
 
     private void drawBitmap(Graphics2D g, RenderSprite sprite, int x, int y, int width, int height) {
+        BufferedImage img = null;
+
+        // Try file-loaded cast member first
         CastMemberChunk member = sprite.getCastMember();
-        if (member == null) {
-            return;
+        if (member != null) {
+            img = getCachedBitmap(member);
         }
 
-        BufferedImage img = getCachedBitmap(member);
+        // Fall back to dynamic member bitmap (window system, runtime-created members)
+        if (img == null && sprite.getDynamicMember() != null) {
+            Bitmap bmp = sprite.getDynamicMember().getBitmap();
+            if (bmp != null) {
+                img = bmp.toBufferedImage();
+            }
+        }
+
         if (img == null) {
             return;
         }

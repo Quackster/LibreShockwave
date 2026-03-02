@@ -44,6 +44,9 @@ public class CastLib {
     // Scripts indexed by member number
     private final Map<Integer, ScriptChunk> scripts = new HashMap<>();
 
+    // Total slot count (including empty slots) - for "the number of castMembers"
+    private int totalSlotCount = 0;
+
     // Reference to the source file
     private DirectorFile sourceFile;
     private final CastChunk castChunk;
@@ -130,6 +133,9 @@ public class CastLib {
         // Get minMember offset
         int minMember = getMinMember();
 
+        // Track total slot count (including empty slots) for "the number of castMembers"
+        totalSlotCount = castChunk.memberIds().size();
+
         // Load members from cast chunk
         for (int i = 0; i < castChunk.memberIds().size(); i++) {
             int chunkId = castChunk.memberIds().get(i);
@@ -179,6 +185,16 @@ public class CastLib {
         }
 
         return 1;
+    }
+
+    /**
+     * Get raw member chunks map for diagnostic access.
+     */
+    public Map<Integer, CastMemberChunk> getMemberChunks() {
+        if (!isLoaded()) {
+            load();
+        }
+        return memberChunks;
     }
 
     // Accessors
@@ -234,13 +250,17 @@ public class CastLib {
     }
 
     /**
-     * Get the number of members in this cast library.
+     * Get the total number of member slots in this cast library (including empty slots).
+     * This matches Director's "the number of castMembers of castLib N" which returns
+     * the total slot count, not just the non-empty member count.
      */
     public int getMemberCount() {
         if (!isLoaded()) {
             load();
         }
-        return memberChunks.size();
+        // Return total slot count (including empties) for correct iteration in preIndexMembers.
+        // If totalSlotCount wasn't set (e.g., empty/unloaded cast), fall back to memberChunks size.
+        return totalSlotCount > 0 ? totalSlotCount : memberChunks.size();
     }
 
     /**
@@ -510,6 +530,7 @@ public class CastLib {
 
         // Load members from the external cast
         var extCastChunk = externalCasts.get(0);
+        totalSlotCount = extCastChunk.memberIds().size();
         for (int i = 0; i < extCastChunk.memberIds().size(); i++) {
             int chunkId = extCastChunk.memberIds().get(i);
             if (chunkId <= 0) {

@@ -99,16 +99,48 @@ public sealed interface Datum {
         public String toString() { return "<script instance " + scriptId + ">"; }
     }
 
-    /** Point value */
-    record Point(int x, int y) implements Datum {
-        @Override
-        public String toString() { return "point(" + x + ", " + y + ")"; }
+    /** Point value - mutable to match Director's value semantics (setAt support) */
+    final class Point implements Datum {
+        private int x, y;
+        public Point(int x, int y) { this.x = x; this.y = y; }
+        public int x() { return x; }
+        public int y() { return y; }
+        public void setX(int x) { this.x = x; }
+        public void setY(int y) { this.y = y; }
+        public void setComponent(int index, int value) {
+            switch (index) { case 1 -> x = value; case 2 -> y = value; }
+        }
+        @Override public String toString() { return "point(" + x + ", " + y + ")"; }
+        @Override public boolean equals(Object o) {
+            return o instanceof Point p && x == p.x && y == p.y;
+        }
+        @Override public int hashCode() { return Objects.hash(x, y); }
     }
 
-    /** Rectangle value */
-    record Rect(int left, int top, int right, int bottom) implements Datum {
-        @Override
-        public String toString() { return "rect(" + left + ", " + top + ", " + right + ", " + bottom + ")"; }
+    /** Rectangle value - mutable to match Director's value semantics (setAt support) */
+    final class Rect implements Datum {
+        private int left, top, right, bottom;
+        public Rect(int left, int top, int right, int bottom) {
+            this.left = left; this.top = top; this.right = right; this.bottom = bottom;
+        }
+        public int left() { return left; }
+        public int top() { return top; }
+        public int right() { return right; }
+        public int bottom() { return bottom; }
+        public void setLeft(int v) { left = v; }
+        public void setTop(int v) { top = v; }
+        public void setRight(int v) { right = v; }
+        public void setBottom(int v) { bottom = v; }
+        public void setComponent(int index, int value) {
+            switch (index) { case 1 -> left = value; case 2 -> top = value; case 3 -> right = value; case 4 -> bottom = value; }
+        }
+        public int width() { return right - left; }
+        public int height() { return bottom - top; }
+        @Override public String toString() { return "rect(" + left + ", " + top + ", " + right + ", " + bottom + ")"; }
+        @Override public boolean equals(Object o) {
+            return o instanceof Rect r && left == r.left && top == r.top && right == r.right && bottom == r.bottom;
+        }
+        @Override public int hashCode() { return Objects.hash(left, top, right, bottom); }
     }
 
     /** Color value */
@@ -368,8 +400,8 @@ public sealed interface Datum {
             case Float f -> f;
             case Str s -> s;
             case Symbol sym -> sym;
-            case Point p -> p;
-            case Rect r -> r;
+            case Point p -> new Point(p.x(), p.y());
+            case Rect r -> new Rect(r.left(), r.top(), r.right(), r.bottom());
             case Color c -> c;
             case ImageRef ir -> new ImageRef(ir.bitmap().copy());
             case SpriteRef sr -> sr;
