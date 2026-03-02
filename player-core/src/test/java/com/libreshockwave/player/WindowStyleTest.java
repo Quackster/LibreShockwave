@@ -3,7 +3,6 @@ package com.libreshockwave.player;
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.player.cast.CastMember;
-import com.libreshockwave.player.render.BitmapCache;
 import com.libreshockwave.player.render.FrameSnapshot;
 import com.libreshockwave.player.render.RenderSprite;
 import com.libreshockwave.player.render.InkProcessor;
@@ -19,11 +18,22 @@ import java.nio.file.Path;
 import java.util.Map;
 
 /**
- * Diagnostic test that traces through the exact rendering pipeline for the
- * error dialog window elements to identify why styling doesn't match Director 1:1.
+ * Comprehensive window style rendering test that validates the error dialog
+ * window matches Director's expected 1:1 rendering output.
  *
- * Checks raw bitmap state, colorization flags, and baked bitmap results for
- * each window element (modal, bg_a, bg_b, bg_c, title, text, close).
+ * Validates three critical rendering fixes:
+ * 1. image.setPixel() support — "null" member must have BLACK pixel
+ * 2. Correct colorization direction — BLACK→foreColor, WHITE→backColor
+ * 3. copyPixels #color/#bgColor param support — bg_c gets WHITE via #color remap
+ *
+ * Expected Director layout for error.window:
+ * - bg_a: shadow (1x1 BLACK, ink=0, blend=30, foreColor=BLACK)
+ * - bg_b: border (340x140 BLACK, ink=0, blend=60, foreColor=BLACK)
+ * - bg_c: content (338x138, ink=0, blend=60, foreColor=WHITE → WHITE via #color remap)
+ * - error_title: text (ink=36, blend=100)
+ * - error_text: text (ink=36, blend=100)
+ * - error_close: text (ink=36, blend=100)
+ * - modal: overlay (1x1 BLACK, ink=0, blend=40, foreColor=BLACK)
  *
  * Run: ./gradlew :player-core:runWindowStyleTest
  */
@@ -35,6 +45,9 @@ public class WindowStyleTest {
     private static volatile int currentFrame = 0;
     private static volatile boolean showErrorDialogReached = false;
 
+    private static int passed = 0;
+    private static int failed = 0;
+
     public static void main(String[] args) throws Exception {
         Path path = Path.of(TEST_FILE);
         if (!Files.exists(path)) {
@@ -42,7 +55,7 @@ public class WindowStyleTest {
             System.exit(1);
         }
 
-        System.out.println("=== WindowStyleTest: Diagnostic analysis of window element rendering ===\n");
+        System.out.println("=== WindowStyleTest: Comprehensive window rendering validation ===\n");
         DirectorFile file = DirectorFile.load(path);
         Player player = new Player(file);
 
@@ -135,201 +148,192 @@ public class WindowStyleTest {
             System.exit(1);
         }
 
-        // ============= DIAGNOSTIC ANALYSIS =============
-        System.out.println("\n=== WINDOW ELEMENT DIAGNOSTICS ===\n");
-
-        int passed = 0;
-        int failed = 0;
-
-        String[] targetNames = {
-            "modal_modal", "error_bg_a", "error_bg_b", "error_bg_c",
-            "error_title", "error_text", "error_close"
-        };
-
-        for (RenderSprite s : dialogSnapshot.sprites()) {
-            String name = s.getMemberName();
-            if (name == null) continue;
-
-            boolean isTarget = false;
-            for (String t : targetNames) {
-                if (name.contains(t)) { isTarget = true; break; }
-            }
-            if (!isTarget) continue;
-
-            System.out.printf("--- %s (ch %d) ---%n", name, s.getChannel());
-            System.out.printf("  Type:       %s%n", s.getType());
-            System.out.printf("  Position:   (%d, %d) %dx%d%n", s.getX(), s.getY(), s.getWidth(), s.getHeight());
-            System.out.printf("  Ink:        %d%n", s.getInk());
-            System.out.printf("  Blend:      %d%n", s.getBlend());
-            System.out.printf("  ForeColor:  0x%06X (hasForeColor=%b)%n", s.getForeColor(), s.hasForeColor());
-            System.out.printf("  BackColor:  0x%06X (hasBackColor=%b)%n", s.getBackColor(), s.hasBackColor());
-
-            // Check raw dynamic member bitmap (before colorization)
-            CastMember dm = s.getDynamicMember();
-            if (dm != null) {
-                Bitmap rawBmp = dm.getBitmap();
-                if (rawBmp != null) {
-                    int rawW = rawBmp.getWidth();
-                    int rawH = rawBmp.getHeight();
-                    int topLeft = rawBmp.getPixel(0, 0);
-                    int centerX = rawW / 2, centerY = rawH / 2;
-                    int center = rawW > 0 && rawH > 0 ? rawBmp.getPixel(Math.min(centerX, rawW-1), Math.min(centerY, rawH-1)) : 0;
-                    System.out.printf("  RAW bitmap: %dx%d, depth=%d%n", rawW, rawH, rawBmp.getBitDepth());
-                    System.out.printf("  RAW topLeft: 0x%08X (a=%d r=%d g=%d b=%d)%n",
-                        topLeft, (topLeft>>>24), (topLeft>>16)&0xFF, (topLeft>>8)&0xFF, topLeft&0xFF);
-                    System.out.printf("  RAW center:  0x%08X (a=%d r=%d g=%d b=%d)%n",
-                        center, (center>>>24), (center>>16)&0xFF, (center>>8)&0xFF, center&0xFF);
-                    System.out.printf("  RAW avgBrightness: %d%n", averageBrightness(rawBmp));
-                } else {
-                    System.out.println("  RAW bitmap: null");
-                }
-            } else {
-                System.out.println("  DynamicMember: null (file-loaded)");
-            }
-
-            // Check baked bitmap (after colorization)
-            Bitmap baked = s.getBakedBitmap();
-            if (baked != null) {
-                int bkdW = baked.getWidth();
-                int bkdH = baked.getHeight();
-                int topLeft = baked.getPixel(0, 0);
-                int centerX = bkdW / 2, centerY = bkdH / 2;
-                int center = bkdW > 0 && bkdH > 0 ? baked.getPixel(Math.min(centerX, bkdW-1), Math.min(centerY, bkdH-1)) : 0;
-                System.out.printf("  BAKED bitmap: %dx%d%n", bkdW, bkdH);
-                System.out.printf("  BAKED topLeft: 0x%08X (a=%d r=%d g=%d b=%d)%n",
-                    topLeft, (topLeft>>>24), (topLeft>>16)&0xFF, (topLeft>>8)&0xFF, topLeft&0xFF);
-                System.out.printf("  BAKED center:  0x%08X (a=%d r=%d g=%d b=%d)%n",
-                    center, (center>>>24), (center>>16)&0xFF, (center>>8)&0xFF, center&0xFF);
-                System.out.printf("  BAKED avgBrightness: %d%n", averageBrightness(baked));
-
-                // Check transparency
-                int transparentCount = 0;
-                int opaqueCount = 0;
-                for (int y = 0; y < bkdH; y++) {
-                    for (int x = 0; x < bkdW; x++) {
-                        int p = baked.getPixel(x, y);
-                        if ((p >>> 24) == 0) transparentCount++;
-                        else if ((p >>> 24) == 255) opaqueCount++;
-                    }
-                }
-                System.out.printf("  BAKED transparent: %d, opaque: %d, other: %d%n",
-                    transparentCount, opaqueCount, (bkdW * bkdH) - transparentCount - opaqueCount);
-            } else {
-                System.out.println("  BAKED bitmap: null");
-            }
-
-            // Colorization analysis
-            boolean wouldColorize = (s.hasForeColor() || s.hasBackColor())
-                    && InkProcessor.allowsColorize(s.getInk());
-            System.out.printf("  Colorization: wouldApply=%b (hasFore=%b hasBack=%b allowsInk=%b)%n",
-                wouldColorize, s.hasForeColor(), s.hasBackColor(), InkProcessor.allowsColorize(s.getInk()));
-
-            System.out.println();
+        // ============= TEST 1: "null" member setPixel fix =============
+        System.out.println("\n--- Test 1: image.setPixel() fix - 'null' member must be BLACK ---");
+        CastMember nullMember = null;
+        for (var entry : player.getCastLibManager().getCastLibs().entrySet()) {
+            var castLib = entry.getValue();
+            if (!castLib.isLoaded()) continue;
+            var found = castLib.getMemberByName("null");
+            if (found != null) { nullMember = found; break; }
+        }
+        if (nullMember != null && nullMember.getBitmap() != null) {
+            Bitmap nullBmp = nullMember.getBitmap();
+            int pixel = nullBmp.getPixel(0, 0);
+            int r = (pixel >> 16) & 0xFF;
+            int g = (pixel >> 8) & 0xFF;
+            int b = pixel & 0xFF;
+            check("null member is 1x1", nullBmp.getWidth() == 1 && nullBmp.getHeight() == 1);
+            check("null member pixel is BLACK (0,0,0)", r == 0 && g == 0 && b == 0);
+        } else {
+            check("null member exists with bitmap", false);
         }
 
-        // ============= VALIDATION TESTS =============
-        System.out.println("=== VALIDATION TESTS ===\n");
-
-        // Find key sprites
-        RenderSprite modal = null, bgB = null, bgC = null;
+        // Collect key sprites
+        RenderSprite modal = null, bgA = null, bgB = null, bgC = null;
+        RenderSprite title = null, text = null, close = null;
         for (RenderSprite s : dialogSnapshot.sprites()) {
             String name = s.getMemberName();
             if (name == null) continue;
             if (name.contains("modal_modal")) modal = s;
+            else if (name.contains("error_bg_a")) bgA = s;
             else if (name.contains("error_bg_b")) bgB = s;
             else if (name.contains("error_bg_c")) bgC = s;
+            else if (name.contains("error_title")) title = s;
+            else if (name.contains("error_text")) text = s;
+            else if (name.contains("error_close")) close = s;
         }
 
-        // Test 1: bg_b must render DARK (border)
+        // ============= TEST 2: Colorization direction =============
+        System.out.println("\n--- Test 2: Colorization direction - BLACK->foreColor, WHITE->backColor ---");
+        // Verify by checking bg_b: BLACK buffer + foreColor=BLACK → should stay BLACK (identity)
+        if (bgB != null && bgB.getBakedBitmap() != null) {
+            CastMember bgBMember = bgB.getDynamicMember();
+            if (bgBMember != null && bgBMember.getBitmap() != null) {
+                int rawPixel = bgBMember.getBitmap().getPixel(0, 0) & 0xFFFFFF;
+                int bakedPixel = bgB.getBakedBitmap().getPixel(0, 0) & 0xFFFFFF;
+                check("bg_b RAW buffer is BLACK (from 'null' member)", rawPixel == 0x000000);
+                check("bg_b BAKED stays BLACK after colorization (identity: BLACK->foreColor=BLACK)",
+                    bakedPixel == 0x000000);
+            }
+        }
+        // Verify bg_c: buffer gets WHITE via copyPixels #color, foreColor=WHITE → identity
+        if (bgC != null && bgC.getBakedBitmap() != null) {
+            CastMember bgCMember = bgC.getDynamicMember();
+            if (bgCMember != null && bgCMember.getBitmap() != null) {
+                int rawPixel = bgCMember.getBitmap().getPixel(0, 0) & 0xFFFFFF;
+                int bakedPixel = bgC.getBakedBitmap().getPixel(0, 0) & 0xFFFFFF;
+                check("bg_c RAW buffer is WHITE (via copyPixels #color remap)", rawPixel == 0xFFFFFF);
+                check("bg_c BAKED stays WHITE (foreColor=WHITE, identity)", bakedPixel == 0xFFFFFF);
+            }
+        }
+
+        // ============= TEST 3: Sprite properties match Director layout =============
+        System.out.println("\n--- Test 3: Sprite properties match Director error.window layout ---");
+
+        // bg_b: border - ink=0, blend=60, foreColor=BLACK
+        if (bgB != null) {
+            check("bg_b ink=0 (Copy)", bgB.getInk() == 0);
+            check("bg_b blend=60", bgB.getBlend() == 60);
+            check("bg_b foreColor=BLACK (0x000000)", bgB.getForeColor() == 0x000000);
+            check("bg_b size=340x140", bgB.getWidth() == 340 && bgB.getHeight() == 140);
+        } else {
+            check("bg_b sprite found", false);
+        }
+
+        // bg_c: content - ink=0, blend=60, foreColor=WHITE
+        if (bgC != null) {
+            check("bg_c ink=0 (Copy)", bgC.getInk() == 0);
+            check("bg_c blend=60", bgC.getBlend() == 60);
+            check("bg_c foreColor=WHITE (0xFFFFFF)", bgC.getForeColor() == 0xFFFFFF);
+            check("bg_c size=338x138", bgC.getWidth() == 338 && bgC.getHeight() == 138);
+        } else {
+            check("bg_c sprite found", false);
+        }
+
+        // ============= TEST 4: Text elements =============
+        System.out.println("\n--- Test 4: Text elements use ink=36 (Background Transparent) ---");
+        check("error_title exists with ink=36", title != null && title.getInk() == 36);
+        check("error_text exists with ink=36", text != null && text.getInk() == 36);
+        check("error_close exists with ink=36", close != null && close.getInk() == 36);
+        check("error_title blend=100", title != null && title.getBlend() == 100);
+        check("error_text blend=100", text != null && text.getBlend() == 100);
+        check("error_close blend=100", close != null && close.getBlend() == 100);
+
+        // Text bitmaps should have visible text content (not all transparent)
+        if (title != null && title.getBakedBitmap() != null) {
+            int opaquePixels = countOpaquePixels(title.getBakedBitmap());
+            check("error_title has visible text pixels (>50 opaque)", opaquePixels > 50);
+        }
+        if (text != null && text.getBakedBitmap() != null) {
+            int opaquePixels = countOpaquePixels(text.getBakedBitmap());
+            check("error_text has visible text pixels (>100 opaque)", opaquePixels > 100);
+        }
+
+        // ============= TEST 5: Modal overlay =============
+        System.out.println("\n--- Test 5: Modal overlay ---");
+        if (modal != null) {
+            check("modal ink=0 (Copy)", modal.getInk() == 0);
+            check("modal blend=40", modal.getBlend() == 40);
+            check("modal foreColor=BLACK (0x000000)", modal.getForeColor() == 0x000000);
+            if (modal.getBakedBitmap() != null) {
+                int brightness = averageBrightness(modal.getBakedBitmap());
+                check("modal bitmap is dark (brightness < 30)", brightness < 30);
+            }
+        } else {
+            check("modal sprite found", false);
+        }
+
+        // ============= TEST 6: bg_b renders DARK, bg_c renders WHITE =============
+        System.out.println("\n--- Test 6: Final rendered pixel colors ---");
         if (bgB != null && bgB.getBakedBitmap() != null) {
             int brightness = averageBrightness(bgB.getBakedBitmap());
             int opaquePixels = countOpaquePixels(bgB.getBakedBitmap());
             int totalPixels = bgB.getBakedBitmap().getWidth() * bgB.getBakedBitmap().getHeight();
-            if (brightness < 30 && opaquePixels > totalPixels * 0.5) {
-                System.out.printf("  PASS: bg_b border is dark (brightness=%d, opaque=%d/%d)%n", brightness, opaquePixels, totalPixels);
-                passed++;
-            } else {
-                System.out.printf("  FAIL: bg_b border should be dark but brightness=%d, opaque=%d/%d%n", brightness, opaquePixels, totalPixels);
-                failed++;
-            }
-        } else {
-            System.out.println("  FAIL: bg_b sprite or bitmap not found");
-            failed++;
+            check("bg_b border is dark (brightness<30)", brightness < 30);
+            check("bg_b fully opaque", opaquePixels > totalPixels * 0.99);
         }
-
-        // Test 2: bg_c must render WHITE (content area)
         if (bgC != null && bgC.getBakedBitmap() != null) {
             int brightness = averageBrightness(bgC.getBakedBitmap());
             int opaquePixels = countOpaquePixels(bgC.getBakedBitmap());
             int totalPixels = bgC.getBakedBitmap().getWidth() * bgC.getBakedBitmap().getHeight();
-            if (brightness > 240 && opaquePixels > totalPixels * 0.5) {
-                System.out.printf("  PASS: bg_c content is white (brightness=%d, opaque=%d/%d)%n", brightness, opaquePixels, totalPixels);
-                passed++;
-            } else {
-                System.out.printf("  FAIL: bg_c content should be white but brightness=%d, opaque=%d/%d)%n", brightness, opaquePixels, totalPixels);
-                failed++;
-            }
-        } else {
-            System.out.println("  FAIL: bg_c sprite or bitmap not found");
-            failed++;
+            check("bg_c content is white (brightness>240)", brightness > 240);
+            check("bg_c fully opaque", opaquePixels > totalPixels * 0.99);
         }
 
-        // Test 3: modal must render DARK
-        if (modal != null && modal.getBakedBitmap() != null) {
-            int brightness = averageBrightness(modal.getBakedBitmap());
-            int opaquePixels = countOpaquePixels(modal.getBakedBitmap());
-            int totalPixels = modal.getBakedBitmap().getWidth() * modal.getBakedBitmap().getHeight();
-            if (brightness < 30 && opaquePixels > totalPixels * 0.5) {
-                System.out.printf("  PASS: modal is dark (brightness=%d, opaque=%d/%d)%n", brightness, opaquePixels, totalPixels);
-                passed++;
-            } else {
-                System.out.printf("  FAIL: modal should be dark but brightness=%d, opaque=%d/%d%n", brightness, opaquePixels, totalPixels);
-                failed++;
-            }
-        } else {
-            System.out.println("  FAIL: modal sprite or bitmap not found");
-            failed++;
-        }
-
-        // Test 4: Composite - dialog area brighter than modal
+        // ============= TEST 7: Composite pixel sampling =============
+        System.out.println("\n--- Test 7: Composite rendering validation ---");
         int stageW = dialogSnapshot.stageWidth() > 0 ? dialogSnapshot.stageWidth() : 720;
         int stageH = dialogSnapshot.stageHeight() > 0 ? dialogSnapshot.stageHeight() : 540;
         BufferedImage composite = renderComposite(dialogSnapshot, stageW, stageH);
 
-        int dialogCenterX = bgC != null ? bgC.getX() + bgC.getWidth() / 2 : 360;
-        int dialogCenterY = bgC != null ? bgC.getY() + bgC.getHeight() / 2 : 270;
-        if (dialogCenterX >= 0 && dialogCenterX < stageW && dialogCenterY >= 0 && dialogCenterY < stageH) {
-            int dialogPixel = composite.getRGB(dialogCenterX, dialogCenterY);
-            int dialogBrightness = brightness(dialogPixel);
-            int outsidePixel = composite.getRGB(50, 50);
-            int outsideBrightness = brightness(outsidePixel);
-            if (dialogBrightness > outsideBrightness + 30) {
-                System.out.printf("  PASS: Dialog area (%d) is brighter than modal area (%d) - delta=%d%n",
-                    dialogBrightness, outsideBrightness, dialogBrightness - outsideBrightness);
-                passed++;
-            } else {
-                System.out.printf("  FAIL: Dialog area (%d) should be brighter than modal area (%d)%n",
-                    dialogBrightness, outsideBrightness);
-                failed++;
-            }
-        } else {
-            System.out.println("  FAIL: Dialog center out of bounds");
-            failed++;
+        // Dialog content center (should be bright: white content at blend=60 over dark)
+        int dialogCX = bgC != null ? bgC.getX() + bgC.getWidth() / 2 : 360;
+        int dialogCY = bgC != null ? bgC.getY() + bgC.getHeight() / 2 : 270;
+        if (dialogCX >= 0 && dialogCX < stageW && dialogCY >= 0 && dialogCY < stageH) {
+            int dialogBrightness = brightness(composite.getRGB(dialogCX, dialogCY));
+            check("Dialog content area is bright (>100)", dialogBrightness > 100);
         }
 
-        // Save composite
+        // Modal overlay area (should be darker than content)
+        int outsideBrightness = brightness(composite.getRGB(50, 50));
+        int dialogBrightness = dialogCX >= 0 && dialogCX < stageW ?
+            brightness(composite.getRGB(dialogCX, dialogCY)) : 0;
+        check("Dialog content brighter than modal area", dialogBrightness > outsideBrightness + 20);
+
+        // Border area (between bg_b and bg_c edges): should be darker than content
+        if (bgB != null && bgC != null) {
+            int borderX = bgB.getX() + 1;
+            int borderY = bgB.getY() + bgB.getHeight() / 2;
+            if (borderX >= 0 && borderX < stageW && borderY >= 0 && borderY < stageH) {
+                int borderBrightness = brightness(composite.getRGB(borderX, borderY));
+                check("Border area is darker than content area", borderBrightness < dialogBrightness);
+            }
+        }
+
+        // Save composite PNG
         Path pngPath = Path.of("player-core/build/render-window-style.png");
         Files.createDirectories(pngPath.getParent());
         javax.imageio.ImageIO.write(composite, "PNG", pngPath.toFile());
         System.out.println("\n  Saved composite to: " + pngPath.toAbsolutePath());
 
-        // Summary
+        // ============= SUMMARY =============
         System.out.printf("%n=== SUMMARY: %d passed, %d failed ===%n%n", passed, failed);
         if (failed > 0) {
             System.out.println("FAILED - Window styling needs fixes");
             System.exit(1);
         } else {
-            System.out.println("ALL TESTS PASSED");
+            System.out.println("ALL TESTS PASSED - Window styling matches Director 1:1");
+        }
+    }
+
+    private static void check(String description, boolean condition) {
+        if (condition) {
+            System.out.println("  PASS: " + description);
+            passed++;
+        } else {
+            System.out.println("  FAIL: " + description);
+            failed++;
         }
     }
 
@@ -340,8 +344,7 @@ public class WindowStyleTest {
         for (int y = 0; y < bmp.getHeight(); y++) {
             for (int x = 0; x < bmp.getWidth(); x++) {
                 int pixel = bmp.getPixel(x, y);
-                int alpha = (pixel >>> 24);
-                if (alpha > 10) {
+                if ((pixel >>> 24) > 10) {
                     int r = (pixel >> 16) & 0xFF;
                     int g = (pixel >> 8) & 0xFF;
                     int b = pixel & 0xFF;

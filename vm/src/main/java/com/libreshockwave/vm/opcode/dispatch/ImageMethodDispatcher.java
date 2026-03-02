@@ -25,6 +25,33 @@ public final class ImageMethodDispatcher {
             case "copypixels" -> copyPixels(bmp, args);
             case "duplicate" -> new Datum.ImageRef(bmp.copy());
             case "crop" -> crop(bmp, args);
+            case "setpixel" -> {
+                // image.setPixel(x, y, color)
+                if (args.size() >= 3) {
+                    int px = args.get(0).toInt();
+                    int py = args.get(1).toInt();
+                    int color = datumToArgb(args.get(2));
+                    if (px >= 0 && px < bmp.getWidth() && py >= 0 && py < bmp.getHeight()) {
+                        bmp.setPixel(px, py, color);
+                    }
+                }
+                yield Datum.VOID;
+            }
+            case "getpixel" -> {
+                // image.getPixel(x, y) → returns color
+                if (args.size() >= 2) {
+                    int px = args.get(0).toInt();
+                    int py = args.get(1).toInt();
+                    if (px >= 0 && px < bmp.getWidth() && py >= 0 && py < bmp.getHeight()) {
+                        int pixel = bmp.getPixel(px, py);
+                        int r = (pixel >> 16) & 0xFF;
+                        int g = (pixel >> 8) & 0xFF;
+                        int b = pixel & 0xFF;
+                        yield new Datum.Color(r, g, b);
+                    }
+                }
+                yield Datum.VOID;
+            }
             case "getat" -> {
                 // getAt(index) on image - some scripts use this
                 if (args.isEmpty()) yield Datum.VOID;
@@ -189,9 +216,11 @@ public final class ImageMethodDispatcher {
             return Datum.VOID;
         }
 
-        // Optional propList with ink and blend
+        // Optional propList with ink, blend, color, bgColor
         Palette.InkMode ink = Palette.InkMode.COPY;
         int blend = 255;
+        int colorRemap = -1;   // #color param: remap BLACK (foreground) pixels to this color
+        int bgColorRemap = -1; // #bgColor param: remap WHITE (background) pixels to this color
 
         if (args.size() >= 4 && args.get(3) instanceof Datum.PropList pl) {
             // Check for #ink property
@@ -206,6 +235,19 @@ public final class ImageMethodDispatcher {
             if (!blendDatum.isVoid()) {
                 blend = (int) (blendDatum.toDouble() * 255.0 / 100.0);
             }
+            // Check for #color property (foreground color remap)
+            Datum colorDatum = pl.properties().getOrDefault("color",
+                    pl.properties().getOrDefault("Color", Datum.VOID));
+            if (!colorDatum.isVoid()) {
+                colorRemap = datumToArgb(colorDatum) & 0xFFFFFF;
+            }
+            // Check for #bgColor property (background color remap)
+            Datum bgColorDatum = pl.properties().getOrDefault("bgColor",
+                    pl.properties().getOrDefault("bgcolor",
+                    pl.properties().getOrDefault("BgColor", Datum.VOID)));
+            if (!bgColorDatum.isVoid()) {
+                bgColorRemap = datumToArgb(bgColorDatum) & 0xFFFFFF;
+            }
         }
 
         int srcW = srcRect.right() - srcRect.left();
@@ -213,20 +255,54 @@ public final class ImageMethodDispatcher {
         int destW = destRect.right() - destRect.left();
         int destH = destRect.bottom() - destRect.top();
 
+        // Apply #color/#bgColor remapping to source if specified
+        Bitmap effectiveSrc = src;
+        int effectiveSrcX = srcRect.left();
+        int effectiveSrcY = srcRect.top();
+        if (colorRemap >= 0 || bgColorRemap >= 0) {
+            // Remap source pixels: BLACK→color, WHITE→bgColor (interpolated for grays)
+            int fgR = colorRemap >= 0 ? (colorRemap >> 16) & 0xFF : 0;
+            int fgG = colorRemap >= 0 ? (colorRemap >> 8) & 0xFF : 0;
+            int fgB = colorRemap >= 0 ? colorRemap & 0xFF : 0;
+            int bgR = bgColorRemap >= 0 ? (bgColorRemap >> 16) & 0xFF : 255;
+            int bgG = bgColorRemap >= 0 ? (bgColorRemap >> 8) & 0xFF : 255;
+            int bgB = bgColorRemap >= 0 ? bgColorRemap & 0xFF : 255;
+
+            effectiveSrc = new Bitmap(srcW, srcH, src.getBitDepth());
+            for (int y = 0; y < srcH; y++) {
+                for (int x = 0; x < srcW; x++) {
+                    int pixel = src.getPixel(srcRect.left() + x, srcRect.top() + y);
+                    int alpha = (pixel >>> 24);
+                    int r = (pixel >> 16) & 0xFF;
+                    int g = (pixel >> 8) & 0xFF;
+                    int b = pixel & 0xFF;
+                    int gray = (r + g + b) / 3;
+                    // Director remap: BLACK(0)→color, WHITE(255)→bgColor
+                    float t = gray / 255.0f;
+                    int nr = (int) ((1 - t) * fgR + t * bgR + 0.5f);
+                    int ng = (int) ((1 - t) * fgG + t * bgG + 0.5f);
+                    int nb = (int) ((1 - t) * fgB + t * bgB + 0.5f);
+                    effectiveSrc.setPixel(x, y, (alpha << 24) | (nr << 16) | (ng << 8) | nb);
+                }
+            }
+            effectiveSrcX = 0;
+            effectiveSrcY = 0;
+        }
+
         if (srcW == destW && srcH == destH) {
             // No scaling needed - direct copy
-            Drawing.copyPixels(dest, src,
+            Drawing.copyPixels(dest, effectiveSrc,
                     destRect.left(), destRect.top(),
-                    srcRect.left(), srcRect.top(),
+                    effectiveSrcX, effectiveSrcY,
                     srcW, srcH, ink, blend);
         } else {
             // Scaling needed - create scaled intermediate
-            Bitmap scaled = new Bitmap(destW, destH, src.getBitDepth());
+            Bitmap scaled = new Bitmap(destW, destH, effectiveSrc.getBitDepth());
             for (int y = 0; y < destH; y++) {
-                int sy = srcRect.top() + (y * srcH / destH);
+                int sy = effectiveSrcY + (y * srcH / destH);
                 for (int x = 0; x < destW; x++) {
-                    int sx = srcRect.left() + (x * srcW / destW);
-                    scaled.setPixel(x, y, src.getPixel(sx, sy));
+                    int sx = effectiveSrcX + (x * srcW / destW);
+                    scaled.setPixel(x, y, effectiveSrc.getPixel(sx, sy));
                 }
             }
             Drawing.copyPixels(dest, scaled,

@@ -272,12 +272,15 @@ public final class InkProcessor {
             // Grayscale intensity: 0=black, 255=white
             int gray = (r + g + b) / 3;
 
-            // Director's palette remap: white (gray=255) → foreColor, black (gray=0) → backColor
-            // t = gray/255: 0=black→backColor, 1=white→foreColor
+            // Director's palette remap: black (gray=0) → foreColor, white (gray=255) → backColor
+            // In Director's paletted bitmap model:
+            //   palette index 255 = BLACK (foreground content) → remapped to foreColor
+            //   palette index 0 = WHITE (background) → remapped to backColor
+            // t = gray/255: 0=black→foreColor, 1=white→backColor
             float t = gray / 255.0f;
-            int nr = (int) (t * fr + (1 - t) * br + 0.5f);
-            int ng = (int) (t * fg + (1 - t) * bg + 0.5f);
-            int nb = (int) (t * fb + (1 - t) * bb + 0.5f);
+            int nr = (int) ((1 - t) * fr + t * br + 0.5f);
+            int ng = (int) ((1 - t) * fg + t * bg + 0.5f);
+            int nb = (int) ((1 - t) * fb + t * bb + 0.5f);
 
             result[i] = (alpha << 24) | (nr << 16) | (ng << 8) | nb;
         }
