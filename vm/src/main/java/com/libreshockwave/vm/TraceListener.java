@@ -27,6 +27,13 @@ public interface TraceListener {
     default void onInstruction(InstructionInfo info) {}
 
     /**
+     * Whether this listener needs per-instruction trace data (stack snapshots, deep copies).
+     * Return false to skip the expensive buildInstructionInfo() call when only handler-level
+     * callbacks are needed. Defaults to true for backward compatibility.
+     */
+    default boolean needsInstructionTrace() { return true; }
+
+    /**
      * Called after a variable assignment.
      */
     default void onVariableSet(String type, String name, Datum value) {}

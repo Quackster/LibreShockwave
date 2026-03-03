@@ -975,6 +975,11 @@ public class Player {
         }
 
         @Override
+        public boolean needsInstructionTrace() {
+            return delegate != null && delegate.needsInstructionTrace();
+        }
+
+        @Override
         public void onInstruction(InstructionInfo info) {
             if (delegate != null) delegate.onInstruction(info);
         }

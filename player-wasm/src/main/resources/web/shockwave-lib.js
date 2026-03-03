@@ -575,14 +575,21 @@ var LibreShockwave = (function() {
 
     ShockwavePlayer.prototype._startLoop = function() {
         var self = this;
+        var ticking = false;
         function loop(ts) {
             if (!self._engine || !self._engine.playing) return;
             var tempo = self._engine._lastTempo || 15;
             var ms = 1000.0 / (tempo > 0 ? tempo : 15);
             if (self._lastFrameTime === 0) self._lastFrameTime = ts;
-            if (ts - self._lastFrameTime >= ms) {
+            if (ts - self._lastFrameTime >= ms && !ticking) {
                 self._lastFrameTime = ts - ((ts - self._lastFrameTime) % ms);
-                self._doTick();
+                ticking = true;
+                self._doTick().then(function() {
+                    ticking = false;
+                }).catch(function(e) {
+                    ticking = false;
+                    console.error('[LS] tick error:', e);
+                });
             }
             self._animFrameId = requestAnimationFrame(loop);
         }
@@ -593,15 +600,21 @@ var LibreShockwave = (function() {
         if (this._animFrameId) { cancelAnimationFrame(this._animFrameId); this._animFrameId = null; }
     };
 
-    ShockwavePlayer.prototype._doTick = function() {
+    ShockwavePlayer.prototype._doTick = async function() {
         var engine = this._engine;
         if (!engine) return;
 
         var stillPlaying = engine.tick();
-        engine.pumpNetwork();
+
+        // Await any network requests queued during this tick.
+        // This yields the JS event loop so the browser stays responsive
+        // while large files (external_texts, etc.) are in-flight.
+        var promises = engine.pumpNetworkCollect();
+        if (promises.length > 0) {
+            await Promise.all(promises);
+        }
 
         var fd = engine.getFrameData();
-
         engine.renderToCanvas(this._ctx, fd);
 
         if (fd && this._opts.onFrame) {
