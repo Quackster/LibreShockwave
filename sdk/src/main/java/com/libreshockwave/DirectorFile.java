@@ -4,6 +4,7 @@ import com.libreshockwave.cast.BitmapInfo;
 import com.libreshockwave.chunks.*;
 import com.libreshockwave.format.AfterburnerReader;
 import com.libreshockwave.format.ChunkType;
+import com.libreshockwave.id.ChunkId;
 import com.libreshockwave.io.BinaryReader;
 import com.libreshockwave.lingo.Opcode;
 import com.libreshockwave.bitmap.Bitmap;
@@ -37,12 +38,12 @@ public class DirectorFile {
     private ScriptContextChunk scriptContext;
     private final List<ScriptContextChunk> allScriptContexts = new ArrayList<>();
     private ScriptNamesChunk scriptNames;  // Default/primary names chunk
-    private final Map<Integer, ScriptNamesChunk> scriptNamesById = new HashMap<>();
+    private final Map<ChunkId, ScriptNamesChunk> scriptNamesById = new HashMap<>();
     private ScoreChunk scoreChunk;
     private FrameLabelsChunk frameLabelsChunk;
 
-    private final Map<Integer, Chunk> chunks = new HashMap<>();
-    private final Map<Integer, ChunkInfo> chunkInfo = new HashMap<>();
+    private final Map<ChunkId, Chunk> chunks = new HashMap<>();
+    private final Map<ChunkId, ChunkInfo> chunkInfo = new HashMap<>();
     private final List<CastChunk> casts = new ArrayList<>();
     private final List<CastMemberChunk> castMembers = new ArrayList<>();
     private final List<ScriptChunk> scripts = new ArrayList<>();
@@ -71,7 +72,7 @@ public class DirectorFile {
     }
 
     public record ChunkInfo(
-        int id,
+        ChunkId id,
         int fourcc,
         int offset,
         int length,
@@ -165,17 +166,17 @@ public class DirectorFile {
     public List<ScriptChunk> getScripts() { return Collections.unmodifiableList(scripts); }
     public List<PaletteChunk> getPalettes() { return Collections.unmodifiableList(palettes); }
     public Collection<ChunkInfo> getAllChunkInfo() { return Collections.unmodifiableCollection(chunkInfo.values()); }
-    public ChunkInfo getChunkInfo(int id) { return chunkInfo.get(id); }
+    public ChunkInfo getChunkInfo(ChunkId id) { return chunkInfo.get(id); }
     public String getBasePath() { return basePath; }
     public ScoreChunk getScoreChunk() { return scoreChunk; }
     public FrameLabelsChunk getFrameLabelsChunk() { return frameLabelsChunk; }
     public void setBasePath(String basePath) { this.basePath = basePath != null ? basePath : ""; }
 
-    public Chunk getChunk(int id) {
+    public Chunk getChunk(ChunkId id) {
         return chunks.get(id);
     }
 
-    public <T extends Chunk> Optional<T> getChunk(int id, Class<T> type) {
+    public <T extends Chunk> Optional<T> getChunk(ChunkId id, Class<T> type) {
         Chunk chunk = chunks.get(id);
         if (type.isInstance(chunk)) {
             return Optional.of(type.cast(chunk));
@@ -243,10 +244,10 @@ public class DirectorFile {
                     }
                 } else if (fourcc.equals("ediM")) {
                     // ediM chunk contains JPEG-compressed RGB data for 32-bit bitmaps
-                    Chunk chunk = getChunk(entry.sectionId());
-                    if (chunk instanceof MediaChunk mc) {
+                    Chunk chunk2 = getChunk(entry.sectionId());
+                    if (chunk2 instanceof MediaChunk mc) {
                         ediMData = mc.audioData(); // Raw data stored in audioData field
-                    } else if (chunk instanceof RawChunk rc) {
+                    } else if (chunk2 instanceof RawChunk rc) {
                         ediMData = rc.data();
                     }
                 } else if (fourcc.equals("ALFA")) {
@@ -391,7 +392,7 @@ public class DirectorFile {
     /**
      * Get a ScriptNamesChunk by its resource ID.
      */
-    public ScriptNamesChunk getScriptNamesById(int id) {
+    public ScriptNamesChunk getScriptNamesById(ChunkId id) {
         return scriptNamesById.get(id);
     }
 
@@ -503,12 +504,12 @@ public class DirectorFile {
         if (scriptNames == null) return result;
 
         // Build a map from script chunk ID to cast member name
-        Map<Integer, String> scriptIdToName = new HashMap<>();
+        Map<ChunkId, String> scriptIdToName = new HashMap<>();
         if (scriptContext != null) {
             List<ScriptContextChunk.ScriptEntry> entries = scriptContext.entries();
             for (int i = 0; i < entries.size(); i++) {
                 int contextIndex = i + 1;
-                int chunkId = entries.get(i).id();
+                ChunkId chunkId = entries.get(i).id();
                 // Find the cast member with this scriptId
                 for (CastMemberChunk member : castMembers) {
                     if (member.isScript() && member.scriptId() == contextIndex) {
@@ -526,7 +527,7 @@ public class DirectorFile {
             }
 
             result.add(new ScriptInfo(
-                script.id(),
+                script.id().value(),
                 scriptIdToName.getOrDefault(script.id(), ""),
                 script.getScriptType(),
                 script.getGlobalNames(scriptNames),
@@ -627,7 +628,8 @@ public class DirectorFile {
             int link = reader.readI32();
 
             if (fourcc != 0 && offset > 0) {
-                file.chunkInfo.put(i, new ChunkInfo(i, fourcc, offset + 8, length, length));
+                ChunkId chunkId = new ChunkId(i);
+                file.chunkInfo.put(chunkId, new ChunkInfo(chunkId, fourcc, offset + 8, length, length));
             }
         }
 
@@ -636,7 +638,7 @@ public class DirectorFile {
             ChunkType type = info.type();
             if (type == ChunkType.DRCF || type == ChunkType.VWCF) {
                 BinaryReader chunkReader = reader.sliceReaderAt(info.offset, info.length);
-                file.config = ConfigChunk.read(file, chunkReader, info.id, 0, endian);
+                file.config = ConfigChunk.read(file, chunkReader, info.id(), 0, endian);
                 break;
             }
         }
@@ -650,11 +652,11 @@ public class DirectorFile {
                 BinaryReader r = reader.sliceReaderAt(info.offset, info.length);
                 Chunk chunk = file.parseChunkFromReader(r, info, version, capitalX);
                 if (chunk != null) {
-                    file.chunks.put(info.id, chunk);
+                    file.chunks.put(info.id(), chunk);
                     file.categorizeChunk(chunk);
 
                     if (chunk instanceof ScriptContextChunk) {
-                        capitalX = info.fourcc == BinaryReader.fourCC("LctX");
+                        capitalX = info.fourcc() == BinaryReader.fourCC("LctX");
                         file.capitalX = capitalX;
                     }
                 }
@@ -684,7 +686,7 @@ public class DirectorFile {
                 try {
                     byte[] chunkData = abReader.getChunkData(abInfo.resourceId());
                     BinaryReader chunkReader = new BinaryReader(chunkData, endian);
-                    file.config = ConfigChunk.read(file, chunkReader, abInfo.resourceId(), 0, endian);
+                    file.config = ConfigChunk.read(file, chunkReader, new ChunkId(abInfo.resourceId()), 0, endian);
                     version = file.config.directorVersion();
                     break;
                 } catch (Exception e) {
@@ -696,14 +698,15 @@ public class DirectorFile {
         // Second pass: parse all chunks with correct version
         for (com.libreshockwave.format.ChunkInfo abInfo : abReader.getChunkInfos()) {
             int fourcc = BinaryReader.fourCC(abInfo.fourCC());
+            ChunkId chunkId = new ChunkId(abInfo.resourceId());
             ChunkInfo info = new ChunkInfo(
-                abInfo.resourceId(),
+                chunkId,
                 fourcc,
                 abInfo.offset(),
                 abInfo.compressedSize(),
                 abInfo.uncompressedSize()
             );
-            file.chunkInfo.put(info.id, info);
+            file.chunkInfo.put(chunkId, info);
 
             // Try to get and parse the chunk data
             try {
@@ -715,7 +718,7 @@ public class DirectorFile {
 
                 Chunk chunk = file.parseChunkFromReader(chunkReader, info, version, capitalX);
                 if (chunk != null) {
-                    file.chunks.put(info.id, chunk);
+                    file.chunks.put(info.id(), chunk);
                     file.categorizeChunk(chunk);
 
                     // Update capitalX flag if we found a script context
@@ -742,22 +745,22 @@ public class DirectorFile {
         ChunkType type = info.type();
 
         return switch (type) {
-            case DRCF, VWCF -> ConfigChunk.read(this, reader, info.id, version, endian);
-            case KEYp -> KeyTableChunk.read(this, reader, info.id, version);
-            case MCsL -> CastListChunk.read(this, reader, info.id, version, endian);
-            case CASp -> CastChunk.read(this, reader, info.id, version);
-            case CASt -> CastMemberChunk.read(this, reader, info.id, version);
-            case Lctx, LctX -> ScriptContextChunk.read(this, reader, info.id, version);
-            case Lnam -> ScriptNamesChunk.read(this, reader, info.id, version);
-            case Lscr -> ScriptChunk.read(this, reader, info.id, version, capitalX);
-            case VWSC, SCVW -> ScoreChunk.read(this, reader, info.id, version);
-            case VWLB -> FrameLabelsChunk.read(this, reader, info.id, version);
-            case BITD -> BitmapChunk.read(this, reader, info.id, version);
-            case CLUT -> PaletteChunk.read(this, reader, info.id, version);
-            case STXT -> TextChunk.read(this, reader, info.id);
-            case snd_ -> SoundChunk.read(this, reader, info.id);
-            case ediM -> MediaChunk.read(this, reader, info.id);
-            default -> new RawChunk(this, info.id, type, reader.readBytes(reader.bytesLeft()));
+            case DRCF, VWCF -> ConfigChunk.read(this, reader, info.id(), version, endian);
+            case KEYp -> KeyTableChunk.read(this, reader, info.id(), version);
+            case MCsL -> CastListChunk.read(this, reader, info.id(), version, endian);
+            case CASp -> CastChunk.read(this, reader, info.id(), version);
+            case CASt -> CastMemberChunk.read(this, reader, info.id(), version);
+            case Lctx, LctX -> ScriptContextChunk.read(this, reader, info.id(), version);
+            case Lnam -> ScriptNamesChunk.read(this, reader, info.id(), version);
+            case Lscr -> ScriptChunk.read(this, reader, info.id(), version, capitalX);
+            case VWSC, SCVW -> ScoreChunk.read(this, reader, info.id(), version);
+            case VWLB -> FrameLabelsChunk.read(this, reader, info.id(), version);
+            case BITD -> BitmapChunk.read(this, reader, info.id(), version);
+            case CLUT -> PaletteChunk.read(this, reader, info.id(), version);
+            case STXT -> TextChunk.read(this, reader, info.id());
+            case snd_ -> SoundChunk.read(this, reader, info.id());
+            case ediM -> MediaChunk.read(this, reader, info.id());
+            default -> new RawChunk(this, info.id(), type, reader.readBytes(reader.bytesLeft()));
         };
     }
 
@@ -846,7 +849,7 @@ public class DirectorFile {
             if (frameLabelsChunk != null && !frameLabelsChunk.labels().isEmpty()) {
                 System.out.println("Frame labels: " + frameLabelsChunk.labels().size());
                 for (FrameLabelsChunk.FrameLabel label : frameLabelsChunk.labels()) {
-                    System.out.println("  " + label.label() + " -> frame " + label.frameNum());
+                    System.out.println("  " + label.label() + " -> frame " + label.frameNum().value());
                 }
             }
         }

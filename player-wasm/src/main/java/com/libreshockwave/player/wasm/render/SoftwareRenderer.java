@@ -152,7 +152,7 @@ public class SoftwareRenderer {
     }
 
     private Bitmap getCachedBitmap(CastMemberChunk member) {
-        int id = member.id();
+        int id = member.id().value();
         if (bitmapCache.containsKey(id)) {
             return bitmapCache.get(id);
         }

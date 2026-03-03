@@ -123,7 +123,7 @@ public final class PropertyOpcodes {
             case Datum.PlayerRef p -> getBuiltinConstant(propName);
             case Datum.SpriteRef sr -> {
                 SpritePropertyProvider spriteProvider = SpritePropertyProvider.getProvider();
-                yield spriteProvider != null ? spriteProvider.getSpriteProp(sr.channel(), propName) : Datum.VOID;
+                yield spriteProvider != null ? spriteProvider.getSpriteProp(sr.channelNum(), propName) : Datum.VOID;
             }
             case Datum.StageRef s -> {
                 MoviePropertyProvider stageProvider = MoviePropertyProvider.getProvider();
@@ -227,7 +227,7 @@ public final class PropertyOpcodes {
             case Datum.SpriteRef sr -> {
                 SpritePropertyProvider spriteProvider = SpritePropertyProvider.getProvider();
                 if (spriteProvider != null) {
-                    spriteProvider.setSpriteProp(sr.channel(), propName, value);
+                    spriteProvider.setSpriteProp(sr.channelNum(), propName, value);
                 }
             }
             case Datum.StageRef s -> {
@@ -266,7 +266,7 @@ public final class PropertyOpcodes {
         if (provider == null) {
             return Datum.VOID;
         }
-        return provider.getCastLibProp(clr.castLibNumber(), propName);
+        return provider.getCastLibProp(clr.castLibNum(), propName);
     }
 
     /**
@@ -277,7 +277,7 @@ public final class PropertyOpcodes {
         if (provider == null) {
             return false;
         }
-        return provider.setCastLibProp(clr.castLibNumber(), propName, value);
+        return provider.setCastLibProp(clr.castLibNum(), propName, value);
     }
 
     /**
@@ -289,16 +289,16 @@ public final class PropertyOpcodes {
             // Return basic reference properties without provider
             String prop = propName.toLowerCase();
             return switch (prop) {
-                case "number" -> Datum.of((cmr.castLib() << 16) | (cmr.member() & 0xFFFF));
-                case "membernum" -> Datum.of(cmr.member());
-                case "castlibnum" -> Datum.of(cmr.castLib());
+                case "number" -> Datum.of((cmr.castLibNum() << 16) | (cmr.memberNum() & 0xFFFF));
+                case "membernum" -> Datum.of(cmr.memberNum());
+                case "castlibnum" -> Datum.of(cmr.castLibNum());
                 case "castlib" -> new Datum.CastLibRef(cmr.castLib());
                 default -> Datum.VOID;
             };
         }
 
         // Delegate to provider for full property access with lazy loading
-        return provider.getMemberProp(cmr.castLib(), cmr.member(), propName);
+        return provider.getMemberProp(cmr.castLibNum(), cmr.memberNum(), propName);
     }
 
     /**
@@ -310,7 +310,7 @@ public final class PropertyOpcodes {
             return false;
         }
 
-        return provider.setMemberProp(cmr.castLib(), cmr.member(), propName, value);
+        return provider.setMemberProp(cmr.castLibNum(), cmr.memberNum(), propName, value);
     }
 
     private static boolean theBuiltin(ExecutionContext ctx) {
@@ -578,7 +578,7 @@ public final class PropertyOpcodes {
             case Datum.SpriteRef sr -> {
                 SpritePropertyProvider spriteProvider = SpritePropertyProvider.getProvider();
                 if (spriteProvider != null) {
-                    yield spriteProvider.getSpriteProp(sr.channel(), propName);
+                    yield spriteProvider.getSpriteProp(sr.channelNum(), propName);
                 }
                 yield Datum.VOID;
             }

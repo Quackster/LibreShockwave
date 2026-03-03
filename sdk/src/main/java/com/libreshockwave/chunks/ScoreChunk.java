@@ -2,6 +2,7 @@ package com.libreshockwave.chunks;
 
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.format.ChunkType;
+import com.libreshockwave.id.*;
 import com.libreshockwave.io.BinaryReader;
 
 import java.nio.ByteOrder;
@@ -16,7 +17,7 @@ import java.util.List;
  */
 public record ScoreChunk(
     DirectorFile file,
-    int id,
+    ChunkId id,
     Header header,
     List<byte[]> entries,
     ScoreFrameData frameData,
@@ -83,6 +84,16 @@ public record ScoreChunk(
         int backColorB
     ) {
         public static final ChannelData EMPTY = new ChannelData(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+
+        /** Typed accessor: returns null if castLib is 0 (empty slot). */
+        public CastLibId castLibId() {
+            return castLib > 0 ? new CastLibId(castLib) : null;
+        }
+
+        /** Typed accessor: returns null if castMember is 0 (empty slot). */
+        public MemberId memberId() {
+            return castMember > 0 ? new MemberId(castMember) : null;
+        }
 
         public static ChannelData read(BinaryReader reader) {
             int spriteType = reader.readU8();
@@ -159,8 +170,8 @@ public record ScoreChunk(
      * Individual frame/channel data entry.
      */
     public record FrameChannelEntry(
-        int frameIndex,
-        int channelIndex,
+        FrameIndex frameIndex,
+        ChannelId channelIndex,
         ChannelData data
     ) {}
 
@@ -181,6 +192,13 @@ public record ScoreChunk(
         int unk7,
         int unk8
     ) {
+        /** Typed accessor for start frame (1-based). */
+        public FrameId startFrameId() { return new FrameId(Math.max(1, startFrame)); }
+        /** Typed accessor for end frame (1-based). */
+        public FrameId endFrameId() { return new FrameId(Math.max(1, endFrame)); }
+        /** Typed accessor for channel. */
+        public ChannelId channelId() { return new ChannelId(channelIndex); }
+
         public static FrameIntervalPrimary read(BinaryReader reader) {
             return new FrameIntervalPrimary(
                 reader.readI32(),
@@ -207,6 +225,11 @@ public record ScoreChunk(
         int castMember,
         int unk0
     ) {
+        /** Typed accessor: returns null if castLib is 0. */
+        public CastLibId castLibId() { return castLib > 0 ? new CastLibId(castLib) : null; }
+        /** Typed accessor: returns null if castMember is 0. */
+        public MemberId memberId() { return castMember > 0 ? new MemberId(castMember) : null; }
+
         public static FrameIntervalSecondary read(BinaryReader reader) {
             return new FrameIntervalSecondary(
                 reader.readU16(),
@@ -232,7 +255,7 @@ public record ScoreChunk(
         return frameData != null ? frameData.header().numChannels() : 0;
     }
 
-    public static ScoreChunk read(DirectorFile file, BinaryReader reader, int id, int version) {
+    public static ScoreChunk read(DirectorFile file, BinaryReader reader, ChunkId id, int version) {
         reader.setOrder(ByteOrder.BIG_ENDIAN);
 
         if (reader.bytesLeft() < 24) {
@@ -286,7 +309,7 @@ public record ScoreChunk(
         return new ScoreChunk(file, id, header, entries, frameData, frameIntervals);
     }
 
-    private static ScoreChunk createEmpty(DirectorFile file, int id) {
+    private static ScoreChunk createEmpty(DirectorFile file, ChunkId id) {
         return new ScoreChunk(
             file,
             id,
@@ -378,7 +401,7 @@ public record ScoreChunk(
                     channelReader.setPosition(pos + spriteRecordSize);
 
                     if (!cd.isEmpty()) {
-                        frameChannelEntries.add(new FrameChannelEntry(f, c, cd));
+                        frameChannelEntries.add(new FrameChannelEntry(new FrameIndex(f), new ChannelId(c), cd));
                     }
                 } else {
                     break;

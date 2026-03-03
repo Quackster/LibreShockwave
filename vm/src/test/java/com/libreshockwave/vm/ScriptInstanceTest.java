@@ -737,28 +737,28 @@ class ScriptInstanceTest {
     void testScriptRefInInstance() {
         // Create instance with __scriptRef__
         Map<String, Datum> props = new LinkedHashMap<>();
-        props.put("__scriptRef__", new Datum.ScriptRef(1, 10));
+        props.put("__scriptRef__", Datum.ScriptRef.of(1, 10));
         Datum.ScriptInstance instance = new Datum.ScriptInstance(1, props);
 
         Datum scriptRef = instance.properties().get("__scriptRef__");
         assertTrue(scriptRef instanceof Datum.ScriptRef);
 
         Datum.ScriptRef ref = (Datum.ScriptRef) scriptRef;
-        assertEquals(1, ref.castLib());
-        assertEquals(10, ref.member());
+        assertEquals(1, ref.castLibNum());
+        assertEquals(10, ref.memberNum());
     }
 
     @Test
     void testScriptRefToString() {
-        Datum.ScriptRef ref = new Datum.ScriptRef(2, 15);
+        Datum.ScriptRef ref = Datum.ScriptRef.of(2, 15);
         assertEquals("<script 15, 2>", ref.toString());
     }
 
     @Test
     void testScriptRefEquality() {
-        Datum.ScriptRef ref1 = new Datum.ScriptRef(1, 10);
-        Datum.ScriptRef ref2 = new Datum.ScriptRef(1, 10);
-        Datum.ScriptRef ref3 = new Datum.ScriptRef(2, 10);
+        Datum.ScriptRef ref1 = Datum.ScriptRef.of(1, 10);
+        Datum.ScriptRef ref2 = Datum.ScriptRef.of(1, 10);
+        Datum.ScriptRef ref3 = Datum.ScriptRef.of(2, 10);
 
         assertEquals(ref1, ref2);
         assertNotEquals(ref1, ref3);

@@ -513,7 +513,7 @@ public final class TypeBuiltins {
                     castLib = 1;
                     memberNum = value;
                 }
-                return new Datum.ScriptRef(castLib, memberNum);
+                return Datum.ScriptRef.of(castLib, memberNum);
             }
         } else if (identifier instanceof Datum.CastMemberRef cmr) {
             // Already a cast member reference

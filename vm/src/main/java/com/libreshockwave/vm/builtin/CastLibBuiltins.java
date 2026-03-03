@@ -55,7 +55,7 @@ public final class CastLibBuiltins {
             return Datum.VOID;
         }
 
-        return new Datum.CastLibRef(castLibNumber);
+        return Datum.CastLibRef.of(castLibNumber);
     }
 
     /**
@@ -72,7 +72,7 @@ public final class CastLibBuiltins {
         CastLibProvider provider = CastLibProvider.getProvider();
         if (provider == null) {
             // Return a placeholder CastMemberRef
-            return new Datum.CastMemberRef(1, args.get(0).toInt());
+            return Datum.CastMemberRef.of(1, args.get(0).toInt());
         }
 
         Datum memberArg = args.get(0);
@@ -82,7 +82,7 @@ public final class CastLibBuiltins {
         if (args.size() > 1) {
             Datum castArg = args.get(1);
             if (castArg instanceof Datum.CastLibRef clr) {
-                castLibNumber = clr.castLibNumber();
+                castLibNumber = clr.castLibNum();
             } else if (castArg.isInt()) {
                 castLibNumber = castArg.toInt();
             }
@@ -142,7 +142,7 @@ public final class CastLibBuiltins {
         if (args.size() > 1) {
             Datum castArg = args.get(1);
             if (castArg instanceof Datum.CastLibRef clr) {
-                castId = clr.castLibNumber();
+                castId = clr.castLibNum();
             } else if (castArg.isInt()) {
                 castId = castArg.toInt();
             }

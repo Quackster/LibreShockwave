@@ -2,6 +2,7 @@ package com.libreshockwave.chunks;
 
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.format.ChunkType;
+import com.libreshockwave.id.ChunkId;
 
 /**
  * Base interface for all Director file chunks.
@@ -28,5 +29,5 @@ public sealed interface Chunk permits
 
     ChunkType type();
 
-    int id();
+    ChunkId id();
 }

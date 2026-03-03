@@ -97,8 +97,8 @@ public class StageRenderer {
                 int frameIndex = frame - 1;  // Convert to 0-indexed
 
                 for (ScoreChunk.FrameChannelEntry entry : score.frameData().frameChannelData()) {
-                    if (entry.frameIndex() == frameIndex) {
-                        int channel = entry.channelIndex();
+                    if (entry.frameIndex().value() == frameIndex) {
+                        int channel = entry.channelIndex().value();
                         SpriteState state = spriteRegistry.get(channel);
 
                         // Check if this channel has a dynamic member override
@@ -109,7 +109,7 @@ public class StageRenderer {
                                 renderedChannels.add(channel);
                             }
                         } else {
-                            RenderSprite sprite = createRenderSprite(entry.channelIndex(), entry.data());
+                            RenderSprite sprite = createRenderSprite(entry.channelIndex().value(), entry.data());
                             if (sprite != null) {
                                 sprites.add(sprite);
                                 renderedChannels.add(channel);
@@ -325,8 +325,8 @@ public class StageRenderer {
         int frameIndex = frame - 1;
 
         for (ScoreChunk.FrameChannelEntry entry : score.frameData().frameChannelData()) {
-            if (entry.frameIndex() == frameIndex) {
-                int channel = entry.channelIndex();
+            if (entry.frameIndex().value() == frameIndex) {
+                int channel = entry.channelIndex().value();
                 if (spriteRegistry.contains(channel)) {
                     spriteRegistry.updateFromScore(channel, entry.data());
                 }

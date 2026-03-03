@@ -104,7 +104,7 @@ public class BytecodeDebuggerPanel extends JPanel implements DebugStateListener,
                 browseMode = true;
                 browseScript = handler.getScript();
                 browseHandler = handler.getHandler();
-                bytecodePanel.setCurrentScriptId(browseScript.id());
+                bytecodePanel.setCurrentScriptId(browseScript.id().value());
                 bytecodePanel.loadHandlerBytecode(browseScript, browseHandler);
                 handlerLabel.setText("Handler: " + browseScript.getHandlerName(browseHandler) +
                     " (" + browseScript.getDisplayName() + ")");

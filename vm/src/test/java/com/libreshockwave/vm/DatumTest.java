@@ -129,8 +129,8 @@ class DatumTest {
 
     @Test
     void testSpriteAndCastMemberRef() {
-        Datum sprite = new Datum.SpriteRef(5);
-        Datum member = new Datum.CastMemberRef(1, 10);
+        Datum sprite = Datum.SpriteRef.of(5);
+        Datum member = Datum.CastMemberRef.of(1, 10);
 
         assertEquals("sprite(5)", sprite.toString());
         assertEquals("member(10, 1)", member.toString());

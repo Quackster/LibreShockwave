@@ -85,7 +85,7 @@ public class SpriteProperties implements SpritePropertyProvider {
             case "member" -> {
                 int cl = sprite.getEffectiveCastLib();
                 int cm = sprite.getEffectiveCastMember();
-                yield cm > 0 ? new Datum.CastMemberRef(cl, cm) : Datum.VOID;
+                yield cm > 0 ? Datum.CastMemberRef.of(cl, cm) : Datum.VOID;
             }
             case "ilk" -> Datum.symbol("sprite");
             case "moveable", "moveablesprite" -> Datum.of(0);
@@ -188,8 +188,8 @@ public class SpriteProperties implements SpritePropertyProvider {
             }
             case "member" -> {
                 if (value instanceof Datum.CastMemberRef cmr) {
-                    sprite.setDynamicMember(cmr.castLib(), cmr.member());
-                    autoSizeSprite(sprite, cmr.castLib(), cmr.member());
+                    sprite.setDynamicMember(cmr.castLibNum(), cmr.memberNum());
+                    autoSizeSprite(sprite, cmr.castLibNum(), cmr.memberNum());
                 } else {
                     sprite.setDynamicMember(0, value.toInt());
                     autoSizeSprite(sprite, 0, value.toInt());

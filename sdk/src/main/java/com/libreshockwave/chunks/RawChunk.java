@@ -2,6 +2,7 @@ package com.libreshockwave.chunks;
 
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.format.ChunkType;
+import com.libreshockwave.id.ChunkId;
 
 /**
  * Raw chunk containing unparsed binary data.
@@ -9,7 +10,7 @@ import com.libreshockwave.format.ChunkType;
  */
 public record RawChunk(
     DirectorFile file,
-    int id,
+    ChunkId id,
     ChunkType type,
     byte[] data
 ) implements Chunk {

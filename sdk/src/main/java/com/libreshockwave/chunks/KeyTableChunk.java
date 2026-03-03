@@ -2,6 +2,7 @@ package com.libreshockwave.chunks;
 
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.format.ChunkType;
+import com.libreshockwave.id.ChunkId;
 import com.libreshockwave.io.BinaryReader;
 
 import java.nio.ByteOrder;
@@ -19,10 +20,10 @@ import java.util.Map;
  */
 public record KeyTableChunk(
     DirectorFile file,
-    int id,
+    ChunkId id,
     List<KeyTableEntry> entries,
-    Map<Integer, List<KeyTableEntry>> entriesByOwner,
-    Map<Integer, Integer> ownerBySectionId
+    Map<ChunkId, List<KeyTableEntry>> entriesByOwner,
+    Map<ChunkId, ChunkId> ownerBySectionId
 ) implements Chunk {
 
     @Override
@@ -31,8 +32,8 @@ public record KeyTableChunk(
     }
 
     public record KeyTableEntry(
-        int sectionId,
-        int castId,
+        ChunkId sectionId,
+        ChunkId castId,
         int fourcc
     ) {
         public String fourccString() {
@@ -40,11 +41,11 @@ public record KeyTableChunk(
         }
     }
 
-    public List<KeyTableEntry> getEntriesForOwner(int ownerId) {
+    public List<KeyTableEntry> getEntriesForOwner(ChunkId ownerId) {
         return entriesByOwner.getOrDefault(ownerId, List.of());
     }
 
-    public KeyTableEntry findEntry(int ownerId, int fourcc) {
+    public KeyTableEntry findEntry(ChunkId ownerId, int fourcc) {
         List<KeyTableEntry> ownerEntries = entriesByOwner.get(ownerId);
         if (ownerEntries == null) return null;
 
@@ -59,10 +60,10 @@ public record KeyTableChunk(
     /**
      * Get the cast member ID that owns a chunk by its section ID.
      * @param sectionId The chunk's section ID (resource ID)
-     * @return The owning cast member's ID, or -1 if not found
+     * @return The owning cast member's ID, or null if not found
      */
-    public int getOwnerCastId(int sectionId) {
-        return ownerBySectionId.getOrDefault(sectionId, -1);
+    public ChunkId getOwnerCastId(ChunkId sectionId) {
+        return ownerBySectionId.get(sectionId);
     }
 
     /**
@@ -70,23 +71,20 @@ public record KeyTableChunk(
      * @param sectionId The chunk's section ID (resource ID)
      * @return The KeyTableEntry, or null if not found
      */
-    public KeyTableEntry getEntryBySectionId(int sectionId) {
-        int ownerId = ownerBySectionId.get(sectionId);
-        if (ownerId == 0) {
-            // Check if it's actually in the map vs default
-            if (!ownerBySectionId.containsKey(sectionId)) {
-                return null;
-            }
+    public KeyTableEntry getEntryBySectionId(ChunkId sectionId) {
+        ChunkId ownerId = ownerBySectionId.get(sectionId);
+        if (ownerId == null) {
+            return null;
         }
         for (KeyTableEntry entry : entries) {
-            if (entry.sectionId == sectionId) {
+            if (entry.sectionId.equals(sectionId)) {
                 return entry;
             }
         }
         return null;
     }
 
-    public static KeyTableChunk read(DirectorFile vm, BinaryReader reader, int id, int version) {
+    public static KeyTableChunk read(DirectorFile vm, BinaryReader reader, ChunkId id, int version) {
         ByteOrder originalOrder = reader.getOrder();
         reader.setOrder(ByteOrder.LITTLE_ENDIAN);
 
@@ -96,12 +94,12 @@ public record KeyTableChunk(
         int usedCount = reader.readI32();
 
         List<KeyTableEntry> entries = new ArrayList<>();
-        Map<Integer, List<KeyTableEntry>> byOwner = new HashMap<>();
-        Map<Integer, Integer> ownerBySection = new HashMap<>();
+        Map<ChunkId, List<KeyTableEntry>> byOwner = new HashMap<>();
+        Map<ChunkId, ChunkId> ownerBySection = new HashMap<>();
 
         for (int i = 0; i < usedCount; i++) {
-            int sectionId = reader.readI32();
-            int castId = reader.readI32();
+            ChunkId sectionId = new ChunkId(reader.readI32());
+            ChunkId castId = new ChunkId(reader.readI32());
             // FourCC in key table is stored as a u32 in the file's byte order (little-endian).
             // In LE files, tags are byte-swapped (e.g., "ALFA" stored as "AFLA" bytes).
             // readI32() with LE byte order produces the correct integer for fourCCToString.

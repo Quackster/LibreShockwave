@@ -88,7 +88,7 @@ public class TracingHelper {
             Map<String, Datum> globals) {
         return new TraceListener.HandlerInfo(
             script.getHandlerName(handler),
-            script.id(),
+            script.id().value(),
             script.getDisplayName(),
             args,
             receiver,

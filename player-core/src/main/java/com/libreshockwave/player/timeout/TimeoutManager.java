@@ -168,7 +168,7 @@ public class TimeoutManager implements TimeoutProvider {
             CastLibProvider.HandlerLocation location;
 
             if (scriptRefDatum instanceof Datum.ScriptRef sr) {
-                location = provider.findHandlerInScript(sr.castLib(), sr.member(), handlerName);
+                location = provider.findHandlerInScript(sr.castLibNum(), sr.memberNum(), handlerName);
             } else {
                 location = provider.findHandlerInScript(current.scriptId(), handlerName);
             }
@@ -239,7 +239,7 @@ public class TimeoutManager implements TimeoutProvider {
             CastLibProvider.HandlerLocation location;
 
             if (scriptRefDatum instanceof Datum.ScriptRef sr) {
-                location = provider.findHandlerInScript(sr.castLib(), sr.member(), handlerName);
+                location = provider.findHandlerInScript(sr.castLibNum(), sr.memberNum(), handlerName);
             } else {
                 location = provider.findHandlerInScript(current.scriptId(), handlerName);
             }

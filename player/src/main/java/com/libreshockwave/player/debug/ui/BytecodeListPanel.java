@@ -124,12 +124,12 @@ public class BytecodeListPanel extends JPanel {
         bytecodeModel.clear();
         currentInstructions.clear();
         currentInstructionIndex = -1;
-        currentScriptId = script.id();
+        currentScriptId = script.id().value();
         currentHandlerName = script.getHandlerName(handler);
 
         for (ScriptChunk.Handler.Instruction instr : handler.instructions()) {
             String annotation = InstructionAnnotator.annotate(script, handler, instr, true);
-            Breakpoint bp = controller != null ? controller.getBreakpoint(script.id(), currentHandlerName, instr.offset()) : null;
+            Breakpoint bp = controller != null ? controller.getBreakpoint(script.id().value(), currentHandlerName, instr.offset()) : null;
 
             InstructionDisplayItem item = new InstructionDisplayItem(
                 instr.offset(),
@@ -154,7 +154,7 @@ public class BytecodeListPanel extends JPanel {
             currentInstructions.add(item);
         }
 
-        contextMenu.setCurrentScriptId(script.id());
+        contextMenu.setCurrentScriptId(script.id().value());
         contextMenu.setCurrentHandlerName(currentHandlerName);
     }
 

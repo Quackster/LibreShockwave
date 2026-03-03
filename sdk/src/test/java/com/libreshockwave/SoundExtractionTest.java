@@ -112,7 +112,7 @@ public class SoundExtractionTest {
                 System.out.println("  ediM chunk: id=" + chunkInfo.id() + ", offset=" + chunkInfo.offset() + ", length=" + chunkInfo.length());
 
                 // Check who owns this chunk
-                int ownerId = keyTable.getOwnerCastId(chunkInfo.id());
+                var ownerId = keyTable.getOwnerCastId(chunkInfo.id());
                 System.out.println("    owner castId: " + ownerId);
 
                 Chunk chunk = file.getChunk(chunkInfo.id());
@@ -130,8 +130,8 @@ public class SoundExtractionTest {
             if (chunkInfo.type() == ChunkType.snd_) {
                 System.out.println("  snd_ chunk: id=" + chunkInfo.id() + ", offset=" + chunkInfo.offset() + ", length=" + chunkInfo.length());
 
-                int ownerId = keyTable.getOwnerCastId(chunkInfo.id());
-                System.out.println("    owner castId: " + ownerId);
+                var ownerId2 = keyTable.getOwnerCastId(chunkInfo.id());
+                System.out.println("    owner castId: " + ownerId2);
 
                 Chunk chunk = file.getChunk(chunkInfo.id());
                 if (chunk instanceof SoundChunk sc) {

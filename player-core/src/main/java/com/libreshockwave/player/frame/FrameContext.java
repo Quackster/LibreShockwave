@@ -326,7 +326,7 @@ public class FrameContext {
             CastLibProvider.HandlerLocation location;
 
             if (scriptRefDatum instanceof Datum.ScriptRef sr) {
-                location = provider.findHandlerInScript(sr.castLib(), sr.member(), "stepFrame");
+                location = provider.findHandlerInScript(sr.castLibNum(), sr.memberNum(), "stepFrame");
             } else {
                 location = provider.findHandlerInScript(current.scriptId(), "stepFrame");
             }

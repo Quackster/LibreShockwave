@@ -2,6 +2,7 @@ package com.libreshockwave.chunks;
 
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.format.ChunkType;
+import com.libreshockwave.id.ChunkId;
 import com.libreshockwave.io.BinaryReader;
 
 import java.nio.ByteOrder;
@@ -14,11 +15,11 @@ import java.util.List;
  */
 public record ScriptContextChunk(
     DirectorFile file,
-    int id,
+    ChunkId id,
     int unknown1,
     int unknown2,
     int entryCount,
-    int lnamSectionId,
+    ChunkId lnamSectionId,
     int validCount,
     int flags,
     int freePtr,
@@ -32,11 +33,11 @@ public record ScriptContextChunk(
 
     public record ScriptEntry(
         int unknown,
-        int id,
+        ChunkId id,
         int flags
     ) {}
 
-    public static ScriptContextChunk read(DirectorFile file, BinaryReader reader, int id, int version) {
+    public static ScriptContextChunk read(DirectorFile file, BinaryReader reader, ChunkId id, int version) {
         // Lingo scripts are ALWAYS big endian regardless of file byte order
         reader.setOrder(ByteOrder.BIG_ENDIAN);
 
@@ -49,7 +50,7 @@ public record ScriptContextChunk(
         reader.skip(4); // unknown3
         reader.skip(4); // unknown4
         reader.skip(4); // unknown5
-        int lnamSectionId = reader.readI32();
+        ChunkId lnamSectionId = new ChunkId(reader.readI32());
         int validCount = reader.readU16();
         int flags = reader.readU16();
         int freePtr = reader.readI16();
@@ -60,7 +61,7 @@ public record ScriptContextChunk(
             reader.setPosition(entriesOffset);
             for (int i = 0; i < entryCount; i++) {
                 int entryUnknown = reader.readI32();
-                int entryId = reader.readI32();
+                ChunkId entryId = new ChunkId(reader.readI32());
                 int entryFlags = reader.readU16();
                 int entryLink = reader.readI16();
 

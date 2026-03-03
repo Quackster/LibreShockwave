@@ -1,6 +1,10 @@
 package com.libreshockwave.vm;
 
 import com.libreshockwave.bitmap.Bitmap;
+import com.libreshockwave.id.CastLibId;
+import com.libreshockwave.id.ChannelId;
+import com.libreshockwave.id.MemberId;
+import com.libreshockwave.id.VarType;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -79,15 +83,20 @@ public sealed interface Datum {
     }
 
     /** Sprite reference */
-    record SpriteRef(int channel) implements Datum {
+    record SpriteRef(ChannelId channel) implements Datum {
+        public static SpriteRef of(int channel) { return new SpriteRef(new ChannelId(channel)); }
+        public int channelNum() { return channel.value(); }
         @Override
-        public String toString() { return "sprite(" + channel + ")"; }
+        public String toString() { return "sprite(" + channel.value() + ")"; }
     }
 
     /** Cast member reference */
-    record CastMemberRef(int castLib, int member) implements Datum {
+    record CastMemberRef(CastLibId castLib, MemberId member) implements Datum {
+        public static CastMemberRef of(int castLib, int member) { return new CastMemberRef(new CastLibId(castLib), new MemberId(member)); }
+        public int castLibNum() { return castLib.value(); }
+        public int memberNum() { return member.value(); }
         @Override
-        public String toString() { return "member(" + member + ", " + castLib + ")"; }
+        public String toString() { return "member(" + member.value() + ", " + castLib.value() + ")"; }
     }
 
     /** Script instance reference */
@@ -168,9 +177,11 @@ public sealed interface Datum {
     }
 
     /** Cast library reference */
-    record CastLibRef(int castLibNumber) implements Datum {
+    record CastLibRef(CastLibId castLibNumber) implements Datum {
+        public static CastLibRef of(int castLibNumber) { return new CastLibRef(new CastLibId(castLibNumber)); }
+        public int castLibNum() { return castLibNumber.value(); }
         @Override
-        public String toString() { return "castLib(" + castLibNumber + ")"; }
+        public String toString() { return "castLib(" + castLibNumber.value() + ")"; }
     }
 
     /** Stage reference (the stage window) */
@@ -192,9 +203,12 @@ public sealed interface Datum {
     }
 
     /** Script reference (returned by script() function) */
-    record ScriptRef(int castLib, int member) implements Datum {
+    record ScriptRef(CastLibId castLib, MemberId member) implements Datum {
+        public static ScriptRef of(int castLib, int member) { return new ScriptRef(new CastLibId(castLib), new MemberId(member)); }
+        public int castLibNum() { return castLib.value(); }
+        public int memberNum() { return member.value(); }
         @Override
-        public String toString() { return "<script " + member + ", " + castLib + ">"; }
+        public String toString() { return "<script " + member.value() + ", " + castLib.value() + ">"; }
     }
 
     /** Timeout reference (returned by timeout() builtin) */
@@ -204,13 +218,13 @@ public sealed interface Datum {
     }
 
     /** Mutable reference to a VM variable (for chunk mutation operations like delete) */
-    record VarRef(int varType, int rawIndex) implements Datum {
+    record VarRef(VarType varType, int rawIndex) implements Datum {
         @Override
         public String toString() { return "<varref:" + varType + "," + rawIndex + ">"; }
     }
 
     /** Reference to a chunk range within a variable (used by delete/put chunk operations) */
-    record ChunkRef(int varType, int rawIndex, String chunkType, int start, int end) implements Datum {
+    record ChunkRef(VarType varType, int rawIndex, String chunkType, int start, int end) implements Datum {
         @Override
         public String toString() { return "<chunkref:" + chunkType + "[" + start + ".." + end + "]>"; }
     }

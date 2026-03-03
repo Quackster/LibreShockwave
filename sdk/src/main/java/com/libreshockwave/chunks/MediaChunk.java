@@ -2,6 +2,7 @@ package com.libreshockwave.chunks;
 
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.format.ChunkType;
+import com.libreshockwave.id.ChunkId;
 import com.libreshockwave.io.BinaryReader;
 import com.libreshockwave.util.AudioCodecUtils;
 
@@ -14,7 +15,7 @@ import java.nio.ByteOrder;
  */
 public record MediaChunk(
     DirectorFile file,
-    int id,
+    ChunkId id,
     int sampleRate,
     int dataSizeField,
     byte[] guid,
@@ -91,7 +92,7 @@ public record MediaChunk(
         return "raw_pcm";
     }
 
-    public static MediaChunk read(DirectorFile file, BinaryReader reader, int id) {
+    public static MediaChunk read(DirectorFile file, BinaryReader reader, ChunkId id) {
         int totalSize = reader.bytesLeft();
 
         if (totalSize < 4) {

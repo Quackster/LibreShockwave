@@ -2,6 +2,7 @@ package com.libreshockwave.chunks;
 
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.format.ChunkType;
+import com.libreshockwave.id.ChunkId;
 import com.libreshockwave.io.BinaryReader;
 import com.libreshockwave.util.AudioCodecUtils;
 
@@ -17,7 +18,7 @@ import java.nio.ByteOrder;
  */
 public record SoundChunk(
     DirectorFile file,
-    int id,
+    ChunkId id,
     int sampleRate,
     int sampleCount,
     int bitsPerSample,
@@ -27,7 +28,7 @@ public record SoundChunk(
 ) implements Chunk {
 
     // Convenience constructor without codec
-    public SoundChunk(DirectorFile file, int id, int sampleRate, int sampleCount,
+    public SoundChunk(DirectorFile file, ChunkId id, int sampleRate, int sampleCount,
                       int bitsPerSample, int channelCount, byte[] audioData) {
         this(file, id, sampleRate, sampleCount, bitsPerSample, channelCount, audioData, "raw_pcm");
     }
@@ -66,7 +67,7 @@ public record SoundChunk(
         return AudioCodecUtils.containsMp3SyncFrame(data, 512) ? "mp3" : "raw_pcm";
     }
 
-    public static SoundChunk read(DirectorFile file, BinaryReader reader, int id) {
+    public static SoundChunk read(DirectorFile file, BinaryReader reader, ChunkId id) {
         int totalSize = reader.bytesLeft();
 
         if (totalSize < 64) {

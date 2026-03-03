@@ -24,7 +24,7 @@ public class HandlerNavigator {
 
         public int scriptId() {
             if (!found()) return -1;
-            return script.id();
+            return script.id().value();
         }
     }
 
@@ -57,7 +57,7 @@ public class HandlerNavigator {
      */
     public ScriptChunk findScriptById(int scriptId) {
         for (ScriptChunk script : allScripts) {
-            if (script.id() == scriptId) {
+            if (script.id().value() == scriptId) {
                 return script;
             }
         }

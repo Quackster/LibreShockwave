@@ -25,7 +25,6 @@ public class SpriteDataExporter {
     private static final int STAGE_IMAGE_ID = -1;
 
     private final Player player;
-    private int exportCount = 0;
 
     // Cache decoded bitmaps by cast member ID (keyed by castMember.id() chunk ID)
     private final Map<Integer, CachedBitmap> bitmapCache = new HashMap<>();
@@ -46,26 +45,6 @@ public class SpriteDataExporter {
      */
     public String exportFrameData() {
         FrameSnapshot snapshot = player.getFrameSnapshot();
-
-        // Diagnostic: log sprite pipeline state (for first 50 exports, then every 100th)
-        int dynamicCount = player.getStageRenderer().getSpriteRegistry().getDynamicSprites().size();
-        boolean shouldLog = exportCount < 50 || exportCount % 100 == 0;
-        if (snapshot.sprites().isEmpty() && shouldLog) {
-            System.out.println("[SpriteExporter] frame=" + snapshot.frameNumber()
-                + " sprites=" + snapshot.sprites().size()
-                + " dynamicInRegistry=" + dynamicCount
-                + " state=" + player.getState()
-                + " export=" + exportCount
-                + " scoreNull=" + (player.getFile().getScoreChunk() == null));
-        }
-        // Also log when sprites first appear (transition from 0 to >0)
-        if (!snapshot.sprites().isEmpty() && exportCount > 0 && shouldLog) {
-            System.out.println("[SpriteExporter] frame=" + snapshot.frameNumber()
-                + " sprites=" + snapshot.sprites().size()
-                + " dynamicInRegistry=" + dynamicCount
-                + " export=" + exportCount);
-        }
-        exportCount++;
 
         // Index members and cache baked bitmaps from snapshot for later getBitmapData() calls.
         // SpriteBaker pre-bakes all sprite types (BITMAP, TEXT, SHAPE), so we cache them all.
@@ -208,7 +187,7 @@ public class SpriteDataExporter {
         // Search main file
         if (player.getFile() != null) {
             for (CastMemberChunk m : player.getFile().getCastMembers()) {
-                if (m.id() == memberId) return m;
+                if (m.id().value() == memberId) return m;
             }
         }
 
@@ -218,7 +197,7 @@ public class SpriteDataExporter {
                 DirectorFile src = castLib.getSourceFile();
                 if (src != null) {
                     for (CastMemberChunk m : src.getCastMembers()) {
-                        if (m.id() == memberId) return m;
+                        if (m.id().value() == memberId) return m;
                     }
                 }
             }

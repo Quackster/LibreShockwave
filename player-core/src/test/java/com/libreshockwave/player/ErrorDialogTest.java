@@ -136,12 +136,12 @@ public class ErrorDialogTest {
         System.out.println("=== error.window definition ===");
         var errWindowRef = player.getCastLibManager().getMemberByName(0, "error.window");
         if (errWindowRef instanceof com.libreshockwave.vm.Datum.CastMemberRef cmr) {
-            var castLib2 = player.getCastLibManager().getCastLib(cmr.castLib());
+            var castLib2 = player.getCastLibManager().getCastLib(cmr.castLibNum());
             if (castLib2 != null) {
-                var member2 = castLib2.getMember(cmr.member());
+                var member2 = castLib2.getMember(cmr.memberNum());
                 if (member2 != null) System.out.println(member2.getTextContent());
                 else {
-                    var chunk = castLib2.findMemberByNumber(cmr.member());
+                    var chunk = castLib2.findMemberByNumber(cmr.memberNum());
                     if (chunk != null) System.out.println("  (file text member found, type=" + chunk.memberType() + ")");
                 }
             }
@@ -149,9 +149,9 @@ public class ErrorDialogTest {
         System.out.println("=== modal.window definition ===");
         var modalRef = player.getCastLibManager().getMemberByName(0, "modal.window");
         if (modalRef instanceof com.libreshockwave.vm.Datum.CastMemberRef cmr) {
-            var castLib2 = player.getCastLibManager().getCastLib(cmr.castLib());
+            var castLib2 = player.getCastLibManager().getCastLib(cmr.castLibNum());
             if (castLib2 != null) {
-                var member2 = castLib2.getMember(cmr.member());
+                var member2 = castLib2.getMember(cmr.memberNum());
                 if (member2 != null) System.out.println(member2.getTextContent());
             }
         }

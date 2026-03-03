@@ -54,9 +54,9 @@ public final class DatumFormatter {
         if (d instanceof Datum.Rect r) return "rect(" + r.left() + ", " + r.top() + ", " + r.right() + ", " + r.bottom() + ")";
         if (d instanceof Datum.Color c) return "color(" + c.r() + ", " + c.g() + ", " + c.b() + ")";
         if (d instanceof Datum.ScriptInstance si) return "<script#" + si.scriptId() + ">";
-        if (d instanceof Datum.SpriteRef sr) return "sprite(" + sr.channel() + ")";
-        if (d instanceof Datum.CastMemberRef cm) return "member(" + cm.member() + ", " + cm.castLib() + ")";
-        if (d instanceof Datum.CastLibRef cl) return "castLib(" + cl.castLibNumber() + ")";
+        if (d instanceof Datum.SpriteRef sr) return "sprite(" + sr.channelNum() + ")";
+        if (d instanceof Datum.CastMemberRef cm) return "member(" + cm.memberNum() + ", " + cm.castLibNum() + ")";
+        if (d instanceof Datum.CastLibRef cl) return "castLib(" + cl.castLibNum() + ")";
         if (d instanceof Datum.StageRef) return "(the stage)";
         if (d instanceof Datum.XtraRef xr) return "<Xtra \"" + xr.xtraName() + "\">";
         if (d instanceof Datum.XtraInstance xi) return "<XtraInstance \"" + xi.xtraName() + "\" #" + xi.instanceId() + ">";
@@ -203,13 +203,13 @@ public final class DatumFormatter {
             case Datum.Point p -> "{ \"x\": " + p.x() + ", \"y\": " + p.y() + " }";
             case Datum.Rect r -> "{ \"left\": " + r.left() + ", \"top\": " + r.top() + ", \"right\": " + r.right() + ", \"bottom\": " + r.bottom() + " }";
             case Datum.Color c -> "{ \"r\": " + c.r() + ", \"g\": " + c.g() + ", \"b\": " + c.b() + " }";
-            case Datum.SpriteRef sr -> "\"sprite(" + sr.channel() + ")\"";
-            case Datum.CastMemberRef cm -> "\"member(" + cm.member() + ", " + cm.castLib() + ")\"";
-            case Datum.CastLibRef cl -> "\"castLib(" + cl.castLibNumber() + ")\"";
+            case Datum.SpriteRef sr -> "\"sprite(" + sr.channelNum() + ")\"";
+            case Datum.CastMemberRef cm -> "\"member(" + cm.memberNum() + ", " + cm.castLibNum() + ")\"";
+            case Datum.CastLibRef cl -> "\"castLib(" + cl.castLibNum() + ")\"";
             case Datum.StageRef sr -> "\"(the stage)\"";
             case Datum.XtraRef xr -> "\"xtra(\\\"" + escapeForJson(xr.xtraName()) + "\\\")\"";
             case Datum.XtraInstance xi -> "\"XtraInstance \\\"" + escapeForJson(xi.xtraName()) + "\\\" #" + xi.instanceId() + "\"";
-            case Datum.ScriptRef sr -> "\"script(" + sr.member() + ", " + sr.castLib() + ")\"";
+            case Datum.ScriptRef sr -> "\"script(" + sr.memberNum() + ", " + sr.castLibNum() + ")\"";
             default -> "\"" + escapeForJson(d.toString()) + "\"";
         };
     }
