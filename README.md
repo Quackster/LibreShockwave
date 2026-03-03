@@ -422,6 +422,8 @@ byte[] rifxData = file.saveToBytes();
 
 The `player-wasm` module compiles the player for the browser using [TeaVM](https://teavm.org/) v0.13's standard WebAssembly backend. It produces a `.wasm` file with a JavaScript library that runs in all modern browsers.
 
+WASM is a pure computation engine with **zero `@Import` annotations** — JS owns networking (`fetch`), canvas rendering, and the animation loop. No Web Worker required.
+
 ### Building
 
 ```bash
@@ -429,6 +431,27 @@ The `player-wasm` module compiles the player for the browser using [TeaVM](https
 ```
 
 The build output goes to `player-wasm/build/generated/teavm/wasm/`.
+
+### Testing
+
+```bash
+# Smoke test: QueuedNetProvider + WasmPlayer basics (runs on JVM)
+./gradlew :player-wasm:runQueuedNetProviderTest
+
+# Integration test: SpriteDataExporter with habbo.dcr (runs on JVM)
+./gradlew :player-wasm:runWasmSpriteExporterTest
+```
+
+### Deploying
+
+Copy the contents of `player-wasm/build/generated/teavm/wasm/` to your web server. The included `index.html` is a ready-made player page with file picker, URL bar, transport controls, and a params editor.
+
+```bash
+# Quick local test server
+cd player-wasm/build/generated/teavm/wasm/
+npx serve .
+# Open http://localhost:3000
+```
 
 ### Embedding in Any Web Page
 
@@ -449,7 +472,7 @@ The following files must be served from the same directory as the script:
 |------|---------|
 | `shockwave-lib.js` | Player library (the only `<script>` you need) |
 | `player-wasm.wasm` | Compiled player engine |
-| `player-wasm.wasm-runtime.js` | TeaVM runtime (loaded by the worker) |
+| `player-wasm.wasm-runtime.js` | TeaVM runtime (loaded automatically) |
 
 <details>
 <summary>JavaScript API</summary>
@@ -493,22 +516,34 @@ player.destroy();
 </details>
 
 <details>
-<summary>Running the built-in player page</summary>
+<summary>Architecture</summary>
 
-```bash
-cd player-wasm/build/generated/teavm/wasm/
-npx serve .
-# Open http://localhost:3000
+```
+JS (shockwave-lib.js)                    WASM (@Export methods)
+──────────────────────                    ────────────────────
+fetch() .dcr file
+  → loadMovie(bytes, basePath)     →     WasmEntry.loadMovie()
+                                            → WasmPlayer.loadMovie()
+                                            → QueuedNetProvider created
+                                            → Player.preloadAllCasts()
+
+requestAnimationFrame loop:
+  → tick()                         →     WasmEntry.tick()
+  → getPendingFetchJson()          →     QueuedNetProvider.serializePendingRequests()
+  → drainPendingFetches()          →     QueuedNetProvider.drainPendingRequests()
+  → fetch(url) for each request
+  → deliverFetchResult(id, data)   →     QueuedNetProvider.onFetchComplete()
+                                            → CastLibManager.setExternalCastDataByUrl()
+  → getFrameDataJson()             →     SpriteDataExporter.exportFrameData()
+  → getBitmapData(memberId)        →     SpriteDataExporter.getBitmapRGBA()
+  → Canvas 2D drawImage()
 ```
 
-The included `index.html` is a ready-made player page with file picker, URL bar, transport controls, and a params editor.
-
-</details>
-
-<details>
-<summary>External parameters</summary>
-
-Shockwave movies read `<PARAM>` tags from the embedding HTML (e.g. `sw1` through `sw9`). Pass these via `params` in `create()` or call `setParam()` / `setParams()` at any time. With `remember: true`, params persist in `localStorage` across sessions.
+**Key design decisions:**
+- No `@Import` — WASM never calls JS; JS polls for pending network requests
+- No Web Worker — `tick()` is fast enough for the main thread
+- Single rendering path — sprite JSON + bitmap fetch (no pixel buffer fallback)
+- Fallback URLs in JSON — JS handles retry logic (.cct → .cst on 404)
 
 </details>
 
@@ -519,14 +554,17 @@ Shockwave movies read `<PARAM>` tags from the embedding HTML (e.g. `sw1` through
 player-wasm/
   build.gradle                          # TeaVM plugin config (standard WASM target)
   src/main/java/.../wasm/
-    WasmPlayerApp.java                  # Entry point + @Export API
-    WasmPlayer.java                     # Player wrapper
-    render/SoftwareRenderer.java        # RGBA pixel buffer renderer
-    net/WasmNetManager.java             # @Import-based fetch NetProvider
+    WasmEntry.java                      # All @Export methods (single entry point)
+    WasmPlayer.java                     # Player wrapper (deferred play, tick resilience)
+    QueuedNetProvider.java              # Polling-based NetProvider (no @Import)
+    SpriteDataExporter.java             # Frame data JSON + bitmap cache
   src/main/resources/web/
-    index.html                          # Player page (uses the lib)
-    shockwave-lib.js                    # Embeddable player library (worker inlined)
+    index.html                          # Player page with toolbar and transport controls
+    shockwave-lib.js                    # Embeddable player library (~350 lines)
     libreshockwave.css                  # Styling
+  src/test/java/.../wasm/
+    QueuedNetProviderTest.java          # Smoke tests (8 tests)
+    WasmSpriteExporterTest.java         # Integration test with habbo.dcr
 ```
 
 </details>
@@ -534,6 +572,7 @@ player-wasm/
 ### Known Limitations
 
 - No mouse/keyboard event forwarding to Lingo VM (planned)
+- No Lingo debugger in WASM (available in desktop player)
 - 32-bit JPEG-based bitmaps (ediM+ALFA) render as placeholders
 
 ## Tools
@@ -556,7 +595,11 @@ player-wasm/
 ./gradlew :sdk:runTests
 ./gradlew :sdk:runFeatureTests
 
-# Compile the WASM player (no runtime tests — verify in browser)
+# WASM player tests (run on JVM, not in browser)
+./gradlew :player-wasm:runQueuedNetProviderTest   # 8 smoke tests
+./gradlew :player-wasm:runWasmSpriteExporterTest  # integration test
+
+# Compile the WASM player
 ./gradlew :player-wasm:generateWasm
 ```
 
