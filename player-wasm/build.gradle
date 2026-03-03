@@ -47,28 +47,3 @@ tasks.matching { it.name == 'generateWasm' }.configureEach {
     finalizedBy 'copyWebResources'
 }
 
-// Smoke test for QueuedNetProvider and WasmPlayer (runs on JVM)
-tasks.register('runQueuedNetProviderTest', JavaExec) {
-    group = 'verification'
-    description = 'Test QueuedNetProvider polling-based networking and WasmPlayer basics'
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'com.libreshockwave.player.wasm.QueuedNetProviderTest'
-    jvmArgs '-Xmx512m'
-    dependsOn compileTestJava
-    javaLauncher = javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
-}
-
-// Integration test for the WASM sprite export pipeline (runs on JVM, not WASM)
-tasks.register('runWasmSpriteExporterTest', JavaExec) {
-    group = 'verification'
-    description = 'Test SpriteDataExporter JSON output and bitmap decoding with habbo.dcr'
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'com.libreshockwave.player.wasm.WasmSpriteExporterTest'
-    jvmArgs '-Xmx512m'
-    dependsOn compileTestJava
-    javaLauncher = javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
-}

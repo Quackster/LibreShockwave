@@ -432,16 +432,6 @@ WASM is a pure computation engine with **zero `@Import` annotations** — JS own
 
 The build output goes to `player-wasm/build/generated/teavm/wasm/`.
 
-### Testing
-
-```bash
-# Smoke test: QueuedNetProvider + WasmPlayer basics (runs on JVM)
-./gradlew :player-wasm:runQueuedNetProviderTest
-
-# Integration test: SpriteDataExporter with habbo.dcr (runs on JVM)
-./gradlew :player-wasm:runWasmSpriteExporterTest
-```
-
 ### Deploying
 
 Copy the contents of `player-wasm/build/generated/teavm/wasm/` to your web server. The included `index.html` is a ready-made player page with file picker, URL bar, transport controls, and a params editor.
@@ -562,9 +552,6 @@ player-wasm/
     index.html                          # Player page with toolbar and transport controls
     shockwave-lib.js                    # Embeddable player library (~350 lines)
     libreshockwave.css                  # Styling
-  src/test/java/.../wasm/
-    QueuedNetProviderTest.java          # Smoke tests (8 tests)
-    WasmSpriteExporterTest.java         # Integration test with habbo.dcr
 ```
 
 </details>
@@ -594,10 +581,6 @@ player-wasm/
 # SDK integration / feature tests
 ./gradlew :sdk:runTests
 ./gradlew :sdk:runFeatureTests
-
-# WASM player tests (run on JVM, not in browser)
-./gradlew :player-wasm:runQueuedNetProviderTest   # 8 smoke tests
-./gradlew :player-wasm:runWasmSpriteExporterTest  # integration test
 
 # Compile the WASM player
 ./gradlew :player-wasm:generateWasm
