@@ -11,22 +11,28 @@
  *   - http(s):// URLs → forwarded to native Node.js fetch (XAMPP/local server must be running)
  *   - Other paths   → read as local file paths (WASM binary)
  *
- * Usage: node wasm-test.js <distDir> <dcrFile> <castDir> [sw1]
+ * Usage: node wasm-test.js <distDir> <dcrFile> <castDir> [sw1] [outputDir]
  * Exit 0 = PASS, Exit 1 = FAIL
  */
 
 const fs   = require('fs');
 const path = require('path');
 const vm   = require('vm');
+const zlib = require('zlib');
 
 // ---------------------------------------------------------------------------
 // Args
 // ---------------------------------------------------------------------------
-const [distDir, dcrFile, castDir, sw1 = ''] = process.argv.slice(2);
+const [distDir, dcrFile, castDir, sw1 = '', outputDir = ''] = process.argv.slice(2);
 
 if (!distDir || !dcrFile || !castDir) {
-    console.error('Usage: wasm-test.js <distDir> <dcrFile> <castDir> [sw1]');
+    console.error('Usage: wasm-test.js <distDir> <dcrFile> <castDir> [sw1] [outputDir]');
     process.exit(1);
+}
+
+if (outputDir) {
+    fs.mkdirSync(outputDir, { recursive: true });
+    console.log(`[FRAME] Saving PNG frames to: ${outputDir}`);
 }
 
 function requireFile(p, label) {
@@ -47,6 +53,56 @@ requireFile(dcrFile,         'DCR file');
 // files as "file:///castDir/cast.cct" — the fetch override reads these directly.
 const dcrFileUrl      = 'file:///' + dcrFile.replace(/\\/g, '/').replace(/^\/+/, '');
 const castDirResolved = path.resolve(castDir);
+
+// ---------------------------------------------------------------------------
+// PNG encoder (no external dependencies — uses built-in zlib)
+// ---------------------------------------------------------------------------
+
+(function buildCrcTable() {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        t[n] = c;
+    }
+    global._PNG_CRC_TABLE = t;
+})();
+
+function _crc32(buf) {
+    let c = 0xFFFFFFFF;
+    for (let i = 0; i < buf.length; i++) c = global._PNG_CRC_TABLE[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+function _pngChunk(type, data) {
+    const tb  = Buffer.from(type, 'ascii');
+    const len = Buffer.alloc(4);   len.writeUInt32BE(data.length, 0);
+    const crc = Buffer.alloc(4);   crc.writeUInt32BE(_crc32(Buffer.concat([tb, data])), 0);
+    return Buffer.concat([len, tb, data, crc]);
+}
+
+/** Encode a w×h RGBA pixel buffer as a PNG Buffer (RGB, level-1 deflate). */
+function encodePng(w, h, rgbaPixels) {
+    const row = 1 + w * 3;
+    const raw = Buffer.alloc(h * row);
+    for (let y = 0; y < h; y++) {
+        raw[y * row] = 0; // filter byte: None
+        for (let x = 0; x < w; x++) {
+            const s = (y * w + x) * 4;
+            const d = y * row + 1 + x * 3;
+            raw[d] = rgbaPixels[s]; raw[d+1] = rgbaPixels[s+1]; raw[d+2] = rgbaPixels[s+2];
+        }
+    }
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4);
+    ihdr[8] = 8; ihdr[9] = 2; // 8-bit RGB truecolor
+    return Buffer.concat([
+        Buffer.from([137,80,78,71,13,10,26,10]),
+        _pngChunk('IHDR', ihdr),
+        _pngChunk('IDAT', zlib.deflateSync(raw, { level: 1 })),
+        _pngChunk('IEND', Buffer.alloc(0))
+    ]);
+}
 
 // ---------------------------------------------------------------------------
 // Browser shims — must be set up before loading the TeaVM runtime
@@ -184,6 +240,13 @@ async function runTest() {
         return readStringBuffer(len);
     }
 
+    function readDebugLog() {
+        if (!exp.getDebugLog) return null;
+        const len = exp.getDebugLog();
+        if (len <= 0) return null;
+        return readStringBuffer(len);
+    }
+
     // -----------------------------------------------------------------------
     // Load DCR
     // -----------------------------------------------------------------------
@@ -212,6 +275,80 @@ async function runTest() {
     const stageW = (movieResult >>> 16) & 0xFFFF;
     const stageH =  movieResult         & 0xFFFF;
     console.log(`[TEST] Movie loaded: ${stageW}x${stageH}, frames=${exp.getFrameCount()}, tempo=${exp.getTempo()}`);
+
+    // -----------------------------------------------------------------------
+    // Frame export helpers (need exp, mem, stageW, stageH, clearException)
+    // -----------------------------------------------------------------------
+
+    function composeFrame(fd) {
+        const pixels = new Uint8ClampedArray(stageW * stageH * 4);
+
+        // Background fill
+        const bg  = typeof fd.bg === 'number' ? fd.bg : 0xFFFFFF;
+        const bgR = (bg >> 16) & 0xFF, bgG = (bg >> 8) & 0xFF, bgB = bg & 0xFF;
+        for (let i = 0; i < stageW * stageH; i++) {
+            pixels[i*4]=bgR; pixels[i*4+1]=bgG; pixels[i*4+2]=bgB; pixels[i*4+3]=255;
+        }
+
+        const sprites = (fd.sprites || []).filter(s => s.visible && s.hasBaked && s.memberId > 0);
+        sprites.sort((a, b) => a.channel - b.channel);
+
+        // Pre-fetch all bitmaps from WASM heap
+        const bitmaps = {};
+        for (const sp of sprites) {
+            if (bitmaps[sp.memberId] !== undefined) continue;
+            const ptr = exp.getBitmapData(sp.memberId);   clearException();
+            const bw  = exp.getBitmapWidth(sp.memberId);  clearException();
+            const bh  = exp.getBitmapHeight(sp.memberId); clearException();
+            if (!ptr || !bw || !bh) { bitmaps[sp.memberId] = null; continue; }
+            const bytes = new Uint8ClampedArray(bw * bh * 4);
+            bytes.set(new Uint8ClampedArray(mem.buffer, ptr, bytes.length));
+            bitmaps[sp.memberId] = { bytes, w: bw, h: bh };
+        }
+
+        // Alpha-composite each sprite
+        for (const sp of sprites) {
+            const bmp = bitmaps[sp.memberId];
+            if (!bmp) continue;
+            const opacity = (typeof sp.blend === 'number' ? sp.blend : 100) / 100;
+            const { bytes, w: bw, h: bh } = bmp;
+            for (let row = 0; row < bh; row++) {
+                const dy = sp.y + row;
+                if (dy < 0 || dy >= stageH) continue;
+                for (let col = 0; col < bw; col++) {
+                    const dx = sp.x + col;
+                    if (dx < 0 || dx >= stageW) continue;
+                    const si = (row * bw + col) * 4;
+                    const di = (dy * stageW + dx) * 4;
+                    const srcA = (bytes[si+3] / 255) * opacity;
+                    if (srcA <= 0) continue;
+                    if (srcA >= 1) {
+                        pixels[di]=bytes[si]; pixels[di+1]=bytes[si+1]; pixels[di+2]=bytes[si+2]; pixels[di+3]=255;
+                    } else {
+                        const inv = 1 - srcA;
+                        pixels[di]   = Math.round(bytes[si]   * srcA + pixels[di]   * inv);
+                        pixels[di+1] = Math.round(bytes[si+1] * srcA + pixels[di+1] * inv);
+                        pixels[di+2] = Math.round(bytes[si+2] * srcA + pixels[di+2] * inv);
+                        pixels[di+3] = 255;
+                    }
+                }
+            }
+        }
+        return pixels;
+    }
+
+    function captureFrame(fd, tickNum, label) {
+        if (!outputDir) return;
+        try {
+            const pixels = composeFrame(fd);
+            const png    = encodePng(stageW, stageH, pixels);
+            const file   = path.join(outputDir, `frame_t${String(tickNum).padStart(4,'0')}_${label}.png`);
+            fs.writeFileSync(file, png);
+            console.log(`[FRAME] Saved ${path.basename(file)}`);
+        } catch (e) {
+            console.error(`[FRAME] Export error at tick ${tickNum}:`, e.message);
+        }
+    }
 
     // -----------------------------------------------------------------------
     // External params
@@ -254,12 +391,25 @@ async function runTest() {
         const filePath = fileUrlToPath(u);
         if (filePath !== null) {
             try {
-                const data = fs.readFileSync(filePath);
+                let data = fs.readFileSync(filePath);
+                // Prefer AU locale for external_variables.txt if hh_entry_au.cct is available.
+                // The shared hh_entry.cct layout ("entry.visual") references AU-specific member
+                // names (hh_au_tausta etc.), so FI/other locales produce 0 hotel sprites.
+                const bn = path.basename(filePath);
+                if (bn === 'external_variables.txt' &&
+                    fs.existsSync(path.join(castDirResolved, 'hh_entry_au.cct'))) {
+                    const original = data.toString('utf8');
+                    const patched  = original.replace(/cast\.entry\.2=\S+/g, 'cast.entry.2=hh_entry_au');
+                    if (patched !== original) {
+                        data = Buffer.from(patched, 'utf8');
+                        console.log(`[NET] Locale override: cast.entry.2 → hh_entry_au in ${bn}`);
+                    }
+                }
                 const addr = exp.allocateNetBuffer(data.length);
                 new Uint8Array(mem.buffer, addr, data.length).set(data);
                 exp.deliverFetchResult(taskId, data.length);
                 clearException();
-                console.log(`[NET] OK  ${path.basename(filePath)} (${data.length} bytes)`);
+                console.log(`[NET] OK  ${bn} (${data.length} bytes)`);
                 return;
             } catch (_e) {
                 // fall through to fallbacks
@@ -338,6 +488,16 @@ async function runTest() {
         ));
     }
 
+    // Helper to drain and print the WASM debug log
+    function drainDebugLog(label) {
+        const dbg = readDebugLog();
+        if (dbg) {
+            for (const line of dbg.split('\n')) {
+                if (line.trim()) console.log(`[DBG ${label}] ${line}`);
+            }
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Preload casts → pumpNetwork
     // -----------------------------------------------------------------------
@@ -345,6 +505,7 @@ async function runTest() {
     clearException();
     if (castCount > 0) console.log(`[TEST] Preloading ${castCount} external cast(s)`);
     await pumpNetwork();
+    drainDebugLog('preload');
 
     // -----------------------------------------------------------------------
     // play() → pumpNetwork (delivers any requests queued during prepareMovie)
@@ -356,37 +517,83 @@ async function runTest() {
         if (err) console.error('[TEST] play error:', err);
     }
     await pumpNetwork();
+    drainDebugLog('play');
 
     // -----------------------------------------------------------------------
     // Tick loop
     // -----------------------------------------------------------------------
-    let maxSpriteCount = 0;
-    let finalFrame     = 0;
-    const MAX_TICKS    = 500;
+    const MAX_TICKS             = 1000; // hotel view appears around tick 200
+    const HOTEL_VIEW_MIN_SPRITES = 10;  // logo=2, hotel view=10+
+
+    let maxSpriteCount    = 0;
+    let finalFrame        = 0;
+    let lastCapturedCount = -1;
+    let fd                = null;
 
     for (let i = 0; i < MAX_TICKS; i++) {
         const stillPlaying = exp.tick() !== 0;
         clearException();
-        await pumpNetwork();
 
-        const fdLen = exp.getFrameDataJson();
-        clearException();
-        const fd = readJson(fdLen);
+        // Log any WASM-level errors on every tick
+        const err = getLastError();
+        if (err) console.error(`[TEST] tick ${i} error: ${err}`);
 
-        if (fd) {
-            finalFrame = fd.frame || 0;
-            const spriteCount = (fd.sprites || []).length;
-            if (spriteCount > maxSpriteCount) maxSpriteCount = spriteCount;
-
-            if (i < 5 || i % 50 === 0) {
-                console.log(`[TEST] tick ${i}: frame=${finalFrame}/${fd.frameCount || '?'} sprites=${spriteCount}`);
+        // Log pending requests before pumpNetwork (verbose for first 20 ticks)
+        const pendingCount = exp.getPendingFetchCount(); clearException();
+        if (pendingCount > 0 && i < 30) {
+            const pLen = exp.getPendingFetchJson(); clearException();
+            const reqs = readJson(pLen);
+            if (reqs) {
+                for (const r of reqs) {
+                    const name = r.url.split('/').pop().split('?')[0];
+                    console.log(`[NET] tick ${i} queued: ${name} (task=${r.taskId})`);
+                }
             }
         }
 
-        // Log any WASM-level errors on the first few ticks
-        if (i < 10) {
-            const err = getLastError();
-            if (err) console.error(`[TEST] tick ${i} error: ${err}`);
+        await pumpNetwork();
+
+        // Read debug log (print first 200 ticks, then every 50)
+        if (i < 200 || i % 50 === 0) {
+            const dbg = readDebugLog();
+            if (dbg) {
+                for (const line of dbg.split('\n')) {
+                    if (line.trim()) console.log(`[DBG t${i}] ${line}`);
+                }
+            }
+        }
+
+        // Lightweight sprite count — no bitmap baking, no OOM risk.
+        // Use getSpriteCount() + getCurrentFrame() for pass/fail criteria.
+        const spriteCount = exp.getSpriteCount ? exp.getSpriteCount() : 0;
+        clearException();
+        const frameNum = exp.getCurrentFrame();
+        clearException();
+        if (spriteCount > maxSpriteCount) maxSpriteCount = spriteCount;
+        if (frameNum > 0) finalFrame = frameNum;
+
+        const tcStr = exp.getTimeoutCount ? `tc=${exp.getTimeoutCount()}` : '';
+        if (i < 30 || i % 100 === 0) {
+            const fc = exp.getFrameCount ? exp.getFrameCount() : '?';
+            console.log(`[TEST] tick ${i}: frame=${frameNum}/${fc} sprites=${spriteCount} ${tcStr}`);
+        }
+
+        // Optional PNG export — only when outputDir is set.
+        // getFrameDataJson() bakes all bitmaps (memory-intensive); wrap in try-catch
+        // in case WASM heap is tight. A caught RuntimeError leaves WASM intact for
+        // subsequent lightweight calls (tick, getSpriteCount, etc.).
+        if (outputDir && (spriteCount > lastCapturedCount || (i > 0 && i % 200 === 0))) {
+            try {
+                const fdLen = exp.getFrameDataJson();
+                clearException();
+                fd = readJson(fdLen);
+                if (fd) {
+                    captureFrame(fd, i, `s${spriteCount}`);
+                    if (spriteCount > lastCapturedCount) lastCapturedCount = spriteCount;
+                }
+            } catch (e) {
+                console.error(`[FRAME] getFrameDataJson failed at tick ${i} (OOM?):`, e.message);
+            }
         }
 
         if (!stillPlaying) {
@@ -395,15 +602,27 @@ async function runTest() {
         }
     }
 
+    // Attempt a final PNG capture if outputDir is set
+    if (outputDir) {
+        try {
+            const fdLen = exp.getFrameDataJson();
+            clearException();
+            fd = readJson(fdLen);
+            if (fd) captureFrame(fd, MAX_TICKS - 1, 'final');
+        } catch (e) {
+            console.error('[FRAME] Final frame capture failed (OOM?):', e.message);
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Pass / fail
     // -----------------------------------------------------------------------
-    const pass = maxSpriteCount > 0 && finalFrame > 0;
+    const pass = maxSpriteCount >= HOTEL_VIEW_MIN_SPRITES && finalFrame > 0;
     if (pass) {
-        console.log(`[TEST] PASS: WASM rendering verified (maxSprites=${maxSpriteCount}, frame=${finalFrame})`);
+        console.log(`[TEST] PASS: Hotel view reached (maxSprites=${maxSpriteCount}, frame=${finalFrame})`);
         process.exit(0);
     } else {
-        console.error(`[TEST] FAIL: maxSprites=${maxSpriteCount}, finalFrame=${finalFrame}`);
+        console.error(`[TEST] FAIL: Hotel view not reached (maxSprites=${maxSpriteCount}/${HOTEL_VIEW_MIN_SPRITES}, frame=${finalFrame})`);
         process.exit(1);
     }
 }

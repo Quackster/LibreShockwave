@@ -1,6 +1,7 @@
 package com.libreshockwave.player.wasm;
 
 import com.libreshockwave.util.FileUtil;
+import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.builtin.NetBuiltins;
 
 import java.util.ArrayList;
@@ -84,6 +85,32 @@ public class QueuedNetProvider implements NetBuiltins.NetProvider {
         if (task == null) return "Error";
         if (task.done) return task.errorCode == 0 ? "Complete" : "Error";
         return "Loading";
+    }
+
+    /**
+     * Returns stream status as a PropList with real bytesSoFar so that the
+     * Download Instance's check (tStreamStatus[#bytesSoFar] > 0) passes.
+     */
+    @Override
+    public Datum getStreamStatusDatum(Integer taskId) {
+        NetTask task = getTask(taskId);
+        java.util.LinkedHashMap<String, Datum> props = new java.util.LinkedHashMap<>();
+        if (task == null) {
+            props.put("URL",        Datum.EMPTY_STRING);
+            props.put("state",      Datum.of("Error"));
+            props.put("bytesSoFar", Datum.ZERO);
+            props.put("bytesTotal", Datum.ZERO);
+            props.put("error",      Datum.of("OK"));
+            return Datum.propList(props);
+        }
+        int byteCount = task.done && task.data != null ? task.data.length : 0;
+        String state  = task.done ? (task.errorCode == 0 ? "Complete" : "Error") : "Loading";
+        props.put("URL",        Datum.EMPTY_STRING);
+        props.put("state",      Datum.of(state));
+        props.put("bytesSoFar", Datum.of(byteCount));
+        props.put("bytesTotal", Datum.of(byteCount));
+        props.put("error",      task.errorCode == 0 ? Datum.of("OK") : Datum.of(String.valueOf(task.errorCode)));
+        return Datum.propList(props);
     }
 
     /**

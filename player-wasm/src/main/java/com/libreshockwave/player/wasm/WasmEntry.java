@@ -26,6 +26,14 @@ public class WasmEntry {
     private static byte[] netBuffer;
     private static byte[] largeBuffer;
 
+    // Debug log: accumulates messages; read via getDebugLog() export
+    static final StringBuilder debugLog = new StringBuilder(1024);
+
+    /** Append a timestamped debug message (accessible from player-wasm package). */
+    static void log(String msg) {
+        debugLog.append(msg).append('\n');
+    }
+
     public static void main(String[] args) {
     }
 
@@ -177,6 +185,23 @@ public class WasmEntry {
     @Export(name = "getTempo")
     public static int getTempo() {
         return wasmPlayer != null ? wasmPlayer.getTempo() : 15;
+    }
+
+    /**
+     * Get the number of active sprites in the current frame, without baking bitmaps.
+     * Lightweight alternative to getFrameDataJson() for pass/fail criteria.
+     * @return sprite count, or 0 if not playing
+     */
+    @Export(name = "getSpriteCount")
+    public static int getSpriteCount() {
+        if (wasmPlayer == null || wasmPlayer.getPlayer() == null) return 0;
+        try {
+            return wasmPlayer.getPlayer().getStageRenderer()
+                    .getSpritesForFrame(wasmPlayer.getPlayer().getCurrentFrame()).size();
+        } catch (Throwable e) {
+            captureError("getSpriteCount", e);
+            return 0;
+        }
     }
 
     @Export(name = "getStageWidth")
@@ -348,6 +373,32 @@ public class WasmEntry {
         return len;
     }
 
+    /**
+     * Read accumulated debug log messages.
+     * Clears the log after reading.
+     * @return byte length written to stringBuffer, or 0 if log is empty
+     */
+    @Export(name = "getDebugLog")
+    public static int getDebugLog() {
+        if (debugLog.length() == 0) return 0;
+        byte[] bytes = debugLog.toString().getBytes();
+        int len = Math.min(bytes.length, stringBuffer.length);
+        System.arraycopy(bytes, 0, stringBuffer, 0, len);
+        debugLog.setLength(0);
+        return len;
+    }
+
+    // === Diagnostic exports ===
+
+    /**
+     * Get the number of active timeouts (for test diagnostics).
+     */
+    @Export(name = "getTimeoutCount")
+    public static int getTimeoutCount() {
+        if (wasmPlayer == null || wasmPlayer.getPlayer() == null) return -1;
+        return wasmPlayer.getPlayer().getTimeoutManager().getTimeoutCount();
+    }
+
     // === Internal helpers ===
 
     private static void captureError(String context, Throwable e) {
@@ -404,7 +455,7 @@ public class WasmEntry {
                 if (exporter != null) exporter.clearBitmapCache();
             }
         } catch (Exception e) {
-            // Silent — matches Swing's behavior
+            // Silent — external cast load failure is non-fatal
         }
     }
 }

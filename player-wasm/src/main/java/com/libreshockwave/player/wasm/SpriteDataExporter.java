@@ -36,34 +36,30 @@ public class SpriteDataExporter {
 
     /**
      * Export current frame data as JSON.
-     * Also caches baked bitmaps from the snapshot so getBitmapRGBA() can serve them.
+     * Uses a lightweight (unbaked) snapshot — no pixel arrays allocated here.
+     * Bitmaps are decoded on demand when JS calls getBitmapData() per sprite.
+     * Clears the bitmap cache at the start so the previous frame's decoded
+     * bitmaps become GC-eligible before new ones are allocated.
      */
     public String exportFrameData() {
-        FrameSnapshot snapshot = player.getFrameSnapshot();
-
-        // Index members and cache baked bitmaps from snapshot
+        // Clear old decoded bitmaps so the GC can reclaim them before new decodes
+        bitmapCache.clear();
         recentMembers.clear();
+
+        FrameSnapshot snapshot = player.getFrameSnapshotUnbaked();
+
+        // Index member chunks from the snapshot (used by getCachedBitmap fallback)
         for (RenderSprite sprite : snapshot.sprites()) {
             int mid = sprite.getCastMemberId();
             if (mid <= 0) continue;
-
             if (sprite.getCastMember() != null) {
                 recentMembers.put(mid, sprite.getCastMember());
             }
-
-            if (!bitmapCache.containsKey(mid)) {
-                Bitmap baked = sprite.getBakedBitmap();
-                if (baked != null) {
-                    bitmapCache.put(mid, toCachedBitmap(baked));
-                }
-            }
         }
 
-        // Cache stage image if present
+        // Stage image: decode and cache now (it's a single image, manageable size)
         if (snapshot.stageImage() != null) {
-            if (!bitmapCache.containsKey(STAGE_IMAGE_ID)) {
-                bitmapCache.put(STAGE_IMAGE_ID, toCachedBitmap(snapshot.stageImage()));
-            }
+            bitmapCache.put(STAGE_IMAGE_ID, toCachedBitmap(snapshot.stageImage()));
         }
 
         StringBuilder sb = new StringBuilder(2048);
@@ -93,7 +89,10 @@ public class SpriteDataExporter {
             sb.append(",\"ink\":").append(sprite.getInk());
             sb.append(",\"blend\":").append(sprite.getBlend());
 
-            boolean hasBaked = sprite.getBakedBitmap() != null && sprite.getCastMemberId() > 0;
+            // hasBaked = true means getBitmapData() will serve a decoded bitmap.
+            // With an unbaked snapshot, BITMAP sprites can always be decoded on demand.
+            boolean hasBaked = sprite.getCastMemberId() > 0
+                    && sprite.getType() == RenderSprite.SpriteType.BITMAP;
             sb.append(",\"hasBaked\":").append(hasBaked);
 
             if ((sprite.getType() == RenderSprite.SpriteType.TEXT ||

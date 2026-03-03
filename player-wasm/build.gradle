@@ -113,25 +113,28 @@ tasks.named('assembleWasm') {
 // Usage:
 //   ./gradlew :player-wasm:runWasmNodeTest
 //   ./gradlew :player-wasm:runWasmNodeTest -Psw1="yourvalue"
+//   ./gradlew :player-wasm:runWasmNodeTest -PoutputDir=C:/tmp/frames
 // ---------------------------------------------------------------------------
 tasks.register('runWasmNodeTest', Exec) {
     group       = 'verification'
     description = 'Test compiled WASM binary in Node.js (simulates browser JS↔WASM interaction)'
     dependsOn 'assembleWasm'
 
-    def distPath = layout.buildDirectory.dir('dist').get().asFile.absolutePath
-    def dcrFile  = project.findProperty('dcrFile')  ?: 'C:/xampp/htdocs/dcr/14.1_b8/habbo.dcr'
-    def castDir  = project.findProperty('castDir')  ?: 'C:/xampp/htdocs/dcr/14.1_b8'
-    def sw1      = project.findProperty('sw1')      ?:
+    def distPath  = layout.buildDirectory.dir('dist').get().asFile.absolutePath
+    def dcrFile   = project.findProperty('dcrFile')  ?: 'C:/xampp/htdocs/dcr/14.1_b8/habbo.dcr'
+    def castDir   = project.findProperty('castDir')  ?: 'C:/xampp/htdocs/dcr/14.1_b8'
+    def sw1       = project.findProperty('sw1')      ?:
         'external.variables.txt=http://localhost/gamedata/external_variables.txt;' +
         'external.texts.txt=http://localhost/gamedata/external_texts.txt'
+    def outputDir = project.findProperty('outputDir') ?: ''
 
     commandLine 'node',
         file('src/test/js/wasm-test.js').absolutePath,
         distPath,
         dcrFile,
         castDir,
-        sw1
+        sw1,
+        outputDir
 
     standardOutput = System.out
     errorOutput    = System.err
