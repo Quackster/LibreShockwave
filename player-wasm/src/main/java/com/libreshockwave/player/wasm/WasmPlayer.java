@@ -6,18 +6,15 @@ import com.libreshockwave.player.PlayerState;
 
 /**
  * Thin wrapper around Player for WASM execution.
- * Manages movie loading, deferred play (waiting for external casts),
- * and fetch result delivery. No @Import dependencies.
+ * Follows the same simple pattern as the desktop player:
+ * loadMovie → play → tick loop. External casts load asynchronously
+ * and the Lingo state machine handles them naturally.
  */
 public class WasmPlayer {
 
     private Player player;
     private QueuedNetProvider netProvider;
     private SpriteDataExporter spriteExporter;
-    private boolean playRequested = false;
-    private boolean moviePrepared = false;
-    private int expectedCasts = 0;
-    private int completedCasts = 0;
 
     /**
      * Load a Director movie from raw bytes.
@@ -35,21 +32,7 @@ public class WasmPlayer {
         player = new Player(file, netProvider);
         spriteExporter = new SpriteDataExporter(player);
 
-        // Preload external casts during load (gives fetch requests a head start)
-        expectedCasts = player.preloadAllCasts();
-
         return true;
-    }
-
-    /**
-     * Called when a fetch completes (success or error).
-     * Tracks completion count and triggers deferred play when all casts are done.
-     */
-    public void onCastFetchDone() {
-        completedCasts++;
-        if (playRequested && !moviePrepared && completedCasts >= expectedCasts) {
-            doPlay();
-        }
     }
 
     /**
@@ -59,10 +42,7 @@ public class WasmPlayer {
     public boolean tick() {
         if (player == null) return false;
         PlayerState state = player.getState();
-        if (state == PlayerState.STOPPED) {
-            // Keep alive while waiting for casts to load
-            return playRequested && !moviePrepared;
-        }
+        if (state == PlayerState.STOPPED) return false;
         if (state == PlayerState.PAUSED) return true;
 
         try {
@@ -72,20 +52,22 @@ public class WasmPlayer {
         }
     }
 
-    public void play() {
-        if (player == null) return;
-
-        if (completedCasts >= expectedCasts) {
-            doPlay();
-        } else {
-            playRequested = true;
-        }
+    /**
+     * Queue fetch requests for all external casts before play().
+     * Since preloadAllCasts marks casts as fetching, the call inside
+     * prepareMovie() becomes a no-op — avoiding duplicate work.
+     */
+    public int preloadCasts() {
+        if (player == null) return 0;
+        return player.preloadAllCasts();
     }
 
-    private void doPlay() {
-        playRequested = false;
-        moviePrepared = true;
+    public void play() {
+        if (player == null) return;
         player.play();
+        // Lower step limit for tick-by-tick execution in the browser animation loop.
+        // prepareMovie() uses the default 1M limit (safe now that cast preloading is separate).
+        player.getVM().setStepLimit(100_000);
     }
 
     public void pause() {

@@ -138,6 +138,12 @@ var LibreShockwave = (function() {
         this._clearException();
     };
 
+    WasmEngine.prototype.preloadCasts = function() {
+        var count = this.exports.preloadCasts();
+        this._clearException();
+        return count;
+    };
+
     WasmEngine.prototype.tick = function() {
         var result = this.exports.tick();
         this._clearException();
@@ -169,25 +175,49 @@ var LibreShockwave = (function() {
     /**
      * Poll WASM for pending network requests, fire fetch(), deliver results back.
      */
-    WasmEngine.prototype.pumpNetwork = function() {
+    WasmEngine.prototype._drainRequests = function() {
         var count = this.exports.getPendingFetchCount();
         this._clearException();
-        if (count === 0) return;
-
+        if (count === 0) return null;
         var len = this.exports.getPendingFetchJson();
         this._clearException();
         var requests = this._readJson(len);
         this.exports.drainPendingFetches();
         this._clearException();
-        if (!requests) return;
+        return requests;
+    };
 
+    /**
+     * Fire pending network requests (fire-and-forget).
+     */
+    WasmEngine.prototype.pumpNetwork = function() {
+        var requests = this._drainRequests();
+        if (!requests) return;
         var self = this;
         for (var i = 0; i < requests.length; i++) {
             (function(req) {
-                var fb = req.fallbacks || [];
-                self._doFetch(req.taskId, req.url, req.method, req.postData, fb);
+                self._doFetch(req.taskId, req.url, req.method, req.postData, req.fallbacks || []);
             })(requests[i]);
         }
+    };
+
+    /**
+     * Fire pending network requests and return an array of Promises.
+     * Each promise always resolves (never rejects) so Promise.all() always completes.
+     */
+    WasmEngine.prototype.pumpNetworkCollect = function() {
+        var requests = this._drainRequests();
+        if (!requests) return [];
+        var self = this;
+        var promises = [];
+        for (var i = 0; i < requests.length; i++) {
+            (function(req) {
+                var p = self._doFetch(req.taskId, req.url, req.method, req.postData, req.fallbacks || []);
+                // Absorb rejections so Promise.all doesn't abort if any cast fails
+                promises.push(p.then(null, function() {}));
+            })(requests[i]);
+        }
+        return promises;
     };
 
     WasmEngine.prototype._doFetch = function(taskId, url, method, postData, fallbacks) {
@@ -200,7 +230,7 @@ var LibreShockwave = (function() {
         }
 
         console.log('[LS] fetch: ' + method + ' ' + url + ' (fallbacks: ' + fallbacks.length + ')');
-        fetch(url, opts)
+        return fetch(url, opts)
             .then(function(r) {
                 if (!r.ok) throw { status: r.status };
                 return r.arrayBuffer();
@@ -215,9 +245,10 @@ var LibreShockwave = (function() {
                 if (fallbacks.length > 0) {
                     var next = fallbacks[0];
                     var rest = fallbacks.slice(1);
-                    self._doFetch(taskId, next, method, postData, rest);
+                    return self._doFetch(taskId, next, method, postData, rest);
                 } else {
                     self._deliverError(taskId, (e && e.status) || 0);
+                    // Resolve (not reject) so Promise.all doesn't abort on failed casts
                 }
             });
     };
@@ -410,10 +441,22 @@ var LibreShockwave = (function() {
 
         if (this._opts.onLoad) this._opts.onLoad(info);
 
-        // Pump initial network requests (external casts queued during load)
-        this._engine.pumpNetwork();
-
-        if (this._autoplay) this.play();
+        // Director requires external casts to be loaded before startMovie fires.
+        // We preload them all, wait for delivery, then call play().
+        // This mirrors how the original Shockwave plugin worked synchronously.
+        var castCount = this._engine.preloadCasts();
+        var self = this;
+        if (castCount > 0) {
+            var promises = this._engine.pumpNetworkCollect();
+            Promise.all(promises).then(function() {
+                if (self._autoplay) self.play();
+                // Pump any requests queued during prepareMovie (getNetText, etc.)
+                self._engine.pumpNetwork();
+            });
+        } else {
+            if (this._autoplay) this.play();
+            this._engine.pumpNetwork();
+        }
     };
 
     /**
@@ -464,10 +507,8 @@ var LibreShockwave = (function() {
     };
 
     ShockwavePlayer.prototype.play = function() {
-        console.log('[LS] play(), engine=' + !!this._engine + ', ready=' + this._ready);
         if (!this._engine) return;
         this._engine.exports.play();
-        this._engine._clearException();
         this._engine.playing = true;
         this._lastFrameTime = 0;
         this._startLoop();
@@ -560,16 +601,6 @@ var LibreShockwave = (function() {
         engine.pumpNetwork();
 
         var fd = engine.getFrameData();
-
-        // Debug: log first 5 ticks and then every 30th
-        this._tickCount = (this._tickCount || 0) + 1;
-        if (this._tickCount <= 5 || this._tickCount % 30 === 0) {
-            var sprCount = fd && fd.sprites ? fd.sprites.length : 0;
-            var err = engine.getLastError();
-            console.log('[LS] tick #' + this._tickCount + ': still=' + stillPlaying +
-                ', frame=' + (fd ? fd.frame : 'null') + '/' + (fd ? fd.frameCount : '?') +
-                ', sprites=' + sprCount + (err ? ', ERR=' + err : ''));
-        }
 
         engine.renderToCanvas(this._ctx, fd);
 
