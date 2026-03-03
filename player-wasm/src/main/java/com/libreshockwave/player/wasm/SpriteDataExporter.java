@@ -23,6 +23,7 @@ public class SpriteDataExporter {
     private static final int STAGE_IMAGE_ID = -1;
 
     private final Player player;
+    private int diagCount = 0;
 
     // Cache decoded bitmaps by cast member ID (keyed by castMember.id() chunk ID)
     private final Map<Integer, CachedBitmap> bitmapCache = new HashMap<>();
@@ -40,6 +41,27 @@ public class SpriteDataExporter {
      */
     public String exportFrameData() {
         FrameSnapshot snapshot = player.getFrameSnapshot();
+
+        // Diagnostic: log registry state after prepareMovie has run (frame >= 5)
+        if (diagCount < 3 && snapshot.frameNumber() >= 5) {
+            diagCount++;
+            var registry = player.getStageRenderer().getSpriteRegistry();
+            var allSprites = registry.getAll();
+            var dynamicSprites = registry.getDynamicSprites();
+            System.out.println("[WASM-diag] frame=" + snapshot.frameNumber() +
+                    " snapshot.sprites=" + snapshot.sprites().size() +
+                    " registry.all=" + allSprites.size() +
+                    " registry.dynamic=" + dynamicSprites.size());
+            if (!allSprites.isEmpty()) {
+                for (var e : allSprites.entrySet()) {
+                    var s = e.getValue();
+                    System.out.println("[WASM-diag]   ch" + e.getKey() +
+                            " dynamic=" + s.isDynamic() +
+                            " hasDynMember=" + s.hasDynamicMember() +
+                            " puppet=" + s.isPuppet());
+                }
+            }
+        }
 
         // Index members and cache baked bitmaps from snapshot
         recentMembers.clear();
