@@ -81,9 +81,7 @@ public class WasmEntry {
     // === Playback ===
 
     /**
-     * Override the VM step limit for subsequent ticks.
-     * Default is 100,000 (set in WasmPlayer.play()). Use a higher value in testing
-     * environments where the animation loop timing doesn't matter.
+     * Set the per-handler instruction step limit. 0 = unlimited (the default).
      */
     @Export(name = "setVmStepLimit")
     public static void setVmStepLimit(int limit) {

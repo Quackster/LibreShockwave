@@ -78,7 +78,6 @@ public class LoginWindowTest {
         player.getNetManager().setLocalHttpRoot("C:/xampp/htdocs");
 
         LingoVM vm = player.getVM();
-        vm.setStepLimit(2_000_000);
 
         // ===== PHASE 2: Track execution milestones =====
         out.println("\n=== PHASE 2: Run Lingo & Track Milestones ===\n");

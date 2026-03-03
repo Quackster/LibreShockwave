@@ -65,9 +65,6 @@ public class WasmPlayer {
     public void play() {
         if (player == null) return;
         player.play();
-        // Lower step limit for tick-by-tick execution in the browser animation loop.
-        // prepareMovie() uses the default 1M limit (safe now that cast preloading is separate).
-        player.getVM().setStepLimit(100_000);
     }
 
     public void pause() {

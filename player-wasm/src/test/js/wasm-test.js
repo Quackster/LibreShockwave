@@ -358,19 +358,6 @@ async function runTest() {
     await pumpNetwork();
 
     // -----------------------------------------------------------------------
-    // Increase VM step limit for the test environment.
-    // In the browser, 100k steps/tick prevents the animation loop from hanging.
-    // In Node.js there is no animation loop, so we can safely run more steps
-    // per tick — this lets the Lingo state machine (fuse_frameProxy.prepareFrame)
-    // make network calls within a single tick instead of spreading across many.
-    // -----------------------------------------------------------------------
-    if (exp.setVmStepLimit) {
-        exp.setVmStepLimit(2_000_000);
-        clearException();
-        console.log('[TEST] VM step limit set to 2,000,000 for testing');
-    }
-
-    // -----------------------------------------------------------------------
     // Tick loop
     // -----------------------------------------------------------------------
     let maxSpriteCount = 0;
