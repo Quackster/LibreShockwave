@@ -171,17 +171,21 @@ var LibreShockwave = (function() {
      */
     WasmEngine.prototype.pumpNetwork = function() {
         var count = this.exports.getPendingFetchCount();
+        this._clearException();
         if (count === 0) return;
 
         var len = this.exports.getPendingFetchJson();
+        this._clearException();
         var requests = this._readJson(len);
         this.exports.drainPendingFetches();
+        this._clearException();
         if (!requests) return;
 
         var self = this;
         for (var i = 0; i < requests.length; i++) {
             (function(req) {
-                self._doFetch(req.taskId, req.url, req.method, req.postData, req.fallbacks || []);
+                var fb = req.fallbacks || [];
+                self._doFetch(req.taskId, req.url, req.method, req.postData, fb);
             })(requests[i]);
         }
     };
@@ -197,17 +201,17 @@ var LibreShockwave = (function() {
 
         fetch(url, opts)
             .then(function(r) {
-                if (!r.ok) throw { status: r.status, fallbacks: fallbacks };
+                if (!r.ok) throw { status: r.status };
                 return r.arrayBuffer();
             })
             .then(function(buf) {
                 self._deliverResult(taskId, buf);
             })
             .catch(function(e) {
-                // Try fallback URLs on failure
-                if (e && e.fallbacks && e.fallbacks.length > 0) {
-                    var next = e.fallbacks[0];
-                    var rest = e.fallbacks.slice(1);
+                // Try fallback URLs on any failure (HTTP error or network error)
+                if (fallbacks.length > 0) {
+                    var next = fallbacks[0];
+                    var rest = fallbacks.slice(1);
                     self._doFetch(taskId, next, method, postData, rest);
                 } else {
                     self._deliverError(taskId, (e && e.status) || 0);

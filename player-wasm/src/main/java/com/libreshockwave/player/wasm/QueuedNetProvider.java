@@ -218,8 +218,24 @@ public class QueuedNetProvider implements NetBuiltins.NetProvider {
 
     /**
      * A pending network request for JS to execute.
+     * Uses a plain class instead of a record for TeaVM compatibility
+     * (TeaVM may not correctly handle String[] fields in records).
      */
-    public record PendingRequest(int taskId, String url, String method, String postData, String[] fallbacks) {}
+    public static class PendingRequest {
+        public final int taskId;
+        public final String url;
+        public final String method;
+        public final String postData;
+        public final String[] fallbacks;
+
+        public PendingRequest(int taskId, String url, String method, String postData, String[] fallbacks) {
+            this.taskId = taskId;
+            this.url = url;
+            this.method = method;
+            this.postData = postData;
+            this.fallbacks = fallbacks;
+        }
+    }
 
     // Simple task data holder
     static class NetTask {
