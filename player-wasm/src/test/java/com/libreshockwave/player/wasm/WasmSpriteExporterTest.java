@@ -4,7 +4,7 @@ import com.libreshockwave.DirectorFile;
 import com.libreshockwave.player.Player;
 import com.libreshockwave.player.render.FrameSnapshot;
 import com.libreshockwave.player.render.RenderSprite;
-import com.libreshockwave.player.wasm.render.SpriteDataExporter;
+import com.libreshockwave.player.wasm.SpriteDataExporter;
 
 import javax.imageio.ImageIO;
 import java.awt.AlphaComposite;

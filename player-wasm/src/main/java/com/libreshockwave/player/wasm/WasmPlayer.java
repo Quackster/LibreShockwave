@@ -1,29 +1,19 @@
 package com.libreshockwave.player.wasm;
 
 import com.libreshockwave.DirectorFile;
-import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.player.Player;
 import com.libreshockwave.player.PlayerState;
-import com.libreshockwave.player.cast.CastLibManager;
-import com.libreshockwave.player.wasm.debug.WasmDebugController;
-import com.libreshockwave.player.wasm.net.WasmNetManager;
-import com.libreshockwave.player.wasm.render.SoftwareRenderer;
-import com.libreshockwave.player.wasm.render.SpriteDataExporter;
-
-import java.util.List;
 
 /**
  * Thin wrapper around Player for WASM execution.
- * No browser/DOM dependencies - all rendering is done via SoftwareRenderer
- * and the animation loop is managed by JavaScript.
+ * Manages movie loading, deferred play (waiting for external casts),
+ * and fetch result delivery. No @Import dependencies.
  */
 public class WasmPlayer {
 
     private Player player;
-    private SoftwareRenderer renderer;
+    private QueuedNetProvider netProvider;
     private SpriteDataExporter spriteExporter;
-    private WasmNetManager netManager;
-    private WasmDebugController debugController;
     private boolean playRequested = false;
     private boolean moviePrepared = false;
     private int expectedCasts = 0;
@@ -41,25 +31,18 @@ public class WasmPlayer {
             return false;
         }
 
-        netManager = new WasmNetManager(basePath);
-        player = new Player(file, netManager);
-
-        int stageWidth = player.getStageRenderer().getStageWidth();
-        int stageHeight = player.getStageRenderer().getStageHeight();
-        renderer = new SoftwareRenderer(player, stageWidth, stageHeight);
+        netProvider = new QueuedNetProvider(basePath);
+        player = new Player(file, netProvider);
         spriteExporter = new SpriteDataExporter(player);
 
-        // Preload external casts NOW (during load, not during play)
-        // This gives fetch requests a head start before the user presses play
+        // Preload external casts during load (gives fetch requests a head start)
         expectedCasts = player.preloadAllCasts();
 
-        // Render the initial frame
-        renderer.render();
         return true;
     }
 
     /**
-     * Called from WasmPlayerApp when a fetch completes (success or error).
+     * Called when a fetch completes (success or error).
      * Tracks completion count and triggers deferred play when all casts are done.
      */
     public void onCastFetchDone() {
@@ -71,40 +54,22 @@ public class WasmPlayer {
 
     /**
      * Advance one frame. Returns false only when STOPPED (keeps JS loop alive for PAUSED).
-     * Unlike Swing's timer (which keeps firing even after errors), WASM needs explicit
-     * resilience: catch exceptions but keep the animation loop running.
-     * @return true if animation loop should continue (PLAYING or PAUSED), false if STOPPED
+     * Catches exceptions to prevent JS animation loop death.
      */
     public boolean tick() {
         if (player == null) return false;
         PlayerState state = player.getState();
         if (state == PlayerState.STOPPED) {
-            // If play was initiated but deferred (waiting for casts to load),
-            // return true to keep the JS animation loop alive.
-            if (playRequested && !moviePrepared) {
-                return true;
-            }
-            return false;
+            // Keep alive while waiting for casts to load
+            return playRequested && !moviePrepared;
         }
         if (state == PlayerState.PAUSED) return true;
 
         try {
             return player.tick();
         } catch (Throwable e) {
-            // Don't stop the animation loop - try to continue on the next frame
-            // This matches Swing's behavior where the EDT catches errors but the timer keeps firing
             return true;
         }
-    }
-
-    public void render() {
-        if (renderer != null) {
-            renderer.render();
-        }
-    }
-
-    public byte[] getFrameBuffer() {
-        return renderer != null ? renderer.getFrameBuffer() : null;
     }
 
     public void play() {
@@ -113,7 +78,6 @@ public class WasmPlayer {
         if (completedCasts >= expectedCasts) {
             doPlay();
         } else {
-            // Defer play until all external casts have been fetched
             playRequested = true;
         }
     }
@@ -129,27 +93,15 @@ public class WasmPlayer {
     }
 
     public void stop() {
-        if (player != null) {
-            player.stop();
-            render();
-        }
+        if (player != null) player.stop();
     }
 
     public void goToFrame(int frame) {
-        if (player != null) {
-            player.goToFrame(frame);
-            render();
-        }
+        if (player != null) player.goToFrame(frame);
     }
 
-    /**
-     * Step forward one frame (manual advance for frame-level stepping).
-     */
     public void stepFrame() {
-        if (player != null) {
-            player.stepFrame();
-            render();
-        }
+        if (player != null) player.stepFrame();
     }
 
     public int getCurrentFrame() {
@@ -172,49 +124,20 @@ public class WasmPlayer {
         return player != null ? player.getStageRenderer().getStageHeight() : 480;
     }
 
-    // === Debug support ===
-
-    /**
-     * Enable debug mode and create a WasmDebugController.
-     */
-    public void enableDebug() {
-        if (player == null) return;
-        debugController = new WasmDebugController();
-        player.setDebugController(debugController);
-        player.setDebugEnabled(true);
-    }
-
-    public WasmDebugController getDebugController() {
-        return debugController;
-    }
-
     public Player getPlayer() {
         return player;
     }
 
-    public DirectorFile getFile() {
-        return player != null ? player.getFile() : null;
-    }
-
-    public List<ScriptChunk> getAllScripts() {
-        return player != null && player.getFile() != null
-            ? player.getFile().getScripts() : List.of();
-    }
-
-    public CastLibManager getCastLibManager() {
-        return player != null ? player.getCastLibManager() : null;
+    public QueuedNetProvider getNetProvider() {
+        return netProvider;
     }
 
     public SpriteDataExporter getSpriteExporter() {
         return spriteExporter;
     }
 
-    /**
-     * Preload all external cast libraries.
-     * @return number of casts queued for loading
-     */
-    public int preloadAllCasts() {
-        return player != null ? player.preloadAllCasts() : 0;
+    public DirectorFile getFile() {
+        return player != null ? player.getFile() : null;
     }
 
     public void shutdown() {

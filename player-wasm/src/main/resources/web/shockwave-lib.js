@@ -9,8 +9,9 @@
  *     player.load("http://example.com/movie.dcr");
  *   </script>
  *
- * All WASM files (player-wasm.wasm, player-wasm.wasm-runtime.js)
- * must be in the same directory as this script unless basePath is specified.
+ * Architecture: No Web Worker. No @Import. WASM is a pure computation engine.
+ * JS owns networking (fetch), canvas rendering, and the animation loop.
+ * Communication is JS -> WASM via @Export methods only.
  */
 var LibreShockwave = (function() {
 
@@ -28,623 +29,271 @@ var LibreShockwave = (function() {
     })();
 
     // ========================================================================
-    // Inline Worker source code
+    // WasmEngine: loads TeaVM runtime + WASM, provides memory helpers
     // ========================================================================
 
-    var _workerCode = (function() {
-    // --- BEGIN WORKER CODE ---
-    // This string is evaluated inside a Web Worker via Blob URL.
-    // The variable _basePath is injected before this code at runtime.
-    return [
-'var teavm = null;',
-'var exports = null;',
-'var debugSab = null;',
-'var debugView = null;',
-'var _tickCount = 0;',
-'',
-'function getMemory() {',
-'    return teavm.memory.buffer;',
-'}',
-'',
-'function clearPendingException() {',
-'    if (teavm && teavm.instance && teavm.instance.exports.teavm_catchException) {',
-'        var ex = teavm.instance.exports.teavm_catchException();',
-'        if (ex !== 0) {',
-'            console.warn("[Worker] Cleared pending Java exception (ptr=" + ex + ")");',
-'        }',
-'    }',
-'}',
-'',
-'function readStringFromBuffer(length) {',
-'    var addr = exports.getStringBufferAddress();',
-'    var bytes = new Uint8Array(getMemory(), addr, length);',
-'    return new TextDecoder().decode(bytes);',
-'}',
-'',
-'function readJsonFromLargeBuffer(length) {',
-'    if (length <= 0) return null;',
-'    var addr = exports.getLargeBufferAddress();',
-'    var bytes = new Uint8Array(getMemory(), addr, length);',
-'    var str = new TextDecoder().decode(bytes);',
-'    try {',
-'        return JSON.parse(str);',
-'    } catch (e) {',
-'        console.error("[Worker] JSON parse error:", e);',
-'        return null;',
-'    }',
-'}',
-'',
-'function writeStringToBuffer(str) {',
-'    var bytes = new TextEncoder().encode(str);',
-'    var addr = exports.getStringBufferAddress();',
-'    var buf = new Uint8Array(getMemory(), addr, 4096);',
-'    buf.set(bytes.subarray(0, Math.min(bytes.length, 4096)));',
-'    return bytes.length;',
-'}',
-'',
-'function handleFetchGet(taskId, urlLength) {',
-'    var url = readStringFromBuffer(urlLength);',
-'    self.postMessage({ type: "fetchRequest", method: "GET", taskId: taskId, url: url });',
-'}',
-'',
-'function handleFetchPost(taskId, urlLength, postDataLength) {',
-'    var url = readStringFromBuffer(urlLength);',
-'    var addr = exports.getStringBufferAddress();',
-'    var postBytes = new Uint8Array(getMemory(), addr + urlLength, postDataLength);',
-'    var postData = new TextDecoder().decode(postBytes);',
-'    self.postMessage({ type: "fetchRequest", method: "POST", taskId: taskId, url: url, postData: postData });',
-'}',
-'',
-'function debugWait() {',
-'    if (!debugView) return;',
-'    while (Atomics.load(debugView, 0) === 0) {',
-'        Atomics.wait(debugView, 0, 0);',
-'    }',
-'    Atomics.store(debugView, 0, 0);',
-'}',
-'',
-'function debugResume() {}',
-'',
-'function debugNotifyPaused(jsonLength) {',
-'    var jsonLen = exports.getDebugPausedJson();',
-'    var snapshot = readJsonFromLargeBuffer(jsonLen);',
-'    self.postMessage({ type: "debugPaused", snapshot: snapshot });',
-'}',
-'',
-'async function initWasm(sabuffer) {',
-'    debugSab = sabuffer;',
-'    if (debugSab) {',
-'        debugView = new Int32Array(debugSab);',
-'    }',
-'    try {',
-'        self.importScripts(_basePath + "player-wasm.wasm-runtime.js");',
-'        teavm = await TeaVM.wasm.load(_basePath + "player-wasm.wasm", {',
-'            installImports: function(importObj, controller) {',
-'                importObj.libreshockwave = {',
-'                    fetchGet: handleFetchGet,',
-'                    fetchPost: handleFetchPost,',
-'                    debugWait: debugWait,',
-'                    debugResume: debugResume,',
-'                    debugNotifyPaused: debugNotifyPaused',
-'                };',
-'            }',
-'        });',
-'        exports = teavm.instance.exports;',
-'        await teavm.main([]);',
-'        self.postMessage({ type: "ready" });',
-'    } catch (e) {',
-'        self.postMessage({ type: "error", message: "WASM init failed: " + e.message });',
-'    }',
-'}',
-'',
-'function loadMovie(movieBytes, basePath) {',
-'    try {',
-'        console.log("[Worker] loadMovie start, bytes=" + movieBytes.length + " basePath=" + basePath);',
-'        var basePathBytes = new TextEncoder().encode(basePath || "");',
-'        var stringBufAddr = exports.getStringBufferAddress();',
-'        var stringBuf = new Uint8Array(getMemory(), stringBufAddr, 4096);',
-'        stringBuf.set(basePathBytes);',
-'        exports.allocateMovieBuffer(movieBytes.length);',
-'        var movieBufAddr = exports.getMovieBufferAddress();',
-'        var movieBuf = new Uint8Array(getMemory(), movieBufAddr, movieBytes.length);',
-'        movieBuf.set(movieBytes);',
-'        var result = exports.loadMovie(movieBytes.length, basePathBytes.length);',
-'        clearPendingException();',
-'        if (result === 0) {',
-'            self.postMessage({ type: "error", message: "Failed to load movie" });',
-'            return;',
-'        }',
-'        var width = (result >> 16) & 0xFFFF;',
-'        var height = result & 0xFFFF;',
-'        console.log("[Worker] movie loaded: " + width + "x" + height);',
-'        self.postMessage({',
-'            type: "movieLoaded",',
-'            width: width,',
-'            height: height,',
-'            frameCount: exports.getFrameCount(),',
-'            tempo: exports.getTempo()',
-'        });',
-'    } catch (e) {',
-'        console.error("[Worker] loadMovie exception:", e);',
-'        self.postMessage({ type: "error", message: "loadMovie failed: " + e.message });',
-'    }',
-'}',
-'',
-'function checkAndLogError() {',
-'    try {',
-'        var errLen = exports.getLastError();',
-'        if (errLen > 0) {',
-'            var errMsg = readStringFromBuffer(errLen);',
-'            console.error("[Worker] WASM error: " + errMsg);',
-'            return errMsg;',
-'        }',
-'    } catch (e) {}',
-'    return null;',
-'}',
-'',
-'function tickFrame() {',
-'    try {',
-'        var stillPlaying = exports.tick();',
-'        clearPendingException();',
-'        if (stillPlaying === 0) {',
-'            checkAndLogError();',
-'        }',
-'        var frameJsonLen = exports.getFrameDataJson();',
-'        clearPendingException();',
-'        var frameData = null;',
-'        if (frameJsonLen > 0) {',
-'            frameData = readJsonFromLargeBuffer(frameJsonLen);',
-'        } else if (frameJsonLen === 0) {',
-'            checkAndLogError();',
-'        }',
-'        if (_tickCount <= 5) {',
-'            console.log("[Worker] tick=" + _tickCount + " frameJsonLen=" + frameJsonLen +',
-'                " sprites=" + (frameData && frameData.sprites ? frameData.sprites.length : "null") +',
-'                " stillPlaying=" + stillPlaying);',
-'        }',
-'        _tickCount++;',
-'        var pixelPtr = exports.render();',
-'        clearPendingException();',
-'        var pixels = null;',
-'        if (pixelPtr > 0) {',
-'            var w = exports.getStageWidth();',
-'            var h = exports.getStageHeight();',
-'            var src = new Uint8ClampedArray(getMemory(), pixelPtr, w * h * 4);',
-'            pixels = new Uint8ClampedArray(src.length);',
-'            pixels.set(src);',
-'        }',
-'        self.postMessage({',
-'            type: "frameData",',
-'            stillPlaying: stillPlaying !== 0,',
-'            frame: exports.getCurrentFrame(),',
-'            frameCount: exports.getFrameCount(),',
-'            frameData: frameData,',
-'            pixels: pixels',
-'        }, pixels ? [pixels.buffer] : []);',
-'    } catch (e) {',
-'        console.error("[Worker] tickFrame exception:", e);',
-'        self.postMessage({ type: "frameData", stillPlaying: true, frame: 0, frameCount: 0, frameData: null, pixels: null });',
-'    }',
-'}',
-'',
-'function sendBitmapData(memberId) {',
-'    var ptr = exports.getBitmapData(memberId);',
-'    if (ptr === 0) {',
-'        self.postMessage({ type: "bitmapNotFound", memberId: memberId });',
-'        return;',
-'    }',
-'    var w = exports.getBitmapWidth(memberId);',
-'    var h = exports.getBitmapHeight(memberId);',
-'    if (w <= 0 || h <= 0) return;',
-'    var src = new Uint8ClampedArray(getMemory(), ptr, w * h * 4);',
-'    var rgba = new Uint8ClampedArray(src.length);',
-'    rgba.set(src);',
-'    self.postMessage({',
-'        type: "bitmapData",',
-'        memberId: memberId,',
-'        width: w,',
-'        height: h,',
-'        rgba: rgba.buffer',
-'    }, [rgba.buffer]);',
-'}',
-'',
-'function deliverFetchResult(taskId, data) {',
-'    var bytes = new Uint8Array(data);',
-'    console.log("[Worker] deliverFetchResult task=" + taskId + " rawType=" + (data && data.constructor && data.constructor.name) + " byteLength=" + (data && data.byteLength) + " wrappedLen=" + bytes.length);',
-'    exports.allocateNetBuffer(bytes.length);',
-'    var netBufAddr = exports.getNetBufferAddress();',
-'    var netBuf = new Uint8Array(getMemory(), netBufAddr, bytes.length);',
-'    netBuf.set(bytes);',
-'    exports.onFetchComplete(taskId, bytes.length);',
-'    clearPendingException();',
-'}',
-'',
-'function deliverFetchError(taskId, status) {',
-'    exports.onFetchError(taskId, status || 0);',
-'    clearPendingException();',
-'}',
-'',
-'self.onmessage = function(e) {',
-'    var msg = e.data;',
-'    switch (msg.cmd) {',
-'        case "init":',
-'            initWasm(msg.sab);',
-'            break;',
-'        case "loadMovie":',
-'            loadMovie(new Uint8Array(msg.bytes), msg.basePath);',
-'            break;',
-'        case "play":',
-'            _tickCount = 0;',
-'            try {',
-'                exports.play();',
-'                clearPendingException();',
-'                var playErr = checkAndLogError();',
-'                console.log("[Worker] play() called" + (playErr ? " WITH ERROR: " + playErr : " successfully"));',
-'            } catch(e) {',
-'                console.error("[Worker] play() threw:", e);',
-'                clearPendingException();',
-'            }',
-'            self.postMessage({ type: "stateChange", state: "playing" });',
-'            break;',
-'        case "pause":',
-'            exports.pause();',
-'            clearPendingException();',
-'            self.postMessage({ type: "stateChange", state: "paused" });',
-'            break;',
-'        case "stop":',
-'            exports.stop();',
-'            clearPendingException();',
-'            self.postMessage({ type: "stateChange", state: "stopped" });',
-'            break;',
-'        case "tick":',
-'            tickFrame();',
-'            break;',
-'        case "goToFrame":',
-'            exports.goToFrame(msg.frame);',
-'            tickFrame();',
-'            break;',
-'        case "stepForward":',
-'            exports.stepForward();',
-'            tickFrame();',
-'            break;',
-'        case "stepBackward":',
-'            exports.stepBackward();',
-'            tickFrame();',
-'            break;',
-'        case "enableDebug":',
-'            exports.enableDebug();',
-'            self.postMessage({ type: "debugEnabled" });',
-'            break;',
-'        case "toggleBreakpoint":',
-'            var added = exports.toggleBreakpoint(msg.scriptId, msg.handlerIndex, msg.offset);',
-'            self.postMessage({ type: "breakpointToggled", scriptId: msg.scriptId, offset: msg.offset, added: added === 1 });',
-'            break;',
-'        case "clearBreakpoints":',
-'            exports.clearBreakpoints();',
-'            self.postMessage({ type: "breakpointsCleared" });',
-'            break;',
-'        case "debugStepInto":',
-'            exports.debugStepInto();',
-'            break;',
-'        case "debugStepOver":',
-'            exports.debugStepOver();',
-'            break;',
-'        case "debugStepOut":',
-'            exports.debugStepOut();',
-'            break;',
-'        case "debugContinue":',
-'            exports.debugContinue();',
-'            break;',
-'        case "debugPause":',
-'            exports.debugPause();',
-'            break;',
-'        case "getScriptList": {',
-'            var len = exports.getScriptList();',
-'            var data = readJsonFromLargeBuffer(len);',
-'            self.postMessage({ type: "scriptList", scripts: data });',
-'            break;',
-'        }',
-'        case "getHandlerBytecode": {',
-'            var len = exports.getHandlerBytecode(msg.scriptId, msg.handlerIndex);',
-'            var data = readJsonFromLargeBuffer(len);',
-'            self.postMessage({ type: "handlerBytecode", scriptId: msg.scriptId, handlerIndex: msg.handlerIndex, instructions: data });',
-'            break;',
-'        }',
-'        case "getHandlerDetails": {',
-'            var len = exports.getHandlerDetails(msg.scriptId, msg.handlerIndex);',
-'            var data = readJsonFromLargeBuffer(len);',
-'            self.postMessage({ type: "handlerDetails", details: data });',
-'            break;',
-'        }',
-'        case "getBitmapData":',
-'            sendBitmapData(msg.memberId);',
-'            break;',
-'        case "addWatch": {',
-'            var wlen = writeStringToBuffer(msg.expression);',
-'            exports.addWatch(wlen);',
-'            var wjlen = exports.getWatches();',
-'            self.postMessage({ type: "watchList", watches: readJsonFromLargeBuffer(wjlen) });',
-'            break;',
-'        }',
-'        case "removeWatch": {',
-'            var rlen = writeStringToBuffer(msg.id);',
-'            exports.removeWatch(rlen);',
-'            var rwlen = exports.getWatches();',
-'            self.postMessage({ type: "watchList", watches: readJsonFromLargeBuffer(rwlen) });',
-'            break;',
-'        }',
-'        case "clearWatches":',
-'            exports.clearWatches();',
-'            self.postMessage({ type: "watchList", watches: [] });',
-'            break;',
-'        case "getDebugSnapshot": {',
-'            var slen = exports.getDebugSnapshot();',
-'            self.postMessage({ type: "debugSnapshot", snapshot: readJsonFromLargeBuffer(slen) });',
-'            break;',
-'        }',
-'        case "serializeBreakpoints": {',
-'            var blen = exports.serializeBreakpoints();',
-'            var bdata = readJsonFromLargeBuffer(blen);',
-'            self.postMessage({ type: "serializedBreakpoints", data: bdata });',
-'            break;',
-'        }',
-'        case "deserializeBreakpoints": {',
-'            var dlen = writeStringToBuffer(msg.data);',
-'            exports.deserializeBreakpoints(dlen);',
-'            break;',
-'        }',
-'        case "getState": {',
-'            self.postMessage({',
-'                type: "state",',
-'                frame: exports.getCurrentFrame(),',
-'                frameCount: exports.getFrameCount(),',
-'                tempo: exports.getTempo(),',
-'                debugState: exports.getDebugState()',
-'            });',
-'            break;',
-'        }',
-'        case "fetchComplete":',
-'            deliverFetchResult(msg.taskId, msg.data);',
-'            break;',
-'        case "fetchError":',
-'            deliverFetchError(msg.taskId, msg.status);',
-'            break;',
-'        case "preloadAllCasts": {',
-'            var count = exports.preloadAllCasts();',
-'            self.postMessage({ type: "preloadStarted", count: count });',
-'            break;',
-'        }',
-'        case "setExternalParam": {',
-'            var keyBytes = new TextEncoder().encode(msg.key);',
-'            var valueBytes = new TextEncoder().encode(msg.value);',
-'            var sbAddr = exports.getStringBufferAddress();',
-'            var sbuf = new Uint8Array(getMemory(), sbAddr, 4096);',
-'            sbuf.set(keyBytes);',
-'            sbuf.set(valueBytes, keyBytes.length);',
-'            exports.setExternalParam(keyBytes.length, valueBytes.length);',
-'            clearPendingException();',
-'            break;',
-'        }',
-'        case "clearExternalParams":',
-'            exports.clearExternalParams();',
-'            clearPendingException();',
-'            break;',
-'        default:',
-'            console.warn("[Worker] Unknown command:", msg.cmd);',
-'    }',
-'};'
-    ].join('\n');
-    // --- END WORKER CODE ---
-    })();
-
-    // ========================================================================
-    // Low-level WASM player engine (handles Worker, Canvas rendering, fetch relay)
-    // ========================================================================
-
-    function PlayerEngine() {
-        this.worker = null;
-        this.canvas = null;
-        this.ctx = null;
+    function WasmEngine(basePath) {
+        this._basePath = basePath;
+        this.teavm = null;
+        this.exports = null;
         this.playing = false;
-        this.lastFrameTime = 0;
         this.stageWidth = 640;
         this.stageHeight = 480;
-        this.animFrameId = null;
-        this.movieLoaded = false;
-        this.debugSab = null;
-        this.debugView = null;
         this.bitmapCache = new Map();
         this.pendingBitmaps = new Set();
         this._lastFrame = 0;
         this._lastFrameCount = 0;
         this._lastTempo = 15;
-
-        // Callbacks
-        this.onMovieLoaded = null;
-        this.onFrameUpdate = null;
-        this.onError = null;
-        this.onPreloadStarted = null;
     }
 
-    PlayerEngine.prototype.setCanvas = function(canvas) {
-        this.canvas = canvas;
-        this.ctx = canvas.getContext('2d');
-    };
-
-    PlayerEngine.prototype.init = function(basePath) {
+    WasmEngine.prototype.init = function() {
         var self = this;
-        try {
-            this.debugSab = new SharedArrayBuffer(4);
-            this.debugView = new Int32Array(this.debugSab);
-        } catch (e) {}
-
         return new Promise(function(resolve, reject) {
-            // Create worker from inline code with basePath injected
-            var blob = new Blob([
-                'var _basePath = ' + JSON.stringify(basePath) + ';\n' + _workerCode
-            ], { type: 'application/javascript' });
-            var workerUrl = URL.createObjectURL(blob);
-            self.worker = new Worker(workerUrl);
-            URL.revokeObjectURL(workerUrl);
-
-            self.worker.onmessage = function(e) { self._onMsg(e.data); };
-            self.worker.onerror = function(e) { reject(new Error('Worker error: ' + e.message)); };
-            self._initResolve = resolve;
-            self._initReject = reject;
-            self.worker.postMessage({ cmd: 'init', sab: self.debugSab });
+            var script = document.createElement('script');
+            script.src = self._basePath + 'player-wasm.wasm-runtime.js';
+            script.onload = function() {
+                TeaVM.wasm.load(self._basePath + 'player-wasm.wasm')
+                    .then(function(instance) {
+                        self.teavm = instance;
+                        self.exports = instance.instance.exports;
+                        return instance.main([]);
+                    })
+                    .then(function() { resolve(); })
+                    .catch(function(e) { reject(e); });
+            };
+            script.onerror = function() { reject(new Error('Failed to load WASM runtime')); };
+            document.head.appendChild(script);
         });
     };
 
-    PlayerEngine.prototype._onMsg = function(msg) {
-        switch (msg.type) {
-            case 'ready':
-                if (this._initResolve) { this._initResolve(); this._initResolve = null; }
-                break;
-            case 'error':
-                if (this._initReject) { this._initReject(new Error(msg.message)); this._initReject = null; }
-                if (this.onError) this.onError(msg.message);
-                break;
-            case 'movieLoaded':
-                this.stageWidth = msg.width;
-                this.stageHeight = msg.height;
-                this.canvas.width = msg.width;
-                this.canvas.height = msg.height;
-                this.movieLoaded = true;
-                this._lastTempo = msg.tempo;
-                this._lastFrameCount = msg.frameCount;
-                if (this.onMovieLoaded) this.onMovieLoaded(msg);
-                this._send('tick');
-                break;
-            case 'frameData':
-                this._onFrameData(msg);
-                break;
-            case 'bitmapData':
-                this._onBitmapData(msg);
-                break;
-            case 'bitmapNotFound':
-                this.pendingBitmaps.delete(msg.memberId);
-                break;
-            case 'fetchRequest':
-                this._handleFetch(msg);
-                break;
-            case 'preloadStarted':
-                if (this.onPreloadStarted) this.onPreloadStarted(msg.count);
-                break;
-            case 'stateChange':
-            case 'log':
-                break;
+    WasmEngine.prototype._mem = function() {
+        return this.teavm.memory.buffer;
+    };
+
+    WasmEngine.prototype._readString = function(addr, len) {
+        return new TextDecoder().decode(new Uint8Array(this._mem(), addr, len));
+    };
+
+    WasmEngine.prototype._writeString = function(str) {
+        var bytes = new TextEncoder().encode(str);
+        var addr = this.exports.getStringBufferAddress();
+        var buf = new Uint8Array(this._mem(), addr, 4096);
+        buf.set(bytes.subarray(0, Math.min(bytes.length, 4096)));
+        return bytes.length;
+    };
+
+    WasmEngine.prototype._readJson = function(len) {
+        if (len <= 0) return null;
+        var addr = this.exports.getLargeBufferAddress();
+        var str = new TextDecoder().decode(new Uint8Array(this._mem(), addr, len));
+        try { return JSON.parse(str); }
+        catch (e) { console.error('[LS] JSON parse error:', e); return null; }
+    };
+
+    WasmEngine.prototype._clearException = function() {
+        if (this.teavm && this.teavm.instance && this.teavm.instance.exports.teavm_catchException) {
+            this.teavm.instance.exports.teavm_catchException();
         }
     };
 
-    PlayerEngine.prototype.loadMovie = function(bytes, basePath) {
-        var b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    WasmEngine.prototype.loadMovie = function(bytes, basePath) {
+        var bp = new TextEncoder().encode(basePath || '');
+        var sbAddr = this.exports.getStringBufferAddress();
+        new Uint8Array(this._mem(), sbAddr, 4096).set(bp);
+
+        var bufAddr = this.exports.allocateBuffer(bytes.length);
+        new Uint8Array(this._mem(), bufAddr, bytes.length).set(bytes);
+
+        var result = this.exports.loadMovie(bytes.length, bp.length);
+        this._clearException();
+
+        if (result === 0) return null;
+
+        this.stageWidth = (result >> 16) & 0xFFFF;
+        this.stageHeight = result & 0xFFFF;
+        this._lastFrameCount = this.exports.getFrameCount();
+        this._lastTempo = this.exports.getTempo();
+
+        return {
+            width: this.stageWidth,
+            height: this.stageHeight,
+            frameCount: this._lastFrameCount,
+            tempo: this._lastTempo
+        };
+    };
+
+    WasmEngine.prototype.setExternalParam = function(key, value) {
+        var keyBytes = new TextEncoder().encode(key);
+        var valueBytes = new TextEncoder().encode(value);
+        var sbAddr = this.exports.getStringBufferAddress();
+        var sbuf = new Uint8Array(this._mem(), sbAddr, 4096);
+        sbuf.set(keyBytes);
+        sbuf.set(valueBytes, keyBytes.length);
+        this.exports.setExternalParam(keyBytes.length, valueBytes.length);
+        this._clearException();
+    };
+
+    WasmEngine.prototype.clearExternalParams = function() {
+        this.exports.clearExternalParams();
+        this._clearException();
+    };
+
+    WasmEngine.prototype.tick = function() {
+        var result = this.exports.tick();
+        this._clearException();
+        return result !== 0;
+    };
+
+    WasmEngine.prototype.getFrameData = function() {
+        var len = this.exports.getFrameDataJson();
+        this._clearException();
+        var fd = this._readJson(len);
+        if (fd) {
+            this._lastFrame = fd.frame;
+            this._lastFrameCount = fd.frameCount;
+        }
+        return fd;
+    };
+
+    WasmEngine.prototype.getBitmapData = function(memberId) {
+        var ptr = this.exports.getBitmapData(memberId);
+        if (ptr === 0) return null;
+        var w = this.exports.getBitmapWidth(memberId);
+        var h = this.exports.getBitmapHeight(memberId);
+        if (w <= 0 || h <= 0) return null;
+        var rgba = new Uint8ClampedArray(w * h * 4);
+        rgba.set(new Uint8ClampedArray(this._mem(), ptr, w * h * 4));
+        return { width: w, height: h, rgba: rgba };
+    };
+
+    /**
+     * Poll WASM for pending network requests, fire fetch(), deliver results back.
+     */
+    WasmEngine.prototype.pumpNetwork = function() {
+        var count = this.exports.getPendingFetchCount();
+        if (count === 0) return;
+
+        var len = this.exports.getPendingFetchJson();
+        var requests = this._readJson(len);
+        this.exports.drainPendingFetches();
+        if (!requests) return;
+
+        var self = this;
+        for (var i = 0; i < requests.length; i++) {
+            (function(req) {
+                self._doFetch(req.taskId, req.url, req.method, req.postData, req.fallbacks || []);
+            })(requests[i]);
+        }
+    };
+
+    WasmEngine.prototype._doFetch = function(taskId, url, method, postData, fallbacks) {
+        var self = this;
+        var opts = {};
+        if (method === 'POST') {
+            opts.method = 'POST';
+            opts.body = postData;
+            opts.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
+        }
+
+        fetch(url, opts)
+            .then(function(r) {
+                if (!r.ok) throw { status: r.status, fallbacks: fallbacks };
+                return r.arrayBuffer();
+            })
+            .then(function(buf) {
+                self._deliverResult(taskId, buf);
+            })
+            .catch(function(e) {
+                // Try fallback URLs on failure
+                if (e && e.fallbacks && e.fallbacks.length > 0) {
+                    var next = e.fallbacks[0];
+                    var rest = e.fallbacks.slice(1);
+                    self._doFetch(taskId, next, method, postData, rest);
+                } else {
+                    self._deliverError(taskId, (e && e.status) || 0);
+                }
+            });
+    };
+
+    WasmEngine.prototype._deliverResult = function(taskId, arrayBuffer) {
+        var bytes = new Uint8Array(arrayBuffer);
+        var addr = this.exports.allocateNetBuffer(bytes.length);
+        new Uint8Array(this._mem(), addr, bytes.length).set(bytes);
+        this.exports.deliverFetchResult(taskId, bytes.length);
+        this._clearException();
+        // Clear bitmap cache (new cast data may have arrived)
         this.bitmapCache.clear();
         this.pendingBitmaps.clear();
-        this.worker.postMessage({ cmd: 'loadMovie', bytes: b.buffer, basePath: basePath || '' }, [b.buffer]);
     };
 
-    PlayerEngine.prototype.play = function() {
-        this._send('play');
-        if (!this.playing) { this.playing = true; this.lastFrameTime = 0; this._startLoop(); }
+    WasmEngine.prototype._deliverError = function(taskId, status) {
+        this.exports.deliverFetchError(taskId, status || 0);
+        this._clearException();
     };
 
-    PlayerEngine.prototype.pause = function() {
-        this._send('pause'); this.playing = false; this._stopLoop();
+    WasmEngine.prototype.getLastError = function() {
+        var len = this.exports.getLastError();
+        if (len <= 0) return null;
+        var addr = this.exports.getStringBufferAddress();
+        return this._readString(addr, len);
     };
 
-    PlayerEngine.prototype.stop = function() {
-        this._send('stop'); this.playing = false; this._stopLoop();
-    };
+    // ========================================================================
+    // Canvas rendering
+    // ========================================================================
 
-    PlayerEngine.prototype.goToFrame = function(f) { this._send('goToFrame', { frame: f }); };
-    PlayerEngine.prototype.stepForward = function() { this._send('stepForward'); };
-    PlayerEngine.prototype.stepBackward = function() { this._send('stepBackward'); };
-    PlayerEngine.prototype.getCurrentFrame = function() { return this._lastFrame || 0; };
-    PlayerEngine.prototype.getFrameCount = function() { return this._lastFrameCount || 0; };
+    WasmEngine.prototype.renderToCanvas = function(ctx, fd) {
+        if (!fd) return;
 
-    PlayerEngine.prototype.setExternalParam = function(k, v) {
-        this._send('setExternalParam', { key: k, value: v });
-    };
-
-    PlayerEngine.prototype.clearExternalParams = function() {
-        this._send('clearExternalParams');
-    };
-
-    PlayerEngine.prototype._send = function(cmd, extra) {
-        var m = { cmd: cmd };
-        if (extra) { for (var k in extra) m[k] = extra[k]; }
-        this.worker.postMessage(m);
-    };
-
-    PlayerEngine.prototype._startLoop = function() {
-        var self = this;
-        function loop(ts) {
-            if (!self.playing) return;
-            var tempo = self._lastTempo || 15;
-            var ms = 1000.0 / (tempo > 0 ? tempo : 15);
-            if (self.lastFrameTime === 0) self.lastFrameTime = ts;
-            if (ts - self.lastFrameTime >= ms) {
-                self.lastFrameTime = ts - ((ts - self.lastFrameTime) % ms);
-                self._send('tick');
-            }
-            self.animFrameId = requestAnimationFrame(loop);
-        }
-        this.animFrameId = requestAnimationFrame(loop);
-    };
-
-    PlayerEngine.prototype._stopLoop = function() {
-        if (this.animFrameId) { cancelAnimationFrame(this.animFrameId); this.animFrameId = null; }
-    };
-
-    PlayerEngine.prototype._onFrameData = function(msg) {
-        this._lastFrame = msg.frame;
-        this._lastFrameCount = msg.frameCount;
-        if (this.onFrameUpdate) this.onFrameUpdate(msg.frame, msg.frameCount);
-        if (!msg.stillPlaying && this.playing && msg.frameData) {
-            this.playing = false; this._stopLoop();
-        }
-        if (msg.frameData && msg.frameData.sprites) this._renderSprites(msg.frameData);
-        else if (msg.pixels) this._renderPixels(msg.pixels);
-    };
-
-    PlayerEngine.prototype._renderSprites = function(fd) {
-        var ctx = this.ctx; if (!ctx) return;
+        // Background
         var bg = (typeof fd.bg === 'number') ? fd.bg : 0xFFFFFF;
         ctx.fillStyle = '#' + (bg & 0xFFFFFF).toString(16).padStart(6, '0');
         ctx.fillRect(0, 0, this.stageWidth, this.stageHeight);
 
-        // Draw stage image if scripts have drawn on it (loading bars, etc.)
+        // Stage image (script-drawn content like loading bars)
         if (fd.stageImageId) {
-            this._reqBitmap(fd.stageImageId);
+            this._ensureBitmap(fd.stageImageId);
             var stageImg = this.bitmapCache.get(fd.stageImageId);
             if (stageImg) ctx.drawImage(stageImg, 0, 0, this.stageWidth, this.stageHeight);
         }
 
-        var sprites = fd.sprites; if (!sprites) return;
+        var sprites = fd.sprites;
+        if (!sprites) return;
 
-        // Request baked bitmaps for ALL sprite types (not just BITMAP).
-        // SpriteBaker pre-bakes BITMAP, TEXT, BUTTON, and SHAPE sprites into bitmaps
-        // with correct fonts, ink processing, and colorization. Using the baked bitmap
-        // for all types matches Swing's StagePanel behavior exactly.
+        // Pre-request bitmaps
         for (var i = 0; i < sprites.length; i++) {
             var s = sprites[i];
-            if (s.memberId > 0 && s.visible && s.hasBaked) this._reqBitmap(s.memberId);
+            if (s.memberId > 0 && s.visible && s.hasBaked) this._ensureBitmap(s.memberId);
         }
 
-        // Render all sprites using baked bitmaps (matching Swing's drawSprite)
+        // Draw sprites
         for (var i = 0; i < sprites.length; i++) {
-            var sp = sprites[i]; if (!sp.visible) continue;
-            this._drawSpriteUnified(ctx, sp);
+            var sp = sprites[i];
+            if (!sp.visible) continue;
+            this._drawSprite(ctx, sp);
         }
     };
 
-    // Unified sprite drawing: always use baked bitmap when available (matches Swing's StagePanel.drawSprite).
-    // Falls back to type-specific rendering only if bitmap is not yet loaded.
-    PlayerEngine.prototype._drawSpriteUnified = function(ctx, sp) {
+    WasmEngine.prototype._ensureBitmap = function(memberId) {
+        if (this.bitmapCache.has(memberId) || this.pendingBitmaps.has(memberId)) return;
+        this.pendingBitmaps.add(memberId);
+
+        var bmpData = this.getBitmapData(memberId);
+        if (!bmpData) { this.pendingBitmaps.delete(memberId); return; }
+
+        var self = this;
+        var imgData = new ImageData(bmpData.rgba, bmpData.width, bmpData.height);
+        createImageBitmap(imgData).then(function(bmp) {
+            self.bitmapCache.set(memberId, bmp);
+            self.pendingBitmaps.delete(memberId);
+        });
+    };
+
+    WasmEngine.prototype._drawSprite = function(ctx, sp) {
         var prevAlpha = ctx.globalAlpha;
         if (sp.blend !== undefined && sp.blend < 100) ctx.globalAlpha = sp.blend / 100;
 
-        // Try baked bitmap first (preferred path, matches Swing exactly)
+        // Baked bitmap (preferred — matches Swing exactly)
         if (sp.memberId > 0 && sp.hasBaked) {
             var bmp = this.bitmapCache.get(sp.memberId);
             if (bmp) {
@@ -654,7 +303,7 @@ var LibreShockwave = (function() {
             }
         }
 
-        // Fallback: type-specific rendering while baked bitmap is still loading
+        // Fallback rendering while bitmap loads
         if (sp.type === 'SHAPE') {
             ctx.fillStyle = '#' + ((sp.foreColor || 0) & 0xFFFFFF).toString(16).padStart(6, '0');
             ctx.fillRect(sp.x, sp.y, sp.w > 0 ? sp.w : 50, sp.h > 0 ? sp.h : 50);
@@ -665,56 +314,12 @@ var LibreShockwave = (function() {
             var lines = sp.textContent.split(/\r\n|\r|\n/);
             for (var j = 0; j < lines.length; j++) ctx.fillText(lines[j], sp.x, sp.y + fs + j * (fs + 2));
         }
-        // BITMAP with no cache yet: skip (will render on next frame when bitmap arrives)
 
         ctx.globalAlpha = prevAlpha;
     };
 
-    PlayerEngine.prototype._renderPixels = function(px) {
-        if (!this.ctx) return;
-        var id = this.ctx.createImageData(this.stageWidth, this.stageHeight);
-        id.data.set(new Uint8ClampedArray(px));
-        this.ctx.putImageData(id, 0, 0);
-    };
-
-    PlayerEngine.prototype._onBitmapData = function(msg) {
-        this.pendingBitmaps.delete(msg.memberId);
-        var id = new ImageData(new Uint8ClampedArray(msg.rgba), msg.width, msg.height);
-        var self = this;
-        createImageBitmap(id).then(function(bmp) { self.bitmapCache.set(msg.memberId, bmp); });
-    };
-
-    PlayerEngine.prototype._reqBitmap = function(mid) {
-        if (this.bitmapCache.has(mid) || this.pendingBitmaps.has(mid)) return;
-        this.pendingBitmaps.add(mid);
-        this._send('getBitmapData', { memberId: mid });
-    };
-
-    PlayerEngine.prototype._handleFetch = function(msg) {
-        var self = this;
-        var opts = {};
-        if (msg.method === 'POST') { opts.method = 'POST'; opts.body = msg.postData; opts.headers = { 'Content-Type': 'application/x-www-form-urlencoded' }; }
-        console.log('[FetchRelay] Fetching task ' + msg.taskId + ': ' + msg.url);
-        fetch(msg.url, opts)
-            .then(function(r) { if (!r.ok) throw r.status; return r.arrayBuffer(); })
-            .then(function(buf) {
-                console.log('[FetchRelay] task ' + msg.taskId + ' got ' + buf.byteLength + ' bytes');
-                self.worker.postMessage({ cmd: 'fetchComplete', taskId: msg.taskId, data: buf }, [buf]);
-            })
-            .catch(function(e) {
-                console.error('[FetchRelay] task ' + msg.taskId + ' FAILED:', e);
-                self.worker.postMessage({ cmd: 'fetchError', taskId: msg.taskId, status: typeof e === 'number' ? e : 0 });
-            });
-    };
-
-    PlayerEngine.prototype.destroy = function() {
-        this._stopLoop();
-        if (this.worker) { this.worker.terminate(); this.worker = null; }
-        this.bitmapCache.clear();
-    };
-
     // ========================================================================
-    // Public API
+    // Public API: ShockwavePlayer
     // ========================================================================
 
     /**
@@ -747,8 +352,11 @@ var LibreShockwave = (function() {
         this._engine = null;
         this._ready = false;
         this._canvas = el;
+        this._ctx = el.getContext('2d');
+        this._animFrameId = null;
+        this._lastFrameTime = 0;
 
-        // Restore remembered state
+        // Restore remembered params
         if (this._remember) {
             try {
                 var saved = JSON.parse(localStorage.getItem('ls_extParams'));
@@ -765,34 +373,34 @@ var LibreShockwave = (function() {
 
     ShockwavePlayer.prototype._initEngine = function() {
         var self = this;
-        var engine = new PlayerEngine();
-        engine.setCanvas(this._canvas);
+        var engine = new WasmEngine(this._basePath);
         this._engine = engine;
 
-        engine.onMovieLoaded = function(msg) {
-            engine.clearExternalParams();
-            for (var k in self._params) {
-                engine.setExternalParam(k, self._params[k]);
-            }
-            if (self._opts.onLoad) self._opts.onLoad({ width: msg.width, height: msg.height, frameCount: msg.frameCount, tempo: msg.tempo });
-            if (self._autoplay) engine.play();
-        };
-
-        engine.onFrameUpdate = function(f, t) {
-            if (self._opts.onFrame) self._opts.onFrame(f, t);
-        };
-
-        engine.onError = function(m) {
-            if (self._opts.onError) self._opts.onError(m);
-        };
-
-        engine.init(this._basePath).then(function() {
+        engine.init().then(function() {
             self._ready = true;
             if (self._pendingUrl) { self.load(self._pendingUrl); self._pendingUrl = null; }
             if (self._pendingFile) { self.loadFile(self._pendingFile); self._pendingFile = null; }
         }).catch(function(e) {
             if (self._opts.onError) self._opts.onError(e.message);
         });
+    };
+
+    ShockwavePlayer.prototype._onMovieLoaded = function(info) {
+        this._canvas.width = info.width;
+        this._canvas.height = info.height;
+
+        // Set external params
+        this._engine.clearExternalParams();
+        for (var k in this._params) {
+            this._engine.setExternalParam(k, this._params[k]);
+        }
+
+        if (this._opts.onLoad) this._opts.onLoad(info);
+
+        // Pump initial network requests (external casts queued during load)
+        this._engine.pumpNetwork();
+
+        if (this._autoplay) this.play();
     };
 
     /**
@@ -806,7 +414,14 @@ var LibreShockwave = (function() {
         }
         fetch(url)
             .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
-            .then(function(buf) { self._engine.loadMovie(new Uint8Array(buf), url); })
+            .then(function(buf) {
+                var info = self._engine.loadMovie(new Uint8Array(buf), url);
+                if (!info) {
+                    if (self._opts.onError) self._opts.onError('Failed to load movie');
+                    return;
+                }
+                self._onMovieLoaded(info);
+            })
             .catch(function(e) { if (self._opts.onError) self._opts.onError(e.message); });
     };
 
@@ -818,58 +433,133 @@ var LibreShockwave = (function() {
         var self = this;
         var reader = new FileReader();
         reader.onload = function() {
-            self._engine.loadMovie(new Uint8Array(reader.result), file.name);
+            var info = self._engine.loadMovie(new Uint8Array(reader.result), file.name);
+            if (!info) {
+                if (self._opts.onError) self._opts.onError('Failed to load movie');
+                return;
+            }
+            self._onMovieLoaded(info);
         };
         reader.readAsArrayBuffer(file);
     };
 
-    /** Start playback. */
-    ShockwavePlayer.prototype.play = function() { if (this._engine) this._engine.play(); };
+    ShockwavePlayer.prototype.play = function() {
+        if (!this._engine) return;
+        this._engine.exports.play();
+        this._engine._clearException();
+        this._engine.playing = true;
+        this._lastFrameTime = 0;
+        this._startLoop();
+    };
 
-    /** Pause playback. */
-    ShockwavePlayer.prototype.pause = function() { if (this._engine) this._engine.pause(); };
+    ShockwavePlayer.prototype.pause = function() {
+        if (!this._engine) return;
+        this._engine.exports.pause();
+        this._engine.playing = false;
+        this._stopLoop();
+    };
 
-    /** Stop playback. */
-    ShockwavePlayer.prototype.stop = function() { if (this._engine) this._engine.stop(); };
+    ShockwavePlayer.prototype.stop = function() {
+        if (!this._engine) return;
+        this._engine.exports.stop();
+        this._engine.playing = false;
+        this._stopLoop();
+    };
 
-    /** Jump to a specific frame. */
-    ShockwavePlayer.prototype.goToFrame = function(f) { if (this._engine) this._engine.goToFrame(f); };
+    ShockwavePlayer.prototype.goToFrame = function(f) {
+        if (!this._engine) return;
+        this._engine.exports.goToFrame(f);
+        this._doRender();
+    };
 
-    /** Step one frame forward. */
-    ShockwavePlayer.prototype.stepForward = function() { if (this._engine) this._engine.stepForward(); };
+    ShockwavePlayer.prototype.stepForward = function() {
+        if (!this._engine) return;
+        this._engine.exports.stepForward();
+        this._doRender();
+    };
 
-    /** Step one frame backward. */
-    ShockwavePlayer.prototype.stepBackward = function() { if (this._engine) this._engine.stepBackward(); };
+    ShockwavePlayer.prototype.stepBackward = function() {
+        if (!this._engine) return;
+        this._engine.exports.stepBackward();
+        this._doRender();
+    };
 
-    /** Get current frame number. */
-    ShockwavePlayer.prototype.getCurrentFrame = function() { return this._engine ? this._engine.getCurrentFrame() : 0; };
+    ShockwavePlayer.prototype.getCurrentFrame = function() {
+        return this._engine ? this._engine._lastFrame : 0;
+    };
 
-    /** Get total frame count. */
-    ShockwavePlayer.prototype.getFrameCount = function() { return this._engine ? this._engine.getFrameCount() : 0; };
+    ShockwavePlayer.prototype.getFrameCount = function() {
+        return this._engine ? this._engine._lastFrameCount : 0;
+    };
 
-    /**
-     * Set a single external parameter (Shockwave PARAM tag).
-     */
     ShockwavePlayer.prototype.setParam = function(key, value) {
         this._params[key] = value;
-        if (this._engine && this._engine.movieLoaded) this._engine.setExternalParam(key, value);
+        if (this._engine && this._ready) this._engine.setExternalParam(key, value);
         if (this._remember) {
             try { localStorage.setItem('ls_extParams', JSON.stringify(this._params)); } catch(e) {}
         }
     };
 
-    /**
-     * Set multiple external parameters at once.
-     */
     ShockwavePlayer.prototype.setParams = function(obj) {
         for (var k in obj) this.setParam(k, obj[k]);
     };
 
-    /**
-     * Tear down the player and terminate the worker.
-     */
     ShockwavePlayer.prototype.destroy = function() {
-        if (this._engine) { this._engine.destroy(); this._engine = null; }
+        this._stopLoop();
+        this._engine = null;
+    };
+
+    // --- Animation loop ---
+
+    ShockwavePlayer.prototype._startLoop = function() {
+        var self = this;
+        function loop(ts) {
+            if (!self._engine || !self._engine.playing) return;
+            var tempo = self._engine._lastTempo || 15;
+            var ms = 1000.0 / (tempo > 0 ? tempo : 15);
+            if (self._lastFrameTime === 0) self._lastFrameTime = ts;
+            if (ts - self._lastFrameTime >= ms) {
+                self._lastFrameTime = ts - ((ts - self._lastFrameTime) % ms);
+                self._doTick();
+            }
+            self._animFrameId = requestAnimationFrame(loop);
+        }
+        this._animFrameId = requestAnimationFrame(loop);
+    };
+
+    ShockwavePlayer.prototype._stopLoop = function() {
+        if (this._animFrameId) { cancelAnimationFrame(this._animFrameId); this._animFrameId = null; }
+    };
+
+    ShockwavePlayer.prototype._doTick = function() {
+        var engine = this._engine;
+        if (!engine) return;
+
+        var stillPlaying = engine.tick();
+        engine.pumpNetwork();
+
+        var fd = engine.getFrameData();
+        engine.renderToCanvas(this._ctx, fd);
+
+        if (fd && this._opts.onFrame) {
+            this._opts.onFrame(fd.frame, fd.frameCount);
+        }
+
+        if (!stillPlaying && engine.playing) {
+            engine.playing = false;
+            this._stopLoop();
+        }
+    };
+
+    ShockwavePlayer.prototype._doRender = function() {
+        var engine = this._engine;
+        if (!engine) return;
+        engine.pumpNetwork();
+        var fd = engine.getFrameData();
+        engine.renderToCanvas(this._ctx, fd);
+        if (fd && this._opts.onFrame) {
+            this._opts.onFrame(fd.frame, fd.frameCount);
+        }
     };
 
     function _clone(obj) {

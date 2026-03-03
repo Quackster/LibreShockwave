@@ -203,17 +203,6 @@ tasks.register('runCastLibDebugTest', JavaExec) {
     }
 }
 
-// Task to validate Lingo sprite pipeline (property flow, sizing, z-order, ink)
-tasks.register('runSpritePipelineTest', JavaExec) {
-    group = 'verification'
-    description = 'Validate Lingo sprite creation pipeline and rendering order'
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'com.libreshockwave.player.SpritePipelineTest'
-    dependsOn compileTestJava
-    javaLauncher = javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
-}
 
 // Task to diagnose window style rendering pipeline
 tasks.register('runWindowStyleTest', JavaExec) {

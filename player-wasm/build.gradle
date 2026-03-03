@@ -17,14 +17,14 @@ dependencies {
     // Depend on the player-core module (which depends on VM and SDK)
     implementation project(':player-core')
 
-    // TeaVM interop for @Export/@Import (standard WASM target)
+    // TeaVM interop for @Export (standard WASM target)
     implementation 'org.teavm:teavm-interop:0.13.0'
 }
 
 teavm {
     // Standard Wasm target (broad browser support, MVP)
     wasm {
-        mainClass = 'com.libreshockwave.player.wasm.WasmPlayerApp'
+        mainClass = 'com.libreshockwave.player.wasm.WasmEntry'
         // Generate debug info for development
         debugInformation = true
     }
@@ -32,8 +32,7 @@ teavm {
     all {
         // Preserve exported entry point class
         preservedClasses = [
-            'com.libreshockwave.player.wasm.WasmPlayerApp',
-            'com.libreshockwave.player.wasm.debug.WasmDebugController'
+            'com.libreshockwave.player.wasm.WasmEntry'
         ]
     }
 }
@@ -48,12 +47,12 @@ tasks.matching { it.name == 'generateWasm' }.configureEach {
     finalizedBy 'copyWebResources'
 }
 
-// Integration test for the WASM sprite export pipeline (runs on JVM, not WASM)
-tasks.register('runWasmSpriteExporterTest', JavaExec) {
+// Smoke test for QueuedNetProvider and WasmPlayer (runs on JVM)
+tasks.register('runQueuedNetProviderTest', JavaExec) {
     group = 'verification'
-    description = 'Test SpriteDataExporter JSON output and bitmap decoding with habbo.dcr'
+    description = 'Test QueuedNetProvider polling-based networking and WasmPlayer basics'
     classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'com.libreshockwave.player.wasm.WasmSpriteExporterTest'
+    mainClass = 'com.libreshockwave.player.wasm.QueuedNetProviderTest'
     jvmArgs '-Xmx512m'
     dependsOn compileTestJava
     javaLauncher = javaToolchains.launcherFor {
@@ -61,26 +60,13 @@ tasks.register('runWasmSpriteExporterTest', JavaExec) {
     }
 }
 
-// Playback flow test: verifies fuse_frameProxy timeout creation and sprite creation
-tasks.register('runWasmPlaybackFlowTest', JavaExec) {
+// Integration test for the WASM sprite export pipeline (runs on JVM, not WASM)
+tasks.register('runWasmSpriteExporterTest', JavaExec) {
     group = 'verification'
-    description = 'Verify WASM-like playback flow creates timeouts and sprites'
+    description = 'Test SpriteDataExporter JSON output and bitmap decoding with habbo.dcr'
     classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'com.libreshockwave.player.wasm.WasmPlaybackFlowTest'
-    jvmArgs '-Xmx2g'
-    dependsOn compileTestJava
-    javaLauncher = javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
-}
-
-// Pixel-perfect comparison test: SoftwareRenderer vs Swing-style rendering
-tasks.register('runWasmRenderComparisonTest', JavaExec) {
-    group = 'verification'
-    description = 'Compare SoftwareRenderer output with Swing-style rendering pixel-by-pixel'
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'com.libreshockwave.player.wasm.WasmRenderComparisonTest'
-    jvmArgs '-Xmx2g'
+    mainClass = 'com.libreshockwave.player.wasm.WasmSpriteExporterTest'
+    jvmArgs '-Xmx512m'
     dependsOn compileTestJava
     javaLauncher = javaToolchains.launcherFor {
         languageVersion = JavaLanguageVersion.of(21)
