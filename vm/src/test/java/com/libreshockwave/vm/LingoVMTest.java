@@ -143,20 +143,6 @@ class LingoVMTest {
     }
 
     @Test
-    void testDefaultStepLimit() {
-        // Default step limit should be high enough for complex scripts
-        LingoVM vm = new LingoVM(null);
-
-        // Get the step limit by trying to set it and checking behavior
-        // The default should be 1,000,000 which is high enough for scripts like dump()
-        vm.setStepLimit(1000);  // Lower it
-        vm.setStepLimit(1_000_000);  // Reset to default
-
-        // We can't directly test the private field, but we verify the setter works
-        // and doesn't throw
-    }
-
-    @Test
     void testBuiltinLength() {
         LingoVM vm = new LingoVM(null);
 

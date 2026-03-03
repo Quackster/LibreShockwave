@@ -20,9 +20,6 @@ import java.util.*;
 public class LingoVM {
     // Match dirplayer-rs MAX_STACK_SIZE
     private static final int MAX_CALL_STACK_DEPTH = 50;
-    // Default step limit per handler - high enough for complex scripts like dump()
-    // that iterate character-by-character through large property files
-    private static final int DEFAULT_STEP_LIMIT = 1_000_000;
 
     private final DirectorFile file;
     private final Map<String, Datum> globals;
@@ -33,7 +30,7 @@ public class LingoVM {
     private final ConsoleTracePrinter consolePrinter;
 
     private boolean traceEnabled = false;
-    private int stepLimit = DEFAULT_STEP_LIMIT;
+    private int stepLimit = 0;  // 0 = unlimited
 
     // Event propagation callback (set by EventDispatcher)
     private Runnable passCallback;
@@ -86,6 +83,9 @@ public class LingoVM {
         return traceListener;
     }
 
+    /**
+     * Set a per-handler instruction step limit. 0 = unlimited (the default).
+     */
     public void setStepLimit(int limit) {
         this.stepLimit = limit;
     }
@@ -275,7 +275,7 @@ public class LingoVM {
         try {
             int steps = 0;
             while (scope.hasMoreInstructions() && !scope.isReturned()) {
-                if (steps++ >= stepLimit) {
+                if (stepLimit > 0 && ++steps > stepLimit) {
                     throw new LingoException("Step limit exceeded (" + stepLimit + " instructions)");
                 }
                 executeInstruction(scope);

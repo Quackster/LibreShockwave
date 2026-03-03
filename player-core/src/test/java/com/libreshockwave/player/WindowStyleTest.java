@@ -70,7 +70,6 @@ public class WindowStyleTest {
         player.getNetManager().setLocalHttpRoot("C:/xampp/htdocs");
 
         LingoVM vm = player.getVM();
-        vm.setStepLimit(2_000_000);
 
         PrintStream out = System.out;
         boolean[] frameProxyCreated = {false};

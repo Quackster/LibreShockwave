@@ -155,7 +155,6 @@ public class StageBackgroundTest {
         player.getNetManager().setLocalHttpRoot("C:/xampp/htdocs");
 
         LingoVM vm = player.getVM();
-        vm.setStepLimit(2_000_000);
 
         // Track sprite creation milestones
         boolean[] frameProxyCreated = {false};
