@@ -447,15 +447,6 @@ public class Player {
     }
 
     /**
-     * Get a lightweight snapshot without baking bitmaps.
-     * Sprites are listed with positions/types but pixel arrays are NOT allocated.
-     * Use getBitmapData() / decodeBitmap() to fetch individual bitmaps on demand.
-     */
-    public FrameSnapshot getFrameSnapshotUnbaked() {
-        return FrameSnapshot.capture(stageRenderer, getCurrentFrame(), state.name());
-    }
-
-    /**
      * Get the bitmap cache (for external cache management).
      */
     public BitmapCache getBitmapCache() {
