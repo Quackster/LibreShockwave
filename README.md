@@ -39,6 +39,8 @@ A Java library for parsing Macromedia/Adobe Director and Shockwave files (.dir, 
 
 ## Player & Lingo VM
 
+> **Note:** The Lingo VM, desktop player, and WASM player are under active development and are not production-ready. Expect missing features, incomplete Lingo coverage, and breaking changes.
+
 LibreShockwave includes a Lingo bytecode virtual machine and player that can load and run Director movies. The VM executes compiled Lingo scripts, handles score playback, sprite rendering, and external cast loading — bringing `.dcr` and `.dir` files back to life.
 
 The player is available in two forms:
