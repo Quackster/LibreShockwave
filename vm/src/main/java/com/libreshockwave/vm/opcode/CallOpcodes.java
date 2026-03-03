@@ -95,7 +95,8 @@ public final class CallOpcodes {
     }
 
     private static boolean objCall(ExecutionContext ctx) {
-        String methodName = ctx.resolveName(ctx.getArgument());
+        int nameIdx = ctx.getArgument();
+        String methodName = ctx.resolveName(nameIdx);
         Datum argListDatum = ctx.pop();
         boolean noRet = argListDatum instanceof Datum.ArgListNoRet;
         List<Datum> args = getArgs(argListDatum);
@@ -339,34 +340,32 @@ public final class CallOpcodes {
 
     /**
      * Get a chunk range from a string.
+     * Uses if-else instead of switch to avoid TeaVM compiler bug with case "char".
      */
     private static String getStringChunk(String str, String chunkType, int start, int end) {
         if (str.isEmpty() || start < 1) return "";
-        return switch (chunkType) {
-            case "char" -> {
-                int s = Math.max(0, start - 1);
-                int e = Math.min(str.length(), end);
-                if (s >= str.length() || s >= e) yield "";
-                yield str.substring(s, e);
-            }
-            default -> str; // Other chunk types can be added as needed
-        };
+        if ("char".equals(chunkType)) {
+            int s = Math.max(0, start - 1);
+            int e = Math.min(str.length(), end);
+            if (s >= str.length() || s >= e) return "";
+            return str.substring(s, e);
+        }
+        return str;
     }
 
     /**
      * Delete a chunk range from a string and return the result.
+     * Uses if-else instead of switch to avoid TeaVM compiler bug with case "char".
      */
     private static String deleteChunkRange(String str, String chunkType, int start, int end) {
         if (str.isEmpty() || start < 1) return str;
-        return switch (chunkType) {
-            case "char" -> {
-                int s = Math.max(0, start - 1);
-                int e = Math.min(str.length(), end);
-                if (s >= str.length()) yield str;
-                yield str.substring(0, s) + str.substring(e);
-            }
-            default -> str;
-        };
+        if ("char".equals(chunkType)) {
+            int s = Math.max(0, start - 1);
+            int e = Math.min(str.length(), end);
+            if (s >= str.length()) return str;
+            return str.substring(0, s) + str.substring(e);
+        }
+        return str;
     }
 
     /**

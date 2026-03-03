@@ -559,6 +559,29 @@ player-wasm/
 
 </details>
 
+### Development Notes
+
+#### TeaVM string switch — never use Java keywords as `case` labels
+
+TeaVM 0.13 silently miscompiles `switch` statements that use Java keywords as string case labels. The case body is never entered at runtime even though equality holds in plain Java:
+
+```java
+// BROKEN in TeaVM WASM — case "char" is silently skipped:
+return switch (chunkType) {
+    case "char" -> str.substring(start - 1, end);
+    case "word" -> ...
+};
+
+// CORRECT — use if-else instead:
+if ("char".equals(chunkType)) {
+    return str.substring(start - 1, end);
+} else if ("word".equals(chunkType)) {
+    ...
+}
+```
+
+Affected keywords include `char`, `int`, `void`, `class`, `new`, `return`, and any other Java reserved word. Use `if-else` chains with `.equals()` whenever a string variable might match a keyword at runtime.
+
 ### Known Limitations
 
 - No mouse/keyboard event forwarding to Lingo VM (planned)
@@ -587,6 +610,11 @@ player-wasm/
 
 # Build the WASM player (output in player-wasm/build/dist/)
 ./gradlew :player-wasm:generateWasm
+
+# Node.js integration test — verifies WASM playback without a browser
+# Requires Node.js; builds the WASM binary first, then runs up to 500 ticks
+# and checks that sprites appear and frames advance
+./gradlew :player-wasm:runWasmNodeTest
 ```
 
 ## Architecture

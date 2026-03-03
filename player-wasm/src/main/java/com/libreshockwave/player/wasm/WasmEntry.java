@@ -80,6 +80,33 @@ public class WasmEntry {
 
     // === Playback ===
 
+    /**
+     * Override the VM step limit for subsequent ticks.
+     * Default is 100,000 (set in WasmPlayer.play()). Use a higher value in testing
+     * environments where the animation loop timing doesn't matter.
+     */
+    @Export(name = "setVmStepLimit")
+    public static void setVmStepLimit(int limit) {
+        if (wasmPlayer != null && wasmPlayer.getPlayer() != null) {
+            wasmPlayer.getPlayer().getVM().setStepLimit(limit);
+        }
+    }
+
+    /**
+     * Preload all external casts (queue fetch requests before play).
+     * @return number of casts queued for loading
+     */
+    @Export(name = "preloadCasts")
+    public static int preloadCasts() {
+        if (wasmPlayer == null) return 0;
+        try {
+            return wasmPlayer.preloadCasts();
+        } catch (Throwable e) {
+            captureError("preloadCasts", e);
+            return 0;
+        }
+    }
+
     @Export(name = "play")
     public static void play() {
         if (wasmPlayer == null) return;
@@ -265,11 +292,6 @@ public class WasmEntry {
             if (url != null) {
                 tryLoadExternalCast(url, data);
             }
-
-            // Every completed fetch may unblock deferred play
-            if (wasmPlayer != null) {
-                wasmPlayer.onCastFetchDone();
-            }
         } catch (Throwable e) {
             captureError("deliverFetchResult", e);
         }
@@ -285,9 +307,6 @@ public class WasmEntry {
             QueuedNetProvider net = netProvider();
             if (net != null) {
                 net.onFetchError(taskId, status);
-            }
-            if (wasmPlayer != null) {
-                wasmPlayer.onCastFetchDone();
             }
         } catch (Throwable e) {
             captureError("deliverFetchError", e);

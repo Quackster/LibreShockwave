@@ -962,8 +962,9 @@ public class Player {
         public void onHandlerExit(HandlerInfo info, Datum returnValue) {
             // Intercept: when constructObjectManager returns a ScriptInstance,
             // register it as a timeout target so it receives prepareFrame events.
+            String hn = info.handlerName();
             if (!frameProxyCreated
-                    && info.handlerName().equals("constructObjectManager")
+                    && hn.equalsIgnoreCase("constructObjectManager")
                     && returnValue instanceof Datum.ScriptInstance) {
                 frameProxyCreated = true;
                 timeoutManager.createTimeout(

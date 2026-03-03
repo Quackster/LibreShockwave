@@ -28,3 +28,4 @@ runtime/src/main/resources/player/libreshockwave.wasm
 /sdk/test_output
 /test_output
 *.hprof
+/player-simulator/frames

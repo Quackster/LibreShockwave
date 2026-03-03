@@ -54,3 +54,35 @@ tasks.register('assembleWasm', Sync) {
 tasks.matching { it.name == 'generateWasm' }.configureEach {
     finalizedBy 'assembleWasm'
 }
+
+// ---------------------------------------------------------------------------
+// Node.js WASM integration test
+// Simulates browser JS ↔ WASM interaction without opening a browser.
+// Requires Node.js 18+ on PATH. Serve .cct files from dcrDir.
+//
+// Usage:
+//   ./gradlew :player-wasm:runWasmNodeTest
+//   ./gradlew :player-wasm:runWasmNodeTest -Psw1="yourvalue"
+// ---------------------------------------------------------------------------
+tasks.register('runWasmNodeTest', Exec) {
+    group       = 'verification'
+    description = 'Test compiled WASM binary in Node.js (simulates browser JS↔WASM interaction)'
+    dependsOn 'assembleWasm'
+
+    def distPath = layout.buildDirectory.dir('dist').get().asFile.absolutePath
+    def dcrFile  = project.findProperty('dcrFile')  ?: 'C:/xampp/htdocs/dcr/14.1_b8/habbo.dcr'
+    def castDir  = project.findProperty('castDir')  ?: 'C:/xampp/htdocs/dcr/14.1_b8'
+    def sw1      = project.findProperty('sw1')      ?:
+        'external.variables.txt=http://localhost/gamedata/external_variables.txt;' +
+        'external.texts.txt=http://localhost/gamedata/external_texts.txt'
+
+    commandLine 'node',
+        file('src/test/js/wasm-test.js').absolutePath,
+        distPath,
+        dcrFile,
+        castDir,
+        sw1
+
+    standardOutput = System.out
+    errorOutput    = System.err
+}

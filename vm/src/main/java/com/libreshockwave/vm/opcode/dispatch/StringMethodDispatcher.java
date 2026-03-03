@@ -18,69 +18,50 @@ public final class StringMethodDispatcher {
         // Get the item delimiter (default comma)
         char itemDelimiter = getItemDelimiter();
 
-        return switch (method) {
-            case "length" -> Datum.of(str.value().length());
-            case "char" -> {
-                if (args.isEmpty()) yield Datum.EMPTY_STRING;
-                int index = args.get(0).toInt();
-                if (index >= 1 && index <= str.value().length()) {
-                    yield Datum.of(String.valueOf(str.value().charAt(index - 1)));
-                }
-                yield Datum.EMPTY_STRING;
+        // Use if-else instead of switch to avoid TeaVM compiler bug where
+        // case "char" in a string switch is silently ignored (Java keyword conflict)
+        if ("length".equals(method)) {
+            return Datum.of(str.value().length());
+        } else if ("char".equals(method)) {
+            if (args.isEmpty()) return Datum.EMPTY_STRING;
+            int index = args.get(0).toInt();
+            if (index >= 1 && index <= str.value().length()) {
+                return Datum.of(String.valueOf(str.value().charAt(index - 1)));
             }
-            case "count" -> {
-                // count(str, #char) or count(str, #word) etc.
-                if (args.isEmpty()) yield Datum.of(str.value().length());
-                Datum chunkType = args.get(0);
-                if (chunkType instanceof Datum.Symbol s) {
-                    String type = s.name().toLowerCase();
-                    yield switch (type) {
-                        case "char" -> Datum.of(str.value().length());
-                        case "word" -> Datum.of(countWords(str.value()));
-                        case "line" -> Datum.of(countLines(str.value()));
-                        case "item" -> Datum.of(countItems(str.value(), itemDelimiter));
-                        default -> Datum.of(str.value().length());
-                    };
-                }
-                yield Datum.of(str.value().length());
-            }
-            case "getpropref" -> {
-                // getPropRef(str, #chunkType, index) - gets a single chunk from string
-                // e.g., getPropRef(str, #item, 1) gets the first item
-                // e.g., getPropRef(str, #word, 2) gets the second word
-                if (args.size() < 2) yield Datum.EMPTY_STRING;
-
-                Datum chunkType = args.get(0);
-                int index = args.get(1).toInt();
-
-                if (!(chunkType instanceof Datum.Symbol s)) {
-                    yield Datum.EMPTY_STRING;
-                }
-
+            return Datum.EMPTY_STRING;
+        } else if ("count".equals(method)) {
+            // count(str, #char) or count(str, #word) etc.
+            if (args.isEmpty()) return Datum.of(str.value().length());
+            Datum chunkType = args.get(0);
+            if (chunkType instanceof Datum.Symbol s) {
                 String type = s.name().toLowerCase();
-                String result = getStringChunk(str.value(), type, index, index, itemDelimiter);
-                yield Datum.of(result);
+                // if-else to avoid TeaVM "char" keyword bug in switch
+                if ("char".equals(type)) return Datum.of(str.value().length());
+                else if ("word".equals(type)) return Datum.of(countWords(str.value()));
+                else if ("line".equals(type)) return Datum.of(countLines(str.value()));
+                else if ("item".equals(type)) return Datum.of(countItems(str.value(), itemDelimiter));
+                else return Datum.of(str.value().length());
             }
-            case "getprop" -> {
-                // getProp(str, #chunkType, startIndex, endIndex?)
-                // e.g., getProp(str, #char, 1, 5) gets chars 1-5
-                // e.g., getProp(str, #word, 1, count(str, #word)) gets word 1 to last
-                if (args.size() < 2) yield Datum.EMPTY_STRING;
-
-                Datum chunkType = args.get(0);
-                int startIndex = args.get(1).toInt();
-                int endIndex = args.size() >= 3 ? args.get(2).toInt() : startIndex;
-
-                if (!(chunkType instanceof Datum.Symbol s)) {
-                    yield Datum.EMPTY_STRING;
-                }
-
-                String type = s.name().toLowerCase();
-                String result = getStringChunk(str.value(), type, startIndex, endIndex, itemDelimiter);
-                yield Datum.of(result);
-            }
-            default -> Datum.VOID;
-        };
+            return Datum.of(str.value().length());
+        } else if ("getpropref".equals(method)) {
+            // getPropRef(str, #chunkType, index) - gets a single chunk from string
+            if (args.size() < 2) return Datum.EMPTY_STRING;
+            Datum chunkType = args.get(0);
+            int index = args.get(1).toInt();
+            if (!(chunkType instanceof Datum.Symbol s)) return Datum.EMPTY_STRING;
+            String type = s.name().toLowerCase();
+            return Datum.of(getStringChunk(str.value(), type, index, index, itemDelimiter));
+        } else if ("getprop".equals(method)) {
+            // getProp(str, #chunkType, startIndex, endIndex?)
+            if (args.size() < 2) return Datum.EMPTY_STRING;
+            Datum chunkType = args.get(0);
+            int startIndex = args.get(1).toInt();
+            int endIndex = args.size() >= 3 ? args.get(2).toInt() : startIndex;
+            if (!(chunkType instanceof Datum.Symbol s)) return Datum.EMPTY_STRING;
+            String type = s.name().toLowerCase();
+            return Datum.of(getStringChunk(str.value(), type, startIndex, endIndex, itemDelimiter));
+        }
+        return Datum.VOID;
     }
 
     /**
@@ -102,57 +83,54 @@ public final class StringMethodDispatcher {
     private static String getStringChunk(String str, String chunkType, int start, int end, char itemDelimiter) {
         if (str.isEmpty() || start < 1) return "";
 
-        return switch (chunkType) {
-            case "char" -> {
-                int actualEnd = resolveEnd(end, start, str.length());
-                int s = Math.max(0, start - 1);
-                int e = Math.min(str.length(), actualEnd);
-                if (s >= str.length() || s >= e) yield "";
-                yield str.substring(s, e);
+        // Use if-else instead of switch to avoid TeaVM compiler bug where
+        // case "char" in a string switch is silently ignored (keyword conflict)
+        if ("char".equals(chunkType)) {
+            int actualEnd = resolveEnd(end, start, str.length());
+            int s = Math.max(0, start - 1);
+            int e = Math.min(str.length(), actualEnd);
+            if (s >= str.length() || s >= e) return "";
+            return str.substring(s, e);
+        } else if ("word".equals(chunkType)) {
+            String[] words = str.trim().split("\\s+");
+            int actualEnd = resolveEnd(end, start, words.length);
+            if (start > words.length) return "";
+            int s = start - 1;
+            int e = Math.min(words.length, actualEnd);
+            StringBuilder sb = new StringBuilder();
+            for (int i = s; i < e; i++) {
+                if (sb.length() > 0) sb.append(" ");
+                sb.append(words[i]);
             }
-            case "word" -> {
-                String[] words = str.trim().split("\\s+");
-                int actualEnd = resolveEnd(end, start, words.length);
-                if (start > words.length) yield "";
-                int s = start - 1;
-                int e = Math.min(words.length, actualEnd);
-                StringBuilder sb = new StringBuilder();
-                for (int i = s; i < e; i++) {
-                    if (sb.length() > 0) sb.append(" ");
-                    sb.append(words[i]);
-                }
-                yield sb.toString();
+            return sb.toString();
+        } else if ("line".equals(chunkType)) {
+            String lineDelimiter = pickLineDelimiter(str);
+            String[] lines = str.split(java.util.regex.Pattern.quote(lineDelimiter), -1);
+            int actualEnd = resolveEnd(end, start, lines.length);
+            if (start > lines.length) return "";
+            int s = start - 1;
+            int e = Math.min(lines.length, actualEnd);
+            StringBuilder sb = new StringBuilder();
+            for (int i = s; i < e; i++) {
+                if (sb.length() > 0) sb.append("\r\n");
+                sb.append(lines[i]);
             }
-            case "line" -> {
-                String lineDelimiter = pickLineDelimiter(str);
-                String[] lines = str.split(java.util.regex.Pattern.quote(lineDelimiter), -1);
-                int actualEnd = resolveEnd(end, start, lines.length);
-                if (start > lines.length) yield "";
-                int s = start - 1;
-                int e = Math.min(lines.length, actualEnd);
-                StringBuilder sb = new StringBuilder();
-                for (int i = s; i < e; i++) {
-                    if (sb.length() > 0) sb.append("\r\n");
-                    sb.append(lines[i]);
-                }
-                yield sb.toString();
+            return sb.toString();
+        } else if ("item".equals(chunkType)) {
+            // Simple split like dirplayer-rs - no bracket/quote awareness
+            String[] items = str.split(String.valueOf(itemDelimiter), -1);
+            int actualEnd = resolveEnd(end, start, items.length);
+            if (start > items.length) return "";
+            int s = start - 1;
+            int e = Math.min(items.length, actualEnd);
+            StringBuilder sb = new StringBuilder();
+            for (int i = s; i < e; i++) {
+                if (sb.length() > 0) sb.append(itemDelimiter);
+                sb.append(items[i]);
             }
-            case "item" -> {
-                // Simple split like dirplayer-rs - no bracket/quote awareness
-                String[] items = str.split(String.valueOf(itemDelimiter), -1);
-                int actualEnd = resolveEnd(end, start, items.length);
-                if (start > items.length) yield "";
-                int s = start - 1;
-                int e = Math.min(items.length, actualEnd);
-                StringBuilder sb = new StringBuilder();
-                for (int i = s; i < e; i++) {
-                    if (sb.length() > 0) sb.append(itemDelimiter);
-                    sb.append(items[i]);
-                }
-                yield sb.toString();
-            }
-            default -> "";
-        };
+            return sb.toString();
+        }
+        return "";
     }
 
     /**

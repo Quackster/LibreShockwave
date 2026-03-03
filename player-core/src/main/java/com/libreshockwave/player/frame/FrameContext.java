@@ -142,29 +142,23 @@ public class FrameContext {
     public boolean executeFrame() {
         logEvent("executeFrame(" + currentFrame + ")");
 
-        // 1. stepFrame to actorList members (Director calls stepFrame on each object)
-        if (actorListSupplier != null) {
-            Datum list = actorListSupplier.get();
-            if (list instanceof Datum.List actors) {
-                List<Datum> snapshot = new ArrayList<>(actors.items());
-                for (Datum actor : snapshot) {
-                    if (actor instanceof Datum.ScriptInstance instance) {
-                        dispatchStepFrameToInstance(instance);
-                    }
-                }
-            }
-        }
+        // Director broadcasts ALL frame events to actorList members, not just stepFrame.
+        // Object Manager (in actorList) uses prepareFrame to poll download callbacks.
+        List<Datum.ScriptInstance> actorSnapshot = getActorSnapshot();
 
-        // 2. stepFrame event (to behaviors)
+        // 1. stepFrame -> actorList, then behaviors + frame/movie scripts
+        dispatchToActorList(actorSnapshot, "stepFrame");
         dispatchEvent(PlayerEvent.STEP_FRAME);
 
-        // 2. prepareFrame -> timeout targets first, then behaviors + frame/movie scripts
+        // 2. prepareFrame -> actorList, timeout targets, then behaviors + frame/movie scripts
+        dispatchToActorList(actorSnapshot, "prepareFrame");
         if (timeoutManager != null) {
             timeoutManager.dispatchSystemEvent(vm, "prepareFrame");
         }
         dispatchEvent(PlayerEvent.PREPARE_FRAME);
 
-        // 3. enterFrame -> all behaviors + frame/movie scripts
+        // 3. enterFrame -> actorList, then behaviors + frame/movie scripts
+        dispatchToActorList(actorSnapshot, "enterFrame");
         inFrameScript = true;
         dispatchEvent(PlayerEvent.ENTER_FRAME);
         inFrameScript = false;
@@ -191,6 +185,8 @@ public class FrameContext {
         int oldFrame = currentFrame;
 
         // 1. Dispatch exitFrame events FIRST (scripts may call go() here)
+        List<Datum.ScriptInstance> actorSnapshot = getActorSnapshot();
+        dispatchToActorList(actorSnapshot, "exitFrame");
         if (timeoutManager != null) {
             timeoutManager.dispatchSystemEvent(vm, "exitFrame");
         }
@@ -313,40 +309,57 @@ public class FrameContext {
     }
 
     /**
-     * Dispatch stepFrame to a script instance by walking its ancestor chain.
-     * Used for actorList members — silently skips if stepFrame isn't found.
+     * Get a snapshot of the current actorList for frame event dispatch.
      */
-    private void dispatchStepFrameToInstance(Datum.ScriptInstance instance) {
+    private List<Datum.ScriptInstance> getActorSnapshot() {
+        if (actorListSupplier == null) return List.of();
+        Datum list = actorListSupplier.get();
+        if (!(list instanceof Datum.List actors)) return List.of();
+        List<Datum.ScriptInstance> result = new ArrayList<>();
+        for (Datum item : actors.items()) {
+            if (item instanceof Datum.ScriptInstance si) result.add(si);
+        }
+        return result;
+    }
+
+    /**
+     * Dispatch a frame event to all actorList members by walking each object's ancestor chain.
+     * Director broadcasts all frame events (stepFrame, prepareFrame, enterFrame, exitFrame)
+     * to actorList members, not just stepFrame.
+     */
+    private void dispatchToActorList(List<Datum.ScriptInstance> actors, String handlerName) {
         CastLibProvider provider = CastLibProvider.getProvider();
-        if (provider == null) return;
+        if (provider == null || actors.isEmpty()) return;
 
-        Datum.ScriptInstance current = instance;
-        for (int i = 0; i < 20; i++) {
-            Datum scriptRefDatum = current.properties().get(Datum.PROP_SCRIPT_REF);
-            CastLibProvider.HandlerLocation location;
+        for (Datum.ScriptInstance instance : actors) {
+            Datum.ScriptInstance current = instance;
+            for (int i = 0; i < 20; i++) {
+                Datum scriptRefDatum = current.properties().get(Datum.PROP_SCRIPT_REF);
+                CastLibProvider.HandlerLocation location;
 
-            if (scriptRefDatum instanceof Datum.ScriptRef sr) {
-                location = provider.findHandlerInScript(sr.castLibNum(), sr.memberNum(), "stepFrame");
-            } else {
-                location = provider.findHandlerInScript(current.scriptId(), "stepFrame");
-            }
-
-            if (location != null && location.script() instanceof ScriptChunk script
-                    && location.handler() instanceof ScriptChunk.Handler handler) {
-                try {
-                    vm.executeHandler(script, handler, List.of(instance), instance);
-                } catch (Exception e) {
-                    // Silently skip errors in actorList stepFrame
+                if (scriptRefDatum instanceof Datum.ScriptRef sr) {
+                    location = provider.findHandlerInScript(sr.castLibNum(), sr.memberNum(), handlerName);
+                } else {
+                    location = provider.findHandlerInScript(current.scriptId(), handlerName);
                 }
-                return;
-            }
 
-            // Walk to ancestor
-            Datum ancestor = current.properties().get(Datum.PROP_ANCESTOR);
-            if (ancestor instanceof Datum.ScriptInstance ancestorInstance) {
-                current = ancestorInstance;
-            } else {
-                break;
+                if (location != null && location.script() instanceof ScriptChunk script
+                        && location.handler() instanceof ScriptChunk.Handler handler) {
+                    try {
+                        vm.executeHandler(script, handler, List.of(instance), instance);
+                    } catch (Exception e) {
+                        // Silently skip errors in actorList event dispatch
+                    }
+                    break;
+                }
+
+                // Walk to ancestor
+                Datum ancestor = current.properties().get(Datum.PROP_ANCESTOR);
+                if (ancestor instanceof Datum.ScriptInstance ancestorInstance) {
+                    current = ancestorInstance;
+                } else {
+                    break;
+                }
             }
         }
     }

@@ -69,6 +69,7 @@ public class EventDispatcher {
 
         // 1. Sprite behaviors (in channel order)
         List<BehaviorInstance> spriteInstances = behaviorManager.getSpriteInstances();
+        BehaviorInstance frameInstance = behaviorManager.getFrameScriptInstance();
         for (BehaviorInstance instance : spriteInstances) {
             if (stopPropagation) {
                 break;
@@ -78,7 +79,6 @@ public class EventDispatcher {
 
         // 2. Frame behavior
         if (!stopPropagation) {
-            BehaviorInstance frameInstance = behaviorManager.getFrameScriptInstance();
             if (frameInstance != null) {
                 invokeHandler(frameInstance, handlerName, args);
             }
@@ -202,12 +202,14 @@ public class EventDispatcher {
      */
     private void invokeHandler(BehaviorInstance instance, String handlerName, List<Datum> args) {
         if (instance == null || instance.getScript() == null) return;
-        if (file == null) return;
-
-        ScriptNamesChunk names = file.getScriptNames();
-        if (names == null) return;
 
         ScriptChunk script = instance.getScript();
+        // Use the script's own file's names (may be an external cast, not the main DCR)
+        ScriptNamesChunk names = script.file() != null ? script.file().getScriptNames() : null;
+        if (names == null) {
+            return;
+        }
+
         ScriptChunk.Handler handler = script.findHandler(handlerName, names);
 
         if (handler == null) {
