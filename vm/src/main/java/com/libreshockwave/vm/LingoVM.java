@@ -407,7 +407,8 @@ public class LingoVM {
         }
 
         // Trace before execution
-        if (traceEnabled || traceListener != null) {
+        boolean needsInstr = traceEnabled || (traceListener != null && traceListener.needsInstructionTrace());
+        if (needsInstr) {
             TraceListener.InstructionInfo instrInfo = tracingHelper.buildInstructionInfo(scope, instr, globals);
             if (traceEnabled) {
                 consolePrinter.onInstruction(instrInfo);
