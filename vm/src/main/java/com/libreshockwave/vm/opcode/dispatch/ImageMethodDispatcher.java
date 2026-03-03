@@ -158,13 +158,11 @@ public final class ImageMethodDispatcher {
         String shapeType = "rect";
 
         if (propsArg instanceof Datum.PropList pl) {
-            Datum colorDatum = pl.properties().getOrDefault("color",
-                    pl.properties().getOrDefault("Color", Datum.VOID));
+            Datum colorDatum = getPropIgnoreCase(pl, "color", "Color");
             if (!colorDatum.isVoid()) {
                 colorArgb = datumToArgb(colorDatum);
             }
-            Datum shapeDatum = pl.properties().getOrDefault("shapeType",
-                    pl.properties().getOrDefault("shapetype", Datum.VOID));
+            Datum shapeDatum = getPropIgnoreCase(pl, "shapeType", "shapetype");
             if (shapeDatum instanceof Datum.Symbol s) {
                 shapeType = s.name().toLowerCase();
             }
@@ -224,27 +222,22 @@ public final class ImageMethodDispatcher {
 
         if (args.size() >= 4 && args.get(3) instanceof Datum.PropList pl) {
             // Check for #ink property
-            Datum inkDatum = pl.properties().getOrDefault("ink",
-                    pl.properties().getOrDefault("Ink", Datum.VOID));
+            Datum inkDatum = getPropIgnoreCase(pl, "ink", "Ink");
             if (inkDatum instanceof Datum.Int inkInt) {
                 ink = inkFromInt(inkInt.value());
             }
             // Check for #blend property
-            Datum blendDatum = pl.properties().getOrDefault("blend",
-                    pl.properties().getOrDefault("Blend", Datum.VOID));
+            Datum blendDatum = getPropIgnoreCase(pl, "blend", "Blend");
             if (!blendDatum.isVoid()) {
                 blend = (int) (blendDatum.toDouble() * 255.0 / 100.0);
             }
             // Check for #color property (foreground color remap)
-            Datum colorDatum = pl.properties().getOrDefault("color",
-                    pl.properties().getOrDefault("Color", Datum.VOID));
+            Datum colorDatum = getPropIgnoreCase(pl, "color", "Color");
             if (!colorDatum.isVoid()) {
                 colorRemap = datumToArgb(colorDatum) & 0xFFFFFF;
             }
             // Check for #bgColor property (background color remap)
-            Datum bgColorDatum = pl.properties().getOrDefault("bgColor",
-                    pl.properties().getOrDefault("bgcolor",
-                    pl.properties().getOrDefault("BgColor", Datum.VOID)));
+            Datum bgColorDatum = getPropIgnoreCase(pl, "bgColor", "bgcolor", "BgColor");
             if (!bgColorDatum.isVoid()) {
                 bgColorRemap = datumToArgb(bgColorDatum) & 0xFFFFFF;
             }
@@ -326,6 +319,18 @@ public final class ImageMethodDispatcher {
 
         Bitmap cropped = bmp.getRegion(rect.left(), rect.top(), w, h);
         return new Datum.ImageRef(cropped);
+    }
+
+    /**
+     * Look up a property by name in a PropList, trying the given key first,
+     * then common casing variants (lowercase, capitalized). Returns Datum.VOID if not found.
+     */
+    private static Datum getPropIgnoreCase(Datum.PropList pl, String... keys) {
+        for (String key : keys) {
+            Datum val = pl.properties().get(key);
+            if (val != null) return val;
+        }
+        return Datum.VOID;
     }
 
     /**

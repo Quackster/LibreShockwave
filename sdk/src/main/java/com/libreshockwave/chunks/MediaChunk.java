@@ -3,6 +3,7 @@ package com.libreshockwave.chunks;
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.format.ChunkType;
 import com.libreshockwave.io.BinaryReader;
+import com.libreshockwave.util.AudioCodecUtils;
 
 import java.nio.ByteOrder;
 
@@ -74,21 +75,9 @@ public record MediaChunk(
             return "mp3";
         }
 
-        // Search for MP3 sync bytes (0xFF 0xEx or 0xFF 0xFx) in first 512 bytes
-        int searchLimit = Math.min(data.length - 4, 512);
-        for (int i = 0; i < searchLimit; i++) {
-            if ((data[i] & 0xFF) == 0xFF && (data[i + 1] & 0xE0) == 0xE0) {
-                // Validate it looks like a real MP3 frame
-                int version = (data[i + 1] >> 3) & 3;
-                int layer = (data[i + 1] >> 1) & 3;
-                int bitrateIdx = (data[i + 2] >> 4) & 0xF;
-                int sampleRateIdx = (data[i + 2] >> 2) & 3;
-
-                // Valid MP3: version != 1, layer != 0, bitrate != 0/15, sampleRate != 3
-                if (version != 1 && layer != 0 && bitrateIdx != 0 && bitrateIdx != 15 && sampleRateIdx != 3) {
-                    return "mp3";
-                }
-            }
+        // Search for MP3 sync bytes in first 512 bytes
+        if (AudioCodecUtils.containsMp3SyncFrame(data, 512)) {
+            return "mp3";
         }
 
         // Check for IMA ADPCM by compression ratio

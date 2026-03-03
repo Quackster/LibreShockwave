@@ -37,24 +37,24 @@ public final class PropListMethodDispatcher {
             }
             case "getprop", "getaprop", "getproperty" -> {
                 if (args.isEmpty()) yield Datum.VOID;
-                String key = args.get(0) instanceof Datum.Symbol s ? s.name() : args.get(0).toStr();
+                String key = args.get(0).toKeyName();
                 yield propList.properties().getOrDefault(key, Datum.VOID);
             }
             case "setprop", "setaprop" -> {
                 if (args.size() < 2) yield Datum.VOID;
-                String key = args.get(0) instanceof Datum.Symbol s ? s.name() : args.get(0).toStr();
+                String key = args.get(0).toKeyName();
                 propList.properties().put(key, args.get(1));
                 yield Datum.VOID;
             }
             case "addprop" -> {
                 if (args.size() < 2) yield Datum.VOID;
-                String key = args.get(0) instanceof Datum.Symbol s ? s.name() : args.get(0).toStr();
+                String key = args.get(0).toKeyName();
                 propList.properties().put(key, args.get(1));
                 yield Datum.VOID;
             }
             case "deleteprop" -> {
                 if (args.isEmpty()) yield Datum.VOID;
-                String key = args.get(0) instanceof Datum.Symbol s ? s.name() : args.get(0).toStr();
+                String key = args.get(0).toKeyName();
                 propList.properties().remove(key);
                 yield Datum.VOID;
             }
@@ -82,7 +82,7 @@ public final class PropListMethodDispatcher {
                         propList.properties().put(existingKey, value);
                     }
                 } else {
-                    String key = keyOrIndex instanceof Datum.Symbol s ? s.name() : keyOrIndex.toStr();
+                    String key = keyOrIndex.toKeyName();
                     propList.properties().put(key, value);
                 }
                 yield Datum.VOID;
@@ -90,7 +90,7 @@ public final class PropListMethodDispatcher {
             case "findpos" -> {
                 // Find position of key, return VOID if not found
                 if (args.isEmpty()) yield Datum.VOID;
-                String key = args.get(0) instanceof Datum.Symbol s ? s.name() : args.get(0).toStr();
+                String key = args.get(0).toKeyName();
                 int pos = 1;
                 for (String k : propList.properties().keySet()) {
                     if (k.equalsIgnoreCase(key)) {

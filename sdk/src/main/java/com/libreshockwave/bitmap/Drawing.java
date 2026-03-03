@@ -59,6 +59,11 @@ public class Drawing {
         copyPixels(dest, src, destX, destY, 0, 0, src.getWidth(), src.getHeight(), ink, blend);
     }
 
+    /** Pack r, g, b into a fully-opaque ARGB int. */
+    private static int packOpaqueRgb(int r, int g, int b) {
+        return 0xFF000000 | (r << 16) | (g << 8) | b;
+    }
+
     /**
      * Apply ink mode to blend source and destination pixels.
      *
@@ -96,20 +101,20 @@ public class Drawing {
                 r = destR ^ srcR;
                 g = destG ^ srcG;
                 b = destB ^ srcB;
-                return 0xFF000000 | (r << 16) | (g << 8) | b;
+                return packOpaqueRgb(r, g, b);
 
             case GHOST:
                 // Source appears ghosted over destination
                 r = (srcR + destR) / 2;
                 g = (srcG + destG) / 2;
                 b = (srcB + destB) / 2;
-                return 0xFF000000 | (r << 16) | (g << 8) | b;
+                return packOpaqueRgb(r, g, b);
 
             case NOT_COPY:
                 r = 255 - srcR;
                 g = 255 - srcG;
                 b = 255 - srcB;
-                return 0xFF000000 | (r << 16) | (g << 8) | b;
+                return packOpaqueRgb(r, g, b);
 
             case NOT_TRANSPARENT:
                 // Black (0,0,0) is transparent
@@ -119,19 +124,19 @@ public class Drawing {
                 r = 255 - srcR;
                 g = 255 - srcG;
                 b = 255 - srcB;
-                return 0xFF000000 | (r << 16) | (g << 8) | b;
+                return packOpaqueRgb(r, g, b);
 
             case NOT_REVERSE:
                 r = destR ^ (255 - srcR);
                 g = destG ^ (255 - srcG);
                 b = destB ^ (255 - srcB);
-                return 0xFF000000 | (r << 16) | (g << 8) | b;
+                return packOpaqueRgb(r, g, b);
 
             case NOT_GHOST:
                 r = ((255 - srcR) + destR) / 2;
                 g = ((255 - srcG) + destG) / 2;
                 b = ((255 - srcB) + destB) / 2;
-                return 0xFF000000 | (r << 16) | (g << 8) | b;
+                return packOpaqueRgb(r, g, b);
 
             case MATTE:
                 // Use alpha channel for transparency
@@ -153,19 +158,19 @@ public class Drawing {
                 r = Math.min(255, srcR + destR);
                 g = Math.min(255, srcG + destG);
                 b = Math.min(255, srcB + destB);
-                return 0xFF000000 | (r << 16) | (g << 8) | b;
+                return packOpaqueRgb(r, g, b);
 
             case ADD:
                 r = (srcR + destR) & 0xFF; // Wrap around
                 g = (srcG + destG) & 0xFF;
                 b = (srcB + destB) & 0xFF;
-                return 0xFF000000 | (r << 16) | (g << 8) | b;
+                return packOpaqueRgb(r, g, b);
 
             case SUBTRACT_PIN:
                 r = Math.max(0, destR - srcR);
                 g = Math.max(0, destG - srcG);
                 b = Math.max(0, destB - srcB);
-                return 0xFF000000 | (r << 16) | (g << 8) | b;
+                return packOpaqueRgb(r, g, b);
 
             case BACKGROUND_TRANSPARENT:
                 // Background color (index 0, usually white) is transparent
@@ -178,33 +183,33 @@ public class Drawing {
                 r = Math.max(srcR, destR);
                 g = Math.max(srcG, destG);
                 b = Math.max(srcB, destB);
-                return 0xFF000000 | (r << 16) | (g << 8) | b;
+                return packOpaqueRgb(r, g, b);
 
             case SUBTRACT:
                 r = (destR - srcR) & 0xFF; // Wrap around
                 g = (destG - srcG) & 0xFF;
                 b = (destB - srcB) & 0xFF;
-                return 0xFF000000 | (r << 16) | (g << 8) | b;
+                return packOpaqueRgb(r, g, b);
 
             case DARKEST:
                 r = Math.min(srcR, destR);
                 g = Math.min(srcG, destG);
                 b = Math.min(srcB, destB);
-                return 0xFF000000 | (r << 16) | (g << 8) | b;
+                return packOpaqueRgb(r, g, b);
 
             case LIGHTEN:
                 // Only affects if source is lighter
                 r = srcR > destR ? srcR : destR;
                 g = srcG > destG ? srcG : destG;
                 b = srcB > destB ? srcB : destB;
-                return 0xFF000000 | (r << 16) | (g << 8) | b;
+                return packOpaqueRgb(r, g, b);
 
             case DARKEN:
                 // Only affects if source is darker
                 r = srcR < destR ? srcR : destR;
                 g = srcG < destG ? srcG : destG;
                 b = srcB < destB ? srcB : destB;
-                return 0xFF000000 | (r << 16) | (g << 8) | b;
+                return packOpaqueRgb(r, g, b);
 
             default:
                 return src;
@@ -232,7 +237,7 @@ public class Drawing {
         int g = (fgG * alpha + bgG * invAlpha) / 255;
         int b = (fgB * alpha + bgB * invAlpha) / 255;
 
-        return 0xFF000000 | (r << 16) | (g << 8) | b;
+        return packOpaqueRgb(r, g, b);
     }
 
     /**
