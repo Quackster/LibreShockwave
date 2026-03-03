@@ -31,6 +31,25 @@ public class FileUtil {
         return path.replaceAll("^.*[\\\\/]", "");
     }
 
+    /**
+     * Build a list of URLs to try, with the preferred extension first.
+     * For cast files (.cst/.cct): returns [original, .cct, .cst]
+     * For movie files (.dcr/.dxr/.dir): returns [original, .dcr, .dxr, .dir]
+     * Otherwise returns just the original URL.
+     */
+    public static String[] getUrlsWithFallbacks(String url) {
+        String lower = url.toLowerCase();
+        if (lower.endsWith(".cst") || lower.endsWith(".cct")) {
+            String base = url.substring(0, url.length() - 4);
+            return new String[] { url, base + ".cct", base + ".cst" };
+        }
+        if (lower.endsWith(".dcr") || lower.endsWith(".dxr") || lower.endsWith(".dir")) {
+            String base = url.substring(0, url.length() - 4);
+            return new String[] { url, base + ".dcr", base + ".dxr", base + ".dir" };
+        }
+        return new String[] { url };
+    }
+
     public static String getFileNameWithoutExtension(String string) {
         if (string == null || string.isEmpty()) {
             return string;

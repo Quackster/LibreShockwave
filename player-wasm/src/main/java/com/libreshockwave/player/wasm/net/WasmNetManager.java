@@ -1,6 +1,7 @@
 package com.libreshockwave.player.wasm.net;
 
 import com.libreshockwave.player.wasm.WasmPlayerApp;
+import com.libreshockwave.util.FileUtil;
 import com.libreshockwave.vm.builtin.NetBuiltins;
 import org.teavm.interop.Import;
 
@@ -212,22 +213,8 @@ public class WasmNetManager implements NetBuiltins.NetProvider {
     @Import(name = "fetchPost", module = "libreshockwave")
     private static native void jsFetchPost(int taskId, int urlLength, int postDataLength);
 
-    /**
-     * Build a list of URLs to try, with the preferred extension first.
-     * Cast files: .cct first, then .cst
-     * Movie files: .dcr first, then .dxr, then .dir
-     */
     private String[] getUrlsWithFallbacks(String url) {
-        String lower = url.toLowerCase();
-        if (lower.endsWith(".cst") || lower.endsWith(".cct")) {
-            String base = url.substring(0, url.length() - 4);
-            return new String[] { base + ".cct", base + ".cst" };
-        }
-        if (lower.endsWith(".dir") || lower.endsWith(".dcr") || lower.endsWith(".dxr")) {
-            String base = url.substring(0, url.length() - 4);
-            return new String[] { base + ".dcr", base + ".dxr", base + ".dir" };
-        }
-        return new String[] { url };
+        return FileUtil.getUrlsWithFallbacks(url);
     }
 
     // Simple task data holder

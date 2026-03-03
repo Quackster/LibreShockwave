@@ -57,7 +57,7 @@ public final class ListOpcodes {
         for (int i = 0; i + 1 < items.size(); i += 2) {
             Datum key = items.get(i);
             Datum value = items.get(i + 1);
-            String keyStr = key instanceof Datum.Symbol s ? s.name() : key.toStr();
+            String keyStr = key.toKeyName();
             props.put(keyStr, value);
         }
         ctx.push(Datum.propList(props));

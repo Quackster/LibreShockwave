@@ -602,29 +602,8 @@ public class NetManager implements NetBuiltins.NetProvider {
         }
     }
 
-    /**
-     * Get URLs to try with extension fallbacks for HTTP loading.
-     * Prioritizes Shockwave formats (.dcr, .cct) which are typically deployed on the web.
-     * For cast files: try requested, then .cct, then .cst
-     * For movie files: try requested, then .dcr, then .dxr, then .dir
-     */
     private String[] getUrlsWithFallbacks(String url) {
-        String lowerUrl = url.toLowerCase();
-
-        // Cast file extensions - try .cct first (Shockwave protected cast)
-        if (lowerUrl.endsWith(".cst") || lowerUrl.endsWith(".cct")) {
-            String baseName = url.substring(0, url.length() - 4);
-            return new String[] { url, baseName + ".cct", baseName + ".cst" };
-        }
-
-        // Movie file extensions - try .dcr first (Shockwave format)
-        if (lowerUrl.endsWith(".dcr") || lowerUrl.endsWith(".dxr") || lowerUrl.endsWith(".dir")) {
-            String baseName = url.substring(0, url.length() - 4);
-            return new String[] { url, baseName + ".dcr", baseName + ".dxr", baseName + ".dir" };
-        }
-
-        // No fallbacks
-        return new String[] { url };
+        return FileUtil.getUrlsWithFallbacks(url);
     }
 
     /**

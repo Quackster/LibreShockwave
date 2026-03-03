@@ -79,32 +79,23 @@ public final class StringOpcodes {
         Datum stringDatum = ctx.pop();
         String str = stringDatum.toStr();
 
-        // Pop 8 chunk parameters (popped in reverse order from stack)
-        int lastLine = ctx.pop().toInt();
-        int firstLine = ctx.pop().toInt();
-        int lastItem = ctx.pop().toInt();
-        int firstItem = ctx.pop().toInt();
-        int lastWord = ctx.pop().toInt();
-        int firstWord = ctx.pop().toInt();
-        int lastChar = ctx.pop().toInt();
-        int firstChar = ctx.pop().toInt();
-
+        ChunkBounds cb = popChunkBounds(ctx);
         char itemDelimiter = getItemDelimiter();
 
         // Apply chunks sequentially (largest to smallest granularity)
         String result = str;
 
-        if (firstLine != 0 || lastLine != 0) {
-            result = resolveChunkRange(result, StringChunkType.LINE, firstLine, lastLine, itemDelimiter);
+        if (cb.firstLine() != 0 || cb.lastLine() != 0) {
+            result = resolveChunkRange(result, StringChunkType.LINE, cb.firstLine(), cb.lastLine(), itemDelimiter);
         }
-        if (firstItem != 0 || lastItem != 0) {
-            result = resolveChunkRange(result, StringChunkType.ITEM, firstItem, lastItem, itemDelimiter);
+        if (cb.firstItem() != 0 || cb.lastItem() != 0) {
+            result = resolveChunkRange(result, StringChunkType.ITEM, cb.firstItem(), cb.lastItem(), itemDelimiter);
         }
-        if (firstWord != 0 || lastWord != 0) {
-            result = resolveChunkRange(result, StringChunkType.WORD, firstWord, lastWord, itemDelimiter);
+        if (cb.firstWord() != 0 || cb.lastWord() != 0) {
+            result = resolveChunkRange(result, StringChunkType.WORD, cb.firstWord(), cb.lastWord(), itemDelimiter);
         }
-        if (firstChar != 0 || lastChar != 0) {
-            result = resolveChunkRange(result, StringChunkType.CHAR, firstChar, lastChar, itemDelimiter);
+        if (cb.firstChar() != 0 || cb.lastChar() != 0) {
+            result = resolveChunkRange(result, StringChunkType.CHAR, cb.firstChar(), cb.lastChar(), itemDelimiter);
         }
 
         ctx.push(Datum.of(result));
@@ -245,6 +236,30 @@ public final class StringOpcodes {
      * Returns the first non-zero chunk specification.
      */
     private static ChunkExpr readSingleChunkRef(ExecutionContext ctx) {
+        ChunkBounds cb = popChunkBounds(ctx);
+
+        if (cb.firstLine() != 0 || cb.lastLine() != 0) {
+            return new ChunkExpr(StringChunkType.LINE, cb.firstLine(), cb.lastLine());
+        } else if (cb.firstItem() != 0 || cb.lastItem() != 0) {
+            return new ChunkExpr(StringChunkType.ITEM, cb.firstItem(), cb.lastItem());
+        } else if (cb.firstWord() != 0 || cb.lastWord() != 0) {
+            return new ChunkExpr(StringChunkType.WORD, cb.firstWord(), cb.lastWord());
+        } else if (cb.firstChar() != 0 || cb.lastChar() != 0) {
+            return new ChunkExpr(StringChunkType.CHAR, cb.firstChar(), cb.lastChar());
+        }
+
+        // Default to char 1 to 1
+        return new ChunkExpr(StringChunkType.CHAR, 1, 1);
+    }
+
+    private record ChunkExpr(StringChunkType type, int first, int last) {}
+
+    /** Raw 8-value chunk boundaries popped from the VM stack. */
+    private record ChunkBounds(int firstChar, int lastChar, int firstWord, int lastWord,
+                               int firstItem, int lastItem, int firstLine, int lastLine) {}
+
+    /** Pop 8 chunk boundary values from the stack (in reverse push order). */
+    private static ChunkBounds popChunkBounds(ExecutionContext ctx) {
         int lastLine = ctx.pop().toInt();
         int firstLine = ctx.pop().toInt();
         int lastItem = ctx.pop().toInt();
@@ -253,22 +268,9 @@ public final class StringOpcodes {
         int firstWord = ctx.pop().toInt();
         int lastChar = ctx.pop().toInt();
         int firstChar = ctx.pop().toInt();
-
-        if (firstLine != 0 || lastLine != 0) {
-            return new ChunkExpr(StringChunkType.LINE, firstLine, lastLine);
-        } else if (firstItem != 0 || lastItem != 0) {
-            return new ChunkExpr(StringChunkType.ITEM, firstItem, lastItem);
-        } else if (firstWord != 0 || lastWord != 0) {
-            return new ChunkExpr(StringChunkType.WORD, firstWord, lastWord);
-        } else if (firstChar != 0 || lastChar != 0) {
-            return new ChunkExpr(StringChunkType.CHAR, firstChar, lastChar);
-        }
-
-        // Default to char 1 to 1
-        return new ChunkExpr(StringChunkType.CHAR, 1, 1);
+        return new ChunkBounds(firstChar, lastChar, firstWord, lastWord,
+                firstItem, lastItem, firstLine, lastLine);
     }
-
-    private record ChunkExpr(StringChunkType type, int first, int last) {}
 
     /**
      * Resolve a chunk range from a string.

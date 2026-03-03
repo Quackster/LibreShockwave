@@ -380,6 +380,14 @@ public sealed interface Datum {
     }
 
     /**
+     * Convert this Datum to a property-key name string.
+     * Symbols yield their name directly; all other types use toStr().
+     */
+    default String toKeyName() {
+        return this instanceof Symbol s ? s.name() : toStr();
+    }
+
+    /**
      * Create a deep copy of this Datum.
      * For immutable types (Int, Float, Str, Symbol, etc.), returns the same instance.
      * For mutable types (List, PropList, ScriptInstance, ArgList, ArgListNoRet),

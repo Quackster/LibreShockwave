@@ -547,7 +547,7 @@ public final class TypeBuiltins {
         // If second argument provided, check if types match
         if (args.size() >= 2) {
             Datum checkType = args.get(1);
-            String checkName = checkType instanceof Datum.Symbol s ? s.name() : checkType.toStr();
+            String checkName = checkType.toKeyName();
             return typeName.equalsIgnoreCase(checkName) ? Datum.TRUE : Datum.FALSE;
         }
 
