@@ -1,0 +1,22 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+application {
+    mainClass = 'com.libreshockwave.player.simulator.PlayerSimulator'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation project(':player-core')
+}
