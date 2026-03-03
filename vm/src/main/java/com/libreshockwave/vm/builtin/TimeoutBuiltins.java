@@ -47,42 +47,38 @@ public final class TimeoutBuiltins {
         String method = methodName.toLowerCase();
         TimeoutProvider provider = TimeoutProvider.getProvider();
 
-        return switch (method) {
-            case "new" -> {
-                if (provider == null) yield Datum.VOID;
+        if ("new".equals(method)) {
+            if (provider == null) return Datum.VOID;
 
-                String name = ref.name();
-                int argOffset = 0;
+            String name = ref.name();
+            int argOffset = 0;
 
-                // Factory mode: name is empty, take it from first arg
-                if (name.isEmpty() && !args.isEmpty()) {
-                    name = args.get(0).toStr();
-                    argOffset = 1;
-                }
-
-                if (name.isEmpty()) yield Datum.VOID;
-
-                // Extract period, handler, target
-                int periodMs = args.size() > argOffset ? args.get(argOffset).toInt() : 1000;
-                String handler = args.size() > argOffset + 1 ? getHandlerName(args.get(argOffset + 1)) : "";
-                Datum target = args.size() > argOffset + 2 ? args.get(argOffset + 2) : Datum.VOID;
-
-                yield provider.createTimeout(name, periodMs, handler, target);
+            // Factory mode: name is empty, take it from first arg
+            if (name.isEmpty() && !args.isEmpty()) {
+                name = args.get(0).toStr();
+                argOffset = 1;
             }
-            case "forget" -> {
-                if (provider != null && !ref.name().isEmpty()) {
-                    provider.forgetTimeout(ref.name());
-                }
-                yield Datum.VOID;
+
+            if (name.isEmpty()) return Datum.VOID;
+
+            // Extract period, handler, target
+            int periodMs = args.size() > argOffset ? args.get(argOffset).toInt() : 1000;
+            String handler = args.size() > argOffset + 1 ? getHandlerName(args.get(argOffset + 1)) : "";
+            Datum target = args.size() > argOffset + 2 ? args.get(argOffset + 2) : Datum.VOID;
+
+            return provider.createTimeout(name, periodMs, handler, target);
+        } else if ("forget".equals(method)) {
+            if (provider != null && !ref.name().isEmpty()) {
+                provider.forgetTimeout(ref.name());
             }
-            default -> {
-                // Try as property get
-                if (provider != null && !ref.name().isEmpty()) {
-                    yield provider.getTimeoutProp(ref.name(), method);
-                }
-                yield Datum.VOID;
+            return Datum.VOID;
+        } else {
+            // Try as property get
+            if (provider != null && !ref.name().isEmpty()) {
+                return provider.getTimeoutProp(ref.name(), method);
             }
-        };
+            return Datum.VOID;
+        }
     }
 
     /**

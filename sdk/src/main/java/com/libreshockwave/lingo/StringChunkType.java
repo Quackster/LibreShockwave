@@ -37,13 +37,12 @@ public enum StringChunkType {
     }
 
     public static StringChunkType fromName(String name) {
-        return switch (name.toLowerCase()) {
-            case "item" -> ITEM;
-            case "word" -> WORD;
-            case "char" -> CHAR;
-            case "line" -> LINE;
-            default -> throw new IllegalArgumentException("Unknown chunk type: " + name);
-        };
+        String lower = name.toLowerCase();
+        if ("item".equals(lower)) return ITEM;
+        if ("word".equals(lower)) return WORD;
+        if ("char".equals(lower)) return CHAR;
+        if ("line".equals(lower)) return LINE;
+        throw new IllegalArgumentException("Unknown chunk type: " + name);
     }
 
     @Override

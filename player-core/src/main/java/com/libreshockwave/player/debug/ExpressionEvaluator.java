@@ -322,15 +322,14 @@ public class ExpressionEvaluator {
             String name = input.substring(start, pos);
 
             // Check for keywords
-            return switch (name.toLowerCase()) {
-                case "and" -> new Token(TokenType.AND, name, start);
-                case "or" -> new Token(TokenType.OR, name, start);
-                case "not" -> new Token(TokenType.NOT, name, start);
-                case "mod" -> new Token(TokenType.MOD, name, start);
-                case "true" -> new Token(TokenType.NUMBER, "1", start);
-                case "false" -> new Token(TokenType.NUMBER, "0", start);
-                default -> new Token(TokenType.IDENTIFIER, name, start);
-            };
+            String lower = name.toLowerCase();
+            if ("and".equals(lower)) return new Token(TokenType.AND, name, start);
+            if ("or".equals(lower)) return new Token(TokenType.OR, name, start);
+            if ("not".equals(lower)) return new Token(TokenType.NOT, name, start);
+            if ("mod".equals(lower)) return new Token(TokenType.MOD, name, start);
+            if ("true".equals(lower)) return new Token(TokenType.NUMBER, "1", start);
+            if ("false".equals(lower)) return new Token(TokenType.NUMBER, "0", start);
+            return new Token(TokenType.IDENTIFIER, name, start);
         }
 
         private boolean isAtEnd() {

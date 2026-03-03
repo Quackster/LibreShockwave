@@ -87,20 +87,19 @@ public final class PropertyOpcodes {
      * Get built-in constants that don't require a provider.
      */
     private static Datum getBuiltinConstant(String propName) {
-        return switch (propName.toLowerCase()) {
-            case "pi" -> Datum.of(Math.PI);
-            case "true" -> Datum.TRUE;
-            case "false" -> Datum.FALSE;
-            case "void" -> Datum.VOID;
-            case "empty", "emptystring" -> Datum.EMPTY_STRING;
-            case "return" -> Datum.of("\r");
-            case "enter" -> Datum.of("\n");
-            case "tab" -> Datum.of("\t");
-            case "quote" -> Datum.of("\"");
-            case "backspace" -> Datum.of("\b");
-            case "space" -> Datum.of(" ");
-            default -> Datum.VOID;
-        };
+        String p = propName.toLowerCase();
+        if ("pi".equals(p)) return Datum.of(Math.PI);
+        if ("true".equals(p)) return Datum.TRUE;
+        if ("false".equals(p)) return Datum.FALSE;
+        if ("void".equals(p)) return Datum.VOID;
+        if ("empty".equals(p) || "emptystring".equals(p)) return Datum.EMPTY_STRING;
+        if ("return".equals(p)) return Datum.of("\r");
+        if ("enter".equals(p)) return Datum.of("\n");
+        if ("tab".equals(p)) return Datum.of("\t");
+        if ("quote".equals(p)) return Datum.of("\"");
+        if ("backspace".equals(p)) return Datum.of("\b");
+        if ("space".equals(p)) return Datum.of(" ");
+        return Datum.VOID;
     }
 
     private static boolean getObjProp(ExecutionContext ctx) {

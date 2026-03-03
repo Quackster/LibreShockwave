@@ -53,6 +53,12 @@ public class MovieProperties implements MoviePropertyProvider {
         // Normalize property name to lowercase for matching
         String prop = propName.toLowerCase();
 
+        // TeaVM v0.13 workaround: Java keywords/literals cannot be used as string switch case labels
+        if ("return".equals(prop)) return Datum.of("\r");
+        if ("void".equals(prop)) return Datum.VOID;
+        if ("true".equals(prop)) return Datum.TRUE;
+        if ("false".equals(prop)) return Datum.FALSE;
+
         return switch (prop) {
             // Frame and playback
             case "frame" -> Datum.of(player.getCurrentFrame());
@@ -162,15 +168,11 @@ public class MovieProperties implements MoviePropertyProvider {
             // Misc
             case "emptystring" -> Datum.EMPTY_STRING;
             case "pi" -> Datum.of(Math.PI);
-            case "return" -> Datum.of("\r");
             case "enter" -> Datum.of("\n");
             case "tab" -> Datum.of("\t");
             case "quote" -> Datum.of("\"");
             case "backspace" -> Datum.of("\b");
             case "space" -> Datum.of(" ");
-            case "true" -> Datum.TRUE;
-            case "false" -> Datum.FALSE;
-            case "void" -> Datum.VOID;
 
             // Execution context properties
             case "paramcount" -> {

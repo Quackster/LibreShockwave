@@ -389,6 +389,13 @@ public class WasmEntry {
     private static void tryLoadExternalCast(String url, byte[] data) {
         if (wasmPlayer == null || wasmPlayer.getPlayer() == null) return;
         try {
+            // Cache file data first — mirrors Swing's NetManager completion callback.
+            // The CastLoad Manager sets castLib.fileName *after* the fetch completes,
+            // triggering CastLibManager.tryLoadCastFromCache which reads from this cache.
+            // Without this call, dynamically-assigned casts (like hh_entry_au.cct) are
+            // never loaded because no matching CastLib exists at delivery time.
+            wasmPlayer.getPlayer().getCastLibManager().cacheFileData(url, data);
+
             boolean loaded = wasmPlayer.getPlayer().getCastLibManager()
                     .setExternalCastDataByUrl(url, data);
             if (loaded) {
