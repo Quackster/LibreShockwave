@@ -77,7 +77,7 @@ public class ScoreNavigator {
         if (labels == null) return;
 
         for (FrameLabelsChunk.FrameLabel label : labels.labels()) {
-            frameLabels.put(label.label().toLowerCase(), label.frameNum());
+            frameLabels.put(label.label().toLowerCase(), label.frameNum().value());
         }
     }
 

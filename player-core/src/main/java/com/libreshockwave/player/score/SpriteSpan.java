@@ -1,5 +1,8 @@
 package com.libreshockwave.player.score;
 
+import com.libreshockwave.id.ChannelId;
+import com.libreshockwave.id.FrameId;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -9,27 +12,39 @@ import java.util.List;
  */
 public class SpriteSpan {
 
-    private final int channel;
-    private final int startFrame;  // Inclusive, 1-indexed
-    private final int endFrame;    // Inclusive, 1-indexed
+    private final ChannelId channel;
+    private final FrameId startFrame;  // Inclusive
+    private final FrameId endFrame;    // Inclusive
     private final List<ScoreBehaviorRef> behaviors;
 
     public SpriteSpan(int channel, int startFrame, int endFrame) {
-        this.channel = channel;
-        this.startFrame = startFrame;
-        this.endFrame = endFrame;
+        this.channel = new ChannelId(channel);
+        this.startFrame = new FrameId(startFrame);
+        this.endFrame = new FrameId(endFrame);
         this.behaviors = new ArrayList<>();
     }
 
     public int getChannel() {
+        return channel.value();
+    }
+
+    public ChannelId getChannelId() {
         return channel;
     }
 
     public int getStartFrame() {
+        return startFrame.value();
+    }
+
+    public FrameId getStartFrameId() {
         return startFrame;
     }
 
     public int getEndFrame() {
+        return endFrame.value();
+    }
+
+    public FrameId getEndFrameId() {
         return endFrame;
     }
 
@@ -45,14 +60,14 @@ public class SpriteSpan {
      * Check if this span is a frame behavior (channel 0).
      */
     public boolean isFrameBehavior() {
-        return channel == 0;
+        return channel.value() == 0;
     }
 
     /**
      * Check if the given frame is within this span's range.
      */
     public boolean containsFrame(int frame) {
-        return frame >= startFrame && frame <= endFrame;
+        return frame >= startFrame.value() && frame <= endFrame.value();
     }
 
     /**
@@ -64,8 +79,8 @@ public class SpriteSpan {
 
     @Override
     public String toString() {
-        return "SpriteSpan{channel=" + channel +
-               ", frames=" + startFrame + "-" + endFrame +
+        return "SpriteSpan{channel=" + channel.value() +
+               ", frames=" + startFrame.value() + "-" + endFrame.value() +
                ", behaviors=" + behaviors.size() + "}";
     }
 }

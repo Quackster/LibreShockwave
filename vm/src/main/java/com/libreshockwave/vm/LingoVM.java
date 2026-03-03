@@ -375,7 +375,7 @@ public class LingoVM {
 
         com.libreshockwave.vm.builtin.CastLibProvider.HandlerLocation location;
         if (scriptRef != null) {
-            location = castProvider.findHandlerInScript(scriptRef.castLib(), scriptRef.member(), "alertHook");
+            location = castProvider.findHandlerInScript(scriptRef.castLibNum(), scriptRef.memberNum(), "alertHook");
         } else {
             location = castProvider.findHandlerInScript(hookInstance.scriptId(), "alertHook");
         }

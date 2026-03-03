@@ -2,6 +2,8 @@ package com.libreshockwave.player.render;
 
 import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.chunks.CastMemberChunk;
+import com.libreshockwave.id.ChannelId;
+import com.libreshockwave.id.InkMode;
 import com.libreshockwave.player.cast.CastMember;
 
 /**
@@ -10,7 +12,7 @@ import com.libreshockwave.player.cast.CastMember;
  */
 public final class RenderSprite {
 
-    private final int channel;
+    private final ChannelId channelId;
     private final int x;
     private final int y;
     private final int width;
@@ -24,7 +26,7 @@ public final class RenderSprite {
     private final int backColor;
     private final boolean hasForeColor;
     private final boolean hasBackColor;
-    private final int ink;
+    private final InkMode inkMode;
     private final int blend;
     private final Bitmap bakedBitmap;
 
@@ -53,7 +55,7 @@ public final class RenderSprite {
             boolean hasForeColor, boolean hasBackColor,
             int ink, int blend,
             Bitmap bakedBitmap) {
-        this.channel = channel;
+        this.channelId = new ChannelId(channel);
         this.x = x;
         this.y = y;
         this.width = width;
@@ -67,12 +69,13 @@ public final class RenderSprite {
         this.backColor = backColor;
         this.hasForeColor = hasForeColor;
         this.hasBackColor = hasBackColor;
-        this.ink = ink;
+        this.inkMode = InkMode.fromCode(ink);
         this.blend = blend;
         this.bakedBitmap = bakedBitmap;
     }
 
-    public int getChannel() { return channel; }
+    public ChannelId getChannelId() { return channelId; }
+    public int getChannel() { return channelId.value(); }
     public int getX() { return x; }
     public int getY() { return y; }
     public int getWidth() { return width; }
@@ -86,7 +89,8 @@ public final class RenderSprite {
     public int getBackColor() { return backColor; }
     public boolean hasForeColor() { return hasForeColor; }
     public boolean hasBackColor() { return hasBackColor; }
-    public int getInk() { return ink; }
+    public InkMode getInkMode() { return inkMode; }
+    public int getInk() { return inkMode.code(); }
     public int getBlend() { return blend; }
     public Bitmap getBakedBitmap() { return bakedBitmap; }
 
@@ -94,16 +98,16 @@ public final class RenderSprite {
      * Return a new RenderSprite with all fields copied but with the given baked bitmap.
      */
     public RenderSprite withBakedBitmap(Bitmap baked) {
-        return new RenderSprite(channel, x, y, width, height, locZ, visible, type,
+        return new RenderSprite(channelId.value(), x, y, width, height, locZ, visible, type,
             castMember, dynamicMember, foreColor, backColor, hasForeColor, hasBackColor,
-            ink, blend, baked);
+            inkMode.code(), blend, baked);
     }
 
     /**
      * Get the cast member ID, or -1 if no member.
      */
     public int getCastMemberId() {
-        if (castMember != null) return castMember.id();
+        if (castMember != null) return castMember.id().value();
         if (dynamicMember != null) return dynamicMember.getMemberNumber();
         return -1;
     }

@@ -4,6 +4,7 @@ import com.libreshockwave.DirectorFile;
 import com.libreshockwave.cast.BitmapInfo;
 import com.libreshockwave.cast.MemberType;
 import com.libreshockwave.format.ChunkType;
+import com.libreshockwave.id.ChunkId;
 import com.libreshockwave.io.BinaryReader;
 
 /**
@@ -12,7 +13,7 @@ import com.libreshockwave.io.BinaryReader;
  */
 public record CastMemberChunk(
     DirectorFile file,
-    int id,
+    ChunkId id,
     MemberType memberType,
     int infoLen,
     int dataLen,
@@ -59,7 +60,7 @@ public record CastMemberChunk(
         return ScriptChunk.ScriptType.fromCode(typeCode);
     }
 
-    public static CastMemberChunk read(DirectorFile file, BinaryReader reader, int id, int version) {
+    public static CastMemberChunk read(DirectorFile file, BinaryReader reader, ChunkId id, int version) {
         // CASt chunks are ALWAYS big endian regardless of file byte order
         reader.setOrder(java.nio.ByteOrder.BIG_ENDIAN);
 

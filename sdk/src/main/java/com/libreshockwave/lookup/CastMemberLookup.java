@@ -4,6 +4,7 @@ import com.libreshockwave.chunks.CastChunk;
 import com.libreshockwave.chunks.CastListChunk;
 import com.libreshockwave.chunks.CastMemberChunk;
 import com.libreshockwave.chunks.ConfigChunk;
+import com.libreshockwave.id.ChunkId;
 
 import java.util.List;
 
@@ -42,21 +43,21 @@ public final class CastMemberLookup {
 
         // Try to find by adjusted ID first
         for (CastMemberChunk member : castMembers) {
-            if (member.id() == adjustedMemberId) {
+            if (member.id().value() == adjustedMemberId) {
                 return member;
             }
         }
 
         // Try direct match with raw index
         for (CastMemberChunk member : castMembers) {
-            if (member.id() == castMemberIndex) {
+            if (member.id().value() == castMemberIndex) {
                 return member;
             }
         }
 
         // Try +1 offset
         for (CastMemberChunk member : castMembers) {
-            if (member.id() == castMemberIndex + 1) {
+            if (member.id().value() == castMemberIndex + 1) {
                 return member;
             }
         }
@@ -94,14 +95,15 @@ public final class CastMemberLookup {
         }
 
         // Get the chunk ID for this member slot
-        int chunkId = cast.memberIds().get(arrayIndex);
-        if (chunkId <= 0) {
+        int rawChunkId = cast.memberIds().get(arrayIndex);
+        if (rawChunkId <= 0) {
             return null;  // Empty slot
         }
 
         // Find the cast member chunk with this ID
+        ChunkId chunkId = new ChunkId(rawChunkId);
         for (CastMemberChunk member : castMembers) {
-            if (member.id() == chunkId) {
+            if (member.id().equals(chunkId)) {
                 return member;
             }
         }

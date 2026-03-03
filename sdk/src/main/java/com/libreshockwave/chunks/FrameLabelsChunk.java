@@ -2,6 +2,8 @@ package com.libreshockwave.chunks;
 
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.format.ChunkType;
+import com.libreshockwave.id.ChunkId;
+import com.libreshockwave.id.FrameId;
 import com.libreshockwave.io.BinaryReader;
 
 import java.nio.ByteOrder;
@@ -16,7 +18,7 @@ import java.util.List;
  */
 public record FrameLabelsChunk(
     DirectorFile file,
-    int id,
+    ChunkId id,
     List<FrameLabel> labels
 ) implements Chunk {
 
@@ -29,7 +31,7 @@ public record FrameLabelsChunk(
      * A single frame label.
      */
     public record FrameLabel(
-        int frameNum,
+        FrameId frameNum,
         String label
     ) {}
 
@@ -39,7 +41,7 @@ public record FrameLabelsChunk(
     public int getFrameByLabel(String labelName) {
         for (FrameLabel label : labels) {
             if (label.label().equalsIgnoreCase(labelName)) {
-                return label.frameNum();
+                return label.frameNum().value();
             }
         }
         return -1;
@@ -50,14 +52,14 @@ public record FrameLabelsChunk(
      */
     public String getLabelForFrame(int frameNum) {
         for (FrameLabel label : labels) {
-            if (label.frameNum() == frameNum) {
+            if (label.frameNum().value() == frameNum) {
                 return label.label();
             }
         }
         return null;
     }
 
-    public static FrameLabelsChunk read(DirectorFile file, BinaryReader reader, int id, int version) {
+    public static FrameLabelsChunk read(DirectorFile file, BinaryReader reader, ChunkId id, int version) {
         reader.setOrder(ByteOrder.BIG_ENDIAN);
 
         List<FrameLabel> labels = new ArrayList<>();
@@ -97,7 +99,7 @@ public record FrameLabelsChunk(
 
             if (reader.bytesLeft() >= labelLen && labelLen > 0) {
                 String labelStr = reader.readString(labelLen);
-                labels.add(new FrameLabel(frameNum, labelStr));
+                labels.add(new FrameLabel(new FrameId(Math.max(1, frameNum)), labelStr));
             }
         }
 

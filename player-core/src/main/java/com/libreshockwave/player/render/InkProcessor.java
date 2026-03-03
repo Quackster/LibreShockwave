@@ -2,6 +2,7 @@ package com.libreshockwave.player.render;
 
 import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.bitmap.Palette;
+import com.libreshockwave.id.InkMode;
 
 import java.util.ArrayDeque;
 import java.util.Queue;
@@ -18,8 +19,31 @@ public final class InkProcessor {
      * Returns true if the given ink mode requires per-pixel transparency processing.
      */
     public static boolean shouldProcessInk(int ink) {
-        return ink == 7 || ink == 8 || ink == 33 || ink == 35
-            || ink == 36 || ink == 40 || ink == 41;
+        return shouldProcessInk(InkMode.fromCode(ink));
+    }
+
+    /**
+     * Returns true if the given ink mode requires per-pixel transparency processing.
+     */
+    public static boolean shouldProcessInk(InkMode ink) {
+        return ink == InkMode.NOT_GHOST || ink == InkMode.MATTE || ink == InkMode.ADD_PIN
+            || ink == InkMode.SUBTRACT_PIN || ink == InkMode.BACKGROUND_TRANSPARENT
+            || ink == InkMode.LIGHTEN || ink == InkMode.DARKEN;
+    }
+
+    /**
+     * Apply ink-based transparency to a bitmap.
+     *
+     * @param src       Source bitmap (ARGB pixels)
+     * @param ink       Director ink mode (int code)
+     * @param backColor Sprite backColor property
+     * @param useAlpha  Whether the bitmap has native alpha channel (from BitmapInfo updateFlags bit 4)
+     * @param palette   Resolved palette (may be null for non-paletted bitmaps)
+     * @return A new bitmap with ink applied, or {@code src} unchanged if no processing needed
+     */
+    public static Bitmap applyInk(Bitmap src, int ink, int backColor,
+                                   boolean useAlpha, Palette palette) {
+        return applyInk(src, InkMode.fromCode(ink), backColor, useAlpha, palette);
     }
 
     /**
@@ -32,21 +56,22 @@ public final class InkProcessor {
      * @param palette   Resolved palette (may be null for non-paletted bitmaps)
      * @return A new bitmap with ink applied, or {@code src} unchanged if no processing needed
      */
-    public static Bitmap applyInk(Bitmap src, int ink, int backColor,
+    public static Bitmap applyInk(Bitmap src, InkMode ink, int backColor,
                                    boolean useAlpha, Palette palette) {
         if (src == null || src.getWidth() == 0 || src.getHeight() == 0) {
             return src;
         }
 
-        if (ink == 8) {
+        if (ink == InkMode.MATTE) {
             // Matte ink: flood-fill from edges
             int matteColor = resolveMatteColor(src, ink, backColor, useAlpha, palette);
             if (matteColor < 0) {
                 return src; // 32-bit with useAlpha — skip processing
             }
             return applyMatte(src, matteColor);
-        } else if (ink == 7 || ink == 33 || ink == 35 || ink == 36
-                || ink == 40 || ink == 41) {
+        } else if (ink == InkMode.NOT_GHOST || ink == InkMode.ADD_PIN
+                || ink == InkMode.SUBTRACT_PIN || ink == InkMode.BACKGROUND_TRANSPARENT
+                || ink == InkMode.LIGHTEN || ink == InkMode.DARKEN) {
             // Background transparent / not-ghost / etc: color-key
             int bgColor = resolveBackColor(src, ink, backColor, useAlpha, palette);
             if (bgColor < 0) {
@@ -62,7 +87,7 @@ public final class InkProcessor {
      * Resolve the matte color for ink 8 (Matte).
      * Returns -1 if the bitmap has native alpha and should skip processing.
      */
-    static int resolveMatteColor(Bitmap src, int ink, int backColor,
+    static int resolveMatteColor(Bitmap src, InkMode ink, int backColor,
                                   boolean useAlpha, Palette palette) {
         int bitDepth = src.getBitDepth();
 
@@ -89,7 +114,7 @@ public final class InkProcessor {
      * Resolve the background color for ink 36/7/33/35/40/41.
      * Returns -1 if the bitmap has native alpha and should skip processing.
      */
-    static int resolveBackColor(Bitmap src, int ink, int backColor,
+    static int resolveBackColor(Bitmap src, InkMode ink, int backColor,
                                  boolean useAlpha, Palette palette) {
         int bitDepth = src.getBitDepth();
 
@@ -104,7 +129,7 @@ public final class InkProcessor {
         }
 
         // 32-bit without alpha and ink is not Copy: force white
-        if (bitDepth == 32 && !useAlpha && ink != 0) {
+        if (bitDepth == 32 && !useAlpha && ink != InkMode.COPY) {
             return 0xFFFFFF;
         }
 
@@ -296,5 +321,12 @@ public final class InkProcessor {
      */
     public static boolean allowsColorize(int ink) {
         return ink == 0;
+    }
+
+    /**
+     * Returns true if the given ink mode supports sprite-level foreColor/backColor colorization.
+     */
+    public static boolean allowsColorize(InkMode ink) {
+        return ink == InkMode.COPY;
     }
 }

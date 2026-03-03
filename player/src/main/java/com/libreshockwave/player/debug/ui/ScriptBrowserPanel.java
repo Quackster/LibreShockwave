@@ -161,9 +161,9 @@ public class ScriptBrowserPanel extends JPanel {
 
         // Collect scripts from main file first
         for (ScriptChunk script : file.getScripts()) {
-            if (!seenScriptIds.contains(script.id())) {
+            if (!seenScriptIds.contains(script.id().value())) {
                 allScripts.add(script);
-                seenScriptIds.add(script.id());
+                seenScriptIds.add(script.id().value());
                 if (!script.handlers().isEmpty()) {
                     allScriptItems.add(new ScriptItem(script, mainFileName, loadOrder++));
                 }
@@ -188,9 +188,9 @@ public class ScriptBrowserPanel extends JPanel {
                 }
 
                 for (ScriptChunk script : castLib.getAllScripts()) {
-                    if (!seenScriptIds.contains(script.id())) {
+                    if (!seenScriptIds.contains(script.id().value())) {
                         allScripts.add(script);
-                        seenScriptIds.add(script.id());
+                        seenScriptIds.add(script.id().value());
                         if (!script.handlers().isEmpty()) {
                             allScriptItems.add(new ScriptItem(script, sourceName, loadOrder++));
                         }
@@ -220,7 +220,7 @@ public class ScriptBrowserPanel extends JPanel {
 
         ScriptItem selectedScript = (ScriptItem) scriptCombo.getSelectedItem();
         HandlerItem selectedHandler = (HandlerItem) handlerCombo.getSelectedItem();
-        int selectedScriptId = selectedScript != null ? selectedScript.getScript().id() : -1;
+        int selectedScriptId = selectedScript != null ? selectedScript.getScript().id().value() : -1;
         String selectedHandlerName = selectedHandler != null ?
             selectedHandler.getScript().getHandlerName(selectedHandler.getHandler()) : null;
 
@@ -229,7 +229,7 @@ public class ScriptBrowserPanel extends JPanel {
         // Try to restore selection
         if (selectedScriptId >= 0) {
             for (int i = 0; i < scriptModel.getSize(); i++) {
-                if (scriptModel.getElementAt(i).getScript().id() == selectedScriptId) {
+                if (scriptModel.getElementAt(i).getScript().id().value() == selectedScriptId) {
                     scriptCombo.setSelectedIndex(i);
                     if (selectedHandlerName != null) {
                         for (int j = 0; j < handlerModel.getSize(); j++) {
@@ -249,7 +249,7 @@ public class ScriptBrowserPanel extends JPanel {
     private void filterScripts() {
         String filter = scriptFilterField.getText().trim();
         ScriptItem currentSelection = (ScriptItem) scriptCombo.getSelectedItem();
-        int currentScriptId = currentSelection != null ? currentSelection.getScript().id() : -1;
+        int currentScriptId = currentSelection != null ? currentSelection.getScript().id().value() : -1;
 
         ActionListener[] listeners = scriptCombo.getActionListeners();
         for (ActionListener l : listeners) {
@@ -266,7 +266,7 @@ public class ScriptBrowserPanel extends JPanel {
                 if (firstMatch == null) {
                     firstMatch = item;
                 }
-                if (item.getScript().id() == currentScriptId) {
+                if (item.getScript().id().value() == currentScriptId) {
                     selectedMatch = item;
                 }
             }

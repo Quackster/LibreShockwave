@@ -6,6 +6,7 @@ import com.libreshockwave.chunks.CastChunk;
 import com.libreshockwave.chunks.CastListChunk;
 import com.libreshockwave.chunks.CastMemberChunk;
 import com.libreshockwave.chunks.ScriptChunk;
+import com.libreshockwave.id.CastLibId;
 import com.libreshockwave.vm.Datum;
 
 import java.util.Collection;
@@ -28,7 +29,7 @@ public class CastLib {
         LOADED
     }
 
-    private final int number;  // 1-based cast library number
+    private final CastLibId castLibId;  // 1-based cast library number
     private String name;
     private String fileName;
     private State state = State.NONE;
@@ -52,7 +53,7 @@ public class CastLib {
     private final CastChunk castChunk;
 
     public CastLib(int number, CastChunk castChunk, CastListChunk.CastListEntry listEntry) {
-        this.number = number;
+        this.castLibId = new CastLibId(number);
         this.castChunk = castChunk;
 
         // Set name and fileName from cast list entry
@@ -147,7 +148,7 @@ public class CastLib {
 
             // Find the cast member chunk with this ID
             for (CastMemberChunk member : sourceFile.getCastMembers()) {
-                if (member.id() == chunkId) {
+                if (member.id().value() == chunkId) {
                     memberChunks.put(memberNumber, member);
 
                     // If it's a script member, also load the script
@@ -174,8 +175,8 @@ public class CastLib {
         }
 
         CastListChunk castList = sourceFile.getCastList();
-        if (castList != null && number - 1 < castList.entries().size()) {
-            int minMember = castList.entries().get(number - 1).minMember();
+        if (castList != null && castLibId.value() - 1 < castList.entries().size()) {
+            int minMember = castList.entries().get(castLibId.value() - 1).minMember();
             return minMember > 0 ? minMember : 1;
         }
 
@@ -199,8 +200,12 @@ public class CastLib {
 
     // Accessors
 
+    public CastLibId getCastLibId() {
+        return castLibId;
+    }
+
     public int getNumber() {
-        return number;
+        return castLibId.value();
     }
 
     public String getName() {
@@ -294,7 +299,7 @@ public class CastLib {
         }
 
         // Create and cache the CastMember
-        member = new CastMember(number, memberNumber, chunk, sourceFile);
+        member = new CastMember(castLibId.value(), memberNumber, chunk, sourceFile);
         members.put(memberNumber, member);
         return member;
     }
@@ -404,7 +409,7 @@ public class CastLib {
         String prop = propName.toLowerCase();
 
         return switch (prop) {
-            case "number" -> Datum.of(number);
+            case "number" -> Datum.of(castLibId.value());
             case "name" -> Datum.of(name);
             case "filename" -> Datum.of(fileName);
             case "preloadmode" -> Datum.of(preloadMode);
@@ -540,7 +545,7 @@ public class CastLib {
             int memberNumber = i + minMember;
 
             for (CastMemberChunk member : sourceFile.getCastMembers()) {
-                if (member.id() == chunkId) {
+                if (member.id().value() == chunkId) {
                     memberChunks.put(memberNumber, member);
 
                     if (member.isScript() && member.scriptId() > 0) {
@@ -612,13 +617,13 @@ public class CastLib {
             default -> MemberType.TEXT; // Default to text for unknown types
         };
 
-        CastMember member = new CastMember(number, memberNum, type);
+        CastMember member = new CastMember(castLibId.value(), memberNum, type);
         members.put(memberNum, member);
         return member;
     }
 
     @Override
     public String toString() {
-        return "CastLib{number=" + number + ", name='" + name + "', members=" + members.size() + "}";
+        return "CastLib{number=" + castLibId.value() + ", name='" + name + "', members=" + members.size() + "}";
     }
 }

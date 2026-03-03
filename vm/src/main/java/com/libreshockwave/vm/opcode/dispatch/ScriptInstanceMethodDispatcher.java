@@ -185,7 +185,7 @@ public final class ScriptInstanceMethodDispatcher {
                     Datum.ScriptRef scriptRef = getScriptRefFromInstance(instance);
                     if (scriptRef != null) {
                         CastLibProvider.HandlerLocation loc = provider.findHandlerInScript(
-                                scriptRef.castLib(), scriptRef.member(), handlerName);
+                                scriptRef.castLibNum(), scriptRef.memberNum(), handlerName);
                         return loc != null && loc.handler() != null ? Datum.TRUE : Datum.FALSE;
                     }
                 }
@@ -203,7 +203,7 @@ public final class ScriptInstanceMethodDispatcher {
 
                 CastLibProvider.HandlerLocation location;
                 if (scriptRef != null) {
-                    location = provider.findHandlerInScript(scriptRef.castLib(), scriptRef.member(), methodName);
+                    location = provider.findHandlerInScript(scriptRef.castLibNum(), scriptRef.memberNum(), methodName);
                 } else {
                     location = provider.findHandlerInScript(current.scriptId(), methodName);
                 }

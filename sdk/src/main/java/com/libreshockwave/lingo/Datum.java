@@ -1,5 +1,9 @@
 package com.libreshockwave.lingo;
 
+import com.libreshockwave.id.CastLibId;
+import com.libreshockwave.id.ChannelId;
+import com.libreshockwave.id.MemberId;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -198,16 +202,33 @@ public sealed interface Datum {
     record CastMemberRef(int castLib, int castMember) implements Datum {
         @Override public DatumType type() { return DatumType.CAST_MEMBER_REF; }
 
+        public static CastMemberRef of(CastLibId castLib, MemberId member) {
+            return new CastMemberRef(castLib.value(), member.value());
+        }
+
+        public CastLibId castLibId() { return new CastLibId(castLib); }
+        public MemberId memberId() { return new MemberId(castMember); }
         public int memberNum() { return castMember; }
     }
 
     record CastLibRef(int castLib) implements Datum {
         @Override public DatumType type() { return DatumType.CAST_LIB_REF; }
+
+        public static CastLibRef of(CastLibId castLib) {
+            return new CastLibRef(castLib.value());
+        }
+
+        public CastLibId castLibId() { return new CastLibId(castLib); }
     }
 
     record SpriteRef(int channel) implements Datum {
         @Override public DatumType type() { return DatumType.SPRITE_REF; }
 
+        public static SpriteRef of(ChannelId channel) {
+            return new SpriteRef(channel.value());
+        }
+
+        public ChannelId channelId() { return new ChannelId(channel); }
         public int spriteNum() { return channel; }
     }
 

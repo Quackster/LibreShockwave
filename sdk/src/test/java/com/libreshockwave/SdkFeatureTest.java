@@ -277,7 +277,7 @@ public class SdkFeatureTest {
 
                     // Save first 5 bitmaps
                     if (savedFiles.size() < 5) {
-                        String name = sanitize(member.name(), member.id());
+                        String name = sanitize(member.name(), member.id().value());
                         Path outPath = outputDir.resolve(name + ".png");
                         ImageIO.write(bitmap.toBufferedImage(), "PNG", outPath.toFile());
                         savedFiles.add(name + " (" + bitmap.getWidth() + "x" + bitmap.getHeight() + ")");
@@ -966,7 +966,7 @@ public class SdkFeatureTest {
                             null
                         );
 
-                        String name = sanitize(member.name(), member.id());
+                        String name = sanitize(member.name(), member.id().value());
                         ImageIO.write(colored.toBufferedImage(), "PNG",
                             outputDir.resolve(name + "_colorised.png").toFile());
                         colourised++;
@@ -1098,7 +1098,7 @@ public class SdkFeatureTest {
                             if (chunk instanceof SoundChunk soundChunk) {
                                 foundSound = true;
                                 if (soundChunk.audioData() != null && soundChunk.audioData().length > 0) {
-                                    String name = sanitize(member.name(), member.id());
+                                    String name = sanitize(member.name(), member.id().value());
 
                                     // Handle based on codec type
                                     if (soundChunk.isMp3()) {

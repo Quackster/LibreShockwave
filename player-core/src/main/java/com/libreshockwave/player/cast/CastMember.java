@@ -9,6 +9,8 @@ import com.libreshockwave.chunks.KeyTableChunk;
 import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.chunks.TextChunk;
 import com.libreshockwave.format.ChunkType;
+import com.libreshockwave.id.CastLibId;
+import com.libreshockwave.id.MemberId;
 import com.libreshockwave.player.render.RenderConfig;
 import com.libreshockwave.player.render.TextRenderer;
 import com.libreshockwave.vm.Datum;
@@ -35,8 +37,8 @@ public class CastMember {
         LOADED
     }
 
-    private final int castLibNumber;
-    private final int memberNumber;
+    private final CastLibId castLibId;
+    private final MemberId memberId;
     private final CastMemberChunk chunk;
     private final DirectorFile sourceFile;
 
@@ -76,8 +78,8 @@ public class CastMember {
     private Bitmap textRenderedImage; // Cached rendered text image
 
     public CastMember(int castLibNumber, int memberNumber, CastMemberChunk chunk, DirectorFile sourceFile) {
-        this.castLibNumber = castLibNumber;
-        this.memberNumber = memberNumber;
+        this.castLibId = new CastLibId(castLibNumber);
+        this.memberId = new MemberId(memberNumber);
         this.chunk = chunk;
         this.sourceFile = sourceFile;
 
@@ -100,8 +102,8 @@ public class CastMember {
      * Constructor for dynamically created members (via new(#type, castLib)).
      */
     public CastMember(int castLibNumber, int memberNumber, MemberType memberType) {
-        this.castLibNumber = castLibNumber;
-        this.memberNumber = memberNumber;
+        this.castLibId = new CastLibId(castLibNumber);
+        this.memberId = new MemberId(memberNumber);
         this.chunk = null;
         this.sourceFile = null;
         this.name = "";
@@ -211,12 +213,20 @@ public class CastMember {
 
     // Accessors
 
+    public CastLibId getCastLibId() {
+        return castLibId;
+    }
+
     public int getCastLibNumber() {
-        return castLibNumber;
+        return castLibId.value();
+    }
+
+    public MemberId getMemberId() {
+        return memberId;
     }
 
     public int getMemberNumber() {
-        return memberNumber;
+        return memberId.value();
     }
 
     public CastMemberChunk getChunk() {
@@ -280,10 +290,10 @@ public class CastMember {
         return switch (prop) {
             case "name" -> Datum.of(name);
             case "number" -> Datum.of(getSlotNumber());
-            case "membernum" -> Datum.of(memberNumber);
+            case "membernum" -> Datum.of(memberId.value());
             case "type" -> Datum.of(memberType.getName());
-            case "castlibnum" -> Datum.of(castLibNumber);
-            case "castlib" -> new Datum.CastLibRef(castLibNumber);
+            case "castlibnum" -> Datum.of(castLibId.value());
+            case "castlib" -> Datum.CastLibRef.of(castLibId.value());
             case "mediaready" -> Datum.of(1); // Always ready for now
             default -> getTypeProp(prop);
         };
@@ -639,7 +649,7 @@ public class CastMember {
      * Get the combined slot number (castLib << 16 | memberNum).
      */
     public int getSlotNumber() {
-        return (castLibNumber << 16) | (memberNumber & 0xFFFF);
+        return (castLibId.value() << 16) | (memberId.value() & 0xFFFF);
     }
 
     /**
@@ -673,7 +683,7 @@ public class CastMember {
 
     @Override
     public String toString() {
-        return "CastMember{castLib=" + castLibNumber + ", member=" + memberNumber +
+        return "CastMember{castLib=" + castLibId.value() + ", member=" + memberId.value() +
                ", name='" + name + "', type=" + memberType + "}";
     }
 }

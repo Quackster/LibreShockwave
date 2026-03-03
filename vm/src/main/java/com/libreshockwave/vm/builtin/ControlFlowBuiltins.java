@@ -193,7 +193,7 @@ public final class ControlFlowBuiltins {
             CastLibProvider.HandlerLocation location;
 
             if (scriptRefDatum instanceof Datum.ScriptRef sr) {
-                location = provider.findHandlerInScript(sr.castLib(), sr.member(), handlerName);
+                location = provider.findHandlerInScript(sr.castLibNum(), sr.memberNum(), handlerName);
             } else {
                 location = provider.findHandlerInScript(current.scriptId(), handlerName);
             }

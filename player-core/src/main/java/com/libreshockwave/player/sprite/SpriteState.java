@@ -1,6 +1,8 @@
 package com.libreshockwave.player.sprite;
 
 import com.libreshockwave.chunks.ScoreChunk;
+import com.libreshockwave.id.ChannelId;
+import com.libreshockwave.id.InkMode;
 
 /**
  * Holds runtime state for a sprite on the stage.
@@ -8,7 +10,7 @@ import com.libreshockwave.chunks.ScoreChunk;
  * Supports both Score-based sprites and dynamically puppeted sprites.
  */
 public class SpriteState {
-    private final int channel;
+    private final ChannelId channelId;
     private final ScoreChunk.ChannelData initialData;  // null for dynamic sprites
 
     private int locH;
@@ -18,7 +20,7 @@ public class SpriteState {
     private int height;
     private boolean visible = true;
     private boolean puppet = false;
-    private int ink = 0;
+    private InkMode inkMode = InkMode.COPY;
     private int blend = 100;
     private int stretch = 0;
     private int foreColor = 0;
@@ -36,13 +38,13 @@ public class SpriteState {
      * Create from Score data (traditional Score-based sprite).
      */
     public SpriteState(int channel, ScoreChunk.ChannelData data) {
-        this.channel = channel;
+        this.channelId = new ChannelId(channel);
         this.initialData = data;
         this.locH = data.posX();
         this.locV = data.posY();
         this.width = data.width();
         this.height = data.height();
-        this.ink = data.ink();
+        this.inkMode = InkMode.fromCode(data.ink());
         this.foreColor = data.resolvedForeColor();
         this.backColor = data.backColor();
     }
@@ -51,12 +53,13 @@ public class SpriteState {
      * Create a dynamic/puppeted sprite (no Score data).
      */
     public SpriteState(int channel) {
-        this.channel = channel;
+        this.channelId = new ChannelId(channel);
         this.initialData = null;
         this.puppet = true;
     }
 
-    public int getChannel() { return channel; }
+    public ChannelId getChannelId() { return channelId; }
+    public int getChannel() { return channelId.value(); }
     public int getLocH() { return locH; }
     public int getLocV() { return locV; }
     public int getLocZ() { return locZ; }
@@ -64,7 +67,8 @@ public class SpriteState {
     public int getHeight() { return height; }
     public boolean isVisible() { return visible; }
     public boolean isPuppet() { return puppet; }
-    public int getInk() { return ink; }
+    public InkMode getInkMode() { return inkMode; }
+    public int getInk() { return inkMode.code(); }
     public int getBlend() { return blend; }
     public int getStretch() { return stretch; }
     public int getForeColor() { return foreColor; }
@@ -79,7 +83,8 @@ public class SpriteState {
     public synchronized void setHeight(int height) { this.height = height; this.hasSizeChanged = true; }
     public synchronized void setVisible(boolean visible) { this.visible = visible; }
     public synchronized void setPuppet(boolean puppet) { this.puppet = puppet; }
-    public synchronized void setInk(int ink) { this.ink = ink; }
+    public synchronized void setInk(int ink) { this.inkMode = InkMode.fromCode(ink); }
+    public synchronized void setInkMode(InkMode ink) { this.inkMode = ink; }
     public synchronized void setBlend(int blend) { this.blend = blend; }
     public synchronized void setStretch(int stretch) { this.stretch = stretch; }
     public synchronized void setForeColor(int foreColor) { this.foreColor = foreColor; this.hasForeColor = true; }

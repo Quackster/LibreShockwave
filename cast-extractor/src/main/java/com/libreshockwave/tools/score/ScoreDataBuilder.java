@@ -2,6 +2,7 @@ package com.libreshockwave.tools.score;
 
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.chunks.*;
+import com.libreshockwave.id.ChunkId;
 import com.libreshockwave.tools.format.ChannelNames;
 import com.libreshockwave.tools.format.PaletteDescriptions;
 import com.libreshockwave.tools.model.ScoreCellData;
@@ -37,8 +38,8 @@ public class ScoreDataBuilder {
         ScoreChunk.ScoreFrameData frameData = scoreChunk.frameData();
         if (frameData != null && frameData.frameChannelData() != null) {
             for (ScoreChunk.FrameChannelEntry entry : frameData.frameChannelData()) {
-                int fr = entry.frameIndex();
-                int ch = entry.channelIndex();
+                int fr = entry.frameIndex().value();
+                int ch = entry.channelIndex().value();
                 ScoreChunk.ChannelData chData = entry.data();
 
                 if (fr >= 0 && fr < frameCount && ch >= 0 && ch < channelCount && !chData.isEmpty()) {
@@ -87,7 +88,7 @@ public class ScoreDataBuilder {
         Map<Integer, String> labelMap = new HashMap<>();
         if (frameLabels != null) {
             for (FrameLabelsChunk.FrameLabel label : frameLabels.labels()) {
-                labelMap.put(label.frameNum(), label.label());
+                labelMap.put(label.frameNum().value(), label.label());
             }
         }
 
@@ -162,9 +163,9 @@ public class ScoreDataBuilder {
         if (member != null) {
             String name = member.name();
             if (name != null && !name.isEmpty()) {
-                return "#" + member.id() + " " + name;
+                return "#" + member.id().value() + " " + name;
             }
-            return "#" + member.id() + " " + member.memberType().getName();
+            return "#" + member.id().value() + " " + member.memberType().getName();
         }
 
         return "Member #" + castMember;
@@ -182,26 +183,26 @@ public class ScoreDataBuilder {
             if (index >= 0 && index < cast.memberIds().size()) {
                 int chunkId = cast.memberIds().get(index);
                 if (chunkId != 0) {
-                    Chunk chunk = dirFile.getChunk(chunkId);
+                    Chunk chunk = dirFile.getChunk(new ChunkId(chunkId));
                     if (chunk instanceof CastMemberChunk cm) {
                         String name = cm.name();
                         if (name != null && !name.isEmpty()) {
-                            return "#" + cm.id() + " " + name;
+                            return "#" + cm.id().value() + " " + name;
                         }
-                        return "#" + cm.id() + " " + cm.memberType().getName();
+                        return "#" + cm.id().value() + " " + cm.memberType().getName();
                     }
                 }
             }
         }
 
         // Fallback
-        Chunk chunk = dirFile.getChunk(memberNumber);
+        Chunk chunk = dirFile.getChunk(new ChunkId(memberNumber));
         if (chunk instanceof CastMemberChunk cm) {
             String name = cm.name();
             if (name != null && !name.isEmpty()) {
-                return "#" + cm.id() + " " + name;
+                return "#" + cm.id().value() + " " + name;
             }
-            return "#" + cm.id() + " " + cm.memberType().getName();
+            return "#" + cm.id().value() + " " + cm.memberType().getName();
         }
 
         return "Member #" + memberNumber;

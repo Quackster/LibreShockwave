@@ -45,8 +45,6 @@ public class WasmNetManager implements NetBuiltins.NetProvider {
         task.fallbackIndex = 0;
         tasks.put(taskId, task);
 
-        System.out.println("[WasmNetManager] Fetching: " + fetchUrl + " (task " + taskId + ")");
-
         WasmPlayerApp.writeStringToBuffer(fetchUrl);
         byte[] urlBytes = fetchUrl.getBytes();
         jsFetchGet(taskId, urlBytes.length);
@@ -90,33 +88,34 @@ public class WasmNetManager implements NetBuiltins.NetProvider {
         if (task != null) {
             task.data = data;
             task.done = true;
-            System.out.println("[WasmNetManager] Complete: task " + taskId + " (" + data.length + " bytes)");
+            System.out.println("[NetManager] Loaded URL: " + task.url + " (" + data.length + " bytes)");
         }
     }
 
     /**
      * Called from WasmPlayerApp.onFetchError export when JS reports a fetch error.
      * If there are fallback URLs remaining, tries the next one before marking the task as failed.
+     * @return true if the task is truly done (all fallbacks exhausted), false if a retry was started
      */
-    public void onFetchError(int taskId, int status) {
+    public boolean onFetchError(int taskId, int status) {
         NetTask task = tasks.get(taskId);
-        if (task == null) return;
+        if (task == null) return true;
 
         // Try next fallback URL if available
         if (task.fallbackUrls != null && task.fallbackIndex + 1 < task.fallbackUrls.length) {
             task.fallbackIndex++;
             String nextUrl = task.fallbackUrls[task.fallbackIndex];
-            System.out.println("[WasmNetManager] Fallback: " + nextUrl + " (task " + taskId + ")");
 
             WasmPlayerApp.writeStringToBuffer(nextUrl);
             byte[] urlBytes = nextUrl.getBytes();
             jsFetchGet(taskId, urlBytes.length);
-            return;
+            return false; // Retry started, task NOT done yet
         }
 
         task.errorCode = status != 0 ? status : -1;
         task.done = true;
-        System.err.println("[WasmNetManager] Error: task " + taskId + " (HTTP " + status + ")");
+        System.err.println("[NetManager] HTTP request failed: " + task.url + " - HTTP " + status);
+        return true;
     }
 
     @Override

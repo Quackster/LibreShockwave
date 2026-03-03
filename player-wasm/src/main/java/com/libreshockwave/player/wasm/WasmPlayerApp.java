@@ -31,7 +31,6 @@ public class WasmPlayerApp {
     static byte[] largeBuffer;
 
     public static void main(String[] args) {
-        System.out.println("[LibreShockwave] WASM player initialized");
     }
 
     // === Movie loading ===
@@ -463,24 +462,24 @@ public class WasmPlayerApp {
             boolean loaded = wasmPlayer.getPlayer().getCastLibManager()
                     .setExternalCastDataByUrl(url, data);
             if (loaded) {
-                System.out.println("[WasmPlayerApp] Loaded external cast: " + url);
                 wasmPlayer.getPlayer().getBitmapCache().clear();
                 SpriteDataExporter exporter = wasmPlayer.getSpriteExporter();
                 if (exporter != null) exporter.clearBitmapCache();
             }
         } catch (Exception e) {
-            System.err.println("[WasmPlayerApp] Cast load error for " + url + ": " + e.getMessage());
+            // Error captured but not logged — matches Swing's silent cast loading
         }
     }
 
     @Export(name = "onFetchError")
     public static void onFetchError(int taskId, int status) {
         WasmNetManager mgr = WasmNetManager.getInstance();
+        boolean taskDone = true;
         if (mgr != null) {
-            mgr.onFetchError(taskId, status);
+            taskDone = mgr.onFetchError(taskId, status);
         }
-        // Failed fetch still counts as "done" — may unblock deferred play
-        if (wasmPlayer != null) {
+        // Only count as done if all fallbacks exhausted (no retry started)
+        if (taskDone && wasmPlayer != null) {
             wasmPlayer.onCastFetchDone();
         }
     }
@@ -542,7 +541,6 @@ public class WasmPlayerApp {
             depth++;
         }
         lastError = sb.toString();
-        System.err.println(lastError);
     }
 
     // === Internal helpers ===
@@ -572,7 +570,7 @@ public class WasmPlayerApp {
     private static ScriptChunk findScript(int scriptId) {
         if (wasmPlayer == null || wasmPlayer.getFile() == null) return null;
         for (ScriptChunk script : wasmPlayer.getFile().getScripts()) {
-            if (script.id() == scriptId) return script;
+            if (script.id().value() == scriptId) return script;
         }
         return null;
     }

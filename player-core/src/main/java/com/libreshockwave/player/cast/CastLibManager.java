@@ -193,17 +193,17 @@ public class CastLibManager implements CastLibProvider {
         CastLib castLib = getCastLib(castLibNumber);
         if (castLib == null) {
             // Return reference anyway - will be invalid
-            return new Datum.CastMemberRef(castLibNumber, memberNumber);
+            return Datum.CastMemberRef.of(castLibNumber, memberNumber);
         }
 
         // Validate member exists
         CastMemberChunk member = castLib.findMemberByNumber(memberNumber);
         if (member == null) {
             // Return reference anyway - member may not exist but reference is valid syntax
-            return new Datum.CastMemberRef(castLibNumber, memberNumber);
+            return Datum.CastMemberRef.of(castLibNumber, memberNumber);
         }
 
-        return new Datum.CastMemberRef(castLibNumber, memberNumber);
+        return Datum.CastMemberRef.of(castLibNumber, memberNumber);
     }
 
     @Override
@@ -227,12 +227,12 @@ public class CastLibManager implements CastLibProvider {
                 CastMemberChunk member = castLib.findMemberByName(memberName);
                 if (member != null) {
                     int memberNumber = castLib.getMemberNumber(member);
-                    return new Datum.CastMemberRef(castLibNumber, memberNumber);
+                    return Datum.CastMemberRef.of(castLibNumber, memberNumber);
                 }
                 // Search dynamic members (created at runtime via new(#type, castLib))
                 CastMember dynamic = castLib.getMemberByName(memberName);
                 if (dynamic != null) {
-                    return new Datum.CastMemberRef(castLibNumber, dynamic.getMemberNumber());
+                    return Datum.CastMemberRef.of(castLibNumber, dynamic.getMemberNumber());
                 }
             }
         } else {
@@ -244,7 +244,7 @@ public class CastLibManager implements CastLibProvider {
                 CastMemberChunk member = castLib.findMemberByName(memberName);
                 if (member != null) {
                     int memberNumber = castLib.getMemberNumber(member);
-                    return new Datum.CastMemberRef(castLib.getNumber(), memberNumber);
+                    return Datum.CastMemberRef.of(castLib.getNumber(), memberNumber);
                 }
             }
             // If not found in file members, search dynamic members in all casts
@@ -252,7 +252,7 @@ public class CastLibManager implements CastLibProvider {
                 if (!castLib.isLoaded()) continue;
                 CastMember dynamic = castLib.getMemberByName(memberName);
                 if (dynamic != null) {
-                    return new Datum.CastMemberRef(castLib.getNumber(), dynamic.getMemberNumber());
+                    return Datum.CastMemberRef.of(castLib.getNumber(), dynamic.getMemberNumber());
                 }
             }
         }
@@ -520,7 +520,7 @@ public class CastLibManager implements CastLibProvider {
         if (member == null) {
             return Datum.VOID;
         }
-        return new Datum.CastMemberRef(castLibNumber, member.getMemberNumber());
+        return Datum.CastMemberRef.of(castLibNumber, member.getMemberNumber());
     }
 
     @Override
@@ -609,7 +609,7 @@ public class CastLibManager implements CastLibProvider {
             return -1;
         }
         var script = castLib.getScript(memberNumber);
-        return script != null ? script.id() : -1;
+        return script != null ? script.id().value() : -1;
     }
 
     /**

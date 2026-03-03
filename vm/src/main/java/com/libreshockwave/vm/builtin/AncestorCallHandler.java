@@ -90,7 +90,7 @@ public final class AncestorCallHandler {
         for (int i = 0; i < AncestorChainWalker.MAX_ANCESTOR_DEPTH; i++) { // Safety limit
             Datum scriptRefDatum = currentAncestor.properties().get(Datum.PROP_SCRIPT_REF);
             if (scriptRefDatum instanceof Datum.ScriptRef ref) {
-                location = provider.findHandlerInScript(ref.castLib(), ref.member(), handlerName);
+                location = provider.findHandlerInScript(ref.castLibNum(), ref.memberNum(), handlerName);
             } else {
                 location = provider.findHandlerInScript(currentAncestor.scriptId(), handlerName);
             }
@@ -138,7 +138,7 @@ public final class AncestorCallHandler {
             return me.properties().get(Datum.PROP_ANCESTOR);
         }
 
-        int currentLscrId = currentScope.getScript().id();
+        int currentLscrId = currentScope.getScript().id().value();
         CastLibProvider provider = CastLibProvider.getProvider();
 
         // Walk me's ancestor chain to find which instance has the script we're in
@@ -147,7 +147,7 @@ public final class AncestorCallHandler {
             // Compare using __scriptRef__ resolved to Lscr chunk ID
             Datum scriptRefDatum = walkInstance.properties().get(Datum.PROP_SCRIPT_REF);
             if (scriptRefDatum instanceof Datum.ScriptRef ref && provider != null) {
-                int lscrId = provider.getScriptChunkId(ref.castLib(), ref.member());
+                int lscrId = provider.getScriptChunkId(ref.castLibNum(), ref.memberNum());
                 if (lscrId == currentLscrId) {
                     Datum ancestor = walkInstance.properties().get(Datum.PROP_ANCESTOR);
                     return ancestor != null ? ancestor : Datum.VOID;

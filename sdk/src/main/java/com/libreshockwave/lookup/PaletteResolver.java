@@ -3,6 +3,7 @@ package com.libreshockwave.lookup;
 import com.libreshockwave.bitmap.Palette;
 import com.libreshockwave.cast.MemberType;
 import com.libreshockwave.chunks.*;
+import com.libreshockwave.id.ChunkId;
 
 import java.util.List;
 import java.util.function.Function;
@@ -19,12 +20,12 @@ public final class PaletteResolver {
     private final CastListChunk castList;
     private final ConfigChunk config;
     private final KeyTableChunk keyTable;
-    private final Function<Integer, Chunk> chunkLookup;
+    private final Function<ChunkId, Chunk> chunkLookup;
 
     public PaletteResolver(List<CastChunk> casts, List<CastMemberChunk> castMembers,
                            List<PaletteChunk> palettes, CastListChunk castList,
                            ConfigChunk config, KeyTableChunk keyTable,
-                           Function<Integer, Chunk> chunkLookup) {
+                           Function<ChunkId, Chunk> chunkLookup) {
         this.casts = casts;
         this.castMembers = castMembers;
         this.palettes = palettes;
@@ -60,9 +61,9 @@ public final class PaletteResolver {
             // Member numbers use minMember offset, so index = memberNumber - minMember
             int index = memberNumber - minMember;
             if (index >= 0 && index < memberIds.size()) {
-                int chunkId = memberIds.get(index);
-                if (chunkId > 0) {
-                    Palette resolved = resolveFromChunkId(chunkId);
+                int rawChunkId = memberIds.get(index);
+                if (rawChunkId > 0) {
+                    Palette resolved = resolveFromChunkId(new ChunkId(rawChunkId));
                     if (resolved != null) {
                         return resolved;
                     }
@@ -71,15 +72,15 @@ public final class PaletteResolver {
         }
 
         // Strategy 2: paletteId might be directly a chunk section ID for the CastMemberChunk
-        Palette resolved = resolveFromChunkId(paletteId);
+        Palette resolved = resolveFromChunkId(new ChunkId(paletteId));
         if (resolved != null) {
             return resolved;
         }
 
         // Strategy 2b: paletteId might directly reference a PaletteChunk (CLUT) section ID
         for (PaletteChunk pc : palettes) {
-            if (pc.id() == paletteId || pc.id() == paletteId + 1) {
-                return new Palette(pc.colors(), "Custom Palette #" + pc.id());
+            if (pc.id().value() == paletteId || pc.id().value() == paletteId + 1) {
+                return new Palette(pc.colors(), "Custom Palette #" + pc.id().value());
             }
         }
 
@@ -124,7 +125,7 @@ public final class PaletteResolver {
      * Resolve a palette from a cast member chunk ID.
      * Finds the CLUT chunk owned by the cast member and builds a Palette from it.
      */
-    private Palette resolveFromChunkId(int chunkId) {
+    private Palette resolveFromChunkId(ChunkId chunkId) {
         if (keyTable == null) {
             return null;
         }

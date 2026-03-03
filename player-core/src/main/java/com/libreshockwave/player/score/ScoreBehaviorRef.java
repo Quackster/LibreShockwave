@@ -1,5 +1,7 @@
 package com.libreshockwave.player.score;
 
+import com.libreshockwave.id.CastLibId;
+import com.libreshockwave.id.MemberId;
 import com.libreshockwave.vm.Datum;
 
 import java.util.List;
@@ -9,12 +11,24 @@ import java.util.List;
  * Contains cast member reference and saved behavior parameters.
  */
 public record ScoreBehaviorRef(
-    int castLib,
-    int castMember,
+    CastLibId castLibId,
+    MemberId memberId,
     List<Datum> parameters
 ) {
     public ScoreBehaviorRef(int castLib, int castMember) {
-        this(castLib, castMember, List.of());
+        this(new CastLibId(castLib), new MemberId(castMember), List.of());
+    }
+
+    public ScoreBehaviorRef(int castLib, int castMember, List<Datum> parameters) {
+        this(new CastLibId(castLib), new MemberId(castMember), parameters);
+    }
+
+    public int castLib() {
+        return castLibId.value();
+    }
+
+    public int castMember() {
+        return memberId.value();
     }
 
     public boolean hasParameters() {
@@ -23,6 +37,6 @@ public record ScoreBehaviorRef(
 
     @Override
     public String toString() {
-        return "behavior(member " + castMember + ", castLib " + castLib + ")";
+        return "behavior(member " + memberId.value() + ", castLib " + castLibId.value() + ")";
     }
 }

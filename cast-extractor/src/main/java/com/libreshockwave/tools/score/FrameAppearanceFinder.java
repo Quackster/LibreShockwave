@@ -43,7 +43,7 @@ public class FrameAppearanceFinder {
         Map<Integer, String> labelMap = new HashMap<>();
         if (frameLabels != null) {
             for (FrameLabelsChunk.FrameLabel label : frameLabels.labels()) {
-                labelMap.put(label.frameNum(), label.label());
+                labelMap.put(label.frameNum().value(), label.label());
             }
         }
 
@@ -53,12 +53,12 @@ public class FrameAppearanceFinder {
 
             // Resolve the score's castMember index to an actual member and check if it matches
             CastMemberChunk resolvedMember = dirFile.getCastMemberByIndex(data.castLib(), data.castMember());
-            if (resolvedMember != null && resolvedMember.id() == memberId) {
-                String channelName = ChannelNames.get(entry.channelIndex());
-                String frameLabel = labelMap.get(entry.frameIndex());
+            if (resolvedMember != null && resolvedMember.id().value() == memberId) {
+                String channelName = ChannelNames.get(entry.channelIndex().value());
+                String frameLabel = labelMap.get(entry.frameIndex().value());
                 appearances.add(new FrameAppearance(
-                        entry.frameIndex() + 1, // 1-based frame number
-                        entry.channelIndex(),
+                        entry.frameIndex().value() + 1, // 1-based frame number
+                        entry.channelIndex().value(),
                         channelName,
                         frameLabel,
                         data.posX(),

@@ -58,13 +58,13 @@ public class FileProcessor {
 
                 String name = member.name();
                 if (name == null || name.isEmpty()) {
-                    name = "Unnamed #" + member.id();
+                    name = "Unnamed #" + member.id().value();
                 }
 
                 String details = buildMemberDetails(dirFile, member);
 
                 members.add(new CastMemberInfo(
-                        member.id(), name, member, member.memberType(), details
+                        member.id().value(), name, member, member.memberType(), details
                 ));
             }
 

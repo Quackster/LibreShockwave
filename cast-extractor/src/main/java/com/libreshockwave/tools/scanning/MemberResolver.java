@@ -25,10 +25,10 @@ public final class MemberResolver {
         if (context != null && scriptId > 0) {
             List<ScriptContextChunk.ScriptEntry> entries = context.entries();
             if (scriptId <= entries.size()) {
-                int chunkId = entries.get(scriptId - 1).id();
+                int chunkId = entries.get(scriptId - 1).id().value();
                 // Find the script chunk with this ID
                 for (ScriptChunk script : dirFile.getScripts()) {
-                    if (script.id() == chunkId) {
+                    if (script.id().value() == chunkId) {
                         return script;
                     }
                 }
@@ -37,7 +37,7 @@ public final class MemberResolver {
 
         // Fallback: try to find by member ID directly (for some file formats)
         for (ScriptChunk script : dirFile.getScripts()) {
-            if (script.id() == member.id()) {
+            if (script.id().equals(member.id())) {
                 return script;
             }
         }
@@ -49,7 +49,7 @@ public final class MemberResolver {
                 String fourcc = entry.fourccString().trim();
                 if (fourcc.equals("Lscr") || fourcc.equals("rcsL")) {
                     for (ScriptChunk script : dirFile.getScripts()) {
-                        if (script.id() == entry.sectionId()) {
+                        if (script.id().equals(entry.sectionId())) {
                             return script;
                         }
                     }
@@ -103,7 +103,7 @@ public final class MemberResolver {
 
         // Also try to match by palette ID in the palettes list
         for (PaletteChunk palette : dirFile.getPalettes()) {
-            if (palette.id() == member.id()) {
+            if (palette.id().equals(member.id())) {
                 return palette;
             }
         }

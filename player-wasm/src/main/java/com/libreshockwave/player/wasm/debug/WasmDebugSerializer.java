@@ -136,11 +136,11 @@ public final class WasmDebugSerializer {
                 // Breakpoint info
                 String handlerName = script.getHandlerName(handler);
                 boolean hasBp = bpManager != null &&
-                    bpManager.hasBreakpoint(script.id(), handlerName, instr.offset());
+                    bpManager.hasBreakpoint(script.id().value(), handlerName, instr.offset());
                 sb.append(",\"hasBreakpoint\":").append(hasBp);
 
                 if (hasBp) {
-                    Breakpoint bp = bpManager.getBreakpoint(script.id(), handlerName, instr.offset());
+                    Breakpoint bp = bpManager.getBreakpoint(script.id().value(), handlerName, instr.offset());
                     sb.append(",\"bpEnabled\":").append(bp != null && bp.enabled());
                 }
 

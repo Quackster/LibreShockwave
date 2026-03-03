@@ -47,7 +47,7 @@ public final class ConstructorBuiltins {
                 && constructorArgs.get(0) instanceof Datum.CastLibRef clr) {
             CastLibProvider provider = CastLibProvider.getProvider();
             if (provider != null) {
-                return provider.createMember(clr.castLibNumber(), typeSymbol.name());
+                return provider.createMember(clr.castLibNum(), typeSymbol.name());
             }
             return Datum.VOID;
         }
@@ -88,7 +88,7 @@ public final class ConstructorBuiltins {
         CastLibProvider provider = CastLibProvider.getProvider();
         if (provider != null) {
             java.util.List<String> propNames = provider.getScriptPropertyNames(
-                scriptRef.castLib(), scriptRef.member());
+                scriptRef.castLibNum(), scriptRef.memberNum());
             for (String name : propNames) {
                 properties.put(name, Datum.VOID);
             }
@@ -102,7 +102,7 @@ public final class ConstructorBuiltins {
         // No infinite recursion because each level is a different script.
         if (provider != null) {
             CastLibProvider.HandlerLocation location = provider.findHandlerInScript(
-                scriptRef.castLib(), scriptRef.member(), "new");
+                scriptRef.castLibNum(), scriptRef.memberNum(), "new");
             if (location != null && location.script() instanceof ScriptChunk script
                     && location.handler() instanceof ScriptChunk.Handler handler) {
                 Datum result = vm.executeHandler(script, handler, args, instance);
@@ -183,6 +183,6 @@ public final class ConstructorBuiltins {
             return Datum.VOID;
         }
         int channel = args.get(0).toInt();
-        return new Datum.SpriteRef(channel);
+        return Datum.SpriteRef.of(channel);
     }
 }

@@ -1,6 +1,7 @@
 package com.libreshockwave.vm.opcode;
 
 import com.libreshockwave.chunks.ScriptChunk;
+import com.libreshockwave.id.VarType;
 import com.libreshockwave.lingo.Opcode;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.HandlerRef;
@@ -86,9 +87,9 @@ public final class StackOpcodes {
      * Used by 'delete char X to Y of varName' and similar chunk mutation operations.
      */
     private static boolean pushChunkVarRef(ExecutionContext ctx) {
-        int varType = ctx.getArgument();
+        int varTypeCode = ctx.getArgument();
         int rawIndex = ctx.pop().toInt();
-        ctx.push(new Datum.VarRef(varType, rawIndex));
+        ctx.push(new Datum.VarRef(VarType.fromCode(varTypeCode), rawIndex));
         return true;
     }
 
@@ -175,7 +176,7 @@ public final class StackOpcodes {
             properties.put(Datum.PROP_SCRIPT_REF, new Datum.ScriptRef(cmr.castLib(), cmr.member()));
 
             // Pre-initialize declared properties to VOID (matching dirplayer-rs behavior)
-            List<String> propNames = provider.getScriptPropertyNames(cmr.castLib(), cmr.member());
+            List<String> propNames = provider.getScriptPropertyNames(cmr.castLibNum(), cmr.memberNum());
             for (String name : propNames) {
                 properties.put(name, Datum.VOID);
             }
@@ -192,7 +193,7 @@ public final class StackOpcodes {
         // Call the "new" handler on the script instance if it exists
         if (memberRef instanceof Datum.CastMemberRef cmr) {
             CastLibProvider.HandlerLocation loc = provider.findHandlerInScript(
-                cmr.castLib(), cmr.member(), "new");
+                cmr.castLibNum(), cmr.memberNum(), "new");
             if (loc != null) {
                 try {
                     ctx.executeHandler(

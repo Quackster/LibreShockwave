@@ -1,6 +1,7 @@
 package com.libreshockwave.vm.opcode;
 
 import com.libreshockwave.chunks.ScriptChunk;
+import com.libreshockwave.id.VarType;
 import com.libreshockwave.lingo.Opcode;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.HandlerRef;
@@ -127,7 +128,7 @@ public final class CallOpcodes {
                 // Method calls on cast member references (e.g., member.charPosToLoc)
                 CastLibProvider provider = CastLibProvider.getProvider();
                 if (provider != null) {
-                    yield provider.callMemberMethod(cmr.castLib(), cmr.member(), methodName, args);
+                    yield provider.callMemberMethod(cmr.castLibNum(), cmr.memberNum(), methodName, args);
                 }
                 yield Datum.VOID;
             }
@@ -293,9 +294,9 @@ public final class CallOpcodes {
         int variableMultiplier = ctx.getVariableMultiplier();
         int index = varRef.rawIndex() / variableMultiplier;
         return switch (varRef.varType()) {
-            case 0x5 -> ctx.getLocal(index);   // LOCAL
-            case 0x4 -> ctx.getParam(index);   // ARG/PARAM
-            case 0x3 -> {                       // PROPERTY
+            case LOCAL -> ctx.getLocal(index);
+            case PARAM -> ctx.getParam(index);
+            case PROPERTY -> {
                 Datum receiver = ctx.getReceiver();
                 if (receiver instanceof Datum.ScriptInstance si) {
                     String propName = ctx.resolveName(varRef.rawIndex());
@@ -304,7 +305,7 @@ public final class CallOpcodes {
                 }
                 yield Datum.VOID;
             }
-            case 0x1, 0x2 -> {                 // GLOBAL
+            case GLOBAL, GLOBAL2 -> {
                 String name = ctx.resolveName(varRef.rawIndex());
                 yield ctx.getGlobal(name);
             }
@@ -319,19 +320,20 @@ public final class CallOpcodes {
         int variableMultiplier = ctx.getVariableMultiplier();
         int index = varRef.rawIndex() / variableMultiplier;
         switch (varRef.varType()) {
-            case 0x5 -> ctx.setLocal(index, value);   // LOCAL
-            case 0x4 -> ctx.setParam(index, value);   // ARG/PARAM
-            case 0x3 -> {                               // PROPERTY
+            case LOCAL -> ctx.setLocal(index, value);
+            case PARAM -> ctx.setParam(index, value);
+            case PROPERTY -> {
                 Datum receiver = ctx.getReceiver();
                 if (receiver instanceof Datum.ScriptInstance si) {
                     String propName = ctx.resolveName(varRef.rawIndex());
                     si.properties().put(propName, value);
                 }
             }
-            case 0x1, 0x2 -> {                         // GLOBAL
+            case GLOBAL, GLOBAL2 -> {
                 String name = ctx.resolveName(varRef.rawIndex());
                 ctx.setGlobal(name, value);
             }
+            default -> { /* FIELD not supported in VarRef context */ }
         }
     }
 

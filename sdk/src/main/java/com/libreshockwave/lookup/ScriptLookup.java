@@ -37,10 +37,9 @@ public final class ScriptLookup {
         for (ScriptContextChunk ctx : scriptContexts) {
             if (index >= 0 && index < ctx.entries().size()) {
                 var entry = ctx.entries().get(index);
-                int chunkId = entry.id();
-                if (chunkId > 0) {
+                if (entry.id().value() > 0) {
                     for (ScriptChunk script : scripts) {
-                        if (script.id() == chunkId) {
+                        if (script.id().equals(entry.id())) {
                             return script;
                         }
                     }
@@ -48,9 +47,9 @@ public final class ScriptLookup {
             }
         }
 
-        // Fallback: try direct match by ID
+        // Fallback: try direct match by ID (scriptId is 1-based context index)
         for (ScriptChunk script : scripts) {
-            if (script.id() == scriptId) {
+            if (script.id().value() == scriptId) {
                 return script;
             }
         }
@@ -73,7 +72,7 @@ public final class ScriptLookup {
         for (int ctxIdx = 0; ctxIdx < scriptContexts.size(); ctxIdx++) {
             ScriptContextChunk ctx = scriptContexts.get(ctxIdx);
             for (int i = 0; i < ctx.entries().size(); i++) {
-                if (ctx.entries().get(i).id() == script.id()) {
+                if (ctx.entries().get(i).id().equals(script.id())) {
                     // Found the entry - scriptId is 1-based
                     int scriptId = i + 1;
 

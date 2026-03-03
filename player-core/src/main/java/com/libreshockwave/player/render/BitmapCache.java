@@ -5,6 +5,7 @@ import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.bitmap.Palette;
 import com.libreshockwave.cast.BitmapInfo;
 import com.libreshockwave.chunks.CastMemberChunk;
+import com.libreshockwave.id.InkMode;
 import com.libreshockwave.player.Player;
 import com.libreshockwave.player.cast.CastMember;
 
@@ -85,7 +86,7 @@ public class BitmapCache {
      * Returns null on first call (triggers async decode); returns cached bitmap on subsequent calls.
      */
     public Bitmap getProcessed(CastMemberChunk member, int ink, int backColor, Player player) {
-        int id = member.id();
+        int id = member.id().value();
         long key = cacheKey(id, ink, backColor);
 
         Bitmap cached = cache.get(key);
