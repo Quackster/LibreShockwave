@@ -49,6 +49,110 @@ All player functionality is decoupled from the SDK and VM via the `player-core` 
 
 ![java_m4YLpAnayh](https://github.com/user-attachments/assets/8fe52485-e0b0-4d82-ab66-693d33556bff)
 
+## Using player-core as a Library
+
+The `player-core` module provides platform-independent playback logic with no UI dependencies. Use it to build custom players (JavaFX, headless renderer, server-side processor, etc.).
+
+### Dependency
+
+```groovy
+implementation project(':player-core')  // transitively includes :vm and :sdk
+```
+
+### Minimal Example
+
+```java
+import com.libreshockwave.DirectorFile;
+import com.libreshockwave.player.Player;
+import com.libreshockwave.player.render.FrameSnapshot;
+import com.libreshockwave.player.render.RenderSprite;
+
+DirectorFile file = DirectorFile.load(Path.of("movie.dcr"));
+Player player = new Player(file);
+player.play();
+
+// Game loop
+while (player.tick()) {
+    FrameSnapshot snap = player.getFrameSnapshot();
+
+    for (RenderSprite sprite : snap.sprites()) {
+        if (!sprite.isVisible() || sprite.getBakedBitmap() == null) continue;
+
+        Bitmap bmp = sprite.getBakedBitmap();  // fully composited (ink + color applied)
+        int x = sprite.getX();
+        int y = sprite.getY();
+        // draw bmp at (x, y) with your rendering backend
+    }
+}
+
+player.shutdown();
+```
+
+Each call to `tick()` advances one frame and returns `true` while the movie is still playing. `getFrameSnapshot()` returns the current frame's state with pre-baked bitmaps for all sprite types (bitmap, text, shape).
+
+<details>
+<summary>Custom networking</summary>
+
+For environments without `java.net.http` (e.g. WASM, Android), pass a `NetProvider` to the constructor:
+
+```java
+Player player = new Player(file, new NetBuiltins.NetProvider() {
+    public int preloadNetThing(String url) { /* start async fetch, return task ID */ }
+    public int postNetText(String url, String postData) { /* POST, return task ID */ }
+    public boolean netDone(Integer taskId) { /* true when complete */ }
+    public String netTextResult(Integer taskId) { /* response body */ }
+    public int netError(Integer taskId) { /* 0 = OK, negative = error */ }
+    public String getStreamStatus(Integer taskId) { /* "Connecting", "Complete", etc. */ }
+});
+```
+
+</details>
+
+<details>
+<summary>External parameters</summary>
+
+Shockwave movies read `<PARAM>` tags from the embedding HTML. Pass these before calling `play()`:
+
+```java
+player.setExternalParams(Map.of(
+    "sw1", "external.variables.txt=http://example.com/vars.txt",
+    "sw2", "connection.info.host=127.0.0.1"
+));
+```
+
+</details>
+
+<details>
+<summary>Event listeners</summary>
+
+```java
+// Player events (enterFrame, mouseDown, etc.)
+player.setEventListener(event -> {
+    System.out.println(event.event() + " at frame " + event.frame());
+});
+
+// Notified when an external cast finishes loading
+player.setCastLoadedListener(() -> {
+    System.out.println("A cast finished loading");
+});
+```
+
+</details>
+
+<details>
+<summary>Lifecycle</summary>
+
+| Method | Description |
+|--------|-------------|
+| `play()` | Prepare the movie and begin playback |
+| `tick()` | Advance one frame; returns `false` when the movie has stopped |
+| `pause()` | Pause playback (keeps state) |
+| `resume()` | Resume after pause |
+| `stop()` | Stop playback and reset to frame 1 |
+| `shutdown()` | Release all resources (thread pools, caches) |
+
+</details>
+
 ## Screenshots
 
 ### Cast Extractor
@@ -72,7 +176,8 @@ DirectorFile file = DirectorFile.load(Path.of("movie.dcr"));
 DirectorFile file = DirectorFile.load(bytes);
 ```
 
-### Accessing Metadata
+<details>
+<summary>Accessing metadata</summary>
 
 ```java
 DirectorFile file = DirectorFile.load(Path.of("movie.dcr"));
@@ -86,7 +191,10 @@ file.getConfig().directorVersion();      // internal version number
 file.getChannelCount();                  // sprite channels (48-1000 depending on version)
 ```
 
-### Iterating Cast Members
+</details>
+
+<details>
+<summary>Iterating cast members</summary>
 
 ```java
 for (CastMemberChunk member : file.getCastMembers()) {
@@ -102,7 +210,10 @@ for (CastMemberChunk member : file.getCastMembers()) {
 }
 ```
 
-### Extracting Bitmaps
+</details>
+
+<details>
+<summary>Extracting bitmaps</summary>
 
 ```java
 for (CastMemberChunk member : file.getCastMembers()) {
@@ -115,7 +226,10 @@ for (CastMemberChunk member : file.getCastMembers()) {
 }
 ```
 
-### Extracting Text
+</details>
+
+<details>
+<summary>Extracting text</summary>
 
 ```java
 KeyTableChunk keyTable = file.getKeyTable();
@@ -135,7 +249,10 @@ for (CastMemberChunk member : file.getCastMembers()) {
 }
 ```
 
-### Extracting Sounds
+</details>
+
+<details>
+<summary>Extracting sounds</summary>
 
 ```java
 import com.libreshockwave.audio.SoundConverter;
@@ -158,7 +275,10 @@ for (CastMemberChunk member : file.getCastMembers()) {
 }
 ```
 
-### Accessing Scripts and Bytecode
+</details>
+
+<details>
+<summary>Accessing scripts and bytecode</summary>
 
 ```java
 ScriptNamesChunk names = file.getScriptNames();
@@ -191,7 +311,10 @@ for (ScriptChunk script : file.getScripts()) {
 }
 ```
 
-### Aggregating Globals and Properties
+</details>
+
+<details>
+<summary>Aggregating globals and properties</summary>
 
 ```java
 // All unique globals across all scripts
@@ -211,7 +334,10 @@ for (DirectorFile.ScriptInfo info : file.getScriptInfoList()) {
 }
 ```
 
-### Reading Score Data
+</details>
+
+<details>
+<summary>Reading score data</summary>
 
 ```java
 if (file.hasScore()) {
@@ -237,7 +363,10 @@ if (file.hasScore()) {
 }
 ```
 
-### Accessing Raw Chunks
+</details>
+
+<details>
+<summary>Accessing raw chunks</summary>
 
 ```java
 // All chunk metadata
@@ -257,7 +386,10 @@ file.getChunk(42, BitmapChunk.class).ifPresent(bitmap -> {
 });
 ```
 
-### External Cast Files
+</details>
+
+<details>
+<summary>External cast files</summary>
 
 ```java
 for (String castPath : file.getExternalCastPaths()) {
@@ -268,7 +400,10 @@ for (String castPath : file.getExternalCastPaths()) {
 }
 ```
 
-### Saving Files
+</details>
+
+<details>
+<summary>Saving files</summary>
 
 ```java
 // Load compressed/protected file
@@ -280,6 +415,8 @@ file.save(Path.of("unprotected.dir"));
 // Or get bytes
 byte[] rifxData = file.saveToBytes();
 ```
+
+</details>
 
 ## Web Player (player-wasm)
 
@@ -314,7 +451,8 @@ The following files must be served from the same directory as the script:
 | `player-wasm.wasm` | Compiled player engine |
 | `player-wasm.wasm-runtime.js` | TeaVM runtime (loaded by the worker) |
 
-### API
+<details>
+<summary>JavaScript API</summary>
 
 ```js
 // Create a player on a <canvas> element (by ID or element reference)
@@ -352,7 +490,10 @@ player.getFrameCount();    // total frames
 player.destroy();
 ```
 
-### Running the Built-in Player Page
+</details>
+
+<details>
+<summary>Running the built-in player page</summary>
 
 ```bash
 cd player-wasm/build/generated/teavm/wasm/
@@ -362,11 +503,17 @@ npx serve .
 
 The included `index.html` is a ready-made player page with file picker, URL bar, transport controls, and a params editor.
 
-### External Parameters
+</details>
+
+<details>
+<summary>External parameters</summary>
 
 Shockwave movies read `<PARAM>` tags from the embedding HTML (e.g. `sw1` through `sw9`). Pass these via `params` in `create()` or call `setParam()` / `setParams()` at any time. With `remember: true`, params persist in `localStorage` across sessions.
 
-### Module Structure
+</details>
+
+<details>
+<summary>Module structure</summary>
 
 ```
 player-wasm/
@@ -381,6 +528,8 @@ player-wasm/
     shockwave-lib.js                    # Embeddable player library (worker inlined)
     libreshockwave.css                  # Styling
 ```
+
+</details>
 
 ### Known Limitations
 
@@ -424,7 +573,8 @@ player-wasm/
 | `player-wasm` | Browser player compiled to WebAssembly via TeaVM |
 | `cast-extractor` | GUI tool for extracting assets from Director files |
 
-### SDK Packages
+<details>
+<summary>SDK packages</summary>
 
 - `com.libreshockwave` - Main `DirectorFile` class
 - `com.libreshockwave.chunks` - Chunk type parsers (CASt, Lscr, BITD, STXT, etc.)
@@ -434,6 +584,8 @@ player-wasm/
 - `com.libreshockwave.io` - Binary readers/writers
 - `com.libreshockwave.format` - File format utilities (Afterburner, chunk types)
 - `com.libreshockwave.cast` - Cast member type definitions
+
+</details>
 
 ## References
 
