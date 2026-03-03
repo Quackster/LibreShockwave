@@ -424,7 +424,7 @@ byte[] rifxData = file.saveToBytes();
 
 The `player-wasm` module compiles the player for the browser using [TeaVM](https://teavm.org/) v0.13's standard WebAssembly backend. It produces a `.wasm` file with a JavaScript library that runs in all modern browsers.
 
-WASM is a pure computation engine with **zero `@Import` annotations** — JS owns networking (`fetch`), canvas rendering, and the animation loop. No Web Worker required.
+WASM is a pure computation engine with **zero `@Import` annotations** — JS owns networking (`fetch`), canvas rendering, and the animation loop. All WASM execution runs in a **Web Worker** so slow Lingo scripts never block the main thread.
 
 ### Building
 
@@ -464,8 +464,9 @@ The following files must be served from the same directory as the script:
 | File | Purpose |
 |------|---------|
 | `shockwave-lib.js` | Player library (the only `<script>` you need) |
+| `shockwave-worker.js` | Web Worker — runs the WASM engine off the main thread |
 | `player-wasm.wasm` | Compiled player engine |
-| `player-wasm.wasm-runtime.js` | TeaVM runtime (loaded automatically) |
+| `player-wasm.wasm-runtime.js` | TeaVM runtime (loaded by the worker automatically) |
 
 <details>
 <summary>JavaScript API</summary>
@@ -512,31 +513,40 @@ player.destroy();
 <summary>Architecture</summary>
 
 ```
-JS (shockwave-lib.js)                    WASM (@Export methods)
-──────────────────────                    ────────────────────
+Main thread (shockwave-lib.js)            Worker (shockwave-worker.js)
+──────────────────────────────            ────────────────────────────
 fetch() .dcr file
-  → loadMovie(bytes, basePath)     →     WasmEntry.loadMovie()
-                                            → WasmPlayer.loadMovie()
-                                            → QueuedNetProvider created
-                                            → Player.preloadAllCasts()
+  postMessage('loadMovie', bytes)  →      WasmEntry.loadMovie()
+                                            → Player + QueuedNetProvider created
+  postMessage('preloadCasts')      →      preloadCasts() + pumpNetworkCollect()
+                                            → fetch() cast files
+  ← postMessage('castsDone')
+
+  postMessage('play')              →      WasmEntry.play()
 
 requestAnimationFrame loop:
-  → tick()                         →     WasmEntry.tick()
-  → getPendingFetchJson()          →     QueuedNetProvider.serializePendingRequests()
-  → drainPendingFetches()          →     QueuedNetProvider.drainPendingRequests()
-  → fetch(url) for each request
-  → deliverFetchResult(id, data)   →     QueuedNetProvider.onFetchComplete()
-                                            → CastLibManager.setExternalCastDataByUrl()
-  → getFrameDataJson()             →     SpriteDataExporter.exportFrameData()
-  → getBitmapData(memberId)        →     SpriteDataExporter.getBitmapRGBA()
-  → Canvas 2D drawImage()
+  postMessage('tick')              →      WasmEntry.tick()
+                                            → Lingo VM executes (may be slow — OK
+                                              because it's off the main thread)
+                                            → pumpNetworkCollect()
+                                              → fetch() any queued URLs
+                                              → deliverFetchResult()
+                                            → getFrameDataJson()
+                                            → getBitmapData() for new members
+  ← postMessage('frame', fd, bitmaps)
+  createImageBitmap() + cache
+  Canvas 2D drawImage()
 ```
 
 **Key design decisions:**
 - No `@Import` — WASM never calls JS; JS polls for pending network requests
-- No Web Worker — `tick()` is fast enough for the main thread
-- Single rendering path — sprite JSON + bitmap fetch (no pixel buffer fallback)
-- Fallback URLs in JSON — JS handles retry logic (.cct → .cst on 404)
+- Web Worker — WASM tick runs off the main thread; Lingo scripts that take
+  hundreds of ms during loading never cause `requestAnimationFrame` violations
+- Worker owns networking — `fetch()` runs in the worker; no relay through main thread
+- Zero-copy bitmap transfer — RGBA bytes sent from worker via `Transferable`;
+  main thread caches `ImageBitmap` objects; only new/changed members are sent each frame
+- Single rendering path — sprite JSON + bitmap cache (no pixel buffer fallback)
+- Fallback URLs in JSON — worker handles retry logic (.cct → .cst on 404)
 
 </details>
 
@@ -545,7 +555,7 @@ requestAnimationFrame loop:
 
 ```
 player-wasm/
-  build.gradle                          # TeaVM plugin config (standard WASM target)
+  build.gradle                          # TeaVM plugin config + assembleWasm task
   src/main/java/.../wasm/
     WasmEntry.java                      # All @Export methods (single entry point)
     WasmPlayer.java                     # Player wrapper (deferred play, tick resilience)
@@ -553,7 +563,8 @@ player-wasm/
     SpriteDataExporter.java             # Frame data JSON + bitmap cache
   src/main/resources/web/
     index.html                          # Player page with toolbar and transport controls
-    shockwave-lib.js                    # Embeddable player library (~350 lines)
+    shockwave-lib.js                    # Main-thread library: creates Worker, renders canvas
+    shockwave-worker.js                 # Web Worker: WASM engine + network pump
     libreshockwave.css                  # Styling
 ```
 

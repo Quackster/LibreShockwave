@@ -42,11 +42,14 @@ def distDir = layout.buildDirectory.dir('dist')
 
 tasks.register('assembleWasm', Sync) {
     dependsOn 'generateWasm'
+    // Explicit input tracking: forces Gradle to detect additions/removals in the web
+    // resources directory even when the WASM binary itself hasn't changed.
+    inputs.dir file('src/main/resources/web')
     // TeaVM output: only the WASM binary + runtime JS (exclude web resources that may have leaked in)
     from(layout.buildDirectory.dir('generated/teavm/wasm')) {
         include '*.wasm', '*.wasm-runtime.js', '*.wasm.c', '*.wast'
     }
-    // Web resources (index.html, shockwave-lib.js, CSS) — canonical source
+    // Web resources (shockwave-lib.js, shockwave-worker.js, index.html, CSS) — canonical source
     from 'src/main/resources/web'
     into distDir
 }

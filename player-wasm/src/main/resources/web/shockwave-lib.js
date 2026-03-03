@@ -9,9 +9,10 @@
  *     player.load("http://example.com/movie.dcr");
  *   </script>
  *
- * Architecture: No Web Worker. No @Import. WASM is a pure computation engine.
- * JS owns networking (fetch), canvas rendering, and the animation loop.
- * Communication is JS -> WASM via @Export methods only.
+ * Architecture: WASM runs entirely in a Web Worker (shockwave-worker.js).
+ * The main thread owns only: canvas rendering, bitmap ImageBitmap cache, and
+ * the animation loop. All WASM calls — including network I/O — happen in the
+ * worker, so the main thread never blocks on slow Lingo script execution.
  */
 var LibreShockwave = (function() {
 
@@ -27,338 +28,6 @@ var LibreShockwave = (function() {
             }
         }
     })();
-
-    // ========================================================================
-    // WasmEngine: loads TeaVM runtime + WASM, provides memory helpers
-    // ========================================================================
-
-    function WasmEngine(basePath) {
-        this._basePath = basePath;
-        this.teavm = null;
-        this.exports = null;
-        this.playing = false;
-        this.stageWidth = 640;
-        this.stageHeight = 480;
-        this.bitmapCache = new Map();
-        this.pendingBitmaps = new Set();
-        this._lastFrame = 0;
-        this._lastFrameCount = 0;
-        this._lastTempo = 15;
-    }
-
-    WasmEngine.prototype.init = function() {
-        var self = this;
-        return new Promise(function(resolve, reject) {
-            var script = document.createElement('script');
-            script.src = self._basePath + 'player-wasm.wasm-runtime.js';
-            script.onload = function() {
-                TeaVM.wasm.load(self._basePath + 'player-wasm.wasm')
-                    .then(function(instance) {
-                        self.teavm = instance;
-                        self.exports = instance.instance.exports;
-                        return instance.main([]);
-                    })
-                    .then(function() { resolve(); })
-                    .catch(function(e) { reject(e); });
-            };
-            script.onerror = function() { reject(new Error('Failed to load WASM runtime')); };
-            document.head.appendChild(script);
-        });
-    };
-
-    WasmEngine.prototype._mem = function() {
-        return this.teavm.memory.buffer;
-    };
-
-    WasmEngine.prototype._readString = function(addr, len) {
-        return new TextDecoder().decode(new Uint8Array(this._mem(), addr, len));
-    };
-
-    WasmEngine.prototype._writeString = function(str) {
-        var bytes = new TextEncoder().encode(str);
-        var addr = this.exports.getStringBufferAddress();
-        var buf = new Uint8Array(this._mem(), addr, 4096);
-        buf.set(bytes.subarray(0, Math.min(bytes.length, 4096)));
-        return bytes.length;
-    };
-
-    WasmEngine.prototype._readJson = function(len) {
-        if (len <= 0) return null;
-        var addr = this.exports.getLargeBufferAddress();
-        var str = new TextDecoder().decode(new Uint8Array(this._mem(), addr, len));
-        try { return JSON.parse(str); }
-        catch (e) { console.error('[LS] JSON parse error:', e); return null; }
-    };
-
-    WasmEngine.prototype._clearException = function() {
-        if (this.teavm && this.teavm.instance && this.teavm.instance.exports.teavm_catchException) {
-            this.teavm.instance.exports.teavm_catchException();
-        }
-    };
-
-    WasmEngine.prototype.loadMovie = function(bytes, basePath) {
-        var bp = new TextEncoder().encode(basePath || '');
-        var sbAddr = this.exports.getStringBufferAddress();
-        new Uint8Array(this._mem(), sbAddr, 4096).set(bp);
-
-        var bufAddr = this.exports.allocateBuffer(bytes.length);
-        new Uint8Array(this._mem(), bufAddr, bytes.length).set(bytes);
-
-        var result = this.exports.loadMovie(bytes.length, bp.length);
-        this._clearException();
-
-        if (result === 0) return null;
-
-        this.stageWidth = (result >> 16) & 0xFFFF;
-        this.stageHeight = result & 0xFFFF;
-        this._lastFrameCount = this.exports.getFrameCount();
-        this._lastTempo = this.exports.getTempo();
-
-        return {
-            width: this.stageWidth,
-            height: this.stageHeight,
-            frameCount: this._lastFrameCount,
-            tempo: this._lastTempo
-        };
-    };
-
-    WasmEngine.prototype.setExternalParam = function(key, value) {
-        var keyBytes = new TextEncoder().encode(key);
-        var valueBytes = new TextEncoder().encode(value);
-        var sbAddr = this.exports.getStringBufferAddress();
-        var sbuf = new Uint8Array(this._mem(), sbAddr, 4096);
-        sbuf.set(keyBytes);
-        sbuf.set(valueBytes, keyBytes.length);
-        this.exports.setExternalParam(keyBytes.length, valueBytes.length);
-        this._clearException();
-    };
-
-    WasmEngine.prototype.clearExternalParams = function() {
-        this.exports.clearExternalParams();
-        this._clearException();
-    };
-
-    WasmEngine.prototype.preloadCasts = function() {
-        var count = this.exports.preloadCasts();
-        this._clearException();
-        return count;
-    };
-
-    WasmEngine.prototype.tick = function() {
-        var result = this.exports.tick();
-        this._clearException();
-        return result !== 0;
-    };
-
-    WasmEngine.prototype.getFrameData = function() {
-        var len = this.exports.getFrameDataJson();
-        this._clearException();
-        var fd = this._readJson(len);
-        if (fd) {
-            this._lastFrame = fd.frame;
-            this._lastFrameCount = fd.frameCount;
-        }
-        return fd;
-    };
-
-    WasmEngine.prototype.getBitmapData = function(memberId) {
-        var ptr = this.exports.getBitmapData(memberId);
-        if (ptr === 0) return null;
-        var w = this.exports.getBitmapWidth(memberId);
-        var h = this.exports.getBitmapHeight(memberId);
-        if (w <= 0 || h <= 0) return null;
-        var rgba = new Uint8ClampedArray(w * h * 4);
-        rgba.set(new Uint8ClampedArray(this._mem(), ptr, w * h * 4));
-        return { width: w, height: h, rgba: rgba };
-    };
-
-    /**
-     * Poll WASM for pending network requests, fire fetch(), deliver results back.
-     */
-    WasmEngine.prototype._drainRequests = function() {
-        var count = this.exports.getPendingFetchCount();
-        this._clearException();
-        if (count === 0) return null;
-        var len = this.exports.getPendingFetchJson();
-        this._clearException();
-        var requests = this._readJson(len);
-        this.exports.drainPendingFetches();
-        this._clearException();
-        return requests;
-    };
-
-    /**
-     * Fire pending network requests (fire-and-forget).
-     */
-    WasmEngine.prototype.pumpNetwork = function() {
-        var requests = this._drainRequests();
-        if (!requests) return;
-        var self = this;
-        for (var i = 0; i < requests.length; i++) {
-            (function(req) {
-                self._doFetch(req.taskId, req.url, req.method, req.postData, req.fallbacks || []);
-            })(requests[i]);
-        }
-    };
-
-    /**
-     * Fire pending network requests and return an array of Promises.
-     * Each promise always resolves (never rejects) so Promise.all() always completes.
-     */
-    WasmEngine.prototype.pumpNetworkCollect = function() {
-        var requests = this._drainRequests();
-        if (!requests) return [];
-        var self = this;
-        var promises = [];
-        for (var i = 0; i < requests.length; i++) {
-            (function(req) {
-                var p = self._doFetch(req.taskId, req.url, req.method, req.postData, req.fallbacks || []);
-                // Absorb rejections so Promise.all doesn't abort if any cast fails
-                promises.push(p.then(null, function() {}));
-            })(requests[i]);
-        }
-        return promises;
-    };
-
-    WasmEngine.prototype._doFetch = function(taskId, url, method, postData, fallbacks) {
-        var self = this;
-        var opts = {};
-        if (method === 'POST') {
-            opts.method = 'POST';
-            opts.body = postData;
-            opts.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
-        }
-
-        console.log('[LS] fetch: ' + method + ' ' + url + ' (fallbacks: ' + fallbacks.length + ')');
-        return fetch(url, opts)
-            .then(function(r) {
-                if (!r.ok) throw { status: r.status };
-                return r.arrayBuffer();
-            })
-            .then(function(buf) {
-                console.log('[LS] fetch OK: ' + url + ' (' + buf.byteLength + ' bytes)');
-                self._deliverResult(taskId, buf);
-            })
-            .catch(function(e) {
-                console.log('[LS] fetch FAIL: ' + url + ' (status: ' + ((e && e.status) || 'network') + ')');
-                // Try fallback URLs on any failure (HTTP error or network error)
-                if (fallbacks.length > 0) {
-                    var next = fallbacks[0];
-                    var rest = fallbacks.slice(1);
-                    return self._doFetch(taskId, next, method, postData, rest);
-                } else {
-                    self._deliverError(taskId, (e && e.status) || 0);
-                    // Resolve (not reject) so Promise.all doesn't abort on failed casts
-                }
-            });
-    };
-
-    WasmEngine.prototype._deliverResult = function(taskId, arrayBuffer) {
-        var bytes = new Uint8Array(arrayBuffer);
-        var addr = this.exports.allocateNetBuffer(bytes.length);
-        new Uint8Array(this._mem(), addr, bytes.length).set(bytes);
-        this.exports.deliverFetchResult(taskId, bytes.length);
-        this._clearException();
-        var err = this.getLastError();
-        if (err) console.error('[LS] deliverResult error:', err);
-        // Clear bitmap cache (new cast data may have arrived)
-        this.bitmapCache.clear();
-        this.pendingBitmaps.clear();
-    };
-
-    WasmEngine.prototype._deliverError = function(taskId, status) {
-        this.exports.deliverFetchError(taskId, status || 0);
-        this._clearException();
-        var err = this.getLastError();
-        if (err) console.error('[LS] deliverError error:', err);
-    };
-
-    WasmEngine.prototype.getLastError = function() {
-        var len = this.exports.getLastError();
-        if (len <= 0) return null;
-        var addr = this.exports.getStringBufferAddress();
-        return this._readString(addr, len);
-    };
-
-    // ========================================================================
-    // Canvas rendering
-    // ========================================================================
-
-    WasmEngine.prototype.renderToCanvas = function(ctx, fd) {
-        if (!fd) return;
-
-        // Background
-        var bg = (typeof fd.bg === 'number') ? fd.bg : 0xFFFFFF;
-        ctx.fillStyle = '#' + (bg & 0xFFFFFF).toString(16).padStart(6, '0');
-        ctx.fillRect(0, 0, this.stageWidth, this.stageHeight);
-
-        // Stage image (script-drawn content like loading bars)
-        if (fd.stageImageId) {
-            this._ensureBitmap(fd.stageImageId);
-            var stageImg = this.bitmapCache.get(fd.stageImageId);
-            if (stageImg) ctx.drawImage(stageImg, 0, 0, this.stageWidth, this.stageHeight);
-        }
-
-        var sprites = fd.sprites;
-        if (!sprites) return;
-
-        // Pre-request bitmaps
-        for (var i = 0; i < sprites.length; i++) {
-            var s = sprites[i];
-            if (s.memberId > 0 && s.visible && s.hasBaked) this._ensureBitmap(s.memberId);
-        }
-
-        // Draw sprites
-        for (var i = 0; i < sprites.length; i++) {
-            var sp = sprites[i];
-            if (!sp.visible) continue;
-            this._drawSprite(ctx, sp);
-        }
-    };
-
-    WasmEngine.prototype._ensureBitmap = function(memberId) {
-        if (this.bitmapCache.has(memberId) || this.pendingBitmaps.has(memberId)) return;
-        this.pendingBitmaps.add(memberId);
-
-        var bmpData = this.getBitmapData(memberId);
-        if (!bmpData) { this.pendingBitmaps.delete(memberId); return; }
-
-        var self = this;
-        var imgData = new ImageData(bmpData.rgba, bmpData.width, bmpData.height);
-        createImageBitmap(imgData).then(function(bmp) {
-            self.bitmapCache.set(memberId, bmp);
-            self.pendingBitmaps.delete(memberId);
-        });
-    };
-
-    WasmEngine.prototype._drawSprite = function(ctx, sp) {
-        var prevAlpha = ctx.globalAlpha;
-        if (sp.blend !== undefined && sp.blend < 100) ctx.globalAlpha = sp.blend / 100;
-
-        // Baked bitmap (preferred — matches Swing exactly)
-        if (sp.memberId > 0 && sp.hasBaked) {
-            var bmp = this.bitmapCache.get(sp.memberId);
-            if (bmp) {
-                ctx.drawImage(bmp, sp.x, sp.y, sp.w > 0 ? sp.w : bmp.width, sp.h > 0 ? sp.h : bmp.height);
-                ctx.globalAlpha = prevAlpha;
-                return;
-            }
-        }
-
-        // Fallback rendering while bitmap loads
-        if (sp.type === 'SHAPE') {
-            ctx.fillStyle = '#' + ((sp.foreColor || 0) & 0xFFFFFF).toString(16).padStart(6, '0');
-            ctx.fillRect(sp.x, sp.y, sp.w > 0 ? sp.w : 50, sp.h > 0 ? sp.h : 50);
-        } else if ((sp.type === 'TEXT' || sp.type === 'BUTTON') && sp.textContent) {
-            var fs = sp.fontSize || 12;
-            ctx.font = fs + 'px serif';
-            ctx.fillStyle = '#' + ((sp.foreColor || 0) & 0xFFFFFF).toString(16).padStart(6, '0');
-            var lines = sp.textContent.split(/\r\n|\r|\n/);
-            for (var j = 0; j < lines.length; j++) ctx.fillText(lines[j], sp.x, sp.y + fs + j * (fs + 2));
-        }
-
-        ctx.globalAlpha = prevAlpha;
-    };
 
     // ========================================================================
     // Public API: ShockwavePlayer
@@ -386,17 +55,32 @@ var LibreShockwave = (function() {
         var el = typeof canvas === 'string' ? document.getElementById(canvas) : canvas;
         if (!el) throw new Error('LibreShockwave: canvas "' + canvas + '" not found');
 
-        this._opts = opts;
-        this._basePath = opts.basePath || _autoBasePath;
-        this._params = opts.params ? _clone(opts.params) : {};
-        this._autoplay = opts.autoplay !== false;
-        this._remember = !!opts.remember;
-        this._engine = null;
-        this._ready = false;
-        this._canvas = el;
-        this._ctx = el.getContext('2d');
+        this._opts        = opts;
+        this._basePath    = opts.basePath || _autoBasePath;
+        this._params      = opts.params ? _clone(opts.params) : {};
+        this._autoplay    = opts.autoplay !== false;
+        this._remember    = !!opts.remember;
+        this._canvas      = el;
+        this._ctx         = el.getContext('2d');
         this._animFrameId = null;
         this._lastFrameTime = 0;
+
+        // Worker state
+        this._worker      = null;
+        this._workerReady = false;
+        this._pendingUrl  = null;
+        this._pendingFile = null;
+
+        // Playback state (mirrors worker)
+        this._playing     = false;
+        this._lastTempo   = 15;
+        this._lastFrame   = 0;
+        this._lastFrameCount = 0;
+        this._stageWidth  = 640;
+        this._stageHeight = 480;
+
+        // Bitmap cache: memberId → ImageBitmap
+        this._bitmapCache = new Map();
 
         // Restore remembered params
         if (this._remember) {
@@ -410,61 +94,81 @@ var LibreShockwave = (function() {
             } catch(e) {}
         }
 
-        this._initEngine();
+        this._initWorker();
     }
 
-    ShockwavePlayer.prototype._initEngine = function() {
-        var self = this;
-        var engine = new WasmEngine(this._basePath);
-        this._engine = engine;
+    // --- Worker lifecycle ---
 
-        engine.init().then(function() {
-            console.log('[LS] WASM engine initialized');
-            self._ready = true;
-            if (self._pendingUrl) { self.load(self._pendingUrl); self._pendingUrl = null; }
-            if (self._pendingFile) { self.loadFile(self._pendingFile); self._pendingFile = null; }
-        }).catch(function(e) {
-            console.error('[LS] WASM init failed:', e);
+    ShockwavePlayer.prototype._initWorker = function() {
+        var self = this;
+        // Make the base path absolute so importScripts() in the worker resolves it correctly
+        var absBase = new URL(this._basePath, document.baseURI).href;
+
+        var worker = new Worker(absBase + 'shockwave-worker.js');
+        this._worker = worker;
+
+        worker.onmessage = function(e) { self._onWorkerMessage(e.data); };
+        worker.onerror   = function(e) {
+            console.error('[LS] Worker error:', e.message);
             if (self._opts.onError) self._opts.onError(e.message);
+        };
+
+        // Send init with absolute base path so importScripts/fetch work from the worker
+        worker.postMessage({ type: 'init', basePath: absBase });
+    };
+
+    ShockwavePlayer.prototype._onWorkerMessage = function(msg) {
+        switch (msg.type) {
+
+            case 'ready':
+                console.log('[LS] Worker ready');
+                this._workerReady = true;
+                if (this._pendingUrl)  { this.load(this._pendingUrl);  this._pendingUrl  = null; }
+                if (this._pendingFile) { this.loadFile(this._pendingFile); this._pendingFile = null; }
+                break;
+
+            case 'movieLoaded':
+                this._resolveOnce('movieLoaded', msg.info);
+                break;
+
+            case 'castsDone':
+                this._resolveOnce('castsDone', null);
+                break;
+
+            case 'frame':
+                this._resolveOnce('frame', msg);
+                break;
+
+            case 'error':
+                console.error('[LS] Worker reported:', msg.msg);
+                break;
+
+            default:
+                break;
+        }
+    };
+
+    // Simple one-shot resolver map: type → resolve function
+    ShockwavePlayer.prototype._resolveOnce = function(type, value) {
+        if (this._pending && this._pending.type === type) {
+            var resolve = this._pending.resolve;
+            this._pending = null;
+            resolve(value);
+        }
+    };
+
+    ShockwavePlayer.prototype._waitFor = function(type) {
+        var self = this;
+        return new Promise(function(resolve) {
+            self._pending = { type: type, resolve: resolve };
         });
     };
 
-    ShockwavePlayer.prototype._onMovieLoaded = function(info) {
-        this._canvas.width = info.width;
-        this._canvas.height = info.height;
+    // --- Movie loading ---
 
-        // Set external params
-        this._engine.clearExternalParams();
-        for (var k in this._params) {
-            this._engine.setExternalParam(k, this._params[k]);
-        }
-
-        if (this._opts.onLoad) this._opts.onLoad(info);
-
-        // Director requires external casts to be loaded before startMovie fires.
-        // We preload them all, wait for delivery, then call play().
-        // This mirrors how the original Shockwave plugin worked synchronously.
-        var castCount = this._engine.preloadCasts();
-        var self = this;
-        if (castCount > 0) {
-            var promises = this._engine.pumpNetworkCollect();
-            Promise.all(promises).then(function() {
-                if (self._autoplay) self.play();
-                // Pump any requests queued during prepareMovie (getNetText, etc.)
-                self._engine.pumpNetwork();
-            });
-        } else {
-            if (this._autoplay) this.play();
-            this._engine.pumpNetwork();
-        }
-    };
-
-    /**
-     * Load a movie from a URL.
-     */
     ShockwavePlayer.prototype.load = function(url) {
-        console.log('[LS] load(' + url + '), ready=' + this._ready);
-        if (!this._ready) { this._pendingUrl = url; return; }
+        console.log('[LS] load(' + url + '), ready=' + this._workerReady);
+        if (!this._workerReady) { this._pendingUrl = url; return; }
         var self = this;
         if (this._remember) {
             try { localStorage.setItem('ls_urlInput', url); } catch(e) {}
@@ -473,14 +177,7 @@ var LibreShockwave = (function() {
             .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
             .then(function(buf) {
                 console.log('[LS] Movie fetched, ' + buf.byteLength + ' bytes');
-                var info = self._engine.loadMovie(new Uint8Array(buf), url);
-                if (!info) {
-                    console.error('[LS] loadMovie returned null');
-                    if (self._opts.onError) self._opts.onError('Failed to load movie');
-                    return;
-                }
-                console.log('[LS] Movie loaded:', info.width + 'x' + info.height + ', ' + info.frameCount + ' frames');
-                self._onMovieLoaded(info);
+                self._loadMovieBuffer(buf, url);
             })
             .catch(function(e) {
                 console.error('[LS] load error:', e);
@@ -488,75 +185,97 @@ var LibreShockwave = (function() {
             });
     };
 
-    /**
-     * Load a movie from a File object (from an <input type="file">).
-     */
     ShockwavePlayer.prototype.loadFile = function(file) {
-        if (!this._ready) { this._pendingFile = file; return; }
+        if (!this._workerReady) { this._pendingFile = file; return; }
         var self = this;
         var reader = new FileReader();
-        reader.onload = function() {
-            var info = self._engine.loadMovie(new Uint8Array(reader.result), file.name);
-            if (!info) {
-                if (self._opts.onError) self._opts.onError('Failed to load movie');
-                return;
-            }
-            self._onMovieLoaded(info);
-        };
+        reader.onload = function() { self._loadMovieBuffer(reader.result, file.name); };
         reader.readAsArrayBuffer(file);
     };
 
+    ShockwavePlayer.prototype._loadMovieBuffer = async function(buf, basePath) {
+        // Send movie bytes to worker (transfer ownership — zero copy)
+        this._worker.postMessage({ type: 'loadMovie', data: buf, basePath: basePath },
+                                 [buf]);
+        var info = await this._waitFor('movieLoaded');
+        if (!info) {
+            console.error('[LS] loadMovie returned null');
+            if (this._opts.onError) this._opts.onError('Failed to load movie');
+            return;
+        }
+        console.log('[LS] Movie loaded:', info.width + 'x' + info.height +
+                    ', ' + info.frameCount + ' frames');
+        this._stageWidth  = info.width;
+        this._stageHeight = info.height;
+        this._lastTempo   = info.tempo;
+        this._canvas.width  = info.width;
+        this._canvas.height = info.height;
+        this._bitmapCache.clear();
+        await this._onMovieLoaded(info);
+    };
+
+    ShockwavePlayer.prototype._onMovieLoaded = async function(info) {
+        // Push external params into the worker
+        this._worker.postMessage({ type: 'clearParams' });
+        for (var k in this._params) {
+            this._worker.postMessage({ type: 'setParam', key: k, value: this._params[k] });
+        }
+
+        if (this._opts.onLoad) this._opts.onLoad(info);
+
+        // Preload external casts before starting; worker handles the network pump
+        this._worker.postMessage({ type: 'preloadCasts' });
+        await this._waitFor('castsDone');
+
+        if (this._autoplay) this.play();
+    };
+
+    // --- Playback control ---
+
     ShockwavePlayer.prototype.play = function() {
-        if (!this._engine) return;
-        this._engine.exports.play();
-        this._engine.playing = true;
+        this._worker.postMessage({ type: 'play' });
+        this._playing = true;
         this._lastFrameTime = 0;
         this._startLoop();
     };
 
     ShockwavePlayer.prototype.pause = function() {
-        if (!this._engine) return;
-        this._engine.exports.pause();
-        this._engine.playing = false;
+        this._worker.postMessage({ type: 'pause' });
+        this._playing = false;
         this._stopLoop();
     };
 
     ShockwavePlayer.prototype.stop = function() {
-        if (!this._engine) return;
-        this._engine.exports.stop();
-        this._engine.playing = false;
+        this._worker.postMessage({ type: 'stop' });
+        this._playing = false;
         this._stopLoop();
     };
 
     ShockwavePlayer.prototype.goToFrame = function(f) {
-        if (!this._engine) return;
-        this._engine.exports.goToFrame(f);
-        this._doRender();
+        this._worker.postMessage({ type: 'goToFrame', frame: f });
     };
 
     ShockwavePlayer.prototype.stepForward = function() {
-        if (!this._engine) return;
-        this._engine.exports.stepForward();
-        this._doRender();
+        this._worker.postMessage({ type: 'stepForward' });
     };
 
     ShockwavePlayer.prototype.stepBackward = function() {
-        if (!this._engine) return;
-        this._engine.exports.stepBackward();
-        this._doRender();
+        this._worker.postMessage({ type: 'stepBackward' });
     };
 
     ShockwavePlayer.prototype.getCurrentFrame = function() {
-        return this._engine ? this._engine._lastFrame : 0;
+        return this._lastFrame;
     };
 
     ShockwavePlayer.prototype.getFrameCount = function() {
-        return this._engine ? this._engine._lastFrameCount : 0;
+        return this._lastFrameCount;
     };
 
     ShockwavePlayer.prototype.setParam = function(key, value) {
         this._params[key] = value;
-        if (this._engine && this._ready) this._engine.setExternalParam(key, value);
+        if (this._worker && this._workerReady) {
+            this._worker.postMessage({ type: 'setParam', key: key, value: value });
+        }
         if (this._remember) {
             try { localStorage.setItem('ls_extParams', JSON.stringify(this._params)); } catch(e) {}
         }
@@ -568,7 +287,7 @@ var LibreShockwave = (function() {
 
     ShockwavePlayer.prototype.destroy = function() {
         this._stopLoop();
-        this._engine = null;
+        if (this._worker) { this._worker.terminate(); this._worker = null; }
     };
 
     // --- Animation loop ---
@@ -577,8 +296,8 @@ var LibreShockwave = (function() {
         var self = this;
         var ticking = false;
         function loop(ts) {
-            if (!self._engine || !self._engine.playing) return;
-            var tempo = self._engine._lastTempo || 15;
+            if (!self._playing) return;
+            var tempo = self._lastTempo || 15;
             var ms = 1000.0 / (tempo > 0 ? tempo : 15);
             if (self._lastFrameTime === 0) self._lastFrameTime = ts;
             if (ts - self._lastFrameTime >= ms && !ticking) {
@@ -586,9 +305,9 @@ var LibreShockwave = (function() {
                 ticking = true;
                 self._doTick().then(function() {
                     ticking = false;
-                }).catch(function(e) {
+                }).catch(function(err) {
                     ticking = false;
-                    console.error('[LS] tick error:', e);
+                    console.error('[LS] tick error:', err);
                 });
             }
             self._animFrameId = requestAnimationFrame(loop);
@@ -597,46 +316,120 @@ var LibreShockwave = (function() {
     };
 
     ShockwavePlayer.prototype._stopLoop = function() {
-        if (this._animFrameId) { cancelAnimationFrame(this._animFrameId); this._animFrameId = null; }
+        if (this._animFrameId) {
+            cancelAnimationFrame(this._animFrameId);
+            this._animFrameId = null;
+        }
     };
 
+    // --- Tick: send work to the worker, await the frame response, then render ---
+
     ShockwavePlayer.prototype._doTick = async function() {
-        var engine = this._engine;
-        if (!engine) return;
+        this._worker.postMessage({ type: 'tick' });
+        var result = await this._waitFor('frame');
+        if (!result) return;
 
-        var stillPlaying = engine.tick();
+        // Update local state from worker response
+        this._lastTempo      = result.tempo      || this._lastTempo;
+        this._lastFrame      = result.lastFrame  || this._lastFrame;
+        this._lastFrameCount = (result.fd && result.fd.frameCount) || this._lastFrameCount;
 
-        // Await any network requests queued during this tick.
-        // This yields the JS event loop so the browser stays responsive
-        // while large files (external_texts, etc.) are in-flight.
-        var promises = engine.pumpNetworkCollect();
-        if (promises.length > 0) {
-            await Promise.all(promises);
+        // When a cast was loaded in the worker, clear our ImageBitmap cache
+        if (result.castCacheCleared) this._bitmapCache.clear();
+
+        // Materialise any new bitmaps the worker sent (transferred ArrayBuffers)
+        var bitmaps = result.bitmaps || {};
+        var self = this;
+        var bitmapPromises = [];
+        for (var mid in bitmaps) {
+            (function(id, bmp) {
+                var imgData = new ImageData(bmp.rgba, bmp.w, bmp.h);
+                var p = createImageBitmap(imgData).then(function(ib) {
+                    self._bitmapCache.set(parseInt(id, 10), ib);
+                });
+                bitmapPromises.push(p);
+            })(mid, bitmaps[mid]);
         }
+        if (bitmapPromises.length > 0) await Promise.all(bitmapPromises);
 
-        var fd = engine.getFrameData();
-        engine.renderToCanvas(this._ctx, fd);
+        // Render
+        var fd = result.fd;
+        this._renderFrame(fd);
 
         if (fd && this._opts.onFrame) {
             this._opts.onFrame(fd.frame, fd.frameCount);
         }
 
-        if (!stillPlaying && engine.playing) {
-            engine.playing = false;
+        // Mirror worker's playing flag to drive our loop
+        if (!result.playing && !result.enginePlaying && this._playing) {
+            this._playing = false;
             this._stopLoop();
         }
     };
 
-    ShockwavePlayer.prototype._doRender = function() {
-        var engine = this._engine;
-        if (!engine) return;
-        engine.pumpNetwork();
-        var fd = engine.getFrameData();
-        engine.renderToCanvas(this._ctx, fd);
-        if (fd && this._opts.onFrame) {
-            this._opts.onFrame(fd.frame, fd.frameCount);
+    // --- Canvas rendering (main thread) ---
+
+    ShockwavePlayer.prototype._renderFrame = function(fd) {
+        if (!fd) return;
+        var ctx = this._ctx;
+        var sw  = this._stageWidth;
+        var sh  = this._stageHeight;
+
+        // Background
+        var bg = (typeof fd.bg === 'number') ? fd.bg : 0xFFFFFF;
+        ctx.fillStyle = '#' + (bg & 0xFFFFFF).toString(16).padStart(6, '0');
+        ctx.fillRect(0, 0, sw, sh);
+
+        // Stage image (script-drawn content)
+        if (fd.stageImageId) {
+            var stageImg = this._bitmapCache.get(fd.stageImageId);
+            if (stageImg) ctx.drawImage(stageImg, 0, 0, sw, sh);
+        }
+
+        var sprites = fd.sprites;
+        if (!sprites) return;
+
+        for (var i = 0; i < sprites.length; i++) {
+            var sp = sprites[i];
+            if (!sp.visible) continue;
+            this._drawSprite(ctx, sp);
         }
     };
+
+    ShockwavePlayer.prototype._drawSprite = function(ctx, sp) {
+        var prevAlpha = ctx.globalAlpha;
+        if (sp.blend !== undefined && sp.blend < 100) ctx.globalAlpha = sp.blend / 100;
+
+        // Baked bitmap (preferred — matches Swing exactly)
+        if (sp.memberId > 0 && sp.hasBaked) {
+            var bmp = this._bitmapCache.get(sp.memberId);
+            if (bmp) {
+                ctx.drawImage(bmp, sp.x, sp.y,
+                    sp.w > 0 ? sp.w : bmp.width,
+                    sp.h > 0 ? sp.h : bmp.height);
+                ctx.globalAlpha = prevAlpha;
+                return;
+            }
+        }
+
+        // Fallback while bitmap is not yet cached
+        if (sp.type === 'SHAPE') {
+            ctx.fillStyle = '#' + ((sp.foreColor || 0) & 0xFFFFFF).toString(16).padStart(6, '0');
+            ctx.fillRect(sp.x, sp.y, sp.w > 0 ? sp.w : 50, sp.h > 0 ? sp.h : 50);
+        } else if ((sp.type === 'TEXT' || sp.type === 'BUTTON') && sp.textContent) {
+            var fs = sp.fontSize || 12;
+            ctx.font = fs + 'px serif';
+            ctx.fillStyle = '#' + ((sp.foreColor || 0) & 0xFFFFFF).toString(16).padStart(6, '0');
+            var lines = sp.textContent.split(/\r\n|\r|\n/);
+            for (var j = 0; j < lines.length; j++) {
+                ctx.fillText(lines[j], sp.x, sp.y + fs + j * (fs + 2));
+            }
+        }
+
+        ctx.globalAlpha = prevAlpha;
+    };
+
+    // --- Utilities ---
 
     function _clone(obj) {
         var r = {};
