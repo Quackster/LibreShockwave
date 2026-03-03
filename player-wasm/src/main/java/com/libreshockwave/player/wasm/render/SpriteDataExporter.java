@@ -22,6 +22,8 @@ import java.util.Optional;
  */
 public class SpriteDataExporter {
 
+    private static final int STAGE_IMAGE_ID = -1;
+
     private final Player player;
     private int exportCount = 0;
 
@@ -45,14 +47,23 @@ public class SpriteDataExporter {
     public String exportFrameData() {
         FrameSnapshot snapshot = player.getFrameSnapshot();
 
-        // Diagnostic: log sprite pipeline state
+        // Diagnostic: log sprite pipeline state (for first 50 exports, then every 100th)
         int dynamicCount = player.getStageRenderer().getSpriteRegistry().getDynamicSprites().size();
-        if (snapshot.sprites().isEmpty() && exportCount < 10) {
+        boolean shouldLog = exportCount < 50 || exportCount % 100 == 0;
+        if (snapshot.sprites().isEmpty() && shouldLog) {
             System.out.println("[SpriteExporter] frame=" + snapshot.frameNumber()
                 + " sprites=" + snapshot.sprites().size()
                 + " dynamicInRegistry=" + dynamicCount
                 + " state=" + player.getState()
+                + " export=" + exportCount
                 + " scoreNull=" + (player.getFile().getScoreChunk() == null));
+        }
+        // Also log when sprites first appear (transition from 0 to >0)
+        if (!snapshot.sprites().isEmpty() && exportCount > 0 && shouldLog) {
+            System.out.println("[SpriteExporter] frame=" + snapshot.frameNumber()
+                + " sprites=" + snapshot.sprites().size()
+                + " dynamicInRegistry=" + dynamicCount
+                + " export=" + exportCount);
         }
         exportCount++;
 
@@ -76,10 +87,22 @@ public class SpriteDataExporter {
             }
         }
 
+        // Cache stage image if present (for script-drawn content like loading bars)
+        if (snapshot.stageImage() != null) {
+            // Use a reserved memberId (-1) for the stage image
+            if (!bitmapCache.containsKey(STAGE_IMAGE_ID)) {
+                bitmapCache.put(STAGE_IMAGE_ID, toCachedBitmap(snapshot.stageImage()));
+            }
+        }
+
         StringBuilder sb = new StringBuilder(2048);
         sb.append("{\"bg\":").append(snapshot.backgroundColor());
         sb.append(",\"frame\":").append(snapshot.frameNumber());
         sb.append(",\"frameCount\":").append(player.getFrameCount());
+        // Include stageImage flag and its reserved memberId so JS can fetch and draw it
+        if (snapshot.stageImage() != null) {
+            sb.append(",\"stageImageId\":").append(STAGE_IMAGE_ID);
+        }
         sb.append(",\"sprites\":[");
 
         boolean first = true;
@@ -100,7 +123,14 @@ public class SpriteDataExporter {
             sb.append(",\"ink\":").append(sprite.getInk());
             sb.append(",\"blend\":").append(sprite.getBlend());
 
-            // For text/button sprites, include text content
+            // Signal to JS that a baked bitmap is available for this sprite.
+            // SpriteBaker pre-bakes ALL types (BITMAP, TEXT, SHAPE) so JS should
+            // use getBitmapData(memberId) and drawImage() for all of them,
+            // matching how Swing's StagePanel renders everything via bakedBitmap.
+            boolean hasBaked = sprite.getBakedBitmap() != null && sprite.getCastMemberId() > 0;
+            sb.append(",\"hasBaked\":").append(hasBaked);
+
+            // For text/button sprites, include text content as fallback
             if ((sprite.getType() == RenderSprite.SpriteType.TEXT ||
                  sprite.getType() == RenderSprite.SpriteType.BUTTON) &&
                 sprite.getCastMember() != null) {

@@ -79,15 +79,33 @@ public class WasmPlayer {
 
     /**
      * Advance one frame. Returns false only when STOPPED (keeps JS loop alive for PAUSED).
+     * Unlike Swing's timer (which keeps firing even after errors), WASM needs explicit
+     * resilience: catch exceptions but keep the animation loop running.
      * @return true if animation loop should continue (PLAYING or PAUSED), false if STOPPED
      */
     private int tickCount = 0;
+    private int consecutiveErrors = 0;
 
     public boolean tick() {
         if (player == null) return false;
         PlayerState stateBefore = player.getState();
         if (stateBefore == PlayerState.STOPPED) {
-            System.out.println("[WasmPlayer] tick() skipped - state is STOPPED");
+            // If play was initiated but deferred (waiting for casts to load),
+            // return true to keep the JS animation loop alive.
+            // Without this, the animation loop stops before doPlay() gets a chance to run.
+            if (playRequested && !moviePrepared) {
+                if (tickCount == 0 || tickCount % 100 == 0) {
+                    System.out.println("[WasmPlayer] tick() deferred - waiting for casts ("
+                        + completedCasts + "/" + expectedCasts + ")");
+                }
+                tickCount++;
+                return true;
+            }
+            // Don't spam - only log the first time
+            if (tickCount == 0 || tickCount % 100 == 0) {
+                System.out.println("[WasmPlayer] tick() skipped - state is STOPPED (tick=" + tickCount + ")");
+            }
+            tickCount++;
             return false;
         }
         if (stateBefore == PlayerState.PAUSED) return true;
@@ -100,24 +118,55 @@ public class WasmPlayer {
         boolean result;
         try {
             result = player.tick();
+            consecutiveErrors = 0;
         } catch (Throwable e) {
-            System.out.println("[WasmPlayer] tick() EXCEPTION: " + e.getClass().getName() + ": " + e.getMessage());
-            Throwable cause = e.getCause();
-            while (cause != null) {
-                System.out.println("[WasmPlayer]   caused by: " + cause.getClass().getName() + ": " + cause.getMessage());
-                cause = cause.getCause();
+            consecutiveErrors++;
+            // Log first error and then periodically to avoid spamming
+            if (consecutiveErrors <= 3 || consecutiveErrors % 50 == 0) {
+                System.out.println("[WasmPlayer] tick " + tickCount + " EXCEPTION (#" + consecutiveErrors
+                    + "): " + e.getClass().getName() + ": " + e.getMessage());
+                Throwable cause = e.getCause();
+                while (cause != null) {
+                    System.out.println("[WasmPlayer]   caused by: " + cause.getClass().getName() + ": " + cause.getMessage());
+                    cause = cause.getCause();
+                }
             }
-            return false;
+            // Don't stop the animation loop - try to continue on the next frame
+            // This matches Swing's behavior where the EDT catches errors but the timer keeps firing
+            result = true;
         }
 
         PlayerState stateAfter = player.getState();
-        if (stateAfter != stateBefore && tickCount < 50) {
+
+        // Periodic diagnostics for first 50 ticks, then every 100th tick
+        boolean shouldLog = tickCount < 50 || tickCount % 100 == 0;
+
+        if (stateAfter != stateBefore && shouldLog) {
             System.out.println("[WasmPlayer] tick " + tickCount + ": state changed "
                 + stateBefore + " -> " + stateAfter
                 + " frame=" + player.getCurrentFrame()
                 + " dynSprites=" + player.getStageRenderer().getSpriteRegistry().getDynamicSprites().size());
         }
-        if (!result && tickCount < 50) {
+
+        // Log timeout and network status periodically
+        if (tickCount < 10 || (shouldLog && tickCount % 10 == 0)) {
+            int dynSprites = player.getStageRenderer().getSpriteRegistry().getDynamicSprites().size();
+            var timeoutMgr = player.getTimeoutManager();
+            int timeoutCount = timeoutMgr != null ? timeoutMgr.getTimeoutCount() : -1;
+            int pendingNet = netManager != null ? netManager.getPendingTaskCount() : -1;
+            System.out.println("[WasmPlayer] tick " + tickCount + ": frame=" + player.getCurrentFrame()
+                + " dynSprites=" + dynSprites
+                + " timeouts=" + timeoutCount
+                + " pendingNet=" + pendingNet);
+            // On first tick, also log timeout names
+            if (tickCount == 0 && timeoutMgr != null) {
+                for (var t : timeoutMgr.getTimeoutNames()) {
+                    System.out.println("[WasmPlayer]   timeout: " + t);
+                }
+            }
+        }
+
+        if (!result && shouldLog) {
             System.out.println("[WasmPlayer] tick " + tickCount + ": returned false, state=" + stateAfter);
         }
         tickCount++;
@@ -181,6 +230,15 @@ public class WasmPlayer {
         for (var t : timeoutNames) {
             System.out.println("[WasmPlayer]   timeout: " + t);
         }
+
+        // Check fuse_frameProxy timeout (may be created later during ticks, not during prepareMovie)
+        boolean hasFuseProxy = timeoutNames.contains("fuse_frameProxy");
+        System.out.println("[WasmPlayer] fuse_frameProxy timeout: "
+            + (hasFuseProxy ? "CREATED (during prepareMovie)" : "not yet (will be created during ticks)"));
+
+        // Show pending network tasks
+        int pendingNet = netManager != null ? netManager.getPendingTaskCount() : -1;
+        System.out.println("[WasmPlayer] doPlay() - pendingNet=" + pendingNet);
 
         // Disable verbose debug after prepareMovie
         player.setDebugEnabled(false);

@@ -55,6 +55,13 @@ public class SoftwareRenderer {
             frameBuffer[off + 3] = (byte) 0xFF;
         }
 
+        // Draw stage image if scripts have drawn on it (loading bars, etc.)
+        if (snapshot.stageImage() != null) {
+            blitArgb(snapshot.stageImage().getPixels(),
+                    snapshot.stageImage().getWidth(), snapshot.stageImage().getHeight(),
+                    0, 0, width, height, 100);
+        }
+
         // Draw all visible sprites
         for (RenderSprite sprite : snapshot.sprites()) {
             if (!sprite.isVisible()) continue;
@@ -67,11 +74,12 @@ public class SoftwareRenderer {
         int y = sprite.getY();
         int w = sprite.getWidth();
         int h = sprite.getHeight();
+        int blend = sprite.getBlend();
 
         // All sprite types arrive pre-baked from SpriteBaker
         Bitmap baked = sprite.getBakedBitmap();
         if (baked != null) {
-            blitArgb(baked.getPixels(), baked.getWidth(), baked.getHeight(), x, y, w, h);
+            blitArgb(baked.getPixels(), baked.getWidth(), baked.getHeight(), x, y, w, h, blend);
             return;
         }
 
@@ -81,19 +89,19 @@ public class SoftwareRenderer {
             if (member != null) {
                 Bitmap cached = getCachedBitmap(member);
                 if (cached != null) {
-                    blitArgb(cached.getPixels(), cached.getWidth(), cached.getHeight(), x, y, w, h);
-                    return;
+                    blitArgb(cached.getPixels(), cached.getWidth(), cached.getHeight(), x, y, w, h, blend);
                 }
             }
         }
-
-        drawPlaceholder(x, y, w, h);
+        // No placeholder: matches Swing's StagePanel which skips sprites without baked bitmaps
     }
 
     /**
-     * Blit an ARGB int[] bitmap into the frame buffer.
+     * Blit an ARGB int[] bitmap into the frame buffer with blend (opacity).
+     * Matches Swing's AlphaComposite.SRC_OVER with blend/100 factor.
+     * @param blend 0-100 opacity percentage (100 = fully opaque)
      */
-    private void blitArgb(int[] argbPixels, int srcW, int srcH, int x, int y, int w, int h) {
+    private void blitArgb(int[] argbPixels, int srcW, int srcH, int x, int y, int w, int h, int blend) {
         int dstW = w > 0 ? w : srcW;
         int dstH = h > 0 ? h : srcH;
 
@@ -115,6 +123,12 @@ public class SoftwareRenderer {
                 int alpha = (argb >> 24) & 0xFF;
                 if (alpha == 0) continue;
 
+                // Apply sprite blend (opacity): Swing does AlphaComposite(SRC_OVER, blend/100)
+                if (blend >= 0 && blend < 100) {
+                    alpha = alpha * blend / 100;
+                    if (alpha == 0) continue;
+                }
+
                 int dstOff = (dstY * this.width + dstX) * 4;
                 if (alpha == 255) {
                     frameBuffer[dstOff]     = (byte) ((argb >> 16) & 0xFF);
@@ -128,32 +142,11 @@ public class SoftwareRenderer {
                     int dr = frameBuffer[dstOff] & 0xFF;
                     int dg = frameBuffer[dstOff + 1] & 0xFF;
                     int db = frameBuffer[dstOff + 2] & 0xFF;
-                    frameBuffer[dstOff]     = (byte) (sr + (dr * (255 - alpha)) / 255);
-                    frameBuffer[dstOff + 1] = (byte) (sg + (dg * (255 - alpha)) / 255);
-                    frameBuffer[dstOff + 2] = (byte) (sb + (db * (255 - alpha)) / 255);
+                    frameBuffer[dstOff]     = (byte) ((sr * alpha + dr * (255 - alpha)) / 255);
+                    frameBuffer[dstOff + 1] = (byte) ((sg * alpha + dg * (255 - alpha)) / 255);
+                    frameBuffer[dstOff + 2] = (byte) ((sb * alpha + db * (255 - alpha)) / 255);
                     frameBuffer[dstOff + 3] = (byte) 0xFF;
                 }
-            }
-        }
-    }
-
-    private void drawPlaceholder(int x, int y, int w, int h) {
-        fillRect(x, y, w > 0 ? w : 50, h > 0 ? h : 50,
-                (byte) 200, (byte) 200, (byte) 200, (byte) 128);
-    }
-
-    private void fillRect(int x, int y, int w, int h, byte r, byte g, byte b, byte a) {
-        for (int dy = 0; dy < h; dy++) {
-            int py = y + dy;
-            if (py < 0 || py >= height) continue;
-            for (int dx = 0; dx < w; dx++) {
-                int px = x + dx;
-                if (px < 0 || px >= width) continue;
-                int off = (py * width + px) * 4;
-                frameBuffer[off] = r;
-                frameBuffer[off + 1] = g;
-                frameBuffer[off + 2] = b;
-                frameBuffer[off + 3] = a;
             }
         }
     }

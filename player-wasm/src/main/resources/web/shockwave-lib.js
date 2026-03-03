@@ -612,45 +612,61 @@ var LibreShockwave = (function() {
         var bg = (typeof fd.bg === 'number') ? fd.bg : 0xFFFFFF;
         ctx.fillStyle = '#' + (bg & 0xFFFFFF).toString(16).padStart(6, '0');
         ctx.fillRect(0, 0, this.stageWidth, this.stageHeight);
+
+        // Draw stage image if scripts have drawn on it (loading bars, etc.)
+        if (fd.stageImageId) {
+            this._reqBitmap(fd.stageImageId);
+            var stageImg = this.bitmapCache.get(fd.stageImageId);
+            if (stageImg) ctx.drawImage(stageImg, 0, 0, this.stageWidth, this.stageHeight);
+        }
+
         var sprites = fd.sprites; if (!sprites) return;
+
+        // Request baked bitmaps for ALL sprite types (not just BITMAP).
+        // SpriteBaker pre-bakes BITMAP, TEXT, BUTTON, and SHAPE sprites into bitmaps
+        // with correct fonts, ink processing, and colorization. Using the baked bitmap
+        // for all types matches Swing's StagePanel behavior exactly.
         for (var i = 0; i < sprites.length; i++) {
             var s = sprites[i];
-            if (s.type === 'BITMAP' && s.memberId > 0 && s.visible) this._reqBitmap(s.memberId);
+            if (s.memberId > 0 && s.visible && s.hasBaked) this._reqBitmap(s.memberId);
         }
+
+        // Render all sprites using baked bitmaps (matching Swing's drawSprite)
         for (var i = 0; i < sprites.length; i++) {
             var sp = sprites[i]; if (!sp.visible) continue;
-            if (sp.type === 'BITMAP') this._drawBitmap(ctx, sp);
-            else if (sp.type === 'TEXT' || sp.type === 'BUTTON') this._drawText(ctx, sp);
-            else if (sp.type === 'SHAPE') this._drawShape(ctx, sp);
+            this._drawSpriteUnified(ctx, sp);
         }
     };
 
-    PlayerEngine.prototype._drawBitmap = function(ctx, sp) {
-        var bmp = this.bitmapCache.get(sp.memberId);
-        if (!bmp) return;
+    // Unified sprite drawing: always use baked bitmap when available (matches Swing's StagePanel.drawSprite).
+    // Falls back to type-specific rendering only if bitmap is not yet loaded.
+    PlayerEngine.prototype._drawSpriteUnified = function(ctx, sp) {
         var prevAlpha = ctx.globalAlpha;
         if (sp.blend !== undefined && sp.blend < 100) ctx.globalAlpha = sp.blend / 100;
-        ctx.drawImage(bmp, sp.x, sp.y, sp.w > 0 ? sp.w : bmp.width, sp.h > 0 ? sp.h : bmp.height);
-        ctx.globalAlpha = prevAlpha;
-    };
 
-    PlayerEngine.prototype._drawText = function(ctx, sp) {
-        if (!sp.textContent) return;
-        var prevAlpha = ctx.globalAlpha;
-        if (sp.blend !== undefined && sp.blend < 100) ctx.globalAlpha = sp.blend / 100;
-        var fs = sp.fontSize || 12;
-        ctx.font = fs + 'px serif';
-        ctx.fillStyle = '#' + ((sp.foreColor || 0) & 0xFFFFFF).toString(16).padStart(6, '0');
-        var lines = sp.textContent.split(/\r\n|\r|\n/);
-        for (var j = 0; j < lines.length; j++) ctx.fillText(lines[j], sp.x, sp.y + fs + j * (fs + 2));
-        ctx.globalAlpha = prevAlpha;
-    };
+        // Try baked bitmap first (preferred path, matches Swing exactly)
+        if (sp.memberId > 0 && sp.hasBaked) {
+            var bmp = this.bitmapCache.get(sp.memberId);
+            if (bmp) {
+                ctx.drawImage(bmp, sp.x, sp.y, sp.w > 0 ? sp.w : bmp.width, sp.h > 0 ? sp.h : bmp.height);
+                ctx.globalAlpha = prevAlpha;
+                return;
+            }
+        }
 
-    PlayerEngine.prototype._drawShape = function(ctx, sp) {
-        var prevAlpha = ctx.globalAlpha;
-        if (sp.blend !== undefined && sp.blend < 100) ctx.globalAlpha = sp.blend / 100;
-        ctx.fillStyle = '#' + ((sp.foreColor || 0) & 0xFFFFFF).toString(16).padStart(6, '0');
-        ctx.fillRect(sp.x, sp.y, sp.w > 0 ? sp.w : 50, sp.h > 0 ? sp.h : 50);
+        // Fallback: type-specific rendering while baked bitmap is still loading
+        if (sp.type === 'SHAPE') {
+            ctx.fillStyle = '#' + ((sp.foreColor || 0) & 0xFFFFFF).toString(16).padStart(6, '0');
+            ctx.fillRect(sp.x, sp.y, sp.w > 0 ? sp.w : 50, sp.h > 0 ? sp.h : 50);
+        } else if ((sp.type === 'TEXT' || sp.type === 'BUTTON') && sp.textContent) {
+            var fs = sp.fontSize || 12;
+            ctx.font = fs + 'px serif';
+            ctx.fillStyle = '#' + ((sp.foreColor || 0) & 0xFFFFFF).toString(16).padStart(6, '0');
+            var lines = sp.textContent.split(/\r\n|\r|\n/);
+            for (var j = 0; j < lines.length; j++) ctx.fillText(lines[j], sp.x, sp.y + fs + j * (fs + 2));
+        }
+        // BITMAP with no cache yet: skip (will render on next frame when bitmap arrives)
+
         ctx.globalAlpha = prevAlpha;
     };
 

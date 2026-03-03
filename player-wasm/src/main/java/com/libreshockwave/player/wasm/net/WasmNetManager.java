@@ -155,6 +155,17 @@ public class WasmNetManager implements NetBuiltins.NetProvider {
         return task != null ? task.url : null;
     }
 
+    /**
+     * Count of pending (not yet completed) network tasks.
+     */
+    public int getPendingTaskCount() {
+        int count = 0;
+        for (NetTask task : tasks.values()) {
+            if (!task.done) count++;
+        }
+        return count;
+    }
+
     private NetTask getTask(Integer taskId) {
         if (taskId == null || taskId == 0) {
             return lastTaskId > 0 ? tasks.get(lastTaskId) : null;

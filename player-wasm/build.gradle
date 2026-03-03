@@ -60,3 +60,29 @@ tasks.register('runWasmSpriteExporterTest', JavaExec) {
         languageVersion = JavaLanguageVersion.of(21)
     }
 }
+
+// Playback flow test: verifies fuse_frameProxy timeout creation and sprite creation
+tasks.register('runWasmPlaybackFlowTest', JavaExec) {
+    group = 'verification'
+    description = 'Verify WASM-like playback flow creates timeouts and sprites'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.wasm.WasmPlaybackFlowTest'
+    jvmArgs '-Xmx2g'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+// Pixel-perfect comparison test: SoftwareRenderer vs Swing-style rendering
+tasks.register('runWasmRenderComparisonTest', JavaExec) {
+    group = 'verification'
+    description = 'Compare SoftwareRenderer output with Swing-style rendering pixel-by-pixel'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.wasm.WasmRenderComparisonTest'
+    jvmArgs '-Xmx2g'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
