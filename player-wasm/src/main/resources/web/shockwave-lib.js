@@ -199,15 +199,18 @@ var LibreShockwave = (function() {
             opts.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
         }
 
+        console.log('[LS] fetch: ' + method + ' ' + url + ' (fallbacks: ' + fallbacks.length + ')');
         fetch(url, opts)
             .then(function(r) {
                 if (!r.ok) throw { status: r.status };
                 return r.arrayBuffer();
             })
             .then(function(buf) {
+                console.log('[LS] fetch OK: ' + url + ' (' + buf.byteLength + ' bytes)');
                 self._deliverResult(taskId, buf);
             })
             .catch(function(e) {
+                console.log('[LS] fetch FAIL: ' + url + ' (status: ' + ((e && e.status) || 'network') + ')');
                 // Try fallback URLs on any failure (HTTP error or network error)
                 if (fallbacks.length > 0) {
                     var next = fallbacks[0];
@@ -225,6 +228,8 @@ var LibreShockwave = (function() {
         new Uint8Array(this._mem(), addr, bytes.length).set(bytes);
         this.exports.deliverFetchResult(taskId, bytes.length);
         this._clearException();
+        var err = this.getLastError();
+        if (err) console.error('[LS] deliverResult error:', err);
         // Clear bitmap cache (new cast data may have arrived)
         this.bitmapCache.clear();
         this.pendingBitmaps.clear();
@@ -233,6 +238,8 @@ var LibreShockwave = (function() {
     WasmEngine.prototype._deliverError = function(taskId, status) {
         this.exports.deliverFetchError(taskId, status || 0);
         this._clearException();
+        var err = this.getLastError();
+        if (err) console.error('[LS] deliverError error:', err);
     };
 
     WasmEngine.prototype.getLastError = function() {
@@ -381,10 +388,12 @@ var LibreShockwave = (function() {
         this._engine = engine;
 
         engine.init().then(function() {
+            console.log('[LS] WASM engine initialized');
             self._ready = true;
             if (self._pendingUrl) { self.load(self._pendingUrl); self._pendingUrl = null; }
             if (self._pendingFile) { self.loadFile(self._pendingFile); self._pendingFile = null; }
         }).catch(function(e) {
+            console.error('[LS] WASM init failed:', e);
             if (self._opts.onError) self._opts.onError(e.message);
         });
     };
@@ -411,6 +420,7 @@ var LibreShockwave = (function() {
      * Load a movie from a URL.
      */
     ShockwavePlayer.prototype.load = function(url) {
+        console.log('[LS] load(' + url + '), ready=' + this._ready);
         if (!this._ready) { this._pendingUrl = url; return; }
         var self = this;
         if (this._remember) {
@@ -419,14 +429,20 @@ var LibreShockwave = (function() {
         fetch(url)
             .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
             .then(function(buf) {
+                console.log('[LS] Movie fetched, ' + buf.byteLength + ' bytes');
                 var info = self._engine.loadMovie(new Uint8Array(buf), url);
                 if (!info) {
+                    console.error('[LS] loadMovie returned null');
                     if (self._opts.onError) self._opts.onError('Failed to load movie');
                     return;
                 }
+                console.log('[LS] Movie loaded:', info.width + 'x' + info.height + ', ' + info.frameCount + ' frames');
                 self._onMovieLoaded(info);
             })
-            .catch(function(e) { if (self._opts.onError) self._opts.onError(e.message); });
+            .catch(function(e) {
+                console.error('[LS] load error:', e);
+                if (self._opts.onError) self._opts.onError(e.message);
+            });
     };
 
     /**
@@ -448,6 +464,7 @@ var LibreShockwave = (function() {
     };
 
     ShockwavePlayer.prototype.play = function() {
+        console.log('[LS] play(), engine=' + !!this._engine + ', ready=' + this._ready);
         if (!this._engine) return;
         this._engine.exports.play();
         this._engine._clearException();
@@ -543,6 +560,17 @@ var LibreShockwave = (function() {
         engine.pumpNetwork();
 
         var fd = engine.getFrameData();
+
+        // Debug: log first 5 ticks and then every 30th
+        this._tickCount = (this._tickCount || 0) + 1;
+        if (this._tickCount <= 5 || this._tickCount % 30 === 0) {
+            var sprCount = fd && fd.sprites ? fd.sprites.length : 0;
+            var err = engine.getLastError();
+            console.log('[LS] tick #' + this._tickCount + ': still=' + stillPlaying +
+                ', frame=' + (fd ? fd.frame : 'null') + '/' + (fd ? fd.frameCount : '?') +
+                ', sprites=' + sprCount + (err ? ', ERR=' + err : ''));
+        }
+
         engine.renderToCanvas(this._ctx, fd);
 
         if (fd && this._opts.onFrame) {

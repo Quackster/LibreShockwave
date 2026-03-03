@@ -37,13 +37,20 @@ teavm {
     }
 }
 
-// Copy web resources alongside generated output
-tasks.register('copyWebResources', Copy) {
+// Assemble everything into a single serveable directory
+def distDir = layout.buildDirectory.dir('dist')
+
+tasks.register('assembleWasm', Sync) {
+    dependsOn 'generateWasm'
+    // TeaVM output: only the WASM binary + runtime JS (exclude web resources that may have leaked in)
+    from(layout.buildDirectory.dir('generated/teavm/wasm')) {
+        include '*.wasm', '*.wasm-runtime.js', '*.wasm.c', '*.wast'
+    }
+    // Web resources (index.html, shockwave-lib.js, CSS) — canonical source
     from 'src/main/resources/web'
-    into layout.buildDirectory.dir('generated/teavm/wasm')
+    into distDir
 }
 
 tasks.matching { it.name == 'generateWasm' }.configureEach {
-    finalizedBy 'copyWebResources'
+    finalizedBy 'assembleWasm'
 }
-

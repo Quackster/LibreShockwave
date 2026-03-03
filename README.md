@@ -430,18 +430,19 @@ WASM is a pure computation engine with **zero `@Import` annotations** — JS own
 ./gradlew :player-wasm:generateWasm
 ```
 
-The build output goes to `player-wasm/build/generated/teavm/wasm/`.
+This compiles the Java player to WebAssembly and assembles all files (WASM binary, JS runtime, HTML, CSS) into a single serveable directory at `player-wasm/build/dist/`.
+
+### Running locally
+
+```bash
+./gradlew :player-wasm:generateWasm
+npx serve player-wasm/build/dist
+# Open http://localhost:3000
+```
 
 ### Deploying
 
-Copy the contents of `player-wasm/build/generated/teavm/wasm/` to your web server. The included `index.html` is a ready-made player page with file picker, URL bar, transport controls, and a params editor.
-
-```bash
-# Quick local test server
-cd player-wasm/build/generated/teavm/wasm/
-npx serve .
-# Open http://localhost:3000
-```
+Copy the contents of `player-wasm/build/dist/` to your web server. The included `index.html` is a ready-made player page with file picker, URL bar, transport controls, and a params editor.
 
 ### Embedding in Any Web Page
 
@@ -582,7 +583,7 @@ player-wasm/
 ./gradlew :sdk:runTests
 ./gradlew :sdk:runFeatureTests
 
-# Compile the WASM player
+# Build the WASM player (output in player-wasm/build/dist/)
 ./gradlew :player-wasm:generateWasm
 ```
 

@@ -251,22 +251,27 @@ public class WasmEntry {
      */
     @Export(name = "deliverFetchResult")
     public static void deliverFetchResult(int taskId, int dataSize) {
-        QueuedNetProvider net = netProvider();
-        if (net == null || netBuffer == null) return;
+        try {
+            lastError = null;
+            QueuedNetProvider net = netProvider();
+            if (net == null || netBuffer == null) return;
 
-        byte[] data = new byte[dataSize];
-        System.arraycopy(netBuffer, 0, data, 0, dataSize);
-        String url = net.getTaskUrl(taskId);
-        net.onFetchComplete(taskId, data);
+            byte[] data = new byte[dataSize];
+            System.arraycopy(netBuffer, 0, data, 0, dataSize);
+            String url = net.getTaskUrl(taskId);
+            net.onFetchComplete(taskId, data);
 
-        // Try to load as external cast
-        if (url != null) {
-            tryLoadExternalCast(url, data);
-        }
+            // Try to load as external cast
+            if (url != null) {
+                tryLoadExternalCast(url, data);
+            }
 
-        // Every completed fetch may unblock deferred play
-        if (wasmPlayer != null) {
-            wasmPlayer.onCastFetchDone();
+            // Every completed fetch may unblock deferred play
+            if (wasmPlayer != null) {
+                wasmPlayer.onCastFetchDone();
+            }
+        } catch (Throwable e) {
+            captureError("deliverFetchResult", e);
         }
     }
 
@@ -275,12 +280,17 @@ public class WasmEntry {
      */
     @Export(name = "deliverFetchError")
     public static void deliverFetchError(int taskId, int status) {
-        QueuedNetProvider net = netProvider();
-        if (net != null) {
-            net.onFetchError(taskId, status);
-        }
-        if (wasmPlayer != null) {
-            wasmPlayer.onCastFetchDone();
+        try {
+            lastError = null;
+            QueuedNetProvider net = netProvider();
+            if (net != null) {
+                net.onFetchError(taskId, status);
+            }
+            if (wasmPlayer != null) {
+                wasmPlayer.onCastFetchDone();
+            }
+        } catch (Throwable e) {
+            captureError("deliverFetchError", e);
         }
     }
 
