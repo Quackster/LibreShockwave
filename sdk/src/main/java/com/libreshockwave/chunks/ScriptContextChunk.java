@@ -50,7 +50,7 @@ public record ScriptContextChunk(
         reader.skip(4); // unknown3
         reader.skip(4); // unknown4
         reader.skip(4); // unknown5
-        ChunkId lnamSectionId = new ChunkId(reader.readI32());
+        ChunkId lnamSectionId = new ChunkId(Math.max(0, reader.readI32()));
         int validCount = reader.readU16();
         int flags = reader.readU16();
         int freePtr = reader.readI16();
@@ -61,7 +61,8 @@ public record ScriptContextChunk(
             reader.setPosition(entriesOffset);
             for (int i = 0; i < entryCount; i++) {
                 int entryUnknown = reader.readI32();
-                ChunkId entryId = new ChunkId(reader.readI32());
+                // Lctx entries use negative IDs (-1) for free/empty slots; clamp to 0
+                ChunkId entryId = new ChunkId(Math.max(0, reader.readI32()));
                 int entryFlags = reader.readU16();
                 int entryLink = reader.readI16();
 

@@ -750,15 +750,15 @@ class ScriptInstanceTest {
 
     @Test
     void testScriptRefToString() {
-        Datum.ScriptRef ref = Datum.ScriptRef.of(2, 15);
+        Datum ref = Datum.ScriptRef.of(2, 15);
         assertEquals("<script 15, 2>", ref.toString());
     }
 
     @Test
     void testScriptRefEquality() {
-        Datum.ScriptRef ref1 = Datum.ScriptRef.of(1, 10);
-        Datum.ScriptRef ref2 = Datum.ScriptRef.of(1, 10);
-        Datum.ScriptRef ref3 = Datum.ScriptRef.of(2, 10);
+        Datum ref1 = Datum.ScriptRef.of(1, 10);
+        Datum ref2 = Datum.ScriptRef.of(1, 10);
+        Datum ref3 = Datum.ScriptRef.of(2, 10);
 
         assertEquals(ref1, ref2);
         assertNotEquals(ref1, ref3);

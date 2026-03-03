@@ -206,8 +206,8 @@ public sealed interface Datum {
             return new CastMemberRef(castLib.value(), member.value());
         }
 
-        public CastLibId castLibId() { return new CastLibId(castLib); }
-        public MemberId memberId() { return new MemberId(castMember); }
+        public CastLibId castLibId() { return castLib >= 1 ? new CastLibId(castLib) : null; }
+        public MemberId memberId() { return castMember >= 1 ? new MemberId(castMember) : null; }
         public int memberNum() { return castMember; }
     }
 

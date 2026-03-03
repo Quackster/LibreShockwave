@@ -19,8 +19,9 @@ public class SpriteSpan {
 
     public SpriteSpan(int channel, int startFrame, int endFrame) {
         this.channel = new ChannelId(channel);
-        this.startFrame = new FrameId(startFrame);
-        this.endFrame = new FrameId(endFrame);
+        // Score data can have startFrame/endFrame of 0; clamp to 1 for FrameId validity
+        this.startFrame = new FrameId(Math.max(1, startFrame));
+        this.endFrame = new FrameId(Math.max(1, endFrame));
         this.behaviors = new ArrayList<>();
     }
 

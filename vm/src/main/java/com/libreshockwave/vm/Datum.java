@@ -92,7 +92,11 @@ public sealed interface Datum {
 
     /** Cast member reference */
     record CastMemberRef(CastLibId castLib, MemberId member) implements Datum {
-        public static CastMemberRef of(int castLib, int member) { return new CastMemberRef(new CastLibId(castLib), new MemberId(member)); }
+        /** Safe factory: returns VOID for invalid castLib/member (0 means "no member" in Director). */
+        public static Datum of(int castLib, int member) {
+            if (castLib < 1 || member < 1) return VOID;
+            return new CastMemberRef(new CastLibId(castLib), new MemberId(member));
+        }
         public int castLibNum() { return castLib.value(); }
         public int memberNum() { return member.value(); }
         @Override
@@ -204,7 +208,11 @@ public sealed interface Datum {
 
     /** Script reference (returned by script() function) */
     record ScriptRef(CastLibId castLib, MemberId member) implements Datum {
-        public static ScriptRef of(int castLib, int member) { return new ScriptRef(new CastLibId(castLib), new MemberId(member)); }
+        /** Safe factory: returns VOID for invalid castLib/member (0 means "no script" in Director). */
+        public static Datum of(int castLib, int member) {
+            if (castLib < 1 || member < 1) return VOID;
+            return new ScriptRef(new CastLibId(castLib), new MemberId(member));
+        }
         public int castLibNum() { return castLib.value(); }
         public int memberNum() { return member.value(); }
         @Override

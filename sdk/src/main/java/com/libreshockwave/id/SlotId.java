@@ -35,17 +35,19 @@ public record SlotId(int value) implements TypedId, Comparable<SlotId> {
     }
 
     /**
-     * Decode to a typed CastLibId.
+     * Decode to a typed CastLibId. Returns null if castLib is 0.
      */
     public CastLibId castLibId() {
-        return new CastLibId(castLib());
+        int cl = castLib();
+        return cl >= 1 ? new CastLibId(cl) : null;
     }
 
     /**
-     * Decode to a typed MemberId.
+     * Decode to a typed MemberId. Returns null if member is 0.
      */
     public MemberId memberId() {
-        return new MemberId(member());
+        int m = member();
+        return m >= 1 ? new MemberId(m) : null;
     }
 
     @Override

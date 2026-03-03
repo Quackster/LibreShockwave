@@ -98,8 +98,9 @@ public record KeyTableChunk(
         Map<ChunkId, ChunkId> ownerBySection = new HashMap<>();
 
         for (int i = 0; i < usedCount; i++) {
-            ChunkId sectionId = new ChunkId(reader.readI32());
-            ChunkId castId = new ChunkId(reader.readI32());
+            // Key table entries may have negative sentinel values; clamp to 0
+            ChunkId sectionId = new ChunkId(Math.max(0, reader.readI32()));
+            ChunkId castId = new ChunkId(Math.max(0, reader.readI32()));
             // FourCC in key table is stored as a u32 in the file's byte order (little-endian).
             // In LE files, tags are byte-swapped (e.g., "ALFA" stored as "AFLA" bytes).
             // readI32() with LE byte order produces the correct integer for fourCCToString.

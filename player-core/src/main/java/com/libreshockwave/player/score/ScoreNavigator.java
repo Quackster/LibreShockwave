@@ -43,14 +43,15 @@ public class ScoreNavigator {
 
             SpriteSpan span = new SpriteSpan(channel, startFrame, endFrame);
 
-            // Add behavior from secondary if present
+            // Add behavior from secondary if present (skip invalid castLib/member values)
             if (interval.secondary() != null) {
                 ScoreChunk.FrameIntervalSecondary secondary = interval.secondary();
-                ScoreBehaviorRef behavior = new ScoreBehaviorRef(
-                    secondary.castLib(),
-                    secondary.castMember()
-                );
-                span.addBehavior(behavior);
+                int secCastLib = secondary.castLib();
+                int secMember = secondary.castMember();
+                if (secCastLib >= 1 && secMember >= 1) {
+                    ScoreBehaviorRef behavior = new ScoreBehaviorRef(secCastLib, secMember);
+                    span.addBehavior(behavior);
+                }
 
                 if (debug) {
                     String type = channel == 0 ? "frame script" : "sprite behavior";
