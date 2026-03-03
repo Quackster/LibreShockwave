@@ -333,26 +333,31 @@ public class NetManager implements NetBuiltins.NetProvider {
                 return;
             }
 
-            // For localhost HTTP URLs with a localHttpRoot, resolve the URL path
-            // against the local filesystem root FIRST (preserves the URL path structure)
-            if (localHttpRoot != null && !localHttpRoot.isEmpty()
-                    && (url.startsWith("http://localhost") || url.startsWith("http://127.0.0.1"))) {
-                String urlPath = extractUrlPath(url);
-                if (urlPath != null) {
-                    Path localPath = Path.of(localHttpRoot).resolve(urlPath.startsWith("/") ? urlPath.substring(1) : urlPath);
-                    byte[] data = tryLoadFromFile(localPath, cacheKey);
-                    if (data != null) {
-                        future.complete(data);
-                        return;
+            boolean isHttpUrl = url.startsWith("http://") || url.startsWith("https://");
+
+            // HTTP URLs: fetch via HTTP directly (don't resolve against basePath)
+            if (isHttpUrl) {
+                // For localhost URLs with a localHttpRoot, try local filesystem first
+                if (localHttpRoot != null && !localHttpRoot.isEmpty()
+                        && (url.startsWith("http://localhost") || url.startsWith("http://127.0.0.1"))) {
+                    String urlPath = extractUrlPath(url);
+                    if (urlPath != null) {
+                        Path localPath = Path.of(localHttpRoot).resolve(urlPath.startsWith("/") ? urlPath.substring(1) : urlPath);
+                        byte[] data = tryLoadFromFile(localPath, cacheKey);
+                        if (data != null) {
+                            future.complete(data);
+                            return;
+                        }
                     }
                 }
+                byte[] data = loadFromHttpAndCache(url, cacheKey);
+                future.complete(data);
+                return;
             }
 
-            // Extract just the filename - the path inside the DCR may be an absolute path
-            // from the author's machine, we want to resolve relative to where the DCR was loaded from
+            // Non-HTTP URL: resolve relative path against basePath (the DCR/DIR location)
             String fileName = FileUtil.getFileName(url);
 
-            // Try local file from basePath (the DCR/DIR location)
             if (basePath != null && !basePath.isEmpty()
                     && !basePath.startsWith("http://") && !basePath.startsWith("https://")) {
                 Path base = Path.of(basePath);
@@ -368,11 +373,8 @@ public class NetManager implements NetBuiltins.NetProvider {
                 }
             }
 
-            // File load failed or no basePath - try HTTP if URL is HTTP or basePath is HTTP
-            if (url.startsWith("http://") || url.startsWith("https://")) {
-                byte[] data = loadFromHttpAndCache(url, cacheKey);
-                future.complete(data);
-            } else if (basePath != null && (basePath.startsWith("http://") || basePath.startsWith("https://"))) {
+            // basePath is HTTP - resolve relative filename against it
+            if (basePath != null && (basePath.startsWith("http://") || basePath.startsWith("https://"))) {
                 String fullUrl = basePath + fileName;
                 byte[] data = loadFromHttpAndCache(fullUrl, cacheKey);
                 future.complete(data);
