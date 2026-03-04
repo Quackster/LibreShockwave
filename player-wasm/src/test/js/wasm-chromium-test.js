@@ -71,6 +71,9 @@ function createServer() {
             res.setHeader('Access-Control-Allow-Headers', '*');
             if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
+            // Log all requests for diagnostics
+            console.log(`[SERVER] ${req.method} ${pathname}`);
+
             // /test.html — generated test page
             if (pathname === '/test.html') {
                 res.writeHead(200, { 'Content-Type': 'text/html' });
@@ -140,7 +143,7 @@ function generateTestHtml() {
 <html><head><meta charset="utf-8"><title>LibreShockwave Chromium Test</title></head>
 <body style="margin:0;background:#111">
 <canvas id="stage" width="720" height="540"></canvas>
-<script src="/shockwave-lib.js"></script>
+<script src="/libreshockwave.js"></script>
 <script>
 window.__TEST_STATE = { ticks: 0, lastFrame: 0, errors: [], done: false };
 
@@ -231,30 +234,45 @@ async function main() {
 
         const page = await browser.newPage();
 
-        // Forward browser console to Node.js stdout
+        // Forward ALL browser console messages to Node.js stdout
+        let oomDetected = false;
         page.on('console', (msg) => {
             const text = msg.text();
             const type = msg.type();
-            if (type === 'error') {
-                console.error(`[BROWSER] ${text}`);
+            const prefix = type === 'error' ? '[BROWSER:ERR]' :
+                           type === 'warning' ? '[BROWSER:WARN]' : '[BROWSER]';
+            const line = `${prefix} ${text}`;
+            if (type === 'error' || type === 'warning') {
+                console.error(line);
             } else {
-                console.log(`[BROWSER] ${text}`);
+                console.log(line);
             }
-        });
 
-        // Monitor for OOM / fatal errors
-        let oomDetected = false;
-        page.on('console', (msg) => {
-            const text = msg.text().toLowerCase();
-            if (text.includes('out of memory') || text.includes('allocation failed') ||
-                text.includes('rangeerror')) {
-                console.error('[TEST] OOM detected in browser!');
+            // Monitor for OOM / fatal errors
+            const lower = text.toLowerCase();
+            if (lower.includes('out of memory') || lower.includes('allocation failed') ||
+                lower.includes('rangeerror') || lower.includes('unreachable')) {
+                console.error('[TEST] FATAL: OOM or WASM crash detected!');
                 oomDetected = true;
             }
         });
 
+        // Catch uncaught page errors (thrown exceptions, WASM traps, etc.)
         page.on('pageerror', (err) => {
-            console.error(`[BROWSER] Page error: ${err.message}`);
+            console.error(`[BROWSER:PAGEERROR] ${err.message}`);
+            if (err.stack) console.error(`[BROWSER:PAGEERROR] ${err.stack}`);
+        });
+
+        // Log failed network requests (404s, CORS failures, etc.)
+        page.on('requestfailed', (req) => {
+            console.error(`[BROWSER:NET] FAILED ${req.method()} ${req.url()} — ${req.failure()?.errorText || 'unknown'}`);
+        });
+
+        // Log server responses with errors
+        page.on('response', (res) => {
+            if (res.status() >= 400) {
+                console.error(`[BROWSER:NET] ${res.status()} ${res.url()}`);
+            }
         });
 
         console.log(`[TEST] Navigating to http://127.0.0.1:${serverPort}/test.html`);
