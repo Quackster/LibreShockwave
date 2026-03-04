@@ -277,70 +277,24 @@ async function runTest() {
     console.log(`[TEST] Movie loaded: ${stageW}x${stageH}, frames=${exp.getFrameCount()}, tempo=${exp.getTempo()}`);
 
     // -----------------------------------------------------------------------
-    // Frame export helpers (need exp, mem, stageW, stageH, clearException)
+    // Frame export helpers — uses render() (SoftwareRenderer in WASM)
     // -----------------------------------------------------------------------
 
-    function composeFrame(fd) {
-        const pixels = new Uint8ClampedArray(stageW * stageH * 4);
-
-        // Background fill
-        const bg  = typeof fd.bg === 'number' ? fd.bg : 0xFFFFFF;
-        const bgR = (bg >> 16) & 0xFF, bgG = (bg >> 8) & 0xFF, bgB = bg & 0xFF;
-        for (let i = 0; i < stageW * stageH; i++) {
-            pixels[i*4]=bgR; pixels[i*4+1]=bgG; pixels[i*4+2]=bgB; pixels[i*4+3]=255;
-        }
-
-        const sprites = (fd.sprites || []).filter(s => s.visible && s.hasBaked && s.memberId > 0);
-        sprites.sort((a, b) => a.channel - b.channel);
-
-        // Pre-fetch all bitmaps from WASM heap
-        const bitmaps = {};
-        for (const sp of sprites) {
-            if (bitmaps[sp.memberId] !== undefined) continue;
-            const ptr = exp.getBitmapData(sp.memberId);   clearException();
-            const bw  = exp.getBitmapWidth(sp.memberId);  clearException();
-            const bh  = exp.getBitmapHeight(sp.memberId); clearException();
-            if (!ptr || !bw || !bh) { bitmaps[sp.memberId] = null; continue; }
-            const bytes = new Uint8ClampedArray(bw * bh * 4);
-            bytes.set(new Uint8ClampedArray(mem.buffer, ptr, bytes.length));
-            bitmaps[sp.memberId] = { bytes, w: bw, h: bh };
-        }
-
-        // Alpha-composite each sprite
-        for (const sp of sprites) {
-            const bmp = bitmaps[sp.memberId];
-            if (!bmp) continue;
-            const opacity = (typeof sp.blend === 'number' ? sp.blend : 100) / 100;
-            const { bytes, w: bw, h: bh } = bmp;
-            for (let row = 0; row < bh; row++) {
-                const dy = sp.y + row;
-                if (dy < 0 || dy >= stageH) continue;
-                for (let col = 0; col < bw; col++) {
-                    const dx = sp.x + col;
-                    if (dx < 0 || dx >= stageW) continue;
-                    const si = (row * bw + col) * 4;
-                    const di = (dy * stageW + dx) * 4;
-                    const srcA = (bytes[si+3] / 255) * opacity;
-                    if (srcA <= 0) continue;
-                    if (srcA >= 1) {
-                        pixels[di]=bytes[si]; pixels[di+1]=bytes[si+1]; pixels[di+2]=bytes[si+2]; pixels[di+3]=255;
-                    } else {
-                        const inv = 1 - srcA;
-                        pixels[di]   = Math.round(bytes[si]   * srcA + pixels[di]   * inv);
-                        pixels[di+1] = Math.round(bytes[si+1] * srcA + pixels[di+1] * inv);
-                        pixels[di+2] = Math.round(bytes[si+2] * srcA + pixels[di+2] * inv);
-                        pixels[di+3] = 255;
-                    }
-                }
-            }
-        }
-        return pixels;
+    function renderFrame() {
+        const len = exp.render(); clearException();
+        if (len <= 0) return null;
+        const ptr = exp.getRenderBufferAddress(); clearException();
+        if (!ptr) return null;
+        const rgba = new Uint8ClampedArray(stageW * stageH * 4);
+        rgba.set(new Uint8ClampedArray(mem.buffer, ptr, rgba.length));
+        return rgba;
     }
 
-    function captureFrame(fd, tickNum, label) {
+    function captureFrame(tickNum, label) {
         if (!outputDir) return;
         try {
-            const pixels = composeFrame(fd);
+            const pixels = renderFrame();
+            if (!pixels) return;
             const png    = encodePng(stageW, stageH, pixels);
             const file   = path.join(outputDir, `frame_t${String(tickNum).padStart(4,'0')}_${label}.png`);
             fs.writeFileSync(file, png);
@@ -528,7 +482,6 @@ async function runTest() {
     let maxSpriteCount    = 0;
     let finalFrame        = 0;
     let lastCapturedCount = -1;
-    let fd                = null;
 
     for (let i = 0; i < MAX_TICKS; i++) {
         const stillPlaying = exp.tick() !== 0;
@@ -579,20 +532,13 @@ async function runTest() {
         }
 
         // Optional PNG export — only when outputDir is set.
-        // getFrameDataJson() bakes all bitmaps (memory-intensive); wrap in try-catch
-        // in case WASM heap is tight. A caught RuntimeError leaves WASM intact for
-        // subsequent lightweight calls (tick, getSpriteCount, etc.).
+        // render() composites the full frame in WASM (SoftwareRenderer).
         if (outputDir && (spriteCount > lastCapturedCount || (i > 0 && i % 200 === 0))) {
             try {
-                const fdLen = exp.getFrameDataJson();
-                clearException();
-                fd = readJson(fdLen);
-                if (fd) {
-                    captureFrame(fd, i, `s${spriteCount}`);
-                    if (spriteCount > lastCapturedCount) lastCapturedCount = spriteCount;
-                }
+                captureFrame(i, `s${spriteCount}`);
+                if (spriteCount > lastCapturedCount) lastCapturedCount = spriteCount;
             } catch (e) {
-                console.error(`[FRAME] getFrameDataJson failed at tick ${i} (OOM?):`, e.message);
+                console.error(`[FRAME] render failed at tick ${i} (OOM?):`, e.message);
             }
         }
 
@@ -605,10 +551,7 @@ async function runTest() {
     // Attempt a final PNG capture if outputDir is set
     if (outputDir) {
         try {
-            const fdLen = exp.getFrameDataJson();
-            clearException();
-            fd = readJson(fdLen);
-            if (fd) captureFrame(fd, MAX_TICKS - 1, 'final');
+            captureFrame(MAX_TICKS - 1, 'final');
         } catch (e) {
             console.error('[FRAME] Final frame capture failed (OOM?):', e.message);
         }

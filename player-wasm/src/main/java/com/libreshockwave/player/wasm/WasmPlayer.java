@@ -15,6 +15,8 @@ public class WasmPlayer {
     private Player player;
     private QueuedNetProvider netProvider;
     private SpriteDataExporter spriteExporter;
+    private SoftwareRenderer softwareRenderer;
+    private int castRevision;
 
     /**
      * Load a Director movie from raw bytes.
@@ -31,6 +33,8 @@ public class WasmPlayer {
         netProvider = new QueuedNetProvider(basePath);
         player = new Player(file, netProvider);
         spriteExporter = new SpriteDataExporter(player);
+        softwareRenderer = null;
+        castRevision = 0;
 
         return true;
     }
@@ -113,6 +117,24 @@ public class WasmPlayer {
 
     public SpriteDataExporter getSpriteExporter() {
         return spriteExporter;
+    }
+
+    public SoftwareRenderer getSoftwareRenderer() {
+        if (softwareRenderer == null && player != null) {
+            softwareRenderer = new SoftwareRenderer(getStageWidth(), getStageHeight());
+        }
+        return softwareRenderer;
+    }
+
+    public int getCastRevision() {
+        return castRevision;
+    }
+
+    public void bumpCastRevision() {
+        castRevision++;
+        if (softwareRenderer != null) {
+            softwareRenderer.invalidate();
+        }
     }
 
     public DirectorFile getFile() {

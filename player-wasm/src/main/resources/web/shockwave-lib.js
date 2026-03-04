@@ -10,9 +10,10 @@
  *   </script>
  *
  * Architecture: WASM runs entirely in a Web Worker (shockwave-worker.js).
- * The main thread owns only: canvas rendering, bitmap ImageBitmap cache, and
- * the animation loop. All WASM calls — including network I/O — happen in the
- * worker, so the main thread never blocks on slow Lingo script execution.
+ * The main thread owns only the canvas and the animation loop. All rendering,
+ * WASM calls, and network I/O happen in the worker. Each tick, the worker
+ * sends a pre-composited RGBA frame buffer which the main thread blits via
+ * putImageData — no per-sprite drawing on the main thread.
  */
 var LibreShockwave = (function() {
 
@@ -78,9 +79,6 @@ var LibreShockwave = (function() {
         this._lastFrameCount = 0;
         this._stageWidth  = 640;
         this._stageHeight = 480;
-
-        // Bitmap cache: memberId → ImageBitmap
-        this._bitmapCache = new Map();
 
         // Restore remembered params
         if (this._remember) {
@@ -210,7 +208,6 @@ var LibreShockwave = (function() {
         this._lastTempo   = info.tempo;
         this._canvas.width  = info.width;
         this._canvas.height = info.height;
-        this._bitmapCache.clear();
         await this._onMovieLoaded(info);
     };
 
@@ -331,33 +328,17 @@ var LibreShockwave = (function() {
 
         // Update local state from worker response
         this._lastTempo      = result.tempo      || this._lastTempo;
-        this._lastFrame      = result.lastFrame  || this._lastFrame;
-        this._lastFrameCount = (result.fd && result.fd.frameCount) || this._lastFrameCount;
+        this._lastFrame      = result.lastFrame   || this._lastFrame;
+        this._lastFrameCount = result.frameCount   || this._lastFrameCount;
 
-        // When a cast was loaded in the worker, clear our ImageBitmap cache
-        if (result.castCacheCleared) this._bitmapCache.clear();
-
-        // Materialise any new bitmaps the worker sent (transferred ArrayBuffers)
-        var bitmaps = result.bitmaps || {};
-        var self = this;
-        var bitmapPromises = [];
-        for (var mid in bitmaps) {
-            (function(id, bmp) {
-                var imgData = new ImageData(bmp.rgba, bmp.w, bmp.h);
-                var p = createImageBitmap(imgData).then(function(ib) {
-                    self._bitmapCache.set(parseInt(id, 10), ib);
-                });
-                bitmapPromises.push(p);
-            })(mid, bitmaps[mid]);
+        // Blit the pre-composited RGBA frame to the canvas
+        if (result.rgba && result.width > 0 && result.height > 0) {
+            var imgData = new ImageData(result.rgba, result.width, result.height);
+            this._ctx.putImageData(imgData, 0, 0);
         }
-        if (bitmapPromises.length > 0) await Promise.all(bitmapPromises);
 
-        // Render
-        var fd = result.fd;
-        this._renderFrame(fd);
-
-        if (fd && this._opts.onFrame) {
-            this._opts.onFrame(fd.frame, fd.frameCount);
+        if (this._opts.onFrame) {
+            this._opts.onFrame(this._lastFrame, this._lastFrameCount);
         }
 
         // Mirror worker's playing flag to drive our loop
@@ -365,68 +346,6 @@ var LibreShockwave = (function() {
             this._playing = false;
             this._stopLoop();
         }
-    };
-
-    // --- Canvas rendering (main thread) ---
-
-    ShockwavePlayer.prototype._renderFrame = function(fd) {
-        if (!fd) return;
-        var ctx = this._ctx;
-        var sw  = this._stageWidth;
-        var sh  = this._stageHeight;
-
-        // Background
-        var bg = (typeof fd.bg === 'number') ? fd.bg : 0xFFFFFF;
-        ctx.fillStyle = '#' + (bg & 0xFFFFFF).toString(16).padStart(6, '0');
-        ctx.fillRect(0, 0, sw, sh);
-
-        // Stage image (script-drawn content)
-        if (fd.stageImageId) {
-            var stageImg = this._bitmapCache.get(fd.stageImageId);
-            if (stageImg) ctx.drawImage(stageImg, 0, 0, sw, sh);
-        }
-
-        var sprites = fd.sprites;
-        if (!sprites) return;
-
-        for (var i = 0; i < sprites.length; i++) {
-            var sp = sprites[i];
-            if (!sp.visible) continue;
-            this._drawSprite(ctx, sp);
-        }
-    };
-
-    ShockwavePlayer.prototype._drawSprite = function(ctx, sp) {
-        var prevAlpha = ctx.globalAlpha;
-        if (sp.blend !== undefined && sp.blend < 100) ctx.globalAlpha = sp.blend / 100;
-
-        // Baked bitmap (preferred — matches Swing exactly)
-        if (sp.memberId > 0 && sp.hasBaked) {
-            var bmp = this._bitmapCache.get(sp.memberId);
-            if (bmp) {
-                ctx.drawImage(bmp, sp.x, sp.y,
-                    sp.w > 0 ? sp.w : bmp.width,
-                    sp.h > 0 ? sp.h : bmp.height);
-                ctx.globalAlpha = prevAlpha;
-                return;
-            }
-        }
-
-        // Fallback while bitmap is not yet cached
-        if (sp.type === 'SHAPE') {
-            ctx.fillStyle = '#' + ((sp.foreColor || 0) & 0xFFFFFF).toString(16).padStart(6, '0');
-            ctx.fillRect(sp.x, sp.y, sp.w > 0 ? sp.w : 50, sp.h > 0 ? sp.h : 50);
-        } else if ((sp.type === 'TEXT' || sp.type === 'BUTTON') && sp.textContent) {
-            var fs = sp.fontSize || 12;
-            ctx.font = fs + 'px serif';
-            ctx.fillStyle = '#' + ((sp.foreColor || 0) & 0xFFFFFF).toString(16).padStart(6, '0');
-            var lines = sp.textContent.split(/\r\n|\r|\n/);
-            for (var j = 0; j < lines.length; j++) {
-                ctx.fillText(lines[j], sp.x, sp.y + fs + j * (fs + 2));
-            }
-        }
-
-        ctx.globalAlpha = prevAlpha;
     };
 
     // --- Utilities ---

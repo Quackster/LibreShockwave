@@ -214,7 +214,42 @@ public class WasmEntry {
         return wasmPlayer != null ? wasmPlayer.getStageHeight() : 480;
     }
 
-    // === Sprite data export ===
+    // === Full-frame rendering ===
+
+    /** RGBA buffer holding the last rendered frame. */
+    private static byte[] renderBuffer;
+
+    /**
+     * Render the current frame into an RGBA buffer via SoftwareRenderer.
+     * JS reads the pixel data from getRenderBufferAddress().
+     * @return buffer byte length (width * height * 4), or 0 on failure
+     */
+    @Export(name = "render")
+    public static int render() {
+        if (wasmPlayer == null || wasmPlayer.getPlayer() == null) return 0;
+        try {
+            SoftwareRenderer renderer = wasmPlayer.getSoftwareRenderer();
+            if (renderer == null) return 0;
+
+            var snapshot = wasmPlayer.getPlayer().getFrameSnapshot();
+            renderBuffer = renderer.render(snapshot, wasmPlayer.getCastRevision());
+            return renderBuffer.length;
+        } catch (Throwable e) {
+            captureError("render", e);
+            return 0;
+        }
+    }
+
+    /**
+     * Get the memory address of the last rendered RGBA buffer.
+     * @return address, or 0 if no frame has been rendered
+     */
+    @Export(name = "getRenderBufferAddress")
+    public static int getRenderBufferAddress() {
+        return renderBuffer != null ? Address.ofData(renderBuffer).toInt() : 0;
+    }
+
+    // === Sprite data export (legacy — kept for tests) ===
 
     /**
      * Export current frame sprite data as JSON.
@@ -451,6 +486,7 @@ public class WasmEntry {
                     .setExternalCastDataByUrl(url, data);
             if (loaded) {
                 wasmPlayer.getPlayer().getBitmapCache().clear();
+                wasmPlayer.bumpCastRevision();
                 SpriteDataExporter exporter = wasmPlayer.getSpriteExporter();
                 if (exporter != null) exporter.clearBitmapCache();
             }

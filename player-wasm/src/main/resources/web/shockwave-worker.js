@@ -18,14 +18,13 @@
  *   {type:'ready'}
  *   {type:'movieLoaded',  info:{width,height,frameCount,tempo} | null}
  *   {type:'castsDone'}
- *   {type:'frame', playing, fd, tempo, lastFrame, bitmaps:{memberId:{w,h,rgba}},
- *                  castCacheCleared}
+ *   {type:'frame', playing, enginePlaying, tempo, lastFrame, frameCount,
+ *                  rgba:Uint8ClampedArray, width, height}
  *   {type:'error', msg}
  */
 
 var _e = null;          // WasmEngine instance
 var _isTicking = false; // guard against overlapping ticks
-var _knownBitmaps = {}; // set of memberIds whose bytes were already sent to main thread
 
 // ============================================================
 // WasmEngine — mirrors the main-thread version but without Canvas
@@ -38,7 +37,6 @@ function WasmEngine() {
     this._lastTempo      = 15;
     this._lastFrame      = 0;
     this._lastFrameCount = 0;
-    this._castRevision   = 0; // incremented whenever _deliverResult loads a cast
 }
 
 WasmEngine.prototype._mem = function() { return this.teavm.memory.buffer; };
@@ -97,20 +95,26 @@ WasmEngine.prototype.tick = function() {
     var r = this.exports.tick(); this._clearEx(); return r !== 0;
 };
 
-WasmEngine.prototype.getFrameData = function() {
-    var len = this.exports.getFrameDataJson(); this._clearEx();
-    var fd = this._readJson(len);
-    if (fd) { this._lastFrame = fd.frame; this._lastFrameCount = fd.frameCount; }
-    return fd;
-};
+/**
+ * Render the current frame into an RGBA buffer via SoftwareRenderer (WASM-side).
+ * Returns { w, h, rgba: Uint8ClampedArray } or null on failure.
+ */
+WasmEngine.prototype.renderFrame = function() {
+    var len = this.exports.render(); this._clearEx();
+    if (len <= 0) return null;
 
-WasmEngine.prototype.getBitmapData = function(memberId) {
-    var ptr = this.exports.getBitmapData(memberId);
-    if (ptr === 0) return null;
-    var w = this.exports.getBitmapWidth(memberId);
-    var h = this.exports.getBitmapHeight(memberId);
+    var w = this.exports.getStageWidth();
+    var h = this.exports.getStageHeight();
     if (w <= 0 || h <= 0) return null;
-    // Copy out of WASM heap (the buffer may move after GC)
+
+    var ptr = this.exports.getRenderBufferAddress(); this._clearEx();
+    if (ptr === 0) return null;
+
+    // Update cached frame metadata
+    this._lastFrame      = this.exports.getCurrentFrame();
+    this._lastFrameCount = this.exports.getFrameCount();
+
+    // Copy RGBA out of WASM heap (buffer may move after GC)
     var rgba = new Uint8ClampedArray(w * h * 4);
     rgba.set(new Uint8ClampedArray(this._mem(), ptr, rgba.length));
     return { w: w, h: h, rgba: rgba };
@@ -131,7 +135,6 @@ WasmEngine.prototype._deliverResult = function(taskId, arrayBuffer) {
     new Uint8Array(this._mem(), addr, bytes.length).set(bytes);
     this.exports.deliverFetchResult(taskId, bytes.length);
     this._clearEx();
-    this._castRevision++; // new data → bitmap cache will be invalidated on main
 };
 
 WasmEngine.prototype._deliverError = function(taskId, status) {
@@ -195,7 +198,6 @@ self.onmessage = async function(e) {
             case 'loadMovie': {
                 var info = _e.loadMovie(new Uint8Array(msg.data), msg.basePath);
                 _e.playing  = false;
-                _knownBitmaps = {};
                 self.postMessage({ type: 'movieLoaded', info: info });
                 break;
             }
@@ -244,7 +246,6 @@ self.onmessage = async function(e) {
             case 'tick': {
                 if (_isTicking) return; // drop if already busy
                 _isTicking = true;
-                var revBefore = _e._castRevision;
                 try {
                     var stillPlaying = _e.tick();
 
@@ -252,46 +253,20 @@ self.onmessage = async function(e) {
                     var tp = _e.pumpNetworkCollect();
                     if (tp.length > 0) await Promise.all(tp);
 
-                    var fd = _e.getFrameData();
-                    var castCacheCleared = _e._castRevision > revBefore;
-
-                    // When casts change, discard our known-bitmap set so main
-                    // thread gets fresh bytes for all sprites
-                    if (castCacheCleared) _knownBitmaps = {};
-
-                    // Collect bitmap data for sprites the main thread hasn't seen yet
-                    var bitmaps = {}, transferables = [];
-                    if (fd) {
-                        var memberIds = {};
-                        if (fd.sprites) {
-                            for (var i = 0; i < fd.sprites.length; i++) {
-                                var sp = fd.sprites[i];
-                                if (sp.memberId > 0 && sp.hasBaked) memberIds[sp.memberId] = true;
-                            }
-                        }
-                        if (fd.stageImageId) memberIds[fd.stageImageId] = true;
-
-                        for (var mid in memberIds) {
-                            if (_knownBitmaps[mid]) continue; // main already has it
-                            var bmpData = _e.getBitmapData(parseInt(mid, 10));
-                            if (bmpData) {
-                                bitmaps[mid] = bmpData;
-                                transferables.push(bmpData.rgba.buffer);
-                                _knownBitmaps[mid] = true;
-                            }
-                        }
-                    }
+                    // Render entire frame in WASM (SoftwareRenderer composites all sprites)
+                    var frame = _e.renderFrame();
 
                     self.postMessage({
-                        type: 'frame',
-                        playing:          stillPlaying,
-                        enginePlaying:    _e.playing,
-                        fd:               fd,
-                        tempo:            _e._lastTempo,
-                        lastFrame:        _e._lastFrame,
-                        castCacheCleared: castCacheCleared,
-                        bitmaps:          bitmaps
-                    }, transferables);
+                        type:          'frame',
+                        playing:       stillPlaying,
+                        enginePlaying: _e.playing,
+                        tempo:         _e._lastTempo,
+                        lastFrame:     _e._lastFrame,
+                        frameCount:    _e._lastFrameCount,
+                        rgba:          frame ? frame.rgba : null,
+                        width:         frame ? frame.w : 0,
+                        height:        frame ? frame.h : 0
+                    }, frame ? [frame.rgba.buffer] : []);
 
                 } finally {
                     _isTicking = false;
