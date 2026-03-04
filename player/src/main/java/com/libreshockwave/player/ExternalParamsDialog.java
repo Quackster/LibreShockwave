@@ -128,6 +128,14 @@ public class ExternalParamsDialog extends JDialog {
         // Standard Habbo external parameters
         // sw1-sw9 are the Shockwave embed params that contain semicolon-separated key=value pairs
         tableModel.addRow("sw1",
+            "site.url=http://www.habbo.co.uk;url.prefix=http://www.habbo.co.uk");
+        tableModel.addRow("sw2",
+            "connection.info.host=localhost;connection.info.port=30001");
+        tableModel.addRow("sw3",
+            "client.reload.url=http://localhost/");
+        tableModel.addRow("sw4",
+            "connection.mus.host=localhost;connection.mus.port=38101");
+        tableModel.addRow("sw5",
             "external.variables.txt=http://localhost/gamedata/external_variables.txt;" +
             "external.texts.txt=http://localhost/gamedata/external_texts.txt");
         tableModel.fireTableDataChanged();

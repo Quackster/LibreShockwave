@@ -467,22 +467,26 @@ public class PlayerFrame extends JFrame {
                         player.getNetManager().setLocalHttpRoot(httpRoot);
                     }
 
-                    // Auto-detect sw1 external params if none were saved by the user.
+                    // Auto-detect external params if none were saved by the user.
                     // Looks for gamedata/external_variables.txt and external_texts.txt
-                    // under the HTTP root and builds the sw1 param string.
+                    // under the HTTP root and builds the sw1-sw5 param strings.
                     if (currentExternalParams.isEmpty() && httpRoot != null) {
-                        StringBuilder sw1 = new StringBuilder();
+                        StringBuilder sw5 = new StringBuilder();
                         Path varsFile = Path.of(httpRoot, "gamedata", "external_variables.txt");
                         Path textsFile = Path.of(httpRoot, "gamedata", "external_texts.txt");
                         if (Files.exists(varsFile)) {
-                            sw1.append("external.variables.txt=http://localhost/gamedata/external_variables.txt");
+                            sw5.append("external.variables.txt=http://localhost/gamedata/external_variables.txt");
                         }
                         if (Files.exists(textsFile)) {
-                            if (sw1.length() > 0) sw1.append(";");
-                            sw1.append("external.texts.txt=http://localhost/gamedata/external_texts.txt");
+                            if (sw5.length() > 0) sw5.append(";");
+                            sw5.append("external.texts.txt=http://localhost/gamedata/external_texts.txt");
                         }
-                        if (sw1.length() > 0) {
-                            currentExternalParams.put("sw1", sw1.toString());
+                        if (sw5.length() > 0) {
+                            currentExternalParams.put("sw1", "site.url=http://www.habbo.co.uk;url.prefix=http://www.habbo.co.uk");
+                            currentExternalParams.put("sw2", "connection.info.host=localhost;connection.info.port=30001");
+                            currentExternalParams.put("sw3", "client.reload.url=http://localhost/");
+                            currentExternalParams.put("sw4", "connection.mus.host=localhost;connection.mus.port=38101");
+                            currentExternalParams.put("sw5", sw5.toString());
                             player.setExternalParams(currentExternalParams);
                         }
                     }

@@ -134,7 +134,11 @@ function serveExternalVariables(res, filePath) {
 // ---------------------------------------------------------------------------
 function generateTestHtml() {
     const dcrUrl = `http://127.0.0.1:${serverPort}/dcr/${DCR_FILENAME}`;
-    const sw1 = [
+    const sw1 = 'site.url=http://www.habbo.co.uk;url.prefix=http://www.habbo.co.uk';
+    const sw2 = 'connection.info.host=localhost;connection.info.port=30001';
+    const sw3 = 'client.reload.url=http://localhost/';
+    const sw4 = 'connection.mus.host=localhost;connection.mus.port=38101';
+    const sw5 = [
         `external.variables.txt=http://127.0.0.1:${serverPort}/dcr/external_variables.txt`,
         `external.texts.txt=http://127.0.0.1:${serverPort}/dcr/external_texts.txt`,
     ].join(';');
@@ -149,7 +153,7 @@ window.__TEST_STATE = { ticks: 0, lastFrame: 0, errors: [], done: false };
 
 var player = LibreShockwave.create('stage', {
     autoplay: true,
-    params: { sw1: ${JSON.stringify(sw1)} },
+    params: { sw1: ${JSON.stringify(sw1)}, sw2: ${JSON.stringify(sw2)}, sw3: ${JSON.stringify(sw3)}, sw4: ${JSON.stringify(sw4)}, sw5: ${JSON.stringify(sw5)} },
     onFrame: function(frame, total) {
         window.__TEST_STATE.ticks++;
         window.__TEST_STATE.lastFrame = frame;

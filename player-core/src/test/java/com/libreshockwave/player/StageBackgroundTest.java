@@ -149,7 +149,11 @@ public class StageBackgroundTest {
         out.println("\n=== PHASE 3: Lingo Sprite Pipeline Validation ===\n");
 
         player.setExternalParams(Map.of(
-            "sw1", "external.variables.txt=http://localhost/gamedata/external_variables.txt;" +
+            "sw1", "site.url=http://www.habbo.co.uk;url.prefix=http://www.habbo.co.uk",
+            "sw2", "connection.info.host=localhost;connection.info.port=30001",
+            "sw3", "client.reload.url=http://localhost/",
+            "sw4", "connection.mus.host=localhost;connection.mus.port=38101",
+            "sw5", "external.variables.txt=http://localhost/gamedata/external_variables.txt;" +
                    "external.texts.txt=http://localhost/gamedata/external_texts.txt"
         ));
         player.getNetManager().setLocalHttpRoot("C:/xampp/htdocs");

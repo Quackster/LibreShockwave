@@ -176,7 +176,11 @@
         document.getElementById('params-add-btn').addEventListener('click', function() { addParamRow('', ''); });
         document.getElementById('params-habbo-btn').addEventListener('click', function() {
             document.getElementById('params-body').innerHTML = '';
-            addParamRow('sw1', 'external.variables.txt=http://localhost/gamedata/external_variables.txt;external.texts.txt=http://localhost/gamedata/external_texts.txt');
+            addParamRow('sw1', 'site.url=http://www.habbo.co.uk;url.prefix=http://www.habbo.co.uk');
+            addParamRow('sw2', 'connection.info.host=localhost;connection.info.port=30001');
+            addParamRow('sw3', 'client.reload.url=http://localhost/');
+            addParamRow('sw4', 'connection.mus.host=localhost;connection.mus.port=38101');
+            addParamRow('sw5', 'external.variables.txt=http://localhost/gamedata/external_variables.txt;external.texts.txt=http://localhost/gamedata/external_texts.txt');
         });
         document.getElementById('params-apply-btn').addEventListener('click', function() {
             var newParams = {};
