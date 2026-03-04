@@ -55,6 +55,7 @@ public class LingoVM {
         this.opcodeRegistry = new OpcodeRegistry();
         this.tracingHelper = new TracingHelper();
         this.consolePrinter = new ConsoleTracePrinter();
+        this.cachedBuiltinInvoker = (name, args) -> builtins.invoke(name, this, args);
         registerPassBuiltin();
     }
 
@@ -273,18 +274,33 @@ public class LingoVM {
 
         Datum result = Datum.VOID;
         try {
+            // Create a single ExecutionContext per handler invocation and reuse it.
+            // Previously we created a new one per instruction (~292K allocations for dump),
+            // generating ~876K garbage objects that overwhelmed the WASM GC.
+            ScriptChunk.Handler.Instruction firstInstr = scope.getCurrentInstruction();
+            if (firstInstr == null) {
+                return Datum.VOID;
+            }
+            ExecutionContext ctx = createExecutionContext(scope, firstInstr);
             int steps = 0;
+            long lastGcTime = System.currentTimeMillis();
             while (scope.hasMoreInstructions() && !scope.isReturned()) {
                 steps++;
                 if (stepLimit > 0 && steps > stepLimit) {
                     throw new LingoException("Step limit exceeded (" + stepLimit + " instructions)");
                 }
-                // Periodic GC safepoint for WASM: compact heap during long-running handlers
-                // to prevent memory access out of bounds from accumulated garbage.
-                if ((steps & 0xFFFF) == 0) {
-                    System.gc();
+                // Time-based GC safepoint for WASM: compact heap during long-running handlers.
+                // 2s interval keeps heap healthy. ExecutionContext reuse (one per handler
+                // instead of per instruction) eliminated ~876K allocations during dump,
+                // so each GC cycle is now much cheaper with far less garbage to trace.
+                if ((steps & 0xFFF) == 0) {
+                    long now = System.currentTimeMillis();
+                    if (now - lastGcTime >= 2000) {
+                        System.gc();
+                        lastGcTime = now;
+                    }
                 }
-                executeInstruction(scope);
+                executeInstruction(scope, ctx);
             }
 
             result = scope.getReturnValue();
@@ -403,9 +419,9 @@ public class LingoVM {
     }
 
     /**
-     * Execute a single bytecode instruction.
+     * Execute a single bytecode instruction using a reusable ExecutionContext.
      */
-    private void executeInstruction(Scope scope) {
+    private void executeInstruction(Scope scope, ExecutionContext ctx) {
         ScriptChunk.Handler.Instruction instr = scope.getCurrentInstruction();
         if (instr == null) {
             scope.setReturned(true);
@@ -428,7 +444,7 @@ public class LingoVM {
 
         OpcodeHandler handler = opcodeRegistry.get(op);
         if (handler != null) {
-            ExecutionContext ctx = createExecutionContext(scope, instr);
+            ctx.setInstruction(instr);
             boolean advance = handler.execute(ctx);
             if (advance) {
                 scope.advanceBytecodeIndex();
@@ -441,6 +457,22 @@ public class LingoVM {
         }
     }
 
+    // Cached callbacks for ExecutionContext — allocated once, reused across all handlers.
+    // Previously these were recreated per-instruction, generating ~876K garbage objects
+    // during the dump handler alone (~292K instructions × 3 allocations each).
+    private final ExecutionContext.GlobalAccessor cachedGlobalAccessor =
+            new ExecutionContext.GlobalAccessor() {
+                @Override
+                public Datum getGlobal(String name) {
+                    return LingoVM.this.getGlobal(name);
+                }
+                @Override
+                public void setGlobal(String name, Datum value) {
+                    LingoVM.this.setGlobal(name, value);
+                }
+            };
+    private final ExecutionContext.BuiltinInvoker cachedBuiltinInvoker;
+
     /**
      * Create an execution context for opcode handlers.
      */
@@ -452,17 +484,8 @@ public class LingoVM {
             traceListener,
             this::executeHandler,
             this::findHandler,
-            new ExecutionContext.GlobalAccessor() {
-                @Override
-                public Datum getGlobal(String name) {
-                    return LingoVM.this.getGlobal(name);
-                }
-                @Override
-                public void setGlobal(String name, Datum value) {
-                    LingoVM.this.setGlobal(name, value);
-                }
-            },
-            (name, args) -> builtins.invoke(name, LingoVM.this, args),
+            cachedGlobalAccessor,
+            cachedBuiltinInvoker,
             this::setErrorState
         );
     }

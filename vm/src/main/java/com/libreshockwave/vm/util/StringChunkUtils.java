@@ -33,21 +33,25 @@ public final class StringChunkUtils {
     private static String _charCacheStr; private static List<String> _charResult;
     private static String _lineCacheStr; private static List<String> _lineResult;
 
-    // === Sequential cursor for ITEM chunks ===
+    // === Two-slot LRU cursor for ITEM chunks ===
     // Avoids splitting large strings into thousands of substrings.
-    // When iterating item[1], item[2], ..., item[n], each access is O(line_length).
-    private static String _seqStr;
-    private static char _seqDelim;
-    private static int _seqIdx;       // last accessed 1-based item index
-    private static int _seqStartPos;  // char position of start of current item
-    private static int _seqEndPos;    // char position of end of current item (at delimiter or EOF)
+    // Two slots let us interleave item access on two strings (e.g., outer loop
+    // iterates items of a large text, inner ops access items of each line).
+    // Without two slots, inner operations invalidate the outer cursor → O(n²).
+    private static String _seqStr0;
+    private static char _seqDelim0;
+    private static int _seqIdx0, _seqStartPos0, _seqEndPos0;
+
+    private static String _seqStr1;
+    private static char _seqDelim1;
+    private static int _seqIdx1, _seqStartPos1, _seqEndPos1;
 
     /** Release cached split results to reduce GC pressure after heavy text processing. */
     public static void clearCaches() {
         _wordCacheStr = null; _wordResult = null;
         _charCacheStr = null; _charResult = null;
         _lineCacheStr = null; _lineResult = null;
-        _seqStr = null;
+        _seqStr0 = null; _seqStr1 = null;
     }
 
     /**
@@ -299,44 +303,79 @@ public final class StringChunkUtils {
     }
 
     // ========================================================================
-    // Cursor-based ITEM access — O(line_length) per sequential access.
+    // Two-slot LRU cursor for ITEM access — O(line_length) per sequential access.
     // Avoids splitting large strings into thousands of substrings.
+    // Two slots handle interleaved iteration: outer loop on large text +
+    // inner operations on each line. Without this, inner ops invalidate the
+    // outer cursor, making tStr.item[i] O(n) per call → O(n²) total.
     // ========================================================================
 
     /**
-     * Get item[index] using a sequential cursor. If accessing item[i+1] after item[i],
+     * Get item[index] using a two-slot LRU cursor. If accessing item[i+1] after item[i],
      * continues from the cached position (O(line_length) per call, O(n) total for iteration).
-     * For random access, scans from the beginning (O(n) per call).
+     * When a different string is accessed (e.g., inner loop), the outer cursor is preserved
+     * in the second slot and restored when the outer string is accessed again.
      */
     private static String getItemWithCursor(String str, int index, char delimiter) {
-        // Sequential access: item[i+1] after item[i]
-        if (str == _seqStr && delimiter == _seqDelim) {
-            if (index == _seqIdx) {
-                // Same item requested again
-                return str.substring(_seqStartPos, _seqEndPos);
+        // Check slot 0 (MRU)
+        if (str == _seqStr0 && delimiter == _seqDelim0) {
+            if (index == _seqIdx0) {
+                return str.substring(_seqStartPos0, _seqEndPos0);
             }
-            if (index == _seqIdx + 1 && _seqEndPos < str.length()) {
-                // Advance cursor past the delimiter
-                int start = _seqEndPos + 1;
+            if (index == _seqIdx0 + 1 && _seqEndPos0 < str.length()) {
+                int start = _seqEndPos0 + 1;
                 int end = indexOf(str, delimiter, start);
-                _seqIdx = index;
-                _seqStartPos = start;
-                _seqEndPos = end;
+                _seqIdx0 = index;
+                _seqStartPos0 = start;
+                _seqEndPos0 = end;
                 return str.substring(start, end);
             }
+            // Same string but non-sequential access: rescan (stay in slot 0)
+            return scanAndStore0(str, index, delimiter);
         }
 
-        // Random access or new string: scan from beginning
-        _seqStr = str;
-        _seqDelim = delimiter;
+        // Check slot 1 (LRU) — promote to slot 0 if found
+        if (str == _seqStr1 && delimiter == _seqDelim1) {
+            // Swap slot 1 → slot 0, old slot 0 → slot 1
+            String tmpStr = _seqStr0; char tmpDelim = _seqDelim0;
+            int tmpIdx = _seqIdx0, tmpStart = _seqStartPos0, tmpEnd = _seqEndPos0;
+            _seqStr0 = _seqStr1; _seqDelim0 = _seqDelim1;
+            _seqIdx0 = _seqIdx1; _seqStartPos0 = _seqStartPos1; _seqEndPos0 = _seqEndPos1;
+            _seqStr1 = tmpStr; _seqDelim1 = tmpDelim;
+            _seqIdx1 = tmpIdx; _seqStartPos1 = tmpStart; _seqEndPos1 = tmpEnd;
+
+            if (index == _seqIdx0) {
+                return str.substring(_seqStartPos0, _seqEndPos0);
+            }
+            if (index == _seqIdx0 + 1 && _seqEndPos0 < str.length()) {
+                int start = _seqEndPos0 + 1;
+                int end = indexOf(str, delimiter, start);
+                _seqIdx0 = index;
+                _seqStartPos0 = start;
+                _seqEndPos0 = end;
+                return str.substring(start, end);
+            }
+            return scanAndStore0(str, index, delimiter);
+        }
+
+        // New string: evict slot 1 (LRU), move slot 0 → slot 1, new string → slot 0
+        _seqStr1 = _seqStr0; _seqDelim1 = _seqDelim0;
+        _seqIdx1 = _seqIdx0; _seqStartPos1 = _seqStartPos0; _seqEndPos1 = _seqEndPos0;
+        return scanAndStore0(str, index, delimiter);
+    }
+
+    /** Scan from beginning and store in slot 0. */
+    private static String scanAndStore0(String str, int index, char delimiter) {
+        _seqStr0 = str;
+        _seqDelim0 = delimiter;
         int current = 1;
         int start = 0;
         for (int i = 0; i < str.length(); i++) {
             if (str.charAt(i) == delimiter) {
                 if (current == index) {
-                    _seqIdx = index;
-                    _seqStartPos = start;
-                    _seqEndPos = i;
+                    _seqIdx0 = index;
+                    _seqStartPos0 = start;
+                    _seqEndPos0 = i;
                     return str.substring(start, i);
                 }
                 current++;
@@ -344,9 +383,9 @@ public final class StringChunkUtils {
             }
         }
         if (current == index) {
-            _seqIdx = index;
-            _seqStartPos = start;
-            _seqEndPos = str.length();
+            _seqIdx0 = index;
+            _seqStartPos0 = start;
+            _seqEndPos0 = str.length();
             return str.substring(start);
         }
         return "";

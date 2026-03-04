@@ -139,15 +139,7 @@ public class WasmEntry {
         if (wasmPlayer == null) return 0;
         try {
             lastError = null;
-            long t0 = System.currentTimeMillis();
             boolean result = wasmPlayer.tick();
-            long elapsed = System.currentTimeMillis() - t0;
-            // After heavy ticks (text processing), clear string split caches
-            // to release large cached arrays and reduce GC pressure.
-            if (elapsed > 500) {
-                com.libreshockwave.vm.util.StringChunkUtils.clearCaches();
-                com.libreshockwave.vm.opcode.dispatch.StringMethodDispatcher.clearCaches();
-            }
             return result ? 1 : 0;
         } catch (Throwable e) {
             captureError("tick", e);

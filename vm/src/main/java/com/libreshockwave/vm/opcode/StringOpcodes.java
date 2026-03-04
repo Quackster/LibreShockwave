@@ -289,8 +289,7 @@ public final class StringOpcodes {
      * Get the current item delimiter.
      */
     private static char getItemDelimiter() {
-        MoviePropertyProvider provider = MoviePropertyProvider.getProvider();
-        return provider != null ? provider.getItemDelimiter() : ',';
+        return MoviePropertyProvider.ItemDelimiterCache._char;
     }
 
     /**

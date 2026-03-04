@@ -32,25 +32,25 @@ public interface MoviePropertyProvider {
 
     /**
      * Get the current item delimiter character.
-     * Used for string chunk operations (item...of).
-     * @return The item delimiter, defaults to ','
+     * Uses a cached char to avoid Map lookup + String conversion on every call.
+     * (Critical for WASM: the dump() handler calls this ~18,000 times.)
      */
     default char getItemDelimiter() {
-        Datum d = getMovieProp("itemDelimiter");
-        if (d != null && !d.isVoid()) {
-            String s = d.toStr();
-            return s.isEmpty() ? ',' : s.charAt(0);
-        }
-        return ',';
+        return ItemDelimiterCache._char;
     }
 
     /**
      * Set the item delimiter character.
-     * Used for string chunk operations (item...of).
-     * @param delimiter The delimiter character to use
+     * Updates both the movie property and the fast cache.
      */
     default void setItemDelimiter(char delimiter) {
+        ItemDelimiterCache._char = delimiter;
         setMovieProp("itemDelimiter", Datum.of(String.valueOf(delimiter)));
+    }
+
+    /** Static cache for itemDelimiter — avoids Map lookup + Datum.toStr() per call. */
+    final class ItemDelimiterCache {
+        public static char _char = ',';
     }
 
     /**

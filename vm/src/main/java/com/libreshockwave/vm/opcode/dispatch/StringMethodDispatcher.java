@@ -83,11 +83,7 @@ public final class StringMethodDispatcher {
      * Get the current item delimiter from MoviePropertyProvider.
      */
     private static char getItemDelimiter() {
-        var provider = MoviePropertyProvider.getProvider();
-        if (provider != null) {
-            return provider.getItemDelimiter();
-        }
-        return ',';
+        return MoviePropertyProvider.ItemDelimiterCache._char;
     }
 
     /**

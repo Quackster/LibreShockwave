@@ -19,8 +19,8 @@ import java.util.List;
 public final class ExecutionContext {
 
     private final Scope scope;
-    private final ScriptChunk.Handler.Instruction instruction;
-    private final int argument;
+    private ScriptChunk.Handler.Instruction instruction;
+    private int argument;
     private final BuiltinRegistry builtins;
     private final TraceListener traceListener;
 
@@ -51,6 +51,15 @@ public final class ExecutionContext {
         this.globalAccessor = globalAccessor;
         this.builtinInvoker = builtinInvoker;
         this.errorStateSetter = errorStateSetter;
+    }
+
+    /**
+     * Update the instruction for this context (reuse across instructions in a handler).
+     * Avoids creating a new ExecutionContext + closures per instruction.
+     */
+    public void setInstruction(ScriptChunk.Handler.Instruction instr) {
+        this.instruction = instr;
+        this.argument = instr.argument();
     }
 
     /**
