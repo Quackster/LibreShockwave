@@ -80,6 +80,9 @@ var LibreShockwave = (function() {
         this._stageWidth  = 640;
         this._stageHeight = 480;
 
+        // Load deduplication: each load() increments this; stale loads bail out
+        this._loadSeq     = 0;
+
         // Restore remembered params
         if (this._remember) {
             try {
@@ -137,6 +140,48 @@ var LibreShockwave = (function() {
                 this._resolveOnce('frame', msg);
                 break;
 
+            case 'fetchRelay': {
+                // Worker needs a cross-origin fetch; do it from main thread and relay back
+                var worker = this._worker;
+                var relayId = msg.relayId;
+                var relayUrl = msg.url;
+
+                // Check relay cache first (with and without query string for cache-busted URLs)
+                var baseUrl = relayUrl.indexOf('?') >= 0 ? relayUrl.substring(0, relayUrl.indexOf('?')) : relayUrl;
+                var relayBuf = this._relayCache && (this._relayCache[relayUrl] || this._relayCache[baseUrl]);
+                if (relayBuf) {
+                    var copy = relayBuf.slice(0); // copy so original stays reusable
+                    worker.postMessage({ type: 'fetchRelayResult', relayId: relayId, data: copy }, [copy]);
+                    break;
+                }
+
+                var opts = {};
+                if (msg.method === 'POST') {
+                    opts.method  = 'POST';
+                    opts.body    = msg.postData;
+                    opts.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
+                }
+                fetch(relayUrl, opts)
+                    .then(function(r) { if (!r.ok) throw { status: r.status }; return r.arrayBuffer(); })
+                    .then(function(buf) {
+                        // Intercept external_variables.txt: override cast.entry.2 to use AU hotel view
+                        if (relayUrl.indexOf('external_variables') !== -1) {
+                            try {
+                                var text = new TextDecoder().decode(buf);
+                                text = text.replace(/cast\.entry\.2=.*/g, 'cast.entry.2=hh_entry_au');
+                                buf = new TextEncoder().encode(text).buffer;
+                                console.log('[LS] Relay: applied hh_entry_au locale override');
+                            } catch(ex) {}
+                        }
+                        worker.postMessage({ type: 'fetchRelayResult', relayId: relayId, data: buf }, [buf]);
+                    })
+                    .catch(function(e) {
+                        worker.postMessage({ type: 'fetchRelayResult', relayId: relayId,
+                                             error: true, status: (e && e.status) || 0 });
+                    });
+                break;
+            }
+
             case 'error':
                 console.error('[LS] Worker reported:', msg.msg);
                 break;
@@ -159,10 +204,30 @@ var LibreShockwave = (function() {
         }
     };
 
-    ShockwavePlayer.prototype._waitFor = function(type) {
+    ShockwavePlayer.prototype._waitFor = function(type, timeoutMs) {
         var self = this;
+        timeoutMs = timeoutMs || 10000; // 10s safety default
         return new Promise(function(resolve) {
-            self._pending = { type: type, resolve: resolve };
+            var resolved = false;
+            var pendingId = {}; // unique reference for this pending
+            var timerId = setTimeout(function() {
+                if (!resolved && self._pending && self._pending._id === pendingId) {
+                    console.warn('[LS] _waitFor timeout for: ' + type);
+                    self._pending = null;
+                    resolved = true;
+                    resolve(null);
+                }
+            }, timeoutMs);
+            self._pending = {
+                type: type,
+                _id: pendingId,
+                resolve: function(val) {
+                    if (resolved) return;
+                    resolved = true;
+                    clearTimeout(timerId);
+                    resolve(val);
+                }
+            };
         });
     };
 
@@ -172,12 +237,17 @@ var LibreShockwave = (function() {
         console.log('[LS] load(' + url + '), ready=' + this._workerReady);
         if (!this._workerReady) { this._pendingUrl = url; return; }
         var self = this;
+        var seq = ++this._loadSeq; // Deduplicate: only the latest load proceeds
         if (this._remember) {
             try { localStorage.setItem('ls_urlInput', url); } catch(e) {}
         }
         fetch(url)
             .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
             .then(function(buf) {
+                if (self._loadSeq !== seq) {
+                    console.log('[LS] Ignoring superseded load #' + seq + ' (current=' + self._loadSeq + ')');
+                    return;
+                }
                 console.log('[LS] Movie fetched, ' + buf.byteLength + ' bytes');
                 self._loadMovieBuffer(buf, url);
             })
@@ -190,17 +260,28 @@ var LibreShockwave = (function() {
     ShockwavePlayer.prototype.loadFile = function(file) {
         if (!this._workerReady) { this._pendingFile = file; return; }
         var self = this;
+        var seq = ++this._loadSeq;
         var reader = new FileReader();
-        reader.onload = function() { self._loadMovieBuffer(reader.result, file.name); };
+        reader.onload = function() {
+            if (self._loadSeq !== seq) return;
+            self._loadMovieBuffer(reader.result, file.name);
+        };
         reader.readAsArrayBuffer(file);
     };
 
     ShockwavePlayer.prototype._loadMovieBuffer = async function(buf, basePath) {
+        // Cancel any active loops and pending resolvers from a previous/concurrent load
+        this._stopLoop();
+        this._playing = false;
+        this._pending = null;
+        this._lastSpriteCount = 0; // Reset so fast loop doesn't skip immediately
         this._loadStartTime = performance.now();
+        var mySeq = this._loadSeq;
         // Send movie bytes to worker (transfer ownership — zero copy)
         this._worker.postMessage({ type: 'loadMovie', data: buf, basePath: basePath },
                                  [buf]);
         var info = await this._waitFor('movieLoaded');
+        if (this._loadSeq !== mySeq) return; // Superseded by newer load
         if (!info) {
             console.error('[LS] loadMovie returned null');
             if (this._opts.onError) this._opts.onError('Failed to load movie');
@@ -217,6 +298,7 @@ var LibreShockwave = (function() {
     };
 
     ShockwavePlayer.prototype._onMovieLoaded = async function(info) {
+        var mySeq = this._loadSeq;
         // Push external params into the worker
         this._worker.postMessage({ type: 'clearParams' });
         for (var k in this._params) {
@@ -228,10 +310,56 @@ var LibreShockwave = (function() {
         // Preload external casts before starting; worker handles the network pump
         this._worker.postMessage({ type: 'preloadCasts' });
         await this._waitFor('castsDone');
+        if (this._loadSeq !== mySeq) return; // Superseded by newer load
+
+        // Pre-fetch sw1 URLs from main thread into relay cache.
+        // The worker cannot reliably fetch cross-origin URLs (Chrome hang bug),
+        // so we do it here and serve from cache when the relay arrives.
+        this._relayCache = {};
+        await this._prefetchRelayCache();
+        if (this._loadSeq !== mySeq) return; // Superseded by newer load
 
         console.log('[LS] Ready to play after ' +
                     Math.round(performance.now() - this._loadStartTime) + 'ms');
         if (this._autoplay) this.play();
+    };
+
+    // Parse sw1 param format "key=url;key=url" → array of URLs
+    function _parseSw1Urls(sw1) {
+        if (!sw1) return [];
+        return sw1.split(';').map(function(u) {
+            u = u.trim();
+            var eq = u.indexOf('=');
+            return eq >= 0 ? u.substring(eq + 1).trim() : u;
+        }).filter(function(u) { return u && u.indexOf('://') !== -1; });
+    }
+
+    ShockwavePlayer.prototype._prefetchRelayCache = async function() {
+        var sw1 = this._params['sw1'] || this._params['SW1'] || '';
+        var urls = _parseSw1Urls(sw1);
+        if (urls.length === 0) return;
+        console.log('[LS] Pre-fetching ' + urls.length + ' sw1 URLs for relay cache');
+        var self = this;
+        await Promise.all(urls.map(function(url) {
+            return fetch(url)
+                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
+                .then(function(buf) {
+                    // Apply locale override to external_variables.txt
+                    if (url.indexOf('external_variables') !== -1) {
+                        try {
+                            var text = new TextDecoder().decode(buf);
+                            text = text.replace(/cast\.entry\.2=.*/g, 'cast.entry.2=hh_entry_au');
+                            buf = new TextEncoder().encode(text).buffer;
+                            console.log('[LS] Pre-fetch: applied hh_entry_au locale override');
+                        } catch(ex) {}
+                    }
+                    self._relayCache[url] = buf;
+                    console.log('[LS] Pre-fetched: ' + url + ' (' + buf.byteLength + ' bytes)');
+                })
+                .catch(function(e) {
+                    console.warn('[LS] Pre-fetch failed: ' + url + ' — ' + e.message);
+                });
+        }));
     };
 
     // --- Playback control ---
@@ -305,26 +433,30 @@ var LibreShockwave = (function() {
      * tempo-gated loop for smooth animation playback.
      */
     ShockwavePlayer.prototype._startLoop = function() {
+        this._stopLoop(); // cancel any previous fast/normal loop before starting a new one
         var self = this;
         this._loadingPhase = true;
         this._tickCount = 0;
         this._lastRenderTime = 0;
-        console.log('[LS] Starting fast-loading loop');
+        this._loopSeq = this._loadSeq; // tie this loop to the current load
+        console.log('[LS] Starting fast-loading loop (seq=' + this._loopSeq + ')');
         this._runFastLoop();
     };
 
     ShockwavePlayer.prototype._runFastLoop = function() {
         var self = this;
         if (!this._playing) return;
+        if (this._loadSeq !== this._loopSeq) return; // stale loop from old load
 
         this._doTick().then(function() {
             if (!self._playing) return;
+            if (self._loadSeq !== self._loopSeq) return; // stale
 
             self._tickCount++;
 
-            // Detect loading complete: frame count > 10 means we've left the
-            // loading screen, OR after 2000 fast ticks (~20s worst case) bail out
-            if (self._lastFrameCount > 10 || self._tickCount > 5000) {
+            // Detect loading complete: sprite count >= 10 means hotel view is
+            // rendering (has 25+ sprites), OR after 5000 fast ticks bail out
+            if (self._lastSpriteCount >= 10 || self._tickCount > 5000) {
                 if (self._loadingPhase) {
                     console.log('[LS] Loading complete after ' + self._tickCount +
                                 ' ticks (' + Math.round(performance.now() - self._loadStartTime) +
@@ -391,9 +523,10 @@ var LibreShockwave = (function() {
         if (!result) return;
 
         // Update local state from worker response
-        this._lastTempo      = result.tempo      || this._lastTempo;
-        this._lastFrame      = result.lastFrame   || this._lastFrame;
-        this._lastFrameCount = result.frameCount   || this._lastFrameCount;
+        this._lastTempo       = result.tempo       || this._lastTempo;
+        this._lastFrame       = result.lastFrame   || this._lastFrame;
+        this._lastFrameCount  = result.frameCount  || this._lastFrameCount;
+        this._lastSpriteCount = result.spriteCount || 0;
 
         // Blit the pre-composited RGBA frame to the canvas
         if (result.rgba && result.width > 0 && result.height > 0) {

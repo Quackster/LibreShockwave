@@ -50,6 +50,7 @@ public class WasmPlayer {
         try {
             return player.tick();
         } catch (Throwable e) {
+            System.err.println("[WasmPlayer] tick error: " + e.getMessage());
             return true;
         }
     }

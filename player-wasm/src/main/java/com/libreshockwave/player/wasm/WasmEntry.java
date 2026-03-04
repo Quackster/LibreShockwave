@@ -154,6 +154,11 @@ public class WasmEntry {
                 com.libreshockwave.vm.util.StringChunkUtils.clearCaches();
                 com.libreshockwave.vm.opcode.dispatch.StringMethodDispatcher.clearCaches();
             });
+            // Set step limit to catch infinite loops. The dump handler runs ~292K
+            // instructions; 5M gives 17x headroom while catching infinite loops fast.
+            if (wasmPlayer.getPlayer() != null) {
+                wasmPlayer.getPlayer().getVM().setStepLimit(5_000_000);
+            }
             wasmPlayer.play();
         } catch (Throwable e) {
             captureError("play", e);
@@ -468,6 +473,44 @@ public class WasmEntry {
     public static int getTimeoutCount() {
         if (wasmPlayer == null || wasmPlayer.getPlayer() == null) return -1;
         return wasmPlayer.getPlayer().getTimeoutManager().getTimeoutCount();
+    }
+
+    /**
+     * Get timeout names as comma-separated string, written to stringBuffer.
+     * @return byte length written, or 0 if none
+     */
+    @Export(name = "getTimeoutNames")
+    public static int getTimeoutNames() {
+        if (wasmPlayer == null || wasmPlayer.getPlayer() == null) return 0;
+        var names = wasmPlayer.getPlayer().getTimeoutManager().getTimeoutNames();
+        if (names.isEmpty()) return 0;
+        byte[] bytes = String.join(",", names).getBytes();
+        int len = Math.min(bytes.length, stringBuffer.length);
+        System.arraycopy(bytes, 0, stringBuffer, 0, len);
+        return len;
+    }
+
+    /**
+     * Get player state name (STOPPED/PLAYING/PAUSED), written to stringBuffer.
+     * @return byte length written
+     */
+    @Export(name = "getPlayerState")
+    public static int getPlayerState() {
+        if (wasmPlayer == null || wasmPlayer.getPlayer() == null) return 0;
+        byte[] bytes = wasmPlayer.getPlayer().getState().name().getBytes();
+        int len = Math.min(bytes.length, stringBuffer.length);
+        System.arraycopy(bytes, 0, stringBuffer, 0, len);
+        return len;
+    }
+
+    /**
+     * Get pending network request count (requests queued in QueuedNetProvider).
+     */
+    @Export(name = "getPendingNetCount")
+    public static int getPendingNetCount() {
+        if (wasmPlayer == null) return -1;
+        QueuedNetProvider np = wasmPlayer.getNetProvider();
+        return np != null ? np.getPendingRequests().size() : -1;
     }
 
     // === Internal helpers ===

@@ -32,6 +32,11 @@ public class LingoVM {
     private boolean traceEnabled = false;
     private int stepLimit = 0;  // 0 = unlimited
 
+    // Tick-level deadline: when set, all handlers within the current tick must
+    // complete before this wall-clock time. Prevents infinite loops that span
+    // multiple short handler invocations (where per-handler timeout wouldn't fire).
+    private long tickDeadline = 0;  // 0 = no tick-level timeout
+
     // Event propagation callback (set by EventDispatcher)
     private Runnable passCallback;
 
@@ -94,6 +99,14 @@ public class LingoVM {
      */
     public void setStepLimit(int limit) {
         this.stepLimit = limit;
+    }
+
+    /**
+     * Set a tick-level deadline (absolute wall-clock millis). All handlers within
+     * the current tick must complete before this time. 0 = no tick-level timeout.
+     */
+    public void setTickDeadline(long deadline) {
+        this.tickDeadline = deadline;
     }
 
     /**
@@ -297,11 +310,13 @@ public class LingoVM {
             }
             ExecutionContext ctx = createExecutionContext(scope, firstInstr);
             int steps = 0;
-            long lastGcTime = System.currentTimeMillis();
+            long startTime = System.currentTimeMillis();
+            long lastGcTime = startTime;
             while (scope.hasMoreInstructions() && !scope.isReturned()) {
                 steps++;
                 if (stepLimit > 0 && steps > stepLimit) {
-                    throw new LingoException("Step limit exceeded (" + stepLimit + " instructions)");
+                    throw new LingoException("Step limit exceeded (" + stepLimit
+                            + " instructions) in handler '" + handlerName + "'");
                 }
                 // Time-based GC safepoint for WASM: compact heap during long-running handlers.
                 // 1s interval is aggressive but necessary: during the 25s text dump, the heap
@@ -316,6 +331,18 @@ public class LingoVM {
                         // Don't call System.gc() — forced GC triggers TeaVM defrag
                         // that can corrupt pointers. Let automatic GC handle compaction.
                         lastGcTime = now;
+                    }
+                    // Hard timeout: no single handler should run for more than 60 seconds.
+                    // The dump handler takes ~12s; anything over 60s is likely an infinite loop.
+                    if (now - startTime > 60000) {
+                        throw new LingoException("Handler timeout (60s, " + steps
+                                + " instructions) in handler '" + handlerName + "'");
+                    }
+                    // Tick-level deadline: catches infinite loops that span multiple
+                    // short handler invocations within a single tick.
+                    if (tickDeadline > 0 && now > tickDeadline) {
+                        throw new LingoException("Tick deadline exceeded in handler '"
+                                + handlerName + "' (" + steps + " instructions)");
                     }
                 }
                 executeInstruction(scope, ctx);
