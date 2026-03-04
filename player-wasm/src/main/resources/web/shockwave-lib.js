@@ -141,6 +141,10 @@ var LibreShockwave = (function() {
                 console.error('[LS] Worker reported:', msg.msg);
                 break;
 
+            case 'log':
+                console.log('[W]', msg.msg);
+                break;
+
             default:
                 break;
         }
@@ -192,6 +196,7 @@ var LibreShockwave = (function() {
     };
 
     ShockwavePlayer.prototype._loadMovieBuffer = async function(buf, basePath) {
+        this._loadStartTime = performance.now();
         // Send movie bytes to worker (transfer ownership — zero copy)
         this._worker.postMessage({ type: 'loadMovie', data: buf, basePath: basePath },
                                  [buf]);
@@ -224,6 +229,8 @@ var LibreShockwave = (function() {
         this._worker.postMessage({ type: 'preloadCasts' });
         await this._waitFor('castsDone');
 
+        console.log('[LS] Ready to play after ' +
+                    Math.round(performance.now() - this._loadStartTime) + 'ms');
         if (this._autoplay) this.play();
     };
 
@@ -289,9 +296,60 @@ var LibreShockwave = (function() {
 
     // --- Animation loop ---
 
+    /**
+     * Fast-loading mode: during the Director loading screen (frames 1-10),
+     * the Lingo state machine needs hundreds of ticks to parse external data.
+     * At the normal 15fps tempo that takes 30+ seconds. Instead, we send ticks
+     * as fast as the WASM round-trip allows (~4-10ms each), reaching the hotel
+     * view in a few seconds. Once loading completes, we switch to the normal
+     * tempo-gated loop for smooth animation playback.
+     */
     ShockwavePlayer.prototype._startLoop = function() {
         var self = this;
+        this._loadingPhase = true;
+        this._tickCount = 0;
+        this._lastRenderTime = 0;
+        console.log('[LS] Starting fast-loading loop');
+        this._runFastLoop();
+    };
+
+    ShockwavePlayer.prototype._runFastLoop = function() {
+        var self = this;
+        if (!this._playing) return;
+
+        this._doTick().then(function() {
+            if (!self._playing) return;
+
+            self._tickCount++;
+
+            // Detect loading complete: frame count > 10 means we've left the
+            // loading screen, OR after 2000 fast ticks (~20s worst case) bail out
+            if (self._lastFrameCount > 10 || self._tickCount > 5000) {
+                if (self._loadingPhase) {
+                    console.log('[LS] Loading complete after ' + self._tickCount +
+                                ' ticks (' + Math.round(performance.now() - self._loadStartTime) +
+                                'ms), switching to normal loop');
+                    self._loadingPhase = false;
+                }
+                self._startNormalLoop();
+                return;
+            }
+
+            // Still loading — schedule next tick immediately (setTimeout(0) = ~1-4ms)
+            self._fastTimerId = setTimeout(function() { self._runFastLoop(); }, 0);
+
+        }).catch(function(err) {
+            console.error('[LS] fast tick error:', err);
+            // Fallback to normal loop on error
+            self._loadingPhase = false;
+            self._startNormalLoop();
+        });
+    };
+
+    ShockwavePlayer.prototype._startNormalLoop = function() {
+        var self = this;
         var ticking = false;
+        this._lastFrameTime = 0;
         function loop(ts) {
             if (!self._playing) return;
             var tempo = self._lastTempo || 15;
@@ -317,12 +375,18 @@ var LibreShockwave = (function() {
             cancelAnimationFrame(this._animFrameId);
             this._animFrameId = null;
         }
+        if (this._fastTimerId) {
+            clearTimeout(this._fastTimerId);
+            this._fastTimerId = null;
+        }
     };
 
     // --- Tick: send work to the worker, await the frame response, then render ---
 
     ShockwavePlayer.prototype._doTick = async function() {
-        this._worker.postMessage({ type: 'tick' });
+        // During fast loading, tell the worker to skip rendering on most ticks
+        var skipRender = this._loadingPhase && (this._tickCount % 15 !== 0);
+        this._worker.postMessage({ type: 'tick', skipRender: skipRender });
         var result = await this._waitFor('frame');
         if (!result) return;
 

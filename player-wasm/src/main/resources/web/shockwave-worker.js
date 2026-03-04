@@ -1,4 +1,17 @@
 'use strict';
+
+// Forward Worker console messages to main thread for debugging
+var _origLog = console.log;
+var _origErr = console.error;
+console.log = function() {
+    _origLog.apply(console, arguments);
+    try { self.postMessage({ type: 'log', msg: Array.prototype.join.call(arguments, ' ') }); } catch(e) {}
+};
+console.error = function() {
+    _origErr.apply(console, arguments);
+    try { self.postMessage({ type: 'log', msg: '[ERR] ' + Array.prototype.join.call(arguments, ' ') }); } catch(e) {}
+};
+
 /**
  * LibreShockwave Web Worker — runs the WASM engine off the main thread.
  *
@@ -25,6 +38,11 @@
 
 var _e = null;          // WasmEngine instance
 var _isTicking = false; // guard against overlapping ticks
+
+// --- Non-blocking fetch delivery queue ---
+var _fetchQueue = [];   // [{taskId, data: ArrayBuffer}] or [{taskId, error: number}]
+var _inFlight = 0;      // number of fetches currently in-progress
+var _loadStartTime = 0; // timestamp when loading began (for perf logging)
 
 // ============================================================
 // WasmEngine — mirrors the main-thread version but without Canvas
@@ -187,6 +205,73 @@ WasmEngine.prototype.pumpNetworkCollect = function() {
 };
 
 // ============================================================
+// Non-blocking fetch pipeline (used during tick for async I/O)
+// ============================================================
+
+/**
+ * Fire a fetch without blocking. Result is pushed to _fetchQueue
+ * when the fetch completes (between event loop turns).
+ */
+WasmEngine.prototype._doFetchAsync = function(taskId, url, method, postData, fallbacks) {
+    var self = this;
+    _inFlight++;
+    var opts = {};
+    if (method === 'POST') {
+        opts.method  = 'POST';
+        opts.body    = postData;
+        opts.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
+    }
+    fetch(url, opts)
+        .then(function(r) { if (!r.ok) throw { status: r.status }; return r.arrayBuffer(); })
+        .then(function(buf) {
+            _fetchQueue.push({ taskId: taskId, data: buf });
+            _inFlight--;
+        })
+        .catch(function(e) {
+            if (fallbacks.length > 0) {
+                _inFlight--; // this attempt done; retry will increment again
+                return self._doFetchAsync(taskId, fallbacks[0], method, postData, fallbacks.slice(1));
+            } else {
+                _fetchQueue.push({ taskId: taskId, error: (e && e.status) || 0 });
+                _inFlight--;
+            }
+        });
+};
+
+/**
+ * Deliver all queued fetch results into WASM.
+ * Called at the start of each tick before running Lingo.
+ * @return number of results delivered
+ */
+WasmEngine.prototype.deliverQueuedResults = function() {
+    var count = 0;
+    while (_fetchQueue.length > 0) {
+        var item = _fetchQueue.shift();
+        if (item.data !== undefined) {
+            this._deliverResult(item.taskId, item.data);
+        } else {
+            this._deliverError(item.taskId, item.error);
+        }
+        count++;
+    }
+    return count;
+};
+
+/**
+ * Drain pending requests from WASM and fire them all non-blocking.
+ * @return number of requests fired
+ */
+WasmEngine.prototype.pumpNetworkFire = function() {
+    var reqs = this._drainRequests();
+    if (!reqs) return 0;
+    for (var i = 0; i < reqs.length; i++) {
+        var req = reqs[i];
+        this._doFetchAsync(req.taskId, req.url, req.method, req.postData, req.fallbacks || []);
+    }
+    return reqs.length;
+};
+
+// ============================================================
 // Message handler
 // ============================================================
 
@@ -223,7 +308,10 @@ self.onmessage = async function(e) {
                 break;
 
             case 'preloadCasts': {
+                var castT0 = performance.now();
+                _loadStartTime = castT0;
                 var n = _e.preloadCasts();
+                console.log('[WORKER] preloadCasts: ' + n + ' casts queued');
                 if (n > 0) {
                     var p1 = _e.pumpNetworkCollect();
                     if (p1.length > 0) await Promise.all(p1);
@@ -237,11 +325,13 @@ self.onmessage = async function(e) {
                     if (pn.length === 0) break;
                     await Promise.all(pn);
                 }
+                console.log('[WORKER] preloadCasts done in ' + Math.round(performance.now() - castT0) + 'ms');
                 self.postMessage({ type: 'castsDone' });
                 break;
             }
 
             case 'play':
+                console.log('[WORKER] play() — starting animation');
                 _e.exports.play(); _e._clearEx(); _e.playing = true;
                 break;
             case 'pause':
@@ -267,27 +357,50 @@ self.onmessage = async function(e) {
                 try {
                     var stillPlaying = true;
                     var frame = null;
+                    var t0 = performance.now();
 
+                    // Phase 1: advance WASM by one Lingo frame
                     try {
                         stillPlaying = _e.tick();
                     } catch (tickErr) {
-                        // WASM trap or Java exception during tick — skip this frame
                         console.error('[WORKER] tick() error: ' + tickErr);
                     }
+                    var t1 = performance.now();
 
-                    // Await network requests queued during tick
+                    // Phase 2: fire network requests and AWAIT results (blocking)
+                    var nReqs = 0;
                     try {
                         var tp = _e.pumpNetworkCollect();
+                        nReqs = tp.length;
                         if (tp.length > 0) await Promise.all(tp);
                     } catch (netErr) {
-                        console.error('[WORKER] network pump error: ' + netErr);
+                        console.error('[WORKER] pump error: ' + netErr);
                     }
+                    var t2 = performance.now();
 
-                    // Render entire frame in WASM (SoftwareRenderer composites all sprites)
+                    // Always update frame metadata from WASM (needed for fast-loop detection)
                     try {
-                        frame = _e.renderFrame();
-                    } catch (renderErr) {
-                        console.error('[WORKER] render() error: ' + renderErr);
+                        _e._lastFrame      = _e.exports.getCurrentFrame();
+                        _e._lastFrameCount = _e.exports.getFrameCount();
+                    } catch (ignore) {}
+
+                    // Phase 3: render (skip during fast-loading for performance)
+                    if (!msg.skipRender) {
+                        try {
+                            frame = _e.renderFrame();
+                        } catch (renderErr) {
+                            console.error('[WORKER] render() error: ' + renderErr);
+                        }
+                    }
+                    var t3 = performance.now();
+
+                    // Log timing for slow ticks
+                    var total = t3 - t0;
+                    if (total > 100) {
+                        console.log('[WORKER] SLOW tick: total=' + Math.round(total) +
+                                    'ms tick=' + Math.round(t1-t0) +
+                                    'ms net=' + Math.round(t2-t1) + 'ms(' + nReqs + ' reqs)' +
+                                    ' render=' + Math.round(t3-t2) + 'ms');
                     }
 
                     // Always send a frame response to unblock main thread

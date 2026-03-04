@@ -70,7 +70,7 @@ public final class StringBuiltins {
     /**
      * offset(substring, string)
      * Returns the 1-indexed position of substring in string, or 0 if not found.
-     * Case-insensitive search.
+     * Case-insensitive search using regionMatches to avoid toLowerCase() allocations.
      */
     private static Datum offset(LingoVM vm, List<Datum> args) {
         if (args.size() < 2) return Datum.ZERO;
@@ -78,9 +78,14 @@ public final class StringBuiltins {
         String str = args.get(1).toStr();
         if (substr.isEmpty()) return Datum.ZERO;
 
-        // Case-insensitive search (Lingo default)
-        int index = str.toLowerCase().indexOf(substr.toLowerCase());
-        if (index < 0) return Datum.ZERO;
-        return Datum.of(index + 1); // 1-indexed
+        // Case-insensitive search without creating temporary lowercase strings
+        int sLen = substr.length();
+        int limit = str.length() - sLen;
+        for (int i = 0; i <= limit; i++) {
+            if (str.regionMatches(true, i, substr, 0, sLen)) {
+                return Datum.of(i + 1); // 1-indexed
+            }
+        }
+        return Datum.ZERO;
     }
 }

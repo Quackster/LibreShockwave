@@ -3,6 +3,7 @@ package com.libreshockwave.vm.opcode.dispatch;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.builtin.MoviePropertyProvider;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -12,6 +13,22 @@ import java.util.List;
 public final class StringMethodDispatcher {
 
     private StringMethodDispatcher() {}
+
+    // Per-type split caches (WASM is single-threaded).
+    // ITEM has a two-entry LRU cache to handle alternating delimiters
+    // (e.g., RETURN for outer loop, "=" for key-value splitting).
+
+    // ITEM cache: 2 entries
+    private static String _item0Str; private static char _item0Delim; private static String[] _item0Result;
+    private static String _item1Str; private static char _item1Delim; private static String[] _item1Result;
+    private static boolean _item0Mru;
+
+    // WORD, LINE: single entry each
+    private static String _wordCacheStr;
+    private static String[] _wordCacheResult;
+
+    private static String _lineCacheStr;
+    private static String[] _lineCacheResult;
 
     public static Datum dispatch(Datum.Str str, String methodName, List<Datum> args) {
         String method = methodName.toLowerCase();
@@ -79,6 +96,7 @@ public final class StringMethodDispatcher {
      * Get a chunk from a string.
      * Handles edge cases: end == 0 means single element (set end = start),
      * end == -1 means to-end (set end = chunk count).
+     * Uses cached splits to avoid O(n²) re-splitting on iteration.
      */
     private static String getStringChunk(String str, String chunkType, int start, int end, char itemDelimiter) {
         if (str.isEmpty() || start < 1) return "";
@@ -92,7 +110,7 @@ public final class StringMethodDispatcher {
             if (s >= str.length() || s >= e) return "";
             return str.substring(s, e);
         } else if ("word".equals(chunkType)) {
-            String[] words = str.trim().split("\\s+");
+            String[] words = cachedSplitWords(str);
             int actualEnd = resolveEnd(end, start, words.length);
             if (start > words.length) return "";
             int s = start - 1;
@@ -104,8 +122,7 @@ public final class StringMethodDispatcher {
             }
             return sb.toString();
         } else if ("line".equals(chunkType)) {
-            String lineDelimiter = pickLineDelimiter(str);
-            String[] lines = str.split(java.util.regex.Pattern.quote(lineDelimiter), -1);
+            String[] lines = cachedSplitLines(str);
             int actualEnd = resolveEnd(end, start, lines.length);
             if (start > lines.length) return "";
             int s = start - 1;
@@ -117,8 +134,7 @@ public final class StringMethodDispatcher {
             }
             return sb.toString();
         } else if ("item".equals(chunkType)) {
-            // Simple split like dirplayer-rs - no bracket/quote awareness
-            String[] items = str.split(String.valueOf(itemDelimiter), -1);
+            String[] items = cachedSplitItems(str, itemDelimiter);
             int actualEnd = resolveEnd(end, start, items.length);
             if (start > items.length) return "";
             int s = start - 1;
@@ -156,18 +172,110 @@ public final class StringMethodDispatcher {
 
     private static int countWords(String str) {
         if (str.isEmpty()) return 0;
-        return str.trim().split("\\s+").length;
+        return cachedSplitWords(str).length;
     }
 
     private static int countLines(String str) {
         if (str.isEmpty()) return 1;
-        String lineDelimiter = pickLineDelimiter(str);
-        return str.split(java.util.regex.Pattern.quote(lineDelimiter), -1).length;
+        return cachedSplitLines(str).length;
     }
 
     private static int countItems(String str, char delimiter) {
         if (str.isEmpty()) return 1;
-        // Simple split like dirplayer-rs
-        return str.split(String.valueOf(delimiter), -1).length;
+        return cachedSplitItems(str, delimiter).length;
+    }
+
+    // ========================================================================
+    // Cached split methods — avoid O(n²) re-splitting when iterating chunks.
+    // Simple char loops instead of regex for WASM performance.
+    // ========================================================================
+
+    /** Split by item delimiter with two-entry LRU cache (handles alternating delimiters). */
+    private static String[] cachedSplitItems(String str, char delimiter) {
+        // Check slot 0
+        if (str == _item0Str && delimiter == _item0Delim && _item0Result != null) {
+            _item0Mru = true;
+            return _item0Result;
+        }
+        // Check slot 1
+        if (str == _item1Str && delimiter == _item1Delim && _item1Result != null) {
+            _item0Mru = false;
+            return _item1Result;
+        }
+        // Cache miss — do split with simple char loop (no regex overhead)
+        ArrayList<String> items = new ArrayList<>();
+        int start = 0;
+        for (int i = 0; i < str.length(); i++) {
+            if (str.charAt(i) == delimiter) {
+                items.add(str.substring(start, i));
+                start = i + 1;
+            }
+        }
+        items.add(str.substring(start));
+        String[] result = items.toArray(new String[0]);
+        // Evict LRU slot
+        if (_item0Mru) {
+            _item1Str = str; _item1Delim = delimiter; _item1Result = result;
+            _item0Mru = false;
+        } else {
+            _item0Str = str; _item0Delim = delimiter; _item0Result = result;
+            _item0Mru = true;
+        }
+        return result;
+    }
+
+    /** Split by whitespace with single-entry cache. */
+    private static String[] cachedSplitWords(String str) {
+        if (str == _wordCacheStr && _wordCacheResult != null) {
+            return _wordCacheResult;
+        }
+        String trimmed = str.trim();
+        if (trimmed.isEmpty()) {
+            _wordCacheStr = str;
+            _wordCacheResult = new String[0];
+            return _wordCacheResult;
+        }
+        // Simple whitespace split — no regex overhead
+        ArrayList<String> words = new ArrayList<>();
+        int wordStart = 0;
+        boolean inWord = false;
+        for (int i = 0; i <= trimmed.length(); i++) {
+            boolean isSpace = i == trimmed.length() || Character.isWhitespace(trimmed.charAt(i));
+            if (isSpace && inWord) {
+                words.add(trimmed.substring(wordStart, i));
+                inWord = false;
+            } else if (!isSpace && !inWord) {
+                wordStart = i;
+                inWord = true;
+            }
+        }
+        String[] result = words.toArray(new String[0]);
+        _wordCacheStr = str;
+        _wordCacheResult = result;
+        return result;
+    }
+
+    /** Split by line delimiter with single-entry cache. */
+    private static String[] cachedSplitLines(String str) {
+        if (str == _lineCacheStr && _lineCacheResult != null) {
+            return _lineCacheResult;
+        }
+        String lineDelimiter = pickLineDelimiter(str);
+        int delimLen = lineDelimiter.length();
+        ArrayList<String> lines = new ArrayList<>();
+        int start = 0;
+        while (true) {
+            int idx = str.indexOf(lineDelimiter, start);
+            if (idx == -1) {
+                lines.add(str.substring(start));
+                break;
+            }
+            lines.add(str.substring(start, idx));
+            start = idx + delimLen;
+        }
+        String[] result = lines.toArray(new String[0]);
+        _lineCacheStr = str;
+        _lineCacheResult = result;
+        return result;
     }
 }

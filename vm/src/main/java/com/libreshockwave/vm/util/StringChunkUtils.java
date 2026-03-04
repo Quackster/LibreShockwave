@@ -13,6 +13,21 @@ public final class StringChunkUtils {
 
     private StringChunkUtils() {}
 
+    // Per-type split caches (WASM is single-threaded, no synchronization needed).
+    // Eliminates O(n²) cost when iterating: str.item.count then str.item[1]..str.item[n].
+    // ITEM has a two-entry LRU cache because Lingo alternates delimiters within loops
+    // (e.g., RETURN for outer iteration, "=" for key-value splitting).
+
+    // ITEM cache: 2 entries to handle alternating delimiters
+    private static String _item0Str; private static char _item0Delim; private static List<String> _item0Result;
+    private static String _item1Str; private static char _item1Delim; private static List<String> _item1Result;
+    private static boolean _item0Mru;
+
+    // WORD, CHAR, LINE: single entry each (no alternation pattern)
+    private static String _wordCacheStr; private static List<String> _wordResult;
+    private static String _charCacheStr; private static List<String> _charResult;
+    private static String _lineCacheStr; private static List<String> _lineResult;
+
     /**
      * Get the last chunk of a string.
      * @param str The source string
@@ -90,12 +105,66 @@ public final class StringChunkUtils {
 
     /**
      * Split a string into chunks based on chunk type.
+     * Results are cached per type: repeated calls with the same string reference
+     * return the cached result in O(1). ITEM type uses a two-entry LRU cache
+     * to handle the common Lingo pattern of alternating delimiters within loops.
      */
     public static List<String> splitIntoChunks(String str, StringChunkType chunkType, char itemDelimiter) {
         if (str == null || str.isEmpty()) {
             return List.of();
         }
 
+        // Per-type cache lookup
+        switch (chunkType) {
+            case ITEM: {
+                // Two-entry LRU for ITEM (handles alternating RETURN/"=" delimiters)
+                if (str == _item0Str && itemDelimiter == _item0Delim && _item0Result != null) {
+                    _item0Mru = true;
+                    return _item0Result;
+                }
+                if (str == _item1Str && itemDelimiter == _item1Delim && _item1Result != null) {
+                    _item0Mru = false;
+                    return _item1Result;
+                }
+                List<String> result = doSplit(str, chunkType, itemDelimiter);
+                // Evict LRU slot
+                if (_item0Mru) {
+                    _item1Str = str; _item1Delim = itemDelimiter; _item1Result = result;
+                    _item0Mru = false;
+                } else {
+                    _item0Str = str; _item0Delim = itemDelimiter; _item0Result = result;
+                    _item0Mru = true;
+                }
+                return result;
+            }
+            case WORD: {
+                if (str == _wordCacheStr && _wordResult != null) return _wordResult;
+                List<String> result = doSplit(str, chunkType, itemDelimiter);
+                _wordCacheStr = str; _wordResult = result;
+                return result;
+            }
+            case CHAR: {
+                if (str == _charCacheStr && _charResult != null) return _charResult;
+                List<String> result = doSplit(str, chunkType, itemDelimiter);
+                _charCacheStr = str; _charResult = result;
+                return result;
+            }
+            case LINE: {
+                if (str == _lineCacheStr && _lineResult != null) return _lineResult;
+                List<String> result = doSplit(str, chunkType, itemDelimiter);
+                _lineCacheStr = str; _lineResult = result;
+                return result;
+            }
+            default: {
+                return doSplit(str, chunkType, itemDelimiter);
+            }
+        }
+    }
+
+    /**
+     * Perform the actual string split without caching.
+     */
+    private static List<String> doSplit(String str, StringChunkType chunkType, char itemDelimiter) {
         return switch (chunkType) {
             case CHAR -> {
                 List<String> chars = new ArrayList<>(str.length());
