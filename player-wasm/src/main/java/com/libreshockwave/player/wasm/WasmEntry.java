@@ -83,6 +83,18 @@ public class WasmEntry {
     // === Playback ===
 
     /**
+     * Force a full garbage collection cycle.
+     * Call from JS after heavy allocation phases to compact the heap
+     * and reduce the chance of GC corruption during subsequent ticks.
+     */
+    @Export(name = "forceGC")
+    public static void forceGC() {
+        com.libreshockwave.vm.util.StringChunkUtils.clearCaches();
+        com.libreshockwave.vm.opcode.dispatch.StringMethodDispatcher.clearCaches();
+        System.gc();
+    }
+
+    /**
      * Set the per-handler instruction step limit. 0 = unlimited (the default).
      */
     @Export(name = "setVmStepLimit")
@@ -127,7 +139,16 @@ public class WasmEntry {
         if (wasmPlayer == null) return 0;
         try {
             lastError = null;
-            return wasmPlayer.tick() ? 1 : 0;
+            long t0 = System.currentTimeMillis();
+            boolean result = wasmPlayer.tick();
+            long elapsed = System.currentTimeMillis() - t0;
+            // After heavy ticks (text processing), clear string split caches
+            // to release large cached arrays and reduce GC pressure.
+            if (elapsed > 500) {
+                com.libreshockwave.vm.util.StringChunkUtils.clearCaches();
+                com.libreshockwave.vm.opcode.dispatch.StringMethodDispatcher.clearCaches();
+            }
+            return result ? 1 : 0;
         } catch (Throwable e) {
             captureError("tick", e);
             return 1; // Keep animation loop alive

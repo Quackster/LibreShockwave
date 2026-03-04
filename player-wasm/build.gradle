@@ -28,7 +28,7 @@ teavm {
         // Generate debug info for development
         debugInformation = true
         // Default is 16 MB — far too small for text parsing + bitmap compositing
-        minHeapSize = 128
+        minHeapSize = 1024
         maxHeapSize = 2048
     }
 

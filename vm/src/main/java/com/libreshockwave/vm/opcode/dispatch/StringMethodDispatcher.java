@@ -9,19 +9,20 @@ import java.util.List;
 /**
  * Handles method calls on string values.
  * Supports Lingo string chunk operations like count, getProp, getPropRef.
+ *
+ * Uses a two-tier strategy to minimize GC pressure in WASM:
+ * 1. Cached splits for long strings being iterated (avoids O(n^2) re-splitting)
+ * 2. Direct scanning for short strings on cache miss (avoids array allocation)
  */
 public final class StringMethodDispatcher {
 
     private StringMethodDispatcher() {}
 
-    // Per-type split caches (WASM is single-threaded).
-    // ITEM has a two-entry LRU cache to handle alternating delimiters
-    // (e.g., RETURN for outer loop, "=" for key-value splitting).
+    /** Strings shorter than this use direct scanning on cache miss (no array allocation). */
+    private static final int DIRECT_SCAN_THRESHOLD = 1024;
 
-    // ITEM cache: 2 entries
-    private static String _item0Str; private static char _item0Delim; private static String[] _item0Result;
-    private static String _item1Str; private static char _item1Delim; private static String[] _item1Result;
-    private static boolean _item0Mru;
+    // Per-type split caches (WASM is single-threaded).
+    // ITEM uses direct scanning always (no split+cache) to avoid burst allocations.
 
     // WORD, LINE: single entry each
     private static String _wordCacheStr;
@@ -30,53 +31,50 @@ public final class StringMethodDispatcher {
     private static String _lineCacheStr;
     private static String[] _lineCacheResult;
 
+    /** Release cached split results to reduce GC pressure after heavy text processing. */
+    public static void clearCaches() {
+        _wordCacheStr = null; _wordCacheResult = null;
+        _lineCacheStr = null; _lineCacheResult = null;
+    }
+
     public static Datum dispatch(Datum.Str str, String methodName, List<Datum> args) {
-        String method = methodName.toLowerCase();
-        // Get the item delimiter (default comma)
+        // Use equalsIgnoreCase to avoid toLowerCase allocation
         char itemDelimiter = getItemDelimiter();
 
-        // Use if-else instead of switch to avoid TeaVM compiler bug where
-        // case "char" in a string switch is silently ignored (Java keyword conflict)
-        if ("length".equals(method)) {
+        if ("length".equalsIgnoreCase(methodName)) {
             return Datum.of(str.value().length());
-        } else if ("char".equals(method)) {
+        } else if ("char".equalsIgnoreCase(methodName)) {
             if (args.isEmpty()) return Datum.EMPTY_STRING;
             int index = args.get(0).toInt();
             if (index >= 1 && index <= str.value().length()) {
                 return Datum.of(String.valueOf(str.value().charAt(index - 1)));
             }
             return Datum.EMPTY_STRING;
-        } else if ("count".equals(method)) {
-            // count(str, #char) or count(str, #word) etc.
+        } else if ("count".equalsIgnoreCase(methodName)) {
             if (args.isEmpty()) return Datum.of(str.value().length());
             Datum chunkType = args.get(0);
             if (chunkType instanceof Datum.Symbol s) {
-                String type = s.name().toLowerCase();
-                // if-else to avoid TeaVM "char" keyword bug in switch
-                if ("char".equals(type)) return Datum.of(str.value().length());
-                else if ("word".equals(type)) return Datum.of(countWords(str.value()));
-                else if ("line".equals(type)) return Datum.of(countLines(str.value()));
-                else if ("item".equals(type)) return Datum.of(countItems(str.value(), itemDelimiter));
+                String type = s.name();
+                if ("char".equalsIgnoreCase(type)) return Datum.of(str.value().length());
+                else if ("word".equalsIgnoreCase(type)) return Datum.of(countWords(str.value()));
+                else if ("line".equalsIgnoreCase(type)) return Datum.of(countLines(str.value()));
+                else if ("item".equalsIgnoreCase(type)) return Datum.of(countItems(str.value(), itemDelimiter));
                 else return Datum.of(str.value().length());
             }
             return Datum.of(str.value().length());
-        } else if ("getpropref".equals(method)) {
-            // getPropRef(str, #chunkType, index) - gets a single chunk from string
+        } else if ("getpropref".equalsIgnoreCase(methodName)) {
             if (args.size() < 2) return Datum.EMPTY_STRING;
             Datum chunkType = args.get(0);
             int index = args.get(1).toInt();
             if (!(chunkType instanceof Datum.Symbol s)) return Datum.EMPTY_STRING;
-            String type = s.name().toLowerCase();
-            return Datum.of(getStringChunk(str.value(), type, index, index, itemDelimiter));
-        } else if ("getprop".equals(method)) {
-            // getProp(str, #chunkType, startIndex, endIndex?)
+            return Datum.of(getStringChunk(str.value(), s.name(), index, index, itemDelimiter));
+        } else if ("getprop".equalsIgnoreCase(methodName)) {
             if (args.size() < 2) return Datum.EMPTY_STRING;
             Datum chunkType = args.get(0);
             int startIndex = args.get(1).toInt();
             int endIndex = args.size() >= 3 ? args.get(2).toInt() : startIndex;
             if (!(chunkType instanceof Datum.Symbol s)) return Datum.EMPTY_STRING;
-            String type = s.name().toLowerCase();
-            return Datum.of(getStringChunk(str.value(), type, startIndex, endIndex, itemDelimiter));
+            return Datum.of(getStringChunk(str.value(), s.name(), startIndex, endIndex, itemDelimiter));
         }
         return Datum.VOID;
     }
@@ -96,63 +94,142 @@ public final class StringMethodDispatcher {
      * Get a chunk from a string.
      * Handles edge cases: end == 0 means single element (set end = start),
      * end == -1 means to-end (set end = chunk count).
-     * Uses cached splits to avoid O(n²) re-splitting on iteration.
+     * Uses cached splits for long iterated strings, direct scanning for short strings.
      */
     private static String getStringChunk(String str, String chunkType, int start, int end, char itemDelimiter) {
         if (str.isEmpty() || start < 1) return "";
 
-        // Use if-else instead of switch to avoid TeaVM compiler bug where
-        // case "char" in a string switch is silently ignored (keyword conflict)
-        if ("char".equals(chunkType)) {
+        // Use equalsIgnoreCase to avoid toLowerCase allocation
+        if ("char".equalsIgnoreCase(chunkType)) {
             int actualEnd = resolveEnd(end, start, str.length());
             int s = Math.max(0, start - 1);
             int e = Math.min(str.length(), actualEnd);
             if (s >= str.length() || s >= e) return "";
             return str.substring(s, e);
-        } else if ("word".equals(chunkType)) {
-            String[] words = cachedSplitWords(str);
-            int actualEnd = resolveEnd(end, start, words.length);
-            if (start > words.length) return "";
-            int s = start - 1;
-            int e = Math.min(words.length, actualEnd);
-            StringBuilder sb = new StringBuilder();
-            for (int i = s; i < e; i++) {
-                if (sb.length() > 0) sb.append(" ");
-                sb.append(words[i]);
-            }
-            return sb.toString();
-        } else if ("line".equals(chunkType)) {
-            String[] lines = cachedSplitLines(str);
-            int actualEnd = resolveEnd(end, start, lines.length);
-            if (start > lines.length) return "";
-            int s = start - 1;
-            int e = Math.min(lines.length, actualEnd);
-            StringBuilder sb = new StringBuilder();
-            for (int i = s; i < e; i++) {
-                if (sb.length() > 0) sb.append("\r\n");
-                sb.append(lines[i]);
-            }
-            return sb.toString();
-        } else if ("item".equals(chunkType)) {
-            String[] items = cachedSplitItems(str, itemDelimiter);
-            int actualEnd = resolveEnd(end, start, items.length);
-            if (start > items.length) return "";
-            int s = start - 1;
-            int e = Math.min(items.length, actualEnd);
-            StringBuilder sb = new StringBuilder();
-            for (int i = s; i < e; i++) {
-                if (sb.length() > 0) sb.append(itemDelimiter);
-                sb.append(items[i]);
-            }
-            return sb.toString();
+        } else if ("word".equalsIgnoreCase(chunkType)) {
+            return getWordChunk(str, start, end);
+        } else if ("line".equalsIgnoreCase(chunkType)) {
+            return getLineChunk(str, start, end);
+        } else if ("item".equalsIgnoreCase(chunkType)) {
+            return getItemChunk(str, start, end, itemDelimiter);
         }
         return "";
     }
 
-    /**
-     * Resolve the end parameter for chunk ranges.
-     * end == 0 means single element (return start), end == -1 means to-end (return count).
-     */
+    // ========================================================================
+    // ITEM chunk access — cache-first, then direct scan for short strings
+    // ========================================================================
+
+    private static String getItemChunk(String str, int start, int end, char delimiter) {
+        // Always use direct scan for ITEM to avoid burst allocation of thousands of substrings
+        int totalItems = countItemsDirect(str, delimiter);
+        int actualEnd = resolveEnd(end, start, totalItems);
+        if (start > totalItems) return "";
+        int e = Math.min(totalItems, actualEnd);
+        if (start == e) return getItemDirect(str, start, delimiter);
+        return getItemRangeDirect(str, start, e, delimiter);
+    }
+
+    // extractFromArray removed — ITEM chunks no longer use split+cache
+
+    // ========================================================================
+    // WORD chunk access — cache-first, then direct scan for short strings
+    // ========================================================================
+
+    private static String getWordChunk(String str, int start, int end) {
+        // Check cache
+        if (str == _wordCacheStr && _wordCacheResult != null) {
+            return extractWordsFromArray(_wordCacheResult, start, end);
+        }
+        // Cache miss — direct scan for short strings
+        if (str.length() < DIRECT_SCAN_THRESHOLD) {
+            int totalWords = countWordsDirect(str);
+            if (totalWords == 0 || start > totalWords) return "";
+            int actualEnd = resolveEnd(end, start, totalWords);
+            int e = Math.min(totalWords, actualEnd);
+            return getWordRangeDirect(str, start, e);
+        }
+        // Long string — split + cache
+        return extractWordsFromArray(cachedSplitWords(str), start, end);
+    }
+
+    private static String extractWordsFromArray(String[] words, int start, int end) {
+        int actualEnd = resolveEnd(end, start, words.length);
+        if (start > words.length) return "";
+        int s = start - 1;
+        int e = Math.min(words.length, actualEnd);
+        if (s == e - 1) return words[s];
+        StringBuilder sb = new StringBuilder();
+        for (int i = s; i < e; i++) {
+            if (sb.length() > 0) sb.append(" ");
+            sb.append(words[i]);
+        }
+        return sb.toString();
+    }
+
+    // ========================================================================
+    // LINE chunk access — cache-first, then direct scan for short strings
+    // ========================================================================
+
+    private static String getLineChunk(String str, int start, int end) {
+        // Check cache
+        if (str == _lineCacheStr && _lineCacheResult != null) {
+            return extractLinesFromArray(_lineCacheResult, start, end);
+        }
+        // Cache miss — direct scan for short strings
+        if (str.length() < DIRECT_SCAN_THRESHOLD) {
+            int totalLines = countLinesDirect(str);
+            if (start > totalLines) return "";
+            int actualEnd = resolveEnd(end, start, totalLines);
+            int e = Math.min(totalLines, actualEnd);
+            return getLineRangeDirect(str, start, e);
+        }
+        // Long string — split + cache
+        return extractLinesFromArray(cachedSplitLines(str), start, end);
+    }
+
+    private static String extractLinesFromArray(String[] lines, int start, int end) {
+        int actualEnd = resolveEnd(end, start, lines.length);
+        if (start > lines.length) return "";
+        int s = start - 1;
+        int e = Math.min(lines.length, actualEnd);
+        if (s == e - 1) return lines[s];
+        StringBuilder sb = new StringBuilder();
+        for (int i = s; i < e; i++) {
+            if (sb.length() > 0) sb.append("\r\n");
+            sb.append(lines[i]);
+        }
+        return sb.toString();
+    }
+
+    // ========================================================================
+    // Count methods — cache-first, then direct count for short strings
+    // ========================================================================
+
+    private static int countWords(String str) {
+        if (str.isEmpty()) return 0;
+        if (str == _wordCacheStr && _wordCacheResult != null) return _wordCacheResult.length;
+        if (str.length() < DIRECT_SCAN_THRESHOLD) return countWordsDirect(str);
+        return cachedSplitWords(str).length;
+    }
+
+    private static int countLines(String str) {
+        if (str.isEmpty()) return 1;
+        if (str == _lineCacheStr && _lineCacheResult != null) return _lineCacheResult.length;
+        if (str.length() < DIRECT_SCAN_THRESHOLD) return countLinesDirect(str);
+        return cachedSplitLines(str).length;
+    }
+
+    private static int countItems(String str, char delimiter) {
+        if (str.isEmpty()) return 1;
+        // Always use direct count for ITEM (no split allocation)
+        return countItemsDirect(str, delimiter);
+    }
+
+    // ========================================================================
+    // Resolve end parameter
+    // ========================================================================
+
     private static int resolveEnd(int end, int start, int count) {
         if (end == 0) return start;
         if (end == -1) return count;
@@ -170,59 +247,133 @@ public final class StringMethodDispatcher {
         return "\r\n"; // default
     }
 
-    private static int countWords(String str) {
-        if (str.isEmpty()) return 0;
-        return cachedSplitWords(str).length;
-    }
-
-    private static int countLines(String str) {
-        if (str.isEmpty()) return 1;
-        return cachedSplitLines(str).length;
-    }
-
-    private static int countItems(String str, char delimiter) {
-        if (str.isEmpty()) return 1;
-        return cachedSplitItems(str, delimiter).length;
-    }
-
     // ========================================================================
-    // Cached split methods — avoid O(n²) re-splitting when iterating chunks.
-    // Simple char loops instead of regex for WASM performance.
+    // Direct-scan methods — zero array allocation, O(n) per call.
+    // Used for short strings on cache miss to reduce GC pressure.
     // ========================================================================
 
-    /** Split by item delimiter with two-entry LRU cache (handles alternating delimiters). */
-    private static String[] cachedSplitItems(String str, char delimiter) {
-        // Check slot 0
-        if (str == _item0Str && delimiter == _item0Delim && _item0Result != null) {
-            _item0Mru = true;
-            return _item0Result;
+    private static int countItemsDirect(String str, char delimiter) {
+        int count = 1;
+        for (int i = 0; i < str.length(); i++) {
+            if (str.charAt(i) == delimiter) count++;
         }
-        // Check slot 1
-        if (str == _item1Str && delimiter == _item1Delim && _item1Result != null) {
-            _item0Mru = false;
-            return _item1Result;
-        }
-        // Cache miss — do split with simple char loop (no regex overhead)
-        ArrayList<String> items = new ArrayList<>();
+        return count;
+    }
+
+    private static String getItemDirect(String str, int index, char delimiter) {
+        int current = 1;
         int start = 0;
         for (int i = 0; i < str.length(); i++) {
             if (str.charAt(i) == delimiter) {
-                items.add(str.substring(start, i));
+                if (current == index) return str.substring(start, i);
+                current++;
                 start = i + 1;
             }
         }
-        items.add(str.substring(start));
-        String[] result = items.toArray(new String[0]);
-        // Evict LRU slot
-        if (_item0Mru) {
-            _item1Str = str; _item1Delim = delimiter; _item1Result = result;
-            _item0Mru = false;
-        } else {
-            _item0Str = str; _item0Delim = delimiter; _item0Result = result;
-            _item0Mru = true;
-        }
-        return result;
+        return current == index ? str.substring(start) : "";
     }
+
+    /** Get items [startIdx..endIdx] joined by delimiter, using one-pass scan. */
+    private static String getItemRangeDirect(String str, int startIdx, int endIdx, char delimiter) {
+        int delimsSeen = 0;
+        int segStart = (startIdx == 1) ? 0 : -1;
+
+        for (int i = 0; i < str.length(); i++) {
+            if (str.charAt(i) == delimiter) {
+                delimsSeen++;
+                if (startIdx > 1 && delimsSeen == startIdx - 1) segStart = i + 1;
+                if (delimsSeen == endIdx) {
+                    return (segStart >= 0) ? str.substring(segStart, i) : "";
+                }
+            }
+        }
+        return (segStart >= 0) ? str.substring(segStart) : "";
+    }
+
+    private static int countWordsDirect(String str) {
+        int count = 0;
+        boolean inWord = false;
+        for (int i = 0; i < str.length(); i++) {
+            if (Character.isWhitespace(str.charAt(i))) {
+                inWord = false;
+            } else if (!inWord) {
+                count++;
+                inWord = true;
+            }
+        }
+        return count;
+    }
+
+    /** Get words [startIdx..endIdx] joined by space, normalizing whitespace. */
+    private static String getWordRangeDirect(String str, int startIdx, int endIdx) {
+        int wordNum = 0;
+        int wordStart = 0;
+        boolean inWord = false;
+        StringBuilder sb = null;
+
+        for (int i = 0; i <= str.length(); i++) {
+            boolean isSpace = i == str.length() || Character.isWhitespace(str.charAt(i));
+            if (!isSpace && !inWord) {
+                wordNum++;
+                wordStart = i;
+                inWord = true;
+            } else if (isSpace && inWord) {
+                if (wordNum >= startIdx && wordNum <= endIdx) {
+                    if (sb == null) sb = new StringBuilder();
+                    else sb.append(' ');
+                    sb.append(str, wordStart, i);
+                }
+                if (wordNum >= endIdx) break;
+                inWord = false;
+            }
+        }
+        return sb != null ? sb.toString() : "";
+    }
+
+    private static int countLinesDirect(String str) {
+        String delim = pickLineDelimiter(str);
+        int count = 1;
+        int dLen = delim.length();
+        int i = 0;
+        while (i <= str.length() - dLen) {
+            if (str.regionMatches(i, delim, 0, dLen)) {
+                count++;
+                i += dLen;
+            } else {
+                i++;
+            }
+        }
+        return count;
+    }
+
+    /** Get lines [startIdx..endIdx] joined by \r\n, using one-pass scan. */
+    private static String getLineRangeDirect(String str, int startIdx, int endIdx) {
+        String delim = pickLineDelimiter(str);
+        int dLen = delim.length();
+        int lineNum = 1;
+        int segStart = (startIdx == 1) ? 0 : -1;
+        int i = 0;
+        while (i <= str.length() - dLen) {
+            if (str.regionMatches(i, delim, 0, dLen)) {
+                if (startIdx > 1 && lineNum == startIdx - 1) segStart = i + dLen;
+                if (lineNum == endIdx) {
+                    return (segStart >= 0) ? str.substring(segStart, i) : "";
+                }
+                lineNum++;
+                i += dLen;
+            } else {
+                i++;
+            }
+        }
+        return (segStart >= 0) ? str.substring(segStart) : "";
+    }
+
+    // ========================================================================
+    // Cached split methods — for long strings being iterated.
+    // Simple char loops instead of regex for WASM performance.
+    // ========================================================================
+
+    // cachedSplitItems removed — ITEM chunks use direct scanning to avoid burst allocation
 
     /** Split by whitespace with single-entry cache. */
     private static String[] cachedSplitWords(String str) {

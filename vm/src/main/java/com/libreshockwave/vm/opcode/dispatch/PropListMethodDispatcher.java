@@ -8,121 +8,108 @@ import java.util.List;
 
 /**
  * Handles method calls on property lists.
+ * Uses equalsIgnoreCase to avoid toLowerCase String allocation.
  */
 public final class PropListMethodDispatcher {
 
     private PropListMethodDispatcher() {}
 
     public static Datum dispatch(Datum.PropList propList, String methodName, List<Datum> args) {
-        String method = methodName.toLowerCase();
-        return switch (method) {
-            case "count" -> Datum.of(propList.properties().size());
-            case "getat" -> {
-                if (args.isEmpty()) yield Datum.VOID;
-                Datum keyOrIndex = args.get(0);
-                // Support both string/symbol key lookup and integer index lookup
-                if (keyOrIndex instanceof Datum.Str s) {
-                    yield propList.properties().getOrDefault(s.value(), Datum.VOID);
-                } else if (keyOrIndex instanceof Datum.Symbol sym) {
-                    yield propList.properties().getOrDefault(sym.name(), Datum.VOID);
-                } else {
-                    // Integer index (1-based)
-                    int index = keyOrIndex.toInt() - 1;
-                    var entries = new ArrayList<>(propList.properties().entrySet());
-                    if (index >= 0 && index < entries.size()) {
-                        yield entries.get(index).getValue();
-                    }
-                    yield Datum.VOID;
+        // Fast path for most common operations (no allocation)
+        if ("count".equalsIgnoreCase(methodName)) {
+            return Datum.of(propList.properties().size());
+        }
+        if ("getprop".equalsIgnoreCase(methodName) || "getaprop".equalsIgnoreCase(methodName)
+                || "getproperty".equalsIgnoreCase(methodName)) {
+            if (args.isEmpty()) return Datum.VOID;
+            String key = args.get(0).toKeyName();
+            return propList.properties().getOrDefault(key, Datum.VOID);
+        }
+        if ("setprop".equalsIgnoreCase(methodName) || "setaprop".equalsIgnoreCase(methodName)) {
+            if (args.size() < 2) return Datum.VOID;
+            String key = args.get(0).toKeyName();
+            propList.properties().put(key, args.get(1));
+            return Datum.VOID;
+        }
+        if ("addprop".equalsIgnoreCase(methodName)) {
+            if (args.size() < 2) return Datum.VOID;
+            String key = args.get(0).toKeyName();
+            propList.properties().put(key, args.get(1));
+            return Datum.VOID;
+        }
+        if ("getat".equalsIgnoreCase(methodName)) {
+            if (args.isEmpty()) return Datum.VOID;
+            Datum keyOrIndex = args.get(0);
+            if (keyOrIndex instanceof Datum.Str s) {
+                return propList.properties().getOrDefault(s.value(), Datum.VOID);
+            } else if (keyOrIndex instanceof Datum.Symbol sym) {
+                return propList.properties().getOrDefault(sym.name(), Datum.VOID);
+            } else {
+                int index = keyOrIndex.toInt() - 1;
+                var entries = new ArrayList<>(propList.properties().entrySet());
+                if (index >= 0 && index < entries.size()) {
+                    return entries.get(index).getValue();
                 }
+                return Datum.VOID;
             }
-            case "getprop", "getaprop", "getproperty" -> {
-                if (args.isEmpty()) yield Datum.VOID;
-                String key = args.get(0).toKeyName();
-                yield propList.properties().getOrDefault(key, Datum.VOID);
-            }
-            case "setprop", "setaprop" -> {
-                if (args.size() < 2) yield Datum.VOID;
-                String key = args.get(0).toKeyName();
-                propList.properties().put(key, args.get(1));
-                yield Datum.VOID;
-            }
-            case "addprop" -> {
-                if (args.size() < 2) yield Datum.VOID;
-                String key = args.get(0).toKeyName();
-                propList.properties().put(key, args.get(1));
-                yield Datum.VOID;
-            }
-            case "deleteprop" -> {
-                if (args.isEmpty()) yield Datum.VOID;
-                String key = args.get(0).toKeyName();
-                propList.properties().remove(key);
-                yield Datum.VOID;
-            }
-            case "getpropat" -> {
-                // Get the key at position
-                if (args.isEmpty()) yield Datum.VOID;
-                int index = args.get(0).toInt() - 1;
-                var keys = new ArrayList<>(propList.properties().keySet());
-                if (index >= 0 && index < keys.size()) {
-                    yield Datum.symbol(keys.get(index));
+        }
+        if ("setat".equalsIgnoreCase(methodName)) {
+            if (args.size() < 2) return Datum.VOID;
+            Datum keyOrIndex = args.get(0);
+            Datum value = args.get(1);
+            if (keyOrIndex instanceof Datum.Int intKey) {
+                int index = intKey.value() - 1;
+                var entries = new ArrayList<>(propList.properties().entrySet());
+                if (index >= 0 && index < entries.size()) {
+                    propList.properties().put(entries.get(index).getKey(), value);
                 }
-                yield Datum.VOID;
+            } else {
+                propList.properties().put(keyOrIndex.toKeyName(), value);
             }
-            case "setat" -> {
-                // setAt(propList, position/key, value)
-                // For integer keys, do positional indexing (1-based → 0-based)
-                if (args.size() < 2) yield Datum.VOID;
-                Datum keyOrIndex = args.get(0);
-                Datum value = args.get(1);
-                if (keyOrIndex instanceof Datum.Int intKey) {
-                    int index = intKey.value() - 1;
-                    var entries = new ArrayList<>(propList.properties().entrySet());
-                    if (index >= 0 && index < entries.size()) {
-                        String existingKey = entries.get(index).getKey();
-                        propList.properties().put(existingKey, value);
-                    }
-                } else {
-                    String key = keyOrIndex.toKeyName();
-                    propList.properties().put(key, value);
-                }
-                yield Datum.VOID;
+            return Datum.VOID;
+        }
+        if ("deleteprop".equalsIgnoreCase(methodName)) {
+            if (args.isEmpty()) return Datum.VOID;
+            propList.properties().remove(args.get(0).toKeyName());
+            return Datum.VOID;
+        }
+        if ("findpos".equalsIgnoreCase(methodName)) {
+            if (args.isEmpty()) return Datum.VOID;
+            String key = args.get(0).toKeyName();
+            int pos = 1;
+            for (String k : propList.properties().keySet()) {
+                if (k.equalsIgnoreCase(key)) return Datum.of(pos);
+                pos++;
             }
-            case "findpos" -> {
-                // Find position of key, return VOID if not found
-                if (args.isEmpty()) yield Datum.VOID;
-                String key = args.get(0).toKeyName();
-                int pos = 1;
-                for (String k : propList.properties().keySet()) {
-                    if (k.equalsIgnoreCase(key)) {
-                        yield Datum.of(pos);
-                    }
-                    pos++;
-                }
-                yield Datum.VOID;
-            }
-            case "deleteat" -> {
-                if (args.isEmpty()) yield Datum.VOID;
-                int index = args.get(0).toInt() - 1;
-                var keys = new ArrayList<>(propList.properties().keySet());
-                if (index >= 0 && index < keys.size()) {
-                    propList.properties().remove(keys.get(index));
-                }
-                yield Datum.VOID;
-            }
-            case "getlast" -> {
-                if (propList.properties().isEmpty()) yield Datum.VOID;
-                var values = new ArrayList<>(propList.properties().values());
-                yield values.get(values.size() - 1);
-            }
-            case "getfirst" -> {
-                if (propList.properties().isEmpty()) yield Datum.VOID;
-                yield propList.properties().values().iterator().next();
-            }
-            case "duplicate" -> {
-                yield new Datum.PropList(new LinkedHashMap<>(propList.properties()));
-            }
-            default -> Datum.VOID;
-        };
+            return Datum.VOID;
+        }
+        if ("getpropat".equalsIgnoreCase(methodName)) {
+            if (args.isEmpty()) return Datum.VOID;
+            int index = args.get(0).toInt() - 1;
+            var keys = new ArrayList<>(propList.properties().keySet());
+            if (index >= 0 && index < keys.size()) return Datum.symbol(keys.get(index));
+            return Datum.VOID;
+        }
+        if ("deleteat".equalsIgnoreCase(methodName)) {
+            if (args.isEmpty()) return Datum.VOID;
+            int index = args.get(0).toInt() - 1;
+            var keys = new ArrayList<>(propList.properties().keySet());
+            if (index >= 0 && index < keys.size()) propList.properties().remove(keys.get(index));
+            return Datum.VOID;
+        }
+        if ("getlast".equalsIgnoreCase(methodName)) {
+            if (propList.properties().isEmpty()) return Datum.VOID;
+            Datum last = Datum.VOID;
+            for (Datum v : propList.properties().values()) last = v;
+            return last;
+        }
+        if ("getfirst".equalsIgnoreCase(methodName)) {
+            if (propList.properties().isEmpty()) return Datum.VOID;
+            return propList.properties().values().iterator().next();
+        }
+        if ("duplicate".equalsIgnoreCase(methodName)) {
+            return new Datum.PropList(new LinkedHashMap<>(propList.properties()));
+        }
+        return Datum.VOID;
     }
-
 }
