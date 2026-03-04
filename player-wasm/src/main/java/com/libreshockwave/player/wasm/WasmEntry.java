@@ -91,7 +91,26 @@ public class WasmEntry {
     public static void forceGC() {
         com.libreshockwave.vm.util.StringChunkUtils.clearCaches();
         com.libreshockwave.vm.opcode.dispatch.StringMethodDispatcher.clearCaches();
-        System.gc();
+        if (wasmPlayer != null && wasmPlayer.getPlayer() != null) {
+            // Release redundant raw file bytes after casts are parsed into DirectorFiles.
+            // For Habbo with 121 .cct files, this frees 10-100MB on a 128MB WASM heap.
+            wasmPlayer.getPlayer().getCastLibManager().clearFileCache();
+            // Release audio/raw chunks from all loaded DirectorFiles.
+            // WASM can't play audio, so SoundChunk/MediaChunk data is wasted heap.
+            var castLibs = wasmPlayer.getPlayer().getCastLibManager().getCastLibs();
+            for (var castLib : castLibs.values()) {
+                if (castLib.getSourceFile() != null) {
+                    castLib.getSourceFile().releaseNonEssentialChunks();
+                }
+            }
+            // Also release from main file
+            if (wasmPlayer.getPlayer().getFile() != null) {
+                wasmPlayer.getPlayer().getFile().releaseNonEssentialChunks();
+            }
+        }
+        // Don't call System.gc() — forced GC triggers TeaVM defrag that can
+        // corrupt pointers, causing "memory access out of bounds" after heavy ticks.
+        // Let TeaVM's automatic GC handle compaction on its own schedule.
     }
 
     /**
@@ -124,6 +143,17 @@ public class WasmEntry {
         if (wasmPlayer == null) return;
         try {
             lastError = null;
+            // Set up GC callback so cache clearing happens DURING long handlers,
+            // not just after they complete. Critical for the 25s text dump handler:
+            // without this, the fileCache + audio chunks consume 10-100MB during
+            // the dump, causing post-dump OOB when the heap is too fragmented.
+            com.libreshockwave.vm.LingoVM.setGCCallback(() -> {
+                if (wasmPlayer != null && wasmPlayer.getPlayer() != null) {
+                    wasmPlayer.getPlayer().getCastLibManager().clearFileCache();
+                }
+                com.libreshockwave.vm.util.StringChunkUtils.clearCaches();
+                com.libreshockwave.vm.opcode.dispatch.StringMethodDispatcher.clearCaches();
+            });
             wasmPlayer.play();
         } catch (Throwable e) {
             captureError("play", e);
