@@ -336,7 +336,7 @@ public final class PropertyOpcodes {
                     int chunkTypeCode = propertyId - 0x0b;
                     try {
                         StringChunkType chunkType = StringChunkType.fromCode(chunkTypeCode);
-                        char delimiter = movieProvider != null ? movieProvider.getItemDelimiter() : ',';
+                        char delimiter = MoviePropertyProvider.ItemDelimiterCache._char;
                         String lastChunk = StringChunkUtils.getLastChunk(str, chunkType, delimiter);
                         yield Datum.of(lastChunk);
                     } catch (IllegalArgumentException e) {
@@ -349,7 +349,7 @@ public final class PropertyOpcodes {
                 String str = ctx.pop().toStr();
                 try {
                     StringChunkType chunkType = StringChunkType.fromCode(propertyId);
-                    char delimiter = movieProvider != null ? movieProvider.getItemDelimiter() : ',';
+                    char delimiter = MoviePropertyProvider.ItemDelimiterCache._char;
                     int count = StringChunkUtils.countChunks(str, chunkType, delimiter);
                     yield Datum.of(count);
                 } catch (IllegalArgumentException e) {

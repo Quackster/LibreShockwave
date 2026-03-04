@@ -27,7 +27,10 @@ teavm {
         mainClass = 'com.libreshockwave.player.wasm.WasmEntry'
         // Generate debug info for development
         debugInformation = true
-        // Default is 16 MB — far too small for text parsing + bitmap compositing
+        // Default is 16 MB — far too small for text parsing + bitmap compositing.
+        // Text processing creates a 4497-entry PropList + thousands of temp strings;
+        // after dump() the heap needs headroom for cast loading + bitmap decoding.
+        // 64MB initial, 128MB max (WASM pages: 1024 × 64KB, 2048 × 64KB).
         minHeapSize = 1024
         maxHeapSize = 2048
     }

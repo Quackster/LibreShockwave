@@ -19,8 +19,8 @@ import java.util.List;
 public final class ExecutionContext {
 
     private final Scope scope;
-    private final ScriptChunk.Handler.Instruction instruction;
-    private final int argument;
+    private ScriptChunk.Handler.Instruction instruction;
+    private int argument;
     private final BuiltinRegistry builtins;
     private final TraceListener traceListener;
 
@@ -51,6 +51,15 @@ public final class ExecutionContext {
         this.globalAccessor = globalAccessor;
         this.builtinInvoker = builtinInvoker;
         this.errorStateSetter = errorStateSetter;
+    }
+
+    /**
+     * Update the instruction for this context (reuse across instructions in a handler).
+     * Avoids creating a new ExecutionContext + closures per instruction.
+     */
+    public void setInstruction(ScriptChunk.Handler.Instruction instr) {
+        this.instruction = instr;
+        this.argument = instr.argument();
     }
 
     /**
@@ -242,9 +251,16 @@ public final class ExecutionContext {
     // Helper to pop multiple args in reverse order
 
     public List<Datum> popArgs(int count) {
-        List<Datum> args = new ArrayList<>();
+        if (count == 0) return new ArrayList<>(0);
+        // Pop in stack order then reverse in-place — O(n) instead of O(n²) add(0)
+        ArrayList<Datum> args = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
-            args.add(0, pop());
+            args.add(pop());
+        }
+        for (int i = 0, j = count - 1; i < j; i++, j--) {
+            Datum tmp = args.get(i);
+            args.set(i, args.get(j));
+            args.set(j, tmp);
         }
         return args;
     }

@@ -366,10 +366,15 @@ self.onmessage = async function(e) {
                         stillPlaying = _e.tick();
                     } catch (tickErr) {
                         console.error('[WORKER] tick() error: ' + tickErr);
-                        // On OOB/trap, try forceGC to recover corrupted heap
                         try { _e.exports.forceGC(); _e._clearEx(); } catch(e2) {}
                     }
                     var t1 = performance.now();
+
+                    // After heavy ticks (text dump, cast load), force GC between phases.
+                    // This runs OUTSIDE WASM so the heap is stable for compaction.
+                    if (t1 - t0 > 100) {
+                        try { _e.exports.forceGC(); _e._clearEx(); } catch(e3) {}
+                    }
 
                     // Phase 2: fire network requests and AWAIT results (blocking)
                     var nReqs = 0;

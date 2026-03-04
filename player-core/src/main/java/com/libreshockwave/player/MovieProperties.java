@@ -211,6 +211,7 @@ public class MovieProperties implements MoviePropertyProvider {
             case "itemdelimiter" -> {
                 String s = value.toStr();
                 itemDelimiter = s.isEmpty() ? "," : s.substring(0, 1);
+                ItemDelimiterCache._char = itemDelimiter.charAt(0);
                 return true;
             }
             case "puppettempo" -> {
@@ -351,7 +352,7 @@ public class MovieProperties implements MoviePropertyProvider {
 
     @Override
     public char getItemDelimiter() {
-        return itemDelimiter.isEmpty() ? ',' : itemDelimiter.charAt(0);
+        return ItemDelimiterCache._char;
     }
 
     public String getItemDelimiterString() {

@@ -237,21 +237,17 @@ public sealed interface Datum {
         public String toString() { return "<chunkref:" + chunkType + "[" + start + ".." + end + "]>"; }
     }
 
-    /** Argument list for function calls (expects return value) */
+    /** Argument list for function calls (expects return value).
+     *  No defensive copy — popArgs() already creates a fresh ArrayList. */
     record ArgList(java.util.List<Datum> items) implements Datum {
-        public ArgList {
-            items = new ArrayList<>(items);
-        }
         public int count() { return items.size(); }
         @Override
         public String toString() { return "<arglist:" + items.size() + ">"; }
     }
 
-    /** Argument list for function calls (no return value expected) */
+    /** Argument list for function calls (no return value expected).
+     *  No defensive copy — popArgs() already creates a fresh ArrayList. */
     record ArgListNoRet(java.util.List<Datum> items) implements Datum {
-        public ArgListNoRet {
-            items = new ArrayList<>(items);
-        }
         public int count() { return items.size(); }
         @Override
         public String toString() { return "<arglist-noret:" + items.size() + ">"; }
