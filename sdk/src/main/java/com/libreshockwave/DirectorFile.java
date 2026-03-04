@@ -176,6 +176,19 @@ public class DirectorFile {
         return chunks.get(id);
     }
 
+    /**
+     * Release audio and other non-essential chunks to free memory.
+     * In WASM, audio can't be played, so SoundChunk/MediaChunk data is wasted heap.
+     * Also releases RawChunks (unimplemented chunk types).
+     * Keeps BitmapChunk, TextChunk, ScriptChunk, PaletteChunk (needed for rendering/VM).
+     */
+    public void releaseNonEssentialChunks() {
+        chunks.values().removeIf(chunk ->
+            chunk instanceof com.libreshockwave.chunks.SoundChunk ||
+            chunk instanceof com.libreshockwave.chunks.MediaChunk ||
+            chunk instanceof com.libreshockwave.chunks.RawChunk);
+    }
+
     public <T extends Chunk> Optional<T> getChunk(ChunkId id, Class<T> type) {
         Chunk chunk = chunks.get(id);
         if (type.isInstance(chunk)) {

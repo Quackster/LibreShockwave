@@ -175,6 +175,16 @@ public class CastLibManager implements CastLibProvider {
     }
 
     /**
+     * Clear the file data cache to free memory.
+     * Call after all casts have been loaded and Lingo's CastLoad Manager has finished
+     * assigning fileNames. The raw byte[] data is redundant after parsing into DirectorFiles.
+     * For WASM: this can free 10-100MB of heap on a 128MB budget.
+     */
+    public void clearFileCache() {
+        fileCache.clear();
+    }
+
+    /**
      * Try to load a cast from cached file data when its fileName is changed.
      * This implements Director's behavior where setting castLib.fileName triggers a reload.
      */

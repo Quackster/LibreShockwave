@@ -17,6 +17,17 @@ public final class StringOpcodes {
 
     private StringOpcodes() {}
 
+    // Cache for single-character Datum.Str values (ASCII range).
+    // GET_CHUNK(char X of str) is the hottest opcode during the dump handler —
+    // ~540K calls, each previously allocating ChunkBounds + String + Datum.Str.
+    // This cache + charAt fast path achieves ZERO allocations for ASCII chars.
+    private static final Datum[] SINGLE_CHAR_DATUMS = new Datum[128];
+    static {
+        for (int i = 0; i < 128; i++) {
+            SINGLE_CHAR_DATUMS[i] = Datum.of(String.valueOf((char) i));
+        }
+    }
+
     public static void register(Map<Opcode, OpcodeHandler> handlers) {
         handlers.put(Opcode.JOIN_STR, StringOpcodes::joinStr);
         handlers.put(Opcode.JOIN_PAD_STR, StringOpcodes::joinPadStr);
@@ -31,7 +42,12 @@ public final class StringOpcodes {
     private static boolean joinStr(ExecutionContext ctx) {
         Datum b = ctx.pop();
         Datum a = ctx.pop();
-        ctx.push(Datum.of(a.toStr() + b.toStr()));
+        // Skip concat + Datum.of allocation when either side is empty (common in loops)
+        String aStr = a.toStr();
+        String bStr = b.toStr();
+        if (aStr.isEmpty()) { ctx.push(b); return true; }
+        if (bStr.isEmpty()) { ctx.push(a); return true; }
+        ctx.push(Datum.of(aStr + bStr));
         return true;
     }
 
@@ -62,7 +78,10 @@ public final class StringOpcodes {
         if (haystack.isVoid()) {
             result = false;
         } else {
-            result = haystack.toStr().toLowerCase().startsWith(needle.toStr().toLowerCase());
+            // Use regionMatches to avoid 2 toLowerCase() String allocations
+            String h = haystack.toStr();
+            String n = needle.toStr();
+            result = h.regionMatches(true, 0, n, 0, n.length());
         }
 
         ctx.push(result ? Datum.TRUE : Datum.FALSE);
@@ -74,28 +93,72 @@ public final class StringOpcodes {
      * Pops string, then 8 chunk parameters, extracts the chunk.
      * Stack: [..., firstChar, lastChar, firstWord, lastWord, firstItem, lastItem, firstLine, lastLine, string]
      *     -> [..., chunkValue]
+     *
+     * Optimized: chunk bounds are inlined (no ChunkBounds record allocation).
+     * Single-char extraction uses charAt + cached Datum for ZERO allocations.
      */
     private static boolean getChunk(ExecutionContext ctx) {
         Datum stringDatum = ctx.pop();
+
+        // Pop 8 chunk bounds directly (avoids ChunkBounds record allocation)
+        int lastLine = ctx.pop().toInt();
+        int firstLine = ctx.pop().toInt();
+        int lastItem = ctx.pop().toInt();
+        int firstItem = ctx.pop().toInt();
+        int lastWord = ctx.pop().toInt();
+        int firstWord = ctx.pop().toInt();
+        int lastChar = ctx.pop().toInt();
+        int firstChar = ctx.pop().toInt();
+
+        // Fast path: single char extraction (char X of str) — ZERO allocations
+        // This is the hottest path during the dump: ~540K calls in replaceChunks loops.
+        if (firstChar != 0 && lastChar == 0
+            && firstWord == 0 && lastWord == 0
+            && firstItem == 0 && lastItem == 0
+            && firstLine == 0 && lastLine == 0) {
+            String str = stringDatum.toStr();
+            int idx = firstChar - 1;
+            if (idx >= 0 && idx < str.length()) {
+                char c = str.charAt(idx);
+                ctx.push(c < 128 ? SINGLE_CHAR_DATUMS[c] : Datum.of(String.valueOf(c)));
+            } else {
+                ctx.push(Datum.EMPTY_STRING);
+            }
+            return true;
+        }
+
+        // Fast path: char range (char X to Y of str), no other chunk types
+        if (firstChar != 0 && lastChar != 0
+            && firstWord == 0 && lastWord == 0
+            && firstItem == 0 && lastItem == 0
+            && firstLine == 0 && lastLine == 0) {
+            String str = stringDatum.toStr();
+            int start = firstChar - 1;
+            int end = Math.min(lastChar, str.length());
+            if (start >= 0 && start < str.length()) {
+                ctx.push(Datum.of(str.substring(start, end)));
+            } else {
+                ctx.push(Datum.EMPTY_STRING);
+            }
+            return true;
+        }
+
+        // General path: apply chunks sequentially (largest to smallest granularity)
         String str = stringDatum.toStr();
-
-        ChunkBounds cb = popChunkBounds(ctx);
         char itemDelimiter = getItemDelimiter();
-
-        // Apply chunks sequentially (largest to smallest granularity)
         String result = str;
 
-        if (cb.firstLine() != 0 || cb.lastLine() != 0) {
-            result = resolveChunkRange(result, StringChunkType.LINE, cb.firstLine(), cb.lastLine(), itemDelimiter);
+        if (firstLine != 0 || lastLine != 0) {
+            result = resolveChunkRange(result, StringChunkType.LINE, firstLine, lastLine, itemDelimiter);
         }
-        if (cb.firstItem() != 0 || cb.lastItem() != 0) {
-            result = resolveChunkRange(result, StringChunkType.ITEM, cb.firstItem(), cb.lastItem(), itemDelimiter);
+        if (firstItem != 0 || lastItem != 0) {
+            result = resolveChunkRange(result, StringChunkType.ITEM, firstItem, lastItem, itemDelimiter);
         }
-        if (cb.firstWord() != 0 || cb.lastWord() != 0) {
-            result = resolveChunkRange(result, StringChunkType.WORD, cb.firstWord(), cb.lastWord(), itemDelimiter);
+        if (firstWord != 0 || lastWord != 0) {
+            result = resolveChunkRange(result, StringChunkType.WORD, firstWord, lastWord, itemDelimiter);
         }
-        if (cb.firstChar() != 0 || cb.lastChar() != 0) {
-            result = resolveChunkRange(result, StringChunkType.CHAR, cb.firstChar(), cb.lastChar(), itemDelimiter);
+        if (firstChar != 0 || lastChar != 0) {
+            result = resolveChunkRange(result, StringChunkType.CHAR, firstChar, lastChar, itemDelimiter);
         }
 
         ctx.push(Datum.of(result));
@@ -136,13 +199,19 @@ public final class StringOpcodes {
                 break;
             case 1: { // BEFORE
                 Datum current = getContextVar(ctx, varType, idDatum, castIdDatum);
-                String newStr = value.toStr() + current.toStr();
+                String valStr = value.toStr();
+                String curStr = current.toStr();
+                // Avoid concat allocation when one side is empty (common in loops)
+                String newStr = curStr.isEmpty() ? valStr : valStr.isEmpty() ? curStr : valStr + curStr;
                 setContextVar(ctx, varType, idDatum, castIdDatum, Datum.of(newStr));
                 break;
             }
             case 2: { // AFTER
                 Datum current = getContextVar(ctx, varType, idDatum, castIdDatum);
-                String newStr = current.toStr() + value.toStr();
+                String curStr = current.toStr();
+                String valStr = value.toStr();
+                // Avoid concat allocation when one side is empty (common in loops)
+                String newStr = curStr.isEmpty() ? valStr : valStr.isEmpty() ? curStr : curStr + valStr;
                 setContextVar(ctx, varType, idDatum, castIdDatum, Datum.of(newStr));
                 break;
             }
@@ -154,6 +223,7 @@ public final class StringOpcodes {
     /**
      * PUT_CHUNK (0x5A) - Put a value into/before/after a string chunk of a variable.
      * Argument encoding: upper nibble = put type, lower nibble = var type.
+     * Optimized: inlined chunk bounds + CHAR fast path (no record allocations).
      */
     private static boolean putChunk(ExecutionContext ctx) {
         int arg = ctx.getArgument();
@@ -170,25 +240,78 @@ public final class StringOpcodes {
         // Pop the value
         Datum value = ctx.pop();
 
-        // Read chunk expression from stack
-        ChunkExpr chunkExpr = readSingleChunkRef(ctx);
+        // Pop 8 chunk bounds directly (avoids ChunkBounds + ChunkExpr record allocations)
+        int lastLine = ctx.pop().toInt();
+        int firstLine = ctx.pop().toInt();
+        int lastItem = ctx.pop().toInt();
+        int firstItem = ctx.pop().toInt();
+        int lastWord = ctx.pop().toInt();
+        int firstWord = ctx.pop().toInt();
+        int lastChar = ctx.pop().toInt();
+        int firstChar = ctx.pop().toInt();
+
+        // Determine chunk type
+        StringChunkType type;
+        int first, last;
+        if (firstLine != 0 || lastLine != 0) {
+            type = StringChunkType.LINE; first = firstLine; last = lastLine;
+        } else if (firstItem != 0 || lastItem != 0) {
+            type = StringChunkType.ITEM; first = firstItem; last = lastItem;
+        } else if (firstWord != 0 || lastWord != 0) {
+            type = StringChunkType.WORD; first = firstWord; last = lastWord;
+        } else if (firstChar != 0 || lastChar != 0) {
+            type = StringChunkType.CHAR; first = firstChar; last = lastChar;
+        } else {
+            type = StringChunkType.CHAR; first = 1; last = 1; // default
+        }
 
         // Get current string value
         Datum currentDatum = getContextVar(ctx, varType, idDatum, castIdDatum);
         String currentString = currentDatum.toStr();
         String valueString = value.toStr();
-        char itemDelimiter = getItemDelimiter();
 
-        // Apply put operation on the chunk
+        // Fast path: CHAR type — directly compute byte range, zero record allocations.
+        // Hot path for "put X after char Y of str" in replaceChunks.
+        if (type == StringChunkType.CHAR) {
+            if (first < 1) first = 1;
+            int effectiveLast = last == 0 ? first : last;
+            int rangeStart, rangeEnd;
+            if (first > currentString.length()) {
+                // Out of range — no change
+                return true;
+            }
+            rangeStart = first - 1;
+            rangeEnd = Math.min(effectiveLast, currentString.length());
+            String newString;
+            switch (putType) {
+                case 0: // INTO
+                    newString = currentString.substring(0, rangeStart) + valueString + currentString.substring(rangeEnd);
+                    break;
+                case 1: // BEFORE
+                    newString = currentString.substring(0, rangeStart) + valueString + currentString.substring(rangeStart);
+                    break;
+                case 2: // AFTER
+                    newString = currentString.substring(0, rangeEnd) + valueString + currentString.substring(rangeEnd);
+                    break;
+                default:
+                    newString = currentString;
+            }
+            setContextVar(ctx, varType, idDatum, castIdDatum, Datum.of(newString));
+            return true;
+        }
+
+        // General path: use ChunkExpr + existing methods
+        ChunkExpr chunkExpr = new ChunkExpr(type, first, last);
+        char itemDelimiter = getItemDelimiter();
         String newString;
         switch (putType) {
-            case 0: // INTO
+            case 0:
                 newString = stringByPuttingIntoChunk(currentString, chunkExpr, valueString, itemDelimiter);
                 break;
-            case 1: // BEFORE
+            case 1:
                 newString = stringByPuttingBeforeChunk(currentString, chunkExpr, valueString, itemDelimiter);
                 break;
-            case 2: // AFTER
+            case 2:
                 newString = stringByPuttingAfterChunk(currentString, chunkExpr, valueString, itemDelimiter);
                 break;
             default:
@@ -202,6 +325,7 @@ public final class StringOpcodes {
     /**
      * DELETE_CHUNK (0x5B) - Delete a string chunk from a variable.
      * Argument is just the var type (no put type).
+     * Optimized: inlined chunk bounds + CHAR fast path (no record allocations).
      */
     private static boolean deleteChunk(ExecutionContext ctx) {
         int varType = ctx.getArgument();
@@ -213,15 +337,56 @@ public final class StringOpcodes {
         }
         Datum idDatum = ctx.pop();
 
-        // Read chunk expression
-        ChunkExpr chunkExpr = readSingleChunkRef(ctx);
+        // Pop 8 chunk bounds directly (avoids ChunkBounds + ChunkExpr record allocations)
+        int lastLine = ctx.pop().toInt();
+        int firstLine = ctx.pop().toInt();
+        int lastItem = ctx.pop().toInt();
+        int firstItem = ctx.pop().toInt();
+        int lastWord = ctx.pop().toInt();
+        int firstWord = ctx.pop().toInt();
+        int lastChar = ctx.pop().toInt();
+        int firstChar = ctx.pop().toInt();
+
+        // Determine chunk type
+        StringChunkType type;
+        int first, last;
+        if (firstLine != 0 || lastLine != 0) {
+            type = StringChunkType.LINE; first = firstLine; last = lastLine;
+        } else if (firstItem != 0 || lastItem != 0) {
+            type = StringChunkType.ITEM; first = firstItem; last = lastItem;
+        } else if (firstWord != 0 || lastWord != 0) {
+            type = StringChunkType.WORD; first = firstWord; last = lastWord;
+        } else if (firstChar != 0 || lastChar != 0) {
+            type = StringChunkType.CHAR; first = firstChar; last = lastChar;
+        } else {
+            type = StringChunkType.CHAR; first = 1; last = 1; // default
+        }
 
         // Get current string
         Datum currentDatum = getContextVar(ctx, varType, idDatum, castIdDatum);
         String currentString = currentDatum.toStr();
-        char itemDelimiter = getItemDelimiter();
 
-        // Delete the chunk
+        // Fast path: CHAR delete — directly compute range and delete, zero record allocations.
+        // Hot path for "delete char X to Y of str" in replaceChunks.
+        if (type == StringChunkType.CHAR) {
+            if (first < 1) first = 1;
+            int effectiveLast = last == 0 ? first : last;
+            if (first > currentString.length()) {
+                return true; // Nothing to delete
+            }
+            int deleteStart = first - 1;
+            int deleteEnd = Math.min(effectiveLast, currentString.length());
+            String newStr;
+            if (deleteStart == 0) newStr = currentString.substring(deleteEnd);
+            else if (deleteEnd >= currentString.length()) newStr = currentString.substring(0, deleteStart);
+            else newStr = currentString.substring(0, deleteStart) + currentString.substring(deleteEnd);
+            setContextVar(ctx, varType, idDatum, castIdDatum, Datum.of(newStr));
+            return true;
+        }
+
+        // General path
+        ChunkExpr chunkExpr = new ChunkExpr(type, first, last);
+        char itemDelimiter = getItemDelimiter();
         String newString = stringByDeletingChunk(currentString, chunkExpr, itemDelimiter);
         setContextVar(ctx, varType, idDatum, castIdDatum, Datum.of(newString));
 
@@ -422,45 +587,69 @@ public final class StringOpcodes {
         int[] range = getChunkByteRange(str, chunk, itemDelimiter);
         if (range == null) return str;
 
-        // When deleting, also remove the delimiter if present
         int deleteStart = range[0];
         int deleteEnd = range[1];
 
-        // Try to consume trailing delimiter
-        if (deleteEnd < str.length()) {
-            String delim = getChunkDelimiter(chunk.type(), itemDelimiter);
-            if (delim.length() > 0 && str.startsWith(delim, deleteEnd)) {
-                deleteEnd += delim.length();
-            }
-        } else if (deleteStart > 0) {
-            // If at end, try to consume leading delimiter
-            String delim = getChunkDelimiter(chunk.type(), itemDelimiter);
-            if (delim.length() > 0 && str.substring(0, deleteStart).endsWith(delim)) {
-                deleteStart -= delim.length();
+        // CHAR type has no delimiter — skip delimiter handling entirely.
+        // This is the hot path for replaceChunks (delete char[1..N]).
+        if (chunk.type() != StringChunkType.CHAR) {
+            // Try to consume trailing delimiter
+            if (deleteEnd < str.length()) {
+                String delim = getChunkDelimiter(chunk.type(), itemDelimiter);
+                if (delim.length() > 0 && str.startsWith(delim, deleteEnd)) {
+                    deleteEnd += delim.length();
+                }
+            } else if (deleteStart > 0) {
+                String delim = getChunkDelimiter(chunk.type(), itemDelimiter);
+                if (delim.length() > 0 && str.substring(0, deleteStart).endsWith(delim)) {
+                    deleteStart -= delim.length();
+                }
             }
         }
 
+        // Optimize edge deletions: avoid creating empty substring + concat
+        if (deleteStart == 0) return str.substring(deleteEnd);
+        if (deleteEnd >= str.length()) return str.substring(0, deleteStart);
         return str.substring(0, deleteStart) + str.substring(deleteEnd);
     }
 
     /**
      * Get the byte range [start, end) of a chunk in a string.
      * Returns null if the chunk is out of range.
+     *
+     * Optimized to avoid splitIntoChunks for CHAR and ITEM types:
+     * - CHAR: O(1) direct index computation, zero allocations.
+     *   Previously created str.length() String objects per call (~1.8M during dump).
+     * - ITEM: O(n) scan for delimiter positions, zero List allocation.
+     * - WORD/LINE: uses cached split (existing behavior).
      */
     private static int[] getChunkByteRange(String str, ChunkExpr chunk, char itemDelimiter) {
-        List<String> chunks = StringChunkUtils.splitIntoChunks(str, chunk.type(), itemDelimiter);
-        if (chunks.isEmpty()) return null;
-
         int first = chunk.first();
         int last = chunk.last() == 0 ? first : chunk.last();
-
-        // Clamp to valid range
         if (first < 1) first = 1;
+
+        StringChunkType type = chunk.type();
+
+        // Fast path: CHAR — each chunk is one character, delimiter is empty.
+        // Byte range = [first-1, min(last, length)]. Zero allocations.
+        if (type == StringChunkType.CHAR) {
+            if (first > str.length()) return null;
+            int end = Math.min(last, str.length());
+            return new int[] { first - 1, end };
+        }
+
+        // Fast path: ITEM — scan for delimiter positions without creating List.
+        if (type == StringChunkType.ITEM) {
+            return getItemByteRange(str, first, last, itemDelimiter);
+        }
+
+        // WORD/LINE: use existing split+cache approach
+        List<String> chunks = StringChunkUtils.splitIntoChunks(str, type, itemDelimiter);
+        if (chunks.isEmpty()) return null;
         if (first > chunks.size()) return null;
         if (last > chunks.size()) last = chunks.size();
 
-        // Calculate byte offset
-        String delimiter = getChunkDelimiter(chunk.type(), itemDelimiter);
+        String delimiter = getChunkDelimiter(type, itemDelimiter);
         int start = 0;
         for (int i = 0; i < first - 1; i++) {
             start += chunks.get(i).length();
@@ -478,6 +667,28 @@ public final class StringOpcodes {
         }
 
         return new int[] { start, end };
+    }
+
+    /**
+     * Scan for item byte range without creating a List of substrings.
+     */
+    private static int[] getItemByteRange(String str, int first, int last, char delimiter) {
+        int chunkNum = 1;
+        int chunkStart = 0;
+        int rangeStart = -1;
+
+        for (int i = 0; i <= str.length(); i++) {
+            if (i == str.length() || str.charAt(i) == delimiter) {
+                if (chunkNum == first) rangeStart = chunkStart;
+                if (chunkNum == last) {
+                    return rangeStart >= 0 ? new int[] { rangeStart, i } : null;
+                }
+                if (chunkNum > last) break;
+                chunkNum++;
+                chunkStart = i + 1;
+            }
+        }
+        return (rangeStart >= 0) ? new int[] { rangeStart, str.length() } : null;
     }
 
     /**

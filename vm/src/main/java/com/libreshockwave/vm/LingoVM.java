@@ -41,6 +41,11 @@ public class LingoVM {
     // Error state - when true, no more handlers will execute (like dirplayer-rs stop())
     private boolean inErrorState = false;
 
+    // Static GC callback: invoked during GC safepoints to clear caches.
+    // Set by player layer (e.g. WasmEntry) to release file caches and audio chunks
+    // DURING long-running handlers like the dump, not just after they complete.
+    private static Runnable gcCallback;
+
     // Track if we're currently inside an error handler to prevent recursive error handling
     private int errorHandlerDepth = 0;
     private static final Set<String> ERROR_HANDLER_NAMES = Set.of(
@@ -97,6 +102,15 @@ public class LingoVM {
      */
     public void setPassCallback(Runnable callback) {
         this.passCallback = callback;
+    }
+
+    /**
+     * Set a static callback invoked during GC safepoints.
+     * Used by the WASM player to clear file caches and release audio chunks
+     * DURING long handlers (like the 25s text dump), not just after they finish.
+     */
+    public static void setGCCallback(Runnable callback) {
+        gcCallback = callback;
     }
 
     /**
@@ -290,13 +304,17 @@ public class LingoVM {
                     throw new LingoException("Step limit exceeded (" + stepLimit + " instructions)");
                 }
                 // Time-based GC safepoint for WASM: compact heap during long-running handlers.
-                // 2s interval keeps heap healthy. ExecutionContext reuse (one per handler
-                // instead of per instruction) eliminated ~876K allocations during dump,
-                // so each GC cycle is now much cheaper with far less garbage to trace.
-                if ((steps & 0xFFF) == 0) {
+                // 1s interval is aggressive but necessary: during the 25s text dump, the heap
+                // fills with temporary strings/PropLists. Clearing caches via gcCallback frees
+                // fileCache + audio/raw chunks that would otherwise cause post-dump OOB.
+                if ((steps & 0x3FF) == 0) {
                     long now = System.currentTimeMillis();
-                    if (now - lastGcTime >= 2000) {
-                        System.gc();
+                    if (now - lastGcTime >= 1000) {
+                        if (gcCallback != null) {
+                            gcCallback.run();
+                        }
+                        // Don't call System.gc() — forced GC triggers TeaVM defrag
+                        // that can corrupt pointers. Let automatic GC handle compaction.
                         lastGcTime = now;
                     }
                 }

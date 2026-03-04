@@ -2,51 +2,61 @@ package com.libreshockwave.vm;
 
 import com.libreshockwave.chunks.ScriptChunk;
 
-import java.util.ArrayDeque;
-import java.util.Deque;
-import java.util.HashMap;
+import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Execution scope for a handler call.
  * Represents a single stack frame in the call stack.
  * Similar to dirplayer-rs scope.rs.
+ *
+ * Optimized for WASM: uses arrays instead of HashMap/ArrayDeque to minimize
+ * allocations and GC pressure. Each handler invocation creates one Scope;
+ * during the dump handler that's ~4497 scopes, so keeping allocation light matters.
  */
 public final class Scope {
 
     private final ScriptChunk script;
     private final ScriptChunk.Handler handler;
     private final List<Datum> originalArguments;
-    private final Map<Integer, Datum> modifiedParams;  // For SET_PARAM modifications
-    private final Map<Integer, Datum> locals;
-    private final Deque<Datum> stack;
-    private final Datum receiver;  // 'me' in behavior/parent scripts
+    private final Datum[] locals;          // indexed by local variable index
+    private Datum[] modifiedParams;        // lazy: null until first SET_PARAM
+    private final Datum receiver;          // 'me' in behavior/parent scripts
+
+    // Array-based stack (avoids ArrayDeque overhead)
+    private Datum[] stack;
+    private int stackTop;                  // index of next push slot (size = stackTop)
 
     private int bytecodeIndex;
     private Datum returnValue;
     private boolean returned;
 
-    // Loop tracking for repeat/exit repeat
-    private final Deque<Integer> loopReturnIndices;
+    // Loop tracking: array-based stack of return indices
+    private int[] loopReturnStack;
+    private int loopReturnTop;
+
+    private static final int INITIAL_STACK_SIZE = 16;
+    private static final int INITIAL_LOOP_SIZE = 4;
 
     public Scope(ScriptChunk script, ScriptChunk.Handler handler, List<Datum> arguments, Datum receiver) {
         this.script = script;
         this.handler = handler;
-        this.originalArguments = List.copyOf(arguments);
-        this.modifiedParams = new HashMap<>();
-        this.locals = new HashMap<>();
-        this.stack = new ArrayDeque<>();
+        this.originalArguments = arguments;  // trust callers — avoid List.copyOf allocation
         this.receiver = receiver != null ? receiver : Datum.VOID;
         this.bytecodeIndex = 0;
         this.returnValue = Datum.VOID;
         this.returned = false;
-        this.loopReturnIndices = new ArrayDeque<>();
 
-        // Initialize locals to void
-        for (int i = 0; i < handler.localCount(); i++) {
-            locals.put(i, Datum.VOID);
-        }
+        // Array-based locals: much cheaper than HashMap (no autoboxing, no Entry nodes)
+        int localCount = handler.localCount();
+        this.locals = new Datum[localCount];
+        Arrays.fill(this.locals, Datum.VOID);
+
+        // Stack and loop return arrays allocated lazily at small initial size
+        this.stack = new Datum[INITIAL_STACK_SIZE];
+        this.stackTop = 0;
+        this.loopReturnStack = null;  // lazy — many handlers have no loops
+        this.loopReturnTop = 0;
     }
 
     // Script and handler access
@@ -92,42 +102,40 @@ public final class Scope {
         return null;
     }
 
-    // Stack operations
+    // Stack operations (array-based for minimal allocation)
 
     public void push(Datum value) {
-        stack.push(value);
+        if (stackTop >= stack.length) {
+            stack = Arrays.copyOf(stack, stack.length * 2);
+        }
+        stack[stackTop++] = value;
     }
 
     public Datum pop() {
-        return stack.isEmpty() ? Datum.VOID : stack.pop();
+        if (stackTop <= 0) return Datum.VOID;
+        Datum val = stack[--stackTop];
+        stack[stackTop] = null; // help GC
+        return val;
     }
 
     public Datum peek() {
-        return stack.isEmpty() ? Datum.VOID : stack.peek();
+        return stackTop > 0 ? stack[stackTop - 1] : Datum.VOID;
     }
 
     public Datum peek(int depth) {
-        if (depth < 0 || depth >= stack.size()) {
-            return Datum.VOID;
-        }
-        int i = 0;
-        for (Datum d : stack) {
-            if (i == depth) return d;
-            i++;
-        }
-        return Datum.VOID;
+        int idx = stackTop - 1 - depth;
+        return (idx >= 0 && idx < stackTop) ? stack[idx] : Datum.VOID;
     }
 
     public int stackSize() {
-        return stack.size();
+        return stackTop;
     }
 
     public void swap() {
-        if (stack.size() >= 2) {
-            Datum a = stack.pop();
-            Datum b = stack.pop();
-            stack.push(a);
-            stack.push(b);
+        if (stackTop >= 2) {
+            Datum tmp = stack[stackTop - 1];
+            stack[stackTop - 1] = stack[stackTop - 2];
+            stack[stackTop - 2] = tmp;
         }
     }
 
@@ -140,8 +148,8 @@ public final class Scope {
 
     public Datum getParam(int index) {
         // Check if param was modified via SET_PARAM
-        if (modifiedParams.containsKey(index)) {
-            return modifiedParams.get(index);
+        if (modifiedParams != null && index >= 0 && index < modifiedParams.length && modifiedParams[index] != null) {
+            return modifiedParams[index];
         }
         // Otherwise return original argument
         if (index >= 0 && index < originalArguments.size()) {
@@ -151,17 +159,30 @@ public final class Scope {
     }
 
     public void setParam(int index, Datum value) {
-        modifiedParams.put(index, value);
+        if (modifiedParams == null) {
+            // Lazy allocation on first SET_PARAM
+            int size = Math.max(index + 1, originalArguments.size());
+            modifiedParams = new Datum[size];
+        } else if (index >= modifiedParams.length) {
+            modifiedParams = Arrays.copyOf(modifiedParams, index + 1);
+        }
+        modifiedParams[index] = value;
     }
 
     // Local variable access
 
     public Datum getLocal(int index) {
-        return locals.getOrDefault(index, Datum.VOID);
+        if (index >= 0 && index < locals.length) {
+            return locals[index];
+        }
+        return Datum.VOID;
     }
 
     public void setLocal(int index, Datum value) {
-        locals.put(index, value);
+        if (index >= 0 && index < locals.length) {
+            locals[index] = value;
+        }
+        // Silently ignore out-of-bounds — matches previous HashMap behavior
     }
 
     // Return handling
@@ -183,24 +204,29 @@ public final class Scope {
         this.returned = true;
     }
 
-    // Loop handling
+    // Loop handling (array-based)
 
     public void pushLoopReturnIndex(int index) {
-        loopReturnIndices.push(index);
+        if (loopReturnStack == null) {
+            loopReturnStack = new int[INITIAL_LOOP_SIZE];
+        } else if (loopReturnTop >= loopReturnStack.length) {
+            loopReturnStack = Arrays.copyOf(loopReturnStack, loopReturnStack.length * 2);
+        }
+        loopReturnStack[loopReturnTop++] = index;
     }
 
     public int popLoopReturnIndex() {
-        return loopReturnIndices.isEmpty() ? -1 : loopReturnIndices.pop();
+        return loopReturnTop > 0 ? loopReturnStack[--loopReturnTop] : -1;
     }
 
     public boolean isInLoop() {
-        return !loopReturnIndices.isEmpty();
+        return loopReturnTop > 0;
     }
 
     @Override
     public String toString() {
         String handlerName = "handler#" + handler.nameId();
         return "Scope{" + handlerName + ", bytecodeIndex=" + bytecodeIndex +
-               ", stackSize=" + stack.size() + ", returned=" + returned + "}";
+               ", stackSize=" + stackTop + ", returned=" + returned + "}";
     }
 }
