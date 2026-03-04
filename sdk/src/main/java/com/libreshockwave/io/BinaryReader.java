@@ -86,6 +86,10 @@ public class BinaryReader implements AutoCloseable {
         this.position = offset;
     }
 
+    public byte[] getData() {
+        return data;
+    }
+
     public int length() {
         return data.length;
     }
