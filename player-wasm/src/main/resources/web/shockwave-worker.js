@@ -326,6 +326,8 @@ self.onmessage = async function(e) {
                     await Promise.all(pn);
                 }
                 console.log('[WORKER] preloadCasts done in ' + Math.round(performance.now() - castT0) + 'ms');
+                // Compact heap after heavy cast loading to reduce GC pressure during ticks
+                try { _e.exports.forceGC(); _e._clearEx(); } catch(e) {}
                 self.postMessage({ type: 'castsDone' });
                 break;
             }
@@ -364,6 +366,8 @@ self.onmessage = async function(e) {
                         stillPlaying = _e.tick();
                     } catch (tickErr) {
                         console.error('[WORKER] tick() error: ' + tickErr);
+                        // On OOB/trap, try forceGC to recover corrupted heap
+                        try { _e.exports.forceGC(); _e._clearEx(); } catch(e2) {}
                     }
                     var t1 = performance.now();
 

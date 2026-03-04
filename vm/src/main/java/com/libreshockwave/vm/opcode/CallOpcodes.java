@@ -160,8 +160,7 @@ public final class CallOpcodes {
      */
     private static Datum handleScriptRefMethod(ExecutionContext ctx, Datum.ScriptRef scriptRef,
                                                String methodName, List<Datum> args) {
-        String method = methodName.toLowerCase();
-        if ("new".equals(method)) {
+        if ("new".equalsIgnoreCase(methodName)) {
             // Create a new instance of the script
             List<Datum> fullArgs = new ArrayList<>();
             fullArgs.add(scriptRef);
@@ -175,54 +174,38 @@ public final class CallOpcodes {
      * Handle method calls on point values.
      */
     private static Datum handlePointMethod(Datum.Point point, String methodName, List<Datum> args) {
-        String method = methodName.toLowerCase();
-        return switch (method) {
-            case "getat" -> {
-                if (args.isEmpty()) yield Datum.VOID;
-                int index = args.get(0).toInt();
-                yield switch (index) {
-                    case 1 -> Datum.of(point.x());
-                    case 2 -> Datum.of(point.y());
-                    default -> Datum.VOID;
-                };
-            }
-            case "setat" -> {
-                if (args.size() < 2) yield Datum.VOID;
-                int index = args.get(0).toInt();
-                int value = args.get(1).toInt();
-                point.setComponent(index, value);
-                yield Datum.VOID;
-            }
-            default -> Datum.VOID;
-        };
+        if ("getat".equalsIgnoreCase(methodName)) {
+            if (args.isEmpty()) return Datum.VOID;
+            int index = args.get(0).toInt();
+            return index == 1 ? Datum.of(point.x()) : index == 2 ? Datum.of(point.y()) : Datum.VOID;
+        } else if ("setat".equalsIgnoreCase(methodName)) {
+            if (args.size() < 2) return Datum.VOID;
+            point.setComponent(args.get(0).toInt(), args.get(1).toInt());
+            return Datum.VOID;
+        }
+        return Datum.VOID;
     }
 
     /**
      * Handle method calls on rect values.
      */
     private static Datum handleRectMethod(Datum.Rect rect, String methodName, List<Datum> args) {
-        String method = methodName.toLowerCase();
-        return switch (method) {
-            case "getat" -> {
-                if (args.isEmpty()) yield Datum.VOID;
-                int index = args.get(0).toInt();
-                yield switch (index) {
-                    case 1 -> Datum.of(rect.left());
-                    case 2 -> Datum.of(rect.top());
-                    case 3 -> Datum.of(rect.right());
-                    case 4 -> Datum.of(rect.bottom());
-                    default -> Datum.VOID;
-                };
-            }
-            case "setat" -> {
-                if (args.size() < 2) yield Datum.VOID;
-                int index = args.get(0).toInt();
-                int value = args.get(1).toInt();
-                rect.setComponent(index, value);
-                yield Datum.VOID;
-            }
-            default -> Datum.VOID;
-        };
+        if ("getat".equalsIgnoreCase(methodName)) {
+            if (args.isEmpty()) return Datum.VOID;
+            int index = args.get(0).toInt();
+            return switch (index) {
+                case 1 -> Datum.of(rect.left());
+                case 2 -> Datum.of(rect.top());
+                case 3 -> Datum.of(rect.right());
+                case 4 -> Datum.of(rect.bottom());
+                default -> Datum.VOID;
+            };
+        } else if ("setat".equalsIgnoreCase(methodName)) {
+            if (args.size() < 2) return Datum.VOID;
+            rect.setComponent(args.get(0).toInt(), args.get(1).toInt());
+            return Datum.VOID;
+        }
+        return Datum.VOID;
     }
 
     /**
@@ -231,36 +214,27 @@ public final class CallOpcodes {
      */
     private static Datum handleVarRefMethod(ExecutionContext ctx, Datum.VarRef varRef,
                                             String methodName, List<Datum> args) {
-        String method = methodName.toLowerCase();
-        // Resolve the variable value
         Datum value = resolveVarRef(ctx, varRef);
         String str = value.toStr();
 
-        return switch (method) {
-            case "getpropref" -> {
-                // getPropRef(#chunkType, startIdx, endIdx)
-                if (args.size() < 2) yield Datum.VOID;
-                String chunkType = args.get(0) instanceof Datum.Symbol s ? s.name().toLowerCase() : "char";
-                int start = args.get(1).toInt();
-                int end = args.size() >= 3 ? args.get(2).toInt() : start;
-                yield new Datum.ChunkRef(varRef.varType(), varRef.rawIndex(), chunkType, start, end);
+        if ("getpropref".equalsIgnoreCase(methodName)) {
+            if (args.size() < 2) return Datum.VOID;
+            String chunkType = args.get(0) instanceof Datum.Symbol s ? s.name() : "char";
+            int start = args.get(1).toInt();
+            int end = args.size() >= 3 ? args.get(2).toInt() : start;
+            return new Datum.ChunkRef(varRef.varType(), varRef.rawIndex(), chunkType, start, end);
+        } else if ("getprop".equalsIgnoreCase(methodName)) {
+            if (args.size() < 2) return Datum.EMPTY_STRING;
+            String chunkType = args.get(0) instanceof Datum.Symbol s ? s.name() : "char";
+            int start = args.get(1).toInt();
+            int end = args.size() >= 3 ? args.get(2).toInt() : start;
+            return Datum.of(getStringChunk(str, chunkType, start, end));
+        } else {
+            if (value instanceof Datum.Str s) {
+                return StringMethodDispatcher.dispatch(s, methodName, args);
             }
-            case "getprop" -> {
-                // getProp(#chunkType, startIdx, endIdx) - returns the value (no mutation)
-                if (args.size() < 2) yield Datum.EMPTY_STRING;
-                String chunkType = args.get(0) instanceof Datum.Symbol s ? s.name().toLowerCase() : "char";
-                int start = args.get(1).toInt();
-                int end = args.size() >= 3 ? args.get(2).toInt() : start;
-                yield Datum.of(getStringChunk(str, chunkType, start, end));
-            }
-            default -> {
-                // Delegate to string dispatch for other methods
-                if (value instanceof Datum.Str s) {
-                    yield StringMethodDispatcher.dispatch(s, methodName, args);
-                }
-                yield Datum.VOID;
-            }
-        };
+            return Datum.VOID;
+        }
     }
 
     /**
@@ -269,23 +243,15 @@ public final class CallOpcodes {
      */
     private static Datum handleChunkRefMethod(ExecutionContext ctx, Datum.ChunkRef chunkRef,
                                               String methodName, List<Datum> args) {
-        String method = methodName.toLowerCase();
-        return switch (method) {
-            case "delete" -> {
-                // Read current value
-                Datum.VarRef varRef = new Datum.VarRef(chunkRef.varType(), chunkRef.rawIndex());
-                Datum value = resolveVarRef(ctx, varRef);
-                String str = value.toStr();
-
-                // Delete the chunk range
-                String newStr = deleteChunkRange(str, chunkRef.chunkType(), chunkRef.start(), chunkRef.end());
-
-                // Write back to the original variable
-                setVarRef(ctx, varRef, Datum.of(newStr));
-                yield Datum.VOID;
-            }
-            default -> Datum.VOID;
-        };
+        if ("delete".equalsIgnoreCase(methodName)) {
+            Datum.VarRef varRef = new Datum.VarRef(chunkRef.varType(), chunkRef.rawIndex());
+            Datum value = resolveVarRef(ctx, varRef);
+            String str = value.toStr();
+            String newStr = deleteChunkRange(str, chunkRef.chunkType(), chunkRef.start(), chunkRef.end());
+            setVarRef(ctx, varRef, Datum.of(newStr));
+            return Datum.VOID;
+        }
+        return Datum.VOID;
     }
 
     /**
@@ -344,7 +310,7 @@ public final class CallOpcodes {
      */
     private static String getStringChunk(String str, String chunkType, int start, int end) {
         if (str.isEmpty() || start < 1) return "";
-        if ("char".equals(chunkType)) {
+        if ("char".equalsIgnoreCase(chunkType)) {
             int s = Math.max(0, start - 1);
             int e = Math.min(str.length(), end);
             if (s >= str.length() || s >= e) return "";
@@ -353,13 +319,9 @@ public final class CallOpcodes {
         return str;
     }
 
-    /**
-     * Delete a chunk range from a string and return the result.
-     * Uses if-else instead of switch to avoid TeaVM compiler bug with case "char".
-     */
     private static String deleteChunkRange(String str, String chunkType, int start, int end) {
         if (str.isEmpty() || start < 1) return str;
-        if ("char".equals(chunkType)) {
+        if ("char".equalsIgnoreCase(chunkType)) {
             int s = Math.max(0, start - 1);
             int e = Math.min(str.length(), end);
             if (s >= str.length()) return str;
@@ -372,14 +334,18 @@ public final class CallOpcodes {
      * Extract arguments from an arglist datum.
      * Arguments are stored directly in the ArgList/ArgListNoRet items.
      */
+    /**
+     * Extract arguments from an arglist datum.
+     * Returns the inner list directly (ArgList constructor already copies).
+     * This avoids a redundant ArrayList allocation on every function call.
+     */
     private static List<Datum> getArgs(Datum argListDatum) {
         if (argListDatum instanceof Datum.ArgList al) {
-            return new ArrayList<>(al.items());
+            return al.items();
         } else if (argListDatum instanceof Datum.ArgListNoRet al) {
-            return new ArrayList<>(al.items());
+            return al.items();
         } else {
-            // Fallback - shouldn't happen with correct bytecode
-            return new ArrayList<>();
+            return List.of();
         }
     }
 }

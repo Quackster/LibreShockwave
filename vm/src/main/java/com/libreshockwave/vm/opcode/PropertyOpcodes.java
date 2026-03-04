@@ -87,18 +87,17 @@ public final class PropertyOpcodes {
      * Get built-in constants that don't require a provider.
      */
     private static Datum getBuiltinConstant(String propName) {
-        String p = propName.toLowerCase();
-        if ("pi".equals(p)) return Datum.of(Math.PI);
-        if ("true".equals(p)) return Datum.TRUE;
-        if ("false".equals(p)) return Datum.FALSE;
-        if ("void".equals(p)) return Datum.VOID;
-        if ("empty".equals(p) || "emptystring".equals(p)) return Datum.EMPTY_STRING;
-        if ("return".equals(p)) return Datum.of("\r");
-        if ("enter".equals(p)) return Datum.of("\n");
-        if ("tab".equals(p)) return Datum.of("\t");
-        if ("quote".equals(p)) return Datum.of("\"");
-        if ("backspace".equals(p)) return Datum.of("\b");
-        if ("space".equals(p)) return Datum.of(" ");
+        if ("pi".equalsIgnoreCase(propName)) return Datum.of(Math.PI);
+        if ("true".equalsIgnoreCase(propName)) return Datum.TRUE;
+        if ("false".equalsIgnoreCase(propName)) return Datum.FALSE;
+        if ("void".equalsIgnoreCase(propName)) return Datum.VOID;
+        if ("empty".equalsIgnoreCase(propName) || "emptystring".equalsIgnoreCase(propName)) return Datum.EMPTY_STRING;
+        if ("return".equalsIgnoreCase(propName)) return Datum.of("\r");
+        if ("enter".equalsIgnoreCase(propName)) return Datum.of("\n");
+        if ("tab".equalsIgnoreCase(propName)) return Datum.of("\t");
+        if ("quote".equalsIgnoreCase(propName)) return Datum.of("\"");
+        if ("backspace".equalsIgnoreCase(propName)) return Datum.of("\b");
+        if ("space".equalsIgnoreCase(propName)) return Datum.of(" ");
         return Datum.VOID;
     }
 
@@ -129,24 +128,8 @@ public final class PropertyOpcodes {
                 yield stageProvider != null ? stageProvider.getStageProp(propName) : Datum.VOID;
             }
             case Datum.ImageRef ir -> ImageMethodDispatcher.getProperty(ir, propName);
-            case Datum.Point point -> {
-                yield switch (propName.toLowerCase()) {
-                    case "loch", "x" -> Datum.of(point.x());
-                    case "locv", "y" -> Datum.of(point.y());
-                    default -> Datum.VOID;
-                };
-            }
-            case Datum.Rect rect -> {
-                yield switch (propName.toLowerCase()) {
-                    case "left" -> Datum.of(rect.left());
-                    case "top" -> Datum.of(rect.top());
-                    case "right" -> Datum.of(rect.right());
-                    case "bottom" -> Datum.of(rect.bottom());
-                    case "width" -> Datum.of(rect.right() - rect.left());
-                    case "height" -> Datum.of(rect.bottom() - rect.top());
-                    default -> Datum.VOID;
-                };
-            }
+            case Datum.Point point -> getPointProp(point, propName);
+            case Datum.Rect rect -> getRectProp(rect, propName);
             default -> Datum.VOID;
         };
 
@@ -154,52 +137,42 @@ public final class PropertyOpcodes {
         return true;
     }
 
-    /**
-     * Get a built-in property from a list.
-     */
+    private static Datum getPointProp(Datum.Point point, String propName) {
+        if ("loch".equalsIgnoreCase(propName) || "x".equalsIgnoreCase(propName)) return Datum.of(point.x());
+        if ("locv".equalsIgnoreCase(propName) || "y".equalsIgnoreCase(propName)) return Datum.of(point.y());
+        return Datum.VOID;
+    }
+
+    private static Datum getRectProp(Datum.Rect rect, String propName) {
+        if ("left".equalsIgnoreCase(propName)) return Datum.of(rect.left());
+        if ("top".equalsIgnoreCase(propName)) return Datum.of(rect.top());
+        if ("right".equalsIgnoreCase(propName)) return Datum.of(rect.right());
+        if ("bottom".equalsIgnoreCase(propName)) return Datum.of(rect.bottom());
+        if ("width".equalsIgnoreCase(propName)) return Datum.of(rect.right() - rect.left());
+        if ("height".equalsIgnoreCase(propName)) return Datum.of(rect.bottom() - rect.top());
+        return Datum.VOID;
+    }
+
     private static Datum getListProp(Datum.List list, String propName) {
-        String prop = propName.toLowerCase();
-        return switch (prop) {
-            case "count", "length" -> Datum.of(list.items().size());
-            case "ilk" -> Datum.symbol("list");
-            default -> {
-                // Try numeric index (1-based)
-                try {
-                    int index = Integer.parseInt(propName) - 1;
-                    if (index >= 0 && index < list.items().size()) {
-                        yield list.items().get(index);
-                    }
-                } catch (NumberFormatException e) {
-                    // not a number
-                }
-                yield Datum.VOID;
-            }
-        };
+        if ("count".equalsIgnoreCase(propName) || "length".equalsIgnoreCase(propName)) return Datum.of(list.items().size());
+        if ("ilk".equalsIgnoreCase(propName)) return Datum.symbol("list");
+        try {
+            int index = Integer.parseInt(propName) - 1;
+            if (index >= 0 && index < list.items().size()) return list.items().get(index);
+        } catch (NumberFormatException e) { /* not a number */ }
+        return Datum.VOID;
     }
 
-    /**
-     * Get a property from a PropList, supporting built-in properties (count, ilk)
-     * as well as key lookup.
-     */
     private static Datum getPropListProp(Datum.PropList pl, String propName) {
-        String prop = propName.toLowerCase();
-        return switch (prop) {
-            case "count", "length" -> Datum.of(pl.properties().size());
-            case "ilk" -> Datum.symbol("propList");
-            default -> pl.properties().getOrDefault(propName, Datum.VOID);
-        };
+        if ("count".equalsIgnoreCase(propName) || "length".equalsIgnoreCase(propName)) return Datum.of(pl.properties().size());
+        if ("ilk".equalsIgnoreCase(propName)) return Datum.symbol("propList");
+        return pl.properties().getOrDefault(propName, Datum.VOID);
     }
 
-    /**
-     * Get a built-in property from a string.
-     */
     private static Datum getStringProp(Datum.Str str, String propName) {
-        String prop = propName.toLowerCase();
-        return switch (prop) {
-            case "length" -> Datum.of(str.value().length());
-            case "ilk" -> Datum.symbol("string");
-            default -> Datum.VOID;
-        };
+        if ("length".equalsIgnoreCase(propName)) return Datum.of(str.value().length());
+        if ("ilk".equalsIgnoreCase(propName)) return Datum.symbol("string");
+        return Datum.VOID;
     }
 
     private static boolean setObjProp(ExecutionContext ctx) {
@@ -237,19 +210,15 @@ public final class PropertyOpcodes {
             }
             case Datum.Rect rect -> {
                 int v = value.toInt();
-                switch (propName.toLowerCase()) {
-                    case "left" -> rect.setLeft(v);
-                    case "top" -> rect.setTop(v);
-                    case "right" -> rect.setRight(v);
-                    case "bottom" -> rect.setBottom(v);
-                }
+                if ("left".equalsIgnoreCase(propName)) rect.setLeft(v);
+                else if ("top".equalsIgnoreCase(propName)) rect.setTop(v);
+                else if ("right".equalsIgnoreCase(propName)) rect.setRight(v);
+                else if ("bottom".equalsIgnoreCase(propName)) rect.setBottom(v);
             }
             case Datum.Point point -> {
                 int v = value.toInt();
-                switch (propName.toLowerCase()) {
-                    case "loch", "x" -> point.setX(v);
-                    case "locv", "y" -> point.setY(v);
-                }
+                if ("loch".equalsIgnoreCase(propName) || "x".equalsIgnoreCase(propName)) point.setX(v);
+                else if ("locv".equalsIgnoreCase(propName) || "y".equalsIgnoreCase(propName)) point.setY(v);
             }
             default -> { /* ignore */ }
         }
@@ -285,15 +254,11 @@ public final class PropertyOpcodes {
     private static Datum getCastMemberProp(Datum.CastMemberRef cmr, String propName) {
         CastLibProvider provider = CastLibProvider.getProvider();
         if (provider == null) {
-            // Return basic reference properties without provider
-            String prop = propName.toLowerCase();
-            return switch (prop) {
-                case "number" -> Datum.of((cmr.castLibNum() << 16) | (cmr.memberNum() & 0xFFFF));
-                case "membernum" -> Datum.of(cmr.memberNum());
-                case "castlibnum" -> Datum.of(cmr.castLibNum());
-                case "castlib" -> new Datum.CastLibRef(cmr.castLib());
-                default -> Datum.VOID;
-            };
+            if ("number".equalsIgnoreCase(propName)) return Datum.of((cmr.castLibNum() << 16) | (cmr.memberNum() & 0xFFFF));
+            if ("membernum".equalsIgnoreCase(propName)) return Datum.of(cmr.memberNum());
+            if ("castlibnum".equalsIgnoreCase(propName)) return Datum.of(cmr.castLibNum());
+            if ("castlib".equalsIgnoreCase(propName)) return new Datum.CastLibRef(cmr.castLib());
+            return Datum.VOID;
         }
 
         // Delegate to provider for full property access with lazy loading
@@ -320,13 +285,11 @@ public final class PropertyOpcodes {
 
         String propName = ctx.resolveName(ctx.getArgument());
 
-        // Handle paramCount and result directly
-        String propLower = propName.toLowerCase();
-        if (propLower.equals("paramcount")) {
+        if ("paramcount".equalsIgnoreCase(propName)) {
             ctx.push(Datum.of(ctx.getScope().getArguments().size()));
             return true;
         }
-        if (propLower.equals("result")) {
+        if ("result".equalsIgnoreCase(propName)) {
             ctx.push(ctx.getScope().getReturnValue());
             return true;
         }
@@ -594,31 +557,13 @@ public final class PropertyOpcodes {
                 // Player properties - limited set
                 yield getBuiltinConstant(propName);
             }
-            case Datum.Point point -> {
-                yield switch (propName.toLowerCase()) {
-                    case "loch", "x" -> Datum.of(point.x());
-                    case "locv", "y" -> Datum.of(point.y());
-                    default -> Datum.VOID;
-                };
-            }
-            case Datum.Rect rect -> {
-                yield switch (propName.toLowerCase()) {
-                    case "left" -> Datum.of(rect.left());
-                    case "top" -> Datum.of(rect.top());
-                    case "right" -> Datum.of(rect.right());
-                    case "bottom" -> Datum.of(rect.bottom());
-                    case "width" -> Datum.of(rect.right() - rect.left());
-                    case "height" -> Datum.of(rect.bottom() - rect.top());
-                    default -> Datum.VOID;
-                };
-            }
+            case Datum.Point point -> getPointProp(point, propName);
+            case Datum.Rect rect -> getRectProp(rect, propName);
             case Datum.Color color -> {
-                yield switch (propName.toLowerCase()) {
-                    case "red" -> Datum.of(color.r());
-                    case "green" -> Datum.of(color.g());
-                    case "blue" -> Datum.of(color.b());
-                    default -> Datum.VOID;
-                };
+                if ("red".equalsIgnoreCase(propName)) yield Datum.of(color.r());
+                if ("green".equalsIgnoreCase(propName)) yield Datum.of(color.g());
+                if ("blue".equalsIgnoreCase(propName)) yield Datum.of(color.b());
+                yield Datum.VOID;
             }
             case Datum.XtraInstance xi -> XtraBuiltins.getProperty(xi, propName);
             case Datum.TimeoutRef tr -> TimeoutBuiltins.getProperty(tr, propName);

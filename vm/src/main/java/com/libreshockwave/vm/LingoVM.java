@@ -275,8 +275,14 @@ public class LingoVM {
         try {
             int steps = 0;
             while (scope.hasMoreInstructions() && !scope.isReturned()) {
-                if (stepLimit > 0 && ++steps > stepLimit) {
+                steps++;
+                if (stepLimit > 0 && steps > stepLimit) {
                     throw new LingoException("Step limit exceeded (" + stepLimit + " instructions)");
+                }
+                // Periodic GC safepoint for WASM: compact heap during long-running handlers
+                // to prevent memory access out of bounds from accumulated garbage.
+                if ((steps & 0xFFFF) == 0) {
+                    System.gc();
                 }
                 executeInstruction(scope);
             }

@@ -242,9 +242,16 @@ public final class ExecutionContext {
     // Helper to pop multiple args in reverse order
 
     public List<Datum> popArgs(int count) {
-        List<Datum> args = new ArrayList<>();
+        if (count == 0) return new ArrayList<>(0);
+        // Pop in stack order then reverse in-place — O(n) instead of O(n²) add(0)
+        ArrayList<Datum> args = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
-            args.add(0, pop());
+            args.add(pop());
+        }
+        for (int i = 0, j = count - 1; i < j; i++, j--) {
+            Datum tmp = args.get(i);
+            args.set(i, args.get(j));
+            args.set(j, tmp);
         }
         return args;
     }
