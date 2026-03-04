@@ -129,6 +129,14 @@ public class QueuedNetProvider implements NetBuiltins.NetProvider {
     }
 
     /**
+     * Get a pending request by index for indexed WASM export access.
+     */
+    public PendingRequest getRequest(int index) {
+        return (index >= 0 && index < pendingRequests.size())
+                ? pendingRequests.get(index) : null;
+    }
+
+    /**
      * Clear pending requests after JS has read them.
      */
     public void drainPendingRequests() {
@@ -193,54 +201,6 @@ public class QueuedNetProvider implements NetBuiltins.NetProvider {
         }
 
         return fileName;
-    }
-
-    /**
-     * Serialize pending requests as JSON for JS to read from WASM memory.
-     */
-    public String serializePendingRequests() {
-        if (pendingRequests.isEmpty()) return "[]";
-
-        StringBuilder sb = new StringBuilder(256);
-        sb.append('[');
-        boolean first = true;
-        for (PendingRequest req : pendingRequests) {
-            if (!first) sb.append(',');
-            first = false;
-            sb.append("{\"taskId\":").append(req.taskId);
-            sb.append(",\"url\":\"").append(escapeJson(req.url)).append('"');
-            sb.append(",\"method\":\"").append(req.method).append('"');
-            if (req.postData != null) {
-                sb.append(",\"postData\":\"").append(escapeJson(req.postData)).append('"');
-            }
-            if (req.fallbacks != null && req.fallbacks.length > 1) {
-                sb.append(",\"fallbacks\":[");
-                for (int i = 1; i < req.fallbacks.length; i++) {
-                    if (i > 1) sb.append(',');
-                    sb.append('"').append(escapeJson(req.fallbacks[i])).append('"');
-                }
-                sb.append(']');
-            }
-            sb.append('}');
-        }
-        sb.append(']');
-        return sb.toString();
-    }
-
-    private static String escapeJson(String s) {
-        if (s == null) return "";
-        StringBuilder sb = new StringBuilder(s.length());
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (c == '"') sb.append("\\\"");
-            else if (c == '\\') sb.append("\\\\");
-            else if (c == '\n') sb.append("\\n");
-            else if (c == '\r') sb.append("\\r");
-            else if (c == '\t') sb.append("\\t");
-            else if (c < 0x20) sb.append(String.format("\\u%04x", (int) c));
-            else sb.append(c);
-        }
-        return sb.toString();
     }
 
     /**
