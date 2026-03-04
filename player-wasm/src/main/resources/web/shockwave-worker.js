@@ -231,6 +231,12 @@ self.onmessage = async function(e) {
                     var p2 = _e.pumpNetworkCollect();
                     if (p2.length > 0) await Promise.all(p2);
                 }
+                // Continue pumping until no more requests
+                while (true) {
+                    var pn = _e.pumpNetworkCollect();
+                    if (pn.length === 0) break;
+                    await Promise.all(pn);
+                }
                 self.postMessage({ type: 'castsDone' });
                 break;
             }
@@ -259,15 +265,32 @@ self.onmessage = async function(e) {
                 if (_isTicking) return; // drop if already busy
                 _isTicking = true;
                 try {
-                    var stillPlaying = _e.tick();
+                    var stillPlaying = true;
+                    var frame = null;
+
+                    try {
+                        stillPlaying = _e.tick();
+                    } catch (tickErr) {
+                        // WASM trap or Java exception during tick — skip this frame
+                        console.error('[WORKER] tick() error: ' + tickErr);
+                    }
 
                     // Await network requests queued during tick
-                    var tp = _e.pumpNetworkCollect();
-                    if (tp.length > 0) await Promise.all(tp);
+                    try {
+                        var tp = _e.pumpNetworkCollect();
+                        if (tp.length > 0) await Promise.all(tp);
+                    } catch (netErr) {
+                        console.error('[WORKER] network pump error: ' + netErr);
+                    }
 
                     // Render entire frame in WASM (SoftwareRenderer composites all sprites)
-                    var frame = _e.renderFrame();
+                    try {
+                        frame = _e.renderFrame();
+                    } catch (renderErr) {
+                        console.error('[WORKER] render() error: ' + renderErr);
+                    }
 
+                    // Always send a frame response to unblock main thread
                     self.postMessage({
                         type:          'frame',
                         playing:       stillPlaying,

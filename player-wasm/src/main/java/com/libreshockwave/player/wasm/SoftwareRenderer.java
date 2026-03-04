@@ -79,6 +79,8 @@ public class SoftwareRenderer {
 
             Bitmap baked = sprite.getBakedBitmap();
             if (baked == null) continue;
+            if (baked.getWidth() <= 0 || baked.getHeight() <= 0) continue;
+            if (baked.getPixels() == null || baked.getPixels().length == 0) continue;
 
             int sx = sprite.getX();
             int sy = sprite.getY();
@@ -123,15 +125,22 @@ public class SoftwareRenderer {
 
     private void blitBitmap(int[] srcPixels, int srcW, int srcH,
                             int dstX, int dstY, int blend) {
+        if (srcPixels == null || srcW <= 0 || srcH <= 0) return;
+        if (srcPixels.length < srcW * srcH) return;
+
         // Clip source rect to stage bounds
         int sx0 = Math.max(0, -dstX);
         int sy0 = Math.max(0, -dstY);
         int sx1 = Math.min(srcW, stageWidth - dstX);
         int sy1 = Math.min(srcH, stageHeight - dstY);
+        if (sx0 >= sx1 || sy0 >= sy1) return;
+
+        int argbLen = argb.length;
 
         for (int sy = sy0; sy < sy1; sy++) {
             for (int sx = sx0; sx < sx1; sx++) {
-                int src = srcPixels[sy * srcW + sx];
+                int srcIdx = sy * srcW + sx;
+                int src = srcPixels[srcIdx];
                 int srcA = (src >> 24) & 0xFF;
                 if (srcA == 0) continue;
 
@@ -142,6 +151,7 @@ public class SoftwareRenderer {
                 }
 
                 int dstIdx = (dstY + sy) * stageWidth + (dstX + sx);
+                if (dstIdx < 0 || dstIdx >= argbLen) continue;
 
                 if (srcA >= 255) {
                     // Fully opaque — just copy
@@ -160,11 +170,18 @@ public class SoftwareRenderer {
 
     private void blitBitmapScaled(int[] srcPixels, int srcW, int srcH,
                                   int dstX, int dstY, int dstW, int dstH, int blend) {
+        if (srcPixels == null || srcW <= 0 || srcH <= 0 || dstW <= 0 || dstH <= 0) return;
+        if (srcPixels.length < srcW * srcH) return;
+
         // Clip destination rect to stage bounds
         int dx0 = Math.max(0, dstX);
         int dy0 = Math.max(0, dstY);
         int dx1 = Math.min(stageWidth, dstX + dstW);
         int dy1 = Math.min(stageHeight, dstY + dstH);
+        if (dx0 >= dx1 || dy0 >= dy1) return;
+
+        int srcLen = srcPixels.length;
+        int argbLen = argb.length;
 
         for (int dy = dy0; dy < dy1; dy++) {
             // Nearest neighbor: map destination pixel to source pixel
@@ -175,7 +192,10 @@ public class SoftwareRenderer {
                 int srcX = ((dx - dstX) * srcW) / dstW;
                 if (srcX < 0 || srcX >= srcW) continue;
 
-                int src = srcPixels[srcY * srcW + srcX];
+                int srcIdx = srcY * srcW + srcX;
+                if (srcIdx < 0 || srcIdx >= srcLen) continue;
+
+                int src = srcPixels[srcIdx];
                 int srcA = (src >> 24) & 0xFF;
                 if (srcA == 0) continue;
 
@@ -185,6 +205,7 @@ public class SoftwareRenderer {
                 }
 
                 int dstIdx = dy * stageWidth + dx;
+                if (dstIdx < 0 || dstIdx >= argbLen) continue;
 
                 if (srcA >= 255) {
                     argb[dstIdx] = src | 0xFF000000;
@@ -200,6 +221,7 @@ public class SoftwareRenderer {
     // ========================================================================
 
     private void alphaComposite(int dstIdx, int src, int srcA) {
+        if (dstIdx < 0 || dstIdx >= argb.length) return;
         int dst = argb[dstIdx];
         int dstA = (dst >> 24) & 0xFF;
         int invA = 255 - srcA;
