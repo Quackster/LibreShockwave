@@ -27,6 +27,9 @@ teavm {
         mainClass = 'com.libreshockwave.player.wasm.WasmEntry'
         // Generate debug info for development
         debugInformation = true
+        // Default is 16 MB — far too small for 720x540 bitmap compositing
+        minHeapSize = 32
+        maxHeapSize = 2048
     }
 
     all {
