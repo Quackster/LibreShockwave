@@ -49,13 +49,6 @@ WasmEngine.prototype._writeBytes = function(addr, bytes, maxLen) {
     new Uint8Array(this._mem(), addr, maxLen).set(bytes.subarray(0, Math.min(bytes.length, maxLen)));
 };
 
-WasmEngine.prototype._readJson = function(len) {
-    if (len <= 0) return null;
-    var addr = this.exports.getLargeBufferAddress();
-    var str = new TextDecoder().decode(new Uint8Array(this._mem(), addr, len));
-    try { return JSON.parse(str); } catch(e) { return null; }
-};
-
 WasmEngine.prototype._clearEx = function() {
     var ex = this.teavm.instance && this.teavm.instance.exports;
     if (ex && ex.teavm_catchException) ex.teavm_catchException();
@@ -123,9 +116,28 @@ WasmEngine.prototype.renderFrame = function() {
 WasmEngine.prototype._drainRequests = function() {
     var count = this.exports.getPendingFetchCount(); this._clearEx();
     if (count === 0) return null;
-    var len  = this.exports.getPendingFetchJson();   this._clearEx();
-    var reqs = this._readJson(len);
-    this.exports.drainPendingFetches();              this._clearEx();
+    var reqs = [];
+    var strAddr = this.exports.getStringBufferAddress();
+    for (var i = 0; i < count; i++) {
+        var taskId = this.exports.getPendingFetchTaskId(i); this._clearEx();
+        var urlLen = this.exports.getPendingFetchUrl(i); this._clearEx();
+        var url = this._readString(strAddr, urlLen);
+        var method = this.exports.getPendingFetchMethod(i); this._clearEx();
+        var postData = null;
+        if (method === 1) {
+            var pdLen = this.exports.getPendingFetchPostData(i); this._clearEx();
+            if (pdLen > 0) postData = this._readString(strAddr, pdLen);
+        }
+        var fbCount = this.exports.getPendingFetchFallbackCount(i); this._clearEx();
+        var fallbacks = [];
+        for (var j = 0; j < fbCount; j++) {
+            var fbLen = this.exports.getPendingFetchFallbackUrl(i, j); this._clearEx();
+            fallbacks.push(this._readString(strAddr, fbLen));
+        }
+        reqs.push({taskId: taskId, url: url, method: method === 1 ? 'POST' : 'GET',
+                   postData: postData, fallbacks: fallbacks});
+    }
+    this.exports.drainPendingFetches(); this._clearEx();
     return reqs;
 };
 

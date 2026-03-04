@@ -24,7 +24,6 @@ public class WasmEntry {
     private static byte[] movieBuffer;
     private static byte[] stringBuffer = new byte[4096];
     private static byte[] netBuffer;
-    private static byte[] largeBuffer;
 
     // Debug log: accumulates messages; read via getDebugLog() export
     static final StringBuilder debugLog = new StringBuilder(1024);
@@ -48,11 +47,6 @@ public class WasmEntry {
     @Export(name = "getStringBufferAddress")
     public static int getStringBufferAddress() {
         return Address.ofData(stringBuffer).toInt();
-    }
-
-    @Export(name = "getLargeBufferAddress")
-    public static int getLargeBufferAddress() {
-        return largeBuffer != null ? Address.ofData(largeBuffer).toInt() : 0;
     }
 
     // === Movie loading ===
@@ -189,7 +183,6 @@ public class WasmEntry {
 
     /**
      * Get the number of active sprites in the current frame, without baking bitmaps.
-     * Lightweight alternative to getFrameDataJson() for pass/fail criteria.
      * @return sprite count, or 0 if not playing
      */
     @Export(name = "getSpriteCount")
@@ -249,48 +242,6 @@ public class WasmEntry {
         return renderBuffer != null ? Address.ofData(renderBuffer).toInt() : 0;
     }
 
-    // === Sprite data export (legacy — kept for tests) ===
-
-    /**
-     * Export current frame sprite data as JSON.
-     * @return JSON byte length in largeBuffer
-     */
-    @Export(name = "getFrameDataJson")
-    public static int getFrameDataJson() {
-        SpriteDataExporter exporter = spriteExporter();
-        if (exporter == null) return 0;
-        try {
-            return writeJsonToLargeBuffer(exporter.exportFrameData());
-        } catch (Throwable e) {
-            captureError("getFrameDataJson", e);
-            return 0;
-        }
-    }
-
-    /**
-     * Get bitmap RGBA data for a cast member.
-     * @return memory address of RGBA data, or 0 if not found
-     */
-    @Export(name = "getBitmapData")
-    public static int getBitmapData(int memberId) {
-        SpriteDataExporter exporter = spriteExporter();
-        if (exporter == null) return 0;
-        byte[] rgba = exporter.getBitmapRGBA(memberId);
-        return rgba != null ? Address.ofData(rgba).toInt() : 0;
-    }
-
-    @Export(name = "getBitmapWidth")
-    public static int getBitmapWidth(int memberId) {
-        SpriteDataExporter exporter = spriteExporter();
-        return exporter != null ? exporter.getBitmapWidth(memberId) : 0;
-    }
-
-    @Export(name = "getBitmapHeight")
-    public static int getBitmapHeight(int memberId) {
-        SpriteDataExporter exporter = spriteExporter();
-        return exporter != null ? exporter.getBitmapHeight(memberId) : 0;
-    }
-
     // === Network polling (JS reads pending requests from WASM) ===
 
     /**
@@ -302,15 +253,57 @@ public class WasmEntry {
         return net != null ? net.getPendingRequests().size() : 0;
     }
 
-    /**
-     * Serialize all pending fetch requests as JSON.
-     * @return JSON byte length in largeBuffer
-     */
-    @Export(name = "getPendingFetchJson")
-    public static int getPendingFetchJson() {
+    @Export(name = "getPendingFetchTaskId")
+    public static int getPendingFetchTaskId(int index) {
         QueuedNetProvider net = netProvider();
         if (net == null) return 0;
-        return writeJsonToLargeBuffer(net.serializePendingRequests());
+        QueuedNetProvider.PendingRequest req = net.getRequest(index);
+        return req != null ? req.taskId : 0;
+    }
+
+    @Export(name = "getPendingFetchUrl")
+    public static int getPendingFetchUrl(int index) {
+        QueuedNetProvider net = netProvider();
+        if (net == null) return 0;
+        QueuedNetProvider.PendingRequest req = net.getRequest(index);
+        return req != null ? writeToStringBuffer(req.url) : 0;
+    }
+
+    /** @return 0=GET, 1=POST */
+    @Export(name = "getPendingFetchMethod")
+    public static int getPendingFetchMethod(int index) {
+        QueuedNetProvider net = netProvider();
+        if (net == null) return 0;
+        QueuedNetProvider.PendingRequest req = net.getRequest(index);
+        return req != null && "POST".equals(req.method) ? 1 : 0;
+    }
+
+    @Export(name = "getPendingFetchPostData")
+    public static int getPendingFetchPostData(int index) {
+        QueuedNetProvider net = netProvider();
+        if (net == null) return 0;
+        QueuedNetProvider.PendingRequest req = net.getRequest(index);
+        return req != null ? writeToStringBuffer(req.postData) : 0;
+    }
+
+    @Export(name = "getPendingFetchFallbackCount")
+    public static int getPendingFetchFallbackCount(int index) {
+        QueuedNetProvider net = netProvider();
+        if (net == null) return 0;
+        QueuedNetProvider.PendingRequest req = net.getRequest(index);
+        if (req == null || req.fallbacks == null || req.fallbacks.length <= 1) return 0;
+        return req.fallbacks.length - 1; // first entry is the primary URL
+    }
+
+    @Export(name = "getPendingFetchFallbackUrl")
+    public static int getPendingFetchFallbackUrl(int index, int fallbackIndex) {
+        QueuedNetProvider net = netProvider();
+        if (net == null) return 0;
+        QueuedNetProvider.PendingRequest req = net.getRequest(index);
+        if (req == null || req.fallbacks == null) return 0;
+        int actualIndex = fallbackIndex + 1; // skip primary URL at [0]
+        if (actualIndex >= req.fallbacks.length) return 0;
+        return writeToStringBuffer(req.fallbacks[actualIndex]);
     }
 
     /**
@@ -455,21 +448,16 @@ public class WasmEntry {
         lastError = sb.toString();
     }
 
-    private static SpriteDataExporter spriteExporter() {
-        return wasmPlayer != null ? wasmPlayer.getSpriteExporter() : null;
-    }
-
     private static QueuedNetProvider netProvider() {
         return wasmPlayer != null ? wasmPlayer.getNetProvider() : null;
     }
 
-    private static int writeJsonToLargeBuffer(String json) {
-        byte[] bytes = json.getBytes();
-        if (largeBuffer == null || largeBuffer.length < bytes.length) {
-            largeBuffer = new byte[Math.max(bytes.length, 8192)];
-        }
-        System.arraycopy(bytes, 0, largeBuffer, 0, bytes.length);
-        return bytes.length;
+    private static int writeToStringBuffer(String s) {
+        if (s == null || s.isEmpty()) return 0;
+        byte[] bytes = s.getBytes();
+        int len = Math.min(bytes.length, stringBuffer.length);
+        System.arraycopy(bytes, 0, stringBuffer, 0, len);
+        return len;
     }
 
     private static void tryLoadExternalCast(String url, byte[] data) {
@@ -487,8 +475,6 @@ public class WasmEntry {
             if (loaded) {
                 wasmPlayer.getPlayer().getBitmapCache().clear();
                 wasmPlayer.bumpCastRevision();
-                SpriteDataExporter exporter = wasmPlayer.getSpriteExporter();
-                if (exporter != null) exporter.clearBitmapCache();
             }
         } catch (Exception e) {
             // Silent — external cast load failure is non-fatal
