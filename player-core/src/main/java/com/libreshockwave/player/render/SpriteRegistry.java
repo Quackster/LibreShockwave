@@ -15,6 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class SpriteRegistry {
 
     private final Map<Integer, SpriteState> sprites = new ConcurrentHashMap<>();
+    private volatile int revision;
 
     /**
      * Get or create a sprite state for a channel from Score data.
@@ -97,5 +98,21 @@ public class SpriteRegistry {
      */
     public Map<Integer, SpriteState> getAll() {
         return sprites;
+    }
+
+    /**
+     * Increment revision counter to signal that sprite state has changed.
+     * Used by SoftwareRenderer cache to detect dynamic sprite changes
+     * in single-frame movies where the frame number never changes.
+     */
+    public void bumpRevision() {
+        revision++;
+    }
+
+    /**
+     * Get the current sprite revision counter.
+     */
+    public int getRevision() {
+        return revision;
     }
 }

@@ -25,6 +25,7 @@ public class SoftwareRenderer {
     // Cache: skip recomposite if frame hasn't changed
     private int lastFrame = -1;
     private int lastCastRevision = -1;
+    private int lastSpriteRevision = -1;
 
     public SoftwareRenderer(int stageWidth, int stageHeight) {
         this.stageWidth = stageWidth;
@@ -38,16 +39,18 @@ public class SoftwareRenderer {
      * Render a FrameSnapshot into an RGBA byte[] buffer.
      * Returns the cached buffer if the frame and cast revision haven't changed.
      */
-    public byte[] render(FrameSnapshot snapshot, int castRevision) {
+    public byte[] render(FrameSnapshot snapshot, int castRevision, int spriteRevision) {
         int frame = snapshot.frameNumber();
 
         // Cache hit — return previously composited buffer
-        if (frame == lastFrame && castRevision == lastCastRevision) {
+        if (frame == lastFrame && castRevision == lastCastRevision
+                && spriteRevision == lastSpriteRevision) {
             return rgba;
         }
 
         lastFrame = frame;
         lastCastRevision = castRevision;
+        lastSpriteRevision = spriteRevision;
 
         int pixelCount = stageWidth * stageHeight;
 

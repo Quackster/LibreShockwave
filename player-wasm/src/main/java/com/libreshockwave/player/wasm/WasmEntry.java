@@ -273,7 +273,9 @@ public class WasmEntry {
             if (renderer == null) return 0;
 
             var snapshot = wasmPlayer.getPlayer().getFrameSnapshot();
-            renderBuffer = renderer.render(snapshot, wasmPlayer.getCastRevision());
+            int spriteRev = wasmPlayer.getPlayer().getStageRenderer()
+                    .getSpriteRegistry().getRevision();
+            renderBuffer = renderer.render(snapshot, wasmPlayer.getCastRevision(), spriteRev);
             return renderBuffer.length;
         } catch (Throwable e) {
             captureError("render", e);

@@ -109,6 +109,8 @@ public class SpriteProperties implements SpritePropertyProvider {
         SpriteState sprite = registry.getOrCreateDynamic(spriteNum);
 
         String prop = propName.toLowerCase();
+        // Bump revision so SoftwareRenderer cache invalidates for single-frame movies
+        registry.bumpRevision();
         switch (prop) {
             case "loch" -> {
                 sprite.setLocH(value.toInt());
