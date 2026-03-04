@@ -44,6 +44,22 @@ var _fetchQueue = [];   // [{taskId, data: ArrayBuffer}] or [{taskId, error: num
 var _inFlight = 0;      // number of fetches currently in-progress
 var _loadStartTime = 0; // timestamp when loading began (for perf logging)
 
+// --- Cross-origin fetch relay (main thread fetches on behalf of worker) ---
+var _fetchRelayMap = {};  // relayId -> { engine, taskId, url, fallbacks }
+var _fetchRelayCounter = 0;
+
+// --- JS-side response cache (eliminates duplicate network requests) ---
+var _urlCache = {};     // url -> ArrayBuffer
+
+// --- External params stored locally for pre-fetch access ---
+var _params = {};
+
+// --- Diagnostic tick counter ---
+var _tickNum = 0;
+
+// --- Movie base path (set during loadMovie) ---
+var _movieBasePath = '';
+
 // ============================================================
 // WasmEngine — mirrors the main-thread version but without Canvas
 // ============================================================
@@ -181,7 +197,10 @@ WasmEngine.prototype._doFetch = function(taskId, url, method, postData, fallback
     }
     return fetch(url, opts)
         .then(function(r) { if (!r.ok) throw { status: r.status }; return r.arrayBuffer(); })
-        .then(function(buf) { self._deliverResult(taskId, buf); })
+        .then(function(buf) {
+            _urlCache[url] = buf; // Cache response
+            self._deliverResult(taskId, buf);
+        })
         .catch(function(e) {
             if (fallbacks.length > 0)
                 return self._doFetch(taskId, fallbacks[0], method, postData, fallbacks.slice(1));
@@ -197,8 +216,15 @@ WasmEngine.prototype.pumpNetworkCollect = function() {
     var self = this, promises = [];
     for (var i = 0; i < reqs.length; i++) {
         (function(req) {
-            var p = self._doFetch(req.taskId, req.url, req.method, req.postData, req.fallbacks || []);
-            promises.push(p.then(null, function() {}));
+            // Check JS-side cache first
+            var cached = _findCachedResponse(req.url, req.fallbacks);
+            if (cached) {
+                self._deliverResult(req.taskId, cached);
+                promises.push(Promise.resolve());
+            } else {
+                var p = self._doFetch(req.taskId, req.url, req.method, req.postData, req.fallbacks || []);
+                promises.push(p.then(null, function() {}));
+            }
         })(reqs[i]);
     }
     return promises;
@@ -215,6 +241,22 @@ WasmEngine.prototype.pumpNetworkCollect = function() {
 WasmEngine.prototype._doFetchAsync = function(taskId, url, method, postData, fallbacks) {
     var self = this;
     _inFlight++;
+    console.log('[WORKER] fetch: ' + url + (fallbacks.length ? ' (+' + fallbacks.length + ' fallbacks)' : ''));
+
+    if (_isCrossOrigin(url)) {
+        // Relay through main thread: cross-origin fetches from a Worker can hang
+        // in Chrome. The main thread fetches without this issue.
+        // NOTE: use postMessage() not self.postMessage() — 'self' is shadowed by 'var self = this'
+        var relayId = ++_fetchRelayCounter;
+        _fetchRelayMap[relayId] = {
+            engine: self, taskId: taskId, url: url,
+            method: method, postData: postData, fallbacks: fallbacks || []
+        };
+        postMessage({ type: 'fetchRelay', relayId: relayId,
+                      url: url, method: method, postData: postData });
+        return;
+    }
+
     var opts = {};
     if (method === 'POST') {
         opts.method  = 'POST';
@@ -224,12 +266,15 @@ WasmEngine.prototype._doFetchAsync = function(taskId, url, method, postData, fal
     fetch(url, opts)
         .then(function(r) { if (!r.ok) throw { status: r.status }; return r.arrayBuffer(); })
         .then(function(buf) {
+            _urlCache[url] = buf;
+            console.log('[WORKER] fetch OK: ' + url + ' (' + buf.byteLength + ' bytes)');
             _fetchQueue.push({ taskId: taskId, data: buf });
             _inFlight--;
         })
         .catch(function(e) {
+            console.log('[WORKER] fetch ERR: ' + url + ' status=' + ((e && e.status) || 'network'));
             if (fallbacks.length > 0) {
-                _inFlight--; // this attempt done; retry will increment again
+                _inFlight--;
                 return self._doFetchAsync(taskId, fallbacks[0], method, postData, fallbacks.slice(1));
             } else {
                 _fetchQueue.push({ taskId: taskId, error: (e && e.status) || 0 });
@@ -259,6 +304,7 @@ WasmEngine.prototype.deliverQueuedResults = function() {
 
 /**
  * Drain pending requests from WASM and fire them all non-blocking.
+ * Checks JS-side cache first to avoid duplicate fetches.
  * @return number of requests fired
  */
 WasmEngine.prototype.pumpNetworkFire = function() {
@@ -266,10 +312,139 @@ WasmEngine.prototype.pumpNetworkFire = function() {
     if (!reqs) return 0;
     for (var i = 0; i < reqs.length; i++) {
         var req = reqs[i];
-        this._doFetchAsync(req.taskId, req.url, req.method, req.postData, req.fallbacks || []);
+        // Check JS-side cache first — deliver immediately if cached
+        var cached = _findCachedResponse(req.url, req.fallbacks);
+        if (cached) {
+            console.log('[WORKER] cache HIT: ' + req.url);
+            _fetchQueue.push({ taskId: req.taskId, data: cached });
+        } else {
+            this._doFetchAsync(req.taskId, req.url, req.method, req.postData, req.fallbacks || []);
+        }
     }
     return reqs.length;
 };
+
+// ============================================================
+// JS-side response cache helpers
+// ============================================================
+
+/**
+ * Find a cached response for a URL, checking the primary URL and all fallbacks.
+ * @return ArrayBuffer or null
+ */
+function _findCachedResponse(url, fallbacks) {
+    if (_urlCache[url]) return _urlCache[url];
+    // Also check without query string (for cache-busting params like ?281)
+    var qi = url.indexOf('?');
+    if (qi > 0 && _urlCache[url.substring(0, qi)]) return _urlCache[url.substring(0, qi)];
+    if (fallbacks) {
+        for (var i = 0; i < fallbacks.length; i++) {
+            if (_urlCache[fallbacks[i]]) return _urlCache[fallbacks[i]];
+            var fqi = fallbacks[i].indexOf('?');
+            if (fqi > 0 && _urlCache[fallbacks[i].substring(0, fqi)]) return _urlCache[fallbacks[i].substring(0, fqi)];
+        }
+    }
+    return null;
+}
+
+/**
+ * Returns true if the URL is cross-origin relative to this worker.
+ * Cross-origin fetches from a Web Worker can hang in Chrome when
+ * the host:port differs from the page origin. We relay those through
+ * the main thread, which has no such limitation.
+ */
+function _isCrossOrigin(url) {
+    try {
+        return new URL(url, self.location.href).origin !== self.location.origin;
+    } catch(e) { return false; }
+}
+
+/**
+ * Compute the base directory from a movie URL.
+ * "http://host/path/movie.dcr" -> "http://host/path/"
+ */
+function _getBaseDir(url) {
+    var i = url.lastIndexOf('/');
+    return i >= 0 ? url.substring(0, i + 1) : '';
+}
+
+/**
+ * Pre-fetch sw1 param URLs (external_variables, external_texts)
+ * and any dynamic cast entries found in external_variables.txt.
+ * This runs during preloadCasts, BEFORE play(), so the data is
+ * cached and available instantly when the Lingo state machine needs it.
+ */
+async function _prefetchSw1Assets(basePath) {
+    var sw1 = _params['sw1'] || _params['SW1'];
+    if (!sw1) return;
+
+    var baseDir = _getBaseDir(basePath);
+    // Parse sw1 format "key=url;key=url" — extract the URL value part
+    var urls = sw1.split(';').map(function(u) {
+        u = u.trim();
+        var eq = u.indexOf('=');
+        return eq >= 0 ? u.substring(eq + 1).trim() : u;
+    }).filter(function(u) { return u && u.indexOf('://') !== -1; });
+    if (urls.length === 0) return;
+
+    console.log('[WORKER] Pre-fetching ' + urls.length + ' sw1 URLs');
+
+    // Fetch all sw1 URLs in parallel to parse their content.
+    // Apply locale override to external_variables.txt so hh_entry_au is used,
+    // then cache the modified version (overrides any ORIGINAL cached by pumpNetworkCollect).
+    var results = await Promise.all(urls.map(function(url) {
+        return fetch(url)
+            .then(function(r) { if (!r.ok) throw { status: r.status }; return r.arrayBuffer(); })
+            .then(function(buf) {
+                if (url.indexOf('external_variables') !== -1) {
+                    try {
+                        var text = new TextDecoder().decode(new Uint8Array(buf));
+                        text = text.replace(/cast\.entry\.2=.*/g, 'cast.entry.2=hh_entry_au');
+                        buf = new TextEncoder().encode(text).buffer;
+                        console.log('[WORKER] Applied hh_entry_au locale override');
+                    } catch(ex) {}
+                }
+                _urlCache[url] = buf; // cache modified version; overwrites any stale original
+                return buf;
+            })
+            .catch(function() { return null; });
+    }));
+
+    // Parse external_variables.txt to find cast entries
+    var castNames = [];
+    for (var i = 0; i < results.length; i++) {
+        if (!results[i]) continue;
+        if (urls[i].indexOf('external_variables') !== -1 || urls[i].indexOf('external_variable') !== -1) {
+            var text = new TextDecoder().decode(new Uint8Array(results[i]));
+            var lines = text.split('\n');
+            for (var j = 0; j < lines.length; j++) {
+                var m = lines[j].match(/^cast\.entry\.\d+=(.+)/);
+                if (m) castNames.push(m[1].trim());
+            }
+        }
+    }
+
+    if (castNames.length === 0) return;
+    console.log('[WORKER] Pre-fetching ' + castNames.length + ' dynamic cast files: ' + castNames.join(', '));
+
+    // Fetch all dynamic cast .cct files in parallel (with .cst fallback)
+    var castFetches = castNames.map(function(name) {
+        var cctUrl = baseDir + name + '.cct';
+        var cstUrl = baseDir + name + '.cst';
+        if (_urlCache[cctUrl] || _urlCache[cstUrl]) return Promise.resolve();
+        return fetch(cctUrl)
+            .then(function(r) { if (!r.ok) throw 'not found'; return r.arrayBuffer(); })
+            .then(function(buf) { _urlCache[cctUrl] = buf; _urlCache[cstUrl] = buf; })
+            .catch(function() {
+                return fetch(cstUrl)
+                    .then(function(r) { if (!r.ok) throw 'not found'; return r.arrayBuffer(); })
+                    .then(function(buf) { _urlCache[cctUrl] = buf; _urlCache[cstUrl] = buf; })
+                    .catch(function() {});
+            });
+    });
+    await Promise.all(castFetches);
+    console.log('[WORKER] Pre-fetch complete, cache has ' + Object.keys(_urlCache).length + ' entries');
+}
 
 // ============================================================
 // Message handler
@@ -293,6 +468,9 @@ self.onmessage = async function(e) {
             }
 
             case 'loadMovie': {
+                _urlCache = {}; // Clear cache for new movie
+                _tickNum = 0;
+                _movieBasePath = msg.basePath || '';
                 var info = _e.loadMovie(new Uint8Array(msg.data), msg.basePath);
                 _e.playing  = false;
                 self.postMessage({ type: 'movieLoaded', info: info });
@@ -301,10 +479,12 @@ self.onmessage = async function(e) {
 
             case 'setParam':
                 _e.setExternalParam(msg.key, msg.value);
+                _params[msg.key] = msg.value; // Store locally for pre-fetch
                 break;
 
             case 'clearParams':
                 _e.clearExternalParams();
+                _params = {};
                 break;
 
             case 'preloadCasts': {
@@ -326,6 +506,15 @@ self.onmessage = async function(e) {
                     await Promise.all(pn);
                 }
                 console.log('[WORKER] preloadCasts done in ' + Math.round(performance.now() - castT0) + 'ms');
+
+                // Pre-fetch sw1 assets (external_variables, external_texts, dynamic casts)
+                // so they're cached before the Lingo state machine needs them
+                try {
+                    await _prefetchSw1Assets(_movieBasePath);
+                } catch (prefetchErr) {
+                    console.error('[WORKER] prefetch error: ' + prefetchErr);
+                }
+
                 // Compact heap after heavy cast loading to reduce GC pressure during ticks
                 try { _e.exports.forceGC(); _e._clearEx(); } catch(e) {}
                 self.postMessage({ type: 'castsDone' });
@@ -353,15 +542,61 @@ self.onmessage = async function(e) {
                 _e.exports.stepBackward(); _e._clearEx();
                 break;
 
+            case 'fetchRelayResult': {
+                // Main thread completed a cross-origin fetch on our behalf
+                var relay = _fetchRelayMap[msg.relayId];
+                if (!relay) break;
+                delete _fetchRelayMap[msg.relayId];
+                if (msg.error) {
+                    console.log('[WORKER] relay ERR: ' + relay.url + ' status=' + (msg.status || 0));
+                    if (relay.fallbacks.length > 0) {
+                        _inFlight--; // retry will re-increment
+                        relay.engine._doFetchAsync(relay.taskId, relay.fallbacks[0],
+                                                   relay.method, relay.postData,
+                                                   relay.fallbacks.slice(1));
+                    } else {
+                        _fetchQueue.push({ taskId: relay.taskId, error: msg.status || 0 });
+                        _inFlight--;
+                    }
+                } else {
+                    _urlCache[relay.url] = msg.data;
+                    console.log('[WORKER] relay OK: ' + relay.url + ' (' + msg.data.byteLength + ' bytes)');
+                    _fetchQueue.push({ taskId: relay.taskId, data: msg.data });
+                    _inFlight--;
+                }
+                break;
+            }
+
             case 'tick': {
-                if (_isTicking) return; // drop if already busy
+                if (_isTicking) {
+                    // ALWAYS respond so main thread's _waitFor('frame') doesn't hang
+                    self.postMessage({
+                        type: 'frame', playing: true,
+                        enginePlaying: _e ? _e.playing : false,
+                        tempo: _e ? _e._lastTempo : 15,
+                        lastFrame: _e ? _e._lastFrame : 0,
+                        frameCount: _e ? _e._lastFrameCount : 0,
+                        rgba: null, width: 0, height: 0, spriteCount: 0
+                    });
+                    return;
+                }
                 _isTicking = true;
                 try {
                     var stillPlaying = true;
                     var frame = null;
                     var t0 = performance.now();
+                    _tickNum++;
 
-                    // Phase 1: advance WASM by one Lingo frame
+                    // Phase 1: deliver completed network results from previous ticks.
+                    // This runs BEFORE tick() so netDone() returns true for finished fetches.
+                    var nDelivered = 0;
+                    try {
+                        nDelivered = _e.deliverQueuedResults();
+                    } catch (deliverErr) {
+                        console.error('[WORKER] deliver error: ' + deliverErr);
+                    }
+
+                    // Phase 2: advance WASM by one Lingo frame
                     try {
                         stillPlaying = _e.tick();
                     } catch (tickErr) {
@@ -371,21 +606,20 @@ self.onmessage = async function(e) {
                     var t1 = performance.now();
 
                     // After heavy ticks (text dump, cast load), force GC between phases.
-                    // This runs OUTSIDE WASM so the heap is stable for compaction.
                     if (t1 - t0 > 100) {
                         try { _e.exports.forceGC(); _e._clearEx(); } catch(e3) {}
                     }
 
-                    // Phase 2: fire network requests and AWAIT results (blocking)
-                    var nReqs = 0;
+                    // Phase 3: fire new network requests (non-blocking).
+                    // Results are queued asynchronously and delivered at the start of
+                    // the next tick. This decouples network I/O from frame execution,
+                    // preventing deadlocks when Lingo polls netDone() in update loops.
+                    var nFired = 0;
                     try {
-                        var tp = _e.pumpNetworkCollect();
-                        nReqs = tp.length;
-                        if (tp.length > 0) await Promise.all(tp);
+                        nFired = _e.pumpNetworkFire();
                     } catch (netErr) {
                         console.error('[WORKER] pump error: ' + netErr);
                     }
-                    var t2 = performance.now();
 
                     // Always update frame metadata from WASM (needed for fast-loop detection)
                     try {
@@ -393,7 +627,7 @@ self.onmessage = async function(e) {
                         _e._lastFrameCount = _e.exports.getFrameCount();
                     } catch (ignore) {}
 
-                    // Phase 3: render (skip during fast-loading for performance)
+                    // Phase 4: render (skip during fast-loading for performance)
                     if (!msg.skipRender) {
                         try {
                             frame = _e.renderFrame();
@@ -403,13 +637,38 @@ self.onmessage = async function(e) {
                     }
                     var t3 = performance.now();
 
-                    // Log timing for slow ticks
+                    // Always read sprite count (needed for fast-loop detection on main thread)
+                    var spriteCount = 0;
+                    try { spriteCount = _e.exports.getSpriteCount(); _e._clearEx(); } catch(e4) {}
+
+                    // Read diagnostic data from WASM
+                    var timeoutCount = 0;
+                    try { timeoutCount = _e.exports.getTimeoutCount(); _e._clearEx(); } catch(e5) {}
+
+                    // Diagnostic logging: every 50th tick or on network activity or slow ticks
                     var total = t3 - t0;
-                    if (total > 100) {
-                        console.log('[WORKER] SLOW tick: total=' + Math.round(total) +
-                                    'ms tick=' + Math.round(t1-t0) +
-                                    'ms net=' + Math.round(t2-t1) + 'ms(' + nReqs + ' reqs)' +
-                                    ' render=' + Math.round(t3-t2) + 'ms');
+                    if (total > 100 || _tickNum % 50 === 0 || nDelivered > 0 || nFired > 0 || _tickNum <= 20) {
+                        var extra = '';
+                        // On first few ticks, also report timeout names and player state
+                        if (_tickNum <= 20 || _tickNum % 100 === 0) {
+                            try {
+                                var snLen = _e.exports.getPlayerState(); _e._clearEx();
+                                if (snLen > 0) extra += ' state=' + _e._readString(_e.exports.getStringBufferAddress(), snLen);
+                            } catch(ignore) {}
+                            try {
+                                var tnLen = _e.exports.getTimeoutNames(); _e._clearEx();
+                                if (tnLen > 0) extra += ' timeouts=[' + _e._readString(_e.exports.getStringBufferAddress(), tnLen) + ']';
+                            } catch(ignore) {}
+                        }
+                        console.log('[WORKER] tick#' + _tickNum +
+                                    ' frame=' + _e._lastFrame +
+                                    ' sprites=' + spriteCount +
+                                    ' timeouts=' + timeoutCount +
+                                    ' fired=' + nFired + ' delivered=' + nDelivered +
+                                    ' dt=' + Math.round(total) + 'ms' +
+                                    ' queued=' + _fetchQueue.length +
+                                    ' inflight=' + _inFlight +
+                                    extra);
                     }
 
                     // Always send a frame response to unblock main thread
@@ -422,7 +681,8 @@ self.onmessage = async function(e) {
                         frameCount:    _e._lastFrameCount,
                         rgba:          frame ? frame.rgba : null,
                         width:         frame ? frame.w : 0,
-                        height:        frame ? frame.h : 0
+                        height:        frame ? frame.h : 0,
+                        spriteCount:   spriteCount
                     }, frame ? [frame.rgba.buffer] : []);
 
                 } finally {
