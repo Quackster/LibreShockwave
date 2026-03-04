@@ -687,6 +687,34 @@ public class CastLibManager implements CastLibProvider {
         return null;
     }
 
+    /**
+     * Check if all external casts have been loaded.
+     * Returns true when every external cast library has reached the LOADED state.
+     */
+    public boolean areAllCastsLoaded() {
+        ensureInitialized();
+        for (CastLib castLib : castLibs.values()) {
+            if (castLib.isExternal() && !castLib.isLoaded()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Release raw file data stores from all loaded cast DirectorFiles.
+     * After this call, lazy parsing of deferred chunks will no longer work,
+     * but already-decoded bitmaps in BitmapCache are unaffected.
+     */
+    public void releaseAllDataStores() {
+        ensureInitialized();
+        for (CastLib castLib : castLibs.values()) {
+            if (castLib.getSourceFile() != null) {
+                castLib.getSourceFile().releaseDataStore();
+            }
+        }
+    }
+
     @Override
     public java.util.List<String> getScriptPropertyNames(int castLibNumber, int memberNumber) {
         ensureInitialized();

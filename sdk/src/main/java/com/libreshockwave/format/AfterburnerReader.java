@@ -421,6 +421,16 @@ public class AfterburnerReader {
         return size;
     }
 
+    /**
+     * Clear all cached chunk data to free memory.
+     * After this call, getChunkData() for non-ILS chunks will still work
+     * by re-reading from the underlying file data, but ILS-cached chunks
+     * will need to be re-extracted.
+     */
+    public void clearCachedData() {
+        cachedChunkData.clear();
+    }
+
     // Getters
 
     public int getDirectorVersion() {

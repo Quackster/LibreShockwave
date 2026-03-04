@@ -515,8 +515,6 @@ self.onmessage = async function(e) {
                     console.error('[WORKER] prefetch error: ' + prefetchErr);
                 }
 
-                // Compact heap after heavy cast loading to reduce GC pressure during ticks
-                try { _e.exports.forceGC(); _e._clearEx(); } catch(e) {}
                 self.postMessage({ type: 'castsDone' });
                 break;
             }
@@ -601,14 +599,8 @@ self.onmessage = async function(e) {
                         stillPlaying = _e.tick();
                     } catch (tickErr) {
                         console.error('[WORKER] tick() error: ' + tickErr);
-                        try { _e.exports.forceGC(); _e._clearEx(); } catch(e2) {}
                     }
                     var t1 = performance.now();
-
-                    // After heavy ticks (text dump, cast load), force GC between phases.
-                    if (t1 - t0 > 100) {
-                        try { _e.exports.forceGC(); _e._clearEx(); } catch(e3) {}
-                    }
 
                     // Phase 3: fire new network requests (non-blocking).
                     // Results are queued asynchronously and delivered at the start of
