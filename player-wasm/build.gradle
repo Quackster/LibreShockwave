@@ -106,34 +106,51 @@ tasks.named('assembleWasm') {
 }
 
 // ---------------------------------------------------------------------------
-// Node.js WASM integration test
-// Simulates browser JS ↔ WASM interaction without opening a browser.
-// Requires Node.js 18+ on PATH. Serve .cct files from dcrDir.
+// npm install — ensures Puppeteer (+ bundled Chromium) is available.
+// Skipped if node_modules/ already exists and package.json hasn't changed.
+// ---------------------------------------------------------------------------
+tasks.register('npmInstall', Exec) {
+    group       = 'build'
+    description = 'Install npm dependencies (puppeteer) for browser tests'
+
+    inputs.file  file('package.json')
+    outputs.dir  file('node_modules')
+
+    def isWindows = System.getProperty('os.name').toLowerCase().contains('windows')
+
+    workingDir projectDir
+    commandLine isWindows ? 'npm.cmd' : 'npm', 'install'
+
+    standardOutput = System.out
+    errorOutput    = System.err
+}
+
+// ---------------------------------------------------------------------------
+// Chromium browser integration test via Puppeteer.
+// Launches headless Chromium, loads the Habbo DCR through the real
+// shockwave-lib.js → Web Worker → WASM → SoftwareRenderer → canvas pipeline,
+// and verifies that frames render with non-trivial pixel content.
 //
 // Usage:
-//   ./gradlew :player-wasm:runWasmNodeTest
-//   ./gradlew :player-wasm:runWasmNodeTest -Psw1="yourvalue"
-//   ./gradlew :player-wasm:runWasmNodeTest -PoutputDir=C:/tmp/frames
+//   ./gradlew :player-wasm:runWasmChromiumTest
+//   ./gradlew :player-wasm:runWasmChromiumTest -PoutputDir=C:/tmp/chromium-test
+//   ./gradlew :player-wasm:runWasmChromiumTest -PdcrFile=... -PcastDir=...
 // ---------------------------------------------------------------------------
-tasks.register('runWasmNodeTest', Exec) {
+tasks.register('runWasmChromiumTest', Exec) {
     group       = 'verification'
-    description = 'Test compiled WASM binary in Node.js (simulates browser JS↔WASM interaction)'
-    dependsOn 'assembleWasm'
+    description = 'Test WASM player in headless Chromium (full browser pipeline)'
+    dependsOn 'assembleWasm', 'npmInstall'
 
     def distPath  = layout.buildDirectory.dir('dist').get().asFile.absolutePath
     def dcrFile   = project.findProperty('dcrFile')  ?: 'C:/xampp/htdocs/dcr/14.1_b8/habbo.dcr'
     def castDir   = project.findProperty('castDir')  ?: 'C:/xampp/htdocs/dcr/14.1_b8'
-    def sw1       = project.findProperty('sw1')      ?:
-        'external.variables.txt=http://localhost/gamedata/external_variables.txt;' +
-        'external.texts.txt=http://localhost/gamedata/external_texts.txt'
     def outputDir = project.findProperty('outputDir') ?: ''
 
     commandLine 'node',
-        file('src/test/js/wasm-test.js').absolutePath,
+        file('src/test/js/wasm-chromium-test.js').absolutePath,
         distPath,
         dcrFile,
         castDir,
-        sw1,
         outputDir
 
     standardOutput = System.out

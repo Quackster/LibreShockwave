@@ -29,3 +29,5 @@ runtime/src/main/resources/player/libreshockwave.wasm
 /test_output
 *.hprof
 /player-simulator/frames
+node_modules/
+package-lock.json
