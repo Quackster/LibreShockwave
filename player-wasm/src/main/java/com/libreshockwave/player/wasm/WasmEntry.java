@@ -522,16 +522,12 @@ public class WasmEntry {
                 wasmPlayer.getPlayer().getBitmapCache().clear();
                 wasmPlayer.bumpCastRevision();
 
-                // When all casts are loaded, release raw file bytes and fileCache.
-                // Lazy chunk loading means BITD/snd_/ediM are never eagerly parsed,
-                // and BitmapCache evicts BITD after decode. This frees 10-100MB of heap.
+                // When all casts are loaded, release the fileCache (duplicate raw bytes).
+                // DataStores are kept alive — they're needed for lazy BITD parsing
+                // when new sprites become visible later (login box, error dialog, etc.).
+                // BitmapCache evicts BITD chunks after decode, so memory stays bounded.
                 if (wasmPlayer.getPlayer().getCastLibManager().areAllCastsLoaded()) {
                     wasmPlayer.getPlayer().getCastLibManager().clearFileCache();
-                    wasmPlayer.getPlayer().getCastLibManager().releaseAllDataStores();
-                    // Also release main file's dataStore
-                    if (wasmPlayer.getPlayer().getFile() != null) {
-                        wasmPlayer.getPlayer().getFile().releaseDataStore();
-                    }
                 }
             }
         } catch (Exception e) {

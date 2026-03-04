@@ -375,16 +375,22 @@ function _getBaseDir(url) {
  * cached and available instantly when the Lingo state machine needs it.
  */
 async function _prefetchSw1Assets(basePath) {
-    var sw1 = _params['sw1'] || _params['SW1'];
-    if (!sw1) return;
-
     var baseDir = _getBaseDir(basePath);
-    // Parse sw1 format "key=url;key=url" — extract the URL value part
-    var urls = sw1.split(';').map(function(u) {
-        u = u.trim();
-        var eq = u.indexOf('=');
-        return eq >= 0 ? u.substring(eq + 1).trim() : u;
-    }).filter(function(u) { return u && u.indexOf('://') !== -1; });
+
+    // Collect all HTTP URLs from ALL sw params (sw1-sw9).
+    // Params use "key=value;key=value" format; values containing "://" are URLs.
+    var urls = [];
+    for (var i = 1; i <= 9; i++) {
+        var sw = _params['sw' + i] || _params['SW' + i];
+        if (!sw) continue;
+        sw.split(';').forEach(function(pair) {
+            pair = pair.trim();
+            var eq = pair.indexOf('=');
+            if (eq < 0) return;
+            var val = pair.substring(eq + 1).trim();
+            if (val.indexOf('://') !== -1) urls.push(val);
+        });
+    }
     if (urls.length === 0) return;
 
     console.log('[WORKER] Pre-fetching ' + urls.length + ' sw1 URLs');
