@@ -1,9 +1,11 @@
 'use strict';
 
-// Worker console messages are visible natively in DevTools.
-// Do NOT forward them to the main thread via postMessage — doing so floods
-// the message queue when DevTools is open (each console.log render is expensive)
-// and delays processing of critical 'frame' responses, causing _waitFor timeouts.
+// Suppress console.log/warn in the worker. When DevTools is open, Chrome renders
+// every message (including TeaVM's System.out via putwchar) which stalls the
+// message loop and prevents 'frame' responses from being processed in time.
+// Errors are kept since they only fire in exceptional cases.
+console.log = function() {};
+console.warn = function() {};
 
 /**
  * LibreShockwave Web Worker — runs the WASM engine off the main thread.
