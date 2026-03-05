@@ -521,8 +521,9 @@ var LibreShockwave = (function() {
     // --- Tick: send work to the worker, await the frame response, then render ---
 
     ShockwavePlayer.prototype._doTick = async function() {
-        // During fast loading, tell the worker to skip rendering on most ticks
-        var skipRender = this._loadingPhase && (this._tickCount % 15 !== 0);
+        // Always render — the fast-loading loop completes in few ticks so
+        // skipping frames would hide the loading screen (Sulake logo).
+        var skipRender = false;
         this._worker.postMessage({ type: 'tick', skipRender: skipRender });
         var result = await this._waitFor('frame');
         if (!result) return;
