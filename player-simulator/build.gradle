@@ -20,3 +20,8 @@ repositories {
 dependencies {
     implementation project(':player-core')
 }
+
+tasks.register('runReleaseRawDataTest', JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.simulator.ReleaseRawDataTest'
+}
