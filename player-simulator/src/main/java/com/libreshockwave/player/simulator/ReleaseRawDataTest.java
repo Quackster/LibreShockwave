@@ -17,12 +17,12 @@ import java.util.*;
  * Integration test that simulates the WASM JS↔Java bridge flow on the JVM.
  * All data is loaded via HTTP from localhost — exactly like the real browser embed.
  *
- * Validates that releaseRawData() doesn't break rendering:
- * 1. Fetches habbo.dcr via HTTP (same as browser fetch → ArrayBuffer → loadMovie)
- * 2. Calls releaseRawData() on the main file immediately after parse
- * 3. Uses a polling NetProvider (like QueuedNetProvider) — bytes delivered via HTTP callbacks
- * 4. Delivers external cast bytes via HTTP and calls releaseRawData() on each after parse
- * 5. Ticks until sprites appear and verifies rendering works
+ * Validates the JS-side cast data store pattern:
+ * - Cast file bytes are NOT stored in fileCache (no cacheFileData)
+ * - Cast data is delivered one at a time via setExternalCastDataByUrl (simulating deliverCastData)
+ * - Text/gamedata delivered normally via onFetchComplete (netTextResult still works)
+ * - Dynamic cast requests from Lingo are captured via castDataRequestCallback
+ * - No releaseRawData() needed — raw bytes never stored redundantly
  */
 public class ReleaseRawDataTest {
 
@@ -30,11 +30,17 @@ public class ReleaseRawDataTest {
     private static final String BASE_PATH = "http://localhost/dcr/14.1_b8/";
     private static final int MAX_TICKS = 500;
 
+    // JS-side cache simulation: URL -> byte[]
+    private static final Map<String, byte[]> jsUrlCache = new HashMap<>();
+
+    // Pending dynamic cast requests captured from castDataRequestCallback
+    private static final List<String> pendingCastDataRequests = Collections.synchronizedList(new ArrayList<>());
+
     public static void main(String[] args) throws Exception {
         String movieUrl = args.length > 0 ? args[0] : MOVIE_URL;
         String basePath = args.length > 1 ? args[1] : BASE_PATH;
 
-        System.out.println("=== ReleaseRawDataTest ===");
+        System.out.println("=== ReleaseRawDataTest (JS-side cast store) ===");
         System.out.println("Movie URL: " + movieUrl);
         System.out.println("Base path: " + basePath);
 
@@ -50,14 +56,49 @@ public class ReleaseRawDataTest {
         DirectorFile file = DirectorFile.load(movieData);
         file.setBasePath(basePath);
 
-        // 2. Release raw data immediately after parse — this is the behavior under test
-        file.releaseRawData();
-        file.releaseNonEssentialChunks();
-        System.out.println("PASS: releaseRawData() on main movie");
-
-        // 3. Create polling NetProvider (simulates QueuedNetProvider in WASM)
+        // 2. Create polling NetProvider (simulates QueuedNetProvider in WASM)
         PollingNetProvider netProvider = new PollingNetProvider(basePath);
         Player player = new Player(file, netProvider);
+
+        // 3. Wire castDataRequestCallback — loads dynamic casts synchronously from jsUrlCache
+        // In WASM this is async (queued), but for JVM test we can load immediately
+        pendingCastDataRequests.clear();
+        final String baseDir = basePath.endsWith("/") ? basePath : basePath + "/";
+        player.getCastLibManager().setCastDataRequestCallback((castLibNumber, fileName) -> {
+            // Try to load synchronously from jsUrlCache
+            String baseName = FileUtil.getFileNameWithoutExtension(FileUtil.getFileName(fileName));
+            String cctUrl = baseDir + baseName + ".cct";
+            String cstUrl = baseDir + baseName + ".cst";
+
+            byte[] data = jsUrlCache.get(cctUrl);
+            String url = cctUrl;
+            if (data == null) {
+                data = jsUrlCache.get(cstUrl);
+                url = cstUrl;
+            }
+            // If not in cache, try fetching on-demand
+            if (data == null) {
+                data = httpGet(cctUrl);
+                if (data != null) {
+                    jsUrlCache.put(cctUrl, data);
+                    url = cctUrl;
+                } else {
+                    data = httpGet(cstUrl);
+                    if (data != null) {
+                        jsUrlCache.put(cstUrl, data);
+                        url = cstUrl;
+                    }
+                }
+            }
+            if (data != null) {
+                player.getCastLibManager().setExternalCastData(castLibNumber, data);
+                player.getBitmapCache().clear();
+                System.out.println("  Dynamic cast loaded (sync): " + url + " (requested: " + fileName + ")");
+            } else {
+                // Queue for later delivery (simulates WASM async path)
+                pendingCastDataRequests.add(fileName);
+            }
+        });
 
         // Set external params — exactly as the browser embed PARAM tags
         player.setExternalParams(Map.of(
@@ -73,14 +114,14 @@ public class ReleaseRawDataTest {
         int castCount = player.preloadAllCasts();
         System.out.println("Queued " + castCount + " external casts for fetch");
 
-        // 5. Pump network: fetch via HTTP, deliver to player, releaseRawData on each cast
+        // 5. Pump network: fetch all, cache in jsUrlCache, deliver appropriately
         int castsDelivered = pumpNetwork(netProvider, player);
-        System.out.println("Delivered " + castsDelivered + " cast files via HTTP");
+        System.out.println("Delivered " + castsDelivered + " cast files via setExternalCastDataByUrl");
 
         // 6. Start playback
         player.play();
 
-        // 7. Tick loop — simulate JS animation loop with network pump each tick
+        // 7. Tick loop — simulate JS animation loop with network pump + cast delivery each tick
         int maxSprites = 0;
         int lastFrame = 0;
         int ticksWithSprites = 0;
@@ -102,6 +143,9 @@ public class ReleaseRawDataTest {
             // Pump network each tick (Lingo may request external_variables.txt, more casts, etc.)
             totalCastsDelivered += pumpNetwork(netProvider, player);
 
+            // Deliver pending dynamic cast requests (simulates JS _deliverPendingCastRequests)
+            totalCastsDelivered += deliverPendingCastRequests(player, basePath);
+
             // Check sprites
             try {
                 int spriteCount = player.getStageRenderer()
@@ -118,7 +162,7 @@ public class ReleaseRawDataTest {
             lastFrame = player.getCurrentFrame();
         }
 
-        // 8. Verify rendering works after releaseRawData
+        // 8. Verify rendering works
         System.out.println("\n--- Results ---");
         System.out.println("Total casts delivered: " + totalCastsDelivered);
         System.out.println("Max sprites: " + maxSprites);
@@ -140,7 +184,7 @@ public class ReleaseRawDataTest {
         // 9. Pass/fail verdict
         boolean pass = maxSprites >= 10 && lastFrame > 0 && renderOk;
         if (pass) {
-            System.out.println("\nPASS: releaseRawData() does not break rendering " +
+            System.out.println("\nPASS: JS-side cast store works " +
                     "(maxSprites=" + maxSprites + ", frame=" + lastFrame + ")");
         } else {
             System.out.println("\nFAIL: maxSprites=" + maxSprites +
@@ -151,11 +195,12 @@ public class ReleaseRawDataTest {
 
     /**
      * Deliver all pending network requests via HTTP.
-     * Mirrors the WASM JS bridge: poll pending requests → fetch → deliverFetchResult.
+     * Separates cast files from text/gamedata:
+     * - Cast files: cached in jsUrlCache, delivered via setExternalCastDataByUrl (no cacheFileData)
+     * - Text/gamedata: delivered via onFetchComplete normally (netTextResult works)
      */
     private static int pumpNetwork(PollingNetProvider net, Player player) {
         int delivered = 0;
-        // Keep pumping until no new requests appear (a single delivery can trigger more)
         while (!net.getPendingRequests().isEmpty()) {
             List<PollingNetProvider.PendingRequest> requests = new ArrayList<>(net.getPendingRequests());
             net.drainPendingRequests();
@@ -163,22 +208,24 @@ public class ReleaseRawDataTest {
             for (var req : requests) {
                 byte[] data = fetchWithFallbacks(req.url, req.fallbacks);
                 if (data != null) {
-                    net.onFetchComplete(req.taskId, data);
+                    // Cache in JS-side store (simulates _urlCache in worker)
+                    jsUrlCache.put(req.url, data);
 
-                    // Try to load as external cast — mirrors WasmEntry.tryLoadExternalCast
-                    player.getCastLibManager().cacheFileData(req.url, data);
-                    boolean loaded = player.getCastLibManager().setExternalCastDataByUrl(req.url, data);
-                    if (loaded) {
-                        // Release raw data on each external cast's DirectorFile
-                        for (var castLib : player.getCastLibManager().getCastLibs().values()) {
-                            var sourceFile = castLib.getSourceFile();
-                            if (sourceFile != null) {
-                                sourceFile.releaseRawData();
-                                sourceFile.releaseNonEssentialChunks();
-                            }
+                    if (isCastFile(req.url)) {
+                        // Cast file: mark net task done with byte count (like deliverFetchStatus)
+                        net.onFetchStatusComplete(req.taskId, data.length);
+
+                        // Deliver cast data directly (like deliverCastData)
+                        boolean loaded = player.getCastLibManager()
+                                .setExternalCastDataByUrl(req.url, data);
+                        if (loaded) {
+                            player.getBitmapCache().clear();
+                            delivered++;
+                            System.out.println("  Cast loaded: " + req.url);
                         }
-                        player.getBitmapCache().clear();
-                        delivered++;
+                    } else {
+                        // Non-cast: deliver normally (netTextResult works)
+                        net.onFetchComplete(req.taskId, data);
                     }
                 } else {
                     net.onFetchError(req.taskId, 404);
@@ -187,6 +234,66 @@ public class ReleaseRawDataTest {
             }
         }
         return delivered;
+    }
+
+    /**
+     * Deliver pending dynamic cast requests captured from castDataRequestCallback.
+     * Simulates JS _deliverPendingCastRequests polling.
+     */
+    private static int deliverPendingCastRequests(Player player, String basePath) {
+        if (pendingCastDataRequests.isEmpty()) return 0;
+
+        List<String> requests = new ArrayList<>(pendingCastDataRequests);
+        pendingCastDataRequests.clear();
+
+        String baseDir = basePath;
+        if (!baseDir.endsWith("/")) baseDir += "/";
+
+        int delivered = 0;
+        for (String fileName : requests) {
+            String baseName = FileUtil.getFileNameWithoutExtension(FileUtil.getFileName(fileName));
+            String cctUrl = baseDir + baseName + ".cct";
+            String cstUrl = baseDir + baseName + ".cst";
+
+            byte[] data = jsUrlCache.get(cctUrl);
+            String url = cctUrl;
+            if (data == null) {
+                data = jsUrlCache.get(cstUrl);
+                url = cstUrl;
+            }
+            // If not in cache yet, try fetching
+            if (data == null) {
+                data = httpGet(cctUrl);
+                if (data != null) {
+                    jsUrlCache.put(cctUrl, data);
+                    url = cctUrl;
+                } else {
+                    data = httpGet(cstUrl);
+                    if (data != null) {
+                        jsUrlCache.put(cstUrl, data);
+                        url = cstUrl;
+                    }
+                }
+            }
+
+            if (data != null) {
+                boolean loaded = player.getCastLibManager().setExternalCastDataByUrl(url, data);
+                if (loaded) {
+                    player.getBitmapCache().clear();
+                    delivered++;
+                    System.out.println("  Dynamic cast loaded: " + url + " (requested: " + fileName + ")");
+                }
+            }
+        }
+        return delivered;
+    }
+
+    private static boolean isCastFile(String url) {
+        if (url == null) return false;
+        String lower = url.toLowerCase();
+        int qi = lower.indexOf('?');
+        if (qi > 0) lower = lower.substring(0, qi);
+        return lower.endsWith(".cct") || lower.endsWith(".cst");
     }
 
     /**
@@ -305,7 +412,7 @@ public class ReleaseRawDataTest {
                 props.put("error", Datum.of("OK"));
                 return Datum.propList(props);
             }
-            int byteCount = task.done && task.data != null ? task.data.length : 0;
+            int byteCount = task.done ? task.byteCount : 0;
             String state = task.done ? (task.errorCode == 0 ? "Complete" : "Error") : "Loading";
             props.put("URL", Datum.EMPTY_STRING);
             props.put("state", Datum.of(state));
@@ -320,7 +427,12 @@ public class ReleaseRawDataTest {
 
         void onFetchComplete(int taskId, byte[] data) {
             NetTask task = tasks.get(taskId);
-            if (task != null) { task.data = data; task.done = true; }
+            if (task != null) { task.data = data; task.byteCount = data != null ? data.length : 0; task.done = true; }
+        }
+
+        void onFetchStatusComplete(int taskId, int byteCount) {
+            NetTask task = tasks.get(taskId);
+            if (task != null) { task.data = null; task.byteCount = byteCount; task.done = true; }
         }
 
         void onFetchError(int taskId, int status) {
@@ -370,6 +482,7 @@ public class ReleaseRawDataTest {
             final int id;
             final String url;
             byte[] data;
+            int byteCount;
             int errorCode;
             boolean done;
 

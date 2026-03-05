@@ -3,7 +3,9 @@ package com.libreshockwave.player.wasm;
 import org.teavm.interop.Address;
 import org.teavm.interop.Export;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -24,6 +26,10 @@ public class WasmEntry {
     private static byte[] movieBuffer;
     private static byte[] stringBuffer = new byte[4096];
     private static byte[] netBuffer;
+
+    // Cast data tracking for JS-side storage
+    private static final List<String> pendingCastDataRequests = new ArrayList<>();
+    private static final List<String> availableCastUrls = new ArrayList<>();
 
     // Debug log: accumulates messages; read via getDebugLog() export
     static final StringBuilder debugLog = new StringBuilder(1024);
@@ -70,8 +76,12 @@ public class WasmEntry {
             wasmPlayer.shutdown();
         }
 
+        pendingCastDataRequests.clear();
+        availableCastUrls.clear();
+
         wasmPlayer = new WasmPlayer();
-        if (!wasmPlayer.loadMovie(data, basePath)) {
+        if (!wasmPlayer.loadMovie(data, basePath,
+                (castLibNumber, fileName) -> pendingCastDataRequests.add(fileName))) {
             return 0;
         }
 
@@ -332,7 +342,8 @@ public class WasmEntry {
     }
 
     /**
-     * Deliver a successful fetch result.
+     * Deliver a successful fetch result (non-cast data only).
+     * Cast files are delivered separately via deliverCastData.
      * Data must already be written to netBuffer.
      */
     @Export(name = "deliverFetchResult")
@@ -344,16 +355,100 @@ public class WasmEntry {
 
             byte[] data = new byte[dataSize];
             System.arraycopy(netBuffer, 0, data, 0, dataSize);
-            String url = net.getTaskUrl(taskId);
             net.onFetchComplete(taskId, data);
-
-            // Try to load as external cast
-            if (url != null) {
-                tryLoadExternalCast(url, data);
-            }
         } catch (Throwable e) {
             captureError("deliverFetchResult", e);
         }
+    }
+
+    /**
+     * Mark a fetch task as done without storing data in WASM.
+     * Reports the byte count for Lingo's bytesSoFar check.
+     * If the URL is a cast file, adds it to availableCastUrls for later delivery.
+     * URL must be written to stringBuffer before calling.
+     */
+    @Export(name = "deliverFetchStatus")
+    public static void deliverFetchStatus(int taskId, int urlLen, int byteCount) {
+        try {
+            lastError = null;
+            QueuedNetProvider net = netProvider();
+            if (net == null) return;
+
+            String url = urlLen > 0 ? new String(stringBuffer, 0, urlLen) : null;
+
+            // Mark the net task as done with byte count but no stored data
+            net.onFetchStatusComplete(taskId, byteCount);
+
+            // Track cast URLs for later data delivery
+            if (url != null && isCastFile(url)) {
+                availableCastUrls.add(url);
+            }
+        } catch (Throwable e) {
+            captureError("deliverFetchStatus", e);
+        }
+    }
+
+    /**
+     * Deliver cast file data from JS.
+     * URL in stringBuffer[0..urlLen), data in netBuffer[0..dataSize).
+     * Parses the cast into chunks and bumps cast revision.
+     */
+    @Export(name = "deliverCastData")
+    public static void deliverCastData(int urlLen, int dataSize) {
+        try {
+            lastError = null;
+            if (wasmPlayer == null || wasmPlayer.getPlayer() == null) return;
+            if (netBuffer == null || urlLen <= 0) return;
+
+            String url = new String(stringBuffer, 0, urlLen);
+            byte[] data = new byte[dataSize];
+            System.arraycopy(netBuffer, 0, data, 0, dataSize);
+
+            boolean loaded = wasmPlayer.getPlayer().getCastLibManager()
+                    .setExternalCastDataByUrl(url, data);
+            if (loaded) {
+                wasmPlayer.getPlayer().getBitmapCache().clear();
+                wasmPlayer.bumpCastRevision();
+            }
+        } catch (Throwable e) {
+            captureError("deliverCastData", e);
+        }
+    }
+
+    // === Cast data request polling (JS reads pending dynamic cast requests) ===
+
+    @Export(name = "getPendingCastDataCount")
+    public static int getPendingCastDataCount() {
+        return pendingCastDataRequests.size();
+    }
+
+    @Export(name = "getPendingCastDataUrl")
+    public static int getPendingCastDataUrl(int index) {
+        if (index < 0 || index >= pendingCastDataRequests.size()) return 0;
+        return writeToStringBuffer(pendingCastDataRequests.get(index));
+    }
+
+    @Export(name = "drainPendingCastDataRequests")
+    public static void drainPendingCastDataRequests() {
+        pendingCastDataRequests.clear();
+    }
+
+    // === Available cast polling (JS reads static casts ready for data delivery) ===
+
+    @Export(name = "getAvailableCastCount")
+    public static int getAvailableCastCount() {
+        return availableCastUrls.size();
+    }
+
+    @Export(name = "getAvailableCastUrl")
+    public static int getAvailableCastUrl(int index) {
+        if (index < 0 || index >= availableCastUrls.size()) return 0;
+        return writeToStringBuffer(availableCastUrls.get(index));
+    }
+
+    @Export(name = "drainAvailableCasts")
+    public static void drainAvailableCasts() {
+        availableCastUrls.clear();
     }
 
     /**
@@ -506,32 +601,12 @@ public class WasmEntry {
         return len;
     }
 
-    private static void tryLoadExternalCast(String url, byte[] data) {
-        if (wasmPlayer == null || wasmPlayer.getPlayer() == null) return;
-        try {
-            // Cache file data first — mirrors Swing's NetManager completion callback.
-            // The CastLoad Manager sets castLib.fileName *after* the fetch completes,
-            // triggering CastLibManager.tryLoadCastFromCache which reads from this cache.
-            // Without this call, dynamically-assigned casts (like hh_entry_au.cct) are
-            // never loaded because no matching CastLib exists at delivery time.
-            wasmPlayer.getPlayer().getCastLibManager().cacheFileData(url, data);
-
-            boolean loaded = wasmPlayer.getPlayer().getCastLibManager()
-                    .setExternalCastDataByUrl(url, data);
-            if (loaded) {
-                wasmPlayer.getPlayer().getBitmapCache().clear();
-                wasmPlayer.bumpCastRevision();
-
-                // When all casts are loaded, release the fileCache (duplicate raw bytes).
-                // DataStores are kept alive — they're needed for lazy BITD parsing
-                // when new sprites become visible later (login box, error dialog, etc.).
-                // BitmapCache evicts BITD chunks after decode, so memory stays bounded.
-                if (wasmPlayer.getPlayer().getCastLibManager().areAllCastsLoaded()) {
-                    wasmPlayer.getPlayer().getCastLibManager().clearFileCache();
-                }
-            }
-        } catch (Exception e) {
-            // Silent — external cast load failure is non-fatal
-        }
+    private static boolean isCastFile(String url) {
+        if (url == null) return false;
+        String lower = url.toLowerCase();
+        // Strip query string for extension check
+        int qi = lower.indexOf('?');
+        if (qi > 0) lower = lower.substring(0, qi);
+        return lower.endsWith(".cct") || lower.endsWith(".cst");
     }
 }

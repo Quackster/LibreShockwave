@@ -103,7 +103,7 @@ public class QueuedNetProvider implements NetBuiltins.NetProvider {
             props.put("error",      Datum.of("OK"));
             return Datum.propList(props);
         }
-        int byteCount = task.done && task.data != null ? task.data.length : 0;
+        int byteCount = task.done ? task.byteCount : 0;
         String state  = task.done ? (task.errorCode == 0 ? "Complete" : "Error") : "Loading";
         props.put("URL",        Datum.EMPTY_STRING);
         props.put("state",      Datum.of(state));
@@ -150,6 +150,21 @@ public class QueuedNetProvider implements NetBuiltins.NetProvider {
         NetTask task = tasks.get(taskId);
         if (task != null) {
             task.data = data;
+            task.byteCount = data != null ? data.length : 0;
+            task.done = true;
+        }
+    }
+
+    /**
+     * Mark a fetch task as done with only the byte count (no data stored).
+     * Used for cast files where bytes stay in JS memory.
+     * bytesSoFar/bytesTotal report correctly for Lingo's download check.
+     */
+    public void onFetchStatusComplete(int taskId, int byteCount) {
+        NetTask task = tasks.get(taskId);
+        if (task != null) {
+            task.data = null;
+            task.byteCount = byteCount;
             task.done = true;
         }
     }
@@ -229,6 +244,7 @@ public class QueuedNetProvider implements NetBuiltins.NetProvider {
         final int id;
         final String url;
         byte[] data;
+        int byteCount;
         int errorCode;
         boolean done;
         String[] fallbackUrls;

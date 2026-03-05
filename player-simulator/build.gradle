@@ -21,7 +21,7 @@ dependencies {
     implementation project(':player-core')
 }
 
-tasks.register('runReleaseRawDataTest', JavaExec) {
+tasks.register('runHttpIntegrationTest', JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.libreshockwave.player.simulator.ReleaseRawDataTest'
+    mainClass = 'com.libreshockwave.player.simulator.HttpIntegrationTest'
 }

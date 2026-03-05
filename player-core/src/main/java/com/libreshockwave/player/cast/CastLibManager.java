@@ -11,7 +11,7 @@ import com.libreshockwave.vm.builtin.CastLibProvider;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiConsumer;
 
 /**
  * Manages cast libraries for the player.
@@ -24,13 +24,14 @@ public class CastLibManager implements CastLibProvider {
     private final Map<Integer, CastLib> castLibs = new HashMap<>();
     private boolean initialized = false;
 
-    // Cache of downloaded file data, keyed by filename (without extension, lowercase).
-    // Used by the CastLoad Manager flow: when Lingo sets castLib.fileName to a new URL,
-    // we look up the data here and load it into the cast.
-    private final Map<String, byte[]> fileCache = new ConcurrentHashMap<>();
+    // Callback for cast data loading: when Lingo sets castLib.fileName, this is called
+    // with (castLibNumber, fileName). Can load data synchronously (JVM) or queue for
+    // async delivery (WASM).
+    private final BiConsumer<Integer, String> castDataRequestCallback;
 
-    public CastLibManager(DirectorFile file) {
+    public CastLibManager(DirectorFile file, BiConsumer<Integer, String> castDataRequestCallback) {
         this.file = file;
+        this.castDataRequestCallback = castDataRequestCallback;
     }
 
     /**
@@ -165,37 +166,12 @@ public class CastLibManager implements CastLibProvider {
     }
 
     /**
-     * Cache downloaded file data for later use by the CastLoad Manager flow.
-     * Called by the Player's NetManager completion callback for every download.
-     */
-    public void cacheFileData(String url, byte[] data) {
-        if (url == null || data == null) return;
-        String key = FileUtil.getFileNameWithoutExtension(FileUtil.getFileName(url)).toLowerCase();
-        fileCache.put(key, data);
-    }
-
-    /**
-     * Clear the file data cache to free memory.
-     * Call after all casts have been loaded and Lingo's CastLoad Manager has finished
-     * assigning fileNames. The raw byte[] data is redundant after parsing into DirectorFiles.
-     * For WASM: this can free 10-100MB of heap on a 128MB budget.
-     */
-    public void clearFileCache() {
-        fileCache.clear();
-    }
-
-    /**
-     * Try to load a cast from cached file data when its fileName is changed.
-     * This implements Director's behavior where setting castLib.fileName triggers a reload.
+     * Called when Lingo sets castLib.fileName, triggering a cast reload.
+     * Delegates to the castDataRequestCallback to load the data.
      */
     private void tryLoadCastFromCache(int castLibNumber, String newFileName) {
         if (newFileName == null || newFileName.isEmpty()) return;
-
-        String key = FileUtil.getFileNameWithoutExtension(FileUtil.getFileName(newFileName)).toLowerCase();
-        byte[] data = fileCache.get(key);
-        if (data != null) {
-            setExternalCastData(castLibNumber, data);
-        }
+        castDataRequestCallback.accept(castLibNumber, newFileName);
     }
 
     @Override
