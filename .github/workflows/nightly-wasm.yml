@@ -1,0 +1,70 @@
+name: Nightly WASM Build
+
+on:
+  schedule:
+    # Run every day at 04:00 UTC
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+jobs:
+  build:
+    permissions: write-all
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build WASM (TeaVM JS target)
+        run: |
+          chmod +x gradlew
+          ./gradlew :player-wasm:generateJavaScript
+
+      - name: Get current date
+        id: date
+        run: |
+          echo "VERSION=$(date +'%d%m%Y')" >> $GITHUB_OUTPUT
+          echo "DISPLAY=$(date +'%d/%m/%Y')" >> $GITHUB_OUTPUT
+
+      - name: Create ZIP of dist
+        run: |
+          cd player-wasm/build/dist
+          zip -r ../../../libreshockwave-wasm-${{ steps.date.outputs.VERSION }}.zip .
+
+      - name: Delete existing nightly release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release delete nightly --yes --cleanup-tag || true
+
+      - name: Create nightly release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: nightly
+          name: Nightly Build ${{ steps.date.outputs.VERSION }}
+          prerelease: true
+          body: |
+            ## Nightly WASM Build
+
+            Automated nightly build of the LibreShockwave web player (TeaVM JS target).
+
+            **Built from:** ${{ github.sha }}
+            **Date:** ${{ steps.date.outputs.DISPLAY }}
+            **Version:** ${{ steps.date.outputs.VERSION }}
+
+            ### Contents
+            - `libreshockwave-wasm-${{ steps.date.outputs.VERSION }}.zip` — Web player dist (player-wasm.js, libreshockwave.js, index.html, CSS)
+
+            ### Usage
+            Extract the ZIP and serve the files with any HTTP server, or include `player-wasm.js` and `libreshockwave.js` in your page.
+          files: libreshockwave-wasm-${{ steps.date.outputs.VERSION }}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
