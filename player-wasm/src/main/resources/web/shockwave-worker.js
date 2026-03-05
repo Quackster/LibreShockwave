@@ -749,10 +749,7 @@ self.onmessage = async function(e) {
                 try {
                     var stillPlaying = true;
                     var frame = null;
-                    var t0 = performance.now();
                     _tickNum++;
-                    if (_tickNum <= 30 || _tickNum % 50 === 0)
-                        console.log('[WORKER] tick#' + _tickNum + ' START');
 
                     // Phase 0: deliver pending dynamic cast requests from Lingo
                     // and any newly-available static casts
@@ -765,8 +762,6 @@ self.onmessage = async function(e) {
                         }
                     }
 
-                    if (_tickNum <= 30) console.log('[WORKER] tick#' + _tickNum + ' Phase0 done ' + Math.round(performance.now()-t0) + 'ms');
-
                     // Phase 1: deliver completed network results from previous ticks.
                     // This runs BEFORE tick() so netDone() returns true for finished fetches.
                     var nDelivered = 0;
@@ -777,8 +772,6 @@ self.onmessage = async function(e) {
                             console.error('[WORKER] deliver error: ' + deliverErr);
                         }
                     }
-
-                    if (_tickNum <= 30) console.log('[WORKER] tick#' + _tickNum + ' Phase1 done ' + Math.round(performance.now()-t0) + 'ms');
 
                     // Phase 1.5: deliver cast data for any casts just marked available
                     // by deliverQueuedResults. Without this, Lingo sees netDone()=true
@@ -791,8 +784,6 @@ self.onmessage = async function(e) {
                             console.error('[WORKER] post-deliver cast error: ' + castErr2);
                         }
                     }
-
-                    if (_tickNum <= 30) console.log('[WORKER] tick#' + _tickNum + ' Phase1.5 done ' + Math.round(performance.now()-t0) + 'ms');
 
                     // Phase 2: advance WASM by one Lingo frame
                     if (_e._wasmDead) {
@@ -810,12 +801,7 @@ self.onmessage = async function(e) {
                                 _e._wasmDead = true;
                             }
                         }
-                        var tickDt = performance.now() - tickT0;
-                        if (tickDt > 500) {
-                            console.log('[WORKER] tick#' + _tickNum + ' WASM tick() took ' + Math.round(tickDt) + 'ms');
-                        }
                     }
-                    var t1 = performance.now();
 
                     // Phase 3: fire new network requests (non-blocking).
                     // Results are queued asynchronously and delivered at the start of
@@ -842,56 +828,10 @@ self.onmessage = async function(e) {
                             console.error('[WORKER] render() error: ' + renderErr);
                         }
                     }
-                    var t3 = performance.now();
 
                     // Always read sprite count (needed for fast-loop detection on main thread)
                     var spriteCount = 0;
                     try { spriteCount = _e.exports.getSpriteCount(); _e._clearEx(); } catch(e4) {}
-
-                    // Read diagnostic data from WASM
-                    var timeoutCount = 0;
-                    try { timeoutCount = _e.exports.getTimeoutCount(); _e._clearEx(); } catch(e5) {}
-
-                    // Read error/debug after every tick
-                    var lastErr = null;
-                    try {
-                        var errLen = _e.exports.getLastError(); _e._clearEx();
-                        if (errLen > 0) lastErr = _e._readString(_e.exports.getStringBufferAddress(), errLen);
-                    } catch(ignore) {}
-                    if (lastErr) console.error('[WORKER] tick#' + _tickNum + ' ERROR: ' + lastErr);
-
-                    var dbgLog = null;
-                    try {
-                        var dbgLen = _e.exports.getDebugLog(); _e._clearEx();
-                        if (dbgLen > 0) dbgLog = _e._readString(_e.exports.getStringBufferAddress(), dbgLen);
-                    } catch(ignore) {}
-                    if (dbgLog) console.log('[WORKER] tick#' + _tickNum + ' DEBUG:\n' + dbgLog);
-
-                    // Diagnostic logging: every 50th tick or on network activity or slow ticks
-                    var total = t3 - t0;
-                    if (total > 100 || _tickNum % 50 === 0 || nDelivered > 0 || nFired > 0 || _tickNum <= 20) {
-                        var extra = '';
-                        // On first few ticks, also report timeout names and player state
-                        if (_tickNum <= 20 || _tickNum % 100 === 0) {
-                            try {
-                                var snLen = _e.exports.getPlayerState(); _e._clearEx();
-                                if (snLen > 0) extra += ' state=' + _e._readString(_e.exports.getStringBufferAddress(), snLen);
-                            } catch(ignore) {}
-                            try {
-                                var tnLen = _e.exports.getTimeoutNames(); _e._clearEx();
-                                if (tnLen > 0) extra += ' timeouts=[' + _e._readString(_e.exports.getStringBufferAddress(), tnLen) + ']';
-                            } catch(ignore) {}
-                        }
-                        console.log('[WORKER] tick#' + _tickNum +
-                                    ' frame=' + _e._lastFrame +
-                                    ' sprites=' + spriteCount +
-                                    ' timeouts=' + timeoutCount +
-                                    ' fired=' + nFired + ' delivered=' + nDelivered +
-                                    ' dt=' + Math.round(total) + 'ms' +
-                                    ' queued=' + _fetchQueue.length +
-                                    ' inflight=' + _inFlight +
-                                    extra);
-                    }
 
                     // Always send a frame response to unblock main thread
                     self.postMessage({
