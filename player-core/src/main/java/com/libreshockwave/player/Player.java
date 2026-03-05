@@ -150,9 +150,10 @@ public class Player {
         );
         this.castParserShutdown = () -> castParserExecutor.shutdownNow();
 
-        // Cast data request callback: casts are already eagerly loaded by the NetManager
-        // completion callback below, so when Lingo later sets castLib.fileName this is a no-op.
-        this.castLibManager = new CastLibManager(file, (castLibNumber, fileName) -> {});
+        // Cast data request callback: when Lingo sets castLib.fileName, load the data from
+        // NetManager's cache (already downloaded by preloadNetThing) into the specific cast.
+        this.castLibManager = new CastLibManager(file, (castLibNumber, fileName) ->
+            loadCastFromNetCache(castLibNumber, fileName));
         this.stageRenderer.setCastLibManager(castLibManager);
         this.spriteProperties.setCastLibManager(castLibManager);
         this.timeoutManager = new TimeoutManager();
@@ -897,6 +898,23 @@ public class Player {
             // Frame loop will handle subsequent frames
         } finally {
             clearProviders();
+        }
+    }
+
+    /**
+     * Called when Lingo sets castLib.fileName — loads the data from NetManager's
+     * download cache into the specific cast by number.
+     */
+    private void loadCastFromNetCache(int castLibNumber, String fileName) {
+        if (netManager == null) return;
+        byte[] data = netManager.getCachedData(fileName);
+        if (data != null) {
+            if (castLibManager.setExternalCastData(castLibNumber, data)) {
+                bitmapCache.clear();
+                if (castLoadedListener != null) {
+                    castLoadedListener.run();
+                }
+            }
         }
     }
 

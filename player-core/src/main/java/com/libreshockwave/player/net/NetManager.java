@@ -246,6 +246,15 @@ public class NetManager implements NetBuiltins.NetProvider {
     }
 
     /**
+     * Look up cached download data by URL.
+     * Used by the castDataRequestCallback to load cast data when Lingo sets castLib.fileName.
+     */
+    public byte[] getCachedData(String url) {
+        String cacheKey = FileUtil.getFileName(url);
+        return urlCache.get(cacheKey);
+    }
+
+    /**
      * Shutdown the network manager.
      */
     public void shutdown() {

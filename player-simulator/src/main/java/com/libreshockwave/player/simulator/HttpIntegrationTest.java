@@ -60,14 +60,14 @@ public class HttpIntegrationTest {
         DirectorFile file = DirectorFile.load(movieData);
         file.setBasePath(basePath);
 
-        // 2. Create polling NetProvider
+        // 2. Create polling NetProvider and player with cast data callback
         PollingNetProvider netProvider = new PollingNetProvider(basePath);
-        Player player = new Player(file, netProvider);
-
-        // 3. Wire castDataRequestCallback
         pendingCastDataRequests.clear();
         final String baseDir = basePath.endsWith("/") ? basePath : basePath + "/";
-        player.getCastLibManager().setCastDataRequestCallback((castLibNumber, fileName) -> {
+
+        // castDataRequestCallback is a constructor param — capture player ref via array
+        final Player[] playerRef = new Player[1];
+        Player player = new Player(file, netProvider, (castLibNumber, fileName) -> {
             String baseName = FileUtil.getFileNameWithoutExtension(FileUtil.getFileName(fileName));
             String cctUrl = baseDir + baseName + ".cct";
             String cstUrl = baseDir + baseName + ".cst";
@@ -92,13 +92,14 @@ public class HttpIntegrationTest {
                 }
             }
             if (data != null) {
-                player.getCastLibManager().setExternalCastData(castLibNumber, data);
-                player.getBitmapCache().clear();
+                playerRef[0].getCastLibManager().setExternalCastData(castLibNumber, data);
+                playerRef[0].getBitmapCache().clear();
                 System.out.println("  Dynamic cast loaded: " + url);
             } else {
                 pendingCastDataRequests.add(fileName);
             }
         });
+        playerRef[0] = player;
 
         // Set external params
         player.setExternalParams(Map.of(
