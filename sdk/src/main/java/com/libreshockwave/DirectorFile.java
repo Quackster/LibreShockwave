@@ -50,7 +50,7 @@ public class DirectorFile {
     private final List<PaletteChunk> palettes = new ArrayList<>();
     private boolean capitalX = false;  // True if file uses LctX (capital X) format
 
-    // Lazy chunk loading: raw file bytes kept for on-demand parsing of media chunks
+    // Raw file bytes kept so evicted chunks (BITD etc.) can be re-parsed on demand
     private byte[] dataStore;
     private AfterburnerReader afterburnerReader;
 
@@ -179,7 +179,8 @@ public class DirectorFile {
     public Chunk getChunk(ChunkId id) {
         Chunk chunk = chunks.get(id);
         if (chunk != null) return chunk;
-        return lazyParseChunk(id);
+        // Parse chunk from raw file bytes if not yet loaded
+        return reparseChunk(id);
     }
 
     /**
@@ -195,30 +196,13 @@ public class DirectorFile {
             chunk instanceof com.libreshockwave.chunks.RawChunk);
     }
 
-    /**
-     * Check if a chunk type should be deferred (parsed lazily on demand).
-     * Media chunks (BITD, snd_, ediM, ALFA) and unknown chunk types are deferred.
-     * Metadata chunks (config, key table, cast, scripts, score, etc.) are always parsed eagerly.
-     */
-    private static boolean isDeferredChunkType(ChunkType type) {
-        return switch (type) {
-            // Metadata — always parse eagerly (small, always needed)
-            case DRCF, VWCF, KEYp, MCsL, CASp, CASt,
-                 Lctx, LctX, Lnam, Lscr,
-                 VWSC, SCVW, VWLB, CLUT, STXT -> false;
-            // Media — parse lazily (large, only needed on demand)
-            case BITD, snd_, ediM, ALFA -> true;
-            // Unknown/other — defer (RawChunk)
-            default -> true;
-        };
-    }
 
     /**
-     * Lazily parse a chunk from the raw dataStore or afterburnerReader.
-     * Thread-safe: synchronized for concurrent BitmapCache decode access.
+     * Re-parse a chunk from the raw dataStore or afterburnerReader.
+     * Used when a chunk hasn't been parsed yet (lazy afterburner loading).
+     * Thread-safe for concurrent BitmapCache decode access.
      */
-    private synchronized Chunk lazyParseChunk(ChunkId id) {
-        // Double-check after acquiring lock
+    private synchronized Chunk reparseChunk(ChunkId id) {
         Chunk existing = chunks.get(id);
         if (existing != null) return existing;
 
@@ -235,7 +219,7 @@ public class DirectorFile {
                 chunkReader = new BinaryReader(dataStore, endian)
                     .sliceReaderAt(info.offset, info.length);
             } else {
-                return null;  // dataStore released
+                return null;
             }
 
             int version = config != null ? config.directorVersion() : 0;
@@ -249,26 +233,6 @@ public class DirectorFile {
         }
     }
 
-    /**
-     * Evict a parsed chunk from the chunks map, freeing its memory.
-     * The chunk can be re-parsed on demand via lazyParseChunk() if the dataStore is still available.
-     */
-    public void evictChunk(ChunkId id) {
-        chunks.remove(id);
-    }
-
-    /**
-     * Release the raw file data store and afterburner reader to free memory.
-     * After this call, lazy parsing of deferred chunks will no longer work.
-     * Already-parsed chunks in the chunks map are unaffected.
-     */
-    public void releaseDataStore() {
-        this.dataStore = null;
-        if (this.afterburnerReader != null) {
-            this.afterburnerReader.clearCachedData();
-            this.afterburnerReader = null;
-        }
-    }
 
     public <T extends Chunk> Optional<T> getChunk(ChunkId id, Class<T> type) {
         Chunk chunk = chunks.get(id);
@@ -737,14 +701,11 @@ public class DirectorFile {
             }
         }
 
-        // Parse all chunks — skip deferred (media) chunks for lazy loading
+        // Parse all chunks
         int version = file.config != null ? file.config.directorVersion() : 0;
         boolean capitalX = false;
 
         for (ChunkInfo info : file.chunkInfo.values()) {
-            if (isDeferredChunkType(info.type())) {
-                continue;  // Will be parsed on demand via lazyParseChunk()
-            }
             try {
                 BinaryReader r = reader.sliceReaderAt(info.offset, info.length);
                 Chunk chunk = file.parseChunkFromReader(r, info, version, capitalX);
@@ -763,7 +724,7 @@ public class DirectorFile {
             }
         }
 
-        // Store raw file bytes for lazy parsing of deferred chunks
+        // Keep raw bytes so evicted chunks can be re-parsed on demand
         file.dataStore = reader.getData();
 
         return file;
@@ -795,7 +756,7 @@ public class DirectorFile {
             }
         }
 
-        // Second pass: parse metadata chunks, skip deferred (media) chunks for lazy loading
+        // Second pass: parse all chunks
         for (com.libreshockwave.format.ChunkInfo abInfo : abReader.getChunkInfos()) {
             int fourcc = BinaryReader.fourCC(abInfo.fourCC());
             ChunkId chunkId = new ChunkId(abInfo.resourceId());
@@ -807,10 +768,6 @@ public class DirectorFile {
                 abInfo.uncompressedSize()
             );
             file.chunkInfo.put(chunkId, info);
-
-            if (isDeferredChunkType(info.type())) {
-                continue;  // Will be parsed on demand via lazyParseChunk()
-            }
 
             // Try to get and parse the chunk data
             try {
@@ -841,7 +798,7 @@ public class DirectorFile {
             }
         }
 
-        // Store AfterburnerReader for lazy parsing of deferred chunks
+        // Keep afterburner reader so evicted chunks can be re-parsed on demand
         file.afterburnerReader = abReader;
 
         return file;

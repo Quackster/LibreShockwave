@@ -701,20 +701,6 @@ public class CastLibManager implements CastLibProvider {
         return true;
     }
 
-    /**
-     * Release raw file data stores from all loaded cast DirectorFiles.
-     * After this call, lazy parsing of deferred chunks will no longer work,
-     * but already-decoded bitmaps in BitmapCache are unaffected.
-     */
-    public void releaseAllDataStores() {
-        ensureInitialized();
-        for (CastLib castLib : castLibs.values()) {
-            if (castLib.getSourceFile() != null) {
-                castLib.getSourceFile().releaseDataStore();
-            }
-        }
-    }
-
     @Override
     public java.util.List<String> getScriptPropertyNames(int castLibNumber, int memberNumber) {
         ensureInitialized();

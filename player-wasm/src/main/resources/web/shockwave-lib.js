@@ -324,21 +324,27 @@ var LibreShockwave = (function() {
         if (this._autoplay) this.play();
     };
 
-    // Parse sw1 param format "key=url;key=url" → array of URLs
-    function _parseSw1Urls(sw1) {
-        if (!sw1) return [];
-        return sw1.split(';').map(function(u) {
-            u = u.trim();
-            var eq = u.indexOf('=');
-            return eq >= 0 ? u.substring(eq + 1).trim() : u;
-        }).filter(function(u) { return u && u.indexOf('://') !== -1; });
+    // Parse all sw1-sw9 params for URLs (key=value;key=value format)
+    function _parseSwUrls(params) {
+        var urls = [];
+        for (var i = 1; i <= 9; i++) {
+            var sw = params['sw' + i] || params['SW' + i] || '';
+            if (!sw) continue;
+            sw.split(';').forEach(function(pair) {
+                pair = pair.trim();
+                var eq = pair.indexOf('=');
+                if (eq < 0) return;
+                var val = pair.substring(eq + 1).trim();
+                if (val.indexOf('://') !== -1) urls.push(val);
+            });
+        }
+        return urls;
     }
 
     ShockwavePlayer.prototype._prefetchRelayCache = async function() {
-        var sw1 = this._params['sw1'] || this._params['SW1'] || '';
-        var urls = _parseSw1Urls(sw1);
+        var urls = _parseSwUrls(this._params);
         if (urls.length === 0) return;
-        console.log('[LS] Pre-fetching ' + urls.length + ' sw1 URLs for relay cache');
+        console.log('[LS] Pre-fetching ' + urls.length + ' sw URLs for relay cache');
         var self = this;
         await Promise.all(urls.map(function(url) {
             return fetch(url)
@@ -449,7 +455,10 @@ var LibreShockwave = (function() {
         if (this._loadSeq !== this._loopSeq) return; // stale loop from old load
 
         this._doTick().then(function() {
-            if (!self._playing) return;
+            if (!self._playing) {
+                console.log('[LS] fast loop: _playing is false after tick ' + self._tickCount + ', stopping');
+                return;
+            }
             if (self._loadSeq !== self._loopSeq) return; // stale
 
             self._tickCount++;
@@ -540,6 +549,7 @@ var LibreShockwave = (function() {
 
         // Mirror worker's playing flag to drive our loop
         if (!result.playing && !result.enginePlaying && this._playing) {
+            console.log('[LS] _doTick: stopping — playing=' + result.playing + ' enginePlaying=' + result.enginePlaying);
             this._playing = false;
             this._stopLoop();
         }

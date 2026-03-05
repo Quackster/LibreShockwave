@@ -5,7 +5,6 @@ import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.bitmap.Palette;
 import com.libreshockwave.cast.BitmapInfo;
 import com.libreshockwave.chunks.CastMemberChunk;
-import com.libreshockwave.chunks.KeyTableChunk;
 import com.libreshockwave.id.InkMode;
 import com.libreshockwave.player.Player;
 import com.libreshockwave.player.cast.CastMember;
@@ -129,17 +128,6 @@ public class BitmapCache {
 
                 Bitmap processed = InkProcessor.applyInk(raw, ink, backColor, useAlpha, palette);
                 cache.put(key, processed);
-
-                // Evict raw BITD/ediM/ALFA data from DirectorFile — no longer needed after caching
-                DirectorFile memberFile = member.file();
-                if (memberFile != null && memberFile.getKeyTable() != null) {
-                    for (KeyTableChunk.KeyTableEntry entry : memberFile.getKeyTable().getEntriesForOwner(member.id())) {
-                        String fourcc = entry.fourccString();
-                        if ("BITD".equals(fourcc) || "ediM".equals(fourcc) || "ALFA".equals(fourcc)) {
-                            memberFile.evictChunk(entry.sectionId());
-                        }
-                    }
-                }
             } catch (Exception e) {
                 decodeFailed.add(id);
             } finally {
