@@ -1,16 +1,9 @@
 'use strict';
 
-// Forward Worker console messages to main thread for debugging
-var _origLog = console.log;
-var _origErr = console.error;
-console.log = function() {
-    _origLog.apply(console, arguments);
-    try { self.postMessage({ type: 'log', msg: Array.prototype.join.call(arguments, ' ') }); } catch(e) {}
-};
-console.error = function() {
-    _origErr.apply(console, arguments);
-    try { self.postMessage({ type: 'log', msg: '[ERR] ' + Array.prototype.join.call(arguments, ' ') }); } catch(e) {}
-};
+// Worker console messages are visible natively in DevTools.
+// Do NOT forward them to the main thread via postMessage — doing so floods
+// the message queue when DevTools is open (each console.log render is expensive)
+// and delays processing of critical 'frame' responses, causing _waitFor timeouts.
 
 /**
  * LibreShockwave Web Worker — runs the WASM engine off the main thread.

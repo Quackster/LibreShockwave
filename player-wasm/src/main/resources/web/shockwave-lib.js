@@ -186,10 +186,6 @@ var LibreShockwave = (function() {
                 console.error('[LS] Worker reported:', msg.msg);
                 break;
 
-            case 'log':
-                console.log('[W]', msg.msg);
-                break;
-
             default:
                 break;
         }
