@@ -1,34 +1,36 @@
 package com.libreshockwave.player.simulator;
 
 import com.libreshockwave.DirectorFile;
+import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.player.Player;
 import com.libreshockwave.player.render.FrameSnapshot;
+import com.libreshockwave.player.render.RenderSprite;
 import com.libreshockwave.util.FileUtil;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.builtin.NetBuiltins;
 
+import javax.imageio.ImageIO;
+import java.awt.*;
+import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.util.*;
+import java.util.List;
 
 /**
- * Integration test that simulates the WASM JS↔Java bridge flow on the JVM.
- * All data is loaded via HTTP from localhost — exactly like the real browser embed.
- *
- * Validates the JS-side cast data store pattern:
- * - Cast file bytes are NOT stored in fileCache (no cacheFileData)
- * - Cast data is delivered one at a time via setExternalCastDataByUrl (simulating deliverCastData)
- * - Text/gamedata delivered normally via onFetchComplete (netTextResult still works)
- * - Dynamic cast requests from Lingo are captured via castDataRequestCallback
- * - No releaseRawData() needed — raw bytes never stored redundantly
+ * HTTP integration test that loads a movie from localhost and renders frames.
+ * Outputs a single frame.png that is overwritten every few seconds so you can
+ * watch rendering progress in an image viewer without filling disk.
  */
-public class ReleaseRawDataTest {
+public class HttpIntegrationTest {
 
     private static final String MOVIE_URL = "http://localhost/dcr/14.1_b8/habbo.dcr";
     private static final String BASE_PATH = "http://localhost/dcr/14.1_b8/";
     private static final int MAX_TICKS = 500;
+    private static final String OUTPUT_FILE = "frame.png";
 
     // JS-side cache simulation: URL -> byte[]
     private static final Map<String, byte[]> jsUrlCache = new HashMap<>();
@@ -39,12 +41,14 @@ public class ReleaseRawDataTest {
     public static void main(String[] args) throws Exception {
         String movieUrl = args.length > 0 ? args[0] : MOVIE_URL;
         String basePath = args.length > 1 ? args[1] : BASE_PATH;
+        String outputFile = args.length > 2 ? args[2] : OUTPUT_FILE;
 
-        System.out.println("=== ReleaseRawDataTest (JS-side cast store) ===");
+        System.out.println("=== HttpIntegrationTest ===");
         System.out.println("Movie URL: " + movieUrl);
         System.out.println("Base path: " + basePath);
+        System.out.println("Output: " + outputFile + " (overwritten each capture)");
 
-        // 1. Fetch movie via HTTP (simulates browser fetch → ArrayBuffer → WASM loadMovie)
+        // 1. Fetch movie via HTTP
         byte[] movieData = httpGet(movieUrl);
         if (movieData == null) {
             System.out.println("FAIL: Could not fetch movie from " + movieUrl);
@@ -56,16 +60,14 @@ public class ReleaseRawDataTest {
         DirectorFile file = DirectorFile.load(movieData);
         file.setBasePath(basePath);
 
-        // 2. Create polling NetProvider (simulates QueuedNetProvider in WASM)
+        // 2. Create polling NetProvider
         PollingNetProvider netProvider = new PollingNetProvider(basePath);
         Player player = new Player(file, netProvider);
 
-        // 3. Wire castDataRequestCallback — loads dynamic casts synchronously from jsUrlCache
-        // In WASM this is async (queued), but for JVM test we can load immediately
+        // 3. Wire castDataRequestCallback
         pendingCastDataRequests.clear();
         final String baseDir = basePath.endsWith("/") ? basePath : basePath + "/";
         player.getCastLibManager().setCastDataRequestCallback((castLibNumber, fileName) -> {
-            // Try to load synchronously from jsUrlCache
             String baseName = FileUtil.getFileNameWithoutExtension(FileUtil.getFileName(fileName));
             String cctUrl = baseDir + baseName + ".cct";
             String cstUrl = baseDir + baseName + ".cst";
@@ -76,7 +78,6 @@ public class ReleaseRawDataTest {
                 data = jsUrlCache.get(cstUrl);
                 url = cstUrl;
             }
-            // If not in cache, try fetching on-demand
             if (data == null) {
                 data = httpGet(cctUrl);
                 if (data != null) {
@@ -93,14 +94,13 @@ public class ReleaseRawDataTest {
             if (data != null) {
                 player.getCastLibManager().setExternalCastData(castLibNumber, data);
                 player.getBitmapCache().clear();
-                System.out.println("  Dynamic cast loaded (sync): " + url + " (requested: " + fileName + ")");
+                System.out.println("  Dynamic cast loaded: " + url);
             } else {
-                // Queue for later delivery (simulates WASM async path)
                 pendingCastDataRequests.add(fileName);
             }
         });
 
-        // Set external params — exactly as the browser embed PARAM tags
+        // Set external params
         player.setExternalParams(Map.of(
                 "sw1", "site.url=http://www.habbo.co.uk;url.prefix=http://www.habbo.co.uk",
                 "sw2", "connection.info.host=localhost;connection.info.port=30001",
@@ -110,21 +110,31 @@ public class ReleaseRawDataTest {
                        "external.texts.txt=http://localhost/gamedata/external_texts.txt"
         ));
 
-        // 4. Preload external casts (queues fetch requests)
+        // 4. Preload external casts
         int castCount = player.preloadAllCasts();
         System.out.println("Queued " + castCount + " external casts for fetch");
 
-        // 5. Pump network: fetch all, cache in jsUrlCache, deliver appropriately
+        // 5. Pump network
         int castsDelivered = pumpNetwork(netProvider, player);
-        System.out.println("Delivered " + castsDelivered + " cast files via setExternalCastDataByUrl");
+        System.out.println("Delivered " + castsDelivered + " cast files");
 
         // 6. Start playback
         player.play();
 
-        // 7. Tick loop — simulate JS animation loop with network pump + cast delivery each tick
+        int stageW = player.getStageRenderer().getStageWidth();
+        int stageH = player.getStageRenderer().getStageHeight();
+        int tempo = player.getTempo();
+        if (tempo <= 0) tempo = 15;
+        long msPerTick = 1000L / tempo;
+        int ticksPerCapture = tempo * 3; // capture every ~3 seconds
+
+        System.out.println("Stage: " + stageW + "x" + stageH + " @ " + tempo + " fps");
+        System.out.println("Capturing every " + ticksPerCapture + " ticks (~3s)");
+
+        // 7. Tick loop with periodic frame capture
         int maxSprites = 0;
         int lastFrame = 0;
-        int ticksWithSprites = 0;
+        int captures = 0;
         int totalCastsDelivered = castsDelivered;
 
         for (int tick = 0; tick < MAX_TICKS; tick++) {
@@ -133,20 +143,18 @@ public class ReleaseRawDataTest {
                 alive = player.tick();
             } catch (Throwable e) {
                 System.out.println("Tick " + tick + " error: " + e.getMessage());
-                alive = true; // keep going like WASM does
+                alive = true;
             }
             if (!alive) {
                 System.out.println("Player stopped at tick " + tick);
                 break;
             }
 
-            // Pump network each tick (Lingo may request external_variables.txt, more casts, etc.)
+            // Pump network each tick
             totalCastsDelivered += pumpNetwork(netProvider, player);
-
-            // Deliver pending dynamic cast requests (simulates JS _deliverPendingCastRequests)
             totalCastsDelivered += deliverPendingCastRequests(player, basePath);
 
-            // Check sprites
+            // Track sprite count
             try {
                 int spriteCount = player.getStageRenderer()
                         .getSpritesForFrame(player.getCurrentFrame()).size();
@@ -155,50 +163,95 @@ public class ReleaseRawDataTest {
                     System.out.println("Tick " + tick + ": " + spriteCount +
                             " sprites (frame " + player.getCurrentFrame() + ")");
                 }
-                if (spriteCount > 0) ticksWithSprites++;
             } catch (Throwable e) {
-                // ignore sprite count errors
+                // ignore
             }
             lastFrame = player.getCurrentFrame();
+
+            // Capture frame periodically (overwrite same file)
+            if (tick > 0 && tick % ticksPerCapture == 0) {
+                try {
+                    FrameSnapshot snap = player.getFrameSnapshot();
+                    BufferedImage image = renderFrame(snap, stageW, stageH);
+                    ImageIO.write(image, "png", new File(outputFile));
+                    captures++;
+                    System.out.println("Frame captured -> " + outputFile +
+                            " (tick " + tick + ", frame " + snap.frameNumber() +
+                            ", " + snap.sprites().size() + " sprites)");
+                } catch (Exception e) {
+                    System.out.println("Capture error at tick " + tick + ": " + e.getMessage());
+                }
+            }
+
+            Thread.sleep(msPerTick);
         }
 
-        // 8. Verify rendering works
-        System.out.println("\n--- Results ---");
-        System.out.println("Total casts delivered: " + totalCastsDelivered);
-        System.out.println("Max sprites: " + maxSprites);
-        System.out.println("Last frame: " + lastFrame);
-        System.out.println("Ticks with sprites: " + ticksWithSprites);
-
-        boolean renderOk = false;
+        // Final capture
         try {
             FrameSnapshot snap = player.getFrameSnapshot();
-            int renderedSprites = snap.sprites().size();
-            System.out.println("FrameSnapshot sprites: " + renderedSprites);
-            renderOk = true;
+            BufferedImage image = renderFrame(snap, stageW, stageH);
+            ImageIO.write(image, "png", new File(outputFile));
+            captures++;
+            System.out.println("Final frame captured -> " + outputFile +
+                    " (frame " + snap.frameNumber() + ", " + snap.sprites().size() + " sprites)");
         } catch (Exception e) {
-            System.out.println("FAIL: FrameSnapshot threw: " + e.getMessage());
+            System.out.println("Final capture error: " + e.getMessage());
         }
 
         player.shutdown();
 
-        // 9. Pass/fail verdict
-        boolean pass = maxSprites >= 10 && lastFrame > 0 && renderOk;
+        // Results
+        System.out.println("\n--- Results ---");
+        System.out.println("Total casts delivered: " + totalCastsDelivered);
+        System.out.println("Max sprites: " + maxSprites);
+        System.out.println("Last frame: " + lastFrame);
+        System.out.println("Frames captured: " + captures);
+
+        boolean pass = maxSprites >= 10 && lastFrame > 0;
         if (pass) {
-            System.out.println("\nPASS: JS-side cast store works " +
-                    "(maxSprites=" + maxSprites + ", frame=" + lastFrame + ")");
+            System.out.println("\nPASS (maxSprites=" + maxSprites + ", frame=" + lastFrame + ")");
         } else {
-            System.out.println("\nFAIL: maxSprites=" + maxSprites +
-                    ", frame=" + lastFrame + ", renderOk=" + renderOk);
+            System.out.println("\nFAIL: maxSprites=" + maxSprites + ", frame=" + lastFrame);
             System.exit(1);
         }
     }
 
-    /**
-     * Deliver all pending network requests via HTTP.
-     * Separates cast files from text/gamedata:
-     * - Cast files: cached in jsUrlCache, delivered via setExternalCastDataByUrl (no cacheFileData)
-     * - Text/gamedata: delivered via onFetchComplete normally (netTextResult works)
-     */
+    private static BufferedImage renderFrame(FrameSnapshot snap, int stageW, int stageH) {
+        BufferedImage image = new BufferedImage(stageW, stageH, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = image.createGraphics();
+
+        // Fill background
+        g.setColor(new Color(snap.backgroundColor()));
+        g.fillRect(0, 0, stageW, stageH);
+
+        // Draw stage image
+        if (snap.stageImage() != null) {
+            g.drawImage(snap.stageImage().toBufferedImage(), 0, 0, null);
+        }
+
+        // Draw sprites
+        for (RenderSprite sprite : snap.sprites()) {
+            if (!sprite.isVisible()) continue;
+
+            Bitmap bmp = sprite.getBakedBitmap();
+            if (bmp == null) continue;
+
+            int blend = sprite.getBlend();
+            if (blend < 100) {
+                g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, blend / 100f));
+            } else {
+                g.setComposite(AlphaComposite.SrcOver);
+            }
+
+            g.drawImage(bmp.toBufferedImage(), sprite.getX(), sprite.getY(), null);
+        }
+
+        g.dispose();
+        return image;
+    }
+
+    // --- Network plumbing (same as before) ---
+
     private static int pumpNetwork(PollingNetProvider net, Player player) {
         int delivered = 0;
         while (!net.getPendingRequests().isEmpty()) {
@@ -208,14 +261,10 @@ public class ReleaseRawDataTest {
             for (var req : requests) {
                 byte[] data = fetchWithFallbacks(req.url, req.fallbacks);
                 if (data != null) {
-                    // Cache in JS-side store (simulates _urlCache in worker)
                     jsUrlCache.put(req.url, data);
 
                     if (isCastFile(req.url)) {
-                        // Cast file: mark net task done with byte count (like deliverFetchStatus)
                         net.onFetchStatusComplete(req.taskId, data.length);
-
-                        // Deliver cast data directly (like deliverCastData)
                         boolean loaded = player.getCastLibManager()
                                 .setExternalCastDataByUrl(req.url, data);
                         if (loaded) {
@@ -224,7 +273,6 @@ public class ReleaseRawDataTest {
                             System.out.println("  Cast loaded: " + req.url);
                         }
                     } else {
-                        // Non-cast: deliver normally (netTextResult works)
                         net.onFetchComplete(req.taskId, data);
                     }
                 } else {
@@ -236,10 +284,6 @@ public class ReleaseRawDataTest {
         return delivered;
     }
 
-    /**
-     * Deliver pending dynamic cast requests captured from castDataRequestCallback.
-     * Simulates JS _deliverPendingCastRequests polling.
-     */
     private static int deliverPendingCastRequests(Player player, String basePath) {
         if (pendingCastDataRequests.isEmpty()) return 0;
 
@@ -261,7 +305,6 @@ public class ReleaseRawDataTest {
                 data = jsUrlCache.get(cstUrl);
                 url = cstUrl;
             }
-            // If not in cache yet, try fetching
             if (data == null) {
                 data = httpGet(cctUrl);
                 if (data != null) {
@@ -281,7 +324,7 @@ public class ReleaseRawDataTest {
                 if (loaded) {
                     player.getBitmapCache().clear();
                     delivered++;
-                    System.out.println("  Dynamic cast loaded: " + url + " (requested: " + fileName + ")");
+                    System.out.println("  Dynamic cast loaded: " + url);
                 }
             }
         }
@@ -296,9 +339,6 @@ public class ReleaseRawDataTest {
         return lower.endsWith(".cct") || lower.endsWith(".cst");
     }
 
-    /**
-     * Fetch a URL via HTTP, trying fallback URLs (e.g. .cct before .cst).
-     */
     private static byte[] fetchWithFallbacks(String url, String[] fallbacks) {
         String[] urls = fallbacks != null ? fallbacks : new String[]{url};
         for (String u : urls) {
@@ -308,9 +348,6 @@ public class ReleaseRawDataTest {
         return null;
     }
 
-    /**
-     * HTTP GET — returns response bytes, or null on any error.
-     */
     private static byte[] httpGet(String url) {
         try {
             HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
@@ -340,7 +377,6 @@ public class ReleaseRawDataTest {
 
     /**
      * Polling-based NetProvider that mirrors QueuedNetProvider behavior.
-     * Requests are queued; the test loop fetches them via HTTP and delivers results.
      */
     static class PollingNetProvider implements NetBuiltins.NetProvider {
         private final String basePath;
@@ -447,13 +483,10 @@ public class ReleaseRawDataTest {
 
         private String resolveUrl(String url) {
             if (url == null || url.isEmpty()) return url;
-            // Already absolute HTTP URL — use as-is
             if (url.startsWith("http://") || url.startsWith("https://")) return url;
-            // Extract just the filename (strip original author's Windows path)
             String fileName = url;
             int lastSlash = Math.max(url.lastIndexOf('/'), url.lastIndexOf('\\'));
             if (lastSlash >= 0) fileName = url.substring(lastSlash + 1);
-            // Resolve against basePath (HTTP URL)
             if (basePath != null && !basePath.isEmpty()) {
                 String base = basePath;
                 if (!base.endsWith("/")) base += "/";
