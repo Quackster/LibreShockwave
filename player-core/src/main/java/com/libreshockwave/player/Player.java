@@ -143,7 +143,16 @@ public class Player {
         this.xtraManager = new XtraManager();
         this.movieProperties = new MovieProperties(this, file);
         this.spriteProperties = new SpriteProperties(stageRenderer.getSpriteRegistry());
-        this.castLibManager = new CastLibManager(file);
+        // Initialize cast parser executor (only needed for desktop player with NetManager)
+        this.castParserExecutor = Executors.newFixedThreadPool(
+            Math.max(2, Runtime.getRuntime().availableProcessors() / 2),
+            r -> { Thread t = new Thread(r, "CastParser"); t.setDaemon(true); return t; }
+        );
+        this.castParserShutdown = () -> castParserExecutor.shutdownNow();
+
+        // Cast data request callback: casts are already eagerly loaded by the NetManager
+        // completion callback below, so when Lingo later sets castLib.fileName this is a no-op.
+        this.castLibManager = new CastLibManager(file, (castLibNumber, fileName) -> {});
         this.stageRenderer.setCastLibManager(castLibManager);
         this.spriteProperties.setCastLibManager(castLibManager);
         this.timeoutManager = new TimeoutManager();
@@ -175,13 +184,6 @@ public class Player {
             }
         });
 
-        // Initialize cast parser executor (only needed for desktop player with NetManager)
-        this.castParserExecutor = Executors.newFixedThreadPool(
-            Math.max(2, Runtime.getRuntime().availableProcessors() / 2),
-            r -> { Thread t = new Thread(r, "CastParser"); t.setDaemon(true); return t; }
-        );
-        this.castParserShutdown = () -> castParserExecutor.shutdownNow();
-
         // Set AWT text renderer for desktop environment
         com.libreshockwave.player.cast.CastMember.setTextRenderer(new com.libreshockwave.player.render.AwtTextRenderer());
 
@@ -192,8 +194,6 @@ public class Player {
 
         // Wire up network completion callback to handle external cast loading
         netManager.setCompletionCallback((fileName, data) -> {
-            // Always cache downloaded cast files for later use by CastLoad Manager
-            castLibManager.cacheFileData(fileName, data);
             // Offload heavy DirectorFile.load() + CastLib.load() to dedicated thread pool
             // so the NetManager worker can immediately handle more downloads
             castParserExecutor.submit(() -> {
@@ -223,7 +223,8 @@ public class Player {
      * Constructor for environments that provide their own NetProvider (e.g. TeaVM/browser).
      * Skips creating the JVM NetManager to avoid pulling in java.util.concurrent classes.
      */
-    public Player(DirectorFile file, NetBuiltins.NetProvider netProvider) {
+    public Player(DirectorFile file, NetBuiltins.NetProvider netProvider,
+                  java.util.function.BiConsumer<Integer, String> castDataRequestCallback) {
         this.file = file;
         this.vm = new LingoVM(file);
         this.frameContext = new FrameContext(file, vm);
@@ -237,7 +238,7 @@ public class Player {
         this.xtraManager = new XtraManager();
         this.movieProperties = new MovieProperties(this, file);
         this.spriteProperties = new SpriteProperties(stageRenderer.getSpriteRegistry());
-        this.castLibManager = new CastLibManager(file);
+        this.castLibManager = new CastLibManager(file, castDataRequestCallback);
         this.stageRenderer.setCastLibManager(castLibManager);
         this.spriteProperties.setCastLibManager(castLibManager);
         this.timeoutManager = new TimeoutManager();

@@ -21,7 +21,8 @@ public class WasmPlayer {
      * Load a Director movie from raw bytes.
      * @return true if loaded successfully
      */
-    public boolean loadMovie(byte[] data, String basePath) {
+    public boolean loadMovie(byte[] data, String basePath,
+                             java.util.function.BiConsumer<Integer, String> castDataRequestCallback) {
         DirectorFile file;
         try {
             file = DirectorFile.load(data);
@@ -30,7 +31,7 @@ public class WasmPlayer {
         }
 
         netProvider = new QueuedNetProvider(basePath);
-        player = new Player(file, netProvider);
+        player = new Player(file, netProvider, castDataRequestCallback);
         softwareRenderer = null;
         castRevision = 0;
 
