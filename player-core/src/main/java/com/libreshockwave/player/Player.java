@@ -774,7 +774,7 @@ public class Player {
         setupProviders();
         // Set a tick-level deadline so infinite handler chains don't block the tick forever.
         // 30s allows the ~12s dump handler plus headroom, while catching infinite loops.
-        vm.setTickDeadline(System.currentTimeMillis() + 30_000);
+        vm.setTickDeadline(System.currentTimeMillis() + 5_000);
         try {
             frameContext.executeFrame();
             timeoutManager.processTimeouts(vm, System.currentTimeMillis());

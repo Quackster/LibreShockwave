@@ -379,6 +379,20 @@ public class CastLib {
     }
 
     /**
+     * Replace the source file and reload all members. Used when Lingo assigns
+     * castLib.fileName and we copy data from an already-loaded CastLib.
+     */
+    public void reloadFromFile(DirectorFile file) {
+        if (file == null) return;
+        this.sourceFile = file;
+        this.state = State.NONE;
+        this.memberChunks.clear();
+        this.members.clear();
+        this.scripts.clear();
+        load();
+    }
+
+    /**
      * Get all scripts in this cast library.
      * Returns the scripts from the sourceFile if available.
      */
@@ -565,7 +579,7 @@ public class CastLib {
      * @param data The raw file data
      * @return true if parsing was successful
      */
-    public synchronized boolean setExternalData(byte[] data) {
+    public boolean setExternalData(byte[] data) {
         if (data == null || data.length == 0) {
             return false;
         }
@@ -583,8 +597,8 @@ public class CastLib {
                 load();
                 return true;
             }
-        } catch (Exception e) {
-            System.err.println("[CastLib] Failed to parse external cast " + name + ": " + e.getMessage());
+        } catch (Throwable e) {
+            System.err.println("[CastLib] Failed to parse external cast " + name + ": " + e.getClass().getName() + ": " + e.getMessage());
         }
         return false;
     }

@@ -54,8 +54,15 @@ public class LingoVM {
     // Track if we're currently inside an error handler to prevent recursive error handling
     private int errorHandlerDepth = 0;
     private static final Set<String> ERROR_HANDLER_NAMES = Set.of(
-        "error", "executemessage", "executeMessage", "alerthook"
+        "error", "alerthook"
     );
+
+    // Debug callback for error handler depth tracing and handler call tracing
+    private java.util.function.Consumer<String> errorHandlerSkipCallback;
+
+    public void setErrorHandlerSkipCallback(java.util.function.Consumer<String> callback) {
+        this.errorHandlerSkipCallback = callback;
+    }
 
     public LingoVM(DirectorFile file) {
         this.file = file;
@@ -253,7 +260,16 @@ public class LingoVM {
         boolean isErrorHandler = ERROR_HANDLER_NAMES.contains(hn);
         if (isErrorHandler && errorHandlerDepth > 0) {
             // Already in an error handler, skip recursive call
+            if (errorHandlerSkipCallback != null) {
+                errorHandlerSkipCallback.accept("SKIP:" + handlerName + " depth=" + errorHandlerDepth);
+            }
             return Datum.VOID;
+        }
+        if (isErrorHandler) {
+            if (errorHandlerSkipCallback != null) {
+                String argStr = args.size() > 1 ? " msg=" + args.get(1) : "";
+                errorHandlerSkipCallback.accept("ENTER:" + handlerName + " depth=" + errorHandlerDepth + argStr);
+            }
         }
 
         if (callStack.size() >= MAX_CALL_STACK_DEPTH) {

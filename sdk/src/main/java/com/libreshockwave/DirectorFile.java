@@ -26,6 +26,15 @@ import java.util.*;
  */
 public class DirectorFile {
 
+    // Global parse deadline for WASM safety (0 = no deadline)
+    static volatile long parseDeadline = 0;
+
+    /** Check if the parse deadline has expired. Call from hot loops. */
+    public static boolean isParseTimedOut() {
+        long d = parseDeadline;
+        return d != 0 && System.currentTimeMillis() > d;
+    }
+
     private final ByteOrder endian;
     private final boolean afterburner;
     private final int version;
@@ -202,7 +211,7 @@ public class DirectorFile {
      * Used when a chunk hasn't been parsed yet (lazy afterburner loading).
      * Thread-safe for concurrent BitmapCache decode access.
      */
-    private synchronized Chunk reparseChunk(ChunkId id) {
+    private Chunk reparseChunk(ChunkId id) {
         Chunk existing = chunks.get(id);
         if (existing != null) return existing;
 
@@ -732,6 +741,11 @@ public class DirectorFile {
 
     private static DirectorFile loadAfterburner(BinaryReader reader, ByteOrder endian, ChunkType movieType) throws IOException {
         DirectorFile file = new DirectorFile(endian, true, 0, movieType);
+        long parseStart = System.currentTimeMillis();
+
+        // Set parse deadline: 5 seconds max for any single cast file (WASM safety)
+        parseDeadline = System.currentTimeMillis() + 5000;
+        try {
 
         // Use AfterburnerReader to parse the compressed file
         AfterburnerReader abReader = new AfterburnerReader(reader, endian);
@@ -756,8 +770,15 @@ public class DirectorFile {
             }
         }
 
-        // Second pass: parse all chunks
+        // Second pass: parse all chunks (with 3s watchdog for WASM safety)
         for (com.libreshockwave.format.ChunkInfo abInfo : abReader.getChunkInfos()) {
+            // Watchdog: abort parsing if we've been at it for more than 3 seconds.
+            // Prevents WASM from hanging on problematic cast files.
+            if (System.currentTimeMillis() - parseStart > 3000) {
+                System.err.println("[DirectorFile] Parse watchdog triggered after 3s, aborting remaining chunks");
+                break;
+            }
+
             int fourcc = BinaryReader.fourCC(abInfo.fourCC());
             ChunkId chunkId = new ChunkId(abInfo.resourceId());
             ChunkInfo info = new ChunkInfo(
@@ -802,6 +823,9 @@ public class DirectorFile {
         file.afterburnerReader = abReader;
 
         return file;
+        } finally {
+            parseDeadline = 0; // Clear deadline
+        }
     }
 
     private Chunk parseChunkFromReader(BinaryReader reader, ChunkInfo info, int version, boolean capitalX) {

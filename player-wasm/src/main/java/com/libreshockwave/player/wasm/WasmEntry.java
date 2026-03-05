@@ -3,10 +3,17 @@ package com.libreshockwave.player.wasm;
 import org.teavm.interop.Address;
 import org.teavm.interop.Export;
 
+import com.libreshockwave.util.FileUtil;
+
+import java.io.OutputStream;
+import java.io.PrintStream;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Single entry point for the WASM player.
@@ -31,6 +38,11 @@ public class WasmEntry {
     private static final List<String> pendingCastDataRequests = new ArrayList<>();
     private static final List<String> availableCastUrls = new ArrayList<>();
 
+    // Java-side cache of raw cast data bytes (keyed by baseName, e.g. "hh_interface")
+    // Used for synchronous re-delivery when Lingo sets castLib.fileName
+    private static final Map<String, byte[]> castDataCache = new HashMap<>();
+    private static final Set<String> failedCasts = new HashSet<>();
+
     // Debug log: accumulates messages; read via getDebugLog() export
     static final StringBuilder debugLog = new StringBuilder(1024);
 
@@ -40,6 +52,20 @@ public class WasmEntry {
     }
 
     public static void main(String[] args) {
+        // Replace System.out/err with non-synchronized PrintStream.
+        // Java's PrintStream uses synchronized(this) on every println() call,
+        // which triggers ClassCastException in TeaVM WASM's monitorEnterSync.
+        PrintStream unsync = new PrintStream(new OutputStream() {
+            @Override public void write(int b) { }
+            @Override public void write(byte[] b, int off, int len) { }
+        }) {
+            @Override public void println(String x) { log(x); }
+            @Override public void print(String x) { debugLog.append(x); }
+            @Override public void println(Object x) { log(String.valueOf(x)); }
+            @Override public void println() { debugLog.append('\n'); }
+        };
+        System.setOut(unsync);
+        System.setErr(unsync);
     }
 
     // === Buffer management ===
@@ -81,8 +107,36 @@ public class WasmEntry {
 
         wasmPlayer = new WasmPlayer();
         if (!wasmPlayer.loadMovie(data, basePath,
-                (castLibNumber, fileName) -> pendingCastDataRequests.add(fileName))) {
+                (castLibNumber, fileName) -> {
+                    // Try to load directly from Java-side cache (instant, same tick).
+                    // This avoids a 1-tick delay that causes "Cast number expected" errors
+                    // when objectmanager runs before cast data arrives via JS round-trip.
+                    String baseName = FileUtil.getFileNameWithoutExtension(
+                            FileUtil.getFileName(fileName));
+                    byte[] cached = castDataCache.get(baseName);
+                    if (cached != null) {
+                        try {
+                            if (wasmPlayer.getPlayer().getCastLibManager()
+                                    .setExternalCastData(castLibNumber, cached)) {
+                                wasmPlayer.getPlayer().getBitmapCache().clear();
+                                wasmPlayer.bumpCastRevision();
+                                log("castDataRequestCallback: loaded " + baseName + " from cache (cast#" + castLibNumber + ")");
+                                return;
+                            }
+                        } catch (Throwable e) {
+                            log("castDataRequestCallback: cache load failed for " + baseName + ": " + e);
+                            failedCasts.add(baseName);
+                        }
+                    }
+                    // Fallback: queue for JS-side delivery next tick
+                    pendingCastDataRequests.add(fileName);
+                })) {
             return 0;
+        }
+
+        // Wire up error handler depth tracing
+        if (wasmPlayer.getPlayer() != null) {
+            wasmPlayer.getPlayer().getVM().setErrorHandlerSkipCallback(msg -> log("[EH] " + msg));
         }
 
         int w = wasmPlayer.getStageWidth();
@@ -375,6 +429,7 @@ public class WasmEntry {
             if (net == null) return;
 
             String url = urlLen > 0 ? new String(stringBuffer, 0, urlLen) : null;
+            log("fetchStatus: taskId=" + taskId + " url=" + url + " bytes=" + byteCount);
 
             // Mark the net task as done with byte count but no stored data
             net.onFetchStatusComplete(taskId, byteCount);
@@ -404,13 +459,25 @@ public class WasmEntry {
             byte[] data = new byte[dataSize];
             System.arraycopy(netBuffer, 0, data, 0, dataSize);
 
+            String baseName = FileUtil.getFileNameWithoutExtension(
+                    FileUtil.getFileName(url));
+            log("deliverCastData: url=" + url + " baseName=" + baseName + " size=" + dataSize);
             boolean loaded = wasmPlayer.getPlayer().getCastLibManager()
                     .setExternalCastDataByUrl(url, data);
+            log("  loaded=" + loaded);
+            // Always cache raw bytes for synchronous re-delivery when Lingo
+            // sets castLib.fileName later (loaded=false just means no cast lib
+            // has a matching fileName yet)
+            castDataCache.put(baseName, data);
             if (loaded) {
                 wasmPlayer.getPlayer().getBitmapCache().clear();
                 wasmPlayer.bumpCastRevision();
             }
         } catch (Throwable e) {
+            String baseName = "unknown";
+            try { baseName = FileUtil.getFileNameWithoutExtension(FileUtil.getFileName(
+                    new String(stringBuffer, 0, urlLen))); } catch (Exception ignored) {}
+            failedCasts.add(baseName);
             captureError("deliverCastData", e);
         }
     }
@@ -431,6 +498,17 @@ public class WasmEntry {
     @Export(name = "drainPendingCastDataRequests")
     public static void drainPendingCastDataRequests() {
         pendingCastDataRequests.clear();
+    }
+
+    /**
+     * Re-queue a cast data request (for throttled delivery across ticks).
+     * fileName must be written to stringBuffer[0..nameLen).
+     */
+    @Export(name = "queueCastDataRequest")
+    public static void queueCastDataRequest(int nameLen) {
+        if (nameLen <= 0) return;
+        String fileName = new String(stringBuffer, 0, nameLen);
+        pendingCastDataRequests.add(fileName);
     }
 
     // === Available cast polling (JS reads static casts ready for data delivery) ===

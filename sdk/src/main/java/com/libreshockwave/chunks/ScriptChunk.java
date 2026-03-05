@@ -415,6 +415,7 @@ public record ScriptChunk(
                     int bytecodeEnd = bytecodeOffset + bytecodeLen;
 
                     while (reader.getPosition() < bytecodeEnd) {
+                        if (com.libreshockwave.DirectorFile.isParseTimedOut()) break;
                         int instrOffset = reader.getPosition() - bytecodeOffset;
                         int op = reader.readU8();
 

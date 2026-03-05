@@ -190,18 +190,30 @@ WasmEngine.prototype._deliverResult = function(taskId, arrayBuffer, url) {
     if (url && _isCastFile(url)) {
         // Cast files: mark net task done (status-only), no data in WASM.
         // Bytes stay in _urlCache; delivered on demand via deliverCastData.
-        var urlBytes = new TextEncoder().encode(url);
-        var sbuf = new Uint8Array(this._mem(), this.exports.getStringBufferAddress(), 4096);
-        sbuf.set(urlBytes);
-        this.exports.deliverFetchStatus(taskId, urlBytes.length, arrayBuffer.byteLength);
-        this._clearEx();
+        try {
+            var urlBytes = new TextEncoder().encode(url);
+            var addr = this.exports.allocateNetBuffer(0); this._clearEx();
+            var sbuf = new Uint8Array(this._mem(), this.exports.getStringBufferAddress(), 4096);
+            this._clearEx();
+            sbuf.set(urlBytes);
+            this.exports.deliverFetchStatus(taskId, urlBytes.length, arrayBuffer.byteLength);
+            this._clearEx();
+        } catch (e) {
+            console.error('[WORKER] deliverFetchStatus error for ' + url + ': ' + e);
+            this._clearEx();
+        }
     } else {
         // Non-cast: deliver data normally
-        var bytes = new Uint8Array(arrayBuffer);
-        var addr  = this.exports.allocateNetBuffer(bytes.length);
-        new Uint8Array(this._mem(), addr, bytes.length).set(bytes);
-        this.exports.deliverFetchResult(taskId, bytes.length);
-        this._clearEx();
+        try {
+            var bytes = new Uint8Array(arrayBuffer);
+            var addr  = this.exports.allocateNetBuffer(bytes.length); this._clearEx();
+            new Uint8Array(this._mem(), addr, bytes.length).set(bytes);
+            this.exports.deliverFetchResult(taskId, bytes.length);
+            this._clearEx();
+        } catch (e) {
+            console.error('[WORKER] deliverFetchResult error for taskId=' + taskId + ': ' + e);
+            this._clearEx();
+        }
     }
 };
 
@@ -209,16 +221,63 @@ WasmEngine.prototype._deliverResult = function(taskId, arrayBuffer, url) {
  * Deliver cast file data from JS _urlCache into WASM for parsing.
  * URL written to stringBuffer, data to netBuffer. Returns true if delivered.
  */
+WasmEngine.prototype._wasmDead = false;
+
+// Cast files known to trigger WASM hangs (infinite loops in DirectorFile.load).
+// These are skipped entirely to prevent blocking the worker thread.
+WasmEngine.prototype._castBlocklist = {};
+
 WasmEngine.prototype._deliverCastData = function(url) {
+    if (this._wasmDead) return false;
+    // Check blocklist by base name
+    var bn = url.replace(/.*\//, '').replace(/\.[^.]+$/, '');
+    if (this._castBlocklist[bn]) {
+        console.log('[WORKER] BLOCKED cast (known bad): ' + url);
+        return false;
+    }
     var data = _findCachedResponse(url, []);
     if (!data) return false;
     var urlBytes = new TextEncoder().encode(url);
-    var sbuf = new Uint8Array(this._mem(), this.exports.getStringBufferAddress(), 4096);
-    sbuf.set(urlBytes);
-    var addr = this.exports.allocateNetBuffer(data.byteLength);
-    new Uint8Array(this._mem(), addr, data.byteLength).set(new Uint8Array(data));
-    this.exports.deliverCastData(urlBytes.length, data.byteLength);
-    this._clearEx();
+    var addr;
+    try {
+        addr = this.exports.allocateNetBuffer(data.byteLength); this._clearEx();
+    } catch (e) {
+        console.error('[WORKER] allocateNetBuffer OOB for ' + url + ': ' + e);
+        this._wasmDead = true; return false;
+    }
+    var mem = this._mem();
+    var strAddr;
+    try {
+        strAddr = this.exports.getStringBufferAddress(); this._clearEx();
+    } catch (e) {
+        console.error('[WORKER] getStringBufferAddress failed: ' + e);
+        this._wasmDead = true; return false;
+    }
+    try {
+        new Uint8Array(mem, strAddr, urlBytes.length).set(urlBytes);
+        new Uint8Array(mem, addr, data.byteLength).set(new Uint8Array(data));
+    } catch (e) {
+        console.error('[WORKER] memcpy OOB for ' + url + ': ' + e);
+        return false;
+    }
+    try {
+        this.exports.deliverCastData(urlBytes.length, data.byteLength);
+        this._clearEx();
+    } catch (e) {
+        console.error('[WORKER] deliverCastData WASM error for ' + url + ': ' + e);
+        // WASM OOB trap corrupts the instance — check if still alive
+        try { this.exports.getStringBufferAddress(); this._clearEx(); } catch (e2) {
+            console.error('[WORKER] WASM instance dead after ' + url);
+            this._wasmDead = true;
+        }
+        return false;
+    }
+    // Verify WASM is still healthy after parsing
+    try { this.exports.getStringBufferAddress(); this._clearEx(); } catch (e) {
+        console.error('[WORKER] WASM instance dead after parsing ' + url);
+        this._wasmDead = true;
+        return false;
+    }
     return true;
 };
 
@@ -226,6 +285,7 @@ WasmEngine.prototype._deliverCastData = function(url) {
  * Deliver all available static casts (fetched during preloadCasts) into WASM.
  */
 WasmEngine.prototype._deliverAvailableCasts = function() {
+    if (this._wasmDead) return 0;
     var count = this.exports.getAvailableCastCount(); this._clearEx();
     if (count === 0) return 0;
     var strAddr = this.exports.getStringBufferAddress();
@@ -234,6 +294,7 @@ WasmEngine.prototype._deliverAvailableCasts = function() {
         var urlLen = this.exports.getAvailableCastUrl(i); this._clearEx();
         if (urlLen <= 0) continue;
         var url = this._readString(strAddr, urlLen);
+        console.log('[WORKER] delivering static cast: ' + url);
         if (this._deliverCastData(url)) {
             delivered++;
             console.log('[WORKER] delivered static cast: ' + url);
@@ -246,13 +307,18 @@ WasmEngine.prototype._deliverAvailableCasts = function() {
 /**
  * Deliver pending dynamic cast requests (from Lingo setting castLib.fileName).
  */
+// Track casts that caused WASM errors — never retry them
+WasmEngine.prototype._failedCastUrls = {};
+
 WasmEngine.prototype._deliverPendingCastRequests = function() {
+    if (this._wasmDead) return 0;
     var count = this.exports.getPendingCastDataCount(); this._clearEx();
     if (count === 0) return 0;
     var strAddr = this.exports.getStringBufferAddress();
     var baseDir = _getBaseDir(_movieBasePath);
     var delivered = 0;
     for (var i = 0; i < count; i++) {
+        if (this._wasmDead) break;
         var nameLen = this.exports.getPendingCastDataUrl(i); this._clearEx();
         if (nameLen <= 0) continue;
         var fileName = this._readString(strAddr, nameLen);
@@ -262,9 +328,15 @@ WasmEngine.prototype._deliverPendingCastRequests = function() {
         var cstUrl = baseDir + baseName + '.cst';
         var url = _findCachedResponse(cctUrl, []) ? cctUrl :
                   _findCachedResponse(cstUrl, []) ? cstUrl : null;
-        if (url && this._deliverCastData(url)) {
+        if (!url) continue;
+        if (this._failedCastUrls[url]) continue; // Skip known-bad casts
+        console.log('[WORKER] delivering dynamic cast: ' + url);
+        if (this._deliverCastData(url)) {
             delivered++;
             console.log('[WORKER] delivered dynamic cast: ' + url + ' (requested: ' + fileName + ')');
+        } else {
+            this._failedCastUrls[url] = true;
+            console.log('[WORKER] FAILED dynamic cast: ' + url);
         }
     }
     this.exports.drainPendingCastDataRequests(); this._clearEx();
@@ -686,30 +758,69 @@ self.onmessage = async function(e) {
                     var frame = null;
                     var t0 = performance.now();
                     _tickNum++;
+                    if (_tickNum <= 30 || _tickNum % 50 === 0)
+                        console.log('[WORKER] tick#' + _tickNum + ' START');
 
                     // Phase 0: deliver pending dynamic cast requests from Lingo
                     // and any newly-available static casts
-                    try {
-                        _e._deliverPendingCastRequests();
-                        _e._deliverAvailableCasts();
-                    } catch (castErr) {
-                        console.error('[WORKER] cast delivery error: ' + castErr);
+                    if (!_e._wasmDead) {
+                        try {
+                            _e._deliverPendingCastRequests();
+                            _e._deliverAvailableCasts();
+                        } catch (castErr) {
+                            console.error('[WORKER] cast delivery error: ' + castErr);
+                        }
                     }
+
+                    if (_tickNum <= 30) console.log('[WORKER] tick#' + _tickNum + ' Phase0 done ' + Math.round(performance.now()-t0) + 'ms');
 
                     // Phase 1: deliver completed network results from previous ticks.
                     // This runs BEFORE tick() so netDone() returns true for finished fetches.
                     var nDelivered = 0;
-                    try {
-                        nDelivered = _e.deliverQueuedResults();
-                    } catch (deliverErr) {
-                        console.error('[WORKER] deliver error: ' + deliverErr);
+                    if (!_e._wasmDead) {
+                        try {
+                            nDelivered = _e.deliverQueuedResults();
+                        } catch (deliverErr) {
+                            console.error('[WORKER] deliver error: ' + deliverErr);
+                        }
                     }
 
+                    if (_tickNum <= 30) console.log('[WORKER] tick#' + _tickNum + ' Phase1 done ' + Math.round(performance.now()-t0) + 'ms');
+
+                    // Phase 1.5: deliver cast data for any casts just marked available
+                    // by deliverQueuedResults. Without this, Lingo sees netDone()=true
+                    // but cast members aren't loaded yet → "Cast number expected:" errors.
+                    if (!_e._wasmDead) {
+                        try {
+                            _e._deliverAvailableCasts();
+                            _e._deliverPendingCastRequests();
+                        } catch (castErr2) {
+                            console.error('[WORKER] post-deliver cast error: ' + castErr2);
+                        }
+                    }
+
+                    if (_tickNum <= 30) console.log('[WORKER] tick#' + _tickNum + ' Phase1.5 done ' + Math.round(performance.now()-t0) + 'ms');
+
                     // Phase 2: advance WASM by one Lingo frame
-                    try {
-                        stillPlaying = _e.tick();
-                    } catch (tickErr) {
-                        console.error('[WORKER] tick() error: ' + tickErr);
+                    if (_e._wasmDead) {
+                        console.error('[WORKER] WASM instance is dead, skipping tick');
+                        stillPlaying = false;
+                    } else {
+                        var tickT0 = performance.now();
+                        try {
+                            stillPlaying = _e.tick();
+                        } catch (tickErr) {
+                            console.error('[WORKER] tick() error: ' + tickErr);
+                            // Check if WASM is still alive
+                            try { _e.exports.getStringBufferAddress(); _e._clearEx(); } catch(e) {
+                                console.error('[WORKER] WASM instance dead after tick error');
+                                _e._wasmDead = true;
+                            }
+                        }
+                        var tickDt = performance.now() - tickT0;
+                        if (tickDt > 500) {
+                            console.log('[WORKER] tick#' + _tickNum + ' WASM tick() took ' + Math.round(tickDt) + 'ms');
+                        }
                     }
                     var t1 = performance.now();
 
@@ -747,6 +858,21 @@ self.onmessage = async function(e) {
                     // Read diagnostic data from WASM
                     var timeoutCount = 0;
                     try { timeoutCount = _e.exports.getTimeoutCount(); _e._clearEx(); } catch(e5) {}
+
+                    // Read error/debug after every tick
+                    var lastErr = null;
+                    try {
+                        var errLen = _e.exports.getLastError(); _e._clearEx();
+                        if (errLen > 0) lastErr = _e._readString(_e.exports.getStringBufferAddress(), errLen);
+                    } catch(ignore) {}
+                    if (lastErr) console.error('[WORKER] tick#' + _tickNum + ' ERROR: ' + lastErr);
+
+                    var dbgLog = null;
+                    try {
+                        var dbgLen = _e.exports.getDebugLog(); _e._clearEx();
+                        if (dbgLen > 0) dbgLog = _e._readString(_e.exports.getStringBufferAddress(), dbgLen);
+                    } catch(ignore) {}
+                    if (dbgLog) console.log('[WORKER] tick#' + _tickNum + ' DEBUG:\n' + dbgLog);
 
                     // Diagnostic logging: every 50th tick or on network activity or slow ticks
                     var total = t3 - t0;

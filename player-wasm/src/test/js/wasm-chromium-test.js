@@ -66,10 +66,14 @@ function createServer() {
                 return serveFile(res, filePath);
             }
 
-            // Try gamedata/ subdirectory under castDir parent
-            const gamedataPath = path.join(path.dirname(castDir), url);
-            if (fs.existsSync(gamedataPath) && fs.statSync(gamedataPath).isFile()) {
-                return serveFile(res, gamedataPath);
+            // Try gamedata/ subdirectory under castDir ancestors (up to 3 levels)
+            let ancestor = castDir;
+            for (let i = 0; i < 3; i++) {
+                ancestor = path.dirname(ancestor);
+                const gamedataPath = path.join(ancestor, url);
+                if (fs.existsSync(gamedataPath) && fs.statSync(gamedataPath).isFile()) {
+                    return serveFile(res, gamedataPath);
+                }
             }
 
             res.writeHead(404);

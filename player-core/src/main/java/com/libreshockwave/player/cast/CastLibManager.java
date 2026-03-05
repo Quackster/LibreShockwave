@@ -39,7 +39,7 @@ public class CastLibManager implements CastLibProvider {
      * This creates CastLib objects but doesn't load their members yet.
      * Uses CastListChunk as the primary source for cast library info.
      */
-    private synchronized void ensureInitialized() {
+    private void ensureInitialized() {
         if (initialized || file == null) {
             return;
         }
@@ -167,10 +167,22 @@ public class CastLibManager implements CastLibProvider {
 
     /**
      * Called when Lingo sets castLib.fileName, triggering a cast reload.
-     * Delegates to the castDataRequestCallback to load the data.
+     * Delegates to castDataRequestCallback for data delivery.
+     * In WASM: synchronous delivery from JS cache. In JVM: async fetch.
      */
     private void tryLoadCastFromCache(int castLibNumber, String newFileName) {
         if (newFileName == null || newFileName.isEmpty()) return;
+
+        CastLib target = getCastLib(castLibNumber);
+        if (target == null) return;
+
+        // Don't overwrite a cast that already has loaded members with different data.
+        // The Fuse CastLoad Manager resets all slots to empty.cct during init —
+        // we must NOT clobber already-loaded data in that case.
+        if (target.isLoaded() && target.getMemberCount() > 0) {
+            return;
+        }
+
         castDataRequestCallback.accept(castLibNumber, newFileName);
     }
 
@@ -488,6 +500,11 @@ public class CastLibManager implements CastLibProvider {
             String castFileNoExt = FileUtil.getFileNameWithoutExtension(
                     FileUtil.getFileName(castPath));
             if (castFileNoExt.equalsIgnoreCase(fileNameNoExt)) {
+                // Skip if already loaded with member data (prevents re-parsing same file)
+                if (castLib.isLoaded() && castLib.getMemberCount() > 0) {
+                    anyLoaded = true;
+                    continue;
+                }
                 if (setExternalCastData(castLib.getNumber(), data)) {
                     anyLoaded = true;
                 }

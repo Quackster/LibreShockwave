@@ -76,33 +76,33 @@ public class SpriteState {
     public boolean hasForeColor() { return hasForeColor; }
     public boolean hasBackColor() { return hasBackColor; }
 
-    public synchronized void setLocH(int locH) { this.locH = locH; }
-    public synchronized void setLocV(int locV) { this.locV = locV; }
-    public synchronized void setLocZ(int locZ) { this.locZ = locZ; }
-    public synchronized void setWidth(int width) { this.width = width; this.hasSizeChanged = true; }
-    public synchronized void setHeight(int height) { this.height = height; this.hasSizeChanged = true; }
-    public synchronized void setVisible(boolean visible) { this.visible = visible; }
-    public synchronized void setPuppet(boolean puppet) { this.puppet = puppet; }
-    public synchronized void setInk(int ink) { this.inkMode = InkMode.fromCode(ink); }
-    public synchronized void setInkMode(InkMode ink) { this.inkMode = ink; }
-    public synchronized void setBlend(int blend) { this.blend = blend; }
-    public synchronized void setStretch(int stretch) { this.stretch = stretch; }
-    public synchronized void setForeColor(int foreColor) { this.foreColor = foreColor; this.hasForeColor = true; }
-    public synchronized void setBackColor(int backColor) { this.backColor = backColor; this.hasBackColor = true; }
+    public void setLocH(int locH) { this.locH = locH; }
+    public void setLocV(int locV) { this.locV = locV; }
+    public void setLocZ(int locZ) { this.locZ = locZ; }
+    public void setWidth(int width) { this.width = width; this.hasSizeChanged = true; }
+    public void setHeight(int height) { this.height = height; this.hasSizeChanged = true; }
+    public void setVisible(boolean visible) { this.visible = visible; }
+    public void setPuppet(boolean puppet) { this.puppet = puppet; }
+    public void setInk(int ink) { this.inkMode = InkMode.fromCode(ink); }
+    public void setInkMode(InkMode ink) { this.inkMode = ink; }
+    public void setBlend(int blend) { this.blend = blend; }
+    public void setStretch(int stretch) { this.stretch = stretch; }
+    public void setForeColor(int foreColor) { this.foreColor = foreColor; this.hasForeColor = true; }
+    public void setBackColor(int backColor) { this.backColor = backColor; this.hasBackColor = true; }
 
     /**
      * Atomically capture all mutable position fields to prevent torn reads
      * when the VM thread updates position mid-render.
      * @return array of [locH, locV, locZ, width, height]
      */
-    public synchronized int[] snapshotPosition() {
+    public int[] snapshotPosition() {
         return new int[]{ locH, locV, locZ, width, height };
     }
 
     /**
      * Set a dynamic cast member (overrides Score data).
      */
-    public synchronized void setDynamicMember(int castLib, int member) {
+    public void setDynamicMember(int castLib, int member) {
         this.dynamicCastLib = castLib;
         this.dynamicCastMember = member;
         this.hasDynamicMember = true;
@@ -136,7 +136,7 @@ public class SpriteState {
      * Apply intrinsic dimensions from a member (e.g., bitmap width/height).
      * Only applies if the script hasn't explicitly set width/height.
      */
-    public synchronized void applyIntrinsicSize(int w, int h) {
+    public void applyIntrinsicSize(int w, int h) {
         if (!hasSizeChanged && w > 0 && h > 0) {
             this.width = w;
             this.height = h;

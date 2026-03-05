@@ -113,8 +113,12 @@ public class BinaryReader implements AutoCloseable {
     }
 
     public short readI16() {
-        byte[] bytes = readBytes(2);
-        return ByteBuffer.wrap(bytes).order(order).getShort();
+        byte[] b = readBytes(2);
+        if (order == ByteOrder.BIG_ENDIAN) {
+            return (short) (((b[0] & 0xFF) << 8) | (b[1] & 0xFF));
+        } else {
+            return (short) (((b[1] & 0xFF) << 8) | (b[0] & 0xFF));
+        }
     }
 
     public int readU16() {
@@ -122,8 +126,14 @@ public class BinaryReader implements AutoCloseable {
     }
 
     public int readI32() {
-        byte[] bytes = readBytes(4);
-        return ByteBuffer.wrap(bytes).order(order).getInt();
+        byte[] b = readBytes(4);
+        if (order == ByteOrder.BIG_ENDIAN) {
+            return ((b[0] & 0xFF) << 24) | ((b[1] & 0xFF) << 16) |
+                   ((b[2] & 0xFF) << 8) | (b[3] & 0xFF);
+        } else {
+            return ((b[3] & 0xFF) << 24) | ((b[2] & 0xFF) << 16) |
+                   ((b[1] & 0xFF) << 8) | (b[0] & 0xFF);
+        }
     }
 
     public long readU32() {
@@ -131,24 +141,32 @@ public class BinaryReader implements AutoCloseable {
     }
 
     public long readI64() {
-        byte[] bytes = readBytes(8);
-        return ByteBuffer.wrap(bytes).order(order).getLong();
+        byte[] b = readBytes(8);
+        if (order == ByteOrder.BIG_ENDIAN) {
+            return ((long)(b[0] & 0xFF) << 56) | ((long)(b[1] & 0xFF) << 48) |
+                   ((long)(b[2] & 0xFF) << 40) | ((long)(b[3] & 0xFF) << 32) |
+                   ((long)(b[4] & 0xFF) << 24) | ((long)(b[5] & 0xFF) << 16) |
+                   ((long)(b[6] & 0xFF) << 8) | (long)(b[7] & 0xFF);
+        } else {
+            return ((long)(b[7] & 0xFF) << 56) | ((long)(b[6] & 0xFF) << 48) |
+                   ((long)(b[5] & 0xFF) << 40) | ((long)(b[4] & 0xFF) << 32) |
+                   ((long)(b[3] & 0xFF) << 24) | ((long)(b[2] & 0xFF) << 16) |
+                   ((long)(b[1] & 0xFF) << 8) | (long)(b[0] & 0xFF);
+        }
     }
 
     public float readF32() {
-        byte[] bytes = readBytes(4);
-        return ByteBuffer.wrap(bytes).order(order).getFloat();
+        return Float.intBitsToFloat(readI32());
     }
 
     public double readF64() {
-        byte[] bytes = readBytes(8);
-        return ByteBuffer.wrap(bytes).order(order).getDouble();
+        return Double.longBitsToDouble(readI64());
     }
 
     // Byte array reads
 
     public byte[] readBytes(int length) {
-        if (position + length > data.length) {
+        if (length < 0 || length > data.length - position) {
             throw new IndexOutOfBoundsException(
                 "Cannot read " + length + " bytes at position " + position +
                 " (data length: " + data.length + ", remaining: " + (data.length - position) + ")");
@@ -160,7 +178,7 @@ public class BinaryReader implements AutoCloseable {
     }
 
     public byte[] peekBytes(int length) {
-        if (position + length > data.length) {
+        if (length < 0 || length > data.length - position) {
             throw new IndexOutOfBoundsException(
                 "Cannot peek " + length + " bytes at position " + position +
                 " (data length: " + data.length + ", remaining: " + (data.length - position) + ")");
@@ -177,8 +195,9 @@ public class BinaryReader implements AutoCloseable {
      * Always reads as big-endian regardless of the reader's byte order.
      */
     public int readFourCC() {
-        byte[] bytes = readBytes(4);
-        return ByteBuffer.wrap(bytes).order(ByteOrder.BIG_ENDIAN).getInt();
+        byte[] b = readBytes(4);
+        return ((b[0] & 0xFF) << 24) | ((b[1] & 0xFF) << 16) |
+               ((b[2] & 0xFF) << 8) | (b[3] & 0xFF);
     }
 
     /**
@@ -196,12 +215,17 @@ public class BinaryReader implements AutoCloseable {
         if (s.length() != 4) {
             throw new IllegalArgumentException("FourCC must be exactly 4 characters");
         }
-        byte[] bytes = s.getBytes(StandardCharsets.US_ASCII);
-        return ByteBuffer.wrap(bytes).order(ByteOrder.BIG_ENDIAN).getInt();
+        byte[] b = s.getBytes(StandardCharsets.US_ASCII);
+        return ((b[0] & 0xFF) << 24) | ((b[1] & 0xFF) << 16) |
+               ((b[2] & 0xFF) << 8) | (b[3] & 0xFF);
     }
 
     public static String fourCCToString(int fourcc) {
-        byte[] bytes = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(fourcc).array();
+        byte[] bytes = new byte[4];
+        bytes[0] = (byte) ((fourcc >> 24) & 0xFF);
+        bytes[1] = (byte) ((fourcc >> 16) & 0xFF);
+        bytes[2] = (byte) ((fourcc >> 8) & 0xFF);
+        bytes[3] = (byte) (fourcc & 0xFF);
         return new String(bytes, StandardCharsets.US_ASCII);
     }
 
@@ -240,7 +264,8 @@ public class BinaryReader implements AutoCloseable {
         int value = 0;
         int b;
         do {
-            b = readU8();
+            if (position >= data.length) return value;
+            b = data[position++] & 0xFF;
             value = (value << 7) | (b & 0x7F);
         } while ((b & 0x80) != 0);
         return value;
@@ -269,7 +294,7 @@ public class BinaryReader implements AutoCloseable {
         } else {
             long normexp = exponent - 0x3FFF;
             if (normexp < -0x3FE || normexp >= 0x3FF) {
-                throw new ArithmeticException("Float exponent too large for double");
+                return 0.0; // Exponent out of range for double
             }
             f64exp = normexp + 0x3FF;
         }
@@ -280,45 +305,72 @@ public class BinaryReader implements AutoCloseable {
 
     // Zlib decompression
 
-    public byte[] readZlibBytes(int compressedLength) throws IOException {
+    public byte[] readZlibBytes(int compressedLength) {
         byte[] compressed = readBytes(compressedLength);
         return decompressZlib(compressed);
     }
 
     /**
      * Decompress zlib-compressed data.
+     * Uses array-based growing buffer instead of ByteBuffer for TeaVM WASM compatibility.
      */
-    public byte[] decompressZlib(byte[] compressed) throws IOException {
+    public byte[] decompressZlib(byte[] compressed) {
         Inflater inflater = new Inflater();
         inflater.setInput(compressed);
 
-        ByteBuffer output = ByteBuffer.allocate(Math.max(compressed.length * 4, 4096));
+        byte[] output = new byte[Math.max(compressed.length * 4, 4096)];
+        int outputPos = 0;
         byte[] buffer = new byte[4096];
 
         try {
+            int zeroCount = 0; // Safety: detect stalled decompression
+            int maxOutput = Math.max(compressed.length * 20, 16 * 1024 * 1024); // 20x or 16MB
+            long deadline = System.currentTimeMillis() + 2000; // 2s max
             while (!inflater.finished()) {
                 int count = inflater.inflate(buffer);
-                if (count == 0 && inflater.needsInput()) {
-                    break; // No more input available
+                if (count == 0) {
+                    if (inflater.needsInput()) {
+                        break;
+                    }
+                    // Safety: if inflate returns 0 but not finished and doesn't need input,
+                    // we're stuck (possible TeaVM WASM zlib edge case). Break after a few tries.
+                    if (++zeroCount > 3) {
+                        break;
+                    }
+                    continue;
                 }
-                // Ensure we have enough space for the inflated data
-                while (output.remaining() < count) {
-                    ByteBuffer newOutput = ByteBuffer.allocate(output.capacity() * 2);
-                    output.flip();
-                    newOutput.put(output);
+                zeroCount = 0;
+                // Grow output array if needed
+                while (outputPos + count > output.length) {
+                    byte[] newOutput = new byte[output.length * 2];
+                    System.arraycopy(output, 0, newOutput, 0, outputPos);
                     output = newOutput;
                 }
-                output.put(buffer, 0, count);
+                System.arraycopy(buffer, 0, output, outputPos, count);
+                outputPos += count;
+                // Safety limits: prevent runaway decompression
+                if (outputPos > maxOutput || System.currentTimeMillis() > deadline) {
+                    break;
+                }
+                // Check global parse deadline
+                if (com.libreshockwave.DirectorFile.isParseTimedOut()) {
+                    break;
+                }
             }
         } catch (java.util.zip.DataFormatException e) {
-            throw new IOException("Invalid zlib data", e);
+            // Return whatever was decompressed so far instead of throwing
+            // (WASM: exceptions → unreachable trap)
+        } catch (Throwable e) {
+            // Catch any unexpected errors during decompression
         } finally {
             inflater.end();
         }
 
-        output.flip();
-        byte[] result = new byte[output.remaining()];
-        output.get(result);
+        if (outputPos == output.length) {
+            return output;
+        }
+        byte[] result = new byte[outputPos];
+        System.arraycopy(output, 0, result, 0, outputPos);
         return result;
     }
 

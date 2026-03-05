@@ -167,6 +167,7 @@ public class AfterburnerReader {
         // Subsequent entries are chunks within the DECOMPRESSED ILS
         int runningOffset = 0;
         for (int i = 0; i < resCount; i++) {
+            if (com.libreshockwave.DirectorFile.isParseTimedOut()) break;
             int resId = readVarInt(abmpReader);
             int rawOffset = readVarInt(abmpReader);
             int compSize = readVarInt(abmpReader);
@@ -237,6 +238,7 @@ public class AfterburnerReader {
         // where data length comes from ABMP chunkInfo
         BinaryReader ilsReader = new BinaryReader(ilsData, byteOrder);
         while (!ilsReader.eof() && ilsReader.bytesLeft() > 0) {
+            if (com.libreshockwave.DirectorFile.isParseTimedOut()) break;
             int resId = readVarInt(ilsReader);
             ChunkInfo info = chunkInfoMap.get(resId);
             if (info == null) {

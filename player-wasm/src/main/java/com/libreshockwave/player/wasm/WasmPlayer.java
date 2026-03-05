@@ -49,9 +49,21 @@ public class WasmPlayer {
         if (state == PlayerState.PAUSED) return true;
 
         try {
-            return player.tick();
+            PlayerState before = player.getState();
+            boolean result = player.tick();
+            PlayerState after = player.getState();
+            if (before != after) {
+                WasmEntry.log("state: " + before + " -> " + after);
+            }
+            return result;
         } catch (Throwable e) {
-            System.err.println("[WasmPlayer] tick error: " + e.getMessage());
+            WasmEntry.log("tick error: " + e.getClass().getName() + ": " + e.getMessage());
+            StringBuilder sb = new StringBuilder();
+            for (StackTraceElement ste : e.getStackTrace()) {
+                sb.append("  at ").append(ste).append('\n');
+                if (sb.length() > 2000) break;
+            }
+            WasmEntry.log(sb.toString());
             return true;
         }
     }
