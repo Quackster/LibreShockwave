@@ -610,22 +610,41 @@ Affected keywords include `char`, `int`, `void`, `class`, `new`, `return`, and a
 ### Running Tests
 
 ```bash
-# Unit tests per module
-./gradlew :sdk:test
-./gradlew :vm:test
-./gradlew :player-core:test
+# All unit tests
+./gradlew :sdk:test :vm:test
+```
 
-# SDK integration / feature tests
-./gradlew :sdk:runTests
-./gradlew :sdk:runFeatureTests
+#### SDK Tests (`sdk/src/test/`)
 
-# Build the WASM player (output in player-wasm/build/dist/)
-./gradlew :player-wasm:generateWasm
+| Class | Description |
+|-------|-------------|
+| `DirectorFileTest` | Integration tests for loading and parsing Director files |
+| `DcrFileTest` | DCR file parsing with external cast support |
+| `SdkFeatureTest` | Comprehensive SDK feature tests (local files + HTTP) |
+| `Bitmap32BitTest` | 32-bit bitmap decoding |
+| `BitmapExtractTest` | Bitmap extraction by name from Director files |
+| `ScriptTypeTest` | Script type identification and classification |
+| `SoundExtractionTest` | Sound extraction (PCM → WAV, MP3) |
 
-# Node.js integration test — verifies WASM playback without a browser
-# Requires Node.js; builds the WASM binary first, then runs up to 500 ticks
-# and checks that sprites appear and frames advance
-./gradlew :player-wasm:runWasmNodeTest
+```bash
+# Run SDK integration tests (JavaExec, not JUnit)
+./gradlew :sdk:runTests           # DirectorFileTest
+./gradlew :sdk:runDcrTests        # DcrFileTest (optional: -Pfile=path/to/file.dcr)
+./gradlew :sdk:runFeatureTests    # SdkFeatureTest
+```
+
+#### VM Tests (`vm/src/test/`)
+
+| Class | Description |
+|-------|-------------|
+| `LingoVMTest` | VM execution, stack operations, control flow (21 tests) |
+| `OpcodeTest` | Opcode encoding/decoding and argument handling (51 tests) |
+| `DatumTest` | Datum type conversions and equality (11 tests) |
+| `ScriptInstanceTest` | Script instance lifecycle, properties, list operations (48 tests) |
+
+```bash
+# Run VM tests via JavaExec
+./gradlew :vm:runVmTests
 ```
 
 ## Architecture
