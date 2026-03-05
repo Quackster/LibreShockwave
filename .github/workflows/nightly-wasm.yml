@@ -24,10 +24,10 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Build WASM (TeaVM JS target)
+      - name: Build WASM
         run: |
           chmod +x gradlew
-          ./gradlew :player-wasm:generateJavaScript
+          ./gradlew :player-wasm:generateWasm
 
       - name: Get current date
         id: date
@@ -38,7 +38,7 @@ jobs:
       - name: Create ZIP of dist
         run: |
           cd player-wasm/build/dist
-          zip -r ../../../libreshockwave-wasm-${{ steps.date.outputs.VERSION }}.zip .
+          zip -r ../../../libreshockwave-wasm-${{ steps.date.outputs.VERSION }}.zip . -x 'shockwave-lib.js' 'shockwave-worker.js'
 
       - name: Delete existing nightly release
         env:
@@ -54,17 +54,17 @@ jobs:
           body: |
             ## Nightly WASM Build
 
-            Automated nightly build of the LibreShockwave web player (TeaVM JS target).
+            Automated nightly build of the LibreShockwave web player (TeaVM WASM target).
 
             **Built from:** ${{ github.sha }}
             **Date:** ${{ steps.date.outputs.DISPLAY }}
             **Version:** ${{ steps.date.outputs.VERSION }}
 
             ### Contents
-            - `libreshockwave-wasm-${{ steps.date.outputs.VERSION }}.zip` — Web player dist (player-wasm.js, libreshockwave.js, index.html, CSS)
+            - `libreshockwave-wasm-${{ steps.date.outputs.VERSION }}.zip` — Web player dist (libreshockwave.js, .wasm binary, .wasm-runtime.js, index.html, CSS)
 
             ### Usage
-            Extract the ZIP and serve the files with any HTTP server, or include `player-wasm.js` and `libreshockwave.js` in your page.
+            Extract the ZIP and serve the files with any HTTP server. Include `libreshockwave.js` as a single script tag in your page.
           files: libreshockwave-wasm-${{ steps.date.outputs.VERSION }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
