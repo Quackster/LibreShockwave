@@ -96,6 +96,22 @@ function serveFile(res, filePath) {
 }
 
 // ---------------------------------------------------------------------------
+// Canvas capture: extract pixel-perfect PNG directly from the canvas element
+// ---------------------------------------------------------------------------
+async function captureCanvas(page, filePath) {
+    const dataUrl = await page.evaluate(() => {
+        const canvas = document.getElementById('stage');
+        return canvas ? canvas.toDataURL('image/png') : null;
+    });
+    if (!dataUrl) {
+        console.error('  Warning: canvas not found for capture');
+        return;
+    }
+    const base64 = dataUrl.replace(/^data:image\/png;base64,/, '');
+    fs.writeFileSync(filePath, Buffer.from(base64, 'base64'));
+}
+
+// ---------------------------------------------------------------------------
 // Main test
 // ---------------------------------------------------------------------------
 async function main() {
@@ -238,7 +254,7 @@ async function main() {
             // Capture PNG periodically
             if (i > 0 && i % CAPTURE_INTERVAL === 0) {
                 const pngPath = path.join(outputDir, `frame_${String(i).padStart(4, '0')}.png`);
-                await page.screenshot({ path: pngPath, clip: { x: 0, y: 0, width: 720, height: 540 } });
+                await captureCanvas(page, pngPath);
                 captures++;
                 console.log(`  Captured ${pngPath} (tick ~${state.tick}, frame ${lastFrame})`);
             }
@@ -251,7 +267,7 @@ async function main() {
 
                 // Capture the hotel frame
                 const pngPath = path.join(outputDir, 'hotel_view.png');
-                await page.screenshot({ path: pngPath, clip: { x: 0, y: 0, width: 720, height: 540 } });
+                await captureCanvas(page, pngPath);
                 captures++;
                 console.log(`  Captured ${pngPath}`);
             }
@@ -262,7 +278,7 @@ async function main() {
                 for (let j = 0; j < 3; j++) {
                     await new Promise(r => setTimeout(r, 2000));
                     const pngPath = path.join(outputDir, `frame_final_${j}.png`);
-                    await page.screenshot({ path: pngPath, clip: { x: 0, y: 0, width: 720, height: 540 } });
+                    await captureCanvas(page, pngPath);
                     captures++;
                     console.log(`  Captured ${pngPath}`);
                 }
@@ -272,7 +288,7 @@ async function main() {
 
         // Final capture
         const finalPng = path.join(outputDir, 'frame_final.png');
-        await page.screenshot({ path: finalPng, clip: { x: 0, y: 0, width: 720, height: 540 } });
+        await captureCanvas(page, finalPng);
         captures++;
 
         // Clean up temp HTML
