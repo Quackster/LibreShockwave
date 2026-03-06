@@ -586,10 +586,13 @@ public class CastMember {
                 return true;
             }
             case "image" -> {
-                // Allow setting the bitmap directly (used by some scripts)
+                // Director copies the bitmap into the member (not a reference assignment).
+                // This is critical: scripts like Common Button Class set pBuffer.image = pimage,
+                // then later fill pBuffer.image with white and re-draw pimage. If they share
+                // the same bitmap reference, the fill destroys the composed content.
                 if (value instanceof Datum.ImageRef ir) {
-                    this.bitmap = ir.bitmap();
-                    this.textRenderedImage = ir.bitmap();
+                    this.bitmap = ir.bitmap().copy();
+                    this.textRenderedImage = this.bitmap;
                     this.textImageDirty = false;
                     return true;
                 }
@@ -623,7 +626,7 @@ public class CastMember {
         return switch (prop) {
             case "image" -> {
                 if (value instanceof Datum.ImageRef ir) {
-                    this.bitmap = ir.bitmap();
+                    this.bitmap = ir.bitmap().copy();
                     yield true;
                 }
                 yield false;

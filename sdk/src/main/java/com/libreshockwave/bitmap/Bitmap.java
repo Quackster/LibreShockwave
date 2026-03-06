@@ -134,6 +134,30 @@ public class Bitmap {
         return result;
     }
 
+    /**
+     * Returns the bounding rect of non-white pixels in this bitmap.
+     * Director's image.trimWhiteSpace() equivalent.
+     * Returns [0,0,0,0] if the image is entirely white.
+     */
+    public int[] trimWhiteSpace() {
+        int minX = width, minY = height, maxX = -1, maxY = -1;
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int pixel = pixels[y * width + x];
+                int a = (pixel >>> 24);
+                if (a == 0) continue; // transparent = white
+                int rgb = pixel & 0xFFFFFF;
+                if (rgb == 0xFFFFFF) continue; // white
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+            }
+        }
+        if (maxX < 0) return new int[]{0, 0, 0, 0};
+        return new int[]{minX, minY, maxX + 1, maxY + 1};
+    }
+
     @Override
     public String toString() {
         return "Bitmap[" + width + "x" + height + ", " + bitDepth + "-bit]";

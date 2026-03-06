@@ -52,6 +52,10 @@ public final class ImageMethodDispatcher {
                 }
                 yield Datum.VOID;
             }
+            case "trimwhitespace" -> {
+                int[] bounds = bmp.trimWhiteSpace();
+                yield new Datum.Rect(bounds[0], bounds[1], bounds[2], bounds[3]);
+            }
             case "getat" -> {
                 // getAt(index) on image - some scripts use this
                 if (args.isEmpty()) yield Datum.VOID;
@@ -78,6 +82,7 @@ public final class ImageMethodDispatcher {
             case "depth" -> Datum.of(bmp.getBitDepth());
             case "ilk" -> Datum.symbol("image");
             case "image" -> imageRef; // Self-reference for .image on an image
+            case "paletteref" -> Datum.VOID; // No palette tracking in our implementation
             default -> Datum.VOID;
         };
     }
@@ -207,6 +212,12 @@ public final class ImageMethodDispatcher {
         Datum destRectDatum = args.get(1);
         Datum srcRectDatum = args.get(2);
 
+        // Handle quad destRect: list of 4 points for perspective/flip transforms
+        if (destRectDatum instanceof Datum.List quadList && quadList.items().size() == 4
+                && srcRectDatum instanceof Datum.Rect srcRect) {
+            return copyPixelsQuad(dest, src, quadList, srcRect, args);
+        }
+
         if (!(destRectDatum instanceof Datum.Rect destRect)) {
             return Datum.VOID;
         }
@@ -301,6 +312,69 @@ public final class ImageMethodDispatcher {
             Drawing.copyPixels(dest, scaled,
                     destRect.left(), destRect.top(),
                     0, 0, destW, destH, ink, blend);
+        }
+
+        return Datum.VOID;
+    }
+
+    /**
+     * copyPixels with quad destination (list of 4 points).
+     * Used by Director for flipH/flipV operations.
+     * Detects horizontal and vertical flips from the quad corners.
+     */
+    private static Datum copyPixelsQuad(Bitmap dest, Bitmap src, Datum.List quad,
+                                         Datum.Rect srcRect, List<Datum> args) {
+        // Extract the 4 corner points
+        var items = quad.items();
+        if (items.size() != 4) return Datum.VOID;
+
+        // Quad corners: [topRight, topLeft, bottomLeft, bottomRight] for Director convention
+        int[] px = new int[4], py = new int[4];
+        for (int i = 0; i < 4; i++) {
+            if (items.get(i) instanceof Datum.Point p) {
+                px[i] = p.x();
+                py[i] = p.y();
+            } else {
+                return Datum.VOID;
+            }
+        }
+
+        int srcW = srcRect.right() - srcRect.left();
+        int srcH = srcRect.bottom() - srcRect.top();
+        if (srcW <= 0 || srcH <= 0) return Datum.VOID;
+
+        // Determine bounding box of the quad
+        int minX = Math.min(Math.min(px[0], px[1]), Math.min(px[2], px[3]));
+        int minY = Math.min(Math.min(py[0], py[1]), Math.min(py[2], py[3]));
+        int maxX = Math.max(Math.max(px[0], px[1]), Math.max(px[2], px[3]));
+        int maxY = Math.max(Math.max(py[0], py[1]), Math.max(py[2], py[3]));
+        int destW = maxX - minX;
+        int destH = maxY - minY;
+        if (destW <= 0 || destH <= 0) return Datum.VOID;
+
+        // Detect flip: Director quad order is [topRight, topLeft, bottomLeft, bottomRight]
+        // flipH: topRight.x < topLeft.x (x-coords swapped)
+        boolean flipH = px[0] < px[1];
+        // flipV: topRight.y > bottomRight.y (y-coords swapped)
+        boolean flipV = py[0] > py[3];
+
+        // Copy with flip
+        for (int y = 0; y < destH; y++) {
+            int sy = srcRect.top() + (y * srcH / destH);
+            int dy = minY + y;
+            if (sy < 0 || sy >= src.getHeight() || dy < 0 || dy >= dest.getHeight()) continue;
+
+            for (int x = 0; x < destW; x++) {
+                int srcX = flipH ? (srcW - 1 - (x * srcW / destW)) : (x * srcW / destW);
+                int srcY = flipV ? (srcH - 1 - (y * srcH / destH)) : (y * srcH / destH);
+                srcX += srcRect.left();
+                srcY += srcRect.top();
+                int dx = minX + x;
+
+                if (srcX < 0 || srcX >= src.getWidth() || dx < 0 || dx >= dest.getWidth()) continue;
+
+                dest.setPixel(dx, dy, src.getPixel(srcX, srcY));
+            }
         }
 
         return Datum.VOID;
