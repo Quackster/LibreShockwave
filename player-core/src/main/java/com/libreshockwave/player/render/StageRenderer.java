@@ -3,6 +3,7 @@ package com.libreshockwave.player.render;
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.cast.MemberType;
+import com.libreshockwave.cast.ShapeInfo;
 import com.libreshockwave.chunks.CastMemberChunk;
 import com.libreshockwave.chunks.ScoreChunk;
 import com.libreshockwave.player.cast.CastLib;
@@ -183,7 +184,8 @@ public class StageRenderer {
 
         return new RenderSprite(
             channel, x, y, width, height, locZ, visible, type, member, null,
-            data.resolvedForeColor(), data.backColor(),
+            state.hasForeColor() ? state.getForeColor() : data.resolvedForeColor(),
+            state.hasBackColor() ? state.getBackColor() : data.backColor(),
             state.hasForeColor(), state.hasBackColor(),
             data.ink(), state.getBlend(), null
         );
@@ -306,6 +308,16 @@ public class StageRenderer {
 
         return switch (memberType) {
             case SHAPE -> RenderSprite.SpriteType.SHAPE;
+            case FLASH -> {
+                byte[] sd = member.specificData();
+                if (sd != null && sd.length >= 14) {
+                    ShapeInfo si = ShapeInfo.parse(sd);
+                    if (si.shapeType() != ShapeInfo.ShapeType.UNKNOWN) {
+                        yield RenderSprite.SpriteType.SHAPE;
+                    }
+                }
+                yield RenderSprite.SpriteType.UNKNOWN;
+            }
             case TEXT -> RenderSprite.SpriteType.TEXT;
             case BUTTON -> RenderSprite.SpriteType.BUTTON;
             default -> RenderSprite.SpriteType.UNKNOWN;

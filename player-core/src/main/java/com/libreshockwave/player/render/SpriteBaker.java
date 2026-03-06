@@ -1,8 +1,6 @@
 package com.libreshockwave.player.render;
 
 import com.libreshockwave.bitmap.Bitmap;
-import com.libreshockwave.cast.MemberType;
-import com.libreshockwave.chunks.CastMemberChunk;
 import com.libreshockwave.player.Player;
 import com.libreshockwave.player.cast.CastLibManager;
 import com.libreshockwave.player.cast.CastMember;
@@ -46,13 +44,14 @@ public class SpriteBaker {
             case BITMAP -> bakeBitmap(sprite);
             case TEXT, BUTTON -> bakeText(sprite);
             case SHAPE -> bakeShape(sprite);
-            default -> bakeFlashFallback(sprite);
+            default -> null;
         };
 
         // Apply Director's sprite-level foreColor/backColor colorization.
         // Only applied when Lingo has explicitly set foreColor or backColor
         // on the sprite (via sprite.color, sprite.foreColor, sprite.backColor, etc.).
-        if (baked != null && (sprite.hasForeColor() || sprite.hasBackColor())
+        if (baked != null && sprite.getType() != RenderSprite.SpriteType.SHAPE
+                && (sprite.hasForeColor() || sprite.hasBackColor())
                 && InkProcessor.allowsColorize(sprite.getInk())) {
             baked = InkProcessor.applyForeColorRemap(baked, sprite.getForeColor(), sprite.getBackColor());
         }
@@ -107,30 +106,6 @@ public class SpriteBaker {
         }
 
         return textImage;
-    }
-
-    /**
-     * Fallback for Flash/SWF members: render as solid foreColor fill.
-     * Since we can't parse SWF content, we fill the sprite's bounding box
-     * with its foreColor. This provides sky backgrounds (skyleft_shape),
-     * dark bars (box), and animation covers (entry_shape). Higher-z sprites
-     * render on top, so only uncovered areas show the fill color.
-     */
-    private Bitmap bakeFlashFallback(RenderSprite sprite) {
-        CastMemberChunk member = sprite.getCastMember();
-        if (member == null || member.memberType() != MemberType.FLASH) {
-            return null;
-        }
-        int fc = sprite.getForeColor() & 0xFFFFFF;
-        int w = sprite.getWidth() > 0 ? sprite.getWidth() : 1;
-        int h = sprite.getHeight() > 0 ? sprite.getHeight() : 1;
-        Bitmap shape = new Bitmap(w, h, 32);
-        int argb = 0xFF000000 | fc;
-        int[] pixels = shape.getPixels();
-        for (int i = 0; i < pixels.length; i++) {
-            pixels[i] = argb;
-        }
-        return shape;
     }
 
     /**
