@@ -36,8 +36,8 @@ public final class CallOpcodes {
         try {
             return ctx.executeHandler(script, handler, args, receiver);
         } catch (LingoException e) {
-            System.err.println("[Lingo] Error in " + script.getHandlerName(handler) + ": " + e.getMessage());
             if (DebugConfig.isDebugPlaybackEnabled()) {
+                System.err.println(e.getMessage());
                 System.err.println(ctx.formatCallStack());
             }
             ctx.setErrorState(true);

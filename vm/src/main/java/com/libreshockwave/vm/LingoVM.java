@@ -367,7 +367,7 @@ public class LingoVM {
             result = scope.getReturnValue();
         } catch (Exception e) {
             if (DebugConfig.isDebugPlaybackEnabled()) {
-                System.err.println("[Lingo] Exception in " + handlerName + ": " + e.getMessage());
+                System.err.println(e.getMessage());
                 System.err.println(formatCallStack());
             }
             if (traceListener != null) {
