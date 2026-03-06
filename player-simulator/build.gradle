@@ -20,8 +20,3 @@ repositories {
 dependencies {
     implementation project(':player-core')
 }
-
-tasks.register('runHttpIntegrationTest', JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.libreshockwave.player.simulator.HttpIntegrationTest'
-}

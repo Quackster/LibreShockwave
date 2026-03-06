@@ -1,14 +1,17 @@
 package com.libreshockwave.player.render;
 
 import com.libreshockwave.bitmap.Bitmap;
+import com.libreshockwave.player.cast.FontRegistry;
 
 import java.awt.*;
 import java.awt.font.TextAttribute;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.util.HashMap;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * AWT-based text renderer for desktop environments.
@@ -18,6 +21,9 @@ public class AwtTextRenderer implements TextRenderer {
 
     /** Cache of available system font names (lowercase -> actual name) */
     private static volatile Map<String, String> systemFontCache;
+
+    /** Cache of AWT fonts created from PFR1-derived TTF data */
+    private static final ConcurrentHashMap<String, Font> pfrAwtFontCache = new ConcurrentHashMap<>();
 
     @Override
     public Bitmap renderText(String text, int width, int height,
@@ -45,12 +51,15 @@ public class AwtTextRenderer implements TextRenderer {
         g2d.setColor(new Color(bgColor, true));
         g2d.fillRect(0, 0, width, height);
 
-        // Set font
+        // Set font — try PFR-derived TTF first, then system fonts
         int fontStyleAwt = Font.PLAIN;
         String style = fontStyle.toLowerCase();
         if (style.contains("bold")) fontStyleAwt |= Font.BOLD;
         if (style.contains("italic")) fontStyleAwt |= Font.ITALIC;
-        Font font = resolveDirectorFont(fontName, fontStyleAwt, fontSize);
+        Font font = resolvePfrAwtFont(fontName, fontStyleAwt, fontSize);
+        if (font == null) {
+            font = resolveDirectorFont(fontName, fontStyleAwt, fontSize);
+        }
         if (style.contains("underline")) {
             Map<TextAttribute, Object> attrs = new HashMap<>();
             attrs.put(TextAttribute.UNDERLINE, TextAttribute.UNDERLINE_ON);
@@ -134,7 +143,10 @@ public class AwtTextRenderer implements TextRenderer {
         String style = fontStyle.toLowerCase();
         if (style.contains("bold")) fontStyleAwt |= Font.BOLD;
         if (style.contains("italic")) fontStyleAwt |= Font.ITALIC;
-        Font font = resolveDirectorFont(fontName, fontStyleAwt, fontSize);
+        Font font = resolvePfrAwtFont(fontName, fontStyleAwt, fontSize);
+        if (font == null) {
+            font = resolveDirectorFont(fontName, fontStyleAwt, fontSize);
+        }
 
         BufferedImage tmpImg = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g2d = tmpImg.createGraphics();
@@ -167,6 +179,36 @@ public class AwtTextRenderer implements TextRenderer {
 
         g2d.dispose();
         return new int[]{x, y};
+    }
+
+    // --- PFR TTF Font Resolution ---
+
+    /**
+     * Try to create an AWT Font from PFR1-derived TTF data.
+     * Returns null if no PFR font is registered for this name.
+     */
+    private static Font resolvePfrAwtFont(String fontName, int style, int size) {
+        if (fontName == null) return null;
+
+        String key = fontName.toLowerCase() + ":" + style;
+        Font cached = pfrAwtFontCache.get(key);
+        if (cached != null) {
+            return cached.deriveFont((float) size);
+        }
+
+        byte[] ttfBytes = FontRegistry.getTtfBytes(fontName);
+        if (ttfBytes == null) return null;
+
+        try {
+            Font baseFont = Font.createFont(Font.TRUETYPE_FONT, new ByteArrayInputStream(ttfBytes));
+            if (style != Font.PLAIN) {
+                baseFont = baseFont.deriveFont(style);
+            }
+            pfrAwtFontCache.put(key, baseFont);
+            return baseFont.deriveFont((float) size);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     // --- Font resolution (extracted from CastMember) ---

@@ -2,10 +2,8 @@ package com.libreshockwave.player.cast;
 
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.cast.MemberType;
-import com.libreshockwave.chunks.CastChunk;
-import com.libreshockwave.chunks.CastListChunk;
-import com.libreshockwave.chunks.CastMemberChunk;
-import com.libreshockwave.chunks.ScriptChunk;
+import com.libreshockwave.chunks.*;
+import com.libreshockwave.format.ChunkType;
 import com.libreshockwave.id.CastLibId;
 import com.libreshockwave.vm.Datum;
 
@@ -122,6 +120,7 @@ public class CastLib {
             if (!sourceFile.getCasts().isEmpty()) {
                 loadFromExternalFile();
             }
+            scanXmedFonts();
             state = State.LOADED;
             return;
         }
@@ -163,6 +162,7 @@ public class CastLib {
             }
         }
 
+        scanXmedFonts();
         state = State.LOADED;
     }
 
@@ -186,6 +186,37 @@ public class CastLib {
         }
 
         return 1;
+    }
+
+    /**
+     * Scan OLE members for XMED chunks containing PFR1 font data.
+     * Registers any found fonts with FontRegistry.
+     */
+    private void scanXmedFonts() {
+        if (sourceFile == null) return;
+        KeyTableChunk keyTable = sourceFile.getKeyTable();
+        if (keyTable == null) return;
+
+        int xmedFourcc = ChunkType.XMED.getFourCC();
+
+        for (CastMemberChunk member : sourceFile.getCastMembers()) {
+            var entry = keyTable.findEntry(member.id(), xmedFourcc);
+            if (entry == null) continue;
+
+            Chunk chunk = sourceFile.getChunk(entry.sectionId());
+            if (!(chunk instanceof RawChunk raw)) continue;
+
+            byte[] data = raw.data();
+            if (data == null || data.length < 4) continue;
+
+            // Check for PFR1 magic
+            if (data[0] == 'P' && data[1] == 'F' && data[2] == 'R' && data[3] == '1') {
+                String memberName = member.name();
+                if (memberName != null && !memberName.isEmpty()) {
+                    FontRegistry.registerPfr1Font(memberName, data);
+                }
+            }
+        }
     }
 
     /**

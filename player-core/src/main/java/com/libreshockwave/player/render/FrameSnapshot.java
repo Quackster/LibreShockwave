@@ -57,4 +57,25 @@ public record FrameSnapshot(
             renderer.hasStageImage() ? renderer.getStageImage() : null
         );
     }
+
+    /**
+     * Render this snapshot to a Bitmap using the specified renderer.
+     * <ul>
+     *   <li>{@link RenderType#AWT} — uses Java2D Graphics2D (desktop)</li>
+     *   <li>{@link RenderType#SOFTWARE} — uses pure int[] compositing (WASM-safe)</li>
+     * </ul>
+     */
+    public Bitmap renderFrame(RenderType type) {
+        return switch (type) {
+            case AWT -> AwtFrameRenderer.renderFrame(this, stageWidth, stageHeight);
+            case SOFTWARE -> SoftwareFrameRenderer.renderFrame(this, stageWidth, stageHeight);
+        };
+    }
+
+    /**
+     * Render this snapshot using the AWT renderer (convenience shorthand).
+     */
+    public Bitmap renderFrame() {
+        return renderFrame(RenderType.AWT);
+    }
 }

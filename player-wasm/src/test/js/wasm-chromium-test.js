@@ -223,16 +223,17 @@ async function main() {
             // Wait 100ms between polls (fast-loop runs much faster in-browser)
             await new Promise(r => setTimeout(r, 100));
 
-            // Read test state from page
+            // Read test state from page (including sprite count from player object)
             const state = await page.evaluate(() => {
                 var s = window._testState || {};
-                // Also read sprite count from last frame info
-                var el = document.getElementById('stage');
+                var sc = 0;
+                try { sc = window.player ? (window.player._lastSpriteCount || 0) : 0; } catch(e) {}
                 return {
                     tick: s.tick || 0,
                     frame: s.frame || 0,
                     error: s.error,
                     done: s.done,
+                    spriteCount: sc,
                 };
             });
 
@@ -242,17 +243,15 @@ async function main() {
 
             lastFrame = state.frame;
 
-            // Read sprite count from worker logs
-            const recentLogs = logs.slice(-20);
-            for (const log of recentLogs) {
-                const m = log.match(/sprites=(\d+)/);
-                if (m) {
-                    const sc = parseInt(m[1]);
-                    if (sc > maxSprites) {
-                        maxSprites = sc;
-                        console.log(`  [tick ~${state.tick}] sprites=${maxSprites} frame=${lastFrame}`);
-                    }
-                }
+            // Update max sprite count from player object
+            if (state.spriteCount > maxSprites) {
+                maxSprites = state.spriteCount;
+                console.log(`  [tick ~${state.tick}] sprites=${maxSprites} frame=${lastFrame}`);
+            }
+
+            // Log debug info periodically
+            if (i === 50 || i === 200) {
+                console.log(`  [debug tick=${state.tick}] spriteCount=${state.spriteCount} frame=${lastFrame} maxSprites=${maxSprites}`);
             }
 
             // Capture PNG periodically
@@ -276,11 +275,20 @@ async function main() {
                 console.log(`  Captured ${pngPath}`);
             }
 
-            // If hotel reached and we've done a few more ticks, we're done
-            if (hotelReached && i > 10) {
+            // If hotel reached, keep running to let more sprites appear (AWT gets 74 by tick 29)
+            if (hotelReached && i > 50) {
                 // Run a few more polls for additional captures
                 for (let j = 0; j < 3; j++) {
                     await new Promise(r => setTimeout(r, 2000));
+                    const sprState = await page.evaluate(() => {
+                        let sc = 0;
+                        try { sc = window.player ? (window.player._lastSpriteCount || 0) : 0; } catch(e) {}
+                        return sc;
+                    });
+                    if (sprState > maxSprites) {
+                        maxSprites = sprState;
+                        console.log(`  [final capture] sprites=${maxSprites}`);
+                    }
                     const pngPath = path.join(outputDir, `frame_final_${j}.png`);
                     await captureCanvas(page, pngPath);
                     captures++;

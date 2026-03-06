@@ -88,6 +88,20 @@ tasks.register('extractBitmap', JavaExec) {
     }
 }
 
+// Convert PFR1 fonts to TrueType (.ttf)
+// Usage: ./gradlew :sdk:runPfr1ToTtf [-Pfile=path/to/file.cct]
+tasks.register('runPfr1ToTtf', JavaExec) {
+    group = 'tools'
+    description = 'Convert PFR1 fonts from a Director file to .ttf'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.Pfr1ToTtfTest'
+    args = project.hasProperty('file') ? [project.property('file')] : []
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
 // GUI Tool to extract bitmaps and text from .cct cast files
 // Usage: ./gradlew :sdk:extractCasts
 tasks.register('extractCasts', JavaExec) {

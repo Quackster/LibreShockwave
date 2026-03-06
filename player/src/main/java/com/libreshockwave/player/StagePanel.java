@@ -1,9 +1,7 @@
 package com.libreshockwave.player;
 
-import com.libreshockwave.bitmap.Bitmap;
+import com.libreshockwave.player.render.AwtFrameRenderer;
 import com.libreshockwave.player.render.FrameSnapshot;
-import com.libreshockwave.player.render.RenderConfig;
-import com.libreshockwave.player.render.RenderSprite;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.image.BufferedImage;
@@ -76,14 +74,6 @@ public class StagePanel extends JPanel {
             return;
         }
 
-        if (RenderConfig.isAntialias()) {
-            g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-        } else {
-            g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
-            g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
-        }
-
         // Calculate centered position for the stage canvas
         int canvasX = (getWidth() - stageWidth) / 2;
         int canvasY = (getHeight() - stageHeight) / 2;
@@ -102,20 +92,8 @@ public class StagePanel extends JPanel {
         // Translate to canvas origin
         g2d.translate(canvasX, canvasY);
 
-        // Draw stage background (or stage image if scripts have drawn on it)
-        if (snapshot.stageImage() != null) {
-            // Stage image contains the background + any script drawing (loading bar, etc.)
-            BufferedImage stageImg = snapshot.stageImage().toBufferedImage();
-            g2d.drawImage(stageImg, 0, 0, null);
-        } else {
-            g2d.setColor(new Color(snapshot.backgroundColor()));
-            g2d.fillRect(0, 0, stageWidth, stageHeight);
-        }
-
-        // Draw all sprites on top of the stage image
-        for (RenderSprite sprite : snapshot.sprites()) {
-            drawSprite(g2d, sprite);
-        }
+        // Render frame using shared renderer
+        AwtFrameRenderer.renderFrame(g2d, snapshot, stageWidth, stageHeight);
 
         // Draw debug info
         drawDebugInfo(g2d, snapshot);
@@ -146,37 +124,6 @@ public class StagePanel extends JPanel {
         int textX = canvasX + (stageWidth - fm.stringWidth(msg)) / 2;
         int textY = canvasY + (stageHeight + fm.getAscent()) / 2;
         g.drawString(msg, textX, textY);
-    }
-
-    private void drawSprite(Graphics2D g, RenderSprite sprite) {
-        if (!sprite.isVisible()) {
-            return;
-        }
-
-        Bitmap baked = sprite.getBakedBitmap();
-        if (baked == null) {
-            return;
-        }
-
-        int x = sprite.getX();
-        int y = sprite.getY();
-
-        // Apply blend (opacity) if not 100%
-        Composite oldComposite = null;
-        int blend = sprite.getBlend();
-        if (blend >= 0 && blend < 100) {
-            oldComposite = g.getComposite();
-            g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, blend / 100f));
-        }
-
-        BufferedImage img = baked.toBufferedImage();
-        int w = sprite.getWidth() > 0 ? sprite.getWidth() : img.getWidth();
-        int h = sprite.getHeight() > 0 ? sprite.getHeight() : img.getHeight();
-        g.drawImage(img, x, y, w, h, null);
-
-        if (oldComposite != null) {
-            g.setComposite(oldComposite);
-        }
     }
 
     /**

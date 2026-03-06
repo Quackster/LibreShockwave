@@ -227,3 +227,14 @@ tasks.register('runLoginWindowTest', JavaExec) {
         languageVersion = JavaLanguageVersion.of(21)
     }
 }
+
+tasks.register('runRendererCompareTest', JavaExec) {
+    group = 'verification'
+    description = 'Pixel comparison: AwtFrameRenderer vs SoftwareFrameRenderer'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.RendererCompareTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}

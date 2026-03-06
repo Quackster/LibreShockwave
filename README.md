@@ -31,6 +31,7 @@ A Java library for parsing Macromedia/Adobe Director and Shockwave files (.dir, 
 - Text: Field (type 3) and Text (type 12) cast members via STXT chunks
 - Sound: PCM to WAV conversion, MP3 extraction, IMA ADPCM decoding
 - Palettes: Built-in Director palettes and custom CLUT chunks
+- Fonts: PFR1 (Portable Font Resource) extraction from XMED chunks, export to TrueType (.ttf)
 
 ### Writing
 - Save to uncompressed RIFX format
@@ -276,6 +277,41 @@ for (CastMemberChunk member : file.getCastMembers()) {
     }
 }
 ```
+
+</details>
+
+<details>
+<summary>Extracting fonts (PFR1 → TTF)</summary>
+
+Director files can embed fonts as PFR1 (Portable Font Resource) data inside XMED chunks attached to OLE-type cast members. LibreShockwave can parse these and convert them to standard TrueType (.ttf) files.
+
+```java
+import com.libreshockwave.font.Pfr1Font;
+import com.libreshockwave.font.Pfr1TtfConverter;
+
+// Find XMED chunks with PFR1 data
+KeyTableChunk keyTable = file.getKeyTable();
+int xmedFourcc = ChunkType.XMED.getFourCC();
+
+for (CastMemberChunk member : file.getCastMembers()) {
+    var entry = keyTable.findEntry(member.id(), xmedFourcc);
+    if (entry == null) continue;
+
+    Chunk chunk = file.getChunk(entry.sectionId());
+    if (!(chunk instanceof RawChunk raw)) continue;
+
+    byte[] data = raw.data();
+    if (data == null || data.length < 4) continue;
+    if (data[0] != 'P' || data[1] != 'F' || data[2] != 'R' || data[3] != '1') continue;
+
+    // Parse PFR1 and convert to TTF
+    Pfr1Font font = Pfr1Font.parse(data);
+    byte[] ttfBytes = Pfr1TtfConverter.convert(font, font.fontName);
+    Files.write(Path.of(member.name() + ".ttf"), ttfBytes);
+}
+```
+
+The player automatically detects PFR1 fonts when cast libraries load, converts them to TTF in memory, and registers them for pixel-perfect text rendering.
 
 </details>
 
@@ -625,6 +661,8 @@ Affected keywords include `char`, `int`, `void`, `class`, `new`, `return`, and a
 | `BitmapExtractTest` | Bitmap extraction by name from Director files |
 | `ScriptTypeTest` | Script type identification and classification |
 | `SoundExtractionTest` | Sound extraction (PCM → WAV, MP3) |
+| `Pfr1ToTtfTest` | PFR1 font → TTF conversion + pixel comparison against reference |
+| `Pfr1ParseTest` | PFR1 binary format parser diagnostics |
 
 ```bash
 # Run SDK integration tests (JavaExec, not JUnit)
@@ -671,6 +709,7 @@ Affected keywords include `char`, `int`, `void`, `class`, `new`, `return`, and a
 - `com.libreshockwave.io` - Binary readers/writers
 - `com.libreshockwave.format` - File format utilities (Afterburner, chunk types)
 - `com.libreshockwave.cast` - Cast member type definitions
+- `com.libreshockwave.font` - PFR1 font parser, TTF converter, bitmap font rasterizer
 
 </details>
 

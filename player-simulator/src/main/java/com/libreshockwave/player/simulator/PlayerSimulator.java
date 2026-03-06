@@ -1,16 +1,11 @@
 package com.libreshockwave.player.simulator;
 
 import com.libreshockwave.DirectorFile;
-import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.player.Player;
 import com.libreshockwave.player.render.FrameSnapshot;
-import com.libreshockwave.player.render.RenderSprite;
 
 import javax.imageio.ImageIO;
-import java.awt.*;
-import java.awt.image.BufferedImage;
 import java.io.File;
-import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Map;
 
@@ -58,11 +53,10 @@ public class PlayerSimulator {
         while (player.tick()) {
             if (frameIndex % ticksPerCapture == 0) {
                 FrameSnapshot snap = player.getFrameSnapshot();
-                BufferedImage image = renderFrame(snap, stageW, stageH);
 
                 int second = frameIndex / ticksPerCapture;
                 String filename = String.format("%s/frame_%04d.png", outputDir, second);
-                ImageIO.write(image, "png", new File(filename));
+                ImageIO.write(snap.renderFrame().toBufferedImage(), "png", new File(filename));
                 System.out.println("Saved " + filename +
                         " (frame " + snap.frameNumber() + ", " + snap.sprites().size() + " sprites)");
             }
@@ -73,40 +67,5 @@ public class PlayerSimulator {
 
         player.shutdown();
         System.out.println("Done. Saved " + (frameIndex / ticksPerCapture) + " frames.");
-    }
-
-    private static BufferedImage renderFrame(FrameSnapshot snap, int stageW, int stageH) {
-        BufferedImage image = new BufferedImage(stageW, stageH, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g = image.createGraphics();
-
-        // Fill background
-        int bg = snap.backgroundColor();
-        g.setColor(new Color(bg));
-        g.fillRect(0, 0, stageW, stageH);
-
-        // Draw stage image if present (e.g. direct pixel drawing from Lingo)
-        if (snap.stageImage() != null) {
-            g.drawImage(snap.stageImage().toBufferedImage(), 0, 0, null);
-        }
-
-        // Draw sprites in order (already sorted by z-order)
-        for (RenderSprite sprite : snap.sprites()) {
-            if (!sprite.isVisible()) continue;
-
-            Bitmap bmp = sprite.getBakedBitmap();
-            if (bmp == null) continue;
-
-            int blend = sprite.getBlend();
-            if (blend < 100) {
-                g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, blend / 100f));
-            } else {
-                g.setComposite(AlphaComposite.SrcOver);
-            }
-
-            g.drawImage(bmp.toBufferedImage(), sprite.getX(), sprite.getY(), null);
-        }
-
-        g.dispose();
-        return image;
     }
 }
