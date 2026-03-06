@@ -25,15 +25,11 @@ public class SimpleTextRenderer implements TextRenderer {
         if (width <= 0) width = 200;
         if (height <= 0) height = 20;
 
-        // Check for PFR bitmap font — resolve bold/italic variants
-        String style = fontStyle != null ? fontStyle.toLowerCase() : "";
-        boolean wantBold = style.contains("bold");
-        BitmapFont[] resolved = {null};
-        boolean foundBoldVariant = resolveBitmapFont(fontName, fontSize, fontStyle, resolved);
-        BitmapFont pfrFont = resolved[0];
+        // Check for PFR bitmap font
+        BitmapFont pfrFont = resolveBitmapFont(fontName, fontSize);
         if (pfrFont != null) {
-            // Synthetic bold only when bold requested but no dedicated bold font variant exists
-            boolean syntheticBold = wantBold && !foundBoldVariant;
+            String style = fontStyle != null ? fontStyle.toLowerCase() : "";
+            boolean syntheticBold = style.contains("bold");
             return renderWithBitmapFont(pfrFont, text, width, height,
                     alignment, textColor, bgColor, wordWrap,
                     fixedLineSpace, topSpacing, syntheticBold);
@@ -49,10 +45,8 @@ public class SimpleTextRenderer implements TextRenderer {
     public int[] charPosToLoc(String text, int charIndex,
                               String fontName, int fontSize, String fontStyle,
                               int fixedLineSpace) {
-        // Check PFR bitmap font first — resolve bold/italic variants
-        BitmapFont[] resolved = {null};
-        resolveBitmapFont(fontName, fontSize, fontStyle, resolved);
-        BitmapFont pfrFont = resolved[0];
+        // Check PFR bitmap font first
+        BitmapFont pfrFont = resolveBitmapFont(fontName, fontSize);
         if (pfrFont != null) {
             int lineHeight = fixedLineSpace > 0 ? fixedLineSpace : pfrFont.getLineHeight();
             if (text == null || text.isEmpty() || charIndex <= 0) {
@@ -104,62 +98,36 @@ public class SimpleTextRenderer implements TextRenderer {
     }
 
     /**
-     * Resolve a BitmapFont, applying bold/italic style variants.
-     * In Director, bold variants use suffix "b" (e.g. "v" → "vb"),
-     * italic uses "i", bold-italic uses "bi".
-     * When fontStyle requests bold/italic, try suffixed names FIRST
-     * to prefer dedicated bold/italic font variants over the base font.
+     * Resolve a BitmapFont using multi-strategy lookup.
+     * 1. Exact font name
+     * 2. Canonical/fuzzy match via FontRegistry.resolveFont()
+     * 3. Last resort: first registered PFR font with fontSize - 1
      *
-     * @param out single-element array to receive the resolved BitmapFont (or null)
-     * @return true if a dedicated bold/italic variant font was found
+     * @return the resolved BitmapFont, or null if no PFR fonts are registered
      */
-    private static boolean resolveBitmapFont(String fontName, int fontSize, String fontStyle, BitmapFont[] out) {
-        if (fontName == null) { out[0] = null; return false; }
-        String style = fontStyle != null ? fontStyle.toLowerCase() : "";
-        boolean wantBold = style.contains("bold");
-        boolean wantItalic = style.contains("italic");
+    private static BitmapFont resolveBitmapFont(String fontName, int fontSize) {
+        if (fontName == null) return null;
 
-        // When style is requested, try suffixed names FIRST
-        if (wantBold && wantItalic) {
-            BitmapFont font = FontRegistry.getBitmapFont(fontName + "bi", fontSize);
-            if (font != null) { out[0] = font; return true; }
-        }
-        if (wantBold) {
-            BitmapFont font = FontRegistry.getBitmapFont(fontName + "b", fontSize);
-            if (font != null) { out[0] = font; return true; }
-        }
-        if (wantItalic) {
-            BitmapFont font = FontRegistry.getBitmapFont(fontName + "i", fontSize);
-            if (font != null) { out[0] = font; return true; }
-        }
-
-        // Try exact font name
+        // 1. Try exact font name
         BitmapFont exact = FontRegistry.getBitmapFont(fontName, fontSize);
-        if (exact != null) { out[0] = exact; return false; }
+        if (exact != null) return exact;
 
-        // Font not found as PFR — fall back to default PFR font with style variant.
-        // Window layouts may hardcode system font names (e.g. "Verdana" size 10) that aren't
-        // available in WASM. Use the default registered PFR font instead.
-        // Reduce size by 1 because system fonts (Verdana 10) are visually larger than
-        // pixel fonts (Volter 9) at the same nominal size.
-        String fallback = FontRegistry.getDefaultFontName();
+        // 2. Try canonical/fuzzy match
+        String resolved = FontRegistry.resolveFont(fontName);
+        if (resolved != null) {
+            BitmapFont font = FontRegistry.getBitmapFont(resolved, fontSize);
+            if (font != null) return font;
+        }
+
+        // 3. Last resort: first registered font with size - 1
+        // (system fonts are visually larger than pixel fonts at the same nominal size)
+        String fallback = FontRegistry.getFirstRegisteredFont();
         if (fallback != null) {
             int fbSize = fontSize > 1 ? fontSize - 1 : fontSize;
-            if (wantBold && wantItalic) {
-                BitmapFont font = FontRegistry.getBitmapFont(fallback + "bi", fbSize);
-                if (font != null) { out[0] = font; return true; }
-            }
-            if (wantBold) {
-                BitmapFont font = FontRegistry.getBitmapFont(fallback + "b", fbSize);
-                if (font != null) { out[0] = font; return true; }
-            }
-            if (wantItalic) {
-                BitmapFont font = FontRegistry.getBitmapFont(fallback + "i", fbSize);
-                if (font != null) { out[0] = font; return true; }
-            }
-            out[0] = FontRegistry.getBitmapFont(fallback, fbSize);
+            return FontRegistry.getBitmapFont(fallback, fbSize);
         }
-        return false;
+
+        return null;
     }
 
     private Bitmap renderWithBitmapFont(BitmapFont font, String text, int width, int height,

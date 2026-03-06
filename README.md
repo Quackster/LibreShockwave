@@ -71,26 +71,22 @@ import com.libreshockwave.DirectorFile;
 import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.player.Player;
 import com.libreshockwave.player.render.FrameSnapshot;
-import com.libreshockwave.player.render.AwtFrameRenderer;
 
 DirectorFile file = DirectorFile.load(Path.of("movie.dcr"));
 Player player = new Player(file);
 player.play();
 
-int w = file.getStageWidth();
-int h = file.getStageHeight();
-
 // Game loop
 while (player.tick()) {
     FrameSnapshot snap = player.getFrameSnapshot();
-    Bitmap frame = AwtFrameRenderer.renderFrame(snap, w, h);
-    BufferedImage image = frame.toBufferedImage();  // ready to draw or save
+    Bitmap frame = snap.renderFrame();              // composites all sprites with ink effects
+    BufferedImage image = frame.toBufferedImage();   // ready to draw or save
 }
 
 player.shutdown();
 ```
 
-Each call to `tick()` advances one frame and returns `true` while the movie is still playing. `AwtFrameRenderer` composites all sprites (bitmap, text, shape) with ink effects into a single image. For environments without AWT (e.g. WASM), use `SoftwareFrameRenderer` instead — same API, pure int[] compositing.
+Each call to `tick()` advances one frame and returns `true` while the movie is still playing. `renderFrame()` composites all sprites (bitmap, text, shape) with ink effects into a single image using pure software rendering — no AWT dependency required.
 
 <details>
 <summary>Custom networking</summary>

@@ -197,7 +197,14 @@ public class AwtTextRenderer implements TextRenderer {
         }
 
         byte[] ttfBytes = FontRegistry.getTtfBytes(fontName);
-        if (ttfBytes == null) return null;
+        if (ttfBytes == null) {
+            // Try canonical/fuzzy match
+            String resolved = FontRegistry.resolveFont(fontName);
+            if (resolved != null) {
+                ttfBytes = FontRegistry.getTtfBytes(resolved);
+            }
+            if (ttfBytes == null) return null;
+        }
 
         try {
             Font baseFont = Font.createFont(Font.TRUETYPE_FONT, new ByteArrayInputStream(ttfBytes));
