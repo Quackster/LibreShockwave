@@ -24,8 +24,11 @@ public class FontRegistry {
     /** Cache: "fontName:size" -> rasterized BitmapFont (for SimpleTextRenderer) */
     private static final ConcurrentHashMap<String, BitmapFont> rasterizedCache = new ConcurrentHashMap<>();
 
-    /** Shortest registered font name — used as default fallback for system fonts */
-    private static volatile String defaultFontName;
+    /** First registered PFR font name — used as last-resort fallback */
+    private static volatile String firstRegisteredFont;
+
+    /** Canonical font name -> member key (lowercase) for fuzzy matching */
+    private static final ConcurrentHashMap<String, String> canonicalIndex = new ConcurrentHashMap<>();
 
     /**
      * Register a PFR1 font parsed from XMED chunk data.
@@ -41,10 +44,15 @@ public class FontRegistry {
         String key = memberName.toLowerCase();
         parsedFonts.put(key, font);
 
-        // Track shortest name as default fallback
-        String cur = defaultFontName;
-        if (cur == null || key.length() < cur.length()) {
-            defaultFontName = key;
+        // Track first registered font as last-resort fallback
+        if (firstRegisteredFont == null) {
+            firstRegisteredFont = key;
+        }
+
+        // Index canonical names for fuzzy matching
+        canonicalIndex.put(canonicalFontName(memberName), key);
+        if (!font.fontName.isEmpty()) {
+            canonicalIndex.put(canonicalFontName(font.fontName), key);
         }
 
         // Convert to TTF bytes for AWT rendering
@@ -111,11 +119,54 @@ public class FontRegistry {
     }
 
     /**
-     * Get the default (shortest-named) registered PFR font name.
-     * Used as fallback when a requested system font (e.g. "Verdana") isn't available as PFR.
+     * Get the first registered PFR font name.
+     * Used as last-resort fallback when no matching font is found.
      */
-    public static String getDefaultFontName() {
-        return defaultFontName;
+    public static String getFirstRegisteredFont() {
+        return firstRegisteredFont;
+    }
+
+    /**
+     * Normalize a font name to a canonical form for fuzzy matching.
+     * Lowercases, replaces _ and * with space, strips trailing digit-only segments.
+     * e.g. "Volter_400_0" → "volter", "Arial*Bold" → "arial bold"
+     */
+    static String canonicalFontName(String name) {
+        if (name == null || name.isEmpty()) return "";
+        String s = name.toLowerCase().replace('_', ' ').replace('*', ' ').trim();
+        // Strip trailing digit-only segments (e.g. "volter 400 0" → "volter")
+        s = s.replaceAll("(\\s+\\d+)+$", "");
+        return s.trim();
+    }
+
+    /**
+     * Multi-strategy font resolution:
+     * 1. Exact match (case-insensitive) in parsedFonts
+     * 2. Canonical match via canonicalIndex
+     * 3. Prefix match for short names (length ≤ 3)
+     * Returns the matched font key (lowercase), or null if no match.
+     */
+    public static String resolveFont(String fontName) {
+        if (fontName == null || fontName.isEmpty()) return null;
+
+        String key = fontName.toLowerCase();
+
+        // 1. Exact match
+        if (parsedFonts.containsKey(key)) return key;
+
+        // 2. Canonical match
+        String canonical = canonicalFontName(fontName);
+        String mapped = canonicalIndex.get(canonical);
+        if (mapped != null) return mapped;
+
+        // 3. Prefix match for short names
+        if (key.length() <= 3) {
+            for (var entry : parsedFonts.entrySet()) {
+                if (entry.getKey().startsWith(key)) return entry.getKey();
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -133,6 +184,7 @@ public class FontRegistry {
         parsedFonts.clear();
         ttfCache.clear();
         rasterizedCache.clear();
-        defaultFontName = null;
+        canonicalIndex.clear();
+        firstRegisteredFont = null;
     }
 }
