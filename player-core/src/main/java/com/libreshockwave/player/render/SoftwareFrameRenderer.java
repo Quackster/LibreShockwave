@@ -1,6 +1,7 @@
 package com.libreshockwave.player.render;
 
 import com.libreshockwave.bitmap.Bitmap;
+import com.libreshockwave.id.InkMode;
 
 /**
  * Pure-Java software renderer that composites a FrameSnapshot into an ARGB int[] buffer.
@@ -53,15 +54,16 @@ public final class SoftwareFrameRenderer {
             int sw = sprite.getWidth() > 0 ? sprite.getWidth() : baked.getWidth();
             int sh = sprite.getHeight() > 0 ? sprite.getHeight() : baked.getHeight();
             int blend = sprite.getBlend();
+            InkMode ink = sprite.getInkMode();
 
             if (sw == baked.getWidth() && sh == baked.getHeight()) {
                 blitBitmap(argb, stageWidth, stageHeight,
                         baked.getPixels(), baked.getWidth(), baked.getHeight(),
-                        sx, sy, blend);
+                        sx, sy, blend, ink);
             } else {
                 blitBitmapScaled(argb, stageWidth, stageHeight,
                         baked.getPixels(), baked.getWidth(), baked.getHeight(),
-                        sx, sy, sw, sh, blend);
+                        sx, sy, sw, sh, blend, ink);
             }
         }
 
@@ -74,7 +76,7 @@ public final class SoftwareFrameRenderer {
 
     static void blitBitmap(int[] argb, int stageWidth, int stageHeight,
                            int[] srcPixels, int srcW, int srcH,
-                           int dstX, int dstY, int blend) {
+                           int dstX, int dstY, int blend, InkMode ink) {
         if (srcPixels == null || srcW <= 0 || srcH <= 0) return;
         if (srcPixels.length < srcW * srcH) return;
 
@@ -85,6 +87,7 @@ public final class SoftwareFrameRenderer {
         if (sx0 >= sx1 || sy0 >= sy1) return;
 
         int argbLen = argb.length;
+        boolean useSpecialInk = isSpecialCompositingInk(ink);
 
         for (int sy = sy0; sy < sy1; sy++) {
             for (int sx = sx0; sx < sx1; sx++) {
@@ -101,7 +104,9 @@ public final class SoftwareFrameRenderer {
                 int dstIdx = (dstY + sy) * stageWidth + (dstX + sx);
                 if (dstIdx < 0 || dstIdx >= argbLen) continue;
 
-                if (srcA >= 255) {
+                if (useSpecialInk) {
+                    compositeSpecialInk(argb, dstIdx, src, srcA, ink);
+                } else if (srcA >= 255) {
                     argb[dstIdx] = src | 0xFF000000;
                 } else {
                     alphaComposite(argb, dstIdx, src, srcA);
@@ -116,7 +121,7 @@ public final class SoftwareFrameRenderer {
 
     static void blitBitmapScaled(int[] argb, int stageWidth, int stageHeight,
                                  int[] srcPixels, int srcW, int srcH,
-                                 int dstX, int dstY, int dstW, int dstH, int blend) {
+                                 int dstX, int dstY, int dstW, int dstH, int blend, InkMode ink) {
         if (srcPixels == null || srcW <= 0 || srcH <= 0 || dstW <= 0 || dstH <= 0) return;
         if (srcPixels.length < srcW * srcH) return;
 
@@ -128,6 +133,7 @@ public final class SoftwareFrameRenderer {
 
         int srcLen = srcPixels.length;
         int argbLen = argb.length;
+        boolean useSpecialInk = isSpecialCompositingInk(ink);
 
         for (int dy = dy0; dy < dy1; dy++) {
             int srcY = ((dy - dstY) * srcH) / dstH;
@@ -152,7 +158,9 @@ public final class SoftwareFrameRenderer {
                 int dstIdx = dy * stageWidth + dx;
                 if (dstIdx < 0 || dstIdx >= argbLen) continue;
 
-                if (srcA >= 255) {
+                if (useSpecialInk) {
+                    compositeSpecialInk(argb, dstIdx, src, srcA, ink);
+                } else if (srcA >= 255) {
                     argb[dstIdx] = src | 0xFF000000;
                 } else {
                     alphaComposite(argb, dstIdx, src, srcA);
@@ -164,6 +172,76 @@ public final class SoftwareFrameRenderer {
     // ========================================================================
     // Alpha composite helper
     // ========================================================================
+
+    /**
+     * Returns true for ink modes that need special compositing (not standard alpha blend).
+     */
+    private static boolean isSpecialCompositingInk(InkMode ink) {
+        return ink == InkMode.ADD_PIN || ink == InkMode.ADD
+            || ink == InkMode.SUBTRACT_PIN || ink == InkMode.SUBTRACT
+            || ink == InkMode.LIGHTEST || ink == InkMode.DARKEST
+            || ink == InkMode.LIGHTEN || ink == InkMode.DARKEN;
+    }
+
+    /**
+     * Composite a source pixel onto the destination using a special ink mode.
+     * The srcA parameter controls how much of the effect is applied (blend).
+     */
+    private static void compositeSpecialInk(int[] argb, int dstIdx, int src, int srcA, InkMode ink) {
+        if (dstIdx < 0 || dstIdx >= argb.length) return;
+        int dst = argb[dstIdx];
+
+        int srcR = (src >> 16) & 0xFF;
+        int srcG = (src >> 8) & 0xFF;
+        int srcB = src & 0xFF;
+        int dstR = (dst >> 16) & 0xFF;
+        int dstG = (dst >> 8) & 0xFF;
+        int dstB = dst & 0xFF;
+
+        int outR, outG, outB;
+
+        switch (ink) {
+            case ADD_PIN, ADD -> {
+                // Additive: dst + src, clamped to 255
+                outR = Math.min(255, dstR + srcR);
+                outG = Math.min(255, dstG + srcG);
+                outB = Math.min(255, dstB + srcB);
+            }
+            case SUBTRACT_PIN, SUBTRACT -> {
+                // Subtractive: dst - src, clamped to 0
+                outR = Math.max(0, dstR - srcR);
+                outG = Math.max(0, dstG - srcG);
+                outB = Math.max(0, dstB - srcB);
+            }
+            case DARKEN, DARKEST -> {
+                // Darken: min of src and dst per channel
+                outR = Math.min(dstR, srcR);
+                outG = Math.min(dstG, srcG);
+                outB = Math.min(dstB, srcB);
+            }
+            case LIGHTEN, LIGHTEST -> {
+                // Lighten: max of src and dst per channel
+                outR = Math.max(dstR, srcR);
+                outG = Math.max(dstG, srcG);
+                outB = Math.max(dstB, srcB);
+            }
+            default -> {
+                // Fallback to normal alpha composite
+                alphaComposite(argb, dstIdx, src, srcA);
+                return;
+            }
+        }
+
+        // Apply blend (srcA) as interpolation between dst and result
+        if (srcA < 255) {
+            int invA = 255 - srcA;
+            outR = (outR * srcA + dstR * invA) / 255;
+            outG = (outG * srcA + dstG * invA) / 255;
+            outB = (outB * srcA + dstB * invA) / 255;
+        }
+
+        argb[dstIdx] = 0xFF000000 | (outR << 16) | (outG << 8) | outB;
+    }
 
     private static void alphaComposite(int[] argb, int dstIdx, int src, int srcA) {
         if (dstIdx < 0 || dstIdx >= argb.length) return;

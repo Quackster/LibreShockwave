@@ -212,11 +212,15 @@ public class StageRenderer {
         int width = pos[3];
         int height = pos[4];
 
-        // Look up the cast member - try original DCR first, then external casts
-        CastMemberChunk member = file != null
-            ? file.getCastMemberByIndex(castLib, castMember) : null;
-        if (member == null && castLibManager != null) {
+        // Look up the cast member — try CastLibManager first for dynamic sprites,
+        // since the castLib/castMember values are runtime numbers from the VM
+        // (which may differ from the DCR file's internal cast numbering).
+        CastMemberChunk member = null;
+        if (castLibManager != null) {
             member = castLibManager.getCastMember(castLib, castMember);
+        }
+        if (member == null && file != null) {
+            member = file.getCastMemberByIndex(castLib, castMember);
         }
 
         // If still not found, check dynamic members (created at runtime by window system, etc.)

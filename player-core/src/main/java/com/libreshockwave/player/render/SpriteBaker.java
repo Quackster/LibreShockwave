@@ -1,6 +1,7 @@
 package com.libreshockwave.player.render;
 
 import com.libreshockwave.bitmap.Bitmap;
+import com.libreshockwave.cast.MemberType;
 import com.libreshockwave.chunks.CastMemberChunk;
 import com.libreshockwave.player.Player;
 import com.libreshockwave.player.cast.CastLibManager;
@@ -45,7 +46,7 @@ public class SpriteBaker {
             case BITMAP -> bakeBitmap(sprite);
             case TEXT, BUTTON -> bakeText(sprite);
             case SHAPE -> bakeShape(sprite);
-            default -> null;
+            default -> bakeFlashFallback(sprite);
         };
 
         // Apply Director's sprite-level foreColor/backColor colorization.
@@ -106,6 +107,31 @@ public class SpriteBaker {
         }
 
         return textImage;
+    }
+
+    /**
+     * Fallback for Flash/SWF members: render as solid foreColor fill.
+     * Since we can't parse SWF content, we render the member's foreColor as a solid fill.
+     * This provides:
+     * - Sky background fills (skyleft_shape with teal foreColor)
+     * - Dark overlay bars (box with black foreColor)
+     * - Animation covers that slide offscreen (entry_shape)
+     */
+    private Bitmap bakeFlashFallback(RenderSprite sprite) {
+        CastMemberChunk member = sprite.getCastMember();
+        if (member == null || member.memberType() != MemberType.FLASH) {
+            return null;
+        }
+        int fc = sprite.getForeColor() & 0xFFFFFF;
+        int w = sprite.getWidth() > 0 ? sprite.getWidth() : 1;
+        int h = sprite.getHeight() > 0 ? sprite.getHeight() : 1;
+        Bitmap shape = new Bitmap(w, h, 32);
+        int argb = 0xFF000000 | fc;
+        int[] pixels = shape.getPixels();
+        for (int i = 0; i < pixels.length; i++) {
+            pixels[i] = argb;
+        }
+        return shape;
     }
 
     /**

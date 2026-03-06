@@ -102,10 +102,14 @@ public class LoadingBarDiagnosticTest {
                     } else if (s.getCastMember() != null) {
                         bmpInfo = "castMember=" + s.getCastMember().id();
                     }
-                    System.out.printf("    ch=%d member=%s type=%s pos=(%d,%d) %dx%d ink=%d blend=%d [%s]%n",
+                    String colorInfo = "";
+                    if (s.getType() == RenderSprite.SpriteType.UNKNOWN) {
+                        colorInfo = String.format(" fg=0x%06X bg=0x%06X", s.getForeColor(), s.getBackColor());
+                    }
+                    System.out.printf("    ch=%d member=%s type=%s pos=(%d,%d) %dx%d ink=%d blend=%d [%s]%s%n",
                             s.getChannel(), s.getMemberName(), s.getType(),
                             s.getX(), s.getY(), s.getWidth(), s.getHeight(),
-                            s.getInk(), s.getBlend(), bmpInfo);
+                            s.getInk(), s.getBlend(), bmpInfo, colorInfo);
                 }
             }
 

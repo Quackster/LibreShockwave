@@ -250,3 +250,25 @@ tasks.register('runRendererCompareTest', JavaExec) {
         languageVersion = JavaLanguageVersion.of(21)
     }
 }
+
+tasks.register('runHotelViewDiagnosticTest', JavaExec) {
+    group = 'verification'
+    description = 'Hotel view rendering diagnostic'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.HotelViewDiagnosticTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+tasks.register('runCastMemberDump', JavaExec) {
+    group = 'verification'
+    description = 'Dump cast members from a Director file'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.CastMemberDump'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}

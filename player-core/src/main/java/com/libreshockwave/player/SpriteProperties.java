@@ -192,6 +192,13 @@ public class SpriteProperties implements SpritePropertyProvider {
                 if (value instanceof Datum.CastMemberRef cmr) {
                     sprite.setDynamicMember(cmr.castLibNum(), cmr.memberNum());
                     autoSizeSprite(sprite, cmr.castLibNum(), cmr.memberNum());
+                } else if (value.isString() && castLibManager != null) {
+                    // Director resolves string member names: sprite.member = "name"
+                    Datum ref = castLibManager.getMemberByName(0, value.toStr());
+                    if (ref instanceof Datum.CastMemberRef cmr) {
+                        sprite.setDynamicMember(cmr.castLibNum(), cmr.memberNum());
+                        autoSizeSprite(sprite, cmr.castLibNum(), cmr.memberNum());
+                    }
                 } else {
                     sprite.setDynamicMember(0, value.toInt());
                     autoSizeSprite(sprite, 0, value.toInt());
