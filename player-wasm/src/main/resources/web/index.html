@@ -81,10 +81,20 @@
 
     <script src="libreshockwave.js"></script>
     <script>
-        // Create the player
+        // Default Habbo params
+        var habboParams = {
+            sw1: 'site.url=http://www.habbo.co.uk;url.prefix=http://www.habbo.co.uk',
+            sw2: 'connection.info.host=localhost;connection.info.port=30001',
+            sw3: 'client.reload.url=https://sandbox.h4bbo.net/',
+            sw4: 'connection.mus.host=localhost;connection.mus.port=38101',
+            sw5: 'external.variables.txt=https://sandbox.h4bbo.net/gamedata/external_variables.txt;external.texts.txt=https://sandbox.h4bbo.net/gamedata/external_texts.txt'
+        };
+
+        // Create the player with Habbo params pre-set
         var player = LibreShockwave.create("stage", {
             autoplay: true,
             remember: true,
+            params: habboParams,
             onLoad: function(info) {
                 status.textContent = 'Loaded (' + info.width + 'x' + info.height + ', ' + info.frameCount + ' frames)';
                 enableControls();
@@ -114,20 +124,35 @@
                 .forEach(function(id) { document.getElementById(id).disabled = false; });
         }
 
+        function disableControls() {
+            ['play-btn','pause-btn','stop-btn','step-fwd-btn','step-back-btn','frame-slider']
+                .forEach(function(id) { document.getElementById(id).disabled = true; });
+            frameSlider.value = 1;
+            frameSlider.max = 1;
+            frameInfo.textContent = '';
+        }
+
         // File picker
         document.getElementById('file-picker').addEventListener('change', function(e) {
             if (e.target.files[0]) {
                 status.textContent = 'Loading ' + e.target.files[0].name + '...';
-                player.loadFile(e.target.files[0]);
+                disableControls();
+                player.reset().then(function() {
+                    player.loadFile(e.target.files[0]);
+                });
             }
         });
 
-        // URL load
+        // URL load — full reset (terminate worker, fresh WASM instance)
         function loadUrl() {
             var url = urlInput.value.trim();
             if (!url) return;
-            status.textContent = 'Fetching...';
-            player.load(url);
+            status.textContent = 'Resetting...';
+            disableControls();
+            player.reset().then(function() {
+                status.textContent = 'Fetching...';
+                player.load(url);
+            });
         }
         document.getElementById('load-url-btn').addEventListener('click', loadUrl);
         urlInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') loadUrl(); });
@@ -203,6 +228,13 @@
             else if (e.key === 'ArrowRight' && !e.ctrlKey) { e.preventDefault(); player.stepForward(); }
             else if (e.key === 'ArrowLeft' && !e.ctrlKey) { e.preventDefault(); player.stepBackward(); }
         });
+
+        // Auto-load the URL on page open
+        var autoUrl = urlInput.value.trim();
+        if (autoUrl) {
+            status.textContent = 'Fetching...';
+            player.load(autoUrl);
+        }
     </script>
 </body>
 </html>

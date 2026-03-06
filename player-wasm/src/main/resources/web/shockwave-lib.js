@@ -215,6 +215,11 @@ var LibreShockwave = (function() {
             case 'ready':
                 console.log('[LS] Worker ready');
                 this._workerReady = true;
+                if (this._resetResolve) {
+                    var resolve = this._resetResolve;
+                    this._resetResolve = null;
+                    resolve();
+                }
                 if (this._pendingUrl)  { this.load(this._pendingUrl);  this._pendingUrl  = null; }
                 if (this._pendingFile) { this.loadFile(this._pendingFile); this._pendingFile = null; }
                 break;
@@ -490,6 +495,35 @@ var LibreShockwave = (function() {
 
     ShockwavePlayer.prototype.setParams = function(obj) {
         for (var k in obj) this.setParam(k, obj[k]);
+    };
+
+    /**
+     * Fully reset the player: terminate the worker, clear all state,
+     * and spin up a fresh WASM instance. Returns a Promise that resolves
+     * when the new worker is ready to accept loadMovie.
+     */
+    ShockwavePlayer.prototype.reset = function() {
+        var self = this;
+        this._stopLoop();
+        this._playing = false;
+        this._pending = null;
+        this._pendingUrl = null;
+        this._pendingFile = null;
+        this._relayCache = {};
+        this._lastSpriteCount = 0;
+        this._lastFrame = 0;
+        this._lastFrameCount = 0;
+        ++this._loadSeq; // Invalidate any in-flight loads
+        if (this._worker) { this._worker.terminate(); this._worker = null; }
+        this._workerReady = false;
+
+        // Clear the canvas
+        this._ctx.clearRect(0, 0, this._canvas.width, this._canvas.height);
+
+        return new Promise(function(resolve) {
+            self._resetResolve = resolve;
+            self._initWorker();
+        });
     };
 
     ShockwavePlayer.prototype.destroy = function() {
