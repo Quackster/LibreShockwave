@@ -27,11 +27,9 @@ teavm {
         mainClass = 'com.libreshockwave.player.wasm.WasmEntry'
         // Generate debug info for development
         debugInformation = true
-        // Default is 16 MB — far too small for text parsing + bitmap compositing.
-        // Text processing creates a 4497-entry PropList + thousands of temp strings;
-        // after dump() the heap needs headroom for cast loading + bitmap decoding.
-        // 64MB initial, 128MB max (WASM pages: 1024 × 64KB, 2048 × 64KB).
-        minHeapSize = 1024
+        // 32MB initial, 128MB max (WASM pages: 512 × 64KB, 2048 × 64KB).
+        // Reduced from 64MB to help mobile devices; memory.grow handles expansion on demand.
+        minHeapSize = 512
         maxHeapSize = 2048
     }
 
@@ -61,7 +59,44 @@ tasks.register('assembleWasm', Sync) {
 }
 
 tasks.matching { it.name == 'generateWasm' }.configureEach {
+    finalizedBy 'patchWasmRuntime'
+}
+
+// ---------------------------------------------------------------------------
+// Patch TeaVM runtime: add instantiateStreaming fallback for servers that
+// don't set Content-Type: application/wasm (causes failure on some mobile browsers).
+// ---------------------------------------------------------------------------
+tasks.register('patchWasmRuntime') {
+    group       = 'build'
+    description = 'Patch player-wasm.wasm-runtime.js with instantiateStreaming fallback'
+    dependsOn 'generateWasm'
     finalizedBy 'assembleWasm'
+
+    def runtimeFile = layout.buildDirectory.file('generated/teavm/wasm/player-wasm.wasm-runtime.js')
+
+    doLast {
+        def f = runtimeFile.get().asFile
+        if (!f.exists()) {
+            logger.warn('WASM runtime JS not found, skipping patch')
+            return
+        }
+        def text = f.text
+        // Match the pattern: WebAssembly.instantiateStreaming(fetch(...), imports)
+        // and wrap it with a .catch() fallback to arrayBuffer instantiation
+        if (text.contains('instantiateStreaming') && !text.contains('__ls_patched')) {
+            text = text.replace(
+                'WebAssembly.instantiateStreaming(fetch(path), importObj)',
+                'WebAssembly.instantiateStreaming(fetch(path), importObj)' +
+                '.catch(function(){/* __ls_patched */ return fetch(path)' +
+                '.then(function(r){return r.arrayBuffer()})' +
+                '.then(function(buf){return WebAssembly.instantiate(buf, importObj)})})'
+            )
+            f.text = text
+            logger.lifecycle('Patched player-wasm.wasm-runtime.js with instantiateStreaming fallback')
+        } else {
+            logger.lifecycle('WASM runtime already patched or pattern not found, skipping')
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

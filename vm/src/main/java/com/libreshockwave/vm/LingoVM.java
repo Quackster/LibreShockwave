@@ -366,6 +366,10 @@ public class LingoVM {
 
             result = scope.getReturnValue();
         } catch (Exception e) {
+            if (DebugConfig.isDebugPlaybackEnabled()) {
+                System.err.println("[Lingo] Exception in " + handlerName + ": " + e.getMessage());
+                System.err.println(formatCallStack());
+            }
             if (traceListener != null) {
                 traceListener.onError("Error in " + script.getHandlerName(handler), e);
             }
@@ -480,6 +484,26 @@ public class LingoVM {
     }
 
     /**
+     * Format the current Lingo call stack as a human-readable string.
+     * Iterates top-to-bottom through the call stack deque.
+     */
+    public String formatCallStack() {
+        if (callStack.isEmpty()) {
+            return "Lingo call stack: (empty)";
+        }
+        StringBuilder sb = new StringBuilder("Lingo call stack:\n");
+        for (Scope scope : callStack) {
+            String handlerName = scope.getScript().getHandlerName(scope.getHandler());
+            String scriptName = scope.getScript().getDisplayName();
+            int bcIndex = scope.getBytecodeIndex();
+            sb.append("  at ").append(handlerName)
+              .append(" (").append(scriptName).append(")")
+              .append(" [bytecode ").append(bcIndex).append("]\n");
+        }
+        return sb.toString();
+    }
+
+    /**
      * Execute a single bytecode instruction using a reusable ExecutionContext.
      */
     private void executeInstruction(Scope scope, ExecutionContext ctx) {
@@ -547,7 +571,8 @@ public class LingoVM {
             this::findHandler,
             cachedGlobalAccessor,
             cachedBuiltinInvoker,
-            this::setErrorState
+            this::setErrorState,
+            this::formatCallStack
         );
     }
 }

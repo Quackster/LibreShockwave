@@ -43,6 +43,16 @@ var _loadStartTime = 0; // timestamp when loading began (for perf logging)
 var _fetchRelayMap = {};  // relayId -> { engine, taskId, url, fallbacks }
 var _fetchRelayCounter = 0;
 
+// --- Fetch with timeout (prevents hanging requests on mobile) ---
+function _fetchWithTimeout(url, opts, timeoutMs) {
+    timeoutMs = timeoutMs || 30000;
+    var controller = new AbortController();
+    var timer = setTimeout(function() { controller.abort(); }, timeoutMs);
+    opts = opts || {};
+    opts.signal = controller.signal;
+    return fetch(url, opts).finally(function() { clearTimeout(timer); });
+}
+
 // --- JS-side response cache (eliminates duplicate network requests) ---
 var _urlCache = {};     // url -> ArrayBuffer
 
@@ -350,7 +360,7 @@ WasmEngine.prototype._doFetch = function(taskId, url, method, postData, fallback
         opts.body    = postData;
         opts.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
     }
-    return fetch(url, opts)
+    return _fetchWithTimeout(url, opts)
         .then(function(r) { if (!r.ok) throw { status: r.status }; return r.arrayBuffer(); })
         .then(function(buf) {
             _urlCache[url] = buf; // Cache response
@@ -418,7 +428,7 @@ WasmEngine.prototype._doFetchAsync = function(taskId, url, method, postData, fal
         opts.body    = postData;
         opts.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
     }
-    fetch(url, opts)
+    _fetchWithTimeout(url, opts)
         .then(function(r) { if (!r.ok) throw { status: r.status }; return r.arrayBuffer(); })
         .then(function(buf) {
             _urlCache[url] = buf;
@@ -554,7 +564,7 @@ async function _prefetchSw1Assets(basePath) {
     // Apply locale override to external_variables.txt so hh_entry_au is used,
     // then cache the modified version (overrides any ORIGINAL cached by pumpNetworkCollect).
     var results = await Promise.all(urls.map(function(url) {
-        return fetch(url)
+        return _fetchWithTimeout(url)
             .then(function(r) { if (!r.ok) throw { status: r.status }; return r.arrayBuffer(); })
             .then(function(buf) {
                 if (url.indexOf('external_variables') !== -1) {
@@ -593,11 +603,11 @@ async function _prefetchSw1Assets(basePath) {
         var cctUrl = baseDir + name + '.cct';
         var cstUrl = baseDir + name + '.cst';
         if (_urlCache[cctUrl] || _urlCache[cstUrl]) return Promise.resolve();
-        return fetch(cctUrl)
+        return _fetchWithTimeout(cctUrl)
             .then(function(r) { if (!r.ok) throw 'not found'; return r.arrayBuffer(); })
             .then(function(buf) { _urlCache[cctUrl] = buf; _urlCache[cstUrl] = buf; })
             .catch(function() {
-                return fetch(cstUrl)
+                return _fetchWithTimeout(cstUrl)
                     .then(function(r) { if (!r.ok) throw 'not found'; return r.arrayBuffer(); })
                     .then(function(buf) { _urlCache[cctUrl] = buf; _urlCache[cstUrl] = buf; })
                     .catch(function() {});
@@ -641,6 +651,11 @@ self.onmessage = async function(e) {
             case 'setParam':
                 _e.setExternalParam(msg.key, msg.value);
                 _params[msg.key] = msg.value; // Store locally for pre-fetch
+                break;
+
+            case 'setDebugPlayback':
+                _e.exports.setDebugPlaybackEnabled(msg.enabled ? 1 : 0);
+                _e._clearEx();
                 break;
 
             case 'clearParams':
@@ -835,6 +850,16 @@ self.onmessage = async function(e) {
                     var spriteCount = 0;
                     try { spriteCount = _e.exports.getSpriteCount(); _e._clearEx(); } catch(e4) {}
 
+                    // Drain debug log from WASM
+                    var debugLog = null;
+                    try {
+                        var logLen = _e.exports.getDebugLog(); _e._clearEx();
+                        if (logLen > 0) {
+                            var strAddr = _e.exports.getStringBufferAddress(); _e._clearEx();
+                            debugLog = _e._readString(strAddr, logLen);
+                        }
+                    } catch (logErr) {}
+
                     // Always send a frame response to unblock main thread
                     self.postMessage({
                         type:          'frame',
@@ -846,7 +871,8 @@ self.onmessage = async function(e) {
                         rgba:          frame ? frame.rgba : null,
                         width:         frame ? frame.w : 0,
                         height:        frame ? frame.h : 0,
-                        spriteCount:   spriteCount
+                        spriteCount:   spriteCount,
+                        debugLog:      debugLog
                     }, frame ? [frame.rgba.buffer] : []);
 
                 } finally {

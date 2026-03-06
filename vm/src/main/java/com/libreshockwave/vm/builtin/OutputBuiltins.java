@@ -1,6 +1,7 @@
 package com.libreshockwave.vm.builtin;
 
 import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.DebugConfig;
 import com.libreshockwave.vm.LingoVM;
 
 import java.util.List;
@@ -21,6 +22,9 @@ public final class OutputBuiltins {
     }
 
     private static Datum put(LingoVM vm, List<Datum> args) {
+        if (!DebugConfig.isDebugPlaybackEnabled()) {
+            return Datum.VOID;
+        }
         for (Datum arg : args) {
             System.out.print(arg.toStr() + " ");
         }

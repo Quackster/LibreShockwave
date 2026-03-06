@@ -67,7 +67,8 @@ class OpcodeTest {
                 }
             },
             (name, args) -> Datum.VOID,
-            errorState -> {}  // no-op error state setter for tests
+            errorState -> {},  // no-op error state setter for tests
+            () -> "(no call stack)"  // no-op call stack formatter for tests
         );
     }
 

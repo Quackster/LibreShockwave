@@ -27,6 +27,7 @@
                     <input type="text" id="url-input" class="url-input" value="https://sandbox.h4bbo.net/dcr/14.1_b8/habbo.dcr">
                     <button id="load-url-btn" class="btn">Go</button>
                     <button id="params-btn" class="btn">Params...</button>
+                    <label class="toolbar-checkbox"><input type="checkbox" id="debug-playback-cb" checked> Debug Log</label>
                 </div>
 
                 <!-- Stage -->
@@ -90,10 +91,18 @@
             sw5: 'external.variables.txt=https://sandbox.h4bbo.net/gamedata/external_variables.txt;external.texts.txt=https://sandbox.h4bbo.net/gamedata/external_texts.txt'
         };
 
+        // Restore debug playback preference (default: checked)
+        var debugCb = document.getElementById('debug-playback-cb');
+        try {
+            var saved = localStorage.getItem('ls_debugPlayback');
+            if (saved !== null) debugCb.checked = (saved === '1');
+        } catch(e) {}
+
         // Create the player with Habbo params pre-set
         var player = LibreShockwave.create("stage", {
             autoplay: true,
             remember: true,
+            debugPlayback: debugCb.checked,
             params: habboParams,
             onLoad: function(info) {
                 status.textContent = 'Loaded (' + info.width + 'x' + info.height + ', ' + info.frameCount + ' frames)';
@@ -107,6 +116,9 @@
                 frameInfo.textContent = 'Frame ' + frame + ' / ' + total;
                 frameSlider.max = total;
                 frameSlider.value = frame;
+            },
+            onDebugLog: function(log) {
+                console.log(log);
             }
         });
 
@@ -218,6 +230,12 @@
             player._params = newParams;
             player.setParams(newParams);
             document.getElementById('params-modal').style.display = 'none';
+        });
+
+        // Debug playback checkbox — updates live and persists
+        debugCb.addEventListener('change', function() {
+            player.setDebugPlayback(this.checked);
+            try { localStorage.setItem('ls_debugPlayback', this.checked ? '1' : '0'); } catch(e) {}
         });
 
         // Keyboard shortcuts

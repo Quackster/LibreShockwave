@@ -4,6 +4,7 @@ import org.teavm.interop.Address;
 import org.teavm.interop.Export;
 
 import com.libreshockwave.util.FileUtil;
+import com.libreshockwave.vm.DebugConfig;
 
 import java.io.OutputStream;
 import java.io.PrintStream;
@@ -154,6 +155,15 @@ public class WasmEntry {
         if (wasmPlayer != null && wasmPlayer.getPlayer() != null) {
             wasmPlayer.getPlayer().getVM().setStepLimit(limit);
         }
+    }
+
+    /**
+     * Enable or disable debug playback logging (handler calls, error stack traces).
+     * @param enabled 1 = enabled, 0 = disabled
+     */
+    @Export(name = "setDebugPlaybackEnabled")
+    public static void setDebugPlaybackEnabled(int enabled) {
+        DebugConfig.setDebugPlaybackEnabled(enabled != 0);
     }
 
     /**

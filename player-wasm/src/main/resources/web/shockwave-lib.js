@@ -17,6 +17,16 @@
  */
 var LibreShockwave = (function() {
 
+    // Fetch with timeout (prevents hanging requests on mobile)
+    function _fetchWithTimeout(url, opts, timeoutMs) {
+        timeoutMs = timeoutMs || 30000;
+        var controller = new AbortController();
+        var timer = setTimeout(function() { controller.abort(); }, timeoutMs);
+        opts = opts || {};
+        opts.signal = controller.signal;
+        return fetch(url, opts).finally(function() { clearTimeout(timer); });
+    }
+
     // Auto-detect base path from <script src="...shockwave-lib.js">
     var _autoBasePath = '';
     (function() {
@@ -257,7 +267,7 @@ var LibreShockwave = (function() {
                     opts.body    = msg.postData;
                     opts.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
                 }
-                fetch(relayUrl, opts)
+                _fetchWithTimeout(relayUrl, opts)
                     .then(function(r) { if (!r.ok) throw { status: r.status }; return r.arrayBuffer(); })
                     .then(function(buf) {
                         worker.postMessage({ type: 'fetchRelayResult', relayId: relayId, data: buf }, [buf]);
@@ -289,7 +299,7 @@ var LibreShockwave = (function() {
 
     ShockwavePlayer.prototype._waitFor = function(type, timeoutMs) {
         var self = this;
-        timeoutMs = timeoutMs || 10000; // 10s safety default
+        timeoutMs = timeoutMs || 60000; // 60s safety default (mobile networks need more time)
         return new Promise(function(resolve) {
             var resolved = false;
             var pendingId = {}; // unique reference for this pending
@@ -324,7 +334,7 @@ var LibreShockwave = (function() {
         if (this._remember) {
             try { localStorage.setItem('ls_urlInput', url); } catch(e) {}
         }
-        fetch(url)
+        _fetchWithTimeout(url)
             .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
             .then(function(buf) {
                 if (self._loadSeq !== seq) {
@@ -388,6 +398,10 @@ var LibreShockwave = (function() {
             this._worker.postMessage({ type: 'setParam', key: k, value: this._params[k] });
         }
 
+        // Send debug playback toggle to worker
+        var dbg = this._opts.debugPlayback !== undefined ? this._opts.debugPlayback : true;
+        this._worker.postMessage({ type: 'setDebugPlayback', enabled: dbg });
+
         if (this._opts.onLoad) this._opts.onLoad(info);
 
         // Preload external casts before starting; worker handles the network pump
@@ -430,7 +444,7 @@ var LibreShockwave = (function() {
         console.log('[LS] Pre-fetching ' + urls.length + ' sw URLs for relay cache');
         var self = this;
         await Promise.all(urls.map(function(url) {
-            return fetch(url)
+            return _fetchWithTimeout(url)
                 .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
                 .then(function(buf) {
                     self._relayCache[url] = buf;
@@ -495,6 +509,12 @@ var LibreShockwave = (function() {
 
     ShockwavePlayer.prototype.setParams = function(obj) {
         for (var k in obj) this.setParam(k, obj[k]);
+    };
+
+    ShockwavePlayer.prototype.setDebugPlayback = function(enabled) {
+        if (this._worker && this._workerReady) {
+            this._worker.postMessage({ type: 'setDebugPlayback', enabled: enabled });
+        }
     };
 
     /**
@@ -645,6 +665,25 @@ var LibreShockwave = (function() {
         if (result.rgba && result.width > 0 && result.height > 0) {
             var imgData = new ImageData(result.rgba, result.width, result.height);
             this._ctx.putImageData(imgData, 0, 0);
+        }
+
+        // Debug overlay during loading phase (helps diagnose mobile issues without DevTools)
+        if (this._loadingPhase && this._opts.debugOverlay) {
+            var ctx = this._ctx;
+            var text = 'tick:' + (this._tickCount || 0) +
+                       ' sprites:' + this._lastSpriteCount +
+                       ' frame:' + this._lastFrame;
+            ctx.save();
+            ctx.font = '11px monospace';
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillRect(0, 0, ctx.measureText(text).width + 8, 16);
+            ctx.fillStyle = '#0f0';
+            ctx.fillText(text, 4, 12);
+            ctx.restore();
+        }
+
+        if (result.debugLog && this._opts.onDebugLog) {
+            this._opts.onDebugLog(result.debugLog);
         }
 
         if (this._opts.onFrame) {

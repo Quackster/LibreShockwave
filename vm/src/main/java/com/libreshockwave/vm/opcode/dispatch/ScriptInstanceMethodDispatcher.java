@@ -2,6 +2,7 @@ package com.libreshockwave.vm.opcode.dispatch;
 
 import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.DebugConfig;
 import com.libreshockwave.vm.LingoException;
 import com.libreshockwave.vm.builtin.CastLibProvider;
 import com.libreshockwave.vm.opcode.ExecutionContext;
@@ -268,9 +269,10 @@ public final class ScriptInstanceMethodDispatcher {
         try {
             return ctx.executeHandler(script, handler, args, receiver);
         } catch (LingoException e) {
-            // Log the error and set error state to prevent further handler execution
-            // This matches dirplayer-rs stop() behavior
             System.err.println("[Lingo] Error in " + script.getHandlerName(handler) + ": " + e.getMessage());
+            if (DebugConfig.isDebugPlaybackEnabled()) {
+                System.err.println(ctx.formatCallStack());
+            }
             ctx.setErrorState(true);
             return Datum.VOID;
         }

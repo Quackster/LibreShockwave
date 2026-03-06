@@ -30,6 +30,7 @@ public final class ExecutionContext {
     private final GlobalAccessor globalAccessor;
     private final BuiltinInvoker builtinInvoker;
     private final ErrorStateSetter errorStateSetter;
+    private final CallStackFormatter callStackFormatter;
 
     public ExecutionContext(
             Scope scope,
@@ -40,7 +41,8 @@ public final class ExecutionContext {
             HandlerFinder handlerFinder,
             GlobalAccessor globalAccessor,
             BuiltinInvoker builtinInvoker,
-            ErrorStateSetter errorStateSetter) {
+            ErrorStateSetter errorStateSetter,
+            CallStackFormatter callStackFormatter) {
         this.scope = scope;
         this.instruction = instruction;
         this.argument = instruction.argument();
@@ -51,6 +53,7 @@ public final class ExecutionContext {
         this.globalAccessor = globalAccessor;
         this.builtinInvoker = builtinInvoker;
         this.errorStateSetter = errorStateSetter;
+        this.callStackFormatter = callStackFormatter;
     }
 
     /**
@@ -300,5 +303,17 @@ public final class ExecutionContext {
     @FunctionalInterface
     public interface BuiltinInvoker {
         Datum invoke(String name, List<Datum> args);
+    }
+
+    @FunctionalInterface
+    public interface CallStackFormatter {
+        String format();
+    }
+
+    /**
+     * Format the current Lingo call stack (delegates to LingoVM).
+     */
+    public String formatCallStack() {
+        return callStackFormatter != null ? callStackFormatter.format() : "(no call stack available)";
     }
 }

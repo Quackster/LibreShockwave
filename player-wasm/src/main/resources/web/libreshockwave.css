@@ -136,6 +136,13 @@ a:hover { color: #ff6600; }
     margin-left: 6px;
 }
 
+.toolbar-checkbox {
+    color: #333333;
+    font-size: 11px;
+    margin-left: 8px;
+    cursor: pointer;
+}
+
 .file-label {
     display: inline-block;
     padding: 2px 8px;
