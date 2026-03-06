@@ -35,6 +35,10 @@ jobs:
           echo "VERSION=$(date +'%d%m%Y')" >> $GITHUB_OUTPUT
           echo "DISPLAY=$(date +'%d/%m/%Y')" >> $GITHUB_OUTPUT
 
+      - name: Stamp build number in index.html
+        run: |
+          sed -i "s/<!--BUILD_VERSION-->/Nightly ${{ steps.date.outputs.VERSION }}/" player-wasm/build/dist/index.html
+
       - name: Create ZIP of dist
         run: |
           cd player-wasm/build/dist
