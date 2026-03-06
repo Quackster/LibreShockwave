@@ -951,6 +951,21 @@ public class Player {
     }
 
     /**
+     * Fire a test error through the VM's alertHook mechanism.
+     * Sets up providers, fires the hook, then cleans up.
+     * Used to verify error dialog appearance.
+     * @return true if alertHook handled the error
+     */
+    public boolean fireTestError(String errorMsg) {
+        setupProviders();
+        try {
+            return vm.fireAlertHook(errorMsg);
+        } finally {
+            clearProviders();
+        }
+    }
+
+    /**
      * Shutdown the player and release resources.
      * Call this when the player is no longer needed.
      */

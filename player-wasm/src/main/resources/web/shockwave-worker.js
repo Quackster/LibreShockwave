@@ -881,6 +881,29 @@ self.onmessage = async function(e) {
                 break;
             }
 
+            case 'triggerTestError': {
+                var result = 0;
+                try {
+                    result = _e.exports.triggerTestError(); _e._clearEx();
+                } catch (err) {}
+                // Re-render so the error dialog appears on screen
+                var frame = null;
+                try { frame = _e.renderFrame(); } catch (re) {}
+                self.postMessage({
+                    type: 'frame',
+                    playing: true,
+                    enginePlaying: _e.playing,
+                    tempo: _e._lastTempo,
+                    lastFrame: _e._lastFrame,
+                    frameCount: _e._lastFrameCount,
+                    rgba: frame ? frame.rgba : null,
+                    width: frame ? frame.w : 0,
+                    height: frame ? frame.h : 0,
+                    spriteCount: 0
+                }, frame ? [frame.rgba.buffer] : []);
+                break;
+            }
+
             case 'getCallStack': {
                 var stackStr = '';
                 try {

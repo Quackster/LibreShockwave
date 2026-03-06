@@ -672,6 +672,27 @@ public class WasmEntry {
         return len;
     }
 
+    // === Test/debug exports ===
+
+    /**
+     * Trigger a test Lingo error to exercise the movie's alertHook error dialog.
+     * Fires the VM's alertHook with a test error message.
+     * @return 1 if alertHook was found and invoked, 0 otherwise
+     */
+    @Export(name = "triggerTestError")
+    public static int triggerTestError() {
+        if (wasmPlayer == null || wasmPlayer.getPlayer() == null) return 0;
+        try {
+            boolean handled = wasmPlayer.getPlayer().fireTestError(
+                    "Script error: Test error triggered for dialog appearance check");
+            log("[triggerTestError] alertHook fired, handled=" + handled);
+            return handled ? 1 : 0;
+        } catch (Throwable e) {
+            captureError("triggerTestError", e);
+            return 0;
+        }
+    }
+
     // === Internal helpers ===
 
     private static void captureError(String context, Throwable e) {

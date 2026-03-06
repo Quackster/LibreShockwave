@@ -565,6 +565,16 @@ var LibreShockwave = (function() {
         });
     };
 
+    /**
+     * Trigger a test Lingo error to exercise the movie's alertHook error dialog.
+     * Call this after the movie is playing to verify error dialog appearance.
+     */
+    ShockwavePlayer.prototype.triggerTestError = function() {
+        if (this._worker && this._workerReady) {
+            this._worker.postMessage({ type: 'triggerTestError' });
+        }
+    };
+
     ShockwavePlayer.prototype.destroy = function() {
         this._stopLoop();
         if (this._worker) { this._worker.terminate(); this._worker = null; }
