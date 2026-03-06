@@ -26,7 +26,9 @@ public final class InkProcessor {
      * Returns true if the given ink mode requires per-pixel transparency processing.
      */
     public static boolean shouldProcessInk(InkMode ink) {
-        return ink == InkMode.NOT_GHOST || ink == InkMode.MATTE || ink == InkMode.ADD_PIN
+        return ink == InkMode.TRANSPARENT || ink == InkMode.REVERSE || ink == InkMode.GHOST
+            || ink == InkMode.NOT_COPY || ink == InkMode.NOT_TRANSPARENT || ink == InkMode.NOT_REVERSE
+            || ink == InkMode.NOT_GHOST || ink == InkMode.MATTE || ink == InkMode.ADD_PIN
             || ink == InkMode.SUBTRACT_PIN || ink == InkMode.BACKGROUND_TRANSPARENT
             || ink == InkMode.LIGHTEN || ink == InkMode.DARKEN;
     }
@@ -69,6 +71,17 @@ public final class InkProcessor {
                 return src; // 32-bit with useAlpha — skip processing
             }
             return applyMatte(src, matteColor);
+        } else if (ink == InkMode.TRANSPARENT || ink == InkMode.REVERSE
+                || ink == InkMode.GHOST || ink == InkMode.NOT_COPY
+                || ink == InkMode.NOT_TRANSPARENT || ink == InkMode.NOT_REVERSE) {
+            // Inks 1-6: color-key transparency on white (background color).
+            // Director's Transparent ink makes white/background pixels transparent.
+            // For 1-bit bitmaps, palette index 0 = white = background = transparent.
+            int bgColor = resolveBackColor(src, ink, backColor, useAlpha, palette);
+            if (bgColor < 0) {
+                return src;
+            }
+            return applyBackgroundTransparent(src, bgColor);
         } else if (ink == InkMode.NOT_GHOST || ink == InkMode.ADD_PIN
                 || ink == InkMode.SUBTRACT_PIN || ink == InkMode.BACKGROUND_TRANSPARENT
                 || ink == InkMode.LIGHTEN || ink == InkMode.DARKEN) {
