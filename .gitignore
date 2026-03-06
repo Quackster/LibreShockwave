@@ -31,5 +31,4 @@ runtime/src/main/resources/player/libreshockwave.wasm
 /player-simulator/frames
 node_modules/
 package-lock.json
-*.txt
 /frames
