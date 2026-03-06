@@ -24,7 +24,7 @@
                         Browse...
                     </label>
                     <span class="toolbar-sep">URL:</span>
-                    <input type="text" id="url-input" class="url-input" value="">
+                    <input type="text" id="url-input" class="url-input" value="https://sandbox.h4bbo.net/dcr/14.1_b8/habbo.dcr">
                     <button id="load-url-btn" class="btn">Go</button>
                     <button id="params-btn" class="btn">Params...</button>
                 </div>
@@ -179,9 +179,9 @@
             document.getElementById('params-body').innerHTML = '';
             addParamRow('sw1', 'site.url=http://www.habbo.co.uk;url.prefix=http://www.habbo.co.uk');
             addParamRow('sw2', 'connection.info.host=localhost;connection.info.port=30001');
-            addParamRow('sw3', 'client.reload.url=http://localhost/');
+            addParamRow('sw3', 'client.reload.url=https://sandbox.h4bbo.net/');
             addParamRow('sw4', 'connection.mus.host=localhost;connection.mus.port=38101');
-            addParamRow('sw5', 'external.variables.txt=http://localhost/gamedata/external_variables.txt;external.texts.txt=http://localhost/gamedata/external_texts.txt');
+            addParamRow('sw5', 'external.variables.txt=https://sandbox.h4bbo.net/gamedata/external_variables.txt;external.texts.txt=https://sandbox.h4bbo.net/gamedata/external_texts.txt');
         });
         document.getElementById('params-apply-btn').addEventListener('click', function() {
             var newParams = {};

@@ -8,14 +8,23 @@ import java.awt.image.BufferedImage;
 /**
  * AWT-based frame renderer using Java2D Graphics2D.
  * Used by the Swing player (StagePanel) and headless simulator.
+ *
+ * @deprecated Use {@link FrameSnapshot#renderFrame()} (which delegates to
+ *             {@link SoftwareFrameRenderer}) for Bitmap output. The Graphics2D
+ *             overload {@link #renderFrame(java.awt.Graphics2D, FrameSnapshot, int, int)}
+ *             remains for Swing direct painting (StagePanel).
  */
+@Deprecated
 public final class AwtFrameRenderer {
 
     private AwtFrameRenderer() {}
 
     /**
      * Render a FrameSnapshot to a Bitmap using AWT Graphics2D.
+     *
+     * @deprecated Use {@link FrameSnapshot#renderFrame()} instead.
      */
+    @Deprecated
     public static Bitmap renderFrame(FrameSnapshot snapshot, int stageWidth, int stageHeight) {
         BufferedImage image = new BufferedImage(stageWidth, stageHeight, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = image.createGraphics();

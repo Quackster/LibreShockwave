@@ -73,9 +73,10 @@ public record FrameSnapshot(
     }
 
     /**
-     * Render this snapshot using the AWT renderer (convenience shorthand).
+     * Render this snapshot to a Bitmap using software compositing.
+     * This is the recommended rendering method — no AWT dependency.
      */
     public Bitmap renderFrame() {
-        return renderFrame(RenderType.AWT);
+        return renderFrame(RenderType.SOFTWARE);
     }
 }
