@@ -534,6 +534,11 @@ player.setParams({ sw1: "...", sw2: "..." });
 player.getCurrentFrame();  // current frame number
 player.getFrameCount();    // total frames
 
+// Reset (terminates worker, creates fresh WASM instance)
+player.reset().then(function() {
+    player.load("http://localhost/movie.dcr");  // load on a clean slate
+});
+
 // Clean up
 player.destroy();
 ```
