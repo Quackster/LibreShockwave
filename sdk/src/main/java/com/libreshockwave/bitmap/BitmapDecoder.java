@@ -367,6 +367,16 @@ public class BitmapDecoder {
 
         // Detect whether data is compressed or not
         boolean skipCompression = data.length >= expectedLen;
+
+        // Check for zlib header even when sizes match — compressed data can coincidentally
+        // be the same size as expected uncompressed data (common with narrow bitmaps)
+        boolean isZlib = data.length >= 2 && (data[0] & 0xFF) == 0x78 &&
+                ((data[1] & 0xFF) == 0x01 || (data[1] & 0xFF) == 0x5E ||
+                 (data[1] & 0xFF) == 0x9C || (data[1] & 0xFF) == 0xDA);
+        if (isZlib) {
+            skipCompression = false;
+        }
+
         byte[] decompressed;
 
         if (skipCompression) {
@@ -376,6 +386,20 @@ public class BitmapDecoder {
                 System.arraycopy(data, 0, decompressed, 0, expectedLen);
             } else {
                 decompressed = data;
+            }
+        } else if (isZlib) {
+            // Zlib-compressed data — decompress with java.util.zip
+            try {
+                java.util.zip.Inflater inflater = new java.util.zip.Inflater();
+                inflater.setInput(data);
+                byte[] buf = new byte[expectedLen];
+                int inflated = inflater.inflate(buf);
+                inflater.end();
+                decompressed = new byte[inflated];
+                System.arraycopy(buf, 0, decompressed, 0, inflated);
+            } catch (java.util.zip.DataFormatException e) {
+                // Fallback to RLE if zlib decompression fails
+                decompressed = decompressRLE(data, expectedLen);
             }
         } else {
             decompressed = decompressRLE(data, expectedLen);
