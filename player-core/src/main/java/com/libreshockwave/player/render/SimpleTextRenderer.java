@@ -25,20 +25,22 @@ public class SimpleTextRenderer implements TextRenderer {
         if (width <= 0) width = 200;
         if (height <= 0) height = 20;
 
+        String style = fontStyle != null ? fontStyle.toLowerCase() : "";
+        boolean syntheticBold = style.contains("bold");
+        boolean underline = style.contains("underline");
+
         // Check for PFR bitmap font
         BitmapFont pfrFont = resolveBitmapFont(fontName, fontSize);
         if (pfrFont != null) {
-            String style = fontStyle != null ? fontStyle.toLowerCase() : "";
-            boolean syntheticBold = style.contains("bold");
             return renderWithBitmapFont(pfrFont, text, width, height,
                     alignment, textColor, bgColor, wordWrap,
-                    fixedLineSpace, topSpacing, syntheticBold);
+                    fixedLineSpace, topSpacing, syntheticBold, underline);
         }
 
         // Fallback: render with built-in pixel font
         return renderWithBuiltinFont(text, width, height, fontSize,
                 alignment, textColor, bgColor, wordWrap,
-                fixedLineSpace, topSpacing);
+                fixedLineSpace, topSpacing, underline);
     }
 
     @Override
@@ -133,7 +135,7 @@ public class SimpleTextRenderer implements TextRenderer {
     private Bitmap renderWithBitmapFont(BitmapFont font, String text, int width, int height,
                                          String alignment, int textColor, int bgColor,
                                          boolean wordWrap, int fixedLineSpace, int topSpacing,
-                                         boolean syntheticBold) {
+                                         boolean syntheticBold, boolean underline) {
         int lineHeight = fixedLineSpace > 0 ? fixedLineSpace : font.getLineHeight();
 
         String[] rawLines = text.split("[\r\n]+");
@@ -164,6 +166,7 @@ public class SimpleTextRenderer implements TextRenderer {
                 case "center" -> x = (width - font.getStringWidth(line)) / 2;
                 case "right" -> x = width - font.getStringWidth(line);
             }
+            int lineStartX = x;
             for (int i = 0; i < line.length(); i++) {
                 char ch = line.charAt(i);
                 font.drawChar(ch, pixels, width, height, x, y, textColor);
@@ -171,6 +174,14 @@ public class SimpleTextRenderer implements TextRenderer {
                     font.drawChar(ch, pixels, width, height, x + 1, y, textColor);
                 }
                 x += font.getCharWidth(ch);
+            }
+            if (underline && line.length() > 0) {
+                int ulY = y + font.getLineHeight() - 1;
+                if (ulY >= 0 && ulY < height) {
+                    for (int ux = Math.max(0, lineStartX); ux < Math.min(width, x); ux++) {
+                        pixels[ulY * width + ux] = textColor;
+                    }
+                }
             }
             y += lineHeight;
         }
@@ -184,7 +195,8 @@ public class SimpleTextRenderer implements TextRenderer {
      */
     private Bitmap renderWithBuiltinFont(String text, int width, int height, int fontSize,
                                           String alignment, int textColor, int bgColor,
-                                          boolean wordWrap, int fixedLineSpace, int topSpacing) {
+                                          boolean wordWrap, int fixedLineSpace, int topSpacing,
+                                          boolean underline) {
         int charW = builtinCharWidth(fontSize);
         int lineHeight = fixedLineSpace > 0 ? fixedLineSpace : builtinLineHeight(fontSize);
         int ascent = builtinAscent(fontSize);
@@ -218,9 +230,18 @@ public class SimpleTextRenderer implements TextRenderer {
                 case "center" -> x = (width - line.length() * charW) / 2;
                 case "right" -> x = width - line.length() * charW;
             }
+            int lineStartX = x;
             for (int i = 0; i < line.length(); i++) {
                 drawBuiltinChar(line.charAt(i), pixels, width, height, x, y + ascent, scale, textColor);
                 x += charW;
+            }
+            if (underline && line.length() > 0) {
+                int ulY = y + ascent + 1;
+                if (ulY >= 0 && ulY < height) {
+                    for (int ux = Math.max(0, lineStartX); ux < Math.min(width, x); ux++) {
+                        pixels[ulY * width + ux] = textColor;
+                    }
+                }
             }
             y += lineHeight;
         }
