@@ -367,6 +367,7 @@ public sealed interface Datum {
                     yield 0;
                 }
             }
+            case Color c -> (c.r() << 16) | (c.g() << 8) | c.b();
             default -> 0;
         };
     }

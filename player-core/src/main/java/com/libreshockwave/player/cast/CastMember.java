@@ -524,13 +524,19 @@ public class CastMember {
                 return true;
             }
             case "color" -> {
-                this.textColor = datumToArgb(value);
-                textImageDirty = true;
+                // Director ignores VOID — keeps the current color
+                if (!value.isVoid()) {
+                    this.textColor = datumToArgb(value);
+                    textImageDirty = true;
+                }
                 return true;
             }
             case "bgcolor" -> {
-                this.textBgColor = datumToArgb(value);
-                textImageDirty = true;
+                // Director ignores VOID — keeps the current bgColor (default white)
+                if (!value.isVoid()) {
+                    this.textBgColor = datumToArgb(value);
+                    textImageDirty = true;
+                }
                 return true;
             }
             case "wordwrap" -> {

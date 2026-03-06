@@ -45,6 +45,7 @@ public class HotelViewDiagnosticTest {
         int maxSprites = 0;
         int maxSpriteTick = 0;
 
+        boolean errorDialogCaptured = false;
         for (int tick = 0; tick < maxTicks; tick++) {
             boolean alive = player.tick();
             if (!alive) break;
@@ -54,6 +55,19 @@ public class HotelViewDiagnosticTest {
             if (sprites.size() > maxSprites) {
                 maxSprites = sprites.size();
                 maxSpriteTick = tick;
+            }
+            // Capture error dialog phase (window sprites appear around tick 10-30)
+            if (!errorDialogCaptured && sprites.size() >= 8 && tick >= 10) {
+                // Warmup bake to trigger async bitmap decode
+                FrameSnapshot.capture(renderer, frame, "warmup", baker, player);
+                Thread.sleep(2000); // Wait for async decoders
+                // Now bake with decoded bitmaps
+                FrameSnapshot errSnap = FrameSnapshot.capture(renderer, frame, "error-dialog", baker, player);
+                Bitmap errImg = errSnap.renderFrame(RenderType.SOFTWARE);
+                ImageIO.write(errImg.toBufferedImage(), "png",
+                        new File(OUTPUT_DIR + "/error_dialog.png"));
+                System.out.printf("Captured error dialog at tick %d with %d sprites%n", tick, sprites.size());
+                errorDialogCaptured = true;
             }
             // Simulate ~20fps tempo so real-time timeouts (delay 500ms) can fire
             Thread.sleep(5);
@@ -126,6 +140,39 @@ public class HotelViewDiagnosticTest {
             String bakeInfo = bk != null ? bk.getWidth() + "x" + bk.getHeight() : "NULL";
             System.out.printf("  baked ch=%d %s type=%s ink=%s member=%s%n",
                     bs.getChannel(), bakeInfo, bs.getType(), bs.getInkMode(), bs.getMemberName());
+        }
+
+        // Dump individual window sprite bitmaps for debugging
+        System.out.println("\n--- Window sprite bitmap dumps ---");
+        for (RenderSprite bs : snapshot.sprites()) {
+            Bitmap bk = bs.getBakedBitmap();
+            if (bk != null && bs.getMemberName() != null && (
+                    bs.getMemberName().contains("login_b_login_b") ||
+                    bs.getMemberName().contains("login_b_back") ||
+                    bs.getMemberName().contains("login_a_login_a_title") ||
+                    bs.getMemberName().contains("login_b_login_b_title") ||
+                    bs.getMemberName().contains("login_b_login_ok") ||
+                    bs.getMemberName().contains("login_a_login_a") ||
+                    bs.getMemberName().startsWith("login_a_back") ||
+                    bs.getMemberName().startsWith("login_name") ||
+                    bs.getMemberName().startsWith("login_password"))) {
+                String safeName = bs.getMemberName().replaceAll("[^a-zA-Z0-9_]", "_");
+                ImageIO.write(bk.toBufferedImage(), "png",
+                        new File(OUTPUT_DIR + "/sprite_" + safeName + ".png"));
+                // Sample some pixels
+                int[] px = bk.getPixels();
+                int white = 0, black = 0, other = 0;
+                for (int p : px) {
+                    int rgb = p & 0xFFFFFF;
+                    int a = (p >>> 24);
+                    if (a == 0) continue;
+                    if (rgb == 0xFFFFFF) white++;
+                    else if (rgb == 0x000000) black++;
+                    else other++;
+                }
+                System.out.printf("  %s: %dx%d white=%d black=%d other=%d%n",
+                        bs.getMemberName(), bk.getWidth(), bk.getHeight(), white, black, other);
+            }
         }
 
         Bitmap rendered = snapshot.renderFrame(RenderType.SOFTWARE);

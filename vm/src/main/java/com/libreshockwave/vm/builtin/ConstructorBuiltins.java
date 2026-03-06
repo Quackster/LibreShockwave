@@ -149,6 +149,10 @@ public final class ConstructorBuiltins {
             return new Datum.Color(0, 0, 0);
         }
         Datum first = args.get(0);
+        // rgb(colorDatum) - pass through Color unchanged
+        if (first instanceof Datum.Color c && args.size() == 1) {
+            return c;
+        }
         // rgb("#RRGGBB") - hex string
         if (first.isString()) {
             String hex = first.toStr().trim();
