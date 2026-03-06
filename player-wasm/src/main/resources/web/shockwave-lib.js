@@ -95,8 +95,99 @@ var LibreShockwave = (function() {
             } catch(e) {}
         }
 
+        this._initAbout(el);
         this._initWorker();
     }
+
+    // --- About dialog (built into lib so embedders cannot remove it) ---
+
+    ShockwavePlayer.prototype._initAbout = function(canvas) {
+        // --- Context menu ---
+        var menu = document.createElement('div');
+        menu.style.cssText = 'position:fixed;display:none;background:#fff;border:1px solid #999;padding:2px 0;z-index:10000;font-family:Verdana,Arial,Helvetica,sans-serif;font-size:11px;color:#333;min-width:160px;box-shadow:2px 2px 6px rgba(0,0,0,0.2);';
+
+        function addMenuItem(label) {
+            var item = document.createElement('div');
+            item.textContent = label;
+            item.style.cssText = 'padding:4px 12px;cursor:pointer;';
+            item.addEventListener('mouseenter', function() { item.style.background = '#336699'; item.style.color = '#fff'; });
+            item.addEventListener('mouseleave', function() { item.style.background = ''; item.style.color = '#333'; });
+            menu.appendChild(item);
+            return item;
+        }
+
+        var saveItem = addMenuItem('Save image as...');
+        var sep = document.createElement('div');
+        sep.style.cssText = 'border-top:1px solid #ccc;margin:2px 0;';
+        menu.appendChild(sep);
+        var aboutItem = addMenuItem('About LibreShockwave');
+        document.body.appendChild(menu);
+
+        function hideMenu() { menu.style.display = 'none'; }
+
+        document.addEventListener('click', hideMenu);
+        document.addEventListener('contextmenu', function(e) {
+            if (e.target !== canvas) hideMenu();
+        });
+
+        canvas.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+            menu.style.left = e.clientX + 'px';
+            menu.style.top = e.clientY + 'px';
+            menu.style.display = 'block';
+        });
+
+        // --- About dialog ---
+        var overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);display:none;align-items:center;justify-content:center;z-index:9999;';
+
+        var win = document.createElement('div');
+        win.style.cssText = 'background:#fff;border:1px solid #999;width:360px;max-width:90%;font-family:Verdana,Arial,Helvetica,sans-serif;font-size:11px;color:#333;';
+
+        var titlebar = document.createElement('div');
+        titlebar.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:4px 8px;background:#336699;color:#fff;font-weight:bold;font-size:11px;';
+        titlebar.innerHTML = '<span>About LibreShockwave</span>';
+
+        var closeBtn = document.createElement('button');
+        closeBtn.textContent = 'X';
+        closeBtn.style.cssText = 'background:#eee;border:1px solid #999;color:#333;font-size:10px;font-weight:bold;padding:0 5px;cursor:pointer;font-family:Verdana,Arial,Helvetica,sans-serif;line-height:16px;';
+        closeBtn.addEventListener('click', function() { overlay.style.display = 'none'; });
+        titlebar.appendChild(closeBtn);
+
+        var body = document.createElement('div');
+        body.style.cssText = 'text-align:center;padding:16px 20px;line-height:1.6;';
+        body.innerHTML =
+            '<div style="font-size:16px;font-weight:bold;color:#336699;margin-bottom:8px;">LibreShockwave</div>' +
+            '<p style="margin-bottom:6px;">An open-source Macromedia Shockwave player,<br>bringing Director movies back to life in the browser.</p>' +
+            '<p style="margin-bottom:10px;color:#666;">Made by <strong>Alexandra Miller-Blake</strong></p>' +
+            '<p><a href="https://github.com/Quackster/LibreShockwave" target="_blank" rel="noopener" style="color:#003399;">View on GitHub</a></p>';
+
+        win.appendChild(titlebar);
+        win.appendChild(body);
+        overlay.appendChild(win);
+        document.body.appendChild(overlay);
+
+        overlay.addEventListener('click', function(e) {
+            if (e.target === overlay) overlay.style.display = 'none';
+        });
+
+        saveItem.addEventListener('click', function() {
+            hideMenu();
+            try {
+                var link = document.createElement('a');
+                link.download = 'screenshot.png';
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            } catch(e) {
+                console.error('[LS] Save image failed:', e);
+            }
+        });
+
+        aboutItem.addEventListener('click', function() {
+            hideMenu();
+            overlay.style.display = 'flex';
+        });
+    };
 
     // --- Worker lifecycle ---
 
@@ -164,15 +255,6 @@ var LibreShockwave = (function() {
                 fetch(relayUrl, opts)
                     .then(function(r) { if (!r.ok) throw { status: r.status }; return r.arrayBuffer(); })
                     .then(function(buf) {
-                        // Intercept external_variables.txt: override cast.entry.2 to use AU hotel view
-                        if (relayUrl.indexOf('external_variables') !== -1) {
-                            try {
-                                var text = new TextDecoder().decode(buf);
-                                text = text.replace(/cast\.entry\.2=.*/g, 'cast.entry.2=hh_entry_au');
-                                buf = new TextEncoder().encode(text).buffer;
-                                console.log('[LS] Relay: applied hh_entry_au locale override');
-                            } catch(ex) {}
-                        }
                         worker.postMessage({ type: 'fetchRelayResult', relayId: relayId, data: buf }, [buf]);
                     })
                     .catch(function(e) {
@@ -346,15 +428,6 @@ var LibreShockwave = (function() {
             return fetch(url)
                 .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
                 .then(function(buf) {
-                    // Apply locale override to external_variables.txt
-                    if (url.indexOf('external_variables') !== -1) {
-                        try {
-                            var text = new TextDecoder().decode(buf);
-                            text = text.replace(/cast\.entry\.2=.*/g, 'cast.entry.2=hh_entry_au');
-                            buf = new TextEncoder().encode(text).buffer;
-                            console.log('[LS] Pre-fetch: applied hh_entry_au locale override');
-                        } catch(ex) {}
-                    }
                     self._relayCache[url] = buf;
                     console.log('[LS] Pre-fetched: ' + url + ' (' + buf.byteLength + ' bytes)');
                 })
