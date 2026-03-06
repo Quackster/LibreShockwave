@@ -35,8 +35,8 @@ public final class OutputBuiltins {
 
     /**
      * Lingo error(tObject, tMsg, tMethod, tErrorLevel) — fallback when the
-     * Error Manager script isn't loaded yet. Logs the args exactly as Lingo
-     * builds them when debug is enabled, and always returns 0 (false).
+     * Error Manager script isn't loaded yet. Logs the args and call stack
+     * when debug is enabled, and always returns 0 (false).
      */
     private static Datum error(LingoVM vm, List<Datum> args) {
         if (DebugConfig.isDebugPlaybackEnabled()) {
@@ -46,6 +46,7 @@ public final class OutputBuiltins {
                 sb.append(args.get(i).toStr());
             }
             System.out.println(sb.toString());
+            System.out.println(vm.formatCallStack());
         }
         return Datum.of(0);
     }

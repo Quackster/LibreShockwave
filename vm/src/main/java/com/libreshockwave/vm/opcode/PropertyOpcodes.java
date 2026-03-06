@@ -165,8 +165,12 @@ public final class PropertyOpcodes {
 
     private static Datum getPropListProp(Datum.PropList pl, String propName) {
         if ("count".equalsIgnoreCase(propName) || "length".equalsIgnoreCase(propName)) return Datum.of(pl.properties().size());
+        // Check PropList's own keys first (e.g. [#ilk:#struct] in font structs),
+        // then fall back to built-in ilk property
+        Datum value = pl.properties().getOrDefault(propName, null);
+        if (value != null) return value;
         if ("ilk".equalsIgnoreCase(propName)) return Datum.symbol("propList");
-        return pl.properties().getOrDefault(propName, Datum.VOID);
+        return Datum.VOID;
     }
 
     private static Datum getStringProp(Datum.Str str, String propName) {

@@ -17,6 +17,7 @@ import com.libreshockwave.player.render.SpriteBaker;
 import com.libreshockwave.player.render.StageRenderer;
 import com.libreshockwave.player.score.ScoreNavigator;
 import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.LingoException;
 import com.libreshockwave.vm.LingoVM;
 import com.libreshockwave.vm.TraceListener;
 import com.libreshockwave.vm.builtin.CastLibProvider;
@@ -74,6 +75,9 @@ public class Player {
 
     // Cast loaded listener (called when external cast libraries are loaded and matched)
     private Runnable castLoadedListener;
+
+    // Error listener (called on Lingo script errors)
+    private java.util.function.BiConsumer<String, LingoException> errorListener;
 
     // Debug mode
     private boolean debugEnabled = false;
@@ -465,6 +469,32 @@ public class Player {
      */
     public void setCastLoadedListener(Runnable listener) {
         this.castLoadedListener = listener;
+    }
+
+    /**
+     * Set a listener for Lingo script errors.
+     * Called with the error message and the Lingo call stack at the point of the error.
+     * The LingoException carries the call stack — use {@code e.getLingoCallStack()} or
+     * {@code e.formatLingoCallStack()} to inspect it.
+     */
+    public void setErrorListener(java.util.function.BiConsumer<String, com.libreshockwave.vm.LingoException> listener) {
+        this.errorListener = listener;
+    }
+
+    /**
+     * Get the current Lingo call stack. Safe to call at any time.
+     * Returns an empty list when no handlers are executing.
+     */
+    public List<LingoVM.CallStackFrame> getLingoCallStack() {
+        return vm.getCallStack();
+    }
+
+    /**
+     * Get the current Lingo call stack as a formatted string.
+     * Returns "(empty)" when no handlers are executing.
+     */
+    public String formatLingoCallStack() {
+        return vm.formatCallStack();
     }
 
     public void setDebugEnabled(boolean enabled) {
@@ -1017,6 +1047,9 @@ public class Player {
         @Override
         public void onError(String message, Exception error) {
             if (delegate != null) delegate.onError(message, error);
+            if (errorListener != null && error instanceof LingoException le) {
+                errorListener.accept(message, le);
+            }
         }
 
         @Override

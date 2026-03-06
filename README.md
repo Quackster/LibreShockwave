@@ -138,6 +138,78 @@ player.setCastLoadedListener(() -> {
 </details>
 
 <details>
+<summary>Error handling</summary>
+
+```java
+// Listen for Lingo script errors
+player.setErrorListener((message, exception) -> {
+    System.err.println("Lingo error: " + message);
+
+    // The exception carries the Lingo call stack at the point of the error
+    String callStack = exception.formatLingoCallStack();
+    if (callStack != null) {
+        System.err.println(callStack);
+    }
+
+    // Or inspect individual frames
+    for (var frame : exception.getLingoCallStack()) {
+        System.out.println(frame.handlerName() + " in " + frame.scriptName()
+            + " [bytecode " + frame.bytecodeIndex() + "]");
+    }
+});
+```
+
+You can also get the call stack at any time during execution (e.g. from a TraceListener or breakpoint):
+
+```java
+// Get the live Lingo call stack (empty list when no handlers are executing)
+List<LingoVM.CallStackFrame> stack = player.getLingoCallStack();
+
+// Or as a formatted string
+String formatted = player.formatLingoCallStack();
+```
+
+</details>
+
+<details>
+<summary>Debug playback</summary>
+
+Debug playback controls `put` output, error call stacks, and diagnostic logging. It is **enabled by default**.
+
+```java
+// Disable debug output (suppresses put/error logging to stderr)
+DebugConfig.setDebugPlaybackEnabled(false);
+
+// Re-enable
+DebugConfig.setDebugPlaybackEnabled(true);
+```
+
+For bytecode-level debugging (breakpoints, stepping, watch expressions), use the desktop player's built-in debugger or attach a `DebugControllerApi`:
+
+```java
+DebugController debugger = new DebugController();
+player.setDebugController(debugger);
+
+// Add a breakpoint (scriptId, handlerName, bytecodeOffset)
+debugger.addBreakpoint(42, "enterFrame", 0);
+
+// Step controls (when paused at a breakpoint)
+debugger.stepInto();
+debugger.stepOver();
+debugger.stepOut();
+debugger.continueExecution();
+
+// Inspect state when paused
+DebugSnapshot snap = debugger.getCurrentSnapshot();
+snap.locals();     // local variables
+snap.globals();    // global variables
+snap.stack();      // operand stack
+snap.callStack();  // call frames
+```
+
+</details>
+
+<details>
 <summary>Lifecycle</summary>
 
 | Method | Description |
@@ -505,13 +577,14 @@ The following files must be served from the same directory as the script:
 ```js
 // Create a player on a <canvas> element (by ID or element reference)
 var player = LibreShockwave.create("my-canvas", {
-    basePath:  "/wasm/",                 // where the WASM files live (auto-detected by default)
-    params:    { sw1: "key=value" },     // Shockwave <PARAM> tags
-    autoplay:  true,                     // start playing after load (default: true)
-    remember:  true,                     // persist params in localStorage (default: false)
-    onLoad:    function(info) {},        // { width, height, frameCount, tempo }
-    onError:   function(msg) {},         // error message string
-    onFrame:   function(frame, total) {} // called each frame
+    basePath:      "/wasm/",                 // where the WASM files live (auto-detected by default)
+    params:        { sw1: "key=value" },     // Shockwave <PARAM> tags
+    autoplay:      true,                     // start playing after load (default: true)
+    remember:      true,                     // persist params in localStorage (default: false)
+    debugPlayback: true,                     // enable put/error logging (default: true)
+    onLoad:        function(info) {},        // { width, height, frameCount, tempo }
+    onError:       function(msg) {},         // error message string
+    onFrame:       function(frame, total) {} // called each frame
 });
 
 // Load a movie
@@ -533,6 +606,12 @@ player.setParams({ sw1: "...", sw2: "..." });
 // State
 player.getCurrentFrame();  // current frame number
 player.getFrameCount();    // total frames
+
+// Debugging
+player.setDebugPlayback(true);   // enable/disable put output & error stack traces
+player.getCallStack().then(function(stack) {
+    console.log(stack);          // Lingo call stack (async, returns Promise<string>)
+});
 
 // Reset (terminates worker, creates fresh WASM instance)
 player.reset().then(function() {

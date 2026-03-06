@@ -160,12 +160,36 @@ public class LingoVM {
 
     // Call stack access
 
+    /**
+     * A single frame in the Lingo call stack.
+     */
+    public record CallStackFrame(String handlerName, String scriptName, int bytecodeIndex) {}
+
     public int getCallStackDepth() {
         return callStack.size();
     }
 
     public Scope getCurrentScope() {
         return callStack.peek();
+    }
+
+    /**
+     * Get the current Lingo call stack as a list of frames (top of stack first).
+     * Safe to call at any time — returns an empty list when no handlers are executing.
+     */
+    public List<CallStackFrame> getCallStack() {
+        if (callStack.isEmpty()) {
+            return List.of();
+        }
+        List<CallStackFrame> frames = new ArrayList<>();
+        for (Scope scope : callStack) {
+            frames.add(new CallStackFrame(
+                scope.getScript().getHandlerName(scope.getHandler()),
+                scope.getScript().getDisplayName(),
+                scope.getBytecodeIndex()
+            ));
+        }
+        return frames;
     }
 
     // Handler execution
@@ -366,6 +390,10 @@ public class LingoVM {
 
             result = scope.getReturnValue();
         } catch (Exception e) {
+            // Attach Lingo call stack to LingoExceptions (only once, at the deepest frame)
+            if (e instanceof LingoException le && le.getLingoCallStack() == null) {
+                le.setLingoCallStack(getCallStack());
+            }
             if (DebugConfig.isDebugPlaybackEnabled()) {
                 System.err.println(e.getMessage());
                 System.err.println(formatCallStack());

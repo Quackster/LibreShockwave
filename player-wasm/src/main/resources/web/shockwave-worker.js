@@ -881,6 +881,19 @@ self.onmessage = async function(e) {
                 break;
             }
 
+            case 'getCallStack': {
+                var stackStr = '';
+                try {
+                    var len = _e.exports.getCallStack(); _e._clearEx();
+                    if (len > 0) {
+                        var addr = _e.exports.getStringBufferAddress(); _e._clearEx();
+                        stackStr = _e._readString(addr, len);
+                    }
+                } catch (csErr) {}
+                self.postMessage({ type: 'callStack', callStack: stackStr });
+                break;
+            }
+
             default:
                 break;
         }

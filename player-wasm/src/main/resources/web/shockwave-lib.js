@@ -546,6 +546,25 @@ var LibreShockwave = (function() {
         });
     };
 
+    /**
+     * Get the current Lingo call stack. Returns a Promise that resolves with
+     * the call stack string (empty string when no handlers are executing).
+     */
+    ShockwavePlayer.prototype.getCallStack = function() {
+        if (!this._worker || !this._workerReady) return Promise.resolve('');
+        var self = this;
+        return new Promise(function(resolve) {
+            var handler = function(e) {
+                if (e.data && e.data.type === 'callStack') {
+                    self._worker.removeEventListener('message', handler);
+                    resolve(e.data.callStack || '');
+                }
+            };
+            self._worker.addEventListener('message', handler);
+            self._worker.postMessage({ type: 'getCallStack' });
+        });
+    };
+
     ShockwavePlayer.prototype.destroy = function() {
         this._stopLoop();
         if (this._worker) { this._worker.terminate(); this._worker = null; }

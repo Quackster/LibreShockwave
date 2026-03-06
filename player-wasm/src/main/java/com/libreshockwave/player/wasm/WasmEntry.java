@@ -656,6 +656,22 @@ public class WasmEntry {
         return np != null ? np.getPendingRequests().size() : -1;
     }
 
+    /**
+     * Get the current Lingo call stack as a formatted string, written to stringBuffer.
+     * Safe to call at any time (returns 0 when no handlers are executing).
+     * @return byte length written to stringBuffer, or 0 if call stack is empty
+     */
+    @Export(name = "getCallStack")
+    public static int getCallStack() {
+        if (wasmPlayer == null || wasmPlayer.getPlayer() == null) return 0;
+        String stack = wasmPlayer.getPlayer().formatLingoCallStack();
+        if (stack == null || stack.isEmpty()) return 0;
+        byte[] bytes = stack.getBytes();
+        int len = Math.min(bytes.length, stringBuffer.length);
+        System.arraycopy(bytes, 0, stringBuffer, 0, len);
+        return len;
+    }
+
     // === Internal helpers ===
 
     private static void captureError(String context, Throwable e) {

@@ -119,6 +119,18 @@ tasks.register('runRenderTraceTest', JavaExec) {
     }
 }
 
+// Diagnostic test for loading bar during cast loading phase
+tasks.register('runLoadingBarDiagnosticTest', JavaExec) {
+    group = 'verification'
+    description = 'Trace loading bar creation and rendering during habbo.dcr loading phase'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.LoadingBarDiagnosticTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
 // Task to test window and loading bar rendering
 tasks.register('runWindowRenderTest', JavaExec) {
     group = 'verification'

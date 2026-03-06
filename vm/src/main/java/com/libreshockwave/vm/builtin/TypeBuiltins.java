@@ -158,6 +158,62 @@ public final class TypeBuiltins {
             return Datum.of(unescapeString(expr.substring(1, expr.length() - 1)));
         }
 
+        // Try to parse rgb(r, g, b) function call
+        if (expr.startsWith("rgb(") && expr.endsWith(")")) {
+            String inner = expr.substring(4, expr.length() - 1).trim();
+            // Handle rgb("#RRGGBB") form
+            if (inner.startsWith("\"") && inner.endsWith("\"")) {
+                String hex = inner.substring(1, inner.length() - 1).trim();
+                if (hex.startsWith("#")) hex = hex.substring(1);
+                try {
+                    int colorVal = Integer.parseInt(hex, 16);
+                    return new Datum.Color((colorVal >> 16) & 0xFF, (colorVal >> 8) & 0xFF, colorVal & 0xFF);
+                } catch (NumberFormatException ignored) {}
+            }
+            // Handle rgb(r, g, b) form
+            String[] parts = inner.split(",");
+            if (parts.length == 3) {
+                try {
+                    int r = Integer.parseInt(parts[0].trim());
+                    int g = Integer.parseInt(parts[1].trim());
+                    int b = Integer.parseInt(parts[2].trim());
+                    return new Datum.Color(r, g, b);
+                } catch (NumberFormatException ignored) {}
+            }
+            // Handle rgb(packed) form
+            if (parts.length == 1) {
+                try {
+                    int val = Integer.parseInt(parts[0].trim());
+                    return new Datum.Color((val >> 16) & 0xFF, (val >> 8) & 0xFF, val & 0xFF);
+                } catch (NumberFormatException ignored) {}
+            }
+        }
+
+        // Try to parse rect(l, t, r, b) function call
+        if (expr.startsWith("rect(") && expr.endsWith(")")) {
+            String inner = expr.substring(5, expr.length() - 1).trim();
+            String[] parts = inner.split(",");
+            if (parts.length == 4) {
+                try {
+                    return new Datum.Rect(
+                            Integer.parseInt(parts[0].trim()), Integer.parseInt(parts[1].trim()),
+                            Integer.parseInt(parts[2].trim()), Integer.parseInt(parts[3].trim()));
+                } catch (NumberFormatException ignored) {}
+            }
+        }
+
+        // Try to parse point(x, y) function call
+        if (expr.startsWith("point(") && expr.endsWith(")")) {
+            String inner = expr.substring(6, expr.length() - 1).trim();
+            String[] parts = inner.split(",");
+            if (parts.length == 2) {
+                try {
+                    return new Datum.Point(
+                            Integer.parseInt(parts[0].trim()), Integer.parseInt(parts[1].trim()));
+                } catch (NumberFormatException ignored) {}
+            }
+        }
+
         // Try to parse as list or proplist: [...]
         if (expr.startsWith("[") && expr.endsWith("]")) {
             try {
@@ -376,16 +432,28 @@ public final class TypeBuiltins {
             return Datum.list();
         }
 
-        // Check if first element looks like a proplist entry (#key: value)
+        // Check if first element looks like a proplist entry:
+        //   #key: value  (symbol key)
+        //   "key": value (string key, e.g. figuredata ["M": [...], "F": [...]])
         String first = elements.get(0).trim();
-        if (first.startsWith("#") && first.contains(":")) {
+        boolean isPropList = (first.startsWith("#") && first.contains(":"))
+                || (first.startsWith("\"") && first.contains(":"));
+        if (isPropList) {
             // Parse as proplist
             Map<String, Datum> props = new LinkedHashMap<>();
             for (String element : elements) {
                 element = element.trim();
                 int colonIdx = findPropListColon(element);
-                if (colonIdx > 0 && element.startsWith("#")) {
-                    String key = element.substring(1, colonIdx).trim();
+                if (colonIdx > 0) {
+                    String rawKey = element.substring(0, colonIdx).trim();
+                    String key;
+                    if (rawKey.startsWith("#")) {
+                        key = rawKey.substring(1);
+                    } else if (rawKey.startsWith("\"") && rawKey.endsWith("\"") && rawKey.length() >= 2) {
+                        key = rawKey.substring(1, rawKey.length() - 1);
+                    } else {
+                        key = rawKey;
+                    }
                     String valueStr = element.substring(colonIdx + 1).trim();
                     Datum value = parseLingoExpressionWithPartial(valueStr, vm);
                     props.put(key, value);
@@ -409,6 +477,7 @@ public final class TypeBuiltins {
         List<String> elements = new ArrayList<>();
         StringBuilder current = new StringBuilder();
         int bracketDepth = 0;
+        int parenDepth = 0;
         boolean inQuote = false;
 
         for (int i = 0; i < content.length(); i++) {
@@ -425,7 +494,13 @@ public final class TypeBuiltins {
             } else if (c == ']') {
                 bracketDepth--;
                 current.append(c);
-            } else if (c == ',' && bracketDepth == 0) {
+            } else if (c == '(') {
+                parenDepth++;
+                current.append(c);
+            } else if (c == ')') {
+                parenDepth--;
+                current.append(c);
+            } else if (c == ',' && bracketDepth == 0 && parenDepth == 0) {
                 elements.add(current.toString());
                 current = new StringBuilder();
             } else {
@@ -545,10 +620,25 @@ public final class TypeBuiltins {
         String typeName = getIlkType(value);
 
         // If second argument provided, check if types match
+        // Director docs: ilk(propList, #list) and ilk(propList, #propList) both return TRUE
         if (args.size() >= 2) {
             Datum checkType = args.get(1);
             String checkName = checkType.toKeyName();
-            return typeName.equalsIgnoreCase(checkName) ? Datum.TRUE : Datum.FALSE;
+            if (typeName.equalsIgnoreCase(checkName)) return Datum.TRUE;
+            // Additional type aliases from Scripting Reference:
+            // propList matches #list; list matches #linearList; int/float match #number
+            // rect/point match #list; instances match #object
+            if ("list".equalsIgnoreCase(checkName) && ("propList".equalsIgnoreCase(typeName)
+                    || "rect".equalsIgnoreCase(typeName) || "point".equalsIgnoreCase(typeName))) return Datum.TRUE;
+            if ("linearList".equalsIgnoreCase(checkName) && "list".equalsIgnoreCase(typeName)) return Datum.TRUE;
+            if ("number".equalsIgnoreCase(checkName) && ("integer".equalsIgnoreCase(typeName)
+                    || "float".equalsIgnoreCase(typeName))) return Datum.TRUE;
+            if ("object".equalsIgnoreCase(checkName) && ("instance".equalsIgnoreCase(typeName)
+                    || "member".equalsIgnoreCase(typeName) || "xtra".equalsIgnoreCase(typeName)
+                    || "xtraInstance".equalsIgnoreCase(typeName) || "script".equalsIgnoreCase(typeName)
+                    || "castLib".equalsIgnoreCase(typeName) || "sprite".equalsIgnoreCase(typeName)
+                    || "stage".equalsIgnoreCase(typeName) || "image".equalsIgnoreCase(typeName))) return Datum.TRUE;
+            return Datum.FALSE;
         }
 
         return Datum.symbol(typeName);
