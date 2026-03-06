@@ -44,6 +44,8 @@ A Java library for parsing Macromedia/Adobe Director and Shockwave files (.dir, 
 
 LibreShockwave includes a Lingo bytecode virtual machine and player that can load and run Director movies. The VM executes compiled Lingo scripts, handles score playback, sprite rendering, and external cast loading — bringing `.dcr` and `.dir` files back to life.
 
+**[Try the live demo →](https://libre.oldskooler.org/)** — a nightly build of the web player is deployed and ready to use. Load any `.dcr` or `.dir` file to test it in your browser.
+
 The player is available in two forms:
 - **Desktop** (`player`) — Swing-based UI with an integrated Lingo debugger
 - **Web** (`player-wasm`) — Compiled to WebAssembly via TeaVM, runs in any modern browser
@@ -66,32 +68,29 @@ implementation project(':player-core')  // transitively includes :vm and :sdk
 
 ```java
 import com.libreshockwave.DirectorFile;
+import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.player.Player;
 import com.libreshockwave.player.render.FrameSnapshot;
-import com.libreshockwave.player.render.RenderSprite;
+import com.libreshockwave.player.render.AwtFrameRenderer;
 
 DirectorFile file = DirectorFile.load(Path.of("movie.dcr"));
 Player player = new Player(file);
 player.play();
 
+int w = file.getStageWidth();
+int h = file.getStageHeight();
+
 // Game loop
 while (player.tick()) {
     FrameSnapshot snap = player.getFrameSnapshot();
-
-    for (RenderSprite sprite : snap.sprites()) {
-        if (!sprite.isVisible() || sprite.getBakedBitmap() == null) continue;
-
-        Bitmap bmp = sprite.getBakedBitmap();  // fully composited (ink + color applied)
-        int x = sprite.getX();
-        int y = sprite.getY();
-        // draw bmp at (x, y) with your rendering backend
-    }
+    Bitmap frame = AwtFrameRenderer.renderFrame(snap, w, h);
+    BufferedImage image = frame.toBufferedImage();  // ready to draw or save
 }
 
 player.shutdown();
 ```
 
-Each call to `tick()` advances one frame and returns `true` while the movie is still playing. `getFrameSnapshot()` returns the current frame's state with pre-baked bitmaps for all sprite types (bitmap, text, shape).
+Each call to `tick()` advances one frame and returns `true` while the movie is still playing. `AwtFrameRenderer` composites all sprites (bitmap, text, shape) with ink effects into a single image. For environments without AWT (e.g. WASM), use `SoftwareFrameRenderer` instead — same API, pure int[] compositing.
 
 <details>
 <summary>Custom networking</summary>
