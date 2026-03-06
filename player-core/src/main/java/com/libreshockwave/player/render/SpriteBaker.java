@@ -110,11 +110,11 @@ public class SpriteBaker {
     }
 
     /**
-     * Fallback for Flash/SWF members: render black Flash members as solid fills.
-     * Only black foreColor Flash members are rendered (dark bars, animation covers).
-     * Non-black Flash members (e.g. skyleft_shape with teal foreColor) have complex
-     * SWF vector content that can't be approximated as a solid fill — skip them
-     * so the stage background shows through.
+     * Fallback for Flash/SWF members: render as solid foreColor fill.
+     * Since we can't parse SWF content, we fill the sprite's bounding box
+     * with its foreColor. This provides sky backgrounds (skyleft_shape),
+     * dark bars (box), and animation covers (entry_shape). Higher-z sprites
+     * render on top, so only uncovered areas show the fill color.
      */
     private Bitmap bakeFlashFallback(RenderSprite sprite) {
         CastMemberChunk member = sprite.getCastMember();
@@ -122,17 +122,10 @@ public class SpriteBaker {
             return null;
         }
         int fc = sprite.getForeColor() & 0xFFFFFF;
-        // Only render Flash members with black foreColor as solid fills.
-        // These are UI elements (dark bars, animation covers) that genuinely
-        // fill their bounding box. Non-black Flash members have complex SWF
-        // content (gradients, shapes) we can't replicate with a solid fill.
-        if (fc != 0x000000) {
-            return null;
-        }
         int w = sprite.getWidth() > 0 ? sprite.getWidth() : 1;
         int h = sprite.getHeight() > 0 ? sprite.getHeight() : 1;
         Bitmap shape = new Bitmap(w, h, 32);
-        int argb = 0xFF000000;
+        int argb = 0xFF000000 | fc;
         int[] pixels = shape.getPixels();
         for (int i = 0; i < pixels.length; i++) {
             pixels[i] = argb;
