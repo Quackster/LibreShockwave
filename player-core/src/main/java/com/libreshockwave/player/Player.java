@@ -1267,6 +1267,8 @@ public class Player {
             case MOUSE_DOWN -> {
                 int hitSprite = HitTester.hitTest(stageRenderer, getCurrentFrame(),
                         event.stageX(), event.stageY());
+                // Track which sprite was clicked so mouseUp can target it
+                inputState.setClickOnSprite(hitSprite);
                 // Built-in Director behavior: clicking on an editable text/field sprite
                 // automatically sets keyboardFocusSprite to that sprite's channel.
                 // Clicking elsewhere clears the keyboard focus.

@@ -286,6 +286,11 @@ public class CastMember {
         return bitmap;
     }
 
+    /** Set bitmap directly (for initial load, not Lingo assignment). Does NOT mark as script-modified. */
+    public void setBitmapDirectly(Bitmap bmp) {
+        this.bitmap = bmp;
+    }
+
     public ScriptChunk getScript() {
         if (!isLoaded()) {
             load();
@@ -381,12 +386,11 @@ public class CastMember {
                     // Dynamic bitmap member - create a default 1x1 bitmap
                     bitmap = new Bitmap(1, 1, 32);
                     bitmap.fill(0xFFFFFFFF);
-                    bmp = bitmap;
                 }
-                if (bmp != null) {
-                    yield new Datum.ImageRef(bmp);
-                }
-                yield Datum.VOID;
+                // Return a live ImageRef that always resolves to this member's current bitmap.
+                // This is critical: Lingo like pImg = member.image must stay in sync even after
+                // member.image = newImage replaces the member's bitmap (e.g., cloud initCloud).
+                yield new Datum.ImageRef(this::getBitmap);
             }
             default -> Datum.VOID;
         };
@@ -698,6 +702,7 @@ public class CastMember {
             case "image" -> {
                 if (value instanceof Datum.ImageRef ir) {
                     this.bitmap = ir.bitmap().copy();
+                    this.bitmap.markScriptModified();
                     yield true;
                 }
                 yield false;
@@ -709,6 +714,7 @@ public class CastMember {
                 if (newW > 0) {
                     this.bitmap = new Bitmap(newW, h, bitmap != null ? bitmap.getBitDepth() : 32);
                     this.bitmap.fill(0xFFFFFFFF);
+                    this.bitmap.markScriptModified();
                 }
                 yield true;
             }
@@ -718,6 +724,7 @@ public class CastMember {
                 if (newH > 0) {
                     this.bitmap = new Bitmap(w, newH, bitmap != null ? bitmap.getBitDepth() : 32);
                     this.bitmap.fill(0xFFFFFFFF);
+                    this.bitmap.markScriptModified();
                 }
                 yield true;
             }

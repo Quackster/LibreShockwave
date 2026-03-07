@@ -162,10 +162,40 @@ public sealed interface Datum {
         public String toString() { return "color(" + r + ", " + g + ", " + b + ")"; }
     }
 
-    /** Image reference (wraps a bitmap for Director's image API) */
-    record ImageRef(Bitmap bitmap) implements Datum {
+    /**
+     * Image reference (wraps a bitmap for Director's image API).
+     * Can either hold a direct bitmap or a supplier that resolves to a member's current bitmap.
+     * The supplier form is used for member.image so that Lingo variables like pImg = member.image
+     * stay in sync even after member.image = newImage replaces the member's bitmap.
+     */
+    final class ImageRef implements Datum {
+        private final Bitmap directBitmap;
+        private final java.util.function.Supplier<Bitmap> bitmapSupplier;
+
+        /** Create an ImageRef wrapping a specific bitmap (standalone images, duplicates, etc.) */
+        public ImageRef(Bitmap bitmap) {
+            this.directBitmap = bitmap;
+            this.bitmapSupplier = null;
+        }
+
+        /** Create an ImageRef that resolves the bitmap lazily (for member.image live references) */
+        public ImageRef(java.util.function.Supplier<Bitmap> supplier) {
+            this.directBitmap = null;
+            this.bitmapSupplier = supplier;
+        }
+
+        public Bitmap bitmap() {
+            return bitmapSupplier != null ? bitmapSupplier.get() : directBitmap;
+        }
+
+        /** Returns true if this is a live reference (backed by a supplier). */
+        public boolean isLive() { return bitmapSupplier != null; }
+
         @Override
-        public String toString() { return "(image " + bitmap.getWidth() + "x" + bitmap.getHeight() + ")"; }
+        public String toString() {
+            Bitmap bmp = bitmap();
+            return bmp != null ? "(image " + bmp.getWidth() + "x" + bmp.getHeight() + ")" : "(image null)";
+        }
     }
 
     /** Xtra reference (the Xtra class itself) */
@@ -423,7 +453,7 @@ public sealed interface Datum {
             case Point p -> new Point(p.x(), p.y());
             case Rect r -> new Rect(r.left(), r.top(), r.right(), r.bottom());
             case Color c -> c;
-            case ImageRef ir -> new ImageRef(ir.bitmap().copy());
+            case ImageRef ir -> ir.isLive() ? ir : new ImageRef(ir.bitmap().copy());
             case SpriteRef sr -> sr;
             case CastMemberRef cm -> cm;
             case CastLibRef cl -> cl;

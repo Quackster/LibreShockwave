@@ -67,6 +67,20 @@ public class SpriteBaker {
      */
     private Bitmap bakeBitmap(RenderSprite sprite) {
         Bitmap b = null;
+
+        // Check if the runtime CastMember's bitmap was modified by Lingo (fill, copyPixels, etc.)
+        // If so, use the live bitmap directly instead of the stale BitmapCache entry.
+        if (sprite.getDynamicMember() != null) {
+            Bitmap liveBmp = sprite.getDynamicMember().getBitmap();
+            if (liveBmp != null && liveBmp.isScriptModified()) {
+                if (InkProcessor.shouldProcessInk(sprite.getInk())) {
+                    return InkProcessor.applyInk(liveBmp, sprite.getInk(),
+                            sprite.getBackColor(), false, null);
+                }
+                return liveBmp;
+            }
+        }
+
         if (sprite.getCastMember() != null) {
             // Check for runtime palette override (palette swap animation)
             PaletteOverrideInfo palInfo = resolvePaletteOverride(sprite);

@@ -20,9 +20,9 @@ public final class ImageMethodDispatcher {
         Bitmap bmp = imageRef.bitmap();
 
         return switch (method) {
-            case "fill" -> fill(bmp, args);
-            case "draw" -> draw(bmp, args);
-            case "copypixels" -> copyPixels(bmp, args);
+            case "fill" -> { bmp.markScriptModified(); yield fill(bmp, args); }
+            case "draw" -> { bmp.markScriptModified(); yield draw(bmp, args); }
+            case "copypixels" -> { bmp.markScriptModified(); yield copyPixels(bmp, args); }
             case "duplicate" -> new Datum.ImageRef(bmp.copy());
             case "crop" -> crop(bmp, args);
             case "setpixel" -> {
@@ -33,6 +33,7 @@ public final class ImageMethodDispatcher {
                     int color = datumToArgb(args.get(2));
                     if (px >= 0 && px < bmp.getWidth() && py >= 0 && py < bmp.getHeight()) {
                         bmp.setPixel(px, py, color);
+                        bmp.markScriptModified();
                     }
                 }
                 yield Datum.VOID;

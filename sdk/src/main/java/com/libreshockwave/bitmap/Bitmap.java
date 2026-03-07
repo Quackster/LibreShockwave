@@ -12,6 +12,7 @@ public class Bitmap {
     private final int height;
     private final int[] pixels; // ARGB format (0xAARRGGBB)
     private final int bitDepth;
+    private boolean scriptModified; // Set when Lingo modifies this bitmap via image API
 
     public Bitmap(int width, int height, int bitDepth) {
         this.width = width;
@@ -37,6 +38,16 @@ public class Bitmap {
 
     public int getBitDepth() {
         return bitDepth;
+    }
+
+    /** Returns true if this bitmap was modified by Lingo image API (fill, copyPixels, etc.). */
+    public boolean isScriptModified() {
+        return scriptModified;
+    }
+
+    /** Mark this bitmap as modified by Lingo script operations. */
+    public void markScriptModified() {
+        this.scriptModified = true;
     }
 
     public int[] getPixels() {

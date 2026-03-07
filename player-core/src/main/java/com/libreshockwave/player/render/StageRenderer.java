@@ -239,8 +239,12 @@ public class StageRenderer {
             member = file.getCastMemberByIndex(castLib, castMember);
         }
 
-        // If still not found, check dynamic members (created at runtime by window system, etc.)
+        // Also resolve the runtime CastMember — needed to detect Lingo-modified bitmaps
         CastMember dynamicMember = null;
+        if (castLibManager != null) {
+            dynamicMember = castLibManager.getDynamicMember(castLib, castMember);
+        }
+
         RenderSprite.SpriteType type = RenderSprite.SpriteType.UNKNOWN;
         if (member != null) {
             type = determineSpriteTypeFromMember(member);
@@ -254,21 +258,18 @@ public class StageRenderer {
                 width = bi.width();
                 height = bi.height();
             }
-        } else if (castLibManager != null) {
-            dynamicMember = castLibManager.getDynamicMember(castLib, castMember);
-            if (dynamicMember != null) {
-                type = determineSpriteTypeFromDynamic(dynamicMember);
-                // Apply registration point offset from dynamic member
-                x -= dynamicMember.getRegPointX();
-                y -= dynamicMember.getRegPointY();
-                // Fallback auto-size for dynamic members
-                if (width == 0 && height == 0) {
-                    int dw = dynamicMember.getProp("width").toInt();
-                    int dh = dynamicMember.getProp("height").toInt();
-                    if (dw > 0 && dh > 0) {
-                        width = dw;
-                        height = dh;
-                    }
+        } else if (dynamicMember != null) {
+            type = determineSpriteTypeFromDynamic(dynamicMember);
+            // Apply registration point offset from dynamic member
+            x -= dynamicMember.getRegPointX();
+            y -= dynamicMember.getRegPointY();
+            // Fallback auto-size for dynamic members
+            if (width == 0 && height == 0) {
+                int dw = dynamicMember.getProp("width").toInt();
+                int dh = dynamicMember.getProp("height").toInt();
+                if (dw > 0 && dh > 0) {
+                    width = dw;
+                    height = dh;
                 }
             }
         }
