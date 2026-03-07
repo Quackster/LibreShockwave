@@ -73,7 +73,8 @@ public class ScriptModifiedBitmapTest {
                 0,  // ink = COPY
                 255,  // blend
                 false, false,  // flipH, flipV
-                null  // no baked bitmap yet
+                null,  // no baked bitmap yet
+                false  // hasBehaviors
         );
 
         // 6. Bake through SpriteBaker
@@ -115,7 +116,7 @@ public class ScriptModifiedBitmapTest {
                 RenderSprite.SpriteType.BITMAP,
                 null, member,
                 0, 0, false, false,
-                0, 255, false, false, null
+                0, 255, false, false, null, false
         );
 
         BitmapCache cache = new BitmapCache(false);

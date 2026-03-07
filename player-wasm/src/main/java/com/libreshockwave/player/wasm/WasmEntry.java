@@ -32,7 +32,7 @@ public class WasmEntry {
 
     // Shared buffers for JS <-> WASM data transfer
     private static byte[] movieBuffer;
-    private static byte[] stringBuffer = new byte[4096];
+    private static byte[] stringBuffer = new byte[65536];
     private static byte[] netBuffer;
 
     // Cast data tracking for JS-side storage

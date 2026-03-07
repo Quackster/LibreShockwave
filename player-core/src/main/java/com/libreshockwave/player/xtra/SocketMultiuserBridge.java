@@ -17,11 +17,9 @@ import java.util.Map;
  * Socket-based MultiuserNetBridge using java.net.Socket.
  * Connects on a background thread; pollMessages reads non-blocking via available().
  * <p>
- * Wire protocol (length-prefixed, tab-separated fields):
- * <pre>
- *   [4 bytes big-endian length][UTF-8 body]
- *   body = errorCode \t senderID \t subject \t content
- * </pre>
+ * Kepler sends/receives raw strings over TCP (no binary length-prefix framing).
+ * Each complete chunk of available data is delivered as one message with the
+ * raw content in the content field.
  */
 public class SocketMultiuserBridge implements MultiuserNetBridge {
 
@@ -32,7 +30,6 @@ public class SocketMultiuserBridge implements MultiuserNetBridge {
         volatile boolean connected;
         volatile boolean connecting;
         final byte[] readBuf = new byte[8192];
-        final List<Byte> pending = new ArrayList<>();
     }
 
     private final Map<Integer, Connection> connections = new HashMap<>();
@@ -65,17 +62,9 @@ public class SocketMultiuserBridge implements MultiuserNetBridge {
         Connection conn = connections.get(instanceId);
         if (conn == null || !conn.connected) return;
 
-        String body = "0\t" + senderID + "\t" + subject + "\t" + content.toStr();
-        byte[] bodyBytes = body.getBytes(StandardCharsets.UTF_8);
-        byte[] frame = new byte[4 + bodyBytes.length];
-        frame[0] = (byte) (bodyBytes.length >> 24);
-        frame[1] = (byte) (bodyBytes.length >> 16);
-        frame[2] = (byte) (bodyBytes.length >> 8);
-        frame[3] = (byte) bodyBytes.length;
-        System.arraycopy(bodyBytes, 0, frame, 4, bodyBytes.length);
-
+        byte[] raw = content.toStr().getBytes(StandardCharsets.UTF_8);
         try {
-            conn.out.write(frame);
+            conn.out.write(raw);
             conn.out.flush();
         } catch (IOException e) {
             System.err.println("[SocketMultiuserBridge] Send failed: " + e.getMessage());
@@ -112,44 +101,14 @@ public class SocketMultiuserBridge implements MultiuserNetBridge {
                     conn.connected = false;
                     return List.of();
                 }
-                for (int i = 0; i < read; i++) {
-                    conn.pending.add(conn.readBuf[i]);
-                }
+                String data = new String(conn.readBuf, 0, read, StandardCharsets.UTF_8);
+                return List.of(new NetMessage(0, "", "", new Datum.Str(data)));
             }
         } catch (IOException e) {
             return List.of();
         }
 
-        // Parse complete length-prefixed messages
-        List<NetMessage> messages = new ArrayList<>();
-        while (conn.pending.size() >= 4) {
-            int len = ((conn.pending.get(0) & 0xFF) << 24)
-                    | ((conn.pending.get(1) & 0xFF) << 16)
-                    | ((conn.pending.get(2) & 0xFF) << 8)
-                    |  (conn.pending.get(3) & 0xFF);
-
-            if (conn.pending.size() < 4 + len) break;
-
-            byte[] bodyBytes = new byte[len];
-            for (int i = 0; i < len; i++) {
-                bodyBytes[i] = conn.pending.get(4 + i);
-            }
-            // Remove consumed bytes
-            conn.pending.subList(0, 4 + len).clear();
-
-            String body = new String(bodyBytes, StandardCharsets.UTF_8);
-            String[] parts = body.split("\t", 4);
-            if (parts.length == 4) {
-                messages.add(new NetMessage(
-                        Integer.parseInt(parts[0]),
-                        parts[1],
-                        parts[2],
-                        new Datum.Str(parts[3])
-                ));
-            }
-        }
-
-        return messages;
+        return List.of();
     }
 
     @Override

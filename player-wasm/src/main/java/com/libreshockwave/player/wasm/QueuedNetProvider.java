@@ -103,12 +103,22 @@ public class QueuedNetProvider implements NetBuiltins.NetProvider {
             props.put("error",      Datum.of("OK"));
             return Datum.propList(props);
         }
-        int byteCount = task.done ? task.byteCount : 0;
+        int byteCount;
+        if (task.done) {
+            byteCount = task.byteCount;
+        } else {
+            // Report incrementing bytesSoFar while loading to prevent
+            // Lingo CastLoad Instance from thinking the download stalled.
+            // JS fetch() doesn't provide intermediate progress, but the
+            // Director plugin would report bytes as they stream in.
+            task.pollCount++;
+            byteCount = task.pollCount;
+        }
         String state  = task.done ? (task.errorCode == 0 ? "Complete" : "Error") : "Loading";
         props.put("URL",        Datum.EMPTY_STRING);
         props.put("state",      Datum.of(state));
         props.put("bytesSoFar", Datum.of(byteCount));
-        props.put("bytesTotal", Datum.of(byteCount));
+        props.put("bytesTotal", Datum.of(task.done ? task.byteCount : 0));
         props.put("error",      task.errorCode == 0 ? Datum.of("OK") : Datum.of(String.valueOf(task.errorCode)));
         return Datum.propList(props);
     }
@@ -248,6 +258,7 @@ public class QueuedNetProvider implements NetBuiltins.NetProvider {
         int errorCode;
         boolean done;
         String[] fallbackUrls;
+        int pollCount;
 
         NetTask(int id, String url) {
             this.id = id;

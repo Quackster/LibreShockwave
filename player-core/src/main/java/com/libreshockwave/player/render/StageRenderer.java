@@ -135,7 +135,8 @@ public class StageRenderer {
         }
 
         // 2. Add dynamically created/puppeted sprites not in the Score
-        for (SpriteState state : spriteRegistry.getDynamicSprites()) {
+        List<SpriteState> dynSprites = spriteRegistry.getDynamicSprites();
+        for (SpriteState state : dynSprites) {
             int channel = state.getChannel();
             if (!renderedChannels.contains(channel) && state.hasDynamicMember()) {
                 RenderSprite sprite = createDynamicRenderSprite(state);
@@ -201,7 +202,8 @@ public class StageRenderer {
             state.hasBackColor() ? state.getBackColor() : data.backColor(),
             state.hasForeColor(), state.hasBackColor(),
             data.ink(), state.getBlend(),
-            state.isFlipH(), state.isFlipV(), null
+            state.isFlipH(), state.isFlipV(), null,
+            state.hasScriptBehaviors()
         );
     }
 
@@ -284,7 +286,8 @@ public class StageRenderer {
             state.getForeColor(), state.getBackColor(),
             state.hasForeColor(), state.hasBackColor(),
             state.getInk(), state.getBlend(),
-            state.isFlipH(), state.isFlipV(), null
+            state.isFlipH(), state.isFlipV(), null,
+            state.hasScriptBehaviors()
         );
     }
 

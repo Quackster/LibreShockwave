@@ -117,6 +117,7 @@ public class SpriteState {
     public void setBackColor(int backColor) { this.backColor = backColor; this.hasBackColor = true; }
 
     public List<Datum> getScriptInstanceList() { return scriptInstanceList; }
+    public boolean hasScriptBehaviors() { return !scriptInstanceList.isEmpty(); }
     public void setScriptInstanceList(List<Datum> list) {
         this.scriptInstanceList = list != null ? new ArrayList<>(list) : new ArrayList<>();
     }
