@@ -61,7 +61,11 @@ public final class StringOpcodes {
     private static boolean containsStr(ExecutionContext ctx) {
         Datum needle = ctx.pop();
         Datum haystack = ctx.pop();
-        boolean contains = haystack.toStr().contains(needle.toStr());
+        // Director's "contains" operator is case-insensitive (confirmed via ScummVM's
+        // c_contains which normalizeString() lowercases before comparing)
+        String h = haystack.toStr();
+        String n = needle.toStr();
+        boolean contains = h.toLowerCase().contains(n.toLowerCase());
         ctx.push(contains ? Datum.TRUE : Datum.FALSE);
         return true;
     }
