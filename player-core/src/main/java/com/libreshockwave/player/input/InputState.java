@@ -1,7 +1,7 @@
 package com.libreshockwave.player.input;
 
+import java.util.LinkedList;
 import java.util.Queue;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
  * Tracks mouse and keyboard input state for the Director player.
@@ -40,8 +40,10 @@ public class InputState {
     private volatile int selStart;
     private volatile int selEnd;
 
-    // Event queue — input events queued by UI thread, processed by VM thread during tick
-    private final Queue<InputEvent> eventQueue = new ConcurrentLinkedQueue<>();
+    // Event queue — input events queued by UI thread, processed by VM thread during tick.
+    // Using LinkedList instead of ConcurrentLinkedQueue for TeaVM WASM compatibility.
+    // WASM is single-threaded; on desktop, queue/poll don't race on the same element.
+    private final Queue<InputEvent> eventQueue = new LinkedList<>();
 
     // --- Mouse position ---
 
