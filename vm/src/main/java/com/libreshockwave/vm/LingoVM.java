@@ -397,6 +397,10 @@ public class LingoVM {
             if (DebugConfig.isDebugPlaybackEnabled()) {
                 System.err.println(e.getMessage());
                 System.err.println(formatCallStack());
+                // Print Java stack trace for unexpected exceptions (NPE etc.)
+                if (!(e instanceof LingoException)) {
+                    e.printStackTrace(System.err);
+                }
             }
             if (traceListener != null) {
                 traceListener.onError("Error in " + script.getHandlerName(handler), e);

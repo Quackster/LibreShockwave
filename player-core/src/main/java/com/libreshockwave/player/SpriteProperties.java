@@ -267,7 +267,7 @@ public class SpriteProperties implements SpritePropertyProvider {
             }
             // Silently accept but don't do anything special
             case "cursor", "moveable", "moveablesprite", "editabletext",
-                 "trails", "tweened", "constraint", "scriptnum", "type" -> {
+                 "trails", "tweened", "constraint", "scriptnum", "type", "id" -> {
                 return true;
             }
             default -> {

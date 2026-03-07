@@ -30,6 +30,7 @@ public class Drawing {
                                    int srcX, int srcY,
                                    int width, int height,
                                    InkMode ink, int blend) {
+        if (width <= 0 || height <= 0) return;
         // For MATTE ink, pre-process the source region with flood-fill matte.
         // Director's MATTE in copyPixels makes border-connected background pixels transparent.
         Bitmap effectiveSrc = src;
@@ -329,6 +330,9 @@ public class Drawing {
      * Used by copyPixels with MATTE ink to properly handle source transparency.
      */
     private static Bitmap applyMatteToRegion(Bitmap src, int srcX, int srcY, int w, int h) {
+        if (w <= 0 || h <= 0) {
+            return new Bitmap(Math.max(w, 1), Math.max(h, 1), src.getBitDepth());
+        }
         int[] pixels = new int[w * h];
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {
