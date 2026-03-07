@@ -329,7 +329,8 @@ public final class ImageMethodDispatcher {
         var items = quad.items();
         if (items.size() != 4) return Datum.VOID;
 
-        // Quad corners: [topRight, topLeft, bottomLeft, bottomRight] for Director convention
+        // Director quad order: [topLeft, topRight, bottomRight, bottomLeft]
+        // (confirmed by Scripting Reference: "upper left, upper right, lower right, and lower left")
         int[] px = new int[4], py = new int[4];
         for (int i = 0; i < 4; i++) {
             if (items.get(i) instanceof Datum.Point p) {
@@ -353,30 +354,40 @@ public final class ImageMethodDispatcher {
         int destH = maxY - minY;
         if (destW <= 0 || destH <= 0) return Datum.VOID;
 
-        // Detect flip: Director quad order is [topRight, topLeft, bottomLeft, bottomRight]
-        // flipH: topRight.x < topLeft.x (x-coords swapped)
-        boolean flipH = px[0] < px[1];
-        // flipV: topRight.y > bottomRight.y (y-coords swapped)
+        // Detect flip from quad corners: [topLeft=0, topRight=1, bottomRight=2, bottomLeft=3]
+        // flipH: topLeft.x > topRight.x (x-coords swapped horizontally)
+        boolean flipH = px[0] > px[1];
+        // flipV: topLeft.y > bottomLeft.y (y-coords swapped vertically)
         boolean flipV = py[0] > py[3];
 
-        // Copy with flip
-        for (int y = 0; y < destH; y++) {
-            int sy = srcRect.top() + (y * srcH / destH);
-            int dy = minY + y;
-            if (sy < 0 || sy >= src.getHeight() || dy < 0 || dy >= dest.getHeight()) continue;
+        // Parse optional ink/blend from propList (4th argument)
+        Palette.InkMode ink = Palette.InkMode.COPY;
+        int blend = 255;
+        if (args.size() > 3 && args.get(3) instanceof Datum.PropList pl) {
+            Datum inkDatum = getPropIgnoreCase(pl, "ink", "Ink");
+            if (inkDatum instanceof Datum.Int inkInt) {
+                ink = inkFromInt(inkInt.value());
+            }
+            Datum blendDatum = getPropIgnoreCase(pl, "blend", "Blend");
+            if (!blendDatum.isVoid()) {
+                blend = (int) (blendDatum.toDouble() * 255.0 / 100.0);
+            }
+        }
 
+        // Build flipped intermediate bitmap, then use Drawing.copyPixels for ink support
+        Bitmap flipped = new Bitmap(destW, destH, src.getBitDepth());
+        for (int y = 0; y < destH; y++) {
             for (int x = 0; x < destW; x++) {
                 int srcX = flipH ? (srcW - 1 - (x * srcW / destW)) : (x * srcW / destW);
                 int srcY = flipV ? (srcH - 1 - (y * srcH / destH)) : (y * srcH / destH);
                 srcX += srcRect.left();
                 srcY += srcRect.top();
-                int dx = minX + x;
-
-                if (srcX < 0 || srcX >= src.getWidth() || dx < 0 || dx >= dest.getWidth()) continue;
-
-                dest.setPixel(dx, dy, src.getPixel(srcX, srcY));
+                if (srcX >= 0 && srcX < src.getWidth() && srcY >= 0 && srcY < src.getHeight()) {
+                    flipped.setPixel(x, y, src.getPixel(srcX, srcY));
+                }
             }
         }
+        Drawing.copyPixels(dest, flipped, minX, minY, 0, 0, destW, destH, ink, blend);
 
         return Datum.VOID;
     }
