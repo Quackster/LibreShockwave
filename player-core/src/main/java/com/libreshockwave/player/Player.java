@@ -38,6 +38,7 @@ import com.libreshockwave.vm.builtin.XtraBuiltins;
 import com.libreshockwave.player.timeout.TimeoutManager;
 import com.libreshockwave.vm.xtra.MultiuserNetBridge;
 import com.libreshockwave.vm.xtra.MultiuserXtra;
+import com.libreshockwave.player.xtra.SocketMultiuserBridge;
 import com.libreshockwave.vm.xtra.XtraManager;
 import com.libreshockwave.player.debug.DebugControllerApi;
 
@@ -158,6 +159,7 @@ public class Player {
         }
         this.netManager = new NetManager();
         this.xtraManager = new XtraManager();
+        registerMultiuserXtra(new SocketMultiuserBridge());
         this.movieProperties = new MovieProperties(this, file);
         this.spriteProperties = new SpriteProperties(stageRenderer.getSpriteRegistry());
         // Initialize cast parser executor (only needed for desktop player with NetManager)
@@ -262,6 +264,8 @@ public class Player {
         this.netManager = null;
         this.overrideNetProvider = netProvider;
         this.xtraManager = new XtraManager();
+        // No auto-register here — TeaVM has no socket support.
+        // WASM callers should call registerMultiuserXtra() with their own bridge.
         this.movieProperties = new MovieProperties(this, file);
         this.spriteProperties = new SpriteProperties(stageRenderer.getSpriteRegistry());
         this.castLibManager = new CastLibManager(file, castDataRequestCallback);
@@ -1566,5 +1570,6 @@ public class Player {
             if (delegate != null) delegate.onDebugMessage(message);
         }
     }
+
 
 }

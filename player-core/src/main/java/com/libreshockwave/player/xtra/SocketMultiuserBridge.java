@@ -4,9 +4,9 @@ import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.xtra.MultiuserNetBridge;
 
 import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.nio.ByteBuffer;
-import java.nio.channels.SocketChannel;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -14,7 +14,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Socket-based MultiuserNetBridge using Java NIO non-blocking channels.
+ * Socket-based MultiuserNetBridge using java.net.Socket.
+ * Connects on a background thread; pollMessages reads non-blocking via available().
  * <p>
  * Wire protocol (length-prefixed, tab-separated fields):
  * <pre>
@@ -24,29 +25,39 @@ import java.util.Map;
  */
 public class SocketMultiuserBridge implements MultiuserNetBridge {
 
-    private static final int HEADER_SIZE = 4;
-
     private static class Connection {
-        SocketChannel channel;
-        ByteBuffer readBuffer = ByteBuffer.allocate(8192);
-        boolean connected;
+        Socket socket;
+        InputStream in;
+        OutputStream out;
+        volatile boolean connected;
+        volatile boolean connecting;
+        final byte[] readBuf = new byte[8192];
+        final List<Byte> pending = new ArrayList<>();
     }
 
     private final Map<Integer, Connection> connections = new HashMap<>();
 
     @Override
     public void requestConnect(int instanceId, String host, int port) {
-        try {
-            SocketChannel channel = SocketChannel.open();
-            channel.configureBlocking(false);
-            channel.connect(new InetSocketAddress(host, port));
+        Connection conn = new Connection();
+        conn.connecting = true;
+        connections.put(instanceId, conn);
 
-            Connection conn = new Connection();
-            conn.channel = channel;
-            connections.put(instanceId, conn);
-        } catch (IOException e) {
-            System.err.println("[SocketMultiuserBridge] Connect failed: " + e.getMessage());
-        }
+        Thread t = new Thread(() -> {
+            try {
+                Socket socket = new Socket(host, port);
+                conn.socket = socket;
+                conn.in = socket.getInputStream();
+                conn.out = socket.getOutputStream();
+                conn.connected = true;
+            } catch (IOException e) {
+                System.err.println("[SocketMultiuserBridge] Connect failed: " + e.getMessage());
+            } finally {
+                conn.connecting = false;
+            }
+        }, "MUS-connect-" + instanceId);
+        t.setDaemon(true);
+        t.start();
     }
 
     @Override
@@ -56,15 +67,16 @@ public class SocketMultiuserBridge implements MultiuserNetBridge {
 
         String body = "0\t" + senderID + "\t" + subject + "\t" + content.toStr();
         byte[] bodyBytes = body.getBytes(StandardCharsets.UTF_8);
-        ByteBuffer buf = ByteBuffer.allocate(HEADER_SIZE + bodyBytes.length);
-        buf.putInt(bodyBytes.length);
-        buf.put(bodyBytes);
-        buf.flip();
+        byte[] frame = new byte[4 + bodyBytes.length];
+        frame[0] = (byte) (bodyBytes.length >> 24);
+        frame[1] = (byte) (bodyBytes.length >> 16);
+        frame[2] = (byte) (bodyBytes.length >> 8);
+        frame[3] = (byte) bodyBytes.length;
+        System.arraycopy(bodyBytes, 0, frame, 4, bodyBytes.length);
 
         try {
-            while (buf.hasRemaining()) {
-                conn.channel.write(buf);
-            }
+            conn.out.write(frame);
+            conn.out.flush();
         } catch (IOException e) {
             System.err.println("[SocketMultiuserBridge] Send failed: " + e.getMessage());
         }
@@ -73,27 +85,16 @@ public class SocketMultiuserBridge implements MultiuserNetBridge {
     @Override
     public void requestDisconnect(int instanceId) {
         Connection conn = connections.remove(instanceId);
-        if (conn != null) {
-            try { conn.channel.close(); } catch (IOException ignored) {}
+        if (conn != null && conn.socket != null) {
+            try { conn.socket.close(); } catch (IOException ignored) {}
+            conn.connected = false;
         }
     }
 
     @Override
     public boolean isConnected(int instanceId) {
         Connection conn = connections.get(instanceId);
-        if (conn == null) return false;
-
-        if (!conn.connected) {
-            try {
-                if (conn.channel.finishConnect()) {
-                    conn.connected = true;
-                }
-            } catch (IOException e) {
-                return false;
-            }
-        }
-
-        return conn.connected;
+        return conn != null && conn.connected;
     }
 
     @Override
@@ -101,12 +102,19 @@ public class SocketMultiuserBridge implements MultiuserNetBridge {
         Connection conn = connections.get(instanceId);
         if (conn == null || !conn.connected) return List.of();
 
-        // Read available data (non-blocking)
+        // Read whatever is available without blocking
         try {
-            int read = conn.channel.read(conn.readBuffer);
-            if (read == -1) {
-                conn.connected = false;
-                return List.of();
+            int avail = conn.in.available();
+            if (avail > 0) {
+                int toRead = Math.min(avail, conn.readBuf.length);
+                int read = conn.in.read(conn.readBuf, 0, toRead);
+                if (read == -1) {
+                    conn.connected = false;
+                    return List.of();
+                }
+                for (int i = 0; i < read; i++) {
+                    conn.pending.add(conn.readBuf[i]);
+                }
             }
         } catch (IOException e) {
             return List.of();
@@ -114,22 +122,22 @@ public class SocketMultiuserBridge implements MultiuserNetBridge {
 
         // Parse complete length-prefixed messages
         List<NetMessage> messages = new ArrayList<>();
-        conn.readBuffer.flip();
+        while (conn.pending.size() >= 4) {
+            int len = ((conn.pending.get(0) & 0xFF) << 24)
+                    | ((conn.pending.get(1) & 0xFF) << 16)
+                    | ((conn.pending.get(2) & 0xFF) << 8)
+                    |  (conn.pending.get(3) & 0xFF);
 
-        while (conn.readBuffer.remaining() >= HEADER_SIZE) {
-            conn.readBuffer.mark();
-            int length = conn.readBuffer.getInt();
+            if (conn.pending.size() < 4 + len) break;
 
-            if (conn.readBuffer.remaining() < length) {
-                conn.readBuffer.reset();
-                break;
+            byte[] bodyBytes = new byte[len];
+            for (int i = 0; i < len; i++) {
+                bodyBytes[i] = conn.pending.get(4 + i);
             }
+            // Remove consumed bytes
+            conn.pending.subList(0, 4 + len).clear();
 
-            byte[] bodyBytes = new byte[length];
-            conn.readBuffer.get(bodyBytes);
             String body = new String(bodyBytes, StandardCharsets.UTF_8);
-
-            // Parse: errorCode\tsenderID\tsubject\tcontent
             String[] parts = body.split("\t", 4);
             if (parts.length == 4) {
                 messages.add(new NetMessage(
@@ -141,7 +149,6 @@ public class SocketMultiuserBridge implements MultiuserNetBridge {
             }
         }
 
-        conn.readBuffer.compact();
         return messages;
     }
 

@@ -39,6 +39,13 @@ console.warn = function() {};
 var _e = null;          // WasmEngine instance
 var _isTicking = false; // guard against overlapping ticks
 
+// --- Multiuser Xtra WebSocket connections ---
+var _musSockets = {};      // instanceId -> WebSocket
+var _musInbound = {};      // instanceId -> [{errorCode, senderID, subject, content}]
+var _musConnected = {};    // instanceId -> true (pending connect notifications)
+var _musDisconnected = {}; // instanceId -> true (pending disconnect notifications)
+var _musErrors = {};       // instanceId -> errorCode
+
 // --- Non-blocking fetch delivery queue ---
 var _fetchQueue = [];   // [{taskId, data: ArrayBuffer}] or [{taskId, error: number}]
 var _inFlight = 0;      // number of fetches currently in-progress
@@ -527,6 +534,168 @@ WasmEngine.prototype.pumpNetworkFire = function() {
 };
 
 // ============================================================
+// Multiuser Xtra — WebSocket bridge
+// ============================================================
+
+/**
+ * Drain pending MUS requests from WASM and act on them:
+ *   type 0 = connect → open WebSocket
+ *   type 1 = send    → send on existing WebSocket
+ *   type 2 = disconnect → close WebSocket
+ *
+ * WebSocket URL is built as ws://host:port (or wss:// if page is HTTPS).
+ * A WebSocket proxy must be running at that address to bridge to the
+ * real Multiuser Server TCP socket.
+ */
+WasmEngine.prototype.pumpMusRequests = function() {
+    if (this._wasmDead) return;
+    var count;
+    try {
+        count = this.exports.getMusPendingCount(); this._clearEx();
+    } catch(e) { return; }
+    if (count === 0) return;
+
+    var strAddr = this.exports.getStringBufferAddress(); this._clearEx();
+
+    for (var i = 0; i < count; i++) {
+        var type = this.exports.getMusPendingType(i); this._clearEx();
+        var instId = this.exports.getMusPendingInstanceId(i); this._clearEx();
+
+        if (type === 0) {
+            // CONNECT
+            var hostLen = this.exports.getMusPendingHost(i); this._clearEx();
+            var host = this._readString(strAddr, hostLen);
+            var port = this.exports.getMusPendingPort(i); this._clearEx();
+
+            var protocol = (self.location && self.location.protocol === 'https:') ? 'wss' : 'ws';
+            var wsUrl = protocol + '://' + host + ':' + port;
+            this._musConnect(instId, wsUrl);
+
+        } else if (type === 1) {
+            // SEND
+            var dataLen = this.exports.getMusPendingSendData(i); this._clearEx();
+            var data = this._readString(strAddr, dataLen);
+            var ws = _musSockets[instId];
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(data);
+            }
+
+        } else if (type === 2) {
+            // DISCONNECT
+            var ws2 = _musSockets[instId];
+            if (ws2) {
+                ws2.onclose = null; // prevent double-notification
+                ws2.close();
+                delete _musSockets[instId];
+            }
+        }
+    }
+
+    this.exports.drainMusPending(); this._clearEx();
+};
+
+/**
+ * Open a WebSocket and wire up event handlers.
+ * Messages are queued in JS and delivered to WASM during the next tick.
+ */
+WasmEngine.prototype._musConnect = function(instId, wsUrl) {
+    // Close any existing connection for this instance
+    if (_musSockets[instId]) {
+        _musSockets[instId].onclose = null;
+        _musSockets[instId].close();
+    }
+
+    var ws;
+    try {
+        ws = new WebSocket(wsUrl);
+    } catch(e) {
+        _musErrors[instId] = -3; // connection refused
+        return;
+    }
+    ws.binaryType = 'arraybuffer';
+    _musSockets[instId] = ws;
+
+    ws.onopen = function() {
+        _musConnected[instId] = true;
+    };
+
+    ws.onmessage = function(evt) {
+        // Each WebSocket message is one MUS message.
+        // Format: errorCode\tsenderID\tsubject\tcontent (text frame)
+        // or raw binary — we convert to string either way.
+        var text;
+        if (typeof evt.data === 'string') {
+            text = evt.data;
+        } else {
+            text = new TextDecoder().decode(new Uint8Array(evt.data));
+        }
+
+        if (!_musInbound[instId]) _musInbound[instId] = [];
+        _musInbound[instId].push(text);
+    };
+
+    ws.onclose = function() {
+        _musDisconnected[instId] = true;
+        delete _musSockets[instId];
+    };
+
+    ws.onerror = function() {
+        _musErrors[instId] = -2; // network error
+    };
+};
+
+/**
+ * Deliver queued MUS events (connected/messages/disconnected/errors) to WASM.
+ * Called at the start of each tick, before WASM tick().
+ */
+WasmEngine.prototype.deliverMusEvents = function() {
+    if (this._wasmDead) return;
+    var strAddr;
+    try {
+        strAddr = this.exports.getStringBufferAddress(); this._clearEx();
+    } catch(e) { return; }
+
+    // Deliver connect notifications
+    for (var id in _musConnected) {
+        try {
+            this.exports.musDeliverConnected(parseInt(id)); this._clearEx();
+        } catch(e) {}
+    }
+    _musConnected = {};
+
+    // Deliver error notifications
+    for (var eid in _musErrors) {
+        try {
+            this.exports.musDeliverError(parseInt(eid), _musErrors[eid]); this._clearEx();
+        } catch(e) {}
+    }
+    _musErrors = {};
+
+    // Deliver messages
+    for (var mid in _musInbound) {
+        var msgs = _musInbound[mid];
+        var iid = parseInt(mid);
+        for (var i = 0; i < msgs.length; i++) {
+            var msgBytes = new TextEncoder().encode(msgs[i]);
+            var len = Math.min(msgBytes.length, 4096);
+            new Uint8Array(this._mem(), strAddr, len).set(msgBytes.subarray(0, len));
+            try {
+                this.exports.musDeliverMessage(iid, len); this._clearEx();
+            } catch(e) {}
+        }
+    }
+    _musInbound = {};
+
+    // Deliver disconnect notifications
+    for (var did in _musDisconnected) {
+        try {
+            this.exports.musDeliverDisconnected(parseInt(did)); this._clearEx();
+        } catch(e) {}
+    }
+    _musDisconnected = {};
+};
+
+// ============================================================
 // JS-side response cache helpers
 // ============================================================
 
@@ -866,6 +1035,12 @@ self.onmessage = async function(e) {
                         }
                     }
 
+                    // Phase 1.8: deliver pending Multiuser Xtra events (WebSocket)
+                    if (!_e._wasmDead) {
+                        try { _e.deliverMusEvents(); }
+                        catch (musErr) { console.error('[WORKER] MUS deliver error: ' + musErr); }
+                    }
+
                     // Phase 2: advance WASM by one Lingo frame
                     if (_e._wasmDead) {
                         console.error('[WORKER] WASM instance is dead, skipping tick');
@@ -894,6 +1069,10 @@ self.onmessage = async function(e) {
                     } catch (netErr) {
                         console.error('[WORKER] pump error: ' + netErr);
                     }
+
+                    // Phase 3.5: pump Multiuser Xtra WebSocket requests
+                    try { _e.pumpMusRequests(); }
+                    catch (musErr2) { console.error('[WORKER] MUS pump error: ' + musErr2); }
 
                     // Always update frame metadata from WASM (needed for fast-loop detection)
                     try {

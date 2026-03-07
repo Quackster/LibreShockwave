@@ -838,6 +838,109 @@ public class WasmEntry {
         return len;
     }
 
+    // === Multiuser Xtra: JS polls pending requests, delivers events ===
+
+    private static WasmMultiuserBridge musBridge() {
+        return wasmPlayer != null ? wasmPlayer.getMusBridge() : null;
+    }
+
+    @Export(name = "getMusPendingCount")
+    public static int getMusPendingCount() {
+        WasmMultiuserBridge b = musBridge();
+        return b != null ? b.getPendingRequests().size() : 0;
+    }
+
+    /** @return request type: 0=connect, 1=send, 2=disconnect */
+    @Export(name = "getMusPendingType")
+    public static int getMusPendingType(int index) {
+        WasmMultiuserBridge b = musBridge();
+        if (b == null) return -1;
+        WasmMultiuserBridge.PendingRequest req = b.getRequest(index);
+        return req != null ? req.type : -1;
+    }
+
+    @Export(name = "getMusPendingInstanceId")
+    public static int getMusPendingInstanceId(int index) {
+        WasmMultiuserBridge b = musBridge();
+        if (b == null) return 0;
+        WasmMultiuserBridge.PendingRequest req = b.getRequest(index);
+        return req != null ? req.instanceId : 0;
+    }
+
+    /** Write host to stringBuffer. @return length */
+    @Export(name = "getMusPendingHost")
+    public static int getMusPendingHost(int index) {
+        WasmMultiuserBridge b = musBridge();
+        if (b == null) return 0;
+        WasmMultiuserBridge.PendingRequest req = b.getRequest(index);
+        return req != null ? writeToStringBuffer(req.host) : 0;
+    }
+
+    @Export(name = "getMusPendingPort")
+    public static int getMusPendingPort(int index) {
+        WasmMultiuserBridge b = musBridge();
+        if (b == null) return 0;
+        WasmMultiuserBridge.PendingRequest req = b.getRequest(index);
+        return req != null ? req.port : 0;
+    }
+
+    /** Write send data (senderID\tsubject\tcontent) to stringBuffer. @return length */
+    @Export(name = "getMusPendingSendData")
+    public static int getMusPendingSendData(int index) {
+        WasmMultiuserBridge b = musBridge();
+        if (b == null) return 0;
+        WasmMultiuserBridge.PendingRequest req = b.getRequest(index);
+        if (req == null || req.type != WasmMultiuserBridge.REQ_SEND) return 0;
+        return writeToStringBuffer(req.senderID + "\t" + req.subject + "\t" + req.content);
+    }
+
+    @Export(name = "drainMusPending")
+    public static void drainMusPending() {
+        WasmMultiuserBridge b = musBridge();
+        if (b != null) b.drainPendingRequests();
+    }
+
+    /** JS calls this when a WebSocket connection is established. */
+    @Export(name = "musDeliverConnected")
+    public static void musDeliverConnected(int instanceId) {
+        WasmMultiuserBridge b = musBridge();
+        if (b != null) b.notifyConnected(instanceId);
+    }
+
+    /** JS calls this when a WebSocket is closed. */
+    @Export(name = "musDeliverDisconnected")
+    public static void musDeliverDisconnected(int instanceId) {
+        WasmMultiuserBridge b = musBridge();
+        if (b != null) b.notifyDisconnected(instanceId);
+    }
+
+    /** JS calls this on WebSocket error. */
+    @Export(name = "musDeliverError")
+    public static void musDeliverError(int instanceId, int errorCode) {
+        WasmMultiuserBridge b = musBridge();
+        if (b != null) b.notifyError(instanceId, errorCode);
+    }
+
+    /**
+     * JS calls this when a message arrives on a WebSocket.
+     * Message fields must be written to stringBuffer as: errorCode\tsenderID\tsubject\tcontent
+     */
+    @Export(name = "musDeliverMessage")
+    public static void musDeliverMessage(int instanceId, int dataLen) {
+        WasmMultiuserBridge b = musBridge();
+        if (b == null) return;
+        try {
+            String data = new String(stringBuffer, 0, dataLen);
+            String[] parts = data.split("\t", 4);
+            if (parts.length == 4) {
+                b.deliverMessage(instanceId,
+                        Integer.parseInt(parts[0]), parts[1], parts[2], parts[3]);
+            }
+        } catch (Throwable e) {
+            captureError("musDeliverMessage", e);
+        }
+    }
+
     // === Test/debug exports ===
 
     /**

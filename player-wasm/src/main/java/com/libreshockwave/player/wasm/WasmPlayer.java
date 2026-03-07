@@ -14,6 +14,7 @@ public class WasmPlayer {
 
     private Player player;
     private QueuedNetProvider netProvider;
+    private WasmMultiuserBridge musBridge;
     private SoftwareRenderer softwareRenderer;
     private int castRevision;
 
@@ -32,6 +33,8 @@ public class WasmPlayer {
 
         netProvider = new QueuedNetProvider(basePath);
         player = new Player(file, netProvider, castDataRequestCallback);
+        musBridge = new WasmMultiuserBridge();
+        player.registerMultiuserXtra(musBridge);
         softwareRenderer = null;
         castRevision = 0;
 
@@ -125,6 +128,10 @@ public class WasmPlayer {
 
     public QueuedNetProvider getNetProvider() {
         return netProvider;
+    }
+
+    public WasmMultiuserBridge getMusBridge() {
+        return musBridge;
     }
 
     public SoftwareRenderer getSoftwareRenderer() {
