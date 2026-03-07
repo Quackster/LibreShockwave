@@ -571,7 +571,6 @@ WasmEngine.prototype.pumpMusRequests = function() {
     } catch(e) { return; }
     if (count === 0) return;
 
-    self.postMessage({type:'error', msg:'[MUS] pumpMusRequests: ' + count + ' pending'});
     var strAddr = this.exports.getStringBufferAddress(); this._clearEx();
 
     for (var i = 0; i < count; i++) {
@@ -589,12 +588,13 @@ WasmEngine.prototype.pumpMusRequests = function() {
             this._musConnect(instId, wsUrl);
 
         } else if (type === 1) {
-            // SEND — raw content string
+            // SEND — raw content bytes (must be binary frame for websockify)
             var dataLen = this.exports.getMusPendingSendData(i); this._clearEx();
             var data = this._readString(strAddr, dataLen);
             var ws = _musSockets[instId];
             if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(data);
+                var bytes = new TextEncoder().encode(data);
+                ws.send(bytes.buffer);
             }
 
         } else if (type === 2) {
@@ -622,7 +622,6 @@ WasmEngine.prototype._musConnect = function(instId, wsUrl) {
         _musSockets[instId].close();
     }
 
-    self.postMessage({type:'error', msg:'[MUS] Connecting inst=' + instId + ' url=' + wsUrl});
     var ws;
     try {
         ws = new WebSocket(wsUrl);
@@ -635,7 +634,6 @@ WasmEngine.prototype._musConnect = function(instId, wsUrl) {
     _musSockets[instId] = ws;
 
     ws.onopen = function() {
-        self.postMessage({type:'error', msg:'[MUS] Connected inst=' + instId});
         _musConnected[instId] = true;
     };
 
@@ -648,18 +646,15 @@ WasmEngine.prototype._musConnect = function(instId, wsUrl) {
         } else {
             data = new TextDecoder().decode(new Uint8Array(evt.data));
         }
-        self.postMessage({type:'error', msg:'[MUS] Received inst=' + instId + ' len=' + data.length + ' data=' + JSON.stringify(data).substring(0, 120)});
         _musInbound[instId].push(data);
     };
 
     ws.onclose = function() {
-        self.postMessage({type:'error', msg:'[MUS] Disconnected inst=' + instId});
         _musDisconnected[instId] = true;
         delete _musSockets[instId];
     };
 
     ws.onerror = function() {
-        self.postMessage({type:'error', msg:'[MUS] Error inst=' + instId});
         _musErrors[instId] = -2; // network error
     };
 };
@@ -698,7 +693,6 @@ WasmEngine.prototype.deliverMusEvents = function() {
         for (var i = 0; i < msgs.length; i++) {
             var msgBytes = new TextEncoder().encode(msgs[i]);
             var len = Math.min(msgBytes.length, 4096);
-            self.postMessage({type:'error', msg:'[MUS] Delivering msg to WASM inst=' + iid + ' len=' + len});
             new Uint8Array(this._mem(), strAddr, len).set(msgBytes.subarray(0, len));
             try {
                 this.exports.musDeliverMessage(iid, len); this._clearEx();

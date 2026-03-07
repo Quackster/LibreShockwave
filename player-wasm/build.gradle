@@ -206,6 +206,44 @@ tasks.register('runWasmChromiumTest', Exec) {
 // Usage:
 //   ./gradlew :player-wasm:runWasmWebSocketTest
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Registration dialog click-flow test.
+// Loads Habbo login screen, clicks "You can create one here", verifies the
+// registration dialog appears via canvas pixel change detection.
+//
+// Usage:
+//   ./gradlew :player-wasm:runWasmRegistrationTest
+//   ./gradlew :player-wasm:runWasmRegistrationTest -PoutputDir=C:/tmp/reg-test
+// ---------------------------------------------------------------------------
+tasks.register('runWasmRegistrationTest', Exec) {
+    group       = 'verification'
+    description = 'Test login -> registration dialog click flow in headless Chromium'
+    dependsOn 'assembleWasm', 'npmInstall'
+
+    def distPath  = layout.buildDirectory.dir('dist').get().asFile.absolutePath
+    def dcrFile   = project.findProperty('dcrFile')  ?: 'C:/xampp/htdocs/dcr/14.1_b8/habbo.dcr'
+    def castDir   = project.findProperty('castDir')  ?: 'C:/xampp/htdocs/dcr/14.1_b8'
+    def outputDir = project.findProperty('outputDir') ?: ''
+
+    commandLine 'node',
+        file('src/test/js/wasm-registration-test.js').absolutePath,
+        distPath,
+        dcrFile,
+        castDir,
+        outputDir
+
+    standardOutput = System.out
+    errorOutput    = System.err
+}
+
+// ---------------------------------------------------------------------------
+// WebSocket bridge integration test.
+// Starts a MUS TCP server + websockify + headless Chrome and verifies
+// the full WebSocket <-> TCP pipeline works end-to-end.
+//
+// Usage:
+//   ./gradlew :player-wasm:runWasmWebSocketTest
+// ---------------------------------------------------------------------------
 tasks.register('runWasmWebSocketTest', Exec) {
     group       = 'verification'
     description = 'Test WASM WebSocket bridge with websockify + MUS TCP server'
