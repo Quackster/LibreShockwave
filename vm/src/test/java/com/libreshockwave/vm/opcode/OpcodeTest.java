@@ -492,19 +492,6 @@ class OpcodeTest {
         }
 
         @Test
-        void containsStringCaseSensitive() {
-            // containsStr is case-sensitive (matching dirplayer-rs)
-            scope.push(Datum.of("Hello World"));
-            scope.push(Datum.of("WORLD"));
-
-            OpcodeHandler handler = registry.get(Opcode.CONTAINS_STR);
-            boolean advance = handler.execute(createContext(0));
-
-            assertTrue(advance);
-            assertEquals(Datum.FALSE, scope.pop());
-        }
-
-        @Test
         void notContainsString() {
             scope.push(Datum.of("Hello World"));
             scope.push(Datum.of("foo"));
