@@ -41,7 +41,8 @@ var _isTicking = false; // guard against overlapping ticks
 
 // --- Multiuser Xtra WebSocket connections ---
 var _musSockets = {};      // instanceId -> WebSocket
-var _musInbound = {};      // instanceId -> [{errorCode, senderID, subject, content}]
+var _musInbound = {};      // instanceId -> [string] (MUS message bodies, tab-separated)
+
 var _musConnected = {};    // instanceId -> true (pending connect notifications)
 var _musDisconnected = {}; // instanceId -> true (pending disconnect notifications)
 var _musErrors = {};       // instanceId -> errorCode
@@ -572,7 +573,7 @@ WasmEngine.prototype.pumpMusRequests = function() {
             this._musConnect(instId, wsUrl);
 
         } else if (type === 1) {
-            // SEND
+            // SEND — raw content string
             var dataLen = this.exports.getMusPendingSendData(i); this._clearEx();
             var data = this._readString(strAddr, dataLen);
             var ws = _musSockets[instId];
@@ -620,18 +621,15 @@ WasmEngine.prototype._musConnect = function(instId, wsUrl) {
     };
 
     ws.onmessage = function(evt) {
-        // Each WebSocket message is one MUS message.
-        // Format: errorCode\tsenderID\tsubject\tcontent (text frame)
-        // or raw binary — we convert to string either way.
-        var text;
-        if (typeof evt.data === 'string') {
-            text = evt.data;
-        } else {
-            text = new TextDecoder().decode(new Uint8Array(evt.data));
-        }
-
+        // Receive raw message content
         if (!_musInbound[instId]) _musInbound[instId] = [];
-        _musInbound[instId].push(text);
+        var data;
+        if (typeof evt.data === 'string') {
+            data = evt.data;
+        } else {
+            data = new TextDecoder().decode(new Uint8Array(evt.data));
+        }
+        _musInbound[instId].push(data);
     };
 
     ws.onclose = function() {

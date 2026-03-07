@@ -884,14 +884,14 @@ public class WasmEntry {
         return req != null ? req.port : 0;
     }
 
-    /** Write send data (senderID\tsubject\tcontent) to stringBuffer. @return length */
+    /** Write send data (raw content) to stringBuffer. @return length */
     @Export(name = "getMusPendingSendData")
     public static int getMusPendingSendData(int index) {
         WasmMultiuserBridge b = musBridge();
         if (b == null) return 0;
         WasmMultiuserBridge.PendingRequest req = b.getRequest(index);
         if (req == null || req.type != WasmMultiuserBridge.REQ_SEND) return 0;
-        return writeToStringBuffer(req.senderID + "\t" + req.subject + "\t" + req.content);
+        return writeToStringBuffer(req.content);
     }
 
     @Export(name = "drainMusPending")
@@ -923,7 +923,7 @@ public class WasmEntry {
 
     /**
      * JS calls this when a message arrives on a WebSocket.
-     * Message fields must be written to stringBuffer as: errorCode\tsenderID\tsubject\tcontent
+     * The raw message content is in stringBuffer; delivered as content with default fields.
      */
     @Export(name = "musDeliverMessage")
     public static void musDeliverMessage(int instanceId, int dataLen) {
@@ -931,11 +931,7 @@ public class WasmEntry {
         if (b == null) return;
         try {
             String data = new String(stringBuffer, 0, dataLen);
-            String[] parts = data.split("\t", 4);
-            if (parts.length == 4) {
-                b.deliverMessage(instanceId,
-                        Integer.parseInt(parts[0]), parts[1], parts[2], parts[3]);
-            }
+            b.deliverMessage(instanceId, 0, "", "", data);
         } catch (Throwable e) {
             captureError("musDeliverMessage", e);
         }
