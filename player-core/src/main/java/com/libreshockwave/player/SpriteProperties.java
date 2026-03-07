@@ -88,6 +88,8 @@ public class SpriteProperties implements SpritePropertyProvider {
                 yield cm > 0 ? Datum.CastMemberRef.of(cl, cm) : Datum.VOID;
             }
             case "ilk" -> Datum.symbol("sprite");
+            case "fliph" -> Datum.of(sprite.isFlipH() ? 1 : 0);
+            case "flipv" -> Datum.of(sprite.isFlipV() ? 1 : 0);
             case "moveable", "moveablesprite" -> Datum.of(0);
             case "editabletext" -> Datum.of(0);
             case "trails" -> Datum.of(0);
@@ -252,11 +254,11 @@ public class SpriteProperties implements SpritePropertyProvider {
                 return true;
             }
             case "fliph" -> {
-                // sprite.flipH - silently accept
+                sprite.setFlipH(value.isTruthy());
                 return true;
             }
             case "flipv" -> {
-                // sprite.flipV - silently accept
+                sprite.setFlipV(value.isTruthy());
                 return true;
             }
             case "scriptinstancelist" -> {

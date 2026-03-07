@@ -142,6 +142,80 @@ public class HotelViewDiagnosticTest {
                     bs.getChannel(), bakeInfo, bs.getType(), bs.getInkMode(), bs.getMemberName());
         }
 
+        // Dump light1 bitmap details
+        System.out.println("\n--- Light1 bitmap analysis ---");
+        for (RenderSprite bs : snapshot.sprites()) {
+            if ("light1".equals(bs.getMemberName())) {
+                Bitmap bk = bs.getBakedBitmap();
+                if (bk != null) {
+                    int[] px = bk.getPixels();
+                    int transparent = 0, white = 0, black = 0, other = 0;
+                    int minR = 255, minG = 255, minB = 255, maxR = 0, maxG = 0, maxB = 0;
+                    for (int p : px) {
+                        int a = (p >>> 24);
+                        if (a == 0) { transparent++; continue; }
+                        int r = (p >> 16) & 0xFF, g = (p >> 8) & 0xFF, b = p & 0xFF;
+                        if (r == 255 && g == 255 && b == 255) white++;
+                        else if (r == 0 && g == 0 && b == 0) black++;
+                        else other++;
+                        minR = Math.min(minR, r); minG = Math.min(minG, g); minB = Math.min(minB, b);
+                        maxR = Math.max(maxR, r); maxG = Math.max(maxG, g); maxB = Math.max(maxB, b);
+                    }
+                    System.out.printf("  baked: %dx%d transparent=%d white=%d black=%d other=%d%n",
+                            bk.getWidth(), bk.getHeight(), transparent, white, black, other);
+                    System.out.printf("  color range: R[%d-%d] G[%d-%d] B[%d-%d]%n",
+                            minR, maxR, minG, maxG, minB, maxB);
+                    // Sample center and corners
+                    int cx = bk.getWidth()/2, cy = bk.getHeight()/2;
+                    for (int[] pt : new int[][]{{0,0},{cx,0},{bk.getWidth()-1,0},{0,cy},{cx,cy},{bk.getWidth()-1,cy},{0,bk.getHeight()-1},{cx,bk.getHeight()-1}}) {
+                        int idx = pt[1] * bk.getWidth() + pt[0];
+                        if (idx >= 0 && idx < px.length) {
+                            int p = px[idx];
+                            System.out.printf("  (%d,%d): ARGB=(%d,%d,%d,%d)%n", pt[0], pt[1],
+                                    (p>>>24), (p>>16)&0xFF, (p>>8)&0xFF, p&0xFF);
+                        }
+                    }
+                }
+                // Also dump raw bitmap (before ink processing)
+                if (bs.getCastMember() != null) {
+                    var rawOpt = player.decodeBitmap(bs.getCastMember());
+                    if (rawOpt.isPresent()) {
+                        Bitmap raw = rawOpt.get();
+                        int[] rpx = raw.getPixels();
+                        int rt = 0, rw = 0, rb = 0, ro = 0;
+                        for (int p : rpx) {
+                            int a = (p >>> 24);
+                            if (a == 0) { rt++; continue; }
+                            int r = (p >> 16) & 0xFF, g = (p >> 8) & 0xFF, b = p & 0xFF;
+                            if (r == 255 && g == 255 && b == 255) rw++;
+                            else if (r == 0 && g == 0 && b == 0) rb++;
+                            else ro++;
+                        }
+                        System.out.printf("  raw: %dx%d bitDepth=%d transparent=%d white=%d black=%d other=%d%n",
+                                raw.getWidth(), raw.getHeight(), raw.getBitDepth(), rt, rw, rb, ro);
+                        // BitmapInfo
+                        byte[] sd = bs.getCastMember().specificData();
+                        if (sd != null && sd.length >= 10) {
+                            var bi = com.libreshockwave.cast.BitmapInfo.parse(sd);
+                            System.out.printf("  BitmapInfo: %dx%d bitDepth=%d useAlpha=%s paletteId=%d%n",
+                                    bi.width(), bi.height(), bi.bitDepth(), bi.useAlpha(), bi.paletteId());
+                        }
+                        // Sample raw center
+                        int cx = raw.getWidth()/2, cy = raw.getHeight()/2;
+                        int idx = cy * raw.getWidth() + cx;
+                        if (idx >= 0 && idx < rpx.length) {
+                            int p = rpx[idx];
+                            System.out.printf("  raw center (%d,%d): ARGB=(%d,%d,%d,%d)%n", cx, cy,
+                                    (p>>>24), (p>>16)&0xFF, (p>>8)&0xFF, p&0xFF);
+                        }
+                        // Save raw as PNG
+                        ImageIO.write(raw.toBufferedImage(), "png", new File(OUTPUT_DIR + "/light1_raw.png"));
+                    }
+                }
+                break;
+            }
+        }
+
         // Dump individual window sprite bitmaps for debugging
         System.out.println("\n--- Window sprite bitmap dumps ---");
         for (RenderSprite bs : snapshot.sprites()) {

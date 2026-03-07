@@ -29,7 +29,8 @@ public final class InkProcessor {
         return ink == InkMode.TRANSPARENT || ink == InkMode.REVERSE || ink == InkMode.GHOST
             || ink == InkMode.NOT_COPY || ink == InkMode.NOT_TRANSPARENT || ink == InkMode.NOT_REVERSE
             || ink == InkMode.NOT_GHOST || ink == InkMode.MATTE || ink == InkMode.ADD_PIN
-            || ink == InkMode.SUBTRACT_PIN || ink == InkMode.BACKGROUND_TRANSPARENT
+            || ink == InkMode.ADD || ink == InkMode.SUBTRACT_PIN || ink == InkMode.SUBTRACT
+            || ink == InkMode.BACKGROUND_TRANSPARENT
             || ink == InkMode.LIGHTEN || ink == InkMode.DARKEN;
     }
 
@@ -83,7 +84,8 @@ public final class InkProcessor {
             }
             return applyBackgroundTransparent(src, bgColor);
         } else if (ink == InkMode.NOT_GHOST || ink == InkMode.ADD_PIN
-                || ink == InkMode.SUBTRACT_PIN || ink == InkMode.BACKGROUND_TRANSPARENT
+                || ink == InkMode.ADD || ink == InkMode.SUBTRACT_PIN || ink == InkMode.SUBTRACT
+                || ink == InkMode.BACKGROUND_TRANSPARENT
                 || ink == InkMode.LIGHTEN || ink == InkMode.DARKEN) {
             // Background transparent / not-ghost / etc: color-key
             int bgColor = resolveBackColor(src, ink, backColor, useAlpha, palette);

@@ -165,10 +165,10 @@ public class StageRenderer {
         // Get cast member
         CastMemberChunk member = file.getCastMemberByIndex(data.castLib(), data.castMember());
 
-        // Apply registration point offset
+        // Apply registration point offset (scaled for stretched sprites per ScummVM behavior)
         if (member != null) {
-            x -= member.regPointX();
-            y -= member.regPointY();
+            x -= scaledRegPointX(member, width);
+            y -= scaledRegPointY(member, height);
         }
 
         RenderSprite.SpriteType type = determineSpriteType(member, data);
@@ -187,7 +187,8 @@ public class StageRenderer {
             state.hasForeColor() ? state.getForeColor() : data.resolvedForeColor(),
             state.hasBackColor() ? state.getBackColor() : data.backColor(),
             state.hasForeColor(), state.hasBackColor(),
-            data.ink(), state.getBlend(), null
+            data.ink(), state.getBlend(),
+            state.isFlipH(), state.isFlipV(), null
         );
     }
 
@@ -230,9 +231,9 @@ public class StageRenderer {
         RenderSprite.SpriteType type = RenderSprite.SpriteType.UNKNOWN;
         if (member != null) {
             type = determineSpriteTypeFromMember(member);
-            // Apply registration point offset from file-loaded member
-            x -= member.regPointX();
-            y -= member.regPointY();
+            // Apply registration point offset (scaled for stretched sprites)
+            x -= scaledRegPointX(member, width);
+            y -= scaledRegPointY(member, height);
             // Fallback auto-size: if sprite still has 0x0 dimensions, derive from member
             if (width == 0 && height == 0 && member.isBitmap()
                     && member.specificData() != null && member.specificData().length >= 10) {
@@ -268,7 +269,8 @@ public class StageRenderer {
             type, member, dynamicMember,
             state.getForeColor(), state.getBackColor(),
             state.hasForeColor(), state.hasBackColor(),
-            state.getInk(), state.getBlend(), null
+            state.getInk(), state.getBlend(),
+            state.isFlipH(), state.isFlipV(), null
         );
     }
 
@@ -322,6 +324,36 @@ public class StageRenderer {
             case BUTTON -> RenderSprite.SpriteType.BUTTON;
             default -> RenderSprite.SpriteType.UNKNOWN;
         };
+    }
+
+    /**
+     * Scale registration point X proportionally when sprite width differs from bitmap width.
+     * Director (confirmed via ScummVM) scales regPoint by spriteWidth/bitmapWidth for stretched sprites.
+     */
+    private int scaledRegPointX(CastMemberChunk member, int spriteWidth) {
+        int regX = member.regPointX();
+        if (spriteWidth > 0 && member.isBitmap()
+                && member.specificData() != null && member.specificData().length >= 10) {
+            var bi = com.libreshockwave.cast.BitmapInfo.parse(member.specificData());
+            int bmpW = bi.width();
+            if (bmpW > 0 && bmpW != spriteWidth) {
+                return regX * spriteWidth / bmpW;
+            }
+        }
+        return regX;
+    }
+
+    private int scaledRegPointY(CastMemberChunk member, int spriteHeight) {
+        int regY = member.regPointY();
+        if (spriteHeight > 0 && member.isBitmap()
+                && member.specificData() != null && member.specificData().length >= 10) {
+            var bi = com.libreshockwave.cast.BitmapInfo.parse(member.specificData());
+            int bmpH = bi.height();
+            if (bmpH > 0 && bmpH != spriteHeight) {
+                return regY * spriteHeight / bmpH;
+            }
+        }
+        return regY;
     }
 
     public void reset() {

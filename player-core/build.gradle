@@ -262,6 +262,17 @@ tasks.register('runHotelViewDiagnosticTest', JavaExec) {
     }
 }
 
+tasks.register('runPixelCompareTest', JavaExec) {
+    group = 'verification'
+    description = 'Pixel-level comparison against reference screenshot'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.PixelCompareTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
 tasks.register('runCastMemberDump', JavaExec) {
     group = 'verification'
     description = 'Dump cast members from a Director file'

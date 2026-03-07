@@ -28,6 +28,8 @@ public class SpriteState {
     private boolean hasForeColor = false;
     private boolean hasBackColor = false;
     private boolean hasSizeChanged = false;
+    private boolean flipH = false;
+    private boolean flipV = false;
 
     // Dynamic member assignment (overrides Score data when set)
     private int dynamicCastLib = -1;
@@ -87,6 +89,10 @@ public class SpriteState {
     public void setInkMode(InkMode ink) { this.inkMode = ink; }
     public void setBlend(int blend) { this.blend = blend; }
     public void setStretch(int stretch) { this.stretch = stretch; }
+    public boolean isFlipH() { return flipH; }
+    public boolean isFlipV() { return flipV; }
+    public void setFlipH(boolean flipH) { this.flipH = flipH; }
+    public void setFlipV(boolean flipV) { this.flipV = flipV; }
     public void setForeColor(int foreColor) { this.foreColor = foreColor; this.hasForeColor = true; }
     public void setBackColor(int backColor) { this.backColor = backColor; this.hasBackColor = true; }
 

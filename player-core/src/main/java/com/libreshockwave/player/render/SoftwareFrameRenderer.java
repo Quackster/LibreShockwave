@@ -55,15 +55,17 @@ public final class SoftwareFrameRenderer {
             int sh = sprite.getHeight() > 0 ? sprite.getHeight() : baked.getHeight();
             int blend = sprite.getBlend();
             InkMode ink = sprite.getInkMode();
+            boolean flipH = sprite.isFlipH();
+            boolean flipV = sprite.isFlipV();
 
             if (sw == baked.getWidth() && sh == baked.getHeight()) {
                 blitBitmap(argb, stageWidth, stageHeight,
                         baked.getPixels(), baked.getWidth(), baked.getHeight(),
-                        sx, sy, blend, ink);
+                        sx, sy, blend, ink, flipH, flipV);
             } else {
                 blitBitmapScaled(argb, stageWidth, stageHeight,
                         baked.getPixels(), baked.getWidth(), baked.getHeight(),
-                        sx, sy, sw, sh, blend, ink);
+                        sx, sy, sw, sh, blend, ink, flipH, flipV);
             }
         }
 
@@ -76,7 +78,8 @@ public final class SoftwareFrameRenderer {
 
     static void blitBitmap(int[] argb, int stageWidth, int stageHeight,
                            int[] srcPixels, int srcW, int srcH,
-                           int dstX, int dstY, int blend, InkMode ink) {
+                           int dstX, int dstY, int blend, InkMode ink,
+                           boolean flipH, boolean flipV) {
         if (srcPixels == null || srcW <= 0 || srcH <= 0) return;
         if (srcPixels.length < srcW * srcH) return;
 
@@ -90,8 +93,10 @@ public final class SoftwareFrameRenderer {
         boolean useSpecialInk = isSpecialCompositingInk(ink);
 
         for (int sy = sy0; sy < sy1; sy++) {
+            int fetchY = flipV ? (srcH - 1 - sy) : sy;
             for (int sx = sx0; sx < sx1; sx++) {
-                int srcIdx = sy * srcW + sx;
+                int fetchX = flipH ? (srcW - 1 - sx) : sx;
+                int srcIdx = fetchY * srcW + fetchX;
                 int src = srcPixels[srcIdx];
                 int srcA = (src >> 24) & 0xFF;
                 if (srcA == 0) continue;
@@ -121,7 +126,8 @@ public final class SoftwareFrameRenderer {
 
     static void blitBitmapScaled(int[] argb, int stageWidth, int stageHeight,
                                  int[] srcPixels, int srcW, int srcH,
-                                 int dstX, int dstY, int dstW, int dstH, int blend, InkMode ink) {
+                                 int dstX, int dstY, int dstW, int dstH, int blend, InkMode ink,
+                                 boolean flipH, boolean flipV) {
         if (srcPixels == null || srcW <= 0 || srcH <= 0 || dstW <= 0 || dstH <= 0) return;
         if (srcPixels.length < srcW * srcH) return;
 
@@ -137,10 +143,12 @@ public final class SoftwareFrameRenderer {
 
         for (int dy = dy0; dy < dy1; dy++) {
             int srcY = ((dy - dstY) * srcH) / dstH;
+            if (flipV) srcY = srcH - 1 - srcY;
             if (srcY < 0 || srcY >= srcH) continue;
 
             for (int dx = dx0; dx < dx1; dx++) {
                 int srcX = ((dx - dstX) * srcW) / dstW;
+                if (flipH) srcX = srcW - 1 - srcX;
                 if (srcX < 0 || srcX >= srcW) continue;
 
                 int srcIdx = srcY * srcW + srcX;
@@ -180,7 +188,10 @@ public final class SoftwareFrameRenderer {
         return ink == InkMode.ADD_PIN || ink == InkMode.ADD
             || ink == InkMode.SUBTRACT_PIN || ink == InkMode.SUBTRACT
             || ink == InkMode.LIGHTEST || ink == InkMode.DARKEST
-            || ink == InkMode.LIGHTEN || ink == InkMode.DARKEN;
+            || ink == InkMode.LIGHTEN || ink == InkMode.DARKEN
+            || ink == InkMode.REVERSE || ink == InkMode.GHOST
+            || ink == InkMode.NOT_COPY || ink == InkMode.NOT_TRANSPARENT
+            || ink == InkMode.NOT_REVERSE || ink == InkMode.NOT_GHOST;
     }
 
     /**
@@ -202,31 +213,62 @@ public final class SoftwareFrameRenderer {
 
         switch (ink) {
             case ADD_PIN, ADD -> {
-                // Additive: dst + src, clamped to 255
                 outR = Math.min(255, dstR + srcR);
                 outG = Math.min(255, dstG + srcG);
                 outB = Math.min(255, dstB + srcB);
             }
             case SUBTRACT_PIN, SUBTRACT -> {
-                // Subtractive: dst - src, clamped to 0
                 outR = Math.max(0, dstR - srcR);
                 outG = Math.max(0, dstG - srcG);
                 outB = Math.max(0, dstB - srcB);
             }
             case DARKEN, DARKEST -> {
-                // Darken: min of src and dst per channel
                 outR = Math.min(dstR, srcR);
                 outG = Math.min(dstG, srcG);
                 outB = Math.min(dstB, srcB);
             }
             case LIGHTEN, LIGHTEST -> {
-                // Lighten: max of src and dst per channel
                 outR = Math.max(dstR, srcR);
                 outG = Math.max(dstG, srcG);
                 outB = Math.max(dstB, srcB);
             }
+            case REVERSE -> {
+                // XOR: src ^ dst
+                outR = srcR ^ dstR;
+                outG = srcG ^ dstG;
+                outB = srcB ^ dstB;
+            }
+            case GHOST -> {
+                // AND(~src, dst)
+                outR = (~srcR & 0xFF) & dstR;
+                outG = (~srcG & 0xFF) & dstG;
+                outB = (~srcB & 0xFF) & dstB;
+            }
+            case NOT_COPY -> {
+                // Invert source
+                outR = ~srcR & 0xFF;
+                outG = ~srcG & 0xFF;
+                outB = ~srcB & 0xFF;
+            }
+            case NOT_TRANSPARENT -> {
+                // AND(src, dst)
+                outR = srcR & dstR;
+                outG = srcG & dstG;
+                outB = srcB & dstB;
+            }
+            case NOT_REVERSE -> {
+                // XOR(~src, dst)
+                outR = (~srcR & 0xFF) ^ dstR;
+                outG = (~srcG & 0xFF) ^ dstG;
+                outB = (~srcB & 0xFF) ^ dstB;
+            }
+            case NOT_GHOST -> {
+                // OR(~src, dst)
+                outR = (~srcR & 0xFF) | dstR;
+                outG = (~srcG & 0xFF) | dstG;
+                outB = (~srcB & 0xFF) | dstB;
+            }
             default -> {
-                // Fallback to normal alpha composite
                 alphaComposite(argb, dstIdx, src, srcA);
                 return;
             }
