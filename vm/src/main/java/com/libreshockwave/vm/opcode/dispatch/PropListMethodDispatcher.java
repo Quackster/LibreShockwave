@@ -68,6 +68,18 @@ public final class PropListMethodDispatcher {
             }
             return Datum.VOID;
         }
+        if ("getone".equalsIgnoreCase(methodName)) {
+            // getOne(propList, value) - find the property NAME where the value matches
+            // Returns the key (as symbol) or 0 if not found
+            if (args.isEmpty()) return Datum.ZERO;
+            Datum searchValue = args.get(0);
+            for (var entry : propList.properties().entrySet()) {
+                if (entry.getValue() == searchValue || entry.getValue().equals(searchValue)) {
+                    return Datum.symbol(entry.getKey());
+                }
+            }
+            return Datum.ZERO;
+        }
         if ("deleteprop".equalsIgnoreCase(methodName)) {
             if (args.isEmpty()) return Datum.VOID;
             propList.properties().remove(args.get(0).toKeyName());

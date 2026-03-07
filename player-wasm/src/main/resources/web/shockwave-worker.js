@@ -4,7 +4,14 @@
 // every message (including TeaVM's System.out via putwchar) which stalls the
 // message loop and prevents 'frame' responses from being processed in time.
 // Errors are kept since they only fire in exceptional cases.
-console.log = function() {};
+// TEMP: relay console.log to main thread for debugging
+var _origLog = console.log;
+console.log = function() {
+    var msg = Array.prototype.slice.call(arguments).join(' ');
+    if (msg.indexOf('[EventDispatcher]') >= 0 || msg.indexOf('[HitTest]') >= 0) {
+        self.postMessage({ type: 'debugLog', msg: msg });
+    }
+};
 console.warn = function() {};
 
 /**
@@ -173,6 +180,11 @@ WasmEngine.prototype.mouseMove = function(x, y) {
 
 WasmEngine.prototype.mouseDown = function(x, y, button) {
     this.exports.mouseDown(x, y, button); this._clearEx();
+};
+
+WasmEngine.prototype.debugHitTest = function(x, y) {
+    var result = this.exports.debugHitTest(x, y); this._clearEx();
+    return result;
 };
 
 WasmEngine.prototype.mouseUp = function(x, y, button) {
@@ -956,6 +968,36 @@ self.onmessage = async function(e) {
                     _e.mouseDown(msg.x, msg.y, msg.button);
                 } catch(ie) {
                     console.error('[WORKER] mouseDown error:', ie);
+                }
+                break;
+            case 'getDispatchInfo':
+                if (_e && !_e._wasmDead) try {
+                    var diLen = _e.exports.getLastDispatchInfo();
+                    var diStr = '';
+                    if (diLen > 0) {
+                        var sbuf2 = _e.exports.getStringBufferAddress();
+                        var mem2 = new Uint8Array(_e._mem(), sbuf2, diLen);
+                        diStr = new TextDecoder().decode(mem2);
+                    }
+                    self.postMessage({ type: 'dispatchInfoResult', info: diStr });
+                } catch(ie) {
+                    console.error('[WORKER] getDispatchInfo error:', ie);
+                }
+                break;
+            case 'debugHitTest':
+                if (_e && !_e._wasmDead) try {
+                    var hitResult = _e.debugHitTest(msg.x, msg.y);
+                    // Read the debug info string from WASM
+                    var infoLen = _e.exports.getDebugHitInfo();
+                    var infoStr = '';
+                    if (infoLen > 0) {
+                        var sbuf = _e.exports.getStringBufferAddress();
+                        var mem = new Uint8Array(_e._mem(), sbuf, infoLen);
+                        infoStr = new TextDecoder().decode(mem);
+                    }
+                    self.postMessage({ type: 'debugHitTestResult', x: msg.x, y: msg.y, hit: hitResult, info: infoStr });
+                } catch(ie) {
+                    console.error('[WORKER] debugHitTest error:', ie);
                 }
                 break;
             case 'mouseUp':

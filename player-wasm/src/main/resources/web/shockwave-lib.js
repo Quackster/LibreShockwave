@@ -227,6 +227,7 @@ var LibreShockwave = (function() {
             var r = canvas.getBoundingClientRect();
             var x = Math.round(e.clientX - r.left);
             var y = Math.round(e.clientY - r.top);
+            console.log('[CLICK] mouseDown at (' + x + ',' + y + ') button=' + e.button);
             self._worker.postMessage({ type: 'mouseDown', x: x, y: y, button: e.button });
         });
 
@@ -311,6 +312,14 @@ var LibreShockwave = (function() {
 
             case 'debugLog':
                 console.log(msg.msg);
+                break;
+
+            case 'debugHitTestResult':
+                console.log('[HitTest] at (' + msg.x + ',' + msg.y + ') hit=' + msg.hit + ' info=' + (msg.info||''));
+                if (this._debugHitTestResolve) {
+                    this._debugHitTestResolve({ hit: msg.hit, info: msg.info || '' });
+                    this._debugHitTestResolve = null;
+                }
                 break;
 
             case 'fetchRelay': {
@@ -536,6 +545,21 @@ var LibreShockwave = (function() {
         this._worker.postMessage({ type: 'pause' });
         this._playing = false;
         this._stopLoop();
+    };
+
+    ShockwavePlayer.prototype.debugHitTest = function(x, y) {
+        var self = this;
+        return new Promise(function(resolve) {
+            self._debugHitTestResolve = resolve;
+            self._worker.postMessage({ type: 'debugHitTest', x: x, y: y });
+            // Timeout in case worker doesn't respond
+            setTimeout(function() {
+                if (self._debugHitTestResolve) {
+                    self._debugHitTestResolve(-999);
+                    self._debugHitTestResolve = null;
+                }
+            }, 2000);
+        });
     };
 
     ShockwavePlayer.prototype.stop = function() {

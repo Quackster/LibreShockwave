@@ -42,7 +42,8 @@ public final class HitTester {
 
             if (stageX >= left && stageX < right && stageY >= top && stageY < bottom) {
                 // Ink-aware hit testing: check pixel alpha for non-Copy inks
-                if (isPixelTransparent(sprite, stageX - left, stageY - top)) {
+                boolean transparent = isPixelTransparent(sprite, stageX - left, stageY - top);
+                if (transparent) {
                     continue; // Click through transparent pixel
                 }
                 return sprite.getChannel();

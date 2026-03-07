@@ -723,6 +723,131 @@ public class WasmEntry {
         wasmPlayer.getPlayer().onMouseMove(stageX, stageY);
     }
 
+    private static String lastDebugHitInfo = "";
+
+    /**
+     * Debug: dump info about sprites at the given stage coordinates.
+     * Returns the hit sprite channel, or 0 if no hit.
+     * Stores detailed info in lastDebugHitInfo (readable via getDebugHitInfo).
+     */
+    @Export(name = "debugHitTest")
+    public static int debugHitTest(int stageX, int stageY) {
+        if (wasmPlayer == null || wasmPlayer.getPlayer() == null) { lastDebugHitInfo = "no player"; return -1; }
+        var renderer = wasmPlayer.getPlayer().getStageRenderer();
+        if (renderer == null) { lastDebugHitInfo = "no renderer"; return -2; }
+        int frame = wasmPlayer.getPlayer().getCurrentFrame();
+
+        var sprites = renderer.getLastBakedSprites();
+        if (sprites == null || sprites.isEmpty()) {
+            sprites = renderer.getSpritesForFrame(frame);
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("(").append(stageX).append(",").append(stageY)
+          .append(") total=").append(sprites.size());
+
+        // If stageX < 0, dump ALL sprites; otherwise only those at the point
+        boolean dumpAll = (stageX < 0);
+
+        int hitChannel = 0;
+        for (int i = sprites.size() - 1; i >= 0; i--) {
+            var sprite = sprites.get(i);
+            if (!sprite.isVisible()) continue;
+            if (sprite.getChannel() <= 0) continue;
+
+            int left = sprite.getX();
+            int top = sprite.getY();
+            int right = left + sprite.getWidth();
+            int bottom = top + sprite.getHeight();
+
+            boolean overlaps = stageX >= left && stageX < right && stageY >= top && stageY < bottom;
+
+            if (dumpAll || overlaps) {
+                sb.append("|ch").append(sprite.getChannel())
+                  .append(",i").append(sprite.getInkMode().code())
+                  .append(",t").append(sprite.getType())
+                  .append(",b").append(sprite.hasBehaviors() ? 1 : 0)
+                  .append(",r").append(left).append(":").append(top)
+                  .append(":").append(right).append(":").append(bottom);
+
+                if (overlaps) {
+                    // Check pixel transparency at click point
+                    var baked = sprite.getBakedBitmap();
+                    if (baked != null && baked.getPixels() != null) {
+                        int localX = stageX - left;
+                        int localY = stageY - top;
+                        int bw = baked.getWidth(), bh = baked.getHeight();
+                        int sw = sprite.getWidth(), sh = sprite.getHeight();
+                        int bx = (sw > 0 && sw != bw) ? (localX * bw / sw) : localX;
+                        int by = (sh > 0 && sh != bh) ? (localY * bh / sh) : localY;
+                        if (bx >= 0 && bx < bw && by >= 0 && by < bh) {
+                            int idx = by * bw + bx;
+                            if (idx >= 0 && idx < baked.getPixels().length) {
+                                int alpha = (baked.getPixels()[idx] >> 24) & 0xFF;
+                                sb.append(",a").append(alpha);
+                            }
+                        }
+                    } else {
+                        sb.append(",noBmp");
+                    }
+
+                    if (hitChannel == 0) {
+                        var ink = sprite.getInkMode();
+                        if (ink == com.libreshockwave.id.InkMode.COPY
+                            || sprite.getType() == com.libreshockwave.player.render.RenderSprite.SpriteType.TEXT
+                            || sprite.getType() == com.libreshockwave.player.render.RenderSprite.SpriteType.BUTTON
+                            || sprite.hasBehaviors()) {
+                            hitChannel = sprite.getChannel();
+                        }
+                    }
+                }
+            }
+        }
+        sb.append("|hit=").append(hitChannel);
+        lastDebugHitInfo = sb.toString();
+        return hitChannel;
+    }
+
+    /**
+     * Get the length of the last debug hit test info string.
+     */
+    @Export(name = "getDebugHitInfoLen")
+    public static int getDebugHitInfoLen() {
+        return lastDebugHitInfo.length();
+    }
+
+    /**
+     * Copy the last debug hit test info to the string buffer.
+     * Returns length of the string.
+     */
+    @Export(name = "getDebugHitInfo")
+    public static int getDebugHitInfo() {
+        byte[] bytes = lastDebugHitInfo.getBytes();
+        int bufAddr = getStringBufferAddress();
+        org.teavm.interop.Address addr = org.teavm.interop.Address.fromInt(bufAddr);
+        for (int i = 0; i < bytes.length && i < 4096; i++) {
+            addr.add(i).putByte(bytes[i]);
+        }
+        return bytes.length;
+    }
+
+    /**
+     * Get the last event dispatch info (for debugging).
+     * Returns the string length written to the string buffer.
+     */
+    @Export(name = "getLastDispatchInfo")
+    public static int getLastDispatchInfo() {
+        String info = com.libreshockwave.player.event.EventDispatcher.lastDispatchInfo;
+        if (info == null || info.isEmpty()) return 0;
+        byte[] bytes = info.getBytes();
+        int bufAddr = getStringBufferAddress();
+        org.teavm.interop.Address addr = org.teavm.interop.Address.fromInt(bufAddr);
+        for (int i = 0; i < bytes.length && i < 4096; i++) {
+            addr.add(i).putByte(bytes[i]);
+        }
+        return bytes.length;
+    }
+
     /**
      * Handle mouse button press.
      * @param button 0=left, 2=right (matching JS MouseEvent.button)

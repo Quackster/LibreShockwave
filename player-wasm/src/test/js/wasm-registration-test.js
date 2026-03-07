@@ -248,7 +248,7 @@ async function main() {
         page.on('console', msg => {
             const text = msg.text();
             logs.push(text);
-            if (text.includes('[TEST]') || text.includes('[MUS]') || text.includes('Error')) {
+            if (text.includes('[TEST]') || text.includes('[MUS]') || text.includes('[CLICK]') || text.includes('[HitTest]') || text.includes('Error')) {
                 console.log('  [page] ' + text);
             }
         });
@@ -426,9 +426,6 @@ async function main() {
         // Final capture
         await captureCanvas(page, path.join(outputDir, '04_final.png'));
 
-        // Clean up temp HTML
-        try { fs.unlinkSync(htmlPath); } catch(e) {}
-
         // ----- Results -----
         const totalElapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         console.log('\n--- Results ---');
@@ -448,6 +445,146 @@ async function main() {
             console.log('  The click worked. External cast download may be slow.');
             console.log('  Color variety ' + colorVariety + ' < ' + CONTENT_VARIETY_THRESHOLD);
         }
+
+        // ----- Step 6: Back navigation test -----
+        // Test that buttons remain clickable after navigating back.
+        // "I am 11 or older" is at approximately (650, 510) on the age selection page.
+        if (contentLoaded) {
+            console.log('\n=== Back Navigation Test ===');
+
+            // Debug: probe hit test at various locations to find the button
+            // Probe actual button positions (from sprite dump)
+            // ch69 "Cancel": (392,425)-(451,443)
+            // ch70 "under 11": (514,425)-(674,443)
+            // ch71 "11 or older": (561,449)-(674,467)
+            const probeCoords = [
+                [617, 458],  // center of ch71 "I am 11 or older"
+                [420, 434],  // center of ch69 "Cancel"
+                [594, 434],  // center of ch70 "under 11"
+                [-1, 0],     // dump all sprites
+            ];
+            for (const [px, py] of probeCoords) {
+                const result = await page.evaluate(async (x, y) => {
+                    return await player.debugHitTest(x, y);
+                }, px, py);
+                console.log(`  [probe] (${px},${py}) hit=${result.hit} ${result.info}`);
+            }
+
+            // Capture the current dialog state (age selection page)
+            const beforeAge = await sampleCanvasRegion(page, sampleX, sampleY, sampleW, sampleH);
+
+            // Click "I am 11 or older" — ch71 rect=(561,449)-(674,467), center=(617,458)
+            const OLDER_X = 617, OLDER_Y = 458;
+            console.log(`  Clicking "I am 11 or older" at (${OLDER_X}, ${OLDER_Y})...`);
+            await clickCanvas(page, OLDER_X, OLDER_Y);
+
+            // Wait for page change (next registration page)
+            let pageChanged = false;
+            for (let wait = 0; wait < 10000; wait += 500) {
+                await new Promise(r => setTimeout(r, 500));
+                const afterClick = await sampleCanvasRegion(page, sampleX, sampleY, sampleW, sampleH);
+                const change = computeChangeFraction(beforeAge, afterClick);
+                if (change >= CHANGE_THRESHOLD) {
+                    pageChanged = true;
+                    console.log(`  Page changed after "I am 11 or older" (${(change * 100).toFixed(1)}% change)`);
+                    break;
+                }
+            }
+
+            await captureCanvas(page, path.join(outputDir, '05_after_older.png'));
+
+            if (!pageChanged) {
+                console.log('  WARNING: No page change after clicking "I am 11 or older"');
+                console.log('  Button might not have been hit. Check 05_after_older.png');
+            } else {
+                // Wait for next page to render and find Back button
+                await new Promise(r => setTimeout(r, 2000));
+                await captureCanvas(page, path.join(outputDir, '06_next_page.png'));
+
+                // Probe to find Back button on the legal page
+                const nextPageResult = await page.evaluate(async () => {
+                    return await player.debugHitTest(-1, 0);
+                });
+                console.log(`  [next page sprites] ${nextPageResult.info}`);
+
+                // Find back button by probing common positions
+                const backProbes = [[420, 460], [435, 450], [445, 440], [435, 435]];
+                for (const [px, py] of backProbes) {
+                    const r = await page.evaluate(async (x, y) => {
+                        return await player.debugHitTest(x, y);
+                    }, px, py);
+                    console.log(`  [back probe] (${px},${py}) hit=${r.hit}`);
+                }
+
+                const beforeBack = await sampleCanvasRegion(page, sampleX, sampleY, sampleW, sampleH);
+
+                // Back button — use probed position (adjusting based on sprite dump)
+                const BACK_X = 435, BACK_Y = 450;
+                console.log(`  Clicking "Back" at (${BACK_X}, ${BACK_Y})...`);
+                await clickCanvas(page, BACK_X, BACK_Y);
+
+                // Wait for page to change back
+                let backWorked = false;
+                for (let wait = 0; wait < 10000; wait += 500) {
+                    await new Promise(r => setTimeout(r, 500));
+                    const afterBack = await sampleCanvasRegion(page, sampleX, sampleY, sampleW, sampleH);
+                    const change = computeChangeFraction(beforeBack, afterBack);
+                    if (change >= CHANGE_THRESHOLD) {
+                        backWorked = true;
+                        console.log(`  Back navigation worked (${(change * 100).toFixed(1)}% change)`);
+                        break;
+                    }
+                }
+
+                await captureCanvas(page, path.join(outputDir, '07_after_back.png'));
+
+                if (!backWorked) {
+                    console.log('  WARNING: Back button did not cause page change. Check 07_after_back.png');
+                } else {
+                    // Dump sprites after back navigation
+                    const afterBackDump = await page.evaluate(async () => {
+                        return await player.debugHitTest(-1, 0);
+                    });
+                    console.log(`  [after back sprites] ${afterBackDump.info}`);
+
+                    // Probe the button position
+                    const reclickProbe = await page.evaluate(async (x, y) => {
+                        return await player.debugHitTest(x, y);
+                    }, OLDER_X, OLDER_Y);
+                    console.log(`  [reclick probe] (${OLDER_X},${OLDER_Y}) hit=${reclickProbe.hit} ${reclickProbe.info}`);
+
+                    // Now try clicking "I am 11 or older" AGAIN
+                    const beforeReclick = await sampleCanvasRegion(page, sampleX, sampleY, sampleW, sampleH);
+                    console.log(`  Re-clicking "I am 11 or older" at (${OLDER_X}, ${OLDER_Y})...`);
+                    await clickCanvas(page, OLDER_X, OLDER_Y);
+
+                    let reclickWorked = false;
+                    for (let wait = 0; wait < 10000; wait += 500) {
+                        await new Promise(r => setTimeout(r, 500));
+                        const afterReclick = await sampleCanvasRegion(page, sampleX, sampleY, sampleW, sampleH);
+                        const change = computeChangeFraction(beforeReclick, afterReclick);
+                        if (change >= CHANGE_THRESHOLD) {
+                            reclickWorked = true;
+                            console.log(`  Re-click worked! (${(change * 100).toFixed(1)}% change)`);
+                            break;
+                        }
+                    }
+
+                    await captureCanvas(page, path.join(outputDir, '08_after_reclick.png'));
+
+                    if (reclickWorked) {
+                        console.log('\nPASS: Button remains clickable after back navigation');
+                    } else {
+                        console.log('\nFAIL: Button NOT clickable after back navigation');
+                        console.log('  The "I am 11 or older" button became unclickable after back navigation.');
+                        process.exitCode = 1;
+                    }
+                }
+            }
+        }
+
+        // Clean up temp HTML
+        try { fs.unlinkSync(htmlPath); } catch(e) {}
 
     } finally {
         if (browser) await browser.close();

@@ -22,6 +22,7 @@ import java.util.List;
  * Follows Director's event propagation: sprite behaviors → frame behaviors → movie scripts.
  */
 public class EventDispatcher {
+    public static volatile String lastDispatchInfo = "";
 
     private final DirectorFile file;
     private final LingoVM vm;
@@ -111,6 +112,7 @@ public class EventDispatcher {
      */
     public void dispatchFrameAndMovieEvent(String handlerName, List<Datum> args) {
         stopPropagation = false;
+        vm.resetErrorState();
 
         // Frame behavior first
         BehaviorInstance frameInstance = behaviorManager.getFrameScriptInstance();
@@ -137,6 +139,9 @@ public class EventDispatcher {
      * dynamically attached behaviors (sprite.scriptInstanceList).
      */
     public void dispatchSpriteEvent(int channel, String handlerName, List<Datum> args) {
+        // Reset error state so stale errors from prior events don't block handlers
+        vm.resetErrorState();
+
         // 1. Score-based behaviors
         List<BehaviorInstance> instances = behaviorManager.getInstancesForChannel(channel);
         for (BehaviorInstance instance : instances) {
