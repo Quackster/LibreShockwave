@@ -31,6 +31,7 @@ public final class RenderSprite {
     private final boolean flipH;
     private final boolean flipV;
     private final Bitmap bakedBitmap;
+    private final boolean hasBehaviors;
 
     public RenderSprite(
             int channel,
@@ -41,7 +42,7 @@ public final class RenderSprite {
             CastMemberChunk castMember,
             int foreColor, int backColor, int ink, int blend) {
         this(channel, x, y, width, height, 0, visible, type, castMember, null,
-             foreColor, backColor, false, false, ink, blend, false, false, null);
+             foreColor, backColor, false, false, ink, blend, false, false, null, false);
     }
 
     public RenderSprite(
@@ -57,7 +58,8 @@ public final class RenderSprite {
             boolean hasForeColor, boolean hasBackColor,
             int ink, int blend,
             boolean flipH, boolean flipV,
-            Bitmap bakedBitmap) {
+            Bitmap bakedBitmap,
+            boolean hasBehaviors) {
         this.channelId = new ChannelId(channel);
         this.x = x;
         this.y = y;
@@ -77,6 +79,7 @@ public final class RenderSprite {
         this.flipH = flipH;
         this.flipV = flipV;
         this.bakedBitmap = bakedBitmap;
+        this.hasBehaviors = hasBehaviors;
     }
 
     public ChannelId getChannelId() { return channelId; }
@@ -100,6 +103,7 @@ public final class RenderSprite {
     public boolean isFlipH() { return flipH; }
     public boolean isFlipV() { return flipV; }
     public Bitmap getBakedBitmap() { return bakedBitmap; }
+    public boolean hasBehaviors() { return hasBehaviors; }
 
     /**
      * Return a new RenderSprite with all fields copied but with the given baked bitmap.
@@ -107,7 +111,7 @@ public final class RenderSprite {
     public RenderSprite withBakedBitmap(Bitmap baked) {
         return new RenderSprite(channelId.value(), x, y, width, height, locZ, visible, type,
             castMember, dynamicMember, foreColor, backColor, hasForeColor, hasBackColor,
-            inkMode.code(), blend, flipH, flipV, baked);
+            inkMode.code(), blend, flipH, flipV, baked, hasBehaviors);
     }
 
     /**

@@ -197,3 +197,30 @@ tasks.register('runWasmChromiumTest', Exec) {
     standardOutput = System.out
     errorOutput    = System.err
 }
+
+// ---------------------------------------------------------------------------
+// WebSocket bridge integration test.
+// Starts a MUS TCP server + websockify + headless Chrome and verifies
+// the full WebSocket <-> TCP pipeline works end-to-end.
+//
+// Usage:
+//   ./gradlew :player-wasm:runWasmWebSocketTest
+// ---------------------------------------------------------------------------
+tasks.register('runWasmWebSocketTest', Exec) {
+    group       = 'verification'
+    description = 'Test WASM WebSocket bridge with websockify + MUS TCP server'
+    dependsOn 'assembleWasm', 'npmInstall'
+
+    def distPath = layout.buildDirectory.dir('dist').get().asFile.absolutePath
+    def dcrFile  = project.findProperty('dcrFile')  ?: 'C:/xampp/htdocs/dcr/14.1_b8/habbo.dcr'
+    def castDir  = project.findProperty('castDir')  ?: 'C:/xampp/htdocs/dcr/14.1_b8'
+
+    commandLine 'node',
+        file('src/test/js/wasm-websocket-test.js').absolutePath,
+        distPath,
+        dcrFile,
+        castDir
+
+    standardOutput = System.out
+    errorOutput    = System.err
+}

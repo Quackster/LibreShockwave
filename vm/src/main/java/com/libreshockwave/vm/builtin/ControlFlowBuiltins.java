@@ -184,7 +184,9 @@ public final class ControlFlowBuiltins {
     public static void callHandlerOnInstance(LingoVM vm, Datum.ScriptInstance instance,
                                                String handlerName, List<Datum> extraArgs) {
         CastLibProvider provider = CastLibProvider.getProvider();
-        if (provider == null) return;
+        if (provider == null) {
+            return;
+        }
 
         // Build args list: first arg is always 'me' (the instance), then extra args
         List<Datum> handlerArgs = new ArrayList<>();
@@ -203,7 +205,11 @@ public final class ControlFlowBuiltins {
 
             if (location != null && location.script() instanceof ScriptChunk script
                     && location.handler() instanceof ScriptChunk.Handler handler) {
-                vm.executeHandler(script, handler, handlerArgs, instance);
+                try {
+                    vm.executeHandler(script, handler, handlerArgs, instance);
+                } catch (Exception e) {
+                    System.err.println("[callHandlerOnInstance] Exception in '" + handlerName + "': " + e.getMessage());
+                }
                 return;
             }
 
@@ -215,6 +221,5 @@ public final class ControlFlowBuiltins {
                 break;
             }
         }
-        // Handler not found - silently skip (Director behavior)
     }
 }

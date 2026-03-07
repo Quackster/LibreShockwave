@@ -327,3 +327,14 @@ tasks.register('runMultiuserXtraTest', JavaExec) {
         languageVersion = JavaLanguageVersion.of(21)
     }
 }
+
+tasks.register('runHabboCreateUserTest', JavaExec) {
+    group = 'verification'
+    description = 'Click Create User on login screen and tick to registration/age screen'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.HabboCreateUserTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}

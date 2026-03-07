@@ -709,25 +709,27 @@ var LibreShockwave = (function() {
     ShockwavePlayer.prototype._startNormalLoop = function() {
         var self = this;
         var ticking = false;
-        this._lastFrameTime = 0;
-        function loop(ts) {
+        function loop() {
             if (!self._playing) return;
             var tempo = self._lastTempo || 15;
             var ms = 1000.0 / (tempo > 0 ? tempo : 15);
-            if (self._lastFrameTime === 0) self._lastFrameTime = ts;
-            if (ts - self._lastFrameTime >= ms && !ticking) {
-                self._lastFrameTime = ts - ((ts - self._lastFrameTime) % ms);
+            if (!ticking) {
                 ticking = true;
                 self._doTick().then(function() {
                     ticking = false;
+                    if (self._playing) {
+                        self._normalTimerId = setTimeout(loop, ms);
+                    }
                 }).catch(function(err) {
                     ticking = false;
                     console.error('[LS] tick error:', err);
+                    if (self._playing) {
+                        self._normalTimerId = setTimeout(loop, ms);
+                    }
                 });
             }
-            self._animFrameId = requestAnimationFrame(loop);
         }
-        this._animFrameId = requestAnimationFrame(loop);
+        this._normalTimerId = setTimeout(loop, 0);
     };
 
     ShockwavePlayer.prototype._stopLoop = function() {
@@ -738,6 +740,10 @@ var LibreShockwave = (function() {
         if (this._fastTimerId) {
             clearTimeout(this._fastTimerId);
             this._fastTimerId = null;
+        }
+        if (this._normalTimerId) {
+            clearTimeout(this._normalTimerId);
+            this._normalTimerId = null;
         }
     };
 

@@ -372,12 +372,27 @@ WasmEngine.prototype._deliverPendingCastRequests = function() {
         var nameLen = this.exports.getPendingCastDataUrl(i); this._clearEx();
         if (nameLen <= 0) continue;
         var fileName = this._readString(strAddr, nameLen);
-        // Try to find in cache: basePath + fileName with .cct/.cst extensions
-        var baseName = fileName.replace(/\.[^.]+$/, ''); // strip extension if present
-        var cctUrl = baseDir + baseName + '.cct';
-        var cstUrl = baseDir + baseName + '.cst';
-        var url = _findCachedResponse(cctUrl, []) ? cctUrl :
+        // Try to find in cache. If fileName is already a full URL, check it directly.
+        // Otherwise construct basePath + fileName with .cct/.cst extensions.
+        var url = null;
+        if (/^https?:\/\//i.test(fileName)) {
+            // Full URL — check directly in cache (with and without extension variants)
+            if (_findCachedResponse(fileName, [])) {
+                url = fileName;
+            } else {
+                var baseName = fileName.replace(/\.[^.]+$/, '');
+                var cctUrl = baseName + '.cct';
+                var cstUrl = baseName + '.cst';
+                url = _findCachedResponse(cctUrl, []) ? cctUrl :
+                      _findCachedResponse(cstUrl, []) ? cstUrl : null;
+            }
+        } else {
+            var baseName = fileName.replace(/\.[^.]+$/, '');
+            var cctUrl = baseDir + baseName + '.cct';
+            var cstUrl = baseDir + baseName + '.cst';
+            url = _findCachedResponse(cctUrl, []) ? cctUrl :
                   _findCachedResponse(cstUrl, []) ? cstUrl : null;
+        }
         if (!url) continue;
         if (this._failedCastUrls[url]) continue; // Skip known-bad casts
         console.log('[WORKER] delivering dynamic cast: ' + url);
@@ -556,6 +571,7 @@ WasmEngine.prototype.pumpMusRequests = function() {
     } catch(e) { return; }
     if (count === 0) return;
 
+    self.postMessage({type:'error', msg:'[MUS] pumpMusRequests: ' + count + ' pending'});
     var strAddr = this.exports.getStringBufferAddress(); this._clearEx();
 
     for (var i = 0; i < count; i++) {
@@ -606,10 +622,12 @@ WasmEngine.prototype._musConnect = function(instId, wsUrl) {
         _musSockets[instId].close();
     }
 
+    self.postMessage({type:'error', msg:'[MUS] Connecting inst=' + instId + ' url=' + wsUrl});
     var ws;
     try {
         ws = new WebSocket(wsUrl);
     } catch(e) {
+        self.postMessage({type:'error', msg:'[MUS] WebSocket constructor failed: ' + e.message});
         _musErrors[instId] = -3; // connection refused
         return;
     }
@@ -617,6 +635,7 @@ WasmEngine.prototype._musConnect = function(instId, wsUrl) {
     _musSockets[instId] = ws;
 
     ws.onopen = function() {
+        self.postMessage({type:'error', msg:'[MUS] Connected inst=' + instId});
         _musConnected[instId] = true;
     };
 
@@ -629,15 +648,18 @@ WasmEngine.prototype._musConnect = function(instId, wsUrl) {
         } else {
             data = new TextDecoder().decode(new Uint8Array(evt.data));
         }
+        self.postMessage({type:'error', msg:'[MUS] Received inst=' + instId + ' len=' + data.length + ' data=' + JSON.stringify(data).substring(0, 120)});
         _musInbound[instId].push(data);
     };
 
     ws.onclose = function() {
+        self.postMessage({type:'error', msg:'[MUS] Disconnected inst=' + instId});
         _musDisconnected[instId] = true;
         delete _musSockets[instId];
     };
 
     ws.onerror = function() {
+        self.postMessage({type:'error', msg:'[MUS] Error inst=' + instId});
         _musErrors[instId] = -2; // network error
     };
 };
@@ -676,10 +698,13 @@ WasmEngine.prototype.deliverMusEvents = function() {
         for (var i = 0; i < msgs.length; i++) {
             var msgBytes = new TextEncoder().encode(msgs[i]);
             var len = Math.min(msgBytes.length, 4096);
+            self.postMessage({type:'error', msg:'[MUS] Delivering msg to WASM inst=' + iid + ' len=' + len});
             new Uint8Array(this._mem(), strAddr, len).set(msgBytes.subarray(0, len));
             try {
                 this.exports.musDeliverMessage(iid, len); this._clearEx();
-            } catch(e) {}
+            } catch(e) {
+                self.postMessage({type:'error', msg:'[MUS] musDeliverMessage error: ' + e});
+            }
         }
     }
     _musInbound = {};

@@ -153,6 +153,7 @@ public class CastLibManager implements CastLibProvider {
         if (castLib == null) {
             return false;
         }
+
         boolean result = castLib.setProp(propName, value);
 
         // When Lingo's CastLoad Manager sets castLib.fileName to a new URL (after downloading
@@ -175,13 +176,6 @@ public class CastLibManager implements CastLibProvider {
 
         CastLib target = getCastLib(castLibNumber);
         if (target == null) return;
-
-        // Don't overwrite a cast that already has loaded members with different data.
-        // The Fuse CastLoad Manager resets all slots to empty.cct during init —
-        // we must NOT clobber already-loaded data in that case.
-        if (target.isLoaded() && target.getMemberCount() > 0) {
-            return;
-        }
 
         castDataRequestCallback.accept(castLibNumber, newFileName);
     }

@@ -448,7 +448,7 @@ public final class TypeBuiltins {
                     String rawKey = element.substring(0, colonIdx).trim();
                     String key;
                     if (rawKey.startsWith("#")) {
-                        key = rawKey.substring(1);
+                        key = rawKey.substring(1).trim();
                     } else if (rawKey.startsWith("\"") && rawKey.endsWith("\"") && rawKey.length() >= 2) {
                         key = rawKey.substring(1, rawKey.length() - 1);
                     } else {

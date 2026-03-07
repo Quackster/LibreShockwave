@@ -99,6 +99,10 @@ public final class HitTester {
         RenderSprite.SpriteType type = sprite.getType();
         if (type == RenderSprite.SpriteType.TEXT || type == RenderSprite.SpriteType.BUTTON) return false;
 
+        // Sprites with script behaviors (e.g., Event Broker) always use bounding-box hit testing.
+        // These are explicitly interactive elements — their transparency is visual, not functional.
+        if (sprite.hasBehaviors()) return false;
+
         Bitmap baked = sprite.getBakedBitmap();
         if (baked == null) return false;
 
