@@ -47,7 +47,7 @@ LibreShockwave includes a Lingo bytecode virtual machine and player that can loa
 **[Try the live demo →](https://libre.oldskooler.org/)** — a nightly build of the web player is deployed and ready to use. Load any `.dcr` or `.dir` file to test it in your browser.
 
 The player is available in two forms:
-- **Desktop** (`player`) — Swing-based UI with an integrated Lingo debugger
+- **Desktop** (`player-swing`) — Swing-based UI with an integrated Lingo debugger
 - **Web** (`player-wasm`) — Compiled to WebAssembly via TeaVM, runs in any modern browser
 
 All player functionality is decoupled from the SDK and VM via the `player-core` module, which provides platform-independent playback logic (score traversal, event dispatch, sprite management, bitmap decoding).
@@ -773,7 +773,7 @@ Affected keywords include `char`, `int`, `void`, `class`, `new`, `return`, and a
 | `sdk` | Core library for parsing Director/Shockwave files |
 | `vm` | Lingo bytecode virtual machine |
 | `player-core` | Platform-independent playback engine (score, events, rendering data) |
-| `player` | Desktop player with Swing UI and debugger |
+| `player-swing` | Desktop player with Swing UI and debugger |
 | `player-wasm` | Browser player compiled to WebAssembly via TeaVM |
 | `cast-extractor` | GUI tool for extracting assets from Director files |
 
@@ -802,4 +802,9 @@ This implementation draws from:
 
 ## Licence
 
-Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.
+This project uses a split licence model:
+
+- **`sdk/` and `vm/`** — Licensed under the [Apache License 2.0](sdk/LICENSE)
+- **`player-core/`, `player-swing/`, `player-simulator/`, and `player-wasm/`** — Licensed under the [GNU General Public License v3.0](player-core/LICENSE)
+
+See the `LICENSE` file in each module directory for full terms.
