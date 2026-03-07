@@ -32,6 +32,7 @@ public class TimeoutManager implements TimeoutProvider {
         String handler;
         Datum target;
         boolean persistent;
+        boolean oneShot;
         long lastFiredMs;
 
         TimeoutEntry(String name, int periodMs, String handler, Datum target, long currentTimeMs) {
@@ -40,6 +41,7 @@ public class TimeoutManager implements TimeoutProvider {
             this.handler = handler;
             this.target = target;
             this.persistent = false;
+            this.oneShot = false;
             this.lastFiredMs = currentTimeMs;
         }
     }
@@ -53,9 +55,22 @@ public class TimeoutManager implements TimeoutProvider {
         return new Datum.TimeoutRef(name);
     }
 
+    public Datum createTimeout(String name, int periodMs, String handler, Datum target, boolean oneShot) {
+        long now = System.currentTimeMillis();
+        TimeoutEntry entry = new TimeoutEntry(name, periodMs, handler, target, now);
+        entry.oneShot = oneShot;
+        timeouts.put(name, entry);
+        return new Datum.TimeoutRef(name);
+    }
+
     @Override
     public void forgetTimeout(String name) {
         timeouts.remove(name);
+    }
+
+    @Override
+    public boolean timeoutExists(String name) {
+        return timeouts.containsKey(name);
     }
 
     @Override
@@ -90,6 +105,7 @@ public class TimeoutManager implements TimeoutProvider {
                 }
             }
             case "persistent" -> entry.persistent = value.isTruthy();
+            case "oneshot" -> entry.oneShot = value.isTruthy();
             default -> { return false; }
         }
         return true;
@@ -118,6 +134,10 @@ public class TimeoutManager implements TimeoutProvider {
             if (elapsed >= entry.periodMs) {
                 entry.lastFiredMs = currentTimeMs;
                 fireTimeout(vm, entry);
+                // One-shot timeouts auto-remove after firing
+                if (entry.oneShot) {
+                    timeouts.remove(key);
+                }
             }
         }
     }
@@ -126,10 +146,31 @@ public class TimeoutManager implements TimeoutProvider {
      * Fire a single timeout: call target.handler(timeoutRef).
      */
     private void fireTimeout(LingoVM vm, TimeoutEntry entry) {
+        // Reset error state so previous errors don't block timeout handlers
+        vm.resetErrorState();
+
         Datum.TimeoutRef timeoutRef = new Datum.TimeoutRef(entry.name);
         List<Datum> args = List.of(timeoutRef);
 
-        if (entry.target instanceof Datum.ScriptInstance target) {
+        Datum resolvedTarget = entry.target;
+
+        // Resolve string/symbol targets via getObject() (Director Object Manager pattern)
+        // e.g., createTimeout(name, 1, #handler, me.getID(), VOID, 1)
+        // where me.getID() returns a symbol like #login_interface or a string ID
+        if (!(resolvedTarget instanceof Datum.ScriptInstance) && !resolvedTarget.isVoid()) {
+            try {
+                Datum resolved = vm.callHandler("getobject", List.of(resolvedTarget));
+                if (resolved instanceof Datum.ScriptInstance) {
+                    resolvedTarget = resolved;
+                }
+            } catch (Exception ignored) {
+                // getObject not available — fall through
+            }
+            // Reset error state in case the resolution chain triggered errors
+            vm.resetErrorState();
+        }
+
+        if (resolvedTarget instanceof Datum.ScriptInstance target) {
             // Find the handler on the target's script (walking ancestor chain)
             invokeOnScriptInstance(vm, target, entry.handler, args);
         } else {

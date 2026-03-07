@@ -24,6 +24,8 @@ public final class TimeoutBuiltins {
 
     public static void register(Map<String, BiFunction<LingoVM, List<Datum>, Datum>> builtins) {
         builtins.put("timeout", TimeoutBuiltins::timeout);
+        builtins.put("createtimeout", TimeoutBuiltins::createTimeout);
+        builtins.put("timeoutexists", TimeoutBuiltins::timeoutExists);
     }
 
     /**
@@ -37,6 +39,44 @@ public final class TimeoutBuiltins {
         }
         String name = args.get(0).toStr();
         return new Datum.TimeoutRef(name);
+    }
+
+    /**
+     * createTimeout(name, periodMs, #handler, target, VOID, oneShot)
+     * Global function form of timeout(name).new(periodMs, #handler, target).
+     * Args 5+ are optional. Arg 6 (oneShot): if truthy, timeout auto-removes after firing once.
+     */
+    private static Datum createTimeout(LingoVM vm, List<Datum> args) {
+        if (args.isEmpty()) return Datum.VOID;
+        TimeoutProvider provider = TimeoutProvider.getProvider();
+        if (provider == null) return Datum.VOID;
+
+        String name = args.get(0).toStr();
+        int periodMs = args.size() > 1 ? args.get(1).toInt() : 1000;
+        String handler = args.size() > 2 ? getHandlerName(args.get(2)) : "";
+        Datum target = args.size() > 3 ? args.get(3) : Datum.VOID;
+        // Arg 4 (index 4) is unused (typically VOID)
+        boolean oneShot = args.size() > 5 && args.get(5).isTruthy();
+
+        Datum result = provider.createTimeout(name, periodMs, handler, target);
+
+        // Set oneShot via the property interface if supported
+        if (oneShot) {
+            provider.setTimeoutProp(name, "oneshot", Datum.TRUE);
+        }
+
+        return result;
+    }
+
+    /**
+     * timeoutExists(name) → 1 or 0
+     */
+    private static Datum timeoutExists(LingoVM vm, List<Datum> args) {
+        if (args.isEmpty()) return Datum.FALSE;
+        TimeoutProvider provider = TimeoutProvider.getProvider();
+        if (provider == null) return Datum.FALSE;
+        String name = args.get(0).toStr();
+        return provider.timeoutExists(name) ? Datum.TRUE : Datum.FALSE;
     }
 
     /**

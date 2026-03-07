@@ -7,6 +7,7 @@ import com.libreshockwave.vm.builtin.CastLibProvider;
 import com.libreshockwave.vm.builtin.MoviePropertyProvider;
 import com.libreshockwave.vm.builtin.SpritePropertyProvider;
 import com.libreshockwave.vm.builtin.TimeoutBuiltins;
+import com.libreshockwave.vm.builtin.TypeBuiltins;
 import com.libreshockwave.vm.builtin.XtraBuiltins;
 import com.libreshockwave.vm.opcode.dispatch.ImageMethodDispatcher;
 import com.libreshockwave.vm.util.AncestorChainWalker;
@@ -134,7 +135,12 @@ public final class PropertyOpcodes {
             case Datum.ImageRef ir -> ImageMethodDispatcher.getProperty(ir, propName);
             case Datum.Point point -> getPointProp(point, propName);
             case Datum.Rect rect -> getRectProp(rect, propName);
-            default -> Datum.VOID;
+            default -> {
+                if ("ilk".equalsIgnoreCase(propName)) {
+                    yield Datum.symbol(TypeBuiltins.getIlkType(obj));
+                }
+                yield Datum.VOID;
+            }
         };
 
         ctx.push(result);
