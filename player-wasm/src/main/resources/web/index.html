@@ -70,9 +70,15 @@
                     <thead><tr><th>Key</th><th>Value</th><th style="width:24px;"></th></tr></thead>
                     <tbody id="params-body"></tbody>
                 </table>
+                <div class="modal-buttons" style="margin-top:6px;">
+                    <span style="font-size:11px;color:#333;">Preset:</span>
+                    <select id="preset-select" style="font-size:11px;font-family:Verdana,Arial,sans-serif;padding:1px 2px;border:1px solid #999;min-width:120px;"></select>
+                    <button id="preset-load-btn" class="btn">Load</button>
+                    <button id="preset-save-btn" class="btn">Save...</button>
+                    <button id="preset-delete-btn" class="btn">Delete</button>
+                </div>
                 <div class="modal-buttons">
                     <button id="params-add-btn" class="btn">Add</button>
-                    <button id="params-habbo-btn" class="btn">Habbo Preset</button>
                     <span class="spacer"></span>
                     <button id="params-apply-btn" class="btn btn-primary">Apply</button>
                 </div>
@@ -202,6 +208,7 @@
             if (keys.length === 0) { addParamRow('sw1', ''); }
             else { keys.forEach(function(k) { addParamRow(k, params[k]); }); }
             document.getElementById('params-modal').style.display = 'flex';
+            refreshPresetSelect();
         }
 
         document.getElementById('params-btn').addEventListener('click', openParams);
@@ -212,14 +219,83 @@
             if (e.target === this) this.style.display = 'none';
         });
         document.getElementById('params-add-btn').addEventListener('click', function() { addParamRow('', ''); });
-        document.getElementById('params-habbo-btn').addEventListener('click', function() {
-            document.getElementById('params-body').innerHTML = '';
-            addParamRow('sw1', 'site.url=http://www.habbo.co.uk;url.prefix=http://www.habbo.co.uk');
-            addParamRow('sw2', 'connection.info.host=localhost;connection.info.port=30001');
-            addParamRow('sw3', 'client.reload.url=https://sandbox.h4bbo.net/');
-            addParamRow('sw4', 'connection.mus.host=localhost;connection.mus.port=38101');
-            addParamRow('sw5', 'external.variables.txt=https://sandbox.h4bbo.net/gamedata/external_variables.txt;external.texts.txt=https://sandbox.h4bbo.net/gamedata/external_texts.txt');
+
+        // === Preset Management ===
+        var builtinPresets = {
+            'Habbo (default)': {
+                sw1: 'site.url=http://www.habbo.co.uk;url.prefix=http://www.habbo.co.uk',
+                sw2: 'connection.info.host=localhost;connection.info.port=30001',
+                sw3: 'client.reload.url=https://sandbox.h4bbo.net/',
+                sw4: 'connection.mus.host=localhost;connection.mus.port=38101',
+                sw5: 'external.variables.txt=https://sandbox.h4bbo.net/gamedata/external_variables.txt;external.texts.txt=https://sandbox.h4bbo.net/gamedata/external_texts.txt'
+            }
+        };
+
+        function getUserPresets() {
+            try { return JSON.parse(localStorage.getItem('ls_paramPresets') || '{}'); } catch(e) { return {}; }
+        }
+        function saveUserPresets(presets) {
+            try { localStorage.setItem('ls_paramPresets', JSON.stringify(presets)); } catch(e) {}
+        }
+
+        function refreshPresetSelect() {
+            var sel = document.getElementById('preset-select');
+            sel.innerHTML = '';
+            var user = getUserPresets();
+            var allNames = Object.keys(builtinPresets).concat(Object.keys(user));
+            allNames.forEach(function(name) {
+                var opt = document.createElement('option');
+                opt.value = name;
+                opt.textContent = name;
+                sel.appendChild(opt);
+            });
+            // Disable delete for built-in presets
+            document.getElementById('preset-delete-btn').disabled = !!builtinPresets[sel.value];
+        }
+
+        document.getElementById('preset-select').addEventListener('change', function() {
+            document.getElementById('preset-delete-btn').disabled = !!builtinPresets[this.value];
         });
+
+        document.getElementById('preset-load-btn').addEventListener('click', function() {
+            var name = document.getElementById('preset-select').value;
+            if (!name) return;
+            var all = Object.assign({}, builtinPresets, getUserPresets());
+            var preset = all[name];
+            if (!preset) return;
+            document.getElementById('params-body').innerHTML = '';
+            Object.keys(preset).forEach(function(k) { addParamRow(k, preset[k]); });
+        });
+
+        document.getElementById('preset-save-btn').addEventListener('click', function() {
+            var name = prompt('Preset name:');
+            if (!name || !name.trim()) return;
+            name = name.trim();
+            if (builtinPresets[name]) { alert('Cannot overwrite a built-in preset.'); return; }
+            var params = {};
+            document.querySelectorAll('#params-body tr').forEach(function(tr) {
+                var inputs = tr.querySelectorAll('input');
+                var k = inputs[0].value.trim();
+                if (k) params[k] = inputs[1].value;
+            });
+            var user = getUserPresets();
+            user[name] = params;
+            saveUserPresets(user);
+            refreshPresetSelect();
+            document.getElementById('preset-select').value = name;
+            document.getElementById('preset-delete-btn').disabled = false;
+        });
+
+        document.getElementById('preset-delete-btn').addEventListener('click', function() {
+            var name = document.getElementById('preset-select').value;
+            if (!name || builtinPresets[name]) return;
+            if (!confirm('Delete preset "' + name + '"?')) return;
+            var user = getUserPresets();
+            delete user[name];
+            saveUserPresets(user);
+            refreshPresetSelect();
+        });
+
         document.getElementById('params-apply-btn').addEventListener('click', function() {
             var newParams = {};
             document.querySelectorAll('#params-body tr').forEach(function(tr) {
