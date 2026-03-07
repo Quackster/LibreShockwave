@@ -215,7 +215,21 @@ class OpcodeTest {
 
         @Test
         void divide() {
+            // Director: int / int = int (truncated toward zero)
             scope.push(Datum.of(10));
+            scope.push(Datum.of(4));
+
+            OpcodeHandler handler = registry.get(Opcode.DIV);
+            boolean advance = handler.execute(createContext(0));
+
+            assertTrue(advance);
+            assertEquals(2, scope.pop().toInt());
+        }
+
+        @Test
+        void divideFloat() {
+            // float / int = float
+            scope.push(Datum.of(10.0));
             scope.push(Datum.of(4));
 
             OpcodeHandler handler = registry.get(Opcode.DIV);

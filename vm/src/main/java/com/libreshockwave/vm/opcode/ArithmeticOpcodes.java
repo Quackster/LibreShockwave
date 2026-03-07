@@ -25,7 +25,7 @@ public final class ArithmeticOpcodes {
         Datum b = ctx.pop();
         Datum a = ctx.pop();
 
-        // Point + List/Point arithmetic (Director supports this)
+        // Point + Point/List/scalar arithmetic (Director supports this)
         if (a instanceof Datum.Point pa) {
             int dx = 0, dy = 0;
             if (b instanceof Datum.Point pb) {
@@ -44,14 +44,18 @@ public final class ArithmeticOpcodes {
             return true;
         }
 
-        // Rect + List/Rect arithmetic
+        // Rect + Rect/List/scalar arithmetic
         if (a instanceof Datum.Rect ra) {
-            int dl = 0, dt = 0, dr = 0, dbottom = 0;
+            int dl, dt, dr, dbottom;
             if (b instanceof Datum.Rect rb) {
                 dl = rb.left(); dt = rb.top(); dr = rb.right(); dbottom = rb.bottom();
             } else if (b instanceof Datum.List list && list.items().size() >= 4) {
                 dl = list.items().get(0).toInt(); dt = list.items().get(1).toInt();
                 dr = list.items().get(2).toInt(); dbottom = list.items().get(3).toInt();
+            } else {
+                // Scalar: add to all components (Director: rect(60,40,120,200) + 80 = rect(140,120,200,280))
+                int s = b.toInt();
+                dl = s; dt = s; dr = s; dbottom = s;
             }
             ctx.push(new Datum.Rect(ra.left() + dl, ra.top() + dt, ra.right() + dr, ra.bottom() + dbottom));
             return true;
@@ -102,14 +106,17 @@ public final class ArithmeticOpcodes {
             return true;
         }
 
-        // Rect - Rect/List arithmetic
+        // Rect - Rect/List/scalar arithmetic
         if (a instanceof Datum.Rect ra) {
-            int dl = 0, dt = 0, dr = 0, dbottom = 0;
+            int dl, dt, dr, dbottom;
             if (b instanceof Datum.Rect rb) {
                 dl = rb.left(); dt = rb.top(); dr = rb.right(); dbottom = rb.bottom();
             } else if (b instanceof Datum.List list && list.items().size() >= 4) {
                 dl = list.items().get(0).toInt(); dt = list.items().get(1).toInt();
                 dr = list.items().get(2).toInt(); dbottom = list.items().get(3).toInt();
+            } else {
+                int s = b.toInt();
+                dl = s; dt = s; dr = s; dbottom = s;
             }
             ctx.push(new Datum.Rect(ra.left() - dl, ra.top() - dt, ra.right() - dr, ra.bottom() - dbottom));
             return true;
@@ -144,6 +151,21 @@ public final class ArithmeticOpcodes {
     private static boolean mul(ExecutionContext ctx) {
         Datum b = ctx.pop();
         Datum a = ctx.pop();
+
+        // Point * scalar
+        if (a instanceof Datum.Point pa) {
+            int s = b.toInt();
+            ctx.push(new Datum.Point(pa.x() * s, pa.y() * s));
+            return true;
+        }
+
+        // Rect * scalar (Director: rect(10,20,30,40) * 2 = rect(20,40,60,80))
+        if (a instanceof Datum.Rect ra) {
+            int s = b.toInt();
+            ctx.push(new Datum.Rect(ra.left() * s, ra.top() * s, ra.right() * s, ra.bottom() * s));
+            return true;
+        }
+
         if (a.isFloat() || b.isFloat()) {
             ctx.push(Datum.of(a.toDouble() * b.toDouble()));
         } else {
@@ -159,7 +181,27 @@ public final class ArithmeticOpcodes {
         if (bVal == 0) {
             throw ctx.error("Division by zero");
         }
-        ctx.push(Datum.of(a.toDouble() / bVal));
+
+        // Point / scalar
+        if (a instanceof Datum.Point pa) {
+            int s = b.toInt();
+            ctx.push(new Datum.Point(pa.x() / s, pa.y() / s));
+            return true;
+        }
+
+        // Rect / scalar (Director: rect(60,40,120,200) / 3 = rect(20,13,40,66))
+        if (a instanceof Datum.Rect ra) {
+            int s = b.toInt();
+            ctx.push(new Datum.Rect(ra.left() / s, ra.top() / s, ra.right() / s, ra.bottom() / s));
+            return true;
+        }
+
+        // Director: int / int = int (truncated toward zero)
+        if (!a.isFloat() && !b.isFloat()) {
+            ctx.push(Datum.of(a.toInt() / b.toInt()));
+        } else {
+            ctx.push(Datum.of(a.toDouble() / bVal));
+        }
         return true;
     }
 
@@ -176,7 +218,11 @@ public final class ArithmeticOpcodes {
 
     private static boolean inv(ExecutionContext ctx) {
         Datum a = ctx.pop();
-        if (a.isFloat()) {
+        if (a instanceof Datum.Point pa) {
+            ctx.push(new Datum.Point(-pa.x(), -pa.y()));
+        } else if (a instanceof Datum.Rect ra) {
+            ctx.push(new Datum.Rect(-ra.left(), -ra.top(), -ra.right(), -ra.bottom()));
+        } else if (a.isFloat()) {
             ctx.push(Datum.of(-a.toDouble()));
         } else {
             ctx.push(Datum.of(-a.toInt()));
