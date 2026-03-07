@@ -133,11 +133,12 @@ public class TimeoutManager implements TimeoutProvider {
             long elapsed = currentTimeMs - entry.lastFiredMs;
             if (elapsed >= entry.periodMs) {
                 entry.lastFiredMs = currentTimeMs;
-                fireTimeout(vm, entry);
-                // One-shot timeouts auto-remove after firing
+                // One-shot timeouts are removed BEFORE firing so the handler
+                // can re-create a timeout with the same name (Director behavior)
                 if (entry.oneShot) {
                     timeouts.remove(key);
                 }
+                fireTimeout(vm, entry);
             }
         }
     }

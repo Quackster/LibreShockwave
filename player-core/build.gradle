@@ -294,3 +294,14 @@ tasks.register('runCastMemberDump', JavaExec) {
         languageVersion = JavaLanguageVersion.of(21)
     }
 }
+
+tasks.register('runLoginConnectingTest', JavaExec) {
+    group = 'verification'
+    description = 'Test that Connecting text shows after clicking OK on login'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.LoginConnectingTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
