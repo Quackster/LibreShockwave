@@ -8,8 +8,11 @@ import com.libreshockwave.player.behavior.BehaviorInstance;
 import com.libreshockwave.player.behavior.BehaviorManager;
 import com.libreshockwave.player.cast.CastLib;
 import com.libreshockwave.player.cast.CastLibManager;
+import com.libreshockwave.player.render.SpriteRegistry;
+import com.libreshockwave.player.sprite.SpriteState;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.LingoVM;
+import com.libreshockwave.vm.builtin.ControlFlowBuiltins;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,6 +27,7 @@ public class EventDispatcher {
     private final LingoVM vm;
     private final BehaviorManager behaviorManager;
     private CastLibManager castLibManager;
+    private SpriteRegistry spriteRegistry;
 
     // Debug logging
     private boolean debugEnabled = false;
@@ -44,6 +48,10 @@ public class EventDispatcher {
 
     public void setCastLibManager(CastLibManager castLibManager) {
         this.castLibManager = castLibManager;
+    }
+
+    public void setSpriteRegistry(SpriteRegistry spriteRegistry) {
+        this.spriteRegistry = spriteRegistry;
     }
 
     public void setDebugEnabled(boolean enabled) {
@@ -125,11 +133,39 @@ public class EventDispatcher {
 
     /**
      * Dispatch an event to a specific sprite's behaviors.
+     * Dispatches to both Score-based behaviors (BehaviorManager) and
+     * dynamically attached behaviors (sprite.scriptInstanceList).
      */
     public void dispatchSpriteEvent(int channel, String handlerName, List<Datum> args) {
+        // 1. Score-based behaviors
         List<BehaviorInstance> instances = behaviorManager.getInstancesForChannel(channel);
         for (BehaviorInstance instance : instances) {
             invokeHandler(instance, handlerName, args);
+        }
+
+        // 2. Dynamically attached behaviors via scriptInstanceList
+        if (spriteRegistry != null) {
+            SpriteState sprite = spriteRegistry.get(channel);
+            if (sprite != null) {
+                List<Datum> scriptInstances = sprite.getScriptInstanceList();
+                if (scriptInstances != null && !scriptInstances.isEmpty()) {
+                    // Snapshot to avoid ConcurrentModificationException
+                    List<Datum> snapshot = new ArrayList<>(scriptInstances);
+                    for (Datum target : snapshot) {
+                        if (target instanceof Datum.ScriptInstance si) {
+                            try {
+                                ControlFlowBuiltins.callHandlerOnInstance(vm, si, handlerName, args);
+                            } catch (Exception e) {
+                                System.err.println("[EventDispatcher] Error in scriptInstanceList handler "
+                                        + handlerName + " on sprite " + channel + ": " + e.getMessage());
+                                if (debugEnabled) {
+                                    e.printStackTrace();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 

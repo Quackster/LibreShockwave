@@ -8,6 +8,9 @@ import com.libreshockwave.chunks.ScriptNamesChunk;
 import com.libreshockwave.player.behavior.BehaviorManager;
 import com.libreshockwave.player.cast.CastLib;
 import com.libreshockwave.player.cast.CastLibManager;
+import com.libreshockwave.player.cast.CastMember;
+import com.libreshockwave.cast.MemberType;
+import com.libreshockwave.player.sprite.SpriteState;
 import com.libreshockwave.player.event.EventDispatcher;
 import com.libreshockwave.player.frame.FrameContext;
 import com.libreshockwave.player.input.HitTester;
@@ -68,6 +71,9 @@ public class Player {
     private final BitmapCache bitmapCache;
     private final SpriteBaker spriteBaker;
     private final InputState inputState;
+
+    // Rollover tracking for mouseEnter/mouseLeave/mouseWithin events
+    private int previousRolloverSprite = 0;
 
     private final PlayerTraceListener playerTraceListener;
 
@@ -171,6 +177,7 @@ public class Player {
         this.movieProperties.setInputState(inputState);
         this.frameContext.setTimeoutManager(timeoutManager);
         this.frameContext.getEventDispatcher().setCastLibManager(castLibManager);
+        this.frameContext.getEventDispatcher().setSpriteRegistry(stageRenderer.getSpriteRegistry());
         this.frameContext.setActorListSupplier(movieProperties::getActorList);
         this.playerTraceListener = new PlayerTraceListener();
         vm.setTraceListener(playerTraceListener);
@@ -263,6 +270,7 @@ public class Player {
         com.libreshockwave.player.cast.CastMember.setTextRenderer(new com.libreshockwave.player.render.SimpleTextRenderer());
         this.frameContext.setTimeoutManager(timeoutManager);
         this.frameContext.getEventDispatcher().setCastLibManager(castLibManager);
+        this.frameContext.getEventDispatcher().setSpriteRegistry(stageRenderer.getSpriteRegistry());
         this.frameContext.setActorListSupplier(movieProperties::getActorList);
         this.playerTraceListener = new PlayerTraceListener();
         vm.setTraceListener(playerTraceListener);
@@ -1009,6 +1017,91 @@ public class Player {
     }
 
     /**
+     * Get the cursor type for the current mouse position.
+     * Returns Director cursor codes: -1=arrow, 0=default, 1=ibeam, 2=crosshair, 3=crossbar, 4=wait
+     * Returns 5 for custom bitmap cursor (call getCursorBitmap() to get the image).
+     */
+    public int getCursorAtMouse() {
+        int mouseH = inputState.getMouseH();
+        int mouseV = inputState.getMouseV();
+        int hitChannel = HitTester.hitTest(stageRenderer, getCurrentFrame(), mouseH, mouseV);
+        if (hitChannel > 0) {
+            SpriteState sprite = stageRenderer.getSpriteRegistry().get(hitChannel);
+            if (sprite != null) {
+                // Check for bitmap cursor first
+                if (sprite.hasBitmapCursor()) {
+                    return 5; // custom bitmap cursor
+                }
+                int spriteCursor = sprite.getCursor();
+                if (spriteCursor != 0) {
+                    return spriteCursor;
+                }
+                // No explicit cursor — auto-detect editable text fields
+                int castLibNum = sprite.getEffectiveCastLib();
+                int memberNum = sprite.getEffectiveCastMember();
+                if (memberNum > 0) {
+                    CastMember member = castLibManager.getDynamicMember(castLibNum, memberNum);
+                    if (member != null && member.isEditable()
+                            && member.getMemberType() == MemberType.TEXT) {
+                        return 1; // ibeam for editable text
+                    }
+                }
+            }
+        }
+        return -1; // default arrow when not over any sprite
+    }
+
+    /**
+     * Get the current custom cursor bitmap for rendering.
+     * Returns null if no bitmap cursor is active.
+     * The bitmap's regPoint defines the hotspot offset.
+     */
+    public Bitmap getCursorBitmap() {
+        int mouseH = inputState.getMouseH();
+        int mouseV = inputState.getMouseV();
+        int hitChannel = HitTester.hitTest(stageRenderer, getCurrentFrame(), mouseH, mouseV);
+        if (hitChannel <= 0) return null;
+
+        SpriteState sprite = stageRenderer.getSpriteRegistry().get(hitChannel);
+        if (sprite == null || !sprite.hasBitmapCursor()) return null;
+
+        int encodedMember = sprite.getCursorMemberNum();
+        int castLibNum = (encodedMember >> 16) & 0xFFFF;
+        int memberNum = encodedMember & 0xFFFF;
+        if (castLibNum == 0) castLibNum = 1; // default cast lib
+
+        // Try to find and decode the cursor member bitmap
+        CastMemberChunk chunk = castLibManager.getCastMember(castLibNum, memberNum);
+        if (chunk == null) return null;
+
+        return decodeBitmap(chunk).orElse(null);
+    }
+
+    /**
+     * Get the cursor bitmap's registration point (hotspot).
+     * Returns [regX, regY] or null if no bitmap cursor is active.
+     */
+    public int[] getCursorRegPoint() {
+        int mouseH = inputState.getMouseH();
+        int mouseV = inputState.getMouseV();
+        int hitChannel = HitTester.hitTest(stageRenderer, getCurrentFrame(), mouseH, mouseV);
+        if (hitChannel <= 0) return null;
+
+        SpriteState sprite = stageRenderer.getSpriteRegistry().get(hitChannel);
+        if (sprite == null || !sprite.hasBitmapCursor()) return null;
+
+        int encodedMember = sprite.getCursorMemberNum();
+        int castLibNum = (encodedMember >> 16) & 0xFFFF;
+        int memberNum = encodedMember & 0xFFFF;
+        if (castLibNum == 0) castLibNum = 1;
+
+        CastMemberChunk chunk = castLibManager.getCastMember(castLibNum, memberNum);
+        if (chunk == null) return new int[]{0, 0};
+
+        return new int[]{chunk.regPointX(), chunk.regPointY()};
+    }
+
+    /**
      * Handle a mouse button press. Queues a MOUSE_DOWN event for dispatch during tick.
      * Called by the UI layer.
      */
@@ -1071,11 +1164,51 @@ public class Player {
     /**
      * Process queued input events. Called at the beginning of each tick
      * before frame execution, so Lingo scripts see the events.
+     * Also dispatches mouseEnter/mouseLeave/mouseWithin based on rollover state.
      */
     private void processInputEvents() {
         InputEvent event;
+        boolean hadEvents = false;
         while ((event = inputState.pollEvent()) != null) {
             dispatchInputEvent(event);
+            hadEvents = true;
+        }
+
+        // Dispatch mouseEnter/mouseLeave/mouseWithin based on current rollover sprite
+        dispatchRolloverEvents();
+
+        // Bump sprite revision so WASM SoftwareRenderer re-renders after input
+        // (input handlers may change member.text or other visual properties)
+        if (hadEvents) {
+            stageRenderer.getSpriteRegistry().bumpRevision();
+        }
+    }
+
+    /**
+     * Dispatch mouseEnter, mouseLeave, and mouseWithin events based on rollover tracking.
+     * In Director, these fire every frame:
+     * - mouseLeave: when the mouse leaves a sprite's rect
+     * - mouseEnter: when the mouse enters a new sprite's rect
+     * - mouseWithin: every frame while the mouse is within a sprite's rect
+     */
+    private void dispatchRolloverEvents() {
+        EventDispatcher dispatcher = frameContext.getEventDispatcher();
+        int currentRollover = inputState.getRolloverSprite();
+
+        if (currentRollover != previousRolloverSprite) {
+            // Mouse moved to a different sprite (or off all sprites)
+            if (previousRolloverSprite > 0) {
+                dispatcher.dispatchSpriteEvent(previousRolloverSprite, PlayerEvent.MOUSE_LEAVE, List.of());
+            }
+            if (currentRollover > 0) {
+                dispatcher.dispatchSpriteEvent(currentRollover, PlayerEvent.MOUSE_ENTER, List.of());
+            }
+            previousRolloverSprite = currentRollover;
+        }
+
+        // mouseWithin fires every frame while mouse is over a sprite
+        if (currentRollover > 0) {
+            dispatcher.dispatchSpriteEvent(currentRollover, PlayerEvent.MOUSE_WITHIN, List.of());
         }
     }
 
@@ -1088,6 +1221,10 @@ public class Player {
             case MOUSE_DOWN -> {
                 int hitSprite = HitTester.hitTest(stageRenderer, getCurrentFrame(),
                         event.stageX(), event.stageY());
+                // Built-in Director behavior: clicking on an editable text/field sprite
+                // automatically sets keyboardFocusSprite to that sprite's channel.
+                // Clicking elsewhere clears the keyboard focus.
+                autoFocusEditableField(hitSprite);
                 if (hitSprite > 0) {
                     dispatcher.dispatchSpriteEvent(hitSprite, PlayerEvent.MOUSE_DOWN, List.of());
                 }
@@ -1097,7 +1234,15 @@ public class Player {
                 // mouseUp goes to the sprite that was originally clicked
                 int clickedSprite = inputState.getClickOnSprite();
                 if (clickedSprite > 0) {
-                    dispatcher.dispatchSpriteEvent(clickedSprite, PlayerEvent.MOUSE_UP, List.of());
+                    // Check if mouse is still over the same sprite
+                    int hitSprite = HitTester.hitTest(stageRenderer, getCurrentFrame(),
+                            event.stageX(), event.stageY());
+                    if (hitSprite == clickedSprite) {
+                        dispatcher.dispatchSpriteEvent(clickedSprite, PlayerEvent.MOUSE_UP, List.of());
+                    } else {
+                        // Mouse released outside the clicked sprite → mouseUpOutSide
+                        dispatcher.dispatchSpriteEvent(clickedSprite, "mouseUpOutSide", List.of());
+                    }
                 }
                 dispatcher.dispatchGlobalEvent(PlayerEvent.MOUSE_UP, List.of());
             }
@@ -1108,20 +1253,85 @@ public class Player {
                 dispatcher.dispatchGlobalEvent(PlayerEvent.RIGHT_MOUSE_UP, List.of());
             }
             case KEY_DOWN -> {
-                // Dispatch to keyboard focus sprite first, then global
+                // Restore per-event key state so Lingo's "the key" / "the keyCode" read correctly
+                inputState.setLastKey(event.keyChar());
+                inputState.setLastKeyCode(event.keyCode());
                 int focusSprite = inputState.getKeyboardFocusSprite();
+                // Built-in editable field keyboard handling (Director inserts typed chars into member.text)
                 if (focusSprite > 0) {
+                    handleEditableFieldInput(focusSprite, event.keyChar());
                     dispatcher.dispatchSpriteEvent(focusSprite, PlayerEvent.KEY_DOWN, List.of());
                 }
                 dispatcher.dispatchGlobalEvent(PlayerEvent.KEY_DOWN, List.of());
             }
             case KEY_UP -> {
+                inputState.setLastKey(event.keyChar());
+                inputState.setLastKeyCode(event.keyCode());
                 int focusSprite = inputState.getKeyboardFocusSprite();
                 if (focusSprite > 0) {
                     dispatcher.dispatchSpriteEvent(focusSprite, PlayerEvent.KEY_UP, List.of());
                 }
                 dispatcher.dispatchGlobalEvent(PlayerEvent.KEY_UP, List.of());
             }
+        }
+    }
+
+    /**
+     * Built-in Director behavior: clicking on an editable text/field sprite
+     * automatically sets keyboardFocusSprite to that sprite's channel.
+     * Clicking on a non-editable sprite or empty stage clears focus.
+     */
+    private void autoFocusEditableField(int hitChannel) {
+        if (hitChannel > 0) {
+            SpriteState sprite = stageRenderer.getSpriteRegistry().get(hitChannel);
+            if (sprite != null) {
+                int castLibNum = sprite.getEffectiveCastLib();
+                int memberNum = sprite.getEffectiveCastMember();
+                if (memberNum > 0) {
+                    CastMember member = castLibManager.getDynamicMember(castLibNum, memberNum);
+                    if (member != null && member.isEditable()
+                            && (member.getMemberType() == MemberType.TEXT)) {
+                        inputState.setKeyboardFocusSprite(hitChannel);
+                        return;
+                    }
+                }
+            }
+        }
+        // Clicked on non-editable sprite or empty stage — clear focus
+        inputState.setKeyboardFocusSprite(0);
+    }
+
+    /**
+     * Built-in Director behavior: when keyboardFocusSprite is set and the sprite's
+     * member is an editable field/text, the engine inserts typed characters into member.text.
+     */
+    private void handleEditableFieldInput(int channel, String keyChar) {
+        SpriteState sprite = stageRenderer.getSpriteRegistry().get(channel);
+        if (sprite == null) return;
+
+        int castLibNum = sprite.getEffectiveCastLib();
+        int memberNum = sprite.getEffectiveCastMember();
+        if (memberNum <= 0) return;
+
+        CastMember member = castLibManager.getDynamicMember(castLibNum, memberNum);
+        if (member == null) return;
+
+        MemberType type = member.getMemberType();
+        if (type != MemberType.TEXT && type != MemberType.BUTTON) return;
+        if (!member.isEditable()) return;
+
+        String text = member.getTextContent();
+        if (text == null) text = "";
+
+        if (keyChar.equals("\b") || keyChar.isEmpty()) {
+            // Backspace: check the key code
+            if (inputState.getLastKeyCode() == 51) { // Mac kVK_Delete (backspace)
+                if (!text.isEmpty()) {
+                    member.setDynamicText(text.substring(0, text.length() - 1));
+                }
+            }
+        } else if (keyChar.length() == 1) {
+            member.setDynamicText(text + keyChar);
         }
     }
 

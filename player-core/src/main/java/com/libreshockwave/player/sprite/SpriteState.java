@@ -3,6 +3,10 @@ package com.libreshockwave.player.sprite;
 import com.libreshockwave.chunks.ScoreChunk;
 import com.libreshockwave.id.ChannelId;
 import com.libreshockwave.id.InkMode;
+import com.libreshockwave.vm.Datum;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Holds runtime state for a sprite on the stage.
@@ -30,6 +34,12 @@ public class SpriteState {
     private boolean hasSizeChanged = false;
     private boolean flipH = false;
     private boolean flipV = false;
+    private int cursor = 0; // Director cursor: -1=arrow, 0=default, 1=ibeam, 2=crosshair, 3=crossbar, 4=wait
+    private int cursorMemberNum = 0; // Encoded member number for bitmap cursor (castLib<<16 | memberNum)
+    private int cursorMaskNum = 0;   // Encoded member number for cursor mask
+
+    // Script instance list (behaviors attached dynamically via Lingo)
+    private List<Datum> scriptInstanceList = new ArrayList<>();
 
     // Dynamic member assignment (overrides Score data when set)
     private int dynamicCastLib = -1;
@@ -93,8 +103,23 @@ public class SpriteState {
     public boolean isFlipV() { return flipV; }
     public void setFlipH(boolean flipH) { this.flipH = flipH; }
     public void setFlipV(boolean flipV) { this.flipV = flipV; }
+    public int getCursor() { return cursor; }
+    public void setCursor(int cursor) { this.cursor = cursor; this.cursorMemberNum = 0; this.cursorMaskNum = 0; }
+    public int getCursorMemberNum() { return cursorMemberNum; }
+    public int getCursorMaskNum() { return cursorMaskNum; }
+    public boolean hasBitmapCursor() { return cursorMemberNum != 0; }
+    public void setCursorMembers(int member, int mask) {
+        this.cursorMemberNum = member;
+        this.cursorMaskNum = mask;
+        this.cursor = 0;
+    }
     public void setForeColor(int foreColor) { this.foreColor = foreColor; this.hasForeColor = true; }
     public void setBackColor(int backColor) { this.backColor = backColor; this.hasBackColor = true; }
+
+    public List<Datum> getScriptInstanceList() { return scriptInstanceList; }
+    public void setScriptInstanceList(List<Datum> list) {
+        this.scriptInstanceList = list != null ? new ArrayList<>(list) : new ArrayList<>();
+    }
 
     /**
      * Atomically capture all mutable position fields to prevent torn reads

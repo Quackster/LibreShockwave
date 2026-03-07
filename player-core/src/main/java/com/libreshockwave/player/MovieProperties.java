@@ -140,6 +140,13 @@ public class MovieProperties implements MoviePropertyProvider {
                 }
                 yield new Datum.Point(0, 0);
             }
+            case "mouseloc" -> {
+                if (inputState != null) {
+                    yield new Datum.Point(inputState.getMouseH(), inputState.getMouseV());
+                }
+                yield new Datum.Point(0, 0);
+            }
+            case "rightmousedown" -> Datum.of(inputState != null && inputState.isRightMouseDown() ? 1 : 0);
             case "rollover" -> Datum.of(inputState != null ? inputState.getRolloverSprite() : 0);
 
             // Key state

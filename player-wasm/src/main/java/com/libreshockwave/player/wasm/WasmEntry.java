@@ -277,6 +277,20 @@ public class WasmEntry {
         }
     }
 
+    /**
+     * Get the cursor type for the current mouse position.
+     * @return 0 = default, 1 = text (caret)
+     */
+    @Export(name = "getCursorType")
+    public static int getCursorType() {
+        if (wasmPlayer == null || wasmPlayer.getPlayer() == null) return 0;
+        try {
+            return wasmPlayer.getPlayer().getCursorAtMouse();
+        } catch (Throwable e) {
+            return 0;
+        }
+    }
+
     @Export(name = "getStageWidth")
     public static int getStageWidth() {
         return wasmPlayer != null ? wasmPlayer.getStageWidth() : 640;
@@ -307,11 +321,101 @@ public class WasmEntry {
             var snapshot = wasmPlayer.getPlayer().getFrameSnapshot();
             int spriteRev = wasmPlayer.getPlayer().getStageRenderer()
                     .getSpriteRegistry().getRevision();
-            renderBuffer = renderer.render(snapshot, wasmPlayer.getCastRevision(), spriteRev);
+            byte[] frameRgba = renderer.render(snapshot, wasmPlayer.getCastRevision(), spriteRev);
+
+            // Overlay custom bitmap cursor if active
+            com.libreshockwave.bitmap.Bitmap cursorBmp = wasmPlayer.getPlayer().getCursorBitmap();
+            if (cursorBmp != null) {
+                int stageW = renderer.getWidth();
+                int stageH = renderer.getHeight();
+                // Copy frame to separate buffer so we don't corrupt the cache
+                if (cursorRenderBuffer == null || cursorRenderBuffer.length != frameRgba.length) {
+                    cursorRenderBuffer = new byte[frameRgba.length];
+                }
+                System.arraycopy(frameRgba, 0, cursorRenderBuffer, 0, frameRgba.length);
+                overlayCursorBitmap(cursorRenderBuffer, stageW, stageH, cursorBmp);
+                renderBuffer = cursorRenderBuffer;
+            } else {
+                renderBuffer = frameRgba;
+            }
             return renderBuffer.length;
         } catch (Throwable e) {
             captureError("render", e);
             return 0;
+        }
+    }
+
+    /** Separate buffer for frames with cursor overlay (avoids corrupting SoftwareRenderer cache). */
+    private static byte[] cursorRenderBuffer;
+
+    /**
+     * Overlay a cursor bitmap on the RGBA render buffer at the current mouse position.
+     * Uses white (0xFFFFFF) as transparency color key for 1-bit/8-bit cursors,
+     * or alpha channel for 32-bit cursors.
+     */
+    private static void overlayCursorBitmap(byte[] rgba, int stageW, int stageH,
+                                             com.libreshockwave.bitmap.Bitmap cursor) {
+        var player = wasmPlayer.getPlayer();
+        var input = player.getInputState();
+        int mouseX = input.getMouseH();
+        int mouseY = input.getMouseV();
+
+        // Apply registration point as hotspot offset
+        int[] regPoint = player.getCursorRegPoint();
+        int hotX = regPoint != null ? regPoint[0] : 0;
+        int hotY = regPoint != null ? regPoint[1] : 0;
+
+        int drawX = mouseX - hotX;
+        int drawY = mouseY - hotY;
+
+        int curW = cursor.getWidth();
+        int curH = cursor.getHeight();
+        int[] curPixels = cursor.getPixels();
+        int bitDepth = cursor.getBitDepth();
+
+        for (int cy = 0; cy < curH; cy++) {
+            int dstY = drawY + cy;
+            if (dstY < 0 || dstY >= stageH) continue;
+            for (int cx = 0; cx < curW; cx++) {
+                int dstX = drawX + cx;
+                if (dstX < 0 || dstX >= stageW) continue;
+
+                int srcIdx = cy * curW + cx;
+                if (srcIdx >= curPixels.length) continue;
+
+                int pixel = curPixels[srcIdx];
+                int alpha = (pixel >> 24) & 0xFF;
+                int r = (pixel >> 16) & 0xFF;
+                int g = (pixel >> 8) & 0xFF;
+                int b = pixel & 0xFF;
+
+                // White = transparent for 1-bit and 8-bit cursor bitmaps
+                if (bitDepth <= 8 && r == 255 && g == 255 && b == 255) {
+                    continue;
+                }
+                // Skip fully transparent pixels
+                if (alpha == 0 && bitDepth > 8) {
+                    continue;
+                }
+
+                int dstIdx = (dstY * stageW + dstX) * 4;
+                if (alpha == 255 || bitDepth <= 8) {
+                    // Opaque pixel
+                    rgba[dstIdx]     = (byte) r;
+                    rgba[dstIdx + 1] = (byte) g;
+                    rgba[dstIdx + 2] = (byte) b;
+                    rgba[dstIdx + 3] = (byte) 0xFF;
+                } else {
+                    // Alpha blend
+                    int dstR = rgba[dstIdx] & 0xFF;
+                    int dstG = rgba[dstIdx + 1] & 0xFF;
+                    int dstB = rgba[dstIdx + 2] & 0xFF;
+                    rgba[dstIdx]     = (byte) ((r * alpha + dstR * (255 - alpha)) / 255);
+                    rgba[dstIdx + 1] = (byte) ((g * alpha + dstG * (255 - alpha)) / 255);
+                    rgba[dstIdx + 2] = (byte) ((b * alpha + dstB * (255 - alpha)) / 255);
+                    rgba[dstIdx + 3] = (byte) 0xFF;
+                }
+            }
         }
     }
 

@@ -766,16 +766,26 @@ self.onmessage = async function(e) {
                 if (_e && !_e._wasmDead) try { _e.mouseMove(msg.x, msg.y); } catch(ie) {}
                 break;
             case 'mouseDown':
-                if (_e && !_e._wasmDead) try { _e.mouseDown(msg.x, msg.y, msg.button); } catch(ie) {}
+                if (_e && !_e._wasmDead) try {
+                    _e.mouseDown(msg.x, msg.y, msg.button);
+                } catch(ie) {
+                    console.error('[WORKER] mouseDown error:', ie);
+                }
                 break;
             case 'mouseUp':
-                if (_e && !_e._wasmDead) try { _e.mouseUp(msg.x, msg.y, msg.button); } catch(ie) {}
+                if (_e && !_e._wasmDead) try { _e.mouseUp(msg.x, msg.y, msg.button); } catch(ie) {
+                    console.error('[WORKER] mouseUp error:', ie);
+                }
                 break;
             case 'keyDown':
-                if (_e && !_e._wasmDead) try { _e.keyDown(msg.keyCode, msg.key, msg.modifiers); } catch(ie) {}
+                if (_e && !_e._wasmDead) try {
+                    _e.keyDown(msg.keyCode, msg.key || '', msg.modifiers);
+                } catch(ie) { console.error('[WORKER] keyDown error:', ie); }
                 break;
             case 'keyUp':
-                if (_e && !_e._wasmDead) try { _e.keyUp(msg.keyCode, msg.key, msg.modifiers); } catch(ie) {}
+                if (_e && !_e._wasmDead) try {
+                    _e.keyUp(msg.keyCode, msg.key || '', msg.modifiers);
+                } catch(ie) { console.error('[WORKER] keyUp error:', ie); }
                 break;
 
             case 'fetchRelayResult': {
@@ -904,6 +914,10 @@ self.onmessage = async function(e) {
                     var spriteCount = 0;
                     try { spriteCount = _e.exports.getSpriteCount(); _e._clearEx(); } catch(e4) {}
 
+                    // Read cursor type for current mouse position
+                    var cursorType = 0;
+                    try { cursorType = _e.exports.getCursorType(); _e._clearEx(); } catch(e5) {}
+
                     // Drain debug log from WASM
                     var debugLog = null;
                     try {
@@ -926,6 +940,7 @@ self.onmessage = async function(e) {
                         width:         frame ? frame.w : 0,
                         height:        frame ? frame.h : 0,
                         spriteCount:   spriteCount,
+                        cursorType:    cursorType,
                         debugLog:      debugLog
                     }, frame ? [frame.rgba.buffer] : []);
 

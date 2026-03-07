@@ -76,6 +76,7 @@ public class CastMember {
     private int textTopSpacing = 0;
     private boolean textImageDirty = true; // Re-render when properties change
     private Bitmap textRenderedImage; // Cached rendered text image
+    private boolean editable = false; // Whether this field/text member accepts keyboard input
 
     public CastMember(int castLibNumber, int memberNumber, CastMemberChunk chunk, DirectorFile sourceFile) {
         this.castLibId = new CastLibId(castLibNumber);
@@ -249,6 +250,18 @@ public class CastMember {
         return state;
     }
 
+    public boolean isEditable() {
+        return editable;
+    }
+
+    /**
+     * Set the dynamic text content (used by built-in keyboard input for editable fields).
+     */
+    public void setDynamicText(String text) {
+        this.dynamicText = text;
+        this.textImageDirty = true;
+    }
+
     public boolean isLoaded() {
         return state == State.LOADED;
     }
@@ -380,6 +393,7 @@ public class CastMember {
             case "boxtype" -> Datum.of(textBoxType);
             case "fixedlinespace" -> Datum.of(textFixedLineSpace);
             case "topspacing" -> Datum.of(textTopSpacing);
+            case "editable" -> Datum.of(editable ? 1 : 0);
             case "charposttoloc" -> Datum.VOID; // handled as method, not property
             default -> Datum.VOID;
         };
@@ -583,6 +597,10 @@ public class CastMember {
             case "topspacing" -> {
                 this.textTopSpacing = value.toInt();
                 textImageDirty = true;
+                return true;
+            }
+            case "editable" -> {
+                this.editable = value.toInt() != 0;
                 return true;
             }
             case "image" -> {
