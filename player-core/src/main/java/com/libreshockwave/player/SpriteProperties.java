@@ -264,6 +264,13 @@ public class SpriteProperties implements SpritePropertyProvider {
             }
             case "scriptinstancelist" -> {
                 if (value instanceof Datum.List list) {
+                    // Store spriteNum on each ScriptInstance so behavior scripts
+                    // can access me.spriteNum (Director built-in for behaviors)
+                    for (Datum item : list.items()) {
+                        if (item instanceof Datum.ScriptInstance si) {
+                            si.properties().put("spritenum", Datum.of(spriteNum));
+                        }
+                    }
                     sprite.setScriptInstanceList(list.items());
                 } else {
                     sprite.setScriptInstanceList(java.util.List.of());

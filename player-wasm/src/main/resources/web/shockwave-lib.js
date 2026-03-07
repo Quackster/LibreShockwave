@@ -779,8 +779,8 @@ var LibreShockwave = (function() {
         }
 
         // Update cursor based on what sprite the mouse is over
-        // Director cursor codes: -1=arrow, 0=default, 1=ibeam, 2=crosshair, 3=crossbar, 4=wait, 5=bitmap (rendered in frame)
-        var cursorMap = { '-1': 'default', '0': 'default', '1': 'text', '2': 'crosshair', '3': 'move', '4': 'wait', '5': 'none' };
+        // Director cursor codes: -1=arrow, 0=default, 1=ibeam, 2=crosshair, 3=crossbar, 4=wait, 5=bitmap (rendered in frame), 6=pointer (button)
+        var cursorMap = { '-1': 'default', '0': 'default', '1': 'text', '2': 'crosshair', '3': 'move', '4': 'wait', '5': 'none', '6': 'pointer' };
         var cursor = cursorMap[String(result.cursorType)] || 'default';
         if (this._canvas.style.cursor !== cursor) {
             this._canvas.style.cursor = cursor;

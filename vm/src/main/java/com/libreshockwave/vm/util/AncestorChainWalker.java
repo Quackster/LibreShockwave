@@ -22,9 +22,13 @@ public final class AncestorChainWalker {
     public static Datum getProperty(Datum.ScriptInstance instance, String propName) {
         Datum.ScriptInstance current = instance;
         for (int i = 0; i < MAX_ANCESTOR_DEPTH; i++) {
+            // Exact match first (fast path)
             if (current.properties().containsKey(propName)) {
                 return current.properties().get(propName);
             }
+            // Case-insensitive fallback (Director is case-insensitive)
+            Datum ciResult = getCaseInsensitive(current, propName);
+            if (ciResult != null) return ciResult;
 
             // Try ancestor
             Datum ancestor = current.properties().get(Datum.PROP_ANCESTOR);
@@ -37,6 +41,15 @@ public final class AncestorChainWalker {
         return Datum.VOID;
     }
 
+    private static Datum getCaseInsensitive(Datum.ScriptInstance instance, String propName) {
+        for (var entry : instance.properties().entrySet()) {
+            if (entry.getKey().equalsIgnoreCase(propName)) {
+                return entry.getValue();
+            }
+        }
+        return null;
+    }
+
     /**
      * Check if a property exists in the script instance or its ancestor chain.
      * @param instance The script instance to start searching from
@@ -47,6 +60,10 @@ public final class AncestorChainWalker {
         Datum.ScriptInstance current = instance;
         for (int i = 0; i < MAX_ANCESTOR_DEPTH; i++) {
             if (current.properties().containsKey(propName)) {
+                return true;
+            }
+            // Case-insensitive fallback (Director is case-insensitive)
+            if (getCaseInsensitive(current, propName) != null) {
                 return true;
             }
 
@@ -71,6 +88,10 @@ public final class AncestorChainWalker {
         Datum.ScriptInstance current = instance;
         for (int i = 0; i < MAX_ANCESTOR_DEPTH; i++) {
             if (current.properties().containsKey(propName)) {
+                return current;
+            }
+            // Case-insensitive fallback (Director is case-insensitive)
+            if (getCaseInsensitive(current, propName) != null) {
                 return current;
             }
 
@@ -125,11 +146,28 @@ public final class AncestorChainWalker {
 
         Datum.ScriptInstance owner = findOwner(instance, propName);
         if (owner != null) {
-            owner.properties().put(propName, value);
+            // Use the actual key in the map (may differ in case from propName)
+            String actualKey = findActualKey(owner, propName);
+            owner.properties().put(actualKey, value);
         } else {
             // Property not declared anywhere - add to current instance
             instance.properties().put(propName, value);
         }
+    }
+
+    /**
+     * Find the actual key in the properties map that matches propName (case-insensitive).
+     */
+    private static String findActualKey(Datum.ScriptInstance instance, String propName) {
+        if (instance.properties().containsKey(propName)) {
+            return propName;
+        }
+        for (String key : instance.properties().keySet()) {
+            if (key.equalsIgnoreCase(propName)) {
+                return key;
+            }
+        }
+        return propName;
     }
 
     /**

@@ -1032,19 +1032,26 @@ public class Player {
                 if (sprite.hasBitmapCursor()) {
                     return 5; // custom bitmap cursor
                 }
-                int spriteCursor = sprite.getCursor();
-                if (spriteCursor != 0) {
-                    return spriteCursor;
-                }
-                // No explicit cursor — auto-detect editable text fields
+                // Auto-detect editable text fields and buttons — Director shows ibeam
+                // for editable text/field members and pointer for buttons, regardless
+                // of sprite cursor. The Event Broker Behavior sets cursor=-1 (arrow) on
+                // all window sprites, but Director still overrides for these types.
                 int castLibNum = sprite.getEffectiveCastLib();
                 int memberNum = sprite.getEffectiveCastMember();
                 if (memberNum > 0) {
                     CastMember member = castLibManager.getDynamicMember(castLibNum, memberNum);
-                    if (member != null && member.isEditable()
-                            && member.getMemberType() == MemberType.TEXT) {
-                        return 1; // ibeam for editable text
+                    if (member != null) {
+                        if (member.isEditable() && member.getMemberType() == MemberType.TEXT) {
+                            return 1; // ibeam for editable text
+                        }
+                        if (member.getMemberType() == MemberType.BUTTON) {
+                            return 6; // pointer/hand for buttons
+                        }
                     }
+                }
+                int spriteCursor = sprite.getCursor();
+                if (spriteCursor != 0) {
+                    return spriteCursor;
                 }
             }
         }
