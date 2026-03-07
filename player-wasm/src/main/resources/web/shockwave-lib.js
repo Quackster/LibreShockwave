@@ -106,6 +106,7 @@ var LibreShockwave = (function() {
         }
 
         this._initAbout(el);
+        this._initInput(el);
         this._initWorker();
     }
 
@@ -196,6 +197,68 @@ var LibreShockwave = (function() {
         aboutItem.addEventListener('click', function() {
             hideMenu();
             overlay.style.display = 'flex';
+        });
+    };
+
+    // --- Input event forwarding ---
+
+    ShockwavePlayer.prototype._initInput = function(canvas) {
+        var self = this;
+
+        // Make canvas focusable for keyboard events
+        if (!canvas.hasAttribute('tabindex')) {
+            canvas.setAttribute('tabindex', '0');
+        }
+        canvas.style.outline = 'none'; // Hide focus outline
+
+        canvas.addEventListener('mousemove', function(e) {
+            if (!self._worker || !self._workerReady) return;
+            var r = canvas.getBoundingClientRect();
+            var x = Math.round(e.clientX - r.left);
+            var y = Math.round(e.clientY - r.top);
+            self._worker.postMessage({ type: 'mouseMove', x: x, y: y });
+        });
+
+        canvas.addEventListener('mousedown', function(e) {
+            if (!self._worker || !self._workerReady) return;
+            // Left-click only (right-click handled by context menu)
+            if (e.button !== 0 && e.button !== 2) return;
+            canvas.focus();
+            var r = canvas.getBoundingClientRect();
+            var x = Math.round(e.clientX - r.left);
+            var y = Math.round(e.clientY - r.top);
+            self._worker.postMessage({ type: 'mouseDown', x: x, y: y, button: e.button });
+        });
+
+        canvas.addEventListener('mouseup', function(e) {
+            if (!self._worker || !self._workerReady) return;
+            if (e.button !== 0 && e.button !== 2) return;
+            var r = canvas.getBoundingClientRect();
+            var x = Math.round(e.clientX - r.left);
+            var y = Math.round(e.clientY - r.top);
+            self._worker.postMessage({ type: 'mouseUp', x: x, y: y, button: e.button });
+        });
+
+        canvas.addEventListener('keydown', function(e) {
+            if (!self._worker || !self._workerReady) return;
+            // Don't intercept browser shortcuts (Ctrl+C, Ctrl+V, etc.)
+            if (e.ctrlKey || e.metaKey) return;
+            e.preventDefault();
+            var modifiers = (e.shiftKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.altKey ? 4 : 0);
+            self._worker.postMessage({
+                type: 'keyDown', keyCode: e.keyCode,
+                key: e.key.length === 1 ? e.key : '', modifiers: modifiers
+            });
+        });
+
+        canvas.addEventListener('keyup', function(e) {
+            if (!self._worker || !self._workerReady) return;
+            if (e.ctrlKey || e.metaKey) return;
+            var modifiers = (e.shiftKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.altKey ? 4 : 0);
+            self._worker.postMessage({
+                type: 'keyUp', keyCode: e.keyCode,
+                key: e.key.length === 1 ? e.key : '', modifiers: modifiers
+            });
         });
     };
 
