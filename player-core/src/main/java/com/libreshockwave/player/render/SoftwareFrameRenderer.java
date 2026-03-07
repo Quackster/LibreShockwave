@@ -69,7 +69,21 @@ public final class SoftwareFrameRenderer {
             }
         }
 
+        // Draw 1px white stage border (Director player feature)
+        drawStageBorder(argb, stageWidth, stageHeight, 0xFFFFFFFF);
+
         return new Bitmap(stageWidth, stageHeight, 32, argb);
+    }
+
+    private static void drawStageBorder(int[] argb, int w, int h, int color) {
+        for (int x = 0; x < w; x++) {
+            argb[x] = color;
+            argb[(h - 1) * w + x] = color;
+        }
+        for (int y = 0; y < h; y++) {
+            argb[y * w] = color;
+            argb[y * w + w - 1] = color;
+        }
     }
 
     // ========================================================================

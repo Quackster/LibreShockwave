@@ -2,6 +2,9 @@ package com.libreshockwave.bitmap;
 
 import com.libreshockwave.bitmap.Palette.InkMode;
 
+import java.util.ArrayDeque;
+import java.util.Queue;
+
 /**
  * Drawing operations for bitmaps including ink mode blending.
  * Implements Director's copyPixels with various ink effects.
@@ -27,23 +30,34 @@ public class Drawing {
                                    int srcX, int srcY,
                                    int width, int height,
                                    InkMode ink, int blend) {
+        // For MATTE ink, pre-process the source region with flood-fill matte.
+        // Director's MATTE in copyPixels makes border-connected background pixels transparent.
+        Bitmap effectiveSrc = src;
+        int effectiveSrcX = srcX;
+        int effectiveSrcY = srcY;
+        if (ink == InkMode.MATTE) {
+            effectiveSrc = applyMatteToRegion(src, srcX, srcY, width, height);
+            effectiveSrcX = 0;
+            effectiveSrcY = 0;
+        }
+
         for (int y = 0; y < height; y++) {
-            int sy = srcY + y;
+            int sy = effectiveSrcY + y;
             int dy = destY + y;
 
-            if (sy < 0 || sy >= src.getHeight() || dy < 0 || dy >= dest.getHeight()) {
+            if (sy < 0 || sy >= effectiveSrc.getHeight() || dy < 0 || dy >= dest.getHeight()) {
                 continue;
             }
 
             for (int x = 0; x < width; x++) {
-                int sx = srcX + x;
+                int sx = effectiveSrcX + x;
                 int dx = destX + x;
 
-                if (sx < 0 || sx >= src.getWidth() || dx < 0 || dx >= dest.getWidth()) {
+                if (sx < 0 || sx >= effectiveSrc.getWidth() || dx < 0 || dx >= dest.getWidth()) {
                     continue;
                 }
 
-                int srcPixel = src.getPixel(sx, sy);
+                int srcPixel = effectiveSrc.getPixel(sx, sy);
                 int destPixel = dest.getPixel(dx, dy);
 
                 int resultPixel = applyInk(srcPixel, destPixel, ink, blend);
@@ -306,6 +320,72 @@ public class Drawing {
                     dest.setPixel(cx + x, cy + y, color);
                 }
             }
+        }
+    }
+
+    /**
+     * Apply matte (flood-fill from edges) to a source bitmap region.
+     * Returns a new bitmap where border-connected background pixels have alpha=0.
+     * Used by copyPixels with MATTE ink to properly handle source transparency.
+     */
+    private static Bitmap applyMatteToRegion(Bitmap src, int srcX, int srcY, int w, int h) {
+        int[] pixels = new int[w * h];
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                int sx = srcX + x;
+                int sy = srcY + y;
+                if (sx >= 0 && sx < src.getWidth() && sy >= 0 && sy < src.getHeight()) {
+                    pixels[y * w + x] = src.getPixel(sx, sy);
+                } else {
+                    pixels[y * w + x] = 0xFFFFFFFF;
+                }
+            }
+        }
+
+        // Determine matte color from top-left corner pixel
+        int matteRgb = pixels[0] & 0xFFFFFF;
+
+        // BFS flood-fill from edges
+        boolean[] transparent = new boolean[w * h];
+        Queue<Integer> queue = new ArrayDeque<>();
+
+        for (int x = 0; x < w; x++) {
+            seedMatte(pixels, transparent, queue, x, 0, w, matteRgb);
+            seedMatte(pixels, transparent, queue, x, h - 1, w, matteRgb);
+        }
+        for (int y = 1; y < h - 1; y++) {
+            seedMatte(pixels, transparent, queue, 0, y, w, matteRgb);
+            seedMatte(pixels, transparent, queue, w - 1, y, w, matteRgb);
+        }
+
+        while (!queue.isEmpty()) {
+            int idx = queue.poll();
+            int px = idx % w;
+            int py = idx / w;
+            if (px > 0)     seedMatte(pixels, transparent, queue, px - 1, py, w, matteRgb);
+            if (px < w - 1) seedMatte(pixels, transparent, queue, px + 1, py, w, matteRgb);
+            if (py > 0)     seedMatte(pixels, transparent, queue, px, py - 1, w, matteRgb);
+            if (py < h - 1) seedMatte(pixels, transparent, queue, px, py + 1, w, matteRgb);
+        }
+
+        int[] result = new int[w * h];
+        for (int i = 0; i < pixels.length; i++) {
+            if (transparent[i]) {
+                result[i] = 0x00000000;
+            } else {
+                result[i] = pixels[i] | 0xFF000000;
+            }
+        }
+
+        return new Bitmap(w, h, src.getBitDepth(), result);
+    }
+
+    private static void seedMatte(int[] pixels, boolean[] transparent, Queue<Integer> queue,
+                                   int x, int y, int w, int matteRgb) {
+        int idx = y * w + x;
+        if (!transparent[idx] && (pixels[idx] & 0xFFFFFF) == matteRgb) {
+            transparent[idx] = true;
+            queue.add(idx);
         }
     }
 

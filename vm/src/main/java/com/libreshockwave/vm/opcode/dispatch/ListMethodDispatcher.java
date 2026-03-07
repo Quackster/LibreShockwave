@@ -125,7 +125,9 @@ public final class ListMethodDispatcher {
                 yield Datum.VOID;
             }
             case "duplicate" -> {
-                yield new Datum.List(new ArrayList<>(list.items()));
+                // Deep copy: Director's duplicate() creates independent copies of nested structures.
+                // Shallow copy causes shared-cache corruption (e.g., Layout Parser cache in Habbo).
+                yield list.deepCopy();
             }
             default -> Datum.VOID;
         };
