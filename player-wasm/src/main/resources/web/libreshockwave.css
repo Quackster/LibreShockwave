@@ -145,17 +145,21 @@ a:hover { color: #ff6600; }
 
 .file-label {
     display: inline-block;
-    padding: 2px 8px;
-    background: #eeeeee;
+    padding: 4px 14px;
+    background: linear-gradient(to bottom, #f7f7f7, #e0e0e0);
     color: #333333;
-    border: 1px solid #999999;
+    border: 1px solid #aaaaaa;
+    border-radius: 4px;
     cursor: pointer;
     font-size: 11px;
     font-family: Verdana, Arial, Helvetica, sans-serif;
+    transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
 
 .file-label:hover {
-    background: #dddddd;
+    background: linear-gradient(to bottom, #ffffff, #e8e8e8);
+    border-color: #888888;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
 .file-label input[type="file"] {
@@ -165,10 +169,11 @@ a:hover { color: #ff6600; }
 .url-input {
     flex: 1;
     min-width: 160px;
-    padding: 2px 4px;
+    padding: 4px 6px;
     background: #ffffff;
     color: #333333;
-    border: 1px solid #999999;
+    border: 1px solid #aaaaaa;
+    border-radius: 4px;
     font-size: 11px;
     font-family: Verdana, Arial, Helvetica, sans-serif;
 }
@@ -176,32 +181,50 @@ a:hover { color: #ff6600; }
 /* === Buttons === */
 
 .btn {
-    padding: 2px 10px;
-    background: #eeeeee;
+    padding: 4px 14px;
+    background: linear-gradient(to bottom, #f7f7f7, #e0e0e0);
     color: #333333;
-    border: 1px solid #999999;
+    border: 1px solid #aaaaaa;
+    border-radius: 4px;
     cursor: pointer;
     font-size: 11px;
     font-family: Verdana, Arial, Helvetica, sans-serif;
+    transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
 
 .btn:hover:not(:disabled) {
-    background: #dddddd;
+    background: linear-gradient(to bottom, #ffffff, #e8e8e8);
+    border-color: #888888;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.btn:active:not(:disabled) {
+    background: linear-gradient(to bottom, #d8d8d8, #e0e0e0);
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.15);
 }
 
 .btn:disabled {
-    color: #999999;
+    color: #aaaaaa;
+    cursor: default;
+    opacity: 0.7;
 }
 
 .btn-primary {
     font-weight: bold;
-    background: #336699;
+    background: linear-gradient(to bottom, #4a88c0, #336699);
     color: #ffffff;
-    border-color: #003366;
+    border-color: #2a5580;
 }
 
 .btn-primary:hover:not(:disabled) {
-    background: #4477aa;
+    background: linear-gradient(to bottom, #5a99d0, #4477aa);
+    border-color: #336699;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+
+.btn-primary:active:not(:disabled) {
+    background: linear-gradient(to bottom, #2a5580, #336699);
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.2);
 }
 
 .btn-sm {
@@ -242,13 +265,8 @@ canvas {
 }
 
 .transport-btn {
-    min-width: 24px;
+    min-width: 70px;
     font-size: 11px;
-}
-
-#frame-slider {
-    flex: 1;
-    min-width: 80px;
 }
 
 .frame-info {
@@ -267,6 +285,28 @@ canvas {
     padding: 4px 8px;
     font-size: 11px;
     color: #666666;
+}
+
+/* === Footer === */
+
+.footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: #336699;
+    color: #aaccee;
+    font-size: 11px;
+}
+
+.footer a {
+    color: #ffffff;
+    text-decoration: none;
+}
+
+.footer a:hover {
+    text-decoration: underline;
+    color: #ffcc66;
 }
 
 /* === Loading Overlay === */
@@ -333,7 +373,7 @@ canvas {
 .modal-window {
     background: #ffffff;
     border: 1px solid #999999;
-    width: 480px;
+    width: 680px;
     max-width: 90%;
     max-height: 80vh;
     overflow-y: auto;
@@ -410,6 +450,7 @@ canvas {
 .params-table td {
     padding: 2px;
     border: 1px solid #eeeeee;
+    vertical-align: top;
 }
 
 .param-input {
@@ -423,9 +464,16 @@ canvas {
     font-family: Verdana, Arial, Helvetica, sans-serif;
 }
 
-.param-value {
+textarea.param-value {
     font-family: "Courier New", Courier, monospace;
     font-size: 11px;
+    resize: vertical;
+    word-break: break-all;
+    white-space: pre-wrap;
+}
+
+.param-key {
+    width: 60px;
 }
 
 /* === Basic page compatibility === */

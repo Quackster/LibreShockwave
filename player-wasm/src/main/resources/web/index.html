@@ -39,18 +39,21 @@
 
                 <!-- Transport -->
                 <div class="transport">
-                    <button id="step-back-btn" class="btn transport-btn" disabled>|&lt;</button>
                     <button id="play-btn" class="btn transport-btn" disabled>&#9654; Play</button>
-                    <button id="pause-btn" class="btn transport-btn" disabled>&#9646;&#9646;</button>
+                    <button id="pause-btn" class="btn transport-btn" disabled>&#9646;&#9646; Pause</button>
                     <button id="stop-btn" class="btn transport-btn" disabled>&#9632; Stop</button>
-                    <button id="step-fwd-btn" class="btn transport-btn" disabled>&gt;|</button>
-                    <input type="range" id="frame-slider" min="1" max="1" value="1" disabled>
                     <span id="frame-info" class="frame-info"></span>
                 </div>
 
                 <!-- Status bar -->
                 <div class="statusbar">
                     <span id="status">Ready</span>
+                </div>
+
+                <!-- Footer -->
+                <div class="footer">
+                    <span>LibreShockwave &mdash; by <a href="https://github.com/Quackster" target="_blank">Quackster</a></span>
+                    <span><a href="https://github.com/Quackster/LibreShockwave" target="_blank">GitHub</a></span>
                 </div>
 
             </td>
@@ -67,7 +70,7 @@
             <div class="modal-body">
                 <p class="modal-hint">Shockwave PARAM tags (sw1-sw9)</p>
                 <table id="params-table" class="params-table" cellspacing="0" cellpadding="0">
-                    <thead><tr><th>Key</th><th>Value</th><th style="width:24px;"></th></tr></thead>
+                    <thead><tr><th style="width:70px;">Key</th><th>Value</th><th style="width:24px;"></th></tr></thead>
                     <tbody id="params-body"></tbody>
                 </table>
                 <div class="modal-buttons" style="margin-top:6px;">
@@ -113,15 +116,12 @@
             onLoad: function(info) {
                 status.textContent = 'Loaded (' + info.width + 'x' + info.height + ', ' + info.frameCount + ' frames)';
                 enableControls();
-                frameSlider.max = info.frameCount;
             },
             onError: function(msg) {
                 status.textContent = 'Error: ' + msg;
             },
             onFrame: function(frame, total) {
                 frameInfo.textContent = 'Frame ' + frame + ' / ' + total;
-                frameSlider.max = total;
-                frameSlider.value = frame;
             },
             onDebugLog: function(log) {
                 console.log(log);
@@ -131,22 +131,19 @@
         // DOM refs
         var status = document.getElementById('status');
         var urlInput = document.getElementById('url-input');
-        var frameSlider = document.getElementById('frame-slider');
         var frameInfo = document.getElementById('frame-info');
 
         // Restore saved URL
         try { var s = localStorage.getItem('ls_urlInput'); if (s) urlInput.value = s; } catch(e) {}
 
         function enableControls() {
-            ['play-btn','pause-btn','stop-btn','step-fwd-btn','step-back-btn','frame-slider']
+            ['play-btn','pause-btn','stop-btn']
                 .forEach(function(id) { document.getElementById(id).disabled = false; });
         }
 
         function disableControls() {
-            ['play-btn','pause-btn','stop-btn','step-fwd-btn','step-back-btn','frame-slider']
+            ['play-btn','pause-btn','stop-btn']
                 .forEach(function(id) { document.getElementById(id).disabled = true; });
-            frameSlider.value = 1;
-            frameSlider.max = 1;
             frameInfo.textContent = '';
         }
 
@@ -182,9 +179,6 @@
         document.getElementById('play-btn').addEventListener('click', function() { player.play(); status.textContent = 'Playing'; });
         document.getElementById('pause-btn').addEventListener('click', function() { player.pause(); status.textContent = 'Paused'; });
         document.getElementById('stop-btn').addEventListener('click', function() { player.stop(); status.textContent = 'Stopped'; });
-        document.getElementById('step-fwd-btn').addEventListener('click', function() { player.stepForward(); });
-        document.getElementById('step-back-btn').addEventListener('click', function() { player.stepBackward(); });
-        frameSlider.addEventListener('input', function() { player.goToFrame(parseInt(this.value)); });
 
         // === External Params Dialog ===
 
@@ -193,8 +187,8 @@
         function addParamRow(key, value) {
             var body = document.getElementById('params-body');
             var tr = document.createElement('tr');
-            tr.innerHTML = '<td><input type="text" value="' + esc(key) + '" class="param-input"></td>' +
-                '<td><input type="text" value="' + esc(value) + '" class="param-input param-value"></td>' +
+            tr.innerHTML = '<td><input type="text" value="' + esc(key) + '" class="param-input param-key"></td>' +
+                '<td><textarea class="param-input param-value" rows="3">' + esc(value) + '</textarea></td>' +
                 '<td><button class="btn btn-sm">X</button></td>';
             tr.querySelector('button').addEventListener('click', function() { tr.remove(); });
             body.appendChild(tr);
@@ -274,9 +268,9 @@
             if (builtinPresets[name]) { alert('Cannot overwrite a built-in preset.'); return; }
             var params = {};
             document.querySelectorAll('#params-body tr').forEach(function(tr) {
-                var inputs = tr.querySelectorAll('input');
-                var k = inputs[0].value.trim();
-                if (k) params[k] = inputs[1].value;
+                var k = tr.querySelector('.param-key').value.trim();
+                var v = tr.querySelector('.param-value').value;
+                if (k) params[k] = v;
             });
             var user = getUserPresets();
             user[name] = params;
@@ -299,9 +293,9 @@
         document.getElementById('params-apply-btn').addEventListener('click', function() {
             var newParams = {};
             document.querySelectorAll('#params-body tr').forEach(function(tr) {
-                var inputs = tr.querySelectorAll('input');
-                var k = inputs[0].value.trim();
-                if (k) newParams[k] = inputs[1].value;
+                var k = tr.querySelector('.param-key').value.trim();
+                var v = tr.querySelector('.param-value').value;
+                if (k) newParams[k] = v;
             });
             player._params = newParams;
             player.setParams(newParams);
