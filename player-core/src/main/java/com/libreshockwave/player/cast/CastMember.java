@@ -27,8 +27,15 @@ public class CastMember {
     /** Platform-specific text renderer. Set by Player on startup. */
     private static TextRenderer textRenderer;
 
+    /** Callback to signal that a member's visual state changed (e.g. paletteRef). */
+    private static Runnable memberVisualChangedCallback;
+
     public static void setTextRenderer(TextRenderer renderer) {
         textRenderer = renderer;
+    }
+
+    public static void setMemberVisualChangedCallback(Runnable callback) {
+        memberVisualChangedCallback = callback;
     }
 
     public enum State {
@@ -57,6 +64,12 @@ public class CastMember {
 
     // Dynamic text content (for dynamically created field/text members)
     private String dynamicText;
+
+    // Runtime palette override (for palette swap animation)
+    // Stores the castLib and memberNum of the palette cast member to use instead of the embedded one.
+    private int paletteRefCastLib = -1;
+    private int paletteRefMemberNum = -1;
+    private int paletteVersion = 0; // Incremented on each paletteRef change
 
     // Text rendering properties (set by Lingo scripts via member.font, member.fontSize, etc.)
     private String textFont = "Arial";
@@ -293,6 +306,15 @@ public class CastMember {
         this.regPointY = y;
     }
 
+    /** Returns true if this member has a runtime palette override (from paletteRef). */
+    public boolean hasPaletteOverride() {
+        return paletteRefCastLib >= 1 && paletteRefMemberNum >= 1;
+    }
+
+    public int getPaletteRefCastLib() { return paletteRefCastLib; }
+    public int getPaletteRefMemberNum() { return paletteRefMemberNum; }
+    public int getPaletteVersion() { return paletteVersion; }
+
     /**
      * Get a property value for this member.
      */
@@ -334,6 +356,21 @@ public class CastMember {
             case "height" -> Datum.of(bmp != null ? bmp.getHeight() : 0);
             case "depth" -> Datum.of(bmp != null ? bmp.getBitDepth() : 0);
             case "regpoint" -> new Datum.Point(regPointX, regPointY);
+            case "paletteref" -> {
+                // Return the palette override if set, otherwise the embedded palette reference
+                if (paletteRefCastLib >= 1 && paletteRefMemberNum >= 1) {
+                    yield Datum.CastMemberRef.of(paletteRefCastLib, paletteRefMemberNum);
+                }
+                // Default: derive from BitmapInfo embedded palette ID
+                if (chunk != null && chunk.specificData() != null && chunk.specificData().length >= 10) {
+                    BitmapInfo info = BitmapInfo.parse(chunk.specificData());
+                    int palMemberNum = info.paletteId() + 1;
+                    if (palMemberNum >= 1) {
+                        yield Datum.CastMemberRef.of(castLibId.value(), palMemberNum);
+                    }
+                }
+                yield Datum.VOID;
+            }
             case "rect" -> {
                 int w = bmp != null ? bmp.getWidth() : 0;
                 int h = bmp != null ? bmp.getHeight() : 0;
@@ -642,6 +679,22 @@ public class CastMember {
 
     private boolean setBitmapProp(String prop, Datum value) {
         return switch (prop) {
+            case "paletteref" -> {
+                if (value instanceof Datum.CastMemberRef cmr) {
+                    int newCastLib = cmr.castLibNum();
+                    int newMemberNum = cmr.memberNum();
+                    if (newCastLib != paletteRefCastLib || newMemberNum != paletteRefMemberNum) {
+                        paletteRefCastLib = newCastLib;
+                        paletteRefMemberNum = newMemberNum;
+                        paletteVersion++;
+                        if (memberVisualChangedCallback != null) {
+                            memberVisualChangedCallback.run();
+                        }
+                    }
+                    yield true;
+                }
+                yield false;
+            }
             case "image" -> {
                 if (value instanceof Datum.ImageRef ir) {
                     this.bitmap = ir.bitmap().copy();

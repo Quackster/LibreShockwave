@@ -1,7 +1,10 @@
 package com.libreshockwave.player.render;
 
+import com.libreshockwave.DirectorFile;
 import com.libreshockwave.bitmap.Bitmap;
+import com.libreshockwave.bitmap.Palette;
 import com.libreshockwave.player.Player;
+import com.libreshockwave.player.cast.CastLib;
 import com.libreshockwave.player.cast.CastLibManager;
 import com.libreshockwave.player.cast.CastMember;
 
@@ -65,14 +68,63 @@ public class SpriteBaker {
     private Bitmap bakeBitmap(RenderSprite sprite) {
         Bitmap b = null;
         if (sprite.getCastMember() != null) {
+            // Check for runtime palette override (palette swap animation)
+            PaletteOverrideInfo palInfo = resolvePaletteOverride(sprite);
+            Palette paletteOverride = null;
+            if (palInfo != null) {
+                // Only invalidate cache when palette actually changed
+                bitmapCache.invalidateIfPaletteChanged(
+                        sprite.getCastMember().id().value(), palInfo.version);
+                paletteOverride = palInfo.palette;
+            }
             b = bitmapCache.getProcessed(sprite.getCastMember(), sprite.getInk(),
-                    sprite.getBackColor(), player);
+                    sprite.getBackColor(), player, paletteOverride);
         }
         if (b == null && sprite.getDynamicMember() != null) {
             b = bitmapCache.getProcessedDynamic(sprite.getDynamicMember(),
                     sprite.getInk(), sprite.getBackColor());
         }
         return b;
+    }
+
+    private record PaletteOverrideInfo(Palette palette, int version) {}
+
+    /**
+     * Resolve a palette override for a sprite's bitmap member.
+     * Returns null if no palette override is set.
+     */
+    private PaletteOverrideInfo resolvePaletteOverride(RenderSprite sprite) {
+        if (castLibManager == null || sprite.getCastMember() == null) {
+            return null;
+        }
+
+        // Find the runtime CastMember for this sprite's bitmap by name
+        String name = sprite.getCastMember().name();
+        if (name == null || name.isEmpty()) {
+            return null;
+        }
+
+        CastMember member = castLibManager.findCastMemberByName(name);
+        if (member == null || !member.hasPaletteOverride()) {
+            return null;
+        }
+
+        // Resolve the palette member to a Palette object
+        int palCastLib = member.getPaletteRefCastLib();
+        int palMemberNum = member.getPaletteRefMemberNum();
+
+        CastLib paletteCastLib = castLibManager.getCastLib(palCastLib);
+        if (paletteCastLib == null) {
+            return null;
+        }
+
+        DirectorFile palFile = paletteCastLib.getSourceFile();
+        if (palFile == null) {
+            return null;
+        }
+
+        Palette palette = palFile.resolvePaletteByMemberNumber(palMemberNum);
+        return palette != null ? new PaletteOverrideInfo(palette, member.getPaletteVersion()) : null;
     }
 
     /**

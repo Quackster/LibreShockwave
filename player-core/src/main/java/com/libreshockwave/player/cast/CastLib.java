@@ -134,7 +134,8 @@ public class CastLib {
         int minMember = getMinMember();
 
         // Track total slot count (including empty slots) for "the number of castMembers"
-        totalSlotCount = castChunk.memberIds().size();
+        // Must account for minMember offset so iteration 1..count covers all members
+        totalSlotCount = castChunk.memberIds().size() + minMember - 1;
 
         // Load members from cast chunk
         for (int i = 0; i < castChunk.memberIds().size(); i++) {
@@ -580,7 +581,10 @@ public class CastLib {
 
         // Load members from the external cast
         var extCastChunk = externalCasts.get(0);
-        totalSlotCount = extCastChunk.memberIds().size();
+        // totalSlotCount must account for minMember offset so that
+        // "the number of castMembers of castLib N" returns the highest
+        // addressable member number — preIndexMembers iterates 1..count
+        totalSlotCount = extCastChunk.memberIds().size() + minMember - 1;
         for (int i = 0; i < extCastChunk.memberIds().size(); i++) {
             int chunkId = extCastChunk.memberIds().get(i);
             if (chunkId <= 0) {

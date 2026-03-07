@@ -2,6 +2,7 @@ package com.libreshockwave.player;
 
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.bitmap.Bitmap;
+import com.libreshockwave.bitmap.Palette;
 import com.libreshockwave.chunks.CastMemberChunk;
 import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.chunks.ScriptNamesChunk;
@@ -206,6 +207,9 @@ public class Player {
 
         // Set AWT text renderer for desktop environment
         com.libreshockwave.player.cast.CastMember.setTextRenderer(new com.libreshockwave.player.render.AwtTextRenderer());
+        // Wire up member visual change callback to bump sprite revision
+        com.libreshockwave.player.cast.CastMember.setMemberVisualChangedCallback(
+                () -> stageRenderer.getSpriteRegistry().bumpRevision());
 
         // Set base path for network requests from the file location
         if (file != null && file.getBasePath() != null && !file.getBasePath().isEmpty()) {
@@ -268,6 +272,8 @@ public class Player {
         this.movieProperties.setInputState(inputState);
         // Set simple text renderer for TeaVM/WASM (no AWT)
         com.libreshockwave.player.cast.CastMember.setTextRenderer(new com.libreshockwave.player.render.SimpleTextRenderer());
+        com.libreshockwave.player.cast.CastMember.setMemberVisualChangedCallback(
+                () -> stageRenderer.getSpriteRegistry().bumpRevision());
         this.frameContext.setTimeoutManager(timeoutManager);
         this.frameContext.getEventDispatcher().setCastLibManager(castLibManager);
         this.frameContext.getEventDispatcher().setSpriteRegistry(stageRenderer.getSpriteRegistry());
@@ -393,6 +399,39 @@ public class Player {
             }
         }
 
+        return Optional.empty();
+    }
+
+    /**
+     * Decode a bitmap with a palette override.
+     * Used for palette swap animation where the runtime palette differs from the embedded one.
+     */
+    public Optional<Bitmap> decodeBitmap(CastMemberChunk member, Palette paletteOverride) {
+        DirectorFile memberFile = member.file();
+        if (memberFile != null) {
+            Optional<Bitmap> result = memberFile.decodeBitmap(member, paletteOverride);
+            if (result.isPresent()) {
+                return result;
+            }
+        }
+        if (file != null && file != memberFile) {
+            Optional<Bitmap> result = file.decodeBitmap(member, paletteOverride);
+            if (result.isPresent()) {
+                return result;
+            }
+        }
+        if (castLibManager != null) {
+            for (CastLib castLib : castLibManager.getCastLibs().values()) {
+                if (!castLib.isLoaded()) continue;
+                DirectorFile src = castLib.getSourceFile();
+                if (src != null && src != memberFile && src != file) {
+                    Optional<Bitmap> result = src.decodeBitmap(member, paletteOverride);
+                    if (result.isPresent()) {
+                        return result;
+                    }
+                }
+            }
+        }
         return Optional.empty();
     }
 

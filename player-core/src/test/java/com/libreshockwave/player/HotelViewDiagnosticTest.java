@@ -35,6 +35,10 @@ public class HotelViewDiagnosticTest {
         ));
         player.getNetManager().setLocalHttpRoot("C:/xampp/htdocs");
         player.preloadAllCasts();
+        // Log ALL VM errors with full traces
+        player.setErrorListener((msg, ex) -> {
+            System.out.printf("[VM ERROR] %s | %s%n", msg, ex.getMessage());
+        });
         player.play();
 
         CastLibManager clm = player.getCastLibManager();
@@ -46,6 +50,8 @@ public class HotelViewDiagnosticTest {
         int maxSpriteTick = 0;
 
         boolean errorDialogCaptured = false;
+        int lastCh37Member = -1;
+        int lastCh33Member = -1;
         for (int tick = 0; tick < maxTicks; tick++) {
             boolean alive = player.tick();
             if (!alive) break;
@@ -55,6 +61,26 @@ public class HotelViewDiagnosticTest {
             if (sprites.size() > maxSprites) {
                 maxSprites = sprites.size();
                 maxSpriteTick = tick;
+            }
+            // Track sprite member changes for animation debugging
+            var ch37s = renderer.getSpriteRegistry().get(37);
+            var ch33s = renderer.getSpriteRegistry().get(33);
+            if (ch37s != null && ch37s.getEffectiveCastMember() != lastCh37Member) {
+                if (tick < 40 || lastCh37Member == -1) // limit output
+                    System.out.printf("[tick %d] ch37 member changed: %d -> %d%n", tick, lastCh37Member, ch37s.getEffectiveCastMember());
+                lastCh37Member = ch37s.getEffectiveCastMember();
+            }
+            if (ch33s != null && ch33s.getEffectiveCastMember() != lastCh33Member) {
+                System.out.printf("[tick %d] ch33 member changed: %d -> %d%n", tick, lastCh33Member, ch33s.getEffectiveCastMember());
+                lastCh33Member = ch33s.getEffectiveCastMember();
+            }
+            // Check paletteRef on ch33's member for palette animation
+            if (ch33s != null && ch33s.getEffectiveCastMember() > 0 && tick % 100 == 0) {
+                var member = clm.getDynamicMember(ch33s.getEffectiveCastLib(), ch33s.getEffectiveCastMember());
+                if (member != null) {
+                    System.out.printf("[tick %d] ch33 member '%s' paletteVersion=%d hasPaletteOverride=%s%n",
+                            tick, member.getName(), member.getPaletteVersion(), member.hasPaletteOverride());
+                }
             }
             // Capture error dialog phase (window sprites appear around tick 10-30)
             if (!errorDialogCaptured && sprites.size() >= 8 && tick >= 10) {
@@ -108,6 +134,141 @@ public class HotelViewDiagnosticTest {
             } else {
                 System.out.printf("=== %s === NOT FOUND%n", layoutName);
             }
+        }
+
+        // Debug: check if receiveUpdate handler can be found
+        System.out.println("\n--- Animation system debug ---");
+        var vm = player.getVM();
+        // Direct test: does CastLibManager find receiveUpdate?
+        var clmHandler = clm.findHandler("receiveUpdate");
+        System.out.printf("  clm.findHandler('receiveUpdate'): %s%n",
+                clmHandler != null ? "FOUND" : "NOT FOUND");
+        // Check timeout targets
+        var tmgr = player.getTimeoutManager();
+        System.out.printf("  Active timeouts: %d%n", tmgr.getTimeoutCount());
+        // Test within-tick context: call vm.findHandler with providers set
+        // Manually set up providers to test
+        com.libreshockwave.vm.builtin.CastLibProvider.setProvider(clm);
+        try {
+            var href = vm.findHandler("receiveUpdate");
+            System.out.printf("  vm.findHandler('receiveUpdate') with provider: %s%n",
+                    href != null ? "FOUND in " + href.script().scriptType() : "NOT FOUND");
+            // Also test createObject
+            href = vm.findHandler("createObject");
+            System.out.printf("  vm.findHandler('createObject') with provider: %s%n",
+                    href != null ? "FOUND" : "NOT FOUND");
+        } finally {
+            com.libreshockwave.vm.builtin.CastLibProvider.clearProvider();
+        }
+        // Debug: check which cast libs are loaded and their script counts
+        for (int i = 1; i <= 30; i++) {
+            var cl = clm.getCastLib(i);
+            if (cl != null) {
+                var scripts = cl.getAllScripts();
+                int movieScripts = 0;
+                for (var sc : scripts) {
+                    if (sc.scriptType() == com.libreshockwave.chunks.ScriptChunk.ScriptType.MOVIE_SCRIPT) {
+                        movieScripts++;
+                    }
+                }
+                System.out.printf("  castLib %d '%s': loaded=%s scripts=%d movieScripts=%d%n",
+                        i, cl.getName(), cl.isLoaded(), scripts.size(), movieScripts);
+                // For fuse_client, dump ALL script types to see why movieScripts=0
+                if (i == 2) {
+                    var snames = cl.getScriptNames();
+                    java.util.Map<com.libreshockwave.chunks.ScriptChunk.ScriptType, Integer> typeCounts = new java.util.EnumMap<>(com.libreshockwave.chunks.ScriptChunk.ScriptType.class);
+                    for (var sc : scripts) {
+                        typeCounts.merge(sc.scriptType(), 1, Integer::sum);
+                    }
+                    System.out.printf("    script types: %s scriptNames=%s%n", typeCounts,
+                            cl.getScriptNames() != null ? "present" : "NULL");
+                    // Find any script with receiveUpdate handler
+                    for (var sc : scripts) {
+                        var h = snames != null ? sc.findHandler("receiveUpdate", snames) : null;
+                        if (h != null) {
+                            System.out.printf("    FOUND receiveUpdate in script type=%s name='%s'%n",
+                                    sc.scriptType(), sc.getScriptName());
+                        }
+                    }
+                    // Show first 5 scripts
+                    int count = 0;
+                    for (var sc : scripts) {
+                        if (count++ < 10) {
+                            System.out.printf("    script[%d]: type=%s name='%s' handlers=%d%n",
+                                    count, sc.scriptType(), sc.getScriptName(), sc.handlers().size());
+                        }
+                    }
+                } else if (movieScripts > 0) {
+                    var snames = cl.getScriptNames();
+                    for (var sc : scripts) {
+                        if (sc.scriptType() == com.libreshockwave.chunks.ScriptChunk.ScriptType.MOVIE_SCRIPT) {
+                            String name = sc.getScriptName();
+                            var h = snames != null ? sc.findHandler("receiveUpdate", snames) : null;
+                            System.out.printf("    movieScript name='%s' handlers=%d hasReceiveUpdate=%s%n",
+                                    name, sc.handlers().size(), h != null);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Dump bytecodes for Swap Animation Class advanceAnimFrame handler
+        System.out.println("\n--- Swap Animation bytecode dump ---");
+        com.libreshockwave.vm.builtin.CastLibProvider.setProvider(clm);
+        try {
+            var loc = clm.findHandler("advanceAnimFrame");
+            if (loc != null && loc.script() instanceof com.libreshockwave.chunks.ScriptChunk sc) {
+                System.out.printf("  Found advanceAnimFrame in script '%s' (castLib %d)%n",
+                        sc.getScriptName(), loc.castLibNumber());
+                for (var h : sc.handlers()) {
+                    String hn = sc.getHandlerName(h);
+                    if ("advanceAnimFrame".equalsIgnoreCase(hn) || "define".equalsIgnoreCase(hn)) {
+                        System.out.printf("  Handler '%s' (%d instructions):%n", hn, h.instructions().size());
+                        for (var instr : h.instructions()) {
+                            String argName = "";
+                            try { argName = " [" + sc.resolveName(instr.argument()) + "]"; } catch (Exception e) {}
+                            System.out.printf("    %04d: %-24s arg=%d%s%n",
+                                    instr.offset(), instr.opcode(), instr.argument(), argName);
+                        }
+                    }
+                }
+            } else {
+                System.out.println("  advanceAnimFrame NOT FOUND in any cast lib!");
+            }
+        } finally {
+            com.libreshockwave.vm.builtin.CastLibProvider.clearProvider();
+        }
+
+        // Dump the entry.visual layout text to see swap animation definitions
+        System.out.println("\n--- entry.visual layout ---");
+        String entryVisual = clm.getFieldValue("entry.visual", 0);
+        if (entryVisual != null) {
+            // Just print lines containing swapAnim or brassivesiputousb
+            for (String line : entryVisual.split("\n")) {
+                if (line.toLowerCase().contains("swap") || line.toLowerCase().contains("brassiv") || line.toLowerCase().contains("fountain")) {
+                    System.out.println("  " + line.trim());
+                }
+            }
+        } else {
+            System.out.println("  NOT FOUND");
+        }
+
+        // Check palette members in castLib 26 around member 56
+        System.out.println("\n--- Palette member names (castLib 26) ---");
+        for (int m = 44; m <= 60; m++) {
+            var cm = clm.getDynamicMember(26, m);
+            var chunk = clm.getCastMember(26, m);
+            String name = cm != null ? cm.getName() : (chunk != null ? chunk.name() : "null");
+            String type = chunk != null ? chunk.memberType().name() : "?";
+            System.out.printf("  member(%d, 26): name='%s' type=%s%n", m, name, type);
+        }
+
+        // Check if memberExists finds palette members
+        System.out.println("--- memberExists checks ---");
+        for (String n : new String[]{"brassivesiputousb Palette1", "brassivesiputousb Palette2",
+                "brassivesiputousb Palette10"}) {
+            var ref = clm.getMemberByName(0, n);
+            System.out.printf("  memberExists('%s'): %s%n", n, ref != null && !ref.isVoid() ? ref.toStr() : "NOT FOUND");
         }
 
         // Check missing channel 37 (fountain)

@@ -51,6 +51,10 @@ public final class PropertyOpcodes {
     private static boolean setProp(ExecutionContext ctx) {
         String propName = ctx.resolveName(ctx.getArgument());
         Datum value = ctx.pop();
+        if ("paletteref".equalsIgnoreCase(propName)) {
+            System.out.printf("[SET_PROP] paletteref value=%s receiver=%s%n", value.toStr(),
+                    ctx.getReceiver() != null ? ctx.getReceiver().getClass().getSimpleName() : "null");
+        }
         if (ctx.getReceiver() instanceof Datum.ScriptInstance si) {
             AncestorChainWalker.setProperty(si, propName, value);
             ctx.tracePropertySet(propName, value);
@@ -183,6 +187,7 @@ public final class PropertyOpcodes {
         String propName = ctx.resolveName(ctx.getArgument());
         Datum value = ctx.pop();
         Datum obj = ctx.pop();
+
 
         switch (obj) {
             case Datum.CastLibRef clr -> setCastLibProp(clr, propName, value);
@@ -457,6 +462,12 @@ public final class PropertyOpcodes {
         int propertyId = ctx.pop().toInt();
         Datum value = ctx.pop();
         int propertyType = ctx.getArgument();
+
+        // Debug trace for unhandled property types
+        if (propertyType != 0x00 && propertyType != 0x04 && propertyType != 0x06 && propertyType != 0x07) {
+            System.out.printf("[SET] UNHANDLED type=0x%02x propId=%d value=%s%n",
+                    propertyType, propertyId, value.toStr().substring(0, Math.min(50, value.toStr().length())));
+        }
 
         MoviePropertyProvider movieProvider = MoviePropertyProvider.getProvider();
         SpritePropertyProvider spriteProvider = SpritePropertyProvider.getProvider();
