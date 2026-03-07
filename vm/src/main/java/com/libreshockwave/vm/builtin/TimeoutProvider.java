@@ -28,6 +28,13 @@ public interface TimeoutProvider {
     void forgetTimeout(String name);
 
     /**
+     * Check if a timeout with the given name exists.
+     * @param name The timeout name
+     * @return true if the timeout exists
+     */
+    boolean timeoutExists(String name);
+
+    /**
      * Get a property of a timeout.
      * @param name The timeout name
      * @param prop Property name (name, target, period, handler, persistent)

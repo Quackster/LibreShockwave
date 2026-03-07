@@ -644,7 +644,7 @@ public final class TypeBuiltins {
         return Datum.symbol(typeName);
     }
 
-    private static String getIlkType(Datum value) {
+    public static String getIlkType(Datum value) {
         return switch (value) {
             case Datum.Void v -> "void";
             case Datum.Int i -> "integer";
