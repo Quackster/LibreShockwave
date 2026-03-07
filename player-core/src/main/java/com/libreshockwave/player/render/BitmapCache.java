@@ -9,10 +9,7 @@ import com.libreshockwave.id.InkMode;
 import com.libreshockwave.player.Player;
 import com.libreshockwave.player.cast.CastMember;
 
-import java.util.Collections;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
@@ -29,6 +26,8 @@ public class BitmapCache {
     private final Map<Long, Bitmap> cache = new ConcurrentHashMap<>();
     private final Set<Integer> decoding = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private final Set<Integer> decodeFailed = Collections.newSetFromMap(new ConcurrentHashMap<>());
+    /** Tracks the last known palette version per member ID to detect palette changes. */
+    private final Map<Integer, Integer> paletteVersions = new ConcurrentHashMap<>();
 
     /** Submits a task for async decoding. Null in synchronous mode. */
     private final Consumer<Runnable> taskSubmitter;
@@ -86,6 +85,14 @@ public class BitmapCache {
      * Returns null on first call (triggers async decode); returns cached bitmap on subsequent calls.
      */
     public Bitmap getProcessed(CastMemberChunk member, int ink, int backColor, Player player) {
+        return getProcessed(member, ink, backColor, player, null);
+    }
+
+    /**
+     * Get an ink-processed bitmap with an optional palette override.
+     * Used for palette swap animation where the runtime palette differs from the embedded one.
+     */
+    public Bitmap getProcessed(CastMemberChunk member, int ink, int backColor, Player player, Palette paletteOverride) {
         int id = member.id().value();
         long key = cacheKey(id, ink, backColor);
 
@@ -102,7 +109,12 @@ public class BitmapCache {
         // Decode bitmap (sync when no submitter available, async otherwise)
         Runnable decodeTask = () -> {
             try {
-                Optional<Bitmap> bitmap = player.decodeBitmap(member);
+                Optional<Bitmap> bitmap;
+                if (paletteOverride != null) {
+                    bitmap = player.decodeBitmap(member, paletteOverride);
+                } else {
+                    bitmap = player.decodeBitmap(member);
+                }
                 if (bitmap.isEmpty()) {
                     decodeFailed.add(id);
                     return;
@@ -112,7 +124,7 @@ public class BitmapCache {
 
                 // Parse BitmapInfo for useAlpha and paletteId
                 boolean useAlpha = false;
-                Palette palette = null;
+                Palette palette = paletteOverride;
                 if (member.specificData() != null && member.specificData().length >= 10) {
                     DirectorFile memberFile = member.file();
                     int dirVer = 1200;
@@ -121,7 +133,7 @@ public class BitmapCache {
                     }
                     BitmapInfo info = BitmapInfo.parse(member.specificData(), dirVer);
                     useAlpha = info.useAlpha();
-                    if (memberFile != null) {
+                    if (palette == null && memberFile != null) {
                         palette = memberFile.resolvePalette(info.paletteId());
                     }
                 }
@@ -143,6 +155,23 @@ public class BitmapCache {
             decodeTask.run();
             return cache.get(key);
         }
+    }
+
+    /**
+     * Invalidate cache entries for a member if its palette version has changed.
+     * Returns true if the cache was actually invalidated (palette changed since last render).
+     */
+    public boolean invalidateIfPaletteChanged(int memberId, int paletteVersion) {
+        Integer lastVersion = paletteVersions.get(memberId);
+        if (lastVersion != null && lastVersion == paletteVersion) {
+            return false; // No change
+        }
+        paletteVersions.put(memberId, paletteVersion);
+        // Remove from caches - scan for any key containing this member ID
+        cache.keySet().removeIf(key -> (key >> 32) == memberId);
+        decoding.remove(memberId);
+        decodeFailed.remove(memberId);
+        return true;
     }
 
     /**

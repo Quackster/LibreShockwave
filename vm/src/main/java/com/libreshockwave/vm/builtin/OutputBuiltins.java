@@ -26,10 +26,11 @@ public final class OutputBuiltins {
         if (!DebugConfig.isDebugPlaybackEnabled()) {
             return Datum.VOID;
         }
+        StringBuilder sb = new StringBuilder("[PUT] ");
         for (Datum arg : args) {
-            System.out.print(arg.toStr() + " ");
+            sb.append(arg.toStr()).append(' ');
         }
-        System.out.println();
+        System.out.println(sb.toString().trim());
         return Datum.VOID;
     }
 
@@ -40,7 +41,7 @@ public final class OutputBuiltins {
      */
     private static Datum error(LingoVM vm, List<Datum> args) {
         if (DebugConfig.isDebugPlaybackEnabled()) {
-            StringBuilder sb = new StringBuilder();
+            StringBuilder sb = new StringBuilder("[LINGO ERROR] ");
             for (int i = 0; i < args.size(); i++) {
                 if (i > 0) sb.append(' ');
                 sb.append(args.get(i).toStr());

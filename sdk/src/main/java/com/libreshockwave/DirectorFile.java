@@ -284,6 +284,17 @@ public class DirectorFile {
         return getPaletteResolver().resolve(paletteId);
     }
 
+    /**
+     * Resolve a palette by cast member number.
+     * Used for paletteRef override where we have the member number of the palette cast member.
+     * @param memberNumber The member number of the palette cast member
+     * @return The resolved Palette, or null if not found
+     */
+    public Palette resolvePaletteByMemberNumber(int memberNumber) {
+        // PaletteResolver uses paletteId = memberNumber - 1 convention
+        return getPaletteResolver().resolve(memberNumber - 1);
+    }
+
     private PaletteResolver getPaletteResolver() {
         if (paletteResolver == null) {
             paletteResolver = new PaletteResolver(casts, castMembers, palettes, castList,
@@ -293,11 +304,26 @@ public class DirectorFile {
     }
 
     /**
+     * Decode a bitmap cast member using an explicit palette override.
+     * Used for palette swap animation where the runtime palette differs from the embedded one.
+     * @param member The cast member chunk (must be a bitmap type)
+     * @param paletteOverride The palette to use instead of the embedded palette reference
+     * @return Optional containing the decoded bitmap, or empty if decoding fails
+     */
+    public Optional<Bitmap> decodeBitmap(CastMemberChunk member, Palette paletteOverride) {
+        return decodeBitmapInternal(member, paletteOverride);
+    }
+
+    /**
      * Decode a bitmap cast member to a Bitmap object.
      * @param member The cast member chunk (must be a bitmap type)
      * @return Optional containing the decoded bitmap, or empty if decoding fails
      */
     public Optional<Bitmap> decodeBitmap(CastMemberChunk member) {
+        return decodeBitmapInternal(member, null);
+    }
+
+    private Optional<Bitmap> decodeBitmapInternal(CastMemberChunk member, Palette paletteOverride) {
         if (!member.isBitmap() || keyTable == null) {
             return Optional.empty();
         }
@@ -344,8 +370,8 @@ public class DirectorFile {
                 return Optional.empty();
             }
 
-            // Resolve palette (supports both built-in and custom cast member palettes)
-            Palette palette = resolvePalette(info.paletteId());
+            // Use palette override if provided, otherwise resolve from embedded reference
+            Palette palette = paletteOverride != null ? paletteOverride : resolvePalette(info.paletteId());
 
             // Decode bitmap with pitch info for accurate scan width
             boolean bigEndian = endian == ByteOrder.BIG_ENDIAN;

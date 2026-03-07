@@ -273,6 +273,17 @@ tasks.register('runPixelCompareTest', JavaExec) {
     }
 }
 
+tasks.register('runDialogCropTest', JavaExec) {
+    group = 'verification'
+    description = 'Crop dialog area and create pixel diff image'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.DialogCropTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
 tasks.register('runCastMemberDump', JavaExec) {
     group = 'verification'
     description = 'Dump cast members from a Director file'
