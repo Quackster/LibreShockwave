@@ -46,4 +46,10 @@ public interface Xtra {
      * Set a property on an Xtra instance.
      */
     void setProperty(int instanceId, String propertyName, Datum value);
+
+    /**
+     * Called each frame to process pending async operations (e.g., network callbacks).
+     * Default implementation does nothing.
+     */
+    default void tick() {}
 }

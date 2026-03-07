@@ -36,6 +36,8 @@ import java.util.Optional;
 import com.libreshockwave.vm.builtin.TimeoutProvider;
 import com.libreshockwave.vm.builtin.XtraBuiltins;
 import com.libreshockwave.player.timeout.TimeoutManager;
+import com.libreshockwave.vm.xtra.MultiuserNetBridge;
+import com.libreshockwave.vm.xtra.MultiuserXtra;
 import com.libreshockwave.vm.xtra.XtraManager;
 import com.libreshockwave.player.debug.DebugControllerApi;
 
@@ -334,6 +336,75 @@ public class Player {
 
     public XtraManager getXtraManager() {
         return xtraManager;
+    }
+
+    /**
+     * Register the Multiuser Xtra with a platform-specific network bridge.
+     * Call this before play() to enable Lingo's xtra("Multiuser") functionality.
+     */
+    public void registerMultiuserXtra(MultiuserNetBridge netBridge) {
+        MultiuserXtra multiuserXtra = new MultiuserXtra(netBridge, (target, handlerName, args) -> {
+            if (target instanceof Datum.ScriptInstance si) {
+                invokeOnScriptInstance(si, handlerName, args);
+            } else {
+                try {
+                    vm.callHandler(handlerName, args);
+                } catch (Exception e) {
+                    System.err.println("[MultiuserXtra] Callback error: " + e.getMessage());
+                }
+            }
+        });
+        xtraManager.registerXtra(multiuserXtra);
+    }
+
+    /**
+     * Invoke a handler on a script instance, walking the ancestor chain.
+     * Shared utility used by timeout callbacks, Xtra callbacks, etc.
+     */
+    private void invokeOnScriptInstance(Datum.ScriptInstance target,
+                                         String handlerName, java.util.List<Datum> args) {
+        CastLibProvider provider = CastLibProvider.getProvider();
+        if (provider == null) {
+            try { vm.callHandler(handlerName, args); }
+            catch (Exception e) {
+                System.err.println("[Player] Error in script callback " + handlerName + ": " + e.getMessage());
+            }
+            return;
+        }
+
+        Datum.ScriptInstance current = target;
+        for (int i = 0; i < 20; i++) {
+            Datum scriptRefDatum = current.properties().get(Datum.PROP_SCRIPT_REF);
+            CastLibProvider.HandlerLocation location;
+
+            if (scriptRefDatum instanceof Datum.ScriptRef sr) {
+                location = provider.findHandlerInScript(sr.castLibNum(), sr.memberNum(), handlerName);
+            } else {
+                location = provider.findHandlerInScript(current.scriptId(), handlerName);
+            }
+
+            if (location != null && location.script() instanceof ScriptChunk script
+                    && location.handler() instanceof ScriptChunk.Handler handler) {
+                try {
+                    vm.executeHandler(script, handler, args, target);
+                } catch (Exception e) {
+                    System.err.println("[Player] Error in script callback " + handlerName + ": " + e.getMessage());
+                }
+                return;
+            }
+
+            Datum ancestor = current.properties().get(Datum.PROP_ANCESTOR);
+            if (ancestor instanceof Datum.ScriptInstance ancestorInstance) {
+                current = ancestorInstance;
+            } else {
+                break;
+            }
+        }
+
+        try { vm.callHandler(handlerName, args); }
+        catch (Exception e) {
+            System.err.println("[Player] Error in script callback " + handlerName + " (global): " + e.getMessage());
+        }
     }
 
     public MovieProperties getMovieProperties() {
@@ -834,6 +905,7 @@ public class Player {
                     setupProviders();
                     try {
                         processInputEvents();
+                        xtraManager.tickAll();
                         frameContext.executeFrame();
                         timeoutManager.processTimeouts(vm, System.currentTimeMillis());
                         frameContext.advanceFrame();
@@ -877,6 +949,9 @@ public class Player {
         try {
             // Process queued mouse/keyboard input events before frame execution
             processInputEvents();
+            // Process pending Xtra callbacks (e.g., Multiuser Xtra auto-fires
+            // setNetMessageHandler callbacks when messages arrive)
+            xtraManager.tickAll();
             frameContext.executeFrame();
             timeoutManager.processTimeouts(vm, System.currentTimeMillis());
             frameContext.advanceFrame();
@@ -913,6 +988,7 @@ public class Player {
                     setupProviders();
                     try {
                         processInputEvents();
+                        xtraManager.tickAll();
                         frameContext.executeFrame();
                         timeoutManager.processTimeouts(vm, System.currentTimeMillis());
                         frameContext.advanceFrame();

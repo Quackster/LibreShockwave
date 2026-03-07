@@ -305,3 +305,25 @@ tasks.register('runLoginConnectingTest', JavaExec) {
         languageVersion = JavaLanguageVersion.of(21)
     }
 }
+
+tasks.register('runSocketBridgeTest', JavaExec) {
+    group = 'verification'
+    description = 'Test SocketMultiuserBridge + MultiuserXtra over real TCP sockets'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.SocketMultiuserBridgeTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+tasks.register('runMultiuserXtraTest', JavaExec) {
+    group = 'verification'
+    description = 'Test Multiuser Xtra registration and connection flow'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.MultiuserXtraTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}

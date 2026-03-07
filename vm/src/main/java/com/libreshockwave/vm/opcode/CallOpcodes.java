@@ -10,6 +10,7 @@ import com.libreshockwave.vm.LingoException;
 import com.libreshockwave.vm.builtin.CastLibProvider;
 import com.libreshockwave.vm.builtin.SpritePropertyProvider;
 import com.libreshockwave.vm.builtin.TimeoutBuiltins;
+import com.libreshockwave.vm.builtin.XtraBuiltins;
 import com.libreshockwave.vm.opcode.dispatch.ImageMethodDispatcher;
 import com.libreshockwave.vm.opcode.dispatch.ListMethodDispatcher;
 import com.libreshockwave.vm.opcode.dispatch.PropListMethodDispatcher;
@@ -127,6 +128,7 @@ public final class CallOpcodes {
             case Datum.Rect rect -> handleRectMethod(rect, methodName, args);
             case Datum.Str str -> StringMethodDispatcher.dispatch(str, methodName, args);
             case Datum.TimeoutRef ref -> TimeoutBuiltins.handleMethod(ref, methodName, args);
+            case Datum.XtraInstance xi -> XtraBuiltins.callHandler(xi, methodName, args);
             case Datum.ImageRef imageRef -> ImageMethodDispatcher.dispatch(imageRef, methodName, args);
             case Datum.SpriteRef sr -> {
                 // Method calls on sprite references dispatch to the sprite's scriptInstanceList behaviors.

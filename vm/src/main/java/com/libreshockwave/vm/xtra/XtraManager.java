@@ -96,4 +96,13 @@ public class XtraManager {
             xtra.destroyInstance(instance.instanceId());
         }
     }
+
+    /**
+     * Tick all registered Xtras (called each frame for async processing).
+     */
+    public void tickAll() {
+        for (Xtra xtra : registeredXtras.values()) {
+            xtra.tick();
+        }
+    }
 }
