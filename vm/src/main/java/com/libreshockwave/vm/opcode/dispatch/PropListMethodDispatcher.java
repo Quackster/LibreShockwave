@@ -108,7 +108,8 @@ public final class PropListMethodDispatcher {
             return propList.properties().values().iterator().next();
         }
         if ("duplicate".equalsIgnoreCase(methodName)) {
-            return new Datum.PropList(new LinkedHashMap<>(propList.properties()));
+            // Deep copy: Director's duplicate() creates independent copies of nested structures.
+            return propList.deepCopy();
         }
         return Datum.VOID;
     }
