@@ -309,6 +309,10 @@ var LibreShockwave = (function() {
                 this._resolveOnce('frame', msg);
                 break;
 
+            case 'debugLog':
+                console.log(msg.msg);
+                break;
+
             case 'fetchRelay': {
                 // Worker needs a cross-origin fetch; do it from main thread and relay back
                 var worker = this._worker;
@@ -772,6 +776,14 @@ var LibreShockwave = (function() {
             ctx.fillStyle = '#0f0';
             ctx.fillText(text, 4, 12);
             ctx.restore();
+        }
+
+        // Update cursor based on what sprite the mouse is over
+        // Director cursor codes: -1=arrow, 0=default, 1=ibeam, 2=crosshair, 3=crossbar, 4=wait, 5=bitmap (rendered in frame)
+        var cursorMap = { '-1': 'default', '0': 'default', '1': 'text', '2': 'crosshair', '3': 'move', '4': 'wait', '5': 'none' };
+        var cursor = cursorMap[String(result.cursorType)] || 'default';
+        if (this._canvas.style.cursor !== cursor) {
+            this._canvas.style.cursor = cursor;
         }
 
         if (result.debugLog && this._opts.onDebugLog) {

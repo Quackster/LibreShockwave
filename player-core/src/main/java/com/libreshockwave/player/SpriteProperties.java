@@ -91,12 +91,13 @@ public class SpriteProperties implements SpritePropertyProvider {
             case "fliph" -> Datum.of(sprite.isFlipH() ? 1 : 0);
             case "flipv" -> Datum.of(sprite.isFlipV() ? 1 : 0);
             case "moveable", "moveablesprite" -> Datum.of(0);
-            case "editabletext" -> Datum.of(0);
+            case "editable", "editabletext" -> Datum.of(0);
             case "trails" -> Datum.of(0);
-            case "scriptinstancelist" -> new Datum.List(java.util.List.of());
+            case "cursor" -> Datum.of(sprite.getCursor());
+            case "scriptinstancelist" -> new Datum.List(new java.util.ArrayList<>(sprite.getScriptInstanceList()));
             default -> {
                 // Don't spam for common properties
-                if (!prop.equals("name") && !prop.equals("cursor") && !prop.equals("constraint")
+                if (!prop.equals("name") && !prop.equals("constraint")
                         && !prop.equals("tweened") && !prop.equals("scriptnum")) {
                     System.err.println("[SpriteProperties] Unknown sprite property get: " + propName);
                 }
@@ -262,11 +263,27 @@ public class SpriteProperties implements SpritePropertyProvider {
                 return true;
             }
             case "scriptinstancelist" -> {
-                // sprite.scriptInstanceList = [...] - silently accept
+                if (value instanceof Datum.List list) {
+                    sprite.setScriptInstanceList(list.items());
+                } else {
+                    sprite.setScriptInstanceList(java.util.List.of());
+                }
+                return true;
+            }
+            case "cursor" -> {
+                // Director cursor: -1=arrow, 0=default, 1=ibeam, 2=crosshair, 3=crossbar, 4=wait
+                // Can also be a list [memberNum, maskMemberNum] for bitmap cursors
+                if (value instanceof Datum.List list && list.items().size() >= 2) {
+                    int memberNum = list.items().get(0).toInt();
+                    int maskNum = list.items().get(1).toInt();
+                    sprite.setCursorMembers(memberNum, maskNum);
+                } else {
+                    sprite.setCursor(value.toInt());
+                }
                 return true;
             }
             // Silently accept but don't do anything special
-            case "cursor", "moveable", "moveablesprite", "editabletext",
+            case "moveable", "moveablesprite", "editable", "editabletext",
                  "trails", "tweened", "constraint", "scriptnum", "type", "id" -> {
                 return true;
             }

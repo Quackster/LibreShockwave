@@ -84,6 +84,8 @@ public class LingoVM {
             }
             return Datum.VOID;
         });
+        // stopEvent() prevents further event propagation (opposite of pass())
+        builtins.register("stopEvent", (vm, args) -> Datum.VOID);
     }
 
     // Configuration

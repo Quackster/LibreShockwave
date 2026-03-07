@@ -227,6 +227,114 @@ public class HotelViewDiagnosticTest {
             }
         }
 
+        // Dump brassivesiputousb bitmap details (logo shadow bug)
+        System.out.println("\n--- brassivesiputousb bitmap analysis ---");
+        for (RenderSprite bs : snapshot.sprites()) {
+            if ("brassivesiputousb".equals(bs.getMemberName())) {
+                System.out.printf("  ch=%d pos=(%d,%d) %dx%d ink=%d(%s) blend=%d fg=0x%06X bg=0x%06X hasFg=%s hasBg=%s%n",
+                        bs.getChannel(), bs.getX(), bs.getY(), bs.getWidth(), bs.getHeight(),
+                        bs.getInk(), bs.getInkMode(), bs.getBlend(),
+                        bs.getForeColor() & 0xFFFFFF, bs.getBackColor() & 0xFFFFFF,
+                        bs.hasForeColor(), bs.hasBackColor());
+                Bitmap bk = bs.getBakedBitmap();
+                if (bk != null) {
+                    int[] px = bk.getPixels();
+                    int transparent = 0, opaque = 0, semiTransparent = 0;
+                    int black = 0, white = 0, other = 0;
+                    java.util.Map<Integer, Integer> alphaHist = new java.util.TreeMap<>();
+                    java.util.Map<Integer, Integer> colorHist = new java.util.TreeMap<>();
+                    for (int p : px) {
+                        int a = (p >>> 24);
+                        if (a == 0) { transparent++; continue; }
+                        else if (a == 255) opaque++;
+                        else semiTransparent++;
+                        alphaHist.merge(a, 1, Integer::sum);
+                        int rgb = p & 0xFFFFFF;
+                        colorHist.merge(rgb, 1, Integer::sum);
+                        if (rgb == 0x000000) black++;
+                        else if (rgb == 0xFFFFFF) white++;
+                        else other++;
+                    }
+                    System.out.printf("  baked: %dx%d bitDepth=%d transparent=%d semiTransparent=%d opaque=%d%n",
+                            bk.getWidth(), bk.getHeight(), bk.getBitDepth(), transparent, semiTransparent, opaque);
+                    System.out.printf("  colors: black=%d white=%d other=%d%n", black, white, other);
+                    System.out.printf("  alpha histogram (top 10): ");
+                    alphaHist.entrySet().stream().sorted((a1, a2) -> a2.getValue() - a1.getValue()).limit(10)
+                            .forEach(e -> System.out.printf("a=%d:%d ", e.getKey(), e.getValue()));
+                    System.out.println();
+                    System.out.printf("  color histogram (top 10): ");
+                    colorHist.entrySet().stream().sorted((a1, a2) -> a2.getValue() - a1.getValue()).limit(10)
+                            .forEach(e -> System.out.printf("0x%06X:%d ", e.getKey(), e.getValue()));
+                    System.out.println();
+                    ImageIO.write(bk.toBufferedImage(), "png",
+                            new File(OUTPUT_DIR + "/sprite_brassivesiputousb_baked.png"));
+                }
+                // Dump raw bitmap
+                if (bs.getCastMember() != null) {
+                    var rawOpt = player.decodeBitmap(bs.getCastMember());
+                    if (rawOpt.isPresent()) {
+                        Bitmap raw = rawOpt.get();
+                        int[] rpx = raw.getPixels();
+                        int rt = 0, rw = 0, rb = 0, ro = 0;
+                        java.util.Map<Integer, Integer> rawColorHist = new java.util.TreeMap<>();
+                        for (int p : rpx) {
+                            int a = (p >>> 24);
+                            if (a == 0) { rt++; continue; }
+                            int rgb = p & 0xFFFFFF;
+                            rawColorHist.merge(rgb, 1, Integer::sum);
+                            if (rgb == 0xFFFFFF) rw++;
+                            else if (rgb == 0x000000) rb++;
+                            else ro++;
+                        }
+                        System.out.printf("  raw: %dx%d bitDepth=%d transparent=%d white=%d black=%d other=%d%n",
+                                raw.getWidth(), raw.getHeight(), raw.getBitDepth(), rt, rw, rb, ro);
+                        System.out.printf("  raw color histogram (top 10): ");
+                        rawColorHist.entrySet().stream().sorted((a1, a2) -> a2.getValue() - a1.getValue()).limit(10)
+                                .forEach(e -> System.out.printf("0x%06X:%d ", e.getKey(), e.getValue()));
+                        System.out.println();
+                        // BitmapInfo
+                        byte[] sd = bs.getCastMember().specificData();
+                        if (sd != null && sd.length >= 10) {
+                            var bi = com.libreshockwave.cast.BitmapInfo.parse(sd);
+                            System.out.printf("  BitmapInfo: %dx%d bitDepth=%d useAlpha=%s paletteId=%d pitch=%d%n",
+                                    bi.width(), bi.height(), bi.bitDepth(), bi.useAlpha(), bi.paletteId(), bi.pitch());
+                        }
+                        // Sample a 5x5 grid of pixels
+                        System.out.println("  raw pixel grid (5x5):");
+                        for (int gy = 0; gy < 5; gy++) {
+                            int py = gy * raw.getHeight() / 5 + raw.getHeight() / 10;
+                            System.out.printf("    y=%3d: ", py);
+                            for (int gx = 0; gx < 5; gx++) {
+                                int px2 = gx * raw.getWidth() / 5 + raw.getWidth() / 10;
+                                int idx = py * raw.getWidth() + px2;
+                                if (idx >= 0 && idx < rpx.length) {
+                                    int p = rpx[idx];
+                                    System.out.printf("(%3d,%3d)=0x%08X ", px2, py, p);
+                                }
+                            }
+                            System.out.println();
+                        }
+                        ImageIO.write(raw.toBufferedImage(), "png",
+                                new File(OUTPUT_DIR + "/sprite_brassivesiputousb_raw.png"));
+                    } else {
+                        System.out.println("  raw: DECODE FAILED");
+                    }
+                } else {
+                    System.out.println("  castMember: null (dynamic member?)");
+                    if (bs.getDynamicMember() != null) {
+                        System.out.printf("  dynamicMember: type=%s%n", bs.getDynamicMember().getMemberType());
+                    }
+                }
+                break;
+            }
+        }
+        if (snapshot.sprites().stream().noneMatch(s -> "brassivesiputousb".equals(s.getMemberName()))) {
+            System.out.println("  brassivesiputousb NOT FOUND in sprites!");
+            // Try resolving by name
+            var ref = clm.getMemberByName(0, "brassivesiputousb");
+            System.out.printf("  lookup: %s%n", ref != null && !ref.isVoid() ? ref.toStr() : "NOT FOUND");
+        }
+
         // Dump individual window sprite bitmaps for debugging
         System.out.println("\n--- Window sprite bitmap dumps ---");
         for (RenderSprite bs : snapshot.sprites()) {
@@ -274,6 +382,44 @@ public class HotelViewDiagnosticTest {
         }
         System.out.printf("%nPixel stats: nonBlack=%d/%d tealish=%d%n", nonBlack, px.length, tealish);
         System.out.println("Output: " + OUTPUT_DIR + "/hotel_view.png");
+
+        // --- INPUT TEST: simulate mouse click on the Name field ---
+        System.out.println("\n--- Input Click Test ---");
+        // Find a sprite that has scriptInstanceList (Event Broker)
+        var registry = renderer.getSpriteRegistry();
+        for (RenderSprite rs : sprites) {
+            int ch = rs.getChannel();
+            var st = registry.get(ch);
+            if (st != null && !st.getScriptInstanceList().isEmpty()) {
+                System.out.printf("  ch=%d has scriptInstanceList size=%d at (%d,%d) %dx%d%n",
+                        ch, st.getScriptInstanceList().size(),
+                        rs.getX(), rs.getY(), rs.getWidth(), rs.getHeight());
+            }
+        }
+        // Click at center of the Name input field (approximately)
+        // First find which sprite the Name field is
+        int nameFieldX = 510, nameFieldY = 300;
+        int hitCh = com.libreshockwave.player.input.HitTester.hitTest(renderer, frame, nameFieldX, nameFieldY);
+        System.out.printf("  HitTest(%d,%d) = ch %d%n", nameFieldX, nameFieldY, hitCh);
+        if (hitCh > 0) {
+            var hitState = registry.get(hitCh);
+            if (hitState != null) {
+                System.out.printf("  hit sprite: scriptInstanceList=%d%n", hitState.getScriptInstanceList().size());
+            }
+        }
+        // Simulate the click
+        player.onMouseDown(nameFieldX, nameFieldY, false);
+        player.tick();
+        Thread.sleep(50);
+        player.onMouseUp(nameFieldX, nameFieldY, false);
+        player.tick();
+        Thread.sleep(50);
+        System.out.println("  Click simulated, checking keyboardFocusSprite...");
+        // The keyboardFocusSprite should now be set if the click worked
+        var inputState = player.getInputState();
+        if (inputState != null) {
+            System.out.printf("  keyboardFocusSprite = %d%n", inputState.getKeyboardFocusSprite());
+        }
 
         player.shutdown();
     }

@@ -177,8 +177,9 @@ public final class ControlFlowBuiltins {
     /**
      * Call a handler on a script instance, walking the ancestor chain to find it.
      * Reuses the same pattern as ScriptInstanceMethodDispatcher and FrameContext.
+     * Public so the player-core event dispatcher can use it for scriptInstanceList.
      */
-    private static void callHandlerOnInstance(LingoVM vm, Datum.ScriptInstance instance,
+    public static void callHandlerOnInstance(LingoVM vm, Datum.ScriptInstance instance,
                                                String handlerName, List<Datum> extraArgs) {
         CastLibProvider provider = CastLibProvider.getProvider();
         if (provider == null) return;

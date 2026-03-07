@@ -8,6 +8,7 @@ import com.libreshockwave.vm.DebugConfig;
 import com.libreshockwave.vm.HandlerRef;
 import com.libreshockwave.vm.LingoException;
 import com.libreshockwave.vm.builtin.CastLibProvider;
+import com.libreshockwave.vm.builtin.SpritePropertyProvider;
 import com.libreshockwave.vm.builtin.TimeoutBuiltins;
 import com.libreshockwave.vm.opcode.dispatch.ImageMethodDispatcher;
 import com.libreshockwave.vm.opcode.dispatch.ListMethodDispatcher;
@@ -127,6 +128,25 @@ public final class CallOpcodes {
             case Datum.Str str -> StringMethodDispatcher.dispatch(str, methodName, args);
             case Datum.TimeoutRef ref -> TimeoutBuiltins.handleMethod(ref, methodName, args);
             case Datum.ImageRef imageRef -> ImageMethodDispatcher.dispatch(imageRef, methodName, args);
+            case Datum.SpriteRef sr -> {
+                // Method calls on sprite references dispatch to the sprite's scriptInstanceList behaviors.
+                // e.g., sprite(N).setcursor(#arrow) → Event Broker Behavior's on setcursor handler
+                SpritePropertyProvider spriteProvider = SpritePropertyProvider.getProvider();
+                if (spriteProvider != null) {
+                    Datum listDatum = spriteProvider.getSpriteProp(sr.channelNum(), "scriptinstancelist");
+                    if (listDatum instanceof Datum.List scriptList) {
+                        for (Datum item : scriptList.items()) {
+                            if (item instanceof Datum.ScriptInstance si) {
+                                Datum r = ScriptInstanceMethodDispatcher.dispatch(ctx, si, methodName, args);
+                                if (!r.isVoid()) {
+                                    yield r;
+                                }
+                            }
+                        }
+                    }
+                }
+                yield Datum.VOID;
+            }
             case Datum.CastMemberRef cmr -> {
                 // Method calls on cast member references (e.g., member.charPosToLoc)
                 CastLibProvider provider = CastLibProvider.getProvider();

@@ -38,4 +38,29 @@ public final class HitTester {
 
         return 0;
     }
+
+    /**
+     * Find the front-most visible sprite containing the given point and return its type.
+     * @return the sprite's SpriteType, or null if no sprite hit
+     */
+    public static RenderSprite.SpriteType hitTestType(StageRenderer renderer, int frame, int stageX, int stageY) {
+        List<RenderSprite> sprites = renderer.getSpritesForFrame(frame);
+
+        for (int i = sprites.size() - 1; i >= 0; i--) {
+            RenderSprite sprite = sprites.get(i);
+            if (!sprite.isVisible()) continue;
+            if (sprite.getChannel() <= 0) continue;
+
+            int left = sprite.getX();
+            int top = sprite.getY();
+            int right = left + sprite.getWidth();
+            int bottom = top + sprite.getHeight();
+
+            if (stageX >= left && stageX < right && stageY >= top && stageY < bottom) {
+                return sprite.getType();
+            }
+        }
+
+        return null;
+    }
 }
