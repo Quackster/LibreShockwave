@@ -57,6 +57,24 @@ public final class ArithmeticOpcodes {
             return true;
         }
 
+        // List + List element-wise arithmetic (Director supports this)
+        if (a instanceof Datum.List la && b instanceof Datum.List lb) {
+            var itemsA = la.items();
+            var itemsB = lb.items();
+            int size = Math.min(itemsA.size(), itemsB.size());
+            var result = new java.util.ArrayList<Datum>(size);
+            for (int i = 0; i < size; i++) {
+                Datum ai = itemsA.get(i), bi = itemsB.get(i);
+                if (ai.isFloat() || bi.isFloat()) {
+                    result.add(Datum.of(ai.toDouble() + bi.toDouble()));
+                } else {
+                    result.add(Datum.of(ai.toInt() + bi.toInt()));
+                }
+            }
+            ctx.push(new Datum.List(result));
+            return true;
+        }
+
         if (a.isFloat() || b.isFloat()) {
             ctx.push(Datum.of(a.toDouble() + b.toDouble()));
         } else {
@@ -94,6 +112,24 @@ public final class ArithmeticOpcodes {
                 dr = list.items().get(2).toInt(); dbottom = list.items().get(3).toInt();
             }
             ctx.push(new Datum.Rect(ra.left() - dl, ra.top() - dt, ra.right() - dr, ra.bottom() - dbottom));
+            return true;
+        }
+
+        // List - List element-wise arithmetic (Director supports this)
+        if (a instanceof Datum.List la && b instanceof Datum.List lb) {
+            var itemsA = la.items();
+            var itemsB = lb.items();
+            int size = Math.min(itemsA.size(), itemsB.size());
+            var result = new java.util.ArrayList<Datum>(size);
+            for (int i = 0; i < size; i++) {
+                Datum ai = itemsA.get(i), bi = itemsB.get(i);
+                if (ai.isFloat() || bi.isFloat()) {
+                    result.add(Datum.of(ai.toDouble() - bi.toDouble()));
+                } else {
+                    result.add(Datum.of(ai.toInt() - bi.toInt()));
+                }
+            }
+            ctx.push(new Datum.List(result));
             return true;
         }
 

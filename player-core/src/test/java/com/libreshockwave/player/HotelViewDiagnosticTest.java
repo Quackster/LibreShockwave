@@ -99,6 +99,17 @@ public class HotelViewDiagnosticTest {
                     memberInfo);
         }
 
+        // Dump window layout text members
+        System.out.println("\n--- Window Layout Text Members ---");
+        for (String layoutName : new String[]{"habbo_simple.window", "login_a.window", "login_b.window"}) {
+            String text = clm.getFieldValue(layoutName, 0);
+            if (text != null && !text.isEmpty()) {
+                System.out.printf("=== %s ===%n%s%n=== END %s ===%n", layoutName, text, layoutName);
+            } else {
+                System.out.printf("=== %s === NOT FOUND%n", layoutName);
+            }
+        }
+
         // Check missing channel 37 (fountain)
         var ch37state = renderer.getSpriteRegistry().get(37);
         if (ch37state != null) {
