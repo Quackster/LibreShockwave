@@ -607,6 +607,68 @@ public class WasmEntry {
         return len;
     }
 
+    // === Input events ===
+
+    /**
+     * Update mouse position (stage coordinates).
+     * Called by JS on mousemove.
+     */
+    @Export(name = "mouseMove")
+    public static void mouseMove(int stageX, int stageY) {
+        if (wasmPlayer == null || wasmPlayer.getPlayer() == null) return;
+        wasmPlayer.getPlayer().onMouseMove(stageX, stageY);
+    }
+
+    /**
+     * Handle mouse button press.
+     * @param button 0=left, 2=right (matching JS MouseEvent.button)
+     */
+    @Export(name = "mouseDown")
+    public static void mouseDown(int stageX, int stageY, int button) {
+        if (wasmPlayer == null || wasmPlayer.getPlayer() == null) return;
+        wasmPlayer.getPlayer().onMouseDown(stageX, stageY, button == 2);
+    }
+
+    /**
+     * Handle mouse button release.
+     * @param button 0=left, 2=right (matching JS MouseEvent.button)
+     */
+    @Export(name = "mouseUp")
+    public static void mouseUp(int stageX, int stageY, int button) {
+        if (wasmPlayer == null || wasmPlayer.getPlayer() == null) return;
+        wasmPlayer.getPlayer().onMouseUp(stageX, stageY, button == 2);
+    }
+
+    /**
+     * Handle key press.
+     * @param browserKeyCode browser KeyboardEvent.keyCode
+     * @param keyCharLen length of key character string in stringBuffer
+     * @param modifiers bit flags: 1=shift, 2=ctrl, 4=alt
+     */
+    @Export(name = "keyDown")
+    public static void keyDown(int browserKeyCode, int keyCharLen, int modifiers) {
+        if (wasmPlayer == null || wasmPlayer.getPlayer() == null) return;
+        String keyChar = keyCharLen > 0 ? new String(stringBuffer, 0, keyCharLen) : "";
+        int directorCode = com.libreshockwave.player.input.DirectorKeyCodes.fromBrowserKeyCode(browserKeyCode);
+        wasmPlayer.getPlayer().onKeyDown(directorCode, keyChar,
+                (modifiers & 1) != 0, (modifiers & 2) != 0, (modifiers & 4) != 0);
+    }
+
+    /**
+     * Handle key release.
+     * @param browserKeyCode browser KeyboardEvent.keyCode
+     * @param keyCharLen length of key character string in stringBuffer
+     * @param modifiers bit flags: 1=shift, 2=ctrl, 4=alt
+     */
+    @Export(name = "keyUp")
+    public static void keyUp(int browserKeyCode, int keyCharLen, int modifiers) {
+        if (wasmPlayer == null || wasmPlayer.getPlayer() == null) return;
+        String keyChar = keyCharLen > 0 ? new String(stringBuffer, 0, keyCharLen) : "";
+        int directorCode = com.libreshockwave.player.input.DirectorKeyCodes.fromBrowserKeyCode(browserKeyCode);
+        wasmPlayer.getPlayer().onKeyUp(directorCode, keyChar,
+                (modifiers & 1) != 0, (modifiers & 2) != 0, (modifiers & 4) != 0);
+    }
+
     // === Diagnostic exports ===
 
     /**

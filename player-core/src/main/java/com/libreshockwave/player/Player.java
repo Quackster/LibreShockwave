@@ -10,6 +10,9 @@ import com.libreshockwave.player.cast.CastLib;
 import com.libreshockwave.player.cast.CastLibManager;
 import com.libreshockwave.player.event.EventDispatcher;
 import com.libreshockwave.player.frame.FrameContext;
+import com.libreshockwave.player.input.HitTester;
+import com.libreshockwave.player.input.InputEvent;
+import com.libreshockwave.player.input.InputState;
 import com.libreshockwave.player.net.NetManager;
 import com.libreshockwave.player.render.BitmapCache;
 import com.libreshockwave.player.render.FrameSnapshot;
@@ -64,6 +67,7 @@ public class Player {
     private final TimeoutManager timeoutManager;
     private final BitmapCache bitmapCache;
     private final SpriteBaker spriteBaker;
+    private final InputState inputState;
 
     private final PlayerTraceListener playerTraceListener;
 
@@ -163,6 +167,8 @@ public class Player {
         this.timeoutManager = new TimeoutManager();
         this.bitmapCache = new BitmapCache();
         this.spriteBaker = new SpriteBaker(bitmapCache, castLibManager, this);
+        this.inputState = new InputState();
+        this.movieProperties.setInputState(inputState);
         this.frameContext.setTimeoutManager(timeoutManager);
         this.frameContext.getEventDispatcher().setCastLibManager(castLibManager);
         this.frameContext.setActorListSupplier(movieProperties::getActorList);
@@ -249,6 +255,8 @@ public class Player {
         this.timeoutManager = new TimeoutManager();
         this.bitmapCache = new BitmapCache(false); // Synchronous mode for TeaVM
         this.spriteBaker = new SpriteBaker(bitmapCache, castLibManager, this);
+        this.inputState = new InputState();
+        this.movieProperties.setInputState(inputState);
         // Set simple text renderer for TeaVM/WASM (no AWT)
         com.libreshockwave.player.cast.CastMember.setTextRenderer(new com.libreshockwave.player.render.SimpleTextRenderer());
         this.frameContext.setTimeoutManager(timeoutManager);
@@ -767,6 +775,7 @@ public class Player {
                 do {
                     setupProviders();
                     try {
+                        processInputEvents();
                         frameContext.executeFrame();
                         timeoutManager.processTimeouts(vm, System.currentTimeMillis());
                         frameContext.advanceFrame();
@@ -808,6 +817,8 @@ public class Player {
         // when Chrome DevTools is open due to debugging overhead.
         vm.setTickDeadline(System.currentTimeMillis() + 30_000);
         try {
+            // Process queued mouse/keyboard input events before frame execution
+            processInputEvents();
             frameContext.executeFrame();
             timeoutManager.processTimeouts(vm, System.currentTimeMillis());
             frameContext.advanceFrame();
@@ -843,6 +854,7 @@ public class Player {
                 do {
                     setupProviders();
                     try {
+                        processInputEvents();
                         frameContext.executeFrame();
                         timeoutManager.processTimeouts(vm, System.currentTimeMillis());
                         frameContext.advanceFrame();
@@ -962,6 +974,143 @@ public class Player {
             return vm.fireAlertHook(errorMsg);
         } finally {
             clearProviders();
+        }
+    }
+
+    // --- Input handling ---
+
+    /**
+     * Get the input state for reading mouse/keyboard state.
+     */
+    public InputState getInputState() {
+        return inputState;
+    }
+
+    /**
+     * Update the mouse position (stage coordinates).
+     * Called by the UI layer on mouse move.
+     */
+    public void onMouseMove(int stageX, int stageY) {
+        inputState.setMousePosition(stageX, stageY);
+        // Update rollover sprite
+        int hit = HitTester.hitTest(stageRenderer, getCurrentFrame(), stageX, stageY);
+        inputState.setRolloverSprite(hit);
+    }
+
+    /**
+     * Handle a mouse button press. Queues a MOUSE_DOWN event for dispatch during tick.
+     * Called by the UI layer.
+     */
+    public void onMouseDown(int stageX, int stageY, boolean rightButton) {
+        inputState.setMousePosition(stageX, stageY);
+        if (rightButton) {
+            inputState.setRightMouseDown(true);
+            inputState.queueEvent(InputEvent.rightMouseDown(stageX, stageY));
+        } else {
+            inputState.setMouseDown(true);
+            int hit = HitTester.hitTest(stageRenderer, getCurrentFrame(), stageX, stageY);
+            inputState.setClickOnSprite(hit);
+            inputState.setClickLoc(stageX, stageY);
+            inputState.queueEvent(InputEvent.mouseDown(stageX, stageY));
+        }
+    }
+
+    /**
+     * Handle a mouse button release. Queues a MOUSE_UP event for dispatch during tick.
+     * Called by the UI layer.
+     */
+    public void onMouseUp(int stageX, int stageY, boolean rightButton) {
+        inputState.setMousePosition(stageX, stageY);
+        if (rightButton) {
+            inputState.setRightMouseDown(false);
+            inputState.queueEvent(InputEvent.rightMouseUp(stageX, stageY));
+        } else {
+            inputState.setMouseDown(false);
+            inputState.queueEvent(InputEvent.mouseUp(stageX, stageY));
+        }
+    }
+
+    /**
+     * Handle a key press. Queues a KEY_DOWN event for dispatch during tick.
+     * @param directorKeyCode Director Mac virtual keycode (use DirectorKeyCodes to convert)
+     * @param keyChar the character string (e.g. "a", "A", "\r")
+     * @param shift shift modifier state
+     * @param ctrl control/command modifier state
+     * @param alt alt/option modifier state
+     */
+    public void onKeyDown(int directorKeyCode, String keyChar, boolean shift, boolean ctrl, boolean alt) {
+        inputState.setLastKey(keyChar);
+        inputState.setLastKeyCode(directorKeyCode);
+        inputState.setShiftDown(shift);
+        inputState.setControlDown(ctrl);
+        inputState.setAltDown(alt);
+        inputState.queueEvent(InputEvent.keyDown(directorKeyCode, keyChar));
+    }
+
+    /**
+     * Handle a key release. Queues a KEY_UP event for dispatch during tick.
+     */
+    public void onKeyUp(int directorKeyCode, String keyChar, boolean shift, boolean ctrl, boolean alt) {
+        inputState.setShiftDown(shift);
+        inputState.setControlDown(ctrl);
+        inputState.setAltDown(alt);
+        inputState.queueEvent(InputEvent.keyUp(directorKeyCode, keyChar));
+    }
+
+    /**
+     * Process queued input events. Called at the beginning of each tick
+     * before frame execution, so Lingo scripts see the events.
+     */
+    private void processInputEvents() {
+        InputEvent event;
+        while ((event = inputState.pollEvent()) != null) {
+            dispatchInputEvent(event);
+        }
+    }
+
+    /**
+     * Dispatch a single input event to the appropriate Lingo handlers.
+     */
+    private void dispatchInputEvent(InputEvent event) {
+        EventDispatcher dispatcher = frameContext.getEventDispatcher();
+        switch (event.type()) {
+            case MOUSE_DOWN -> {
+                int hitSprite = HitTester.hitTest(stageRenderer, getCurrentFrame(),
+                        event.stageX(), event.stageY());
+                if (hitSprite > 0) {
+                    dispatcher.dispatchSpriteEvent(hitSprite, PlayerEvent.MOUSE_DOWN, List.of());
+                }
+                dispatcher.dispatchGlobalEvent(PlayerEvent.MOUSE_DOWN, List.of());
+            }
+            case MOUSE_UP -> {
+                // mouseUp goes to the sprite that was originally clicked
+                int clickedSprite = inputState.getClickOnSprite();
+                if (clickedSprite > 0) {
+                    dispatcher.dispatchSpriteEvent(clickedSprite, PlayerEvent.MOUSE_UP, List.of());
+                }
+                dispatcher.dispatchGlobalEvent(PlayerEvent.MOUSE_UP, List.of());
+            }
+            case RIGHT_MOUSE_DOWN -> {
+                dispatcher.dispatchGlobalEvent(PlayerEvent.RIGHT_MOUSE_DOWN, List.of());
+            }
+            case RIGHT_MOUSE_UP -> {
+                dispatcher.dispatchGlobalEvent(PlayerEvent.RIGHT_MOUSE_UP, List.of());
+            }
+            case KEY_DOWN -> {
+                // Dispatch to keyboard focus sprite first, then global
+                int focusSprite = inputState.getKeyboardFocusSprite();
+                if (focusSprite > 0) {
+                    dispatcher.dispatchSpriteEvent(focusSprite, PlayerEvent.KEY_DOWN, List.of());
+                }
+                dispatcher.dispatchGlobalEvent(PlayerEvent.KEY_DOWN, List.of());
+            }
+            case KEY_UP -> {
+                int focusSprite = inputState.getKeyboardFocusSprite();
+                if (focusSprite > 0) {
+                    dispatcher.dispatchSpriteEvent(focusSprite, PlayerEvent.KEY_UP, List.of());
+                }
+                dispatcher.dispatchGlobalEvent(PlayerEvent.KEY_UP, List.of());
+            }
         }
     }
 

@@ -2,6 +2,7 @@ package com.libreshockwave.player;
 
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.bitmap.Bitmap;
+import com.libreshockwave.player.input.InputState;
 import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.builtin.MoviePropertyProvider;
 
@@ -39,6 +40,9 @@ public class MovieProperties implements MoviePropertyProvider {
     // actorList: objects in this list receive stepFrame on each frame advance
     private Datum actorList = new Datum.List(new java.util.ArrayList<>());
 
+    // Input state (mouse/keyboard)
+    private InputState inputState;
+
     // Timer start time (in millis)
     private final long startTime;
 
@@ -46,6 +50,10 @@ public class MovieProperties implements MoviePropertyProvider {
         this.player = player;
         this.file = file;
         this.startTime = System.currentTimeMillis();
+    }
+
+    public void setInputState(InputState inputState) {
+        this.inputState = inputState;
     }
 
     @Override
@@ -120,22 +128,34 @@ public class MovieProperties implements MoviePropertyProvider {
             // Tempo
             case "framerate", "tempo", "frametempo" -> Datum.of(player.getTempo());
 
-            // Mouse state (placeholders)
-            case "mousedown" -> Datum.of(0);
-            case "mouseup" -> Datum.of(1);
-            case "mouseh" -> Datum.of(0);
-            case "mousev" -> Datum.of(0);
-            case "clickon" -> Datum.of(0);
-            case "clickloc" -> new Datum.Point(0, 0);
-            case "rollover" -> Datum.of(0);
+            // Mouse state
+            case "mousedown" -> Datum.of(inputState != null && inputState.isMouseDown() ? 1 : 0);
+            case "mouseup" -> Datum.of(inputState == null || !inputState.isMouseDown() ? 1 : 0);
+            case "mouseh" -> Datum.of(inputState != null ? inputState.getMouseH() : 0);
+            case "mousev" -> Datum.of(inputState != null ? inputState.getMouseV() : 0);
+            case "clickon" -> Datum.of(inputState != null ? inputState.getClickOnSprite() : 0);
+            case "clickloc" -> {
+                if (inputState != null) {
+                    yield new Datum.Point(inputState.getClickLocH(), inputState.getClickLocV());
+                }
+                yield new Datum.Point(0, 0);
+            }
+            case "rollover" -> Datum.of(inputState != null ? inputState.getRolloverSprite() : 0);
 
-            // Key state (placeholders)
-            case "key" -> Datum.EMPTY_STRING;
-            case "keycode" -> Datum.of(0);
-            case "keypressed" -> Datum.of(0);
-            case "shiftdown" -> Datum.of(0);
-            case "optiondown", "altdown" -> Datum.of(0);
-            case "commanddown", "controldown" -> Datum.of(0);
+            // Key state
+            case "key" -> Datum.of(inputState != null ? inputState.getLastKey() : "");
+            case "keycode" -> Datum.of(inputState != null ? inputState.getLastKeyCode() : 0);
+            case "keypressed" -> Datum.of(inputState != null ? inputState.getLastKeyCode() : 0);
+            case "shiftdown" -> Datum.of(inputState != null && inputState.isShiftDown() ? 1 : 0);
+            case "optiondown", "altdown" -> Datum.of(inputState != null && inputState.isAltDown() ? 1 : 0);
+            case "commanddown", "controldown" -> Datum.of(inputState != null && inputState.isControlDown() ? 1 : 0);
+
+            // Keyboard focus
+            case "keyboardfocussprite" -> Datum.of(inputState != null ? inputState.getKeyboardFocusSprite() : 0);
+
+            // Text selection
+            case "selstart" -> Datum.of(inputState != null ? inputState.getSelStart() : 0);
+            case "selend" -> Datum.of(inputState != null ? inputState.getSelEnd() : 0);
 
             // Color depth
             case "colordepth" -> Datum.of(32);
@@ -239,11 +259,25 @@ public class MovieProperties implements MoviePropertyProvider {
                 return true;
             }
             case "keyboardfocussprite" -> {
-                // Accept keyboard focus changes (stub — no focus system yet)
+                if (inputState != null) {
+                    inputState.setKeyboardFocusSprite(value.toInt());
+                }
                 return true;
             }
             case "alerthook" -> {
                 alertHook = value;
+                return true;
+            }
+            case "selstart" -> {
+                if (inputState != null) {
+                    inputState.setSelStart(value.toInt());
+                }
+                return true;
+            }
+            case "selend" -> {
+                if (inputState != null) {
+                    inputState.setSelEnd(value.toInt());
+                }
                 return true;
             }
             case "debugplaybackenabled" -> {
