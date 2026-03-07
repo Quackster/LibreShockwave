@@ -21,6 +21,11 @@ console.warn = function() {};
  *   {type:'goToFrame', frame}
  *   {type:'stepForward'}
  *   {type:'stepBackward'}
+ *   {type:'mouseMove',  x, y}
+ *   {type:'mouseDown',  x, y, button}  (button: 0=left, 2=right)
+ *   {type:'mouseUp',    x, y, button}
+ *   {type:'keyDown',    keyCode, key, modifiers}  (modifiers: 1=shift,2=ctrl,4=alt)
+ *   {type:'keyUp',      keyCode, key, modifiers}
  *
  * Message protocol (worker → main):
  *   {type:'ready'}
@@ -150,6 +155,38 @@ WasmEngine.prototype.renderFrame = function() {
     var rgba = new Uint8ClampedArray(w * h * 4);
     rgba.set(new Uint8ClampedArray(this._mem(), ptr, rgba.length));
     return { w: w, h: h, rgba: rgba };
+};
+
+// --- Input forwarding ---
+
+WasmEngine.prototype.mouseMove = function(x, y) {
+    this.exports.mouseMove(x, y); this._clearEx();
+};
+
+WasmEngine.prototype.mouseDown = function(x, y, button) {
+    this.exports.mouseDown(x, y, button); this._clearEx();
+};
+
+WasmEngine.prototype.mouseUp = function(x, y, button) {
+    this.exports.mouseUp(x, y, button); this._clearEx();
+};
+
+WasmEngine.prototype.keyDown = function(browserKeyCode, keyChar, modifiers) {
+    var kb = new TextEncoder().encode(keyChar || '');
+    if (kb.length > 0) {
+        var sbuf = new Uint8Array(this._mem(), this.exports.getStringBufferAddress(), 4096);
+        sbuf.set(kb);
+    }
+    this.exports.keyDown(browserKeyCode, kb.length, modifiers); this._clearEx();
+};
+
+WasmEngine.prototype.keyUp = function(browserKeyCode, keyChar, modifiers) {
+    var kb = new TextEncoder().encode(keyChar || '');
+    if (kb.length > 0) {
+        var sbuf = new Uint8Array(this._mem(), this.exports.getStringBufferAddress(), 4096);
+        sbuf.set(kb);
+    }
+    this.exports.keyUp(browserKeyCode, kb.length, modifiers); this._clearEx();
 };
 
 WasmEngine.prototype._drainRequests = function() {
@@ -722,6 +759,23 @@ self.onmessage = async function(e) {
                 break;
             case 'stepBackward':
                 _e.exports.stepBackward(); _e._clearEx();
+                break;
+
+            // --- Input events ---
+            case 'mouseMove':
+                if (_e && !_e._wasmDead) try { _e.mouseMove(msg.x, msg.y); } catch(ie) {}
+                break;
+            case 'mouseDown':
+                if (_e && !_e._wasmDead) try { _e.mouseDown(msg.x, msg.y, msg.button); } catch(ie) {}
+                break;
+            case 'mouseUp':
+                if (_e && !_e._wasmDead) try { _e.mouseUp(msg.x, msg.y, msg.button); } catch(ie) {}
+                break;
+            case 'keyDown':
+                if (_e && !_e._wasmDead) try { _e.keyDown(msg.keyCode, msg.key, msg.modifiers); } catch(ie) {}
+                break;
+            case 'keyUp':
+                if (_e && !_e._wasmDead) try { _e.keyUp(msg.keyCode, msg.key, msg.modifiers); } catch(ie) {}
                 break;
 
             case 'fetchRelayResult': {
