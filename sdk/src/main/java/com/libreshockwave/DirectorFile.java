@@ -266,6 +266,15 @@ public class DirectorFile {
     }
 
     /**
+     * Get the tempo set in the score's tempo channel for the given frame.
+     * @param frame 0-indexed frame number
+     * @return tempo in FPS, or -1 if no score tempo data exists
+     */
+    public int getScoreTempo(int frame) {
+        return scoreChunk != null ? scoreChunk.getFrameTempo(frame) : -1;
+    }
+
+    /**
      * Resolve a palette by ID.
      * Handles both built-in palettes (negative IDs) and custom cast member palettes (non-negative IDs).
      * @param paletteId The palette ID from BitmapInfo

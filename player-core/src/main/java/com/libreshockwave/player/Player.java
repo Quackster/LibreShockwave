@@ -175,8 +175,10 @@ public class Player {
         this.playerTraceListener = new PlayerTraceListener();
         vm.setTraceListener(playerTraceListener);
 
-        this.tempo = file != null ? file.getTempo() : 15;
-        if (this.tempo <= 0) this.tempo = 15;
+        // Shockwave plugin effectively capped playback at ~15fps regardless of
+        // the authored config tempo. Use 15fps as the base; score tempo channel
+        // and puppetTempo can still override this per-frame.
+        this.tempo = 15;
 
         // Set up AWT JPEG decoder for ediM bitmap support (desktop only)
         DirectorFile.setJpegDecoder(jpegData -> {
@@ -265,8 +267,10 @@ public class Player {
         this.playerTraceListener = new PlayerTraceListener();
         vm.setTraceListener(playerTraceListener);
 
-        this.tempo = file != null ? file.getTempo() : 15;
-        if (this.tempo <= 0) this.tempo = 15;
+        // Shockwave plugin effectively capped playback at ~15fps regardless of
+        // the authored config tempo. Use 15fps as the base; score tempo channel
+        // and puppetTempo can still override this per-frame.
+        this.tempo = 15;
 
         // Wire up event notifications
         frameContext.setEventListener(event -> {
@@ -423,12 +427,19 @@ public class Player {
 
     /**
      * Get the effective tempo (frames per second).
-     * puppetTempo overrides the base tempo if set (> 0).
+     * Priority: puppetTempo > score tempo channel > config tempo.
      */
     public int getTempo() {
         int puppetTempo = movieProperties.getPuppetTempo();
         if (puppetTempo > 0) {
             return puppetTempo;
+        }
+        // Check per-frame tempo from score's tempo channel (0-indexed)
+        if (file != null) {
+            int scoreTempo = file.getScoreTempo(frameContext.getCurrentFrame() - 1);
+            if (scoreTempo > 0) {
+                return scoreTempo;
+            }
         }
         return tempo;
     }

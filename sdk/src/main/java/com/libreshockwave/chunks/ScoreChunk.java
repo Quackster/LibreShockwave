@@ -58,7 +58,18 @@ public record ScoreChunk(
     public record FrameDataHeader(
         int frameCount,
         int spriteRecordSize,
-        int numChannels
+        int numChannels,
+        int framesVersion
+    ) {}
+
+    /**
+     * Per-frame tempo channel data.
+     * In D5: tempo byte at offset 21 in the 48-byte main channel area.
+     * In D6+: channel 5 contains a 20-byte tempo record (tempo FPS at byte 4).
+     */
+    public record TempoChannelData(
+        int frameIndex,
+        int tempo
     ) {}
 
     /**
@@ -157,11 +168,13 @@ public record ScoreChunk(
     public record ScoreFrameData(
         FrameDataHeader header,
         byte[] decompressedData,
-        List<FrameChannelEntry> frameChannelData
+        List<FrameChannelEntry> frameChannelData,
+        List<TempoChannelData> tempoChannelData
     ) {
         public static final ScoreFrameData EMPTY = new ScoreFrameData(
-            new FrameDataHeader(0, 24, 0),
+            new FrameDataHeader(0, 24, 0, 0),
             new byte[0],
+            new ArrayList<>(),
             new ArrayList<>()
         );
     }
@@ -255,6 +268,25 @@ public record ScoreChunk(
         return frameData != null ? frameData.header().numChannels() : 0;
     }
 
+    /**
+     * Get the tempo (FPS) set in the score's tempo channel for the given frame.
+     * Returns the most recent tempo change at or before the given frame,
+     * or -1 if no tempo channel data exists.
+     * @param frame 0-indexed frame number
+     */
+    public int getFrameTempo(int frame) {
+        if (frameData == null || frameData.tempoChannelData() == null) return -1;
+        int result = -1;
+        for (TempoChannelData td : frameData.tempoChannelData()) {
+            if (td.frameIndex() <= frame) {
+                result = td.tempo();
+            } else {
+                break;
+            }
+        }
+        return result;
+    }
+
     public static ScoreChunk read(DirectorFile file, BinaryReader reader, ChunkId id, int version) {
         reader.setOrder(ByteOrder.BIG_ENDIAN);
 
@@ -342,10 +374,11 @@ public record ScoreChunk(
             reader.skip(2);
         }
 
-        FrameDataHeader header = new FrameDataHeader(frameCount, spriteRecordSize, numChannels);
+        FrameDataHeader header = new FrameDataHeader(frameCount, spriteRecordSize, numChannels, framesVersion);
 
         // Allocate channel data buffer with overflow protection
-        long totalSizeLong = (long) frameCount * numChannels * spriteRecordSize;
+        int frameSize = numChannels * spriteRecordSize;
+        long totalSizeLong = (long) frameCount * frameSize;
         if (totalSizeLong <= 0 || totalSizeLong > 50_000_000) {
             return ScoreFrameData.EMPTY; // Sanity limit or overflow
         }
@@ -360,6 +393,13 @@ public record ScoreChunk(
             int length = reader.readU16();
             if (length == 0) break;
 
+            // Carry forward previous frame data before applying deltas
+            if (frameIndex > 0) {
+                int prevOffset = (frameIndex - 1) * frameSize;
+                int currOffset = frameIndex * frameSize;
+                System.arraycopy(channelData, prevOffset, channelData, currOffset, frameSize);
+            }
+
             int frameLength = length - 2;
             if (frameLength > 0 && reader.bytesLeft() >= frameLength) {
                 byte[] frameBytes = reader.readBytes(frameLength);
@@ -373,7 +413,7 @@ public record ScoreChunk(
                     if (channelSize > 0 && frameReader.bytesLeft() >= channelSize) {
                         byte[] channelDelta = frameReader.readBytes(channelSize);
 
-                        int frameOffset = frameIndex * numChannels * spriteRecordSize;
+                        int frameOffset = frameIndex * frameSize;
                         int destOffset = frameOffset + channelOffset;
                         int endOffset = destOffset + channelSize;
 
@@ -388,28 +428,77 @@ public record ScoreChunk(
             frameIndex++;
         }
 
-        // Parse channel data into structured entries
+        // D5 (framesVersion <= 7): first 48 bytes are packed main channels
+        // (script, sounds, transition, tempo, palette), then sprite channels.
+        // D6+ (framesVersion > 7): all channels uniform at spriteRecordSize each.
+        // Channel 5 is the tempo channel in D6+.
+        int mainChannelsSize = framesVersion <= 7 ? 48 : 0;
+        boolean isD5 = mainChannelsSize > 0;
+
+        // Parse channel data into structured entries + tempo data
         List<FrameChannelEntry> frameChannelEntries = new ArrayList<>();
-        BinaryReader channelReader = new BinaryReader(channelData, ByteOrder.BIG_ENDIAN);
+        List<TempoChannelData> tempoChannelEntries = new ArrayList<>();
 
         for (int f = 0; f < frameCount; f++) {
-            for (int c = 0; c < numChannels; c++) {
-                int pos = channelReader.getPosition();
+            int frameStart = f * frameSize;
 
-                if (channelReader.bytesLeft() >= 24) {
-                    ChannelData cd = ChannelData.read(channelReader);
-                    channelReader.setPosition(pos + spriteRecordSize);
-
-                    if (!cd.isEmpty()) {
-                        frameChannelEntries.add(new FrameChannelEntry(new FrameIndex(f), new ChannelId(c), cd));
+            if (isD5) {
+                // D5: Tempo at byte 21 within the 48-byte main channel area
+                if (frameStart + 22 <= channelData.length) {
+                    int tempoVal = channelData[frameStart + 21] & 0xFF;
+                    if (tempoVal > 0) {
+                        tempoChannelEntries.add(new TempoChannelData(f, tempoVal));
                     }
-                } else {
-                    break;
+                }
+
+                // Sprite channels start at byte 48
+                int numSprites = (frameSize - mainChannelsSize) / spriteRecordSize;
+                for (int s = 0; s < numSprites; s++) {
+                    int pos = frameStart + mainChannelsSize + s * spriteRecordSize;
+                    if (pos + 24 > channelData.length) break;
+
+                    BinaryReader channelReader = new BinaryReader(channelData, ByteOrder.BIG_ENDIAN);
+                    channelReader.setPosition(pos);
+                    ChannelData cd = ChannelData.read(channelReader);
+                    if (!cd.isEmpty()) {
+                        int channelIndex = s + 6; // Sprite channels start at 6 in D5
+                        frameChannelEntries.add(new FrameChannelEntry(new FrameIndex(f), new ChannelId(channelIndex), cd));
+                    }
+                }
+            } else {
+                // D6+: All channels uniform
+                for (int c = 0; c < numChannels; c++) {
+                    int pos = frameStart + c * spriteRecordSize;
+                    if (pos + spriteRecordSize > channelData.length) break;
+
+                    if (c == 5) {
+                        // Tempo channel: 20 bytes, tempo FPS at byte 4
+                        if (pos + 5 <= channelData.length) {
+                            int flags1 = channelData[pos] & 0xFF;
+                            int flags2 = channelData[pos + 1] & 0xFF;
+                            int tempoVal = channelData[pos + 4] & 0xFF;
+                            boolean isDefault = flags1 == 0xFF && flags2 == 0xFE;
+                            boolean isEmpty = flags1 == 0 && flags2 == 0 && tempoVal == 0;
+                            if (!isDefault && !isEmpty && tempoVal > 0) {
+                                tempoChannelEntries.add(new TempoChannelData(f, tempoVal));
+                            }
+                        }
+                    } else {
+                        // Sprite/other channel
+                        if (pos + 24 <= channelData.length) {
+                            BinaryReader channelReader = new BinaryReader(channelData, ByteOrder.BIG_ENDIAN);
+                            channelReader.setPosition(pos);
+                            ChannelData cd = ChannelData.read(channelReader);
+                            if (!cd.isEmpty()) {
+                                frameChannelEntries.add(new FrameChannelEntry(new FrameIndex(f), new ChannelId(c), cd));
+                            }
+                        }
+                    }
                 }
             }
         }
 
-        return new ScoreFrameData(header, channelData, frameChannelEntries);
+        return new ScoreFrameData(header, channelData, frameChannelEntries, tempoChannelEntries);
     }
 
     private static List<FrameInterval> parseFrameIntervals(List<byte[]> entries) {

@@ -822,6 +822,7 @@ public class PlayerFrame extends JFrame {
                         SwingUtilities.invokeLater(() -> {
                             updateFrameLabel();
                             stagePanel.repaint();
+                            updateTimerDelay();
                         });
                     });
                 }
@@ -830,6 +831,7 @@ public class PlayerFrame extends JFrame {
                 if (player.tick()) {
                     updateFrameLabel();
                     stagePanel.repaint();
+                    updateTimerDelay();
                 } else {
                     stopPlaybackTimer();
                     updateButtonStates();
@@ -837,6 +839,18 @@ public class PlayerFrame extends JFrame {
             }
         });
         playbackTimer.start();
+    }
+
+    /**
+     * Update the playback timer delay based on the current frame's effective tempo.
+     * Tempo can change per frame via score tempo channel or puppetTempo.
+     */
+    private void updateTimerDelay() {
+        if (playbackTimer == null || player == null) return;
+        int newDelay = 1000 / player.getTempo();
+        if (newDelay != playbackTimer.getDelay()) {
+            playbackTimer.setDelay(newDelay);
+        }
     }
 
     private void stopPlaybackTimer() {
