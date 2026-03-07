@@ -24,6 +24,8 @@ public final class CastLibBuiltins {
         builtins.put("castlib", CastLibBuiltins::castLib);
         builtins.put("member", CastLibBuiltins::member);
         builtins.put("field", CastLibBuiltins::field);
+        builtins.put("getmemnum", CastLibBuiltins::getMemNum);
+        builtins.put("memberexists", CastLibBuiltins::memberExistsBuiltin);
     }
 
     /**
@@ -154,6 +156,56 @@ public final class CastLibBuiltins {
 
         String fieldValue = provider.getFieldValue(identifier, castId);
         return Datum.of(fieldValue);
+    }
+
+    /**
+     * getmemnum("name") - returns the encoded slot number of a member.
+     * In Director, this returns (castLib << 16) | memberNum, which can be
+     * passed to member() to get the cast member reference.
+     * Returns 0 if the member is not found.
+     */
+    private static Datum getMemNum(LingoVM vm, List<Datum> args) {
+        if (args.isEmpty()) {
+            return Datum.of(0);
+        }
+
+        CastLibProvider provider = CastLibProvider.getProvider();
+        if (provider == null) {
+            return Datum.of(0);
+        }
+
+        String memberName = args.get(0).toStr();
+        Datum ref = provider.getMemberByName(0, memberName);
+
+        if (ref instanceof Datum.CastMemberRef cmr) {
+            return Datum.of((cmr.castLibNum() << 16) | cmr.memberNum());
+        }
+
+        return Datum.of(0);
+    }
+
+    /**
+     * memberExists("name") - checks if a member with the given name exists.
+     * Returns TRUE (1) or FALSE (0).
+     */
+    private static Datum memberExistsBuiltin(LingoVM vm, List<Datum> args) {
+        if (args.isEmpty()) {
+            return Datum.of(0);
+        }
+
+        CastLibProvider provider = CastLibProvider.getProvider();
+        if (provider == null) {
+            return Datum.of(0);
+        }
+
+        String memberName = args.get(0).toStr();
+        Datum ref = provider.getMemberByName(0, memberName);
+
+        if (ref instanceof Datum.CastMemberRef) {
+            return Datum.of(1);
+        }
+
+        return Datum.of(0);
     }
 
 }
