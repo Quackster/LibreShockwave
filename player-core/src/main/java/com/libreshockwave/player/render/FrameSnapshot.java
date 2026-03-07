@@ -47,6 +47,9 @@ public record FrameSnapshot(
 
         List<RenderSprite> baked = baker.bakeSprites(sprites);
 
+        // Store baked sprites for ink-aware hit testing
+        renderer.setLastBakedSprites(baked);
+
         return new FrameSnapshot(
             frame,
             renderer.getStageWidth(),

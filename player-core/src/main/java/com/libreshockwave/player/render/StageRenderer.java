@@ -31,6 +31,9 @@ public class StageRenderer {
     // Stage image buffer - used by (the stage).image for direct pixel drawing
     private Bitmap stageImage;
 
+    // Last baked sprites from FrameSnapshot — used for ink-aware hit testing
+    private volatile List<RenderSprite> lastBakedSprites = List.of();
+
     public StageRenderer(DirectorFile file) {
         this.file = file;
         this.spriteRegistry = new SpriteRegistry();
@@ -81,6 +84,16 @@ public class StageRenderer {
      */
     public boolean hasStageImage() {
         return stageImage != null;
+    }
+
+    /** Store baked sprites from last rendered frame for hit testing. */
+    public void setLastBakedSprites(List<RenderSprite> sprites) {
+        this.lastBakedSprites = sprites;
+    }
+
+    /** Get baked sprites from last rendered frame (for ink-aware hit testing). */
+    public List<RenderSprite> getLastBakedSprites() {
+        return lastBakedSprites;
     }
 
     /**
