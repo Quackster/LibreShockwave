@@ -24,8 +24,11 @@ public final class CastLibBuiltins {
         builtins.put("castlib", CastLibBuiltins::castLib);
         builtins.put("member", CastLibBuiltins::member);
         builtins.put("field", CastLibBuiltins::field);
-        builtins.put("getmemnum", CastLibBuiltins::getMemNum);
-        builtins.put("memberexists", CastLibBuiltins::memberExistsBuiltin);
+        // NOTE: Do NOT register getmemnum/memberExists as builtins.
+        // The fuse_client defines these as Lingo movie script handlers that
+        // delegate to the Resource Manager Class, which tracks members via
+        // pAllMemNumList (a runtime registry). The Java builtins would bypass
+        // this registry and return different results, causing null crashes.
     }
 
     /**
@@ -47,7 +50,7 @@ public final class CastLibBuiltins {
 
         if (arg.isInt() || arg.isFloat()) {
             castLibNumber = provider.getCastLibByNumber(arg.toInt());
-        } else if (arg.isString()) {
+        } else if (arg.isString() || arg.isSymbol()) {
             castLibNumber = provider.getCastLibByName(arg.toStr());
         } else {
             return Datum.VOID;
@@ -116,7 +119,7 @@ public final class CastLibBuiltins {
             }
             // Not found in any cast — return ref in cast 1 (Director fallback)
             return provider.getMember(1, memberNumber);
-        } else if (memberArg.isString()) {
+        } else if (memberArg.isString() || memberArg.isSymbol()) {
             return provider.getMemberByName(castLibNumber, memberArg.toStr());
         }
 
