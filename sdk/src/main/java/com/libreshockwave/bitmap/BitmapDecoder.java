@@ -112,7 +112,13 @@ public class BitmapDecoder {
 
     /**
      * Decode a 1-bit bitmap (monochrome).
-     * Output: each pixel becomes 0x00 (white/palette[0]) or 0xFF (black/palette[255]).
+     * Output: bit 0 → white (0xFF,0xFF,0xFF), bit 1 → black (0x00,0x00,0x00).
+     * <p>
+     * Per ScummVM/Director convention, 1-bit bitmaps always use System Mac palette
+     * extrema regardless of the declared palette: index 0 = white, index 255 = black.
+     * This ensures ink processing (matte, darken, background transparent) works
+     * correctly — background (white) pixels get removed, foreground (black) pixels
+     * are kept as the visible content.
      */
     public static Bitmap decode1Bit(byte[] data, int width, int height, int scanWidth, Palette palette) {
         Bitmap bitmap = new Bitmap(width, height, 1);
@@ -129,14 +135,16 @@ public class BitmapDecoder {
             }
         }
 
-        // Copy from scan-width-padded data to pixel-width output
+        // Copy from scan-width-padded data to pixel-width output.
+        // Always use System Mac palette convention for 1-bit: index 0 = white, index 255 = black.
+        // ScummVM skips palette dithering for 1-bit entirely ("case 1: break; // preconverted").
+        Palette macPalette = Palette.SYSTEM_MAC_PALETTE;
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
                 int scanIndex = y * scanWidth + x;
                 if (scanIndex >= expanded.length) break;
                 int colorIndex = expanded[scanIndex] & 0xFF;
-                int[] rgb = palette != null ? palette.getRGB(colorIndex)
-                    : new int[]{colorIndex, colorIndex, colorIndex};
+                int[] rgb = macPalette.getRGB(colorIndex);
                 bitmap.setPixelRGB(x, y, rgb[0], rgb[1], rgb[2]);
             }
         }
