@@ -59,13 +59,17 @@ public final class ImageMethodDispatcher {
             }
             case "getat" -> {
                 // getAt(index) on image - some scripts use this
+                // NOTE: Uses if-else instead of nested switch to avoid TeaVM WASM issue
+                // with nested switch expressions using yield.
                 if (args.isEmpty()) yield Datum.VOID;
                 int index = args.get(0).toInt();
-                yield switch (index) {
-                    case 1 -> Datum.of(bmp.getWidth());
-                    case 2 -> Datum.of(bmp.getHeight());
-                    default -> Datum.VOID;
-                };
+                if (index == 1) {
+                    yield Datum.of(bmp.getWidth());
+                } else if (index == 2) {
+                    yield Datum.of(bmp.getHeight());
+                } else {
+                    yield Datum.VOID;
+                }
             }
             default -> Datum.VOID;
         };
