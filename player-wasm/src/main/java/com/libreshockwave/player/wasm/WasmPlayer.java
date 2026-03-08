@@ -15,6 +15,7 @@ public class WasmPlayer {
     private Player player;
     private QueuedNetProvider netProvider;
     private WasmMultiuserBridge musBridge;
+    private WasmAudioBackend audioBackend;
     private SoftwareRenderer softwareRenderer;
     private int castRevision;
 
@@ -35,6 +36,8 @@ public class WasmPlayer {
         player = new Player(file, netProvider, castDataRequestCallback);
         musBridge = new WasmMultiuserBridge();
         player.registerMultiuserXtra(musBridge);
+        audioBackend = new WasmAudioBackend();
+        player.setAudioBackend(audioBackend);
         softwareRenderer = null;
         castRevision = 0;
 
@@ -132,6 +135,10 @@ public class WasmPlayer {
 
     public WasmMultiuserBridge getMusBridge() {
         return musBridge;
+    }
+
+    public WasmAudioBackend getAudioBackend() {
+        return audioBackend;
     }
 
     public SoftwareRenderer getSoftwareRenderer() {

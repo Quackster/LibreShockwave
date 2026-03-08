@@ -351,6 +351,12 @@ public sealed interface Datum {
         public String toString() { return "<script " + member.value() + ", " + castLib.value() + ">"; }
     }
 
+    /** Sound channel reference (returned by sound() builtin) */
+    record SoundChannel(int channelNum) implements Datum {
+        @Override
+        public String toString() { return "<sound channel " + channelNum + ">"; }
+    }
+
     /** Timeout reference (returned by timeout() builtin) */
     record TimeoutRef(String name) implements Datum {
         @Override
@@ -595,6 +601,7 @@ public sealed interface Datum {
             case XtraRef xr -> xr;
             case XtraInstance xi -> xi;
             case TimeoutRef tr -> tr;
+            case SoundChannel sc -> sc;
             case VarRef vr -> vr;
             case ChunkRef cr -> cr;
 

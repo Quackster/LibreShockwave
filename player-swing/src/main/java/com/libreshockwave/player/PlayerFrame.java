@@ -450,6 +450,7 @@ public class PlayerFrame extends JFrame {
                 try {
                     DirectorFile file = get();
                     player = new Player(file);
+                    player.setAudioBackend(new com.libreshockwave.player.audio.SwingAudioBackend());
 
                     // Save this file as the last opened (clear URL preference)
                     saveLastFilePreference(path);
@@ -553,6 +554,7 @@ public class PlayerFrame extends JFrame {
                 try {
                     DirectorFile file = get();
                     player = new Player(file);
+                    player.setAudioBackend(new com.libreshockwave.player.audio.SwingAudioBackend());
 
                     // Set base path from URL for relative resource loading
                     String basePath = url.substring(0, url.lastIndexOf('/') + 1);

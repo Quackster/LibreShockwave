@@ -33,8 +33,11 @@ import com.libreshockwave.vm.builtin.MoviePropertyProvider;
 import com.libreshockwave.vm.builtin.NetBuiltins;
 import com.libreshockwave.vm.builtin.SpritePropertyProvider;
 import java.util.Optional;
+import com.libreshockwave.vm.builtin.SoundProvider;
 import com.libreshockwave.vm.builtin.TimeoutProvider;
 import com.libreshockwave.vm.builtin.XtraBuiltins;
+import com.libreshockwave.player.audio.AudioBackend;
+import com.libreshockwave.player.audio.SoundManager;
 import com.libreshockwave.player.timeout.TimeoutManager;
 import com.libreshockwave.vm.xtra.MultiuserNetBridge;
 import com.libreshockwave.vm.xtra.MultiuserXtra;
@@ -72,6 +75,7 @@ public class Player {
     private final SpriteProperties spriteProperties;
     private final CastLibManager castLibManager;
     private final TimeoutManager timeoutManager;
+    private final SoundManager soundManager;
     private final BitmapCache bitmapCache;
     private final SpriteBaker spriteBaker;
     private final InputState inputState;
@@ -176,6 +180,7 @@ public class Player {
         this.stageRenderer.setCastLibManager(castLibManager);
         this.spriteProperties.setCastLibManager(castLibManager);
         this.timeoutManager = new TimeoutManager();
+        this.soundManager = new SoundManager(castLibManager);
         this.bitmapCache = new BitmapCache();
         this.spriteBaker = new SpriteBaker(bitmapCache, castLibManager, this);
         this.inputState = new InputState();
@@ -272,6 +277,7 @@ public class Player {
         this.stageRenderer.setCastLibManager(castLibManager);
         this.spriteProperties.setCastLibManager(castLibManager);
         this.timeoutManager = new TimeoutManager();
+        this.soundManager = new SoundManager(castLibManager);
         this.bitmapCache = new BitmapCache(false); // Synchronous mode for TeaVM
         this.spriteBaker = new SpriteBaker(bitmapCache, castLibManager, this);
         this.inputState = new InputState();
@@ -417,6 +423,20 @@ public class Player {
 
     public CastLibManager getCastLibManager() {
         return castLibManager;
+    }
+
+    public SoundManager getSoundManager() {
+        return soundManager;
+    }
+
+    /**
+     * Set audio backend for sound playback.
+     * Call before play() to enable sound. Platform-specific:
+     * - player-swing: SwingAudioBackend (javax.sound.sampled)
+     * - player-wasm: WasmAudioBackend (Web Audio API via JS bridge)
+     */
+    public void setAudioBackend(AudioBackend backend) {
+        soundManager.setBackend(backend);
     }
 
     /**
@@ -1020,6 +1040,7 @@ public class Player {
         CastLibProvider.setProvider(castLibManager);
         TimeoutProvider.setProvider(timeoutManager);
         ExternalParamProvider.setProvider(externalParamProvider);
+        SoundProvider.setProvider(soundManager);
     }
 
     /**
@@ -1033,6 +1054,7 @@ public class Player {
         CastLibProvider.clearProvider();
         TimeoutProvider.clearProvider();
         ExternalParamProvider.clearProvider();
+        SoundProvider.clearProvider();
     }
 
     // Movie lifecycle - follows dirplayer-rs flow exactly

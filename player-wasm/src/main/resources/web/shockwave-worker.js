@@ -693,6 +693,58 @@ WasmEngine.prototype._musConnect = function(instId, wsUrl) {
 };
 
 /**
+ * Pump audio commands from WASM and send to main thread for Web Audio playback.
+ * Audio must play on the main thread because Web Workers don't have AudioContext.
+ */
+WasmEngine.prototype.pumpAudioCommands = function() {
+    if (this._wasmDead) return;
+    var count;
+    try {
+        count = this.exports.getAudioPendingCount(); this._clearEx();
+    } catch(e) { return; }
+    if (count === 0) return;
+
+    var strAddr = this.exports.getStringBufferAddress(); this._clearEx();
+
+    for (var i = 0; i < count; i++) {
+        var actionLen = this.exports.getAudioPendingAction(i); this._clearEx();
+        var action = this._readString(strAddr, actionLen);
+        var channel = this.exports.getAudioPendingChannel(i); this._clearEx();
+
+        if (action === 'play') {
+            var fmtLen = this.exports.getAudioPendingFormat(i); this._clearEx();
+            var format = this._readString(strAddr, fmtLen);
+            var loopCount = this.exports.getAudioPendingLoopCount(i); this._clearEx();
+            var volume = this.exports.getAudioPendingVolume(i); this._clearEx();
+            var dataLen = this.exports.getAudioPendingData(i); this._clearEx();
+
+            if (dataLen > 0) {
+                var dataAddr = this.exports.getAudioBufferAddress(); this._clearEx();
+                var audioData = new Uint8Array(dataLen);
+                audioData.set(new Uint8Array(this._mem(), dataAddr, dataLen));
+
+                self.postMessage({
+                    type: 'audio',
+                    action: 'play',
+                    channel: channel,
+                    format: format,
+                    loopCount: loopCount,
+                    volume: volume,
+                    data: audioData.buffer
+                }, [audioData.buffer]);
+            }
+        } else if (action === 'stop') {
+            self.postMessage({ type: 'audio', action: 'stop', channel: channel });
+        } else if (action === 'volume') {
+            var vol = this.exports.getAudioPendingVolume(i); this._clearEx();
+            self.postMessage({ type: 'audio', action: 'volume', channel: channel, volume: vol });
+        }
+    }
+
+    this.exports.drainAudioPending(); this._clearEx();
+};
+
+/**
  * Deliver queued MUS events (connected/messages/disconnected/errors) to WASM.
  * Called at the start of each tick, before WASM tick().
  */
@@ -1166,6 +1218,10 @@ self.onmessage = async function(e) {
                     try { _e.pumpMusRequests(); }
                     catch (musErr2) { console.error('[WORKER] MUS pump error: ' + musErr2); }
 
+                    // Phase 3.6: pump audio commands and send to main thread
+                    try { _e.pumpAudioCommands(); }
+                    catch (audioErr) { /* silent */ }
+
                     // Always update frame metadata from WASM (needed for fast-loop detection)
                     try {
                         _e._lastFrame      = _e.exports.getCurrentFrame();
@@ -1245,6 +1301,14 @@ self.onmessage = async function(e) {
                 } finally {
                     _isTicking = false;
                 }
+                break;
+            }
+
+            case 'audioStopped': {
+                // Main thread notifies that a sound channel finished playing
+                try {
+                    _e.exports.audioNotifyStopped(msg.channel); _e._clearEx();
+                } catch(e) {}
                 break;
             }
 

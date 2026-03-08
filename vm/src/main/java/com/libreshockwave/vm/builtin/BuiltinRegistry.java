@@ -30,6 +30,7 @@ public class BuiltinRegistry {
         TimeoutBuiltins.register(builtins);
         ExternalParamBuiltins.register(builtins);
         ImageBuiltins.register(builtins);
+        SoundBuiltins.register(builtins);
     }
 
     /**

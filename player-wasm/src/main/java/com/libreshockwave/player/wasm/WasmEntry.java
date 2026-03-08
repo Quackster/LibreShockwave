@@ -1126,6 +1126,95 @@ public class WasmEntry {
         }
     }
 
+    // === Audio command queue (for Web Audio API playback from JS main thread) ===
+
+    private static byte[] audioBuffer;
+
+    @Export(name = "getAudioPendingCount")
+    public static int getAudioPendingCount() {
+        if (wasmPlayer == null || wasmPlayer.getAudioBackend() == null) return 0;
+        return wasmPlayer.getAudioBackend().getPendingCount();
+    }
+
+    /**
+     * Get the action for the pending sound command at index.
+     * Returns string in stringBuffer: "play", "stop", "volume"
+     */
+    @Export(name = "getAudioPendingAction")
+    public static int getAudioPendingAction(int index) {
+        if (wasmPlayer == null || wasmPlayer.getAudioBackend() == null) return 0;
+        WasmAudioBackend.SoundCommand cmd = wasmPlayer.getAudioBackend().getPending(index);
+        if (cmd == null) return 0;
+        return writeToStringBuffer(cmd.action());
+    }
+
+    @Export(name = "getAudioPendingChannel")
+    public static int getAudioPendingChannel(int index) {
+        if (wasmPlayer == null || wasmPlayer.getAudioBackend() == null) return 0;
+        WasmAudioBackend.SoundCommand cmd = wasmPlayer.getAudioBackend().getPending(index);
+        return cmd != null ? cmd.channelNum() : 0;
+    }
+
+    @Export(name = "getAudioPendingFormat")
+    public static int getAudioPendingFormat(int index) {
+        if (wasmPlayer == null || wasmPlayer.getAudioBackend() == null) return 0;
+        WasmAudioBackend.SoundCommand cmd = wasmPlayer.getAudioBackend().getPending(index);
+        if (cmd == null || cmd.format() == null) return 0;
+        return writeToStringBuffer(cmd.format());
+    }
+
+    @Export(name = "getAudioPendingLoopCount")
+    public static int getAudioPendingLoopCount(int index) {
+        if (wasmPlayer == null || wasmPlayer.getAudioBackend() == null) return 0;
+        WasmAudioBackend.SoundCommand cmd = wasmPlayer.getAudioBackend().getPending(index);
+        return cmd != null ? cmd.loopCount() : 0;
+    }
+
+    @Export(name = "getAudioPendingVolume")
+    public static int getAudioPendingVolume(int index) {
+        if (wasmPlayer == null || wasmPlayer.getAudioBackend() == null) return 0;
+        WasmAudioBackend.SoundCommand cmd = wasmPlayer.getAudioBackend().getPending(index);
+        return cmd != null ? cmd.volume() : 0;
+    }
+
+    /**
+     * Get the audio data for a pending play command.
+     * Copies to audioBuffer and returns the length. JS reads from audioBuffer address.
+     */
+    @Export(name = "getAudioPendingData")
+    public static int getAudioPendingData(int index) {
+        if (wasmPlayer == null || wasmPlayer.getAudioBackend() == null) return 0;
+        WasmAudioBackend.SoundCommand cmd = wasmPlayer.getAudioBackend().getPending(index);
+        if (cmd == null || cmd.audioData() == null) return 0;
+        byte[] data = cmd.audioData();
+        // Allocate/grow buffer if needed
+        if (audioBuffer == null || audioBuffer.length < data.length) {
+            audioBuffer = new byte[data.length];
+        }
+        System.arraycopy(data, 0, audioBuffer, 0, data.length);
+        return data.length;
+    }
+
+    @Export(name = "getAudioBufferAddress")
+    public static int getAudioBufferAddress() {
+        if (audioBuffer == null) return 0;
+        return Address.ofData(audioBuffer).toInt();
+    }
+
+    @Export(name = "drainAudioPending")
+    public static void drainAudioPending() {
+        if (wasmPlayer != null && wasmPlayer.getAudioBackend() != null) {
+            wasmPlayer.getAudioBackend().drainPending();
+        }
+    }
+
+    @Export(name = "audioNotifyStopped")
+    public static void audioNotifyStopped(int channelNum) {
+        if (wasmPlayer != null && wasmPlayer.getAudioBackend() != null) {
+            wasmPlayer.getAudioBackend().notifyStopped(channelNum);
+        }
+    }
+
     // === Internal helpers ===
 
     private static void captureError(String context, Throwable e) {

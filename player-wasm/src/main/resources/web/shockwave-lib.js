@@ -322,6 +322,10 @@ var LibreShockwave = (function() {
                 this._resolveOnce('frame', msg);
                 break;
 
+            case 'audio':
+                this._handleAudio(msg);
+                break;
+
             case 'debugLog':
                 console.log(msg.msg);
                 break;
@@ -382,6 +386,83 @@ var LibreShockwave = (function() {
             var resolve = this._pending.resolve;
             this._pending = null;
             resolve(value);
+        }
+    };
+
+    /**
+     * Handle audio commands from the worker (Web Audio API playback).
+     * Lazy-initializes AudioContext on first use (requires user gesture on most browsers).
+     */
+    ShockwavePlayer.prototype._handleAudio = function(msg) {
+        if (!this._audioCtx) {
+            try {
+                this._audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                this._audioChannels = {}; // channelNum -> { source, gain }
+            } catch(e) {
+                return;
+            }
+        }
+        var ctx = this._audioCtx;
+        var ch = msg.channel;
+
+        if (msg.action === 'stop') {
+            if (this._audioChannels[ch]) {
+                try { this._audioChannels[ch].source.stop(); } catch(e) {}
+                this._audioChannels[ch] = null;
+            }
+            return;
+        }
+
+        if (msg.action === 'volume') {
+            if (this._audioChannels[ch] && this._audioChannels[ch].gain) {
+                this._audioChannels[ch].gain.gain.value = (msg.volume || 0) / 255.0;
+            }
+            return;
+        }
+
+        if (msg.action === 'play' && msg.data) {
+            // Stop existing sound on this channel
+            if (this._audioChannels[ch]) {
+                try { this._audioChannels[ch].source.stop(); } catch(e) {}
+            }
+
+            var self = this;
+            var worker = this._worker;
+            var audioData = msg.data; // ArrayBuffer
+            var loopCount = msg.loopCount || 1;
+            var volume = (msg.volume || 255) / 255.0;
+
+            ctx.decodeAudioData(audioData).then(function(buffer) {
+                var source = ctx.createBufferSource();
+                source.buffer = buffer;
+                source.loop = (loopCount === 0);
+                if (loopCount > 1) {
+                    // Web Audio doesn't support finite loop counts directly
+                    // We'll just set loop=true and stop after duration * loopCount
+                    source.loop = true;
+                    var dur = buffer.duration * loopCount * 1000;
+                    setTimeout(function() {
+                        try { source.stop(); } catch(e) {}
+                        self._audioChannels[ch] = null;
+                        if (worker) worker.postMessage({ type: 'audioStopped', channel: ch });
+                    }, dur);
+                }
+
+                var gainNode = ctx.createGain();
+                gainNode.gain.value = volume;
+                source.connect(gainNode);
+                gainNode.connect(ctx.destination);
+
+                source.onended = function() {
+                    self._audioChannels[ch] = null;
+                    if (worker) worker.postMessage({ type: 'audioStopped', channel: ch });
+                };
+
+                source.start();
+                self._audioChannels[ch] = { source: source, gain: gainNode };
+            }).catch(function(err) {
+                // Decoding failed — silently ignore
+            });
         }
     };
 

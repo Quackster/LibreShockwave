@@ -661,6 +661,7 @@ public final class TypeBuiltins {
             case Datum.CastMemberRef c -> "member";
             case Datum.CastLibRef c -> "castLib";
             case Datum.ScriptInstance s -> "instance";
+            case Datum.SoundChannel s -> "instance";
             case Datum.ScriptRef s -> "script";
             case Datum.XtraRef x -> "xtra";
             case Datum.XtraInstance x -> "xtraInstance";

@@ -10,6 +10,7 @@ import com.libreshockwave.vm.builtin.TimeoutBuiltins;
 import com.libreshockwave.vm.builtin.TypeBuiltins;
 import com.libreshockwave.vm.builtin.XtraBuiltins;
 import com.libreshockwave.vm.opcode.dispatch.ImageMethodDispatcher;
+import com.libreshockwave.vm.opcode.dispatch.SoundChannelMethodDispatcher;
 import com.libreshockwave.vm.util.AncestorChainWalker;
 import com.libreshockwave.vm.util.StringChunkUtils;
 
@@ -418,7 +419,10 @@ public final class PropertyOpcodes {
                 // Sound channel property
                 String propName = PropertyIdMappings.getSoundPropName(propertyId);
                 int channelNum = ctx.pop().toInt();
-                // TODO: delegate to sound provider when available
+                if (propName != null && channelNum >= 1 && channelNum <= 8) {
+                    yield SoundChannelMethodDispatcher.getProperty(
+                            new Datum.SoundChannel(channelNum), propName);
+                }
                 yield Datum.VOID;
             }
             default -> Datum.VOID;
@@ -492,7 +496,10 @@ public final class PropertyOpcodes {
                 // Sound channel property
                 String propName = PropertyIdMappings.getSoundPropName(propertyId);
                 int channelNum = ctx.pop().toInt();
-                // Sound channel properties not yet implemented
+                if (propName != null && channelNum >= 1 && channelNum <= 8) {
+                    SoundChannelMethodDispatcher.setProperty(
+                            new Datum.SoundChannel(channelNum), propName, value);
+                }
             }
             case 0x06 -> {
                 // Sprite property
