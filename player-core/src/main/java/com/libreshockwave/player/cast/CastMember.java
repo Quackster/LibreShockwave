@@ -776,6 +776,26 @@ public class CastMember {
                         textFont, textFontSize, textFontStyle, textFixedLineSpace);
                 yield new Datum.Point(pos[0], pos[1]);
             }
+            case "count" -> {
+                // member.count(#char) / member.count(#word) / member.count(#line) / member.count(#item)
+                // Returns the number of chunks of the specified type in the member's text content.
+                // Compiled from Lingo expressions like: pTextMem.char.count
+                if (args.isEmpty()) yield Datum.ZERO;
+                String chunkType = (args.get(0) instanceof Datum.Symbol s ? s.name() : args.get(0).toStr()).toLowerCase();
+                String text = getTextContent();
+                if (text == null || text.isEmpty()) yield Datum.ZERO;
+                yield switch (chunkType) {
+                    case "char" -> Datum.of(text.length());
+                    case "word" -> {
+                        String trimmed = text.trim();
+                        if (trimmed.isEmpty()) yield Datum.ZERO;
+                        yield Datum.of(trimmed.split("\\s+").length);
+                    }
+                    case "line" -> Datum.of(text.split("[\r\n]", -1).length);
+                    case "item" -> Datum.of(text.split(",", -1).length);
+                    default -> Datum.ZERO;
+                };
+            }
             default -> Datum.VOID;
         };
     }
