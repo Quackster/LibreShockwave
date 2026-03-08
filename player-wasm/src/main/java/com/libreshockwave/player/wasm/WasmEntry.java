@@ -167,6 +167,36 @@ public class WasmEntry {
     }
 
     /**
+     * Add a function trace hook. Handler name is in stringBuffer[0..nameLen).
+     * When the traced handler is called, its args and call stack are printed.
+     */
+    @Export(name = "addTraceHandler")
+    public static void addTraceHandler(int nameLen) {
+        if (wasmPlayer == null || wasmPlayer.getPlayer() == null || nameLen <= 0) return;
+        String name = new String(stringBuffer, 0, nameLen);
+        wasmPlayer.getPlayer().getVM().addTraceHandler(name);
+    }
+
+    /**
+     * Remove a function trace hook. Handler name is in stringBuffer[0..nameLen).
+     */
+    @Export(name = "removeTraceHandler")
+    public static void removeTraceHandler(int nameLen) {
+        if (wasmPlayer == null || wasmPlayer.getPlayer() == null || nameLen <= 0) return;
+        String name = new String(stringBuffer, 0, nameLen);
+        wasmPlayer.getPlayer().getVM().removeTraceHandler(name);
+    }
+
+    /**
+     * Clear all function trace hooks.
+     */
+    @Export(name = "clearTraceHandlers")
+    public static void clearTraceHandlers() {
+        if (wasmPlayer == null || wasmPlayer.getPlayer() == null) return;
+        wasmPlayer.getPlayer().getVM().clearTraceHandlers();
+    }
+
+    /**
      * Preload all external casts (queue fetch requests before play).
      * @return number of casts queued for loading
      */

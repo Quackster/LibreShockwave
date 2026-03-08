@@ -139,6 +139,27 @@ WasmEngine.prototype.clearExternalParams = function() {
     this.exports.clearExternalParams(); this._clearEx();
 };
 
+WasmEngine.prototype.addTraceHandler = function(name) {
+    var nb = new TextEncoder().encode(name);
+    var sbuf = new Uint8Array(this._mem(), this.exports.getStringBufferAddress(), 4096);
+    sbuf.set(nb);
+    this.exports.addTraceHandler(nb.length);
+    this._clearEx();
+};
+
+WasmEngine.prototype.removeTraceHandler = function(name) {
+    var nb = new TextEncoder().encode(name);
+    var sbuf = new Uint8Array(this._mem(), this.exports.getStringBufferAddress(), 4096);
+    sbuf.set(nb);
+    this.exports.removeTraceHandler(nb.length);
+    this._clearEx();
+};
+
+WasmEngine.prototype.clearTraceHandlers = function() {
+    this.exports.clearTraceHandlers();
+    this._clearEx();
+};
+
 WasmEngine.prototype.preloadCasts = function() {
     var n = this.exports.preloadCasts(); this._clearEx(); return n;
 };
@@ -891,6 +912,18 @@ self.onmessage = async function(e) {
             case 'setDebugPlayback':
                 _e.exports.setDebugPlaybackEnabled(msg.enabled ? 1 : 0);
                 _e._clearEx();
+                break;
+
+            case 'addTraceHandler':
+                _e.addTraceHandler(msg.name);
+                break;
+
+            case 'removeTraceHandler':
+                _e.removeTraceHandler(msg.name);
+                break;
+
+            case 'clearTraceHandlers':
+                _e.clearTraceHandlers();
                 break;
 
             case 'clearParams':

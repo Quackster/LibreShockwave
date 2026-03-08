@@ -370,6 +370,11 @@ public class PlayerFrame extends JFrame {
         });
         viewMenu.add(clearBpItem);
 
+        JMenuItem traceItem = new JMenuItem("Trace Handler...");
+        traceItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_T, InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK));
+        traceItem.addActionListener(e -> showTraceHandlerDialog());
+        viewMenu.add(traceItem);
+
         menuBar.add(viewMenu);
 
         // Help menu
@@ -883,6 +888,30 @@ public class PlayerFrame extends JFrame {
             }
         } else {
             frameLabel.setText("Frame: 1 / 1");
+        }
+    }
+
+    private void showTraceHandlerDialog() {
+        if (player == null) {
+            JOptionPane.showMessageDialog(this, "No movie loaded.", "Trace Handler", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        var vm = player.getVM();
+        var current = vm.getTracedHandlers();
+        String currentStr = current.isEmpty() ? "" : String.join(", ", current);
+        String input = JOptionPane.showInputDialog(this,
+            "Enter handler names to trace (comma-separated), or clear to remove all:\n" +
+            "Current: " + (currentStr.isEmpty() ? "(none)" : currentStr),
+            "Trace Handler", JOptionPane.PLAIN_MESSAGE);
+        if (input == null) return; // cancelled
+        vm.clearTraceHandlers();
+        if (!input.isBlank()) {
+            for (String name : input.split(",")) {
+                String trimmed = name.trim();
+                if (!trimmed.isEmpty()) {
+                    vm.addTraceHandler(trimmed);
+                }
+            }
         }
     }
 

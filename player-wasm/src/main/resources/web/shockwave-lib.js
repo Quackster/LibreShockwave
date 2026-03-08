@@ -478,6 +478,13 @@ var LibreShockwave = (function() {
         var dbg = this._opts.debugPlayback !== undefined ? this._opts.debugPlayback : true;
         this._worker.postMessage({ type: 'setDebugPlayback', enabled: dbg });
 
+        // Restore trace handlers after movie load
+        if (this._traceHandlers && this._traceHandlers.length > 0) {
+            for (var i = 0; i < this._traceHandlers.length; i++) {
+                this._worker.postMessage({ type: 'addTraceHandler', name: this._traceHandlers[i] });
+            }
+        }
+
         if (this._opts.onLoad) this._opts.onLoad(info);
 
         // Preload external casts before starting; worker handles the network pump
@@ -605,6 +612,32 @@ var LibreShockwave = (function() {
     ShockwavePlayer.prototype.setDebugPlayback = function(enabled) {
         if (this._worker && this._workerReady) {
             this._worker.postMessage({ type: 'setDebugPlayback', enabled: enabled });
+        }
+    };
+
+    ShockwavePlayer.prototype.addTraceHandler = function(name) {
+        if (!this._traceHandlers) this._traceHandlers = [];
+        name = name.toLowerCase();
+        if (this._traceHandlers.indexOf(name) === -1) this._traceHandlers.push(name);
+        if (this._worker && this._workerReady) {
+            this._worker.postMessage({ type: 'addTraceHandler', name: name });
+        }
+    };
+
+    ShockwavePlayer.prototype.removeTraceHandler = function(name) {
+        if (!this._traceHandlers) this._traceHandlers = [];
+        name = name.toLowerCase();
+        var idx = this._traceHandlers.indexOf(name);
+        if (idx !== -1) this._traceHandlers.splice(idx, 1);
+        if (this._worker && this._workerReady) {
+            this._worker.postMessage({ type: 'removeTraceHandler', name: name });
+        }
+    };
+
+    ShockwavePlayer.prototype.clearTraceHandlers = function() {
+        this._traceHandlers = [];
+        if (this._worker && this._workerReady) {
+            this._worker.postMessage({ type: 'clearTraceHandlers' });
         }
     };
 

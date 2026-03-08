@@ -28,6 +28,9 @@
                     <button id="load-url-btn" class="btn">Go</button>
                     <button id="params-btn" class="btn">Params...</button>
                     <label class="toolbar-checkbox"><input type="checkbox" id="debug-playback-cb" checked> Debug Log</label>
+                    <span class="toolbar-sep">Trace:</span>
+                    <input type="text" id="trace-input" class="url-input" style="width:160px;" placeholder="handler1, handler2">
+                    <button id="trace-apply-btn" class="btn">Apply</button>
                 </div>
 
                 <!-- Stage -->
@@ -127,6 +130,17 @@
                 console.log(log);
             }
         });
+
+        // Pre-populate trace handlers from localStorage so they restore after movie load
+        try {
+            var savedTrace = localStorage.getItem('ls_traceHandlers');
+            if (savedTrace) {
+                savedTrace.split(',').forEach(function(n) {
+                    var t = n.trim();
+                    if (t) player.addTraceHandler(t);
+                });
+            }
+        } catch(e) {}
 
         // DOM refs
         var status = document.getElementById('status');
@@ -316,6 +330,24 @@
             else if (e.key === 'ArrowRight' && !e.ctrlKey) { e.preventDefault(); player.stepForward(); }
             else if (e.key === 'ArrowLeft' && !e.ctrlKey) { e.preventDefault(); player.stepBackward(); }
         });
+
+        // Trace handlers — restore from localStorage and apply
+        var traceInput = document.getElementById('trace-input');
+        try { var savedTrace = localStorage.getItem('ls_traceHandlers'); if (savedTrace) traceInput.value = savedTrace; } catch(e) {}
+
+        function applyTraceHandlers() {
+            var raw = traceInput.value.trim();
+            try { localStorage.setItem('ls_traceHandlers', raw); } catch(e) {}
+            player.clearTraceHandlers();
+            if (raw) {
+                raw.split(',').forEach(function(n) {
+                    var t = n.trim();
+                    if (t) player.addTraceHandler(t);
+                });
+            }
+        }
+        document.getElementById('trace-apply-btn').addEventListener('click', applyTraceHandlers);
+        traceInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') applyTraceHandlers(); });
 
         // Auto-load the URL on page open
         var autoUrl = urlInput.value.trim();

@@ -64,6 +64,26 @@ public class LingoVM {
         this.errorHandlerSkipCallback = callback;
     }
 
+    // Function trace hooks: when a handler name (lowercase) is in this set,
+    // print its call stack after the call is entered.
+    private final Set<String> tracedHandlers = new java.util.HashSet<>();
+
+    public void addTraceHandler(String name) {
+        tracedHandlers.add(name.toLowerCase());
+    }
+
+    public void removeTraceHandler(String name) {
+        tracedHandlers.remove(name.toLowerCase());
+    }
+
+    public void clearTraceHandlers() {
+        tracedHandlers.clear();
+    }
+
+    public Set<String> getTracedHandlers() {
+        return java.util.Collections.unmodifiableSet(tracedHandlers);
+    }
+
     public LingoVM(DirectorFile file) {
         this.file = file;
         this.globals = new HashMap<>();
@@ -300,6 +320,23 @@ public class LingoVM {
 
         if (callStack.size() >= MAX_CALL_STACK_DEPTH) {
             throw new LingoException("Call stack overflow (max " + MAX_CALL_STACK_DEPTH + " frames)");
+        }
+
+        // Function trace hook
+        if (!tracedHandlers.isEmpty() && tracedHandlers.contains(hn)) {
+            StringBuilder sb = new StringBuilder("[TRACE] ");
+            sb.append(handlerName).append('(');
+            for (int i = 0; i < args.size(); i++) {
+                if (i > 0) sb.append(", ");
+                sb.append(args.get(i).toStr());
+            }
+            sb.append(')');
+            String scriptName = script.getScriptName();
+            if (scriptName != null && !scriptName.isEmpty()) {
+                sb.append(" in \"").append(scriptName).append('"');
+            }
+            System.out.println(sb.toString());
+            System.out.println(formatCallStack());
         }
 
         // If there's a receiver (for parent script methods), prepend it to args as param0
