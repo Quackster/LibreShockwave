@@ -298,7 +298,7 @@ public final class ListBuiltins {
 
         if (container instanceof Datum.List l) {
             for (int i = 0; i < l.items().size(); i++) {
-                if (l.items().get(i).equals(target)) {
+                if (l.items().get(i).lingoEquals(target)) {
                     return Datum.of(i + 1);
                 }
             }
@@ -315,7 +315,12 @@ public final class ListBuiltins {
         Datum target = args.get(1);
 
         if (container instanceof Datum.List l) {
-            l.items().remove(target);
+            for (int i = 0; i < l.items().size(); i++) {
+                if (l.items().get(i).lingoEquals(target)) {
+                    l.items().remove(i);
+                    break;
+                }
+            }
         }
         return Datum.VOID;
     }

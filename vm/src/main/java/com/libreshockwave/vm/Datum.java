@@ -493,6 +493,27 @@ public sealed interface Datum {
         };
     }
 
+    /**
+     * Director-style equality comparison.
+     * Handles cross-type comparisons: symbol/string (case-insensitive),
+     * number/void (VOID == 0 is true), numeric coercion (int == float).
+     */
+    default boolean lingoEquals(Datum other) {
+        if (this == other) return true;
+        // VOID and number comparisons: VOID == 0 is TRUE
+        if ((this.isVoid() && other.isNumber()) || (this.isNumber() && other.isVoid())) {
+            return this.toDouble() == other.toDouble();
+        }
+        if (this.isNumber() && other.isNumber()) {
+            return this.toDouble() == other.toDouble();
+        }
+        // String/symbol cross-type comparison (case-insensitive)
+        if ((this.isString() || this.isSymbol()) && (other.isString() || other.isSymbol())) {
+            return this.toStr().equalsIgnoreCase(other.toStr());
+        }
+        return this.equals(other);
+    }
+
     default boolean isTruthy() {
         return switch (this) {
             case Void v -> false;

@@ -71,7 +71,7 @@ public final class PropListMethodDispatcher {
             if (args.isEmpty()) return Datum.ZERO;
             Datum searchValue = args.get(0);
             for (Datum.PropEntry entry : propList.entries()) {
-                if (entry.value() == searchValue || entry.value().equals(searchValue)) {
+                if (entry.value().lingoEquals(searchValue)) {
                     return Datum.symbol(entry.key());
                 }
             }

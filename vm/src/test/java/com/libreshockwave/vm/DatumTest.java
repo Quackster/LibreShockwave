@@ -143,6 +143,43 @@ class DatumTest {
     }
 
     @Test
+    void testLingoEqualsCrossType() {
+        // Director: #foo = "foo" is TRUE (case-insensitive)
+        assertTrue(Datum.symbol("info").lingoEquals(Datum.of("info")));
+        assertTrue(Datum.symbol("Info").lingoEquals(Datum.of("info")));
+        assertTrue(Datum.of("INFO").lingoEquals(Datum.symbol("info")));
+
+        // Director: VOID = 0 is TRUE
+        assertTrue(Datum.VOID.lingoEquals(Datum.ZERO));
+        assertTrue(Datum.ZERO.lingoEquals(Datum.VOID));
+
+        // Director: 1 = 1.0 is TRUE
+        assertTrue(Datum.of(1).lingoEquals(Datum.of(1.0)));
+
+        // Not equal
+        assertFalse(Datum.symbol("foo").lingoEquals(Datum.of("bar")));
+        assertFalse(Datum.of(1).lingoEquals(Datum.of(2)));
+    }
+
+    @Test
+    void testListGetOneWithSymbolStringCrossType() {
+        // Simulates connection manager's exists() check:
+        // pItemList contains string "info", searching for symbol #Info
+        Datum.List list = (Datum.List) Datum.list(Datum.of("info"), Datum.of("mus"));
+        Datum target = Datum.symbol("Info");
+
+        // getOne should find the match using lingoEquals
+        boolean found = false;
+        for (int i = 0; i < list.items().size(); i++) {
+            if (list.items().get(i).lingoEquals(target)) {
+                found = true;
+                break;
+            }
+        }
+        assertTrue(found, "Symbol #Info should match string \"info\" in list search");
+    }
+
+    @Test
     void testTruthiness() {
         // Falsy values
         assertFalse(Datum.VOID.isTruthy());
