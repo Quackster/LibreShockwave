@@ -24,8 +24,11 @@ public final class TimeoutBuiltins {
 
     public static void register(Map<String, BiFunction<LingoVM, List<Datum>, Datum>> builtins) {
         builtins.put("timeout", TimeoutBuiltins::timeout);
-        builtins.put("createtimeout", TimeoutBuiltins::createTimeout);
-        builtins.put("timeoutexists", TimeoutBuiltins::timeoutExists);
+        // Note: createTimeout and timeoutExists are NOT registered as builtins.
+        // Habbo defines these as movie script functions that delegate to its own
+        // Timeout Manager Class (which wraps Java timeouts with a pItemList PropList).
+        // Registering builtins would shadow the movie scripts and bypass the Lingo layer,
+        // causing removeTimeout (no builtin) to fail with "Item not found".
     }
 
     /**

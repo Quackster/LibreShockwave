@@ -87,8 +87,17 @@ public final class ScriptInstanceMethodDispatcher {
                             list.items().set(index, value);
                         }
                     } else if (localProp instanceof Datum.PropList pl) {
-                        // PropList: set by key
-                        pl.properties().put(keyName, value);
+                        // Integer subKey: positional set (1-based)
+                        if (subKey instanceof Datum.Int || subKey instanceof Datum.Float) {
+                            int index = subKey.toInt() - 1;
+                            var keys = new java.util.ArrayList<>(pl.properties().keySet());
+                            if (index >= 0 && index < keys.size()) {
+                                pl.properties().put(keys.get(index), value);
+                            }
+                        } else {
+                            // PropList: set by key
+                            pl.properties().put(keyName, value);
+                        }
                     }
                 }
                 return Datum.VOID;
@@ -128,6 +137,15 @@ public final class ScriptInstanceMethodDispatcher {
                         }
                         return Datum.VOID;
                     } else if (localProp instanceof Datum.PropList pl) {
+                        // Integer subKey: positional access (1-based), like List
+                        if (subKey instanceof Datum.Int || subKey instanceof Datum.Float) {
+                            int index = subKey.toInt() - 1;
+                            var entries = new java.util.ArrayList<>(pl.properties().entrySet());
+                            if (index >= 0 && index < entries.size()) {
+                                return entries.get(index).getValue();
+                            }
+                            return Datum.VOID;
+                        }
                         // PropList: look up by key (string or symbol, case-insensitive for symbols)
                         String key = getPropertyName(subKey);
                         // Try exact match first, then case-insensitive

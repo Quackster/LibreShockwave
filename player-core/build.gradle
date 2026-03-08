@@ -306,6 +306,17 @@ tasks.register('runLoginConnectingTest', JavaExec) {
     }
 }
 
+tasks.register('runLoginTimeoutTest', JavaExec) {
+    group = 'verification'
+    description = 'Test that login removes Connection Problem timeout without errors'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.LoginTimeoutTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
 tasks.register('runSocketBridgeTest', JavaExec) {
     group = 'verification'
     description = 'Test SocketMultiuserBridge + MultiuserXtra over real TCP sockets'
