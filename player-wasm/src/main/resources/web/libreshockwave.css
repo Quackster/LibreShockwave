@@ -242,7 +242,6 @@ a:hover { color: #ff6600; }
 }
 
 .stage-inset {
-    border: 1px solid #999999;
     background: #000000;
     display: inline-block;
     line-height: 0;
