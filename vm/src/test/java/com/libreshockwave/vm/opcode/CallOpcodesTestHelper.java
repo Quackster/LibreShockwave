@@ -4,7 +4,6 @@ import com.libreshockwave.vm.Datum;
 import com.libreshockwave.vm.builtin.CastLibProvider;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 
 /**
@@ -130,19 +129,18 @@ public final class CallOpcodesTestHelper {
     public static Datum callPropListMethod(Datum.PropList propList, String methodName, List<Datum> args) {
         String method = methodName.toLowerCase();
         return switch (method) {
-            case "count" -> Datum.of(propList.properties().size());
+            case "count" -> Datum.of(propList.size());
             case "getat" -> {
                 if (args.isEmpty()) yield Datum.VOID;
                 Datum keyOrIndex = args.get(0);
                 if (keyOrIndex instanceof Datum.Str s) {
-                    yield propList.properties().getOrDefault(s.value(), Datum.VOID);
+                    yield propList.getOrDefault(s.value(), Datum.VOID);
                 } else if (keyOrIndex instanceof Datum.Symbol sym) {
-                    yield propList.properties().getOrDefault(sym.name(), Datum.VOID);
+                    yield propList.getOrDefault(sym.name(), Datum.VOID);
                 } else {
                     int index = keyOrIndex.toInt() - 1;
-                    var entries = new ArrayList<>(propList.properties().entrySet());
-                    if (index >= 0 && index < entries.size()) {
-                        yield entries.get(index).getValue();
+                    if (index >= 0 && index < propList.size()) {
+                        yield propList.getValue(index);
                     }
                     yield Datum.VOID;
                 }
@@ -150,55 +148,48 @@ public final class CallOpcodesTestHelper {
             case "getprop", "getaprop" -> {
                 if (args.isEmpty()) yield Datum.VOID;
                 String key = args.get(0).toKeyName();
-                yield propList.properties().getOrDefault(key, Datum.VOID);
+                yield propList.getOrDefault(key, Datum.VOID);
             }
             case "setprop", "setaprop" -> {
                 if (args.size() < 2) yield Datum.VOID;
                 String key = args.get(0).toKeyName();
-                propList.properties().put(key, args.get(1));
+                propList.put(key, args.get(1));
                 yield Datum.VOID;
             }
             case "addprop" -> {
                 if (args.size() < 2) yield Datum.VOID;
                 String key = args.get(0).toKeyName();
-                propList.properties().put(key, args.get(1));
+                propList.add(key, args.get(1));
                 yield Datum.VOID;
             }
             case "deleteprop" -> {
                 if (args.isEmpty()) yield Datum.VOID;
                 String key = args.get(0).toKeyName();
-                propList.properties().remove(key);
+                propList.remove(key);
                 yield Datum.VOID;
             }
             case "getpropat" -> {
                 if (args.isEmpty()) yield Datum.VOID;
                 int index = args.get(0).toInt() - 1;
-                var keys = new ArrayList<>(propList.properties().keySet());
-                if (index >= 0 && index < keys.size()) {
-                    yield Datum.symbol(keys.get(index));
+                if (index >= 0 && index < propList.size()) {
+                    yield Datum.symbol(propList.getKey(index));
                 }
                 yield Datum.VOID;
             }
             case "setat" -> {
                 if (args.size() < 2) yield Datum.VOID;
                 String key = args.get(0).toKeyName();
-                propList.properties().put(key, args.get(1));
+                propList.put(key, args.get(1));
                 yield Datum.VOID;
             }
             case "findpos" -> {
                 if (args.isEmpty()) yield Datum.ZERO;
                 String key = args.get(0).toKeyName();
-                int pos = 1;
-                for (String k : propList.properties().keySet()) {
-                    if (k.equalsIgnoreCase(key)) {
-                        yield Datum.of(pos);
-                    }
-                    pos++;
-                }
-                yield Datum.ZERO;
+                int pos = propList.findPos(key);
+                yield Datum.of(pos);
             }
             case "duplicate" -> {
-                yield new Datum.PropList(new LinkedHashMap<>(propList.properties()));
+                yield new Datum.PropList(new ArrayList<>(propList.entries()));
             }
             default -> Datum.VOID;
         };
@@ -228,7 +219,7 @@ public final class CallOpcodesTestHelper {
                     // Also update pObjectList if it exists (for Object Manager pattern)
                     Datum pObjectList = instance.properties().get("pObjectList");
                     if (pObjectList instanceof Datum.PropList objList) {
-                        objList.properties().put(propName, value);
+                        objList.put(propName, value);
                     }
                 }
                 return Datum.VOID;

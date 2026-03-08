@@ -225,8 +225,8 @@ public class BehaviorManager {
         List<com.libreshockwave.vm.Datum> params = behaviorRef.parameters();
         for (com.libreshockwave.vm.Datum param : params) {
             if (param instanceof com.libreshockwave.vm.Datum.PropList propList) {
-                for (Map.Entry<String, com.libreshockwave.vm.Datum> entry : propList.properties().entrySet()) {
-                    instance.setProperty(entry.getKey(), entry.getValue());
+                for (com.libreshockwave.vm.Datum.PropEntry entry : propList.entries()) {
+                    instance.setProperty(entry.key(), entry.value());
                 }
             }
         }

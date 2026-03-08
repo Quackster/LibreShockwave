@@ -36,7 +36,7 @@ public final class StringBuiltins {
         } else if (a instanceof Datum.List l) {
             return Datum.of(l.items().size());
         } else if (a instanceof Datum.PropList p) {
-            return Datum.of(p.properties().size());
+            return Datum.of(p.size());
         }
         // For Symbol and other types, convert to string and return string length
         // (Lingo's length() is a string function that coerces its argument)

@@ -166,7 +166,8 @@ public final class ControlFlowBuiltins {
             }
         } else if (targetList instanceof Datum.PropList propList) {
             // Director also supports call(#handler, propList) — iterates through values
-            List<Datum> snapshot = new ArrayList<>(propList.properties().values());
+            List<Datum> snapshot = new ArrayList<>(propList.size());
+            for (Datum.PropEntry entry : propList.entries()) snapshot.add(entry.value());
             for (Datum target : snapshot) {
                 if (target instanceof Datum.ScriptInstance instance) {
                     callHandlerOnInstance(vm, instance, handlerName, extraArgs);

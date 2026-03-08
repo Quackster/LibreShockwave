@@ -83,7 +83,63 @@ class DatumTest {
         Datum propList = Datum.propList(Map.of("x", Datum.of(10), "y", Datum.of(20)));
 
         assertTrue(propList.isPropList());
-        assertEquals(2, ((Datum.PropList) propList).properties().size());
+        assertEquals(2, ((Datum.PropList) propList).size());
+    }
+
+    @Test
+    void testPropListDuplicateKeys() {
+        // Director's PropList supports duplicate keys (e.g. [#string: "user", #string: "pass"])
+        Datum.PropList pl = new Datum.PropList();
+        pl.add("string", Datum.of("username"));
+        pl.add("string", Datum.of("password"));
+
+        // Both entries must be preserved
+        assertEquals(2, pl.size());
+
+        // get() returns the first match
+        assertEquals("username", pl.get("string").toStr());
+
+        // Positional access returns each entry independently
+        assertEquals("username", pl.getValue(0).toStr());
+        assertEquals("password", pl.getValue(1).toStr());
+
+        // Both keys are "string"
+        assertEquals("string", pl.getKey(0));
+        assertEquals("string", pl.getKey(1));
+
+        // toString shows both entries
+        assertEquals("[#string: \"username\", #string: \"password\"]", pl.toString());
+    }
+
+    @Test
+    void testPropListDuplicateKeysViaPushPropList() {
+        // Verify that the propList literal [#string: a, #string: b] preserves both entries
+        Datum.PropList pl = new Datum.PropList();
+        pl.add("short", Datum.of(1));
+        pl.add("string", Datum.of("hello"));
+        pl.add("short", Datum.of(2));  // duplicate key
+
+        assertEquals(3, pl.size());
+        // get returns first match
+        assertEquals(1, pl.get("short").toInt());
+        // positional access
+        assertEquals(1, pl.getValue(0).toInt());
+        assertEquals("hello", pl.getValue(1).toStr());
+        assertEquals(2, pl.getValue(2).toInt());
+    }
+
+    @Test
+    void testPropListPutUpdatesFirstMatch() {
+        Datum.PropList pl = new Datum.PropList();
+        pl.add("a", Datum.of(1));
+        pl.add("b", Datum.of(2));
+        pl.add("a", Datum.of(3));
+
+        // put updates FIRST match only
+        pl.put("a", Datum.of(99));
+        assertEquals(3, pl.size());
+        assertEquals(99, pl.getValue(0).toInt());  // first "a" updated
+        assertEquals(3, pl.getValue(2).toInt());    // second "a" unchanged
     }
 
     @Test

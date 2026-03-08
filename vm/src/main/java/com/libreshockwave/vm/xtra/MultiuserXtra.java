@@ -178,12 +178,12 @@ public class MultiuserXtra implements Xtra {
         }
 
         MultiuserNetBridge.NetMessage msg = state.currentMessage;
-        Map<String, Datum> props = new LinkedHashMap<>();
-        props.put("errorCode", Datum.of(msg.errorCode()));
-        props.put("senderID", Datum.of(msg.senderID()));
-        props.put("subject", Datum.of(msg.subject()));
-        props.put("content", msg.content() != null ? msg.content() : Datum.VOID);
-        return new Datum.PropList(props);
+        Datum.PropList pl = new Datum.PropList();
+        pl.add("errorCode", Datum.of(msg.errorCode()));
+        pl.add("senderID", Datum.of(msg.senderID()));
+        pl.add("subject", Datum.of(msg.subject()));
+        pl.add("content", msg.content() != null ? msg.content() : Datum.VOID);
+        return pl;
     }
 
     private Datum checkNetMessages(int instanceId, InstanceState state, List<Datum> args) {
