@@ -89,13 +89,34 @@ public final class CallOpcodes {
             if (ref != null) {
                 result = safeExecuteHandler(ctx, ref.script(), ref.handler(), args, null);
             } else {
-                result = Datum.VOID;
+                // Check built-in constants (SPACE, RETURN, QUOTE, etc.)
+                // Director compiles these as EXT_CALL with 0 args when used without "the"
+                result = args.isEmpty() ? getBuiltinConstant(handlerName) : Datum.VOID;
             }
         }
         if (!noRet) {
             ctx.push(result);
         }
         return true;
+    }
+
+    /**
+     * Get built-in Lingo constants (SPACE, RETURN, QUOTE, etc.).
+     * These are accessible as zero-arg function calls in Director bytecodes.
+     */
+    private static Datum getBuiltinConstant(String name) {
+        if ("space".equalsIgnoreCase(name)) return Datum.of(" ");
+        if ("return".equalsIgnoreCase(name)) return Datum.of("\r");
+        if ("enter".equalsIgnoreCase(name)) return Datum.of("\n");
+        if ("tab".equalsIgnoreCase(name)) return Datum.of("\t");
+        if ("quote".equalsIgnoreCase(name)) return Datum.of("\"");
+        if ("backspace".equalsIgnoreCase(name)) return Datum.of("\b");
+        if ("empty".equalsIgnoreCase(name) || "emptystring".equalsIgnoreCase(name)) return Datum.EMPTY_STRING;
+        if ("true".equalsIgnoreCase(name)) return Datum.TRUE;
+        if ("false".equalsIgnoreCase(name)) return Datum.FALSE;
+        if ("void".equalsIgnoreCase(name)) return Datum.VOID;
+        if ("pi".equalsIgnoreCase(name)) return Datum.of(Math.PI);
+        return Datum.VOID;
     }
 
     private static boolean objCall(ExecutionContext ctx) {

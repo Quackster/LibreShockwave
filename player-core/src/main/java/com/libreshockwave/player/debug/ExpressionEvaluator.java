@@ -692,22 +692,7 @@ public class ExpressionEvaluator {
     }
 
     private boolean compareEqual(Datum left, Datum right) {
-        // Same type comparison
-        if (left.getClass() == right.getClass()) {
-            return left.equals(right);
-        }
-
-        // Numeric comparison (int/float interop)
-        if (left.isNumber() && right.isNumber()) {
-            return left.toDouble() == right.toDouble();
-        }
-
-        // String comparison
-        if (left instanceof Datum.Str || right instanceof Datum.Str) {
-            return left.toStr().equals(right.toStr());
-        }
-
-        return false;
+        return left.lingoEquals(right);
     }
 
     // ==================== Exceptions ====================

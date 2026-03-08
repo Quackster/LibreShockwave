@@ -737,7 +737,7 @@ public final class TypeBuiltins {
                 return Datum.symbol("");
             }
             if (s.startsWith("#")) {
-                return Datum.symbol("#");
+                return Datum.symbol(s.substring(1));
             }
             return Datum.symbol(s);
         }

@@ -74,7 +74,8 @@ public final class StringMethodDispatcher {
             int startIndex = args.get(1).toInt();
             int endIndex = args.size() >= 3 ? args.get(2).toInt() : startIndex;
             if (!(chunkType instanceof Datum.Symbol s)) return Datum.EMPTY_STRING;
-            return Datum.of(getStringChunk(str.value(), s.name(), startIndex, endIndex, itemDelimiter));
+            String result = getStringChunk(str.value(), s.name(), startIndex, endIndex, itemDelimiter);
+            return Datum.of(result);
         }
         return Datum.VOID;
     }

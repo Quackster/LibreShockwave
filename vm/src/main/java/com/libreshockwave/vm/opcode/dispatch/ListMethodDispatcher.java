@@ -78,7 +78,7 @@ public final class ListMethodDispatcher {
                 if (args.isEmpty()) yield Datum.ZERO;
                 Datum value = args.get(0);
                 for (int i = 0; i < list.items().size(); i++) {
-                    if (list.items().get(i).equals(value)) {
+                    if (list.items().get(i).lingoEquals(value)) {
                         yield Datum.of(i + 1);
                     }
                 }
@@ -91,12 +91,11 @@ public final class ListMethodDispatcher {
             }
             case "deleteone" -> {
                 // deleteOne(list, value) - remove first matching element
-                // Check reference equality first, then value equality
                 if (args.isEmpty()) yield Datum.FALSE;
                 Datum value = args.get(0);
                 boolean found = false;
                 for (int i = 0; i < list.items().size(); i++) {
-                    if (list.items().get(i) == value || list.items().get(i).equals(value)) {
+                    if (list.items().get(i).lingoEquals(value)) {
                         list.items().remove(i);
                         found = true;
                         break;
