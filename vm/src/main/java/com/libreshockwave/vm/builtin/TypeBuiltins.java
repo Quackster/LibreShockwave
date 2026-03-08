@@ -225,6 +225,12 @@ public final class TypeBuiltins {
 
         // Try to evaluate as a simple identifier (handler call or global variable)
         if (expr.matches("[a-zA-Z_][a-zA-Z0-9_]*")) {
+            // Director built-in constants
+            if (expr.equalsIgnoreCase("TRUE")) return Datum.of(1);
+            if (expr.equalsIgnoreCase("FALSE")) return Datum.of(0);
+            if (expr.equalsIgnoreCase("VOID")) return Datum.VOID;
+            if (expr.equalsIgnoreCase("EMPTY")) return Datum.of("");
+
             // Check global variable first
             Datum globalValue = vm.getGlobal(expr);
             if (!globalValue.isVoid()) {
@@ -367,6 +373,12 @@ public final class TypeBuiltins {
                 pos++;
             }
             String identifier = expr.substring(start, pos);
+
+            // Director built-in constants
+            if (identifier.equalsIgnoreCase("TRUE")) return Datum.of(1);
+            if (identifier.equalsIgnoreCase("FALSE")) return Datum.of(0);
+            if (identifier.equalsIgnoreCase("VOID")) return Datum.VOID;
+            if (identifier.equalsIgnoreCase("EMPTY")) return Datum.of("");
 
             // Check global variable
             Datum globalValue = vm.getGlobal(identifier);
