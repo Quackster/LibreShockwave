@@ -123,11 +123,12 @@ public final class ImageMethodDispatcher {
             return Datum.VOID;
         }
 
-        // Director no-ops fill() when color is VOID
-        if (colorDatum.isVoid()) {
-            return Datum.VOID;
-        }
-        int colorArgb = datumToArgb(colorDatum);
+        // Director's image() creates white-filled images by default.
+        // When fill() receives VOID as color, default to white — this matches
+        // Director's convention where VOID means "use default background."
+        // Habbo's clearImage() passes pProps[#bgColor] which may be VOID
+        // when the layout definition omits bgColor.
+        int colorArgb = colorDatum.isVoid() ? 0xFFFFFFFF : datumToArgb(colorDatum);
 
         int w = right - left;
         int h = bottom - top;
@@ -222,6 +223,7 @@ public final class ImageMethodDispatcher {
 
         Datum destRectDatum = args.get(1);
         Datum srcRectDatum = args.get(2);
+
 
         // Handle quad destRect: list of 4 points for perspective/flip transforms
         if (destRectDatum instanceof Datum.List quadList && quadList.items().size() == 4

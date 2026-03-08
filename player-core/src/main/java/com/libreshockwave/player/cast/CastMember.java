@@ -401,22 +401,29 @@ public class CastMember {
             case "text" -> Datum.of(getTextContent());
             case "width" -> Datum.of(textRectRight - textRectLeft);
             case "height" -> {
-                // Return the height needed to display the text
-                // If text has been rendered, use that height; otherwise use rect height
-                if (textRenderedImage != null && !textImageDirty) {
-                    yield Datum.of(textRenderedImage.getHeight());
+                // Director auto-expands text member height for boxType=adjust.
+                // Must render eagerly so height reflects actual text content.
+                if (textBoxType == 0) {
+                    Bitmap rendered = renderTextToImage();
+                    if (rendered != null) {
+                        yield Datum.of(rendered.getHeight());
+                    }
                 }
                 yield Datum.of(textRectBottom - textRectTop);
             }
             case "rect" -> {
                 // With boxType=adjust (0), rect auto-expands to fit rendered text content.
-                // Director's text members auto-expand their rect when boxType=#adjust.
-                if (textBoxType == 0 && textRenderedImage != null && !textImageDirty) {
-                    int renderedHeight = textRenderedImage.getHeight();
-                    int rectHeight = textRectBottom - textRectTop;
-                    if (renderedHeight > rectHeight) {
-                        yield new Datum.Rect(textRectLeft, textRectTop,
-                                textRectRight, textRectTop + renderedHeight);
+                // Director auto-expands immediately when text is set, so we must
+                // render eagerly here (not wait for .image access).
+                if (textBoxType == 0) {
+                    Bitmap rendered = renderTextToImage();
+                    if (rendered != null) {
+                        int renderedHeight = rendered.getHeight();
+                        int rectHeight = textRectBottom - textRectTop;
+                        if (renderedHeight > rectHeight) {
+                            yield new Datum.Rect(textRectLeft, textRectTop,
+                                    textRectRight, textRectTop + renderedHeight);
+                        }
                     }
                 }
                 yield new Datum.Rect(textRectLeft, textRectTop, textRectRight, textRectBottom);
