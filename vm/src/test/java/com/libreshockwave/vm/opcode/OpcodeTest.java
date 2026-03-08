@@ -663,8 +663,7 @@ class OpcodeTest {
             assertTrue(advance);
             Datum result = scope.pop();
             assertTrue(result.isPropList());
-            Map<String, Datum> props = ((Datum.PropList) result).properties();
-            assertEquals(2, props.size());
+            assertEquals(2, ((Datum.PropList) result).size());
         }
 
         @Test

@@ -47,7 +47,7 @@ public final class DatumFormatter {
         if (d instanceof Datum.Str s) return "\"" + StringUtils.truncate(s.value(), maxStringLength) + "\"";
         if (d instanceof Datum.Symbol sym) return "#" + sym.name();
         if (d instanceof Datum.List list) return "[list:" + list.items().size() + "]";
-        if (d instanceof Datum.PropList pl) return "[propList:" + pl.properties().size() + "]";
+        if (d instanceof Datum.PropList pl) return "[propList:" + pl.size() + "]";
         if (d instanceof Datum.ArgList al) return "<arglist:" + al.count() + ">";
         if (d instanceof Datum.ArgListNoRet al) return "<arglist-noret:" + al.count() + ">";
         if (d instanceof Datum.Point p) return "point(" + p.x() + ", " + p.y() + ")";
@@ -85,7 +85,7 @@ public final class DatumFormatter {
             case Datum.Str s -> "\"" + StringUtils.truncate(StringUtils.escapeForDisplay(s.value()), DEFAULT_BRIEF_STRING_LENGTH) + "\"";
             case Datum.Symbol sym -> "#" + sym.name();
             case Datum.List list -> "[list:" + list.items().size() + "]";
-            case Datum.PropList pl -> "[propList:" + pl.properties().size() + "]";
+            case Datum.PropList pl -> "[propList:" + pl.size() + "]";
             case Datum.ArgList al -> "<arglist:" + al.count() + ">";
             case Datum.ArgListNoRet al -> "<arglist-noret:" + al.count() + ">";
             case Datum.ScriptInstance si -> "<script#" + si.scriptId() + ">";
@@ -159,18 +159,17 @@ public final class DatumFormatter {
             }
 
             case Datum.PropList propList -> {
-                if (propList.properties().isEmpty()) {
+                if (propList.isEmpty()) {
                     yield "{}";
                 }
                 StringBuilder sb = new StringBuilder();
                 sb.append("{\n");
-                var entries = propList.properties().entrySet().toArray(new Map.Entry[0]);
-                for (int i = 0; i < entries.length; i++) {
-                    @SuppressWarnings("unchecked")
-                    Map.Entry<String, Datum> entry = entries[i];
-                    sb.append(innerPad).append("\"#").append(escapeForJson(entry.getKey())).append("\": ");
-                    sb.append(formatDetailed(entry.getValue(), indent + 1));
-                    if (i < entries.length - 1) sb.append(",");
+                var entries = propList.entries();
+                for (int i = 0; i < entries.size(); i++) {
+                    Datum.PropEntry entry = entries.get(i);
+                    sb.append(innerPad).append("\"#").append(escapeForJson(entry.key())).append("\": ");
+                    sb.append(formatDetailed(entry.value(), indent + 1));
+                    if (i < entries.size() - 1) sb.append(",");
                     sb.append("\n");
                 }
                 sb.append(pad).append("}");

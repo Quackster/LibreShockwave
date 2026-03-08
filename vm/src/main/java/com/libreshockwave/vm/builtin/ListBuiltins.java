@@ -45,7 +45,7 @@ public final class ListBuiltins {
         if (a instanceof Datum.List l) {
             return Datum.of(l.items().size());
         } else if (a instanceof Datum.PropList p) {
-            return Datum.of(p.properties().size());
+            return Datum.of(p.size());
         }
         return Datum.ZERO;
     }
@@ -70,16 +70,15 @@ public final class ListBuiltins {
         if (container instanceof Datum.PropList pl) {
             // Try key-based lookup first for symbols and strings
             if (keyOrIndex instanceof Datum.Symbol sym) {
-                return pl.properties().getOrDefault(sym.name(), Datum.VOID);
+                return pl.getOrDefault(sym.name(), Datum.VOID);
             }
             if (keyOrIndex instanceof Datum.Str s) {
-                return pl.properties().getOrDefault(s.value(), Datum.VOID);
+                return pl.getOrDefault(s.value(), Datum.VOID);
             }
             // Integer positional access (1-based)
             int index = keyOrIndex.toInt() - 1;
-            var entries = new ArrayList<>(pl.properties().entrySet());
-            if (index >= 0 && index < entries.size()) {
-                return entries.get(index).getValue();
+            if (index >= 0 && index < pl.size()) {
+                return pl.getValue(index);
             }
             return Datum.VOID;
         }
@@ -128,19 +127,17 @@ public final class ListBuiltins {
         if (container instanceof Datum.PropList pl) {
             // Try key-based set for symbols and strings
             if (keyOrIndex instanceof Datum.Symbol sym) {
-                pl.properties().put(sym.name(), value);
+                pl.put(sym.name(), value);
                 return Datum.VOID;
             }
             if (keyOrIndex instanceof Datum.Str s) {
-                pl.properties().put(s.value(), value);
+                pl.put(s.value(), value);
                 return Datum.VOID;
             }
             // Integer positional set (1-based)
             int index = keyOrIndex.toInt() - 1;
-            var entries = new ArrayList<>(pl.properties().entrySet());
-            if (index >= 0 && index < entries.size()) {
-                String existingKey = entries.get(index).getKey();
-                pl.properties().put(existingKey, value);
+            if (index >= 0 && index < pl.size()) {
+                pl.setValue(index, value);
             }
             return Datum.VOID;
         }
@@ -205,9 +202,8 @@ public final class ListBuiltins {
                 l.items().remove(position);
             }
         } else if (container instanceof Datum.PropList pl) {
-            var keys = new ArrayList<>(pl.properties().keySet());
-            if (position >= 0 && position < keys.size()) {
-                pl.properties().remove(keys.get(position));
+            if (position >= 0 && position < pl.size()) {
+                pl.removeAt(position);
             }
         }
         return Datum.VOID;
@@ -222,7 +218,7 @@ public final class ListBuiltins {
         if (!(container instanceof Datum.PropList pl)) return Datum.VOID;
 
         String key = args.get(1).toKeyName();
-        return pl.properties().getOrDefault(key, Datum.VOID);
+        return pl.getOrDefault(key, Datum.VOID);
     }
 
     /**
@@ -234,12 +230,12 @@ public final class ListBuiltins {
         if (!(container instanceof Datum.PropList pl)) return Datum.VOID;
 
         String key = args.get(1).toKeyName();
-        pl.properties().put(key, args.get(2));
+        pl.put(key, args.get(2));
         return Datum.VOID;
     }
 
     /**
-     * addProp(propList, key, value) - Add property to a PropList.
+     * addProp(propList, key, value) - Add property to a PropList (allows duplicates).
      */
     private static Datum addProp(LingoVM vm, List<Datum> args) {
         if (args.size() < 3) return Datum.VOID;
@@ -247,7 +243,7 @@ public final class ListBuiltins {
         if (!(container instanceof Datum.PropList pl)) return Datum.VOID;
 
         String key = args.get(1).toKeyName();
-        pl.properties().put(key, args.get(2));
+        pl.add(key, args.get(2));
         return Datum.VOID;
     }
 
@@ -260,7 +256,7 @@ public final class ListBuiltins {
         if (!(container instanceof Datum.PropList pl)) return Datum.VOID;
 
         String key = args.get(1).toKeyName();
-        pl.properties().remove(key);
+        pl.remove(key);
         return Datum.VOID;
     }
 
@@ -273,9 +269,8 @@ public final class ListBuiltins {
         if (!(container instanceof Datum.PropList pl)) return Datum.VOID;
 
         int index = args.get(1).toInt() - 1;
-        var keys = new ArrayList<>(pl.properties().keySet());
-        if (index >= 0 && index < keys.size()) {
-            return Datum.symbol(keys.get(index));
+        if (index >= 0 && index < pl.size()) {
+            return Datum.symbol(pl.getKey(index));
         }
         return Datum.VOID;
     }
@@ -289,14 +284,8 @@ public final class ListBuiltins {
         if (!(container instanceof Datum.PropList pl)) return Datum.VOID;
 
         String key = args.get(1).toKeyName();
-        int pos = 1;
-        for (String k : pl.properties().keySet()) {
-            if (k.equalsIgnoreCase(key)) {
-                return Datum.of(pos);
-            }
-            pos++;
-        }
-        return Datum.VOID;
+        int pos = pl.findPos(key);
+        return pos > 0 ? Datum.of(pos) : Datum.VOID;
     }
 
     /**
@@ -376,9 +365,8 @@ public final class ListBuiltins {
             return l.items().get(l.items().size() - 1);
         }
         if (container instanceof Datum.PropList pl) {
-            if (pl.properties().isEmpty()) return Datum.VOID;
-            var values = new ArrayList<>(pl.properties().values());
-            return values.get(values.size() - 1);
+            if (pl.isEmpty()) return Datum.VOID;
+            return pl.getValue(pl.size() - 1);
         }
         return Datum.VOID;
     }

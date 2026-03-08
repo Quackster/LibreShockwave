@@ -413,7 +413,7 @@ public final class ImageMethodDispatcher {
      */
     private static Datum getPropIgnoreCase(Datum.PropList pl, String... keys) {
         for (String key : keys) {
-            Datum val = pl.properties().get(key);
+            Datum val = pl.get(key);
             if (val != null) return val;
         }
         return Datum.VOID;

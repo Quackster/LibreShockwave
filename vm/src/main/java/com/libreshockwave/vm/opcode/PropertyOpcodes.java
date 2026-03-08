@@ -174,10 +174,10 @@ public final class PropertyOpcodes {
     }
 
     private static Datum getPropListProp(Datum.PropList pl, String propName) {
-        if ("count".equalsIgnoreCase(propName) || "length".equalsIgnoreCase(propName)) return Datum.of(pl.properties().size());
+        if ("count".equalsIgnoreCase(propName) || "length".equalsIgnoreCase(propName)) return Datum.of(pl.size());
         // Check PropList's own keys first (e.g. [#ilk:#struct] in font structs),
         // then fall back to built-in ilk property
-        Datum value = pl.properties().getOrDefault(propName, null);
+        Datum value = pl.get(propName);
         if (value != null) return value;
         if ("ilk".equalsIgnoreCase(propName)) return Datum.symbol("propList");
         return Datum.VOID;
@@ -204,7 +204,7 @@ public final class PropertyOpcodes {
             }
             case Datum.XtraInstance xi -> XtraBuiltins.setProperty(xi, propName, value);
             case Datum.TimeoutRef tr -> TimeoutBuiltins.setProperty(tr, propName, value);
-            case Datum.PropList pl -> pl.properties().put(propName, value);
+            case Datum.PropList pl -> pl.put(propName, value);
             case Datum.MovieRef m -> {
                 MoviePropertyProvider provider = MoviePropertyProvider.getProvider();
                 if (provider != null) {
@@ -607,12 +607,8 @@ public final class PropertyOpcodes {
         return switch (obj) {
             case Datum.PropList pl -> {
                 // Search by key (case-insensitive symbol/string match)
-                for (Map.Entry<String, Datum> entry : pl.properties().entrySet()) {
-                    if (entry.getKey().equalsIgnoreCase(propName)) {
-                        yield entry.getValue();
-                    }
-                }
-                yield Datum.VOID;
+                Datum found = pl.getIgnoreCase(propName);
+                yield found != null ? found : Datum.VOID;
             }
             case Datum.ScriptInstance si -> AncestorChainWalker.getProperty(si, propName);
             case Datum.CastMemberRef cmr -> getCastMemberProp(cmr, propName);

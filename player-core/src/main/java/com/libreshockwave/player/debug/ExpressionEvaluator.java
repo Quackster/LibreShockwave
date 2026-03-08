@@ -571,7 +571,7 @@ public class ExpressionEvaluator {
 
         // Handle PropList property access
         if (object instanceof Datum.PropList propList) {
-            Datum value = propList.properties().get(expr.property());
+            Datum value = propList.get(expr.property());
             return value != null ? value : Datum.VOID;
         }
 

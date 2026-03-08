@@ -4,7 +4,6 @@ import com.libreshockwave.lingo.Opcode;
 import com.libreshockwave.vm.Datum;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -44,7 +43,7 @@ public final class ListOpcodes {
     private static boolean pushPropList(ExecutionContext ctx) {
         // Pop one ArgList from the stack, split into key-value pairs
         Datum argListDatum = ctx.pop();
-        Map<String, Datum> props = new LinkedHashMap<>();
+        Datum.PropList pl = new Datum.PropList();
         List<Datum> items;
         if (argListDatum instanceof Datum.ArgList al) {
             items = al.items();
@@ -53,14 +52,13 @@ public final class ListOpcodes {
         } else {
             items = List.of();
         }
-        // Items come in key, value, key, value order
+        // Items come in key, value, key, value order — add() preserves duplicates
         for (int i = 0; i + 1 < items.size(); i += 2) {
             Datum key = items.get(i);
             Datum value = items.get(i + 1);
-            String keyStr = key.toKeyName();
-            props.put(keyStr, value);
+            pl.add(key.toKeyName(), value);
         }
-        ctx.push(Datum.propList(props));
+        ctx.push(pl);
         return true;
     }
 

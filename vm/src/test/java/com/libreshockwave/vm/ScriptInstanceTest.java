@@ -383,19 +383,18 @@ class ScriptInstanceTest {
 
     @Test
     void testPropListSetaProp() {
-        Datum.PropList propList = new Datum.PropList(new LinkedHashMap<>());
+        Datum.PropList propList = new Datum.PropList();
 
         CallOpcodesTestHelper.callPropListMethod(propList, "setaprop",
             List.of(Datum.symbol("key"), Datum.of("value")));
 
-        assertEquals("value", propList.properties().get("key").toStr());
+        assertEquals("value", propList.get("key").toStr());
     }
 
     @Test
     void testPropListGetaProp() {
-        Map<String, Datum> props = new LinkedHashMap<>();
-        props.put("key", Datum.of("value"));
-        Datum.PropList propList = new Datum.PropList(props);
+        Datum.PropList propList = new Datum.PropList();
+        propList.put("key", Datum.of("value"));
 
         Datum result = CallOpcodesTestHelper.callPropListMethod(propList, "getaprop",
             List.of(Datum.symbol("key")));
@@ -405,10 +404,9 @@ class ScriptInstanceTest {
 
     @Test
     void testPropListCount() {
-        Map<String, Datum> props = new LinkedHashMap<>();
-        props.put("a", Datum.of(1));
-        props.put("b", Datum.of(2));
-        Datum.PropList propList = new Datum.PropList(props);
+        Datum.PropList propList = new Datum.PropList();
+        propList.put("a", Datum.of(1));
+        propList.put("b", Datum.of(2));
 
         Datum count = CallOpcodesTestHelper.callPropListMethod(propList, "count", List.of());
         assertEquals(2, count.toInt());
@@ -416,11 +414,10 @@ class ScriptInstanceTest {
 
     @Test
     void testPropListFindPos() {
-        Map<String, Datum> props = new LinkedHashMap<>();
-        props.put("first", Datum.of(1));
-        props.put("second", Datum.of(2));
-        props.put("third", Datum.of(3));
-        Datum.PropList propList = new Datum.PropList(props);
+        Datum.PropList propList = new Datum.PropList();
+        propList.put("first", Datum.of(1));
+        propList.put("second", Datum.of(2));
+        propList.put("third", Datum.of(3));
 
         Datum pos1 = CallOpcodesTestHelper.callPropListMethod(propList, "findpos",
             List.of(Datum.symbol("first")));
@@ -441,10 +438,9 @@ class ScriptInstanceTest {
 
     @Test
     void testPropListGetAt() {
-        Map<String, Datum> props = new LinkedHashMap<>();
-        props.put("a", Datum.of(10));
-        props.put("b", Datum.of(20));
-        Datum.PropList propList = new Datum.PropList(props);
+        Datum.PropList propList = new Datum.PropList();
+        propList.put("a", Datum.of(10));
+        propList.put("b", Datum.of(20));
 
         // Get by key
         Datum byKey = CallOpcodesTestHelper.callPropListMethod(propList, "getat",
@@ -459,17 +455,16 @@ class ScriptInstanceTest {
 
     @Test
     void testPropListDuplicate() {
-        Map<String, Datum> props = new LinkedHashMap<>();
-        props.put("x", Datum.of(1));
-        Datum.PropList original = new Datum.PropList(props);
+        Datum.PropList original = new Datum.PropList();
+        original.put("x", Datum.of(1));
 
         Datum result = CallOpcodesTestHelper.callPropListMethod(original, "duplicate", List.of());
 
         assertTrue(result instanceof Datum.PropList);
         Datum.PropList copy = (Datum.PropList) result;
 
-        assertEquals(1, copy.properties().get("x").toInt());
-        assertNotSame(original.properties(), copy.properties());
+        assertEquals(1, copy.get("x").toInt());
+        assertNotSame(original.entries(), copy.entries());
     }
 
     // ========== Script Instance Method Tests ==========
@@ -696,8 +691,7 @@ class ScriptInstanceTest {
     @Test
     void testSetaPropUpdatesPObjectList() {
         // Create pObjectList (simulates Object Manager's property list)
-        Map<String, Datum> objectListProps = new LinkedHashMap<>();
-        Datum.PropList pObjectList = new Datum.PropList(objectListProps);
+        Datum.PropList pObjectList = new Datum.PropList();
 
         // Create instance with pObjectList
         Map<String, Datum> props = new LinkedHashMap<>();
@@ -715,7 +709,7 @@ class ScriptInstanceTest {
         assertEquals(subInstance, instance.properties().get("myManager"));
 
         // Should also be set on pObjectList
-        assertEquals(subInstance, pObjectList.properties().get("myManager"));
+        assertEquals(subInstance, pObjectList.get("myManager"));
     }
 
     @Test

@@ -8,6 +8,7 @@ import com.libreshockwave.id.VarType;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -64,21 +65,130 @@ public sealed interface Datum {
         }
     }
 
-    /** Property list [#a: 1, #b: 2] */
-    record PropList(Map<String, Datum> properties) implements Datum {
-        public PropList {
-            properties = new LinkedHashMap<>(properties);
+    /** Key-value entry in a PropList. */
+    record PropEntry(String key, Datum value) {}
+
+    /**
+     * Property list [#a: 1, #b: 2].
+     * Supports duplicate keys — Director's PropList is an ordered list of key-value pairs.
+     */
+    final class PropList implements Datum {
+        private final java.util.List<PropEntry> entries;
+
+        public PropList() {
+            this.entries = new ArrayList<>();
         }
+
+        public PropList(java.util.List<PropEntry> entries) {
+            this.entries = new ArrayList<>(entries);
+        }
+
+        public java.util.List<PropEntry> entries() { return entries; }
+        public int size() { return entries.size(); }
+        public boolean isEmpty() { return entries.isEmpty(); }
+
+        /** Get first value matching key (exact match). */
+        public Datum get(String key) {
+            for (PropEntry e : entries) {
+                if (e.key().equals(key)) return e.value();
+            }
+            return null;
+        }
+
+        /** Get first value matching key, or default if not found. */
+        public Datum getOrDefault(String key, Datum defaultVal) {
+            Datum v = get(key);
+            return v != null ? v : defaultVal;
+        }
+
+        /** Get first value matching key (case-insensitive). */
+        public Datum getIgnoreCase(String key) {
+            for (PropEntry e : entries) {
+                if (e.key().equalsIgnoreCase(key)) return e.value();
+            }
+            return null;
+        }
+
+        /** Set first matching key's value, or append if not found. */
+        public void put(String key, Datum value) {
+            for (int i = 0; i < entries.size(); i++) {
+                if (entries.get(i).key().equals(key)) {
+                    entries.set(i, new PropEntry(key, value));
+                    return;
+                }
+            }
+            entries.add(new PropEntry(key, value));
+        }
+
+        /** Always append — allows duplicate keys (Director's addProp behavior). */
+        public void add(String key, Datum value) {
+            entries.add(new PropEntry(key, value));
+        }
+
+        /** Remove first entry matching key. */
+        public void remove(String key) {
+            for (int i = 0; i < entries.size(); i++) {
+                if (entries.get(i).key().equals(key)) {
+                    entries.remove(i);
+                    return;
+                }
+            }
+        }
+
+        /** Check if any entry has this key (exact match). */
+        public boolean containsKey(String key) {
+            for (PropEntry e : entries) {
+                if (e.key().equals(key)) return true;
+            }
+            return false;
+        }
+
+        /** Get value at position (0-based). */
+        public Datum getValue(int index) {
+            return entries.get(index).value();
+        }
+
+        /** Get key at position (0-based). */
+        public String getKey(int index) {
+            return entries.get(index).key();
+        }
+
+        /** Set value at position (0-based), preserving the key. */
+        public void setValue(int index, Datum value) {
+            entries.set(index, new PropEntry(entries.get(index).key(), value));
+        }
+
+        /** Remove entry at position (0-based). */
+        public void removeAt(int index) {
+            entries.remove(index);
+        }
+
+        /** Find 1-based position of key (case-insensitive), or 0 if not found. */
+        public int findPos(String key) {
+            for (int i = 0; i < entries.size(); i++) {
+                if (entries.get(i).key().equalsIgnoreCase(key)) return i + 1;
+            }
+            return 0;
+        }
+
         @Override
         public String toString() {
             StringBuilder sb = new StringBuilder("[");
-            boolean first = true;
-            for (Map.Entry<String, Datum> entry : properties.entrySet()) {
-                if (!first) sb.append(", ");
-                sb.append("#").append(entry.getKey()).append(": ").append(entry.getValue());
-                first = false;
+            for (int i = 0; i < entries.size(); i++) {
+                if (i > 0) sb.append(", ");
+                sb.append("#").append(entries.get(i).key()).append(": ").append(entries.get(i).value());
             }
             return sb.append("]").toString();
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            return o instanceof PropList pl && entries.equals(pl.entries);
+        }
+
+        @Override
+        public int hashCode() {
+            return entries.hashCode();
         }
     }
 
@@ -329,11 +439,19 @@ public sealed interface Datum {
     }
 
     static Datum propList() {
-        return new PropList(Map.of());
+        return new PropList();
     }
 
     static Datum propList(Map<String, Datum> props) {
-        return new PropList(props);
+        PropList pl = new PropList();
+        for (Map.Entry<String, Datum> e : props.entrySet()) {
+            pl.add(e.getKey(), e.getValue());
+        }
+        return pl;
+    }
+
+    static Datum propList(java.util.List<PropEntry> entries) {
+        return new PropList(entries);
     }
 
     // Type checking
@@ -476,11 +594,11 @@ public sealed interface Datum {
                 yield new List(copiedItems);
             }
             case PropList pl -> {
-                Map<String, Datum> copiedProps = new LinkedHashMap<>();
-                for (Map.Entry<String, Datum> entry : pl.properties().entrySet()) {
-                    copiedProps.put(entry.getKey(), entry.getValue().deepCopy());
+                java.util.List<PropEntry> copiedEntries = new ArrayList<>(pl.entries().size());
+                for (PropEntry entry : pl.entries()) {
+                    copiedEntries.add(new PropEntry(entry.key(), entry.value().deepCopy()));
                 }
-                yield new PropList(copiedProps);
+                yield new PropList(copiedEntries);
             }
             case ScriptInstance si -> {
                 Map<String, Datum> copiedProps = new LinkedHashMap<>();

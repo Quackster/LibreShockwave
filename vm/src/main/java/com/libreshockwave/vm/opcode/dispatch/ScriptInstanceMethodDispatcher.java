@@ -8,7 +8,6 @@ import com.libreshockwave.vm.builtin.CastLibProvider;
 import com.libreshockwave.vm.opcode.ExecutionContext;
 import com.libreshockwave.vm.util.AncestorChainWalker;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 
 /**
@@ -72,7 +71,7 @@ public final class ScriptInstanceMethodDispatcher {
 
                     // If the property doesn't exist or is VOID, create an empty PropList
                     if (localProp == null || localProp.isVoid()) {
-                        localProp = new Datum.PropList(new LinkedHashMap<>());
+                        localProp = new Datum.PropList();
                         instance.properties().put(localPropName, localProp);
                     }
 
@@ -90,13 +89,12 @@ public final class ScriptInstanceMethodDispatcher {
                         // Integer subKey: positional set (1-based)
                         if (subKey instanceof Datum.Int || subKey instanceof Datum.Float) {
                             int index = subKey.toInt() - 1;
-                            var keys = new java.util.ArrayList<>(pl.properties().keySet());
-                            if (index >= 0 && index < keys.size()) {
-                                pl.properties().put(keys.get(index), value);
+                            if (index >= 0 && index < pl.size()) {
+                                pl.setValue(index, value);
                             }
                         } else {
                             // PropList: set by key
-                            pl.properties().put(keyName, value);
+                            pl.put(keyName, value);
                         }
                     }
                 }
@@ -140,24 +138,18 @@ public final class ScriptInstanceMethodDispatcher {
                         // Integer subKey: positional access (1-based), like List
                         if (subKey instanceof Datum.Int || subKey instanceof Datum.Float) {
                             int index = subKey.toInt() - 1;
-                            var entries = new java.util.ArrayList<>(pl.properties().entrySet());
-                            if (index >= 0 && index < entries.size()) {
-                                return entries.get(index).getValue();
+                            if (index >= 0 && index < pl.size()) {
+                                return pl.getValue(index);
                             }
                             return Datum.VOID;
                         }
-                        // PropList: look up by key (string or symbol, case-insensitive for symbols)
+                        // PropList: look up by key (string or symbol, case-insensitive)
                         String key = getPropertyName(subKey);
                         // Try exact match first, then case-insensitive
-                        if (pl.properties().containsKey(key)) {
-                            return pl.properties().get(key);
-                        }
-                        // Case-insensitive search
-                        for (var entry : pl.properties().entrySet()) {
-                            if (entry.getKey().equalsIgnoreCase(key)) {
-                                return entry.getValue();
-                            }
-                        }
+                        Datum found = pl.get(key);
+                        if (found != null) return found;
+                        found = pl.getIgnoreCase(key);
+                        if (found != null) return found;
                         return Datum.VOID;
                     } else {
                         // Cannot get sub-property from non-list/proplist
