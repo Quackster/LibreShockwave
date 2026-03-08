@@ -708,6 +708,40 @@ if ("char".equals(chunkType)) {
 
 Affected keywords include `char`, `int`, `void`, `class`, `new`, `return`, and any other Java reserved word. Use `if-else` chains with `.equals()` whenever a string variable might match a keyword at runtime.
 
+#### TeaVM nested `yield switch` — avoid nested switch expressions
+
+TeaVM 0.13 silently fails on nested `switch` expressions that use `yield`. When a `yield switch(...) { ... }` appears inside an outer switch expression, the inner switch crashes at WASM runtime with no error:
+
+```java
+// BROKEN in TeaVM WASM — inner switch silently throws:
+return switch (method) {
+    case "count" -> {
+        yield switch (chunkType) {
+            case "char" -> Datum.of(text.length());
+            case "word" -> Datum.of(trimmed.split("\\s+").length);
+            default -> Datum.ZERO;
+        };
+    }
+    default -> Datum.VOID;
+};
+
+// CORRECT — use if-else instead of the inner switch:
+return switch (method) {
+    case "count" -> {
+        if ("char".equals(chunkType)) {
+            yield Datum.of(text.length());
+        } else if ("word".equals(chunkType)) {
+            yield Datum.of(trimmed.split("\\s+").length);
+        } else {
+            yield Datum.ZERO;
+        }
+    }
+    default -> Datum.VOID;
+};
+```
+
+The outer switch expression with `yield` works fine — only the **nesting** of a second switch expression inside it causes the issue.
+
 <details>
 <summary>Multiuser Xtra — WebSocket proxy setup</summary>
 
