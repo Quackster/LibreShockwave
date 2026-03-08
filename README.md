@@ -708,6 +708,57 @@ if ("char".equals(chunkType)) {
 
 Affected keywords include `char`, `int`, `void`, `class`, `new`, `return`, and any other Java reserved word. Use `if-else` chains with `.equals()` whenever a string variable might match a keyword at runtime.
 
+<details>
+<summary>Multiuser Xtra — WebSocket proxy setup</summary>
+
+Director movies that use the **Multiuser Xtra** need a WebSocket-to-TCP proxy because browsers can't open raw TCP sockets. [websockify](https://github.com/novnc/websockify) bridges WebSocket connections from the browser to the TCP server.
+
+Each TCP port your movie connects to needs its own websockify instance. For example, Habbo connects to a game server (port 30001) and a MUS server (port 38101).
+
+#### Installing websockify
+
+```bash
+pip install websockify
+```
+
+#### Quick start
+
+```bash
+# Proxy WebSocket :30001 → TCP 127.0.0.1:30087
+python -m websockify --verbose --traffic 30001 127.0.0.1:30087
+```
+
+Replace ports as needed. The first argument is the WebSocket listen port, the second is the TCP target (`host:port`).
+
+#### Running as a service (Linux — systemd)
+
+Create `/etc/systemd/system/websockify-game.service`:
+
+```ini
+[Unit]
+Description=websockify game proxy (WS :30001 → TCP :30087)
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 -m websockify 30001 127.0.0.1:30087
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Then enable and start:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable websockify-game
+sudo systemctl start websockify-game
+```
+
+Repeat with a second unit file for each additional port (e.g. `websockify-mus.service` for the MUS connection).
+</details>
+
 ### Known Limitations
 
 - No mouse/keyboard event forwarding to Lingo VM (planned)
