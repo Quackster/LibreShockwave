@@ -19,10 +19,6 @@
 
                 <!-- Toolbar -->
                 <div class="toolbar">
-                    <label class="file-label">
-                        <input type="file" id="file-picker" accept=".dcr,.dir,.dxr,.cct,.cst">
-                        Browse...
-                    </label>
                     <span class="toolbar-sep">URL:</span>
                     <input type="text" id="url-input" class="url-input" value="https://sandbox.h4bbo.net/dcr/14.1_b8/habbo.dcr">
                     <button id="load-url-btn" class="btn">Go</button>
@@ -160,17 +156,6 @@
                 .forEach(function(id) { document.getElementById(id).disabled = true; });
             frameInfo.textContent = '';
         }
-
-        // File picker
-        document.getElementById('file-picker').addEventListener('change', function(e) {
-            if (e.target.files[0]) {
-                status.textContent = 'Loading ' + e.target.files[0].name + '...';
-                disableControls();
-                player.reset().then(function() {
-                    player.loadFile(e.target.files[0]);
-                });
-            }
-        });
 
         // URL load — full reset (terminate worker, fresh WASM instance)
         function loadUrl() {
