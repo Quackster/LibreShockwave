@@ -780,21 +780,30 @@ public class CastMember {
                 // member.count(#char) / member.count(#word) / member.count(#line) / member.count(#item)
                 // Returns the number of chunks of the specified type in the member's text content.
                 // Compiled from Lingo expressions like: pTextMem.char.count
+                // NOTE: Uses traditional instanceof+cast instead of pattern matching
+                // because TeaVM WASM doesn't support Java 16+ instanceof patterns.
                 if (args.isEmpty()) yield Datum.ZERO;
-                String chunkType = (args.get(0) instanceof Datum.Symbol s ? s.name() : args.get(0).toStr()).toLowerCase();
+                Datum arg0 = args.get(0);
+                String chunkType;
+                if (arg0 instanceof Datum.Symbol) {
+                    chunkType = ((Datum.Symbol) arg0).name().toLowerCase();
+                } else {
+                    chunkType = arg0.toStr().toLowerCase();
+                }
                 String text = getTextContent();
                 if (text == null || text.isEmpty()) yield Datum.ZERO;
-                yield switch (chunkType) {
-                    case "char" -> Datum.of(text.length());
-                    case "word" -> {
-                        String trimmed = text.trim();
-                        if (trimmed.isEmpty()) yield Datum.ZERO;
-                        yield Datum.of(trimmed.split("\\s+").length);
-                    }
-                    case "line" -> Datum.of(text.split("[\r\n]", -1).length);
-                    case "item" -> Datum.of(text.split(",", -1).length);
-                    default -> Datum.ZERO;
-                };
+                if ("char".equals(chunkType)) {
+                    yield Datum.of(text.length());
+                } else if ("word".equals(chunkType)) {
+                    String trimmed = text.trim();
+                    yield trimmed.isEmpty() ? Datum.ZERO : Datum.of(trimmed.split("\\s+").length);
+                } else if ("line".equals(chunkType)) {
+                    yield Datum.of(text.split("[\r\n]", -1).length);
+                } else if ("item".equals(chunkType)) {
+                    yield Datum.of(text.split(",", -1).length);
+                } else {
+                    yield Datum.ZERO;
+                }
             }
             default -> Datum.VOID;
         };
