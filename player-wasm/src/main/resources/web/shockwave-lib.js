@@ -90,6 +90,15 @@ var LibreShockwave = (function() {
         this._stageWidth  = 640;
         this._stageHeight = 480;
 
+        // Cursor compositing state (decoupled from game tick for smooth movement)
+        this._baseFrame      = null;  // last base frame ImageData (no cursor)
+        this._cursorBitmap   = null;  // {rgba, w, h, regX, regY} or null
+        this._mouseX         = 0;
+        this._mouseY         = 0;
+        this._cursorDirty    = true;  // needs re-composite
+        this._cursorRafId    = null;  // rAF/timer handle for cursor loop
+        this._cursorFps      = opts.cursorFps || 0; // 0 = use requestAnimationFrame (screen refresh)
+
         // Load deduplication: each load() increments this; stale loads bail out
         this._loadSeq     = 0;
 
@@ -212,10 +221,13 @@ var LibreShockwave = (function() {
         canvas.style.outline = 'none'; // Hide focus outline
 
         canvas.addEventListener('mousemove', function(e) {
-            if (!self._worker || !self._workerReady) return;
             var r = canvas.getBoundingClientRect();
             var x = Math.round(e.clientX - r.left);
             var y = Math.round(e.clientY - r.top);
+            self._mouseX = x;
+            self._mouseY = y;
+            self._cursorDirty = true;
+            if (!self._worker || !self._workerReady) return;
             self._worker.postMessage({ type: 'mouseMove', x: x, y: y });
         });
 
@@ -552,6 +564,7 @@ var LibreShockwave = (function() {
         this._worker.postMessage({ type: 'pause' });
         this._playing = false;
         this._stopLoop();
+        this._stopCursorLoop();
     };
 
     ShockwavePlayer.prototype.debugHitTest = function(x, y) {
@@ -573,6 +586,7 @@ var LibreShockwave = (function() {
         this._worker.postMessage({ type: 'stop' });
         this._playing = false;
         this._stopLoop();
+        this._stopCursorLoop();
     };
 
     ShockwavePlayer.prototype.goToFrame = function(f) {
@@ -649,6 +663,7 @@ var LibreShockwave = (function() {
     ShockwavePlayer.prototype.reset = function() {
         var self = this;
         this._stopLoop();
+        this._stopCursorLoop();
         this._playing = false;
         this._pending = null;
         this._pendingUrl = null;
@@ -701,6 +716,7 @@ var LibreShockwave = (function() {
 
     ShockwavePlayer.prototype.destroy = function() {
         this._stopLoop();
+        this._stopCursorLoop();
         if (this._worker) { this._worker.terminate(); this._worker = null; }
     };
 
@@ -820,14 +836,25 @@ var LibreShockwave = (function() {
         this._lastFrameCount  = result.frameCount  || this._lastFrameCount;
         this._lastSpriteCount = result.spriteCount || 0;
 
-        // Blit the pre-composited RGBA frame to the canvas
+        // Cache the base frame (no cursor) for 60fps cursor compositing
         if (result.rgba && result.width > 0 && result.height > 0) {
-            var imgData = new ImageData(result.rgba, result.width, result.height);
-            this._ctx.putImageData(imgData, 0, 0);
+            this._baseFrame = new ImageData(result.rgba, result.width, result.height);
+            this._cursorDirty = true;
+        }
+
+        // Cache cursor bitmap data from worker; start/stop cursor loop as needed
+        var hadCursor = !!this._cursorBitmap;
+        this._cursorBitmap = result.cursorBitmap || null;
+        if (this._cursorBitmap && !hadCursor) {
+            this._startCursorLoop();
+        } else if (!this._cursorBitmap && hadCursor) {
+            this._stopCursorLoop();
         }
 
         // Debug overlay during loading phase (helps diagnose mobile issues without DevTools)
         if (this._loadingPhase && this._opts.debugOverlay) {
+            // Blit base frame first for debug overlay
+            if (this._baseFrame) this._ctx.putImageData(this._baseFrame, 0, 0);
             var ctx = this._ctx;
             var text = 'tick:' + (this._tickCount || 0) +
                        ' sprites:' + this._lastSpriteCount +
@@ -839,6 +866,9 @@ var LibreShockwave = (function() {
             ctx.fillStyle = '#0f0';
             ctx.fillText(text, 4, 12);
             ctx.restore();
+        } else {
+            // Composite and blit immediately (rAF loop also runs for mouse moves between ticks)
+            this._compositeCursorAndBlit();
         }
 
         // Update cursor based on what sprite the mouse is over
@@ -862,6 +892,116 @@ var LibreShockwave = (function() {
             console.log('[LS] _doTick: stopping — playing=' + result.playing + ' enginePlaying=' + result.enginePlaying);
             this._playing = false;
             this._stopLoop();
+            this._stopCursorLoop();
+        }
+    };
+
+    // --- 60fps cursor compositing ---
+
+    /**
+     * Composite the cursor bitmap onto the cached base frame and blit to canvas.
+     * Called from the rAF loop on every mouse move, and after each tick.
+     */
+    ShockwavePlayer.prototype._compositeCursorAndBlit = function() {
+        if (!this._baseFrame) return;
+        var base = this._baseFrame;
+        var cur = this._cursorBitmap;
+
+        if (!cur) {
+            // No bitmap cursor — just blit the base frame
+            this._ctx.putImageData(base, 0, 0);
+            this._cursorDirty = false;
+            return;
+        }
+
+        // Create a working copy of the base frame to overlay cursor onto
+        var w = base.width;
+        var h = base.height;
+        if (!this._compositeData || this._compositeData.width !== w || this._compositeData.height !== h) {
+            this._compositeData = this._ctx.createImageData(w, h);
+        }
+        var dst = this._compositeData.data;
+        var src = base.data;
+        dst.set(src);
+
+        // Overlay cursor at current mouse position
+        var drawX = this._mouseX - cur.regX;
+        var drawY = this._mouseY - cur.regY;
+        var cw = cur.w;
+        var ch = cur.h;
+        var crgba = cur.rgba;
+
+        for (var cy = 0; cy < ch; cy++) {
+            var dstY = drawY + cy;
+            if (dstY < 0 || dstY >= h) continue;
+            for (var cx = 0; cx < cw; cx++) {
+                var dstX = drawX + cx;
+                if (dstX < 0 || dstX >= w) continue;
+
+                var srcOff = (cy * cw + cx) * 4;
+                var alpha = crgba[srcOff + 3];
+                if (alpha === 0) continue;
+
+                var dstOff = (dstY * w + dstX) * 4;
+                if (alpha === 255) {
+                    dst[dstOff]     = crgba[srcOff];
+                    dst[dstOff + 1] = crgba[srcOff + 1];
+                    dst[dstOff + 2] = crgba[srcOff + 2];
+                    dst[dstOff + 3] = 255;
+                } else {
+                    // Alpha blend
+                    var invA = 255 - alpha;
+                    dst[dstOff]     = (crgba[srcOff]     * alpha + dst[dstOff]     * invA) / 255 | 0;
+                    dst[dstOff + 1] = (crgba[srcOff + 1] * alpha + dst[dstOff + 1] * invA) / 255 | 0;
+                    dst[dstOff + 2] = (crgba[srcOff + 2] * alpha + dst[dstOff + 2] * invA) / 255 | 0;
+                    dst[dstOff + 3] = 255;
+                }
+            }
+        }
+
+        this._ctx.putImageData(this._compositeData, 0, 0);
+        this._cursorDirty = false;
+    };
+
+    /**
+     * Start the cursor rendering loop, only when a custom bitmap cursor is active.
+     * Uses requestAnimationFrame (screen refresh rate) by default, or a fixed
+     * interval if options.cursorFps is set (e.g. cursorFps: 60).
+     */
+    ShockwavePlayer.prototype._startCursorLoop = function() {
+        if (this._cursorRafId) return; // already running
+        if (!this._cursorBitmap) return; // no custom cursor — nothing to do
+        var self = this;
+        if (this._cursorFps > 0) {
+            // Fixed interval mode
+            var ms = 1000 / this._cursorFps;
+            this._cursorRafId = setInterval(function() {
+                if (self._cursorDirty && self._cursorBitmap && self._baseFrame) {
+                    self._compositeCursorAndBlit();
+                }
+            }, ms);
+            this._cursorUsingInterval = true;
+        } else {
+            // requestAnimationFrame mode (screen refresh rate)
+            this._cursorUsingInterval = false;
+            function cursorFrame() {
+                if (self._cursorDirty && self._cursorBitmap && self._baseFrame) {
+                    self._compositeCursorAndBlit();
+                }
+                self._cursorRafId = requestAnimationFrame(cursorFrame);
+            }
+            this._cursorRafId = requestAnimationFrame(cursorFrame);
+        }
+    };
+
+    ShockwavePlayer.prototype._stopCursorLoop = function() {
+        if (this._cursorRafId) {
+            if (this._cursorUsingInterval) {
+                clearInterval(this._cursorRafId);
+            } else {
+                cancelAnimationFrame(this._cursorRafId);
+            }
+            this._cursorRafId = null;
         }
     };
 

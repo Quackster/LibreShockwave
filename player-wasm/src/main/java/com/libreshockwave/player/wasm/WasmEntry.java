@@ -353,99 +353,12 @@ public class WasmEntry {
                     .getSpriteRegistry().getRevision();
             byte[] frameRgba = renderer.render(snapshot, wasmPlayer.getCastRevision(), spriteRev);
 
-            // Overlay custom bitmap cursor if active
-            com.libreshockwave.bitmap.Bitmap cursorBmp = wasmPlayer.getPlayer().getCursorBitmap();
-            if (cursorBmp != null) {
-                int stageW = renderer.getWidth();
-                int stageH = renderer.getHeight();
-                // Copy frame to separate buffer so we don't corrupt the cache
-                if (cursorRenderBuffer == null || cursorRenderBuffer.length != frameRgba.length) {
-                    cursorRenderBuffer = new byte[frameRgba.length];
-                }
-                System.arraycopy(frameRgba, 0, cursorRenderBuffer, 0, frameRgba.length);
-                overlayCursorBitmap(cursorRenderBuffer, stageW, stageH, cursorBmp);
-                renderBuffer = cursorRenderBuffer;
-            } else {
-                renderBuffer = frameRgba;
-            }
+            // Base frame only — cursor is composited on the main thread at 60fps
+            renderBuffer = frameRgba;
             return renderBuffer.length;
         } catch (Throwable e) {
             captureError("render", e);
             return 0;
-        }
-    }
-
-    /** Separate buffer for frames with cursor overlay (avoids corrupting SoftwareRenderer cache). */
-    private static byte[] cursorRenderBuffer;
-
-    /**
-     * Overlay a cursor bitmap on the RGBA render buffer at the current mouse position.
-     * Uses white (0xFFFFFF) as transparency color key for 1-bit/8-bit cursors,
-     * or alpha channel for 32-bit cursors.
-     */
-    private static void overlayCursorBitmap(byte[] rgba, int stageW, int stageH,
-                                             com.libreshockwave.bitmap.Bitmap cursor) {
-        var player = wasmPlayer.getPlayer();
-        var input = player.getInputState();
-        int mouseX = input.getMouseH();
-        int mouseY = input.getMouseV();
-
-        // Apply registration point as hotspot offset
-        int[] regPoint = player.getCursorRegPoint();
-        int hotX = regPoint != null ? regPoint[0] : 0;
-        int hotY = regPoint != null ? regPoint[1] : 0;
-
-        int drawX = mouseX - hotX;
-        int drawY = mouseY - hotY;
-
-        int curW = cursor.getWidth();
-        int curH = cursor.getHeight();
-        int[] curPixels = cursor.getPixels();
-        int bitDepth = cursor.getBitDepth();
-
-        for (int cy = 0; cy < curH; cy++) {
-            int dstY = drawY + cy;
-            if (dstY < 0 || dstY >= stageH) continue;
-            for (int cx = 0; cx < curW; cx++) {
-                int dstX = drawX + cx;
-                if (dstX < 0 || dstX >= stageW) continue;
-
-                int srcIdx = cy * curW + cx;
-                if (srcIdx >= curPixels.length) continue;
-
-                int pixel = curPixels[srcIdx];
-                int alpha = (pixel >> 24) & 0xFF;
-                int r = (pixel >> 16) & 0xFF;
-                int g = (pixel >> 8) & 0xFF;
-                int b = pixel & 0xFF;
-
-                // White = transparent for 1-bit and 8-bit cursor bitmaps
-                if (bitDepth <= 8 && r == 255 && g == 255 && b == 255) {
-                    continue;
-                }
-                // Skip fully transparent pixels
-                if (alpha == 0 && bitDepth > 8) {
-                    continue;
-                }
-
-                int dstIdx = (dstY * stageW + dstX) * 4;
-                if (alpha == 255 || bitDepth <= 8) {
-                    // Opaque pixel
-                    rgba[dstIdx]     = (byte) r;
-                    rgba[dstIdx + 1] = (byte) g;
-                    rgba[dstIdx + 2] = (byte) b;
-                    rgba[dstIdx + 3] = (byte) 0xFF;
-                } else {
-                    // Alpha blend
-                    int dstR = rgba[dstIdx] & 0xFF;
-                    int dstG = rgba[dstIdx + 1] & 0xFF;
-                    int dstB = rgba[dstIdx + 2] & 0xFF;
-                    rgba[dstIdx]     = (byte) ((r * alpha + dstR * (255 - alpha)) / 255);
-                    rgba[dstIdx + 1] = (byte) ((g * alpha + dstG * (255 - alpha)) / 255);
-                    rgba[dstIdx + 2] = (byte) ((b * alpha + dstB * (255 - alpha)) / 255);
-                    rgba[dstIdx + 3] = (byte) 0xFF;
-                }
-            }
         }
     }
 
@@ -456,6 +369,106 @@ public class WasmEntry {
     @Export(name = "getRenderBufferAddress")
     public static int getRenderBufferAddress() {
         return renderBuffer != null ? Address.ofData(renderBuffer).toInt() : 0;
+    }
+
+    // === Cursor bitmap exports (composited on main thread at 60fps) ===
+
+    /** RGBA buffer holding the cursor bitmap for the main thread to composite. */
+    private static byte[] cursorBitmapBuffer;
+    private static int cursorBitmapWidth;
+    private static int cursorBitmapHeight;
+    private static int cursorBitDepth;
+    private static int cursorRegX;
+    private static int cursorRegY;
+
+    /**
+     * Update the cursor bitmap buffer from the current cursor state.
+     * Call once per tick. Returns non-zero if a bitmap cursor is active.
+     */
+    @Export(name = "updateCursorBitmap")
+    public static int updateCursorBitmap() {
+        if (wasmPlayer == null || wasmPlayer.getPlayer() == null) {
+            cursorBitmapBuffer = null;
+            return 0;
+        }
+        try {
+            com.libreshockwave.bitmap.Bitmap cursorBmp = wasmPlayer.getPlayer().getCursorBitmap();
+            if (cursorBmp == null) {
+                cursorBitmapBuffer = null;
+                return 0;
+            }
+            int w = cursorBmp.getWidth();
+            int h = cursorBmp.getHeight();
+            int[] pixels = cursorBmp.getPixels();
+            int depth = cursorBmp.getBitDepth();
+
+            int[] regPoint = wasmPlayer.getPlayer().getCursorRegPoint();
+            cursorRegX = regPoint != null ? regPoint[0] : 0;
+            cursorRegY = regPoint != null ? regPoint[1] : 0;
+            cursorBitmapWidth = w;
+            cursorBitmapHeight = h;
+            cursorBitDepth = depth;
+
+            // Convert ARGB int[] to RGBA byte[] with transparency applied
+            int len = w * h * 4;
+            if (cursorBitmapBuffer == null || cursorBitmapBuffer.length != len) {
+                cursorBitmapBuffer = new byte[len];
+            }
+            for (int i = 0; i < pixels.length; i++) {
+                int pixel = pixels[i];
+                int a = (pixel >> 24) & 0xFF;
+                int r = (pixel >> 16) & 0xFF;
+                int g = (pixel >> 8) & 0xFF;
+                int b = pixel & 0xFF;
+
+                if (depth <= 8) {
+                    // Palette-based: white = transparent, everything else = opaque
+                    if (r == 255 && g == 255 && b == 255) {
+                        a = 0; r = 0; g = 0; b = 0;
+                    } else {
+                        a = 255;
+                    }
+                } else {
+                    // 32-bit: use alpha channel as-is
+                    if (a == 0) { r = 0; g = 0; b = 0; }
+                }
+
+                int off = i * 4;
+                cursorBitmapBuffer[off]     = (byte) r;
+                cursorBitmapBuffer[off + 1] = (byte) g;
+                cursorBitmapBuffer[off + 2] = (byte) b;
+                cursorBitmapBuffer[off + 3] = (byte) a;
+            }
+            return 1;
+        } catch (Throwable e) {
+            cursorBitmapBuffer = null;
+            return 0;
+        }
+    }
+
+    @Export(name = "getCursorBitmapWidth")
+    public static int getCursorBitmapWidth() { return cursorBitmapWidth; }
+
+    @Export(name = "getCursorBitmapHeight")
+    public static int getCursorBitmapHeight() { return cursorBitmapHeight; }
+
+    @Export(name = "getCursorBitDepth")
+    public static int getCursorBitDepth() { return cursorBitDepth; }
+
+    @Export(name = "getCursorRegPointX")
+    public static int getCursorRegPointX() { return cursorRegX; }
+
+    @Export(name = "getCursorRegPointY")
+    public static int getCursorRegPointY() { return cursorRegY; }
+
+    @Export(name = "getCursorBitmapAddress")
+    public static int getCursorBitmapAddress() {
+        return cursorBitmapBuffer != null ? Address.ofData(cursorBitmapBuffer).toInt() : 0;
+    }
+
+    @Export(name = "getCursorBitmapLength")
+    public static int getCursorBitmapLength() {
+        return cursorBitmapBuffer != null ? cursorBitmapBuffer.length : 0;
     }
 
     // === Network polling (JS reads pending requests from WASM) ===

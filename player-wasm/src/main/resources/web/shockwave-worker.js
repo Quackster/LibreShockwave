@@ -1189,6 +1189,29 @@ self.onmessage = async function(e) {
                     var cursorType = 0;
                     try { cursorType = _e.exports.getCursorType(); _e._clearEx(); } catch(e5) {}
 
+                    // Read cursor bitmap data (composited on main thread at 60fps)
+                    var cursorBitmap = null;
+                    try {
+                        var hasCursor = _e.exports.updateCursorBitmap(); _e._clearEx();
+                        if (hasCursor) {
+                            var cw = _e.exports.getCursorBitmapWidth();
+                            var ch = _e.exports.getCursorBitmapHeight();
+                            var cLen = _e.exports.getCursorBitmapLength();
+                            var cAddr = _e.exports.getCursorBitmapAddress(); _e._clearEx();
+                            if (cAddr && cLen > 0) {
+                                var cRgba = new Uint8ClampedArray(cLen);
+                                cRgba.set(new Uint8ClampedArray(_e._mem(), cAddr, cLen));
+                                cursorBitmap = {
+                                    rgba: cRgba,
+                                    w: cw,
+                                    h: ch,
+                                    regX: _e.exports.getCursorRegPointX(),
+                                    regY: _e.exports.getCursorRegPointY()
+                                };
+                            }
+                        }
+                    } catch(e6) {}
+
                     // Drain debug log from WASM
                     var debugLog = null;
                     try {
@@ -1200,6 +1223,9 @@ self.onmessage = async function(e) {
                     } catch (logErr) {}
 
                     // Always send a frame response to unblock main thread
+                    var transferList = [];
+                    if (frame) transferList.push(frame.rgba.buffer);
+                    if (cursorBitmap) transferList.push(cursorBitmap.rgba.buffer);
                     self.postMessage({
                         type:          'frame',
                         playing:       stillPlaying,
@@ -1212,8 +1238,9 @@ self.onmessage = async function(e) {
                         height:        frame ? frame.h : 0,
                         spriteCount:   spriteCount,
                         cursorType:    cursorType,
+                        cursorBitmap:  cursorBitmap,
                         debugLog:      debugLog
-                    }, frame ? [frame.rgba.buffer] : []);
+                    }, transferList);
 
                 } finally {
                     _isTicking = false;
