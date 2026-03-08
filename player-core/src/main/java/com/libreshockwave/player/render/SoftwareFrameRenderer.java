@@ -73,7 +73,7 @@ public final class SoftwareFrameRenderer {
         // drawStageBorder(argb, stageWidth, stageHeight, 0xFFFFFFFF);
 
         // Draw 1px black stage border (Director player feature)
-        drawStageBorder(argb, stageWidth, stageHeight, 0x000000);
+        drawStageBorder(argb, stageWidth, stageHeight, 0xFF000000);
 
         return new Bitmap(stageWidth, stageHeight, 32, argb);
     }

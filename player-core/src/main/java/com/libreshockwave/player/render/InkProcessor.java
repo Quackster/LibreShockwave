@@ -166,38 +166,18 @@ public final class InkProcessor {
         int[] srcPixels = src.getPixels();
         int[] result = new int[w * h];
 
-        if (src.getBitDepth() == 32) {
-            // Graduated alpha: near-bg pixels get proportional transparency
-            int bgR = (bgColorRGB >> 16) & 0xFF;
-            int bgG = (bgColorRGB >> 8) & 0xFF;
-            int bgB = bgColorRGB & 0xFF;
-            int threshold = 32;
-
-            for (int i = 0; i < srcPixels.length; i++) {
-                int r = (srcPixels[i] >> 16) & 0xFF;
-                int g = (srcPixels[i] >> 8) & 0xFF;
-                int b = srcPixels[i] & 0xFF;
-                int maxDiff = Math.max(Math.abs(r - bgR),
-                              Math.max(Math.abs(g - bgG), Math.abs(b - bgB)));
-                if (maxDiff == 0) {
-                    result[i] = 0x00000000; // Exact match: fully transparent
-                } else if (maxDiff < threshold) {
-                    // Graduated: proportional alpha
-                    int alpha = maxDiff * 255 / threshold;
-                    result[i] = (alpha << 24) | (srcPixels[i] & 0xFFFFFF);
-                } else {
-                    result[i] = srcPixels[i] | 0xFF000000; // Fully opaque
-                }
-            }
-        } else {
-            // Paletted/indexed bitmaps: exact matching only
-            for (int i = 0; i < srcPixels.length; i++) {
-                int rgb = srcPixels[i] & 0xFFFFFF;
-                if (rgb == bgColorRGB) {
-                    result[i] = 0x00000000; // Fully transparent
-                } else {
-                    result[i] = srcPixels[i] | 0xFF000000; // Fully opaque
-                }
+        // Exact color matching for all bit depths.
+        // Director uses palette-index matching for background transparent ink,
+        // which is equivalent to exact RGB matching for decoded bitmaps.
+        // Graduated alpha was previously used for 32-bit bitmaps to smooth
+        // anti-aliased edges, but it incorrectly reduced the opacity of
+        // near-background content pixels (e.g., #EEEEEE text on white bg).
+        for (int i = 0; i < srcPixels.length; i++) {
+            int rgb = srcPixels[i] & 0xFFFFFF;
+            if (rgb == bgColorRGB) {
+                result[i] = 0x00000000; // Fully transparent
+            } else {
+                result[i] = srcPixels[i] | 0xFF000000; // Fully opaque
             }
         }
 

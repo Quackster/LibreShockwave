@@ -752,7 +752,7 @@ public class CastMember {
     }
 
     /**
-     * Get the combined slot number (castLib << 16 | memberNum).
+     * Get the combined slot number (castLib << 16 | memberId).
      */
     public int getSlotNumber() {
         return (castLibId.value() << 16) | (memberId.value() & 0xFFFF);

@@ -158,6 +158,20 @@ public final class TypeBuiltins {
             return Datum.of(unescapeString(expr.substring(1, expr.length() - 1)));
         }
 
+        // Try to parse color(r, g, b) function call — produced by string(colorDatum) in Director
+        if (expr.startsWith("color(") && expr.endsWith(")")) {
+            String inner = expr.substring(6, expr.length() - 1).trim();
+            String[] parts = inner.split(",");
+            if (parts.length == 3) {
+                try {
+                    int r = Integer.parseInt(parts[0].trim());
+                    int g = Integer.parseInt(parts[1].trim());
+                    int b = Integer.parseInt(parts[2].trim());
+                    return new Datum.Color(r, g, b);
+                } catch (NumberFormatException ignored) {}
+            }
+        }
+
         // Try to parse rgb(r, g, b) function call
         if (expr.startsWith("rgb(") && expr.endsWith(")")) {
             String inner = expr.substring(4, expr.length() - 1).trim();
