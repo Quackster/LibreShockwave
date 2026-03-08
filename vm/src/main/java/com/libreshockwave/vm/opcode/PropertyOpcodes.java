@@ -606,8 +606,7 @@ public final class PropertyOpcodes {
     private static Datum getChainedObjProp(Datum obj, String propName) {
         return switch (obj) {
             case Datum.PropList pl -> {
-                // Search by key (case-insensitive symbol/string match)
-                Datum found = pl.getIgnoreCase(propName);
+                Datum found = pl.get(propName);
                 yield found != null ? found : Datum.VOID;
             }
             case Datum.ScriptInstance si -> AncestorChainWalker.getProperty(si, propName);

@@ -87,10 +87,10 @@ public sealed interface Datum {
         public int size() { return entries.size(); }
         public boolean isEmpty() { return entries.isEmpty(); }
 
-        /** Get first value matching key (exact match). */
+        /** Get first value matching key (case-insensitive, Director semantics). */
         public Datum get(String key) {
             for (PropEntry e : entries) {
-                if (e.key().equals(key)) return e.value();
+                if (e.key().equalsIgnoreCase(key)) return e.value();
             }
             return null;
         }
@@ -101,19 +101,11 @@ public sealed interface Datum {
             return v != null ? v : defaultVal;
         }
 
-        /** Get first value matching key (case-insensitive). */
-        public Datum getIgnoreCase(String key) {
-            for (PropEntry e : entries) {
-                if (e.key().equalsIgnoreCase(key)) return e.value();
-            }
-            return null;
-        }
-
-        /** Set first matching key's value, or append if not found. */
+        /** Set first matching key's value, or append if not found (case-insensitive). */
         public void put(String key, Datum value) {
             for (int i = 0; i < entries.size(); i++) {
-                if (entries.get(i).key().equals(key)) {
-                    entries.set(i, new PropEntry(key, value));
+                if (entries.get(i).key().equalsIgnoreCase(key)) {
+                    entries.set(i, new PropEntry(entries.get(i).key(), value));
                     return;
                 }
             }
@@ -125,20 +117,20 @@ public sealed interface Datum {
             entries.add(new PropEntry(key, value));
         }
 
-        /** Remove first entry matching key. */
+        /** Remove first entry matching key (case-insensitive). */
         public void remove(String key) {
             for (int i = 0; i < entries.size(); i++) {
-                if (entries.get(i).key().equals(key)) {
+                if (entries.get(i).key().equalsIgnoreCase(key)) {
                     entries.remove(i);
                     return;
                 }
             }
         }
 
-        /** Check if any entry has this key (exact match). */
+        /** Check if any entry has this key (case-insensitive). */
         public boolean containsKey(String key) {
             for (PropEntry e : entries) {
-                if (e.key().equals(key)) return true;
+                if (e.key().equalsIgnoreCase(key)) return true;
             }
             return false;
         }

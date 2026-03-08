@@ -143,14 +143,10 @@ public final class ScriptInstanceMethodDispatcher {
                             }
                             return Datum.VOID;
                         }
-                        // PropList: look up by key (string or symbol, case-insensitive)
+                        // PropList: look up by key (case-insensitive)
                         String key = getPropertyName(subKey);
-                        // Try exact match first, then case-insensitive
                         Datum found = pl.get(key);
-                        if (found != null) return found;
-                        found = pl.getIgnoreCase(key);
-                        if (found != null) return found;
-                        return Datum.VOID;
+                        return found != null ? found : Datum.VOID;
                     } else {
                         // Cannot get sub-property from non-list/proplist
                         return Datum.VOID;
