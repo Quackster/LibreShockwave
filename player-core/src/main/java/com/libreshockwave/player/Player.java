@@ -1369,6 +1369,12 @@ public class Player {
             case MOUSE_DOWN -> {
                 int hitSprite = HitTester.hitTest(stageRenderer, getCurrentFrame(),
                         event.stageX(), event.stageY());
+                // Director D6+: if the previously clicked sprite is different from
+                // the current one, send mouseUpOutSide to the old sprite (ScummVM behavior).
+                int lastClicked = inputState.getClickOnSprite();
+                if (lastClicked > 0 && lastClicked != hitSprite) {
+                    dispatcher.dispatchSpriteEvent(lastClicked, "mouseUpOutSide", List.of());
+                }
                 // Track which sprite was clicked so mouseUp can target it
                 inputState.setClickOnSprite(hitSprite);
                 // Built-in Director behavior: clicking on an editable text/field sprite
@@ -1381,18 +1387,14 @@ public class Player {
                 dispatcher.dispatchGlobalEvent(PlayerEvent.MOUSE_DOWN, List.of());
             }
             case MOUSE_UP -> {
-                // mouseUp goes to the sprite that was originally clicked
-                int clickedSprite = inputState.getClickOnSprite();
-                if (clickedSprite > 0) {
-                    // Check if mouse is still over the same sprite
-                    int hitSprite = HitTester.hitTest(stageRenderer, getCurrentFrame(),
-                            event.stageX(), event.stageY());
-                    if (hitSprite == clickedSprite) {
-                        dispatcher.dispatchSpriteEvent(clickedSprite, PlayerEvent.MOUSE_UP, List.of());
-                    } else {
-                        // Mouse released outside the clicked sprite → mouseUpOutSide
-                        dispatcher.dispatchSpriteEvent(clickedSprite, "mouseUpOutSide", List.of());
-                    }
+                // Director dispatches mouseUp to the sprite currently under the mouse,
+                // NOT the sprite that received mouseDown (confirmed via ScummVM).
+                // mouseUpOutSide is dispatched on the NEXT mouseDown if the clicked
+                // sprite has changed (see MOUSE_DOWN case above).
+                int hitSprite = HitTester.hitTest(stageRenderer, getCurrentFrame(),
+                        event.stageX(), event.stageY());
+                if (hitSprite > 0) {
+                    dispatcher.dispatchSpriteEvent(hitSprite, PlayerEvent.MOUSE_UP, List.of());
                 }
                 dispatcher.dispatchGlobalEvent(PlayerEvent.MOUSE_UP, List.of());
             }
