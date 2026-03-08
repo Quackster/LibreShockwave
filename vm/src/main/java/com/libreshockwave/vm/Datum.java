@@ -613,15 +613,8 @@ public sealed interface Datum {
                 }
                 yield new PropList(copiedEntries);
             }
-            case ScriptInstance si -> {
-                Map<String, Datum> copiedProps = new LinkedHashMap<>();
-                for (Map.Entry<String, Datum> entry : si.properties().entrySet()) {
-                    // Don't deep copy property values to avoid infinite recursion
-                    // with circular references like 'ancestor' chains
-                    copiedProps.put(entry.getKey(), entry.getValue());
-                }
-                yield new ScriptInstance(si.scriptId(), copiedProps);
-            }
+            // ScriptInstance: return same instance (Director's duplicate() is shallow for objects)
+            case ScriptInstance si -> si;
             case ArgList al -> {
                 java.util.List<Datum> copiedItems = new ArrayList<>(al.items().size());
                 for (Datum item : al.items()) {

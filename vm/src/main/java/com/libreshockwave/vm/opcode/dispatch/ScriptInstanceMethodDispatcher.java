@@ -32,8 +32,8 @@ public final class ScriptInstanceMethodDispatcher {
                     Datum value = args.get(1);
                     if (propName.equalsIgnoreCase("ancestor") || propName.equals(Datum.PROP_ANCESTOR)) {
                         // Match dirplayer-rs: ancestor can only be set to a ScriptInstance
-                        if (value instanceof Datum.ScriptInstance) {
-                            instance.properties().put(Datum.PROP_ANCESTOR, value);
+                        if (value instanceof Datum.ScriptInstance si) {
+                            instance.properties().put(Datum.PROP_ANCESTOR, si);
                         }
                     } else {
                         throw new LingoException("Cannot setAt property " + propName + " on script instance");
