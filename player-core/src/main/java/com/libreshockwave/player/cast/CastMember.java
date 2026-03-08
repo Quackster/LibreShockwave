@@ -408,7 +408,19 @@ public class CastMember {
                 }
                 yield Datum.of(textRectBottom - textRectTop);
             }
-            case "rect" -> new Datum.Rect(textRectLeft, textRectTop, textRectRight, textRectBottom);
+            case "rect" -> {
+                // With boxType=adjust (0), rect auto-expands to fit rendered text content.
+                // Director's text members auto-expand their rect when boxType=#adjust.
+                if (textBoxType == 0 && textRenderedImage != null && !textImageDirty) {
+                    int renderedHeight = textRenderedImage.getHeight();
+                    int rectHeight = textRectBottom - textRectTop;
+                    if (renderedHeight > rectHeight) {
+                        yield new Datum.Rect(textRectLeft, textRectTop,
+                                textRectRight, textRectTop + renderedHeight);
+                    }
+                }
+                yield new Datum.Rect(textRectLeft, textRectTop, textRectRight, textRectBottom);
+            }
             case "image" -> {
                 // Render text content to a bitmap image
                 Bitmap img = renderTextToImage();

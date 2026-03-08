@@ -99,7 +99,7 @@ public final class ImageMethodDispatcher {
         Datum firstArg = args.get(0);
 
         int left, top, right, bottom;
-        int colorArgb;
+        Datum colorDatum;
 
         if (firstArg instanceof Datum.Rect rect) {
             // fill(rect, color)
@@ -107,17 +107,23 @@ public final class ImageMethodDispatcher {
             top = rect.top();
             right = rect.right();
             bottom = rect.bottom();
-            colorArgb = datumToArgb(args.get(1));
+            colorDatum = args.get(1);
         } else if (args.size() >= 5) {
             // fill(left, top, right, bottom, color)
             left = args.get(0).toInt();
             top = args.get(1).toInt();
             right = args.get(2).toInt();
             bottom = args.get(3).toInt();
-            colorArgb = datumToArgb(args.get(4));
+            colorDatum = args.get(4);
         } else {
             return Datum.VOID;
         }
+
+        // Director no-ops fill() when color is VOID
+        if (colorDatum.isVoid()) {
+            return Datum.VOID;
+        }
+        int colorArgb = datumToArgb(colorDatum);
 
         int w = right - left;
         int h = bottom - top;
