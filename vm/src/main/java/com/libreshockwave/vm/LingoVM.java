@@ -54,7 +54,7 @@ public class LingoVM {
     // Track if we're currently inside an error handler to prevent recursive error handling
     private int errorHandlerDepth = 0;
     private static final Set<String> ERROR_HANDLER_NAMES = Set.of(
-        "error", "alerthook"
+        "alerthook"
     );
 
     // Debug callback for error handler depth tracing and handler call tracing

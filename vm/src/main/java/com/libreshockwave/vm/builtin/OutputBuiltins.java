@@ -18,7 +18,7 @@ public final class OutputBuiltins {
     public static void register(Map<String, BiFunction<LingoVM, List<Datum>, Datum>> builtins) {
         builtins.put("put", OutputBuiltins::put);
         builtins.put("alert", OutputBuiltins::alert);
-        builtins.put("error", OutputBuiltins::error);
+        // error() is defined by Habbo's Error API movie script and must not be shadowed.
         // Note: pass is registered separately by LingoVM since it needs the passCallback
     }
 
@@ -32,24 +32,6 @@ public final class OutputBuiltins {
         }
         System.out.println(sb.toString().trim());
         return Datum.VOID;
-    }
-
-    /**
-     * Lingo error(tObject, tMsg, tMethod, tErrorLevel) — fallback when the
-     * Error Manager script isn't loaded yet. Logs the args and call stack
-     * when debug is enabled, and always returns 0 (false).
-     */
-    private static Datum error(LingoVM vm, List<Datum> args) {
-        if (DebugConfig.isDebugPlaybackEnabled()) {
-            StringBuilder sb = new StringBuilder("[LINGO ERROR] ");
-            for (int i = 0; i < args.size(); i++) {
-                if (i > 0) sb.append(' ');
-                sb.append(args.get(i).toStr());
-            }
-            System.out.println(sb.toString());
-            System.out.println(vm.formatCallStack());
-        }
-        return Datum.of(0);
     }
 
     private static Datum alert(LingoVM vm, List<Datum> args) {
