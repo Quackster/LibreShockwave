@@ -339,6 +339,17 @@ tasks.register('runMultiuserXtraTest', JavaExec) {
     }
 }
 
+tasks.register('runObjectNotFoundTest', JavaExec) {
+    group = 'verification'
+    description = 'Regression test: no "Object not found:" errors from broken ScriptInstance deepCopy'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.ObjectNotFoundTest'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
 tasks.register('runHabboCreateUserTest', JavaExec) {
     group = 'verification'
     description = 'Click Create User on login screen and tick to registration/age screen'
