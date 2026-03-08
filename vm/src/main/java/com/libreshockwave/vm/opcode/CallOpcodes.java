@@ -229,6 +229,16 @@ public final class CallOpcodes {
             if (args.size() < 2) return Datum.VOID;
             point.setComponent(args.get(0).toInt(), args.get(1).toInt());
             return Datum.VOID;
+        } else if ("inside".equalsIgnoreCase(methodName)) {
+            // point.inside(rect) — returns TRUE if the point is inside the rect
+            if (args.isEmpty()) return Datum.FALSE;
+            Datum arg = args.get(0);
+            if (arg instanceof Datum.Rect r) {
+                boolean inside = point.x() >= r.left() && point.x() < r.right()
+                        && point.y() >= r.top() && point.y() < r.bottom();
+                return inside ? Datum.TRUE : Datum.FALSE;
+            }
+            return Datum.FALSE;
         }
         return Datum.VOID;
     }
