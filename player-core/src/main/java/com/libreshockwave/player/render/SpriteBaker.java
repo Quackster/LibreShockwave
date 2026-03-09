@@ -53,13 +53,23 @@ public class SpriteBaker {
         // Apply Director's sprite-level foreColor/backColor colorization.
         // Only applied when Lingo has explicitly set foreColor or backColor
         // on the sprite (via sprite.color, sprite.foreColor, sprite.backColor, etc.).
+        // Skip for script-modified bitmaps: these bitmaps (from window system, copyPixels, etc.)
+        // already have correct final pixel colors. The foreColor/backColor remap is designed for
+        // file-based paletted member bitmaps (1-bit icons, etc.), not runtime-composed images.
         if (baked != null && sprite.getType() != RenderSprite.SpriteType.SHAPE
                 && (sprite.hasForeColor() || sprite.hasBackColor())
-                && InkProcessor.allowsColorize(sprite.getInk())) {
+                && InkProcessor.allowsColorize(sprite.getInk())
+                && !isScriptModifiedSprite(sprite)) {
             baked = InkProcessor.applyForeColorRemap(baked, sprite.getForeColor(), sprite.getBackColor());
         }
 
         return sprite.withBakedBitmap(baked);
+    }
+
+    private boolean isScriptModifiedSprite(RenderSprite sprite) {
+        if (sprite.getDynamicMember() == null) return false;
+        Bitmap bmp = sprite.getDynamicMember().getBitmap();
+        return bmp != null && bmp.isScriptModified();
     }
 
     /**

@@ -272,38 +272,58 @@ public final class ImageMethodDispatcher {
         int destW = destRect.right() - destRect.left();
         int destH = destRect.bottom() - destRect.top();
 
-        // Apply #color/#bgColor remapping to source if specified
+        // Apply #color/#bgColor remapping only for grayscale source bitmaps.
+        // Director's copyPixels remap is designed for default black/white text bitmaps
+        // (e.g., title text rendered as black-on-white, remapped to white-on-teal).
+        // Already-colored bitmaps (e.g., text rendered with explicit txtColor/txtBgColor)
+        // must NOT be remapped — doing so destroys their carefully set pixel colors.
         Bitmap effectiveSrc = src;
         int effectiveSrcX = srcRect.left();
         int effectiveSrcY = srcRect.top();
         if (colorRemap >= 0 || bgColorRemap >= 0) {
-            // Remap source pixels: BLACK→color, WHITE→bgColor (interpolated for grays)
-            int fgR = colorRemap >= 0 ? (colorRemap >> 16) & 0xFF : 0;
-            int fgG = colorRemap >= 0 ? (colorRemap >> 8) & 0xFF : 0;
-            int fgB = colorRemap >= 0 ? colorRemap & 0xFF : 0;
-            int bgR = bgColorRemap >= 0 ? (bgColorRemap >> 16) & 0xFF : 255;
-            int bgG = bgColorRemap >= 0 ? (bgColorRemap >> 8) & 0xFF : 255;
-            int bgB = bgColorRemap >= 0 ? bgColorRemap & 0xFF : 255;
-
-            effectiveSrc = new Bitmap(srcW, srcH, src.getBitDepth());
-            for (int y = 0; y < srcH; y++) {
-                for (int x = 0; x < srcW; x++) {
-                    int pixel = src.getPixel(srcRect.left() + x, srcRect.top() + y);
-                    int alpha = (pixel >>> 24);
-                    int r = (pixel >> 16) & 0xFF;
-                    int g = (pixel >> 8) & 0xFF;
-                    int b = pixel & 0xFF;
-                    int gray = (r + g + b) / 3;
-                    // Director remap: BLACK(0)→color, WHITE(255)→bgColor
-                    float t = gray / 255.0f;
-                    int nr = (int) ((1 - t) * fgR + t * bgR + 0.5f);
-                    int ng = (int) ((1 - t) * fgG + t * bgG + 0.5f);
-                    int nb = (int) ((1 - t) * fgB + t * bgB + 0.5f);
-                    effectiveSrc.setPixel(x, y, (alpha << 24) | (nr << 16) | (ng << 8) | nb);
+            // Sample source pixels to check if they're grayscale (safe to remap)
+            boolean isGrayscale = true;
+            int sampleStep = Math.max(1, (srcW * srcH) / 64);
+            for (int i = 0; i < srcW * srcH && isGrayscale; i += sampleStep) {
+                int sx = srcRect.left() + (i % srcW);
+                int sy = srcRect.top() + (i / srcW);
+                int p = src.getPixel(sx, sy);
+                if ((p >>> 24) == 0) continue; // skip transparent
+                int r = (p >> 16) & 0xFF;
+                int g = (p >> 8) & 0xFF;
+                int b = p & 0xFF;
+                if (Math.abs(r - g) > 2 || Math.abs(g - b) > 2) {
+                    isGrayscale = false;
                 }
             }
-            effectiveSrcX = 0;
-            effectiveSrcY = 0;
+
+            if (isGrayscale) {
+                int fgR = colorRemap >= 0 ? (colorRemap >> 16) & 0xFF : 0;
+                int fgG = colorRemap >= 0 ? (colorRemap >> 8) & 0xFF : 0;
+                int fgB = colorRemap >= 0 ? colorRemap & 0xFF : 0;
+                int bgR = bgColorRemap >= 0 ? (bgColorRemap >> 16) & 0xFF : 255;
+                int bgG = bgColorRemap >= 0 ? (bgColorRemap >> 8) & 0xFF : 255;
+                int bgB = bgColorRemap >= 0 ? bgColorRemap & 0xFF : 255;
+
+                effectiveSrc = new Bitmap(srcW, srcH, src.getBitDepth());
+                for (int y = 0; y < srcH; y++) {
+                    for (int x = 0; x < srcW; x++) {
+                        int pixel = src.getPixel(srcRect.left() + x, srcRect.top() + y);
+                        int alpha = (pixel >>> 24);
+                        int r = (pixel >> 16) & 0xFF;
+                        int g = (pixel >> 8) & 0xFF;
+                        int b = pixel & 0xFF;
+                        int gray = (r + g + b) / 3;
+                        float t = gray / 255.0f;
+                        int nr = (int) ((1 - t) * fgR + t * bgR + 0.5f);
+                        int ng = (int) ((1 - t) * fgG + t * bgG + 0.5f);
+                        int nb = (int) ((1 - t) * fgB + t * bgB + 0.5f);
+                        effectiveSrc.setPixel(x, y, (alpha << 24) | (nr << 16) | (ng << 8) | nb);
+                    }
+                }
+                effectiveSrcX = 0;
+                effectiveSrcY = 0;
+            }
         }
 
         if (srcW == destW && srcH == destH) {
