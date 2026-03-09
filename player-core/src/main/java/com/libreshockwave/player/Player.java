@@ -10,6 +10,7 @@ import com.libreshockwave.player.behavior.BehaviorManager;
 import com.libreshockwave.player.cast.CastLib;
 import com.libreshockwave.player.cast.CastLibManager;
 import com.libreshockwave.player.cast.CastMember;
+import com.libreshockwave.cast.BitmapInfo;
 import com.libreshockwave.cast.MemberType;
 import com.libreshockwave.player.sprite.SpriteState;
 import com.libreshockwave.player.event.EventDispatcher;
@@ -82,6 +83,10 @@ public class Player {
 
     // Rollover tracking for mouseEnter/mouseLeave/mouseWithin events
     private int previousRolloverSprite = 0;
+
+    // Movie-level palette (from score's palette channel) — used for all 8-bit bitmap decoding
+    private Palette moviePalette;
+    private int moviePaletteFrame = -1; // frame at which moviePalette was last resolved
 
     private final PlayerTraceListener playerTraceListener;
 
@@ -465,6 +470,20 @@ public class Player {
         // Each CastMemberChunk stores a reference to the DirectorFile it was loaded from.
         // Use that file first to avoid cross-file chunk ID collisions.
         DirectorFile memberFile = member.file();
+
+        // For external cast bitmaps, resolve palette cross-file.
+        // External casts often don't contain palette cast members, so the bitmap's
+        // palette reference (clutId) may point to a palette in the main movie file.
+        if (memberFile != null && memberFile != file && member.isBitmap()) {
+            Palette crossFilePalette = resolvePaletteCrossFile(member, memberFile);
+            if (crossFilePalette != null) {
+                Optional<Bitmap> result = memberFile.decodeBitmap(member, crossFilePalette);
+                if (result.isPresent()) {
+                    return result;
+                }
+            }
+        }
+
         if (memberFile != null) {
             Optional<Bitmap> result = memberFile.decodeBitmap(member);
             if (result.isPresent()) {
@@ -495,6 +514,60 @@ public class Player {
         }
 
         return Optional.empty();
+    }
+
+    /**
+     * Resolve palette cross-file for an external cast bitmap.
+     * If the bitmap's palette can't be found in its own file, tries the main movie
+     * file and other loaded cast libraries.
+     * @return The resolved palette, or null if no cross-file resolution is needed
+     */
+    private Palette resolvePaletteCrossFile(CastMemberChunk member, DirectorFile memberFile) {
+        if (member.specificData() == null || member.specificData().length < 10) {
+            return null;
+        }
+
+        int dirVer = 1200;
+        if (memberFile.getConfig() != null) {
+            dirVer = memberFile.getConfig().directorVersion();
+        }
+        BitmapInfo info = BitmapInfo.parse(member.specificData(), dirVer);
+        int paletteId = info.paletteId();
+
+        // Built-in palettes (negative IDs) don't need cross-file resolution
+        if (paletteId < 0) {
+            return null;
+        }
+
+        // Check if the palette exists in the member's own file
+        Palette pal = memberFile.resolvePaletteExact(paletteId);
+        if (pal != null) {
+            return null; // Found in own file — no override needed
+        }
+
+        // Not found in own file — try main movie file
+        if (file != null) {
+            pal = file.resolvePaletteExact(paletteId);
+            if (pal != null) {
+                return pal;
+            }
+        }
+
+        // Try other loaded cast libraries
+        if (castLibManager != null) {
+            for (CastLib castLib : castLibManager.getCastLibs().values()) {
+                if (!castLib.isLoaded()) continue;
+                DirectorFile src = castLib.getSourceFile();
+                if (src != null && src != memberFile && src != file) {
+                    pal = src.resolvePaletteExact(paletteId);
+                    if (pal != null) {
+                        return pal;
+                    }
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -611,6 +684,64 @@ public class Player {
      */
     public FrameSnapshot getFrameSnapshot() {
         return FrameSnapshot.capture(stageRenderer, getCurrentFrame(), state.name(), spriteBaker, this);
+    }
+
+    /**
+     * Get the movie's current palette (from score's palette channel).
+     * In Director's 8-bit color model, all bitmaps on stage share this palette.
+     * Returns null if no palette channel is set (use bitmap's own palette).
+     */
+    public Palette getMoviePalette() {
+        int currentFrame = frameContext.getCurrentFrame() - 1; // 0-indexed
+        if (currentFrame != moviePaletteFrame) {
+            moviePaletteFrame = currentFrame;
+            moviePalette = resolveMoviePalette(currentFrame);
+        }
+        return moviePalette;
+    }
+
+    private Palette resolveMoviePalette(int frame) {
+        if (file == null) return null;
+
+        // Priority 1: Score palette channel (per-frame)
+        var paletteData = file.getScorePalette(frame);
+        if (paletteData != null) {
+            // ScummVM: negative member values are built-in palette IDs
+            if (paletteData.castMember() < 0) {
+                return Palette.getBuiltIn(paletteData.castMember());
+            }
+            Palette pal = resolvePaletteByMember(paletteData.castLib(), paletteData.castMember());
+            if (pal != null) return pal;
+        }
+
+        // Priority 2: Config default palette (movie-level)
+        var config = file.getConfig();
+        if (config != null && config.defaultPaletteMember() != 0) {
+            int castLib = config.defaultPaletteCastLib();
+            int member = config.defaultPaletteMember();
+            // ScummVM: negative member values are built-in palette IDs
+            if (member < 0) {
+                return Palette.getBuiltIn(member);
+            }
+            Palette pal = resolvePaletteByMember(castLib, member);
+            if (pal != null) return pal;
+        }
+
+        return null;
+    }
+
+    private Palette resolvePaletteByMember(int castLib, int memberNum) {
+        if (castLibManager != null) {
+            CastMemberChunk palChunk = castLibManager.getCastMember(
+                castLib > 0 ? castLib : 1, memberNum);
+            if (palChunk != null && palChunk.file() != null) {
+                return palChunk.file().resolvePalette(memberNum - 1);
+            }
+        }
+        if (file != null) {
+            return file.resolvePalette(memberNum - 1);
+        }
+        return null;
     }
 
     /**
