@@ -29,7 +29,8 @@ public record ConfigChunk(
     int commentFont,
     int commentSize,
     int commentStyle,
-    int defaultPalette,
+    int defaultPaletteCastLib,
+    int defaultPaletteMember,
     int movieVersion,
     short platform
 ) implements Chunk {
@@ -115,7 +116,16 @@ public record ConfigChunk(
         /* 54 */ int tempo = reader.readI16();
         /* 56 */ short platform = reader.readShort();
 
-        int defaultPalette = 0;
+        // Read default palette (D5+) — stored at offsets 76-80 in the DRCF/VWCF chunk.
+        // ScummVM: Cast::loadConfig() reads castLib (int16) at 76, member (int16) at 78.
+        int defaultPaletteCastLib = 0;
+        int defaultPaletteMember = 0;
+        if (reader.bytesLeft() >= 22) { // Need at least 22 bytes from offset 58 to 80
+            reader.skip(18); // Skip offsets 58-75 (field30, defPaletteNum, chunkBaseNum, etc.)
+            /* 76 */ defaultPaletteCastLib = reader.readI16();
+            /* 78 */ defaultPaletteMember = reader.readI16();
+        }
+
         int movieVersion = fileVersion;
 
         return new ConfigChunk(
@@ -126,7 +136,7 @@ public record ConfigChunk(
             minMember, maxMember,
             tempo, bgColor, stageColor, stageColorRGB,
             commentFont, commentSize, commentStyle,
-            defaultPalette, movieVersion, platform
+            defaultPaletteCastLib, defaultPaletteMember, movieVersion, platform
         );
     }
 }
