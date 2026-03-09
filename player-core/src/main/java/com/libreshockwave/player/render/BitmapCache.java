@@ -109,9 +109,22 @@ public class BitmapCache {
         // Decode bitmap (sync when no submitter available, async otherwise)
         Runnable decodeTask = () -> {
             try {
+                // ScummVM renders all sprites in a shared movie palette color space.
+                // For DARKEN/LIGHTEN inks (which do per-channel MIN/MAX against the
+                // background), we must decode with the movie palette so the car body
+                // colors match the background's palette space. Otherwise a bitmap
+                // decoded with its own palette may produce colors that are all lighter
+                // than the background, making DARKEN invisible.
+                Palette effectivePalette = paletteOverride;
+                if (effectivePalette == null
+                        && (ink == InkMode.DARKEN.code() || ink == InkMode.LIGHTEN.code()
+                            || ink == InkMode.DARKEST.code() || ink == InkMode.LIGHTEST.code())) {
+                    effectivePalette = player.getMoviePalette();
+                }
+
                 Optional<Bitmap> bitmap;
-                if (paletteOverride != null) {
-                    bitmap = player.decodeBitmap(member, paletteOverride);
+                if (effectivePalette != null) {
+                    bitmap = player.decodeBitmap(member, effectivePalette);
                 } else {
                     bitmap = player.decodeBitmap(member);
                 }
@@ -124,7 +137,7 @@ public class BitmapCache {
 
                 // Parse BitmapInfo for useAlpha and paletteId
                 boolean useAlpha = false;
-                Palette palette = paletteOverride;
+                Palette palette = effectivePalette;
                 if (member.specificData() != null && member.specificData().length >= 10) {
                     DirectorFile memberFile = member.file();
                     int dirVer = 1200;
