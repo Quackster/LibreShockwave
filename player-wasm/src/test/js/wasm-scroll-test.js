@@ -106,7 +106,7 @@ async function main() {
         page.on('console', msg => {
             const t = msg.text();
             if (t.includes('[TEST]')) console.log('  [page] ' + t);
-            if (t.includes('[LS-DEBUG]')) { console.log('  ' + t.trim()); debugLines.push(t.trim()); }
+            if (t.includes('[DEBUG-') || t.includes('[wasm]')) { console.log('  ' + t.trim()); debugLines.push(t.trim()); }
         });
 
         const html = `<!DOCTYPE html><html><body>
@@ -127,7 +127,7 @@ var player = LibreShockwave.create('stage', {
     onLoad: function(i) { _ts.loaded = true; console.log('[TEST] loaded ' + i.width + 'x' + i.height); },
     onFrame: function(f) { _ts.tick++; _ts.frame = f; },
     onError: function(m) { console.error('[TEST] Error: ' + m); },
-    onDebugLog: function(msg) { if (msg.includes('[LS-DEBUG]')) console.log(msg.trim()); }
+    onDebugLog: function(msg) { console.log('  [wasm] ' + msg.trim()); }
 });
 player.load('${baseUrl}/${dcrFileName}');
 <\/script></body></html>`;
@@ -154,7 +154,7 @@ player.load('${baseUrl}/${dcrFileName}');
         await captureCanvas(page, path.join(outputDir, '00_login_screen.png'));
         console.log('Saved: 00_login_screen.png');
 
-        // Click "create one here"
+        // Click "create one here" (the original working coordinate from registration test)
         console.log('Clicking "create one here" at (485, 161)...');
         await clickCanvas(page, 485, 161);
         await new Promise(r => setTimeout(r, 3000));
@@ -169,6 +169,10 @@ player.load('${baseUrl}/${dcrFileName}');
         }
         if (!loaded) { console.log('FAIL: Dialog content did not load'); process.exitCode = 1; return; }
         console.log('Dialog content loaded');
+
+        // Capture state after dialog loads
+        await captureCanvas(page, path.join(outputDir, '00b_after_create_click.png'));
+        console.log('Saved: 00b_after_create_click.png');
 
         // Click "I am 11 or older"
         console.log('Clicking "I am 11 or older" at (617, 458)...');
