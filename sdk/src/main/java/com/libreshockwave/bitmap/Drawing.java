@@ -31,15 +31,18 @@ public class Drawing {
                                    int width, int height,
                                    InkMode ink, int blend) {
         if (width <= 0 || height <= 0) return;
-        // For MATTE ink, pre-process the source region with flood-fill matte.
-        // Director's MATTE in copyPixels makes border-connected background pixels transparent.
+        // For MATTE ink, pre-process the FULL source image with flood-fill matte.
+        // Director applies matte to the entire source member, then extracts the
+        // copy region. This preserves content that forms "islands" in the full
+        // image but would be border-connected in a cropped sub-region (e.g.,
+        // cloud bitmaps cropped during turn animations).
         Bitmap effectiveSrc = src;
         int effectiveSrcX = srcX;
         int effectiveSrcY = srcY;
         if (ink == InkMode.MATTE) {
-            effectiveSrc = applyMatteToRegion(src, srcX, srcY, width, height);
-            effectiveSrcX = 0;
-            effectiveSrcY = 0;
+            effectiveSrc = applyMatteToRegion(src, 0, 0, src.getWidth(), src.getHeight());
+            effectiveSrcX = srcX;
+            effectiveSrcY = srcY;
         }
 
         for (int y = 0; y < height; y++) {
