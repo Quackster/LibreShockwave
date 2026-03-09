@@ -83,10 +83,18 @@ public final class InkProcessor {
                 return src;
             }
             return applyBackgroundTransparent(src, bgColor);
+        } else if (ink == InkMode.DARKEN || ink == InkMode.LIGHTEN) {
+            // ScummVM: DARKEN and LIGHTEN use matte (flood-fill from edges) for transparency,
+            // not color-key matching. This removes border-connected background pixels while
+            // preserving interior pixels of the same color (e.g., car fill areas).
+            int matteColor = resolveMatteColor(src, ink, backColor, useAlpha, palette);
+            if (matteColor < 0) {
+                return src;
+            }
+            return applyMatte(src, matteColor);
         } else if (ink == InkMode.NOT_GHOST || ink == InkMode.ADD_PIN
                 || ink == InkMode.ADD || ink == InkMode.SUBTRACT_PIN || ink == InkMode.SUBTRACT
-                || ink == InkMode.BACKGROUND_TRANSPARENT
-                || ink == InkMode.LIGHTEN || ink == InkMode.DARKEN) {
+                || ink == InkMode.BACKGROUND_TRANSPARENT) {
             // Background transparent / not-ghost / etc: color-key
             int bgColor = resolveBackColor(src, ink, backColor, useAlpha, palette);
             if (bgColor < 0) {
@@ -148,7 +156,15 @@ public final class InkProcessor {
             return 0xFFFFFF;
         }
 
-        // Director palette index: 0 = white (255), 255 = black (0)
+        // Resolve palette index through the actual palette.
+        // Director backColor is a palette index — the RGB depends on which palette
+        // is active. Using the bitmap's own palette ensures the resolved RGB matches
+        // the decoded pixel data for correct color-key transparency.
+        if (palette != null && backColor >= 0 && backColor < palette.size()) {
+            return palette.getColor(backColor) & 0xFFFFFF;
+        }
+
+        // Fallback: Director grayscale ramp (0 = white, 255 = black)
         int gray = 255 - backColor;
         return (gray << 16) | (gray << 8) | gray;
     }
