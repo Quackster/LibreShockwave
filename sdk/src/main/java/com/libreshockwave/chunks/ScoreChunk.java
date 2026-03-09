@@ -73,6 +73,17 @@ public record ScoreChunk(
     ) {}
 
     /**
+     * Per-frame palette channel data.
+     * In D6+: channel 4 contains palette info (castLib at bytes 0-1, member at bytes 2-3).
+     * The palette member ID determines which palette all 8-bit bitmaps use for color lookup.
+     */
+    public record PaletteChannelData(
+        int frameIndex,
+        int castLib,
+        int castMember
+    ) {}
+
+    /**
      * Per-channel sprite data (24+ bytes per channel).
      */
     public record ChannelData(
@@ -169,11 +180,13 @@ public record ScoreChunk(
         FrameDataHeader header,
         byte[] decompressedData,
         List<FrameChannelEntry> frameChannelData,
-        List<TempoChannelData> tempoChannelData
+        List<TempoChannelData> tempoChannelData,
+        List<PaletteChannelData> paletteChannelData
     ) {
         public static final ScoreFrameData EMPTY = new ScoreFrameData(
             new FrameDataHeader(0, 24, 0, 0),
             new byte[0],
+            new ArrayList<>(),
             new ArrayList<>(),
             new ArrayList<>()
         );
@@ -280,6 +293,25 @@ public record ScoreChunk(
         for (TempoChannelData td : frameData.tempoChannelData()) {
             if (td.frameIndex() <= frame) {
                 result = td.tempo();
+            } else {
+                break;
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Get the palette member info for the given frame from the score's palette channel.
+     * Returns the most recent palette channel data at or before the given frame,
+     * or null if no palette channel data exists.
+     * @param frame 0-indexed frame number
+     */
+    public PaletteChannelData getFramePalette(int frame) {
+        if (frameData == null || frameData.paletteChannelData() == null) return null;
+        PaletteChannelData result = null;
+        for (PaletteChannelData pd : frameData.paletteChannelData()) {
+            if (pd.frameIndex() <= frame) {
+                result = pd;
             } else {
                 break;
             }
@@ -438,6 +470,7 @@ public record ScoreChunk(
         // Parse channel data into structured entries + tempo data
         List<FrameChannelEntry> frameChannelEntries = new ArrayList<>();
         List<TempoChannelData> tempoChannelEntries = new ArrayList<>();
+        List<PaletteChannelData> paletteChannelEntries = new ArrayList<>();
 
         for (int f = 0; f < frameCount; f++) {
             int frameStart = f * frameSize;
@@ -471,16 +504,22 @@ public record ScoreChunk(
                     int pos = frameStart + c * spriteRecordSize;
                     if (pos + spriteRecordSize > channelData.length) break;
 
-                    if (c == 5) {
-                        // Tempo channel: 20 bytes, tempo FPS at byte 4
-                        if (pos + 5 <= channelData.length) {
-                            int flags1 = channelData[pos] & 0xFF;
-                            int flags2 = channelData[pos + 1] & 0xFF;
-                            int tempoVal = channelData[pos + 4] & 0xFF;
-                            boolean isDefault = flags1 == 0xFF && flags2 == 0xFE;
-                            boolean isEmpty = flags1 == 0 && flags2 == 0 && tempoVal == 0;
-                            if (!isDefault && !isEmpty && tempoVal > 0) {
+                    if (c == 1) {
+                        // Tempo channel (ScummVM D7: offset 48): tempo FPS at byte 6
+                        if (pos + 7 <= channelData.length) {
+                            int tempoVal = channelData[pos + 6] & 0xFF;
+                            if (tempoVal > 0 && tempoVal <= 120) {
                                 tempoChannelEntries.add(new TempoChannelData(f, tempoVal));
+                            }
+                        }
+                    } else if (c == 5) {
+                        // Palette channel (ScummVM D7: offset 240):
+                        // castLib (sint16) at bytes 0-1, member (sint16) at bytes 2-3
+                        if (pos + 4 <= channelData.length) {
+                            int palCastLib = (short)(((channelData[pos] & 0xFF) << 8) | (channelData[pos + 1] & 0xFF));
+                            int palMember = (short)(((channelData[pos + 2] & 0xFF) << 8) | (channelData[pos + 3] & 0xFF));
+                            if (palMember != 0) {
+                                paletteChannelEntries.add(new PaletteChannelData(f, palCastLib, palMember));
                             }
                         }
                     } else {
@@ -498,7 +537,7 @@ public record ScoreChunk(
             }
         }
 
-        return new ScoreFrameData(header, channelData, frameChannelEntries, tempoChannelEntries);
+        return new ScoreFrameData(header, channelData, frameChannelEntries, tempoChannelEntries, paletteChannelEntries);
     }
 
     private static List<FrameInterval> parseFrameIntervals(List<byte[]> entries) {
