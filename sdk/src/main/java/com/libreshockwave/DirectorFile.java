@@ -275,6 +275,15 @@ public class DirectorFile {
     }
 
     /**
+     * Get the score's palette member info for a given frame.
+     * Returns null if no palette channel data exists.
+     * @param frame 0-indexed frame number
+     */
+    public ScoreChunk.PaletteChannelData getScorePalette(int frame) {
+        return scoreChunk != null ? scoreChunk.getFramePalette(frame) : null;
+    }
+
+    /**
      * Resolve a palette by ID.
      * Handles both built-in palettes (negative IDs) and custom cast member palettes (non-negative IDs).
      * @param paletteId The palette ID from BitmapInfo
@@ -282,6 +291,15 @@ public class DirectorFile {
      */
     public Palette resolvePalette(int paletteId) {
         return getPaletteResolver().resolve(paletteId);
+    }
+
+    /**
+     * Resolve a palette by ID without fallbacks.
+     * Returns null if the palette cannot be found in this file.
+     * Used for cross-file palette resolution.
+     */
+    public Palette resolvePaletteExact(int paletteId) {
+        return getPaletteResolver().resolveExact(paletteId);
     }
 
     /**

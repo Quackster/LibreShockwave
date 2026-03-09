@@ -108,6 +108,67 @@ public final class PaletteResolver {
     }
 
     /**
+     * Resolve a palette by ID without fallbacks.
+     * Returns null if no specific match is found (no "first available" or System Mac fallback).
+     * Used for cross-file palette resolution where we need to know if a palette
+     * actually exists in this file.
+     */
+    public Palette resolveExact(int paletteId) {
+        // Negative IDs are built-in palettes
+        if (paletteId < 0) {
+            return Palette.getBuiltIn(paletteId);
+        }
+
+        // Strategy 1: member number lookup
+        int memberNumber = paletteId + 1;
+        for (int castIdx = 0; castIdx < casts.size(); castIdx++) {
+            CastChunk cast = casts.get(castIdx);
+            int minMember = getMinMember(castIdx);
+            List<Integer> memberIds = cast.memberIds();
+            int index = memberNumber - minMember;
+            if (index >= 0 && index < memberIds.size()) {
+                int rawChunkId = memberIds.get(index);
+                if (rawChunkId > 0) {
+                    Palette resolved = resolveFromChunkId(new ChunkId(rawChunkId));
+                    if (resolved != null) {
+                        return resolved;
+                    }
+                }
+            }
+        }
+
+        // Strategy 2: chunk section ID
+        Palette resolved = resolveFromChunkId(new ChunkId(paletteId));
+        if (resolved != null) {
+            return resolved;
+        }
+
+        // Strategy 2b: palette chunk ID
+        for (PaletteChunk pc : palettes) {
+            if (pc.id().value() == paletteId || pc.id().value() == paletteId + 1) {
+                return new Palette(pc.colors(), "Custom Palette #" + pc.id().value());
+            }
+        }
+
+        // Strategy 3: indexed palette member
+        int paletteIndex = 0;
+        for (CastMemberChunk member : castMembers) {
+            if (member.memberType() == MemberType.PALETTE) {
+                if (paletteIndex == paletteId) {
+                    resolved = resolveFromChunkId(member.id());
+                    if (resolved != null) {
+                        return resolved;
+                    }
+                }
+                paletteIndex++;
+            }
+        }
+
+        // No match — return null (no fallback)
+        return null;
+    }
+
+    /**
      * Get the minMember offset for a cast library.
      */
     private int getMinMember(int castIdx) {
