@@ -1,5 +1,6 @@
 # LibreShockwave SDK
-[libreshockwave.net](libreshockwave.net)
+
+[![Website](https://img.shields.io/badge/Website-libreshockwave.net-orange?logo=googlechrome&logoColor=white)](https://libreshockwave.net)
 
 A Java library for parsing Macromedia/Adobe Director and Shockwave files (.dir, .dxr, .dcr, .cct, .cst).
 
