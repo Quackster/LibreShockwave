@@ -51,16 +51,25 @@ public class SpriteBaker {
         };
 
         // Apply Director's sprite-level foreColor/backColor colorization.
-        // Only applied when Lingo has explicitly set foreColor or backColor
-        // on the sprite (via sprite.color, sprite.foreColor, sprite.backColor, etc.).
-        // Skip for script-modified bitmaps: these bitmaps (from window system, copyPixels, etc.)
-        // already have correct final pixel colors. The foreColor/backColor remap is designed for
-        // file-based paletted member bitmaps (1-bit icons, etc.), not runtime-composed images.
-        if (baked != null && sprite.getType() != RenderSprite.SpriteType.SHAPE
-                && (sprite.hasForeColor() || sprite.hasBackColor())
-                && InkProcessor.allowsColorize(sprite.getInk())
-                && !isScriptModifiedSprite(sprite)) {
-            baked = InkProcessor.applyForeColorRemap(baked, sprite.getForeColor(), sprite.getBackColor());
+        int ch = sprite.getChannel();
+        boolean hasColor = sprite.hasForeColor() || sprite.hasBackColor();
+        boolean colorizeOk = InkProcessor.allowsColorize(sprite.getInk());
+        boolean scriptMod = isScriptModifiedSprite(sprite);
+        if (baked != null && sprite.getType() != RenderSprite.SpriteType.SHAPE && hasColor && colorizeOk) {
+            if (scriptMod) {
+                // Script-modified bitmaps (window system buffers, copyPixels results):
+                // Apply simple bgColor replacement — Director replaces white pixels with
+                // backColor for COPY ink sprites. This is safe for colored bitmaps because
+                // only exact white (0xFFFFFF) pixels are replaced, preserving existing content.
+                int bgColor = sprite.getBackColor() & 0xFFFFFF;
+                if (sprite.hasBackColor() && bgColor != 0xFFFFFF) {
+                    baked = InkProcessor.remapExactColor(baked, 0xFFFFFF, bgColor);
+                }
+            } else {
+                // File-loaded member bitmaps (1-bit icons, etc.): apply full grayscale remap
+                // where white→backColor, black→foreColor, gray→interpolated
+                baked = InkProcessor.applyForeColorRemap(baked, sprite.getForeColor(), sprite.getBackColor());
+            }
         }
 
         return sprite.withBakedBitmap(baked);

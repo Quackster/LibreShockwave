@@ -139,7 +139,8 @@ public class StageRenderer {
         List<SpriteState> dynSprites = spriteRegistry.getDynamicSprites();
         for (SpriteState state : dynSprites) {
             int channel = state.getChannel();
-            if (!renderedChannels.contains(channel) && state.hasDynamicMember()) {
+            if (!renderedChannels.contains(channel)
+                    && (state.hasDynamicMember() || state.isPuppet())) {
                 RenderSprite sprite = createDynamicRenderSprite(state);
                 if (sprite != null) {
                     sprites.add(sprite);
@@ -221,6 +222,29 @@ public class StageRenderer {
         int castMember = state.getEffectiveCastMember();
 
         if (castMember <= 0) {
+            // Puppeted sprites without a member can still render if they have
+            // bgColor set (e.g., window system color swatches). In Director,
+            // a visible sprite with bgColor fills its rect with that color.
+            if (state.isPuppet() && state.hasBackColor()) {
+                int[] pos = state.snapshotPosition();
+                int w = pos[3], h = pos[4];
+                if (w > 0 && h > 0) {
+                    // Use bgColor as fill color (Director fills puppet sprite rects
+                    // with bgColor when no member bitmap is set)
+                    int fillColor = state.getBackColor();
+                    return new RenderSprite(
+                        state.getChannel(),
+                        pos[0], pos[1], w, h,
+                        pos[2], true,
+                        RenderSprite.SpriteType.SHAPE,
+                        null, null,
+                        fillColor, state.getBackColor(),
+                        true, state.hasBackColor(),
+                        0, state.getBlend(), // COPY ink for solid fill
+                        state.isFlipH(), state.isFlipV(),
+                        null, state.hasScriptBehaviors());
+                }
+            }
             return null;
         }
 

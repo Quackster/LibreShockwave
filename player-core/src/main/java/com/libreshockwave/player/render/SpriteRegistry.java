@@ -84,12 +84,15 @@ public class SpriteRegistry {
     }
 
     /**
-     * Get all dynamic/puppeted sprites that have members assigned.
-     * Used by StageRenderer to include dynamically created sprites in rendering.
+     * Get all dynamic/puppeted sprites that should be rendered.
+     * Includes sprites with dynamic members AND puppeted sprites (even without
+     * explicit members). In Director, puppeted sprites are always rendered —
+     * the window system uses them for both hit testing and visual display
+     * (e.g., color swatches with bgColor set).
      */
     public List<SpriteState> getDynamicSprites() {
         return sprites.values().stream()
-            .filter(s -> s.hasDynamicMember() || s.isDynamic())
+            .filter(s -> s.hasDynamicMember() || s.isDynamic() || s.isPuppet())
             .toList();
     }
 

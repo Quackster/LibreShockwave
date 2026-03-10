@@ -53,10 +53,6 @@ public final class PropertyOpcodes {
     private static boolean setProp(ExecutionContext ctx) {
         String propName = ctx.resolveName(ctx.getArgument());
         Datum value = ctx.pop();
-        if ("paletteref".equalsIgnoreCase(propName)) {
-            System.out.printf("[SET_PROP] paletteref value=%s receiver=%s%n", value.toStr(),
-                    ctx.getReceiver() != null ? ctx.getReceiver().getClass().getSimpleName() : "null");
-        }
         if (ctx.getReceiver() instanceof Datum.ScriptInstance si) {
             AncestorChainWalker.setProperty(si, propName, value);
             ctx.tracePropertySet(propName, value);
@@ -129,6 +125,19 @@ public final class PropertyOpcodes {
                 SpritePropertyProvider spriteProvider = SpritePropertyProvider.getProvider();
                 yield spriteProvider != null ? spriteProvider.getSpriteProp(sr.channelNum(), propName) : Datum.VOID;
             }
+            case Datum.Int intVal -> {
+                // Director: property access on integers routes to sprite properties.
+                // e.g., 42.bgColor == sprite(42).bgColor. Window system stores pSprite
+                // as an integer channel number, then does pSprite.bgColor = tColor.
+                SpritePropertyProvider spriteProvider = SpritePropertyProvider.getProvider();
+                if (spriteProvider != null && !"ilk".equalsIgnoreCase(propName)) {
+                    yield spriteProvider.getSpriteProp(intVal.value(), propName);
+                }
+                if ("ilk".equalsIgnoreCase(propName)) {
+                    yield Datum.symbol(TypeBuiltins.getIlkType(obj));
+                }
+                yield Datum.VOID;
+            }
             case Datum.StageRef s -> {
                 MoviePropertyProvider stageProvider = MoviePropertyProvider.getProvider();
                 yield stageProvider != null ? stageProvider.getStageProp(propName) : Datum.VOID;
@@ -195,7 +204,6 @@ public final class PropertyOpcodes {
         Datum value = ctx.pop();
         Datum obj = ctx.pop();
 
-
         switch (obj) {
             case Datum.CastLibRef clr -> setCastLibProp(clr, propName, value);
             case Datum.CastMemberRef cmr -> setCastMemberProp(cmr, propName, value);
@@ -216,6 +224,14 @@ public final class PropertyOpcodes {
                 SpritePropertyProvider spriteProvider = SpritePropertyProvider.getProvider();
                 if (spriteProvider != null) {
                     spriteProvider.setSpriteProp(sr.channelNum(), propName, value);
+                }
+            }
+            case Datum.Int intVal -> {
+                // Director: property assignment on integers routes to sprite properties.
+                // e.g., 42.bgColor = color == sprite(42).bgColor = color.
+                SpritePropertyProvider spriteProvider = SpritePropertyProvider.getProvider();
+                if (spriteProvider != null) {
+                    spriteProvider.setSpriteProp(intVal.value(), propName, value);
                 }
             }
             case Datum.StageRef s -> {
@@ -472,12 +488,6 @@ public final class PropertyOpcodes {
         int propertyId = ctx.pop().toInt();
         Datum value = ctx.pop();
         int propertyType = ctx.getArgument();
-
-        // Debug trace for unhandled property types
-        if (propertyType != 0x00 && propertyType != 0x04 && propertyType != 0x06 && propertyType != 0x07) {
-            System.out.printf("[SET] UNHANDLED type=0x%02x propId=%d value=%s%n",
-                    propertyType, propertyId, value.toStr().substring(0, Math.min(50, value.toStr().length())));
-        }
 
         MoviePropertyProvider movieProvider = MoviePropertyProvider.getProvider();
         SpritePropertyProvider spriteProvider = SpritePropertyProvider.getProvider();
