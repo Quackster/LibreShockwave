@@ -94,9 +94,17 @@ public final class InkProcessor {
             }
             return applyBackgroundTransparent(src, bgColor);
         } else if (ink == InkMode.DARKEN || ink == InkMode.LIGHTEN) {
-            // ScummVM: DARKEN and LIGHTEN use matte (flood-fill from edges) for transparency,
-            // not color-key matching. This removes border-connected background pixels while
-            // preserving interior pixels of the same color (e.g., car fill areas).
+            // DARKEN/LIGHTEN compositing naturally handles background transparency:
+            //   DARKEN: min(white, dst) = dst → white is invisible
+            //   LIGHTEN: max(black, dst) = dst → black is invisible
+            // Matte flood-fill is NOT needed and is actively harmful for script-composed
+            // images (e.g., Habbo figure sprites). Those bitmaps are stage-sized with the
+            // figure in the center; if any body part boundary has a 1px white gap, the
+            // flood-fill leaks through and creates transparent holes (horizontal lines).
+            // For paletted bitmaps, apply matte to handle non-white/black palette backgrounds.
+            if (src.getBitDepth() >= 16) {
+                return src; // 16/32-bit: skip matte, let per-pixel compositing handle it
+            }
             int matteColor = resolveMatteColor(src, ink, backColor, useAlpha, palette);
             if (matteColor < 0) {
                 return src;
