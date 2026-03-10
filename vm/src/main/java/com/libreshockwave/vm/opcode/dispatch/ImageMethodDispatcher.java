@@ -54,8 +54,22 @@ public final class ImageMethodDispatcher {
                 yield Datum.VOID;
             }
             case "trimwhitespace" -> {
+                // Director's trimWhiteSpace() returns a CROPPED image (not a rect).
+                // All Habbo usages treat the return value as an image.
                 int[] bounds = bmp.trimWhiteSpace();
-                yield new Datum.Rect(bounds[0], bounds[1], bounds[2], bounds[3]);
+                if (bounds[2] <= bounds[0] || bounds[3] <= bounds[1]) {
+                    // Entirely white - return 1x1 white image
+                    Bitmap empty = new Bitmap(1, 1, bmp.getBitDepth());
+                    empty.fill(0xFFFFFFFF);
+                    yield new Datum.ImageRef(empty);
+                }
+                yield new Datum.ImageRef(bmp.getRegion(bounds[0], bounds[1],
+                        bounds[2] - bounds[0], bounds[3] - bounds[1]));
+            }
+            case "creatematte" -> {
+                // Director's image.createMatte() creates a matte mask via flood-fill from edges.
+                // Returns a mask image where edge-connected white pixels are transparent.
+                yield new Datum.ImageRef(Drawing.createMatte(bmp));
             }
             case "getat" -> {
                 // getAt(index) on image - some scripts use this
@@ -238,11 +252,12 @@ public final class ImageMethodDispatcher {
             return Datum.VOID;
         }
 
-        // Optional propList with ink, blend, color, bgColor
+        // Optional propList with ink, blend, color, bgColor, maskImage
         Palette.InkMode ink = Palette.InkMode.COPY;
         int blend = 255;
         int colorRemap = -1;   // #color param: remap BLACK (foreground) pixels to this color
         int bgColorRemap = -1; // #bgColor param: remap WHITE (background) pixels to this color
+        Bitmap mask = null;    // #maskImage param: matte mask for transparency
 
         if (args.size() >= 4 && args.get(3) instanceof Datum.PropList pl) {
             // Check for #ink property
@@ -264,6 +279,11 @@ public final class ImageMethodDispatcher {
             Datum bgColorDatum = getPropIgnoreCase(pl, "bgColor", "bgcolor", "BgColor");
             if (!bgColorDatum.isVoid()) {
                 bgColorRemap = Datum.datumToArgb(bgColorDatum) & 0xFFFFFF;
+            }
+            // Check for #maskImage property (matte mask for transparency)
+            Datum maskDatum = getPropIgnoreCase(pl, "maskImage", "maskimage", "MaskImage");
+            if (maskDatum instanceof Datum.ImageRef maskRef) {
+                mask = maskRef.bitmap();
             }
         }
 
@@ -331,17 +351,28 @@ public final class ImageMethodDispatcher {
             Drawing.copyPixels(dest, effectiveSrc,
                     destRect.left(), destRect.top(),
                     effectiveSrcX, effectiveSrcY,
-                    srcW, srcH, ink, blend);
+                    srcW, srcH, ink, blend, mask);
         } else {
-            // Scaling needed - create scaled intermediate
+            // Scaling needed - create scaled intermediate, applying mask at source coordinates
             Bitmap scaled = new Bitmap(destW, destH, effectiveSrc.getBitDepth());
             for (int y = 0; y < destH; y++) {
                 int sy = effectiveSrcY + (y * srcH / destH);
                 for (int x = 0; x < destW; x++) {
                     int sx = effectiveSrcX + (x * srcW / destW);
+                    // Check mask at original source coordinates during scaling
+                    if (mask != null) {
+                        int origSx = srcRect.left() + (x * srcW / destW);
+                        int origSy = srcRect.top() + (y * srcH / destH);
+                        if (origSx < 0 || origSx >= mask.getWidth()
+                                || origSy < 0 || origSy >= mask.getHeight()
+                                || (mask.getPixel(origSx, origSy) >>> 24) == 0) {
+                            continue; // Leave as transparent (default 0)
+                        }
+                    }
                     scaled.setPixel(x, y, effectiveSrc.getPixel(sx, sy));
                 }
             }
+            // Mask already applied during scaling, so pass null to Drawing
             Drawing.copyPixels(dest, scaled,
                     destRect.left(), destRect.top(),
                     0, 0, destW, destH, ink, blend);

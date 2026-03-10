@@ -13,6 +13,17 @@ public class Drawing {
 
     /**
      * Copy pixels from source to destination with ink mode blending.
+     */
+    public static void copyPixels(Bitmap dest, Bitmap src,
+                                   int destX, int destY,
+                                   int srcX, int srcY,
+                                   int width, int height,
+                                   InkMode ink, int blend) {
+        copyPixels(dest, src, destX, destY, srcX, srcY, width, height, ink, blend, null);
+    }
+
+    /**
+     * Copy pixels from source to destination with ink mode blending and optional mask.
      *
      * @param dest Destination bitmap
      * @param src Source bitmap
@@ -24,12 +35,14 @@ public class Drawing {
      * @param height Height to copy
      * @param ink Ink mode for blending
      * @param blend Blend amount (0-255, used for BLEND ink)
+     * @param mask Optional mask bitmap (same dimensions as source). Pixels with alpha=0 in mask are skipped.
      */
     public static void copyPixels(Bitmap dest, Bitmap src,
                                    int destX, int destY,
                                    int srcX, int srcY,
                                    int width, int height,
-                                   InkMode ink, int blend) {
+                                   InkMode ink, int blend,
+                                   Bitmap mask) {
         if (width <= 0 || height <= 0) return;
         // For MATTE ink, pre-process the FULL source image with flood-fill matte.
         // Director applies matte to the entire source member, then extracts the
@@ -59,6 +72,16 @@ public class Drawing {
 
                 if (sx < 0 || sx >= effectiveSrc.getWidth() || dx < 0 || dx >= dest.getWidth()) {
                     continue;
+                }
+
+                // Check mask at source coordinates (mask has same dimensions as source)
+                if (mask != null) {
+                    int mx = srcX + x;
+                    int my = srcY + y;
+                    if (mx < 0 || mx >= mask.getWidth() || my < 0 || my >= mask.getHeight()
+                            || (mask.getPixel(mx, my) >>> 24) == 0) {
+                        continue;
+                    }
                 }
 
                 int srcPixel = effectiveSrc.getPixel(sx, sy);
@@ -325,6 +348,62 @@ public class Drawing {
                 }
             }
         }
+    }
+
+    /**
+     * Create a matte mask from a source bitmap using flood-fill from edges.
+     * Returns a new bitmap where edge-connected white pixels are fully transparent (alpha=0)
+     * and all other pixels are fully opaque white (0xFFFFFFFF).
+     * This implements Director's image.createMatte() Lingo method.
+     */
+    public static Bitmap createMatte(Bitmap src) {
+        int w = src.getWidth();
+        int h = src.getHeight();
+        if (w <= 0 || h <= 0) {
+            return new Bitmap(1, 1, 32);
+        }
+
+        // Copy source pixels
+        int[] pixels = new int[w * h];
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                pixels[y * w + x] = src.getPixel(x, y);
+            }
+        }
+
+        // Determine matte color from top-left corner pixel (matching ScummVM approach)
+        int matteRgb = pixels[0] & 0xFFFFFF;
+
+        // BFS flood-fill from edges
+        boolean[] transparent = new boolean[w * h];
+        Queue<Integer> queue = new ArrayDeque<>();
+
+        for (int x = 0; x < w; x++) {
+            seedMatte(pixels, transparent, queue, x, 0, w, matteRgb);
+            seedMatte(pixels, transparent, queue, x, h - 1, w, matteRgb);
+        }
+        for (int y = 1; y < h - 1; y++) {
+            seedMatte(pixels, transparent, queue, 0, y, w, matteRgb);
+            seedMatte(pixels, transparent, queue, w - 1, y, w, matteRgb);
+        }
+
+        while (!queue.isEmpty()) {
+            int idx = queue.poll();
+            int px = idx % w;
+            int py = idx / w;
+            if (px > 0)     seedMatte(pixels, transparent, queue, px - 1, py, w, matteRgb);
+            if (px < w - 1) seedMatte(pixels, transparent, queue, px + 1, py, w, matteRgb);
+            if (py > 0)     seedMatte(pixels, transparent, queue, px, py - 1, w, matteRgb);
+            if (py < h - 1) seedMatte(pixels, transparent, queue, px, py + 1, w, matteRgb);
+        }
+
+        // Build mask: opaque (0xFFFFFFFF) where content, transparent (0x00000000) where edge-connected
+        int[] mask = new int[w * h];
+        for (int i = 0; i < pixels.length; i++) {
+            mask[i] = transparent[i] ? 0x00000000 : 0xFFFFFFFF;
+        }
+
+        return new Bitmap(w, h, 32, mask);
     }
 
     /**
