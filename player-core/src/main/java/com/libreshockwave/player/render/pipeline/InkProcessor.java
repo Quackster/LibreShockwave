@@ -71,6 +71,16 @@ public final class InkProcessor {
             if (matteColor < 0) {
                 return src; // 32-bit with useAlpha — skip processing
             }
+            // Director: sprite bgColor replaces matte color (typically white) before
+            // transparency processing. A white bitmap with bgColor=someColor appears
+            // as a solid colored rectangle — all white becomes bgColor, matte finds
+            // nothing to remove. When bgColor is default white, this is a no-op.
+            if (backColor > 255) {
+                int bgRgb = backColor & 0xFFFFFF;
+                if (bgRgb != matteColor) {
+                    src = remapExactColor(src, matteColor, bgRgb);
+                }
+            }
             return applyMatte(src, matteColor);
         } else if (ink == InkMode.TRANSPARENT || ink == InkMode.REVERSE
                 || ink == InkMode.GHOST || ink == InkMode.NOT_COPY
@@ -252,6 +262,24 @@ public final class InkProcessor {
             transparent[idx] = true;
             queue.add(idx);
         }
+    }
+
+    /**
+     * Replace all pixels exactly matching fromRgb with toRgb, preserving alpha.
+     */
+    public static Bitmap remapExactColor(Bitmap src, int fromRgb, int toRgb) {
+        int w = src.getWidth();
+        int h = src.getHeight();
+        int[] pixels = src.getPixels();
+        int[] result = new int[w * h];
+        for (int i = 0; i < pixels.length; i++) {
+            if ((pixels[i] & 0xFFFFFF) == fromRgb) {
+                result[i] = (pixels[i] & 0xFF000000) | toRgb;
+            } else {
+                result[i] = pixels[i];
+            }
+        }
+        return new Bitmap(w, h, src.getBitDepth(), result);
     }
 
     /**

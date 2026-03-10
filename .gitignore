@@ -33,3 +33,4 @@ node_modules/
 package-lock.json
 /frames
 /player-wasm/frames_wasm
+/frames_figure
