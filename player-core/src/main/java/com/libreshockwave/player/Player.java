@@ -283,7 +283,7 @@ public class Player {
         this.spriteProperties.setCastLibManager(castLibManager);
         this.timeoutManager = new TimeoutManager();
         this.soundManager = new SoundManager(castLibManager);
-        this.bitmapCache = new BitmapCache(false); // Synchronous mode for TeaVM
+        this.bitmapCache = new BitmapCache();
         this.spriteBaker = new SpriteBaker(bitmapCache, castLibManager, this);
         this.inputState = new InputState();
         this.movieProperties.setInputState(inputState);
@@ -1627,9 +1627,6 @@ public class Player {
         if (netManager != null) {
             netManager.shutdown();
         }
-
-        // Shutdown bitmap cache decoder
-        bitmapCache.shutdown();
 
         // Shutdown cast parser executor (only exists in desktop player)
         if (castParserShutdown != null) {

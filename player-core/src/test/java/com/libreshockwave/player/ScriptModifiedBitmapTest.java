@@ -78,7 +78,7 @@ public class ScriptModifiedBitmapTest {
         );
 
         // 6. Bake through SpriteBaker
-        BitmapCache cache = new BitmapCache(false);  // sync mode
+        BitmapCache cache = new BitmapCache();  // sync mode
         SpriteBaker baker = new SpriteBaker(cache, null, null);
         RenderSprite baked = baker.bake(sprite);
 
@@ -119,7 +119,7 @@ public class ScriptModifiedBitmapTest {
                 0, 255, false, false, null, false
         );
 
-        BitmapCache cache = new BitmapCache(false);
+        BitmapCache cache = new BitmapCache();
         SpriteBaker baker = new SpriteBaker(cache, null, null);
         RenderSprite baked = baker.bake(sprite);
 
