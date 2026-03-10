@@ -99,13 +99,7 @@ public class MovieProperties implements MoviePropertyProvider {
             case "long time" -> Datum.of(LocalTime.now().format(DateTimeFormatter.ofPattern("h:mm:ss a")));
 
             // Timer (in ticks - 60ths of a second)
-            case "timer" -> {
-                long elapsed = System.currentTimeMillis() - startTime;
-                int ticks = (int) ((elapsed * 60) / 1000);
-                yield Datum.of(ticks);
-            }
-            case "ticks" -> {
-                // System ticks since startup
+            case "timer", "ticks" -> {
                 long elapsed = System.currentTimeMillis() - startTime;
                 int ticks = (int) ((elapsed * 60) / 1000);
                 yield Datum.of(ticks);

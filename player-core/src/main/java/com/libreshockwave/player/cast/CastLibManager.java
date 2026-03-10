@@ -304,13 +304,7 @@ public class CastLibManager implements CastLibProvider {
      * Get a property for an invalid member reference.
      */
     private Datum getInvalidMemberProp(String propName) {
-        String prop = propName.toLowerCase();
-        return switch (prop) {
-            case "name" -> Datum.EMPTY_STRING;
-            case "number", "castlibnum", "membernum" -> Datum.of(-1);
-            case "type" -> Datum.of("empty");
-            default -> Datum.VOID;
-        };
+        return CastLib.getInvalidMemberProp(propName);
     }
 
     /**

@@ -54,20 +54,11 @@ public class SimpleTextRenderer implements TextRenderer {
             if (text == null || text.isEmpty() || charIndex <= 0) {
                 return new int[]{0, lineHeight};
             }
-            int idx = Math.min(charIndex, text.length());
+            int[] lineInfo = TextRenderer.findCharLine(text, charIndex);
             String[] lines = text.split("[\r\n]");
-            int lineNum = 0, charsSoFar = 0;
-            String lineText = lines.length > 0 ? lines[0] : "";
-            for (int i = 0; i < lines.length; i++) {
-                int lineLen = lines[i].length() + 1;
-                if (charsSoFar + lineLen >= idx) {
-                    lineNum = i; lineText = lines[i]; break;
-                }
-                charsSoFar += lineLen;
-            }
-            int charsOnLine = Math.min(idx - charsSoFar, lineText.length());
-            int x = pfrFont.getStringWidth(lineText.substring(0, charsOnLine));
-            int y = lineNum * lineHeight + pfrFont.getAscent();
+            String lineSubstr = (lineInfo[0] < lines.length) ? lines[lineInfo[0]].substring(0, lineInfo[1]) : "";
+            int x = pfrFont.getStringWidth(lineSubstr);
+            int y = lineInfo[0] * lineHeight + pfrFont.getAscent();
             return new int[]{x, y};
         }
 
@@ -79,23 +70,9 @@ public class SimpleTextRenderer implements TextRenderer {
             return new int[]{0, lineHeight};
         }
 
-        String[] lines = text.split("[\r\n]");
-        int charsSoFar = 0;
-        int lineNum = 0;
-        String lineText = lines.length > 0 ? lines[0] : "";
-        for (int i = 0; i < lines.length; i++) {
-            int lineLen = lines[i].length() + 1;
-            if (charsSoFar + lineLen >= charIndex) {
-                lineNum = i;
-                lineText = lines[i];
-                break;
-            }
-            charsSoFar += lineLen;
-        }
-
-        int charsOnLine = Math.min(charIndex - charsSoFar, lineText.length());
-        int x = charsOnLine * charWidth;
-        int y = lineNum * lineHeight + builtinAscent(fontSize);
+        int[] lineInfo = TextRenderer.findCharLine(text, charIndex);
+        int x = lineInfo[1] * charWidth;
+        int y = lineInfo[0] * lineHeight + builtinAscent(fontSize);
         return new int[]{x, y};
     }
 
@@ -144,7 +121,7 @@ public class SimpleTextRenderer implements TextRenderer {
         List<String> lines = new ArrayList<>();
         if (wordWrap) {
             for (String rawLine : rawLines) {
-                wrapLinePfr(rawLine, font, width, lines);
+                TextRenderer.wrapLine(rawLine, font::getStringWidth, width, lines);
             }
         } else {
             for (String rawLine : rawLines) {
@@ -208,7 +185,7 @@ public class SimpleTextRenderer implements TextRenderer {
         List<String> lines = new ArrayList<>();
         if (wordWrap) {
             for (String rawLine : rawLines) {
-                wrapLineBuiltin(rawLine, charW, width, lines);
+                TextRenderer.wrapLine(rawLine, s -> s.length() * charW, width, lines);
             }
         } else {
             for (String rawLine : rawLines) {
@@ -406,47 +383,4 @@ public class SimpleTextRenderer implements TextRenderer {
         {0x10, 0x08, 0x08, 0x10, 0x08}, // 126 ~
     };
 
-    // --- Word wrap helpers ---
-
-    private static void wrapLinePfr(String text, BitmapFont font, int maxWidth, List<String> out) {
-        if (text.isEmpty()) { out.add(""); return; }
-        if (font.getStringWidth(text) <= maxWidth) { out.add(text); return; }
-        String[] words = text.split("\\s+");
-        StringBuilder current = new StringBuilder();
-        for (String word : words) {
-            if (current.length() == 0) {
-                current.append(word);
-            } else {
-                String candidate = current + " " + word;
-                if (font.getStringWidth(candidate) <= maxWidth) {
-                    current.append(" ").append(word);
-                } else {
-                    out.add(current.toString());
-                    current = new StringBuilder(word);
-                }
-            }
-        }
-        if (current.length() > 0) out.add(current.toString());
-    }
-
-    private static void wrapLineBuiltin(String text, int charWidth, int maxWidth, List<String> out) {
-        if (text.isEmpty()) { out.add(""); return; }
-        int maxChars = Math.max(1, maxWidth / charWidth);
-        if (text.length() <= maxChars) { out.add(text); return; }
-        String[] words = text.split("\\s+");
-        StringBuilder current = new StringBuilder();
-        for (String word : words) {
-            if (current.length() == 0) {
-                current.append(word);
-            } else {
-                if (current.length() + 1 + word.length() <= maxChars) {
-                    current.append(" ").append(word);
-                } else {
-                    out.add(current.toString());
-                    current = new StringBuilder(word);
-                }
-            }
-        }
-        if (current.length() > 0) out.add(current.toString());
-    }
 }

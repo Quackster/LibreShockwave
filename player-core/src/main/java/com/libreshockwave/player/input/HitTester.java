@@ -23,34 +23,8 @@ public final class HitTester {
      * @return the sprite's channel number, or 0 if no sprite hit
      */
     public static int hitTest(StageRenderer renderer, int frame, int stageX, int stageY) {
-        // Use baked sprites (with pixel data) for ink-aware hit testing
-        List<RenderSprite> sprites = renderer.getLastBakedSprites();
-        if (sprites == null || sprites.isEmpty()) {
-            sprites = renderer.getSpritesForFrame(frame);
-        }
-
-        // Iterate back-to-front order from getSpritesForFrame, so we check last (front-most) first
-        for (int i = sprites.size() - 1; i >= 0; i--) {
-            RenderSprite sprite = sprites.get(i);
-            if (!sprite.isVisible()) continue;
-            if (sprite.getChannel() <= 0) continue;
-
-            int left = sprite.getX();
-            int top = sprite.getY();
-            int right = left + sprite.getWidth();
-            int bottom = top + sprite.getHeight();
-
-            if (stageX >= left && stageX < right && stageY >= top && stageY < bottom) {
-                // Ink-aware hit testing: check pixel alpha for non-Copy inks
-                boolean transparent = isPixelTransparent(sprite, stageX - left, stageY - top);
-                if (transparent) {
-                    continue; // Click through transparent pixel
-                }
-                return sprite.getChannel();
-            }
-        }
-
-        return 0;
+        RenderSprite sprite = findHitSprite(renderer, frame, stageX, stageY);
+        return sprite != null ? sprite.getChannel() : 0;
     }
 
     /**
@@ -58,6 +32,15 @@ public final class HitTester {
      * @return the sprite's SpriteType, or null if no sprite hit
      */
     public static RenderSprite.SpriteType hitTestType(StageRenderer renderer, int frame, int stageX, int stageY) {
+        RenderSprite sprite = findHitSprite(renderer, frame, stageX, stageY);
+        return sprite != null ? sprite.getType() : null;
+    }
+
+    /**
+     * Find the front-most visible sprite at the given stage coordinate.
+     * Iterates back-to-front, skipping transparent pixels for non-Copy ink sprites.
+     */
+    private static RenderSprite findHitSprite(StageRenderer renderer, int frame, int stageX, int stageY) {
         List<RenderSprite> sprites = renderer.getLastBakedSprites();
         if (sprites == null || sprites.isEmpty()) {
             sprites = renderer.getSpritesForFrame(frame);
@@ -77,7 +60,7 @@ public final class HitTester {
                 if (isPixelTransparent(sprite, stageX - left, stageY - top)) {
                     continue;
                 }
-                return sprite.getType();
+                return sprite;
             }
         }
 

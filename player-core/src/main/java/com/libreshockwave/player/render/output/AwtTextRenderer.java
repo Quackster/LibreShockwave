@@ -83,7 +83,7 @@ public class AwtTextRenderer implements TextRenderer {
         List<String> lines = new ArrayList<>();
         if (wordWrap) {
             for (String rawLine : rawLines) {
-                wrapLine(rawLine, fm, width, lines);
+                TextRenderer.wrapLine(rawLine, fm::stringWidth, width, lines);
             }
         } else {
             for (String rawLine : rawLines) {
@@ -154,26 +154,12 @@ public class AwtTextRenderer implements TextRenderer {
         g2d.setFont(font);
         FontMetrics fm = g2d.getFontMetrics();
 
-        int idx = Math.min(charIndex, text.length());
+        int[] lineInfo = TextRenderer.findCharLine(text, charIndex);
+        int lineNum = lineInfo[0];
+        int charsOnLine = lineInfo[1];
 
-        // Find which line the character is on
         String[] lines = text.split("[\r\n]");
-        int lineNum = 0;
-        int charsSoFar = 0;
-        String lineText = lines.length > 0 ? lines[0] : "";
-        for (int i = 0; i < lines.length; i++) {
-            int lineLen = lines[i].length() + 1; // +1 for line break
-            if (charsSoFar + lineLen >= idx) {
-                lineNum = i;
-                lineText = lines[i];
-                break;
-            }
-            charsSoFar += lineLen;
-        }
-
-        int charsOnLine = idx - charsSoFar;
-        if (charsOnLine > lineText.length()) charsOnLine = lineText.length();
-        String lineSubstr = lineText.substring(0, charsOnLine);
+        String lineSubstr = (lineNum < lines.length) ? lines[lineNum].substring(0, charsOnLine) : "";
         int x = fm.stringWidth(lineSubstr);
         int lineHeight = fixedLineSpace > 0 ? fixedLineSpace : fm.getHeight();
         int y = lineNum * lineHeight + fm.getAscent();
@@ -302,33 +288,4 @@ public class AwtTextRenderer implements TextRenderer {
         return style;
     }
 
-    private static void wrapLine(String text, FontMetrics fm, int maxWidth, List<String> out) {
-        if (text.isEmpty()) {
-            out.add("");
-            return;
-        }
-        if (fm.stringWidth(text) <= maxWidth) {
-            out.add(text);
-            return;
-        }
-
-        String[] words = text.split("\\s+");
-        StringBuilder current = new StringBuilder();
-        for (String word : words) {
-            if (current.length() == 0) {
-                current.append(word);
-            } else {
-                String candidate = current + " " + word;
-                if (fm.stringWidth(candidate) <= maxWidth) {
-                    current.append(" ").append(word);
-                } else {
-                    out.add(current.toString());
-                    current = new StringBuilder(word);
-                }
-            }
-        }
-        if (current.length() > 0) {
-            out.add(current.toString());
-        }
-    }
 }

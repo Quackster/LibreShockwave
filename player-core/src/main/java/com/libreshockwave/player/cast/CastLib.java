@@ -133,35 +133,7 @@ public class CastLib {
         // Get minMember offset
         int minMember = getMinMember();
 
-        // Track total slot count (including empty slots) for "the number of castMembers"
-        // Must account for minMember offset so iteration 1..count covers all members
-        totalSlotCount = castChunk.memberIds().size() + minMember - 1;
-
-        // Load members from cast chunk
-        for (int i = 0; i < castChunk.memberIds().size(); i++) {
-            int chunkId = castChunk.memberIds().get(i);
-            if (chunkId <= 0) {
-                continue; // Empty slot
-            }
-
-            int memberNumber = i + minMember;
-
-            // Find the cast member chunk with this ID
-            for (CastMemberChunk member : sourceFile.getCastMembers()) {
-                if (member.id().value() == chunkId) {
-                    memberChunks.put(memberNumber, member);
-
-                    // If it's a script member, also load the script
-                    if (member.isScript() && member.scriptId() > 0) {
-                        ScriptChunk script = sourceFile.getScriptByContextId(member.scriptId());
-                        if (script != null) {
-                            scripts.put(memberNumber, script);
-                        }
-                    }
-                    break;
-                }
-            }
-        }
+        loadMembersFromCast(castChunk, minMember);
 
         scanXmedFonts();
         state = State.LOADED;
@@ -187,6 +159,39 @@ public class CastLib {
         }
 
         return 1;
+    }
+
+    /**
+     * Load members from a CastChunk into this cast lib's maps.
+     * Shared by load() (internal casts) and loadFromExternalFile() (external casts).
+     */
+    private void loadMembersFromCast(CastChunk cast, int minMember) {
+        // Track total slot count (including empty slots) for "the number of castMembers"
+        // Must account for minMember offset so iteration 1..count covers all members
+        totalSlotCount = cast.memberIds().size() + minMember - 1;
+
+        for (int i = 0; i < cast.memberIds().size(); i++) {
+            int chunkId = cast.memberIds().get(i);
+            if (chunkId <= 0) {
+                continue; // Empty slot
+            }
+
+            int memberNumber = i + minMember;
+
+            for (CastMemberChunk member : sourceFile.getCastMembers()) {
+                if (member.id().value() == chunkId) {
+                    memberChunks.put(memberNumber, member);
+
+                    if (member.isScript() && member.scriptId() > 0) {
+                        ScriptChunk script = sourceFile.getScriptByContextId(member.scriptId());
+                        if (script != null) {
+                            scripts.put(memberNumber, script);
+                        }
+                    }
+                    break;
+                }
+            }
+        }
     }
 
     /**
@@ -531,7 +536,7 @@ public class CastLib {
     /**
      * Get a property for an invalid/non-existent member.
      */
-    private Datum getInvalidMemberProp(String propName) {
+    static Datum getInvalidMemberProp(String propName) {
         String prop = propName.toLowerCase();
         return switch (prop) {
             case "name" -> Datum.EMPTY_STRING;
@@ -579,34 +584,7 @@ public class CastLib {
             if (minMember <= 0) minMember = 1;
         }
 
-        // Load members from the external cast
-        var extCastChunk = externalCasts.get(0);
-        // totalSlotCount must account for minMember offset so that
-        // "the number of castMembers of castLib N" returns the highest
-        // addressable member number — preIndexMembers iterates 1..count
-        totalSlotCount = extCastChunk.memberIds().size() + minMember - 1;
-        for (int i = 0; i < extCastChunk.memberIds().size(); i++) {
-            int chunkId = extCastChunk.memberIds().get(i);
-            if (chunkId <= 0) {
-                continue;
-            }
-
-            int memberNumber = i + minMember;
-
-            for (CastMemberChunk member : sourceFile.getCastMembers()) {
-                if (member.id().value() == chunkId) {
-                    memberChunks.put(memberNumber, member);
-
-                    if (member.isScript() && member.scriptId() > 0) {
-                        ScriptChunk script = sourceFile.getScriptByContextId(member.scriptId());
-                        if (script != null) {
-                            scripts.put(memberNumber, script);
-                        }
-                    }
-                    break;
-                }
-            }
-        }
+        loadMembersFromCast(externalCasts.get(0), minMember);
     }
 
     /**

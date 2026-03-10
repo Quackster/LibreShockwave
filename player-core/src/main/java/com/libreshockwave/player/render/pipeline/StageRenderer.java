@@ -182,11 +182,12 @@ public class StageRenderer {
 
         // Apply registration point offset (scaled for stretched sprites per ScummVM behavior)
         if (member != null) {
-            x -= scaledRegPointX(member, width);
-            y -= scaledRegPointY(member, height);
+            int[] reg = scaledRegPoint(member, width, height);
+            x -= reg[0];
+            y -= reg[1];
         }
 
-        RenderSprite.SpriteType type = determineSpriteType(member, data);
+        RenderSprite.SpriteType type = member != null ? determineSpriteTypeFromMember(member) : RenderSprite.SpriteType.UNKNOWN;
 
         // Score spriteType 2-8 are tool-palette shapes (rect, oval, line).
         // Only promote to SHAPE if the cast member is actually a Shape type.
@@ -252,8 +253,9 @@ public class StageRenderer {
         if (member != null) {
             type = determineSpriteTypeFromMember(member);
             // Apply registration point offset (scaled for stretched sprites)
-            x -= scaledRegPointX(member, width);
-            y -= scaledRegPointY(member, height);
+            int[] reg = scaledRegPoint(member, width, height);
+            x -= reg[0];
+            y -= reg[1];
             // Fallback auto-size: if sprite still has 0x0 dimensions, derive from member
             if (width == 0 && height == 0 && member.isBitmap()
                     && member.specificData() != null && member.specificData().length >= 10) {
@@ -309,13 +311,6 @@ public class StageRenderer {
         };
     }
 
-    private RenderSprite.SpriteType determineSpriteType(CastMemberChunk member, ScoreChunk.ChannelData data) {
-        if (member == null) {
-            return RenderSprite.SpriteType.UNKNOWN;
-        }
-        return determineSpriteTypeFromMember(member);
-    }
-
     private RenderSprite.SpriteType determineSpriteTypeFromMember(CastMemberChunk member) {
         if (member.isBitmap()) {
             return RenderSprite.SpriteType.BITMAP;
@@ -345,33 +340,26 @@ public class StageRenderer {
     }
 
     /**
-     * Scale registration point X proportionally when sprite width differs from bitmap width.
-     * Director (confirmed via ScummVM) scales regPoint by spriteWidth/bitmapWidth for stretched sprites.
+     * Scale registration point proportionally when sprite dimensions differ from bitmap dimensions.
+     * Director (confirmed via ScummVM) scales regPoint by spriteSize/bitmapSize for stretched sprites.
+     * @return int array {scaledRegX, scaledRegY}
      */
-    private int scaledRegPointX(CastMemberChunk member, int spriteWidth) {
+    private int[] scaledRegPoint(CastMemberChunk member, int spriteWidth, int spriteHeight) {
         int regX = member.regPointX();
-        if (spriteWidth > 0 && member.isBitmap()
+        int regY = member.regPointY();
+        if ((spriteWidth > 0 || spriteHeight > 0) && member.isBitmap()
                 && member.specificData() != null && member.specificData().length >= 10) {
             var bi = com.libreshockwave.cast.BitmapInfo.parse(member.specificData());
             int bmpW = bi.width();
-            if (bmpW > 0 && bmpW != spriteWidth) {
-                return regX * spriteWidth / bmpW;
-            }
-        }
-        return regX;
-    }
-
-    private int scaledRegPointY(CastMemberChunk member, int spriteHeight) {
-        int regY = member.regPointY();
-        if (spriteHeight > 0 && member.isBitmap()
-                && member.specificData() != null && member.specificData().length >= 10) {
-            var bi = com.libreshockwave.cast.BitmapInfo.parse(member.specificData());
             int bmpH = bi.height();
+            if (bmpW > 0 && bmpW != spriteWidth) {
+                regX = regX * spriteWidth / bmpW;
+            }
             if (bmpH > 0 && bmpH != spriteHeight) {
-                return regY * spriteHeight / bmpH;
+                regY = regY * spriteHeight / bmpH;
             }
         }
-        return regY;
+        return new int[]{ regX, regY };
     }
 
     public void reset() {
