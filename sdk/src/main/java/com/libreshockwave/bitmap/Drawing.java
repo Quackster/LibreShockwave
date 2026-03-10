@@ -221,6 +221,7 @@ public class Drawing {
                 return src;
 
             case LIGHTEST:
+                if (srcA == 0) return dest;
                 r = Math.max(srcR, destR);
                 g = Math.max(srcG, destG);
                 b = Math.max(srcB, destB);
@@ -233,23 +234,24 @@ public class Drawing {
                 return packOpaqueRgb(r, g, b);
 
             case DARKEST:
+                if (srcA == 0) return dest;
                 r = Math.min(srcR, destR);
                 g = Math.min(srcG, destG);
                 b = Math.min(srcB, destB);
                 return packOpaqueRgb(r, g, b);
 
             case LIGHTEN:
-                // Only affects if source is lighter
-                r = srcR > destR ? srcR : destR;
-                g = srcG > destG ? srcG : destG;
-                b = srcB > destB ? srcB : destB;
+                if (srcA == 0) return dest;
+                r = Math.max(srcR, destR);
+                g = Math.max(srcG, destG);
+                b = Math.max(srcB, destB);
                 return packOpaqueRgb(r, g, b);
 
             case DARKEN:
-                // Only affects if source is darker
-                r = srcR < destR ? srcR : destR;
-                g = srcG < destG ? srcG : destG;
-                b = srcB < destB ? srcB : destB;
+                if (srcA == 0) return dest;
+                r = Math.min(srcR, destR);
+                g = Math.min(srcG, destG);
+                b = Math.min(srcB, destB);
                 return packOpaqueRgb(r, g, b);
 
             default:

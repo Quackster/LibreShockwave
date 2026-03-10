@@ -369,21 +369,23 @@ public class StageRenderer {
      * @return int array {scaledRegX, scaledRegY}
      */
     private int[] scaledRegPoint(CastMemberChunk member, int spriteWidth, int spriteHeight) {
-        int regX = member.regPointX();
-        int regY = member.regPointY();
-        if ((spriteWidth > 0 || spriteHeight > 0) && member.isBitmap()
-                && member.specificData() != null && member.specificData().length >= 10) {
+        if (member.isBitmap() && member.specificData() != null && member.specificData().length >= 10) {
             var bi = com.libreshockwave.cast.BitmapInfo.parse(member.specificData());
+            // ScummVM's getRegistrationOffset() uses bitmap-local coordinates
+            // (_regX - _initialRect.left, _regY - _initialRect.top) for sprite rendering.
+            int regX = bi.regXLocal();
+            int regY = bi.regYLocal();
             int bmpW = bi.width();
             int bmpH = bi.height();
-            if (bmpW > 0 && bmpW != spriteWidth) {
+            if (spriteWidth > 0 && bmpW > 0 && bmpW != spriteWidth) {
                 regX = regX * spriteWidth / bmpW;
             }
-            if (bmpH > 0 && bmpH != spriteHeight) {
+            if (spriteHeight > 0 && bmpH > 0 && bmpH != spriteHeight) {
                 regY = regY * spriteHeight / bmpH;
             }
+            return new int[]{ regX, regY };
         }
-        return new int[]{ regX, regY };
+        return new int[]{ member.regPointX(), member.regPointY() };
     }
 
     public void reset() {
