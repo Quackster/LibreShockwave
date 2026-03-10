@@ -1,7 +1,9 @@
-package com.libreshockwave.player.render;
+package com.libreshockwave.player.render.output;
 
 import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.id.InkMode;
+import com.libreshockwave.player.render.pipeline.FrameSnapshot;
+import com.libreshockwave.player.render.pipeline.RenderSprite;
 
 /**
  * Pure-Java software renderer that composites a FrameSnapshot into an ARGB int[] buffer.

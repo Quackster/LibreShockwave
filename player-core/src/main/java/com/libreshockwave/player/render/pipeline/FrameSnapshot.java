@@ -1,6 +1,9 @@
-package com.libreshockwave.player.render;
+package com.libreshockwave.player.render.pipeline;
 
 import com.libreshockwave.bitmap.Bitmap;
+import com.libreshockwave.player.render.RenderType;
+import com.libreshockwave.player.render.output.AwtFrameRenderer;
+import com.libreshockwave.player.render.output.SoftwareFrameRenderer;
 
 import java.util.List;
 

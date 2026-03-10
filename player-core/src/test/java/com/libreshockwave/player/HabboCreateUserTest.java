@@ -3,7 +3,7 @@ package com.libreshockwave.player;
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.player.cast.CastLibManager;
 import com.libreshockwave.player.cast.CastMember;
-import com.libreshockwave.player.render.StageRenderer;
+import com.libreshockwave.player.render.pipeline.StageRenderer;
 import com.libreshockwave.player.render.SpriteRegistry;
 import com.libreshockwave.player.sprite.SpriteState;
 import com.libreshockwave.vm.DebugConfig;

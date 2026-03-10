@@ -837,8 +837,8 @@ public class WasmEntry {
                     if (hitChannel == 0) {
                         var ink = sprite.getInkMode();
                         if (ink == com.libreshockwave.id.InkMode.COPY
-                            || sprite.getType() == com.libreshockwave.player.render.RenderSprite.SpriteType.TEXT
-                            || sprite.getType() == com.libreshockwave.player.render.RenderSprite.SpriteType.BUTTON
+                            || sprite.getType() == com.libreshockwave.player.render.pipeline.RenderSprite.SpriteType.TEXT
+                            || sprite.getType() == com.libreshockwave.player.render.pipeline.RenderSprite.SpriteType.BUTTON
                             || sprite.hasBehaviors()) {
                             hitChannel = sprite.getChannel();
                         }

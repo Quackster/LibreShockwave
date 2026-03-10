@@ -3,7 +3,11 @@ package com.libreshockwave.player;
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.player.cast.CastLibManager;
-import com.libreshockwave.player.render.*;
+import com.libreshockwave.player.render.RenderType;
+import com.libreshockwave.player.render.pipeline.FrameSnapshot;
+import com.libreshockwave.player.render.pipeline.RenderSprite;
+import com.libreshockwave.player.render.pipeline.SpriteBaker;
+import com.libreshockwave.player.render.pipeline.StageRenderer;
 import com.libreshockwave.vm.DebugConfig;
 
 import javax.imageio.ImageIO;

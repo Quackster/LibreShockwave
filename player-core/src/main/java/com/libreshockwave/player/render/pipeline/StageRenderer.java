@@ -1,4 +1,4 @@
-package com.libreshockwave.player.render;
+package com.libreshockwave.player.render.pipeline;
 
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.bitmap.Bitmap;
@@ -9,6 +9,7 @@ import com.libreshockwave.chunks.ScoreChunk;
 import com.libreshockwave.player.cast.CastLib;
 import com.libreshockwave.player.cast.CastLibManager;
 import com.libreshockwave.player.cast.CastMember;
+import com.libreshockwave.player.render.SpriteRegistry;
 import com.libreshockwave.player.sprite.SpriteState;
 
 import java.util.ArrayList;

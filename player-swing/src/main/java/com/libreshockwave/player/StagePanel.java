@@ -1,8 +1,8 @@
 package com.libreshockwave.player;
 
 import com.libreshockwave.player.input.DirectorKeyCodes;
-import com.libreshockwave.player.render.AwtFrameRenderer;
-import com.libreshockwave.player.render.FrameSnapshot;
+import com.libreshockwave.player.render.output.AwtFrameRenderer;
+import com.libreshockwave.player.render.pipeline.FrameSnapshot;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;

@@ -1,4 +1,4 @@
-package com.libreshockwave.player.render;
+package com.libreshockwave.player.render.pipeline;
 
 import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.chunks.CastMemberChunk;

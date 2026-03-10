@@ -1,8 +1,8 @@
 package com.libreshockwave.player.wasm;
 
 import com.libreshockwave.bitmap.Bitmap;
-import com.libreshockwave.player.render.FrameSnapshot;
-import com.libreshockwave.player.render.SoftwareFrameRenderer;
+import com.libreshockwave.player.render.pipeline.FrameSnapshot;
+import com.libreshockwave.player.render.output.SoftwareFrameRenderer;
 
 /**
  * WASM-specific renderer that wraps the shared SoftwareFrameRenderer with

@@ -1,4 +1,4 @@
-package com.libreshockwave.player.render;
+package com.libreshockwave.player.render.output;
 
 import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.font.BitmapFont;

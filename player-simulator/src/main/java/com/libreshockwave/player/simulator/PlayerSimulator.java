@@ -2,7 +2,7 @@ package com.libreshockwave.player.simulator;
 
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.player.Player;
-import com.libreshockwave.player.render.FrameSnapshot;
+import com.libreshockwave.player.render.pipeline.FrameSnapshot;
 import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.DebugConfig;
 

@@ -2,8 +2,8 @@ package com.libreshockwave.player.input;
 
 import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.id.InkMode;
-import com.libreshockwave.player.render.RenderSprite;
-import com.libreshockwave.player.render.StageRenderer;
+import com.libreshockwave.player.render.pipeline.RenderSprite;
+import com.libreshockwave.player.render.pipeline.StageRenderer;
 
 import java.util.List;
 

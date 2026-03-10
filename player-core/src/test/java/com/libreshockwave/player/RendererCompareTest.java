@@ -3,7 +3,8 @@ package com.libreshockwave.player;
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.player.cast.FontRegistry;
-import com.libreshockwave.player.render.*;
+import com.libreshockwave.player.render.output.AwtTextRenderer;
+import com.libreshockwave.player.render.output.SimpleTextRenderer;
 
 import com.libreshockwave.chunks.KeyTableChunk;
 import com.libreshockwave.chunks.Chunk;

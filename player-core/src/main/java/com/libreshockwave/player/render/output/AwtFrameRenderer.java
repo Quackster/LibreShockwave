@@ -1,6 +1,9 @@
-package com.libreshockwave.player.render;
+package com.libreshockwave.player.render.output;
 
 import com.libreshockwave.bitmap.Bitmap;
+import com.libreshockwave.player.render.RenderConfig;
+import com.libreshockwave.player.render.pipeline.FrameSnapshot;
+import com.libreshockwave.player.render.pipeline.RenderSprite;
 
 import java.awt.*;
 import java.awt.image.BufferedImage;

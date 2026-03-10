@@ -19,11 +19,11 @@ import com.libreshockwave.player.input.HitTester;
 import com.libreshockwave.player.input.InputEvent;
 import com.libreshockwave.player.input.InputState;
 import com.libreshockwave.player.net.NetManager;
-import com.libreshockwave.player.render.BitmapCache;
-import com.libreshockwave.player.render.FrameSnapshot;
-import com.libreshockwave.player.render.RenderSprite;
-import com.libreshockwave.player.render.SpriteBaker;
-import com.libreshockwave.player.render.StageRenderer;
+import com.libreshockwave.player.render.pipeline.BitmapCache;
+import com.libreshockwave.player.render.pipeline.FrameSnapshot;
+import com.libreshockwave.player.render.pipeline.RenderSprite;
+import com.libreshockwave.player.render.pipeline.SpriteBaker;
+import com.libreshockwave.player.render.pipeline.StageRenderer;
 import com.libreshockwave.player.score.ScoreNavigator;
 import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.datum.LingoException;
@@ -221,7 +221,7 @@ public class Player {
         });
 
         // Set AWT text renderer for desktop environment
-        com.libreshockwave.player.cast.CastMember.setTextRenderer(new com.libreshockwave.player.render.AwtTextRenderer());
+        com.libreshockwave.player.cast.CastMember.setTextRenderer(new com.libreshockwave.player.render.output.AwtTextRenderer());
         // Wire up member visual change callback to bump sprite revision
         com.libreshockwave.player.cast.CastMember.setMemberVisualChangedCallback(
                 () -> stageRenderer.getSpriteRegistry().bumpRevision());
@@ -289,7 +289,7 @@ public class Player {
         this.inputState = new InputState();
         this.movieProperties.setInputState(inputState);
         // Set simple text renderer for TeaVM/WASM (no AWT)
-        com.libreshockwave.player.cast.CastMember.setTextRenderer(new com.libreshockwave.player.render.SimpleTextRenderer());
+        com.libreshockwave.player.cast.CastMember.setTextRenderer(new com.libreshockwave.player.render.output.SimpleTextRenderer());
         com.libreshockwave.player.cast.CastMember.setMemberVisualChangedCallback(
                 () -> stageRenderer.getSpriteRegistry().bumpRevision());
         this.frameContext.setTimeoutManager(timeoutManager);
