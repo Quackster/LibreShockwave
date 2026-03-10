@@ -121,8 +121,33 @@ tasks.register('bundleJs') {
             .replace("indexOf('shockwave-lib.js')",
                      "indexOf('libreshockwave.js')")
             .replace(
-                "var worker = new Worker(absBase + 'shockwave-worker.js');",
-                "var _blob = new Blob([_LS_WORKER_SCRIPT], {type: 'application/javascript'});\n        var worker = new Worker(URL.createObjectURL(_blob));"
+                "setupWorker(new Worker(absBase + 'shockwave-worker.js'));",
+                '''\
+// Try blob URL worker first (single-file deployment), fall back to
+        // file URL if blob workers fail (mobile Chrome/iOS WebKit).
+        var _blobFailed = false;
+        try {
+            var _blob = new Blob([_LS_WORKER_SCRIPT], {type: 'application/javascript'});
+            var _blobWorker = new Worker(URL.createObjectURL(_blob));
+            setupWorker(_blobWorker);
+            // Wrap onerror AFTER setupWorker to add fallback: if the blob
+            // worker errors during init (e.g. importScripts fails on mobile),
+            // terminate it and retry with a file URL worker.
+            var _origOnerror = _blobWorker.onerror;
+            _blobWorker.onerror = function(e) {
+                if (!self._workerReady && !_blobFailed) {
+                    _blobFailed = true;
+                    _blobWorker.terminate();
+                    console.warn('[LS] Blob worker failed during init, falling back to file URL');
+                    setupWorker(new Worker(absBase + 'shockwave-worker.js'));
+                } else if (_origOnerror) {
+                    _origOnerror.call(this, e);
+                }
+            };
+        } catch(e) {
+            console.warn('[LS] Blob worker creation failed, using file URL:', e);
+            setupWorker(new Worker(absBase + 'shockwave-worker.js'));
+        }'''
             )
 
         outputFile.get().asFile.with {

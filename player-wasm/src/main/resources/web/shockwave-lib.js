@@ -252,6 +252,58 @@ var LibreShockwave = (function() {
             self._worker.postMessage({ type: 'mouseUp', x: x, y: y, button: e.button });
         });
 
+        // --- Touch event support (mobile browsers) ---
+        // Convert touch events to mouse events so the Director player works on
+        // mobile Chrome/Safari without any changes to the engine.
+
+        canvas.addEventListener('touchstart', function(e) {
+            e.preventDefault();
+            canvas.focus();
+            var touch = e.changedTouches[0];
+            var r = canvas.getBoundingClientRect();
+            var x = Math.round(touch.clientX - r.left);
+            var y = Math.round(touch.clientY - r.top);
+            self._mouseX = x;
+            self._mouseY = y;
+            self._cursorDirty = true;
+            if (!self._worker || !self._workerReady) return;
+            self._worker.postMessage({ type: 'mouseMove', x: x, y: y });
+            self._worker.postMessage({ type: 'mouseDown', x: x, y: y, button: 0 });
+        }, { passive: false });
+
+        canvas.addEventListener('touchmove', function(e) {
+            e.preventDefault();
+            var touch = e.changedTouches[0];
+            var r = canvas.getBoundingClientRect();
+            var x = Math.round(touch.clientX - r.left);
+            var y = Math.round(touch.clientY - r.top);
+            self._mouseX = x;
+            self._mouseY = y;
+            self._cursorDirty = true;
+            if (!self._worker || !self._workerReady) return;
+            self._worker.postMessage({ type: 'mouseMove', x: x, y: y });
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', function(e) {
+            e.preventDefault();
+            var touch = e.changedTouches[0];
+            var r = canvas.getBoundingClientRect();
+            var x = Math.round(touch.clientX - r.left);
+            var y = Math.round(touch.clientY - r.top);
+            if (!self._worker || !self._workerReady) return;
+            self._worker.postMessage({ type: 'mouseUp', x: x, y: y, button: 0 });
+        }, { passive: false });
+
+        canvas.addEventListener('touchcancel', function(e) {
+            var touch = e.changedTouches[0];
+            if (!touch) return;
+            var r = canvas.getBoundingClientRect();
+            var x = Math.round(touch.clientX - r.left);
+            var y = Math.round(touch.clientY - r.top);
+            if (!self._worker || !self._workerReady) return;
+            self._worker.postMessage({ type: 'mouseUp', x: x, y: y, button: 0 });
+        });
+
         canvas.addEventListener('keydown', function(e) {
             if (!self._worker || !self._workerReady) return;
             // Don't intercept browser shortcuts (Ctrl+C, Ctrl+V, etc.)
@@ -282,17 +334,20 @@ var LibreShockwave = (function() {
         // Make the base path absolute so importScripts() in the worker resolves it correctly
         var absBase = new URL(this._basePath, document.baseURI).href;
 
-        var worker = new Worker(absBase + 'shockwave-worker.js');
-        this._worker = worker;
+        function setupWorker(worker) {
+            self._worker = worker;
+            worker.onmessage = function(e) { self._onWorkerMessage(e.data); };
+            worker.onerror   = function(e) {
+                console.error('[LS] Worker error:', e.message);
+                if (self._opts.onError) self._opts.onError(e.message);
+            };
+            // Send init with absolute base path so importScripts/fetch work from the worker
+            worker.postMessage({ type: 'init', basePath: absBase });
+        }
 
-        worker.onmessage = function(e) { self._onWorkerMessage(e.data); };
-        worker.onerror   = function(e) {
-            console.error('[LS] Worker error:', e.message);
-            if (self._opts.onError) self._opts.onError(e.message);
-        };
-
-        // Send init with absolute base path so importScripts/fetch work from the worker
-        worker.postMessage({ type: 'init', basePath: absBase });
+        // Create worker from file URL (most reliable, works on all mobile browsers).
+        // Bundled deployments override this to try blob URL first with file URL fallback.
+        setupWorker(new Worker(absBase + 'shockwave-worker.js'));
     };
 
     ShockwavePlayer.prototype._onWorkerMessage = function(msg) {
@@ -373,6 +428,7 @@ var LibreShockwave = (function() {
 
             case 'error':
                 console.error('[LS] Worker reported:', msg.msg);
+                if (this._opts.onError) this._opts.onError(msg.msg);
                 break;
 
             default:
