@@ -346,12 +346,20 @@ public final class ImageMethodDispatcher {
             }
         }
 
+        // DARKEN/LIGHTEN ink in copyPixels with bgColor: the grayscale remap above already
+        // colorizes the source (white→bgColor). Using DARKEN min(src,dst) would cause black
+        // outline contamination at body part overlaps. Switch to COPY so later parts overwrite.
+        Palette.InkMode effectiveInk = ink;
+        if ((ink == Palette.InkMode.DARKEN || ink == Palette.InkMode.LIGHTEN) && bgColorRemap >= 0) {
+            effectiveInk = Palette.InkMode.COPY;
+        }
+
         if (srcW == destW && srcH == destH) {
             // No scaling needed - direct copy
             Drawing.copyPixels(dest, effectiveSrc,
                     destRect.left(), destRect.top(),
                     effectiveSrcX, effectiveSrcY,
-                    srcW, srcH, ink, blend, mask);
+                    srcW, srcH, effectiveInk, blend, mask);
         } else {
             // Scaling needed - create scaled intermediate, applying mask at source coordinates
             Bitmap scaled = new Bitmap(destW, destH, effectiveSrc.getBitDepth());
@@ -375,7 +383,7 @@ public final class ImageMethodDispatcher {
             // Mask already applied during scaling, so pass null to Drawing
             Drawing.copyPixels(dest, scaled,
                     destRect.left(), destRect.top(),
-                    0, 0, destW, destH, ink, blend);
+                    0, 0, destW, destH, effectiveInk, blend);
         }
 
         return Datum.VOID;

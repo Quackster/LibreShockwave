@@ -13,11 +13,19 @@ public record BitmapInfo(
     int height,
     int regX,
     int regY,
+    int initialLeft,
+    int initialTop,
     int bitDepth,
     int paletteId,
     int pitch,
     boolean useAlpha
 ) implements Dimensioned {
+
+    /** Registration point X in bitmap-local space (for rendering). */
+    public int regXLocal() { return regX - initialLeft; }
+
+    /** Registration point Y in bitmap-local space (for rendering). */
+    public int regYLocal() { return regY - initialTop; }
 
     /**
      * Parse BitmapInfo without version info (assumes D6+ format).
@@ -33,7 +41,7 @@ public record BitmapInfo(
      */
     public static BitmapInfo parse(byte[] data, int directorVersion) {
         if (data == null || data.length < 10) {
-            return new BitmapInfo(0, 0, 0, 0, 1, 0, 0, false);
+            return new BitmapInfo(0, 0, 0, 0, 0, 0, 1, 0, 0, false);
         }
 
         BinaryReader reader = new BinaryReader(data, ByteOrder.BIG_ENDIAN);
@@ -125,11 +133,10 @@ public record BitmapInfo(
             }
         }
 
-        // Convert reg point from canvas space to bitmap-local space
-        regX -= left;
-        regY -= top;
-
-        return new BitmapInfo(width, height, regX, regY, bitDepth, paletteId, pitch, useAlpha);
+        // Store raw canvas-space regPoint values.
+        // Director's member.regPoint returns canvas-space coordinates.
+        // Only rendering code should convert to bitmap-local (regX - left, regY - top).
+        return new BitmapInfo(width, height, regX, regY, left, top, bitDepth, paletteId, pitch, useAlpha);
     }
 
     public int bytesPerPixel() {

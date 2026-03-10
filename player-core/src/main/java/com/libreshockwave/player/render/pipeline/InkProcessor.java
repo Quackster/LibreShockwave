@@ -103,7 +103,14 @@ public final class InkProcessor {
             // flood-fill leaks through and creates transparent holes (horizontal lines).
             // For paletted bitmaps, apply matte to handle non-white/black palette backgrounds.
             if (src.getBitDepth() >= 16) {
-                return src; // 16/32-bit: skip matte, let per-pixel compositing handle it
+                // Use color-key transparency (exact white match) instead of matte flood-fill.
+                // Matte flood-fill leaks through 1px gaps in composite images (e.g., Habbo figure
+                // body parts), creating transparent holes that appear as horizontal black lines.
+                // Color-key makes white pixels transparent (alpha=0, skipped in DARKEN compositing)
+                // while keeping figure content pixels opaque (alpha=0xFF, correctly composited).
+                int bgColor = resolveMatteColor(src, ink, backColor, useAlpha, palette);
+                if (bgColor < 0) return src;
+                return applyBackgroundTransparent(src, bgColor);
             }
             int matteColor = resolveMatteColor(src, ink, backColor, useAlpha, palette);
             if (matteColor < 0) {
