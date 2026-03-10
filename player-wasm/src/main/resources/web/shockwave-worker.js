@@ -868,22 +868,12 @@ async function _prefetchSw1Assets(basePath) {
 
     console.log('[WORKER] Pre-fetching ' + urls.length + ' sw1 URLs');
 
-    // Fetch all sw1 URLs in parallel to parse their content.
-    // Apply locale override to external_variables.txt so hh_entry_au is used,
-    // then cache the modified version (overrides any ORIGINAL cached by pumpNetworkCollect).
+    // Fetch all sw1 URLs in parallel to parse their content and cache them.
     var results = await Promise.all(urls.map(function(url) {
         return _fetchWithTimeout(url)
             .then(function(r) { if (!r.ok) throw { status: r.status }; return r.arrayBuffer(); })
             .then(function(buf) {
-                if (url.indexOf('external_variables') !== -1) {
-                    try {
-                        var text = new TextDecoder().decode(new Uint8Array(buf));
-                        text = text.replace(/cast\.entry\.2=.*/g, 'cast.entry.2=hh_entry_au');
-                        buf = new TextEncoder().encode(text).buffer;
-                        console.log('[WORKER] Applied hh_entry_au locale override');
-                    } catch(ex) {}
-                }
-                _urlCache[url] = buf; // cache modified version; overwrites any stale original
+                _urlCache[url] = buf;
                 return buf;
             })
             .catch(function() { return null; });
