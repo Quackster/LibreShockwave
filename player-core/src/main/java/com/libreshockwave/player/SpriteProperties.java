@@ -225,25 +225,11 @@ public class SpriteProperties implements SpritePropertyProvider {
                 return true;
             }
             case "color" -> {
-                // sprite.color = rgb(...) — maps to foreColor; Director ignores VOID
-                if (!value.isVoid()) {
-                    if (value instanceof com.libreshockwave.vm.datum.Datum.Color c) {
-                        sprite.setForeColor((c.r() << 16) | (c.g() << 8) | c.b());
-                    } else {
-                        sprite.setForeColor(value.toInt());
-                    }
-                }
+                setColorValue(value, sprite::setForeColor);
                 return true;
             }
             case "bgcolor" -> {
-                // sprite.bgColor = rgb(...) — maps to backColor; Director ignores VOID
-                if (!value.isVoid()) {
-                    if (value instanceof com.libreshockwave.vm.datum.Datum.Color c) {
-                        sprite.setBackColor((c.r() << 16) | (c.g() << 8) | c.b());
-                    } else {
-                        sprite.setBackColor(value.toInt());
-                    }
-                }
+                setColorValue(value, sprite::setBackColor);
                 return true;
             }
             case "rotation" -> {
@@ -300,6 +286,16 @@ public class SpriteProperties implements SpritePropertyProvider {
                     System.err.println("[SpriteProperties] Unknown sprite property set: " + propName);
                 }
                 return false;
+            }
+        }
+    }
+
+    private static void setColorValue(Datum value, java.util.function.IntConsumer setter) {
+        if (!value.isVoid()) {
+            if (value instanceof Datum.Color c) {
+                setter.accept((c.r() << 16) | (c.g() << 8) | c.b());
+            } else {
+                setter.accept(value.toInt());
             }
         }
     }

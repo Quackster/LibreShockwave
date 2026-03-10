@@ -1,7 +1,5 @@
 package com.libreshockwave.vm.builtin.flow;
 
-import com.libreshockwave.chunks.ScriptChunk;
-import com.libreshockwave.vm.builtin.cast.CastLibProvider;
 import com.libreshockwave.vm.builtin.movie.MoviePropertyProvider;
 import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.LingoVM;
@@ -181,48 +179,14 @@ public final class ControlFlowBuiltins {
 
     /**
      * Call a handler on a script instance, walking the ancestor chain to find it.
-     * Reuses the same pattern as ScriptInstanceMethodDispatcher and FrameContext.
      * Public so the player-core event dispatcher can use it for scriptInstanceList.
      */
     public static void callHandlerOnInstance(LingoVM vm, Datum.ScriptInstance instance,
                                                String handlerName, List<Datum> extraArgs) {
-        CastLibProvider provider = CastLibProvider.getProvider();
-        if (provider == null) {
-            return;
-        }
-
-        // Build args list: first arg is always 'me' (the instance), then extra args
-        List<Datum> handlerArgs = new ArrayList<>();
-        handlerArgs.addAll(extraArgs);
-
-        Datum.ScriptInstance current = instance;
-        for (int i = 0; i < AncestorChainWalker.MAX_ANCESTOR_DEPTH; i++) {
-            Datum scriptRefDatum = current.properties().get(Datum.PROP_SCRIPT_REF);
-            CastLibProvider.HandlerLocation location;
-
-            if (scriptRefDatum instanceof Datum.ScriptRef sr) {
-                location = provider.findHandlerInScript(sr.castLibNum(), sr.memberNum(), handlerName);
-            } else {
-                location = provider.findHandlerInScript(current.scriptId(), handlerName);
-            }
-
-            if (location != null && location.script() instanceof ScriptChunk script
-                    && location.handler() instanceof ScriptChunk.Handler handler) {
-                try {
-                    vm.executeHandler(script, handler, handlerArgs, instance);
-                } catch (Exception e) {
-                    System.err.println("[callHandlerOnInstance] Exception in '" + handlerName + "': " + e.getMessage());
-                }
-                return;
-            }
-
-            // Walk to ancestor
-            Datum ancestor = current.properties().get(Datum.PROP_ANCESTOR);
-            if (ancestor instanceof Datum.ScriptInstance ancestorInstance) {
-                current = ancestorInstance;
-            } else {
-                break;
-            }
+        try {
+            AncestorChainWalker.invokeHandler(vm, instance, handlerName, extraArgs);
+        } catch (Exception e) {
+            System.err.println("[callHandlerOnInstance] Exception in '" + handlerName + "': " + e.getMessage());
         }
     }
 }

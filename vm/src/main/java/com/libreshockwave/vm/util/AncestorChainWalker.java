@@ -1,6 +1,11 @@
 package com.libreshockwave.vm.util;
 
+import com.libreshockwave.chunks.ScriptChunk;
+import com.libreshockwave.vm.LingoVM;
+import com.libreshockwave.vm.builtin.cast.CastLibProvider;
 import com.libreshockwave.vm.datum.Datum;
+
+import java.util.List;
 
 /**
  * Utility class for walking ancestor chains in script instances.
@@ -12,6 +17,50 @@ public final class AncestorChainWalker {
     public static final int MAX_ANCESTOR_DEPTH = 100;
 
     private AncestorChainWalker() {}
+
+    /**
+     * Find and invoke a handler on a script instance, walking the ancestor chain.
+     * The handler is invoked with the original instance as the 'me' receiver,
+     * even if the handler is found on an ancestor.
+     *
+     * @param vm The Lingo VM
+     * @param instance The script instance (also used as 'me' receiver)
+     * @param handlerName The handler to find
+     * @param args Arguments to pass to the handler
+     * @return true if the handler was found and invoked, false if not found
+     */
+    public static boolean invokeHandler(LingoVM vm, Datum.ScriptInstance instance,
+                                         String handlerName, List<Datum> args) {
+        CastLibProvider provider = CastLibProvider.getProvider();
+        if (provider == null) return false;
+
+        Datum.ScriptInstance current = instance;
+        for (int i = 0; i < MAX_ANCESTOR_DEPTH; i++) {
+            Datum scriptRefDatum = current.properties().get(Datum.PROP_SCRIPT_REF);
+            CastLibProvider.HandlerLocation location;
+
+            if (scriptRefDatum instanceof Datum.ScriptRef sr) {
+                location = provider.findHandlerInScript(sr.castLibNum(), sr.memberNum(), handlerName);
+            } else {
+                location = provider.findHandlerInScript(current.scriptId(), handlerName);
+            }
+
+            if (location != null && location.script() instanceof ScriptChunk script
+                    && location.handler() instanceof ScriptChunk.Handler handler) {
+                vm.executeHandler(script, handler, args, instance);
+                return true;
+            }
+
+            // Walk to ancestor
+            Datum ancestor = current.properties().get(Datum.PROP_ANCESTOR);
+            if (ancestor instanceof Datum.ScriptInstance ancestorInstance) {
+                current = ancestorInstance;
+            } else {
+                break;
+            }
+        }
+        return false;
+    }
 
     /**
      * Get a property from a script instance, walking the ancestor chain if not found.

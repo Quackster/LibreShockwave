@@ -1,10 +1,9 @@
 package com.libreshockwave.player.timeout;
 
-import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.LingoVM;
-import com.libreshockwave.vm.builtin.cast.CastLibProvider;
 import com.libreshockwave.vm.builtin.timeout.TimeoutProvider;
+import com.libreshockwave.vm.util.AncestorChainWalker;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -187,60 +186,19 @@ public class TimeoutManager implements TimeoutProvider {
 
     /**
      * Invoke a handler on a script instance, walking the ancestor chain.
-     * Replicates the logic from ScriptInstanceMethodDispatcher for finding handlers.
+     * Falls back to global handler call if not found on the instance.
      */
     private void invokeOnScriptInstance(LingoVM vm, Datum.ScriptInstance target,
                                         String handlerName, List<Datum> args) {
-        CastLibProvider provider = CastLibProvider.getProvider();
-        if (provider == null) {
-            // No provider - fall back to global handler
-            try {
-                vm.callHandler(handlerName, args);
-            } catch (Exception e) {
-                System.err.println("[TimeoutManager] Error in timeout handler "
-                        + handlerName + ": " + e.getMessage());
-            }
-            return;
-        }
-
-        // Walk ancestor chain to find the handler
-        Datum.ScriptInstance current = target;
-        for (int i = 0; i < 20; i++) {  // Safety limit
-            Datum scriptRefDatum = current.properties().get(Datum.PROP_SCRIPT_REF);
-            CastLibProvider.HandlerLocation location;
-
-            if (scriptRefDatum instanceof Datum.ScriptRef sr) {
-                location = provider.findHandlerInScript(sr.castLibNum(), sr.memberNum(), handlerName);
-            } else {
-                location = provider.findHandlerInScript(current.scriptId(), handlerName);
-            }
-
-            if (location != null && location.script() instanceof ScriptChunk script
-                    && location.handler() instanceof ScriptChunk.Handler handler) {
-                try {
-                    vm.executeHandler(script, handler, args, target);
-                } catch (Exception e) {
-                    System.err.println("[TimeoutManager] Error in timeout handler "
-                            + handlerName + ": " + e.getMessage());
-                }
-                return;
-            }
-
-            // Walk to ancestor
-            Datum ancestor = current.properties().get(Datum.PROP_ANCESTOR);
-            if (ancestor instanceof Datum.ScriptInstance ancestorInstance) {
-                current = ancestorInstance;
-            } else {
-                break;
-            }
-        }
-
-        // Handler not found on instance - try as global handler
         try {
-            vm.callHandler(handlerName, args);
+            boolean found = AncestorChainWalker.invokeHandler(vm, target, handlerName, args);
+            if (!found) {
+                // Handler not found on instance - try as global handler
+                vm.callHandler(handlerName, args);
+            }
         } catch (Exception e) {
             System.err.println("[TimeoutManager] Error in timeout handler "
-                    + handlerName + " (global fallback): " + e.getMessage());
+                    + handlerName + ": " + e.getMessage());
         }
     }
 
@@ -261,52 +219,14 @@ public class TimeoutManager implements TimeoutProvider {
         List<TimeoutEntry> targets = new ArrayList<>(timeouts.values());
         for (TimeoutEntry entry : targets) {
             if (entry.target instanceof Datum.ScriptInstance target) {
-                invokeOnScriptInstanceQuiet(vm, target, handlerName, List.of());
-            }
-        }
-    }
-
-    /**
-     * Invoke a handler on a script instance quietly (no global fallback, no error on missing handler).
-     * Used for system event forwarding where targets may not define every handler.
-     */
-    private void invokeOnScriptInstanceQuiet(LingoVM vm, Datum.ScriptInstance target,
-                                              String handlerName, List<Datum> args) {
-        CastLibProvider provider = CastLibProvider.getProvider();
-        if (provider == null) return;
-
-        Datum.ScriptInstance current = target;
-        for (int i = 0; i < 20; i++) {  // Safety limit
-            Datum scriptRefDatum = current.properties().get(Datum.PROP_SCRIPT_REF);
-            CastLibProvider.HandlerLocation location;
-
-            if (scriptRefDatum instanceof Datum.ScriptRef sr) {
-                location = provider.findHandlerInScript(sr.castLibNum(), sr.memberNum(), handlerName);
-            } else {
-                location = provider.findHandlerInScript(current.scriptId(), handlerName);
-            }
-
-            if (location != null && location.script() instanceof ScriptChunk script
-                    && location.handler() instanceof ScriptChunk.Handler handler) {
                 try {
-                    vm.executeHandler(script, handler, args, target);
+                    AncestorChainWalker.invokeHandler(vm, target, handlerName, List.of());
                 } catch (Exception e) {
                     System.err.println("[TimeoutManager] Error in system event '"
                             + handlerName + "': " + e.getMessage());
                 }
-                return;
-            }
-
-            // Walk to ancestor
-            Datum ancestor = current.properties().get(Datum.PROP_ANCESTOR);
-            if (ancestor instanceof Datum.ScriptInstance ancestorInstance) {
-                current = ancestorInstance;
-            } else {
-                break;
             }
         }
-
-        // Handler not found — silently return (no global fallback)
     }
 
     /**

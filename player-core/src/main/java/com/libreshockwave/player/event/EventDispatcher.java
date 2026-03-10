@@ -192,22 +192,7 @@ public class EventDispatcher {
         // 1. Main DCR movie scripts
         ScriptNamesChunk names = file.getScriptNames();
         if (names != null) {
-            for (ScriptChunk script : file.getScripts()) {
-                if (script.getScriptType() != ScriptChunk.ScriptType.MOVIE_SCRIPT) {
-                    continue;
-                }
-                ScriptChunk.Handler handler = script.findHandler(handlerName, names);
-                if (handler != null) {
-                    try {
-                        vm.executeHandler(script, handler, args, null);
-                    } catch (Exception e) {
-                        System.err.println("[EventDispatcher] Error in " + handlerName + ": " + e.getMessage());
-                        if (debugEnabled) {
-                            e.printStackTrace();
-                        }
-                    }
-                }
-            }
+            dispatchToMovieScriptsIn(file.getScripts(), names, handlerName, args);
         }
 
         // 2. External cast movie scripts
@@ -216,21 +201,28 @@ public class EventDispatcher {
                 if (!castLib.isExternal() || !castLib.isLoaded()) continue;
                 ScriptNamesChunk castNames = castLib.getScriptNames();
                 if (castNames == null) continue;
-                for (ScriptChunk script : castLib.getAllScripts()) {
-                    if (script.getScriptType() != ScriptChunk.ScriptType.MOVIE_SCRIPT) {
-                        continue;
-                    }
-                    ScriptChunk.Handler handler = script.findHandler(handlerName, castNames);
-                    if (handler != null) {
-                        try {
-                            vm.executeHandler(script, handler, args, null);
-                        } catch (Exception e) {
-                            System.err.println("[EventDispatcher] Error in " + handlerName
-                                    + " (external cast " + castLib.getName() + "): " + e.getMessage());
-                            if (debugEnabled) {
-                                e.printStackTrace();
-                            }
-                        }
+                dispatchToMovieScriptsIn(castLib.getAllScripts(), castNames, handlerName, args);
+            }
+        }
+    }
+
+    /**
+     * Dispatch a handler to all movie scripts in a given script collection.
+     */
+    private void dispatchToMovieScriptsIn(Iterable<ScriptChunk> scripts, ScriptNamesChunk names,
+                                           String handlerName, List<Datum> args) {
+        for (ScriptChunk script : scripts) {
+            if (script.getScriptType() != ScriptChunk.ScriptType.MOVIE_SCRIPT) {
+                continue;
+            }
+            ScriptChunk.Handler handler = script.findHandler(handlerName, names);
+            if (handler != null) {
+                try {
+                    vm.executeHandler(script, handler, args, null);
+                } catch (Exception e) {
+                    System.err.println("[EventDispatcher] Error in " + handlerName + ": " + e.getMessage());
+                    if (debugEnabled) {
+                        e.printStackTrace();
                     }
                 }
             }

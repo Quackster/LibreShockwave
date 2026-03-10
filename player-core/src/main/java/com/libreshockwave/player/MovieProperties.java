@@ -302,17 +302,7 @@ public class MovieProperties implements MoviePropertyProvider {
     public Datum getStageProp(String propName) {
         String prop = propName.toLowerCase();
         return switch (prop) {
-            case "rect" -> {
-                int w = file != null ? file.getStageWidth() : 640;
-                int h = file != null ? file.getStageHeight() : 480;
-                yield new Datum.Rect(0, 0, w, h);
-            }
-            case "sourcerect" -> {
-                int w = file != null ? file.getStageWidth() : 640;
-                int h = file != null ? file.getStageHeight() : 480;
-                yield new Datum.Rect(0, 0, w, h);
-            }
-            case "drawrect" -> {
+            case "rect", "sourcerect", "drawrect" -> {
                 int w = file != null ? file.getStageWidth() : 640;
                 int h = file != null ? file.getStageHeight() : 480;
                 yield new Datum.Rect(0, 0, w, h);

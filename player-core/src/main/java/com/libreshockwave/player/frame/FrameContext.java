@@ -9,10 +9,9 @@ import com.libreshockwave.player.score.ScoreBehaviorRef;
 import com.libreshockwave.player.score.ScoreNavigator;
 import com.libreshockwave.player.score.SpriteSpan;
 import com.libreshockwave.player.timeout.TimeoutManager;
-import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.LingoVM;
-import com.libreshockwave.vm.builtin.cast.CastLibProvider;
+import com.libreshockwave.vm.util.AncestorChainWalker;
 
 import java.util.*;
 import java.util.function.Consumer;
@@ -328,38 +327,13 @@ public class FrameContext {
      * to actorList members, not just stepFrame.
      */
     private void dispatchToActorList(List<Datum.ScriptInstance> actors, String handlerName) {
-        CastLibProvider provider = CastLibProvider.getProvider();
-        if (provider == null || actors.isEmpty()) return;
+        if (actors.isEmpty()) return;
 
         for (Datum.ScriptInstance instance : actors) {
-            Datum.ScriptInstance current = instance;
-            for (int i = 0; i < 20; i++) {
-                Datum scriptRefDatum = current.properties().get(Datum.PROP_SCRIPT_REF);
-                CastLibProvider.HandlerLocation location;
-
-                if (scriptRefDatum instanceof Datum.ScriptRef sr) {
-                    location = provider.findHandlerInScript(sr.castLibNum(), sr.memberNum(), handlerName);
-                } else {
-                    location = provider.findHandlerInScript(current.scriptId(), handlerName);
-                }
-
-                if (location != null && location.script() instanceof ScriptChunk script
-                        && location.handler() instanceof ScriptChunk.Handler handler) {
-                    try {
-                        vm.executeHandler(script, handler, List.of(instance), instance);
-                    } catch (Exception e) {
-                        // Silently skip errors in actorList event dispatch
-                    }
-                    break;
-                }
-
-                // Walk to ancestor
-                Datum ancestor = current.properties().get(Datum.PROP_ANCESTOR);
-                if (ancestor instanceof Datum.ScriptInstance ancestorInstance) {
-                    current = ancestorInstance;
-                } else {
-                    break;
-                }
+            try {
+                AncestorChainWalker.invokeHandler(vm, instance, handlerName, List.of(instance));
+            } catch (Exception ignored) {
+                // Silently skip errors in actorList event dispatch
             }
         }
     }
