@@ -574,6 +574,25 @@ public sealed interface Datum {
     }
 
     /**
+     * Convert a Datum color to ARGB int.
+     * Handles: Color(r,g,b), packed RGB int, palette index.
+     */
+    static int datumToArgb(Datum colorDatum) {
+        if (colorDatum instanceof Color c) {
+            return 0xFF000000 | (c.r() << 16) | (c.g() << 8) | c.b();
+        } else if (colorDatum instanceof Int i) {
+            int val = i.value();
+            if (val > 255) {
+                return 0xFF000000 | (val & 0xFFFFFF);
+            } else {
+                int gray = 255 - val;
+                return 0xFF000000 | (gray << 16) | (gray << 8) | gray;
+            }
+        }
+        return 0xFF000000;
+    }
+
+    /**
      * Create a deep copy of this Datum.
      * For immutable types (Int, Float, Str, Symbol, etc.), returns the same instance.
      * For mutable types (List, PropList, ScriptInstance, ArgList, ArgListNoRet),

@@ -682,22 +682,8 @@ public class CastMember {
         }
     }
 
-    /**
-     * Convert a Datum color to ARGB int.
-     */
     private static int datumToArgb(Datum colorDatum) {
-        if (colorDatum instanceof Datum.Color c) {
-            return 0xFF000000 | (c.r() << 16) | (c.g() << 8) | c.b();
-        } else if (colorDatum instanceof Datum.Int i) {
-            int val = i.value();
-            if (val > 255) {
-                return 0xFF000000 | (val & 0xFFFFFF);
-            } else {
-                int gray = 255 - val;
-                return 0xFF000000 | (gray << 16) | (gray << 8) | gray;
-            }
-        }
-        return 0xFF000000;
+        return Datum.datumToArgb(colorDatum);
     }
 
     private boolean setBitmapProp(String prop, Datum value) {

@@ -101,23 +101,8 @@ public final class CallOpcodes {
         return true;
     }
 
-    /**
-     * Get built-in Lingo constants (SPACE, RETURN, QUOTE, etc.).
-     * These are accessible as zero-arg function calls in Director bytecodes.
-     */
     private static Datum getBuiltinConstant(String name) {
-        if ("space".equalsIgnoreCase(name)) return Datum.of(" ");
-        if ("return".equalsIgnoreCase(name)) return Datum.of("\r");
-        if ("enter".equalsIgnoreCase(name)) return Datum.of("\n");
-        if ("tab".equalsIgnoreCase(name)) return Datum.of("\t");
-        if ("quote".equalsIgnoreCase(name)) return Datum.of("\"");
-        if ("backspace".equalsIgnoreCase(name)) return Datum.of("\b");
-        if ("empty".equalsIgnoreCase(name) || "emptystring".equalsIgnoreCase(name)) return Datum.EMPTY_STRING;
-        if ("true".equalsIgnoreCase(name)) return Datum.TRUE;
-        if ("false".equalsIgnoreCase(name)) return Datum.FALSE;
-        if ("void".equalsIgnoreCase(name)) return Datum.VOID;
-        if ("pi".equalsIgnoreCase(name)) return Datum.of(Math.PI);
-        return Datum.VOID;
+        return PropertyOpcodes.getBuiltinConstant(name);
     }
 
     private static boolean objCall(ExecutionContext ctx) {

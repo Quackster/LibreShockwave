@@ -2,6 +2,7 @@ package com.libreshockwave.vm.opcode.dispatch;
 
 import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.builtin.movie.MoviePropertyProvider;
+import com.libreshockwave.vm.util.StringChunkUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -124,7 +125,7 @@ public final class StringMethodDispatcher {
         if (start > totalItems) return "";
         int e = Math.min(totalItems, actualEnd);
         if (start == e) return getItemDirect(str, start, delimiter);
-        return getItemRangeDirect(str, start, e, delimiter);
+        return StringChunkUtils.getItemRangeDirect(str, start, e, delimiter);
     }
 
     // extractFromArray removed — ITEM chunks no longer use split+cache
@@ -144,7 +145,7 @@ public final class StringMethodDispatcher {
             if (totalWords == 0 || start > totalWords) return "";
             int actualEnd = resolveEnd(end, start, totalWords);
             int e = Math.min(totalWords, actualEnd);
-            return getWordRangeDirect(str, start, e);
+            return StringChunkUtils.getWordRangeDirect(str, start, e);
         }
         // Long string — split + cache
         return extractWordsFromArray(cachedSplitWords(str), start, end);
@@ -179,7 +180,7 @@ public final class StringMethodDispatcher {
             if (start > totalLines) return "";
             int actualEnd = resolveEnd(end, start, totalLines);
             int e = Math.min(totalLines, actualEnd);
-            return getLineRangeDirect(str, start, e);
+            return StringChunkUtils.getLineRangeDirect(str, start, e);
         }
         // Long string — split + cache
         return extractLinesFromArray(cachedSplitLines(str), start, end);
@@ -233,21 +234,7 @@ public final class StringMethodDispatcher {
         return end;
     }
 
-    /**
-     * Pick ONE line delimiter for the entire string, matching dirplayer-rs algorithm.
-     * Check for \r\n first, then \n, then \r.
-     */
-    private static String pickLineDelimiter(String str) {
-        if (str.contains("\r\n")) return "\r\n";
-        if (str.contains("\n")) return "\n";
-        if (str.contains("\r")) return "\r";
-        return "\r\n"; // default
-    }
-
-    // ========================================================================
-    // Direct-scan methods — zero array allocation, O(n) per call.
-    // Used for short strings on cache miss to reduce GC pressure.
-    // ========================================================================
+    // Direct-scan methods delegated to StringChunkUtils to avoid duplication.
 
     private static int countItemsDirect(String str, char delimiter) {
         int count = 1;
@@ -270,23 +257,6 @@ public final class StringMethodDispatcher {
         return current == index ? str.substring(start) : "";
     }
 
-    /** Get items [startIdx..endIdx] joined by delimiter, using one-pass scan. */
-    private static String getItemRangeDirect(String str, int startIdx, int endIdx, char delimiter) {
-        int delimsSeen = 0;
-        int segStart = (startIdx == 1) ? 0 : -1;
-
-        for (int i = 0; i < str.length(); i++) {
-            if (str.charAt(i) == delimiter) {
-                delimsSeen++;
-                if (startIdx > 1 && delimsSeen == startIdx - 1) segStart = i + 1;
-                if (delimsSeen == endIdx) {
-                    return (segStart >= 0) ? str.substring(segStart, i) : "";
-                }
-            }
-        }
-        return (segStart >= 0) ? str.substring(segStart) : "";
-    }
-
     private static int countWordsDirect(String str) {
         int count = 0;
         boolean inWord = false;
@@ -301,34 +271,8 @@ public final class StringMethodDispatcher {
         return count;
     }
 
-    /** Get words [startIdx..endIdx] joined by space, normalizing whitespace. */
-    private static String getWordRangeDirect(String str, int startIdx, int endIdx) {
-        int wordNum = 0;
-        int wordStart = 0;
-        boolean inWord = false;
-        StringBuilder sb = null;
-
-        for (int i = 0; i <= str.length(); i++) {
-            boolean isSpace = i == str.length() || Character.isWhitespace(str.charAt(i));
-            if (!isSpace && !inWord) {
-                wordNum++;
-                wordStart = i;
-                inWord = true;
-            } else if (isSpace && inWord) {
-                if (wordNum >= startIdx && wordNum <= endIdx) {
-                    if (sb == null) sb = new StringBuilder();
-                    else sb.append(' ');
-                    sb.append(str, wordStart, i);
-                }
-                if (wordNum >= endIdx) break;
-                inWord = false;
-            }
-        }
-        return sb != null ? sb.toString() : "";
-    }
-
     private static int countLinesDirect(String str) {
-        String delim = pickLineDelimiter(str);
+        String delim = StringChunkUtils.pickLineDelimiter(str);
         int count = 1;
         int dLen = delim.length();
         int i = 0;
@@ -341,28 +285,6 @@ public final class StringMethodDispatcher {
             }
         }
         return count;
-    }
-
-    /** Get lines [startIdx..endIdx] joined by \r\n, using one-pass scan. */
-    private static String getLineRangeDirect(String str, int startIdx, int endIdx) {
-        String delim = pickLineDelimiter(str);
-        int dLen = delim.length();
-        int lineNum = 1;
-        int segStart = (startIdx == 1) ? 0 : -1;
-        int i = 0;
-        while (i <= str.length() - dLen) {
-            if (str.regionMatches(i, delim, 0, dLen)) {
-                if (startIdx > 1 && lineNum == startIdx - 1) segStart = i + dLen;
-                if (lineNum == endIdx) {
-                    return (segStart >= 0) ? str.substring(segStart, i) : "";
-                }
-                lineNum++;
-                i += dLen;
-            } else {
-                i++;
-            }
-        }
-        return (segStart >= 0) ? str.substring(segStart) : "";
     }
 
     // ========================================================================
@@ -408,7 +330,7 @@ public final class StringMethodDispatcher {
         if (str == _lineCacheStr && _lineCacheResult != null) {
             return _lineCacheResult;
         }
-        String lineDelimiter = pickLineDelimiter(str);
+        String lineDelimiter = StringChunkUtils.pickLineDelimiter(str);
         int delimLen = lineDelimiter.length();
         ArrayList<String> lines = new ArrayList<>();
         int start = 0;

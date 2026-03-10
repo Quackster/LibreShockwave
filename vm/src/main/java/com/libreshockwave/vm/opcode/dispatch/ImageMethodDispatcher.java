@@ -451,25 +451,8 @@ public final class ImageMethodDispatcher {
         return Datum.VOID;
     }
 
-    /**
-     * Convert a Datum color to ARGB int.
-     * Handles: Color(r,g,b), packed RGB int, palette index.
-     */
     static int datumToArgb(Datum colorDatum) {
-        if (colorDatum instanceof Datum.Color c) {
-            return 0xFF000000 | (c.r() << 16) | (c.g() << 8) | c.b();
-        } else if (colorDatum instanceof Datum.Int i) {
-            int val = i.value();
-            if (val > 255) {
-                // Packed RGB
-                return 0xFF000000 | (val & 0xFFFFFF);
-            } else {
-                // Palette index (0=white, 255=black in Director)
-                int gray = 255 - val;
-                return 0xFF000000 | (gray << 16) | (gray << 8) | gray;
-            }
-        }
-        return 0xFF000000; // default black
+        return Datum.datumToArgb(colorDatum);
     }
 
     /**

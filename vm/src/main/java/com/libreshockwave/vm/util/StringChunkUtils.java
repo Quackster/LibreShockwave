@@ -400,7 +400,7 @@ public final class StringChunkUtils {
     }
 
     /** Get items [startIdx..endIdx] joined by delimiter, using one-pass scan. */
-    private static String getItemRangeDirect(String str, int startIdx, int endIdx, char delimiter) {
+    public static String getItemRangeDirect(String str, int startIdx, int endIdx, char delimiter) {
         int delimsSeen = 0;
         int segStart = (startIdx == 1) ? 0 : -1;
 
@@ -417,7 +417,7 @@ public final class StringChunkUtils {
     }
 
     /** Get words [startIdx..endIdx] joined by space, normalizing whitespace. */
-    private static String getWordRangeDirect(String str, int startIdx, int endIdx) {
+    public static String getWordRangeDirect(String str, int startIdx, int endIdx) {
         int wordNum = 0;
         int wordStart = 0;
         boolean inWord = false;
@@ -443,7 +443,7 @@ public final class StringChunkUtils {
     }
 
     /** Get lines [startIdx..endIdx] joined by \r\n, using one-pass scan. */
-    private static String getLineRangeDirect(String str, int startIdx, int endIdx) {
+    public static String getLineRangeDirect(String str, int startIdx, int endIdx) {
         String delim = pickLineDelimiter(str);
         int dLen = delim.length();
         int lineNum = 1;
@@ -581,7 +581,7 @@ public final class StringChunkUtils {
      * Pick ONE line delimiter for the entire string, matching dirplayer-rs algorithm.
      * Check for \r\n first, then \n, then \r.
      */
-    private static String pickLineDelimiter(String str) {
+    public static String pickLineDelimiter(String str) {
         if (str.contains("\r\n")) return "\r\n";
         if (str.contains("\n")) return "\n";
         if (str.contains("\r")) return "\r";

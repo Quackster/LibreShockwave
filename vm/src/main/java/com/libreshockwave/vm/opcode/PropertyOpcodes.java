@@ -92,7 +92,7 @@ public final class PropertyOpcodes {
     /**
      * Get built-in constants that don't require a provider.
      */
-    private static Datum getBuiltinConstant(String propName) {
+    static Datum getBuiltinConstant(String propName) {
         if ("pi".equalsIgnoreCase(propName)) return Datum.of(Math.PI);
         if ("true".equalsIgnoreCase(propName)) return Datum.TRUE;
         if ("false".equalsIgnoreCase(propName)) return Datum.FALSE;

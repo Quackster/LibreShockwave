@@ -153,12 +153,7 @@ public class SimpleTextRenderer implements TextRenderer {
                 x += font.getCharWidth(ch);
             }
             if (underline && line.length() > 0) {
-                int ulY = y + font.getLineHeight() - 1;
-                if (ulY >= 0 && ulY < height) {
-                    for (int ux = Math.max(0, lineStartX); ux < Math.min(width, x); ux++) {
-                        pixels[ulY * width + ux] = textColor;
-                    }
-                }
+                drawUnderline(pixels, width, height, y + font.getLineHeight() - 1, lineStartX, x, textColor);
             }
             y += lineHeight;
         }
@@ -213,17 +208,21 @@ public class SimpleTextRenderer implements TextRenderer {
                 x += charW;
             }
             if (underline && line.length() > 0) {
-                int ulY = y + ascent + 1;
-                if (ulY >= 0 && ulY < height) {
-                    for (int ux = Math.max(0, lineStartX); ux < Math.min(width, x); ux++) {
-                        pixels[ulY * width + ux] = textColor;
-                    }
-                }
+                drawUnderline(pixels, width, height, y + ascent + 1, lineStartX, x, textColor);
             }
             y += lineHeight;
         }
 
         return new Bitmap(width, height, 32, pixels);
+    }
+
+    private static void drawUnderline(int[] pixels, int width, int height,
+                                       int ulY, int lineStartX, int lineEndX, int textColor) {
+        if (ulY >= 0 && ulY < height) {
+            for (int ux = Math.max(0, lineStartX); ux < Math.min(width, lineEndX); ux++) {
+                pixels[ulY * width + ux] = textColor;
+            }
+        }
     }
 
     // --- Built-in font metrics ---
