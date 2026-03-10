@@ -36,6 +36,7 @@ public class LingoVM {
     // complete before this wall-clock time. Prevents infinite loops that span
     // multiple short handler invocations (where per-handler timeout wouldn't fire).
     private long tickDeadline = 0;  // 0 = no tick-level timeout
+    private long tickDeadlineMs = 30_000;  // configurable duration (default 30s, 0 = disabled)
 
     // Event propagation callback (set by EventDispatcher)
     private Runnable passCallback;
@@ -131,8 +132,20 @@ public class LingoVM {
     }
 
     /**
-     * Set a tick-level deadline (absolute wall-clock millis). All handlers within
-     * the current tick must complete before this time. 0 = no tick-level timeout.
+     * Set the tick-level deadline duration in milliseconds. All handlers within
+     * a single tick must complete within this time. 0 = disabled. Default: 30000.
+     */
+    public void setTickDeadlineMs(long ms) {
+        this.tickDeadlineMs = ms;
+    }
+
+    public long getTickDeadlineMs() {
+        return tickDeadlineMs;
+    }
+
+    /**
+     * Arm the tick-level deadline using the configured duration.
+     * Called by Player at the start of each tick.
      */
     public void setTickDeadline(long deadline) {
         this.tickDeadline = deadline;
@@ -401,7 +414,11 @@ public class LingoVM {
                 // 1s interval is aggressive but necessary: during the 25s text dump, the heap
                 // fills with temporary strings/PropLists. Clearing caches via gcCallback frees
                 // fileCache + audio/raw chunks that would otherwise cause post-dump OOB.
-                if ((steps & 0x3FF) == 0) {
+                // Check every 8192 instructions (not 1024) to reduce WASM→JS boundary
+                // crossings from System.currentTimeMillis(). With DevTools open (especially
+                // Network inspector), each Date.now() call is more expensive due to Chrome
+                // instrumentation overhead — fewer checks avoids this bottleneck.
+                if ((steps & 0x1FFF) == 0) {
                     long now = System.currentTimeMillis();
                     if (now - lastGcTime >= 1000) {
                         if (gcCallback != null) {

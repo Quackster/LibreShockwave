@@ -1096,11 +1096,11 @@ public class Player {
 
         // Set up thread-local providers before script execution
         setupProviders();
-        // Set a tick-level deadline so infinite handler chains don't block the tick forever.
-        // 30s allows the ~12s dump handler plus headroom, while catching infinite loops.
-        // Must be generous: heavy init frames (e.g. frame 7 of Habbo) can take 5s+ in WASM
-        // when Chrome DevTools is open due to debugging overhead.
-        vm.setTickDeadline(System.currentTimeMillis() + 30_000);
+        // Arm the tick-level deadline if configured (default 30s, 0 = disabled).
+        long deadlineMs = vm.getTickDeadlineMs();
+        if (deadlineMs > 0) {
+            vm.setTickDeadline(System.currentTimeMillis() + deadlineMs);
+        }
         try {
             // Process queued mouse/keyboard input events before frame execution
             processInputEvents();
