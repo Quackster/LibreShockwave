@@ -272,7 +272,7 @@ public class CastLibManager implements CastLibProvider {
         CastLib castLib = getCastLib(castLibNumber);
         if (castLib == null) {
             // Return defaults for invalid cast lib
-            return getInvalidMemberProp(propName);
+            return CastLib.getInvalidMemberProp(propName);
         }
         return castLib.getMemberProp(memberNumber, propName);
     }
@@ -303,9 +303,6 @@ public class CastLibManager implements CastLibProvider {
     /**
      * Get a property for an invalid member reference.
      */
-    private Datum getInvalidMemberProp(String propName) {
-        return CastLib.getInvalidMemberProp(propName);
-    }
 
     /**
      * Get a cast member chunk directly.

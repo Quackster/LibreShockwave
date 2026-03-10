@@ -600,7 +600,7 @@ public class CastMember {
             case "color" -> {
                 // Director ignores VOID — keeps the current color
                 if (!value.isVoid()) {
-                    this.textColor = datumToArgb(value);
+                    this.textColor = Datum.datumToArgb(value);
                     textImageDirty = true;
                 }
                 return true;
@@ -608,7 +608,7 @@ public class CastMember {
             case "bgcolor" -> {
                 // Director ignores VOID — keeps the current bgColor (default white)
                 if (!value.isVoid()) {
-                    this.textBgColor = datumToArgb(value);
+                    this.textBgColor = Datum.datumToArgb(value);
                     textImageDirty = true;
                 }
                 return true;
@@ -680,10 +680,6 @@ public class CastMember {
                 return false;
             }
         }
-    }
-
-    private static int datumToArgb(Datum colorDatum) {
-        return Datum.datumToArgb(colorDatum);
     }
 
     private boolean setBitmapProp(String prop, Datum value) {

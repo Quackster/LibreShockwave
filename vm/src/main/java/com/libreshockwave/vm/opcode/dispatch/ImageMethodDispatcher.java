@@ -30,7 +30,7 @@ public final class ImageMethodDispatcher {
                 if (args.size() >= 3) {
                     int px = args.get(0).toInt();
                     int py = args.get(1).toInt();
-                    int color = datumToArgb(args.get(2));
+                    int color = Datum.datumToArgb(args.get(2));
                     if (px >= 0 && px < bmp.getWidth() && py >= 0 && py < bmp.getHeight()) {
                         bmp.setPixel(px, py, color);
                         bmp.markScriptModified();
@@ -128,7 +128,7 @@ public final class ImageMethodDispatcher {
         // Director's convention where VOID means "use default background."
         // Habbo's clearImage() passes pProps[#bgColor] which may be VOID
         // when the layout definition omits bgColor.
-        int colorArgb = colorDatum.isVoid() ? 0xFFFFFFFF : datumToArgb(colorDatum);
+        int colorArgb = colorDatum.isVoid() ? 0xFFFFFFFF : Datum.datumToArgb(colorDatum);
 
         int w = right - left;
         int h = bottom - top;
@@ -177,7 +177,7 @@ public final class ImageMethodDispatcher {
         if (propsArg instanceof Datum.PropList pl) {
             Datum colorDatum = getPropIgnoreCase(pl, "color", "Color");
             if (!colorDatum.isVoid()) {
-                colorArgb = datumToArgb(colorDatum);
+                colorArgb = Datum.datumToArgb(colorDatum);
             }
             Datum shapeDatum = getPropIgnoreCase(pl, "shapeType", "shapetype");
             if (shapeDatum instanceof Datum.Symbol s) {
@@ -185,7 +185,7 @@ public final class ImageMethodDispatcher {
             }
         } else {
             // Second arg is a color directly
-            colorArgb = datumToArgb(propsArg);
+            colorArgb = Datum.datumToArgb(propsArg);
         }
 
         int w = right - left;
@@ -258,12 +258,12 @@ public final class ImageMethodDispatcher {
             // Check for #color property (foreground color remap)
             Datum colorDatum = getPropIgnoreCase(pl, "color", "Color");
             if (!colorDatum.isVoid()) {
-                colorRemap = datumToArgb(colorDatum) & 0xFFFFFF;
+                colorRemap = Datum.datumToArgb(colorDatum) & 0xFFFFFF;
             }
             // Check for #bgColor property (background color remap)
             Datum bgColorDatum = getPropIgnoreCase(pl, "bgColor", "bgcolor", "BgColor");
             if (!bgColorDatum.isVoid()) {
-                bgColorRemap = datumToArgb(bgColorDatum) & 0xFFFFFF;
+                bgColorRemap = Datum.datumToArgb(bgColorDatum) & 0xFFFFFF;
             }
         }
 
@@ -449,10 +449,6 @@ public final class ImageMethodDispatcher {
             if (val != null) return val;
         }
         return Datum.VOID;
-    }
-
-    static int datumToArgb(Datum colorDatum) {
-        return Datum.datumToArgb(colorDatum);
     }
 
     /**
