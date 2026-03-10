@@ -1,6 +1,7 @@
-package com.libreshockwave.vm.builtin;
+package com.libreshockwave.vm.builtin.data;
 
 import com.libreshockwave.chunks.ScriptChunk;
+import com.libreshockwave.vm.builtin.cast.CastLibProvider;
 import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.LingoVM;
 import com.libreshockwave.vm.Scope;

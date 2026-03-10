@@ -5,7 +5,7 @@ import com.libreshockwave.id.VarType;
 import com.libreshockwave.lingo.Opcode;
 import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.HandlerRef;
-import com.libreshockwave.vm.builtin.CastLibProvider;
+import com.libreshockwave.vm.builtin.cast.CastLibProvider;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

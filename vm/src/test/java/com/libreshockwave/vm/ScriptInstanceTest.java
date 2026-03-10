@@ -20,7 +20,7 @@ class ScriptInstanceTest {
     @BeforeEach
     void setUp() {
         // Clear any existing provider
-        com.libreshockwave.vm.builtin.CastLibProvider.setProvider(null);
+        com.libreshockwave.vm.builtin.cast.CastLibProvider.setProvider(null);
     }
 
     // ========== Basic Script Instance Tests ==========

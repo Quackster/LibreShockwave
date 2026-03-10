@@ -12,7 +12,7 @@ import com.libreshockwave.player.render.SpriteRegistry;
 import com.libreshockwave.player.sprite.SpriteState;
 import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.LingoVM;
-import com.libreshockwave.vm.builtin.ControlFlowBuiltins;
+import com.libreshockwave.vm.builtin.flow.ControlFlowBuiltins;
 
 import java.util.ArrayList;
 import java.util.List;

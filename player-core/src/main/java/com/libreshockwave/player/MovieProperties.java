@@ -4,7 +4,7 @@ import com.libreshockwave.DirectorFile;
 import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.player.input.InputState;
 import com.libreshockwave.vm.datum.Datum;
-import com.libreshockwave.vm.builtin.MoviePropertyProvider;
+import com.libreshockwave.vm.builtin.movie.MoviePropertyProvider;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -177,8 +177,8 @@ public class MovieProperties implements MoviePropertyProvider {
             }
             case "number of menus" -> Datum.ZERO;
             case "number of castlibs" -> {
-                com.libreshockwave.vm.builtin.CastLibProvider castProvider =
-                    com.libreshockwave.vm.builtin.CastLibProvider.getProvider();
+                com.libreshockwave.vm.builtin.cast.CastLibProvider castProvider =
+                    com.libreshockwave.vm.builtin.cast.CastLibProvider.getProvider();
                 if (castProvider != null) {
                     yield Datum.of(castProvider.getCastLibCount());
                 }

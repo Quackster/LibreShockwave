@@ -8,7 +8,7 @@ import com.libreshockwave.chunks.SoundChunk;
 import com.libreshockwave.player.cast.CastLib;
 import com.libreshockwave.player.cast.CastLibManager;
 import com.libreshockwave.vm.datum.Datum;
-import com.libreshockwave.vm.builtin.SoundProvider;
+import com.libreshockwave.vm.builtin.media.SoundProvider;
 
 /**
  * Manages 8 sound channels for Director audio playback.

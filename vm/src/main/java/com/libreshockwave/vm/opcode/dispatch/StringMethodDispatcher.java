@@ -1,7 +1,7 @@
 package com.libreshockwave.vm.opcode.dispatch;
 
 import com.libreshockwave.vm.datum.Datum;
-import com.libreshockwave.vm.builtin.MoviePropertyProvider;
+import com.libreshockwave.vm.builtin.movie.MoviePropertyProvider;
 
 import java.util.ArrayList;
 import java.util.List;

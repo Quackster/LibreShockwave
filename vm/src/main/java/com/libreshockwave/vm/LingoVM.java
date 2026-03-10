@@ -249,7 +249,7 @@ public class LingoVM {
         }
 
         // Then search external cast libraries via CastLibProvider
-        var provider = com.libreshockwave.vm.builtin.CastLibProvider.getProvider();
+        var provider = com.libreshockwave.vm.builtin.cast.CastLibProvider.getProvider();
         if (provider != null) {
             var location = provider.findHandler(handlerName);
             if (location != null && location.script() instanceof ScriptChunk script
@@ -524,7 +524,7 @@ public class LingoVM {
             return false; // Prevent recursion
         }
 
-        var provider = com.libreshockwave.vm.builtin.MoviePropertyProvider.getProvider();
+        var provider = com.libreshockwave.vm.builtin.movie.MoviePropertyProvider.getProvider();
         if (provider == null) {
             return false;
         }
@@ -545,12 +545,12 @@ public class LingoVM {
             scriptRef = sr;
         }
 
-        var castProvider = com.libreshockwave.vm.builtin.CastLibProvider.getProvider();
+        var castProvider = com.libreshockwave.vm.builtin.cast.CastLibProvider.getProvider();
         if (castProvider == null) {
             return false;
         }
 
-        com.libreshockwave.vm.builtin.CastLibProvider.HandlerLocation location;
+        com.libreshockwave.vm.builtin.cast.CastLibProvider.HandlerLocation location;
         if (scriptRef != null) {
             location = castProvider.findHandlerInScript(scriptRef.castLibNum(), scriptRef.memberNum(), "alertHook");
         } else {

@@ -148,7 +148,7 @@ public class HotelViewDiagnosticTest {
         System.out.printf("  Active timeouts: %d%n", tmgr.getTimeoutCount());
         // Test within-tick context: call vm.findHandler with providers set
         // Manually set up providers to test
-        com.libreshockwave.vm.builtin.CastLibProvider.setProvider(clm);
+        com.libreshockwave.vm.builtin.cast.CastLibProvider.setProvider(clm);
         try {
             var href = vm.findHandler("receiveUpdate");
             System.out.printf("  vm.findHandler('receiveUpdate') with provider: %s%n",
@@ -158,7 +158,7 @@ public class HotelViewDiagnosticTest {
             System.out.printf("  vm.findHandler('createObject') with provider: %s%n",
                     href != null ? "FOUND" : "NOT FOUND");
         } finally {
-            com.libreshockwave.vm.builtin.CastLibProvider.clearProvider();
+            com.libreshockwave.vm.builtin.cast.CastLibProvider.clearProvider();
         }
         // Debug: check which cast libs are loaded and their script counts
         for (int i = 1; i <= 30; i++) {
@@ -214,7 +214,7 @@ public class HotelViewDiagnosticTest {
 
         // Dump bytecodes for Swap Animation Class advanceAnimFrame handler
         System.out.println("\n--- Swap Animation bytecode dump ---");
-        com.libreshockwave.vm.builtin.CastLibProvider.setProvider(clm);
+        com.libreshockwave.vm.builtin.cast.CastLibProvider.setProvider(clm);
         try {
             var loc = clm.findHandler("advanceAnimFrame");
             if (loc != null && loc.script() instanceof com.libreshockwave.chunks.ScriptChunk sc) {
@@ -236,7 +236,7 @@ public class HotelViewDiagnosticTest {
                 System.out.println("  advanceAnimFrame NOT FOUND in any cast lib!");
             }
         } finally {
-            com.libreshockwave.vm.builtin.CastLibProvider.clearProvider();
+            com.libreshockwave.vm.builtin.cast.CastLibProvider.clearProvider();
         }
 
         // Dump the entry.visual layout text to see swap animation definitions

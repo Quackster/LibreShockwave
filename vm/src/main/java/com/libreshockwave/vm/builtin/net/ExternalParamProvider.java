@@ -1,4 +1,4 @@
-package com.libreshockwave.vm.builtin;
+package com.libreshockwave.vm.builtin.net;
 
 import java.util.Map;
 

@@ -1,5 +1,20 @@
 package com.libreshockwave.vm.builtin;
 
+import com.libreshockwave.vm.builtin.cast.CastLibBuiltins;
+import com.libreshockwave.vm.builtin.data.ConstructorBuiltins;
+import com.libreshockwave.vm.builtin.data.ListBuiltins;
+import com.libreshockwave.vm.builtin.data.TypeBuiltins;
+import com.libreshockwave.vm.builtin.flow.ControlFlowBuiltins;
+import com.libreshockwave.vm.builtin.math.MathBuiltins;
+import com.libreshockwave.vm.builtin.media.ImageBuiltins;
+import com.libreshockwave.vm.builtin.media.SoundBuiltins;
+import com.libreshockwave.vm.builtin.net.ExternalParamBuiltins;
+import com.libreshockwave.vm.builtin.net.NetBuiltins;
+import com.libreshockwave.vm.builtin.sprite.SpriteBuiltins;
+import com.libreshockwave.vm.builtin.string.OutputBuiltins;
+import com.libreshockwave.vm.builtin.string.StringBuiltins;
+import com.libreshockwave.vm.builtin.timeout.TimeoutBuiltins;
+import com.libreshockwave.vm.builtin.xtra.XtraBuiltins;
 import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.LingoVM;
 

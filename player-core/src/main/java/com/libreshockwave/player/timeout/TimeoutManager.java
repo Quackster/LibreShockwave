@@ -3,8 +3,8 @@ package com.libreshockwave.player.timeout;
 import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.LingoVM;
-import com.libreshockwave.vm.builtin.CastLibProvider;
-import com.libreshockwave.vm.builtin.TimeoutProvider;
+import com.libreshockwave.vm.builtin.cast.CastLibProvider;
+import com.libreshockwave.vm.builtin.timeout.TimeoutProvider;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

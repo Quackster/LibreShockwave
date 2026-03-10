@@ -1,4 +1,4 @@
-package com.libreshockwave.vm.builtin;
+package com.libreshockwave.vm.builtin.cast;
 
 import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.LingoVM;

@@ -1,7 +1,7 @@
 package com.libreshockwave.vm.opcode.dispatch;
 
 import com.libreshockwave.vm.datum.Datum;
-import com.libreshockwave.vm.builtin.SoundProvider;
+import com.libreshockwave.vm.builtin.media.SoundProvider;
 
 import java.util.List;
 

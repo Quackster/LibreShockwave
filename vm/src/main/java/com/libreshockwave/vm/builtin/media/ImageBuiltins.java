@@ -1,4 +1,4 @@
-package com.libreshockwave.vm.builtin;
+package com.libreshockwave.vm.builtin.media;
 
 import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.vm.datum.Datum;

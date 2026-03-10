@@ -22,7 +22,7 @@ import com.libreshockwave.player.debug.ui.WatchesPanel;
 import com.libreshockwave.player.timeout.TimeoutManager;
 import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.TraceListener;
-import com.libreshockwave.vm.builtin.MoviePropertyProvider;
+import com.libreshockwave.vm.builtin.movie.MoviePropertyProvider;
 
 import javax.swing.*;
 import javax.swing.event.ChangeEvent;

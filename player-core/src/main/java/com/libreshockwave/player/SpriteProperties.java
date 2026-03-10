@@ -8,7 +8,7 @@ import com.libreshockwave.player.cast.CastMember;
 import com.libreshockwave.player.render.SpriteRegistry;
 import com.libreshockwave.player.sprite.SpriteState;
 import com.libreshockwave.vm.datum.Datum;
-import com.libreshockwave.vm.builtin.SpritePropertyProvider;
+import com.libreshockwave.vm.builtin.sprite.SpritePropertyProvider;
 
 /**
  * Provides sprite property access for Lingo scripts.
