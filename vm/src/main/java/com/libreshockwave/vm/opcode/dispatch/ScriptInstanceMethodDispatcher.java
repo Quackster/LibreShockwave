@@ -186,7 +186,7 @@ public final class ScriptInstanceMethodDispatcher {
                 // handler(#handlerName) - check if this script instance has the named handler
                 // Returns TRUE (1) if found, FALSE (0) if not
                 if (args.isEmpty()) return Datum.ZERO;
-                String handlerName = args.get(0) instanceof Datum.Symbol sym ? sym.name() : args.get(0).toStr();
+                String handlerName = args.get(0).toKeyName();
                 CastLibProvider provider = CastLibProvider.getProvider();
                 if (provider != null) {
                     Datum.ScriptRef scriptRef = getScriptRefFromInstance(instance);
@@ -243,14 +243,8 @@ public final class ScriptInstanceMethodDispatcher {
         return Datum.VOID;
     }
 
-    /**
-     * Get a property name from a Datum (symbol or string).
-     */
     private static String getPropertyName(Datum datum) {
-        if (datum instanceof Datum.Symbol sym) {
-            return sym.name();
-        }
-        return datum.toStr();
+        return datum.toKeyName();
     }
 
     /**

@@ -270,14 +270,8 @@ public final class CallOpcodesTestHelper {
         return Datum.VOID;
     }
 
-    /**
-     * Get a property name from a Datum (symbol or string).
-     */
     private static String getPropertyName(Datum datum) {
-        if (datum instanceof Datum.Symbol sym) {
-            return sym.name();
-        }
-        return datum.toStr();
+        return datum.toKeyName();
     }
 
     /**

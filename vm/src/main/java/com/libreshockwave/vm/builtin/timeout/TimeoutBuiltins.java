@@ -146,13 +146,7 @@ public final class TimeoutBuiltins {
         return provider.setTimeoutProp(ref.name(), propName, value);
     }
 
-    /**
-     * Extract handler name from a Symbol or String argument.
-     */
     private static String getHandlerName(Datum datum) {
-        if (datum instanceof Datum.Symbol sym) {
-            return sym.name();
-        }
-        return datum.toStr();
+        return datum.toKeyName();
     }
 }
