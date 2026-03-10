@@ -85,10 +85,10 @@ public class HotelViewDiagnosticTest {
             // Capture error dialog phase (window sprites appear around tick 10-30)
             if (!errorDialogCaptured && sprites.size() >= 8 && tick >= 10) {
                 // Warmup bake to trigger async bitmap decode
-                FrameSnapshot.capture(renderer, frame, "warmup", baker, player);
+                captureSnapshot(renderer, frame, "warmup", baker);
                 Thread.sleep(2000); // Wait for async decoders
                 // Now bake with decoded bitmaps
-                FrameSnapshot errSnap = FrameSnapshot.capture(renderer, frame, "error-dialog", baker, player);
+                FrameSnapshot errSnap = captureSnapshot(renderer, frame, "error-dialog", baker);
                 Bitmap errImg = errSnap.renderFrame(RenderType.SOFTWARE);
                 ImageIO.write(errImg.toBufferedImage(), "png",
                         new File(OUTPUT_DIR + "/error_dialog.png"));
@@ -301,12 +301,12 @@ public class HotelViewDiagnosticTest {
 
         // Trigger async bitmap decode by baking once, then wait for decoders
         System.out.println("\n--- Triggering bitmap decode ---");
-        FrameSnapshot.capture(renderer, frame, "warmup", baker, player);
+        captureSnapshot(renderer, frame, "warmup", baker);
         Thread.sleep(2000);  // Wait for async bitmap decoders
 
         // Now bake again with decoded bitmaps
         System.out.println("--- Rendering ---");
-        FrameSnapshot snapshot = FrameSnapshot.capture(renderer, frame, "hotel-view", baker, player);
+        FrameSnapshot snapshot = captureSnapshot(renderer, frame, "hotel-view", baker);
         for (RenderSprite bs : snapshot.sprites()) {
             Bitmap bk = bs.getBakedBitmap();
             String bakeInfo = bk != null ? bk.getWidth() + "x" + bk.getHeight() : "NULL";
@@ -583,5 +583,15 @@ public class HotelViewDiagnosticTest {
         }
 
         player.shutdown();
+    }
+
+    private static FrameSnapshot captureSnapshot(StageRenderer renderer, int frame, String state, SpriteBaker baker) {
+        List<RenderSprite> sprites = renderer.getSpritesForFrame(frame);
+        List<RenderSprite> baked = baker.bakeSprites(sprites);
+        renderer.setLastBakedSprites(baked);
+        String debug = String.format("Frame %d | %s", frame, state);
+        return new FrameSnapshot(frame, renderer.getStageWidth(), renderer.getStageHeight(),
+            renderer.getBackgroundColor(), List.copyOf(baked), debug,
+            renderer.hasStageImage() ? renderer.getStageImage() : null);
     }
 }

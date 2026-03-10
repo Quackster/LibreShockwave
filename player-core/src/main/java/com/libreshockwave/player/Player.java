@@ -21,6 +21,7 @@ import com.libreshockwave.player.input.InputState;
 import com.libreshockwave.player.net.NetManager;
 import com.libreshockwave.player.render.BitmapCache;
 import com.libreshockwave.player.render.FrameSnapshot;
+import com.libreshockwave.player.render.RenderSprite;
 import com.libreshockwave.player.render.SpriteBaker;
 import com.libreshockwave.player.render.StageRenderer;
 import com.libreshockwave.player.score.ScoreNavigator;
@@ -683,7 +684,20 @@ public class Player {
      * This captures all sprite states at the moment it's called.
      */
     public FrameSnapshot getFrameSnapshot() {
-        return FrameSnapshot.capture(stageRenderer, getCurrentFrame(), state.name(), spriteBaker, this);
+        int frame = getCurrentFrame();
+        List<RenderSprite> sprites = stageRenderer.getSpritesForFrame(frame);
+        List<RenderSprite> baked = spriteBaker.bakeSprites(sprites);
+        stageRenderer.setLastBakedSprites(baked);
+        String debug = String.format("Frame %d | %s", frame, state.name());
+        return new FrameSnapshot(
+            frame,
+            stageRenderer.getStageWidth(),
+            stageRenderer.getStageHeight(),
+            stageRenderer.getBackgroundColor(),
+            List.copyOf(baked),
+            debug,
+            stageRenderer.hasStageImage() ? stageRenderer.getStageImage() : null
+        );
     }
 
     /**

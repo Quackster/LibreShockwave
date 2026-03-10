@@ -121,11 +121,11 @@ public class HitTestDiagnosticTest {
         System.out.println("========================================");
 
         // Trigger async decode warmup
-        FrameSnapshot.capture(renderer, frame, "warmup", baker, player);
+        captureSnapshot(renderer, frame, "warmup", baker);
         Thread.sleep(2000);
 
         // Now bake for real
-        FrameSnapshot snapshot = FrameSnapshot.capture(renderer, frame, "hit-test", baker, player);
+        FrameSnapshot snapshot = captureSnapshot(renderer, frame, "hit-test", baker);
         List<RenderSprite> bakedSprites = snapshot.sprites();
 
         for (RenderSprite rs : bakedSprites) {
@@ -283,5 +283,15 @@ public class HitTestDiagnosticTest {
         System.out.println("\n========================================");
         System.out.println("DONE");
         System.out.println("========================================");
+    }
+
+    private static FrameSnapshot captureSnapshot(StageRenderer renderer, int frame, String state, SpriteBaker baker) {
+        java.util.List<RenderSprite> sprites = renderer.getSpritesForFrame(frame);
+        java.util.List<RenderSprite> baked = baker.bakeSprites(sprites);
+        renderer.setLastBakedSprites(baked);
+        String debug = String.format("Frame %d | %s", frame, state);
+        return new FrameSnapshot(frame, renderer.getStageWidth(), renderer.getStageHeight(),
+            renderer.getBackgroundColor(), java.util.List.copyOf(baked), debug,
+            renderer.hasStageImage() ? renderer.getStageImage() : null);
     }
 }

@@ -116,8 +116,8 @@ public class LoadingBarDiagnosticTest {
             // Save EVERY tick during loading phase to capture loading bar
             if (tick <= 12) {
                 try {
-                    FrameSnapshot snapshot = FrameSnapshot.capture(renderer, frame,
-                            "tick=" + tick, baker, player);
+                    FrameSnapshot snapshot = captureSnapshot(renderer, frame,
+                            "tick=" + tick, baker);
                     // Check baked sprites
                     for (RenderSprite bs : snapshot.sprites()) {
                         Bitmap bk = bs.getBakedBitmap();
@@ -148,5 +148,15 @@ public class LoadingBarDiagnosticTest {
 
         System.out.printf("%n=== Summary: max sprites = %d ===%n", maxSprites);
         player.shutdown();
+    }
+
+    private static FrameSnapshot captureSnapshot(StageRenderer renderer, int frame, String state, SpriteBaker baker) {
+        List<RenderSprite> sprites = renderer.getSpritesForFrame(frame);
+        List<RenderSprite> baked = baker.bakeSprites(sprites);
+        renderer.setLastBakedSprites(baked);
+        String debug = String.format("Frame %d | %s", frame, state);
+        return new FrameSnapshot(frame, renderer.getStageWidth(), renderer.getStageHeight(),
+            renderer.getBackgroundColor(), List.copyOf(baked), debug,
+            renderer.hasStageImage() ? renderer.getStageImage() : null);
     }
 }
