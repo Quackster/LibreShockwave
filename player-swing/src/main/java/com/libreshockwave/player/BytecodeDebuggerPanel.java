@@ -20,7 +20,7 @@ import com.libreshockwave.player.debug.ui.StateInspectionTabs;
 import com.libreshockwave.player.debug.ui.TimeoutTableModel;
 import com.libreshockwave.player.debug.ui.WatchesPanel;
 import com.libreshockwave.player.timeout.TimeoutManager;
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.TraceListener;
 import com.libreshockwave.vm.builtin.MoviePropertyProvider;
 

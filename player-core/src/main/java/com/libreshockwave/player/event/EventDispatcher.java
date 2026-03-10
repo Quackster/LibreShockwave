@@ -10,7 +10,7 @@ import com.libreshockwave.player.cast.CastLib;
 import com.libreshockwave.player.cast.CastLibManager;
 import com.libreshockwave.player.render.SpriteRegistry;
 import com.libreshockwave.player.sprite.SpriteState;
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.LingoVM;
 import com.libreshockwave.vm.builtin.ControlFlowBuiltins;
 

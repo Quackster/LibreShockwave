@@ -1,7 +1,7 @@
 package com.libreshockwave.player.debug.ui;
 
 import com.libreshockwave.player.debug.WatchExpression;
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 
 import javax.swing.*;
 import javax.swing.event.ChangeListener;

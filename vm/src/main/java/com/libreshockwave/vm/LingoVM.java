@@ -4,6 +4,8 @@ import com.libreshockwave.DirectorFile;
 import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.lingo.Opcode;
 import com.libreshockwave.vm.builtin.BuiltinRegistry;
+import com.libreshockwave.vm.datum.Datum;
+import com.libreshockwave.vm.datum.LingoException;
 import com.libreshockwave.vm.opcode.ExecutionContext;
 import com.libreshockwave.vm.opcode.OpcodeHandler;
 import com.libreshockwave.vm.opcode.OpcodeRegistry;

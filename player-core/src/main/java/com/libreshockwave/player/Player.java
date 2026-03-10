@@ -24,8 +24,8 @@ import com.libreshockwave.player.render.FrameSnapshot;
 import com.libreshockwave.player.render.SpriteBaker;
 import com.libreshockwave.player.render.StageRenderer;
 import com.libreshockwave.player.score.ScoreNavigator;
-import com.libreshockwave.vm.Datum;
-import com.libreshockwave.vm.LingoException;
+import com.libreshockwave.vm.datum.Datum;
+import com.libreshockwave.vm.datum.LingoException;
 import com.libreshockwave.vm.LingoVM;
 import com.libreshockwave.vm.TraceListener;
 import com.libreshockwave.vm.builtin.CastLibProvider;
@@ -769,7 +769,7 @@ public class Player {
      * The LingoException carries the call stack — use {@code e.getLingoCallStack()} or
      * {@code e.formatLingoCallStack()} to inspect it.
      */
-    public void setErrorListener(java.util.function.BiConsumer<String, com.libreshockwave.vm.LingoException> listener) {
+    public void setErrorListener(java.util.function.BiConsumer<String, com.libreshockwave.vm.datum.LingoException> listener) {
         this.errorListener = listener;
     }
 

@@ -285,7 +285,7 @@ public class HotelViewDiagnosticTest {
         // Check specific member lookups
         System.out.println("\n--- Member lookup checks ---");
         for (String name : new String[]{"brassivesiputousb", "Logo", "habbo ES fountain1", "corner_element"}) {
-            com.libreshockwave.vm.Datum ref = clm.getMemberByName(0, name);
+            com.libreshockwave.vm.datum.Datum ref = clm.getMemberByName(0, name);
             System.out.printf("  '%s': %s%n", name, ref != null && !ref.isVoid() ? ref.toStr() : "NOT FOUND");
         }
         // Check what castLib 16 member 52 resolves to

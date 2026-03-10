@@ -1,9 +1,9 @@
 package com.libreshockwave.vm.opcode.dispatch;
 
 import com.libreshockwave.chunks.ScriptChunk;
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.DebugConfig;
-import com.libreshockwave.vm.LingoException;
+import com.libreshockwave.vm.datum.LingoException;
 import com.libreshockwave.vm.builtin.CastLibProvider;
 import com.libreshockwave.vm.opcode.ExecutionContext;
 import com.libreshockwave.vm.util.AncestorChainWalker;

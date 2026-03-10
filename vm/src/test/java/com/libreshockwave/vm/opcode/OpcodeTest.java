@@ -2,7 +2,7 @@ package com.libreshockwave.vm.opcode;
 
 import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.lingo.Opcode;
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.Scope;
 import com.libreshockwave.vm.builtin.BuiltinRegistry;
 

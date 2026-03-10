@@ -2,7 +2,7 @@ package com.libreshockwave.vm.opcode;
 
 import com.libreshockwave.lingo.Opcode;
 import com.libreshockwave.lingo.StringChunkType;
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.builtin.CastLibProvider;
 import com.libreshockwave.vm.builtin.MoviePropertyProvider;
 import com.libreshockwave.vm.util.StringChunkUtils;

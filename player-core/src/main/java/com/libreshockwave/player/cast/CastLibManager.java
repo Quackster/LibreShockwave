@@ -5,7 +5,7 @@ import com.libreshockwave.chunks.CastChunk;
 import com.libreshockwave.chunks.CastListChunk;
 import com.libreshockwave.chunks.CastMemberChunk;
 import com.libreshockwave.util.FileUtil;
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.builtin.CastLibProvider;
 
 import java.util.HashMap;

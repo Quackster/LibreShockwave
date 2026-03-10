@@ -1,4 +1,4 @@
-package com.libreshockwave.vm;
+package com.libreshockwave.vm.datum;
 
 import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.id.CastLibId;

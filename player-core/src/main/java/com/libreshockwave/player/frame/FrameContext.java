@@ -10,7 +10,7 @@ import com.libreshockwave.player.score.ScoreNavigator;
 import com.libreshockwave.player.score.SpriteSpan;
 import com.libreshockwave.player.timeout.TimeoutManager;
 import com.libreshockwave.chunks.ScriptChunk;
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.LingoVM;
 import com.libreshockwave.vm.builtin.CastLibProvider;
 

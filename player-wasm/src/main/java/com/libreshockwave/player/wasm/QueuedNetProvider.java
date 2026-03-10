@@ -1,7 +1,7 @@
 package com.libreshockwave.player.wasm;
 
 import com.libreshockwave.util.FileUtil;
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.builtin.NetBuiltins;
 
 import java.util.ArrayList;

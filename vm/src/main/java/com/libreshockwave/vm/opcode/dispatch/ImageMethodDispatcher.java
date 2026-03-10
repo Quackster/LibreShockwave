@@ -3,7 +3,7 @@ package com.libreshockwave.vm.opcode.dispatch;
 import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.bitmap.Drawing;
 import com.libreshockwave.bitmap.Palette;
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 
 import java.util.List;
 

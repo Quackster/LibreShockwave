@@ -1,6 +1,6 @@
 package com.libreshockwave.player.wasm;
 
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.xtra.MultiuserNetBridge;
 
 import java.util.ArrayList;

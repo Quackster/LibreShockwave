@@ -1,6 +1,6 @@
 package com.libreshockwave.vm.builtin;
 
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 
 /**
  * Interface for sprite property access.

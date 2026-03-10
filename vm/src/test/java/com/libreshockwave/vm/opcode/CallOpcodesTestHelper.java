@@ -1,6 +1,6 @@
 package com.libreshockwave.vm.opcode;
 
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.builtin.CastLibProvider;
 
 import java.util.ArrayList;

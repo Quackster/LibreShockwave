@@ -1,6 +1,6 @@
 package com.libreshockwave.player.debug;
 
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 
 import java.util.ArrayList;
 import java.util.List;

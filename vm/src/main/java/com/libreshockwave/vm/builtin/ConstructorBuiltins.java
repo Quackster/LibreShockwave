@@ -1,7 +1,7 @@
 package com.libreshockwave.vm.builtin;
 
 import com.libreshockwave.chunks.ScriptChunk;
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.LingoVM;
 
 import java.util.ArrayList;

@@ -5,7 +5,7 @@ import com.libreshockwave.chunks.ScoreChunk;
 import com.libreshockwave.player.debug.DebugController;
 import com.libreshockwave.player.debug.DebugSnapshot;
 import com.libreshockwave.player.debug.DebugStateListener;
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 
 import java.util.LinkedHashMap;
 import java.util.Map;

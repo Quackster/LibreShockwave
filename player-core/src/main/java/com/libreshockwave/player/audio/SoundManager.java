@@ -7,7 +7,7 @@ import com.libreshockwave.chunks.MediaChunk;
 import com.libreshockwave.chunks.SoundChunk;
 import com.libreshockwave.player.cast.CastLib;
 import com.libreshockwave.player.cast.CastLibManager;
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.builtin.SoundProvider;
 
 /**

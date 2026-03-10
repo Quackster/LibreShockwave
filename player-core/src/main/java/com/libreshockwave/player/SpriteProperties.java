@@ -7,7 +7,7 @@ import com.libreshockwave.player.cast.CastLibManager;
 import com.libreshockwave.player.cast.CastMember;
 import com.libreshockwave.player.render.SpriteRegistry;
 import com.libreshockwave.player.sprite.SpriteState;
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.builtin.SpritePropertyProvider;
 
 /**
@@ -227,7 +227,7 @@ public class SpriteProperties implements SpritePropertyProvider {
             case "color" -> {
                 // sprite.color = rgb(...) — maps to foreColor; Director ignores VOID
                 if (!value.isVoid()) {
-                    if (value instanceof com.libreshockwave.vm.Datum.Color c) {
+                    if (value instanceof com.libreshockwave.vm.datum.Datum.Color c) {
                         sprite.setForeColor((c.r() << 16) | (c.g() << 8) | c.b());
                     } else {
                         sprite.setForeColor(value.toInt());
@@ -238,7 +238,7 @@ public class SpriteProperties implements SpritePropertyProvider {
             case "bgcolor" -> {
                 // sprite.bgColor = rgb(...) — maps to backColor; Director ignores VOID
                 if (!value.isVoid()) {
-                    if (value instanceof com.libreshockwave.vm.Datum.Color c) {
+                    if (value instanceof com.libreshockwave.vm.datum.Datum.Color c) {
                         sprite.setBackColor((c.r() << 16) | (c.g() << 8) | c.b());
                     } else {
                         sprite.setBackColor(value.toInt());

@@ -2,7 +2,7 @@ package com.libreshockwave.player.score;
 
 import com.libreshockwave.id.CastLibId;
 import com.libreshockwave.id.MemberId;
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 
 import java.util.List;
 

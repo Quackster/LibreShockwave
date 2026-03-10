@@ -1,5 +1,6 @@
 package com.libreshockwave.vm;
 
+import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.opcode.CallOpcodesTestHelper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;

@@ -1,6 +1,6 @@
 package com.libreshockwave.vm.trace;
 
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.TraceListener;
 
 import java.util.HashSet;

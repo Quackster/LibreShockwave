@@ -1,6 +1,6 @@
 package com.libreshockwave.vm.builtin;
 
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.HandlerRef;
 import com.libreshockwave.vm.LingoVM;
 

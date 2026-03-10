@@ -5,7 +5,7 @@ import com.libreshockwave.cast.MemberType;
 import com.libreshockwave.chunks.*;
 import com.libreshockwave.format.ChunkType;
 import com.libreshockwave.id.CastLibId;
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 
 import java.util.Collection;
 import java.util.HashMap;

@@ -1,7 +1,7 @@
 package com.libreshockwave.player.timeout;
 
 import com.libreshockwave.chunks.ScriptChunk;
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.LingoVM;
 import com.libreshockwave.vm.builtin.CastLibProvider;
 import com.libreshockwave.vm.builtin.TimeoutProvider;

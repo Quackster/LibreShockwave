@@ -1,6 +1,6 @@
 package com.libreshockwave.vm.opcode.dispatch;
 
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 
 import java.util.List;
 

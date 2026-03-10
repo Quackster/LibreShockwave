@@ -1,5 +1,6 @@
 package com.libreshockwave.vm;
 
+import com.libreshockwave.vm.datum.Datum;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 

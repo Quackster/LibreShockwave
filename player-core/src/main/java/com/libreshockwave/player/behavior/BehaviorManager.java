@@ -222,10 +222,10 @@ public class BehaviorManager {
 
         // Apply saved parameters to the instance properties
         // Parameters are typically [#prop1: value1, #prop2: value2]
-        List<com.libreshockwave.vm.Datum> params = behaviorRef.parameters();
-        for (com.libreshockwave.vm.Datum param : params) {
-            if (param instanceof com.libreshockwave.vm.Datum.PropList propList) {
-                for (com.libreshockwave.vm.Datum.PropEntry entry : propList.entries()) {
+        List<com.libreshockwave.vm.datum.Datum> params = behaviorRef.parameters();
+        for (com.libreshockwave.vm.datum.Datum param : params) {
+            if (param instanceof com.libreshockwave.vm.datum.Datum.PropList propList) {
+                for (com.libreshockwave.vm.datum.Datum.PropEntry entry : propList.entries()) {
                     instance.setProperty(entry.key(), entry.value());
                 }
             }

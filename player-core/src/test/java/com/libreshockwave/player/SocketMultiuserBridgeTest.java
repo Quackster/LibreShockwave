@@ -1,7 +1,7 @@
 package com.libreshockwave.player;
 
 import com.libreshockwave.player.xtra.SocketMultiuserBridge;
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.xtra.MultiuserNetBridge;
 import com.libreshockwave.vm.xtra.MultiuserXtra;
 

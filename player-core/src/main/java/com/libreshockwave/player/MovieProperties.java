@@ -3,7 +3,7 @@ package com.libreshockwave.player;
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.player.input.InputState;
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.builtin.MoviePropertyProvider;
 
 import java.time.LocalDate;

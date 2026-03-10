@@ -3,7 +3,7 @@ package com.libreshockwave.vm.opcode;
 import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.id.VarType;
 import com.libreshockwave.lingo.Opcode;
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.HandlerRef;
 import com.libreshockwave.vm.builtin.CastLibProvider;
 

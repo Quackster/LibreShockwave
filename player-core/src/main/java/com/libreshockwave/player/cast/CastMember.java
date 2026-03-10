@@ -13,7 +13,7 @@ import com.libreshockwave.id.CastLibId;
 import com.libreshockwave.id.MemberId;
 import com.libreshockwave.player.render.RenderConfig;
 import com.libreshockwave.player.render.TextRenderer;
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 
 /**
  * Represents a loaded cast member with lazy loading of media data.

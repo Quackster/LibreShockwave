@@ -1,7 +1,7 @@
 package com.libreshockwave.player;
 
 import com.libreshockwave.DirectorFile;
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.DebugConfig;
 import com.libreshockwave.vm.TraceListener;
 import com.libreshockwave.vm.xtra.MultiuserNetBridge;

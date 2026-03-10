@@ -2,9 +2,9 @@ package com.libreshockwave.vm.opcode;
 
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.chunks.ScriptChunk;
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.HandlerRef;
-import com.libreshockwave.vm.LingoException;
+import com.libreshockwave.vm.datum.LingoException;
 import com.libreshockwave.vm.Scope;
 import com.libreshockwave.vm.TraceListener;
 import com.libreshockwave.vm.builtin.BuiltinRegistry;

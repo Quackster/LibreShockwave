@@ -1,7 +1,7 @@
 package com.libreshockwave.player.debug.ui;
 
-import com.libreshockwave.vm.Datum;
-import com.libreshockwave.vm.DatumFormatter;
+import com.libreshockwave.vm.datum.Datum;
+import com.libreshockwave.vm.datum.DatumFormatter;
 
 import javax.swing.table.AbstractTableModel;
 import java.util.ArrayList;

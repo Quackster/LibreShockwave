@@ -8,7 +8,7 @@ import com.libreshockwave.player.cast.CastMember;
 import com.libreshockwave.player.render.BitmapCache;
 import com.libreshockwave.player.render.RenderSprite;
 import com.libreshockwave.player.render.SpriteBaker;
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.opcode.dispatch.ImageMethodDispatcher;
 import org.junit.jupiter.api.Test;
 

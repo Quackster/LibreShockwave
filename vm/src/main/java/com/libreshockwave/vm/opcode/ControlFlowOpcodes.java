@@ -1,7 +1,7 @@
 package com.libreshockwave.vm.opcode;
 
 import com.libreshockwave.lingo.Opcode;
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 
 import java.util.Map;
 

@@ -3,8 +3,8 @@ package com.libreshockwave.player;
 import com.libreshockwave.player.debug.DebugController;
 import com.libreshockwave.player.debug.DebugSnapshot;
 import com.libreshockwave.player.debug.DebugStateListener;
-import com.libreshockwave.vm.Datum;
-import com.libreshockwave.vm.DatumFormatter;
+import com.libreshockwave.vm.datum.Datum;
+import com.libreshockwave.vm.datum.DatumFormatter;
 
 import javax.swing.*;
 import java.awt.*;

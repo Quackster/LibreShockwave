@@ -3,7 +3,7 @@ package com.libreshockwave.player.sprite;
 import com.libreshockwave.chunks.ScoreChunk;
 import com.libreshockwave.id.ChannelId;
 import com.libreshockwave.id.InkMode;
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 
 import java.util.ArrayList;
 import java.util.List;

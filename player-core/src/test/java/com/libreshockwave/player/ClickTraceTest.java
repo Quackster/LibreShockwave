@@ -8,7 +8,7 @@ import com.libreshockwave.player.render.StageRenderer;
 import com.libreshockwave.player.render.SpriteRegistry;
 import com.libreshockwave.player.sprite.SpriteState;
 import com.libreshockwave.vm.DebugConfig;
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 
 import java.nio.file.Path;
 import java.util.List;

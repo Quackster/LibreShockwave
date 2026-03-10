@@ -2,7 +2,7 @@ package com.libreshockwave.player.behavior;
 
 import com.libreshockwave.chunks.ScriptChunk;
 import com.libreshockwave.player.score.ScoreBehaviorRef;
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 
 import java.util.HashMap;
 import java.util.Map;

@@ -8,7 +8,7 @@ import com.libreshockwave.player.input.HitTester;
 import com.libreshockwave.player.render.*;
 import com.libreshockwave.player.sprite.SpriteState;
 import com.libreshockwave.vm.DebugConfig;
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 
 import javax.imageio.ImageIO;
 import java.io.File;

@@ -1,6 +1,6 @@
 package com.libreshockwave.vm.util;
 
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 
 /**
  * Utility class for walking ancestor chains in script instances.

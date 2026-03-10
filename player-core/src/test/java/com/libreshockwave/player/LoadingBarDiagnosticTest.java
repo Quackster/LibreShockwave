@@ -5,7 +5,7 @@ import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.player.cast.CastLibManager;
 import com.libreshockwave.player.render.*;
 import com.libreshockwave.vm.DebugConfig;
-import com.libreshockwave.vm.Datum;
+import com.libreshockwave.vm.datum.Datum;
 import com.libreshockwave.vm.LingoVM;
 
 import javax.imageio.ImageIO;

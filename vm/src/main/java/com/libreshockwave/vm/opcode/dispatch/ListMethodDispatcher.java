@@ -1,7 +1,7 @@
 package com.libreshockwave.vm.opcode.dispatch;
 
-import com.libreshockwave.vm.Datum;
-import com.libreshockwave.vm.LingoException;
+import com.libreshockwave.vm.datum.Datum;
+import com.libreshockwave.vm.datum.LingoException;
 
 import java.util.ArrayList;
 import java.util.List;

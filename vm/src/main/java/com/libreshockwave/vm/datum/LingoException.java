@@ -1,4 +1,6 @@
-package com.libreshockwave.vm;
+package com.libreshockwave.vm.datum;
+
+import com.libreshockwave.vm.LingoVM;
 
 import java.util.List;
 

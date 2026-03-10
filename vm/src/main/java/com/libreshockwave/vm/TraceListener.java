@@ -1,6 +1,7 @@
 package com.libreshockwave.vm;
 
 import com.libreshockwave.chunks.ScriptChunk;
+import com.libreshockwave.vm.datum.Datum;
 
 import java.util.List;
 import java.util.Map;
