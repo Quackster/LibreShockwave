@@ -92,17 +92,13 @@ public final class CallOpcodes {
             } else {
                 // Check built-in constants (SPACE, RETURN, QUOTE, etc.)
                 // Director compiles these as EXT_CALL with 0 args when used without "the"
-                result = args.isEmpty() ? getBuiltinConstant(handlerName) : Datum.VOID;
+                result = args.isEmpty() ? PropertyOpcodes.getBuiltinConstant(handlerName) : Datum.VOID;
             }
         }
         if (!noRet) {
             ctx.push(result);
         }
         return true;
-    }
-
-    private static Datum getBuiltinConstant(String name) {
-        return PropertyOpcodes.getBuiltinConstant(name);
     }
 
     private static boolean objCall(ExecutionContext ctx) {
