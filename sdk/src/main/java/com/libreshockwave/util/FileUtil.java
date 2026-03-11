@@ -27,8 +27,10 @@ public class FileUtil {
             }
         }
 
-        // Strip path (handles both / and \)
-        return path.replaceAll("^.*[\\\\/]", "");
+        // Strip path (handles /, \, and : as Mac-style Director path separators)
+        // Also URL-decode %20 to spaces for paths like "20000201_mobiles%20Folder"
+        String decoded = path.replace("%20", " ");
+        return decoded.replaceAll("^.*[\\\\/:]", "");
     }
 
     /**
