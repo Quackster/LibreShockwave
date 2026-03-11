@@ -1391,7 +1391,69 @@ public class Player {
         CastMemberChunk chunk = castLibManager.getCastMember(castLibNum, memberNum);
         if (chunk == null) return null;
 
-        return decodeBitmap(chunk).orElse(null);
+        Bitmap cursorBmp = decodeBitmap(chunk).orElse(null);
+        if (cursorBmp == null) return null;
+
+        // Decode the mask bitmap if present.
+        // Director cursors use a separate mask bitmap to define transparency:
+        //   mask white/background (palette index 0) = transparent
+        //   mask non-white = opaque (show cursor pixel)
+        // Without a mask, the cursor bitmap is fully opaque.
+        int encodedMask = sprite.getCursorMaskNum();
+        if (encodedMask != 0) {
+            int maskCastLib = (encodedMask >> 16) & 0xFFFF;
+            int maskMemberNum = encodedMask & 0xFFFF;
+            if (maskCastLib == 0) maskCastLib = 1;
+
+            CastMemberChunk maskChunk = castLibManager.getCastMember(maskCastLib, maskMemberNum);
+            if (maskChunk != null) {
+                Bitmap maskBmp = decodeBitmap(maskChunk).orElse(null);
+                if (maskBmp != null) {
+                    cursorBmp = applyCursorMask(cursorBmp, maskBmp);
+                }
+            }
+        }
+
+        return cursorBmp;
+    }
+
+    /**
+     * Apply a mask bitmap to a cursor bitmap, producing a 32-bit ARGB result.
+     * Mask pixels that are white (0xFFFFFF) become transparent in the output.
+     * Mask pixels that are non-white make the corresponding cursor pixel opaque.
+     */
+    private Bitmap applyCursorMask(Bitmap cursor, Bitmap mask) {
+        int w = cursor.getWidth();
+        int h = cursor.getHeight();
+        int[] cursorPixels = cursor.getPixels();
+        int[] maskPixels = mask.getPixels();
+        int[] result = new int[w * h];
+
+        int mw = mask.getWidth();
+        int mh = mask.getHeight();
+
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                int ci = y * w + x;
+                int cursorRgb = cursorPixels[ci] & 0xFFFFFF;
+
+                // Check mask bounds — out-of-bounds = transparent
+                if (x < mw && y < mh) {
+                    int mi = y * mw + x;
+                    int maskRgb = maskPixels[mi] & 0xFFFFFF;
+                    // Mask white (0xFFFFFF) = transparent, non-white = opaque
+                    if (maskRgb == 0xFFFFFF) {
+                        result[ci] = 0x00000000;
+                    } else {
+                        result[ci] = 0xFF000000 | cursorRgb;
+                    }
+                } else {
+                    result[ci] = 0x00000000;
+                }
+            }
+        }
+
+        return new Bitmap(w, h, 32, result);
     }
 
     /**

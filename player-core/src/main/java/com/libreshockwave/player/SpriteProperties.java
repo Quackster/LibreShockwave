@@ -265,10 +265,10 @@ public class SpriteProperties implements SpritePropertyProvider {
             }
             case "cursor" -> {
                 // Director cursor: -1=arrow, 0=default, 1=ibeam, 2=crosshair, 3=crossbar, 4=wait
-                // Can also be a list [memberNum, maskMemberNum] for bitmap cursors
+                // Can also be a list [memberRef, maskMemberRef] for bitmap cursors
                 if (value instanceof Datum.List list && list.items().size() >= 2) {
-                    int memberNum = list.items().get(0).toInt();
-                    int maskNum = list.items().get(1).toInt();
+                    int memberNum = encodeCursorMember(list.items().get(0));
+                    int maskNum = encodeCursorMember(list.items().get(1));
                     sprite.setCursorMembers(memberNum, maskNum);
                 } else {
                     sprite.setCursor(value.toInt());
@@ -332,5 +332,16 @@ public class SpriteProperties implements SpritePropertyProvider {
         if (dm != null) {
             sprite.applyIntrinsicSize(dm.getProp("width").toInt(), dm.getProp("height").toInt());
         }
+    }
+
+    /**
+     * Encode a cursor member datum into the (castLib << 16 | memberNum) format.
+     * Handles both CastMemberRef datums (from member() calls) and raw integers.
+     */
+    private static int encodeCursorMember(Datum d) {
+        if (d instanceof Datum.CastMemberRef ref) {
+            return (ref.castLibNum() << 16) | ref.memberNum();
+        }
+        return d.toInt();
     }
 }
