@@ -5,7 +5,7 @@ import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.bitmap.Palette;
 import com.libreshockwave.cast.BitmapInfo;
 import com.libreshockwave.chunks.CastMemberChunk;
-import com.libreshockwave.id.InkMode;
+
 import com.libreshockwave.player.Player;
 import com.libreshockwave.player.cast.CastMember;
 
@@ -57,31 +57,11 @@ public class BitmapCache {
         }
 
         try {
-            // ScummVM renders all sprites in a shared movie palette color space.
-            // For DARKEN/LIGHTEN inks (which do per-channel MIN/MAX against the
-            // background), we must decode with the movie palette so the car body
-            // colors match the background's palette space.
             Palette effectivePalette = paletteOverride;
-            if (effectivePalette == null
-                    && (ink == InkMode.DARKEN.code() || ink == InkMode.LIGHTEN.code()
-                        || ink == InkMode.DARKEST.code() || ink == InkMode.LIGHTEST.code())) {
-                effectivePalette = player.getMoviePalette();
-            }
 
-            Optional<Bitmap> bitmap;
-            if (effectivePalette != null) {
-                bitmap = player.decodeBitmap(member, effectivePalette);
-            } else {
-                bitmap = player.decodeBitmap(member);
-            }
-            if (bitmap.isEmpty()) {
-                decodeFailed.add(id);
-                return null;
-            }
-
-            Bitmap raw = bitmap.get();
-
-            // Parse BitmapInfo for useAlpha and paletteId
+            // Parse BitmapInfo for useAlpha and paletteId.
+            // Resolve the palette BEFORE decoding so we use the same palette for
+            // both bitmap decoding and InkProcessor backColor resolution.
             boolean useAlpha = false;
             Palette palette = effectivePalette;
             if (member.specificData() != null && member.specificData().length >= 10) {
@@ -96,6 +76,21 @@ public class BitmapCache {
                     palette = memberFile.resolvePalette(info.paletteId());
                 }
             }
+
+            // Decode with resolved palette to ensure pixel colors match the
+            // palette used for InkProcessor backColor resolution.
+            Optional<Bitmap> bitmap;
+            if (palette != null) {
+                bitmap = player.decodeBitmap(member, palette);
+            } else {
+                bitmap = player.decodeBitmap(member);
+            }
+            if (bitmap.isEmpty()) {
+                decodeFailed.add(id);
+                return null;
+            }
+
+            Bitmap raw = bitmap.get();
 
             Bitmap processed = InkProcessor.applyInk(raw, ink, backColor, useAlpha, palette);
             cache.put(key, processed);
