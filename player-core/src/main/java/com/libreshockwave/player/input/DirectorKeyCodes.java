@@ -99,8 +99,12 @@ public final class DirectorKeyCodes {
      * Browser keyCodes are similar to Java VK_ codes for most keys.
      */
     public static int fromBrowserKeyCode(int browserKeyCode) {
-        // Browser keyCodes are largely the same as Java VK_ codes
-        return fromJavaKeyCode(browserKeyCode);
+        // Handle browser keyCodes that differ from Java AWT VK_ constants
+        return switch (browserKeyCode) {
+            case 13 -> 36;   // Browser Enter (13) → kVK_Return (Java VK_ENTER is 10)
+            case 46 -> 117;  // Browser Delete (46) → kVK_ForwardDelete (Java VK_DELETE is 127)
+            default -> fromJavaKeyCode(browserKeyCode);
+        };
     }
 
     // Mac virtual keycodes for letters (QWERTY layout)
