@@ -1588,7 +1588,9 @@ public class Player {
                     handleEditableFieldInput(focusSprite, event.keyChar());
                     dispatcher.dispatchSpriteEvent(focusSprite, PlayerEvent.KEY_DOWN, List.of());
                 }
-                dispatcher.dispatchGlobalEvent(PlayerEvent.KEY_DOWN, List.of());
+                // Director dispatches keyDown to focused sprite → frame → movie scripts
+                // (NOT to all sprite behaviors — unlike mouseDown)
+                dispatcher.dispatchFrameAndMovieEvent(PlayerEvent.KEY_DOWN, List.of());
             }
             case KEY_UP -> {
                 inputState.setLastKey(event.keyChar());
@@ -1597,7 +1599,7 @@ public class Player {
                 if (focusSprite > 0) {
                     dispatcher.dispatchSpriteEvent(focusSprite, PlayerEvent.KEY_UP, List.of());
                 }
-                dispatcher.dispatchGlobalEvent(PlayerEvent.KEY_UP, List.of());
+                dispatcher.dispatchFrameAndMovieEvent(PlayerEvent.KEY_UP, List.of());
             }
         }
     }
