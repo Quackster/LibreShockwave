@@ -220,6 +220,11 @@ var LibreShockwave = (function() {
         }
         canvas.style.outline = 'none'; // Hide focus outline
 
+        // Track whether the canvas has focus — suppress input when it doesn't
+        self._canvasFocused = document.activeElement === canvas;
+        canvas.addEventListener('focus', function() { self._canvasFocused = true; });
+        canvas.addEventListener('blur', function() { self._canvasFocused = false; });
+
         canvas.addEventListener('mousemove', function(e) {
             var r = canvas.getBoundingClientRect();
             var x = Math.round(e.clientX - r.left);
@@ -227,6 +232,7 @@ var LibreShockwave = (function() {
             self._mouseX = x;
             self._mouseY = y;
             self._cursorDirty = true;
+            if (!self._canvasFocused) return;
             if (!self._worker || !self._workerReady) return;
             self._worker.postMessage({ type: 'mouseMove', x: x, y: y });
         });
@@ -244,6 +250,7 @@ var LibreShockwave = (function() {
         });
 
         canvas.addEventListener('mouseup', function(e) {
+            if (!self._canvasFocused) return;
             if (!self._worker || !self._workerReady) return;
             if (e.button !== 0 && e.button !== 2) return;
             var r = canvas.getBoundingClientRect();
@@ -272,6 +279,7 @@ var LibreShockwave = (function() {
         }, { passive: false });
 
         canvas.addEventListener('touchmove', function(e) {
+            if (!self._canvasFocused) return;
             e.preventDefault();
             var touch = e.changedTouches[0];
             var r = canvas.getBoundingClientRect();
@@ -285,6 +293,7 @@ var LibreShockwave = (function() {
         }, { passive: false });
 
         canvas.addEventListener('touchend', function(e) {
+            if (!self._canvasFocused) return;
             e.preventDefault();
             var touch = e.changedTouches[0];
             var r = canvas.getBoundingClientRect();
@@ -295,6 +304,7 @@ var LibreShockwave = (function() {
         }, { passive: false });
 
         canvas.addEventListener('touchcancel', function(e) {
+            if (!self._canvasFocused) return;
             var touch = e.changedTouches[0];
             if (!touch) return;
             var r = canvas.getBoundingClientRect();
@@ -305,6 +315,7 @@ var LibreShockwave = (function() {
         });
 
         canvas.addEventListener('keydown', function(e) {
+            if (!self._canvasFocused) return;
             if (!self._worker || !self._workerReady) return;
             // Handle Ctrl/Cmd shortcuts selectively
             if (e.ctrlKey || e.metaKey) {
@@ -340,6 +351,7 @@ var LibreShockwave = (function() {
         });
 
         canvas.addEventListener('keyup', function(e) {
+            if (!self._canvasFocused) return;
             if (!self._worker || !self._workerReady) return;
             if (e.ctrlKey || e.metaKey) return;
             e.preventDefault();
@@ -357,6 +369,7 @@ var LibreShockwave = (function() {
 
         // Clipboard paste support
         document.addEventListener('paste', function(e) {
+            if (!self._canvasFocused) return;
             var text = (e.clipboardData || window.clipboardData).getData('text');
             if (text && self._worker && self._workerReady) {
                 self._worker.postMessage({ type: 'paste', text: text });
