@@ -1157,10 +1157,10 @@ var LibreShockwave = (function() {
                         var px = r.x + rx;
                         if (px < 0 || px >= w) continue;
                         var off = (py * w + px) * 4;
-                        // Blend: 40% blue highlight over existing pixel
-                        dst[off]     = (dst[off]     * 153 + 51 * 102) / 255 | 0;
-                        dst[off + 1] = (dst[off + 1] * 153 + 102 * 102) / 255 | 0;
-                        dst[off + 2] = (dst[off + 2] * 153 + 204 * 102) / 255 | 0;
+                        // Invert colors (Director-style selection highlight)
+                        dst[off]     = 255 - dst[off];
+                        dst[off + 1] = 255 - dst[off + 1];
+                        dst[off + 2] = 255 - dst[off + 2];
                     }
                 }
             }
