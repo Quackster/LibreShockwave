@@ -46,6 +46,12 @@ public record CastMemberChunk(
         return memberType == MemberType.SOUND;
     }
 
+    /** Director 7+ "Text Asset" Xtra: XTRA type with "text" sub-type in specificData. */
+    public boolean isTextXtra() {
+        return memberType == MemberType.XTRA
+                && com.libreshockwave.cast.XmedTextParser.isTextXtra(specificData);
+    }
+
     /**
      * Get the script type for Script cast members.
      * The script type is stored in the first u16 of specificData.

@@ -10,7 +10,7 @@ import java.nio.file.Path;
  */
 public class MobilesDiscoCastDiag {
     public static void main(String[] args) throws Exception {
-        DirectorFile file = DirectorFile.load(Path.of("C:/xampp/htdocs/mobiles/dcr_0519b/20000201_mobiles_disco.dcr"));
+        DirectorFile file = DirectorFile.load(Path.of("C:/xampp/htdocs/mobiles/dcr_0519b_e/20000201_mobiles_disco.dcr"));
 
         System.out.println("=== MCsL entries ===");
         var castList = file.getCastList();

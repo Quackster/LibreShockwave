@@ -175,11 +175,39 @@ public class SpriteBaker {
             }
         }
 
-        if (member == null) {
-            return null;
+        // Fall back to runtime member lookup by chunk ID (for nameless members
+        // like XTRA text members whose text may have been set by Lingo)
+        if (member == null && sprite.getCastMember() != null && castLibManager != null) {
+            member = castLibManager.findRuntimeMember(sprite.getCastMember());
         }
 
-        Bitmap textImage = member.renderTextToImage();
+        Bitmap textImage = null;
+
+        if (member != null && member.hasDynamicText()) {
+            // Lingo set member.text — render using sprite dimensions
+            var renderer = CastMember.getTextRendererStatic();
+            if (renderer != null) {
+                int width = sprite.getWidth() > 0 ? sprite.getWidth() : 200;
+                int height = sprite.getHeight() > 0 ? sprite.getHeight() : 20;
+                int textColor = 0xFF000000 | (sprite.getForeColor() & 0xFFFFFF);
+                int bgColor = 0xFF000000 | (sprite.getBackColor() & 0xFFFFFF);
+                textImage = renderer.renderText(
+                        member.getTextContent(), width, height,
+                        member.getTextFont(), member.getTextFontSize(), "",
+                        "left", textColor, bgColor,
+                        true, false, 0, 0);
+            }
+        } else if (member != null) {
+            textImage = member.renderTextToImage();
+        }
+
+        // Fall back to rendering directly from the file's STXT/XMED chunk
+        // (for score-placed text sprites that don't have a runtime CastMember,
+        // or when renderTextToImage returned null)
+        if (textImage == null && sprite.getCastMember() != null) {
+            textImage = bakeTextFromFile(sprite);
+        }
+
         if (textImage == null) {
             return null;
         }
@@ -191,6 +219,97 @@ public class SpriteBaker {
         }
 
         return textImage;
+    }
+
+    /**
+     * Render text directly from file data (CASt specificData + STXT/XMED chunk).
+     * Used for score-placed text sprites that don't have a runtime CastMember.
+     * Handles both regular STXT text and Director 7+ Text Asset Xtras (XMED chunks).
+     */
+    private Bitmap bakeTextFromFile(RenderSprite sprite) {
+        var castMember = sprite.getCastMember();
+        var file = castMember.file();
+        if (file == null) return null;
+
+        // Try XMED text first (Director 7+ Text Asset Xtra)
+        if (castMember.isTextXtra()) {
+            return bakeTextFromXmed(sprite, file, castMember);
+        }
+
+        // Look up the STXT chunk via KEY* table
+        var textChunk = file.getTextForMember(castMember);
+        if (textChunk == null || textChunk.text() == null) return null;
+
+        // Parse text formatting from specificData
+        var textInfo = com.libreshockwave.cast.TextInfo.parse(castMember.specificData());
+
+        // Get font info from STXT formatting runs (first run determines primary font)
+        String fontName = "Arial";
+        int fontSize = 12;
+        int fontStyle = 0;
+        if (!textChunk.runs().isEmpty()) {
+            var run = textChunk.runs().get(0);
+            fontSize = run.fontSize();
+            fontStyle = run.fontStyle();
+        }
+
+        String styleStr = "";
+        if ((fontStyle & 1) != 0) styleStr += "bold";
+        if ((fontStyle & 2) != 0) styleStr += (styleStr.isEmpty() ? "" : ",") + "italic";
+        if ((fontStyle & 4) != 0) styleStr += (styleStr.isEmpty() ? "" : ",") + "underline";
+
+        String alignment = switch (textInfo.textAlign()) {
+            case 1 -> "center";
+            case -1 -> "right";
+            default -> "left";
+        };
+
+        int width = textInfo.width() > 0 ? textInfo.width() : sprite.getWidth();
+        int height = textInfo.height() > 0 ? textInfo.height() : sprite.getHeight();
+        if (width <= 0) width = 200;
+        if (height <= 0) height = 20;
+
+        var renderer = CastMember.getTextRendererStatic();
+        if (renderer == null) return null;
+
+        // Use sprite foreColor for text color; ARGB format with full alpha
+        int textColor = 0xFF000000 | (sprite.getForeColor() & 0xFFFFFF);
+        int bgColor = 0xFF000000 | ((textInfo.bgRed() << 16) | (textInfo.bgGreen() << 8) | textInfo.bgBlue());
+
+        return renderer.renderText(
+                textChunk.text(), width, height,
+                fontName, fontSize, styleStr,
+                alignment, textColor, bgColor,
+                textInfo.isWordWrap(), false,
+                0, 0);
+    }
+
+    /**
+     * Render text from XMED chunk data (Director 7+ Text Asset Xtra).
+     */
+    private Bitmap bakeTextFromXmed(RenderSprite sprite, com.libreshockwave.DirectorFile file,
+                                     com.libreshockwave.chunks.CastMemberChunk castMember) {
+        var xmedText = file.getXmedTextForMember(castMember);
+        if (xmedText == null || xmedText.text() == null || xmedText.text().isEmpty()) {
+            return null;
+        }
+
+        var renderer = CastMember.getTextRendererStatic();
+        if (renderer == null) return null;
+
+        int width = sprite.getWidth() > 0 ? sprite.getWidth() : 200;
+        int height = sprite.getHeight() > 0 ? sprite.getHeight() : 20;
+
+        // ARGB format — text color from sprite foreColor, background from backColor
+        int textColor = 0xFF000000 | (sprite.getForeColor() & 0xFFFFFF);
+        int bgColor = 0xFF000000 | (sprite.getBackColor() & 0xFFFFFF);
+
+        return renderer.renderText(
+                xmedText.text(), width, height,
+                xmedText.fontName(), xmedText.fontSize(), "",
+                "left", textColor, bgColor,
+                true, false,
+                0, 0);
     }
 
     /**

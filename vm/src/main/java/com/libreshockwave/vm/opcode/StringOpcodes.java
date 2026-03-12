@@ -529,8 +529,14 @@ public final class StringOpcodes {
                 break;
             }
             case VAR_TYPE_FIELD: {
-                // Field text setting - limited support
-                System.err.println("[WARN] setContextVar: field set not fully implemented");
+                CastLibProvider provider = CastLibProvider.getProvider();
+                if (provider != null) {
+                    int castId = castIdDatum != null ? castIdDatum.toInt() : 0;
+                    Object identifier = idDatum instanceof Datum.Str s ? s.value()
+                            : idDatum instanceof Datum.Int i ? i.value()
+                            : idDatum.toStr();
+                    provider.setFieldValue(identifier, castId, value.toStr());
+                }
                 break;
             }
             case VAR_TYPE_GLOBAL1:

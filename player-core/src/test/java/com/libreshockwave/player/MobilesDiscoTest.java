@@ -3,7 +3,6 @@ package com.libreshockwave.player;
 import com.libreshockwave.DirectorFile;
 import com.libreshockwave.bitmap.Bitmap;
 import com.libreshockwave.player.cast.CastLibManager;
-import com.libreshockwave.player.render.RenderType;
 import com.libreshockwave.player.render.pipeline.FrameSnapshot;
 import com.libreshockwave.player.render.pipeline.RenderSprite;
 import com.libreshockwave.player.render.pipeline.SpriteBaker;
@@ -25,8 +24,8 @@ import java.util.*;
  */
 public class MobilesDiscoTest {
 
-    // Load from the htdocs path (same file served at http://localhost/mobiles/dcr_0519b/...)
-    private static final String MOVIE_PATH = "C:/xampp/htdocs/mobiles/dcr_0519b/20000201_mobiles_disco.dcr";
+    // Load from the htdocs path (same file served at http://localhost/mobiles/dcr_0519b_e/...)
+    private static final String MOVIE_PATH = "C:/xampp/htdocs/mobiles/dcr_0519b_e/20000201_mobiles_disco.dcr";
     private static final String OUTPUT_DIR = "build/mobiles-disco-test";
     private static final String REFERENCE_PATH = "docs/mobiles-disco-reference.png";
 
@@ -41,7 +40,7 @@ public class MobilesDiscoTest {
 
         Player player = new Player(file);
         player.getNetManager().setLocalHttpRoot("C:/xampp/htdocs");
-        player.getNetManager().setBasePath("http://localhost/mobiles/dcr_0519b/");
+        player.getNetManager().setBasePath("http://localhost/mobiles/dcr_0519b_e/");
 
         // Enable debug on frame context and behavior manager
         player.getFrameContext().setDebugEnabled(true);
@@ -162,7 +161,7 @@ public class MobilesDiscoTest {
         }
 
         // Render and save
-        Bitmap rendered = snapshot.renderFrame(RenderType.SOFTWARE);
+        Bitmap rendered = snapshot.renderFrame();
         BufferedImage renderedImg = rendered.toBufferedImage();
         File outputFile = new File(OUTPUT_DIR + "/mobiles_disco.png");
         ImageIO.write(renderedImg, "PNG", outputFile);

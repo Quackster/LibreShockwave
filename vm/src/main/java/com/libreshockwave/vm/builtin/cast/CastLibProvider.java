@@ -102,6 +102,16 @@ public interface CastLibProvider {
     }
 
     /**
+     * Set the text content of a field (text cast member).
+     * Used by SET_FIELD opcode for "put ... into field N" syntax.
+     * @param memberNameOrNum The member name (string) or number
+     * @param castId The cast library (0 for default/all casts)
+     * @param value The text value to set
+     */
+    default void setFieldValue(Object memberNameOrNum, int castId, String value) {
+    }
+
+    /**
      * Fetch an external cast library synchronously.
      * @param castLibNumber The cast library number
      * @return true if fetch was successful

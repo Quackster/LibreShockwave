@@ -98,8 +98,8 @@ public class CastExtractorTool extends JFrame {
             MemberType.BITMAP, MemberType.SOUND, MemberType.SCRIPT,
             MemberType.TEXT, MemberType.PALETTE, MemberType.BUTTON,
             MemberType.SHAPE, MemberType.FILM_LOOP, MemberType.DIGITAL_VIDEO,
-            MemberType.FLASH, MemberType.FONT, MemberType.TRANSITION,
-            MemberType.RTE
+            MemberType.FONT, MemberType.TRANSITION,
+            MemberType.RICH_TEXT
     );
 
     // Service classes
@@ -223,8 +223,8 @@ public class CastExtractorTool extends JFrame {
                 MemberType.BITMAP, MemberType.SOUND, MemberType.SCRIPT,
                 MemberType.TEXT, MemberType.PALETTE, MemberType.BUTTON,
                 MemberType.SHAPE, MemberType.FILM_LOOP, MemberType.FONT,
-                MemberType.TRANSITION, MemberType.DIGITAL_VIDEO, MemberType.FLASH,
-                MemberType.RTE
+                MemberType.TRANSITION, MemberType.DIGITAL_VIDEO,
+                MemberType.RICH_TEXT
         };
 
         List<JCheckBoxMenuItem> checkItems = new ArrayList<>();

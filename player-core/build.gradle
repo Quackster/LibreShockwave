@@ -382,3 +382,14 @@ tasks.register('runMobilesDiscoCastDiag', JavaExec) {
         languageVersion = JavaLanguageVersion.of(21)
     }
 }
+
+tasks.register('runExternalCastDump', JavaExec) {
+    group = 'verification'
+    description = 'Dump all cast members from Mobiles Disco external .cct files, looking for English text'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.libreshockwave.player.ExternalCastDump'
+    dependsOn compileTestJava
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}

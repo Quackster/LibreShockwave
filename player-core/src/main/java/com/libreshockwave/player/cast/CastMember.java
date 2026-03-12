@@ -34,6 +34,11 @@ public class CastMember {
         textRenderer = renderer;
     }
 
+    /** Static accessor for text renderer (used by SpriteBaker for file-based text). */
+    public static TextRenderer getTextRendererStatic() {
+        return textRenderer;
+    }
+
     public static void setMemberVisualChangedCallback(Runnable callback) {
         memberVisualChangedCallback = callback;
     }
@@ -147,7 +152,12 @@ public class CastMember {
             case BITMAP -> loadBitmap();
             case SCRIPT -> loadScript();
             case TEXT, BUTTON -> loadText();
-            // Other types can be added as needed
+            case XTRA -> {
+                // Director 7+ "Text Asset" Xtras store text in XMED chunks
+                if (chunk.isTextXtra()) {
+                    loadXmedText();
+                }
+            }
             default -> {}
         }
 
@@ -204,6 +214,32 @@ public class CastMember {
         } else {
             textContent = "";
         }
+    }
+
+    private void loadXmedText() {
+        if (sourceFile == null || chunk == null) {
+            textContent = "";
+            return;
+        }
+
+        var xmedText = sourceFile.getXmedTextForMember(chunk);
+        if (xmedText != null && xmedText.text() != null) {
+            textContent = xmedText.text();
+            // Apply font info from XMED
+            if (xmedText.fontName() != null) {
+                textFont = xmedText.fontName();
+            }
+            textFontSize = xmedText.fontSize();
+        } else {
+            textContent = "";
+        }
+    }
+
+    /**
+     * Check if this member has Lingo-set dynamic text (member.text = value).
+     */
+    public boolean hasDynamicText() {
+        return dynamicText != null;
     }
 
     /**
@@ -364,6 +400,10 @@ public class CastMember {
      * Get a type-specific property.
      */
     private Datum getTypeProp(String prop) {
+        // XTRA "text" sub-type members behave like TEXT for property access
+        if (memberType == MemberType.XTRA && chunk != null && chunk.isTextXtra()) {
+            return getTextProp(prop);
+        }
         return switch (memberType) {
             case BITMAP -> getBitmapProp(prop);
             case TEXT, BUTTON -> getTextProp(prop);
@@ -558,6 +598,10 @@ public class CastMember {
 
     private boolean setTypeProp(String prop, Datum value) {
         if (memberType == MemberType.TEXT || memberType == MemberType.BUTTON) {
+            return setTextProp(prop, value);
+        }
+        // XTRA "text" sub-type members behave like TEXT for property access
+        if (memberType == MemberType.XTRA && chunk != null && chunk.isTextXtra()) {
             return setTextProp(prop, value);
         }
         if (memberType == MemberType.BITMAP) {

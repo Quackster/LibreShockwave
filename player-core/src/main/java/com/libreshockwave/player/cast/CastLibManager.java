@@ -381,6 +381,26 @@ public class CastLibManager implements CastLibProvider {
     }
 
     /**
+     * Find the runtime CastMember for a given CastMemberChunk.
+     * Searches all cast libraries for the chunk by its chunk ID, then returns the
+     * runtime CastMember wrapper. Used by SpriteBaker to get Lingo-set properties
+     * for score-placed sprites that only have a CastMemberChunk.
+     */
+    public CastMember findRuntimeMember(CastMemberChunk target) {
+        if (target == null) return null;
+        ensureInitialized();
+
+        for (CastLib castLib : castLibs.values()) {
+            if (!castLib.isLoaded()) continue;
+            int memberNum = castLib.getMemberNumber(target);
+            if (memberNum >= 0) {
+                return castLib.getMember(memberNum);
+            }
+        }
+        return null;
+    }
+
+    /**
      * Get all loaded cast libraries.
      */
     public Map<Integer, CastLib> getCastLibs() {
@@ -557,6 +577,45 @@ public class CastLibManager implements CastLibProvider {
         }
 
         return "";
+    }
+
+    @Override
+    public void setFieldValue(Object memberNameOrNum, int castId, String value) {
+        ensureInitialized();
+
+        CastMember member = null;
+
+        if (memberNameOrNum instanceof String name) {
+            if (castId > 0) {
+                CastLib castLib = getCastLib(castId);
+                if (castLib != null) {
+                    member = castLib.getMemberByName(name);
+                }
+            } else {
+                for (CastLib castLib : castLibs.values()) {
+                    if (!castLib.isLoaded()) castLib.load();
+                    member = castLib.getMemberByName(name);
+                    if (member != null) break;
+                }
+            }
+        } else if (memberNameOrNum instanceof Integer num) {
+            int effectiveCastId, effectiveMemberNum;
+            if (num > 65535) {
+                effectiveCastId = num >> 16;
+                effectiveMemberNum = num & 0xFFFF;
+            } else {
+                effectiveCastId = castId > 0 ? castId : 1;
+                effectiveMemberNum = num;
+            }
+            CastLib castLib = getCastLib(effectiveCastId);
+            if (castLib != null) {
+                member = castLib.getMember(effectiveMemberNum);
+            }
+        }
+
+        if (member != null) {
+            member.setDynamicText(value);
+        }
     }
 
     /**

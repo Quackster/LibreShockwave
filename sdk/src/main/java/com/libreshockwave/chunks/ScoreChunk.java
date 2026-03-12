@@ -119,7 +119,9 @@ public record ScoreChunk(
 
         public static ChannelData read(BinaryReader reader) {
             int spriteType = reader.readU8();
-            int ink = reader.readU8();
+            // D7: ink is bits 0-5; bit 6 = trails, bit 7 = stretch
+            int inkByte = reader.readU8();
+            int ink = inkByte & 0x3F;
             int foreColor = reader.readU8();
             int backColor = reader.readU8();
             int castLib = reader.readU16();

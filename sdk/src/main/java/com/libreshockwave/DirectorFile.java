@@ -251,6 +251,39 @@ public class DirectorFile {
         return Optional.empty();
     }
 
+    /**
+     * Look up XMED chunk for a cast member via KEY* table and parse text content.
+     * Used for Director 7+ Text Asset Xtra members.
+     */
+    public com.libreshockwave.cast.XmedTextParser.XmedText getXmedTextForMember(CastMemberChunk member) {
+        if (keyTable == null) return null;
+        for (KeyTableChunk.KeyTableEntry entry : keyTable.getEntriesForOwner(member.id())) {
+            if (entry.fourccString().equals("XMED")) {
+                Chunk chunk = getChunk(entry.sectionId());
+                if (chunk instanceof RawChunk rc) {
+                    return com.libreshockwave.cast.XmedTextParser.parse(rc.data());
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Look up STXT (styled text) chunk for a cast member via KEY* table.
+     */
+    public com.libreshockwave.chunks.TextChunk getTextForMember(CastMemberChunk member) {
+        if (keyTable == null) return null;
+        for (KeyTableChunk.KeyTableEntry entry : keyTable.getEntriesForOwner(member.id())) {
+            if (entry.fourccString().equals("STXT")) {
+                Chunk chunk = getChunk(entry.sectionId());
+                if (chunk instanceof com.libreshockwave.chunks.TextChunk tc) {
+                    return tc;
+                }
+            }
+        }
+        return null;
+    }
+
     // Stage properties
 
     public int getStageWidth() {

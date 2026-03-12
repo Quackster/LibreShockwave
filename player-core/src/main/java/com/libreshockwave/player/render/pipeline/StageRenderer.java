@@ -344,6 +344,11 @@ public class StageRenderer {
             return RenderSprite.SpriteType.BITMAP;
         }
 
+        // Director 7+ "Text Asset" Xtras: XTRA type with "text" sub-type
+        if (member.isTextXtra()) {
+            return RenderSprite.SpriteType.TEXT;
+        }
+
         MemberType memberType = member.memberType();
         if (memberType == null) {
             return RenderSprite.SpriteType.UNKNOWN;
@@ -351,17 +356,7 @@ public class StageRenderer {
 
         return switch (memberType) {
             case SHAPE -> RenderSprite.SpriteType.SHAPE;
-            case FLASH -> {
-                byte[] sd = member.specificData();
-                if (sd != null && sd.length >= 14) {
-                    ShapeInfo si = ShapeInfo.parse(sd);
-                    if (si.shapeType() != ShapeInfo.ShapeType.UNKNOWN) {
-                        yield RenderSprite.SpriteType.SHAPE;
-                    }
-                }
-                yield RenderSprite.SpriteType.UNKNOWN;
-            }
-            case TEXT -> RenderSprite.SpriteType.TEXT;
+            case TEXT, RICH_TEXT -> RenderSprite.SpriteType.TEXT;
             case BUTTON -> RenderSprite.SpriteType.BUTTON;
             default -> RenderSprite.SpriteType.UNKNOWN;
         };
