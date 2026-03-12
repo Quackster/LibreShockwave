@@ -4,6 +4,8 @@
 
 A Java library for parsing Macromedia/Adobe Director and Shockwave files (.dir, .dxr, .dcr, .cct, .cst).
 
+The goal is to eventually become a full software suite and ecosystem, with a Director player, alongside a replacement for Director MX (2004, 11.5, etc) as an open source replacement for Macromedia/Adobe Shockwave.
+
 ## Requirements
 
 - Java 21 or later
@@ -34,11 +36,6 @@ A Java library for parsing Macromedia/Adobe Director and Shockwave files (.dir, 
 - Sound: PCM to WAV conversion, MP3 extraction, IMA ADPCM decoding
 - Palettes: Built-in Director palettes and custom CLUT chunks
 - Fonts: PFR1 (Portable Font Resource) extraction from XMED chunks, export to TrueType (.ttf)
-
-### Writing
-- Save to uncompressed RIFX format
-- Remove protection from protected files
-- Decompile and embed Lingo source into cast members
 
 ## Player & Lingo VM
 
