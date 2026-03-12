@@ -4,7 +4,7 @@
 
 A Java project for parsing Macromedia/Adobe Director and Shockwave files (.dir, .dxr, .dcr, .cct, .cst).
 
-The goal is to eventually become a full software suite and ecosystem, with a Director player, alongside a replacement for Director MX (2004, 11.5, etc) as an open source replacement for Macromedia/Adobe Shockwave.
+It **won't** *just* be an emulator, the goal is to eventually become a full software suite and ecosystem, with a Director player, alongside a replacement for Director MX (2004, 11.5, etc) as an open source replacement for Macromedia/Adobe Shockwave.
 
 ## Requirements
 
