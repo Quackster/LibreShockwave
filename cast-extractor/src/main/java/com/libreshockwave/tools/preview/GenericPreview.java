@@ -95,9 +95,7 @@ public class GenericPreview {
                     sb.append("Error parsing film loop info: ").append(e.getMessage()).append("\n");
                 }
             }
-            case RTE -> {
-                sb.append("\n[Rich Text member - content not decoded]\n");
-            }
+
             case SOUND -> {
                 SoundChunk soundChunk = MemberResolver.findSoundForMember(dirFile, member);
                 if (soundChunk != null) {
@@ -130,7 +128,7 @@ public class GenericPreview {
                     sb.append("\n[Palette data not found]\n");
                 }
             }
-            case DIGITAL_VIDEO, FLASH -> {
+            case DIGITAL_VIDEO -> {
                 sb.append("\n[Video/Flash member]\n");
             }
             default -> {

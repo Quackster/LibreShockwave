@@ -30,7 +30,7 @@ public class FileTreeCellRenderer extends DefaultTreeCellRenderer {
                     case BITMAP -> setForeground(new Color(0, 100, 0)); // Dark green
                     case SCRIPT -> setForeground(new Color(0, 0, 180)); // Blue
                     case SOUND -> setForeground(new Color(180, 0, 180)); // Purple
-                    case TEXT, BUTTON, RTE -> setForeground(new Color(100, 100, 0)); // Olive
+                    case TEXT, BUTTON -> setForeground(new Color(100, 100, 0)); // Olive
                     case SHAPE -> setForeground(new Color(180, 100, 0)); // Orange
                     case PALETTE -> setForeground(new Color(100, 0, 100)); // Dark purple
                     case FILM_LOOP -> setForeground(new Color(0, 100, 100)); // Teal
