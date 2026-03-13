@@ -344,15 +344,22 @@ public class XmedTextParser {
 
     /**
      * Extract paragraph alignment from XMED section 0005.
-     * Section 0005 contains paragraph alignment runs: ^offset|value entries.
-     * Values: 1 = center, 0 = left. High bit (0x80) is a flag — 0x81 = left.
-     * Director alignment: 0=left, 1=center, -1=right.
+     * Section 0005 contains paragraph alignment runs as [02]offset[01]value pairs.
+     * The first entry's value determines the primary alignment for the text.
+     *
+     * XMED alignment values (different from Director's scripting convention):
+     *   0 = left, 1 = right, 2 = center
      */
     private static String extractAlignment(byte[] data, String ascii) {
-        // Find section 0005 (paragraph alignment) after offset 100 to skip header
-        int searchFrom = 100;
-        int idx = ascii.indexOf("0005", searchFrom);
-        if (idx < 0) idx = ascii.indexOf("0005");
+        // Find section 0005 after a [03] delimiter
+        int idx = -1;
+        for (int i = 0; i < data.length - 24; i++) {
+            if (data[i] == 0x03 && i + 4 < data.length
+                    && data[i+1] == '0' && data[i+2] == '0' && data[i+3] == '0' && data[i+4] == '5') {
+                idx = i + 1;
+                break;
+            }
+        }
         if (idx < 0 || idx + 24 >= data.length) return null;
 
         // Validate: followed by 8-char hex length + 8-char hex count
@@ -361,36 +368,57 @@ public class XmedTextParser {
 
         // Skip tag(4) + length(8) + count(8) = 20, then read first entry
         int bodyStart = idx + 20;
-        if (bodyStart >= data.length || data[bodyStart] != 0x02) return null;
+        if (bodyStart >= data.length) return null;
 
-        // First entry: ^offset(value) — skip offset to find value after 0x01 or raw byte
-        for (int i = bodyStart + 1; i < Math.min(bodyStart + 10, data.length); i++) {
+        // First entry format: [02]<offset>[01]<value> or [02]<offset>[81] (high-bit value)
+        // Skip the [02] delimiter if present
+        int pos = bodyStart;
+        if (data[pos] == 0x02) pos++;
+
+        // Skip the offset field (hex digits until [01] or high-byte)
+        for (int i = pos; i < Math.min(bodyStart + 15, data.length); i++) {
             if (data[i] == 0x01) {
                 // Value follows as ASCII hex digit(s)
                 if (i + 1 < data.length) {
-                    int val = data[i + 1] & 0xFF;
-                    if (val >= '0' && val <= '9') val = val - '0';
-                    else if (val >= 'A' && val <= 'F') val = val - 'A' + 10;
-                    else if (val >= 'a' && val <= 'f') val = val - 'a' + 10;
-                    return switch (val & 0x7F) {
-                        case 1 -> "center";
-                        case 2 -> "right";
-                        default -> "left";
-                    };
+                    int val = parseHexValue(data, i + 1);
+                    return alignmentFromValue(val);
                 }
                 break;
             }
-            // Raw high byte (0x80+) after offset = value with high-bit flag
+            // Raw high byte (0x80+) = value with high-bit flag
             int b = data[i] & 0xFF;
             if (b >= 0x80) {
-                return switch (b & 0x7F) {
-                    case 1 -> "center";
-                    case 2 -> "right";
-                    default -> "left";
-                };
+                return alignmentFromValue(b & 0x7F);
             }
         }
         return null;
+    }
+
+    private static String alignmentFromValue(int val) {
+        return switch (val) {
+            case 1 -> "right";
+            case 2 -> "center";
+            default -> "left";
+        };
+    }
+
+    private static int parseHexValue(byte[] data, int pos) {
+        StringBuilder sb = new StringBuilder();
+        while (pos < data.length) {
+            int b = data[pos] & 0xFF;
+            if (isHexDigit(b)) {
+                sb.append((char) b);
+                pos++;
+            } else {
+                break;
+            }
+        }
+        if (sb.length() == 0) return 0;
+        try {
+            return Integer.parseInt(sb.toString(), 16);
+        } catch (NumberFormatException e) {
+            return 0;
+        }
     }
 
     private static final char[] MAC_ROMAN = {
