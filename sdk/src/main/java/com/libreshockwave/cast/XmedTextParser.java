@@ -230,77 +230,87 @@ public class XmedTextParser {
 
     /**
      * Extract font size and style from XMED section 0006 (per-run style data).
-     * The section contains 0x02-delimited hex-encoded values. The font size
-     * appears as a hex digit (e.g., 'C' = 12) after the pattern:
-     * "480048" (resolution) → "-1" → "0" → font_size_hex
-     * The font style follows the font size, delimited by 0x01:
-     * font_size 0x01 font_style (0=plain, 1=bold, 2=italic, 4=underline)
+     *
+     * Section 0006 contains character-level style runs. Each run includes a
+     * font size encoded as a fixed-point hex value in the pattern:
+     *   [82] [02] <hexSize>"0000" [02] "0"
+     * where <hexSize> is 1-2 hex digits representing the font size in points.
+     * Example: "C0000" = 12pt, "90000" = 9pt.
+     *
+     * The font style is extracted from the [01]-delimited early part of each run:
+     *   [01]<offset> [01]<style> [81][81] [01]<lineHeight> [01]<unknown> [01]<fontStyle>
+     *
+     * Returns the most common font size across all runs (body text size),
+     * and the font style from the first run.
      *
      * @return int[]{fontSize, fontStyle}
      */
     private static int[] extractFontSizeAndStyle(byte[] data, String ascii) {
-        int idx0006 = ascii.indexOf("0006");
-        if (idx0006 < 0) return new int[]{12, 0};
-
-        // Skip header: tag(4) + length(8) + count(8) = 20, then data starts
-        int secStart = idx0006 + 20;
-
-        // Search for "480048" pattern followed by font size
-        // Pattern: 0x02 "480048" 0x02 "-1" 0x02 "0" 0x02 <fontSize> 0x01 <fontStyle>
-        for (int i = secStart; i < data.length - 20; i++) {
-            if (data[i] == 0x02 && i + 7 < data.length
-                    && data[i+1] == '4' && data[i+2] == '8'
-                    && data[i+3] == '0' && data[i+4] == '0'
-                    && data[i+5] == '4' && data[i+6] == '8') {
-                // Found "480048" — skip to font size field
-                // After "480048": 0x02"-1" 0x02"0" 0x02<fontSize>
-                int j = i + 7;
-                int fieldCount = 0;
-                while (j < data.length && fieldCount < 3) {
-                    if (data[j] == 0x02) fieldCount++;
-                    j++;
-                }
-                // j now points to fontSize content
-                int fontSize = 12;
-                int fontStyle = 0;
-                if (j < data.length) {
-                    // Read hex-encoded font size (1-2 hex chars)
-                    StringBuilder sizeStr = new StringBuilder();
-                    while (j < data.length && data[j] != 0x01 && data[j] != 0x02
-                            && (data[j] & 0xFF) < 0x80) {
-                        sizeStr.append((char) data[j]);
-                        j++;
-                    }
-                    if (sizeStr.length() > 0) {
-                        try {
-                            int size = Integer.parseInt(sizeStr.toString(), 16);
-                            if (size >= 6 && size <= 36) fontSize = size;
-                        } catch (NumberFormatException e) {
-                            // Not valid hex
-                        }
-                    }
-                    // Read font style after 0x01 delimiter
-                    if (j < data.length && data[j] == 0x01) {
-                        j++;
-                        StringBuilder styleStr = new StringBuilder();
-                        while (j < data.length && data[j] != 0x01 && data[j] != 0x02
-                                && data[j] != 0x03 && (data[j] & 0xFF) < 0x80) {
-                            styleStr.append((char) data[j]);
-                            j++;
-                        }
-                        if (styleStr.length() > 0) {
-                            try {
-                                fontStyle = Integer.parseInt(styleStr.toString(), 16);
-                            } catch (NumberFormatException e) {
-                                // Not valid hex
-                            }
-                        }
-                    }
-                }
-                return new int[]{fontSize, fontStyle};
+        // Find section 0006 — search after [03] delimiter
+        int idx0006 = -1;
+        for (int i = 0; i < data.length - 24; i++) {
+            if (data[i] == 0x03 && i + 4 < data.length
+                    && data[i+1] == '0' && data[i+2] == '0' && data[i+3] == '0' && data[i+4] == '6') {
+                idx0006 = i + 1;
+                break;
             }
         }
-        return new int[]{12, 0}; // defaults
+        if (idx0006 < 0) return new int[]{9, 0};
+
+        // Parse section header: tag(4) + length(8) + count(8)
+        int secStart = idx0006 + 20;
+        int secLen = 0;
+        try {
+            String lenHex = ascii.substring(idx0006 + 4, Math.min(idx0006 + 12, ascii.length()));
+            secLen = Integer.parseInt(lenHex, 16);
+        } catch (Exception e) { /* ignore */ }
+        int secEnd = secLen > 0 ? Math.min(secStart + secLen, data.length) : data.length;
+
+        // Extract font sizes from [02]<hexSize>"0000"[02] pattern within section 0006
+        // Each run has a font size encoded as fixed-point: "C0000" = 12.0pt, "90000" = 9.0pt
+        java.util.Map<Integer, Integer> sizeCounts = new java.util.LinkedHashMap<>();
+        int firstSize = -1;
+        int fontStyle = 0;
+        boolean styleFound = false;
+
+        for (int i = secStart; i < secEnd - 6; i++) {
+            if (data[i] == 0x02) {
+                // Read hex digits until "0000" followed by [02]
+                StringBuilder hexStr = new StringBuilder();
+                int j = i + 1;
+                while (j < secEnd && isHexDigit(data[j] & 0xFF)) {
+                    hexStr.append((char) data[j]);
+                    j++;
+                }
+                String hex = hexStr.toString();
+                // Match pattern: 1-2 hex size digits + "0000" suffix
+                if (hex.length() >= 5 && hex.endsWith("0000") && j < secEnd && data[j] == 0x02) {
+                    String sizeHex = hex.substring(0, hex.length() - 4);
+                    try {
+                        int size = Integer.parseInt(sizeHex, 16);
+                        if (size >= 6 && size <= 200) {
+                            sizeCounts.merge(size, 1, Integer::sum);
+                            if (firstSize < 0) firstSize = size;
+                        }
+                    } catch (NumberFormatException e) { /* ignore */ }
+                }
+            }
+        }
+
+        // Use the most common font size (body text), not the first (which may be heading)
+        int fontSize = 9; // default
+        int maxCount = 0;
+        for (var entry : sizeCounts.entrySet()) {
+            if (entry.getValue() > maxCount) {
+                maxCount = entry.getValue();
+                fontSize = entry.getKey();
+            }
+        }
+        if (sizeCounts.isEmpty() && firstSize > 0) {
+            fontSize = firstSize;
+        }
+
+        return new int[]{fontSize, fontStyle};
     }
 
     private static boolean isHexDigit(int c) {

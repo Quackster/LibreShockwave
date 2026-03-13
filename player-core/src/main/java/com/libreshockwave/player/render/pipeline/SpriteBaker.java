@@ -337,35 +337,25 @@ public class SpriteBaker {
 
         // Build font style string from XMED style flags (1=bold, 2=italic, 4=underline)
         int style = xmedText.fontStyle();
-        String styleStr = "bold";
-        if ((style & 2) != 0) styleStr += ",italic";
-        if ((style & 4) != 0) styleStr += ",underline";
+        String styleStr = "";
+        if ((style & 1) != 0) styleStr += "bold";
+        if ((style & 2) != 0) styleStr += (styleStr.isEmpty() ? "" : ",") + "italic";
+        if ((style & 4) != 0) styleStr += (styleStr.isEmpty() ? "" : ",") + "underline";
 
-        // XMED section 0005 stores alignment (value 1 = right-aligned in reference).
-        // For multi-line text, right alignment is clearly correct (WELCOME block).
-        // For single-line labels, center gives better pixel match because our Geneva
-        // BDF is narrower than the reference Verdana — centering compensates.
         String alignment = xmedText.alignment();
-        if (xmedText.text().contains("\r") || xmedText.text().contains("\n")) {
-            alignment = "right";
-        }
 
         // Debug: log font requests
         if (com.libreshockwave.vm.DebugConfig.isDebugPlaybackEnabled()) {
-            System.out.printf("XMED TEXT: font='%s' size=%d style='%s' align='%s' text='%s' color=0x%06X%n",
+            System.out.printf("XMED TEXT: font='%s' size=%d style='%s' align='%s' dims=%dx%d text='%s' color=0x%06X%n",
                     xmedText.fontName(), xmedText.fontSize(), styleStr,
-                    alignment,
+                    alignment, width, height,
                     xmedText.text().length() > 40 ? xmedText.text().substring(0, 40) + "..." : xmedText.text(),
                     textColor & 0xFFFFFF);
         }
 
-        // Scale font size down by 3 to match reference pixel output.
-        // BDF fonts at 75 DPI appear larger than Director's 72 DPI rendering.
-        int renderSize = Math.max(6, xmedText.fontSize() - 3);
-
         return renderer.renderText(
                 xmedText.text(), width, height,
-                xmedText.fontName(), renderSize, styleStr,
+                xmedText.fontName(), xmedText.fontSize(), styleStr,
                 alignment, textColor, bgColor,
                 true, false,
                 0, 0);
