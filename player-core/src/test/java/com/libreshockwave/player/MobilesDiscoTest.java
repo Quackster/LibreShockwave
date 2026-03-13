@@ -73,6 +73,85 @@ public class MobilesDiscoTest {
             }
         }
 
+        // === TEXT MEMBER DIAGNOSTIC ===
+        System.out.println("\n=== TEXT MEMBER DIAGNOSTIC ===");
+        int[] textMemberNums = {256, 257, 258, 259, 260, 261, 262, 263, 264, 265};
+        for (int castLibNum = 1; castLibNum <= 2; castLibNum++) {
+            for (int memberNum : textMemberNums) {
+                var member = file.getCastMemberByNumber(castLibNum, memberNum);
+                if (member == null) member = file.getCastMemberByIndex(castLibNum, memberNum);
+                if (member == null) continue;
+                boolean isText = member.isTextXtra() || member.isText();
+                if (!isText) continue;
+                // Parse dimensions from specificData @48=H(u32), @52=W(u32)
+                byte[] sd = member.specificData();
+                int sdH = 0, sdW = 0;
+                if (sd != null && sd.length >= 56) {
+                    sdH = ((sd[48]&0xFF)<<24)|((sd[49]&0xFF)<<16)|((sd[50]&0xFF)<<8)|(sd[51]&0xFF);
+                    sdW = ((sd[52]&0xFF)<<24)|((sd[53]&0xFF)<<16)|((sd[54]&0xFF)<<8)|(sd[55]&0xFF);
+                }
+                // Parse XMED text
+                var xmedText = file.getXmedTextForMember(member);
+                String textPreview = xmedText != null && xmedText.text() != null
+                        ? (xmedText.text().length() > 40 ? xmedText.text().substring(0, 40) + "..." : xmedText.text())
+                        : "null";
+                System.out.printf("  CL%d M%d id=%d: %dx%d font='%s' size=%d style=%d align='%s' text='%s'%n",
+                        castLibNum, memberNum, member.id().value(), sdW, sdH,
+                        xmedText != null ? xmedText.fontName() : "?",
+                        xmedText != null ? xmedText.fontSize() : -1,
+                        xmedText != null ? xmedText.fontStyle() : -1,
+                        xmedText != null ? xmedText.alignment() : "?",
+                        textPreview);
+            }
+        }
+        System.out.println("=== END TEXT MEMBER DIAGNOSTIC ===\n");
+
+        // === RAW SCORE BYTE DUMP for height investigation ===
+        System.out.println("\n=== RAW SCORE CHANNEL BYTES (frame 97) ===");
+        var scoreChunk = file.getScoreChunk();
+        if (scoreChunk != null && scoreChunk.getRawChannelData() != null) {
+            byte[] rawData = scoreChunk.getRawChannelData();
+            int sprRecSize = scoreChunk.getSpriteRecordSize();
+            int numCh = scoreChunk.getChannelCount();
+            int frameSize = numCh * sprRecSize;
+            int frameIdx = 97; // 0-indexed frame 97 = Director frame 98
+            System.out.printf("  spriteRecordSize=%d numChannels=%d frameSize=%d totalDataLen=%d%n",
+                    sprRecSize, numCh, frameSize, rawData.length);
+            int[] channels = {17, 19}; // WELCOME (ch=17) and "Not registered" (ch=19)
+            for (int ch : channels) {
+                int pos = frameIdx * frameSize + ch * sprRecSize;
+                if (pos + sprRecSize <= rawData.length) {
+                    StringBuilder hex = new StringBuilder();
+                    for (int b = 0; b < Math.min(sprRecSize, 48); b++) {
+                        hex.append(String.format("%02X ", rawData[pos + b] & 0xFF));
+                        if (b == 3 || b == 7 || b == 11 || b == 15 || b == 19 || b == 23 || b == 27) hex.append("| ");
+                    }
+                    // Parse the fields manually
+                    int sprType = rawData[pos] & 0xFF;
+                    int ink = rawData[pos+1] & 0x3F;
+                    int fg = rawData[pos+2] & 0xFF;
+                    int bg = rawData[pos+3] & 0xFF;
+                    int castLib = ((rawData[pos+4]&0xFF)<<8) | (rawData[pos+5]&0xFF);
+                    int castMem = ((rawData[pos+6]&0xFF)<<8) | (rawData[pos+7]&0xFF);
+                    int posY = ((rawData[pos+12]&0xFF)<<8) | (rawData[pos+13]&0xFF);
+                    int posX = ((rawData[pos+14]&0xFF)<<8) | (rawData[pos+15]&0xFF);
+                    int height = ((rawData[pos+16]&0xFF)<<8) | (rawData[pos+17]&0xFF);
+                    int width = ((rawData[pos+18]&0xFF)<<8) | (rawData[pos+19]&0xFF);
+                    System.out.printf("  ch=%d raw: %s%n", ch, hex);
+                    System.out.printf("  ch=%d parsed: sprType=%d ink=%d fg=%d bg=%d castLib=%d castMem=%d posY=%d posX=%d height=%d width=%d%n",
+                            ch, sprType, ink, fg, bg, castLib, castMem, posY, posX, height, width);
+                    // Also show bytes 8-11 (unk1, unk2) to check if height is at a different offset
+                    int unk1 = ((rawData[pos+8]&0xFF)<<8) | (rawData[pos+9]&0xFF);
+                    int unk2 = ((rawData[pos+10]&0xFF)<<8) | (rawData[pos+11]&0xFF);
+                    System.out.printf("  ch=%d unk1=%d unk2=%d bytes[20..27]: %02X %02X %02X %02X %02X %02X %02X %02X%n",
+                            ch, unk1, unk2,
+                            rawData[pos+20]&0xFF, rawData[pos+21]&0xFF, rawData[pos+22]&0xFF, rawData[pos+23]&0xFF,
+                            rawData[pos+24]&0xFF, rawData[pos+25]&0xFF, rawData[pos+26]&0xFF, rawData[pos+27]&0xFF);
+                }
+            }
+        }
+        System.out.println("=== END RAW SCORE BYTES ===\n");
+
 System.out.println("\n=== Starting playback ===");
         player.play();
         System.out.println("Frame after play(): " + player.getCurrentFrame());

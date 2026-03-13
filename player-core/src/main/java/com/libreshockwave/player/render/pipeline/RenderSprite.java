@@ -115,6 +115,17 @@ public final class RenderSprite {
     }
 
     /**
+     * Return a new RenderSprite with the given baked bitmap AND updated dimensions.
+     * Used for OLE text members where the member's intrinsic dimensions differ from
+     * the score's stored sprite dimensions.
+     */
+    public RenderSprite withBakedBitmapAndSize(Bitmap baked, int newWidth, int newHeight) {
+        return new RenderSprite(channelId.value(), x, y, newWidth, newHeight, locZ, visible, type,
+            castMember, dynamicMember, foreColor, backColor, hasForeColor, hasBackColor,
+            inkMode.code(), blend, flipH, flipV, baked, hasBehaviors);
+    }
+
+    /**
      * Get the cast member ID, or -1 if no member.
      */
     public int getCastMemberId() {

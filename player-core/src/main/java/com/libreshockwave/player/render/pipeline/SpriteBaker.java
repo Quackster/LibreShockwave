@@ -74,6 +74,16 @@ public class SpriteBaker {
             }
         }
 
+        // For text sprites, the baked bitmap may have different dimensions than the
+        // score sprite (member specificData dimensions vs score stored dimensions).
+        // Update the sprite dimensions to match the baked bitmap so the renderer
+        // doesn't scale or clip the text.
+        if (baked != null && (sprite.getType() == RenderSprite.SpriteType.TEXT
+                || sprite.getType() == RenderSprite.SpriteType.BUTTON)
+                && (baked.getWidth() != sprite.getWidth() || baked.getHeight() != sprite.getHeight())) {
+            return sprite.withBakedBitmapAndSize(baked, baked.getWidth(), baked.getHeight());
+        }
+
         return sprite.withBakedBitmap(baked);
     }
 
@@ -317,8 +327,21 @@ public class SpriteBaker {
             return null;
         }
 
+        // Use member's specificData dimensions (the text rect size) instead of score
+        // sprite dimensions. The score stores different heights for OLE text members
+        // than the Property Inspector / member intrinsic size. Director uses the member
+        // dimensions for rendering text, not the score's stored height.
         int width = sprite.getWidth() > 0 ? sprite.getWidth() : 200;
         int height = sprite.getHeight() > 0 ? sprite.getHeight() : 20;
+        byte[] sd = castMember.specificData();
+        if (sd != null && sd.length >= 56) {
+            int sdH = ((sd[48]&0xFF)<<24)|((sd[49]&0xFF)<<16)|((sd[50]&0xFF)<<8)|(sd[51]&0xFF);
+            int sdW = ((sd[52]&0xFF)<<24)|((sd[53]&0xFF)<<16)|((sd[54]&0xFF)<<8)|(sd[55]&0xFF);
+            if (sdW > 0 && sdH > 0) {
+                width = sdW;
+                height = sdH;
+            }
+        }
 
         // ARGB format — text color from XMED data if available, fall back to palette-resolved foreColor
         int textColor;
