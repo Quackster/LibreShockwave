@@ -202,20 +202,13 @@ public class SpriteBaker {
         Bitmap textImage = null;
 
         if (member != null && member.hasDynamicText()) {
-            // Lingo set member.text — render using sprite dimensions and sprite foreColor
-            var renderer = CastMember.getTextRendererStatic();
-            if (renderer != null) {
-                int width = sprite.getWidth() > 0 ? sprite.getWidth() : 200;
-                int height = sprite.getHeight() > 0 ? sprite.getHeight() : 20;
-                int textColor = resolvePaletteColor(sprite.getForeColor());
-                int bgColor = (sprite.getInkMode() == com.libreshockwave.id.InkMode.BACKGROUND_TRANSPARENT)
-                        ? 0x00000000 : resolvePaletteColor(sprite.getBackColor());
-                textImage = renderer.renderText(
-                        member.getTextContent(), width, height,
-                        member.getTextFont(), member.getTextFontSize(), "",
-                        "left", textColor, bgColor,
-                        true, false, 0, 0);
-            }
+            // Lingo set member.text — use the member's own text properties (color,
+            // alignment, font style, etc.) so rendering matches caret positioning.
+            int width = sprite.getWidth() > 0 ? sprite.getWidth() : 200;
+            int height = sprite.getHeight() > 0 ? sprite.getHeight() : 20;
+            int bgColor = (sprite.getInkMode() == com.libreshockwave.id.InkMode.BACKGROUND_TRANSPARENT)
+                    ? 0x00000000 : member.getTextBgColor();
+            textImage = member.renderTextToImage(width, height, bgColor);
         }
         // For file-loaded text members (no dynamic text), skip member.renderTextToImage()
         // and fall through to bakeTextFromFile() which applies the sprite's foreColor/backColor

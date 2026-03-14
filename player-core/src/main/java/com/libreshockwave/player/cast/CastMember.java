@@ -331,6 +331,7 @@ public class CastMember {
     }
 
     public String getTextAlignment() { return textAlignment; }
+    public int getTextBgColor() { return textBgColor; }
 
     public boolean isLoaded() {
         return state == State.LOADED;
@@ -526,8 +527,20 @@ public class CastMember {
      * This implements Director's text member .image property.
      */
     public Bitmap renderTextToImage() {
-        // Return cached image if still valid
-        if (textRenderedImage != null && !textImageDirty) {
+        return renderTextToImage(textRectRight - textRectLeft,
+                textRectBottom - textRectTop, textBgColor);
+    }
+
+    /**
+     * Render the text content to a Bitmap with explicit dimensions and background color.
+     * Used by SpriteBaker for dynamic text where sprite dimensions and ink mode
+     * determine the size and background instead of the member's own rect.
+     */
+    public Bitmap renderTextToImage(int width, int height, int bgColor) {
+        // Return cached image if still valid and dimensions match
+        if (textRenderedImage != null && !textImageDirty
+                && textRenderedImage.getWidth() == width
+                && textRenderedImage.getHeight() == height) {
             return textRenderedImage;
         }
 
@@ -536,12 +549,10 @@ public class CastMember {
         }
 
         String text = getTextContent();
-        int width = textRectRight - textRectLeft;
-        int height = textRectBottom - textRectTop;
 
         textRenderedImage = textRenderer.renderText(text, width, height,
                 textFont, textFontSize, textFontStyle,
-                textAlignment, textColor, textBgColor,
+                textAlignment, textColor, bgColor,
                 textWordWrap, textAntialias,
                 textFixedLineSpace, textTopSpacing);
         textImageDirty = false;
