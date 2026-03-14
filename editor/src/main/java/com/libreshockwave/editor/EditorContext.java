@@ -12,7 +12,10 @@ import com.libreshockwave.player.debug.DebugStateListener;
 import javax.swing.*;
 import java.beans.PropertyChangeListener;
 import java.beans.PropertyChangeSupport;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.prefs.Preferences;
 
 /**
@@ -103,6 +106,23 @@ public class EditorContext {
                     saveBreakpoints();
                 }
             });
+
+            // Auto-detect local HTTP root for localhost URL resolution
+            String absPath = path.toAbsolutePath().toString().replace('\\', '/');
+            int htdocsIdx = absPath.toLowerCase().indexOf("/htdocs/");
+            String httpRoot = null;
+            if (htdocsIdx >= 0) {
+                httpRoot = absPath.substring(0, htdocsIdx + "/htdocs".length());
+                newPlayer.getNetManager().setLocalHttpRoot(httpRoot);
+            }
+
+            // Default Habbo external params — auto-detected when gamedata files are present
+            if (httpRoot != null) {
+                Map<String, String> habboParams = buildDefaultHabboParams(httpRoot);
+                if (!habboParams.isEmpty()) {
+                    newPlayer.setExternalParams(habboParams);
+                }
+            }
 
             DirectorFile oldFile = this.file;
             this.file = newFile;
@@ -264,6 +284,33 @@ public class EditorContext {
             playbackTimer.stop();
             playbackTimer = null;
         }
+    }
+
+    // Default Habbo params
+
+    private Map<String, String> buildDefaultHabboParams(String httpRoot) {
+        Map<String, String> params = new LinkedHashMap<>();
+
+        StringBuilder sw5 = new StringBuilder();
+        Path varsFile = Path.of(httpRoot, "gamedata", "external_variables.txt");
+        Path textsFile = Path.of(httpRoot, "gamedata", "external_texts.txt");
+        if (Files.exists(varsFile)) {
+            sw5.append("external.variables.txt=http://localhost/gamedata/external_variables.txt");
+        }
+        if (Files.exists(textsFile)) {
+            if (!sw5.isEmpty()) sw5.append(";");
+            sw5.append("external.texts.txt=http://localhost/gamedata/external_texts.txt");
+        }
+
+        if (!sw5.isEmpty()) {
+            params.put("sw1", "site.url=http://www.habbo.co.uk;url.prefix=http://www.habbo.co.uk");
+            params.put("sw2", "connection.info.host=localhost;connection.info.port=30001");
+            params.put("sw3", "client.reload.url=https://sandbox.h4bbo.net/");
+            params.put("sw4", "connection.mus.host=localhost;connection.mus.port=38101");
+            params.put("sw5", sw5.toString());
+        }
+
+        return params;
     }
 
     // Breakpoint persistence
