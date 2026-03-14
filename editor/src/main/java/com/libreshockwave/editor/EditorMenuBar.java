@@ -450,6 +450,7 @@ public class EditorMenuBar extends JMenuBar {
         addWindowToggle(menu, "Property Inspector", KeyEvent.VK_4, InputEvent.CTRL_DOWN_MASK);
         addWindowToggle(menu, "Script", KeyEvent.VK_0, InputEvent.CTRL_DOWN_MASK);
         addWindowToggle(menu, "Message", KeyEvent.VK_M, InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK);
+        addWindowToggle(menu, "Tool Palette", KeyEvent.VK_7, InputEvent.CTRL_DOWN_MASK);
 
         menu.addSeparator();
 
@@ -463,10 +464,6 @@ public class EditorMenuBar extends JMenuBar {
         menu.addSeparator();
 
         // Advanced panels
-        addWindowToggle(menu, "Behavior Inspector", 0, 0);
-        addWindowToggle(menu, "Library Palette", 0, 0);
-        addWindowToggle(menu, "Tool Palette", KeyEvent.VK_7, InputEvent.CTRL_DOWN_MASK);
-        addWindowToggle(menu, "Markers", 0, 0);
         addWindowToggle(menu, "Bytecode Debugger", KeyEvent.VK_D, InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK);
 
         menu.addSeparator();

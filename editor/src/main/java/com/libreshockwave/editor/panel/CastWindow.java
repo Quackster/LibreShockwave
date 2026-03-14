@@ -1,9 +1,11 @@
 package com.libreshockwave.editor.panel;
 
 import com.libreshockwave.DirectorFile;
+import com.libreshockwave.cast.MemberType;
 import com.libreshockwave.editor.EditorContext;
 import com.libreshockwave.editor.cast.CastGridPanel;
 import com.libreshockwave.editor.cast.CastListPanel;
+import com.libreshockwave.editor.cast.CastThumbnailRenderer;
 import com.libreshockwave.editor.extraction.ExportHandler;
 import com.libreshockwave.editor.model.CastMemberInfo;
 import com.libreshockwave.editor.model.MemberNodeData;
@@ -12,10 +14,16 @@ import com.libreshockwave.editor.selection.SelectionEvent;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.image.BufferedImage;
+import java.lang.ref.SoftReference;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Cast window - Director MX 2004 cast member browser.
@@ -32,6 +40,9 @@ public class CastWindow extends EditorPanel {
     private boolean gridView = true;
     private List<CastMemberInfo> allMembers = new ArrayList<>();
     private List<CastMemberInfo> filteredMembers = new ArrayList<>();
+
+    private final Map<Integer, SoftReference<BufferedImage>> thumbnailCache = new HashMap<>();
+    private SwingWorker<Void, ThumbnailResult> thumbnailWorker;
 
     public CastWindow(EditorContext context) {
         super("Cast", context, true, true, true, true);
@@ -106,6 +117,8 @@ public class CastWindow extends EditorPanel {
 
     @Override
     protected void onFileClosed() {
+        cancelThumbnailWorker();
+        thumbnailCache.clear();
         allMembers.clear();
         filteredMembers.clear();
         castTabs.removeAll();
@@ -140,6 +153,7 @@ public class CastWindow extends EditorPanel {
     }
 
     private void rebuildView() {
+        cancelThumbnailWorker();
         castTabs.removeAll();
 
         if (filteredMembers.isEmpty() && allMembers.isEmpty()) {
@@ -156,9 +170,19 @@ public class CastWindow extends EditorPanel {
 
     private JScrollPane buildGridView() {
         CastGridPanel grid = new CastGridPanel();
+        Map<Integer, JLabel> thumbnailLabels = new HashMap<>();
 
         for (CastMemberInfo info : filteredMembers) {
-            grid.addMemberCell(info.memberNum(), info.name(), info.memberType().getName());
+            JLabel thumbLabel = grid.addMemberCell(info);
+            if (info.memberType() == MemberType.BITMAP) {
+                // Check cache first
+                SoftReference<BufferedImage> cached = thumbnailCache.get(info.memberNum());
+                if (cached != null && cached.get() != null) {
+                    thumbLabel.setIcon(new ImageIcon(cached.get()));
+                } else {
+                    thumbnailLabels.put(info.memberNum(), thumbLabel);
+                }
+            }
         }
 
         // Click handler for selection and context menu
@@ -174,8 +198,74 @@ public class CastWindow extends EditorPanel {
         });
 
         JScrollPane sp = new JScrollPane(grid);
+        sp.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
         sp.getVerticalScrollBar().setUnitIncrement(16);
+
+        // Revalidate grid when viewport is resized so rows re-wrap
+        sp.getViewport().addComponentListener(new ComponentAdapter() {
+            @Override
+            public void componentResized(ComponentEvent e) {
+                grid.revalidate();
+            }
+        });
+
+        // Launch background bitmap decoding if there are bitmaps to decode
+        if (!thumbnailLabels.isEmpty()) {
+            launchThumbnailWorker(thumbnailLabels);
+        }
+
         return sp;
+    }
+
+    private void launchThumbnailWorker(Map<Integer, JLabel> thumbnailLabels) {
+        DirectorFile dirFile = context.getFile();
+        if (dirFile == null) return;
+
+        // Collect bitmap members that need decoding
+        List<CastMemberInfo> bitmapMembers = new ArrayList<>();
+        for (CastMemberInfo info : filteredMembers) {
+            if (info.memberType() == MemberType.BITMAP && thumbnailLabels.containsKey(info.memberNum())) {
+                bitmapMembers.add(info);
+            }
+        }
+
+        thumbnailWorker = new SwingWorker<>() {
+            @Override
+            protected Void doInBackground() {
+                for (CastMemberInfo info : bitmapMembers) {
+                    if (isCancelled()) break;
+                    try {
+                        dirFile.decodeBitmap(info.member()).ifPresent(bitmap -> {
+                            BufferedImage fullImage = bitmap.toBufferedImage();
+                            BufferedImage thumb = CastThumbnailRenderer.createBitmapThumbnail(fullImage, 48);
+                            thumbnailCache.put(info.memberNum(), new SoftReference<>(thumb));
+                            publish(new ThumbnailResult(info.memberNum(), thumb));
+                        });
+                    } catch (Exception e) {
+                        // Skip members that fail to decode
+                    }
+                }
+                return null;
+            }
+
+            @Override
+            protected void process(List<ThumbnailResult> results) {
+                for (ThumbnailResult result : results) {
+                    JLabel label = thumbnailLabels.get(result.memberNum);
+                    if (label != null) {
+                        label.setIcon(new ImageIcon(result.thumbnail));
+                    }
+                }
+            }
+        };
+        thumbnailWorker.execute();
+    }
+
+    private void cancelThumbnailWorker() {
+        if (thumbnailWorker != null && !thumbnailWorker.isDone()) {
+            thumbnailWorker.cancel(true);
+            thumbnailWorker = null;
+        }
     }
 
     private void handleGridClick(CastGridPanel grid, MouseEvent e) {
@@ -283,4 +373,6 @@ public class CastWindow extends EditorPanel {
         JFrame parentFrame = (JFrame) SwingUtilities.getWindowAncestor(this);
         handler.export(parentFrame, dirFile, memberData, "");
     }
+
+    private record ThumbnailResult(int memberNum, BufferedImage thumbnail) {}
 }

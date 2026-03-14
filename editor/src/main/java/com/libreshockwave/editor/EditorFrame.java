@@ -91,15 +91,12 @@ public class EditorFrame extends JFrame {
         addPanel(new PropertyInspectorWindow(context));
         addPanel(new ScriptEditorWindow(context));
         addPanel(new MessageWindow(context));
+        addPanel(new ToolPaletteWindow(context));
         addPanel(new PaintWindow(context));
         addPanel(new VectorShapeWindow(context));
         addPanel(new TextEditorWindow(context));
         addPanel(new FieldEditorWindow(context));
         addPanel(new ColorPalettesWindow(context));
-        addPanel(new BehaviorInspectorWindow(context));
-        addPanel(new LibraryPaletteWindow(context));
-        addPanel(new ToolPaletteWindow(context));
-        addPanel(new MarkersWindow(context));
         addPanel(new BytecodeDebuggerWindow(context));
     }
 
@@ -128,9 +125,6 @@ public class EditorFrame extends JFrame {
         hidePanel("Text");
         hidePanel("Field");
         hidePanel("Color Palettes");
-        hidePanel("Behavior Inspector");
-        hidePanel("Library Palette");
-        hidePanel("Markers");
         hidePanel("Bytecode Debugger");
 
         try {
