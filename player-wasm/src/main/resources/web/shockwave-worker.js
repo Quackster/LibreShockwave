@@ -56,7 +56,6 @@ var _musErrors = {};       // instanceId -> errorCode
 
 // --- Non-blocking fetch delivery queue ---
 var _fetchQueue = [];   // [{taskId, data: ArrayBuffer}] or [{taskId, error: number}]
-var _inFlight = 0;      // number of fetches currently in-progress
 var _loadStartTime = 0; // timestamp when loading began (for perf logging)
 
 // --- Cross-origin fetch relay (main thread fetches on behalf of worker) ---
@@ -72,9 +71,6 @@ function _fetchWithTimeout(url, opts, timeoutMs) {
     opts.signal = controller.signal;
     return fetch(url, opts).finally(function() { clearTimeout(timer); });
 }
-
-// --- JS-side response cache (eliminates duplicate network requests) ---
-var _urlCache = {};     // url -> ArrayBuffer
 
 // --- External params stored locally for pre-fetch access ---
 var _params = {};
@@ -281,7 +277,7 @@ function _isCastFile(url) {
 WasmEngine.prototype._deliverResult = function(taskId, arrayBuffer, url) {
     if (url && _isCastFile(url)) {
         // Cast files: mark net task done (status-only), no data in WASM.
-        // Bytes stay in _urlCache; delivered on demand via deliverCastData.
+        // Cast files: mark net task done (status-only), fetched on demand via deliverCastData.
         try {
             var urlBytes = new TextEncoder().encode(url);
             var addr = this.exports.allocateNetBuffer(0); this._clearEx();
@@ -310,7 +306,7 @@ WasmEngine.prototype._deliverResult = function(taskId, arrayBuffer, url) {
 };
 
 /**
- * Deliver cast file data from JS _urlCache into WASM for parsing.
+ * Deliver cast file data into WASM for parsing (fetched synchronously).
  * URL written to stringBuffer, data to netBuffer. Returns true if delivered.
  */
 WasmEngine.prototype._wasmDead = false;
@@ -327,7 +323,7 @@ WasmEngine.prototype._deliverCastData = function(url) {
         console.log('[WORKER] BLOCKED cast (known bad): ' + url);
         return false;
     }
-    var data = _findCachedResponse(url, []);
+    var data = _fetchSyncData(url, []);
     if (!data) return false;
     var urlBytes = new TextEncoder().encode(url);
     var addr;
@@ -419,21 +415,21 @@ WasmEngine.prototype._deliverPendingCastRequests = function() {
         var url = null;
         if (/^https?:\/\//i.test(fileName)) {
             // Full URL — check directly in cache (with and without extension variants)
-            if (_findCachedResponse(fileName, [])) {
+            if (_fetchSyncData(fileName, [])) {
                 url = fileName;
             } else {
                 var baseName = fileName.replace(/\.[^.]+$/, '');
                 var cctUrl = baseName + '.cct';
                 var cstUrl = baseName + '.cst';
-                url = _findCachedResponse(cctUrl, []) ? cctUrl :
-                      _findCachedResponse(cstUrl, []) ? cstUrl : null;
+                url = _fetchSyncData(cctUrl, []) ? cctUrl :
+                      _fetchSyncData(cstUrl, []) ? cstUrl : null;
             }
         } else {
             var baseName = fileName.replace(/\.[^.]+$/, '');
             var cctUrl = baseDir + baseName + '.cct';
             var cstUrl = baseDir + baseName + '.cst';
-            url = _findCachedResponse(cctUrl, []) ? cctUrl :
-                  _findCachedResponse(cstUrl, []) ? cstUrl : null;
+            url = _fetchSyncData(cctUrl, []) ? cctUrl :
+                  _fetchSyncData(cstUrl, []) ? cstUrl : null;
         }
         if (!url) continue;
         if (this._failedCastUrls[url]) continue; // Skip known-bad casts
@@ -454,47 +450,20 @@ WasmEngine.prototype._deliverError = function(taskId, status) {
     this.exports.deliverFetchError(taskId, status || 0); this._clearEx();
 };
 
-WasmEngine.prototype._doFetch = function(taskId, url, method, postData, fallbacks) {
-    var self = this;
-    var opts = {};
-    if (method === 'POST') {
-        opts.method  = 'POST';
-        opts.body    = postData;
-        opts.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
-    }
-    return _fetchWithTimeout(url, opts)
-        .then(function(r) { if (!r.ok) throw { status: r.status }; return r.arrayBuffer(); })
-        .then(function(buf) {
-            _urlCache[url] = buf; // Cache response
-            self._deliverResult(taskId, buf, url);
-        })
-        .catch(function(e) {
-            if (fallbacks.length > 0)
-                return self._doFetch(taskId, fallbacks[0], method, postData, fallbacks.slice(1));
-            else
-                self._deliverError(taskId, (e && e.status) || 0);
-        });
-};
-
-/** Drain pending network requests; return array of Promises (each always resolves). */
+/** Drain pending network requests; fetch synchronously and deliver. */
 WasmEngine.prototype.pumpNetworkCollect = function() {
     var reqs = this._drainRequests();
     if (!reqs) return [];
-    var self = this, promises = [];
     for (var i = 0; i < reqs.length; i++) {
-        (function(req) {
-            // Check JS-side cache first
-            var cached = _findCachedResponse(req.url, req.fallbacks);
-            if (cached) {
-                self._deliverResult(req.taskId, cached, req.url);
-                promises.push(Promise.resolve());
-            } else {
-                var p = self._doFetch(req.taskId, req.url, req.method, req.postData, req.fallbacks || []);
-                promises.push(p.then(null, function() {}));
-            }
-        })(reqs[i]);
+        var req = reqs[i];
+        var data = _fetchSyncData(req.url, req.fallbacks);
+        if (data) {
+            this._deliverResult(req.taskId, data, req.url);
+        } else {
+            this._deliverError(req.taskId, 0);
+        }
     }
-    return promises;
+    return [];
 };
 
 // ============================================================
@@ -502,71 +471,54 @@ WasmEngine.prototype.pumpNetworkCollect = function() {
 // ============================================================
 
 /**
- * Fire a fetch without blocking. Result is pushed to _fetchQueue
- * when the fetch completes (between event loop turns).
+ * Fetch a URL synchronously using XMLHttpRequest (allowed in Workers).
+ * Blocks until the response arrives, giving natural network latency.
+ * Result is pushed to _fetchQueue for delivery on the next tick.
  */
-WasmEngine.prototype._doFetchAsync = function(taskId, url, method, postData, fallbacks) {
-    var self = this;
-    _inFlight++;
+WasmEngine.prototype._doFetchSync = function(taskId, url, method, postData, fallbacks) {
     console.log('[WORKER] fetch: ' + url + (fallbacks.length ? ' (+' + fallbacks.length + ' fallbacks)' : ''));
 
-    if (_isCrossOrigin(url)) {
-        // Relay through main thread: cross-origin fetches from a Worker can hang
-        // in Chrome. The main thread fetches without this issue.
-        // NOTE: use postMessage() not self.postMessage() — 'self' is shadowed by 'var self = this'
-        var relayId = ++_fetchRelayCounter;
-        _fetchRelayMap[relayId] = {
-            engine: self, taskId: taskId, url: url,
-            method: method, postData: postData, fallbacks: fallbacks || []
-        };
-        postMessage({ type: 'fetchRelay', relayId: relayId,
-                      url: url, method: method, postData: postData });
-        return;
-    }
+    try {
+        var xhr = new XMLHttpRequest();
+        xhr.open(method || 'GET', url, false); // synchronous
+        xhr.responseType = 'arraybuffer';
+        if (method === 'POST') {
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+        }
+        xhr.send(postData || null);
 
-    var opts = {};
-    if (method === 'POST') {
-        opts.method  = 'POST';
-        opts.body    = postData;
-        opts.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
-    }
-    _fetchWithTimeout(url, opts)
-        .then(function(r) { if (!r.ok) throw { status: r.status }; return r.arrayBuffer(); })
-        .then(function(buf) {
-            _urlCache[url] = buf;
+        if (xhr.status >= 200 && xhr.status < 300) {
+            var buf = xhr.response;
             console.log('[WORKER] fetch OK: ' + url + ' (' + buf.byteLength + ' bytes)');
             _fetchQueue.push({ taskId: taskId, data: buf, url: url });
-            _inFlight--;
-        })
-        .catch(function(e) {
-            console.log('[WORKER] fetch ERR: ' + url + ' status=' + ((e && e.status) || 'network'));
-            if (fallbacks.length > 0) {
-                _inFlight--;
-                return self._doFetchAsync(taskId, fallbacks[0], method, postData, fallbacks.slice(1));
-            } else {
-                _fetchQueue.push({ taskId: taskId, error: (e && e.status) || 0 });
-                _inFlight--;
-            }
-        });
+        } else {
+            throw { status: xhr.status };
+        }
+    } catch (e) {
+        console.log('[WORKER] fetch ERR: ' + url + ' status=' + ((e && e.status) || 'network'));
+        if (fallbacks && fallbacks.length > 0) {
+            return this._doFetchSync(taskId, fallbacks[0], method, postData, fallbacks.slice(1));
+        } else {
+            _fetchQueue.push({ taskId: taskId, error: (e && e.status) || 0 });
+        }
+    }
 };
 
 /**
- * Deliver all queued fetch results into WASM.
- * Called at the start of each tick before running Lingo.
+ * Deliver one queued fetch result into WASM per tick.
+ * Delivering one at a time ensures the download manager sees concurrent
+ * active tasks (as on a real network) instead of all completing at once.
  * @return number of results delivered
  */
 WasmEngine.prototype.deliverQueuedResults = function() {
-    var count = 0;
-    while (_fetchQueue.length > 0) {
-        var item = _fetchQueue.shift();
-        if (item.data !== undefined) {
-            this._deliverResult(item.taskId, item.data, item.url);
-        } else {
-            this._deliverError(item.taskId, item.error);
-        }
-        count++;
+    if (_fetchQueue.length === 0) return 0;
+    var item = _fetchQueue.shift();
+    if (item.data !== undefined) {
+        this._deliverResult(item.taskId, item.data, item.url);
+    } else {
+        this._deliverError(item.taskId, item.error);
     }
-    return count;
+    return 1;
 };
 
 /**
@@ -579,14 +531,7 @@ WasmEngine.prototype.pumpNetworkFire = function() {
     if (!reqs) return 0;
     for (var i = 0; i < reqs.length; i++) {
         var req = reqs[i];
-        // Check JS-side cache first — deliver immediately if cached
-        var cached = _findCachedResponse(req.url, req.fallbacks);
-        if (cached) {
-            console.log('[WORKER] cache HIT: ' + req.url);
-            _fetchQueue.push({ taskId: req.taskId, data: cached, url: req.url });
-        } else {
-            this._doFetchAsync(req.taskId, req.url, req.method, req.postData, req.fallbacks || []);
-        }
+        this._doFetchSync(req.taskId, req.url, req.method, req.postData, req.fallbacks || []);
     }
     return reqs.length;
 };
@@ -811,20 +756,24 @@ WasmEngine.prototype.deliverMusEvents = function() {
 // ============================================================
 
 /**
- * Find a cached response for a URL, checking the primary URL and all fallbacks.
+ * Fetch a URL synchronously, trying fallbacks on failure.
  * @return ArrayBuffer or null
  */
-function _findCachedResponse(url, fallbacks) {
-    if (_urlCache[url]) return _urlCache[url];
-    // Also check without query string (for cache-busting params like ?281)
-    var qi = url.indexOf('?');
-    if (qi > 0 && _urlCache[url.substring(0, qi)]) return _urlCache[url.substring(0, qi)];
+function _fetchSyncData(url, fallbacks) {
+    var urls = [url];
     if (fallbacks) {
-        for (var i = 0; i < fallbacks.length; i++) {
-            if (_urlCache[fallbacks[i]]) return _urlCache[fallbacks[i]];
-            var fqi = fallbacks[i].indexOf('?');
-            if (fqi > 0 && _urlCache[fallbacks[i].substring(0, fqi)]) return _urlCache[fallbacks[i].substring(0, fqi)];
-        }
+        for (var i = 0; i < fallbacks.length; i++) urls.push(fallbacks[i]);
+    }
+    for (var j = 0; j < urls.length; j++) {
+        try {
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', urls[j], false);
+            xhr.responseType = 'arraybuffer';
+            xhr.send(null);
+            if (xhr.status >= 200 && xhr.status < 300 && xhr.response) {
+                return xhr.response;
+            }
+        } catch (e) { /* try next */ }
     }
     return null;
 }
@@ -877,51 +826,8 @@ async function _prefetchSw1Assets(basePath) {
 
     console.log('[WORKER] Pre-fetching ' + urls.length + ' sw1 URLs');
 
-    // Fetch all sw1 URLs in parallel to parse their content and cache them.
-    var results = await Promise.all(urls.map(function(url) {
-        return _fetchWithTimeout(url)
-            .then(function(r) { if (!r.ok) throw { status: r.status }; return r.arrayBuffer(); })
-            .then(function(buf) {
-                _urlCache[url] = buf;
-                return buf;
-            })
-            .catch(function() { return null; });
-    }));
-
-    // Parse external_variables.txt to find cast entries
-    var castNames = [];
-    for (var i = 0; i < results.length; i++) {
-        if (!results[i]) continue;
-        if (urls[i].indexOf('external_variables') !== -1 || urls[i].indexOf('external_variable') !== -1) {
-            var text = new TextDecoder().decode(new Uint8Array(results[i]));
-            var lines = text.split('\n');
-            for (var j = 0; j < lines.length; j++) {
-                var m = lines[j].match(/^cast\.entry\.\d+=(.+)/);
-                if (m) castNames.push(m[1].trim());
-            }
-        }
-    }
-
-    if (castNames.length === 0) return;
-    console.log('[WORKER] Pre-fetching ' + castNames.length + ' dynamic cast files: ' + castNames.join(', '));
-
-    // Fetch all dynamic cast .cct files in parallel (with .cst fallback)
-    var castFetches = castNames.map(function(name) {
-        var cctUrl = baseDir + name + '.cct';
-        var cstUrl = baseDir + name + '.cst';
-        if (_urlCache[cctUrl] || _urlCache[cstUrl]) return Promise.resolve();
-        return _fetchWithTimeout(cctUrl)
-            .then(function(r) { if (!r.ok) throw 'not found'; return r.arrayBuffer(); })
-            .then(function(buf) { _urlCache[cctUrl] = buf; _urlCache[cstUrl] = buf; })
-            .catch(function() {
-                return _fetchWithTimeout(cstUrl)
-                    .then(function(r) { if (!r.ok) throw 'not found'; return r.arrayBuffer(); })
-                    .then(function(buf) { _urlCache[cctUrl] = buf; _urlCache[cstUrl] = buf; })
-                    .catch(function() {});
-            });
-    });
-    await Promise.all(castFetches);
-    console.log('[WORKER] Pre-fetch complete, cache has ' + Object.keys(_urlCache).length + ' entries');
+    // No pre-fetching — files are fetched synchronously on demand.
+    // The browser HTTP cache serves repeated requests efficiently.
 }
 
 // ============================================================
@@ -946,7 +852,6 @@ self.onmessage = async function(e) {
             }
 
             case 'loadMovie': {
-                _urlCache = {}; // Clear cache for new movie
                 _tickNum = 0;
                 _movieBasePath = msg.basePath || '';
                 var info = _e.loadMovie(new Uint8Array(msg.data), msg.basePath);
@@ -1142,19 +1047,15 @@ self.onmessage = async function(e) {
                 if (msg.error) {
                     console.log('[WORKER] relay ERR: ' + relay.url + ' status=' + (msg.status || 0));
                     if (relay.fallbacks.length > 0) {
-                        _inFlight--; // retry will re-increment
-                        relay.engine._doFetchAsync(relay.taskId, relay.fallbacks[0],
+                        relay.engine._doFetchSync(relay.taskId, relay.fallbacks[0],
                                                    relay.method, relay.postData,
                                                    relay.fallbacks.slice(1));
                     } else {
                         _fetchQueue.push({ taskId: relay.taskId, error: msg.status || 0 });
-                        _inFlight--;
                     }
                 } else {
-                    _urlCache[relay.url] = msg.data;
                     console.log('[WORKER] relay OK: ' + relay.url + ' (' + msg.data.byteLength + ' bytes)');
                     _fetchQueue.push({ taskId: relay.taskId, data: msg.data, url: relay.url });
-                    _inFlight--;
                 }
                 break;
             }
@@ -1259,6 +1160,7 @@ self.onmessage = async function(e) {
                     try {
                         _e._lastFrame      = _e.exports.getCurrentFrame();
                         _e._lastFrameCount = _e.exports.getFrameCount();
+                        _e._lastTempo      = _e.exports.getTempo();
                     } catch (ignore) {}
 
                     // Phase 4: render (skip during fast-loading for performance)
