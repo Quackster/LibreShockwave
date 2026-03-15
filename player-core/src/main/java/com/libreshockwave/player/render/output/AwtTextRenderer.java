@@ -95,8 +95,10 @@ public class AwtTextRenderer implements TextRenderer {
             }
         }
 
-        // Compute needed height
-        int neededHeight = lines.size() * lineHeight + topSpacing;
+        // In Director, topSpacing adds leading above EACH line (per-line leading),
+        // so the effective line advance = fixedLineSpace + topSpacing.
+        int lineAdvance = lineHeight + topSpacing;
+        int neededHeight = lines.size() * lineAdvance;
         if (neededHeight > height) {
             g2d.dispose();
             bufImg = new BufferedImage(width, neededHeight, BufferedImage.TYPE_INT_ARGB);
@@ -125,7 +127,7 @@ public class AwtTextRenderer implements TextRenderer {
             }
 
             g2d.drawString(line, x, y);
-            y += lineHeight;
+            y += lineAdvance;
         }
 
         g2d.dispose();

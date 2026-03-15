@@ -331,7 +331,14 @@ public class SimpleTextRenderer implements TextRenderer {
             }
         }
 
-        int neededHeight = lines.size() * lineHeight + topSpacing;
+        // In Director, topSpacing adds leading above EACH line (per-line leading),
+        // so the effective line advance = fixedLineSpace + topSpacing.
+        // The Writer_Class decomposes fixedLineSpace into:
+        //   member.fixedLineSpace = fontSize
+        //   member.topSpacing = requestedFixedLineSpace - fontSize
+        // Total per-line advance = fontSize + topSpacing = requestedFixedLineSpace.
+        int lineAdvance = lineHeight + topSpacing;
+        int neededHeight = lines.size() * lineAdvance;
         if (neededHeight > height) height = neededHeight;
 
         int[] pixels = new int[width * height];
@@ -361,7 +368,7 @@ public class SimpleTextRenderer implements TextRenderer {
             if (underline && line.length() > 0) {
                 drawUnderline(pixels, width, height, glyphY + font.getLineHeight() - 1, lineStartX, x, textColor);
             }
-            y += lineHeight;
+            y += lineAdvance;
         }
 
         return new Bitmap(width, height, 32, pixels);
@@ -394,7 +401,9 @@ public class SimpleTextRenderer implements TextRenderer {
             }
         }
 
-        int neededHeight = lines.size() * lineHeight + topSpacing;
+        // Per-line leading: topSpacing adds above each line (see renderWithBitmapFont comment)
+        int lineAdvance = lineHeight + topSpacing;
+        int neededHeight = lines.size() * lineAdvance;
         if (neededHeight > height) height = neededHeight;
 
         int[] pixels = new int[width * height];
@@ -416,7 +425,7 @@ public class SimpleTextRenderer implements TextRenderer {
             if (underline && line.length() > 0) {
                 drawUnderline(pixels, width, height, y + ascent + 1, lineStartX, x, textColor);
             }
-            y += lineHeight;
+            y += lineAdvance;
         }
 
         return new Bitmap(width, height, 32, pixels);

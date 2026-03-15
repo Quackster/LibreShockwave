@@ -87,6 +87,20 @@ public class SpriteProperties implements SpritePropertyProvider {
                 int cm = sprite.getEffectiveCastMember();
                 yield cm > 0 ? Datum.CastMemberRef.of(cl, cm) : Datum.VOID;
             }
+            case "image" -> {
+                // Director's sprite(n).image returns the sprite's member's image.
+                // For bitmap members this is a live reference (modifications persist).
+                // For text members this is a rendered snapshot.
+                if (castLibManager != null) {
+                    int cl = sprite.getEffectiveCastLib();
+                    int cm = sprite.getEffectiveCastMember();
+                    CastMember member = castLibManager.getDynamicMember(cl, cm);
+                    if (member != null) {
+                        yield member.getProp("image");
+                    }
+                }
+                yield Datum.VOID;
+            }
             case "ilk" -> Datum.symbol("sprite");
             case "fliph" -> Datum.of(sprite.isFlipH() ? 1 : 0);
             case "flipv" -> Datum.of(sprite.isFlipV() ? 1 : 0);
@@ -177,6 +191,18 @@ public class SpriteProperties implements SpritePropertyProvider {
             }
             case "height" -> {
                 sprite.setHeight(value.toInt());
+                return true;
+            }
+            case "image" -> {
+                // Director's sprite(n).image = img sets the sprite's member's image.
+                if (castLibManager != null) {
+                    int cl = sprite.getEffectiveCastLib();
+                    int cm = sprite.getEffectiveCastMember();
+                    CastMember member = castLibManager.getDynamicMember(cl, cm);
+                    if (member != null) {
+                        return member.setProp("image", value);
+                    }
+                }
                 return true;
             }
             case "forecolor" -> {
