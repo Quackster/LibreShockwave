@@ -64,7 +64,7 @@ public class SpriteState {
             this.blend = Math.round(data.blendByte() * 100f / 255f);
         }
         this.foreColor = data.resolvedForeColor();
-        this.backColor = data.backColor();
+        this.backColor = data.resolvedBackColor();
     }
 
     /**
@@ -206,7 +206,7 @@ public class SpriteState {
             this.hasForeColor = true;
         }
         if (!hasBackColor) {
-            this.backColor = data.backColor();
+            this.backColor = data.resolvedBackColor();
             this.hasBackColor = true;
         }
     }
