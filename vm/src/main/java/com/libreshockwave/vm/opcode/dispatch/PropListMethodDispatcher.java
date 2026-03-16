@@ -15,13 +15,30 @@ public final class PropListMethodDispatcher {
     public static Datum dispatch(Datum.PropList propList, String methodName, List<Datum> args) {
         // Fast path for most common operations (no allocation)
         if ("count".equalsIgnoreCase(methodName)) {
+            // count(propList) → number of entries
+            // count(propList, #prop) → count of the sub-property value (list.prop.count)
+            if (!args.isEmpty()) {
+                Datum sub = propList.getOrDefault(args.get(0).toKeyName(), Datum.VOID);
+                if (sub instanceof Datum.List subList) return Datum.of(subList.items().size());
+                if (sub instanceof Datum.PropList subProp) return Datum.of(subProp.size());
+                return Datum.ZERO;
+            }
             return Datum.of(propList.size());
         }
         if ("getprop".equalsIgnoreCase(methodName) || "getaprop".equalsIgnoreCase(methodName)
                 || "getproperty".equalsIgnoreCase(methodName)) {
             if (args.isEmpty()) return Datum.VOID;
             String key = args.get(0).toKeyName();
-            return propList.getOrDefault(key, Datum.VOID);
+            Datum value = propList.getOrDefault(key, Datum.VOID);
+            // getProp(propList, #prop, index) → propList.prop[index]
+            if (args.size() >= 2 && value instanceof Datum.List subList) {
+                int index = args.get(1).toInt() - 1; // 1-indexed
+                if (index >= 0 && index < subList.items().size()) {
+                    return subList.items().get(index);
+                }
+                return Datum.VOID;
+            }
+            return value;
         }
         if ("setprop".equalsIgnoreCase(methodName) || "setaprop".equalsIgnoreCase(methodName)) {
             if (args.size() < 2) return Datum.VOID;
