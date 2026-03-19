@@ -366,7 +366,8 @@ public class SimpleTextRenderer implements TextRenderer {
                 x += font.getCharWidth(ch);
             }
             if (underline && line.length() > 0) {
-                drawUnderline(pixels, width, height, glyphY + font.getLineHeight() - 1, lineStartX, x, textColor);
+                int underlineY = Math.min(height - 1, glyphY + Math.max(0, font.getAscent()));
+                drawUnderline(pixels, width, height, underlineY, lineStartX, x, textColor);
             }
             y += lineAdvance;
         }
