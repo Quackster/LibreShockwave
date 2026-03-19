@@ -381,8 +381,7 @@ public class Drawing {
             }
         }
 
-        // Determine matte color from top-left corner pixel (matching ScummVM approach)
-        int matteRgb = pixels[0] & 0xFFFFFF;
+        int matteRgb = 0xFFFFFF;
 
         // BFS flood-fill from edges
         boolean[] transparent = new boolean[w * h];
@@ -443,8 +442,7 @@ public class Drawing {
             }
         }
 
-        // Determine matte color from top-left corner pixel
-        int matteRgb = pixels[0] & 0xFFFFFF;
+        int matteRgb = 0xFFFFFF;
 
         // BFS flood-fill from edges
         boolean[] transparent = new boolean[w * h];

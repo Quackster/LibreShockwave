@@ -165,6 +165,7 @@ public class NavigatorSSOTest {
 
         // 7. Sprite info + ink analysis
         dumpSpriteInfo(finalSnap, OUTPUT_DIR.resolve("sprite_info.txt"));
+        dumpNavigatorSprites(finalSnap, OUTPUT_DIR.resolve("sprites"));
 
         // 8. Pixel diffs against reference
         Bitmap compareFrame = navigatorBitmap != null ? navigatorBitmap : finalFrame;
@@ -315,6 +316,16 @@ public class NavigatorSSOTest {
                 s.getBakedBitmap()!=null?s.getBakedBitmap().getWidth()+"x"+s.getBakedBitmap().getHeight():"null",
                 s.getDynamicMember()!=null));}
         Files.writeString(outFile, sb.toString());
+    }
+
+    static void dumpNavigatorSprites(FrameSnapshot snap, Path outDir) throws IOException {
+        Files.createDirectories(outDir);
+        Set<Integer> channels = Set.of(60, 61, 66, 67, 71, 74, 75, 78, 79, 80, 81, 82);
+        for (RenderSprite s : snap.sprites()) {
+            if (!s.isVisible() || s.getBakedBitmap() == null || !channels.contains(s.getChannel())) continue;
+            String fileName = String.format("ch%d_%s.png", s.getChannel(), s.getInkMode());
+            ImageIO.write(s.getBakedBitmap().toBufferedImage(), "PNG", outDir.resolve(fileName).toFile());
+        }
     }
 
     static void analyzeInkColors(FrameSnapshot snap) {

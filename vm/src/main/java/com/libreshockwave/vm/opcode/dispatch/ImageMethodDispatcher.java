@@ -149,6 +149,11 @@ public final class ImageMethodDispatcher {
         // Use bitmap-aware color resolution so paletteIndex() colors resolve
         // through the target bitmap's custom palette (e.g., nav_ui_palette).
         int colorArgb = colorDatum.isVoid() ? 0xFFFFFFFF : Datum.datumToArgb(colorDatum, bmp);
+        if ((bmp.getWidth() == 342 && bmp.getHeight() == 104)
+                || (bmp.getWidth() == 342 && bmp.getHeight() == 140)) {
+            System.err.printf("[DEBUG-FILL-PANEL] bmp=%dx%d rect=(%d,%d,%d,%d) color=0x%08X raw=%s%n",
+                    bmp.getWidth(), bmp.getHeight(), left, top, right, bottom, colorArgb, colorDatum);
+        }
 
         int w = right - left;
         int h = bottom - top;
@@ -298,6 +303,21 @@ public final class ImageMethodDispatcher {
         int srcH = srcRect.bottom() - srcRect.top();
         int destW = destRect.right() - destRect.left();
         int destH = destRect.bottom() - destRect.top();
+
+        if ((dest.getWidth() == 342 && dest.getHeight() == 104)
+                || (dest.getWidth() == 342 && dest.getHeight() == 140)) {
+            String srcPixel = "n/a";
+            if (src.getWidth() > 0 && src.getHeight() > 0) {
+                srcPixel = String.format("0x%08X", src.getPixel(srcRect.left(), srcRect.top()));
+            }
+            System.err.printf("[DEBUG-CP-PANEL] destBmp=%dx%d srcBmp=%dx%d srcRect=%s destRect=%s ink=%s blend=%d color=%s bgColor=%s mask=%s%n",
+                    dest.getWidth(), dest.getHeight(),
+                    src.getWidth(), src.getHeight(), srcRect, destRect, ink, blend,
+                    colorRemap >= 0 ? String.format("0x%06X", colorRemap) : "none",
+                    bgColorRemap >= 0 ? String.format("0x%06X", bgColorRemap) : "none",
+                    mask != null ? (mask.getWidth() + "x" + mask.getHeight()) : "none");
+            System.err.println("[DEBUG-CP-PANEL-SRCPIX] " + srcPixel);
+        }
 
         // Apply #color/#bgColor remapping only for grayscale source bitmaps.
         // Director's copyPixels remap is designed for default black/white text bitmaps

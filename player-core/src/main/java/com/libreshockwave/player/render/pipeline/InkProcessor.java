@@ -150,9 +150,12 @@ public final class InkProcessor {
             return palette.getColor(0) & 0xFFFFFF;
         }
 
-        // 32-bit ink 8 without alpha: top-left corner pixel
+        // Director's Matte ink removes the matte/background color, which for
+        // typical Director-authored 32-bit UI assets is white rather than the
+        // arbitrary top-left pixel. Using top-left breaks solid-color swatches
+        // that are copied with MATTE to build window panels.
         if (bitDepth == 32) {
-            return src.getPixel(0, 0) & 0xFFFFFF;
+            return 0xFFFFFF;
         }
 
         // 16-bit or other: white

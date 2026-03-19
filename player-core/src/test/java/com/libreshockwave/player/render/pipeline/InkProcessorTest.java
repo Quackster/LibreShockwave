@@ -51,4 +51,13 @@ class InkProcessorTest {
         assertEquals(0xFF000000, result.getPixel(2, 0));
         assertEquals(0x00000000, result.getPixel(3, 0));
     }
+
+    @Test
+    void matteKeepsSolidColored32BitTile() {
+        Bitmap src = new Bitmap(1, 1, 32, new int[] { 0xFFD4DDE1 });
+
+        Bitmap result = InkProcessor.applyMatte(src, InkProcessor.resolveMatteColor(src, null, 0, false, null));
+
+        assertEquals(0xFFD4DDE1, result.getPixel(0, 0));
+    }
 }
