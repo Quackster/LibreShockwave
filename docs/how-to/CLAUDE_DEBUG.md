@@ -21,9 +21,11 @@ We maintain reference screenshots from the original Shockwave plugin. These live
 ./gradlew :player-core:runNavigatorSSOTest
 ```
 
+**Note:** The Habbo proxy (localhost:30001) is only required when running from `player-wasm`. When running from `player-core` (as above), no proxy is needed — the test downloads everything over HTTP directly.
+
 This test:
 1. Downloads a DCR from the test server
-2. Connects to a local proxy, ticks frames until the UI appears
+2. Ticks frames until the UI appears
 3. Renders the final frame to PNG
 4. Creates pixel diffs against the reference image
 

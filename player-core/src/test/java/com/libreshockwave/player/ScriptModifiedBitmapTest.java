@@ -163,6 +163,32 @@ public class ScriptModifiedBitmapTest {
         assertEquals(0xFFFF0000, dest.getPixel(2, 2), "Pixels should be copied from source");
     }
 
+    @Test
+    void backgroundTransparentCopyPixelsPreservesTransparentTextBackground() {
+        Bitmap dest = new Bitmap(10, 10, 32);
+        dest.fill(0xFFC0C0C0);
+
+        Bitmap src = new Bitmap(3, 3, 32);
+        src.fill(0x00FFFFFF);
+        src.setPixel(1, 1, 0xFF000000);
+
+        Datum.ImageRef destRef = new Datum.ImageRef(dest);
+        Datum.ImageRef srcRef = new Datum.ImageRef(src);
+        Datum.Rect rect = new Datum.Rect(2, 2, 5, 5);
+
+        Datum.PropList props = new Datum.PropList();
+        props.add("ink", Datum.of(36));
+        props.add("bgColor", new Datum.Color(221, 221, 221));
+
+        ImageMethodDispatcher.dispatch(destRef, "copyPixels",
+                List.of(srcRef, rect, new Datum.Rect(0, 0, 3, 3), props));
+
+        assertEquals(0xFFC0C0C0, dest.getPixel(2, 2),
+                "Transparent source background should not be remapped into an opaque bgColor fill");
+        assertEquals(0xFF000000, dest.getPixel(3, 3),
+                "Black text pixels should still copy through");
+    }
+
     /**
      * Tests the cloud pattern: pImg = member.image is obtained early,
      * then member.image = image(w,h,8) replaces the member's bitmap,

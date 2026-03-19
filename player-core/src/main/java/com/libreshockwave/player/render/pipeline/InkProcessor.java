@@ -207,25 +207,59 @@ public final class InkProcessor {
         int h = src.getHeight();
         int[] srcPixels = src.getPixels();
         int[] result = new int[w * h];
+        int bgR = (bgColorRGB >> 16) & 0xFF;
+        int bgG = (bgColorRGB >> 8) & 0xFF;
+        int bgB = bgColorRGB & 0xFF;
 
-        // Exact color matching for all bit depths.
-        // Director uses palette-index matching for background transparent ink,
-        // which is equivalent to exact RGB matching for decoded bitmaps.
         for (int i = 0; i < srcPixels.length; i++) {
-            int alpha = (srcPixels[i] >>> 24) & 0xFF;
+            int pixel = srcPixels[i];
+            int alpha = (pixel >>> 24) & 0xFF;
             if (alpha == 0) {
                 result[i] = 0x00000000; // Preserve already-transparent pixels
-            } else {
-                int rgb = srcPixels[i] & 0xFFFFFF;
-                if (rgb == bgColorRGB) {
-                    result[i] = 0x00000000; // Fully transparent
-                } else {
-                    result[i] = srcPixels[i] | 0xFF000000; // Fully opaque
+                continue;
+            }
+
+            int rgb = pixel & 0xFFFFFF;
+            if (rgb == bgColorRGB) {
+                result[i] = 0x00000000; // Fully transparent
+                continue;
+            }
+
+            // 32-bit text and UI buffers often arrive as fully opaque RGB that was
+            // anti-aliased against the background color. Recover proper alpha by
+            // unblending from that background so faint gray/orange fringes don't stay
+            // as opaque pixels behind the glyphs.
+            if (src.getBitDepth() == 32) {
+                int r = (pixel >> 16) & 0xFF;
+                int g = (pixel >> 8) & 0xFF;
+                int b = pixel & 0xFF;
+                int recoveredAlpha = Math.max(Math.abs(r - bgR),
+                        Math.max(Math.abs(g - bgG), Math.abs(b - bgB)));
+
+                if (recoveredAlpha > 0 && recoveredAlpha < 255) {
+                    int fgR = unblendChannel(r, bgR, recoveredAlpha);
+                    int fgG = unblendChannel(g, bgG, recoveredAlpha);
+                    int fgB = unblendChannel(b, bgB, recoveredAlpha);
+                    result[i] = (recoveredAlpha << 24) | (fgR << 16) | (fgG << 8) | fgB;
+                    continue;
                 }
+
+                result[i] = 0xFF000000 | rgb;
+            } else {
+                // Director uses palette-index matching for non-32-bit background
+                // transparent ink, which reduces to exact color-key transparency here.
+                result[i] = pixel | 0xFF000000;
             }
         }
 
         return new Bitmap(w, h, src.getBitDepth(), result);
+    }
+
+    private static int unblendChannel(int observed, int background, int alpha) {
+        int value = (observed * 255 - background * (255 - alpha)) / alpha;
+        if (value < 0) return 0;
+        if (value > 255) return 255;
+        return value;
     }
 
     /**
@@ -260,13 +294,12 @@ public final class InkProcessor {
             if (py < h - 1) seedMatte(pixels, transparent, queue, px, py + 1, w, matteColorRGB);
         }
 
-        // Build result
         int[] result = new int[w * h];
         for (int i = 0; i < pixels.length; i++) {
             if (transparent[i]) {
                 result[i] = 0x00000000;
             } else {
-                result[i] = pixels[i] | 0xFF000000;
+                result[i] = pixels[i];
             }
         }
 
@@ -276,10 +309,14 @@ public final class InkProcessor {
     private static void seedMatte(int[] pixels, boolean[] transparent, Queue<Integer> queue,
                                    int x, int y, int w, int matteRgb) {
         int idx = y * w + x;
-        if (!transparent[idx] && (pixels[idx] & 0xFFFFFF) == matteRgb) {
+        if (!transparent[idx] && isTransparentOrMatte(pixels[idx], matteRgb)) {
             transparent[idx] = true;
             queue.add(idx);
         }
+    }
+
+    private static boolean isTransparentOrMatte(int pixel, int matteRgb) {
+        return ((pixel >>> 24) & 0xFF) == 0 || (pixel & 0xFFFFFF) == matteRgb;
     }
 
     /**

@@ -407,10 +407,15 @@ public class Drawing {
             if (py < h - 1) seedMatte(pixels, transparent, queue, px, py + 1, w, matteRgb);
         }
 
-        // Build mask: opaque (0xFFFFFFFF) where content, transparent (0x00000000) where edge-connected
+        // Build mask: opaque where content, alpha-recovered on fringe, transparent where edge-connected
         int[] mask = new int[w * h];
         for (int i = 0; i < pixels.length; i++) {
-            mask[i] = transparent[i] ? 0x00000000 : 0xFFFFFFFF;
+            if (transparent[i]) {
+                mask[i] = 0x00000000;
+            } else {
+                int alpha = (pixels[i] >>> 24) & 0xFF;
+                mask[i] = (alpha << 24) | 0x00FFFFFF;
+            }
         }
 
         return new Bitmap(w, h, 32, mask);
@@ -469,7 +474,7 @@ public class Drawing {
             if (transparent[i]) {
                 result[i] = 0x00000000;
             } else {
-                result[i] = pixels[i] | 0xFF000000;
+                result[i] = pixels[i];
             }
         }
 
@@ -479,10 +484,14 @@ public class Drawing {
     private static void seedMatte(int[] pixels, boolean[] transparent, Queue<Integer> queue,
                                    int x, int y, int w, int matteRgb) {
         int idx = y * w + x;
-        if (!transparent[idx] && (pixels[idx] & 0xFFFFFF) == matteRgb) {
+        if (!transparent[idx] && isTransparentOrMatte(pixels[idx], matteRgb)) {
             transparent[idx] = true;
             queue.add(idx);
         }
+    }
+
+    private static boolean isTransparentOrMatte(int pixel, int matteRgb) {
+        return ((pixel >>> 24) & 0xFF) == 0 || (pixel & 0xFFFFFF) == matteRgb;
     }
 
     /**

@@ -307,14 +307,19 @@ public final class ImageMethodDispatcher {
         Bitmap effectiveSrc = src;
         int effectiveSrcX = srcRect.left();
         int effectiveSrcY = srcRect.top();
+        boolean remapToAlphaMask = false;
         if (colorRemap >= 0 || bgColorRemap >= 0) {
             // Sample source pixels to check if they're grayscale (safe to remap)
             boolean isGrayscale = true;
+            boolean hasTransparency = false;
             int sampleStep = Math.max(1, (srcW * srcH) / 64);
             for (int i = 0; i < srcW * srcH && isGrayscale; i += sampleStep) {
                 int sx = srcRect.left() + (i % srcW);
                 int sy = srcRect.top() + (i / srcW);
                 int p = src.getPixel(sx, sy);
+                if (((p >>> 24) & 0xFF) < 255) {
+                    hasTransparency = true;
+                }
                 if ((p >>> 24) == 0) continue; // skip transparent
                 int r = (p >> 16) & 0xFF;
                 int g = (p >> 8) & 0xFF;
@@ -331,6 +336,12 @@ public final class ImageMethodDispatcher {
                 int bgR = bgColorRemap >= 0 ? (bgColorRemap >> 16) & 0xFF : 255;
                 int bgG = bgColorRemap >= 0 ? (bgColorRemap >> 8) & 0xFF : 255;
                 int bgB = bgColorRemap >= 0 ? bgColorRemap & 0xFF : 255;
+                boolean transparentBackground = colorRemap >= 0 && bgColorRemap < 0;
+                boolean preserveTransparentTextBackground =
+                        ink == Palette.InkMode.BACKGROUND_TRANSPARENT
+                        && colorRemap < 0
+                        && bgColorRemap >= 0
+                        && hasTransparency;
 
                 effectiveSrc = new Bitmap(srcW, srcH, src.getBitDepth());
                 for (int y = 0; y < srcH; y++) {
@@ -341,15 +352,24 @@ public final class ImageMethodDispatcher {
                         int g = (pixel >> 8) & 0xFF;
                         int b = pixel & 0xFF;
                         int gray = (r + g + b) / 3;
-                        float t = gray / 255.0f;
-                        int nr = (int) ((1 - t) * fgR + t * bgR + 0.5f);
-                        int ng = (int) ((1 - t) * fgG + t * bgG + 0.5f);
-                        int nb = (int) ((1 - t) * fgB + t * bgB + 0.5f);
-                        effectiveSrc.setPixel(x, y, (alpha << 24) | (nr << 16) | (ng << 8) | nb);
+                        if (transparentBackground || preserveTransparentTextBackground) {
+                            int maskAlpha = (255 - gray) * alpha / 255;
+                            int outR = colorRemap >= 0 ? fgR : 0;
+                            int outG = colorRemap >= 0 ? fgG : 0;
+                            int outB = colorRemap >= 0 ? fgB : 0;
+                            effectiveSrc.setPixel(x, y, (maskAlpha << 24) | (outR << 16) | (outG << 8) | outB);
+                        } else {
+                            float t = gray / 255.0f;
+                            int nr = (int) ((1 - t) * fgR + t * bgR + 0.5f);
+                            int ng = (int) ((1 - t) * fgG + t * bgG + 0.5f);
+                            int nb = (int) ((1 - t) * fgB + t * bgB + 0.5f);
+                            effectiveSrc.setPixel(x, y, (alpha << 24) | (nr << 16) | (ng << 8) | nb);
+                        }
                     }
                 }
                 effectiveSrcX = 0;
                 effectiveSrcY = 0;
+                remapToAlphaMask = transparentBackground || preserveTransparentTextBackground;
             }
         }
 
@@ -358,6 +378,9 @@ public final class ImageMethodDispatcher {
         // outline contamination at body part overlaps. Switch to COPY so later parts overwrite.
         Palette.InkMode effectiveInk = ink;
         if ((ink == Palette.InkMode.DARKEN || ink == Palette.InkMode.LIGHTEN) && bgColorRemap >= 0) {
+            effectiveInk = Palette.InkMode.COPY;
+        }
+        if (remapToAlphaMask) {
             effectiveInk = Palette.InkMode.COPY;
         }
 
