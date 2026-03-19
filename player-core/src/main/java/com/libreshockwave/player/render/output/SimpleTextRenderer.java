@@ -24,7 +24,7 @@ public class SimpleTextRenderer implements TextRenderer {
                              int fixedLineSpace, int topSpacing) {
         if (text == null) text = "";
         if (width <= 0) width = 200;
-        if (height <= 0) height = 20;
+        if (height <= 0) height = 1; // auto-size: neededHeight will expand to fit
 
         String style = fontStyle != null ? fontStyle.toLowerCase() : "";
         boolean wantsBold = style.contains("bold");
@@ -66,7 +66,7 @@ public class SimpleTextRenderer implements TextRenderer {
                                  int textColor, int bgColor) {
         if (styledText == null || styledText.text() == null) return null;
         if (width <= 0) width = 200;
-        if (height <= 0) height = 20;
+        if (height <= 0) height = 1; // auto-size: neededHeight will expand to fit
 
         String text = styledText.text();
         String fontName = styledText.fontName();
