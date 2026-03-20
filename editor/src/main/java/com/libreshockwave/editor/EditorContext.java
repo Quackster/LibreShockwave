@@ -10,6 +10,7 @@ import com.libreshockwave.player.debug.DebugSnapshot;
 import com.libreshockwave.player.debug.DebugStateListener;
 
 import javax.swing.*;
+import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.beans.PropertyChangeSupport;
 import java.nio.file.Files;
@@ -255,14 +256,22 @@ public class EditorContext {
             }
 
             if (player.isVmRunning()) {
-                // VM is busy — still fire frame change for repaint
-                pcs.firePropertyChange(PROP_FRAME, currentFrame, currentFrame);
+                // VM is busy — still fire frame change for repaint.
+                // Use PropertyChangeEvent directly so the event fires even when
+                // the frame number hasn't changed (PropertyChangeSupport suppresses
+                // events when old == new via the convenience method).
+                pcs.firePropertyChange(new PropertyChangeEvent(
+                    this, PROP_FRAME, null, currentFrame));
             } else {
                 player.tickAsync(() -> {
                     SwingUtilities.invokeLater(() -> {
                         int oldFrame = currentFrame;
                         currentFrame = player.getCurrentFrame();
-                        pcs.firePropertyChange(PROP_FRAME, oldFrame, currentFrame);
+                        // Always fire the event even when the frame hasn't changed
+                        // (e.g. "go the frame" holds on the same frame). The stage
+                        // still needs to repaint for interactive updates.
+                        pcs.firePropertyChange(new PropertyChangeEvent(
+                            this, PROP_FRAME, null, currentFrame));
                         updateTimerDelay();
                     });
                 });
