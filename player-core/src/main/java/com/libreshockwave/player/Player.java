@@ -183,7 +183,8 @@ public class Player {
         // Set initial palette (updated each tick in setupProviders)
         com.libreshockwave.vm.datum.Datum.setActivePalette(bitmapResolver.getMoviePalette());
         this.cursorManager = new CursorManager(stageRenderer, inputState, castLibManager,
-                bitmapResolver, this::getCurrentFrame, () -> frameContext.getEventDispatcher());
+                bitmapResolver, this::getCurrentFrame, () -> frameContext.getEventDispatcher(),
+                () -> movieProperties.getMovieProp("cursor"));
         this.inputHandler = new InputHandler(inputState, stageRenderer, castLibManager,
                 this::getCurrentFrame, () -> frameContext.getEventDispatcher());
         this.movieProperties.setInputState(inputState);
@@ -289,7 +290,8 @@ public class Player {
         // Set initial palette (updated each tick in setupProviders)
         com.libreshockwave.vm.datum.Datum.setActivePalette(bitmapResolver.getMoviePalette());
         this.cursorManager = new CursorManager(stageRenderer, inputState, castLibManager,
-                bitmapResolver, this::getCurrentFrame, () -> frameContext.getEventDispatcher());
+                bitmapResolver, this::getCurrentFrame, () -> frameContext.getEventDispatcher(),
+                () -> movieProperties.getMovieProp("cursor"));
         this.inputHandler = new InputHandler(inputState, stageRenderer, castLibManager,
                 this::getCurrentFrame, () -> frameContext.getEventDispatcher());
         this.movieProperties.setInputState(inputState);

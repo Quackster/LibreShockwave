@@ -33,6 +33,7 @@ public class MovieProperties implements MoviePropertyProvider {
     private String traceLogFile = "";
     private boolean allowCustomCaching = false;
     private Datum alertHook = Datum.VOID;
+    private Datum cursor = Datum.of(-1);
 
     // Stage properties
     private String stageTitle = "";
@@ -115,6 +116,7 @@ public class MovieProperties implements MoviePropertyProvider {
             case "tracelogfile" -> Datum.of(traceLogFile);
             case "allowcustomcaching" -> Datum.of(allowCustomCaching ? 1 : 0);
             case "alerthook" -> alertHook;
+            case "cursor" -> cursor;
 
             // actorList
             case "actorlist" -> actorList;
@@ -267,6 +269,10 @@ public class MovieProperties implements MoviePropertyProvider {
             }
             case "alerthook" -> {
                 alertHook = value;
+                return true;
+            }
+            case "cursor" -> {
+                cursor = value != null ? value : Datum.of(-1);
                 return true;
             }
             case "selstart" -> {

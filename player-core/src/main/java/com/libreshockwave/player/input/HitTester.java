@@ -69,7 +69,7 @@ public final class HitTester {
 
     /**
      * Check if the pixel at (localX, localY) within the sprite's baked bitmap is transparent.
-     * In Director, sprites with non-Copy ink modes use pixel-level hit testing —
+     * In Director, sprites with non-Copy ink modes use pixel-level hit testing -
      * transparent areas are click-through. Copy ink (0) always uses bounding-box.
      */
     private static boolean isPixelTransparent(RenderSprite sprite, int localX, int localY) {
@@ -82,10 +82,6 @@ public final class HitTester {
         // but clicking anywhere within the field/button bounds should register.
         RenderSprite.SpriteType type = sprite.getType();
         if (type == RenderSprite.SpriteType.TEXT || type == RenderSprite.SpriteType.BUTTON) return false;
-
-        // Sprites with script behaviors (e.g., Event Broker) always use bounding-box hit testing.
-        // These are explicitly interactive elements — their transparency is visual, not functional.
-        if (sprite.hasBehaviors()) return false;
 
         Bitmap baked = sprite.getBakedBitmap();
         if (baked == null) return false;
