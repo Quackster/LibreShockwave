@@ -189,6 +189,61 @@ public class ScriptModifiedBitmapTest {
                 "Black text pixels should still copy through");
     }
 
+    @Test
+    void coloredScriptModifiedBitmapSkipsBackgroundTransparentReprocessing() {
+        CastMember member = new CastMember(1, 42, MemberType.BITMAP);
+        Bitmap bmp = new Bitmap(2, 1, 32, new int[] {
+                0xFF6794A7,
+                0xFFEEEEEE
+        });
+        bmp.markScriptModified();
+        member.setBitmapDirectly(bmp);
+
+        RenderSprite sprite = new RenderSprite(
+                41, 0, 0, 2, 1, 0, true,
+                RenderSprite.SpriteType.BITMAP,
+                null, member,
+                0, 0x00FFFFFF, false, true,
+                36, 255, false, false, null, false
+        );
+
+        SpriteBaker baker = new SpriteBaker(new BitmapCache(), null, null);
+        RenderSprite baked = baker.bake(sprite);
+
+        assertNotNull(baked.getBakedBitmap());
+        assertEquals(0xFF6794A7, baked.getBakedBitmap().getPixel(0, 0));
+        assertEquals(0xFFEEEEEE, baked.getBakedBitmap().getPixel(1, 0));
+    }
+
+    @Test
+    void scriptModifiedBitmapStillProcessesBackgroundTransparentWhenKeyColorTouchesBorder() {
+        CastMember member = new CastMember(1, 43, MemberType.BITMAP);
+        Bitmap bmp = new Bitmap(3, 1, 32, new int[] {
+                0xFFFFFFFF,
+                0xFF6794A7,
+                0xFFFFFFFF
+        });
+        bmp.markScriptModified();
+        member.setBitmapDirectly(bmp);
+
+        RenderSprite sprite = new RenderSprite(
+                42, 0, 0, 3, 1, 0, true,
+                RenderSprite.SpriteType.BITMAP,
+                null, member,
+                0, 0x00FFFFFF, false, true,
+                36, 255, false, false, null, false
+        );
+
+        SpriteBaker baker = new SpriteBaker(new BitmapCache(), null, null);
+        RenderSprite baked = baker.bake(sprite);
+
+        assertNotNull(baked.getBakedBitmap());
+        assertEquals(0x00000000, baked.getBakedBitmap().getPixel(0, 0));
+        assertEquals(0x00000000, baked.getBakedBitmap().getPixel(2, 0));
+        assertNotEquals(0xFF6794A7, baked.getBakedBitmap().getPixel(1, 0),
+                "Border-touching key color should still trigger BACKGROUND_TRANSPARENT processing");
+    }
+
     /**
      * Tests the cloud pattern: pImg = member.image is obtained early,
      * then member.image = image(w,h,8) replaces the member's bitmap,

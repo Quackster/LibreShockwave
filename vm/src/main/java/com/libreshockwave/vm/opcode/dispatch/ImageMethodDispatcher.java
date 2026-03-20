@@ -303,7 +303,6 @@ public final class ImageMethodDispatcher {
         int srcH = srcRect.bottom() - srcRect.top();
         int destW = destRect.right() - destRect.left();
         int destH = destRect.bottom() - destRect.top();
-
         // Apply #color/#bgColor remapping only for grayscale source bitmaps.
         // Director's copyPixels remap is designed for default black/white text bitmaps
         // (e.g., title text rendered as black-on-white, remapped to white-on-teal).

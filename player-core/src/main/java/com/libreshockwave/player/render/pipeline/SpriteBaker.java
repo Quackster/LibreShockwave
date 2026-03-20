@@ -190,6 +190,11 @@ public class SpriteBaker {
         if (sprite.getDynamicMember() != null) {
             Bitmap liveBmp = sprite.getDynamicMember().getBitmap();
             if (liveBmp != null && liveBmp.isScriptModified()) {
+                if (sprite.getInkMode() == com.libreshockwave.id.InkMode.BACKGROUND_TRANSPARENT
+                        && liveBmp.getBitDepth() == 32
+                        && !hasBorderColor(liveBmp, sprite.getBackColor() & 0xFFFFFF)) {
+                    return liveBmp;
+                }
                 if (InkProcessor.shouldProcessInk(sprite.getInk())) {
                     return InkProcessor.applyInk(liveBmp, sprite.getInk(),
                             sprite.getBackColor(), false, null);
@@ -216,6 +221,20 @@ public class SpriteBaker {
                     sprite.getInk(), sprite.getBackColor());
         }
         return b;
+    }
+
+    private boolean hasBorderColor(Bitmap bmp, int colorRgb) {
+        int w = bmp.getWidth();
+        int h = bmp.getHeight();
+        for (int x = 0; x < w; x++) {
+            if ((bmp.getPixel(x, 0) & 0xFFFFFF) == colorRgb) return true;
+            if ((bmp.getPixel(x, h - 1) & 0xFFFFFF) == colorRgb) return true;
+        }
+        for (int y = 1; y < h - 1; y++) {
+            if ((bmp.getPixel(0, y) & 0xFFFFFF) == colorRgb) return true;
+            if ((bmp.getPixel(w - 1, y) & 0xFFFFFF) == colorRgb) return true;
+        }
+        return false;
     }
 
     private record PaletteOverrideInfo(Palette palette, int version) {}

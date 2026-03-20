@@ -60,4 +60,20 @@ class InkProcessorTest {
 
         assertEquals(0xFFD4DDE1, result.getPixel(0, 0));
     }
+
+    @Test
+    void matteUsesTopLeftColorForMixed32BitBitmap() {
+        Bitmap src = new Bitmap(3, 3, 32, new int[] {
+            0xFF2A6883, 0xFF2A6883, 0xFF2A6883,
+            0xFF2A6883, 0xFFEEEEEE, 0xFF2A6883,
+            0xFF2A6883, 0xFF2A6883, 0xFF2A6883
+        });
+
+        int matte = InkProcessor.resolveMatteColor(src, null, 0, false, null);
+        Bitmap result = InkProcessor.applyMatte(src, matte);
+
+        assertEquals(0x2A6883, matte);
+        assertEquals(0x00000000, result.getPixel(0, 0));
+        assertEquals(0xFFEEEEEE, result.getPixel(1, 1));
+    }
 }

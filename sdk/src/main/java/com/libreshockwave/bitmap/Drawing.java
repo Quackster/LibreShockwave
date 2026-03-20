@@ -381,7 +381,7 @@ public class Drawing {
             }
         }
 
-        int matteRgb = 0xFFFFFF;
+        int matteRgb = resolveMatteColor(pixels, src.getPixel(0, 0) & 0xFFFFFF);
 
         // BFS flood-fill from edges
         boolean[] transparent = new boolean[w * h];
@@ -442,7 +442,7 @@ public class Drawing {
             }
         }
 
-        int matteRgb = 0xFFFFFF;
+        int matteRgb = resolveMatteColor(pixels, pixels.length > 0 ? (pixels[0] & 0xFFFFFF) : 0xFFFFFF);
 
         // BFS flood-fill from edges
         boolean[] transparent = new boolean[w * h];
@@ -490,6 +490,22 @@ public class Drawing {
 
     private static boolean isTransparentOrMatte(int pixel, int matteRgb) {
         return ((pixel >>> 24) & 0xFF) == 0 || (pixel & 0xFFFFFF) == matteRgb;
+    }
+
+    private static int resolveMatteColor(int[] pixels, int topLeftRgb) {
+        int firstOpaque = -1;
+        for (int pixel : pixels) {
+            if (((pixel >>> 24) & 0xFF) == 0) {
+                continue;
+            }
+            int rgb = pixel & 0xFFFFFF;
+            if (firstOpaque < 0) {
+                firstOpaque = rgb;
+            } else if (rgb != firstOpaque) {
+                return topLeftRgb;
+            }
+        }
+        return 0xFFFFFF;
     }
 
     /**

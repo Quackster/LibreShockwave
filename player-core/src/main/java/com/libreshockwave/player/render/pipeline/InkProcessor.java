@@ -150,15 +150,33 @@ public final class InkProcessor {
             return palette.getColor(0) & 0xFFFFFF;
         }
 
-        // Director's Matte ink removes the matte/background color, which for
-        // typical Director-authored 32-bit UI assets is white rather than the
-        // arbitrary top-left pixel. Using top-left breaks solid-color swatches
-        // that are copied with MATTE to build window panels.
+        // Director-authored 32-bit MATTE assets fall into two buckets:
+        // text/icons on a matte-colored backing, and solid-color swatches used
+        // to build panels. Mixed-color assets should matte out their edge color
+        // (typically the top-left background), while solid swatches must not be
+        // erased entirely just because their top-left pixel matches the fill.
         if (bitDepth == 32) {
-            return 0xFFFFFF;
+            return resolve32BitMatteColor(src);
         }
 
         // 16-bit or other: white
+        return 0xFFFFFF;
+    }
+
+    private static int resolve32BitMatteColor(Bitmap src) {
+        int[] pixels = src.getPixels();
+        int firstOpaque = -1;
+        for (int pixel : pixels) {
+            if (((pixel >>> 24) & 0xFF) == 0) {
+                continue;
+            }
+            int rgb = pixel & 0xFFFFFF;
+            if (firstOpaque < 0) {
+                firstOpaque = rgb;
+            } else if (rgb != firstOpaque) {
+                return src.getPixel(0, 0) & 0xFFFFFF;
+            }
+        }
         return 0xFFFFFF;
     }
 
