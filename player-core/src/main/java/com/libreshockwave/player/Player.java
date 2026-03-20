@@ -180,8 +180,8 @@ public class Player {
         this.frameRenderPipeline = new FrameRenderPipeline(stageRenderer, spriteBaker);
         this.inputState = new InputState();
         this.bitmapResolver = new BitmapResolver(file, castLibManager, frameContext);
-        // Register active palette supplier so Datum.datumToArgb() can resolve palette indices
-        com.libreshockwave.vm.datum.Datum.setActivePaletteSupplier(() -> bitmapResolver.getMoviePalette());
+        // Set initial palette (updated each tick in setupProviders)
+        com.libreshockwave.vm.datum.Datum.setActivePalette(bitmapResolver.getMoviePalette());
         this.cursorManager = new CursorManager(stageRenderer, inputState, castLibManager,
                 bitmapResolver, this::getCurrentFrame, () -> frameContext.getEventDispatcher());
         this.inputHandler = new InputHandler(inputState, stageRenderer, castLibManager,
@@ -286,8 +286,8 @@ public class Player {
         this.frameRenderPipeline = new FrameRenderPipeline(stageRenderer, spriteBaker);
         this.inputState = new InputState();
         this.bitmapResolver = new BitmapResolver(file, castLibManager, frameContext);
-        // Register active palette supplier so Datum.datumToArgb() can resolve palette indices
-        com.libreshockwave.vm.datum.Datum.setActivePaletteSupplier(() -> bitmapResolver.getMoviePalette());
+        // Set initial palette (updated each tick in setupProviders)
+        com.libreshockwave.vm.datum.Datum.setActivePalette(bitmapResolver.getMoviePalette());
         this.cursorManager = new CursorManager(stageRenderer, inputState, castLibManager,
                 bitmapResolver, this::getCurrentFrame, () -> frameContext.getEventDispatcher());
         this.inputHandler = new InputHandler(inputState, stageRenderer, castLibManager,
@@ -1007,6 +1007,9 @@ public class Player {
         TimeoutProvider.setProvider(timeoutManager);
         ExternalParamProvider.setProvider(externalParamProvider);
         SoundProvider.setProvider(soundManager);
+        // Refresh palette each tick so Datum colour resolution uses the current frame's palette.
+        // Stored as a direct reference (not a Supplier lambda) to avoid TeaVM monitorEnterSync.
+        com.libreshockwave.vm.datum.Datum.setActivePalette(bitmapResolver.getMoviePalette());
     }
 
     /**
