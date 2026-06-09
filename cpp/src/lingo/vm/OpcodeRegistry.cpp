@@ -543,6 +543,23 @@ void setObjectProperty(Datum& object, std::string_view propName, Datum value) {
     }
 }
 
+bool isNoReturnArgList(const Datum& datum) {
+    return datum.type() == DatumType::ArgListNoRet;
+}
+
+Datum safeExecuteHandler(ExecutionContext& context,
+                         const chunks::ScriptChunk& script,
+                         const chunks::ScriptChunk::Handler& handler,
+                         const std::vector<Datum>& args,
+                         const Datum& receiver) {
+    try {
+        return context.executeHandler(script, handler, args, receiver);
+    } catch (const LingoException&) {
+        context.setErrorState(true);
+        return Datum::voidValue();
+    }
+}
+
 bool pushZero(ExecutionContext& context) {
     context.push(Datum::of(0));
     return true;
@@ -1093,6 +1110,58 @@ bool theBuiltin(ExecutionContext& context) {
     return true;
 }
 
+bool localCall(ExecutionContext& context) {
+    const auto targetHandler = context.findLocalHandler(context.argument());
+    const auto* script = context.scope().script();
+    if (!targetHandler || script == nullptr) {
+        return true;
+    }
+
+    const Datum argListDatum = context.pop();
+    const bool noReturn = isNoReturnArgList(argListDatum);
+    std::vector<Datum> args = argListItems(argListDatum);
+    Datum receiver = context.scope().receiver();
+    if (!receiver.isVoid() && !receiver.isNull() && !args.empty() && args.front() == receiver) {
+        bool handlerDeclaresMe = false;
+        if (!targetHandler->argNameIds.empty()) {
+            handlerDeclaresMe = equalsIgnoreCase(context.resolveName(targetHandler->argNameIds.front()), "me");
+        }
+        if (handlerDeclaresMe) {
+            receiver = Datum::voidValue();
+        } else {
+            receiver = args.front();
+            args.erase(args.begin());
+        }
+    }
+
+    const Datum result = safeExecuteHandler(context, *script, *targetHandler, args, receiver);
+    if (!noReturn) {
+        context.push(result);
+    }
+    return true;
+}
+
+bool extCall(ExecutionContext& context) {
+    const std::string handlerName = context.resolveName(context.argument());
+    const Datum argListDatum = context.pop();
+    const bool noReturn = isNoReturnArgList(argListDatum);
+    const std::vector<Datum> args = argListItems(argListDatum);
+
+    Datum result = Datum::voidValue();
+    if (const auto handler = context.findHandler(handlerName)) {
+        result = safeExecuteHandler(context, *handler->script, handler->handler, args, Datum::voidValue());
+    } else if (const auto builtinResult = context.invokeBuiltinIfPresent(handlerName, args)) {
+        result = *builtinResult;
+    } else if (args.empty()) {
+        result = builtinConstant(handlerName).value_or(Datum::voidValue());
+    }
+
+    if (!noReturn) {
+        context.push(result);
+    }
+    return true;
+}
+
 } // namespace
 
 OpcodeRegistry::OpcodeRegistry() {
@@ -1104,6 +1173,7 @@ OpcodeRegistry::OpcodeRegistry() {
     VariableOpcodes::registerHandlers(*this);
     ControlFlowOpcodes::registerHandlers(*this);
     ListOpcodes::registerHandlers(*this);
+    CallOpcodes::registerHandlers(*this);
     PropertyOpcodes::registerHandlers(*this);
 }
 
@@ -1203,6 +1273,11 @@ void PropertyOpcodes::registerHandlers(OpcodeRegistry& registry) {
     registry.registerHandler(Opcode::GET_OBJ_PROP, getObjProp);
     registry.registerHandler(Opcode::SET_OBJ_PROP, setObjProp);
     registry.registerHandler(Opcode::THE_BUILTIN, theBuiltin);
+}
+
+void CallOpcodes::registerHandlers(OpcodeRegistry& registry) {
+    registry.registerHandler(Opcode::LOCAL_CALL, localCall);
+    registry.registerHandler(Opcode::EXT_CALL, extCall);
 }
 
 } // namespace libreshockwave::lingo::vm

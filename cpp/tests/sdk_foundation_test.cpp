@@ -2152,6 +2152,15 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 60) {
             return std::string("result");
         }
+        if (nameId == 61) {
+            return std::string("known");
+        }
+        if (nameId == 62) {
+            return std::string("abs");
+        }
+        if (nameId == 63) {
+            return std::string("space");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.callStackFormatter = []() {
@@ -2169,6 +2178,9 @@ void testLingoVmScopeAndExecutionContextFoundation() {
                                    const Datum& receiverArg) {
         assert(calledScript.id().value() == 700);
         assert(receiverArg.isVoid());
+        if (!args.empty() && args[0].isString() && args[0].stringValue() == "throw") {
+            throw LingoException("call failed");
+        }
         return Datum::of("exec:" + std::to_string(calledHandler.nameId) + ":" + std::to_string(args.size()));
     };
 
@@ -2276,6 +2288,8 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opcodeRegistry.hasHandler(Opcode::GET_OBJ_PROP));
     assert(opcodeRegistry.hasHandler(Opcode::SET_OBJ_PROP));
     assert(opcodeRegistry.hasHandler(Opcode::THE_BUILTIN));
+    assert(opcodeRegistry.hasHandler(Opcode::LOCAL_CALL));
+    assert(opcodeRegistry.hasHandler(Opcode::EXT_CALL));
     assert(opcodeRegistry.hasHandler(Opcode::RET));
     assert(opcodeRegistry.hasHandler(Opcode::RET_FACTORY));
     assert(opcodeRegistry.hasHandler(Opcode::JMP));
@@ -2486,6 +2500,61 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     theContext.push(Datum::argList({}));
     assert(opcodeRegistry.execute(Opcode::THE_BUILTIN, theContext));
     assert(theContext.pop().stringValue() == "done");
+
+    Scope localCallScope(&script, handler, {});
+    ExecutionContext localCallContext(localCallScope,
+                                      ScriptChunk::Instruction{0, Opcode::LOCAL_CALL, libreshockwave::lingo::code(Opcode::LOCAL_CALL), 1},
+                                      &registry,
+                                      &builtinContext,
+                                      callbacks);
+    localCallContext.push(Datum::argList({Datum::of(7)}));
+    assert(opcodeRegistry.execute(Opcode::LOCAL_CALL, localCallContext));
+    assert(localCallContext.pop().stringValue() == "exec:99:1");
+
+    Scope localNoRetScope(&script, handler, {});
+    ExecutionContext localNoRetContext(localNoRetScope,
+                                       ScriptChunk::Instruction{0, Opcode::LOCAL_CALL, libreshockwave::lingo::code(Opcode::LOCAL_CALL), 1},
+                                       &registry,
+                                       &builtinContext,
+                                       callbacks);
+    localNoRetContext.push(Datum::argListNoRet({Datum::of(7)}));
+    assert(opcodeRegistry.execute(Opcode::LOCAL_CALL, localNoRetContext));
+    assert(localNoRetScope.stackSize() == 0);
+
+    Scope extCallScope(&script, handler, {});
+    ExecutionContext extCallContext(extCallScope,
+                                    ScriptChunk::Instruction{0, Opcode::EXT_CALL, libreshockwave::lingo::code(Opcode::EXT_CALL), 61},
+                                    &registry,
+                                    &builtinContext,
+                                    callbacks);
+    extCallContext.push(Datum::argList({Datum::of(1), Datum::of(2)}));
+    assert(opcodeRegistry.execute(Opcode::EXT_CALL, extCallContext));
+    assert(extCallContext.pop().stringValue() == "exec:99:2");
+    extCallContext.setInstruction(ScriptChunk::Instruction{0, Opcode::EXT_CALL, libreshockwave::lingo::code(Opcode::EXT_CALL), 62});
+    extCallContext.push(Datum::argList({Datum::of(-5)}));
+    assert(opcodeRegistry.execute(Opcode::EXT_CALL, extCallContext));
+    assert(extCallContext.pop().intValue() == 5);
+    extCallContext.setInstruction(ScriptChunk::Instruction{0, Opcode::EXT_CALL, libreshockwave::lingo::code(Opcode::EXT_CALL), 63});
+    extCallContext.push(Datum::argList({}));
+    assert(opcodeRegistry.execute(Opcode::EXT_CALL, extCallContext));
+    assert(extCallContext.pop().stringValue() == " ");
+
+    Scope extNoRetScope(&script, handler, {});
+    ExecutionContext extNoRetContext(extNoRetScope,
+                                     ScriptChunk::Instruction{0, Opcode::EXT_CALL, libreshockwave::lingo::code(Opcode::EXT_CALL), 61},
+                                     &registry,
+                                     &builtinContext,
+                                     callbacks);
+    extNoRetContext.push(Datum::argListNoRet({Datum::of(1)}));
+    assert(opcodeRegistry.execute(Opcode::EXT_CALL, extNoRetContext));
+    assert(extNoRetScope.stackSize() == 0);
+
+    errorState = false;
+    extCallContext.setInstruction(ScriptChunk::Instruction{0, Opcode::EXT_CALL, libreshockwave::lingo::code(Opcode::EXT_CALL), 61});
+    extCallContext.push(Datum::argList({Datum::of(std::string("throw"))}));
+    assert(opcodeRegistry.execute(Opcode::EXT_CALL, extCallContext));
+    assert(extCallContext.pop().isVoid());
+    assert(errorState);
 
     auto runUnary = [&](Opcode opcode, Datum value) {
         Scope unaryScope(&script, handler, {});
