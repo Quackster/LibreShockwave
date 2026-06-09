@@ -463,6 +463,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Legacy property ID opcodes now cover string chunk counts and last-chunk reads, with provider-backed targets consuming their stack operands as safe no-ops until runtime providers are wired.
 - `GET_FIELD` now consumes field identifier/cast operands and returns the Java-compatible empty string fallback when no field provider is wired.
 - Built-in movie constants and basic `the paramCount`/`the result` lookups are available without a provider.
+- Cast-member object property reads/writes now delegate unknown member properties through C++ provider hooks after built-in metadata handling.
 - Remaining specialized provider-backed property cases remain deferred to later runtime integration slices.
 
 ### Lingo Opcode Local and External Call Foundation
@@ -624,7 +625,7 @@ Result:
 - OpcodeRegistry simple string concatenation and containment handlers passed through the same CTest executable.
 - OpcodeRegistry basic property handlers, object property reads/writes, built-in constants, and simple `the` lookups passed through the same CTest executable.
 - OpcodeRegistry movie-property provider reads/writes and provider-backed `the` lookups passed through the same CTest executable.
-- OpcodeRegistry provider-backed object property gets/sets for movie, player, stage, sprite, integer-as-sprite refs, cast-member metadata, and image `useAlpha`/`paletteRef` setters passed through the same CTest executable.
+- OpcodeRegistry provider-backed object property gets/sets for movie, player, stage, sprite, integer-as-sprite refs, cast-member metadata/provider properties, and image `useAlpha`/`paletteRef` setters passed through the same CTest executable.
 - OpcodeRegistry local/external call handlers, builtin dispatch, no-return calls, constant fallback, and error-state handling passed through the same CTest executable.
 - OpcodeRegistry object method calls and receiver-style external method calls for lists, property lists, strings, points, rectangles, cast library member lookups/accessors, timeouts, sound channels, and Xtra instances passed through the same CTest executable.
 - OpcodeRegistry `NEW_OBJ` script construction delegation, fallback construction, and non-script rejection passed through the same CTest executable.
@@ -758,4 +759,5 @@ Result:
 - `b3e7470f Port C++ script instance handler dispatch foundation`
 - `64362c2f Port C++ field chunk mutation foundation`
 - `58e7dee7 Port C++ image property setter foundation`
-- Current checkpoint commit message: `Port C++ castLib member accessor foundation`
+- `881040e1 Port C++ castLib member accessor foundation`
+- Current checkpoint commit message: `Port C++ cast member property provider foundation`

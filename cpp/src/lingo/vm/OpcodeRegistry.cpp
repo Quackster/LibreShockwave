@@ -649,8 +649,11 @@ void setImageProp(ExecutionContext& context, const Datum::ImageRef& image, std::
     }
 }
 
-Datum getCastMemberProp(const Datum::CastMemberRef& member, std::string_view propName) {
-    const bool invalidRef = member.castMember <= 0;
+Datum getCastMemberProp(ExecutionContext& context, const Datum::CastMemberRef& member, std::string_view propName) {
+    auto* builtinContext = context.builtinContext();
+    const bool invalidRef = member.castMember <= 0 ||
+                            (builtinContext != nullptr && builtinContext->castMemberExistsResolver &&
+                             !builtinContext->castMemberExistsResolver(member.castLib, member.memberNum()));
     if (equalsIgnoreCase(propName, "number")) {
         return invalidRef ? Datum::of(0) : Datum::of((member.castLib << 16) | (member.castMember & 0xFFFF));
     }
@@ -662,6 +665,9 @@ Datum getCastMemberProp(const Datum::CastMemberRef& member, std::string_view pro
     }
     if (equalsIgnoreCase(propName, "castlib")) {
         return member.castLib >= 1 ? Datum::castLibRef(id::CastLibId(member.castLib)) : Datum::voidValue();
+    }
+    if (builtinContext != nullptr && builtinContext->castMemberPropertyGetter) {
+        return builtinContext->castMemberPropertyGetter(member.castLib, member.memberNum(), std::string(propName));
     }
     return Datum::voidValue();
 }
@@ -765,7 +771,7 @@ Datum getObjectProperty(ExecutionContext& context, const Datum& object, std::str
         return getImageProp(*image, propName);
     }
     if (const auto* member = object.asCastMemberRef()) {
-        return getCastMemberProp(*member, propName);
+        return getCastMemberProp(context, *member, propName);
     }
     if (equalsIgnoreCase(propName, "ilk")) {
         return Datum::symbol(ilkTypeName(object));
@@ -796,6 +802,12 @@ void setObjectProperty(ExecutionContext& context, Datum& object, std::string_vie
     if (const auto* intValue = object.asInt()) {
         if (builtinContext != nullptr && builtinContext->spriteProperties != nullptr) {
             (void)builtinContext->spriteProperties->setSpriteProp(intValue->value, propName, value);
+        }
+        return;
+    }
+    if (const auto* member = object.asCastMemberRef()) {
+        if (builtinContext != nullptr && builtinContext->castMemberPropertySetter) {
+            (void)builtinContext->castMemberPropertySetter(member->castLib, member->memberNum(), std::string(propName), value);
         }
         return;
     }

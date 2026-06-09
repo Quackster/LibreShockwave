@@ -401,6 +401,8 @@ bool hasCastProvider(const BuiltinContext& context) {
            context.castMemberResolver ||
            context.castMemberNameResolver ||
            context.castMemberExistsResolver ||
+           context.castMemberPropertyGetter ||
+           context.castMemberPropertySetter ||
            context.fieldResolver ||
            context.fieldSetter;
 }

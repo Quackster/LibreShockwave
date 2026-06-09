@@ -41,6 +41,11 @@ struct BuiltinContext {
                                                         int memberNum,
                                                         const std::string& methodName,
                                                         const std::vector<Datum>& args)>;
+    using CastMemberPropertyGetter = std::function<Datum(int castLib, int memberNum, const std::string& propertyName)>;
+    using CastMemberPropertySetter = std::function<bool(int castLib,
+                                                        int memberNum,
+                                                        const std::string& propertyName,
+                                                        const Datum& value)>;
     using SpriteMethodHandler = std::function<Datum(int channel,
                                                     const std::string& methodName,
                                                     const std::vector<Datum>& args)>;
@@ -94,6 +99,8 @@ struct BuiltinContext {
     CastMemberNameResolver castMemberNameResolver;
     CastMemberExistsResolver castMemberExistsResolver;
     CastMemberMethodHandler castMemberMethodHandler;
+    CastMemberPropertyGetter castMemberPropertyGetter;
+    CastMemberPropertySetter castMemberPropertySetter;
     SpriteMethodHandler spriteMethodHandler;
     FieldResolver fieldResolver;
     FieldSetter fieldSetter;

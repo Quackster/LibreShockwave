@@ -2341,6 +2341,9 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 122) {
             return std::string("member");
         }
+        if (nameId == 123) {
+            return std::string("name");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.callStackFormatter = []() {
@@ -2963,6 +2966,13 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runObjectPropertyGet(objectMemberRef, 90).intValue() == 2);
     assert(runObjectPropertyGet(objectMemberRef, 91).asCastLibRef()->castLib == 2);
     assert(runObjectPropertyGet(Datum::castMemberRef(Datum::CastMemberRef{2, 0}), 88).intValue() == 0);
+    builtinContext.castMemberPropertyGetter = [](int castLib, int memberNum, const std::string& propertyName) {
+        assert(castLib == 2);
+        assert(memberNum == 5);
+        assert(propertyName == "name");
+        return Datum::of(std::string("chair"));
+    };
+    assert(runObjectPropertyGet(objectMemberRef, 123).stringValue() == "chair");
 
     Datum objectPropList = Datum::propList();
     objectPropList.propListValue().properties().emplace_back(Datum::symbol("health"), Datum::of(1));
@@ -2983,6 +2993,28 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     setObjectContext.push(Datum::of(123));
     assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
     assert(setObjectInstance.scriptInstanceValue().getProperty("health").intValue() == 123);
+
+    std::string setCastMemberPropertyName;
+    Datum setCastMemberPropertyValue = Datum::voidValue();
+    builtinContext.castMemberPropertySetter = [&setCastMemberPropertyName, &setCastMemberPropertyValue](
+                                                  int castLib,
+                                                  int memberNum,
+                                                  const std::string& propertyName,
+                                                  const Datum& value) {
+        assert(castLib == 2);
+        assert(memberNum == 5);
+        setCastMemberPropertyName = propertyName;
+        setCastMemberPropertyValue = value;
+        return true;
+    };
+    setObjectContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_OBJ_PROP, libreshockwave::lingo::code(Opcode::SET_OBJ_PROP), 123});
+    setObjectContext.push(objectMemberRef);
+    setObjectContext.push(Datum::of(std::string("table")));
+    assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
+    assert(setCastMemberPropertyName == "name");
+    assert(setCastMemberPropertyValue.stringValue() == "table");
+    builtinContext.castMemberPropertyGetter = {};
+    builtinContext.castMemberPropertySetter = {};
 
     auto imageSetBitmap = std::make_shared<Bitmap>(1, 1, 32);
     assert(!imageSetBitmap->isNativeAlpha());
