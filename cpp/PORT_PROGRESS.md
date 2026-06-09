@@ -324,6 +324,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `new(xtraRef, ...)` now delegates through an Xtra instance-creation callback before falling back to generic object construction.
 - Xtra instance handler calls and property get/set behavior are exposed through VM-owned callbacks until the C++ Xtra manager is ported.
 
+### Control Flow Builtins Foundation
+
+- Control-flow builtins now register Java-compatible `return`, `halt`, `abort`, `nothing`, `param`, `go`, and `call`, while leaving `receiveUpdate`/`removeUpdate` unregistered for movie-script routing.
+- `return`, `abort`, and `param` now operate over C++ VM-owned handler state in `BuiltinContext`.
+- `go` delegates through `MovieProperties` frame/label navigation and `call` iterates single targets, lists, and prop-list values through a VM-owned dispatch callback.
+
 ### Constructor Builtins Foundation
 
 - Constructor builtins now register `point`, `rect`, `union`, `intersect`, `color`, `rgb`, `paletteIndex`, `sprite`, and `new` in the C++ builtin registry.
@@ -477,6 +483,7 @@ Result:
 - OutputBuiltins debug-gated `put`, Java-style argument joining, default alert output, and alert-hook suppression passed through the same CTest executable.
 - CastLibBuiltins castLib/member/field/createMember registration, missing-provider fallback, cast/member provider callbacks, encoded member numbers, search-all lookup, and omitted helper builtins passed through the same CTest executable.
 - XtraBuiltins registration, missing-manager behavior, registered-Xtra lookup, `new(xtraRef, ...)` instance creation, handler dispatch, property get/set callbacks, and Java-style display strings passed through the same CTest executable.
+- ControlFlowBuiltins return/abort state, param lookup, frame/label `go`, call-target dispatch, list/proplist call snapshots, and omitted update builtins passed through the same CTest executable.
 - ListBuiltins list/proplist counts, access, mutation, searches, sorting, constructors, key namespace behavior, and aliases passed through the same CTest executable.
 - TimeoutBuiltins `timeout` creation, factory-mode `.new`, named `.new`, `.forget`, property get/set helpers, and missing-provider behavior passed through the same CTest executable.
 - NetBuiltins preload/get/post aliases, task result/error/status lookups, stream-status toggling, navigation callbacks, and ExternalParamBuiltins ordered parameter lookup passed through the same CTest executable.
@@ -558,4 +565,5 @@ Result:
 - `8e78d3c Port C++ sound builtins foundation`
 - `500e548 Port C++ output builtins foundation`
 - `a7963de Port C++ cast builtins foundation`
-- Current checkpoint commit message: `Port C++ xtra builtins foundation`
+- `c1374bd Port C++ xtra builtins foundation`
+- Current checkpoint commit message: `Port C++ control flow builtins foundation`

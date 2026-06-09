@@ -36,6 +36,9 @@ struct BuiltinContext {
     using XtraPropertySetter = std::function<void(const Datum::XtraInstance& instance,
                                                   const std::string& propertyName,
                                                   const Datum& value)>;
+    using CallTargetHandler = std::function<Datum(const Datum& target,
+                                                  const std::string& handlerName,
+                                                  const std::vector<Datum>& args)>;
     using NewInstanceHandler = std::function<Datum(const Datum& target, const std::vector<Datum>& args)>;
     using ValueEvaluator = std::function<Datum(const Datum& value)>;
     using ScriptResolver = std::function<Datum(const Datum& identifier, const std::optional<Datum>& scope)>;
@@ -51,9 +54,13 @@ struct BuiltinContext {
     player::audio::SoundManager* soundManager{nullptr};
     player::SpriteProperties* spriteProperties{nullptr};
     player::timeout::TimeoutManager* timeoutManager{nullptr};
+    std::vector<Datum> currentHandlerArgs;
+    Datum returnValue{Datum::voidValue()};
     std::vector<std::pair<std::string, std::string>> externalParams;
     bool tellStreamStatusEnabled{false};
     bool debugPlaybackEnabled{false};
+    bool returned{false};
+    bool aborted{false};
     PuppetPaletteHandler puppetPaletteHandler;
     CastMemberCreator castMemberCreator;
     NamedCastMemberCreator namedCastMemberCreator;
@@ -69,6 +76,7 @@ struct BuiltinContext {
     XtraHandler xtraHandler;
     XtraPropertyGetter xtraPropertyGetter;
     XtraPropertySetter xtraPropertySetter;
+    CallTargetHandler callTargetHandler;
     NewInstanceHandler newInstanceHandler;
     ValueEvaluator valueEvaluator;
     ScriptResolver scriptResolver;
@@ -250,6 +258,18 @@ public:
                             const Datum::XtraInstance& instance,
                             std::string_view propertyName,
                             const Datum& value);
+};
+
+class ControlFlowBuiltins {
+public:
+    static void registerBuiltins(BuiltinRegistry& registry);
+    [[nodiscard]] static Datum returnValue(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum halt(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum abort(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum nothing(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum param(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum go(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum call(BuiltinContext& context, const std::vector<Datum>& args);
 };
 
 class ConstructorBuiltins {

@@ -503,6 +503,7 @@ BuiltinRegistry::BuiltinRegistry() {
     SoundBuiltins::registerBuiltins(*this);
     CastLibBuiltins::registerBuiltins(*this);
     XtraBuiltins::registerBuiltins(*this);
+    ControlFlowBuiltins::registerBuiltins(*this);
     MovieBuiltins::registerBuiltins(*this);
 }
 
@@ -1689,6 +1690,114 @@ void XtraBuiltins::setProperty(BuiltinContext& context,
     if (context.xtraPropertySetter) {
         context.xtraPropertySetter(instance, std::string(propertyName), value);
     }
+}
+
+void ControlFlowBuiltins::registerBuiltins(BuiltinRegistry& registry) {
+    registry.registerBuiltin("return", ControlFlowBuiltins::returnValue);
+    registry.registerBuiltin("halt", ControlFlowBuiltins::halt);
+    registry.registerBuiltin("abort", ControlFlowBuiltins::abort);
+    registry.registerBuiltin("nothing", ControlFlowBuiltins::nothing);
+    registry.registerBuiltin("param", ControlFlowBuiltins::param);
+    registry.registerBuiltin("go", ControlFlowBuiltins::go);
+    registry.registerBuiltin("call", ControlFlowBuiltins::call);
+}
+
+Datum ControlFlowBuiltins::returnValue(BuiltinContext& context, const std::vector<Datum>& args) {
+    context.returned = true;
+    context.returnValue = args.empty() ? Datum::voidValue() : args[0];
+    return Datum::voidValue();
+}
+
+Datum ControlFlowBuiltins::halt(BuiltinContext&, const std::vector<Datum>&) {
+    return Datum::voidValue();
+}
+
+Datum ControlFlowBuiltins::abort(BuiltinContext& context, const std::vector<Datum>&) {
+    context.returned = true;
+    context.aborted = true;
+    return Datum::voidValue();
+}
+
+Datum ControlFlowBuiltins::nothing(BuiltinContext&, const std::vector<Datum>&) {
+    return Datum::voidValue();
+}
+
+Datum ControlFlowBuiltins::param(BuiltinContext& context, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::voidValue();
+    }
+    const int index = toIntLikeJava(args[0]) - 1;
+    if (index < 0 || index >= static_cast<int>(context.currentHandlerArgs.size())) {
+        return Datum::voidValue();
+    }
+    return context.currentHandlerArgs[static_cast<std::size_t>(index)];
+}
+
+Datum ControlFlowBuiltins::go(BuiltinContext& context, const std::vector<Datum>& args) {
+    if (args.empty() || context.movieProperties == nullptr) {
+        return Datum::voidValue();
+    }
+
+    const Datum& target = args[0];
+    if (const auto* value = target.asInt()) {
+        context.movieProperties->goToFrame(value->value);
+        return Datum::voidValue();
+    }
+    if (const auto* symbol = target.asSymbol()) {
+        const std::string command = BuiltinRegistry::normalizeName(symbol->name);
+        const int frame = context.movieProperties->getMovieProp("frame").intValue();
+        if (command == "next") {
+            context.movieProperties->goToFrame(frame + 1);
+        } else if (command == "previous") {
+            context.movieProperties->goToFrame(std::max(1, frame - 1));
+        } else if (command == "loop") {
+            context.movieProperties->goToFrame(frame);
+        } else {
+            context.movieProperties->goToLabel(symbol->name);
+        }
+        return Datum::voidValue();
+    }
+    if (target.isString()) {
+        context.movieProperties->goToLabel(target.stringValue());
+        return Datum::voidValue();
+    }
+    const int frame = toIntLikeJava(target);
+    if (frame > 0) {
+        context.movieProperties->goToFrame(frame);
+    }
+    return Datum::voidValue();
+}
+
+Datum ControlFlowBuiltins::call(BuiltinContext& context, const std::vector<Datum>& args) {
+    if (args.size() < 2 || !context.callTargetHandler) {
+        return Datum::voidValue();
+    }
+
+    const std::string handlerName = args[0].asSymbol() != nullptr ? args[0].asSymbol()->name : toStringLikeJava(args[0]);
+    const std::vector<Datum> extraArgs(args.begin() + 2, args.end());
+    const Datum& target = args[1];
+    Datum lastResult = Datum::voidValue();
+
+    if (target.isList()) {
+        const auto snapshot = target.listValue().items();
+        for (const auto& item : snapshot) {
+            lastResult = context.callTargetHandler(item, handlerName, extraArgs);
+        }
+        return lastResult;
+    }
+    if (target.isPropList()) {
+        std::vector<Datum> snapshot;
+        snapshot.reserve(target.propListValue().properties().size());
+        for (const auto& entry : target.propListValue().properties()) {
+            snapshot.push_back(entry.second);
+        }
+        for (const auto& item : snapshot) {
+            lastResult = context.callTargetHandler(item, handlerName, extraArgs);
+        }
+        return lastResult;
+    }
+
+    return context.callTargetHandler(target, handlerName, extraArgs);
 }
 
 void ConstructorBuiltins::registerBuiltins(BuiltinRegistry& registry) {

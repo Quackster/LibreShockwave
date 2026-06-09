@@ -1208,6 +1208,103 @@ void testBuiltinRegistryFoundation() {
     assert(xtraPropertySetValue.intValue() == 9);
     assert(libreshockwave::lingo::builtin::XtraBuiltins::getProperty(noXtraContext, *xtraInstance, "state").isVoid());
 
+    assert(registry.contains("return"));
+    assert(registry.contains("halt"));
+    assert(registry.contains("abort"));
+    assert(registry.contains("nothing"));
+    assert(registry.contains("param"));
+    assert(registry.contains("go"));
+    assert(registry.contains("call"));
+    assert(!registry.contains("receiveUpdate"));
+    assert(!registry.contains("removeUpdate"));
+    assert(!context.returned);
+    assert(registry.invoke("return", context, {Datum::of(std::string("done"))}).isVoid());
+    assert(context.returned);
+    assert(context.returnValue.stringValue() == "done");
+    context.returned = false;
+    context.returnValue = Datum::of(99);
+    assert(registry.invoke("return", context).isVoid());
+    assert(context.returned);
+    assert(context.returnValue.isVoid());
+    context.returned = false;
+    assert(registry.invoke("abort", context).isVoid());
+    assert(context.returned);
+    assert(context.aborted);
+    assert(registry.invoke("halt", context).isVoid());
+    assert(registry.invoke("nothing", context).isVoid());
+
+    context.currentHandlerArgs = {Datum::of(std::string("first")), Datum::of(22)};
+    assert(registry.invoke("param", context).isVoid());
+    assert(registry.invoke("param", context, {Datum::of(1)}).stringValue() == "first");
+    assert(registry.invoke("param", context, {Datum::of(std::string("2"))}).intValue() == 22);
+    assert(registry.invoke("param", context, {Datum::of(0)}).isVoid());
+    assert(registry.invoke("param", context, {Datum::of(3)}).isVoid());
+
+    std::vector<int> controlFlowFrames;
+    std::vector<std::string> controlFlowLabels;
+    int controlFlowFrame = 5;
+    MovieProperties controlFlowMovie;
+    controlFlowMovie.setEffectiveFrameSupplier([&controlFlowFrame]() {
+        return controlFlowFrame;
+    });
+    controlFlowMovie.setGoToFrameHandler([&controlFlowFrames](int frame) {
+        controlFlowFrames.push_back(frame);
+    });
+    controlFlowMovie.setGoToLabelHandler([&controlFlowLabels](const std::string& label) {
+        controlFlowLabels.push_back(label);
+    });
+    context.movieProperties = &controlFlowMovie;
+    assert(registry.invoke("go", context).isVoid());
+    assert(registry.invoke("go", context, {Datum::of(12)}).isVoid());
+    assert(registry.invoke("go", context, {Datum::symbol("next")}).isVoid());
+    assert(registry.invoke("go", context, {Datum::symbol("previous")}).isVoid());
+    controlFlowFrame = 1;
+    assert(registry.invoke("go", context, {Datum::symbol("previous")}).isVoid());
+    assert(registry.invoke("go", context, {Datum::symbol("loop")}).isVoid());
+    assert(registry.invoke("go", context, {Datum::symbol("intro")}).isVoid());
+    assert(registry.invoke("go", context, {Datum::of(std::string("credits"))}).isVoid());
+    assert(controlFlowFrames == std::vector<int>({12, 6, 4, 1, 1}));
+    assert(controlFlowLabels == std::vector<std::string>({"intro", "credits"}));
+    context.movieProperties = nullptr;
+
+    std::vector<int> calledTargets;
+    std::string calledHandler;
+    std::vector<Datum> calledArgs;
+    auto callListTargets = Datum::list({Datum::of(1), Datum::of(2)});
+    context.callTargetHandler = [&calledTargets, &calledHandler, &calledArgs, &callListTargets](
+                                    const Datum& target,
+                                    const std::string& handlerName,
+                                    const std::vector<Datum>& args) {
+        calledTargets.push_back(target.intValue());
+        calledHandler = handlerName;
+        calledArgs = args;
+        if (handlerName == "tick" && calledTargets.size() == 1) {
+            callListTargets.listValue().add(Datum::of(99));
+        }
+        return Datum::of(static_cast<int>(calledTargets.size()));
+    };
+    assert(registry.invoke("call", context).isVoid());
+    assert(registry.invoke("call", context, {Datum::symbol("update"), Datum::of(7), Datum::of(std::string("arg"))}).intValue() == 1);
+    assert(calledTargets == std::vector<int>({7}));
+    assert(calledHandler == "update");
+    assert(calledArgs.size() == 1);
+    assert(calledArgs[0].stringValue() == "arg");
+    calledTargets.clear();
+    assert(registry.invoke("call", context, {Datum::of(std::string("tick")), callListTargets}).intValue() == 2);
+    assert(calledTargets == std::vector<int>({1, 2}));
+    assert(callListTargets.listValue().count() == 3);
+    auto callPropTargets = Datum::propList();
+    callPropTargets.propListValue().put(Datum::symbol("first"), Datum::of(10));
+    callPropTargets.propListValue().put(Datum::symbol("second"), Datum::of(11));
+    calledTargets.clear();
+    assert(registry.invoke("call", context, {Datum::symbol("doIt"), callPropTargets, Datum::of(5)}).intValue() == 2);
+    assert(calledTargets == std::vector<int>({10, 11}));
+    assert(calledHandler == "doIt");
+    assert(calledArgs.size() == 1);
+    assert(calledArgs[0].intValue() == 5);
+    context.callTargetHandler = nullptr;
+    assert(registry.invoke("call", context, {Datum::symbol("noop"), Datum::of(1)}).isVoid());
+
     assert(registry.contains("count"));
     assert(registry.contains("getAt"));
     assert(registry.contains("setAt"));
