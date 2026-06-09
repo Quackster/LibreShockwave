@@ -242,6 +242,11 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Stage-image replacement, opaque background fill, sprite visibility filtering, clipping, nearest-neighbor scaling, flip handling, Director mirror transforms, alpha compositing, blend percentages, and special ink compositing are available in C++.
 - `FrameSnapshot::renderFrame()` now delegates to the C++ software renderer like the Java record helper.
 
+### Render Pipeline Context Foundation
+
+- `render::pipeline::FrameRenderPipelineContext` ports mutable per-frame render pipeline state for sprites, rendered channels, trace entries, and completed snapshots.
+- `render::pipeline::FrameRenderPipelineStep` ports the polymorphic pipeline step interface used by the Java frame render pipeline.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -290,6 +295,7 @@ Result:
 - Breakpoint, BreakpointManager, WatchExpression, and DebugSnapshot tests passed through the same CTest executable.
 - RenderPipelineTrace, RenderSprite, transform mirror, baked bitmap helpers, and FrameSnapshot tests passed through the same CTest executable.
 - SoftwareFrameRenderer background, stage-image, alpha, blend, scaling, flip, Director mirror, and special-ink tests passed through the same CTest executable.
+- FrameRenderPipelineContext mutation, trace building, snapshot storage, and FrameRenderPipelineStep tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -337,4 +343,5 @@ Result:
 - `a7f4a2e Port C++ score navigation foundation`
 - `3eb1f34 Port C++ debug breakpoint foundation`
 - `7b57f14 Port C++ render pipeline data foundation`
-- Current checkpoint commit message: `Port C++ software frame renderer`
+- `9f10f49 Port C++ software frame renderer`
+- Current checkpoint commit message: `Port C++ render pipeline context`

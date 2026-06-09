@@ -80,6 +80,8 @@
 #include "libreshockwave/player/render/RenderType.hpp"
 #include "libreshockwave/player/render/output/SoftwareFrameRenderer.hpp"
 #include "libreshockwave/player/render/pipeline/FrameSnapshot.hpp"
+#include "libreshockwave/player/render/pipeline/FrameRenderPipelineContext.hpp"
+#include "libreshockwave/player/render/pipeline/FrameRenderPipelineStep.hpp"
 #include "libreshockwave/player/render/pipeline/RenderPipelineTrace.hpp"
 #include "libreshockwave/player/render/pipeline/RenderSprite.hpp"
 #include "libreshockwave/player/score/ScoreBehaviorRef.hpp"
@@ -175,6 +177,8 @@ using libreshockwave::player::render::RenderConfig;
 using libreshockwave::player::render::RenderType;
 using libreshockwave::player::render::output::SoftwareFrameRenderer;
 using libreshockwave::player::render::pipeline::FrameSnapshot;
+using libreshockwave::player::render::pipeline::FrameRenderPipelineContext;
+using libreshockwave::player::render::pipeline::FrameRenderPipelineStep;
 using libreshockwave::player::render::pipeline::RenderPipelineStepTrace;
 using libreshockwave::player::render::pipeline::RenderPipelineTrace;
 using libreshockwave::player::render::pipeline::RenderSprite;
@@ -962,6 +966,58 @@ void testRenderPipelineFoundation() {
     assert(snapshot.stageImage == baked);
     assert(snapshot.bakeTick == 7);
     assert(snapshot.pipelineTrace.steps()[0].stepName == "bake");
+
+    auto stageImage = std::make_shared<Bitmap>(1, 1, 32, std::vector<std::uint32_t>{0xFF010203U});
+    FrameRenderPipelineContext context(8, 320, 240, 0x00445566, stageImage, "debug");
+    assert(context.frameNumber() == 8);
+    assert(context.stageWidth() == 320);
+    assert(context.stageHeight() == 240);
+    assert(context.backgroundColor() == 0x00445566);
+    assert(context.stageImage() == stageImage);
+    assert(context.debugInfo() == "debug");
+    assert(context.sprites().empty());
+    assert(context.renderedChannels().empty());
+    assert(context.buildTrace().steps().empty());
+    assert(!context.snapshot().has_value());
+
+    class CountingStep final : public FrameRenderPipelineStep {
+    public:
+        std::string_view name() const override { return "counting"; }
+        void execute(FrameRenderPipelineContext& context) override {
+            context.sprites().push_back(RenderSprite(
+                9, 1, 2, 3, 4, true, SpriteType::Shape, nullptr, 0, 0, 0, 100));
+            context.renderedChannels().insert(9);
+            context.addTrace(std::string(name()), "added one sprite");
+        }
+    };
+
+    CountingStep step;
+    assert(step.name() == "counting");
+    step.execute(context);
+    assert(context.sprites().size() == 1);
+    assert(context.sprites()[0].channel() == 9);
+    assert((context.renderedChannels() == std::set<int>{9}));
+    auto contextTrace = context.buildTrace();
+    assert(contextTrace.steps().size() == 1);
+    assert(contextTrace.steps()[0].stepName == "counting");
+    assert(contextTrace.steps()[0].summary == "added one sprite");
+    assert(contextTrace.steps()[0].spriteCount == 1);
+
+    context.setSnapshot(FrameSnapshot{
+        8,
+        320,
+        240,
+        0x00445566,
+        context.sprites(),
+        context.debugInfo(),
+        context.stageImage(),
+        99,
+        contextTrace
+    });
+    assert(context.snapshot().has_value());
+    assert(context.snapshot()->frameNumber == 8);
+    assert(context.snapshot()->sprites.size() == 1);
+    assert(context.snapshot()->pipelineTrace.steps()[0].spriteCount == 1);
 }
 
 void testSoftwareFrameRenderer() {
