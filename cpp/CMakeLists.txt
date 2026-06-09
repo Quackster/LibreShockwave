@@ -35,6 +35,7 @@ add_library(libreshockwave
     src/format/ChunkType.cpp
     src/format/MoaID.cpp
     src/format/ScriptFormatUtils.cpp
+    src/font/PfrBitReader.cpp
     src/fonts/FontDataDecoder.cpp
     src/io/BinaryReader.cpp
     src/lingo/Datum.cpp

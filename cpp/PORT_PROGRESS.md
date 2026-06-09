@@ -185,6 +185,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Raw indexed-data colorization handles 1-bit, 2-bit, 4-bit, and 8-bit packed palette indices before bitmap decode.
 - Ink-mode helper predicates for colorization and backColor usage are available in C++.
 
+### PFR Font Bit Reader
+
+- `font::PfrBitReader` ports byte-aligned big-endian reads and MSB-first bit reads used by the Java PFR1 font parser.
+- Signed 8-bit, 16-bit, and 24-bit reads preserve Java sign-extension behavior.
+- Bit reads preserve partial EOF behavior and byte-alignment reset on byte-level reads, position changes, and skips.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -224,6 +230,7 @@ Result:
 - Generated font Base64/zlib decode, wrong-length, and invalid-deflate tests passed through the same CTest executable.
 - File/path fallback utilities and script formatting utilities passed through the same CTest executable.
 - BitmapColorizer 32-bit, indexed, foreground-only, packed-index, and ink predicate tests passed through the same CTest executable.
+- PfrBitReader byte, signed, skip, alignment, bit-buffer, and partial-EOF tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -262,4 +269,5 @@ Result:
 - `b870598 Port C++ W3D file parser`
 - `382f342 Port C++ generated font decoder`
 - `e4ebbae Port C++ utility formatting helpers`
-- Current checkpoint commit message: `Port C++ bitmap colorizer`
+- `4636ee7 Port C++ bitmap colorizer`
+- Current checkpoint commit message: `Port C++ PFR bit reader`

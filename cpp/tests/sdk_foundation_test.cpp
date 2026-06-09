@@ -52,6 +52,7 @@
 #include "libreshockwave/format/ChunkType.hpp"
 #include "libreshockwave/format/MoaID.hpp"
 #include "libreshockwave/format/ScriptFormatUtils.hpp"
+#include "libreshockwave/font/PfrBitReader.hpp"
 #include "libreshockwave/fonts/FontDataDecoder.hpp"
 #include "libreshockwave/id/Ids.hpp"
 #include "libreshockwave/io/BinaryReader.hpp"
@@ -67,6 +68,7 @@ using libreshockwave::format::ChunkInfo;
 using libreshockwave::format::AfterburnerReader;
 using libreshockwave::format::ChunkType;
 using libreshockwave::format::MoaID;
+using libreshockwave::font::PfrBitReader;
 using libreshockwave::fonts::FontDataDecoder;
 using libreshockwave::DirectorFile;
 using libreshockwave::W3DFile;
@@ -192,6 +194,43 @@ void testFontDataDecoder() {
     const auto invalidDeflate = FontDataDecoder::decode({"AAAA"}, 3, 5);
     assert(invalidDeflate.empty());
 #endif
+}
+
+void testPfrBitReader() {
+    PfrBitReader bytes({0x12, 0x34, 0xFE, 0x80});
+    assert(bytes.position() == 0);
+    assert(bytes.remaining() == 4);
+    assert(bytes.readU8() == 0x12);
+    assert(bytes.readU16() == 0x34FE);
+    assert(bytes.readI8() == -128);
+    assert(bytes.readU8() == 0);
+
+    PfrBitReader signed16({0xFF, 0xFE});
+    assert(signed16.readI16() == -2);
+    PfrBitReader unsigned24({0x01, 0x02, 0x03});
+    assert(unsigned24.readU24() == 0x010203);
+    PfrBitReader signed24({0xFF, 0xFF, 0xFE});
+    assert(signed24.readI24() == -2);
+
+    PfrBitReader bits({0b10110010, 0b01100000});
+    assert(bits.readBits(0) == 0);
+    assert(bits.readBits(3) == 0b101);
+    assert(bits.readBit());
+    assert(bits.readBits(4) == 0b0010);
+    assert(bits.readBits(4) == 0b0110);
+    assert(bits.position() == 2);
+    assert(bits.readU8() == 0);
+
+    PfrBitReader aligned({0xFF, 0x12, 0x34});
+    assert(aligned.readBits(1) == 1);
+    assert(aligned.readU8() == 0x12);
+    aligned.setPosition(0);
+    aligned.skip(5);
+    assert(aligned.position() == 3);
+    assert(aligned.remaining() == 0);
+
+    PfrBitReader partial({0b11000000});
+    assert(partial.readBits(10) == 0b11000000);
 }
 
 void testIdsAndEnums() {
@@ -2591,6 +2630,7 @@ int main() {
     testBinaryReaderNumbers();
     testBinaryReaderZlib();
     testFontDataDecoder();
+    testPfrBitReader();
     testIdsAndEnums();
     testFormatTypes();
     testUtilityFormatting();
