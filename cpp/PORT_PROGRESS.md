@@ -287,6 +287,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `net::NetTask` ports individual GET/POST request task state, result/error storage, state transitions, stream status strings, and display formatting.
 
+### Sound Manager Foundation
+
+- `audio::AudioBackend` ports the platform-neutral playback contract for 1-based Director sound channels.
+- `audio::SoundManager` ports channel validation, per-channel volume state, backend delegation, Lingo play-argument parsing, resolver-backed member audio lookup, and direct DirectorFile cast-library source registration.
+- SoundChunk conversion to playable WAV/MP3 data is wired through `SoundConverter`, including MP3 extraction, IMA ADPCM conversion, raw PCM WAV wrapping, and KEY-owned `snd `/`ediM` member lookup helpers.
+
 ### Timeout Manager State Foundation
 
 - `lingo::Datum` now exposes timeout reference construction and inspection helpers for runtime timeout APIs.
@@ -351,6 +357,7 @@ Result:
 - FrameRenderPipeline step ordering, snapshot return, null-step rejection, and missing-snapshot failure tests passed through the same CTest executable.
 - TextRenderer split-line, character-line, line-start, wrapping, and default XMED delegation tests passed through the same CTest executable.
 - NetTask GET/POST construction, state transitions, result/error storage, stream status, and display formatting tests passed through the same CTest executable.
+- SoundManager channel validation, volume clamping, backend delegation, Lingo play argument parsing, resolver lookup, format detection, KEY-owned member lookup, and SoundChunk playable conversion tests passed through the same CTest executable.
 - TimeoutManager creation, property access/mutation, one-shot/persistent flags, timeout references, names/count, forget, and clear tests passed through the same CTest executable.
 - BitmapCache cache-keying, palette invalidation, non-native alpha coercion, indexed matte remap selection/application, and InkProcessor color remap helpers passed through the same CTest executable.
 - SpriteState score construction, Director blend-byte mapping, explicit override preservation, dynamic defaults, cursor state, script-instance rebinding, and release resets passed through the same CTest executable.
@@ -414,4 +421,5 @@ Result:
 - `9f00ca8 Port C++ hit tester foundation`
 - `1afd911 Port C++ frame render pipeline foundation`
 - `2b6b93a Port C++ behavior manager foundation`
-- Current checkpoint commit message: `Port C++ sprite registry foundation`
+- `652eadf Port C++ sprite registry foundation`
+- Current checkpoint commit message: `Port C++ sound manager foundation`

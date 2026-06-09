@@ -68,6 +68,8 @@
 #include "libreshockwave/player/PlayerEvent.hpp"
 #include "libreshockwave/player/PlayerEventInfo.hpp"
 #include "libreshockwave/player/PlayerState.hpp"
+#include "libreshockwave/player/audio/AudioBackend.hpp"
+#include "libreshockwave/player/audio/SoundManager.hpp"
 #include "libreshockwave/player/behavior/BehaviorInstance.hpp"
 #include "libreshockwave/player/behavior/BehaviorManager.hpp"
 #include "libreshockwave/player/debug/Breakpoint.hpp"
@@ -172,6 +174,8 @@ using libreshockwave::player::allPlayerEvents;
 using libreshockwave::player::handlerName;
 using libreshockwave::player::name;
 using libreshockwave::player::playerEventFromHandlerName;
+using libreshockwave::player::audio::AudioBackend;
+using libreshockwave::player::audio::SoundManager;
 using libreshockwave::player::debug::Breakpoint;
 using libreshockwave::player::debug::BreakpointKey;
 using libreshockwave::player::debug::BreakpointManager;
@@ -2468,6 +2472,191 @@ void testSoundConverter() {
     assert(!SoundConverter::extractMp3(nonMp3Sound).has_value());
 }
 
+class RecordingAudioBackend final : public AudioBackend {
+public:
+    void play(int channelNum,
+              const std::vector<std::uint8_t>& audioData,
+              std::string_view format,
+              int loopCount) override {
+        ++playCount;
+        lastPlayChannel = channelNum;
+        lastAudioData = audioData;
+        lastFormat = std::string(format);
+        lastLoopCount = loopCount;
+        playing[channelNum] = true;
+    }
+
+    void stop(int channelNum) override {
+        ++stopCount;
+        lastStopChannel = channelNum;
+        playing[channelNum] = false;
+    }
+
+    void stopAll() override {
+        ++stopAllCount;
+        playing.clear();
+    }
+
+    void setVolume(int channelNum, int volume) override {
+        ++setVolumeCount;
+        lastVolumeChannel = channelNum;
+        lastVolume = volume;
+        volumes[channelNum] = volume;
+    }
+
+    [[nodiscard]] bool isPlaying(int channelNum) const override {
+        auto found = playing.find(channelNum);
+        return found != playing.end() && found->second;
+    }
+
+    [[nodiscard]] int getElapsedTime(int channelNum) const override {
+        auto found = elapsedTimes.find(channelNum);
+        return found == elapsedTimes.end() ? 0 : found->second;
+    }
+
+    int playCount{0};
+    int stopCount{0};
+    int stopAllCount{0};
+    int setVolumeCount{0};
+    int lastPlayChannel{0};
+    int lastStopChannel{0};
+    int lastVolumeChannel{0};
+    int lastVolume{0};
+    int lastLoopCount{0};
+    std::vector<std::uint8_t> lastAudioData;
+    std::string lastFormat;
+    std::map<int, bool> playing;
+    std::map<int, int> volumes;
+    std::map<int, int> elapsedTimes;
+};
+
+void testSoundManagerFoundation() {
+    assert(SoundManager::MAX_CHANNELS == 8);
+    assert(SoundManager::isValidChannel(1));
+    assert(SoundManager::isValidChannel(8));
+    assert(!SoundManager::isValidChannel(0));
+    assert(!SoundManager::isValidChannel(9));
+    assert(SoundManager::clampVolume(-10) == 0);
+    assert(SoundManager::clampVolume(123) == 123);
+    assert(SoundManager::clampVolume(300) == 255);
+    assert(SoundManager::detectFormat({'R', 'I', 'F', 'F'}) == "wav");
+    assert(SoundManager::detectFormat({0xFF, 0xFB, 0x90}) == "mp3");
+
+    SoundManager manager;
+    assert(manager.backend() == nullptr);
+    assert(manager.getVolume(1) == 255);
+    assert(manager.getVolume(9) == 255);
+    manager.setVolume(2, -1);
+    assert(manager.getVolume(2) == 0);
+    manager.setVolume(2, 300);
+    assert(manager.getVolume(2) == 255);
+    assert(!manager.isPlaying(2));
+    assert(manager.getElapsedTime(2) == 0);
+
+    RecordingAudioBackend backend;
+    backend.elapsedTimes[2] = 345;
+    manager.setBackend(&backend);
+    assert(manager.backend() == &backend);
+    manager.setVolume(2, 128);
+    assert(manager.getVolume(2) == 128);
+    assert(backend.setVolumeCount == 1);
+    assert(backend.lastVolumeChannel == 2);
+    assert(backend.lastVolume == 128);
+
+    bool resolverCalled = false;
+    manager.setAudioResolver([&](const Datum::CastMemberRef& ref) -> std::optional<std::vector<std::uint8_t>> {
+        resolverCalled = true;
+        if (ref.castLib == 2 && ref.memberNum() == 5) {
+            return std::vector<std::uint8_t>{'R', 'I', 'F', 'F', 'w', 'a', 'v'};
+        }
+        if (ref.castLib == 2 && ref.memberNum() == 6) {
+            return std::vector<std::uint8_t>{0xFF, 0xFB, 0x90, 0x64};
+        }
+        return std::nullopt;
+    });
+
+    manager.play(0, Datum::castMemberRef(CastLibId(2), MemberId(5)));
+    assert(backend.playCount == 0);
+    manager.play(2, Datum::voidValue());
+    assert(backend.playCount == 0);
+
+    manager.play(2, Datum::castMemberRef(CastLibId(2), MemberId(5)));
+    assert(resolverCalled);
+    assert(backend.playCount == 1);
+    assert(backend.lastPlayChannel == 2);
+    assert(backend.lastAudioData == std::vector<std::uint8_t>({'R', 'I', 'F', 'F', 'w', 'a', 'v'}));
+    assert(backend.lastFormat == "wav");
+    assert(backend.lastLoopCount == 1);
+    assert(backend.lastVolumeChannel == 2);
+    assert(backend.lastVolume == 128);
+    assert(manager.isPlaying(2));
+    assert(manager.getElapsedTime(2) == 345);
+
+    auto args = Datum::propList();
+    args.propListValue().put(Datum::symbol("member"), Datum::castMemberRef(CastLibId(2), MemberId(6)));
+    args.propListValue().put(Datum::symbol("loopCount"), Datum::of(0));
+    manager.play(3, args);
+    assert(backend.playCount == 2);
+    assert(backend.lastPlayChannel == 3);
+    assert(backend.lastFormat == "mp3");
+    assert(backend.lastLoopCount == 0);
+    assert(backend.lastVolume == 255);
+
+    auto stringKeyArgs = Datum::propList();
+    stringKeyArgs.propListValue().put(Datum::of(std::string("member")), Datum::castMemberRef(CastLibId(2), MemberId(5)));
+    stringKeyArgs.propListValue().put(Datum::of(std::string("loopCount")), Datum::of(2));
+    manager.play(4, Datum::list({stringKeyArgs}));
+    assert(backend.playCount == 3);
+    assert(backend.lastPlayChannel == 4);
+    assert(backend.lastLoopCount == 2);
+
+    auto unresolved = manager.resolveAudioData(Datum::castMemberRef(CastLibId(99), MemberId(1)));
+    assert(!unresolved.has_value());
+    auto invalidDatum = manager.resolveAudioData(Datum::of(12));
+    assert(!invalidDatum.has_value());
+
+    manager.stop(9);
+    assert(backend.stopCount == 0);
+    manager.stop(2);
+    assert(backend.stopCount == 1);
+    assert(backend.lastStopChannel == 2);
+    assert(!manager.isPlaying(2));
+    manager.stopAll();
+    assert(backend.stopAllCount == 1);
+
+    std::vector<std::uint8_t> rawData(66, 0);
+    rawData[64] = 0x12;
+    rawData[65] = 0x34;
+    SoundChunk rawSound(nullptr, ChunkId(140), 8000, 1, 16, 1, rawData, "raw_pcm");
+    auto rawPlayable = SoundManager::convertSoundToPlayable(rawSound);
+    assert(rawPlayable.has_value());
+    assert(SoundManager::detectFormat(*rawPlayable) == "wav");
+
+    SoundChunk adpcmSound(nullptr, ChunkId(141), 8000, 1, 16, 1, {0x11}, "ima_adpcm");
+    auto adpcmPlayable = SoundManager::convertSoundToPlayable(adpcmSound);
+    assert(adpcmPlayable.has_value());
+    assert(SoundManager::detectFormat(*adpcmPlayable) == "wav");
+
+    auto makeMp3Frame = []() {
+        std::vector<std::uint8_t> frame(417, 0);
+        frame[0] = 0xFF;
+        frame[1] = 0xFB;
+        frame[2] = 0x90;
+        frame[3] = 0x64;
+        return frame;
+    };
+    std::vector<std::uint8_t> mp3Data{0, 1};
+    auto frame = makeMp3Frame();
+    mp3Data.insert(mp3Data.end(), frame.begin(), frame.end());
+    mp3Data.insert(mp3Data.end(), frame.begin(), frame.end());
+    SoundChunk mp3Sound(nullptr, ChunkId(142), 44100, 0, 16, 2, mp3Data, "mp3");
+    auto mp3Playable = SoundManager::convertSoundToPlayable(mp3Sound);
+    assert(mp3Playable.has_value());
+    assert(mp3Playable->size() == 834);
+    assert((*mp3Playable)[0] == 0xFF);
+    assert(SoundManager::detectFormat(*mp3Playable) == "mp3");
+}
+
 void testCastMetadataTypes() {
     assert(libreshockwave::cast::memberTypeFromCode(1) == MemberType::Bitmap);
     assert(libreshockwave::cast::memberTypeFromCode(17) == MemberType::Shockwave3D);
@@ -3664,8 +3853,8 @@ void testDirectorFileRifxLoader() {
     std::vector<std::uint8_t> keyData;
     appendI16(keyData, 12);
     appendI16(keyData, 12);
-    appendI32(keyData, 3);
-    appendI32(keyData, 3);
+    appendI32(keyData, 4);
+    appendI32(keyData, 4);
     appendI32(keyData, 4);
     appendI32(keyData, 7);
     appendI32(keyData, BinaryReader::fourCC("STXT"));
@@ -3675,15 +3864,23 @@ void testDirectorFileRifxLoader() {
     appendI32(keyData, 6);
     appendI32(keyData, 9);
     appendI32(keyData, BinaryReader::fourCC("BITD"));
+    appendI32(keyData, 7);
+    appendI32(keyData, 7);
+    appendI32(keyData, BinaryReader::fourCC("snd "));
     std::vector<std::uint8_t> textData;
     appendI32(textData, 8);
     appendI32(textData, 5);
     textData.insert(textData.end(), {'H', 'e', 'l', 'l', 'o'});
     const std::vector<std::uint8_t> scoreData;
     const std::vector<std::uint8_t> bitdData{0, 1};
+    std::vector<std::uint8_t> soundChunkData(66, 0);
+    soundChunkData[0x16] = 0x56;
+    soundChunkData[0x17] = 0x22;
+    soundChunkData[64] = 0x12;
+    soundChunkData[65] = 0x34;
 
     constexpr int mmapOffset = 32;
-    constexpr int mmapDataStart = mmapOffset + 8 + 24 + 140;
+    constexpr int mmapDataStart = mmapOffset + 8 + 24 + 160;
     const int configOffset = mmapDataStart - 8;
     const int namesDataStart = mmapDataStart + static_cast<int>(configData.size());
     const int namesOffset = namesDataStart - 8;
@@ -3697,6 +3894,8 @@ void testDirectorFileRifxLoader() {
     const int scoreOffset = scoreDataStart - 8;
     const int bitdDataStart = scoreDataStart + static_cast<int>(scoreData.size());
     const int bitdOffset = bitdDataStart - 8;
+    const int soundDataStart = bitdDataStart + static_cast<int>(bitdData.size());
+    const int soundOffset = soundDataStart - 8;
 
     std::vector<std::uint8_t> fileData;
     appendFourCC(fileData, "RIFX");
@@ -3708,11 +3907,11 @@ void testDirectorFileRifxLoader() {
     appendI32(fileData, mmapOffset);
     appendI32(fileData, 0x0207);
     appendFourCC(fileData, "mmap");
-    appendI32(fileData, 24 + 140);
+    appendI32(fileData, 24 + 160);
     appendI16(fileData, 24);
     appendI16(fileData, 20);
-    appendI32(fileData, 7);
-    appendI32(fileData, 7);
+    appendI32(fileData, 8);
+    appendI32(fileData, 8);
     appendI32(fileData, 0);
     appendI32(fileData, 0);
     appendI32(fileData, 0);
@@ -3758,6 +3957,12 @@ void testDirectorFileRifxLoader() {
     appendI16(fileData, 0);
     appendI16(fileData, 0);
     appendI32(fileData, 0);
+    appendI32(fileData, BinaryReader::fourCC("snd "));
+    appendI32(fileData, static_cast<std::uint32_t>(soundChunkData.size()));
+    appendI32(fileData, static_cast<std::uint32_t>(soundOffset));
+    appendI16(fileData, 0);
+    appendI16(fileData, 0);
+    appendI32(fileData, 0);
     fileData.insert(fileData.end(), configData.begin(), configData.end());
     fileData.insert(fileData.end(), namesData.begin(), namesData.end());
     fileData.insert(fileData.end(), rawData.begin(), rawData.end());
@@ -3765,6 +3970,7 @@ void testDirectorFileRifxLoader() {
     fileData.insert(fileData.end(), textData.begin(), textData.end());
     fileData.insert(fileData.end(), scoreData.begin(), scoreData.end());
     fileData.insert(fileData.end(), bitdData.begin(), bitdData.end());
+    fileData.insert(fileData.end(), soundChunkData.begin(), soundChunkData.end());
     putI32(fileData, 4, static_cast<std::uint32_t>(fileData.size() - 8));
 
     auto file = DirectorFile::load(fileData);
@@ -3772,8 +3978,8 @@ void testDirectorFileRifxLoader() {
     assert(!file->isAfterburner());
     assert(file->movieType() == ChunkType::MV93);
     assert(file->version() == 0x0207);
-    assert(file->chunkInfo().size() == 7);
-    assert(file->chunks().size() == 7);
+    assert(file->chunkInfo().size() == 8);
+    assert(file->chunks().size() == 8);
     assert(file->config().get() != nullptr);
     assert(file->config()->file() == file.get());
     assert(file->config()->stageWidth() == 320);
@@ -3799,6 +4005,7 @@ void testDirectorFileRifxLoader() {
     assert(file->getChunk(ChunkId(4))->type() == ChunkType::STXT);
     assert(file->getChunk(ChunkId(5))->type() == ChunkType::VWSC);
     assert(file->getChunk(ChunkId(6))->type() == ChunkType::BITD);
+    assert(file->getChunk(ChunkId(7))->type() == ChunkType::snd_);
     auto member7 = std::make_shared<CastMemberChunk>(file.get(),
                                                      ChunkId(7),
                                                      MemberType::FilmLoop,
@@ -3815,6 +4022,12 @@ void testDirectorFileRifxLoader() {
     assert(textChunks.front()->text() == "Hello");
     assert(file->getTextForMember(member7) == textChunks.front());
     assert(file->getScoreForMember(member7) == file->scoreChunk());
+    auto memberSound = SoundManager::findSoundForMember(*file, member7);
+    assert(memberSound != nullptr);
+    assert(memberSound->sampleRate() == 22050);
+    auto memberPlayable = SoundManager::convertSoundToPlayable(*memberSound);
+    assert(memberPlayable.has_value());
+    assert(SoundManager::detectFormat(*memberPlayable) == "wav");
     auto directTextMember = std::make_shared<CastMemberChunk>(file.get(),
                                                               ChunkId(4),
                                                               MemberType::Text,
@@ -4482,6 +4695,7 @@ int main() {
     testBasicChunks();
     testAudioAndMediaChunks();
     testSoundConverter();
+    testSoundManagerFoundation();
     testCastMetadataTypes();
     testCastInfoParsers();
     testShockwave3DInfoParser();
