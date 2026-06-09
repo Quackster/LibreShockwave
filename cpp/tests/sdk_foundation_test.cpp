@@ -83,6 +83,7 @@
 #include "libreshockwave/player/render/output/SoftwareFrameRenderer.hpp"
 #include "libreshockwave/player/render/output/TextRenderer.hpp"
 #include "libreshockwave/player/render/pipeline/BitmapCache.hpp"
+#include "libreshockwave/player/render/pipeline/FrameRenderPipeline.hpp"
 #include "libreshockwave/player/render/pipeline/FrameSnapshot.hpp"
 #include "libreshockwave/player/render/pipeline/FrameRenderPipelineContext.hpp"
 #include "libreshockwave/player/render/pipeline/FrameRenderPipelineStep.hpp"
@@ -190,6 +191,7 @@ using libreshockwave::player::render::RenderType;
 using libreshockwave::player::render::output::SoftwareFrameRenderer;
 using libreshockwave::player::render::output::TextRenderer;
 using libreshockwave::player::render::pipeline::BitmapCache;
+using libreshockwave::player::render::pipeline::FrameRenderPipeline;
 using libreshockwave::player::render::pipeline::FrameSnapshot;
 using libreshockwave::player::render::pipeline::FrameRenderPipelineContext;
 using libreshockwave::player::render::pipeline::FrameRenderPipelineStep;
@@ -1353,6 +1355,73 @@ void testRenderPipelineFoundation() {
     assert(context.snapshot()->frameNumber == 8);
     assert(context.snapshot()->sprites.size() == 1);
     assert(context.snapshot()->pipelineTrace.steps()[0].spriteCount == 1);
+
+    class TraceOnlyStep final : public FrameRenderPipelineStep {
+    public:
+        explicit TraceOnlyStep(std::string stepName) : stepName_(std::move(stepName)) {}
+        std::string_view name() const override { return stepName_; }
+        void execute(FrameRenderPipelineContext& context) override {
+            context.addTrace(stepName_, "ran " + stepName_);
+        }
+
+    private:
+        std::string stepName_;
+    };
+
+    class SnapshotStep final : public FrameRenderPipelineStep {
+    public:
+        std::string_view name() const override { return "build-frame-snapshot"; }
+        void execute(FrameRenderPipelineContext& context) override {
+            context.addTrace(std::string(name()), "built snapshot");
+            context.setSnapshot(FrameSnapshot{
+                context.frameNumber(),
+                context.stageWidth(),
+                context.stageHeight(),
+                context.backgroundColor(),
+                context.sprites(),
+                context.debugInfo(),
+                context.stageImage(),
+                0,
+                context.buildTrace()
+            });
+        }
+    };
+
+    FrameRenderPipeline pipeline;
+    pipeline.registerStep(std::make_shared<TraceOnlyStep>("first"));
+    pipeline.registerStep(std::make_shared<TraceOnlyStep>("second"));
+    pipeline.registerStep(std::make_shared<SnapshotStep>());
+    assert(pipeline.stepCount() == 3);
+    assert(pipeline.steps()[0]->name() == "first");
+    auto pipelineSnapshot = pipeline.renderFrame(22, 100, 50, 0x000A0B0C, stageImage, "Frame 22");
+    assert(pipelineSnapshot.frameNumber == 22);
+    assert(pipelineSnapshot.stageWidth == 100);
+    assert(pipelineSnapshot.stageHeight == 50);
+    assert(pipelineSnapshot.backgroundColor == 0x000A0B0C);
+    assert(pipelineSnapshot.debugInfo == "Frame 22");
+    assert(pipelineSnapshot.stageImage == stageImage);
+    assert(pipelineSnapshot.pipelineTrace.steps().size() == 3);
+    assert(pipelineSnapshot.pipelineTrace.steps()[0].stepName == "first");
+    assert(pipelineSnapshot.pipelineTrace.steps()[1].stepName == "second");
+    assert(pipelineSnapshot.pipelineTrace.steps()[2].stepName == "build-frame-snapshot");
+
+    bool nullStepThrew = false;
+    try {
+        pipeline.registerStep(nullptr);
+    } catch (const std::invalid_argument&) {
+        nullStepThrew = true;
+    }
+    assert(nullStepThrew);
+
+    FrameRenderPipeline missingSnapshotPipeline;
+    missingSnapshotPipeline.registerStep(std::make_shared<TraceOnlyStep>("trace-only"));
+    bool missingSnapshotThrew = false;
+    try {
+        (void)missingSnapshotPipeline.renderFrame(1, 10, 10, 0, nullptr, "Frame 1");
+    } catch (const std::runtime_error&) {
+        missingSnapshotThrew = true;
+    }
+    assert(missingSnapshotThrew);
 }
 
 void testBitmapCacheAndInkProcessorFoundation() {

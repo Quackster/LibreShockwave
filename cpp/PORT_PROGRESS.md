@@ -259,6 +259,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `render::pipeline::FrameRenderPipelineContext` ports mutable per-frame render pipeline state for sprites, rendered channels, trace entries, and completed snapshots.
 - `render::pipeline::FrameRenderPipelineStep` ports the polymorphic pipeline step interface used by the Java frame render pipeline.
 
+### Frame Render Pipeline Runner Foundation
+
+- `render::pipeline::FrameRenderPipeline` ports ordered step registration and linear step execution over `FrameRenderPipelineContext`.
+- Rendering requires a step-produced immutable `FrameSnapshot`, matching the Java pipeline failure behavior when no snapshot is published.
+- Default StageRenderer/SpriteBaker collection, ordering, baking, publishing, and snapshot steps remain deferred until the C++ stage renderer and sprite baker are ported.
+
 ### Text Renderer Interface Foundation
 
 - `render::output::TextRenderer` ports the platform-neutral text rendering and measurement interface.
@@ -330,6 +336,7 @@ Result:
 - RenderPipelineTrace, RenderSprite, transform mirror, baked bitmap helpers, and FrameSnapshot tests passed through the same CTest executable.
 - SoftwareFrameRenderer background, stage-image, alpha, blend, scaling, flip, Director mirror, and special-ink tests passed through the same CTest executable.
 - FrameRenderPipelineContext mutation, trace building, snapshot storage, and FrameRenderPipelineStep tests passed through the same CTest executable.
+- FrameRenderPipeline step ordering, snapshot return, null-step rejection, and missing-snapshot failure tests passed through the same CTest executable.
 - TextRenderer split-line, character-line, line-start, wrapping, and default XMED delegation tests passed through the same CTest executable.
 - NetTask GET/POST construction, state transitions, result/error storage, stream status, and display formatting tests passed through the same CTest executable.
 - TimeoutManager creation, property access/mutation, one-shot/persistent flags, timeout references, names/count, forget, and clear tests passed through the same CTest executable.
@@ -390,4 +397,5 @@ Result:
 - `2aa7222 Port C++ timeout manager foundation`
 - `c8e0755 Port C++ bitmap cache and ink foundation`
 - `402b179 Port C++ sprite state foundation`
-- Current checkpoint commit message: `Port C++ hit tester foundation`
+- `9f00ca8 Port C++ hit tester foundation`
+- Current checkpoint commit message: `Port C++ frame render pipeline foundation`
