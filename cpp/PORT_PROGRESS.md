@@ -149,6 +149,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `DirectorFile` tracks mutable base-path metadata for external cast resolution.
 - External cast path listing, external-cast presence checks, score-presence checks, and font-name lookup across Fmap chunks are exposed in C++.
 
+### Bitmap Decoder Foundation
+
+- `bitmap::BitmapDecoder` ports Director PackBits/RLE decompression and scan-width calculations.
+- Indexed bitmap decoding covers 1-bit, 2-bit, 4-bit, and 8-bit sources with palette-index metadata preservation.
+- 16-bit RGB555 and 32-bit separated/interleaved channel decoders are available, plus the automatic compression/bit-depth dispatch path.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -182,12 +188,13 @@ Result:
 - DirectorFile stage/tempo, associated text, and associated score lookup tests passed through the same CTest executable.
 - ScriptChunk name resolution and DirectorFile script-helper empty fallback tests passed through the same CTest executable.
 - DirectorFile base path, score presence, external cast, and font lookup fallback tests passed through the same CTest executable.
+- Bitmap decoder RLE, scan-width, indexed, RGB555, 32-bit channel, and automatic dispatch tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
 
 - Higher-level media integration.
-- Remaining bitmap, sound, font, text, score, and script chunk decoders.
+- Remaining bitmap decode integration, sound, font, text, score, and script chunk decoders.
 - Lingo decompiler, VM runtime values, dispatchers, and builtins.
 - Player core, rendering pipeline, input, networking, audio, cast management, and debugging.
 - WASM/web player replacement strategy in C++.
@@ -213,4 +220,5 @@ Result:
 - `afbfbcb Port C++ palette resolver`
 - `d71ac1d Port C++ DirectorFile member resources`
 - `89d38fc Port C++ script name helpers`
-- Current checkpoint commit message: `Port C++ DirectorFile metadata helpers`
+- `f59edc1 Port C++ DirectorFile metadata helpers`
+- Current checkpoint commit message: `Port C++ bitmap decoder foundation`

@@ -15,6 +15,7 @@
 
 #include "libreshockwave/DirectorFile.hpp"
 #include "libreshockwave/bitmap/Bitmap.hpp"
+#include "libreshockwave/bitmap/BitmapDecoder.hpp"
 #include "libreshockwave/bitmap/ColorRef.hpp"
 #include "libreshockwave/bitmap/Palette.hpp"
 #include "libreshockwave/cast/BitmapInfo.hpp"
@@ -72,6 +73,7 @@ using libreshockwave::id::VarType;
 using libreshockwave::io::BinaryReader;
 using libreshockwave::io::ByteOrder;
 using libreshockwave::bitmap::Bitmap;
+using libreshockwave::bitmap::BitmapDecoder;
 using libreshockwave::bitmap::ColorRef;
 using libreshockwave::bitmap::Palette;
 using libreshockwave::cast::BitmapInfo;
@@ -415,6 +417,53 @@ void testBitmapRegionsAndMetadata() {
     assert(swatch.getPixel(0, 0) == 0xFF000000U);
     assert(swatch.getPixel(2, 0) == 0xFFFFFFFFU);
     assert(swatch.getPixel(0, 2) == 0xFF336699U);
+}
+
+void testBitmapDecoder() {
+    const auto rle = BitmapDecoder::decompressRLE({0x02, 'a', 'b', 'c', 0xFE, 'x', 0x80, 0x00, 'z'}, 7);
+    assert(std::string(rle.begin(), rle.end()) == "abcxxxz");
+    assert(BitmapDecoder::decompressRLE({0x04, 'a'}, 5).size() == 1);
+    assert(BitmapDecoder::calculateScanWidthPixels(3, 8, 0) == 4);
+    assert(BitmapDecoder::calculateScanWidthPixels(3, 8, 3) == 3);
+    assert(BitmapDecoder::calculateScanWidth(3, 8) == 4);
+
+    Palette custom({0x110000U, 0x002200U, 0x000033U, 0xFFFFFFU}, "test");
+    Bitmap indexed = BitmapDecoder::decode8Bit({0, 1, 2, 3}, 2, 2, 2, &custom);
+    assert(indexed.getPixel(0, 0) == 0xFF110000U);
+    assert(indexed.getPixel(1, 0) == 0xFF002200U);
+    assert(indexed.getPixel(0, 1) == 0xFF000033U);
+    assert(indexed.getPixel(1, 1) == 0xFFFFFFFFU);
+    assert(indexed.paletteIndex(1, 1).value() == 3);
+
+    Bitmap mono = BitmapDecoder::decode1Bit({0x80}, 2, 1, 8, nullptr);
+    assert(mono.getPixel(0, 0) == 0xFF000000U);
+    assert(mono.getPixel(1, 0) == 0xFFFFFFFFU);
+    assert(mono.paletteIndex(0, 0).value() == 255);
+    assert(mono.paletteIndex(1, 0).value() == 0);
+
+    Bitmap twoBit = BitmapDecoder::decode2Bit({0b00011011}, 4, 1, 4, nullptr);
+    assert(twoBit.paletteIndex(0, 0).value() == 0);
+    assert(twoBit.paletteIndex(1, 0).value() == 85);
+    assert(twoBit.paletteIndex(2, 0).value() == 170);
+    assert(twoBit.paletteIndex(3, 0).value() == 255);
+
+    Bitmap fourBit = BitmapDecoder::decode4Bit({0x0F}, 2, 1, 2, nullptr);
+    assert(fourBit.paletteIndex(0, 0).value() == 0);
+    assert(fourBit.paletteIndex(1, 0).value() == 255);
+
+    Bitmap rgb555 = BitmapDecoder::decode16Bit({0x7C, 0x00}, 1, 1, 1, true);
+    assert(rgb555.getPixel(0, 0) == 0xFFFF0000U);
+
+    Bitmap argb = BitmapDecoder::decode32Bit({0x80, 0x11, 0x22, 0x33}, 1, 1, 1, true);
+    assert(argb.getPixel(0, 0) == 0x80112233U);
+    Bitmap interleaved = BitmapDecoder::decode32Bit({0x7F, 0x44, 0x55, 0x66}, 1, 1, 1, false);
+    assert(interleaved.getPixel(0, 0) == 0x7F445566U);
+
+    Bitmap automatic = BitmapDecoder::decode({0, 1}, 2, 1, 8, &custom, true, 1200, 0);
+    assert(automatic.getPixel(1, 0) == 0xFF002200U);
+    Bitmap empty = BitmapDecoder::decode({}, 0, 0, 8, nullptr);
+    assert(empty.width() == 1);
+    assert(empty.height() == 1);
 }
 
 void testBasicChunks() {
@@ -2260,6 +2309,7 @@ int main() {
     testPaletteAndColorRefs();
     testBitmapAlphaAndPaletteBehavior();
     testBitmapRegionsAndMetadata();
+    testBitmapDecoder();
     testBasicChunks();
     testAudioAndMediaChunks();
     testCastMetadataTypes();
