@@ -79,6 +79,7 @@
 #include "libreshockwave/player/render/RenderConfig.hpp"
 #include "libreshockwave/player/render/RenderType.hpp"
 #include "libreshockwave/player/render/output/SoftwareFrameRenderer.hpp"
+#include "libreshockwave/player/render/output/TextRenderer.hpp"
 #include "libreshockwave/player/render/pipeline/FrameSnapshot.hpp"
 #include "libreshockwave/player/render/pipeline/FrameRenderPipelineContext.hpp"
 #include "libreshockwave/player/render/pipeline/FrameRenderPipelineStep.hpp"
@@ -176,6 +177,7 @@ using libreshockwave::player::input::InputState;
 using libreshockwave::player::render::RenderConfig;
 using libreshockwave::player::render::RenderType;
 using libreshockwave::player::render::output::SoftwareFrameRenderer;
+using libreshockwave::player::render::output::TextRenderer;
 using libreshockwave::player::render::pipeline::FrameSnapshot;
 using libreshockwave::player::render::pipeline::FrameRenderPipelineContext;
 using libreshockwave::player::render::pipeline::FrameRenderPipelineStep;
@@ -1189,6 +1191,124 @@ void testSoftwareFrameRenderer() {
                               false);
     FrameSnapshot addInkSnapshot{7, 1, 1, 0x00102030, {addInkSprite}, "", nullptr, 0, RenderPipelineTrace::empty()};
     assert(addInkSnapshot.renderFrame().getPixel(0, 0) == 0xFF112233U);
+}
+
+void testTextRendererFoundation() {
+    assert((TextRenderer::splitLines("") == std::vector<std::string>{""}));
+    assert((TextRenderer::splitLines("a\r\nb\rc\n") == std::vector<std::string>{"a", "b", "c", ""}));
+    assert((TextRenderer::findCharLine("", 10) == std::vector<int>{0, 0}));
+    assert((TextRenderer::findCharLine("ab\r\ncd\ne", 6) == std::vector<int>{1, 1}));
+    assert(TextRenderer::lineStartIndex("", 3) == 0);
+    assert(TextRenderer::lineStartIndex("ab\r\ncd\ne", 0) == 0);
+    assert(TextRenderer::lineStartIndex("ab\r\ncd\ne", 1) == 4);
+    assert(TextRenderer::lineStartIndex("ab\r\ncd\ne", 2) == 7);
+    assert(TextRenderer::lineStartIndex("ab\r\ncd\ne", 5) == 8);
+
+    auto measure = [](std::string_view value) {
+        return static_cast<int>(value.size());
+    };
+    std::vector<std::string> wrapped;
+    TextRenderer::wrapLine("", measure, 10, wrapped);
+    assert((wrapped == std::vector<std::string>{""}));
+    wrapped.clear();
+    TextRenderer::wrapLine("alpha beta gamma", measure, 10, wrapped);
+    assert((wrapped == std::vector<std::string>{"alpha beta", "gamma"}));
+    wrapped.clear();
+    TextRenderer::wrapLine("alpha beta-gamma", measure, 11, wrapped);
+    assert((wrapped == std::vector<std::string>{"alpha beta-", "gamma"}));
+
+    class RecordingTextRenderer final : public TextRenderer {
+    public:
+        std::string lastText;
+        int lastWidth = 0;
+        int lastHeight = 0;
+        std::string lastFontName;
+        int lastFontSize = 0;
+        std::string lastFontStyle;
+        std::string lastAlignment;
+        int lastTextColor = 0;
+        int lastBgColor = 0;
+        bool lastWordWrap = false;
+        bool lastAntialias = false;
+        int lastFixedLineSpace = 0;
+        int lastTopSpacing = -1;
+
+        std::shared_ptr<Bitmap> renderText(std::string text,
+                                           int width,
+                                           int height,
+                                           std::string fontName,
+                                           int fontSize,
+                                           std::string fontStyle,
+                                           std::string alignment,
+                                           int textColor,
+                                           int bgColor,
+                                           bool wordWrap,
+                                           bool antialias,
+                                           int fixedLineSpace,
+                                           int topSpacing) override {
+            lastText = std::move(text);
+            lastWidth = width;
+            lastHeight = height;
+            lastFontName = std::move(fontName);
+            lastFontSize = fontSize;
+            lastFontStyle = std::move(fontStyle);
+            lastAlignment = std::move(alignment);
+            lastTextColor = textColor;
+            lastBgColor = bgColor;
+            lastWordWrap = wordWrap;
+            lastAntialias = antialias;
+            lastFixedLineSpace = fixedLineSpace;
+            lastTopSpacing = topSpacing;
+            return std::make_shared<Bitmap>(1, 1, 32, std::vector<std::uint32_t>{0xFF123456U});
+        }
+
+        std::vector<int> charPosToLoc(std::string,
+                                      int,
+                                      std::string,
+                                      int,
+                                      std::string,
+                                      int,
+                                      std::string,
+                                      int) override {
+            return {0, 0};
+        }
+
+        int locToCharPos(std::string, int, int, std::string, int, std::string, int, std::string, int) override {
+            return 0;
+        }
+
+        int getLineHeight(std::string, int fontSize, std::string, int fixedLineSpace) override {
+            return fixedLineSpace > 0 ? fixedLineSpace : fontSize;
+        }
+    };
+
+    RecordingTextRenderer renderer;
+    assert(renderer.renderXmedText(nullptr, 10, 20, 0xFF010203, 0xFF000000) == nullptr);
+    XmedStyledText styled{};
+    styled.text = "hello";
+    styled.fontName = "Chicago";
+    styled.fontSize = 12;
+    styled.memberBold = true;
+    styled.alignment = "center";
+    styled.wordWrap = true;
+    styled.antialias = true;
+    styled.fixedLineSpace = 14;
+    auto rendered = renderer.renderXmedText(&styled, 80, 30, 0xFF010203, 0xFFEEEEEE);
+    assert(rendered != nullptr);
+    assert(rendered->getPixel(0, 0) == 0xFF123456U);
+    assert(renderer.lastText == "hello");
+    assert(renderer.lastWidth == 80);
+    assert(renderer.lastHeight == 30);
+    assert(renderer.lastFontName == "Chicago");
+    assert(renderer.lastFontSize == 12);
+    assert(renderer.lastFontStyle == "bold");
+    assert(renderer.lastAlignment == "center");
+    assert(renderer.lastTextColor == static_cast<int>(0xFF010203U));
+    assert(renderer.lastBgColor == static_cast<int>(0xFFEEEEEEU));
+    assert(renderer.lastWordWrap);
+    assert(renderer.lastAntialias);
+    assert(renderer.lastFixedLineSpace == 14);
+    assert(renderer.lastTopSpacing == 0);
 }
 
 void testPaletteAndColorRefs() {
@@ -3556,6 +3676,7 @@ int main() {
     testDebugFoundation();
     testRenderPipelineFoundation();
     testSoftwareFrameRenderer();
+    testTextRendererFoundation();
     testPaletteAndColorRefs();
     testBitmapAlphaAndPaletteBehavior();
     testBitmapRegionsAndMetadata();

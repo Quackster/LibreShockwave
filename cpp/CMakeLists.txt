@@ -56,6 +56,7 @@ add_library(libreshockwave
     src/player/render/RenderConfig.cpp
     src/player/render/RenderType.cpp
     src/player/render/output/SoftwareFrameRenderer.cpp
+    src/player/render/output/TextRenderer.cpp
     src/player/render/pipeline/FrameSnapshot.cpp
     src/player/render/pipeline/FrameRenderPipelineContext.cpp
     src/player/render/pipeline/RenderPipelineTrace.cpp
