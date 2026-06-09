@@ -1195,6 +1195,12 @@ bool pushSymb(ExecutionContext& context) {
     return true;
 }
 
+bool pushChunkVarRef(ExecutionContext& context) {
+    const int rawIndex = toIntLikeJava(context.pop());
+    context.push(Datum::varRef(id::varTypeFromCode(context.argument()), rawIndex));
+    return true;
+}
+
 bool swap(ExecutionContext& context) {
     context.swap();
     return true;
@@ -1929,6 +1935,7 @@ void StackOpcodes::registerHandlers(OpcodeRegistry& registry) {
     registry.registerHandler(Opcode::PUSH_FLOAT32, pushFloat);
     registry.registerHandler(Opcode::PUSH_CONS, pushCons);
     registry.registerHandler(Opcode::PUSH_SYMB, pushSymb);
+    registry.registerHandler(Opcode::PUSH_CHUNK_VAR_REF, pushChunkVarRef);
     registry.registerHandler(Opcode::SWAP, swap);
     registry.registerHandler(Opcode::POP, pop);
     registry.registerHandler(Opcode::PEEK, peek);

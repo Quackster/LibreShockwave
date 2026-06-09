@@ -2283,6 +2283,7 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opcodeRegistry.hasHandler(Opcode::PUSH_FLOAT32));
     assert(opcodeRegistry.hasHandler(Opcode::PUSH_CONS));
     assert(opcodeRegistry.hasHandler(Opcode::PUSH_SYMB));
+    assert(opcodeRegistry.hasHandler(Opcode::PUSH_CHUNK_VAR_REF));
     assert(opcodeRegistry.hasHandler(Opcode::NEW_OBJ));
     assert(opcodeRegistry.hasHandler(Opcode::SWAP));
     assert(opcodeRegistry.hasHandler(Opcode::POP));
@@ -2365,6 +2366,17 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     opContext.setInstruction(ScriptChunk::Instruction{0, Opcode::PUSH_SYMB, 0x45, 123});
     assert(opcodeRegistry.execute(Opcode::PUSH_SYMB, opContext));
     assert(opContext.pop().asSymbol()->name == "#123");
+
+    opContext.setInstruction(ScriptChunk::Instruction{0,
+                                                      Opcode::PUSH_CHUNK_VAR_REF,
+                                                      libreshockwave::lingo::code(Opcode::PUSH_CHUNK_VAR_REF),
+                                                      libreshockwave::id::code(VarType::LOCAL)});
+    opContext.push(Datum::of(6));
+    assert(opcodeRegistry.execute(Opcode::PUSH_CHUNK_VAR_REF, opContext));
+    const auto* chunkVarRef = opContext.pop().asVarRef();
+    assert(chunkVarRef != nullptr);
+    assert(chunkVarRef->varType == VarType::LOCAL);
+    assert(chunkVarRef->rawIndex == 6);
 
     opContext.push(Datum::of(1));
     opContext.push(Datum::of(2));

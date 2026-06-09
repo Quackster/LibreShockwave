@@ -434,7 +434,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 ### Lingo Opcode Registry and Stack/Control Foundation
 
 - `lingo::vm::OpcodeRegistry` now maps opcode enums to executable C++ handler callbacks with post-construction registration hooks.
-- Stack opcode handlers cover zero/int/float/literal/symbol pushes plus swap, pop, and peek behavior over `ExecutionContext`.
+- Stack opcode handlers cover zero/int/float/literal/symbol pushes, chunk variable reference pushes, swap, pop, and peek behavior over `ExecutionContext`.
 - Control-flow opcode handlers cover return, factory return, absolute jump target lookup, conditional zero jump, and repeat-loop back jumps.
 - Provider-backed object construction/method calls, string chunk mutation, and provider-backed property opcodes remain deferred to later focused VM slices.
 
@@ -485,6 +485,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `GET_CHUNK` now extracts string char, word, item, and line chunks through the C++ opcode registry.
 - Chunk extraction mirrors Java stack order, sequential line/item/word/char narrowing, negative-index last-chunk behavior, and out-of-range empty-string results.
 - String chunk mutation opcodes and movie-property-backed item delimiter integration remain deferred to the next focused string opcode slice.
+
+### Lingo Opcode Chunk Variable Reference Foundation
+
+- C++ `Datum::VarRef` now carries the Java-compatible variable type and raw index needed by chunk mutation opcodes.
+- `PUSH_CHUNK_VAR_REF` now pops the raw variable index and pushes a typed variable reference datum through the C++ opcode registry.
+- Resolving and mutating referenced locals, params, properties, globals, and fields remains deferred to the `PUT_CHUNK`/`DELETE_CHUNK` slice.
 
 ## Verification
 
@@ -550,6 +556,7 @@ Result:
 - EventDispatcher global, frame/movie, sprite/movie, sprite-only, behavior-only, and movie-only dispatch ordering, pass propagation, dynamic script-instance dispatch, sprite handler lookup, mouse interactivity, mouse-handler recognition, debug flag, and stopEvent state tests passed through the same CTest executable.
 - SpriteProperties missing defaults, property get/set, revision bumps, cast member assignment, autosizing, registration-aware bounds, cursor lists, script-instance sprite numbers, release cleanup, color refs, and image callbacks passed through the same CTest executable.
 - Lingo `GET_CHUNK` char/word/item/line extraction, range, negative last-index, and sequential narrowing tests passed through the same CTest executable.
+- Lingo `PUSH_CHUNK_VAR_REF` typed raw-index varref creation tests passed through the same CTest executable.
 - MovieProperties movie/stage property reads and writes, file/input-backed values, xtra lists, item delimiters, timers, stage background color, random seed, navigation callbacks, and net navigation callbacks passed through the same CTest executable.
 - BuiltinRegistry case-insensitive lookup, custom registration, movie label/marker builtins, sprite puppet/cursor/spriteBox builtins, puppetPalette hooks, and Java-compatible no-op sprite builtins passed through the same CTest executable.
 - MathBuiltins numeric coercion, integer/float conversion, bit operations, trig, power, min/max, list min/max, and random callback hooks passed through the same CTest executable.
@@ -663,4 +670,5 @@ Result:
 - `66292160 Port C++ opcode call foundation`
 - `c9be4391 Port C++ opcode object call foundation`
 - `10193311 Port C++ opcode object construction foundation`
-- Current checkpoint commit message: `Port C++ opcode string chunk foundation`
+- `0487784f Port C++ opcode string chunk foundation`
+- Current checkpoint commit message: `Port C++ opcode chunk varref foundation`

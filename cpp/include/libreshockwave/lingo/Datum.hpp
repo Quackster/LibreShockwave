@@ -281,7 +281,8 @@ public:
     };
 
     struct VarRef {
-        std::string varName;
+        id::VarType varType;
+        int rawIndex;
         friend bool operator==(const VarRef&, const VarRef&) = default;
     };
 
@@ -317,6 +318,7 @@ public:
     [[nodiscard]] static Datum argList(std::vector<Datum> args);
     [[nodiscard]] static Datum argListNoRet(std::vector<Datum> args);
     [[nodiscard]] static Datum timeoutRef(std::string name);
+    [[nodiscard]] static Datum varRef(id::VarType varType, int rawIndex);
 
     [[nodiscard]] DatumType type() const;
     [[nodiscard]] std::string typeString() const;
@@ -350,6 +352,7 @@ public:
     [[nodiscard]] const Xtra* asXtra() const;
     [[nodiscard]] const XtraInstance* asXtraInstance() const;
     [[nodiscard]] const TimeoutRef* asTimeoutRef() const;
+    [[nodiscard]] const VarRef* asVarRef() const;
     [[nodiscard]] const IntPoint* asIntPoint() const;
     [[nodiscard]] const IntRect* asIntRect() const;
 

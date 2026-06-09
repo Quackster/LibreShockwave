@@ -364,6 +364,10 @@ Datum Datum::timeoutRef(std::string name) {
     return Datum(TimeoutRef{std::move(name)});
 }
 
+Datum Datum::varRef(id::VarType varType, int rawIndex) {
+    return Datum(VarRef{varType, rawIndex});
+}
+
 DatumType Datum::type() const {
     if (std::holds_alternative<Null>(value_)) return DatumType::Null;
     if (std::holds_alternative<Void>(value_)) return DatumType::Void;
@@ -480,6 +484,7 @@ const Datum::SoundChannel* Datum::asSoundChannel() const { return std::get_if<So
 const Datum::Xtra* Datum::asXtra() const { return std::get_if<Xtra>(&value_); }
 const Datum::XtraInstance* Datum::asXtraInstance() const { return std::get_if<XtraInstance>(&value_); }
 const Datum::TimeoutRef* Datum::asTimeoutRef() const { return std::get_if<TimeoutRef>(&value_); }
+const Datum::VarRef* Datum::asVarRef() const { return std::get_if<VarRef>(&value_); }
 const Datum::IntPoint* Datum::asIntPoint() const { return std::get_if<IntPoint>(&value_); }
 const Datum::IntRect* Datum::asIntRect() const { return std::get_if<IntRect>(&value_); }
 
