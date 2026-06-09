@@ -2538,8 +2538,25 @@ std::uint32_t imageAlphaBlend(std::uint32_t fg, std::uint32_t bg, int alpha) {
            static_cast<std::uint32_t>(b & 0xFF);
 }
 
-std::uint32_t imageApplyCopyInk(std::uint32_t src, std::uint32_t dest, int blend) {
+std::uint32_t imageApplyCopyPixelsInk(std::uint32_t src, std::uint32_t dest, id::InkMode ink, int blend, int backgroundKeyRgb) {
     const int srcAlpha = static_cast<int>((src >> 24) & 0xFFU);
+    const int srcRgb = static_cast<int>(src & 0x00FFFFFFU);
+    if (ink == id::InkMode::TRANSPARENT) {
+        return srcRgb == 0xFFFFFF ? dest : src;
+    }
+    if (ink == id::InkMode::BACKGROUND_TRANSPARENT) {
+        if (srcAlpha == 0 || srcRgb == (backgroundKeyRgb & 0x00FFFFFF)) {
+            return dest;
+        }
+        if (blend < 255 || srcAlpha < 255) {
+            return imageAlphaBlend(src, dest, imageCombineAlpha(srcAlpha, blend));
+        }
+        return src;
+    }
+    if (ink == id::InkMode::BLEND) {
+        return imageAlphaBlend(src, dest, imageCombineAlpha(srcAlpha, blend));
+    }
+
     if (blend < 255) {
         return imageAlphaBlend(src, dest, imageCombineAlpha(srcAlpha, blend));
     }
@@ -2585,11 +2602,25 @@ Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
     }
 
     int blend = 255;
+    id::InkMode ink = id::InkMode::COPY;
+    int backgroundKeyRgb = 0xFFFFFF;
     std::shared_ptr<bitmap::Bitmap> mask;
     if (args.size() >= 4 && args[3].isPropList()) {
         const Datum blendDatum = getPropListKey(args[3].propListValue(), "blend");
         if (!blendDatum.isVoid()) {
             blend = imagePercentToBlendAlpha(blendDatum);
+        }
+        const Datum inkDatum = getPropListKey(args[3].propListValue(), "ink");
+        if (!inkDatum.isVoid()) {
+            if (inkDatum.isInt() || inkDatum.isFloat()) {
+                ink = id::inkModeFromCode(toIntLikeJava(inkDatum));
+            } else if (const auto parsed = id::inkModeFromName(keyNameLikeJava(inkDatum))) {
+                ink = *parsed;
+            }
+        }
+        const Datum bgColorDatum = getPropListKey(args[3].propListValue(), "bgColor");
+        if (!bgColorDatum.isVoid()) {
+            backgroundKeyRgb = static_cast<int>(imageColorArgb(bgColorDatum, &dest) & 0x00FFFFFFU);
         }
         const Datum maskDatum = getPropListKey(args[3].propListValue(), "maskImage");
         if (const auto* maskRef = maskDatum.asImageRef()) {
@@ -2631,7 +2662,10 @@ Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
             if (mask != nullptr && !imageMaskAllowsPixel(*mask, sx, sy)) {
                 continue;
             }
-            dest.setPixelPreservePaletteIndex(px, py, imageApplyCopyInk(src.getPixel(sx, sy), dest.getPixel(px, py), blend));
+            dest.setPixelPreservePaletteIndex(
+                px,
+                py,
+                imageApplyCopyPixelsInk(src.getPixel(sx, sy), dest.getPixel(px, py), ink, blend, backgroundKeyRgb));
             if (destPaletteIndices.has_value() && srcPaletteIndices.has_value()) {
                 const auto srcOffset = static_cast<std::size_t>(sy * src.width() + sx);
                 const auto destOffset = static_cast<std::size_t>(py * dest.width() + px);

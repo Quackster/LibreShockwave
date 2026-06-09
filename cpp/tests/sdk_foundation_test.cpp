@@ -3464,6 +3464,33 @@ void testLingoVmScopeAndExecutionContextFoundation() {
                             alphaMaskCopyProps}).isVoid());
     assert(alphaMaskCopyDest->getPixel(0, 0) == 0xFFFFFFFFU);
     assert(alphaMaskCopyDest->getPixel(1, 0) == 0xFF0000FFU);
+    auto transparentInkSource = std::make_shared<Bitmap>(
+        2, 1, 32, std::vector<std::uint32_t>{0xFFFFFFFFU, 0xFFFF0000U});
+    auto transparentInkDest = std::make_shared<Bitmap>(
+        2, 1, 32, std::vector<std::uint32_t>{0xFF000000U, 0xFF000000U});
+    auto transparentInkProps = Datum::propList();
+    transparentInkProps.propListValue().put(Datum::symbol("ink"), Datum::symbol("transparent"));
+    assert(runObjCall(110, {Datum::imageRef(transparentInkDest),
+                            Datum::imageRef(transparentInkSource),
+                            Datum::intRect(0, 0, 2, 1),
+                            Datum::intRect(0, 0, 2, 1),
+                            transparentInkProps}).isVoid());
+    assert(transparentInkDest->getPixel(0, 0) == 0xFF000000U);
+    assert(transparentInkDest->getPixel(1, 0) == 0xFFFF0000U);
+    auto backgroundInkSource = std::make_shared<Bitmap>(
+        2, 1, 32, std::vector<std::uint32_t>{0xFF00FF00U, 0xFFFF0000U});
+    auto backgroundInkDest = std::make_shared<Bitmap>(
+        2, 1, 32, std::vector<std::uint32_t>{0xFF000000U, 0xFF000000U});
+    auto backgroundInkProps = Datum::propList();
+    backgroundInkProps.propListValue().put(Datum::symbol("ink"), Datum::of(36));
+    backgroundInkProps.propListValue().put(Datum::symbol("bgColor"), Datum::colorRef(0, 255, 0));
+    assert(runObjCall(110, {Datum::imageRef(backgroundInkDest),
+                            Datum::imageRef(backgroundInkSource),
+                            Datum::intRect(0, 0, 2, 1),
+                            Datum::intRect(0, 0, 2, 1),
+                            backgroundInkProps}).isVoid());
+    assert(backgroundInkDest->getPixel(0, 0) == 0xFF000000U);
+    assert(backgroundInkDest->getPixel(1, 0) == 0xFFFF0000U);
     auto paletteCopySource = std::make_shared<Bitmap>(
         2, 1, 8, std::vector<std::uint32_t>{0xFF000000U, 0xFF112233U});
     paletteCopySource->setImagePalette(std::make_shared<Palette>(
