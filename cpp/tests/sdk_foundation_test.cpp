@@ -2897,6 +2897,24 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runPutLocalChunk("red|green|blue", "lime", 1, 0, 0, 0, 0, 2, 0, 0, 0) == "red|lime|blue");
     builtinContext.movieProperties = nullptr;
 
+    auto pushChunkRangeTo = [](ExecutionContext& target,
+                               int firstChar,
+                               int lastChar,
+                               int firstWord,
+                               int lastWord,
+                               int firstItem,
+                               int lastItem,
+                               int firstLine,
+                               int lastLine) {
+        target.push(Datum::of(firstChar));
+        target.push(Datum::of(lastChar));
+        target.push(Datum::of(firstWord));
+        target.push(Datum::of(lastWord));
+        target.push(Datum::of(firstItem));
+        target.push(Datum::of(lastItem));
+        target.push(Datum::of(firstLine));
+        target.push(Datum::of(lastLine));
+    };
     auto pushChunkRange = [&](int firstChar,
                               int lastChar,
                               int firstWord,
@@ -2905,15 +2923,77 @@ void testLingoVmScopeAndExecutionContextFoundation() {
                               int lastItem,
                               int firstLine,
                               int lastLine) {
-        variableContext.push(Datum::of(firstChar));
-        variableContext.push(Datum::of(lastChar));
-        variableContext.push(Datum::of(firstWord));
-        variableContext.push(Datum::of(lastWord));
-        variableContext.push(Datum::of(firstItem));
-        variableContext.push(Datum::of(lastItem));
-        variableContext.push(Datum::of(firstLine));
-        variableContext.push(Datum::of(lastLine));
+        pushChunkRangeTo(variableContext,
+                         firstChar,
+                         lastChar,
+                         firstWord,
+                         lastWord,
+                         firstItem,
+                         lastItem,
+                         firstLine,
+                         lastLine);
     };
+
+    variableScope.setParam(0, Datum::of(std::string("abcdef")));
+    variableContext.setInstruction(ScriptChunk::Instruction{0,
+                                                            Opcode::DELETE_CHUNK,
+                                                            libreshockwave::lingo::code(Opcode::DELETE_CHUNK),
+                                                            libreshockwave::id::code(VarType::PARAM)});
+    pushChunkRange(2, 4, 0, 0, 0, 0, 0, 0);
+    variableContext.push(Datum::of(0));
+    assert(opcodeRegistry.execute(Opcode::DELETE_CHUNK, variableContext));
+    assert(variableScope.getParam(0).stringValue() == "aef");
+    variableScope.setParam(0, Datum::of(std::string("abcd")));
+    variableContext.setInstruction(ScriptChunk::Instruction{0,
+                                                            Opcode::PUT_CHUNK,
+                                                            libreshockwave::lingo::code(Opcode::PUT_CHUNK),
+                                                            putArgument(1, VarType::PARAM)});
+    pushChunkRange(2, 3, 0, 0, 0, 0, 0, 0);
+    variableContext.push(Datum::of(std::string("XX")));
+    variableContext.push(Datum::of(0));
+    assert(opcodeRegistry.execute(Opcode::PUT_CHUNK, variableContext));
+    assert(variableScope.getParam(0).stringValue() == "aXXd");
+
+    globals["globalName"] = Datum::of(std::string("abcd"));
+    variableContext.setInstruction(ScriptChunk::Instruction{0,
+                                                            Opcode::DELETE_CHUNK,
+                                                            libreshockwave::lingo::code(Opcode::DELETE_CHUNK),
+                                                            libreshockwave::id::code(VarType::GLOBAL)});
+    pushChunkRange(2, 3, 0, 0, 0, 0, 0, 0);
+    variableContext.push(Datum::of(42));
+    assert(opcodeRegistry.execute(Opcode::DELETE_CHUNK, variableContext));
+    assert(globals["globalName"].stringValue() == "ad");
+    globals["globalName"] = Datum::of(std::string("abcd"));
+    variableContext.setInstruction(ScriptChunk::Instruction{0,
+                                                            Opcode::PUT_CHUNK,
+                                                            libreshockwave::lingo::code(Opcode::PUT_CHUNK),
+                                                            putArgument(1, VarType::GLOBAL)});
+    pushChunkRange(2, 3, 0, 0, 0, 0, 0, 0);
+    variableContext.push(Datum::of(std::string("XX")));
+    variableContext.push(Datum::of(42));
+    assert(opcodeRegistry.execute(Opcode::PUT_CHUNK, variableContext));
+    assert(globals["globalName"].stringValue() == "aXXd");
+
+    putReceiver.scriptInstanceValue().setProperty("health", Datum::of(std::string("abcd")));
+    putPropertyContext.setInstruction(ScriptChunk::Instruction{0,
+                                                               Opcode::DELETE_CHUNK,
+                                                               libreshockwave::lingo::code(Opcode::DELETE_CHUNK),
+                                                               libreshockwave::id::code(VarType::PROPERTY)});
+    pushChunkRangeTo(putPropertyContext, 2, 3, 0, 0, 0, 0, 0, 0);
+    putPropertyContext.push(Datum::of(50));
+    assert(opcodeRegistry.execute(Opcode::DELETE_CHUNK, putPropertyContext));
+    assert(putReceiver.scriptInstanceValue().getProperty("health").stringValue() == "ad");
+    putReceiver.scriptInstanceValue().setProperty("health", Datum::of(std::string("abcd")));
+    putPropertyContext.setInstruction(ScriptChunk::Instruction{0,
+                                                               Opcode::PUT_CHUNK,
+                                                               libreshockwave::lingo::code(Opcode::PUT_CHUNK),
+                                                               putArgument(1, VarType::PROPERTY)});
+    pushChunkRangeTo(putPropertyContext, 2, 3, 0, 0, 0, 0, 0, 0);
+    putPropertyContext.push(Datum::of(std::string("XX")));
+    putPropertyContext.push(Datum::of(50));
+    assert(opcodeRegistry.execute(Opcode::PUT_CHUNK, putPropertyContext));
+    assert(putReceiver.scriptInstanceValue().getProperty("health").stringValue() == "aXXd");
+
     fieldBacking = "abcd";
     variableContext.setInstruction(ScriptChunk::Instruction{0,
                                                             Opcode::DELETE_CHUNK,

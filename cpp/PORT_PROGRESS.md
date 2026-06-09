@@ -508,7 +508,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - C++ `Datum::VarRef` now carries the Java-compatible variable type and raw index needed by chunk mutation opcodes.
 - `PUSH_CHUNK_VAR_REF` now pops the raw variable index and pushes a typed variable reference datum through the C++ opcode registry.
-- Resolving and mutating referenced locals, params, properties, globals, and fields remains deferred to the `PUT_CHUNK`/`DELETE_CHUNK` slice.
+- VarRef resolution and mutation now share C++ context get/set helpers across locals, params, globals, receiver properties, and provider-backed fields for `PUT`, `DELETE_CHUNK`, `PUT_CHUNK`, and string receiver methods.
 
 ### Lingo Opcode Put Variable Foundation
 
@@ -595,8 +595,8 @@ Result:
 - Lingo `GET_CHUNK` char/word/item/line extraction, range, negative last-index, sequential narrowing, and provider-backed item delimiters passed through the same CTest executable.
 - Lingo `PUSH_CHUNK_VAR_REF` typed raw-index varref creation tests passed through the same CTest executable.
 - Lingo `PUT` local, parameter, global, receiver-property, before, and after mutation tests passed through the same CTest executable.
-- Lingo `DELETE_CHUNK` char, word, item, line, negative last-index, provider-backed item delimiter, and out-of-range tests passed through the same CTest executable.
-- Lingo `PUT_CHUNK` char replacement/insertion, provider-backed item replacement, word/line insertion, negative target, and out-of-range no-op tests passed through the same CTest executable.
+- Lingo `DELETE_CHUNK` char, word, item, line, negative last-index, local/param/global/property/field targets, provider-backed item delimiter, and out-of-range tests passed through the same CTest executable.
+- Lingo `PUT_CHUNK` char replacement/insertion, local/param/global/property/field targets, provider-backed item replacement, word/line insertion, negative target, and out-of-range no-op tests passed through the same CTest executable.
 - Lingo `GET_CHAINED_PROP` list, string, point, property-list, and script-instance reads plus `GET_TOP_LEVEL_PROP` `_player`/`_movie` refs passed through the same CTest executable.
 - Lingo image object-property width, height, rect, depth, useAlpha, ilk, image, and paletteRef reads passed through the same CTest executable.
 - Lingo legacy `GET` last-chunk/count chunk reads, provider-backed movie/sprite/sound property mappings, and provider-backed `SET` mutations passed through the same CTest executable.
@@ -768,4 +768,5 @@ Result:
 - `654802e7 Port C++ timeout object property dispatch`
 - `c879164f Port C++ sound object property dispatch`
 - `938442ce Port C++ behavior parameter value parser`
-- Current checkpoint commit message: `Port C++ value builtin parser`
+- `3410a54f Port C++ value builtin parser`
+- Current checkpoint commit message: `Port C++ chunk varref mutation coverage`
