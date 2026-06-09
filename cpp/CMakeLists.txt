@@ -43,6 +43,8 @@ add_library(libreshockwave
     src/lingo/Datum.cpp
     src/lingo/Opcode.cpp
     src/lingo/builtin/BuiltinRegistry.cpp
+    src/lingo/vm/ExecutionContext.cpp
+    src/lingo/vm/Scope.cpp
     src/lookup/CastMemberLookup.cpp
     src/lookup/PaletteResolver.cpp
     src/lookup/ScriptLookup.cpp

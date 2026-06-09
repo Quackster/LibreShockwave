@@ -419,6 +419,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `ImageBuiltins` ports `image(width, height, bitDepth [, paletteRef])` with white-filled bitmap creation, built-in palette symbol resolution, provider-backed palette metadata, and Java-compatible image display/ilk behavior.
 - `importFileInto` delegates platform-specific media import through an injectable context callback and preserves Director-style TRUE/FALSE results.
 
+### Lingo VM Scope and Execution Context Foundation
+
+- `lingo::vm::Scope` ports handler stack-frame state, including bytecode position, stack operations, local variables, mutable parameters, receiver-aware display arguments, return state, and loop-return tracking.
+- `lingo::vm::ExecutionContext` ports the opcode-facing context layer for stack/local/param/global access, return/error state callbacks, jump-target lookup, local/global handler callback plumbing, builtin invocation, and argument popping.
+- Full opcode-handler registration and bytecode execution remain deferred to the next VM runtime slices.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -497,6 +503,7 @@ Result:
 - SoundBuiltins channel creation, availability, sound-channel method dispatch, property defaults/mutation, and SoundManager playback delegation passed through the same CTest executable.
 - ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration and callback hooks passed through the same CTest executable.
 - TypeBuiltins object/void/type predicates, `value`/`script`/`callAncestor` callback hooks, symbol conversion, and `ilk` alias checks passed through the same CTest executable.
+- Lingo VM Scope and ExecutionContext stack, param, local, return, loop, jump, global callback, handler callback, builtin invocation, and call-stack formatting behavior passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -574,4 +581,5 @@ Result:
 - `a7963de Port C++ cast builtins foundation`
 - `c1374bd Port C++ xtra builtins foundation`
 - `dbc9542 Port C++ control flow builtins foundation`
-- Current checkpoint commit message: `Port C++ image builtins foundation`
+- `c0cea9e Port C++ image builtins foundation`
+- Current checkpoint commit message: `Port C++ Lingo VM scope foundation`

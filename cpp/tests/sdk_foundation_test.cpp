@@ -10,6 +10,7 @@
 #include <set>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <variant>
 #include <vector>
 
@@ -63,6 +64,8 @@
 #include "libreshockwave/lingo/Datum.hpp"
 #include "libreshockwave/lingo/Opcode.hpp"
 #include "libreshockwave/lingo/builtin/BuiltinRegistry.hpp"
+#include "libreshockwave/lingo/vm/ExecutionContext.hpp"
+#include "libreshockwave/lingo/vm/Scope.hpp"
 #include "libreshockwave/lookup/CastMemberLookup.hpp"
 #include "libreshockwave/lookup/PaletteResolver.hpp"
 #include "libreshockwave/lookup/ScriptLookup.hpp"
@@ -172,6 +175,9 @@ using libreshockwave::lingo::Opcode;
 using libreshockwave::lingo::StringChunkType;
 using libreshockwave::lingo::builtin::BuiltinContext;
 using libreshockwave::lingo::builtin::BuiltinRegistry;
+using libreshockwave::lingo::vm::ExecutionContext;
+using libreshockwave::lingo::vm::HandlerRef;
+using libreshockwave::lingo::vm::Scope;
 using libreshockwave::lookup::CastMemberLookup;
 using libreshockwave::lookup::PaletteResolver;
 using libreshockwave::lookup::ScriptLookup;
@@ -1970,6 +1976,205 @@ void testBuiltinRegistryFoundation() {
     assert(registry.contains("echo"));
     assert(registry.invoke("ECHO", context, {Datum::of(42)}).intValue() == 42);
     assert(registry.map().contains("echo"));
+}
+
+void testLingoVmScopeAndExecutionContextFoundation() {
+    auto makeHandler = [](int nameId, int localCount, std::vector<int> offsets) {
+        std::vector<ScriptChunk::Instruction> instructions;
+        std::unordered_map<int, int> indexMap;
+        for (std::size_t index = 0; index < offsets.size(); ++index) {
+            const int offset = offsets[index];
+            indexMap[offset] = static_cast<int>(index);
+            instructions.push_back(ScriptChunk::Instruction{offset, Opcode::PUSH_INT8, 0x41, offset + 1});
+        }
+        return ScriptChunk::Handler{nameId,
+                                    0,
+                                    static_cast<int>(instructions.size()),
+                                    0,
+                                    2,
+                                    localCount,
+                                    0,
+                                    0,
+                                    {},
+                                    {},
+                                    std::move(instructions),
+                                    std::move(indexMap)};
+    };
+
+    auto handler = makeHandler(10, 2, {0, 5, 10});
+    auto otherHandler = makeHandler(99, 0, {0});
+    ScriptChunk script(nullptr,
+                       ChunkId(700),
+                       ScriptChunkType::MovieScript,
+                       0,
+                       {handler, otherHandler},
+                       {},
+                       {},
+                       {},
+                       {});
+
+    Scope scope(&script, handler, {Datum::of(1), Datum::of(2)});
+    assert(scope.script() == &script);
+    assert(scope.handler().nameId == 10);
+    assert(scope.arguments().size() == 2);
+    assert(scope.receiver().isVoid());
+    assert(scope.bytecodeIndex() == 0);
+    assert(scope.hasMoreInstructions());
+    assert(scope.currentInstruction()->offset == 0);
+    scope.advanceBytecodeIndex();
+    assert(scope.currentInstruction()->offset == 5);
+    scope.setBytecodeIndex(42);
+    assert(!scope.hasMoreInstructions());
+    assert(scope.currentInstruction() == nullptr);
+
+    assert(scope.pop().isVoid());
+    scope.push(Datum::of(1));
+    scope.push(Datum::of(2));
+    scope.push(Datum::of(3));
+    assert(scope.stackSize() == 3);
+    assert(scope.peek().intValue() == 3);
+    assert(scope.peek(2).intValue() == 1);
+    assert(scope.peek(3).isVoid());
+    scope.swap();
+    assert(scope.peek().intValue() == 2);
+    scope.replaceTop(Datum::of(4));
+    assert(scope.peek().intValue() == 4);
+    scope.replaceTopTwo(Datum::of(9));
+    assert(scope.stackSize() == 2);
+    assert(scope.peek().intValue() == 9);
+    scope.drop(9);
+    assert(scope.stackSize() == 0);
+    scope.replaceTopTwo(Datum::of(11));
+    assert(scope.stackSize() == 1);
+    assert(scope.pop().intValue() == 11);
+
+    assert(scope.getLocal(0).isVoid());
+    scope.setLocal(0, Datum::of(77));
+    scope.setLocal(99, Datum::of(88));
+    assert(scope.getLocal(0).intValue() == 77);
+    assert(scope.getLocal(99).isVoid());
+
+    assert(scope.getParam(0).intValue() == 1);
+    scope.setParam(0, Datum::of(33));
+    assert(scope.getParam(0).intValue() == 33);
+    assert(scope.getParam(9).isVoid());
+
+    assert(!scope.returned());
+    scope.setReturnValue(Datum::of(std::string("done")));
+    assert(scope.returned());
+    assert(scope.returnValue().stringValue() == "done");
+    scope.setReturned(false);
+    assert(!scope.returned());
+
+    assert(!scope.inLoop());
+    assert(scope.popLoopReturnIndex() == -1);
+    scope.pushLoopReturnIndex(12);
+    scope.pushLoopReturnIndex(20);
+    assert(scope.inLoop());
+    assert(scope.popLoopReturnIndex() == 20);
+    assert(scope.popLoopReturnIndex() == 12);
+    assert(!scope.inLoop());
+    assert(scope.toString() == "Scope{handler#10, bytecodeIndex=42, stackSize=0, returned=false}");
+
+    const auto receiver = Datum::scriptInstance("receiver");
+    Scope receiverScope(&script, handler, {receiver, Datum::of(7)}, receiver);
+    assert(receiverScope.getParam(0).intValue() == 7);
+    assert(receiverScope.displayArguments().size() == 1);
+    assert(receiverScope.displayArguments()[0].intValue() == 7);
+    receiverScope.setParam(0, Datum::of(8));
+    assert(receiverScope.getParam(0).intValue() == 8);
+    assert(receiverScope.displayArguments()[0].intValue() == 8);
+
+    Scope firstParamMeScope(&script, handler, {receiver, Datum::of(7)}, receiver, true);
+    assert(firstParamMeScope.getParam(0) == receiver);
+    assert(firstParamMeScope.displayArguments().size() == 1);
+    assert(firstParamMeScope.displayArguments()[0].intValue() == 7);
+
+    BuiltinRegistry registry;
+    BuiltinContext builtinContext;
+    std::map<std::string, Datum> globals;
+    bool errorState = false;
+    ExecutionContext::Callbacks callbacks;
+    callbacks.globalGetter = [&globals](std::string_view name) {
+        const auto found = globals.find(std::string(name));
+        return found == globals.end() ? Datum::voidValue() : found->second;
+    };
+    callbacks.globalSetter = [&globals](std::string_view name, const Datum& value) {
+        globals[std::string(name)] = value;
+    };
+    callbacks.errorStateSetter = [&errorState](bool value) {
+        errorState = value;
+    };
+    callbacks.callStackFormatter = []() {
+        return std::string("stack");
+    };
+    callbacks.handlerFinder = [&script, &otherHandler](std::string_view name) -> std::optional<HandlerRef> {
+        if (name == "known") {
+            return HandlerRef{&script, otherHandler};
+        }
+        return std::nullopt;
+    };
+    callbacks.handlerExecutor = [](const ScriptChunk& calledScript,
+                                   const ScriptChunk::Handler& calledHandler,
+                                   const std::vector<Datum>& args,
+                                   const Datum& receiverArg) {
+        assert(calledScript.id().value() == 700);
+        assert(receiverArg.isVoid());
+        return Datum::of("exec:" + std::to_string(calledHandler.nameId) + ":" + std::to_string(args.size()));
+    };
+
+    Scope contextScope(&script, handler, {});
+    ExecutionContext context(contextScope, handler.instructions[1], &registry, &builtinContext, callbacks, 2);
+    assert(context.scope().script() == &script);
+    assert(context.instruction().offset == 5);
+    assert(context.argument() == 6);
+    assert(context.scaledArgument() == 3);
+    assert(context.variableMultiplier() == 2);
+    assert(context.instructionOffset() == 5);
+
+    context.push(Datum::of(4));
+    context.push(Datum::of(5));
+    assert(context.peek().intValue() == 5);
+    assert(context.peek(1).intValue() == 4);
+    const auto poppedArgs = context.popArgs(2);
+    assert(poppedArgs.size() == 2);
+    assert(poppedArgs[0].intValue() == 4);
+    assert(poppedArgs[1].intValue() == 5);
+    assert(context.popArgs(0).empty());
+
+    context.setLocal(1, Datum::of(44));
+    assert(context.getLocal(1).intValue() == 44);
+    context.setParam(0, Datum::of(55));
+    assert(context.getParam(0).intValue() == 55);
+
+    assert(context.getGlobal("score").isVoid());
+    context.setGlobal("score", Datum::of(12));
+    assert(context.getGlobal("score").intValue() == 12);
+    context.setErrorState(true);
+    assert(errorState);
+
+    context.jumpTo(10);
+    assert(contextScope.bytecodeIndex() == 2);
+    context.jumpTo(99);
+    assert(contextScope.bytecodeIndex() == 2);
+    assert(context.findLocalHandler(1)->nameId == 99);
+    assert(!context.findLocalHandler(99).has_value());
+    assert(context.findHandler("known")->handler.nameId == 99);
+    assert(!context.findHandler("missing").has_value());
+    assert(context.executeHandler(script, handler, {Datum::of(1)}, Datum::voidValue()).stringValue() == "exec:10:1");
+
+    assert(context.isBuiltin("abs"));
+    assert(context.invokeBuiltin("abs", {Datum::of(-4)}).intValue() == 4);
+    assert(context.invokeBuiltinIfPresent("integer", {Datum::of(std::string("7"))})->intValue() == 7);
+    assert(!context.invokeBuiltinIfPresent("missing", {}).has_value());
+    assert(context.builtins() == &registry);
+    assert(context.formatCallStack() == "stack");
+    assert(std::string(context.error("boom").what()) == "boom");
+
+    context.setInstruction(ScriptChunk::Instruction{20, Opcode::PUSH_INT8, 0x41, 8});
+    assert(context.argument() == 8);
+    assert(context.scaledArgument() == 4);
+    assert(context.instructionOffset() == 20);
 }
 
 std::shared_ptr<Bitmap> makeSolidHitBitmap(std::uint32_t argb) {
@@ -6557,6 +6762,7 @@ int main() {
     testPlayerInputFoundation();
     testMoviePropertiesFoundation();
     testBuiltinRegistryFoundation();
+    testLingoVmScopeAndExecutionContextFoundation();
     testHitTesterFoundation();
     testCursorManagerFoundation();
     testScoreNavigationFoundation();
