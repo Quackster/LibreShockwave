@@ -2377,6 +2377,13 @@ bool getLegacyProperty(ExecutionContext& context) {
     return true;
 }
 
+bool getField(ExecutionContext& context) {
+    (void)context.pop();
+    (void)context.pop();
+    context.push(Datum::of(std::string()));
+    return true;
+}
+
 bool setLegacyProperty(ExecutionContext& context) {
     const int propertyId = toIntLikeJava(context.pop());
     (void)propertyId;
@@ -2596,6 +2603,7 @@ void PropertyOpcodes::registerHandlers(OpcodeRegistry& registry) {
     registry.registerHandler(Opcode::GET_TOP_LEVEL_PROP, getTopLevelProp);
     registry.registerHandler(Opcode::GET, getLegacyProperty);
     registry.registerHandler(Opcode::SET, setLegacyProperty);
+    registry.registerHandler(Opcode::GET_FIELD, getField);
 }
 
 void CallOpcodes::registerHandlers(OpcodeRegistry& registry) {

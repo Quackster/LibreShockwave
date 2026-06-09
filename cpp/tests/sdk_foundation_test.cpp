@@ -2342,6 +2342,7 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opcodeRegistry.hasHandler(Opcode::GET_TOP_LEVEL_PROP));
     assert(opcodeRegistry.hasHandler(Opcode::GET));
     assert(opcodeRegistry.hasHandler(Opcode::SET));
+    assert(opcodeRegistry.hasHandler(Opcode::GET_FIELD));
     assert(opcodeRegistry.hasHandler(Opcode::THE_BUILTIN));
     assert(opcodeRegistry.hasHandler(Opcode::LOCAL_CALL));
     assert(opcodeRegistry.hasHandler(Opcode::EXT_CALL));
@@ -2800,6 +2801,18 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     legacySetContext.push(Datum::of(0x01));
     assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
     assert(legacySetScope.stackSize() == 0);
+
+    Scope fieldScope(&script, handler, {});
+    ExecutionContext fieldContext(fieldScope,
+                                  ScriptChunk::Instruction{0, Opcode::GET_FIELD, libreshockwave::lingo::code(Opcode::GET_FIELD), 0},
+                                  &registry,
+                                  &builtinContext,
+                                  callbacks);
+    fieldContext.push(Datum::of(std::string("fieldName")));
+    fieldContext.push(Datum::of(1));
+    assert(opcodeRegistry.execute(Opcode::GET_FIELD, fieldContext));
+    assert(fieldContext.pop().stringValue().empty());
+    assert(fieldScope.stackSize() == 0);
 
     Scope moviePropScope(&script, handler, {});
     ExecutionContext moviePropContext(moviePropScope,
