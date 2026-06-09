@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <vector>
 
@@ -24,10 +25,16 @@ class ScoreChunk;
 class ScriptChunk;
 class ScriptContextChunk;
 class ScriptNamesChunk;
+enum class CastMemberScriptType;
 }
 
 namespace libreshockwave::format {
 class AfterburnerReader;
+}
+
+namespace libreshockwave::lookup {
+class CastMemberLookup;
+class ScriptLookup;
 }
 
 namespace libreshockwave {
@@ -77,6 +84,12 @@ public:
     [[nodiscard]] const std::vector<std::shared_ptr<chunks::ScriptChunk>>& scripts() const;
     [[nodiscard]] const std::vector<std::shared_ptr<chunks::PaletteChunk>>& palettes() const;
     [[nodiscard]] const std::vector<std::shared_ptr<chunks::FontMapChunk>>& fontMaps() const;
+    [[nodiscard]] std::shared_ptr<chunks::CastChunk> getMappedCastChunk(int castLib);
+    [[nodiscard]] std::shared_ptr<chunks::CastMemberChunk> getCastMemberByIndex(int castLib, int castMemberIndex);
+    [[nodiscard]] std::shared_ptr<chunks::CastMemberChunk> getCastMemberByNumber(int castLib, int memberNumber);
+    [[nodiscard]] std::shared_ptr<chunks::ScriptChunk> getScriptByContextId(int scriptId);
+    [[nodiscard]] std::vector<std::shared_ptr<chunks::ScriptChunk>> getScriptsByContextId(int scriptId);
+    [[nodiscard]] std::optional<chunks::CastMemberScriptType> getScriptType(const std::shared_ptr<chunks::ScriptChunk>& script);
 
     [[nodiscard]] static std::shared_ptr<DirectorFile> load(const std::vector<std::uint8_t>& data);
 
@@ -94,6 +107,8 @@ private:
                                                                       bool capitalX);
     [[nodiscard]] std::shared_ptr<chunks::Chunk> reparseChunk(id::ChunkId id);
     void categorizeChunk(const std::shared_ptr<chunks::Chunk>& chunk);
+    [[nodiscard]] lookup::CastMemberLookup& castMemberLookup();
+    [[nodiscard]] lookup::ScriptLookup& scriptLookup();
     void setVersion(int version);
     void setCapitalX(bool capitalX);
 
@@ -122,6 +137,8 @@ private:
     std::vector<std::shared_ptr<chunks::ScriptChunk>> scripts_;
     std::vector<std::shared_ptr<chunks::PaletteChunk>> palettes_;
     std::vector<std::shared_ptr<chunks::FontMapChunk>> fontMaps_;
+    std::unique_ptr<lookup::CastMemberLookup> castMemberLookup_;
+    std::unique_ptr<lookup::ScriptLookup> scriptLookup_;
 };
 
 } // namespace libreshockwave

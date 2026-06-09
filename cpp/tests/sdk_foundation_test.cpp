@@ -50,6 +50,8 @@
 #include "libreshockwave/io/BinaryReader.hpp"
 #include "libreshockwave/lingo/Datum.hpp"
 #include "libreshockwave/lingo/Opcode.hpp"
+#include "libreshockwave/lookup/CastMemberLookup.hpp"
+#include "libreshockwave/lookup/ScriptLookup.hpp"
 #include "libreshockwave/util/AudioCodecUtils.hpp"
 
 using libreshockwave::format::ChunkInfo;
@@ -105,6 +107,8 @@ using libreshockwave::lingo::DatumType;
 using libreshockwave::lingo::LingoException;
 using libreshockwave::lingo::Opcode;
 using libreshockwave::lingo::StringChunkType;
+using libreshockwave::lookup::CastMemberLookup;
+using libreshockwave::lookup::ScriptLookup;
 
 void testBinaryReaderEndianAndBounds() {
     BinaryReader big({0x01, 0x02, 0x03, 0x04});
@@ -1970,6 +1974,77 @@ void testDirectorFileRiffLoader() {
     assert(file->getChunk(ChunkId(1))->type() == ChunkType::Lnam);
 }
 
+void testLookupHelpers() {
+    auto cast = std::make_shared<CastChunk>(nullptr, ChunkId(80), std::vector<int>{41, 42});
+    auto member5 = std::make_shared<CastMemberChunk>(nullptr,
+                                                     ChunkId(5),
+                                                     MemberType::Bitmap,
+                                                     0,
+                                                     0,
+                                                     std::vector<std::uint8_t>{},
+                                                     std::vector<std::uint8_t>{},
+                                                     "",
+                                                     0,
+                                                     0,
+                                                     0);
+    auto member42 = std::make_shared<CastMemberChunk>(nullptr,
+                                                      ChunkId(42),
+                                                      MemberType::Bitmap,
+                                                      0,
+                                                      0,
+                                                      std::vector<std::uint8_t>{},
+                                                      std::vector<std::uint8_t>{},
+                                                      "",
+                                                      0,
+                                                      0,
+                                                      0);
+    CastListChunk::CastListEntry entry{"Internal", "", 0, 5, 6, 2, 1};
+    auto castList = std::make_shared<CastListChunk>(nullptr, ChunkId(81), 0, 4, 1, std::vector<CastListChunk::CastListEntry>{entry});
+    CastMemberLookup castLookup({cast}, {member5, member42}, castList, nullptr);
+    assert(castLookup.getMappedCast(1) == cast);
+    assert(castLookup.getByIndex(1, 0) == member5);
+    assert(castLookup.getByNumber(1, 6) == member42);
+    assert(castLookup.getByNumber(1, 5) == nullptr);
+
+    auto script = std::make_shared<ScriptChunk>(nullptr,
+                                                ChunkId(200),
+                                                ScriptChunkType::Behavior,
+                                                0,
+                                                std::vector<ScriptChunk::Handler>{},
+                                                std::vector<ScriptChunk::LiteralEntry>{},
+                                                std::vector<ScriptChunk::PropertyEntry>{},
+                                                std::vector<ScriptChunk::GlobalEntry>{},
+                                                std::vector<std::uint8_t>{});
+    ScriptContextChunk::ScriptEntry scriptEntry{0, ChunkId(200), 0};
+    auto context = std::make_shared<ScriptContextChunk>(nullptr,
+                                                        ChunkId(201),
+                                                        0,
+                                                        0,
+                                                        1,
+                                                        ChunkId(202),
+                                                        1,
+                                                        0,
+                                                        0,
+                                                        std::vector<ScriptContextChunk::ScriptEntry>{scriptEntry});
+    auto scriptMember = std::make_shared<CastMemberChunk>(nullptr,
+                                                          ChunkId(203),
+                                                          MemberType::Script,
+                                                          0,
+                                                          2,
+                                                          std::vector<std::uint8_t>{},
+                                                          std::vector<std::uint8_t>{0, 2},
+                                                          "Behavior",
+                                                          1,
+                                                          0,
+                                                          0);
+    ScriptLookup scriptLookup({script}, {context}, {scriptMember});
+    assert(scriptLookup.getByContextId(1) == script);
+    assert(scriptLookup.getAllByContextId(1).size() == 1);
+    assert(scriptLookup.getByContextId(99) == nullptr);
+    assert(scriptLookup.getScriptType(script).has_value());
+    assert(scriptLookup.getScriptType(script).value() == CastMemberScriptType::Behavior);
+}
+
 int main() {
     testBinaryReaderEndianAndBounds();
     testBinaryReaderStringsAndFourCC();
@@ -1997,6 +2072,7 @@ int main() {
     testAfterburnerReader();
     testDirectorFileAfterburnerLoader();
     testDirectorFileRiffLoader();
+    testLookupHelpers();
 
     std::cout << "LibreShockwave C++ SDK foundation tests passed\n";
     return 0;

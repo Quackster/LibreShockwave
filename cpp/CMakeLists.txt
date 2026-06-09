@@ -34,6 +34,8 @@ add_library(libreshockwave
     src/io/BinaryReader.cpp
     src/lingo/Datum.cpp
     src/lingo/Opcode.cpp
+    src/lookup/CastMemberLookup.cpp
+    src/lookup/ScriptLookup.cpp
     src/util/AudioCodecUtils.cpp
 )
 

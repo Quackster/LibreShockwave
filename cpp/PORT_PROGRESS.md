@@ -120,6 +120,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Afterburner-loaded files retain their parsed `AfterburnerReader` for evicted chunk reloads.
 - `DirectorFile::releaseNonEssentialChunks` evicts sound, media, and raw chunks to match the Java memory-management path.
 
+### Cast and Script Lookup Foundation
+
+- `lookup::CastMemberLookup` maps cast libraries to CAS* chunks and resolves cast members by score index or authored member number.
+- `lookup::ScriptLookup` resolves scripts by Lctx context ID, including overlapping context spaces across multiple script contexts.
+- `DirectorFile` exposes cast member, mapped cast, script-by-context, and script-type lookup helpers backed by lazy lookup caches.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -148,13 +154,13 @@ Result:
 - Director file Afterburner loader tests passed through the same CTest executable.
 - Director file RIFF loader tests passed through the same CTest executable.
 - Lazy chunk reparse and non-essential release tests passed through the same CTest executable.
+- Cast member and script lookup tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
 
-- Higher-level chunk integration.
+- Higher-level palette/text/media/script-name integration.
 - Remaining bitmap, sound, font, text, score, and script chunk decoders.
-- Cast member resolution.
 - Lingo decompiler, VM runtime values, dispatchers, and builtins.
 - Player core, rendering pipeline, input, networking, audio, cast management, and debugging.
 - WASM/web player replacement strategy in C++.
@@ -175,4 +181,5 @@ Result:
 - `d0ddeff Port C++ Afterburner reader foundation`
 - `cbe591d Integrate C++ Afterburner file loading`
 - `7a2276f Port C++ D3 RIFF file loading`
-- Current checkpoint commit message: `Port C++ lazy chunk reparsing`
+- `cc3203d Port C++ lazy chunk reparsing`
+- Current checkpoint commit message: `Port C++ cast and script lookup`

@@ -23,6 +23,8 @@
 #include "libreshockwave/chunks/SoundChunk.hpp"
 #include "libreshockwave/chunks/TextChunk.hpp"
 #include "libreshockwave/format/AfterburnerReader.hpp"
+#include "libreshockwave/lookup/CastMemberLookup.hpp"
+#include "libreshockwave/lookup/ScriptLookup.hpp"
 
 namespace libreshockwave {
 
@@ -54,6 +56,30 @@ const std::vector<std::shared_ptr<chunks::CastMemberChunk>>& DirectorFile::castM
 const std::vector<std::shared_ptr<chunks::ScriptChunk>>& DirectorFile::scripts() const { return scripts_; }
 const std::vector<std::shared_ptr<chunks::PaletteChunk>>& DirectorFile::palettes() const { return palettes_; }
 const std::vector<std::shared_ptr<chunks::FontMapChunk>>& DirectorFile::fontMaps() const { return fontMaps_; }
+
+std::shared_ptr<chunks::CastChunk> DirectorFile::getMappedCastChunk(int castLib) {
+    return castMemberLookup().getMappedCast(castLib);
+}
+
+std::shared_ptr<chunks::CastMemberChunk> DirectorFile::getCastMemberByIndex(int castLib, int castMemberIndex) {
+    return castMemberLookup().getByIndex(castLib, castMemberIndex);
+}
+
+std::shared_ptr<chunks::CastMemberChunk> DirectorFile::getCastMemberByNumber(int castLib, int memberNumber) {
+    return castMemberLookup().getByNumber(castLib, memberNumber);
+}
+
+std::shared_ptr<chunks::ScriptChunk> DirectorFile::getScriptByContextId(int scriptId) {
+    return scriptLookup().getByContextId(scriptId);
+}
+
+std::vector<std::shared_ptr<chunks::ScriptChunk>> DirectorFile::getScriptsByContextId(int scriptId) {
+    return scriptLookup().getAllByContextId(scriptId);
+}
+
+std::optional<chunks::CastMemberScriptType> DirectorFile::getScriptType(const std::shared_ptr<chunks::ScriptChunk>& script) {
+    return scriptLookup().getScriptType(script);
+}
 
 std::shared_ptr<chunks::Chunk> DirectorFile::getChunk(id::ChunkId id) {
     if (const auto found = chunks_.find(id.value()); found != chunks_.end()) {
@@ -461,6 +487,9 @@ std::shared_ptr<chunks::Chunk> DirectorFile::reparseChunk(id::ChunkId id) {
 }
 
 void DirectorFile::categorizeChunk(const std::shared_ptr<chunks::Chunk>& chunk) {
+    castMemberLookup_.reset();
+    scriptLookup_.reset();
+
     if (auto config = std::dynamic_pointer_cast<chunks::ConfigChunk>(chunk)) {
         config_ = config;
         version_ = config->directorVersion();
@@ -493,6 +522,20 @@ void DirectorFile::categorizeChunk(const std::shared_ptr<chunks::Chunk>& chunk) 
     } else if (auto fontMap = std::dynamic_pointer_cast<chunks::FontMapChunk>(chunk)) {
         fontMaps_.push_back(fontMap);
     }
+}
+
+lookup::CastMemberLookup& DirectorFile::castMemberLookup() {
+    if (!castMemberLookup_) {
+        castMemberLookup_ = std::make_unique<lookup::CastMemberLookup>(casts_, castMembers_, castList_, config_);
+    }
+    return *castMemberLookup_;
+}
+
+lookup::ScriptLookup& DirectorFile::scriptLookup() {
+    if (!scriptLookup_) {
+        scriptLookup_ = std::make_unique<lookup::ScriptLookup>(scripts_, allScriptContexts_, castMembers_);
+    }
+    return *scriptLookup_;
 }
 
 void DirectorFile::setVersion(int version) {
