@@ -2233,6 +2233,18 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 87) {
             return std::string("customHandler");
         }
+        if (nameId == 88) {
+            return std::string("number");
+        }
+        if (nameId == 89) {
+            return std::string("memberNum");
+        }
+        if (nameId == 90) {
+            return std::string("castLibNum");
+        }
+        if (nameId == 91) {
+            return std::string("castLib");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.callStackFormatter = []() {
@@ -2728,6 +2740,12 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runObjectPropertyGet(Datum::intRect(1, 2, 6, 9), 53).intValue() == 5);
     assert(runObjectPropertyGet(Datum::colorRef(200, 20, 10), 55).intValue() == 200);
     assert(runObjectPropertyGet(Datum::of(3), 56).stringValue() == "integer");
+    const Datum objectMemberRef = Datum::castMemberRef(CastLibId(2), MemberId(5));
+    assert(runObjectPropertyGet(objectMemberRef, 88).intValue() == ((2 << 16) | 5));
+    assert(runObjectPropertyGet(objectMemberRef, 89).intValue() == 5);
+    assert(runObjectPropertyGet(objectMemberRef, 90).intValue() == 2);
+    assert(runObjectPropertyGet(objectMemberRef, 91).asCastLibRef()->castLib == 2);
+    assert(runObjectPropertyGet(Datum::castMemberRef(Datum::CastMemberRef{2, 0}), 88).intValue() == 0);
 
     Datum objectPropList = Datum::propList();
     objectPropList.propListValue().properties().emplace_back(Datum::symbol("health"), Datum::of(1));

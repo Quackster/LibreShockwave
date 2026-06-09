@@ -522,6 +522,23 @@ Datum getColorProp(const Datum::ColorRef& color, std::string_view propName) {
     return Datum::voidValue();
 }
 
+Datum getCastMemberProp(const Datum::CastMemberRef& member, std::string_view propName) {
+    const bool invalidRef = member.castMember <= 0;
+    if (equalsIgnoreCase(propName, "number")) {
+        return invalidRef ? Datum::of(0) : Datum::of((member.castLib << 16) | (member.castMember & 0xFFFF));
+    }
+    if (equalsIgnoreCase(propName, "membernum")) {
+        return invalidRef ? Datum::of(0) : Datum::of(member.memberNum());
+    }
+    if (equalsIgnoreCase(propName, "castlibnum")) {
+        return Datum::of(member.castLib);
+    }
+    if (equalsIgnoreCase(propName, "castlib")) {
+        return member.castLib >= 1 ? Datum::castLibRef(id::CastLibId(member.castLib)) : Datum::voidValue();
+    }
+    return Datum::voidValue();
+}
+
 Datum getObjectProperty(ExecutionContext& context, const Datum& object, std::string_view propName) {
     if (object.isVoid()) {
         return Datum::voidValue();
@@ -590,6 +607,9 @@ Datum getObjectProperty(ExecutionContext& context, const Datum& object, std::str
     }
     if (const auto* color = object.asColorRef()) {
         return getColorProp(*color, propName);
+    }
+    if (const auto* member = object.asCastMemberRef()) {
+        return getCastMemberProp(*member, propName);
     }
     if (equalsIgnoreCase(propName, "ilk")) {
         return Datum::symbol(ilkTypeName(object));
