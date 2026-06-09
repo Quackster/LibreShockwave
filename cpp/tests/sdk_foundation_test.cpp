@@ -2251,6 +2251,9 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 93) {
             return std::string("delete");
         }
+        if (nameId == 94) {
+            return std::string("new");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.callStackFormatter = []() {
@@ -3080,6 +3083,22 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         }
         return objectCallContext.pop();
     };
+
+    int scriptRefNewCalls = 0;
+    builtinContext.newInstanceHandler = [&scriptRefNewCalls](const Datum& target, const std::vector<Datum>& args) {
+        ++scriptRefNewCalls;
+        assert(target.asScriptRef() != nullptr);
+        assert(target.asScriptRef()->memberRef.castLib == 4);
+        assert(target.asScriptRef()->memberRef.castMember == 12);
+        assert(args.size() == 1);
+        assert(args.front().intValue() == 101);
+        return Datum::scriptInstance("scriptRefNew");
+    };
+    assert(runObjCall(94, {Datum::scriptRef(Datum::CastMemberRef{4, 12}), Datum::of(101)})
+               .scriptInstanceValue()
+               .scriptName() == "scriptRefNew");
+    assert(scriptRefNewCalls == 1);
+    builtinContext.newInstanceHandler = {};
 
     Datum methodList = Datum::list({Datum::of(10), Datum::of(20)});
     assert(runObjCall(64, {methodList, Datum::of(2)}).intValue() == 20);

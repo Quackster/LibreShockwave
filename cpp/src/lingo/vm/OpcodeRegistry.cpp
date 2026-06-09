@@ -1731,6 +1731,24 @@ Datum chunkRefObjectMethod(ExecutionContext& context,
     return Datum::voidValue();
 }
 
+Datum scriptRefObjectMethod(ExecutionContext& context,
+                            const Datum::ScriptRef& scriptRef,
+                            std::string_view methodName,
+                            const std::vector<Datum>& args) {
+    if (!equalsIgnoreCase(methodName, "new")) {
+        return Datum::voidValue();
+    }
+
+    std::vector<Datum> fullArgs;
+    fullArgs.reserve(args.size() + 1);
+    fullArgs.push_back(Datum::scriptRef(scriptRef.memberRef));
+    fullArgs.insert(fullArgs.end(), args.begin(), args.end());
+    if (const auto result = context.invokeBuiltinIfPresent("new", fullArgs)) {
+        return *result;
+    }
+    return Datum::voidValue();
+}
+
 Datum varRefObjectMethod(ExecutionContext& context,
                          const Datum::VarRef& varRef,
                          std::string_view methodName,
@@ -1791,6 +1809,9 @@ Datum dispatchObjectMethod(ExecutionContext& context, Datum target, std::string_
     }
     if (const auto* chunkRef = target.asChunkRef()) {
         return chunkRefObjectMethod(context, *chunkRef, methodName, args);
+    }
+    if (const auto* scriptRef = target.asScriptRef()) {
+        return scriptRefObjectMethod(context, *scriptRef, methodName, args);
     }
     auto* builtinContext = context.builtinContext();
     if (const auto* timeout = target.asTimeoutRef()) {

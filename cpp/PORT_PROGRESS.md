@@ -478,6 +478,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - List and property-list method dispatch covers Java-compatible mutation and lookup helpers such as `getAt`, `setAt`, `append`, `addProp`, `getProp`, `count`, `sort`, and duplicate-preserving property insertion.
 - String receiver dispatch now covers direct `getProp`/`getPropRef` chunk extraction, and VarRef receiver dispatch resolves referenced context variables for string-like `getProp`, `getPropRef`, `char`, and `count` object methods.
 - Mutable ChunkRef creation and char-range deletion now use a dedicated C++ datum; broader mutable chunk-ref operations remain deferred.
+- ScriptRef receiver dispatch now supports Java-compatible `new` method calls through the registered constructor builtin.
 
 ### Lingo Opcode Object Construction Foundation
 
@@ -586,7 +587,7 @@ Result:
 - Lingo `GET_CHAINED_PROP` list, string, point, property-list, and script-instance reads plus `GET_TOP_LEVEL_PROP` `_player`/`_movie` refs passed through the same CTest executable.
 - Lingo legacy `GET` last-chunk/count chunk reads, provider-backed movie/sprite/sound property mappings, and provider-backed `SET` mutations passed through the same CTest executable.
 - Lingo `GET_FIELD` provider-backed field lookup, cast-library lookup, provider-missing empty-string fallback, and stack-consumption tests passed through the same CTest executable.
-- Lingo direct-string and VarRef object-call string chunk extraction, mutable char chunk-ref deletion, string method delegation, and provider-backed item counting tests passed through the same CTest executable.
+- Lingo direct-string and VarRef object-call string chunk extraction, mutable char chunk-ref deletion, ScriptRef `new`, string method delegation, and provider-backed item counting tests passed through the same CTest executable.
 - MovieProperties movie/stage property reads and writes, file/input-backed values, xtra lists, item delimiters, timers, stage background color, random seed, navigation callbacks, and net navigation callbacks passed through the same CTest executable.
 - BuiltinRegistry case-insensitive lookup, custom registration, movie label/marker builtins, sprite puppet/cursor/spriteBox builtins, puppetPalette hooks, and Java-compatible no-op sprite builtins passed through the same CTest executable.
 - MathBuiltins numeric coercion, integer/float conversion, bit operations, trig, power, min/max, list min/max, and random callback hooks passed through the same CTest executable.
@@ -721,4 +722,5 @@ Result:
 - `3bbcf4a4 Port C++ string item count delimiter foundation`
 - `5ff40363 Port C++ chunk mutation delimiter coverage`
 - `c8ae0bef Port C++ direct string chunk methods`
-- Current checkpoint commit message: `Port C++ mutable chunk ref deletion foundation`
+- `c9b5edcb Port C++ mutable chunk ref deletion foundation`
+- Current checkpoint commit message: `Port C++ script ref new method foundation`
