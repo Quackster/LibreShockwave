@@ -2867,6 +2867,41 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
     assert(legacySetScope.stackSize() == 0);
 
+    MovieProperties legacyMovieProps;
+    SpriteRegistry legacySpriteRegistry;
+    auto legacySprite = legacySpriteRegistry.getOrCreateDynamic(5);
+    legacySprite->setLocH(22);
+    SpriteProperties legacySpriteProps(&legacySpriteRegistry);
+    SoundManager legacySoundManager;
+    legacySoundManager.setVolume(2, 65);
+    builtinContext.movieProperties = &legacyMovieProps;
+    builtinContext.spriteProperties = &legacySpriteProps;
+    builtinContext.soundManager = &legacySoundManager;
+    assert(runLegacyGet(0x00, Datum::voidValue(), 0x00).intValue() == 4);
+    assert(runLegacyGet(0x06, Datum::of(5), 0x0D).intValue() == 22);
+    assert(runLegacyGet(0x0B, Datum::of(2), 0x01).intValue() == 65);
+    legacySetContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET, libreshockwave::lingo::code(Opcode::SET), 0x00});
+    legacySetContext.push(Datum::of(8));
+    legacySetContext.push(Datum::of(0x00));
+    assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
+    assert(legacyMovieProps.getMovieProp("floatPrecision").intValue() == 8);
+    legacySetContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET, libreshockwave::lingo::code(Opcode::SET), 0x06});
+    legacySetContext.push(Datum::of(5));
+    legacySetContext.push(Datum::of(44));
+    legacySetContext.push(Datum::of(0x0D));
+    assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
+    assert(legacySpriteProps.getSpriteProp(5, "locH").intValue() == 44);
+    legacySetContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET, libreshockwave::lingo::code(Opcode::SET), 0x04});
+    legacySetContext.push(Datum::of(2));
+    legacySetContext.push(Datum::of(99));
+    legacySetContext.push(Datum::of(0x01));
+    assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
+    assert(legacySoundManager.getVolume(2) == 99);
+    assert(legacySetScope.stackSize() == 0);
+    builtinContext.movieProperties = nullptr;
+    builtinContext.spriteProperties = nullptr;
+    builtinContext.soundManager = nullptr;
+
     Scope fieldScope(&script, handler, {});
     ExecutionContext fieldContext(fieldScope,
                                   ScriptChunk::Instruction{0, Opcode::GET_FIELD, libreshockwave::lingo::code(Opcode::GET_FIELD), 0},

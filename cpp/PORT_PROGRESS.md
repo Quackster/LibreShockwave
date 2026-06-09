@@ -584,7 +584,7 @@ Result:
 - Lingo `DELETE_CHUNK` char, word, item, line, negative last-index, delimiter, and out-of-range tests passed through the same CTest executable.
 - Lingo `PUT_CHUNK` char replacement/insertion, item replacement, word/line insertion, negative target, and out-of-range no-op tests passed through the same CTest executable.
 - Lingo `GET_CHAINED_PROP` list, string, point, property-list, and script-instance reads plus `GET_TOP_LEVEL_PROP` `_player`/`_movie` refs passed through the same CTest executable.
-- Lingo legacy `GET` last-chunk/count chunk reads and provider-backed `SET` stack-consumption no-op tests passed through the same CTest executable.
+- Lingo legacy `GET` last-chunk/count chunk reads, provider-backed movie/sprite/sound property mappings, and provider-backed `SET` mutations passed through the same CTest executable.
 - Lingo `GET_FIELD` provider-backed field lookup, cast-library lookup, provider-missing empty-string fallback, and stack-consumption tests passed through the same CTest executable.
 - Lingo VarRef object-call string chunk extraction and string method delegation tests passed through the same CTest executable.
 - MovieProperties movie/stage property reads and writes, file/input-backed values, xtra lists, item delimiters, timers, stage background color, random seed, navigation callbacks, and net navigation callbacks passed through the same CTest executable.
@@ -713,4 +713,5 @@ Result:
 - `03d07cd5 Port C++ opcode field resolver foundation`
 - `3996ec79 Port C++ opcode movie property provider foundation`
 - `afc0c541 Port C++ opcode object property provider foundation`
-- Current checkpoint commit message: `Port C++ opcode object method provider foundation`
+- `d3e3fbc1 Port C++ opcode object method provider foundation`
+- Current checkpoint commit message: `Port C++ opcode legacy property provider foundation`
