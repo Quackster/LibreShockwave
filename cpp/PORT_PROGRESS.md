@@ -298,7 +298,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - Timeout builtins now register Java-compatible `timeout`, returning named or factory-mode `TimeoutRef` values.
 - `TimeoutBuiltins` exposes method dispatch helpers for `new`, `forget`, and property-style timeout lookup, backed by the ported C++ `TimeoutManager`.
-- Timeout property mutation is exposed through a static helper for future object-property dispatch, while unregistered Java helper functions remain deferred to movie scripts as in the Java baseline.
+- Timeout property lookup and mutation now route through VM object-property opcodes, while unregistered Java helper functions remain deferred to movie scripts as in the Java baseline.
 
 ### Network and External Parameter Builtins Foundation
 
@@ -612,7 +612,7 @@ Result:
 - XtraBuiltins registration, missing-manager behavior, registered-Xtra lookup, `new(xtraRef, ...)` instance creation, handler dispatch, property get/set callbacks, and Java-style display strings passed through the same CTest executable.
 - ControlFlowBuiltins return/abort state, param lookup, frame/label `go`, call-target dispatch, list/proplist call snapshots, and omitted update builtins passed through the same CTest executable.
 - ListBuiltins list/proplist counts, access, mutation, searches, sorting, constructors, key namespace behavior, and aliases passed through the same CTest executable.
-- TimeoutBuiltins `timeout` creation, factory-mode `.new`, named `.new`, `.forget`, property get/set helpers, and missing-provider behavior passed through the same CTest executable.
+- TimeoutBuiltins `timeout` creation, factory-mode `.new`, named `.new`, `.forget`, property get/set helpers, VM object-property get/set dispatch, and missing-provider behavior passed through the same CTest executable.
 - NetBuiltins preload/get/post aliases, task result/error/status lookups, stream-status toggling, navigation callbacks, and ExternalParamBuiltins ordered parameter lookup passed through the same CTest executable.
 - ImageBuiltins image creation, invalid-dimension handling, white fill defaults, built-in/system palette metadata, provider-resolved member palette metadata, string/ilk behavior, and `importFileInto` callback delegation passed through the same CTest executable.
 - SoundBuiltins channel creation, availability, sound-channel method dispatch, property defaults/mutation, and SoundManager playback delegation passed through the same CTest executable.
@@ -762,4 +762,5 @@ Result:
 - `58e7dee7 Port C++ image property setter foundation`
 - `881040e1 Port C++ castLib member accessor foundation`
 - `99a43fa8 Port C++ cast member property provider foundation`
-- Current checkpoint commit message: `Port C++ script construction provider fallback`
+- `19b640a3 Port C++ script construction provider fallback`
+- Current checkpoint commit message: `Port C++ timeout object property dispatch`

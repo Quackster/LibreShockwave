@@ -2344,6 +2344,9 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 123) {
             return std::string("name");
         }
+        if (nameId == 124) {
+            return std::string("period");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.callStackFormatter = []() {
@@ -3067,6 +3070,18 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(setCastMemberPropertyValue.stringValue() == "table");
     builtinContext.castMemberPropertyGetter = {};
     builtinContext.castMemberPropertySetter = {};
+
+    TimeoutManager objectPropertyTimeouts;
+    const Datum objectPropertyTimer = objectPropertyTimeouts.createTimeout("propTimer", 500, "tick", Datum::voidValue());
+    builtinContext.timeoutManager = &objectPropertyTimeouts;
+    assert(runObjectPropertyGet(objectPropertyTimer, 124).intValue() == 500);
+    setObjectContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_OBJ_PROP, libreshockwave::lingo::code(Opcode::SET_OBJ_PROP), 124});
+    setObjectContext.push(objectPropertyTimer);
+    setObjectContext.push(Datum::of(250));
+    assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
+    assert(objectPropertyTimeouts.getTimeoutProp("propTimer", "period").intValue() == 250);
+    assert(runObjectPropertyGet(objectPropertyTimer, 124).intValue() == 250);
+    builtinContext.timeoutManager = nullptr;
 
     auto imageSetBitmap = std::make_shared<Bitmap>(1, 1, 32);
     assert(!imageSetBitmap->isNativeAlpha());
