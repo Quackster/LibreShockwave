@@ -2191,6 +2191,10 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opcodeRegistry.hasHandler(Opcode::SWAP));
     assert(opcodeRegistry.hasHandler(Opcode::POP));
     assert(opcodeRegistry.hasHandler(Opcode::PEEK));
+    assert(opcodeRegistry.hasHandler(Opcode::PUSH_LIST));
+    assert(opcodeRegistry.hasHandler(Opcode::PUSH_PROP_LIST));
+    assert(opcodeRegistry.hasHandler(Opcode::PUSH_ARG_LIST));
+    assert(opcodeRegistry.hasHandler(Opcode::PUSH_ARG_LIST_NO_RET));
     assert(opcodeRegistry.hasHandler(Opcode::ADD));
     assert(opcodeRegistry.hasHandler(Opcode::SUB));
     assert(opcodeRegistry.hasHandler(Opcode::MUL));
@@ -2206,6 +2210,14 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opcodeRegistry.hasHandler(Opcode::AND));
     assert(opcodeRegistry.hasHandler(Opcode::OR));
     assert(opcodeRegistry.hasHandler(Opcode::NOT));
+    assert(opcodeRegistry.hasHandler(Opcode::GET_LOCAL));
+    assert(opcodeRegistry.hasHandler(Opcode::SET_LOCAL));
+    assert(opcodeRegistry.hasHandler(Opcode::GET_PARAM));
+    assert(opcodeRegistry.hasHandler(Opcode::SET_PARAM));
+    assert(opcodeRegistry.hasHandler(Opcode::GET_GLOBAL));
+    assert(opcodeRegistry.hasHandler(Opcode::GET_GLOBAL2));
+    assert(opcodeRegistry.hasHandler(Opcode::SET_GLOBAL));
+    assert(opcodeRegistry.hasHandler(Opcode::SET_GLOBAL2));
     assert(opcodeRegistry.hasHandler(Opcode::RET));
     assert(opcodeRegistry.hasHandler(Opcode::RET_FACTORY));
     assert(opcodeRegistry.hasHandler(Opcode::JMP));
@@ -2261,6 +2273,80 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opContext.pop().intValue() == 4);
     assert(opContext.pop().intValue() == 5);
     assert(opContext.pop().intValue() == 4);
+
+    Scope variableScope(&script, handler, {Datum::of(11), Datum::of(22)});
+    ExecutionContext variableContext(variableScope,
+                                     ScriptChunk::Instruction{0, Opcode::SET_LOCAL, libreshockwave::lingo::code(Opcode::SET_LOCAL), 2},
+                                     &registry,
+                                     &builtinContext,
+                                     callbacks,
+                                     2);
+    variableContext.push(Datum::of(123));
+    assert(opcodeRegistry.execute(Opcode::SET_LOCAL, variableContext));
+    assert(variableScope.getLocal(1).intValue() == 123);
+    variableContext.setInstruction(ScriptChunk::Instruction{0, Opcode::GET_LOCAL, libreshockwave::lingo::code(Opcode::GET_LOCAL), 2});
+    assert(opcodeRegistry.execute(Opcode::GET_LOCAL, variableContext));
+    assert(variableContext.pop().intValue() == 123);
+    variableContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_PARAM, libreshockwave::lingo::code(Opcode::SET_PARAM), 0});
+    variableContext.push(Datum::of(44));
+    assert(opcodeRegistry.execute(Opcode::SET_PARAM, variableContext));
+    assert(variableScope.getParam(0).intValue() == 44);
+    variableContext.setInstruction(ScriptChunk::Instruction{0, Opcode::GET_PARAM, libreshockwave::lingo::code(Opcode::GET_PARAM), 0});
+    assert(opcodeRegistry.execute(Opcode::GET_PARAM, variableContext));
+    assert(variableContext.pop().intValue() == 44);
+    globals.clear();
+    variableContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_GLOBAL, libreshockwave::lingo::code(Opcode::SET_GLOBAL), 42});
+    variableContext.push(Datum::of(std::string("scoreValue")));
+    assert(opcodeRegistry.execute(Opcode::SET_GLOBAL, variableContext));
+    assert(globals["#42"].stringValue() == "scoreValue");
+    variableContext.setInstruction(ScriptChunk::Instruction{0, Opcode::GET_GLOBAL2, libreshockwave::lingo::code(Opcode::GET_GLOBAL2), 42});
+    assert(opcodeRegistry.execute(Opcode::GET_GLOBAL2, variableContext));
+    assert(variableContext.pop().stringValue() == "scoreValue");
+    variableContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_GLOBAL2, libreshockwave::lingo::code(Opcode::SET_GLOBAL2), 43});
+    variableContext.push(Datum::of(77));
+    assert(opcodeRegistry.execute(Opcode::SET_GLOBAL2, variableContext));
+    assert(globals["#43"].intValue() == 77);
+
+    Scope listScope(&script, handler, {});
+    ExecutionContext listContext(listScope, ScriptChunk::Instruction{0, Opcode::PUSH_ARG_LIST, libreshockwave::lingo::code(Opcode::PUSH_ARG_LIST), 3});
+    listContext.push(Datum::of(1));
+    listContext.push(Datum::of(std::string("two")));
+    listContext.push(Datum::of(3));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST, listContext));
+    assert(listContext.peek().type() == DatumType::ArgList);
+    assert(listContext.peek().argListValue().args()[1].stringValue() == "two");
+    listContext.setInstruction(ScriptChunk::Instruction{0, Opcode::PUSH_LIST, libreshockwave::lingo::code(Opcode::PUSH_LIST), 0});
+    assert(opcodeRegistry.execute(Opcode::PUSH_LIST, listContext));
+    const Datum linearList = listContext.pop();
+    assert(linearList.listValue().count() == 3);
+    assert(linearList.listValue().getAt(3).intValue() == 3);
+
+    Scope singleListScope(&script, handler, {});
+    ExecutionContext singleListContext(singleListScope,
+                                       ScriptChunk::Instruction{0, Opcode::PUSH_LIST, libreshockwave::lingo::code(Opcode::PUSH_LIST), 0});
+    singleListContext.push(Datum::of(8));
+    assert(opcodeRegistry.execute(Opcode::PUSH_LIST, singleListContext));
+    assert(singleListContext.pop().listValue().getAt(1).intValue() == 8);
+
+    Scope propListScope(&script, handler, {});
+    ExecutionContext propListContext(propListScope,
+                                     ScriptChunk::Instruction{0, Opcode::PUSH_ARG_LIST_NO_RET, libreshockwave::lingo::code(Opcode::PUSH_ARG_LIST_NO_RET), 6});
+    propListContext.push(Datum::symbol("name"));
+    propListContext.push(Datum::of(std::string("first")));
+    propListContext.push(Datum::symbol("name"));
+    propListContext.push(Datum::of(std::string("duplicate")));
+    propListContext.push(Datum::symbol("other"));
+    propListContext.push(Datum::of(3));
+    assert(opcodeRegistry.execute(Opcode::PUSH_ARG_LIST_NO_RET, propListContext));
+    assert(propListContext.peek().type() == DatumType::ArgListNoRet);
+    assert(propListContext.peek().argListNoRetValue().args().size() == 6);
+    propListContext.setInstruction(ScriptChunk::Instruction{0, Opcode::PUSH_PROP_LIST, libreshockwave::lingo::code(Opcode::PUSH_PROP_LIST), 0});
+    assert(opcodeRegistry.execute(Opcode::PUSH_PROP_LIST, propListContext));
+    const Datum propList = propListContext.pop();
+    assert(propList.propListValue().properties().size() == 3);
+    assert(propList.propListValue().properties()[0].second.stringValue() == "first");
+    assert(propList.propListValue().properties()[1].second.stringValue() == "duplicate");
+    assert(propList.propListValue().properties()[2].second.intValue() == 3);
 
     auto runUnary = [&](Opcode opcode, Datum value) {
         Scope unaryScope(&script, handler, {});

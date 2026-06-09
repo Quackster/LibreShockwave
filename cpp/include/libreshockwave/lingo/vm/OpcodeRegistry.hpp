@@ -48,4 +48,14 @@ public:
     static void registerHandlers(OpcodeRegistry& registry);
 };
 
+class VariableOpcodes {
+public:
+    static void registerHandlers(OpcodeRegistry& registry);
+};
+
+class ListOpcodes {
+public:
+    static void registerHandlers(OpcodeRegistry& registry);
+};
+
 } // namespace libreshockwave::lingo::vm

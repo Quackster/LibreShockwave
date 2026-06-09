@@ -222,6 +222,16 @@ bool lingoEquals(const Datum& a, const Datum& b) {
     return a == b;
 }
 
+std::vector<Datum> argListItems(const Datum& datum) {
+    if (datum.type() == DatumType::ArgList) {
+        return datum.argListValue().args();
+    }
+    if (datum.type() == DatumType::ArgListNoRet) {
+        return datum.argListNoRetValue().args();
+    }
+    return {};
+}
+
 bool pushZero(ExecutionContext& context) {
     context.push(Datum::of(0));
     return true;
@@ -595,6 +605,71 @@ bool logicalNot(ExecutionContext& context) {
     return true;
 }
 
+bool getLocal(ExecutionContext& context) {
+    context.push(context.getLocal(context.scaledArgument()));
+    return true;
+}
+
+bool setLocal(ExecutionContext& context) {
+    context.setLocal(context.scaledArgument(), context.pop());
+    return true;
+}
+
+bool getParam(ExecutionContext& context) {
+    context.push(context.getParam(context.scaledArgument()));
+    return true;
+}
+
+bool setParam(ExecutionContext& context) {
+    context.setParam(context.scaledArgument(), context.pop());
+    return true;
+}
+
+bool getGlobal(ExecutionContext& context) {
+    const std::string name = context.resolveName(context.argument());
+    context.push(context.getGlobal(name));
+    return true;
+}
+
+bool setGlobal(ExecutionContext& context) {
+    const std::string name = context.resolveName(context.argument());
+    context.setGlobal(name, context.pop());
+    return true;
+}
+
+bool pushList(ExecutionContext& context) {
+    const Datum argListDatum = context.pop();
+    std::vector<Datum> items = argListItems(argListDatum);
+    if (items.empty() && argListDatum.type() != DatumType::ArgList && argListDatum.type() != DatumType::ArgListNoRet &&
+        !argListDatum.isVoid()) {
+        items.push_back(argListDatum);
+    }
+    context.push(Datum::list(std::move(items)));
+    return true;
+}
+
+bool pushPropList(ExecutionContext& context) {
+    const Datum argListDatum = context.pop();
+    const std::vector<Datum> items = argListItems(argListDatum);
+    Datum propList = Datum::propList();
+    auto& properties = propList.propListValue().properties();
+    for (std::size_t index = 0; index + 1 < items.size(); index += 2) {
+        properties.emplace_back(items[index], items[index + 1]);
+    }
+    context.push(std::move(propList));
+    return true;
+}
+
+bool pushArgList(ExecutionContext& context) {
+    context.push(Datum::argList(context.popArgs(context.argument())));
+    return true;
+}
+
+bool pushArgListNoRet(ExecutionContext& context) {
+    context.push(Datum::argListNoRet(context.popArgs(context.argument())));
+    return true;
+}
+
 } // namespace
 
 OpcodeRegistry::OpcodeRegistry() {
@@ -602,7 +677,9 @@ OpcodeRegistry::OpcodeRegistry() {
     ArithmeticOpcodes::registerHandlers(*this);
     ComparisonOpcodes::registerHandlers(*this);
     LogicalOpcodes::registerHandlers(*this);
+    VariableOpcodes::registerHandlers(*this);
     ControlFlowOpcodes::registerHandlers(*this);
+    ListOpcodes::registerHandlers(*this);
 }
 
 const OpcodeHandler* OpcodeRegistry::get(Opcode opcode) const {
@@ -666,6 +743,24 @@ void LogicalOpcodes::registerHandlers(OpcodeRegistry& registry) {
     registry.registerHandler(Opcode::AND, logicalAnd);
     registry.registerHandler(Opcode::OR, logicalOr);
     registry.registerHandler(Opcode::NOT, logicalNot);
+}
+
+void VariableOpcodes::registerHandlers(OpcodeRegistry& registry) {
+    registry.registerHandler(Opcode::GET_LOCAL, getLocal);
+    registry.registerHandler(Opcode::SET_LOCAL, setLocal);
+    registry.registerHandler(Opcode::GET_PARAM, getParam);
+    registry.registerHandler(Opcode::SET_PARAM, setParam);
+    registry.registerHandler(Opcode::GET_GLOBAL, getGlobal);
+    registry.registerHandler(Opcode::GET_GLOBAL2, getGlobal);
+    registry.registerHandler(Opcode::SET_GLOBAL, setGlobal);
+    registry.registerHandler(Opcode::SET_GLOBAL2, setGlobal);
+}
+
+void ListOpcodes::registerHandlers(OpcodeRegistry& registry) {
+    registry.registerHandler(Opcode::PUSH_LIST, pushList);
+    registry.registerHandler(Opcode::PUSH_PROP_LIST, pushPropList);
+    registry.registerHandler(Opcode::PUSH_ARG_LIST, pushArgList);
+    registry.registerHandler(Opcode::PUSH_ARG_LIST_NO_RET, pushArgListNoRet);
 }
 
 } // namespace libreshockwave::lingo::vm
