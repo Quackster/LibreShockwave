@@ -1546,6 +1546,19 @@ Datum dispatchObjectMethod(ExecutionContext& context, Datum target, std::string_
     if (const auto* varRef = target.asVarRef()) {
         return varRefObjectMethod(context, *varRef, methodName, args);
     }
+    auto* builtinContext = context.builtinContext();
+    if (const auto* timeout = target.asTimeoutRef()) {
+        return builtinContext != nullptr ? builtin::TimeoutBuiltins::handleMethod(*builtinContext, *timeout, methodName, args)
+                                         : Datum::voidValue();
+    }
+    if (const auto* soundChannel = target.asSoundChannel()) {
+        return builtinContext != nullptr ? builtin::SoundBuiltins::handleMethod(*builtinContext, *soundChannel, methodName, args)
+                                         : Datum::voidValue();
+    }
+    if (const auto* xtraInstance = target.asXtraInstance()) {
+        return builtinContext != nullptr ? builtin::XtraBuiltins::callHandler(*builtinContext, *xtraInstance, methodName, args)
+                                         : Datum::voidValue();
+    }
     if (target.isList()) {
         return listObjectMethod(target.listValue(), methodName, args);
     }

@@ -2224,6 +2224,15 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 84) {
             return std::string("locV");
         }
+        if (nameId == 85) {
+            return std::string("forget");
+        }
+        if (nameId == 86) {
+            return std::string("volume");
+        }
+        if (nameId == 87) {
+            return std::string("customHandler");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.callStackFormatter = []() {
@@ -3053,6 +3062,35 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runObjCall(64, {Datum::intPoint(5, 6), Datum::of(2)}).intValue() == 6);
     assert(runObjCall(64, {Datum::intRect(1, 2, 3, 4), Datum::of(3)}).intValue() == 3);
     assert(runObjCall(72, {Datum::intRect(1, 2, 3, 4)}) == Datum::intRect(1, 2, 3, 4));
+
+    TimeoutManager objectCallTimeouts;
+    builtinContext.timeoutManager = &objectCallTimeouts;
+    const Datum objectCallTimer = objectCallTimeouts.createTimeout("vmTimer", 250, "tick", Datum::voidValue());
+    assert(runObjCall(85, {objectCallTimer}).isVoid());
+    assert(!objectCallTimeouts.timeoutExists("vmTimer"));
+    SoundManager objectCallSounds;
+    builtinContext.soundManager = &objectCallSounds;
+    assert(runObjCall(86, {Datum::soundChannel(3), Datum::of(77)}).isVoid());
+    assert(objectCallSounds.getVolume(3) == 77);
+    assert(runObjCall(86, {Datum::soundChannel(3)}).intValue() == 77);
+    std::string objectCallXtraHandler;
+    std::vector<Datum> objectCallXtraArgs;
+    builtinContext.xtraHandler = [&objectCallXtraHandler, &objectCallXtraArgs](const Datum::XtraInstance& instance,
+                                                                               const std::string& handlerName,
+                                                                               const std::vector<Datum>& args) {
+        assert(instance.xtraName == "Multiuser");
+        assert(instance.instanceId == 42);
+        objectCallXtraHandler = handlerName;
+        objectCallXtraArgs = args;
+        return Datum::of(std::string("xtra:handled"));
+    };
+    assert(runObjCall(87, {Datum::xtraInstance("Multiuser", 42), Datum::of(std::string("payload"))}).stringValue() == "xtra:handled");
+    assert(objectCallXtraHandler == "customHandler");
+    assert(objectCallXtraArgs.size() == 1);
+    assert(objectCallXtraArgs.front().stringValue() == "payload");
+    builtinContext.timeoutManager = nullptr;
+    builtinContext.soundManager = nullptr;
+    builtinContext.xtraHandler = {};
 
     auto runUnary = [&](Opcode opcode, Datum value) {
         Scope unaryScope(&script, handler, {});
