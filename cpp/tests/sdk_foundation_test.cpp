@@ -74,6 +74,7 @@
 #include "libreshockwave/player/debug/WatchExpression.hpp"
 #include "libreshockwave/player/frame/FrameEvent.hpp"
 #include "libreshockwave/player/input/DirectorKeyCodes.hpp"
+#include "libreshockwave/player/input/HitTester.hpp"
 #include "libreshockwave/player/input/InputEvent.hpp"
 #include "libreshockwave/player/input/InputState.hpp"
 #include "libreshockwave/player/net/NetTask.hpp"
@@ -175,7 +176,9 @@ using libreshockwave::player::debug::DebugSnapshot;
 using libreshockwave::player::debug::InstructionDisplay;
 using libreshockwave::player::debug::WatchExpression;
 using libreshockwave::player::frame::FrameEvent;
+using libreshockwave::player::input::AlphaHitRule;
 using libreshockwave::player::input::DirectorKeyCodes;
+using libreshockwave::player::input::HitTester;
 using libreshockwave::player::input::InputEvent;
 using libreshockwave::player::input::InputEventType;
 using libreshockwave::player::input::InputState;
@@ -633,6 +636,160 @@ void testPlayerInputFoundation() {
     assert(state.pollEvent() == InputEvent::keyDown(36, "x"));
     assert(!state.hasEvents());
     assert(!state.pollEvent().has_value());
+}
+
+std::shared_ptr<Bitmap> makeSolidHitBitmap(std::uint32_t argb) {
+    auto bitmap = std::make_shared<Bitmap>(3, 3, 32);
+    bitmap->fill(argb);
+    return bitmap;
+}
+
+std::vector<std::uint8_t> makeNativeAlphaBitmapSpecificData(int alphaThreshold) {
+    return {
+        0x80, 0x0C,
+        0x00, 0x00,
+        0x00, 0x00,
+        0x00, 0x03,
+        0x00, 0x03,
+        static_cast<std::uint8_t>(alphaThreshold & 0xFF),
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00,
+        0x00, 0x00,
+        0x10,
+        0x20,
+        0x00, 0x00,
+        0x00, 0x00
+    };
+}
+
+std::shared_ptr<CastMemberChunk> makeHitBitmapMember(int id, int alphaThreshold = 0) {
+    auto specificData = makeNativeAlphaBitmapSpecificData(alphaThreshold);
+    return std::make_shared<CastMemberChunk>(nullptr,
+                                             ChunkId(id),
+                                             MemberType::Bitmap,
+                                             0,
+                                             static_cast<int>(specificData.size()),
+                                             std::vector<std::uint8_t>{},
+                                             specificData,
+                                             "hit",
+                                             0,
+                                             0,
+                                             0);
+}
+
+RenderSprite makeHitSprite(int channel,
+                           std::shared_ptr<const Bitmap> baked,
+                           int ink = 0,
+                           std::shared_ptr<const CastMemberChunk> castMember = nullptr,
+                           std::shared_ptr<const CastMember> dynamicMember = nullptr,
+                           bool flipH = false,
+                           bool flipV = false,
+                           int width = 3,
+                           int height = 3) {
+    return RenderSprite(channel,
+                        10,
+                        10,
+                        width,
+                        height,
+                        0,
+                        true,
+                        SpriteType::Bitmap,
+                        std::move(castMember),
+                        std::move(dynamicMember),
+                        0,
+                        0,
+                        false,
+                        false,
+                        ink,
+                        100,
+                        flipH,
+                        flipV,
+                        std::move(baked),
+                        true);
+}
+
+void testHitTesterFoundation() {
+    auto copyAlphaBitmap = makeSolidHitBitmap(0xFFFF0000U);
+    copyAlphaBitmap->setPixel(1, 1, 0x00000000U);
+    auto lower = makeHitSprite(40, makeSolidHitBitmap(0xFF00FF00U));
+    auto topCopy = makeHitSprite(41, copyAlphaBitmap, libreshockwave::id::code(InkMode::COPY));
+    assert(HitTester::hitTest({topCopy}, 11, 11) == 41);
+    assert(HitTester::hitTest({lower, topCopy}, 11, 11) == 41);
+    assert(HitTester::hitTestType({lower, topCopy}, 11, 11).value() == SpriteType::Bitmap);
+    assert(HitTester::hitTest({lower, topCopy}, 99, 99) == 0);
+    assert(!HitTester::hitTestType({lower, topCopy}, 99, 99).has_value());
+
+    auto nativeBitmap = makeSolidHitBitmap(0xFFFF0000U);
+    nativeBitmap->setPixel(1, 1, 0x40FF0000U);
+    nativeBitmap->setNativeAlpha(true);
+    auto nativeTop = makeHitSprite(42,
+                                   nativeBitmap,
+                                   libreshockwave::id::code(InkMode::COPY),
+                                   makeHitBitmapMember(420, 128));
+    assert((HitTester::getAlphaHitRule(nativeTop) == AlphaHitRule{true, 128}));
+    assert(HitTester::hitTest({lower, nativeTop}, 11, 11) == 40);
+
+    auto thresholdZero = makeHitSprite(43,
+                                       nativeBitmap,
+                                       libreshockwave::id::code(InkMode::COPY),
+                                       makeHitBitmapMember(421, 0));
+    assert(HitTester::hitTest({lower, thresholdZero}, 11, 11) == 43);
+
+    auto dynamicChunk = makeHitBitmapMember(430, 0);
+    auto dynamicMember = std::make_shared<CastMember>(1, 1, 43, dynamicChunk);
+    auto dynamicBaked = makeSolidHitBitmap(0xFFFF0000U);
+    dynamicBaked->setPixel(1, 1, 0x00000000U);
+    auto dynamicMatte = makeHitSprite(44,
+                                      dynamicBaked,
+                                      libreshockwave::id::code(InkMode::MATTE),
+                                      nullptr,
+                                      dynamicMember);
+    assert(HitTester::usesDynamicInkTransparency(dynamicMatte));
+    assert((HitTester::getAlphaHitRule(dynamicMatte) == AlphaHitRule{true, 1}));
+    assert(HitTester::hitTest({lower, dynamicMatte}, 11, 11) == 40);
+    assert(HitTester::hitTest({lower, dynamicMatte}, 10, 10) == 44);
+    assert(HitTester::hitTest({lower, dynamicMatte}, 11, 11, [](int channel) { return channel == 44; }) == 44);
+    assert((HitTester::hitTestAll({lower, dynamicMatte}, 11, 11, [](int channel) { return channel == 44; }) ==
+            std::vector<int>{44, 40}));
+    assert((HitTester::hitTestAll({lower, dynamicMatte}, 11, 11, [](int) { return false; }) ==
+            std::vector<int>{40}));
+
+    auto scaled = std::make_shared<Bitmap>(2, 1, 32, std::vector<std::uint32_t>{0x00000000U, 0xFF112233U});
+    scaled->setNativeAlpha(true);
+    auto scaledSprite = makeHitSprite(45,
+                                      scaled,
+                                      libreshockwave::id::code(InkMode::COPY),
+                                      makeHitBitmapMember(450, 1),
+                                      nullptr,
+                                      true,
+                                      false,
+                                      4,
+                                      1);
+    assert(HitTester::hitTest({scaledSprite}, 10, 10) == 45);
+    assert(HitTester::hitTest({scaledSprite}, 13, 10) == 0);
+
+    auto hidden = makeHitSprite(46, makeSolidHitBitmap(0xFFFFFFFFU));
+    hidden = RenderSprite(46,
+                          10,
+                          10,
+                          3,
+                          3,
+                          0,
+                          false,
+                          SpriteType::Bitmap,
+                          nullptr,
+                          nullptr,
+                          0,
+                          0,
+                          false,
+                          false,
+                          0,
+                          100,
+                          false,
+                          false,
+                          hidden.bakedBitmap(),
+                          false);
+    assert(HitTester::hitTest({hidden, lower}, 11, 11) == 40);
 }
 
 void testScoreNavigationFoundation() {
@@ -4033,6 +4190,7 @@ int main() {
     testLingoOpcodeHelpers();
     testPlayerCoreFoundation();
     testPlayerInputFoundation();
+    testHitTesterFoundation();
     testScoreNavigationFoundation();
     testSpriteStateFoundation();
     testDebugFoundation();

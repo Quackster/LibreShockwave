@@ -216,6 +216,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `input::DirectorKeyCodes` ports Java/browser key-code conversion to Director Macintosh virtual key codes.
 - `input::InputState` ports mouse, keyboard, selection, caret blink, double-click, rollover, and event-queue state tracking.
 
+### Hit Testing Foundation
+
+- `input::HitTester` ports front-to-back visible sprite hit selection over baked `RenderSprite` lists, hit type lookup, and all-hit collection with channel filter/forced bounding-box support.
+- Bounds fallback, scaled bitmap sampling, flip/mirror coordinate adjustment, static native-alpha bitmap thresholds, and dynamic transparency-ink alpha checks are available in C++.
+- Direct `StageRenderer` overloads remain deferred until the C++ stage renderer object is ported.
+
 ### Sprite Runtime State Foundation
 
 - `sprite::SpriteState` ports score-backed and dynamic sprite runtime state, including position, dimensions, visibility, puppet state, ink/blend/trails/stretch, colors, flip flags, rotation/skew, cursor members, script-instance lists, and dynamic member overrides.
@@ -329,6 +335,7 @@ Result:
 - TimeoutManager creation, property access/mutation, one-shot/persistent flags, timeout references, names/count, forget, and clear tests passed through the same CTest executable.
 - BitmapCache cache-keying, palette invalidation, non-native alpha coercion, indexed matte remap selection/application, and InkProcessor color remap helpers passed through the same CTest executable.
 - SpriteState score construction, Director blend-byte mapping, explicit override preservation, dynamic defaults, cursor state, script-instance rebinding, and release resets passed through the same CTest executable.
+- HitTester front-to-back bounds hits, static native-alpha thresholds, dynamic transparency-ink alpha hits, forced bounding-box hits, all-hit ordering, type lookup, and flip/scale source sampling passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -382,4 +389,5 @@ Result:
 - `d104c40 Port C++ network task foundation`
 - `2aa7222 Port C++ timeout manager foundation`
 - `c8e0755 Port C++ bitmap cache and ink foundation`
-- Current checkpoint commit message: `Port C++ sprite state foundation`
+- `402b179 Port C++ sprite state foundation`
+- Current checkpoint commit message: `Port C++ hit tester foundation`
