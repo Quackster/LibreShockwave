@@ -2245,6 +2245,9 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 91) {
             return std::string("castLib");
         }
+        if (nameId == 92) {
+            return std::string("getPropRef");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.callStackFormatter = []() {
@@ -3136,9 +3139,14 @@ void testLingoVmScopeAndExecutionContextFoundation() {
 
     assert(runObjCall(69, {Datum::of(std::string("abc")), Datum::of(2)}).stringValue() == "b");
     assert(runObjCall(70, {Datum::of(std::string("one two")), Datum::symbol("word")}).intValue() == 2);
+    assert(runObjCall(67, {Datum::of(std::string("alpha beta gamma")), Datum::symbol("word"), Datum::of(2), Datum::of(3)})
+               .stringValue() == "beta gamma");
     MovieProperties stringMethodMovieProps;
     stringMethodMovieProps.setItemDelimiter('|');
     builtinContext.movieProperties = &stringMethodMovieProps;
+    assert(runObjCall(67, {Datum::of(std::string("red|green|blue")), Datum::symbol("item"), Datum::of(2), Datum::of(3)})
+               .stringValue() == "green|blue");
+    assert(runObjCall(92, {Datum::of(std::string("red|green|blue")), Datum::symbol("item"), Datum::of(2)}).stringValue() == "green");
     assert(runObjCall(70, {Datum::of(std::string("red|green|blue")), Datum::symbol("item")}).intValue() == 3);
     globals["globalName"] = Datum::of(std::string("red|green|blue"));
     assert(runObjCall(70, {globalVarRef, Datum::symbol("item")}).intValue() == 3);

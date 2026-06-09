@@ -1618,6 +1618,20 @@ Datum stringObjectMethod(ExecutionContext& context,
         if (equalsIgnoreCase(chunkType, "item")) return Datum::of(countItems(value, currentItemDelimiter(context)));
         return Datum::of(static_cast<int>(value.size()));
     }
+    if (equalsIgnoreCase(methodName, "getProp") || equalsIgnoreCase(methodName, "getPropRef")) {
+        if (args.size() < 2) {
+            return Datum::of(std::string());
+        }
+        StringChunkType chunkType = StringChunkType::Char;
+        try {
+            chunkType = stringChunkTypeFromName(keyNameLikeJava(args[0]));
+        } catch (const std::invalid_argument&) {
+            return Datum::of(std::string());
+        }
+        const int start = toIntLikeJava(args[1]);
+        const int end = equalsIgnoreCase(methodName, "getPropRef") || args.size() < 3 ? start : toIntLikeJava(args[2]);
+        return Datum::of(resolveChunkRange(value, chunkType, start, end, currentItemDelimiter(context)));
+    }
     return Datum::voidValue();
 }
 
