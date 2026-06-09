@@ -1191,6 +1191,106 @@ std::string deleteChunkValue(std::string_view value,
            std::string(value.substr(static_cast<std::size_t>(deleteEnd)));
 }
 
+int normalizeCharChunkIndex(int index, int length, bool before) {
+    if (index < 0) {
+        return length;
+    }
+    if (before) {
+        return index < 1 ? 1 : index;
+    }
+    if (index == 0) {
+        return 0;
+    }
+    return index;
+}
+
+std::optional<std::pair<int, int>> charChunkReplaceRange(std::string_view value, int first, int last) {
+    const int length = static_cast<int>(value.size());
+    const int normalizedFirst = normalizeCharChunkIndex(first, length, true);
+    const int normalizedLast = normalizeCharChunkIndex(last == 0 ? first : last, length, true);
+    if (normalizedFirst < 1 || normalizedFirst > length || normalizedLast < normalizedFirst) {
+        return std::nullopt;
+    }
+    const int rangeStart = normalizedFirst - 1;
+    const int rangeEnd = std::min(normalizedLast, length);
+    if (rangeEnd < rangeStart) {
+        return std::nullopt;
+    }
+    return std::pair{rangeStart, rangeEnd};
+}
+
+int chunkInsertionIndex(std::string_view value,
+                        StringChunkType type,
+                        int targetIndex,
+                        bool before,
+                        char itemDelimiter = ',') {
+    const int length = static_cast<int>(value.size());
+    if (type == StringChunkType::Char) {
+        const int normalized = normalizeCharChunkIndex(targetIndex, length, before);
+        if (before) {
+            if (normalized <= 1) {
+                return 0;
+            }
+            if (normalized > length) {
+                return length;
+            }
+            return normalized - 1;
+        }
+        if (normalized <= 0) {
+            return 0;
+        }
+        if (normalized >= length) {
+            return length;
+        }
+        return normalized;
+    }
+
+    if (const auto range = chunkByteRange(value, type, targetIndex, targetIndex, itemDelimiter)) {
+        return before ? range->first : range->second;
+    }
+    if (before) {
+        return targetIndex <= 1 ? 0 : length;
+    }
+    return targetIndex <= 0 ? 0 : length;
+}
+
+std::string putIntoChunkValue(std::string_view value,
+                              StringChunkType type,
+                              int first,
+                              int last,
+                              std::string_view replacement,
+                              char itemDelimiter = ',') {
+    auto range = chunkByteRange(value, type, first, last, itemDelimiter);
+    if (!range) {
+        return std::string(value);
+    }
+    return std::string(value.substr(0, static_cast<std::size_t>(range->first))) +
+           std::string(replacement) +
+           std::string(value.substr(static_cast<std::size_t>(range->second)));
+}
+
+std::string putBeforeChunkValue(std::string_view value,
+                                StringChunkType type,
+                                int first,
+                                std::string_view inserted,
+                                char itemDelimiter = ',') {
+    const int insertAt = chunkInsertionIndex(value, type, first, true, itemDelimiter);
+    return std::string(value.substr(0, static_cast<std::size_t>(insertAt))) +
+           std::string(inserted) +
+           std::string(value.substr(static_cast<std::size_t>(insertAt)));
+}
+
+std::string putAfterChunkValue(std::string_view value,
+                               StringChunkType type,
+                               int targetIndex,
+                               std::string_view inserted,
+                               char itemDelimiter = ',') {
+    const int insertAt = chunkInsertionIndex(value, type, targetIndex, false, itemDelimiter);
+    return std::string(value.substr(0, static_cast<std::size_t>(insertAt))) +
+           std::string(inserted) +
+           std::string(value.substr(static_cast<std::size_t>(insertAt)));
+}
+
 struct ChunkSpec {
     StringChunkType type;
     int first;
@@ -1991,6 +2091,98 @@ bool deleteChunk(ExecutionContext& context) {
     return true;
 }
 
+bool putChunk(ExecutionContext& context) {
+    const int encoded = context.argument();
+    const int putType = (encoded >> 4) & 0xF;
+    const auto varType = id::varTypeFromCode(encoded & 0xF);
+
+    if (varType == id::VarType::FIELD) {
+        (void)context.pop();
+    }
+    const Datum idDatum = context.pop();
+    const Datum value = context.pop();
+
+    const int lastLine = toIntLikeJava(context.pop());
+    const int firstLine = toIntLikeJava(context.pop());
+    const int lastItem = toIntLikeJava(context.pop());
+    const int firstItem = toIntLikeJava(context.pop());
+    const int lastWord = toIntLikeJava(context.pop());
+    const int firstWord = toIntLikeJava(context.pop());
+    const int lastChar = toIntLikeJava(context.pop());
+    const int firstChar = toIntLikeJava(context.pop());
+
+    ChunkSpec chunk = chooseSingleChunkSpec(firstChar,
+                                            lastChar,
+                                            firstWord,
+                                            lastWord,
+                                            firstItem,
+                                            lastItem,
+                                            firstLine,
+                                            lastLine);
+
+    const std::string currentString = toStringLikeJava(getContextVar(context, varType, idDatum));
+    const std::string valueString = toStringLikeJava(value);
+    constexpr char itemDelimiter = ',';
+    std::string newString = currentString;
+
+    if (chunk.type == StringChunkType::Char) {
+        switch (putType) {
+            case 1:
+                if (const auto range = charChunkReplaceRange(currentString, chunk.first, chunk.last)) {
+                    newString = std::string(currentString.substr(0, static_cast<std::size_t>(range->first))) +
+                                valueString +
+                                std::string(currentString.substr(static_cast<std::size_t>(range->second)));
+                }
+                break;
+            case 3:
+                newString = putBeforeChunkValue(currentString, chunk.type, chunk.first, valueString, itemDelimiter);
+                break;
+            case 2:
+                newString = putAfterChunkValue(currentString,
+                                               chunk.type,
+                                               chunk.last == 0 ? chunk.first : chunk.last,
+                                               valueString,
+                                               itemDelimiter);
+                break;
+            default:
+                break;
+        }
+        setContextVar(context, varType, idDatum, Datum::of(std::move(newString)));
+        return true;
+    }
+
+    if (chunk.first < 0 || chunk.last < 0) {
+        const int count = countChunks(currentString, chunk.type, itemDelimiter);
+        if (chunk.first < 0) {
+            chunk.first = count;
+        }
+        if (chunk.last < 0) {
+            chunk.last = count;
+        }
+    }
+
+    switch (putType) {
+        case 1:
+            newString = putIntoChunkValue(currentString, chunk.type, chunk.first, chunk.last, valueString, itemDelimiter);
+            break;
+        case 3:
+            newString = putBeforeChunkValue(currentString, chunk.type, chunk.first, valueString, itemDelimiter);
+            break;
+        case 2:
+            newString = putAfterChunkValue(currentString,
+                                           chunk.type,
+                                           chunk.last == 0 ? chunk.first : chunk.last,
+                                           valueString,
+                                           itemDelimiter);
+            break;
+        default:
+            break;
+    }
+
+    setContextVar(context, varType, idDatum, Datum::of(std::move(newString)));
+    return true;
+}
+
 bool getLocal(ExecutionContext& context) {
     context.push(context.getLocal(context.scaledArgument()));
     return true;
@@ -2278,6 +2470,7 @@ void StringOpcodes::registerHandlers(OpcodeRegistry& registry) {
     registry.registerHandler(Opcode::CONTAINS_0_STR, contains0Str);
     registry.registerHandler(Opcode::PUT, put);
     registry.registerHandler(Opcode::DELETE_CHUNK, deleteChunk);
+    registry.registerHandler(Opcode::PUT_CHUNK, putChunk);
 }
 
 void VariableOpcodes::registerHandlers(OpcodeRegistry& registry) {
