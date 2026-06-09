@@ -3491,6 +3491,24 @@ void testLingoVmScopeAndExecutionContextFoundation() {
                             backgroundInkProps}).isVoid());
     assert(backgroundInkDest->getPixel(0, 0) == 0xFF000000U);
     assert(backgroundInkDest->getPixel(1, 0) == 0xFFFF0000U);
+    auto runInkCopy = [&](Datum ink, std::uint32_t srcPixel, std::uint32_t destPixel) {
+        auto inkSource = std::make_shared<Bitmap>(1, 1, 32, std::vector<std::uint32_t>{srcPixel});
+        auto inkDest = std::make_shared<Bitmap>(1, 1, 32, std::vector<std::uint32_t>{destPixel});
+        auto inkProps = Datum::propList();
+        inkProps.propListValue().put(Datum::symbol("ink"), std::move(ink));
+        assert(runObjCall(110, {Datum::imageRef(inkDest),
+                                Datum::imageRef(inkSource),
+                                Datum::intRect(0, 0, 1, 1),
+                                Datum::intRect(0, 0, 1, 1),
+                                inkProps}).isVoid());
+        return inkDest->getPixel(0, 0);
+    };
+    assert(runInkCopy(Datum::symbol("reverse"), 0xFF00FF00U, 0xFFFF0000U) == 0xFFFFFF00U);
+    assert(runInkCopy(Datum::symbol("add"), 0xFF101010U, 0xFFF0F0F0U) == 0xFF000000U);
+    assert(runInkCopy(Datum::symbol("subtractPin"), 0xFF203040U, 0xFF102030U) == 0xFF000000U);
+    assert(runInkCopy(Datum::symbol("mask"), 0xFF000000U, 0xFFFFFFFFU) == 0xFFFFFFFFU);
+    assert(runInkCopy(Datum::symbol("lightest"), 0xFF1020F0U, 0xFF803010U) == 0xFF8030F0U);
+    assert(runInkCopy(Datum::symbol("darkest"), 0xFF1020F0U, 0xFF803010U) == 0xFF102010U);
     auto paletteCopySource = std::make_shared<Bitmap>(
         2, 1, 8, std::vector<std::uint32_t>{0xFF000000U, 0xFF112233U});
     paletteCopySource->setImagePalette(std::make_shared<Palette>(

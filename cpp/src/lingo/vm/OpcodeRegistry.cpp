@@ -2540,9 +2540,54 @@ std::uint32_t imageAlphaBlend(std::uint32_t fg, std::uint32_t bg, int alpha) {
 
 std::uint32_t imageApplyCopyPixelsInk(std::uint32_t src, std::uint32_t dest, id::InkMode ink, int blend, int backgroundKeyRgb) {
     const int srcAlpha = static_cast<int>((src >> 24) & 0xFFU);
+    const int srcR = static_cast<int>((src >> 16) & 0xFFU);
+    const int srcG = static_cast<int>((src >> 8) & 0xFFU);
+    const int srcB = static_cast<int>(src & 0xFFU);
+    const int destR = static_cast<int>((dest >> 16) & 0xFFU);
+    const int destG = static_cast<int>((dest >> 8) & 0xFFU);
+    const int destB = static_cast<int>(dest & 0xFFU);
     const int srcRgb = static_cast<int>(src & 0x00FFFFFFU);
+    const auto packOpaque = [](int r, int g, int b) {
+        return 0xFF000000U |
+               (static_cast<std::uint32_t>(r & 0xFF) << 16) |
+               (static_cast<std::uint32_t>(g & 0xFF) << 8) |
+               static_cast<std::uint32_t>(b & 0xFF);
+    };
+
     if (ink == id::InkMode::TRANSPARENT) {
         return srcRgb == 0xFFFFFF ? dest : src;
+    }
+    if (ink == id::InkMode::REVERSE) {
+        return packOpaque(destR ^ srcR, destG ^ srcG, destB ^ srcB);
+    }
+    if (ink == id::InkMode::GHOST) {
+        return packOpaque((srcR + destR) / 2, (srcG + destG) / 2, (srcB + destB) / 2);
+    }
+    if (ink == id::InkMode::NOT_COPY) {
+        return packOpaque(255 - srcR, 255 - srcG, 255 - srcB);
+    }
+    if (ink == id::InkMode::NOT_TRANSPARENT) {
+        return srcRgb == 0 ? dest : packOpaque(255 - srcR, 255 - srcG, 255 - srcB);
+    }
+    if (ink == id::InkMode::NOT_REVERSE) {
+        return packOpaque(destR ^ (255 - srcR), destG ^ (255 - srcG), destB ^ (255 - srcB));
+    }
+    if (ink == id::InkMode::NOT_GHOST) {
+        return packOpaque(((255 - srcR) + destR) / 2,
+                          ((255 - srcG) + destG) / 2,
+                          ((255 - srcB) + destB) / 2);
+    }
+    if (ink == id::InkMode::MATTE) {
+        if (srcAlpha == 0) return dest;
+        if (blend < 255) {
+            const int matteAlpha = (srcAlpha * blend) / 255;
+            return matteAlpha == 0 ? dest : imageAlphaBlend(src, dest, matteAlpha);
+        }
+        return imageAlphaBlend(src, dest, srcAlpha);
+    }
+    if (ink == id::InkMode::MASK) {
+        const int alpha = imageCombineAlpha(srcAlpha, imageMaskAlphaFromPixel(src));
+        return alpha == 0 ? dest : imageAlphaBlend(src, dest, alpha);
     }
     if (ink == id::InkMode::BACKGROUND_TRANSPARENT) {
         if (srcAlpha == 0 || srcRgb == (backgroundKeyRgb & 0x00FFFFFF)) {
@@ -2555,6 +2600,27 @@ std::uint32_t imageApplyCopyPixelsInk(std::uint32_t src, std::uint32_t dest, id:
     }
     if (ink == id::InkMode::BLEND) {
         return imageAlphaBlend(src, dest, imageCombineAlpha(srcAlpha, blend));
+    }
+    if (ink == id::InkMode::ADD_PIN) {
+        return packOpaque(std::min(255, srcR + destR), std::min(255, srcG + destG), std::min(255, srcB + destB));
+    }
+    if (ink == id::InkMode::ADD) {
+        return packOpaque(srcR + destR, srcG + destG, srcB + destB);
+    }
+    if (ink == id::InkMode::SUBTRACT_PIN) {
+        return packOpaque(std::max(0, destR - srcR), std::max(0, destG - srcG), std::max(0, destB - srcB));
+    }
+    if (ink == id::InkMode::SUBTRACT) {
+        return packOpaque(destR - srcR, destG - srcG, destB - srcB);
+    }
+    if (ink == id::InkMode::LIGHTEST) {
+        return srcAlpha == 0 ? dest : packOpaque(std::max(srcR, destR), std::max(srcG, destG), std::max(srcB, destB));
+    }
+    if (ink == id::InkMode::DARKEST) {
+        return srcAlpha == 0 ? dest : packOpaque(std::min(srcR, destR), std::min(srcG, destG), std::min(srcB, destB));
+    }
+    if (ink == id::InkMode::LIGHTEN || ink == id::InkMode::DARKEN) {
+        return srcAlpha == 0 ? dest : imageAlphaBlend(src, dest, imageCombineAlpha(srcAlpha, blend));
     }
 
     if (blend < 255) {
