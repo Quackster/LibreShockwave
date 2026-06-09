@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <set>
 #include <stdexcept>
@@ -69,6 +70,7 @@
 #include "libreshockwave/player/PlayerEventInfo.hpp"
 #include "libreshockwave/player/PlayerState.hpp"
 #include "libreshockwave/player/CursorManager.hpp"
+#include "libreshockwave/player/SpriteProperties.hpp"
 #include "libreshockwave/player/audio/AudioBackend.hpp"
 #include "libreshockwave/player/audio/SoundManager.hpp"
 #include "libreshockwave/player/behavior/BehaviorInstance.hpp"
@@ -174,6 +176,7 @@ using libreshockwave::player::CursorManager;
 using libreshockwave::player::PlayerEvent;
 using libreshockwave::player::PlayerEventInfo;
 using libreshockwave::player::PlayerState;
+using libreshockwave::player::SpriteProperties;
 using libreshockwave::player::allPlayerEvents;
 using libreshockwave::player::handlerName;
 using libreshockwave::player::name;
@@ -1265,6 +1268,197 @@ void testSpriteRegistryFoundation() {
     assert(registry.getAll().empty());
     assert(!registry.hasScoreBehaviorChannel(5));
     assert(registry.getRevision() == 3);
+}
+
+void testSpritePropertiesFoundation() {
+    SpriteRegistry registry;
+    SpriteProperties props(&registry);
+
+    assert(!props.getScriptInstanceList(1).has_value());
+    assert(props.getSpriteProp(7, "visible").intValue() == 0);
+    assert(props.getSpriteProp(7, "puppet").intValue() == 0);
+    assert(props.getSpriteProp(7, "locH").intValue() == 0);
+    assert(props.getSpriteProp(7, "spritenum").intValue() == 7);
+    assert(props.getSpriteProp(7, "type").intValue() == 0);
+    assert(props.getSpriteProp(7, "member").isVoid());
+    assert(props.getSpriteProp(7, "ilk").asSymbol()->name == "sprite");
+    const auto* missingLoc = props.getSpriteProp(7, "loc").asIntPoint();
+    assert(missingLoc != nullptr && missingLoc->x == 0 && missingLoc->y == 0);
+    const auto* missingRect = props.getSpriteProp(7, "rect").asIntRect();
+    assert(missingRect != nullptr && missingRect->left == 0 && missingRect->bottom == 0);
+
+    assert(props.setSpriteProp(3, "locH", Datum::of(50)));
+    assert(registry.getRevision() == 1);
+    auto sprite = registry.get(3);
+    assert(sprite != nullptr);
+    assert(sprite->isDynamic());
+    assert(sprite->isPuppet());
+    assert(sprite->locH() == 50);
+
+    assert(props.setSpriteProp(3, "loc", Datum::intPoint(10, 20)));
+    assert(props.setSpriteProp(3, "rect", Datum::intRect(1, 2, 41, 52)));
+    assert(sprite->locH() == 1);
+    assert(sprite->locV() == 2);
+    assert(sprite->width() == 40);
+    assert(sprite->height() == 50);
+    assert(props.getSpriteProp(3, "rect") == Datum::intRect(1, 2, 41, 52));
+
+    assert(props.setSpriteProp(3, "visible", Datum::of(0)));
+    assert(!sprite->isVisible());
+    assert(props.setSpriteProp(3, "ink", Datum::symbol("matte")));
+    assert(sprite->inkMode() == InkMode::MATTE);
+    assert(props.setSpriteProp(3, "blend", Datum::of(72)));
+    assert(props.setSpriteProp(3, "blend", Datum::voidValue()));
+    assert(sprite->blend() == 72);
+    assert(props.setSpriteProp(3, "stretch", Datum::of(3)));
+    assert(props.setSpriteProp(3, "trails", Datum::of(4)));
+    assert(props.setSpriteProp(3, "color", Datum::colorRef(1, 2, 3)));
+    assert(props.setSpriteProp(3, "bgColor", Datum::of(0xAABBCC)));
+    assert(sprite->stretch() == 3);
+    assert(sprite->trails() == 4);
+    assert(sprite->foreColor() == 0x010203);
+    assert(sprite->backColor() == 0xAABBCC);
+
+    assert(props.setSpriteProp(3, "rotation", Datum::of(180.0)));
+    assert(props.setSpriteProp(3, "skew", Datum::of(180.0)));
+    assert(props.setSpriteProp(3, "flipH", Datum::of(1)));
+    assert(props.setSpriteProp(3, "flipV", Datum::of(1)));
+    assert(sprite->rotation() == 180.0F);
+    assert(sprite->skew() == 180.0F);
+    assert(sprite->isFlipH());
+    assert(sprite->isFlipV());
+    assert(SpriteProperties::hasDirectorHorizontalMirror(180.2, 179.6));
+
+    auto behavior = Datum::scriptInstance("behavior");
+    assert(props.setSpriteProp(3, "scriptInstanceList", Datum::list({behavior, Datum::of(std::string("plain"))})));
+    auto scriptList = props.getScriptInstanceList(3);
+    assert(scriptList.has_value());
+    assert(scriptList->size() == 2);
+    assert(behavior.scriptInstanceValue().getProperty("spritenum").intValue() == 3);
+    assert(props.getSpriteProp(3, "scriptInstanceList").listValue().count() == 2);
+
+    assert(props.setSpriteProp(3, "cursor", Datum::list({
+        Datum::castMemberRef(CastLibId(2), MemberId(9)),
+        Datum::of((3 << 16) | 7)
+    })));
+    assert(sprite->cursor() == 0);
+    assert(sprite->cursorMemberNum() == ((2 << 16) | 9));
+    assert(sprite->cursorMaskNum() == ((3 << 16) | 7));
+    assert(SpriteProperties::encodeCursorMember(Datum::castMemberRef(CastLibId(4), MemberId(5))) == ((4 << 16) | 5));
+
+    std::map<std::pair<int, int>, SpriteProperties::MemberInfo> memberInfo;
+    SpriteProperties::MemberInfo bitmapInfo;
+    bitmapInfo.bitmap = true;
+    bitmapInfo.bitmapWidth = 100;
+    bitmapInfo.bitmapHeight = 50;
+    bitmapInfo.bitmapRegX = 11;
+    bitmapInfo.bitmapRegY = 7;
+    bitmapInfo.hasImage = true;
+    bitmapInfo.image = Datum::of(std::string("image-ref"));
+    memberInfo[{1, 20}] = bitmapInfo;
+
+    SpriteProperties::MemberInfo runtimeInfo;
+    runtimeInfo.width = 12;
+    runtimeInfo.height = 13;
+    runtimeInfo.regX = 2;
+    runtimeInfo.regY = 3;
+    runtimeInfo.runtimeDynamic = true;
+    memberInfo[{2, 30}] = runtimeInfo;
+
+    SpriteProperties::MemberInfo namedInfo;
+    namedInfo.bitmap = true;
+    namedInfo.bitmapWidth = 21;
+    namedInfo.bitmapHeight = 22;
+    memberInfo[{3, 31}] = namedInfo;
+
+    props.setMemberInfoResolver([&memberInfo](int castLib, int memberNum) -> std::optional<SpriteProperties::MemberInfo> {
+        auto found = memberInfo.find({castLib, memberNum});
+        return found == memberInfo.end() ? std::nullopt : std::optional<SpriteProperties::MemberInfo>(found->second);
+    });
+    props.setMemberNameResolver([](const std::string& name) -> std::optional<Datum::CastMemberRef> {
+        if (name == "logo") {
+            return Datum::CastMemberRef{3, 31};
+        }
+        return std::nullopt;
+    });
+
+    assert(props.setSpriteProp(4, "member", Datum::castMemberRef(CastLibId(1), MemberId(20))));
+    auto bitmapSprite = registry.get(4);
+    assert(bitmapSprite->effectiveCastLib() == 1);
+    assert(bitmapSprite->effectiveCastMember() == 20);
+    assert(bitmapSprite->width() == 100);
+    assert(bitmapSprite->height() == 50);
+    assert(props.getSpriteProp(4, "image").stringValue() == "image-ref");
+    assert(props.getSpriteProp(4, "member").asCastMemberRef()->castLib == 1);
+    assert(props.getSpriteProp(4, "member").asCastMemberRef()->memberNum() == 20);
+    assert(props.resolveSpriteBounds(*bitmapSprite) == (SpriteProperties::SpriteBounds{-11, -7, 89, 43}));
+
+    assert(props.setSpriteProp(4, "loc", Datum::intPoint(200, 100)));
+    assert(props.setSpriteProp(4, "width", Datum::of(50)));
+    assert(props.setSpriteProp(4, "height", Datum::of(25)));
+    assert(props.resolveSpriteBounds(*bitmapSprite) == (SpriteProperties::SpriteBounds{195, 97, 245, 122}));
+    props.setLegacyRoundedRegistrationScale(true);
+    assert(props.resolveSpriteBounds(*bitmapSprite) == (SpriteProperties::SpriteBounds{194, 96, 244, 121}));
+    props.setLegacyRoundedRegistrationScale(false);
+    assert(props.setSpriteProp(4, "flipH", Datum::of(1)));
+    assert(props.resolveSpriteBounds(*bitmapSprite).left == 155);
+    assert(props.setSpriteProp(4, "memberNum", Datum::of(21)));
+    assert(bitmapSprite->effectiveCastLib() == 1);
+    assert(bitmapSprite->effectiveCastMember() == 21);
+
+    auto runtimeSprite = registry.getOrCreateDynamic(6);
+    runtimeSprite->setWidth(5);
+    assert(props.setSpriteMember(6, Datum::castMemberRef(CastLibId(2), MemberId(30))));
+    assert(runtimeSprite->width() == 12);
+    assert(runtimeSprite->height() == 13);
+    assert(!runtimeSprite->hasSizeChanged());
+
+    assert(props.setSpriteProp(7, "member", Datum::of(std::string("logo"))));
+    auto namedSprite = registry.get(7);
+    assert(namedSprite->effectiveCastLib() == 3);
+    assert(namedSprite->effectiveCastMember() == 31);
+    assert(namedSprite->width() == 21);
+    assert(namedSprite->height() == 22);
+
+    auto releaseSprite = registry.getOrCreateDynamic(8);
+    releaseSprite->setDynamicMember(1, 20);
+    releaseSprite->setWidth(77);
+    releaseSprite->setHeight(88);
+    releaseSprite->setCursor(4);
+    releaseSprite->setRotation(45.0);
+    releaseSprite->setSkew(45.0);
+    auto broker = Datum::scriptInstance("broker");
+    broker.scriptInstanceValue().setProperty("__spriteEventBroker__", Datum::TRUE);
+    auto regular = Datum::scriptInstance("regular");
+    assert(props.setSpriteProp(8, "scriptInstanceList", Datum::list({broker, regular})));
+    assert(props.setSpriteProp(8, "member", Datum::of(0)));
+    assert(releaseSprite->effectiveCastMember() == 0);
+    assert(releaseSprite->rotation() == 0.0);
+    assert(props.setSpriteProp(8, "puppet", Datum::of(0)));
+    assert(!releaseSprite->isPuppet());
+    assert(!releaseSprite->isVisible());
+    assert(releaseSprite->cursor() == 0);
+    assert(releaseSprite->blend() == 100);
+    assert(releaseSprite->stretch() == 0);
+    assert(releaseSprite->width() == 1);
+    assert(releaseSprite->height() == 1);
+    assert(releaseSprite->scriptInstanceList().size() == 1);
+    assert(releaseSprite->scriptInstanceList()[0].scriptInstanceValue().scriptName() == "broker");
+
+    Datum imageValue = Datum::of(std::string("new-image"));
+    bool imageSetterCalled = false;
+    props.setMemberImageSetter([&imageSetterCalled, &imageValue](int castLib, int memberNum, const Datum& value) {
+        imageSetterCalled = true;
+        assert(castLib == 3);
+        assert(memberNum == 31);
+        assert(value == imageValue);
+        return true;
+    });
+    assert(props.setSpriteProp(7, "image", imageValue));
+    assert(imageSetterCalled);
+
+    assert(props.setSpriteProp(7, "moveable", Datum::of(1)));
+    assert(!props.setSpriteProp(7, "unknownSpriteProperty", Datum::of(1)));
 }
 
 std::shared_ptr<ScriptChunk> makeBehaviorScript(int id, ScriptChunkType type = ScriptChunkType::Behavior) {
@@ -5056,6 +5250,7 @@ int main() {
     testScoreNavigationFoundation();
     testSpriteStateFoundation();
     testSpriteRegistryFoundation();
+    testSpritePropertiesFoundation();
     testBehaviorFoundation();
     testEventDispatcherFoundation();
     testDebugFoundation();

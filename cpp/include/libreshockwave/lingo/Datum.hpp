@@ -327,6 +327,7 @@ public:
     [[nodiscard]] const Str* asString() const;
     [[nodiscard]] const Symbol* asSymbol() const;
     [[nodiscard]] const CastMemberRef* asCastMemberRef() const;
+    [[nodiscard]] const ColorRef* asColorRef() const;
     [[nodiscard]] const TimeoutRef* asTimeoutRef() const;
     [[nodiscard]] const IntPoint* asIntPoint() const;
     [[nodiscard]] const IntRect* asIntRect() const;
