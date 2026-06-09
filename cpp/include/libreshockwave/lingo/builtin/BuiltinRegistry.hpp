@@ -21,6 +21,8 @@ struct BuiltinContext {
     using ScriptResolver = std::function<Datum(const Datum& identifier, const std::optional<Datum>& scope)>;
     using AncestorCallHandler = std::function<Datum(const std::vector<Datum>& args)>;
     using RandomIntHandler = std::function<int(int max)>;
+    using GetPrefHandler = std::function<Datum(const std::string& name)>;
+    using SetPrefHandler = std::function<Datum(const std::string& name, const Datum& value)>;
 
     player::MovieProperties* movieProperties{nullptr};
     player::SpriteProperties* spriteProperties{nullptr};
@@ -31,6 +33,8 @@ struct BuiltinContext {
     ScriptResolver scriptResolver;
     AncestorCallHandler ancestorCallHandler;
     RandomIntHandler randomIntHandler;
+    GetPrefHandler getPrefHandler;
+    SetPrefHandler setPrefHandler;
 };
 
 using BuiltinFunction = std::function<Datum(BuiltinContext& context, const std::vector<Datum>& args)>;
@@ -74,6 +78,19 @@ public:
     [[nodiscard]] static Datum power(BuiltinContext& context, const std::vector<Datum>& args);
     [[nodiscard]] static Datum min(BuiltinContext& context, const std::vector<Datum>& args);
     [[nodiscard]] static Datum max(BuiltinContext& context, const std::vector<Datum>& args);
+};
+
+class StringBuiltins {
+public:
+    static void registerBuiltins(BuiltinRegistry& registry);
+    [[nodiscard]] static Datum string(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum length(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum chars(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum charToNum(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum numToChar(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum offset(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum getPref(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum setPref(BuiltinContext& context, const std::vector<Datum>& args);
 };
 
 class ConstructorBuiltins {

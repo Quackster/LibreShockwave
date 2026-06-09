@@ -967,6 +967,59 @@ void testBuiltinRegistryFoundation() {
                                      {Datum::list({Datum::of(7), Datum::of(2.5F), Datum::of(9)})}).floatValue() -
                      9.0F) < 0.0001F);
 
+    assert(registry.contains("string"));
+    assert(registry.contains("length"));
+    assert(registry.contains("chars"));
+    assert(registry.contains("charToNum"));
+    assert(registry.contains("numToChar"));
+    assert(registry.contains("offset"));
+    assert(registry.contains("getPref"));
+    assert(registry.contains("setPref"));
+    assert(registry.invoke("string", context).stringValue().empty());
+    assert(registry.invoke("string", context, {Datum::of(42)}).stringValue() == "42");
+    assert(registry.invoke("string", context, {Datum::symbol("door")}).stringValue() == "door");
+    assert(registry.invoke("string", context, {Datum::colorRef(1, 2, 3)}).stringValue() == "color(1, 2, 3)");
+    assert(registry.invoke("string", context, {Datum::list({Datum::of(1), Datum::of(std::string("cat"))})}).stringValue() ==
+           "[1, \"cat\"]");
+    auto stringPropList = Datum::propList();
+    stringPropList.propListValue().put(Datum::symbol("name"), Datum::of(std::string("value")));
+    assert(registry.invoke("string", context, {stringPropList}).stringValue() == "[#name: \"value\"]");
+    assert(registry.invoke("length", context).intValue() == 0);
+    assert(registry.invoke("length", context, {Datum::of(std::string("hello"))}).intValue() == 5);
+    assert(registry.invoke("length", context, {Datum::symbol("door")}).intValue() == 4);
+    assert(registry.invoke("length", context, {Datum::list({Datum::of(1), Datum::of(2), Datum::of(3)})}).intValue() == 3);
+    assert(registry.invoke("length", context, {stringPropList}).intValue() == 1);
+    assert(registry.invoke("chars", context).stringValue().empty());
+    assert(registry.invoke("chars", context, {Datum::of(std::string("hello")), Datum::of(2), Datum::of(4)}).stringValue() ==
+           "ell");
+    assert(registry.invoke("chars", context, {Datum::of(std::string("hello")), Datum::of(-2), Datum::of(2)}).stringValue() ==
+           "he");
+    assert(registry.invoke("chars", context, {Datum::of(std::string("hello")), Datum::of(5), Datum::of(2)}).stringValue().empty());
+    assert(registry.invoke("charToNum", context).intValue() == 0);
+    assert(registry.invoke("charToNum", context, {Datum::of(std::string("A"))}).intValue() == 65);
+    assert(registry.invoke("numToChar", context).stringValue().empty());
+    assert(registry.invoke("numToChar", context, {Datum::of(65)}).stringValue() == "A");
+    assert(registry.invoke("offset", context).intValue() == 0);
+    assert(registry.invoke("offset", context, {Datum::of(std::string("LL")), Datum::of(std::string("hello"))}).intValue() == 3);
+    assert(registry.invoke("offset", context, {Datum::of(std::string("")), Datum::of(std::string("hello"))}).intValue() == 0);
+    assert(registry.invoke("offset", context, {Datum::of(std::string("zz")), Datum::of(std::string("hello"))}).intValue() == 0);
+    assert(registry.invoke("getPref", context).isVoid());
+    assert(registry.invoke("getPref", context, {Datum::of(std::string("volume"))}).isVoid());
+    std::map<std::string, Datum> prefs;
+    context.getPrefHandler = [&prefs](const std::string& key) {
+        const auto found = prefs.find(key);
+        return found == prefs.end() ? Datum::voidValue() : found->second;
+    };
+    context.setPrefHandler = [&prefs](const std::string& key, const Datum& value) {
+        const auto stored = Datum::of(value.isString() ? value.stringValue() : std::to_string(value.intValue()));
+        prefs[key] = stored;
+        return stored;
+    };
+    assert(registry.invoke("setPref", context).isVoid());
+    assert(registry.invoke("setPref", context, {Datum::of(std::string("")), Datum::of(7)}).isVoid());
+    assert(registry.invoke("setPref", context, {Datum::of(std::string("volume")), Datum::of(7)}).stringValue() == "7");
+    assert(registry.invoke("getPref", context, {Datum::of(std::string("volume"))}).stringValue() == "7");
+
     auto assertColor = [](const Datum& datum, int r, int g, int b) {
         const auto* color = datum.asColorRef();
         assert(color != nullptr);

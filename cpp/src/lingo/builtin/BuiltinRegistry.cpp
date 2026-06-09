@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <limits>
+#include <sstream>
 #include <utility>
 
 namespace libreshockwave::lingo::builtin {
@@ -135,6 +136,112 @@ int javaRoundToInt(double value) {
     return static_cast<int>(std::floor(value + 0.5));
 }
 
+std::string toStringLikeJava(const Datum& datum);
+std::string datumReprLikeJava(const Datum& datum);
+
+std::string listStringLikeJava(const Datum::List& list) {
+    std::ostringstream out;
+    out << '[';
+    for (std::size_t index = 0; index < list.items().size(); ++index) {
+        if (index > 0) {
+            out << ", ";
+        }
+        out << datumReprLikeJava(list.items()[index]);
+    }
+    out << ']';
+    return out.str();
+}
+
+std::string propListStringLikeJava(const Datum::PropList& propList) {
+    std::ostringstream out;
+    out << '[';
+    const auto& properties = propList.properties();
+    for (std::size_t index = 0; index < properties.size(); ++index) {
+        if (index > 0) {
+            out << ", ";
+        }
+        out << datumReprLikeJava(properties[index].first) << ": " << datumReprLikeJava(properties[index].second);
+    }
+    out << ']';
+    return out.str();
+}
+
+std::string datumReprLikeJava(const Datum& datum) {
+    if (datum.isVoid()) {
+        return "<Void>";
+    }
+    if (const auto* value = datum.asString()) {
+        return "\"" + value->value + "\"";
+    }
+    if (const auto* value = datum.asSymbol()) {
+        return "#" + value->name;
+    }
+    return toStringLikeJava(datum);
+}
+
+std::string toStringLikeJava(const Datum& datum) {
+    if (datum.isVoid() || datum.isNull()) {
+        return "";
+    }
+    if (const auto* value = datum.asString()) {
+        return value->value;
+    }
+    if (const auto* value = datum.asSymbol()) {
+        return value->name;
+    }
+    if (const auto* value = datum.asColorRef()) {
+        return "color(" + std::to_string(value->r) + ", " + std::to_string(value->g) + ", " +
+               std::to_string(value->b) + ")";
+    }
+    if (const auto* value = datum.asSpriteRef()) {
+        return "sprite(" + std::to_string(value->channel) + ")";
+    }
+    if (const auto* value = datum.asCastMemberRef()) {
+        return "member(" + std::to_string(value->castMember) + ", " + std::to_string(value->castLib) + ")";
+    }
+    if (const auto* value = datum.asCastLibRef()) {
+        return "castLib(" + std::to_string(value->castLib) + ")";
+    }
+    if (const auto* value = datum.asScriptRef()) {
+        return "<script " + std::to_string(value->memberRef.castMember) + ", " +
+               std::to_string(value->memberRef.castLib) + ">";
+    }
+    if (datum.isList()) {
+        return listStringLikeJava(datum.listValue());
+    }
+    if (datum.isPropList()) {
+        return propListStringLikeJava(datum.propListValue());
+    }
+    if (datum.type() == DatumType::StageRef) {
+        return "(the stage)";
+    }
+    if (datum.type() == DatumType::MovieRef) {
+        return "(the movie)";
+    }
+    if (datum.type() == DatumType::PlayerRef) {
+        return "(the player)";
+    }
+    try {
+        return datum.stringValue();
+    } catch (const LingoException&) {
+        return datum.typeString();
+    }
+}
+
+bool regionMatchesIgnoreCase(const std::string& value, std::size_t offset, const std::string& pattern) {
+    if (offset + pattern.size() > value.size()) {
+        return false;
+    }
+    for (std::size_t index = 0; index < pattern.size(); ++index) {
+        const auto lhs = static_cast<unsigned char>(value[offset + index]);
+        const auto rhs = static_cast<unsigned char>(pattern[index]);
+        if (std::tolower(lhs) != std::tolower(rhs)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 std::string keyName(const Datum& datum) {
     if (const auto* symbol = datum.asSymbol()) {
         return symbol->name;
@@ -183,6 +290,7 @@ std::string ilkType(const Datum& datum) {
 
 BuiltinRegistry::BuiltinRegistry() {
     MathBuiltins::registerBuiltins(*this);
+    StringBuiltins::registerBuiltins(*this);
     ConstructorBuiltins::registerBuiltins(*this);
     TypeBuiltins::registerBuiltins(*this);
     SpriteBuiltins::registerBuiltins(*this);
@@ -428,6 +536,118 @@ Datum MathBuiltins::max(BuiltinContext&, const std::vector<Datum>& args) {
         return Datum::of(std::max(toDoubleLikeJava(args[0]), toDoubleLikeJava(args[1])));
     }
     return Datum::of(std::max(toIntLikeJava(args[0]), toIntLikeJava(args[1])));
+}
+
+void StringBuiltins::registerBuiltins(BuiltinRegistry& registry) {
+    registry.registerBuiltin("string", StringBuiltins::string);
+    registry.registerBuiltin("length", StringBuiltins::length);
+    registry.registerBuiltin("chars", StringBuiltins::chars);
+    registry.registerBuiltin("chartonum", StringBuiltins::charToNum);
+    registry.registerBuiltin("numtochar", StringBuiltins::numToChar);
+    registry.registerBuiltin("offset", StringBuiltins::offset);
+    registry.registerBuiltin("getpref", StringBuiltins::getPref);
+    registry.registerBuiltin("setpref", StringBuiltins::setPref);
+}
+
+Datum StringBuiltins::string(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::of(std::string());
+    }
+    return Datum::of(toStringLikeJava(args[0]));
+}
+
+Datum StringBuiltins::length(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::of(0);
+    }
+    if (args[0].isList()) {
+        return Datum::of(args[0].listValue().count());
+    }
+    if (args[0].isPropList()) {
+        return Datum::of(args[0].propListValue().count());
+    }
+    return Datum::of(static_cast<int>(toStringLikeJava(args[0]).size()));
+}
+
+Datum StringBuiltins::chars(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.size() < 3) {
+        return Datum::of(std::string());
+    }
+    const std::string value = toStringLikeJava(args[0]);
+    int start = toIntLikeJava(args[1]) - 1;
+    int end = toIntLikeJava(args[2]);
+    if (start < 0) {
+        start = 0;
+    }
+    if (end > static_cast<int>(value.size())) {
+        end = static_cast<int>(value.size());
+    }
+    if (start >= end) {
+        return Datum::of(std::string());
+    }
+    return Datum::of(value.substr(static_cast<std::size_t>(start), static_cast<std::size_t>(end - start)));
+}
+
+Datum StringBuiltins::charToNum(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::of(0);
+    }
+    const std::string value = toStringLikeJava(args[0]);
+    if (value.empty()) {
+        return Datum::of(0);
+    }
+    return Datum::of(static_cast<int>(static_cast<unsigned char>(value.front())));
+}
+
+Datum StringBuiltins::numToChar(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::of(std::string());
+    }
+    const char value = static_cast<char>(toIntLikeJava(args[0]));
+    return Datum::of(std::string(1, value));
+}
+
+Datum StringBuiltins::offset(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.size() < 2) {
+        return Datum::of(0);
+    }
+    const std::string needle = toStringLikeJava(args[0]);
+    const std::string haystack = toStringLikeJava(args[1]);
+    if (needle.empty()) {
+        return Datum::of(0);
+    }
+    if (needle.size() > haystack.size()) {
+        return Datum::of(0);
+    }
+    const std::size_t limit = haystack.size() - needle.size();
+    for (std::size_t index = 0; index <= limit; ++index) {
+        if (regionMatchesIgnoreCase(haystack, index, needle)) {
+            return Datum::of(static_cast<int>(index + 1));
+        }
+    }
+    return Datum::of(0);
+}
+
+Datum StringBuiltins::getPref(BuiltinContext& context, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::voidValue();
+    }
+    const std::string key = toStringLikeJava(args[0]);
+    if (key.empty() || !context.getPrefHandler) {
+        return Datum::voidValue();
+    }
+    return context.getPrefHandler(key);
+}
+
+Datum StringBuiltins::setPref(BuiltinContext& context, const std::vector<Datum>& args) {
+    if (args.size() < 2) {
+        return Datum::voidValue();
+    }
+    const std::string key = toStringLikeJava(args[0]);
+    if (key.empty() || !context.setPrefHandler) {
+        return Datum::voidValue();
+    }
+    return context.setPrefHandler(key, args[1]);
 }
 
 void ConstructorBuiltins::registerBuiltins(BuiltinRegistry& registry) {
