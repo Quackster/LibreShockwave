@@ -1,6 +1,10 @@
 # Gradle
 .gradle/
 build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+compile_commands.json
 
 # Keep wrapper jar
 !gradle/wrapper/gradle-wrapper.jar
