@@ -258,6 +258,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Member assignment supports cast member refs, encoded slot numbers, name-resolution callbacks, empty-member release resets, intrinsic/runtime autosizing, and synthetic sprite-event broker retention during empty-channel release.
 - Registration-aware sprite bounds, bitmap registration scaling, flip/mirror handling, member image get/set callbacks, and cursor member encoding are available through provider hooks until the C++ cast manager is ported.
 
+### Movie Properties Foundation
+
+- `player::MovieProperties` ports movie-level `the` property access for frame metadata, stage dimensions, movie path/name helpers, Java-compatible system/date/time constants, elapsed timer values, writable runtime flags, actor lists, cursor, alert hook, float precision, random seed, xtra listing, and miscellaneous Lingo constants.
+- Input-backed mouse, key, focus, and selection properties are wired to the C++ `InputState`; file-backed counts, stage size, tempo, base path, and color depth use `DirectorFile` when available.
+- Stage object properties, background-color mutation, item delimiter caching, frame/label/marker navigation, and net-page/net-movie requests are exposed through provider callbacks until the full C++ `Player` and stage renderer are ported.
+
 ### Score Navigation Foundation
 
 - `score::ScoreBehaviorRef` ports behavior cast-member references with saved parameter storage.
@@ -392,6 +398,7 @@ Result:
 - BehaviorInstance and BehaviorManager ID/property state, behavior-ref parameters, frame-script caching, channel lookup/removal, sprite-instance ordering, and clear tests passed through the same CTest executable.
 - EventDispatcher global, frame/movie, sprite/movie, sprite-only, behavior-only, and movie-only dispatch ordering, pass propagation, dynamic script-instance dispatch, sprite handler lookup, mouse interactivity, mouse-handler recognition, debug flag, and stopEvent state tests passed through the same CTest executable.
 - SpriteProperties missing defaults, property get/set, revision bumps, cast member assignment, autosizing, registration-aware bounds, cursor lists, script-instance sprite numbers, release cleanup, color refs, and image callbacks passed through the same CTest executable.
+- MovieProperties movie/stage property reads and writes, file/input-backed values, xtra lists, item delimiters, timers, stage background color, random seed, navigation callbacks, and net navigation callbacks passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -454,4 +461,5 @@ Result:
 - `205a5d2 Port C++ net manager foundation`
 - `4e98478 Port C++ cursor manager foundation`
 - `55728d1 Port C++ event dispatcher foundation`
-- Current checkpoint commit message: `Port C++ sprite properties foundation`
+- `737ad4b Port C++ sprite properties foundation`
+- Current checkpoint commit message: `Port C++ movie properties foundation`

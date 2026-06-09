@@ -48,6 +48,7 @@ add_library(libreshockwave
     src/player/PlayerEvent.cpp
     src/player/PlayerState.cpp
     src/player/CursorManager.cpp
+    src/player/MovieProperties.cpp
     src/player/SpriteProperties.cpp
     src/player/audio/SoundManager.cpp
     src/player/behavior/BehaviorInstance.cpp

@@ -70,6 +70,7 @@
 #include "libreshockwave/player/PlayerEventInfo.hpp"
 #include "libreshockwave/player/PlayerState.hpp"
 #include "libreshockwave/player/CursorManager.hpp"
+#include "libreshockwave/player/MovieProperties.hpp"
 #include "libreshockwave/player/SpriteProperties.hpp"
 #include "libreshockwave/player/audio/AudioBackend.hpp"
 #include "libreshockwave/player/audio/SoundManager.hpp"
@@ -173,6 +174,7 @@ using libreshockwave::lookup::PaletteResolver;
 using libreshockwave::lookup::ScriptLookup;
 using libreshockwave::player::ExternalCastLoadEvent;
 using libreshockwave::player::CursorManager;
+using libreshockwave::player::MovieProperties;
 using libreshockwave::player::PlayerEvent;
 using libreshockwave::player::PlayerEventInfo;
 using libreshockwave::player::PlayerState;
@@ -660,6 +662,221 @@ void testPlayerInputFoundation() {
     assert(state.pollEvent() == InputEvent::keyDown(36, "x"));
     assert(!state.hasEvents());
     assert(!state.pollEvent().has_value());
+}
+
+void testMoviePropertiesFoundation() {
+    MovieProperties props;
+    assert(props.getMovieProp("return").stringValue() == "\r");
+    assert(props.getMovieProp("void").isVoid());
+    assert(props.getMovieProp("true") == Datum::TRUE);
+    assert(props.getMovieProp("false") == Datum::FALSE);
+    assert(props.getMovieProp("frame").intValue() == 0);
+    assert(props.getMovieProp("lastFrame").intValue() == 0);
+    assert(props.getMovieProp("stageRight").intValue() == 0);
+    assert(props.getStageProp("rect") == Datum::intRect(0, 0, 640, 480));
+    assert(props.getMovieProp("platform").stringValue() == "Windows,32");
+    assert(props.getMovieProp("runMode").stringValue() == "Plugin");
+    assert(props.getMovieProp("productVersion").stringValue() == "10.1");
+    assert(props.getMovieProp("environment").stringValue() == "Java");
+    assert(!props.getMovieProp("date").stringValue().empty());
+    assert(!props.getMovieProp("short date").stringValue().empty());
+    assert(!props.getMovieProp("long time").stringValue().empty());
+    assert(props.getMovieProp("timer").intValue() >= 0);
+    assert(props.getMovieProp("milliseconds").intValue() >= 0);
+    assert(props.getMovieProp("emptyString").stringValue().empty());
+    assert(props.getMovieProp("enter").stringValue() == "\n");
+    assert(props.getMovieProp("tab").stringValue() == "\t");
+    assert(props.getMovieProp("quote").stringValue() == "\"");
+    assert(props.getMovieProp("backspace").stringValue() == "\b");
+    assert(props.getMovieProp("space").stringValue() == " ");
+    assert(std::abs(props.getMovieProp("pi").floatValue() - 3.14159F) < 0.001F);
+    assert(props.getMovieProp("activeWindow").type() == DatumType::StageRef);
+    assert(props.getMovieProp("stage").type() == DatumType::StageRef);
+    assert(props.getMovieProp("colorDepth").intValue() == 32);
+    assert(props.getMovieProp("fullColorPermit") == Datum::TRUE);
+    assert(props.getMovieProp("perFrameHook").isVoid());
+    assert(props.getMovieProp("unknownMovieProp").isVoid());
+
+    DirectorFile emptyFile(ByteOrder::BigEndian, false, 0, ChunkType::RIFX);
+    emptyFile.setBasePath("/movies/example.dir");
+    props.setFile(&emptyFile);
+    assert(props.getMovieProp("name").stringValue() == "example.dir");
+    assert(props.getMovieProp("movieName").stringValue() == "example.dir");
+    assert(props.getMovieProp("moviePath").stringValue() == "/movies/example.dir/");
+    assert(props.getMovieProp("path").stringValue() == "/movies/example.dir");
+    assert(props.getMovieProp("tempo").intValue() == 15);
+    assert(props.getMovieProp("number of castMembers").intValue() == 0);
+    assert(props.getMovieProp("number of castLibs").intValue() == 0);
+    assert(props.getStageProp("rect") == Datum::intRect(0, 0, 0, 0));
+
+    int effectiveFrame = 12;
+    int frameCount = 44;
+    int tempo = 30;
+    int randomSeed = 99;
+    int paramCount = 3;
+    int castLibCount = 4;
+    int stageBg = 0x223344;
+    props.setEffectiveFrameSupplier([&effectiveFrame]() { return effectiveFrame; });
+    props.setFrameCountSupplier([&frameCount]() { return frameCount; });
+    props.setTempoSupplier([&tempo]() { return tempo; });
+    props.setTempoSetter([&tempo](int value) { tempo = value; });
+    props.setRandomSeedSupplier([&randomSeed]() { return randomSeed; });
+    props.setRandomSeedSetter([&randomSeed](int value) { randomSeed = value; });
+    props.setParamCountSupplier([&paramCount]() { return paramCount; });
+    props.setCastLibCountSupplier([&castLibCount]() { return castLibCount; });
+    props.setStageBackgroundColorSupplier([&stageBg]() { return stageBg; });
+    props.setStageBackgroundColorSetter([&stageBg](int value) { stageBg = value; });
+    props.setStageImageSupplier([]() { return Datum::of(std::string("stage-image")); });
+    props.setXtraNamesSupplier([]() { return std::vector<std::string>{"netLingo", "fileIO"}; });
+    assert(props.getMovieProp("frame").intValue() == 12);
+    assert(props.getMovieProp("lastFrame").intValue() == 44);
+    assert(props.getMovieProp("tempo").intValue() == 30);
+    assert(props.getMovieProp("randomSeed").intValue() == 99);
+    assert(props.getMovieProp("paramCount").intValue() == 3);
+    assert(props.getMovieProp("number of castLibs").intValue() == 4);
+    assert(props.getMovieProp("number of xtras").intValue() == 2);
+    auto xtraList = props.getMovieProp("xtraList");
+    const auto& xtras = xtraList.listValue().items();
+    assert(xtras.size() == 2);
+    assert(xtras[0].propListValue().get(Datum::of(std::string("name"))).stringValue() == "netLingo");
+    assert(xtras[0].propListValue().get(Datum::of(std::string("fileName"))).stringValue() == "netLingo.x32");
+
+    InputState input;
+    input.setMousePosition(77, 88);
+    input.setMouseDown(true);
+    input.setRightMouseDown(true);
+    input.setClickOnSprite(5);
+    input.setClickLoc(10, 11);
+    input.updateDoubleClick(10, 11);
+    input.updateDoubleClick(12, 13);
+    input.setRolloverSprite(6);
+    input.setLastKey("x");
+    input.setLastKeyCode(7);
+    input.setShiftDown(true);
+    input.setAltDown(true);
+    input.setControlDown(true);
+    input.setKeyboardFocusSprite(9);
+    input.setSelStart(2);
+    input.setSelEnd(4);
+    props.setInputState(&input);
+    assert(props.getMovieProp("mouseDown").intValue() == 1);
+    assert(props.getMovieProp("mouseUp").intValue() == 0);
+    assert(props.getMovieProp("mouseH").intValue() == 77);
+    assert(props.getMovieProp("mouseV").intValue() == 88);
+    assert(props.getMovieProp("clickOn").intValue() == 5);
+    assert(props.getMovieProp("clickLoc") == Datum::intPoint(10, 11));
+    assert(props.getMovieProp("mouseLoc") == Datum::intPoint(77, 88));
+    assert(props.getMovieProp("rightMouseDown").intValue() == 1);
+    assert(props.getMovieProp("doubleClick").intValue() == 1);
+    assert(props.getMovieProp("rollover").intValue() == 6);
+    assert(props.getMovieProp("key").stringValue() == "x");
+    assert(props.getMovieProp("keyCode").intValue() == 7);
+    assert(props.getMovieProp("keyPressed").intValue() == 7);
+    assert(props.getMovieProp("shiftDown").intValue() == 1);
+    assert(props.getMovieProp("altDown").intValue() == 1);
+    assert(props.getMovieProp("optionDown").intValue() == 1);
+    assert(props.getMovieProp("controlDown").intValue() == 1);
+    assert(props.getMovieProp("commandDown").intValue() == 1);
+    assert(props.getMovieProp("keyboardFocusSprite").intValue() == 9);
+    assert(props.getMovieProp("selStart").intValue() == 2);
+    assert(props.getMovieProp("selEnd").intValue() == 4);
+
+    assert(props.setMovieProp("exitLock", Datum::TRUE));
+    assert(props.setMovieProp("updateLock", Datum::TRUE));
+    assert(props.setMovieProp("itemDelimiter", Datum::of(std::string("|rest"))));
+    assert(props.setMovieProp("puppetTempo", Datum::of(-7)));
+    assert(props.setMovieProp("traceScript", Datum::TRUE));
+    assert(props.setMovieProp("traceLogFile", Datum::of(std::string("trace.log"))));
+    assert(props.setMovieProp("allowCustomCaching", Datum::TRUE));
+    assert(props.setMovieProp("actorList", Datum::list({Datum::of(1)})));
+    assert(props.setMovieProp("tempo", Datum::of(24)));
+    assert(props.setMovieProp("keyboardFocusSprite", Datum::of(22)));
+    assert(props.setMovieProp("alertHook", Datum::symbol("alertHandler")));
+    assert(props.setMovieProp("cursor", Datum::of(4)));
+    assert(props.setMovieProp("floatPrecision", Datum::of(6)));
+    assert(props.setMovieProp("randomSeed", Datum::of(1234)));
+    assert(props.setMovieProp("selStart", Datum::of(30)));
+    assert(props.setMovieProp("selEnd", Datum::of(40)));
+    assert(props.setMovieProp("debugPlaybackEnabled", Datum::TRUE));
+    assert(!props.setMovieProp("readOnly", Datum::of(1)));
+    assert(props.exitLock());
+    assert(props.updateLock());
+    assert(props.getItemDelimiter() == '|');
+    assert(props.itemDelimiterString() == "|");
+    assert(props.puppetTempo() == 0);
+    assert(props.getMovieProp("traceScript").intValue() == 1);
+    assert(props.getMovieProp("traceLogFile").stringValue() == "trace.log");
+    assert(props.getMovieProp("allowCustomCaching").intValue() == 1);
+    assert(props.actorList().listValue().count() == 1);
+    assert(tempo == 24);
+    assert(input.keyboardFocusSprite() == 22);
+    assert(props.alertHook().asSymbol()->name == "alertHandler");
+    assert(props.getMovieProp("cursor").intValue() == 4);
+    assert(props.setMovieProp("cursor", Datum::voidValue()));
+    assert(props.getMovieProp("cursor").isVoid());
+    assert(props.getMovieProp("floatPrecision").intValue() == 6);
+    assert(randomSeed == 1234);
+    assert(input.selStart() == 30);
+    assert(input.selEnd() == 40);
+    props.setItemDelimiter(';');
+    assert(props.getItemDelimiter() == ';');
+    props.setPuppetTempo(17);
+    assert(props.puppetTempo() == 17);
+
+    assert(props.getStageProp("title").stringValue().empty());
+    assert(props.setStageProp("title", Datum::of(std::string("Main Stage"))));
+    assert(props.getStageProp("title").stringValue() == "Main Stage");
+    assert(props.getStageProp("name").stringValue() == "stage");
+    assert(props.getStageProp("visible") == Datum::TRUE);
+    assert(props.getStageProp("bgColor").intValue() == 0x223344);
+    assert(props.setStageProp("bgColor", Datum::colorRef(1, 2, 3)));
+    assert(stageBg == 0x010203);
+    assert(props.setStageProp("bgColor", Datum::of(static_cast<int>(0xFFAABBCCU))));
+    assert(stageBg == 0xAABBCC);
+    assert(props.setStageProp("visible", Datum::FALSE));
+    assert(props.getStageProp("image").stringValue() == "stage-image");
+    assert(props.setStageProp("tempo", Datum::of(31)));
+    assert(tempo == 31);
+
+    int navigatedFrame = 0;
+    std::string navigatedLabel;
+    int markerOffset = 0;
+    std::string pageUrl;
+    std::string pageTarget;
+    std::string movieUrl;
+    props.setGoToFrameHandler([&navigatedFrame](int frame) { navigatedFrame = frame; });
+    props.setGoToLabelHandler([&navigatedLabel](const std::string& label) { navigatedLabel = label; });
+    props.setFrameForLabelResolver([](const std::string& label) { return label == "intro" ? 5 : 0; });
+    props.setMarkerFrameResolver([&markerOffset](int offset) {
+        markerOffset = offset;
+        return offset == -1 ? 2 : 9;
+    });
+    props.setGotoNetPageHandler([&pageUrl, &pageTarget](const std::string& url, const std::string& target) {
+        pageUrl = url;
+        pageTarget = target;
+    });
+    props.setGotoNetMovieHandler([&movieUrl](const std::string& url) {
+        movieUrl = url;
+        return 77;
+    });
+    props.goToFrame(42);
+    props.goToLabel("intro");
+    assert(navigatedFrame == 42);
+    assert(navigatedLabel == "intro");
+    assert(props.getFrameForLabel("intro") == 5);
+    assert(props.getFrameForLabel("missing") == 0);
+    assert(props.getMarkerFrame(-1) == 2);
+    assert(markerOffset == -1);
+    props.gotoNetPage("https://example.invalid", "_blank");
+    assert(pageUrl == "https://example.invalid");
+    assert(pageTarget == "_blank");
+    assert(props.gotoNetMovie("next.dcr") == 77);
+    assert(movieUrl == "next.dcr");
+
+    MovieProperties noNavigation;
+    assert(noNavigation.getFrameForLabel("intro") == 0);
+    assert(noNavigation.getMarkerFrame(1) == 0);
+    assert(noNavigation.gotoNetMovie("next.dcr") == -1);
 }
 
 std::shared_ptr<Bitmap> makeSolidHitBitmap(std::uint32_t argb) {
@@ -5245,6 +5462,7 @@ int main() {
     testLingoOpcodeHelpers();
     testPlayerCoreFoundation();
     testPlayerInputFoundation();
+    testMoviePropertiesFoundation();
     testHitTesterFoundation();
     testCursorManagerFoundation();
     testScoreNavigationFoundation();
