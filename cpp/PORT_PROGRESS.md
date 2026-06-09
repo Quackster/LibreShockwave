@@ -132,6 +132,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Custom 256-color palette resolution inherits the System Mac trailing grayscale ramp for black placeholder entries in indices 246-255.
 - `DirectorFile` exposes `resolvePalette`, `resolvePaletteExact`, and `resolvePaletteByMemberNumber` helpers backed by a lazy palette resolver cache.
 
+### DirectorFile Member Resource Integration
+
+- `DirectorFile` exposes stage width, stage height, default tempo, score tempo, and score palette channel helpers.
+- KEY* backed member resource lookup now resolves embedded film-loop score chunks for cast members.
+- KEY* backed text lookup now returns all associated STXT chunks, chooses the first non-empty text chunk, and falls back to direct member-id STXT lookup.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -162,11 +168,12 @@ Result:
 - Lazy chunk reparse and non-essential release tests passed through the same CTest executable.
 - Cast member and script lookup tests passed through the same CTest executable.
 - Palette resolver and DirectorFile palette lookup tests passed through the same CTest executable.
+- DirectorFile stage/tempo, associated text, and associated score lookup tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
 
-- Higher-level text/media/script-name integration.
+- Higher-level media/script-name integration.
 - Remaining bitmap, sound, font, text, score, and script chunk decoders.
 - Lingo decompiler, VM runtime values, dispatchers, and builtins.
 - Player core, rendering pipeline, input, networking, audio, cast management, and debugging.
@@ -190,4 +197,5 @@ Result:
 - `7a2276f Port C++ D3 RIFF file loading`
 - `cc3203d Port C++ lazy chunk reparsing`
 - `ea9e01f Port C++ cast and script lookup`
-- Current checkpoint commit message: `Port C++ palette resolver`
+- `afbfbcb Port C++ palette resolver`
+- Current checkpoint commit message: `Port C++ DirectorFile member resources`

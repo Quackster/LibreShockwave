@@ -1485,14 +1485,36 @@ void testDirectorFileRifxLoader() {
     namesData.push_back(4);
     namesData.insert(namesData.end(), {'s', 't', 'o', 'p'});
     const std::vector<std::uint8_t> rawData{0xDE, 0xAD, 0xBE, 0xEF};
+    std::vector<std::uint8_t> keyData;
+    appendI16(keyData, 12);
+    appendI16(keyData, 12);
+    appendI32(keyData, 2);
+    appendI32(keyData, 2);
+    appendI32(keyData, 4);
+    appendI32(keyData, 7);
+    appendI32(keyData, BinaryReader::fourCC("STXT"));
+    appendI32(keyData, 5);
+    appendI32(keyData, 7);
+    appendI32(keyData, BinaryReader::fourCC("VWSC"));
+    std::vector<std::uint8_t> textData;
+    appendI32(textData, 8);
+    appendI32(textData, 5);
+    textData.insert(textData.end(), {'H', 'e', 'l', 'l', 'o'});
+    const std::vector<std::uint8_t> scoreData;
 
     constexpr int mmapOffset = 32;
-    constexpr int mmapDataStart = mmapOffset + 8 + 24 + 60;
+    constexpr int mmapDataStart = mmapOffset + 8 + 24 + 120;
     const int configOffset = mmapDataStart - 8;
     const int namesDataStart = mmapDataStart + static_cast<int>(configData.size());
     const int namesOffset = namesDataStart - 8;
     const int rawDataStart = namesDataStart + static_cast<int>(namesData.size());
     const int rawOffset = rawDataStart - 8;
+    const int keyDataStart = rawDataStart + static_cast<int>(rawData.size());
+    const int keyOffset = keyDataStart - 8;
+    const int textDataStart = keyDataStart + static_cast<int>(keyData.size());
+    const int textOffset = textDataStart - 8;
+    const int scoreDataStart = textDataStart + static_cast<int>(textData.size());
+    const int scoreOffset = scoreDataStart - 8;
 
     std::vector<std::uint8_t> fileData;
     appendFourCC(fileData, "RIFX");
@@ -1504,11 +1526,11 @@ void testDirectorFileRifxLoader() {
     appendI32(fileData, mmapOffset);
     appendI32(fileData, 0x0207);
     appendFourCC(fileData, "mmap");
-    appendI32(fileData, 24 + 60);
+    appendI32(fileData, 24 + 120);
     appendI16(fileData, 24);
     appendI16(fileData, 20);
-    appendI32(fileData, 3);
-    appendI32(fileData, 3);
+    appendI32(fileData, 6);
+    appendI32(fileData, 6);
     appendI32(fileData, 0);
     appendI32(fileData, 0);
     appendI32(fileData, 0);
@@ -1530,9 +1552,30 @@ void testDirectorFileRifxLoader() {
     appendI16(fileData, 0);
     appendI16(fileData, 0);
     appendI32(fileData, 0);
+    appendI32(fileData, BinaryReader::fourCC("KEY*"));
+    appendI32(fileData, static_cast<std::uint32_t>(keyData.size()));
+    appendI32(fileData, static_cast<std::uint32_t>(keyOffset));
+    appendI16(fileData, 0);
+    appendI16(fileData, 0);
+    appendI32(fileData, 0);
+    appendI32(fileData, BinaryReader::fourCC("STXT"));
+    appendI32(fileData, static_cast<std::uint32_t>(textData.size()));
+    appendI32(fileData, static_cast<std::uint32_t>(textOffset));
+    appendI16(fileData, 0);
+    appendI16(fileData, 0);
+    appendI32(fileData, 0);
+    appendI32(fileData, BinaryReader::fourCC("VWSC"));
+    appendI32(fileData, static_cast<std::uint32_t>(scoreData.size()));
+    appendI32(fileData, static_cast<std::uint32_t>(scoreOffset));
+    appendI16(fileData, 0);
+    appendI16(fileData, 0);
+    appendI32(fileData, 0);
     fileData.insert(fileData.end(), configData.begin(), configData.end());
     fileData.insert(fileData.end(), namesData.begin(), namesData.end());
     fileData.insert(fileData.end(), rawData.begin(), rawData.end());
+    fileData.insert(fileData.end(), keyData.begin(), keyData.end());
+    fileData.insert(fileData.end(), textData.begin(), textData.end());
+    fileData.insert(fileData.end(), scoreData.begin(), scoreData.end());
     putI32(fileData, 4, static_cast<std::uint32_t>(fileData.size() - 8));
 
     auto file = DirectorFile::load(fileData);
@@ -1540,24 +1583,62 @@ void testDirectorFileRifxLoader() {
     assert(!file->isAfterburner());
     assert(file->movieType() == ChunkType::MV93);
     assert(file->version() == 0x0207);
-    assert(file->chunkInfo().size() == 3);
-    assert(file->chunks().size() == 3);
+    assert(file->chunkInfo().size() == 6);
+    assert(file->chunks().size() == 6);
     assert(file->config().get() != nullptr);
     assert(file->config()->file() == file.get());
     assert(file->config()->stageWidth() == 320);
+    assert(file->stageWidth() == 320);
+    assert(file->stageHeight() == 240);
     assert(file->config()->tempo() == 30);
+    assert(file->tempo() == 30);
     assert(file->scriptNames().get() != nullptr);
     assert(file->scriptNames()->names().size() == 2);
     assert(file->scriptNames()->getName(1) == "stop");
+    assert(file->keyTable().get() != nullptr);
+    assert(file->scoreChunk().get() != nullptr);
+    assert(file->getScoreTempo(0) == -1);
+    assert(!file->getScorePalette(0).has_value());
     assert(file->getChunkInfo(ChunkId(0))->type() == ChunkType::DRCF);
     assert(file->getChunk(ChunkId(1))->type() == ChunkType::Lnam);
     assert(file->getChunk(ChunkId(2))->type() == ChunkType::JUNK);
+    assert(file->getChunk(ChunkId(3))->type() == ChunkType::KEYp);
+    assert(file->getChunk(ChunkId(4))->type() == ChunkType::STXT);
+    assert(file->getChunk(ChunkId(5))->type() == ChunkType::VWSC);
+    auto member7 = std::make_shared<CastMemberChunk>(file.get(),
+                                                     ChunkId(7),
+                                                     MemberType::FilmLoop,
+                                                     0,
+                                                     0,
+                                                     std::vector<std::uint8_t>{},
+                                                     std::vector<std::uint8_t>{},
+                                                     "Loop",
+                                                     0,
+                                                     0,
+                                                     0);
+    auto textChunks = file->getTextChunksForMember(member7);
+    assert(textChunks.size() == 1);
+    assert(textChunks.front()->text() == "Hello");
+    assert(file->getTextForMember(member7) == textChunks.front());
+    assert(file->getScoreForMember(member7) == file->scoreChunk());
+    auto directTextMember = std::make_shared<CastMemberChunk>(file.get(),
+                                                              ChunkId(4),
+                                                              MemberType::Text,
+                                                              0,
+                                                              0,
+                                                              std::vector<std::uint8_t>{},
+                                                              std::vector<std::uint8_t>{},
+                                                              "Direct Text",
+                                                              0,
+                                                              0,
+                                                              0);
+    assert(file->getTextForMember(directTextMember)->text() == "Hello");
     file->releaseNonEssentialChunks();
-    assert(file->chunks().size() == 2);
+    assert(file->chunks().size() == 5);
     auto reparsedRaw = file->getChunk(ChunkId(2));
     assert(reparsedRaw.get() != nullptr);
     assert(reparsedRaw->type() == ChunkType::JUNK);
-    assert(file->chunks().size() == 3);
+    assert(file->chunks().size() == 6);
 }
 
 void testAfterburnerReader() {
@@ -2113,6 +2194,11 @@ void testLookupHelpers() {
     assert(emptyPaletteResolver.resolve(999).get() == &Palette::systemMacPalette());
 
     DirectorFile emptyFile(ByteOrder::BigEndian, false, 0, ChunkType::MV93);
+    assert(emptyFile.stageWidth() == 0);
+    assert(emptyFile.stageHeight() == 0);
+    assert(emptyFile.tempo() == 15);
+    assert(emptyFile.getScoreTempo(0) == -1);
+    assert(!emptyFile.getScorePalette(0).has_value());
     assert(emptyFile.resolvePalette(Palette::SYSTEM_WIN).get() == &Palette::systemWinPalette());
     assert(emptyFile.resolvePaletteExact(999).get() == nullptr);
     assert(emptyFile.resolvePaletteByMemberNumber(42).get() == &Palette::systemMacPalette());

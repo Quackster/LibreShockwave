@@ -10,6 +10,7 @@
 #include "libreshockwave/format/ChunkType.hpp"
 #include "libreshockwave/id/Ids.hpp"
 #include "libreshockwave/io/BinaryReader.hpp"
+#include "libreshockwave/chunks/ScoreChunk.hpp"
 
 namespace libreshockwave::chunks {
 class CastChunk;
@@ -25,6 +26,7 @@ class ScoreChunk;
 class ScriptChunk;
 class ScriptContextChunk;
 class ScriptNamesChunk;
+class TextChunk;
 enum class CastMemberScriptType;
 }
 
@@ -95,6 +97,15 @@ public:
     [[nodiscard]] std::shared_ptr<chunks::ScriptChunk> getScriptByContextId(int scriptId);
     [[nodiscard]] std::vector<std::shared_ptr<chunks::ScriptChunk>> getScriptsByContextId(int scriptId);
     [[nodiscard]] std::optional<chunks::CastMemberScriptType> getScriptType(const std::shared_ptr<chunks::ScriptChunk>& script);
+    [[nodiscard]] std::shared_ptr<chunks::ScoreChunk> getScoreForMember(const std::shared_ptr<chunks::CastMemberChunk>& member);
+    [[nodiscard]] std::vector<std::shared_ptr<chunks::TextChunk>> getTextChunksForMember(
+        const std::shared_ptr<chunks::CastMemberChunk>& member);
+    [[nodiscard]] std::shared_ptr<chunks::TextChunk> getTextForMember(const std::shared_ptr<chunks::CastMemberChunk>& member);
+    [[nodiscard]] int stageWidth() const;
+    [[nodiscard]] int stageHeight() const;
+    [[nodiscard]] int tempo() const;
+    [[nodiscard]] int getScoreTempo(int frame) const;
+    [[nodiscard]] std::optional<chunks::ScoreChunk::PaletteChannelData> getScorePalette(int frame) const;
     [[nodiscard]] std::shared_ptr<const bitmap::Palette> resolvePalette(int paletteId);
     [[nodiscard]] std::shared_ptr<const bitmap::Palette> resolvePaletteExact(int paletteId);
     [[nodiscard]] std::shared_ptr<const bitmap::Palette> resolvePaletteByMemberNumber(int memberNumber);

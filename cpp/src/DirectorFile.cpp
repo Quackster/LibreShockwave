@@ -82,6 +82,82 @@ std::optional<chunks::CastMemberScriptType> DirectorFile::getScriptType(const st
     return scriptLookup().getScriptType(script);
 }
 
+std::shared_ptr<chunks::ScoreChunk> DirectorFile::getScoreForMember(
+    const std::shared_ptr<chunks::CastMemberChunk>& member) {
+    if (!member || !keyTable_) {
+        return nullptr;
+    }
+
+    for (const auto& entry : keyTable_->getEntriesForOwner(member->id())) {
+        if (entry.fourcc != format::fourCC(format::ChunkType::VWSC) &&
+            entry.fourcc != format::fourCC(format::ChunkType::SCVW)) {
+            continue;
+        }
+        if (auto score = std::dynamic_pointer_cast<chunks::ScoreChunk>(getChunk(entry.sectionId))) {
+            return score;
+        }
+    }
+    return nullptr;
+}
+
+std::vector<std::shared_ptr<chunks::TextChunk>> DirectorFile::getTextChunksForMember(
+    const std::shared_ptr<chunks::CastMemberChunk>& member) {
+    if (!member || !keyTable_) {
+        return {};
+    }
+
+    std::vector<std::shared_ptr<chunks::TextChunk>> result;
+    for (const auto& entry : keyTable_->getEntriesForOwner(member->id())) {
+        if (entry.fourcc != format::fourCC(format::ChunkType::STXT)) {
+            continue;
+        }
+        if (auto text = std::dynamic_pointer_cast<chunks::TextChunk>(getChunk(entry.sectionId))) {
+            result.push_back(text);
+        }
+    }
+    return result;
+}
+
+std::shared_ptr<chunks::TextChunk> DirectorFile::getTextForMember(
+    const std::shared_ptr<chunks::CastMemberChunk>& member) {
+    std::shared_ptr<chunks::TextChunk> firstMatch;
+    for (const auto& text : getTextChunksForMember(member)) {
+        if (!firstMatch) {
+            firstMatch = text;
+        }
+        if (text && !text->text().empty()) {
+            return text;
+        }
+    }
+    if (firstMatch) {
+        return firstMatch;
+    }
+    if (!member) {
+        return nullptr;
+    }
+    return std::dynamic_pointer_cast<chunks::TextChunk>(getChunk(member->id()));
+}
+
+int DirectorFile::stageWidth() const {
+    return config_ ? config_->stageWidth() : 0;
+}
+
+int DirectorFile::stageHeight() const {
+    return config_ ? config_->stageHeight() : 0;
+}
+
+int DirectorFile::tempo() const {
+    return config_ ? config_->tempo() : 15;
+}
+
+int DirectorFile::getScoreTempo(int frame) const {
+    return scoreChunk_ ? scoreChunk_->getFrameTempo(frame) : -1;
+}
+
+std::optional<chunks::ScoreChunk::PaletteChannelData> DirectorFile::getScorePalette(int frame) const {
+    return scoreChunk_ ? scoreChunk_->getFramePalette(frame) : std::nullopt;
+}
+
 std::shared_ptr<const bitmap::Palette> DirectorFile::resolvePalette(int paletteId) {
     return paletteResolver().resolve(paletteId);
 }
