@@ -82,6 +82,7 @@
 #include "libreshockwave/player/net/NetTask.hpp"
 #include "libreshockwave/player/render/RenderConfig.hpp"
 #include "libreshockwave/player/render/RenderType.hpp"
+#include "libreshockwave/player/render/SpriteRegistry.hpp"
 #include "libreshockwave/player/render/output/SoftwareFrameRenderer.hpp"
 #include "libreshockwave/player/render/output/TextRenderer.hpp"
 #include "libreshockwave/player/render/pipeline/BitmapCache.hpp"
@@ -192,6 +193,7 @@ using libreshockwave::player::net::NetTaskMethod;
 using libreshockwave::player::net::NetTaskState;
 using libreshockwave::player::render::RenderConfig;
 using libreshockwave::player::render::RenderType;
+using libreshockwave::player::render::SpriteRegistry;
 using libreshockwave::player::render::output::SoftwareFrameRenderer;
 using libreshockwave::player::render::output::TextRenderer;
 using libreshockwave::player::render::pipeline::BitmapCache;
@@ -1058,6 +1060,106 @@ void testSpriteStateFoundation() {
     dynamic.rebindToScore(nextData);
     assert(dynamic.scriptInstanceList().empty());
     assert(dynamic.effectiveCastMember() == 44);
+}
+
+void testSpriteRegistryFoundation() {
+    SpriteRegistry registry;
+    assert(registry.getAll().empty());
+    assert(registry.get(5) == nullptr);
+    assert(!registry.contains(5));
+    assert(registry.getRevision() == 0);
+
+    auto baseData = makeSpriteChannelData(libreshockwave::id::code(InkMode::BLEND), 128, 33);
+    auto sprite = registry.getOrCreate(5, baseData);
+    assert(sprite != nullptr);
+    assert(sprite->channel() == 5);
+    assert(sprite->effectiveCastMember() == 33);
+    assert(registry.contains(5));
+    assert(registry.get(5) == sprite);
+    const SpriteRegistry& constRegistry = registry;
+    assert(constRegistry.get(5)->channel() == 5);
+    assert(registry.getAll().size() == 1);
+    assert(registry.getOrCreate(5, baseData) == sprite);
+    assert(registry.getDynamicSprites().empty());
+
+    registry.markScoreBehaviorChannel(5);
+    assert(registry.hasScoreBehaviorChannel(5));
+    assert(!registry.hasScoreBehaviorChannel(6));
+
+    auto movedData = baseData;
+    movedData.posX = 77;
+    movedData.posY = 88;
+    registry.updateFromScore(5, movedData);
+    assert(sprite->locH() == 77);
+    assert(sprite->locV() == 88);
+    assert(sprite->effectiveCastMember() == 33);
+    assert(registry.revision() == 0);
+
+    sprite->setScriptInstanceList({Datum::of(std::string("score-behavior"))});
+    auto replacementData = makeSpriteChannelData(libreshockwave::id::code(InkMode::MATTE), 64, 44);
+    registry.updateFromScore(5, replacementData);
+    assert(sprite->effectiveCastMember() == 44);
+    assert(sprite->scriptInstanceList().size() == 1);
+    assert(sprite->scriptInstanceList()[0].stringValue() == "score-behavior");
+    assert(registry.getRevision() == 1);
+
+    auto rebindData = makeSpriteChannelData(libreshockwave::id::code(InkMode::COPY), 0, 55);
+    assert(registry.getOrCreate(5, rebindData) == sprite);
+    assert(sprite->effectiveCastMember() == 55);
+    assert(sprite->scriptInstanceList().size() == 1);
+    assert(registry.getRevision() == 1);
+
+    auto dynamic = registry.getOrCreateDynamic(8);
+    assert(dynamic->isDynamic());
+    assert(dynamic->isPuppet());
+    assert(registry.getOrCreateDynamic(8) == dynamic);
+    dynamic->setDynamicMember(4, 77);
+    dynamic->setWidth(20);
+    dynamic->setHeight(30);
+    dynamic->setFlipH(true);
+    dynamic->setRotation(90.0);
+    registry.updateFromScore(8, baseData);
+    assert(dynamic->hasDynamicMember());
+    assert(dynamic->width() == 20);
+    assert(dynamic->rotation() == 90.0);
+
+    auto dynamicSprites = registry.getDynamicSprites();
+    assert(dynamicSprites.size() == 1);
+    assert(dynamicSprites[0] == dynamic);
+    assert(!registry.clearDynamicMemberBindings(4, 78));
+    assert(registry.getRevision() == 1);
+    assert(registry.clearDynamicMemberBindings(4, 77));
+    assert(registry.getRevision() == 2);
+    assert(!dynamic->hasDynamicMember());
+    assert(dynamic->isDynamic());
+    assert(dynamic->width() == 1);
+    assert(dynamic->height() == 1);
+    assert(!dynamic->isFlipH());
+    assert(dynamic->rotation() == 0.0);
+
+    auto scoreWithDynamic = registry.getOrCreate(9, baseData);
+    scoreWithDynamic->setScriptInstanceList({Datum::of(std::string("attached"))});
+    scoreWithDynamic->setDynamicMember(6, 100);
+    scoreWithDynamic->setWidth(70);
+    scoreWithDynamic->setFlipH(false);
+    assert(registry.clearDynamicMemberBindings(6, 100));
+    assert(registry.getRevision() == 3);
+    assert(!scoreWithDynamic->hasDynamicMember());
+    assert(!scoreWithDynamic->isDynamic());
+    assert(scoreWithDynamic->effectiveCastMember() == 33);
+    assert(scoreWithDynamic->width() == 33);
+    assert(scoreWithDynamic->isFlipH());
+    assert(scoreWithDynamic->scriptInstanceList().size() == 1);
+
+    registry.markScoreBehaviorChannel(9);
+    registry.remove(9);
+    assert(!registry.contains(9));
+    assert(!registry.hasScoreBehaviorChannel(9));
+
+    registry.clear();
+    assert(registry.getAll().empty());
+    assert(!registry.hasScoreBehaviorChannel(5));
+    assert(registry.getRevision() == 3);
 }
 
 std::shared_ptr<ScriptChunk> makeBehaviorScript(int id, ScriptChunkType type = ScriptChunkType::Behavior) {
@@ -4363,6 +4465,7 @@ int main() {
     testHitTesterFoundation();
     testScoreNavigationFoundation();
     testSpriteStateFoundation();
+    testSpriteRegistryFoundation();
     testBehaviorFoundation();
     testDebugFoundation();
     testRenderPipelineFoundation();
