@@ -81,6 +81,7 @@
 #include "libreshockwave/player/input/HitTester.hpp"
 #include "libreshockwave/player/input/InputEvent.hpp"
 #include "libreshockwave/player/input/InputState.hpp"
+#include "libreshockwave/player/net/NetManager.hpp"
 #include "libreshockwave/player/net/NetTask.hpp"
 #include "libreshockwave/player/render/RenderConfig.hpp"
 #include "libreshockwave/player/render/RenderType.hpp"
@@ -192,6 +193,7 @@ using libreshockwave::player::input::HitTester;
 using libreshockwave::player::input::InputEvent;
 using libreshockwave::player::input::InputEventType;
 using libreshockwave::player::input::InputState;
+using libreshockwave::player::net::NetManager;
 using libreshockwave::player::net::NetTask;
 using libreshockwave::player::net::NetTaskMethod;
 using libreshockwave::player::net::NetTaskState;
@@ -2054,6 +2056,135 @@ void testNetTaskFoundation() {
     assert(postTask.toString() == "NetTask{id=2, util=https://example.invalid/submit, method=POST, state=FAILED}");
     assert(libreshockwave::player::net::name(NetTaskMethod::Get) == "GET");
     assert(libreshockwave::player::net::name(NetTaskState::InProgress) == "IN_PROGRESS");
+}
+
+Datum statusProp(const Datum& props, const std::string& key) {
+    return props.propListValue().get(Datum::of(key));
+}
+
+void testNetManagerFoundation() {
+    assert(NetManager::resolveUrl("http://localhost/path/file.txt?cache=1") == "file.txt");
+    assert(NetManager::resolveUrl("casts\\room.cct?x=1") == "room.cct");
+    assert(NetManager::resolveUrl("") == "");
+    assert(NetManager::cacheKeyForUrl("http://example.invalid/casts/room.cct?x=1") == "room.cct");
+    assert(NetManager::extractUrlPath("http://localhost:8080/gamedata/file.txt?x=1") == "/gamedata/file.txt");
+    assert(NetManager::extractUrlPath("http://localhost:8080") == "/");
+    assert(NetManager::extractOrigin("https://example.invalid/path/file") == "https://example.invalid");
+    assert(NetManager::extractOrigin("relative/file") == "");
+
+    NetManager manager;
+    assert(manager.getTask() == nullptr);
+    assert(manager.getStreamStatus() == "Error");
+    assert(!manager.netDone());
+    assert(manager.netError() == 0);
+    auto missingStatus = manager.getStreamStatusDatum();
+    assert(statusProp(missingStatus, "URL").stringValue().empty());
+    assert(statusProp(missingStatus, "state").stringValue() == "Error");
+    assert(statusProp(missingStatus, "bytesSoFar").intValue() == 0);
+    assert(statusProp(missingStatus, "error").stringValue() == "OK");
+
+    manager.setBasePath("http://example.invalid/movie/");
+    manager.setLocalHttpRoot("/tmp/www");
+    assert(manager.getBasePath() == "http://example.invalid/movie/");
+    assert(manager.basePath() == "http://example.invalid/movie/");
+    assert(manager.localHttpRoot() == "/tmp/www");
+
+    manager.cacheData("cached.cct", {'C', 'A'});
+    assert(manager.getCachedData("cached.cct").value() == std::vector<std::uint8_t>({'C', 'A'}));
+    assert(manager.getCachedData("cached.cst").value() == std::vector<std::uint8_t>({'C', 'A'}));
+    assert(manager.getCachedData("cached").value() == std::vector<std::uint8_t>({'C', 'A'}));
+
+    std::vector<std::string> completedUrls;
+    std::vector<int> completedSizes;
+    manager.setCompletionCallback([&](const std::string& url, const std::vector<std::uint8_t>& data) {
+        completedUrls.push_back(url);
+        completedSizes.push_back(static_cast<int>(data.size()));
+    });
+
+    const int cachedTaskId = manager.preloadNetThing("cached.cst");
+    assert(cachedTaskId == 1);
+    assert(manager.getTask(cachedTaskId)->state() == NetTaskState::Completed);
+    assert(manager.netDone(cachedTaskId));
+    assert(manager.netTextResult(cachedTaskId) == "CA");
+    assert(manager.getNetBytes(cachedTaskId).value() == std::vector<std::uint8_t>({'C', 'A'}));
+    assert(manager.getTask()->taskId() == cachedTaskId);
+    assert(completedUrls == std::vector<std::string>{"cached.cst"});
+    assert(completedSizes == std::vector<int>{2});
+
+    int fetchCount = 0;
+    manager.setFetchHandler([&](const NetTask& task) {
+        ++fetchCount;
+        if (task.originalUrl() == "submit") {
+            assert(task.method() == NetTaskMethod::Post);
+            assert(task.postData().has_value());
+            assert(task.postData().value() == "a=b");
+            return NetManager::LoadResult::success(std::vector<std::uint8_t>{'P', 'O', 'S', 'T'});
+        }
+        if (task.originalUrl() == "missing") {
+            return NetManager::LoadResult::failure(-7, "bad url");
+        }
+        assert(task.method() == NetTaskMethod::Get);
+        assert(task.url() == "movie.dir");
+        return NetManager::LoadResult::success(std::vector<std::uint8_t>{'O', 'K'});
+    });
+
+    const int getTaskId = manager.preloadNetThing("http://example.invalid/path/movie.dir?random=1");
+    assert(getTaskId == 2);
+    assert(fetchCount == 1);
+    const auto* getTask = manager.getTask(getTaskId);
+    assert(getTask != nullptr);
+    assert(getTask->originalUrl() == "http://example.invalid/path/movie.dir?random=1");
+    assert(getTask->url() == "movie.dir");
+    assert(getTask->state() == NetTaskState::Completed);
+    assert(manager.netDone(getTaskId));
+    assert(manager.netError(getTaskId) == 0);
+    assert(manager.netTextResult(getTaskId) == "OK");
+    assert(manager.getStreamStatus(getTaskId) == "Complete");
+    assert(manager.getCachedData("movie.dir").value() == std::vector<std::uint8_t>({'O', 'K'}));
+    assert(completedUrls.back() == "http://example.invalid/path/movie.dir?random=1");
+
+    const auto statusById = manager.getStreamStatusDatum(getTaskId);
+    assert(statusProp(statusById, "URL").stringValue() == "http://example.invalid/path/movie.dir?random=1");
+    assert(statusProp(statusById, "state").stringValue() == "Complete");
+    assert(statusProp(statusById, "bytesSoFar").intValue() == 2);
+    assert(statusProp(statusById, "bytesTotal").intValue() == 2);
+    assert(statusProp(statusById, "error").stringValue() == "OK");
+    assert(statusProp(manager.getStreamStatusDatum(std::string_view("movie.dir")), "state").stringValue() == "Complete");
+    assert(statusProp(manager.getStreamStatusDatum(std::string_view("http://example.invalid/path/movie.dir")), "state").stringValue() == "Complete");
+
+    const int postTaskId = manager.postNetText("submit", "a=b");
+    assert(postTaskId == 3);
+    assert(fetchCount == 2);
+    assert(manager.getTask(postTaskId)->method() == NetTaskMethod::Post);
+    assert(manager.netTextResult(postTaskId) == "POST");
+    assert(manager.getCachedData("submit").value() == std::vector<std::uint8_t>({'P', 'O', 'S', 'T'}));
+
+    const int failedTaskId = manager.preloadNetThing("missing");
+    assert(failedTaskId == 4);
+    assert(fetchCount == 3);
+    assert(manager.netDone());
+    assert(manager.netError() == -7);
+    assert(manager.netTextResult().empty());
+    assert(manager.getStreamStatus() == "Error");
+    const auto failedStatus = manager.getStreamStatusDatum(failedTaskId);
+    assert(statusProp(failedStatus, "state").stringValue() == "Error");
+    assert(statusProp(failedStatus, "bytesSoFar").intValue() == 0);
+    assert(statusProp(failedStatus, "error").stringValue() == "-7");
+    assert(!manager.getNetBytes(failedTaskId).has_value());
+
+    NetManager noFetcher;
+    const int noFetcherTask = noFetcher.preloadNetThing("no-handler");
+    assert(noFetcher.netDone(noFetcherTask));
+    assert(noFetcher.netError(noFetcherTask) == 404);
+    assert(noFetcher.getTask(noFetcherTask)->errorMessage().value() == "No fetch handler configured");
+
+    manager.shutdown();
+    manager.clear();
+    assert(manager.tasks().empty());
+    assert(manager.urlCache().empty());
+    assert(manager.getTask() == nullptr);
+    const int resetTask = manager.preloadNetThing("after-clear");
+    assert(resetTask == 1);
 }
 
 void testTimeoutManagerFoundation() {
@@ -4686,6 +4817,7 @@ int main() {
     testSoftwareFrameRenderer();
     testTextRendererFoundation();
     testNetTaskFoundation();
+    testNetManagerFoundation();
     testTimeoutManagerFoundation();
     testPaletteAndColorRefs();
     testBitmapAlphaAndPaletteBehavior();

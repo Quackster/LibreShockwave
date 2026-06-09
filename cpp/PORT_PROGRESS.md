@@ -287,6 +287,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `net::NetTask` ports individual GET/POST request task state, result/error storage, state transitions, stream status strings, and display formatting.
 
+### Network Manager Foundation
+
+- `net::NetManager` ports task ID allocation, latest-task lookup, GET/POST task registration, cache hits, completion callbacks, task byte/text/error/status accessors, and Java-compatible stream-status prop-list payloads.
+- URL resolution, origin/path extraction, cache key calculation, URL-based stream-status lookup, and `.cct`/`.cst` cache fallback matching are available in C++.
+- Actual platform HTTP/filesystem loading is exposed through an injectable fetch handler until the C++ platform networking backend is ported.
+
 ### Sound Manager Foundation
 
 - `audio::AudioBackend` ports the platform-neutral playback contract for 1-based Director sound channels.
@@ -357,6 +363,7 @@ Result:
 - FrameRenderPipeline step ordering, snapshot return, null-step rejection, and missing-snapshot failure tests passed through the same CTest executable.
 - TextRenderer split-line, character-line, line-start, wrapping, and default XMED delegation tests passed through the same CTest executable.
 - NetTask GET/POST construction, state transitions, result/error storage, stream status, and display formatting tests passed through the same CTest executable.
+- NetManager URL resolution, cache fallback, GET/POST registration, handler-backed completion/failure, latest-task lookup, stream-status prop lists, raw byte/text results, callbacks, shutdown, and clear tests passed through the same CTest executable.
 - SoundManager channel validation, volume clamping, backend delegation, Lingo play argument parsing, resolver lookup, format detection, KEY-owned member lookup, and SoundChunk playable conversion tests passed through the same CTest executable.
 - TimeoutManager creation, property access/mutation, one-shot/persistent flags, timeout references, names/count, forget, and clear tests passed through the same CTest executable.
 - BitmapCache cache-keying, palette invalidation, non-native alpha coercion, indexed matte remap selection/application, and InkProcessor color remap helpers passed through the same CTest executable.
@@ -422,4 +429,5 @@ Result:
 - `1afd911 Port C++ frame render pipeline foundation`
 - `2b6b93a Port C++ behavior manager foundation`
 - `652eadf Port C++ sprite registry foundation`
-- Current checkpoint commit message: `Port C++ sound manager foundation`
+- `1e50517 Port C++ sound manager foundation`
+- Current checkpoint commit message: `Port C++ net manager foundation`
