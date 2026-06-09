@@ -292,7 +292,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - List builtins now register `count`, `getAt`, `setAt`, `addAt`, `deleteAt`, `append`/`add`, prop-list accessors/mutators, `findPos`, `getOne`/`getPos`, `deleteOne`, `sort`, `listp`, `list`, and `getLast`.
 - Linear list mutation, proplist positional/key lookup, duplicate `addProp`, type-aware symbol/string key handling, case-insensitive key searches, Lingo-style list equality, and list sorting are covered in C++.
-- `getAt(castLib.member, key)` remains deferred until the C++ cast-library member accessor datum/provider surface exists.
+- `getAt(castLib.member, key)` now resolves cast members by number or name through the C++ cast-member provider hooks.
 
 ### Timeout Builtins Foundation
 
@@ -463,7 +463,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Legacy property ID opcodes now cover string chunk counts and last-chunk reads, with provider-backed targets consuming their stack operands as safe no-ops until runtime providers are wired.
 - `GET_FIELD` now consumes field identifier/cast operands and returns the Java-compatible empty string fallback when no field provider is wired.
 - Built-in movie constants and basic `the paramCount`/`the result` lookups are available without a provider.
-- Cast-library member accessor datums and remaining specialized provider-backed property cases remain deferred to later runtime integration slices.
+- Remaining specialized provider-backed property cases remain deferred to later runtime integration slices.
 
 ### Lingo Opcode Local and External Call Foundation
 
@@ -481,6 +481,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - ScriptRef receiver dispatch now supports Java-compatible `new` method calls through the registered constructor builtin.
 - ScriptInstance receiver dispatch now supports Java-compatible property/list-like `getAt`, `setAt`, `getAProp`, `setAProp`, `getProp`, `getPropRef`, `setProp`, `addProp`, `deleteProp`, `count`, `ilk`, `addAt`, handler-existence/dispatch methods, and prefilled `pAllMemNumList` member-registry lookups over C++ script-instance datums.
 - CastMemberRef receiver dispatch now delegates methods through a provider-backed C++ builtin context hook, matching Java's cast-member method provider path.
+- CastLib member-accessor receiver dispatch now supports Java-compatible `castLib(n).member.getAt(key)` member lookup by number or name.
 - SpriteRef receiver dispatch now delegates methods through a provider-backed C++ builtin context hook for behavior/broker integration.
 - Image receiver dispatch now supports Java-compatible `fill`, `draw`, `setAlpha`, `createMatte`, `createMask`, `copyPixels`, `duplicate`, `crop`, `trimWhiteSpace`, `getAt`, `getPixel`, and `setPixel` methods over C++ bitmap refs.
 - Image `fill` and `draw` now resolve small integer colors through the target bitmap palette when one is attached, matching Java's bitmap-aware color conversion.
@@ -625,7 +626,7 @@ Result:
 - OpcodeRegistry movie-property provider reads/writes and provider-backed `the` lookups passed through the same CTest executable.
 - OpcodeRegistry provider-backed object property gets/sets for movie, player, stage, sprite, integer-as-sprite refs, cast-member metadata, and image `useAlpha`/`paletteRef` setters passed through the same CTest executable.
 - OpcodeRegistry local/external call handlers, builtin dispatch, no-return calls, constant fallback, and error-state handling passed through the same CTest executable.
-- OpcodeRegistry object method calls and receiver-style external method calls for lists, property lists, strings, points, rectangles, cast library member lookups, timeouts, sound channels, and Xtra instances passed through the same CTest executable.
+- OpcodeRegistry object method calls and receiver-style external method calls for lists, property lists, strings, points, rectangles, cast library member lookups/accessors, timeouts, sound channels, and Xtra instances passed through the same CTest executable.
 - OpcodeRegistry `NEW_OBJ` script construction delegation, fallback construction, and non-script rejection passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
@@ -756,4 +757,5 @@ Result:
 - `b3bc50b9 Port C++ member registry method foundation`
 - `b3e7470f Port C++ script instance handler dispatch foundation`
 - `64362c2f Port C++ field chunk mutation foundation`
-- Current checkpoint commit message: `Port C++ image property setter foundation`
+- `58e7dee7 Port C++ image property setter foundation`
+- Current checkpoint commit message: `Port C++ castLib member accessor foundation`

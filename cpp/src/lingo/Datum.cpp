@@ -114,6 +114,7 @@ std::string_view typeName(DatumType type) {
         case DatumType::ArgList: return "arg_list";
         case DatumType::ArgListNoRet: return "arg_list_no_ret";
         case DatumType::CastLibRef: return "cast_lib";
+        case DatumType::CastLibMemberAccessor: return "cast_lib_member_accessor";
         case DatumType::CastMemberRef: return "cast_member";
         case DatumType::ScriptRef: return "script_ref";
         case DatumType::ScriptInstanceRef: return "script_instance";
@@ -210,6 +211,14 @@ id::CastLibId Datum::CastLibRef::castLibId() const {
     return id::CastLibId(castLib);
 }
 
+Datum::CastLibMemberAccessor Datum::CastLibMemberAccessor::of(id::CastLibId castLib) {
+    return CastLibMemberAccessor{castLib.value()};
+}
+
+id::CastLibId Datum::CastLibMemberAccessor::castLibId() const {
+    return id::CastLibId(castLib);
+}
+
 Datum::SpriteRef Datum::SpriteRef::of(id::ChannelId channel) {
     return SpriteRef{channel.value()};
 }
@@ -295,6 +304,10 @@ Datum Datum::castMemberRef(id::CastLibId castLib, id::MemberId member) {
 
 Datum Datum::castLibRef(id::CastLibId castLib) {
     return Datum(CastLibRef::of(castLib));
+}
+
+Datum Datum::castLibMemberAccessor(id::CastLibId castLib) {
+    return Datum(CastLibMemberAccessor::of(castLib));
 }
 
 Datum Datum::spriteRef(id::ChannelId channel) {
@@ -385,6 +398,7 @@ DatumType Datum::type() const {
     if (std::holds_alternative<StringChunk>(value_)) return DatumType::StringChunk;
     if (std::holds_alternative<CastMemberRef>(value_)) return DatumType::CastMemberRef;
     if (std::holds_alternative<CastLibRef>(value_)) return DatumType::CastLibRef;
+    if (std::holds_alternative<CastLibMemberAccessor>(value_)) return DatumType::CastLibMemberAccessor;
     if (std::holds_alternative<SpriteRef>(value_)) return DatumType::SpriteRef;
     if (std::holds_alternative<StageRef>(value_)) return DatumType::StageRef;
     if (std::holds_alternative<ScriptRef>(value_)) return DatumType::ScriptRef;
@@ -452,6 +466,9 @@ std::string Datum::stringValue() const {
     if (const auto* value = std::get_if<DFloat>(&value_)) return floatToString(value->value);
     if (const auto* value = std::get_if<Symbol>(&value_)) return value->name;
     if (const auto* value = std::get_if<TimeoutRef>(&value_)) return value->name;
+    if (const auto* value = std::get_if<CastLibMemberAccessor>(&value_)) {
+        return "castLib(" + std::to_string(value->castLib) + ").member";
+    }
     if (const auto* value = std::get_if<ChunkRef>(&value_)) {
         return "<chunkref:" + std::string(name(value->chunkType)) + "[" + std::to_string(value->start) + ".." +
                std::to_string(value->end) + "]>";
@@ -485,6 +502,9 @@ const Datum::DFloat* Datum::asFloat() const { return std::get_if<DFloat>(&value_
 const Datum::Str* Datum::asString() const { return std::get_if<Str>(&value_); }
 const Datum::Symbol* Datum::asSymbol() const { return std::get_if<Symbol>(&value_); }
 const Datum::CastLibRef* Datum::asCastLibRef() const { return std::get_if<CastLibRef>(&value_); }
+const Datum::CastLibMemberAccessor* Datum::asCastLibMemberAccessor() const {
+    return std::get_if<CastLibMemberAccessor>(&value_);
+}
 const Datum::CastMemberRef* Datum::asCastMemberRef() const { return std::get_if<CastMemberRef>(&value_); }
 const Datum::ScriptRef* Datum::asScriptRef() const { return std::get_if<ScriptRef>(&value_); }
 const Datum::SpriteRef* Datum::asSpriteRef() const { return std::get_if<SpriteRef>(&value_); }
@@ -777,6 +797,9 @@ bool operator==(const Datum& lhs, const Datum& rhs) {
     }
     if (auto value = std::get_if<Datum::CastMemberRef>(&lhs.value_)) return *value == std::get<Datum::CastMemberRef>(rhs.value_);
     if (auto value = std::get_if<Datum::CastLibRef>(&lhs.value_)) return *value == std::get<Datum::CastLibRef>(rhs.value_);
+    if (auto value = std::get_if<Datum::CastLibMemberAccessor>(&lhs.value_)) {
+        return *value == std::get<Datum::CastLibMemberAccessor>(rhs.value_);
+    }
     if (auto value = std::get_if<Datum::SpriteRef>(&lhs.value_)) return *value == std::get<Datum::SpriteRef>(rhs.value_);
     if (auto value = std::get_if<Datum::StageRef>(&lhs.value_)) return *value == std::get<Datum::StageRef>(rhs.value_);
     if (auto value = std::get_if<Datum::ScriptRef>(&lhs.value_)) return *value == std::get<Datum::ScriptRef>(rhs.value_);

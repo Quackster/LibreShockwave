@@ -43,6 +43,7 @@ enum class DatumType {
     ArgList,
     ArgListNoRet,
     CastLibRef,
+    CastLibMemberAccessor,
     CastMemberRef,
     ScriptRef,
     ScriptInstanceRef,
@@ -147,6 +148,15 @@ public:
         [[nodiscard]] id::CastLibId castLibId() const;
 
         friend bool operator==(const CastLibRef&, const CastLibRef&) = default;
+    };
+
+    struct CastLibMemberAccessor {
+        int castLib;
+
+        [[nodiscard]] static CastLibMemberAccessor of(id::CastLibId castLib);
+        [[nodiscard]] id::CastLibId castLibId() const;
+
+        friend bool operator==(const CastLibMemberAccessor&, const CastLibMemberAccessor&) = default;
     };
 
     struct SpriteRef {
@@ -311,6 +321,7 @@ public:
     [[nodiscard]] static Datum castMemberRef(CastMemberRef ref);
     [[nodiscard]] static Datum castMemberRef(id::CastLibId castLib, id::MemberId member);
     [[nodiscard]] static Datum castLibRef(id::CastLibId castLib);
+    [[nodiscard]] static Datum castLibMemberAccessor(id::CastLibId castLib);
     [[nodiscard]] static Datum spriteRef(id::ChannelId channel);
     [[nodiscard]] static Datum stageRef();
     [[nodiscard]] static Datum scriptRef(CastMemberRef memberRef);
@@ -354,6 +365,7 @@ public:
     [[nodiscard]] const Str* asString() const;
     [[nodiscard]] const Symbol* asSymbol() const;
     [[nodiscard]] const CastLibRef* asCastLibRef() const;
+    [[nodiscard]] const CastLibMemberAccessor* asCastLibMemberAccessor() const;
     [[nodiscard]] const CastMemberRef* asCastMemberRef() const;
     [[nodiscard]] const ScriptRef* asScriptRef() const;
     [[nodiscard]] const SpriteRef* asSpriteRef() const;
@@ -401,6 +413,7 @@ private:
         StringChunk,
         CastMemberRef,
         CastLibRef,
+        CastLibMemberAccessor,
         SpriteRef,
         StageRef,
         ScriptRef,

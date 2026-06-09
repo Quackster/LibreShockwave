@@ -1129,6 +1129,9 @@ void testBuiltinRegistryFoundation() {
                            context,
                            {Datum::symbol("palette"), Datum::of(std::string("external"))}).asCastMemberRef()->memberNum() == 5);
     assert(registry.invoke("member", context, {Datum::of(std::string("missing"))}).isVoid());
+    const Datum builtinMemberAccessor = Datum::castLibMemberAccessor(CastLibId(2));
+    assert(registry.invoke("getAt", context, {builtinMemberAccessor, Datum::of(5)}).asCastMemberRef()->castLib == 2);
+    assert(registry.invoke("getAt", context, {builtinMemberAccessor, Datum::symbol("palette")}).asCastMemberRef()->memberNum() == 5);
     assert(registry.invoke("field", context, {Datum::of(std::string("caption"))}).stringValue() == "field:caption@0");
     assert(registry.invoke("field", context, {Datum::of(3), Datum::castLibRef(CastLibId(2))}).stringValue() == "field#3@2");
     assert(registry.invoke("field", context, {Datum::symbol("caption"), Datum::of(std::string("external"))}).stringValue() ==
@@ -2334,6 +2337,9 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         }
         if (nameId == 121) {
             return std::string("readAliasIndexesFromField");
+        }
+        if (nameId == 122) {
+            return std::string("member");
         }
         return "#" + std::to_string(nameId);
     };
@@ -3919,6 +3925,16 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         runObjCall(67, {Datum::castLibRef(CastLibId(3)), Datum::symbol("member"), Datum::of(std::string("door"))});
     assert(castLibMemberByName.asCastMemberRef()->castLib == 3);
     assert(castLibMemberByName.asCastMemberRef()->memberNum() == 12);
+    const Datum castLibMemberAccessor = runObjectPropertyGet(Datum::castLibRef(CastLibId(3)), 122);
+    const auto* castLibMemberAccessorValue = castLibMemberAccessor.asCastLibMemberAccessor();
+    assert(castLibMemberAccessorValue != nullptr);
+    assert(castLibMemberAccessorValue->castLib == 3);
+    const Datum accessorMemberByNum = runObjCall(64, {castLibMemberAccessor, Datum::of(8)});
+    assert(accessorMemberByNum.asCastMemberRef()->castLib == 3);
+    assert(accessorMemberByNum.asCastMemberRef()->memberNum() == 8);
+    const Datum accessorMemberByName = runObjCall(64, {castLibMemberAccessor, Datum::of(std::string("door"))});
+    assert(accessorMemberByName.asCastMemberRef()->castLib == 3);
+    assert(accessorMemberByName.asCastMemberRef()->memberNum() == 12);
     builtinContext.castMemberResolver = {};
     builtinContext.castMemberNameResolver = {};
     int castMemberMethodCalls = 0;

@@ -412,6 +412,17 @@ Datum castLibRefOrVoid(int castLib) {
     return Datum::castLibRef(id::CastLibId(castLib));
 }
 
+Datum getCastLibMemberAccessorValue(BuiltinContext& context,
+                                    const Datum::CastLibMemberAccessor& accessor,
+                                    const Datum& keyOrIndex) {
+    if (keyOrIndex.isInt() || keyOrIndex.isFloat()) {
+        return context.castMemberResolver ? context.castMemberResolver(accessor.castLib, toIntLikeJava(keyOrIndex))
+                                          : Datum::voidValue();
+    }
+    return context.castMemberNameResolver ? context.castMemberNameResolver(accessor.castLib, toStringLikeJava(keyOrIndex))
+                                          : Datum::voidValue();
+}
+
 Datum castMemberRefOrVoid(int castLib, int memberNum) {
     if (castLib < 1 || memberNum < 0) {
         return Datum::voidValue();
@@ -949,12 +960,15 @@ Datum ListBuiltins::count(BuiltinContext&, const std::vector<Datum>& args) {
     return Datum::of(0);
 }
 
-Datum ListBuiltins::getAt(BuiltinContext&, const std::vector<Datum>& args) {
+Datum ListBuiltins::getAt(BuiltinContext& context, const std::vector<Datum>& args) {
     if (args.size() < 2) {
         return Datum::voidValue();
     }
     const Datum& container = args[0];
     const Datum& keyOrIndex = args[1];
+    if (const auto* accessor = container.asCastLibMemberAccessor()) {
+        return getCastLibMemberAccessorValue(context, *accessor, keyOrIndex);
+    }
     if (container.isList()) {
         const int index = toIntLikeJava(keyOrIndex);
         const auto& items = container.listValue().items();

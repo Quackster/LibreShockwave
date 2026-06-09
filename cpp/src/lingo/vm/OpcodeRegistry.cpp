@@ -666,6 +666,23 @@ Datum getCastMemberProp(const Datum::CastMemberRef& member, std::string_view pro
     return Datum::voidValue();
 }
 
+Datum getCastLibMemberAccessorValue(ExecutionContext& context,
+                                    const Datum::CastLibMemberAccessor& accessor,
+                                    const Datum& keyOrIndex) {
+    auto* builtinContext = context.builtinContext();
+    if (builtinContext == nullptr) {
+        return Datum::voidValue();
+    }
+    if (keyOrIndex.isInt() || keyOrIndex.isFloat()) {
+        return builtinContext->castMemberResolver ? builtinContext->castMemberResolver(accessor.castLib,
+                                                                                       toIntLikeJava(keyOrIndex))
+                                                  : Datum::voidValue();
+    }
+    return builtinContext->castMemberNameResolver
+               ? builtinContext->castMemberNameResolver(accessor.castLib, toStringLikeJava(keyOrIndex))
+               : Datum::voidValue();
+}
+
 Datum getObjectProperty(ExecutionContext& context, const Datum& object, std::string_view propName) {
     if (object.isVoid()) {
         return Datum::voidValue();
@@ -688,6 +705,15 @@ Datum getObjectProperty(ExecutionContext& context, const Datum& object, std::str
         return builtinContext != nullptr && builtinContext->movieProperties != nullptr
                    ? builtinContext->movieProperties->getStageProp(propName)
                    : Datum::voidValue();
+    }
+    if (const auto* castLib = object.asCastLibRef()) {
+        if (equalsIgnoreCase(propName, "member")) {
+            return Datum::castLibMemberAccessor(id::CastLibId(castLib->castLib));
+        }
+        return Datum::voidValue();
+    }
+    if (const auto* accessor = object.asCastLibMemberAccessor()) {
+        return getCastLibMemberAccessorValue(context, *accessor, Datum::of(std::string(propName)));
     }
     if (const auto* sprite = object.asSpriteRef()) {
         return builtinContext != nullptr && builtinContext->spriteProperties != nullptr
@@ -3400,6 +3426,18 @@ Datum castLibObjectMethod(ExecutionContext& context,
                                                   : Datum::voidValue();
 }
 
+Datum castLibMemberAccessorObjectMethod(ExecutionContext& context,
+                                        const Datum::CastLibMemberAccessor& accessor,
+                                        std::string_view methodName,
+                                        const std::vector<Datum>& args) {
+    if (args.empty() ||
+        (!equalsIgnoreCase(methodName, "getAt") && !equalsIgnoreCase(methodName, "getProp") &&
+         !equalsIgnoreCase(methodName, "getPropRef"))) {
+        return Datum::voidValue();
+    }
+    return getCastLibMemberAccessorValue(context, accessor, args[0]);
+}
+
 Datum castMemberObjectMethod(ExecutionContext& context,
                              const Datum::CastMemberRef& member,
                              std::string_view methodName,
@@ -3548,6 +3586,9 @@ Datum dispatchObjectMethod(ExecutionContext& context, Datum target, std::string_
     }
     if (const auto* castLib = target.asCastLibRef()) {
         return castLibObjectMethod(context, *castLib, methodName, args);
+    }
+    if (const auto* accessor = target.asCastLibMemberAccessor()) {
+        return castLibMemberAccessorObjectMethod(context, *accessor, methodName, args);
     }
     if (target.isList()) {
         return listObjectMethod(target.listValue(), methodName, args);
