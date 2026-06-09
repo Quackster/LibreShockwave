@@ -1815,6 +1815,25 @@ Datum imageObjectMethod(const Datum::ImageRef& image, std::string_view methodNam
     if (equalsIgnoreCase(methodName, "duplicate")) {
         return Datum::imageRef(std::make_shared<bitmap::Bitmap>(bmp.copy()));
     }
+    if (equalsIgnoreCase(methodName, "crop")) {
+        if (args.empty()) return Datum::voidValue();
+        const auto* rect = args[0].asIntRect();
+        if (rect == nullptr) return Datum::voidValue();
+        const int width = rect->right - rect->left;
+        const int height = rect->bottom - rect->top;
+        if (width <= 0 || height <= 0) return Datum::voidValue();
+        return Datum::imageRef(std::make_shared<bitmap::Bitmap>(bmp.getRegion(rect->left, rect->top, width, height)));
+    }
+    if (equalsIgnoreCase(methodName, "trimWhiteSpace")) {
+        const auto bounds = bmp.trimWhiteSpace();
+        if (bounds.right <= bounds.left || bounds.bottom <= bounds.top) {
+            auto empty = std::make_shared<bitmap::Bitmap>(1, 1, bmp.bitDepth());
+            empty->fill(0xFFFFFFFFU);
+            return Datum::imageRef(std::move(empty));
+        }
+        return Datum::imageRef(std::make_shared<bitmap::Bitmap>(
+            bmp.getRegion(bounds.left, bounds.top, bounds.right - bounds.left, bounds.bottom - bounds.top)));
+    }
     if (equalsIgnoreCase(methodName, "getAt")) {
         if (args.empty()) return Datum::voidValue();
         const int index = toIntLikeJava(args[0]);

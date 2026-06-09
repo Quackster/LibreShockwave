@@ -2281,6 +2281,12 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 103) {
             return std::string("fill");
         }
+        if (nameId == 104) {
+            return std::string("crop");
+        }
+        if (nameId == 105) {
+            return std::string("trimWhiteSpace");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.callStackFormatter = []() {
@@ -3189,6 +3195,52 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runObjCall(103, {noOpFillRef, Datum::intRect(1, 1, 1, 2), Datum::colorRef(1, 2, 3)}).isVoid());
     assert(!noOpFillBitmap->isScriptModified());
     assert(noOpFillBitmap->getPixel(1, 1) == 0xFFFFFFFFU);
+    auto cropBitmap = std::make_shared<Bitmap>(3, 2, 8, std::vector<std::uint32_t>{
+        0xFFFFFFFFU, 0xFF000000U, 0xFF010203U,
+        0xFFFFFFFFU, 0xFF336699U, 0xFFFFFFFFU
+    });
+    cropBitmap->setPaletteIndices({0, 1, 2, 0, 3, 0});
+    cropBitmap->setAnchorPoint(2, 1);
+    const Datum cropRef = Datum::imageRef(cropBitmap);
+    const Datum croppedImageDatum = runObjCall(104, {cropRef, Datum::intRect(1, 0, 3, 2)});
+    const auto* croppedImage = croppedImageDatum.asImageRef();
+    assert(croppedImage != nullptr);
+    assert(croppedImage->bitmap != nullptr);
+    assert(croppedImage->bitmap->width() == 2);
+    assert(croppedImage->bitmap->height() == 2);
+    assert(croppedImage->bitmap->getPixel(0, 0) == 0xFF000000U);
+    assert(croppedImage->bitmap->getPixel(1, 0) == 0xFF010203U);
+    assert(croppedImage->bitmap->paletteIndex(0, 0).value() == 1);
+    assert(croppedImage->bitmap->paletteIndex(1, 0).value() == 2);
+    assert(croppedImage->bitmap->hasAnchorPoint());
+    assert(croppedImage->bitmap->anchorX() == 1);
+    assert(croppedImage->bitmap->anchorY() == 1);
+    assert(!cropBitmap->isScriptModified());
+    assert(runObjCall(104, {cropRef, Datum::intRect(1, 1, 1, 2)}).isVoid());
+    assert(runObjCall(104, {cropRef, Datum::of(1)}).isVoid());
+    auto trimBitmap = std::make_shared<Bitmap>(4, 3, 32);
+    trimBitmap->fill(0xFFFFFFFFU);
+    trimBitmap->setPixel(2, 1, 0xFF010203U);
+    trimBitmap->setPixel(2, 2, 0xFF040506U);
+    const Datum trimRef = Datum::imageRef(trimBitmap);
+    const Datum trimmedImageDatum = runObjCall(105, {trimRef});
+    const auto* trimmedImage = trimmedImageDatum.asImageRef();
+    assert(trimmedImage != nullptr);
+    assert(trimmedImage->bitmap != nullptr);
+    assert(trimmedImage->bitmap->width() == 1);
+    assert(trimmedImage->bitmap->height() == 2);
+    assert(trimmedImage->bitmap->getPixel(0, 0) == 0xFF010203U);
+    assert(trimmedImage->bitmap->getPixel(0, 1) == 0xFF040506U);
+    auto whiteTrimBitmap = std::make_shared<Bitmap>(2, 2, 8);
+    whiteTrimBitmap->fill(0xFFFFFFFFU);
+    const Datum whiteTrimmedImageDatum = runObjCall(105, {Datum::imageRef(whiteTrimBitmap)});
+    const auto* whiteTrimmedImage = whiteTrimmedImageDatum.asImageRef();
+    assert(whiteTrimmedImage != nullptr);
+    assert(whiteTrimmedImage->bitmap != nullptr);
+    assert(whiteTrimmedImage->bitmap->width() == 1);
+    assert(whiteTrimmedImage->bitmap->height() == 1);
+    assert(whiteTrimmedImage->bitmap->bitDepth() == 8);
+    assert(whiteTrimmedImage->bitmap->getPixel(0, 0) == 0xFFFFFFFFU);
     const Datum duplicateImageDatum = runObjCall(72, {imageMethodRef});
     const auto* duplicateImage = duplicateImageDatum.asImageRef();
     assert(duplicateImage != nullptr);
