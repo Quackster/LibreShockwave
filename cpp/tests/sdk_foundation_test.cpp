@@ -2978,6 +2978,39 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
     assert(setObjectInstance.scriptInstanceValue().getProperty("health").intValue() == 123);
 
+    auto imageSetBitmap = std::make_shared<Bitmap>(1, 1, 32);
+    assert(!imageSetBitmap->isNativeAlpha());
+    setObjectContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_OBJ_PROP, libreshockwave::lingo::code(Opcode::SET_OBJ_PROP), 98});
+    setObjectContext.push(Datum::imageRef(imageSetBitmap));
+    setObjectContext.push(Datum::TRUE);
+    assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
+    assert(imageSetBitmap->isNativeAlpha());
+    assert(imageSetBitmap->isScriptModified());
+
+    auto oldImagePalette = std::make_shared<Palette>(std::vector<std::uint32_t>{0x000000U}, "old");
+    auto newImagePalette = std::make_shared<Palette>(std::vector<std::uint32_t>{0x112233U}, "new");
+    auto indexedImageSetBitmap = std::make_shared<Bitmap>(1, 1, 8, std::vector<std::uint32_t>{0xFF000000U});
+    indexedImageSetBitmap->setImagePalette(oldImagePalette);
+    indexedImageSetBitmap->setPaletteIndices({0});
+    builtinContext.imagePaletteResolver = [newImagePalette](const Datum& paletteRef)
+        -> std::optional<BuiltinContext::ResolvedPalette> {
+        const auto* memberRef = paletteRef.asCastMemberRef();
+        if (memberRef == nullptr || memberRef->castLib != 5 || memberRef->memberNum() != 6) {
+            return std::nullopt;
+        }
+        return BuiltinContext::ResolvedPalette{newImagePalette, Datum::CastMemberRef{5, 6}, std::nullopt};
+    };
+    setObjectContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_OBJ_PROP, libreshockwave::lingo::code(Opcode::SET_OBJ_PROP), 99});
+    setObjectContext.push(Datum::imageRef(indexedImageSetBitmap));
+    setObjectContext.push(Datum::castMemberRef(CastLibId(5), MemberId(6)));
+    assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
+    assert(indexedImageSetBitmap->imagePalette() == newImagePalette);
+    assert(indexedImageSetBitmap->getPixel(0, 0) == 0xFF112233U);
+    assert(indexedImageSetBitmap->paletteRefCastLib() == 5);
+    assert(indexedImageSetBitmap->paletteRefMemberNum() == 6);
+    assert(indexedImageSetBitmap->isScriptModified());
+    builtinContext.imagePaletteResolver = {};
+
     MovieProperties objectMovieProps;
     objectMovieProps.setEffectiveFrameSupplier([]() { return 33; });
     objectMovieProps.setStageBackgroundColorSupplier([]() { return 0x224466; });

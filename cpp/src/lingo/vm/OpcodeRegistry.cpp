@@ -1,6 +1,7 @@
 #include "libreshockwave/lingo/vm/OpcodeRegistry.hpp"
 
 #include "libreshockwave/bitmap/Bitmap.hpp"
+#include "libreshockwave/bitmap/Palette.hpp"
 
 #include <algorithm>
 #include <array>
@@ -591,6 +592,63 @@ Datum getImageProp(const Datum::ImageRef& image, std::string_view propName) {
     return Datum::voidValue();
 }
 
+bool applyImagePaletteProperty(bitmap::Bitmap& bmp, const Datum& value, builtin::BuiltinContext* builtinContext) {
+    bool resolved = false;
+    if (value.isString() || value.isSymbol()) {
+        const std::string name = toStringLikeJava(value);
+        const auto normalizedName = bitmap::Palette::normalizeBuiltInSymbolName(name);
+        const bitmap::Palette* palette = bitmap::Palette::builtInBySymbolName(name);
+        if (palette != nullptr && normalizedName) {
+            if (*normalizedName == "systemMac" && bmp.bitDepth() > 8 && !bmp.paletteIndices().has_value()) {
+                palette = &bitmap::Palette::systemWinPalette();
+            }
+            if (bmp.bitDepth() <= 8) {
+                (void)bmp.remapImagePalette(palette);
+            } else {
+                bmp.setImagePalette(palette);
+            }
+            bmp.setPaletteRefSystemName(*normalizedName);
+            resolved = true;
+        }
+    }
+
+    if (!resolved && builtinContext != nullptr && builtinContext->imagePaletteResolver) {
+        if (auto palette = builtinContext->imagePaletteResolver(value); palette && palette->palette) {
+            if (bmp.bitDepth() <= 8) {
+                (void)bmp.remapImagePalette(palette->palette);
+            } else {
+                bmp.setImagePalette(palette->palette);
+            }
+            if (palette->memberRef) {
+                bmp.setPaletteRefCastMember(palette->memberRef->castLib, palette->memberRef->memberNum());
+            } else if (palette->systemName) {
+                bmp.setPaletteRefSystemName(*palette->systemName);
+            }
+            resolved = true;
+        }
+    }
+
+    if (resolved) {
+        bmp.markScriptModified();
+    }
+    return resolved;
+}
+
+void setImageProp(ExecutionContext& context, const Datum::ImageRef& image, std::string_view propName, const Datum& value) {
+    if (image.bitmap == nullptr) {
+        return;
+    }
+    auto& bitmap = *image.bitmap;
+    if (equalsIgnoreCase(propName, "usealpha")) {
+        bitmap.setNativeAlpha(truthy(value));
+        bitmap.markScriptModified();
+        return;
+    }
+    if (equalsIgnoreCase(propName, "paletteref")) {
+        (void)applyImagePaletteProperty(bitmap, value, context.builtinContext());
+    }
+}
+
 Datum getCastMemberProp(const Datum::CastMemberRef& member, std::string_view propName) {
     const bool invalidRef = member.castMember <= 0;
     if (equalsIgnoreCase(propName, "number")) {
@@ -739,6 +797,10 @@ void setObjectProperty(ExecutionContext& context, Datum& object, std::string_vie
     }
     if (object.isPropList()) {
         putPropListProp(object.propListValue(), propName, std::move(value));
+        return;
+    }
+    if (const auto* image = object.asImageRef()) {
+        setImageProp(context, *image, propName, value);
     }
 }
 

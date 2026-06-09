@@ -458,12 +458,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 ### Lingo Opcode Basic Property Foundation
 
-- Property opcode handlers now cover receiver script-instance get/set, object property get/set for script instances and property lists, and object property reads for lists, strings, points, rectangles, colors, and images.
+- Property opcode handlers now cover receiver script-instance get/set, object property get/set for script instances and property lists, object property reads for lists, strings, points, rectangles, colors, and images, and image object writes for `useAlpha`/`paletteRef`.
 - Chained property reads now reuse the same data-owned object property path, and top-level `_player`/`_movie` property reads produce C++ reference datums.
 - Legacy property ID opcodes now cover string chunk counts and last-chunk reads, with provider-backed targets consuming their stack operands as safe no-ops until runtime providers are wired.
 - `GET_FIELD` now consumes field identifier/cast operands and returns the Java-compatible empty string fallback when no field provider is wired.
 - Built-in movie constants and basic `the paramCount`/`the result` lookups are available without a provider.
-- Sprite, cast member/library, Xtra, timeout, sound, image, and full movie/stage provider-backed property dispatch remain deferred to later runtime integration slices.
+- Cast-library member accessor datums and remaining specialized provider-backed property cases remain deferred to later runtime integration slices.
 
 ### Lingo Opcode Local and External Call Foundation
 
@@ -623,7 +623,7 @@ Result:
 - OpcodeRegistry simple string concatenation and containment handlers passed through the same CTest executable.
 - OpcodeRegistry basic property handlers, object property reads/writes, built-in constants, and simple `the` lookups passed through the same CTest executable.
 - OpcodeRegistry movie-property provider reads/writes and provider-backed `the` lookups passed through the same CTest executable.
-- OpcodeRegistry provider-backed object property gets/sets for movie, player, stage, sprite, integer-as-sprite refs, and cast-member metadata passed through the same CTest executable.
+- OpcodeRegistry provider-backed object property gets/sets for movie, player, stage, sprite, integer-as-sprite refs, cast-member metadata, and image `useAlpha`/`paletteRef` setters passed through the same CTest executable.
 - OpcodeRegistry local/external call handlers, builtin dispatch, no-return calls, constant fallback, and error-state handling passed through the same CTest executable.
 - OpcodeRegistry object method calls and receiver-style external method calls for lists, property lists, strings, points, rectangles, cast library member lookups, timeouts, sound channels, and Xtra instances passed through the same CTest executable.
 - OpcodeRegistry `NEW_OBJ` script construction delegation, fallback construction, and non-script rejection passed through the same CTest executable.
@@ -755,4 +755,5 @@ Result:
 - `25a06812 Port C++ script instance methods foundation`
 - `b3bc50b9 Port C++ member registry method foundation`
 - `b3e7470f Port C++ script instance handler dispatch foundation`
-- Current checkpoint commit message: `Port C++ field chunk mutation foundation`
+- `64362c2f Port C++ field chunk mutation foundation`
+- Current checkpoint commit message: `Port C++ image property setter foundation`
