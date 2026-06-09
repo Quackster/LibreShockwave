@@ -65,6 +65,7 @@
 #include "libreshockwave/lingo/Opcode.hpp"
 #include "libreshockwave/lingo/builtin/BuiltinRegistry.hpp"
 #include "libreshockwave/lingo/vm/ExecutionContext.hpp"
+#include "libreshockwave/lingo/vm/OpcodeRegistry.hpp"
 #include "libreshockwave/lingo/vm/Scope.hpp"
 #include "libreshockwave/lookup/CastMemberLookup.hpp"
 #include "libreshockwave/lookup/PaletteResolver.hpp"
@@ -177,6 +178,7 @@ using libreshockwave::lingo::builtin::BuiltinContext;
 using libreshockwave::lingo::builtin::BuiltinRegistry;
 using libreshockwave::lingo::vm::ExecutionContext;
 using libreshockwave::lingo::vm::HandlerRef;
+using libreshockwave::lingo::vm::OpcodeRegistry;
 using libreshockwave::lingo::vm::Scope;
 using libreshockwave::lookup::CastMemberLookup;
 using libreshockwave::lookup::PaletteResolver;
@@ -2008,7 +2010,9 @@ void testLingoVmScopeAndExecutionContextFoundation() {
                        ScriptChunkType::MovieScript,
                        0,
                        {handler, otherHandler},
-                       {},
+                       {ScriptChunk::LiteralEntry{1, 0, std::string("hello"), 0.0},
+                        ScriptChunk::LiteralEntry{4, 0, 42, 0.0},
+                        ScriptChunk::LiteralEntry{9, 0, std::string("1.5"), 1.5}},
                        {},
                        {},
                        {});
@@ -2175,6 +2179,118 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(context.argument() == 8);
     assert(context.scaledArgument() == 4);
     assert(context.instructionOffset() == 20);
+
+    OpcodeRegistry opcodeRegistry;
+    assert(opcodeRegistry.hasHandler(Opcode::PUSH_ZERO));
+    assert(opcodeRegistry.hasHandler(Opcode::PUSH_INT8));
+    assert(opcodeRegistry.hasHandler(Opcode::PUSH_INT16));
+    assert(opcodeRegistry.hasHandler(Opcode::PUSH_INT32));
+    assert(opcodeRegistry.hasHandler(Opcode::PUSH_FLOAT32));
+    assert(opcodeRegistry.hasHandler(Opcode::PUSH_CONS));
+    assert(opcodeRegistry.hasHandler(Opcode::PUSH_SYMB));
+    assert(opcodeRegistry.hasHandler(Opcode::SWAP));
+    assert(opcodeRegistry.hasHandler(Opcode::POP));
+    assert(opcodeRegistry.hasHandler(Opcode::PEEK));
+    assert(opcodeRegistry.hasHandler(Opcode::RET));
+    assert(opcodeRegistry.hasHandler(Opcode::RET_FACTORY));
+    assert(opcodeRegistry.hasHandler(Opcode::JMP));
+    assert(opcodeRegistry.hasHandler(Opcode::JMP_IF_Z));
+    assert(opcodeRegistry.hasHandler(Opcode::END_REPEAT));
+    assert(!opcodeRegistry.hasHandler(Opcode::ADD));
+
+    Scope opScope(&script, handler, {});
+    ExecutionContext opContext(opScope, ScriptChunk::Instruction{0, Opcode::PUSH_ZERO, 0x03, 0});
+    assert(opcodeRegistry.execute(Opcode::PUSH_ZERO, opContext));
+    assert(opContext.pop().intValue() == 0);
+    opContext.setInstruction(ScriptChunk::Instruction{0, Opcode::PUSH_INT8, 0x41, -7});
+    assert(opcodeRegistry.execute(Opcode::PUSH_INT8, opContext));
+    assert(opContext.pop().intValue() == -7);
+    opContext.setInstruction(ScriptChunk::Instruction{0, Opcode::PUSH_INT16, 0x6E, 300});
+    assert(opcodeRegistry.execute(Opcode::PUSH_INT16, opContext));
+    assert(opContext.pop().intValue() == 300);
+    opContext.setInstruction(ScriptChunk::Instruction{0, Opcode::PUSH_FLOAT32, 0x71, std::bit_cast<int>(1.25F)});
+    assert(opcodeRegistry.execute(Opcode::PUSH_FLOAT32, opContext));
+    assert(std::fabs(opContext.pop().floatValue() - 1.25F) < 0.0001F);
+
+    opContext.setInstruction(ScriptChunk::Instruction{0, Opcode::PUSH_CONS, 0x44, 0});
+    assert(opcodeRegistry.execute(Opcode::PUSH_CONS, opContext));
+    assert(opContext.pop().stringValue() == "hello");
+    opContext.setInstruction(ScriptChunk::Instruction{0, Opcode::PUSH_CONS, 0x44, 1});
+    assert(opcodeRegistry.execute(Opcode::PUSH_CONS, opContext));
+    assert(opContext.pop().intValue() == 42);
+    opContext.setInstruction(ScriptChunk::Instruction{0, Opcode::PUSH_CONS, 0x44, 2});
+    assert(opcodeRegistry.execute(Opcode::PUSH_CONS, opContext));
+    assert(std::fabs(opContext.pop().floatValue() - 1.5F) < 0.0001F);
+    opContext.setInstruction(ScriptChunk::Instruction{0, Opcode::PUSH_CONS, 0x44, 99});
+    assert(opcodeRegistry.execute(Opcode::PUSH_CONS, opContext));
+    assert(opContext.pop().isVoid());
+    opContext.setInstruction(ScriptChunk::Instruction{0, Opcode::PUSH_SYMB, 0x45, 123});
+    assert(opcodeRegistry.execute(Opcode::PUSH_SYMB, opContext));
+    assert(opContext.pop().asSymbol()->name == "#123");
+
+    opContext.push(Datum::of(1));
+    opContext.push(Datum::of(2));
+    assert(opcodeRegistry.execute(Opcode::SWAP, opContext));
+    assert(opContext.pop().intValue() == 1);
+    assert(opContext.pop().intValue() == 2);
+    opContext.push(Datum::of(1));
+    opContext.push(Datum::of(2));
+    opContext.push(Datum::of(3));
+    opContext.setInstruction(ScriptChunk::Instruction{0, Opcode::POP, 0x65, 2});
+    assert(opcodeRegistry.execute(Opcode::POP, opContext));
+    assert(opContext.pop().intValue() == 1);
+    opContext.push(Datum::of(4));
+    opContext.push(Datum::of(5));
+    opContext.setInstruction(ScriptChunk::Instruction{0, Opcode::PEEK, 0x64, 1});
+    assert(opcodeRegistry.execute(Opcode::PEEK, opContext));
+    assert(opContext.pop().intValue() == 4);
+    assert(opContext.pop().intValue() == 5);
+    assert(opContext.pop().intValue() == 4);
+
+    Scope retScope(&script, handler, {});
+    ExecutionContext retContext(retScope, ScriptChunk::Instruction{0, Opcode::RET, 0x01, 0});
+    retContext.push(Datum::of(std::string("returned")));
+    assert(opcodeRegistry.execute(Opcode::RET, retContext));
+    assert(retScope.returned());
+    assert(retScope.returnValue().stringValue() == "returned");
+
+    Scope factoryScope(&script, handler, {});
+    ExecutionContext factoryContext(factoryScope, ScriptChunk::Instruction{0, Opcode::RET_FACTORY, 0x02, 0});
+    assert(opcodeRegistry.execute(Opcode::RET_FACTORY, factoryContext));
+    assert(factoryScope.returned());
+    assert(factoryScope.returnValue().isVoid());
+
+    Scope jumpScope(&script, handler, {});
+    ExecutionContext jumpContext(jumpScope, ScriptChunk::Instruction{5, Opcode::JMP, 0x53, 5});
+    assert(!opcodeRegistry.execute(Opcode::JMP, jumpContext));
+    assert(jumpScope.bytecodeIndex() == 2);
+
+    Scope jumpZeroScope(&script, handler, {});
+    ExecutionContext jumpZeroContext(jumpZeroScope, ScriptChunk::Instruction{5, Opcode::JMP_IF_Z, 0x55, 5});
+    jumpZeroContext.push(Datum::of(0));
+    assert(!opcodeRegistry.execute(Opcode::JMP_IF_Z, jumpZeroContext));
+    assert(jumpZeroScope.bytecodeIndex() == 2);
+
+    Scope noJumpScope(&script, handler, {});
+    ExecutionContext noJumpContext(noJumpScope, ScriptChunk::Instruction{5, Opcode::JMP_IF_Z, 0x55, 5});
+    noJumpContext.push(Datum::of(1));
+    assert(opcodeRegistry.execute(Opcode::JMP_IF_Z, noJumpContext));
+    assert(noJumpScope.bytecodeIndex() == 0);
+
+    Scope repeatScope(&script, handler, {});
+    repeatScope.setBytecodeIndex(2);
+    ExecutionContext repeatContext(repeatScope, ScriptChunk::Instruction{10, Opcode::END_REPEAT, 0x54, 10});
+    assert(!opcodeRegistry.execute(Opcode::END_REPEAT, repeatContext));
+    assert(repeatScope.bytecodeIndex() == 0);
+
+    assert(!opcodeRegistry.execute(Opcode::ADD, opContext));
+    opcodeRegistry.registerHandler(Opcode::ADD, [](ExecutionContext& customContext) {
+        customContext.push(Datum::of(99));
+        return true;
+    });
+    assert(opcodeRegistry.hasHandler(Opcode::ADD));
+    assert(opcodeRegistry.execute(Opcode::ADD, opContext));
+    assert(opContext.pop().intValue() == 99);
 }
 
 std::shared_ptr<Bitmap> makeSolidHitBitmap(std::uint32_t argb) {

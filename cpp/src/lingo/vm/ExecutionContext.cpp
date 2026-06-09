@@ -154,6 +154,17 @@ std::optional<chunks::ScriptChunk::Handler> ExecutionContext::findLocalHandler(i
     return script->handlers()[static_cast<std::size_t>(index)];
 }
 
+const std::vector<chunks::ScriptChunk::LiteralEntry>& ExecutionContext::literals() const {
+    static const std::vector<chunks::ScriptChunk::LiteralEntry> empty;
+    const auto* script = scope_->script();
+    return script != nullptr ? script->literals() : empty;
+}
+
+std::string ExecutionContext::resolveName(int nameId) const {
+    const auto* script = scope_->script();
+    return script != nullptr ? script->resolveName(nameId, nullptr) : "#" + std::to_string(nameId);
+}
+
 std::optional<HandlerRef> ExecutionContext::findHandler(std::string_view name) const {
     if (callbacks_.handlerFinder) {
         return callbacks_.handlerFinder(name);

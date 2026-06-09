@@ -44,6 +44,7 @@ add_library(libreshockwave
     src/lingo/Opcode.cpp
     src/lingo/builtin/BuiltinRegistry.cpp
     src/lingo/vm/ExecutionContext.cpp
+    src/lingo/vm/OpcodeRegistry.cpp
     src/lingo/vm/Scope.cpp
     src/lookup/CastMemberLookup.cpp
     src/lookup/PaletteResolver.cpp
