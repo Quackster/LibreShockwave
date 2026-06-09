@@ -208,6 +208,12 @@ std::string toStringLikeJava(const Datum& datum) {
         return "<script " + std::to_string(value->memberRef.castMember) + ", " +
                std::to_string(value->memberRef.castLib) + ">";
     }
+    if (const auto* value = datum.asXtra()) {
+        return "<Xtra \"" + value->name + "\">";
+    }
+    if (const auto* value = datum.asXtraInstance()) {
+        return "<XtraInstance \"" + value->xtraName + "\" #" + std::to_string(value->instanceId) + ">";
+    }
     if (datum.isList()) {
         return listStringLikeJava(datum.listValue());
     }
@@ -496,6 +502,7 @@ BuiltinRegistry::BuiltinRegistry() {
     ExternalParamBuiltins::registerBuiltins(*this);
     SoundBuiltins::registerBuiltins(*this);
     CastLibBuiltins::registerBuiltins(*this);
+    XtraBuiltins::registerBuiltins(*this);
     MovieBuiltins::registerBuiltins(*this);
 }
 
@@ -1632,6 +1639,58 @@ Datum CastLibBuiltins::createMember(BuiltinContext& context, const std::vector<D
     return context.namedCastMemberCreator(memberName, memberType);
 }
 
+void XtraBuiltins::registerBuiltins(BuiltinRegistry& registry) {
+    registry.registerBuiltin("xtra", XtraBuiltins::xtra);
+}
+
+Datum XtraBuiltins::xtra(BuiltinContext& context, const std::vector<Datum>& args) {
+    if (args.empty() || !context.xtraRegisteredResolver) {
+        return Datum::voidValue();
+    }
+    const std::string xtraName = toStringLikeJava(args[0]);
+    if (!context.xtraRegisteredResolver(xtraName)) {
+        return Datum::voidValue();
+    }
+    return Datum::xtra(xtraName);
+}
+
+Datum XtraBuiltins::createInstance(BuiltinContext& context,
+                                   const Datum::Xtra& xtraRef,
+                                   const std::vector<Datum>& args) {
+    if (!context.xtraInstanceCreator) {
+        return Datum::voidValue();
+    }
+    return context.xtraInstanceCreator(xtraRef.name, args);
+}
+
+Datum XtraBuiltins::callHandler(BuiltinContext& context,
+                                const Datum::XtraInstance& instance,
+                                std::string_view handlerName,
+                                const std::vector<Datum>& args) {
+    if (!context.xtraHandler) {
+        return Datum::voidValue();
+    }
+    return context.xtraHandler(instance, std::string(handlerName), args);
+}
+
+Datum XtraBuiltins::getProperty(BuiltinContext& context,
+                                const Datum::XtraInstance& instance,
+                                std::string_view propertyName) {
+    if (!context.xtraPropertyGetter) {
+        return Datum::voidValue();
+    }
+    return context.xtraPropertyGetter(instance, std::string(propertyName));
+}
+
+void XtraBuiltins::setProperty(BuiltinContext& context,
+                               const Datum::XtraInstance& instance,
+                               std::string_view propertyName,
+                               const Datum& value) {
+    if (context.xtraPropertySetter) {
+        context.xtraPropertySetter(instance, std::string(propertyName), value);
+    }
+}
+
 void ConstructorBuiltins::registerBuiltins(BuiltinRegistry& registry) {
     registry.registerBuiltin("point", ConstructorBuiltins::point);
     registry.registerBuiltin("rect", ConstructorBuiltins::rect);
@@ -1768,6 +1827,9 @@ Datum ConstructorBuiltins::newInstance(BuiltinContext& context, const std::vecto
 
     const Datum& target = args.front();
     std::vector<Datum> constructorArgs(args.begin() + 1, args.end());
+    if (const auto* xtraRef = target.asXtra()) {
+        return XtraBuiltins::createInstance(context, *xtraRef, constructorArgs);
+    }
     if (const auto* typeSymbol = target.asSymbol();
         typeSymbol != nullptr && !constructorArgs.empty() && constructorArgs.front().asCastLibRef() != nullptr) {
         if (context.castMemberCreator) {

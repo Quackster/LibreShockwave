@@ -300,6 +300,8 @@ public:
     [[nodiscard]] static Datum vector3(float x, float y, float z);
     [[nodiscard]] static Datum colorRef(int r, int g, int b);
     [[nodiscard]] static Datum soundChannel(int channel);
+    [[nodiscard]] static Datum xtra(std::string name);
+    [[nodiscard]] static Datum xtraInstance(std::string xtraName, int instanceId);
     [[nodiscard]] static Datum scriptInstance(std::string scriptName, std::optional<CastMemberRef> scriptRef = std::nullopt);
     [[nodiscard]] static Datum argList(std::vector<Datum> args);
     [[nodiscard]] static Datum argListNoRet(std::vector<Datum> args);
@@ -333,6 +335,8 @@ public:
     [[nodiscard]] const SpriteRef* asSpriteRef() const;
     [[nodiscard]] const ColorRef* asColorRef() const;
     [[nodiscard]] const SoundChannel* asSoundChannel() const;
+    [[nodiscard]] const Xtra* asXtra() const;
+    [[nodiscard]] const XtraInstance* asXtraInstance() const;
     [[nodiscard]] const TimeoutRef* asTimeoutRef() const;
     [[nodiscard]] const IntPoint* asIntPoint() const;
     [[nodiscard]] const IntRect* asIntRect() const;

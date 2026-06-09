@@ -1130,6 +1130,84 @@ void testBuiltinRegistryFoundation() {
     assert(castBuiltinCreatedName == "dynamic");
     assert(castBuiltinCreatedType == "bitmap");
 
+    assert(registry.contains("xtra"));
+    assert(registry.invoke("xtra", context).isVoid());
+    assert(registry.invoke("xtra", context, {Datum::of(std::string("Multiuser"))}).isVoid());
+    std::vector<std::string> xtraRegistrationChecks;
+    context.xtraRegisteredResolver = [&xtraRegistrationChecks](const std::string& name) {
+        xtraRegistrationChecks.push_back(name);
+        return name == "Multiuser";
+    };
+    assert(registry.invoke("xtra", context, {Datum::of(std::string("Missing"))}).isVoid());
+    const auto xtraRefDatum = registry.invoke("xtra", context, {Datum::of(std::string("Multiuser"))});
+    const auto* xtraRef = xtraRefDatum.asXtra();
+    assert(xtraRef != nullptr);
+    assert(xtraRef->name == "Multiuser");
+    assert(registry.invoke("string", context, {xtraRefDatum}).stringValue() == "<Xtra \"Multiuser\">");
+    assert(xtraRegistrationChecks.size() == 2);
+    assert(xtraRegistrationChecks[0] == "Missing");
+    assert(xtraRegistrationChecks[1] == "Multiuser");
+    assert(registry.invoke("new", context, {xtraRefDatum, Datum::of(1)}).isVoid());
+
+    std::string createdXtraName;
+    std::vector<Datum> createdXtraArgs;
+    context.xtraInstanceCreator = [&createdXtraName, &createdXtraArgs](const std::string& name,
+                                                                       const std::vector<Datum>& args) {
+        createdXtraName = name;
+        createdXtraArgs = args;
+        return Datum::xtraInstance(name, 42);
+    };
+    const auto xtraInstanceDatum = registry.invoke("new", context, {xtraRefDatum, Datum::of(7), Datum::symbol("ready")});
+    const auto* xtraInstance = xtraInstanceDatum.asXtraInstance();
+    assert(xtraInstance != nullptr);
+    assert(xtraInstance->xtraName == "Multiuser");
+    assert(xtraInstance->instanceId == 42);
+    assert(createdXtraName == "Multiuser");
+    assert(createdXtraArgs.size() == 2);
+    assert(createdXtraArgs[0].intValue() == 7);
+    assert(createdXtraArgs[1].asSymbol()->name == "ready");
+    assert(registry.invoke("string", context, {xtraInstanceDatum}).stringValue() == "<XtraInstance \"Multiuser\" #42>");
+
+    std::string xtraHandlerName;
+    std::vector<Datum> xtraHandlerArgs;
+    context.xtraHandler = [&xtraHandlerName, &xtraHandlerArgs](const Datum::XtraInstance& instance,
+                                                               const std::string& handlerName,
+                                                               const std::vector<Datum>& args) {
+        assert(instance.xtraName == "Multiuser");
+        assert(instance.instanceId == 42);
+        xtraHandlerName = handlerName;
+        xtraHandlerArgs = args;
+        return Datum::of(std::string("called"));
+    };
+    assert(libreshockwave::lingo::builtin::XtraBuiltins::callHandler(context,
+                                                                     *xtraInstance,
+                                                                     "sendMsg",
+                                                                     {Datum::of(std::string("hi"))}).stringValue() == "called");
+    assert(xtraHandlerName == "sendMsg");
+    assert(xtraHandlerArgs.size() == 1);
+    assert(xtraHandlerArgs[0].stringValue() == "hi");
+    BuiltinContext noXtraContext;
+    assert(libreshockwave::lingo::builtin::XtraBuiltins::callHandler(noXtraContext, *xtraInstance, "sendMsg", {}).isVoid());
+
+    std::string xtraPropertySetName;
+    Datum xtraPropertySetValue = Datum::voidValue();
+    context.xtraPropertyGetter = [](const Datum::XtraInstance& instance, const std::string& propertyName) {
+        assert(instance.instanceId == 42);
+        return Datum::of("prop:" + propertyName);
+    };
+    context.xtraPropertySetter = [&xtraPropertySetName, &xtraPropertySetValue](const Datum::XtraInstance& instance,
+                                                                              const std::string& propertyName,
+                                                                              const Datum& value) {
+        assert(instance.instanceId == 42);
+        xtraPropertySetName = propertyName;
+        xtraPropertySetValue = value;
+    };
+    assert(libreshockwave::lingo::builtin::XtraBuiltins::getProperty(context, *xtraInstance, "state").stringValue() == "prop:state");
+    libreshockwave::lingo::builtin::XtraBuiltins::setProperty(context, *xtraInstance, "state", Datum::of(9));
+    assert(xtraPropertySetName == "state");
+    assert(xtraPropertySetValue.intValue() == 9);
+    assert(libreshockwave::lingo::builtin::XtraBuiltins::getProperty(noXtraContext, *xtraInstance, "state").isVoid());
+
     assert(registry.contains("count"));
     assert(registry.contains("getAt"));
     assert(registry.contains("setAt"));

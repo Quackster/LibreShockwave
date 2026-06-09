@@ -27,6 +27,15 @@ struct BuiltinContext {
     using CastMemberNameResolver = std::function<Datum(int castLib, const std::string& memberName)>;
     using CastMemberExistsResolver = std::function<bool(int castLib, int memberNum)>;
     using FieldResolver = std::function<Datum(const Datum& identifier, int castLib)>;
+    using XtraRegisteredResolver = std::function<bool(const std::string& xtraName)>;
+    using XtraInstanceCreator = std::function<Datum(const std::string& xtraName, const std::vector<Datum>& args)>;
+    using XtraHandler = std::function<Datum(const Datum::XtraInstance& instance,
+                                            const std::string& handlerName,
+                                            const std::vector<Datum>& args)>;
+    using XtraPropertyGetter = std::function<Datum(const Datum::XtraInstance& instance, const std::string& propertyName)>;
+    using XtraPropertySetter = std::function<void(const Datum::XtraInstance& instance,
+                                                  const std::string& propertyName,
+                                                  const Datum& value)>;
     using NewInstanceHandler = std::function<Datum(const Datum& target, const std::vector<Datum>& args)>;
     using ValueEvaluator = std::function<Datum(const Datum& value)>;
     using ScriptResolver = std::function<Datum(const Datum& identifier, const std::optional<Datum>& scope)>;
@@ -55,6 +64,11 @@ struct BuiltinContext {
     CastMemberNameResolver castMemberNameResolver;
     CastMemberExistsResolver castMemberExistsResolver;
     FieldResolver fieldResolver;
+    XtraRegisteredResolver xtraRegisteredResolver;
+    XtraInstanceCreator xtraInstanceCreator;
+    XtraHandler xtraHandler;
+    XtraPropertyGetter xtraPropertyGetter;
+    XtraPropertySetter xtraPropertySetter;
     NewInstanceHandler newInstanceHandler;
     ValueEvaluator valueEvaluator;
     ScriptResolver scriptResolver;
@@ -216,6 +230,26 @@ public:
     [[nodiscard]] static Datum member(BuiltinContext& context, const std::vector<Datum>& args);
     [[nodiscard]] static Datum field(BuiltinContext& context, const std::vector<Datum>& args);
     [[nodiscard]] static Datum createMember(BuiltinContext& context, const std::vector<Datum>& args);
+};
+
+class XtraBuiltins {
+public:
+    static void registerBuiltins(BuiltinRegistry& registry);
+    [[nodiscard]] static Datum xtra(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum createInstance(BuiltinContext& context,
+                                              const Datum::Xtra& xtraRef,
+                                              const std::vector<Datum>& args);
+    [[nodiscard]] static Datum callHandler(BuiltinContext& context,
+                                           const Datum::XtraInstance& instance,
+                                           std::string_view handlerName,
+                                           const std::vector<Datum>& args);
+    [[nodiscard]] static Datum getProperty(BuiltinContext& context,
+                                           const Datum::XtraInstance& instance,
+                                           std::string_view propertyName);
+    static void setProperty(BuiltinContext& context,
+                            const Datum::XtraInstance& instance,
+                            std::string_view propertyName,
+                            const Datum& value);
 };
 
 class ConstructorBuiltins {
