@@ -340,7 +340,8 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - Type builtins now register `objectp`, `voidp`, `value`, `script`, `ilk`, `listp`, `stringp`, `integerp`, `floatp`, `symbolp`, `symbol`, and `callAncestor`.
 - Java-compatible type predicates, symbol conversion, `ilk` type names, and Director alias checks such as `#list`, `#linearList`, `#number`, and `#object` are covered in C++.
-- VM/provider-dependent `value`, script resolution, and `callAncestor` dispatch are exposed through callback hooks until the C++ Lingo VM runtime is ported.
+- `value` now evaluates string literals through the C++ `LingoValueParser`, keeps the VM callback hook for provider-owned evaluation, and preserves resolver-confirmed multi-word member names for downstream script construction.
+- VM/provider-dependent script resolution and `callAncestor` dispatch remain exposed through callback hooks until the C++ Lingo VM runtime is ported.
 
 ### Score Navigation Foundation
 
@@ -618,7 +619,7 @@ Result:
 - ImageBuiltins image creation, invalid-dimension handling, white fill defaults, built-in/system palette metadata, provider-resolved member palette metadata, string/ilk behavior, and `importFileInto` callback delegation passed through the same CTest executable.
 - SoundBuiltins channel creation, availability, sound-channel method dispatch, VM object-property defaults/mutation, and SoundManager playback delegation passed through the same CTest executable.
 - ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration and callback hooks passed through the same CTest executable.
-- TypeBuiltins object/void/type predicates, `value`/`script`/`callAncestor` callback hooks, symbol conversion, and `ilk` alias checks passed through the same CTest executable.
+- TypeBuiltins object/void/type predicates, `value` literal parsing/provider fallback, `script`/`callAncestor` callback hooks, symbol conversion, and `ilk` alias checks passed through the same CTest executable.
 - Lingo VM Scope and ExecutionContext stack, param, local, return, loop, jump, global callback, handler callback, builtin invocation, and call-stack formatting behavior passed through the same CTest executable.
 - Lingo VM ExecutionContext name resolver callback and resolver-backed global opcode behavior passed through the same CTest executable.
 - OpcodeRegistry stack/control handler registration, custom handler registration, literal/symbol pushes, stack manipulation, return/factory return, and jump opcodes passed through the same CTest executable.
@@ -766,4 +767,5 @@ Result:
 - `19b640a3 Port C++ script construction provider fallback`
 - `654802e7 Port C++ timeout object property dispatch`
 - `c879164f Port C++ sound object property dispatch`
-- Current checkpoint commit message: `Port C++ behavior parameter value parser`
+- `938442ce Port C++ behavior parameter value parser`
+- Current checkpoint commit message: `Port C++ value builtin parser`

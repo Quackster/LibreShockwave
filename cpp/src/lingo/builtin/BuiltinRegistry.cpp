@@ -2,6 +2,7 @@
 
 #include "libreshockwave/bitmap/Bitmap.hpp"
 #include "libreshockwave/bitmap/Palette.hpp"
+#include "libreshockwave/lingo/LingoValueParser.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -2082,9 +2083,25 @@ Datum TypeBuiltins::value(BuiltinContext& context, const std::vector<Datum>& arg
         return args[0];
     }
     if (context.valueEvaluator) {
-        return context.valueEvaluator(args[0]);
+        Datum evaluated = context.valueEvaluator(args[0]);
+        if (!evaluated.isVoid()) {
+            return evaluated;
+        }
     }
-    return Datum::voidValue();
+    const std::string raw = args[0].stringValue();
+    Datum parsed = LingoValueParser::parseWithPartial(raw);
+    if (!parsed.isVoid()) {
+        return parsed;
+    }
+
+    const std::string trimmed = trimCopy(raw);
+    if (trimmed.find(' ') != std::string::npos && context.castMemberNameResolver) {
+        const Datum memberRef = context.castMemberNameResolver(0, trimmed);
+        if (memberRef.asCastMemberRef() != nullptr) {
+            return Datum::of(trimmed);
+        }
+    }
+    return parsed;
 }
 
 Datum TypeBuiltins::script(BuiltinContext& context, const std::vector<Datum>& args) {

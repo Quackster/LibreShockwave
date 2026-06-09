@@ -1828,12 +1828,32 @@ void testBuiltinRegistryFoundation() {
     assert(!registry.invoke("voidp", context, {Datum::of(1)}).boolValue());
     assert(registry.invoke("value", context).isVoid());
     assert(registry.invoke("value", context, {Datum::of(17)}).intValue() == 17);
-    assert(registry.invoke("value", context, {Datum::of(std::string("3"))}).isVoid());
+    assert(registry.invoke("value", context, {Datum::of(std::string("3"))}).intValue() == 3);
+    assert(registry.invoke("value", context, {Datum::of(std::string("3 5"))}).intValue() == 3);
+    assert(registry.invoke("value", context, {Datum::of(std::string("penny"))}).isVoid());
+    const Datum valueList = registry.invoke("value", context, {Datum::of(std::string("[\"cat\", \"dog\"]"))});
+    assert(valueList.listValue().count() == 2);
+    assert(valueList.listValue().getAt(2).stringValue() == "dog");
+    const Datum valueProps = registry.invoke("value", context, {Datum::of(std::string("[#foo: 9]"))});
+    assert(valueProps.propListValue().get(Datum::symbol("foo")).intValue() == 9);
     context.valueEvaluator = [](const Datum& value) {
         assert(value.stringValue() == "3");
-        return Datum::of(3);
+        return Datum::of(33);
     };
-    assert(registry.invoke("value", context, {Datum::of(std::string("3"))}).intValue() == 3);
+    assert(registry.invoke("value", context, {Datum::of(std::string("3"))}).intValue() == 33);
+    context.valueEvaluator = {};
+    std::string valueMemberName;
+    context.castMemberNameResolver = [&valueMemberName](int castLib, const std::string& memberName) {
+        assert(castLib == 0);
+        valueMemberName = memberName;
+        return memberName == "Broker Manager Class" ? Datum::castMemberRef(CastLibId(11), MemberId(7))
+                                                    : Datum::voidValue();
+    };
+    assert(registry.invoke("value", context, {Datum::of(std::string("Broker Manager Class"))}).stringValue() ==
+           "Broker Manager Class");
+    assert(valueMemberName == "Broker Manager Class");
+    assert(registry.invoke("value", context, {Datum::of(std::string("Missing Manager Class"))}).isVoid());
+    context.castMemberNameResolver = {};
 
     assert(registry.invoke("script", context).isVoid());
     const auto directScript = registry.invoke("script",
