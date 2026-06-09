@@ -22,6 +22,7 @@
 #include "libreshockwave/chunks/ScriptNamesChunk.hpp"
 #include "libreshockwave/chunks/SoundChunk.hpp"
 #include "libreshockwave/chunks/TextChunk.hpp"
+#include "libreshockwave/format/AfterburnerReader.hpp"
 
 namespace libreshockwave {
 
@@ -85,7 +86,9 @@ std::shared_ptr<DirectorFile> DirectorFile::load(const std::vector<std::uint8_t>
     (void)reader.readI32();
     const auto movieType = format::chunkTypeFromFourCC(reader.readI32());
     if (format::isAfterburner(movieType)) {
-        throw DirectorFileLoadError("Afterburner Director files are not implemented in the C++ loader yet");
+        auto file = loadAfterburner(reader, endian, movieType);
+        file->dataStore_ = data;
+        return file;
     }
 
     auto file = loadRIFX(reader, endian, movieType);
@@ -166,6 +169,78 @@ std::shared_ptr<DirectorFile> DirectorFile::loadRIFX(io::BinaryReader& reader,
                 file->categorizeChunk(chunk);
                 if (std::dynamic_pointer_cast<chunks::ScriptContextChunk>(chunk)) {
                     file->setCapitalX(info.fourcc == io::BinaryReader::fourCC("LctX"));
+                }
+            }
+        } catch (const std::exception&) {
+        }
+    }
+
+    return file;
+}
+
+std::shared_ptr<DirectorFile> DirectorFile::loadAfterburner(io::BinaryReader& reader,
+                                                            io::ByteOrder endian,
+                                                            format::ChunkType movieType) {
+    auto file = std::make_shared<DirectorFile>(endian, true, 0, movieType);
+    format::AfterburnerReader afterburnerReader(reader, endian);
+    afterburnerReader.parse();
+
+    int version = afterburnerReader.directorVersion();
+    file->setVersion(version);
+    const auto abInfos = afterburnerReader.chunkInfos();
+    const bool capitalX = std::any_of(abInfos.begin(), abInfos.end(), [](const auto& info) {
+        return info.fourCC == "LctX";
+    });
+    file->setCapitalX(capitalX);
+
+    for (const auto& abInfo : abInfos) {
+        const auto fourcc = io::BinaryReader::fourCC(abInfo.fourCC);
+        auto chunkId = id::ChunkId(abInfo.resourceId);
+        file->chunkInfo_.insert_or_assign(chunkId.value(),
+                                          DirectorChunkInfo{chunkId, fourcc, abInfo.offset, abInfo.compressedSize, abInfo.uncompressedSize});
+    }
+
+    for (const auto& abInfo : abInfos) {
+        const auto type = format::chunkTypeFromString(abInfo.fourCC);
+        if (type == format::ChunkType::DRCF || type == format::ChunkType::VWCF) {
+            const auto chunkData = afterburnerReader.getChunkData(abInfo.resourceId);
+            if (!chunkData.has_value()) {
+                continue;
+            }
+
+            auto chunkReader = io::BinaryReader(chunkData.value(), endian);
+            auto chunkId = id::ChunkId(abInfo.resourceId);
+            auto config = chunks::ConfigChunk::read(file.get(), chunkReader, chunkId, 0);
+            file->config_ = std::make_shared<chunks::ConfigChunk>(std::move(config));
+            version = file->config_->directorVersion();
+            file->setVersion(version);
+            break;
+        }
+    }
+
+    for (const auto& abInfo : abInfos) {
+        if (abInfo.resourceId == 2 && abInfo.fourCC == "ILS ") {
+            continue;
+        }
+
+        const auto chunkData = afterburnerReader.getChunkData(abInfo.resourceId);
+        if (!chunkData.has_value()) {
+            continue;
+        }
+
+        auto infoIt = file->chunkInfo_.find(abInfo.resourceId);
+        if (infoIt == file->chunkInfo_.end()) {
+            continue;
+        }
+
+        try {
+            auto chunkReader = io::BinaryReader(chunkData.value(), endian);
+            auto chunk = file->parseChunkFromReader(chunkReader, infoIt->second, version, file->capitalX_);
+            if (chunk) {
+                file->chunks_[infoIt->second.id.value()] = chunk;
+                file->categorizeChunk(chunk);
+                if (std::dynamic_pointer_cast<chunks::ScriptContextChunk>(chunk)) {
+                    file->setCapitalX(abInfo.fourCC == "LctX");
                 }
             }
         } catch (const std::exception&) {

@@ -62,11 +62,11 @@ std::optional<std::vector<std::uint8_t>> AfterburnerReader::getChunkData(int res
     auto chunkData = reader_.readBytes(static_cast<std::size_t>(info->compressedSize));
     reader_.seek(savedPosition);
 
+    cachedChunkData_[resourceId] = chunkData;
     if (info->compressedSize != info->uncompressedSize && info->isZlibCompressed()) {
         chunkData = io::BinaryReader::decompressZlib(chunkData);
     }
 
-    cachedChunkData_[resourceId] = chunkData;
     return chunkData;
 }
 

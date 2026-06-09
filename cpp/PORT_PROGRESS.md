@@ -101,6 +101,13 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - ABMP resource map parsing and ILS chunk cache extraction.
 - Chunk data lookup by resource ID and FourCC with zlib decompression where required.
 
+### Director File Afterburner Integration
+
+- `DirectorFile::load` now accepts FGDM/FGDC Afterburner movie types.
+- Afterburner chunk maps are translated into `DirectorChunkInfo` records and dispatched through the same ported chunk readers as RIFX/XFIR files.
+- Config chunks are parsed early to establish Director version before the full chunk pass.
+- Afterburner chunks are categorized into the same config/script/cast/score/media collections as uncompressed Director files.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -126,11 +133,12 @@ Result:
 - Score chunk parser tests passed through the same CTest executable.
 - Director file RIFX loader tests passed through the same CTest executable.
 - Afterburner reader tests passed through the same CTest executable.
+- Director file Afterburner loader tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
 
-- D3 RIFF loading, DirectorFile Afterburner integration, lazy reparsing, and higher-level chunk integration.
+- D3 RIFF loading, lazy reparsing, and higher-level chunk integration.
 - Remaining bitmap, sound, font, text, score, and script chunk decoders.
 - Cast member resolution.
 - Lingo decompiler, VM runtime values, dispatchers, and builtins.
@@ -150,4 +158,5 @@ Result:
 - `c160ac3 Port C++ script bytecode chunk parser`
 - `1e8cfbf Port C++ score chunk parser`
 - `d4bcca5 Port C++ director file loader foundation`
-- Current checkpoint commit message: `Port C++ Afterburner reader foundation`
+- `d0ddeff Port C++ Afterburner reader foundation`
+- Current checkpoint commit message: `Integrate C++ Afterburner file loading`

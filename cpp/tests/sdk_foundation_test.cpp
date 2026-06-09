@@ -1665,6 +1665,170 @@ void testAfterburnerReader() {
 #endif
 }
 
+void testDirectorFileAfterburnerLoader() {
+#ifdef LIBRESHOCKWAVE_HAVE_ZLIB
+    auto appendFourCC = [](std::vector<std::uint8_t>& data, const std::string& value) {
+        data.insert(data.end(), value.begin(), value.end());
+    };
+    auto appendI16 = [](std::vector<std::uint8_t>& data, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data.push_back(static_cast<std::uint8_t>((raw >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(raw & 0xFF));
+    };
+    auto appendI32 = [](std::vector<std::uint8_t>& data, std::uint32_t value) {
+        data.push_back(static_cast<std::uint8_t>((value >> 24) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 16) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(value & 0xFF));
+    };
+    auto putI16At = [](std::vector<std::uint8_t>& data, int offset, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((raw >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>(raw & 0xFF);
+    };
+    auto putI32At = [](std::vector<std::uint8_t>& data, int offset, std::uint32_t value) {
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((value >> 24) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>((value >> 16) & 0xFF);
+        data[static_cast<std::size_t>(offset + 2)] = static_cast<std::uint8_t>((value >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 3)] = static_cast<std::uint8_t>(value & 0xFF);
+    };
+    auto appendVarInt = [](std::vector<std::uint8_t>& data, int value) {
+        std::vector<std::uint8_t> groups;
+        groups.push_back(static_cast<std::uint8_t>(value & 0x7F));
+        value >>= 7;
+        while (value > 0) {
+            groups.push_back(static_cast<std::uint8_t>(value & 0x7F));
+            value >>= 7;
+        }
+        for (auto it = groups.rbegin(); it != groups.rend(); ++it) {
+            std::uint8_t byte = *it;
+            if (it + 1 != groups.rend()) {
+                byte |= 0x80;
+            }
+            data.push_back(byte);
+        }
+    };
+    auto appendMoa = [&](std::vector<std::uint8_t>& data, const MoaID& value) {
+        appendI32(data, value.data1);
+        appendI16(data, value.data2);
+        appendI16(data, value.data3);
+        appendI32(data, value.data4);
+        appendI32(data, value.data5);
+    };
+    auto compressZlib = [](const std::vector<std::uint8_t>& input) {
+        uLongf length = compressBound(static_cast<uLong>(input.size()));
+        std::vector<std::uint8_t> output(static_cast<std::size_t>(length));
+        const int status = compress2(output.data(), &length, input.data(), static_cast<uLong>(input.size()), Z_BEST_SPEED);
+        assert(status == Z_OK);
+        output.resize(static_cast<std::size_t>(length));
+        return output;
+    };
+
+    std::vector<std::uint8_t> configData(80, 0);
+    putI16At(configData, 2, 1200);
+    putI16At(configData, 4, 0);
+    putI16At(configData, 6, 0);
+    putI16At(configData, 8, 240);
+    putI16At(configData, 10, 320);
+    putI16At(configData, 12, 1);
+    putI16At(configData, 14, 50);
+    putI16At(configData, 20, 3);
+    putI16At(configData, 22, 12);
+    putI16At(configData, 24, 1);
+    putI16At(configData, 26, 5);
+    putI16At(configData, 28, 8);
+    putI16At(configData, 36, 0x0207);
+    putI16At(configData, 54, 24);
+    putI16At(configData, 56, 2);
+
+    std::vector<std::uint8_t> namesData(20, 0);
+    putI16At(namesData, 16, 20);
+    putI16At(namesData, 18, 1);
+    namesData.push_back(5);
+    namesData.insert(namesData.end(), {'s', 't', 'a', 'r', 't'});
+
+    std::vector<std::uint8_t> ilsData;
+    appendVarInt(ilsData, 10);
+    ilsData.insert(ilsData.end(), configData.begin(), configData.end());
+    appendVarInt(ilsData, 11);
+    ilsData.insert(ilsData.end(), namesData.begin(), namesData.end());
+    const auto compressedIls = compressZlib(ilsData);
+
+    std::vector<std::uint8_t> fcdrData;
+    appendI16(fcdrData, 2);
+    appendMoa(fcdrData, MoaID::NULL_COMPRESSION);
+    appendMoa(fcdrData, MoaID::ZLIB_COMPRESSION);
+    fcdrData.insert(fcdrData.end(), {'n', 'o', 'n', 'e', 0, 'z', 'l', 'i', 'b', 0});
+    const auto compressedFcdr = compressZlib(fcdrData);
+
+    std::vector<std::uint8_t> abmpData;
+    appendVarInt(abmpData, 0);
+    appendVarInt(abmpData, 0);
+    appendVarInt(abmpData, 3);
+    appendVarInt(abmpData, 2);
+    appendVarInt(abmpData, 0);
+    appendVarInt(abmpData, static_cast<int>(compressedIls.size()));
+    appendVarInt(abmpData, static_cast<int>(ilsData.size()));
+    appendVarInt(abmpData, 1);
+    appendFourCC(abmpData, "ILS ");
+    appendVarInt(abmpData, 10);
+    appendVarInt(abmpData, 0);
+    appendVarInt(abmpData, static_cast<int>(configData.size()));
+    appendVarInt(abmpData, static_cast<int>(configData.size()));
+    appendVarInt(abmpData, 0);
+    appendFourCC(abmpData, "DRCF");
+    appendVarInt(abmpData, 11);
+    appendVarInt(abmpData, static_cast<int>(configData.size()));
+    appendVarInt(abmpData, static_cast<int>(namesData.size()));
+    appendVarInt(abmpData, static_cast<int>(namesData.size()));
+    appendVarInt(abmpData, 0);
+    appendFourCC(abmpData, "Lnam");
+    const auto compressedAbmp = compressZlib(abmpData);
+
+    std::vector<std::uint8_t> fverData;
+    appendVarInt(fverData, 5);
+    appendVarInt(fverData, 1200);
+
+    std::vector<std::uint8_t> fileData;
+    appendFourCC(fileData, "RIFX");
+    appendI32(fileData, 0);
+    appendFourCC(fileData, "FGDM");
+    appendFourCC(fileData, "Fver");
+    appendVarInt(fileData, static_cast<int>(fverData.size()));
+    fileData.insert(fileData.end(), fverData.begin(), fverData.end());
+    appendFourCC(fileData, "Fcdr");
+    appendVarInt(fileData, static_cast<int>(compressedFcdr.size()));
+    fileData.insert(fileData.end(), compressedFcdr.begin(), compressedFcdr.end());
+    appendFourCC(fileData, "ABMP");
+    std::vector<std::uint8_t> abmpContent;
+    appendVarInt(abmpContent, 0);
+    appendVarInt(abmpContent, static_cast<int>(abmpData.size()));
+    abmpContent.insert(abmpContent.end(), compressedAbmp.begin(), compressedAbmp.end());
+    appendVarInt(fileData, static_cast<int>(abmpContent.size()));
+    fileData.insert(fileData.end(), abmpContent.begin(), abmpContent.end());
+    appendFourCC(fileData, "FGEI");
+    appendVarInt(fileData, 0);
+    fileData.insert(fileData.end(), compressedIls.begin(), compressedIls.end());
+    putI32At(fileData, 4, static_cast<std::uint32_t>(fileData.size() - 8));
+
+    auto file = DirectorFile::load(fileData);
+    assert(file->isAfterburner());
+    assert(file->movieType() == ChunkType::FGDM);
+    assert(file->version() == 0x0207);
+    assert(file->chunkInfo().size() == 3);
+    assert(file->chunks().size() == 2);
+    assert(file->getChunkInfo(ChunkId(10))->type() == ChunkType::DRCF);
+    assert(file->config().get() != nullptr);
+    assert(file->config()->file() == file.get());
+    assert(file->config()->stageWidth() == 320);
+    assert(file->config()->stageHeight() == 240);
+    assert(file->config()->tempo() == 24);
+    assert(file->scriptNames().get() != nullptr);
+    assert(file->scriptNames()->getName(0) == "start");
+    assert(file->getChunk(ChunkId(11))->type() == ChunkType::Lnam);
+#endif
+}
+
 int main() {
     testBinaryReaderEndianAndBounds();
     testBinaryReaderStringsAndFourCC();
@@ -1690,6 +1854,7 @@ int main() {
     testScoreChunkParser();
     testDirectorFileRifxLoader();
     testAfterburnerReader();
+    testDirectorFileAfterburnerLoader();
 
     std::cout << "LibreShockwave C++ SDK foundation tests passed\n";
     return 0;
