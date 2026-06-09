@@ -6,6 +6,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "libreshockwave/bitmap/Bitmap.hpp"
@@ -31,6 +32,7 @@
 #include "libreshockwave/chunks/PaletteChunk.hpp"
 #include "libreshockwave/chunks/RawChunk.hpp"
 #include "libreshockwave/chunks/ScriptContextChunk.hpp"
+#include "libreshockwave/chunks/ScriptChunk.hpp"
 #include "libreshockwave/chunks/ScriptNamesChunk.hpp"
 #include "libreshockwave/chunks/SoundChunk.hpp"
 #include "libreshockwave/chunks/TextChunk.hpp"
@@ -83,6 +85,8 @@ using libreshockwave::chunks::MediaChunk;
 using libreshockwave::chunks::PaletteChunk;
 using libreshockwave::chunks::RawChunk;
 using libreshockwave::chunks::ScriptContextChunk;
+using libreshockwave::chunks::ScriptChunk;
+using libreshockwave::chunks::ScriptChunkType;
 using libreshockwave::chunks::ScriptNamesChunk;
 using libreshockwave::chunks::SoundChunk;
 using libreshockwave::chunks::TextChunk;
@@ -1108,6 +1112,142 @@ void testScriptContextChunk() {
     assert(contextReader.order() == ByteOrder::LittleEndian);
 }
 
+void testScriptChunkParser() {
+    auto putI16 = [](std::vector<std::uint8_t>& data, int offset, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((raw >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>(raw & 0xFF);
+    };
+    auto putI32 = [](std::vector<std::uint8_t>& data, int offset, std::uint32_t value) {
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((value >> 24) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>((value >> 16) & 0xFF);
+        data[static_cast<std::size_t>(offset + 2)] = static_cast<std::uint8_t>((value >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 3)] = static_cast<std::uint8_t>(value & 0xFF);
+    };
+
+    std::vector<std::uint8_t> scriptData(260, 0);
+    putI32(scriptData, 8, 260);
+    putI32(scriptData, 12, 260);
+    putI16(scriptData, 16, 50);
+    putI16(scriptData, 18, 0);
+    putI32(scriptData, 38, 0x00000002);
+
+    putI16(scriptData, 50, 0);
+    putI32(scriptData, 52, 0);
+    putI32(scriptData, 56, 0);
+    putI16(scriptData, 60, 2);
+    putI32(scriptData, 62, 100);
+    putI16(scriptData, 66, 1);
+    putI32(scriptData, 68, 104);
+    putI16(scriptData, 72, 1);
+    putI32(scriptData, 74, 110);
+    putI16(scriptData, 78, 3);
+    putI32(scriptData, 80, 160);
+    putI32(scriptData, 84, 24);
+    putI32(scriptData, 88, 190);
+
+    putI16(scriptData, 100, 12);
+    putI16(scriptData, 102, 13);
+    putI16(scriptData, 104, 14);
+
+    putI16(scriptData, 110, 5);
+    putI16(scriptData, 112, 2);
+    putI32(scriptData, 114, 11);
+    putI32(scriptData, 118, 230);
+    putI16(scriptData, 122, 2);
+    putI32(scriptData, 124, 152);
+    putI16(scriptData, 128, 1);
+    putI32(scriptData, 130, 156);
+    putI16(scriptData, 134, 1);
+    putI32(scriptData, 136, 0);
+    putI32(scriptData, 140, 0);
+    putI16(scriptData, 144, 0);
+    putI16(scriptData, 146, 0);
+    putI32(scriptData, 148, 0);
+    putI16(scriptData, 152, 7);
+    putI16(scriptData, 154, 8);
+    putI16(scriptData, 156, 9);
+
+    putI32(scriptData, 160, 1);
+    putI32(scriptData, 164, 0);
+    putI32(scriptData, 168, 4);
+    putI32(scriptData, 172, 1234);
+    putI32(scriptData, 176, 9);
+    putI32(scriptData, 180, 8);
+
+    putI32(scriptData, 190, 3);
+    scriptData[194] = 'h';
+    scriptData[195] = 'i';
+    scriptData[196] = 0;
+    putI32(scriptData, 198, 4);
+    putI32(scriptData, 202, 0x3FC00000);
+
+    scriptData[230] = 0x41;
+    scriptData[231] = 0xFE;
+    scriptData[232] = 0x8E;
+    scriptData[233] = 0x12;
+    scriptData[234] = 0x34;
+    scriptData[235] = 0xC6;
+    putI32(scriptData, 236, 5);
+    scriptData[240] = 0x01;
+
+    BinaryReader scriptReader(scriptData, ByteOrder::LittleEndian);
+    ScriptChunk script = ScriptChunk::read(nullptr, scriptReader, ChunkId(34), 0x4B1, false);
+    assert(script.type() == ChunkType::Lscr);
+    assert(script.id().value() == 34);
+    assert(script.scriptType() == ScriptChunkType::Behavior);
+    assert(script.behaviorFlags() == 2);
+    assert(script.hasProperties());
+    assert(script.properties().size() == 2);
+    assert(script.properties()[0].nameId == 12);
+    assert(script.properties()[1].nameId == 13);
+    assert(script.hasGlobals());
+    assert(script.globals().size() == 1);
+    assert(script.globals()[0].nameId == 14);
+
+    assert(script.literals().size() == 3);
+    assert(script.literals()[0].type == 1);
+    assert(std::get<std::string>(script.literals()[0].value) == "hi");
+    assert(script.literals()[1].type == 4);
+    assert(std::get<int>(script.literals()[1].value) == 1234);
+    assert(script.literals()[2].type == 9);
+    assert(std::fabs(script.literals()[2].numericValue - 1.5) < 0.0001);
+    assert(std::get<std::string>(script.literals()[2].value) == "1.5");
+
+    assert(script.handlers().size() == 1);
+    const auto& handler = script.handlers()[0];
+    assert(handler.nameId == 5);
+    assert(handler.handlerVectorPos == 2);
+    assert(handler.bytecodeLength == 11);
+    assert(handler.bytecodeOffset == 230);
+    assert(handler.argCount == 2);
+    assert(handler.localCount == 1);
+    assert(handler.globalsCount == 1);
+    assert(handler.argNameIds.size() == 2);
+    assert(handler.argNameIds[0] == 7);
+    assert(handler.argNameIds[1] == 8);
+    assert(handler.localNameIds.size() == 1);
+    assert(handler.localNameIds[0] == 9);
+    assert(handler.instructions.size() == 4);
+    assert(handler.getInstructionIndex(0) == 0);
+    assert(handler.getInstructionIndex(2) == 1);
+    assert(handler.getInstructionIndex(99) == -1);
+    assert(handler.instructions[0].opcode == Opcode::PUSH_INT8);
+    assert(handler.instructions[0].rawOpcode == 0x41);
+    assert(handler.instructions[0].argument == -2);
+    assert(handler.instructions[1].opcode == Opcode::SET_GLOBAL2);
+    assert(handler.instructions[1].argument == 0x1234);
+    assert(handler.instructions[2].opcode == Opcode::PUSH_VAR_REF);
+    assert(handler.instructions[2].rawOpcode == 0xC6);
+    assert(handler.instructions[2].argument == 5);
+    assert(handler.instructions[3].opcode == Opcode::RET);
+    assert(handler.instructions[3].toString() == "[10] ret");
+    assert(script.findHandlerByNameId(5).has_value());
+    assert(!script.findHandlerByNameId(99).has_value());
+    assert(script.rawBytecode().empty());
+    assert(scriptReader.order() == ByteOrder::LittleEndian);
+}
+
 int main() {
     testBinaryReaderEndianAndBounds();
     testBinaryReaderStringsAndFourCC();
@@ -1129,6 +1269,7 @@ int main() {
     testTextAndFontMapChunks();
     testCastListAndMemberChunks();
     testScriptContextChunk();
+    testScriptChunkParser();
 
     std::cout << "LibreShockwave C++ SDK foundation tests passed\n";
     return 0;

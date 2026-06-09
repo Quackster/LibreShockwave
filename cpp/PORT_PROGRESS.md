@@ -74,6 +74,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `chunks::ScriptContextChunk` Lctx parser for script table metadata, Lnam section references, valid counts, flags, free pointer, and script entries.
 - Script context entry parsing clamps free/empty negative script chunk IDs to `ChunkId(0)` like the Java baseline.
 
+### Script Bytecode Chunk Parser
+
+- `chunks::ScriptChunk` Lscr parser for script type, behavior flags, properties, globals, literals, handler metadata, and handler name tables.
+- Literal parsing covers string, inline int, float numeric value, and raw unknown literal payloads.
+- Handler bytecode instruction decoding normalizes multi-byte opcodes, preserves raw opcode bytes, decodes signed push-int arguments, and builds bytecode-offset lookup maps.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -95,6 +101,7 @@ Result:
 - Compact chunk parser tests passed through the same CTest executable.
 - Cast list/member chunk parser tests passed through the same CTest executable.
 - Lingo opcode and script context parser tests passed through the same CTest executable.
+- Script bytecode chunk parser tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -103,7 +110,7 @@ Result:
 - Director/Afterburner file loading.
 - Remaining bitmap, sound, font, text, score, and script chunk decoders.
 - Cast member resolution.
-- Lingo instruction decoding, decompiler, VM runtime values, dispatchers, and builtins.
+- Lingo decompiler, VM runtime values, dispatchers, and builtins.
 - Player core, rendering pipeline, input, networking, audio, cast management, and debugging.
 - WASM/web player replacement strategy in C++.
 - Editor replacement strategy in C++.
@@ -116,4 +123,5 @@ Result:
 - `7364e28 Port C++ cast metadata foundation`
 - `d86665c Port C++ compact chunk parsers`
 - `9f506a1 Port C++ cast list and member chunks`
-- Current checkpoint commit message: `Port C++ script context and opcode foundation`
+- `4e3e971 Port C++ script context and opcode foundation`
+- Current checkpoint commit message: `Port C++ script bytecode chunk parser`
