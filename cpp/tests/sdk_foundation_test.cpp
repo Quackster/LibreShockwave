@@ -50,6 +50,7 @@
 #include "libreshockwave/format/AfterburnerReader.hpp"
 #include "libreshockwave/format/ChunkType.hpp"
 #include "libreshockwave/format/MoaID.hpp"
+#include "libreshockwave/format/ScriptFormatUtils.hpp"
 #include "libreshockwave/fonts/FontDataDecoder.hpp"
 #include "libreshockwave/id/Ids.hpp"
 #include "libreshockwave/io/BinaryReader.hpp"
@@ -59,6 +60,7 @@
 #include "libreshockwave/lookup/PaletteResolver.hpp"
 #include "libreshockwave/lookup/ScriptLookup.hpp"
 #include "libreshockwave/util/AudioCodecUtils.hpp"
+#include "libreshockwave/util/FileUtil.hpp"
 
 using libreshockwave::format::ChunkInfo;
 using libreshockwave::format::AfterburnerReader;
@@ -241,6 +243,45 @@ void testFormatTypes() {
     const ChunkInfo raw{13, "STXT", 180, 40, 40, MoaID::NULL_COMPRESSION};
     assert(!raw.isCompressed());
     assert(raw.toString() == "ChunkInfo[id=13, type=STXT, offset=180, size=40->40, compression=none]");
+}
+
+void testUtilityFormatting() {
+    assert(libreshockwave::util::getFileName("") == "");
+    assert(libreshockwave::util::getFileName("https://example.com/path/file.cct?cache=1") == "file.cct");
+    assert(libreshockwave::util::getFileName("D:\\path\\file.cst") == "file.cst");
+    assert(libreshockwave::util::getFileName("Mac:Folder:Movie%20Name.dir") == "Movie Name.dir");
+    assert(libreshockwave::util::getFileNameWithoutExtension("Mac:Folder:Movie%20Name.dir") == "Movie Name");
+    assert(libreshockwave::util::getFileNameWithoutExtension(".gitignore") == ".gitignore");
+
+    const auto castUrls = libreshockwave::util::getUrlsWithFallbacks("cast.cst");
+    assert((castUrls == std::vector<std::string>{"cast.cct", "cast.cst"}));
+    const auto movieUrls = libreshockwave::util::getUrlsWithFallbacks("movie.dir");
+    assert((movieUrls == std::vector<std::string>{"movie.dir", "movie.dcr", "movie.dxr", "movie.dir"}));
+    const auto extensionlessUrls = libreshockwave::util::getUrlsWithFallbacks("hosts");
+    assert((extensionlessUrls == std::vector<std::string>{"hosts.cct", "hosts.cst"}));
+    const auto unknownUrls = libreshockwave::util::getUrlsWithFallbacks("image.png");
+    assert((unknownUrls == std::vector<std::string>{"image.png"}));
+
+    using LiteralEntry = ScriptChunk::LiteralEntry;
+    using LiteralValue = ScriptChunk::LiteralValue;
+    assert(libreshockwave::format::getLiteralTypeName(1) == "string");
+    assert(libreshockwave::format::getLiteralTypeName(5) == "type5");
+    assert(libreshockwave::format::getLiteralTypeNameShort(9) == "float");
+    assert(libreshockwave::format::getLiteralTypeNameShort(12) == "lit");
+    assert(libreshockwave::format::formatLiteral(LiteralEntry{1, 0, std::string("hello"), 0.0}) == "string: \"hello\"");
+    assert(libreshockwave::format::formatLiteral(LiteralEntry{4, 0, 42, 0.0}) == "int: 42");
+    assert(libreshockwave::format::formatLiteralValue(LiteralValue{std::string("abcdef")}, 5) == "\"ab...\"");
+    assert(libreshockwave::format::truncate("abcdef", 3) == "...");
+    assert(libreshockwave::format::normalizeLineEndings(" a\r\nb\rc\n ") == "a b c");
+    assert(libreshockwave::format::getScriptTypeName(ScriptChunkType::MovieScript) == "Movie Script");
+    assert(libreshockwave::format::getScriptTypeName(ScriptChunkType::Parent) == "Parent Script");
+    assert(libreshockwave::format::getScriptTypeName(ScriptChunkType::Unknown) == "Script");
+
+    ScriptNamesChunk names(nullptr, ChunkId(120), {"zero", "mouseUp"});
+    assert(libreshockwave::format::resolveName(&names, 1) == "mouseUp");
+    assert(libreshockwave::format::resolveName(&names, 5) == "#5");
+    assert(libreshockwave::format::resolveHandlerName(&names, 1) == "mouseUp");
+    assert(libreshockwave::format::resolveHandlerName(nullptr, 3) == "handler#3");
 }
 
 void testLingoDatumTypes() {
@@ -2510,6 +2551,7 @@ int main() {
     testFontDataDecoder();
     testIdsAndEnums();
     testFormatTypes();
+    testUtilityFormatting();
     testLingoDatumTypes();
     testLingoOpcodeHelpers();
     testPaletteAndColorRefs();

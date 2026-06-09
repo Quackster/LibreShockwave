@@ -174,6 +174,11 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Base64 font chunks are decoded into a fixed compressed buffer before inflation, matching the Java generated source contract.
 - zlib inflation returns decoded font bytes only when the exact expected uncompressed length is produced, otherwise it returns an empty vector.
 
+### Utility Formatting Helpers
+
+- `util::getFileName`, `getFileNameWithoutExtension`, and `getUrlsWithFallbacks` port the Java path/URL fallback helper behavior for movie and cast files.
+- `format::ScriptFormatUtils` ports literal type names, literal formatting, script type display names, name/handler fallback resolution, truncation, and line-ending normalization.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -211,6 +216,7 @@ Result:
 - DirectorFile BITD bitmap decode integration passed through the RIFX loader fixture in the same CTest executable.
 - W3D entry, typed resource, transform, texture format, and lookup tests passed through the same CTest executable.
 - Generated font Base64/zlib decode, wrong-length, and invalid-deflate tests passed through the same CTest executable.
+- File/path fallback utilities and script formatting utilities passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -247,4 +253,5 @@ Result:
 - `de796a3 Port C++ bitmap decoder foundation`
 - `3afd372 Port C++ DirectorFile bitmap decode`
 - `b870598 Port C++ W3D file parser`
-- Current checkpoint commit message: `Port C++ generated font decoder`
+- `382f342 Port C++ generated font decoder`
+- Current checkpoint commit message: `Port C++ utility formatting helpers`

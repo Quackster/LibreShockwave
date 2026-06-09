@@ -33,6 +33,7 @@ add_library(libreshockwave
     src/format/AfterburnerReader.cpp
     src/format/ChunkType.cpp
     src/format/MoaID.cpp
+    src/format/ScriptFormatUtils.cpp
     src/fonts/FontDataDecoder.cpp
     src/io/BinaryReader.cpp
     src/lingo/Datum.cpp
@@ -41,6 +42,7 @@ add_library(libreshockwave
     src/lookup/PaletteResolver.cpp
     src/lookup/ScriptLookup.cpp
     src/util/AudioCodecUtils.cpp
+    src/util/FileUtil.cpp
     src/w3d/W3DEntry.cpp
     src/w3d/W3DEntryType.cpp
     src/w3d/W3DMaterial.cpp
