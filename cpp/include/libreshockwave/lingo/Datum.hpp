@@ -326,7 +326,10 @@ public:
     [[nodiscard]] const DFloat* asFloat() const;
     [[nodiscard]] const Str* asString() const;
     [[nodiscard]] const Symbol* asSymbol() const;
+    [[nodiscard]] const CastLibRef* asCastLibRef() const;
     [[nodiscard]] const CastMemberRef* asCastMemberRef() const;
+    [[nodiscard]] const ScriptRef* asScriptRef() const;
+    [[nodiscard]] const SpriteRef* asSpriteRef() const;
     [[nodiscard]] const ColorRef* asColorRef() const;
     [[nodiscard]] const TimeoutRef* asTimeoutRef() const;
     [[nodiscard]] const IntPoint* asIntPoint() const;

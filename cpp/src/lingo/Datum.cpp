@@ -450,7 +450,10 @@ const Datum::Int* Datum::asInt() const { return std::get_if<Int>(&value_); }
 const Datum::DFloat* Datum::asFloat() const { return std::get_if<DFloat>(&value_); }
 const Datum::Str* Datum::asString() const { return std::get_if<Str>(&value_); }
 const Datum::Symbol* Datum::asSymbol() const { return std::get_if<Symbol>(&value_); }
+const Datum::CastLibRef* Datum::asCastLibRef() const { return std::get_if<CastLibRef>(&value_); }
 const Datum::CastMemberRef* Datum::asCastMemberRef() const { return std::get_if<CastMemberRef>(&value_); }
+const Datum::ScriptRef* Datum::asScriptRef() const { return std::get_if<ScriptRef>(&value_); }
+const Datum::SpriteRef* Datum::asSpriteRef() const { return std::get_if<SpriteRef>(&value_); }
 const Datum::ColorRef* Datum::asColorRef() const { return std::get_if<ColorRef>(&value_); }
 const Datum::TimeoutRef* Datum::asTimeoutRef() const { return std::get_if<TimeoutRef>(&value_); }
 const Datum::IntPoint* Datum::asIntPoint() const { return std::get_if<IntPoint>(&value_); }

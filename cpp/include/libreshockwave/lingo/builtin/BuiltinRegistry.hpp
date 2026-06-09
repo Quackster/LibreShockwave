@@ -15,10 +15,14 @@ namespace libreshockwave::lingo::builtin {
 
 struct BuiltinContext {
     using PuppetPaletteHandler = std::function<void(std::optional<Datum> paletteRef)>;
+    using CastMemberCreator = std::function<Datum(int castLib, const std::string& memberType)>;
+    using NewInstanceHandler = std::function<Datum(const Datum& target, const std::vector<Datum>& args)>;
 
     player::MovieProperties* movieProperties{nullptr};
     player::SpriteProperties* spriteProperties{nullptr};
     PuppetPaletteHandler puppetPaletteHandler;
+    CastMemberCreator castMemberCreator;
+    NewInstanceHandler newInstanceHandler;
 };
 
 using BuiltinFunction = std::function<Datum(BuiltinContext& context, const std::vector<Datum>& args)>;
@@ -43,6 +47,20 @@ public:
 
 private:
     std::unordered_map<std::string, BuiltinFunction> builtins_;
+};
+
+class ConstructorBuiltins {
+public:
+    static void registerBuiltins(BuiltinRegistry& registry);
+    [[nodiscard]] static Datum point(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum rect(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum unionRect(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum intersect(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum color(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum rgb(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum paletteIndex(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum sprite(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum newInstance(BuiltinContext& context, const std::vector<Datum>& args);
 };
 
 class MovieBuiltins {

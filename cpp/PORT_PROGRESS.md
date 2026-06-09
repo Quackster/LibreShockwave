@@ -270,6 +270,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Movie `label`/`marker` builtins route through `MovieProperties` callbacks, including movie-reference leading arguments and Java-compatible non-negative frame results.
 - Sprite builtins port `puppetTempo`, `puppetSprite`, `cursor`/`setCursor`, `spriteBox`, update/move no-ops, and a `puppetPalette` callback hook for the future C++ cast/palette provider.
 
+### Constructor Builtins Foundation
+
+- Constructor builtins now register `point`, `rect`, `union`, `intersect`, `color`, `rgb`, `paletteIndex`, `sprite`, and `new` in the C++ builtin registry.
+- Point/rect geometry constructors, rectangle union/intersection, RGB and palette-index color construction, color pass-through, and trimmed hex-string RGB parsing match the Java constructor helpers.
+- `new(#memberType, castLib)` and generic object construction are exposed through callback hooks until the C++ cast provider, Xtra support, and script-instance VM runtime are ported.
+
 ### Score Navigation Foundation
 
 - `score::ScoreBehaviorRef` ports behavior cast-member references with saved parameter storage.
@@ -406,6 +412,7 @@ Result:
 - SpriteProperties missing defaults, property get/set, revision bumps, cast member assignment, autosizing, registration-aware bounds, cursor lists, script-instance sprite numbers, release cleanup, color refs, and image callbacks passed through the same CTest executable.
 - MovieProperties movie/stage property reads and writes, file/input-backed values, xtra lists, item delimiters, timers, stage background color, random seed, navigation callbacks, and net navigation callbacks passed through the same CTest executable.
 - BuiltinRegistry case-insensitive lookup, custom registration, movie label/marker builtins, sprite puppet/cursor/spriteBox builtins, puppetPalette hooks, and Java-compatible no-op sprite builtins passed through the same CTest executable.
+- ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration and callback hooks passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -470,4 +477,5 @@ Result:
 - `55728d1 Port C++ event dispatcher foundation`
 - `737ad4b Port C++ sprite properties foundation`
 - `754d4bc Port C++ movie properties foundation`
-- Current checkpoint commit message: `Port C++ builtin registry foundation`
+- `0450558 Port C++ builtin registry foundation`
+- Current checkpoint commit message: `Port C++ constructor builtins foundation`

@@ -478,6 +478,8 @@ void testLingoDatumTypes() {
     assert(member.type() == DatumType::CastMemberRef);
     assert(member.asCastMemberRef()->castLibId()->value() == 2);
     assert(member.asCastMemberRef()->memberNum() == 5);
+    const auto castLib = Datum::castLibRef(CastLibId(3));
+    assert(castLib.asCastLibRef()->castLib == 3);
 
     const auto point = Datum::intPoint(10, 20);
     assert(point.stringValue() == "point(10, 20)");
@@ -489,6 +491,12 @@ void testLingoDatumTypes() {
     const auto chunk = Datum::stringChunk(Datum::of("hello"), StringChunkType::Char, 2, 2, ',', "e");
     assert(chunk.isString());
     assert(chunk.stringValue() == "e");
+
+    const auto script = Datum::scriptRef(Datum::CastMemberRef{4, 8});
+    assert(script.asScriptRef()->memberRef.castLib == 4);
+    const auto sprite = Datum::spriteRef(ChannelId(6));
+    assert(sprite.asSpriteRef()->spriteNum() == 6);
+    assert(Datum::colorRef(1, 2, 3).asColorRef()->g == 2);
 
     auto ancestor = Datum::scriptInstance("base");
     ancestor.scriptInstanceValue().setProperty("baseValue", Datum::of(3));
@@ -897,6 +905,87 @@ void testBuiltinRegistryFoundation() {
     assert(registry.invoke("marker", context, {Datum::of(1)}).intValue() == 0);
     assert(registry.invoke("puppetSprite", context, {Datum::of(1), Datum::TRUE}).isVoid());
     assert(registry.invoke("spriteBox", context, {Datum::of(1)}) == Datum::intRect(0, 0, 0, 0));
+
+    auto assertColor = [](const Datum& datum, int r, int g, int b) {
+        const auto* color = datum.asColorRef();
+        assert(color != nullptr);
+        assert(color->r == r);
+        assert(color->g == g);
+        assert(color->b == b);
+    };
+
+    assert(registry.contains("point"));
+    assert(registry.contains("rect"));
+    assert(registry.contains("union"));
+    assert(registry.contains("intersect"));
+    assert(registry.contains("color"));
+    assert(registry.contains("rgb"));
+    assert(registry.contains("paletteIndex"));
+    assert(registry.contains("sprite"));
+    assert(registry.contains("new"));
+
+    assert(registry.invoke("point", context) == Datum::intPoint(0, 0));
+    assert(registry.invoke("point", context, {Datum::of(3), Datum::of(4)}) == Datum::intPoint(3, 4));
+    assert(registry.invoke("rect", context, {Datum::of(1), Datum::of(2), Datum::of(3), Datum::of(4)}) ==
+           Datum::intRect(1, 2, 3, 4));
+    assert(registry.invoke("rect", context, {Datum::intPoint(1, 2), Datum::intPoint(9, 10)}) ==
+           Datum::intRect(1, 2, 9, 10));
+    assert(registry.invoke("union", context).isVoid());
+    assert(registry.invoke("union", context, {Datum::intRect(0, 0, 0, 0), Datum::of(4)}).isVoid());
+    assert(registry.invoke("union", context, {Datum::intRect(0, 0, 0, 0), Datum::intRect(8, 8, 8, 9)}) ==
+           Datum::intRect(0, 0, 0, 0));
+    assert(registry.invoke("union", context, {Datum::intRect(0, 0, 0, 0), Datum::intRect(1, 2, 3, 4)}) ==
+           Datum::intRect(1, 2, 3, 4));
+    assert(registry.invoke("union", context, {Datum::intRect(4, 1, 8, 9), Datum::intRect(1, 3, 6, 7)}) ==
+           Datum::intRect(1, 1, 8, 9));
+    assert(registry.invoke("intersect", context).isVoid());
+    assert(registry.invoke("intersect", context, {Datum::intRect(0, 0, 1, 1), Datum::of(4)}).isVoid());
+    assert(registry.invoke("intersect", context, {Datum::intRect(0, 0, 2, 2), Datum::intRect(3, 3, 4, 4)}) ==
+           Datum::intRect(0, 0, 0, 0));
+    assert(registry.invoke("intersect", context, {Datum::intRect(0, 0, 8, 8), Datum::intRect(3, 4, 10, 6)}) ==
+           Datum::intRect(3, 4, 8, 6));
+    assertColor(registry.invoke("color", context), 0, 0, 0);
+    assertColor(registry.invoke("color", context, {Datum::of(11), Datum::of(22), Datum::of(33)}), 11, 22, 33);
+    const auto rgbPassThrough = Datum::colorRef(7, 8, 9);
+    assert(registry.invoke("rgb", context, {rgbPassThrough}) == rgbPassThrough);
+    assertColor(registry.invoke("rgb", context), 0, 0, 0);
+    assertColor(registry.invoke("rgb", context, {Datum::of(std::string(" #112233 "))}), 0x11, 0x22, 0x33);
+    assertColor(registry.invoke("rgb", context, {Datum::of(std::string("not-hex"))}), 0, 0, 0);
+    assertColor(registry.invoke("rgb", context, {Datum::of(1), Datum::of(2), Datum::of(3)}), 1, 2, 3);
+    assertColor(registry.invoke("rgb", context, {Datum::of(0x445566)}), 0x44, 0x55, 0x66);
+    assertColor(registry.invoke("paletteIndex", context), 0, 0, 0);
+    assertColor(registry.invoke("paletteIndex", context, {Datum::of(300)}), 44, 44, 44);
+    assert(registry.invoke("sprite", context).isVoid());
+    assert(registry.invoke("sprite", context, {Datum::of(-1)}).isVoid());
+    assert(registry.invoke("sprite", context, {Datum::of(6)}).asSpriteRef()->spriteNum() == 6);
+    assert(registry.invoke("new", context).isVoid());
+
+    int createdCastLib = 0;
+    std::string createdMemberType;
+    context.castMemberCreator = [&createdCastLib, &createdMemberType](int castLib, const std::string& memberType) {
+        createdCastLib = castLib;
+        createdMemberType = memberType;
+        return Datum::castMemberRef(CastLibId(castLib), MemberId(42));
+    };
+    const auto createdMember = registry.invoke("new", context, {Datum::symbol("bitmap"), Datum::castLibRef(CastLibId(3))});
+    assert(createdCastLib == 3);
+    assert(createdMemberType == "bitmap");
+    assert(createdMember.asCastMemberRef()->memberNum() == 42);
+
+    int genericNewCalls = 0;
+    context.newInstanceHandler = [&genericNewCalls](const Datum& target, const std::vector<Datum>& args) {
+        ++genericNewCalls;
+        assert(target.asScriptRef() != nullptr);
+        assert(target.asScriptRef()->memberRef.castMember == 8);
+        assert(args.size() == 1);
+        assert(args.front().intValue() == 99);
+        return Datum::scriptInstance("created");
+    };
+    const auto newScript = registry.invoke("new",
+                                           context,
+                                           {Datum::scriptRef(Datum::CastMemberRef{4, 8}), Datum::of(99)});
+    assert(genericNewCalls == 1);
+    assert(newScript.scriptInstanceValue().scriptName() == "created");
 
     MovieProperties movie;
     int requestedMarkerOffset = 0;
