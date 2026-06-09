@@ -3562,6 +3562,68 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(paletteCopyDest->getPixel(1, 0) == 0xFF112233U);
     assert(paletteCopyDest->paletteIndex(0, 0).value() == 0);
     assert(paletteCopyDest->paletteIndex(1, 0).value() == 1);
+    auto quadCopySource = std::make_shared<Bitmap>(2, 3, 32, std::vector<std::uint32_t>{
+        0xFFFF0000U, 0xFF00FF00U,
+        0xFF0000FFU, 0xFFFFFF00U,
+        0xFFFF00FFU, 0xFF00FFFFU
+    });
+    auto quadCopyDest = std::make_shared<Bitmap>(3, 2, 32);
+    const Datum clockwiseQuad = Datum::list({
+        Datum::intPoint(3, 0),
+        Datum::intPoint(3, 2),
+        Datum::intPoint(0, 2),
+        Datum::intPoint(0, 0),
+    });
+    assert(runObjCall(110, {Datum::imageRef(quadCopyDest),
+                            Datum::imageRef(quadCopySource),
+                            clockwiseQuad,
+                            Datum::intRect(0, 0, 2, 3)}).isVoid());
+    assert(quadCopyDest->getPixel(0, 0) == 0xFFFF00FFU);
+    assert(quadCopyDest->getPixel(1, 0) == 0xFF0000FFU);
+    assert(quadCopyDest->getPixel(2, 0) == 0xFFFF0000U);
+    assert(quadCopyDest->getPixel(0, 1) == 0xFF00FFFFU);
+    assert(quadCopyDest->getPixel(1, 1) == 0xFFFFFF00U);
+    assert(quadCopyDest->getPixel(2, 1) == 0xFF00FF00U);
+    auto quadMaskSource = std::make_shared<Bitmap>(2, 3, 32);
+    quadMaskSource->fill(0xFFFF0000U);
+    auto quadMask = std::make_shared<Bitmap>(2, 3, 8);
+    quadMask->fill(0xFFFFFFFFU);
+    quadMask->setPixel(0, 2, 0xFF000000U);
+    auto quadMaskDest = std::make_shared<Bitmap>(3, 2, 32);
+    quadMaskDest->fill(0xFFFFFFFFU);
+    auto quadMaskProps = Datum::propList();
+    quadMaskProps.propListValue().put(Datum::symbol("maskImage"), Datum::imageRef(quadMask));
+    assert(runObjCall(110, {Datum::imageRef(quadMaskDest),
+                            Datum::imageRef(quadMaskSource),
+                            clockwiseQuad,
+                            Datum::intRect(0, 0, 2, 3),
+                            quadMaskProps}).isVoid());
+    assert(quadMaskDest->getPixel(0, 0) == 0xFFFF0000U);
+    assert(quadMaskDest->getPixel(1, 0) == 0xFFFFFFFFU);
+    assert(quadMaskDest->getPixel(2, 0) == 0xFFFFFFFFU);
+    assert(quadMaskDest->getPixel(0, 1) == 0xFFFFFFFFU);
+    assert(quadMaskDest->getPixel(1, 1) == 0xFFFFFFFFU);
+    assert(quadMaskDest->getPixel(2, 1) == 0xFFFFFFFFU);
+    auto quadPaletteSource = std::make_shared<Bitmap>(2, 3, 8, std::vector<std::uint32_t>{
+        0xFF000000U, 0xFF111111U,
+        0xFF222222U, 0xFF333333U,
+        0xFF444444U, 0xFF555555U
+    });
+    quadPaletteSource->setImagePalette(std::make_shared<Palette>(
+        std::vector<std::uint32_t>{0x000000U, 0x111111U, 0x222222U, 0x333333U, 0x444444U, 0x555555U}, "quad"));
+    quadPaletteSource->setPaletteIndices({0, 1, 2, 3, 4, 5});
+    auto quadPaletteDest = std::make_shared<Bitmap>(3, 2, 8);
+    assert(runObjCall(110, {Datum::imageRef(quadPaletteDest),
+                            Datum::imageRef(quadPaletteSource),
+                            clockwiseQuad,
+                            Datum::intRect(0, 0, 2, 3)}).isVoid());
+    assert(quadPaletteDest->imagePalette() != nullptr);
+    assert(quadPaletteDest->paletteIndex(0, 0).value() == 4);
+    assert(quadPaletteDest->paletteIndex(1, 0).value() == 2);
+    assert(quadPaletteDest->paletteIndex(2, 0).value() == 0);
+    assert(quadPaletteDest->paletteIndex(0, 1).value() == 5);
+    assert(quadPaletteDest->paletteIndex(1, 1).value() == 3);
+    assert(quadPaletteDest->paletteIndex(2, 1).value() == 1);
     auto invalidCopyDest = std::make_shared<Bitmap>(1, 1, 32);
     invalidCopyDest->fill(0xFFFFFFFFU);
     assert(runObjCall(110, {Datum::imageRef(invalidCopyDest),

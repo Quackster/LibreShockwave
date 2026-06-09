@@ -2715,17 +2715,183 @@ std::uint32_t imageRemapGrayscalePixel(std::uint32_t pixel,
            static_cast<std::uint32_t>(b & 0xFF);
 }
 
+std::optional<std::pair<std::array<int, 4>, std::array<int, 4>>> imageQuadPoints(const Datum::List& quad) {
+    if (quad.items().size() != 4) {
+        return std::nullopt;
+    }
+
+    std::array<int, 4> px{};
+    std::array<int, 4> py{};
+    for (std::size_t index = 0; index < quad.items().size(); ++index) {
+        const auto* point = quad.items()[index].asIntPoint();
+        if (point == nullptr) {
+            return std::nullopt;
+        }
+        px[index] = point->x;
+        py[index] = point->y;
+    }
+    return std::pair{px, py};
+}
+
+std::shared_ptr<bitmap::Bitmap> imageTransformQuadBitmap(const bitmap::Bitmap& src,
+                                                         const Datum::IntRect& srcRect,
+                                                         const std::array<int, 4>& px,
+                                                         const std::array<int, 4>& py,
+                                                         int minX,
+                                                         int minY,
+                                                         int maxX,
+                                                         int maxY) {
+    const int srcWidth = srcRect.right - srcRect.left;
+    const int srcHeight = srcRect.bottom - srcRect.top;
+    const int destWidth = maxX - minX;
+    const int destHeight = maxY - minY;
+    auto transformed = std::make_shared<bitmap::Bitmap>(destWidth, destHeight, src.bitDepth());
+    transformed->copyPaletteMetadataFrom(&src);
+
+    const auto srcPaletteIndices = src.paletteIndices();
+    std::optional<std::vector<std::uint8_t>> transformedIndices;
+    if (srcPaletteIndices.has_value() && srcPaletteIndices->size() == src.pixels().size()) {
+        transformedIndices = std::vector<std::uint8_t>(static_cast<std::size_t>(destWidth * destHeight), 0);
+    } else {
+        transformed->clearPaletteIndices();
+    }
+
+    const bool axisAligned =
+        (px[0] == minX || px[0] == maxX) && (py[0] == minY || py[0] == maxY) &&
+        (px[1] == minX || px[1] == maxX) && (py[1] == minY || py[1] == maxY) &&
+        (px[2] == minX || px[2] == maxX) && (py[2] == minY || py[2] == maxY) &&
+        (px[3] == minX || px[3] == maxX) && (py[3] == minY || py[3] == maxY);
+
+    if (axisAligned) {
+        const double c0x = px[0] == minX ? 0.0 : 1.0;
+        const double c0y = py[0] == minY ? 0.0 : 1.0;
+        const double axisXX = (px[1] == minX ? 0.0 : 1.0) - c0x;
+        const double axisXY = (py[1] == minY ? 0.0 : 1.0) - c0y;
+        const double axisYX = (px[3] == minX ? 0.0 : 1.0) - c0x;
+        const double axisYY = (py[3] == minY ? 0.0 : 1.0) - c0y;
+
+        for (int y = 0; y < destHeight; ++y) {
+            const double dv = (static_cast<double>(y) + 0.5) / static_cast<double>(destHeight);
+            for (int x = 0; x < destWidth; ++x) {
+                const double du = (static_cast<double>(x) + 0.5) / static_cast<double>(destWidth);
+                const double relX = du - c0x;
+                const double relY = dv - c0y;
+                const double srcU = relX * axisXX + relY * axisXY;
+                const double srcV = relX * axisYX + relY * axisYY;
+                const int srcX = srcRect.left + std::clamp(
+                    static_cast<int>(std::floor(srcU * static_cast<double>(srcWidth))), 0, srcWidth - 1);
+                const int srcY = srcRect.top + std::clamp(
+                    static_cast<int>(std::floor(srcV * static_cast<double>(srcHeight))), 0, srcHeight - 1);
+                if (srcX < 0 || srcX >= src.width() || srcY < 0 || srcY >= src.height()) {
+                    continue;
+                }
+                transformed->setPixelPreservePaletteIndex(x, y, src.getPixel(srcX, srcY));
+                if (transformedIndices.has_value() && srcPaletteIndices.has_value()) {
+                    const auto srcOffset = static_cast<std::size_t>(srcY * src.width() + srcX);
+                    const auto destOffset = static_cast<std::size_t>(y * destWidth + x);
+                    if (srcOffset < srcPaletteIndices->size() && destOffset < transformedIndices->size()) {
+                        (*transformedIndices)[destOffset] = (*srcPaletteIndices)[srcOffset];
+                    }
+                }
+            }
+        }
+    } else {
+        const bool flipH = px[0] > px[1];
+        const bool flipV = py[0] > py[3];
+        for (int y = 0; y < destHeight; ++y) {
+            const int localY = y * srcHeight / destHeight;
+            const int srcY = srcRect.top + (flipV ? (srcHeight - 1 - localY) : localY);
+            for (int x = 0; x < destWidth; ++x) {
+                const int localX = x * srcWidth / destWidth;
+                const int srcX = srcRect.left + (flipH ? (srcWidth - 1 - localX) : localX);
+                if (srcX < 0 || srcX >= src.width() || srcY < 0 || srcY >= src.height()) {
+                    continue;
+                }
+                transformed->setPixelPreservePaletteIndex(x, y, src.getPixel(srcX, srcY));
+                if (transformedIndices.has_value() && srcPaletteIndices.has_value()) {
+                    const auto srcOffset = static_cast<std::size_t>(srcY * src.width() + srcX);
+                    const auto destOffset = static_cast<std::size_t>(y * destWidth + x);
+                    if (srcOffset < srcPaletteIndices->size() && destOffset < transformedIndices->size()) {
+                        (*transformedIndices)[destOffset] = (*srcPaletteIndices)[srcOffset];
+                    }
+                }
+            }
+        }
+    }
+
+    if (transformedIndices.has_value()) {
+        transformed->setPaletteIndices(std::move(*transformedIndices));
+    }
+    return transformed;
+}
+
+Datum imagePropListWithMaskImage(const Datum::PropList& propList, std::shared_ptr<bitmap::Bitmap> mask) {
+    auto copy = Datum::propList(propList.sorted());
+    bool replaced = false;
+    for (const auto& [key, value] : propList.properties()) {
+        if (equalsIgnoreCase(keyNameLikeJava(key), "maskImage")) {
+            copy.propListValue().put(key, Datum::imageRef(mask));
+            replaced = true;
+        } else {
+            copy.propListValue().put(key, value);
+        }
+    }
+    if (!replaced) {
+        copy.propListValue().put(Datum::symbol("maskImage"), Datum::imageRef(mask));
+    }
+    return copy;
+}
+
 Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
     if (args.size() < 3) return Datum::voidValue();
     const auto* srcRef = args[0].asImageRef();
     if (srcRef == nullptr || srcRef->bitmap == nullptr) return Datum::voidValue();
     const auto* destRect = args[1].asIntRect();
     const auto* srcRect = args[2].asIntRect();
-    if (destRect == nullptr || srcRect == nullptr) return Datum::voidValue();
+    if (srcRect == nullptr) return Datum::voidValue();
 
     const auto& src = *srcRef->bitmap;
     const int srcWidth = srcRect->right - srcRect->left;
     const int srcHeight = srcRect->bottom - srcRect->top;
+    if (destRect == nullptr) {
+        if (!args[1].isList()) {
+            return Datum::voidValue();
+        }
+        const auto quadPoints = imageQuadPoints(args[1].listValue());
+        if (!quadPoints.has_value() || srcWidth <= 0 || srcHeight <= 0) {
+            return Datum::voidValue();
+        }
+
+        const auto& [px, py] = *quadPoints;
+        const int minX = std::min({px[0], px[1], px[2], px[3]});
+        const int minY = std::min({py[0], py[1], py[2], py[3]});
+        const int maxX = std::max({px[0], px[1], px[2], px[3]});
+        const int maxY = std::max({py[0], py[1], py[2], py[3]});
+        const int destWidth = maxX - minX;
+        const int destHeight = maxY - minY;
+        if (destWidth <= 0 || destHeight <= 0) {
+            return Datum::voidValue();
+        }
+
+        const auto transformed = imageTransformQuadBitmap(src, *srcRect, px, py, minX, minY, maxX, maxY);
+        std::vector<Datum> transformedArgs{
+            Datum::imageRef(transformed),
+            Datum::intRect(minX, minY, maxX, maxY),
+            Datum::intRect(0, 0, destWidth, destHeight),
+        };
+        if (args.size() >= 4 && args[3].isPropList()) {
+            const Datum maskDatum = getPropListKey(args[3].propListValue(), "maskImage");
+            if (const auto* maskRef = maskDatum.asImageRef(); maskRef != nullptr && maskRef->bitmap != nullptr) {
+                const auto transformedMask =
+                    imageTransformQuadBitmap(*maskRef->bitmap, *srcRect, px, py, minX, minY, maxX, maxY);
+                transformedArgs.push_back(imagePropListWithMaskImage(args[3].propListValue(), transformedMask));
+            } else {
+                transformedArgs.push_back(args[3]);
+            }
+        }
+        return imageCopyPixels(dest, transformedArgs);
+    }
+
     const int destWidth = destRect->right - destRect->left;
     const int destHeight = destRect->bottom - destRect->top;
     if (srcWidth <= 0 || srcHeight <= 0 || destWidth <= 0 || destHeight <= 0) {
