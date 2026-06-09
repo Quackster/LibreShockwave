@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <variant>
@@ -73,6 +74,9 @@
 #include "libreshockwave/player/input/InputState.hpp"
 #include "libreshockwave/player/render/RenderConfig.hpp"
 #include "libreshockwave/player/render/RenderType.hpp"
+#include "libreshockwave/player/score/ScoreBehaviorRef.hpp"
+#include "libreshockwave/player/score/ScoreNavigator.hpp"
+#include "libreshockwave/player/score/SpriteSpan.hpp"
 #include "libreshockwave/util/AudioCodecUtils.hpp"
 #include "libreshockwave/util/FileUtil.hpp"
 
@@ -154,6 +158,9 @@ using libreshockwave::player::input::InputEventType;
 using libreshockwave::player::input::InputState;
 using libreshockwave::player::render::RenderConfig;
 using libreshockwave::player::render::RenderType;
+using libreshockwave::player::score::ScoreBehaviorRef;
+using libreshockwave::player::score::ScoreNavigator;
+using libreshockwave::player::score::SpriteSpan;
 using libreshockwave::w3d::W3DEntryType;
 
 void testBinaryReaderEndianAndBounds() {
@@ -587,6 +594,104 @@ void testPlayerInputFoundation() {
     assert(state.pollEvent() == InputEvent::keyDown(36, "x"));
     assert(!state.hasEvents());
     assert(!state.pollEvent().has_value());
+}
+
+void testScoreNavigationFoundation() {
+    ScoreBehaviorRef behavior(1, 23, std::vector<Datum>{Datum::of(7)});
+    assert(behavior.castLib() == 1);
+    assert(behavior.castMember() == 23);
+    assert(behavior.castLibId().value() == 1);
+    assert(behavior.memberId().value() == 23);
+    assert(behavior.hasParameters());
+    assert(behavior.parameters().size() == 1);
+    assert(behavior.toString() == "behavior(member 23, castLib 1)");
+
+    SpriteSpan span(0, 0, 5);
+    assert(span.channel() == 0);
+    assert(span.startFrame() == 1);
+    assert(span.endFrame() == 5);
+    assert(span.isFrameBehavior());
+    assert(span.containsFrame(1));
+    assert(span.containsFrame(5));
+    assert(!span.containsFrame(6));
+    assert(span.firstBehavior() == nullptr);
+    span.addBehavior(behavior);
+    assert(span.firstBehavior() != nullptr);
+    assert(span.firstBehavior()->castMember() == 23);
+    assert(span.toString() == "SpriteSpan{channel=0, frames=1-5, behaviors=1}");
+
+    std::vector<std::vector<std::uint8_t>> entries{
+        {},
+        {' ', '[', '#', 'p', ':', ' ', '1', ']', 0, 0}
+    };
+    assert(ScoreNavigator::parseBehaviorParameters(entries, 0).empty());
+    assert(ScoreNavigator::parseBehaviorParameters(entries, 1).empty());
+    assert(ScoreNavigator::parseBehaviorParameters(entries, 99).empty());
+
+    ScoreChunk::ScoreFrameData frameData = ScoreChunk::ScoreFrameData::empty();
+    frameData.header.frameCount = 12;
+    ScoreChunk::Header header{0, 0, 0, static_cast<int>(entries.size()), 0, 0};
+
+    std::vector<ScoreChunk::FrameInterval> intervals{
+        ScoreChunk::FrameInterval{
+            ScoreChunk::FrameIntervalPrimary{1, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+            ScoreChunk::FrameIntervalSecondary{1, 7, 1}
+        },
+        ScoreChunk::FrameInterval{
+            ScoreChunk::FrameIntervalPrimary{2, 9, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0},
+            ScoreChunk::FrameIntervalSecondary{1, 8, 0}
+        },
+        ScoreChunk::FrameInterval{
+            ScoreChunk::FrameIntervalPrimary{4, 4, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0},
+            std::nullopt
+        }
+    };
+    auto score = std::make_shared<ScoreChunk>(
+        nullptr, ChunkId(300), header, entries, frameData, intervals);
+    auto labels = std::make_shared<FrameLabelsChunk>(
+        nullptr,
+        ChunkId(301),
+        std::vector<FrameLabelsChunk::FrameLabel>{
+            {FrameId(1), "Start"},
+            {FrameId(5), "Middle"},
+            {FrameId(10), "End"}
+        });
+
+    ScoreNavigator navigator(score, labels);
+    assert(navigator.getFrameCount() == 12);
+    assert(navigator.getAllSpans().size() == 3);
+    assert(navigator.getFrameScript(3) != nullptr);
+    assert(navigator.getFrameScript(3)->castMember() == 7);
+    assert(navigator.getFrameScript(8) == nullptr);
+
+    const auto spriteBehaviors = navigator.getSpriteBehaviors(5, 2);
+    assert(spriteBehaviors.size() == 1);
+    assert(spriteBehaviors[0].castMember() == 8);
+    assert(navigator.getSpriteBehaviors(10, 2).empty());
+
+    const auto activeSprites = navigator.getActiveSprites(5);
+    assert(activeSprites.size() == 1);
+    assert(activeSprites[0].channel() == 2);
+    assert((navigator.getActiveChannels(4) == std::set<int>{2, 3}));
+    assert((navigator.getActiveChannels(5) == std::set<int>{2}));
+
+    assert(navigator.getFrameForLabel("middle") == 5);
+    assert(navigator.getFrameForLabel("MIDDLE") == 5);
+    assert(navigator.getFrameForLabel("missing") == -1);
+    assert((navigator.getFrameLabels() == std::set<std::string>{"end", "middle", "start"}));
+    assert(navigator.getMarkerFrame(5, 0) == 5);
+    assert(navigator.getMarkerFrame(5, 1) == 10);
+    assert(navigator.getMarkerFrame(5, -1) == 1);
+    assert(navigator.getMarkerFrame(11, 1) == 0);
+    assert(ScoreNavigator::resolveMarkerFrame({1, 5, 10}, 2, 0) == 1);
+    assert(ScoreNavigator::resolveMarkerFrame({1, 5, 10}, 2, -1) == 0);
+
+    const DirectorFile* noFile = nullptr;
+    ScoreNavigator emptyNavigator(noFile);
+    assert(emptyNavigator.getFrameCount() == 0);
+    assert(emptyNavigator.getAllSpans().empty());
+    assert(emptyNavigator.getFrameForLabel("anything") == -1);
+    assert(emptyNavigator.getMarkerFrame(1, 0) == 0);
 }
 
 void testPaletteAndColorRefs() {
@@ -2950,6 +3055,7 @@ int main() {
     testLingoOpcodeHelpers();
     testPlayerCoreFoundation();
     testPlayerInputFoundation();
+    testScoreNavigationFoundation();
     testPaletteAndColorRefs();
     testBitmapAlphaAndPaletteBehavior();
     testBitmapRegionsAndMetadata();

@@ -52,6 +52,9 @@ add_library(libreshockwave
     src/player/input/InputState.cpp
     src/player/render/RenderConfig.cpp
     src/player/render/RenderType.cpp
+    src/player/score/ScoreBehaviorRef.cpp
+    src/player/score/ScoreNavigator.cpp
+    src/player/score/SpriteSpan.cpp
     src/util/AudioCodecUtils.cpp
     src/util/FileUtil.cpp
     src/w3d/W3DEntry.cpp
