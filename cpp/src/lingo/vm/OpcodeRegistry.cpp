@@ -1031,6 +1031,45 @@ bool peek(ExecutionContext& context) {
     return true;
 }
 
+Datum fallbackScriptInstance(const Datum& scriptArg) {
+    if (const auto* scriptRef = scriptArg.asScriptRef()) {
+        return Datum::scriptInstance("script", scriptRef->memberRef);
+    }
+    if (const auto* memberRef = scriptArg.asCastMemberRef()) {
+        return Datum::scriptInstance("script", *memberRef);
+    }
+    if (const auto* symbol = scriptArg.asSymbol()) {
+        return Datum::scriptInstance(symbol->name);
+    }
+    if (scriptArg.isString()) {
+        return Datum::scriptInstance(scriptArg.stringValue());
+    }
+    return Datum::scriptInstance(toStringLikeJava(scriptArg));
+}
+
+bool newObj(ExecutionContext& context) {
+    const std::string objectType = context.resolveName(context.argument());
+    if (!equalsIgnoreCase(objectType, "script")) {
+        context.push(Datum::voidValue());
+        return true;
+    }
+
+    const Datum argListDatum = context.pop();
+    const std::vector<Datum> args = argListItems(argListDatum);
+    if (args.empty()) {
+        context.push(Datum::voidValue());
+        return true;
+    }
+
+    if (const auto result = context.invokeBuiltinIfPresent("new", args); result && !result->isVoid()) {
+        context.push(*result);
+        return true;
+    }
+
+    context.push(fallbackScriptInstance(args.front()));
+    return true;
+}
+
 bool ret(ExecutionContext& context) {
     context.setReturnValue(context.pop());
     return true;
@@ -1646,6 +1685,7 @@ void StackOpcodes::registerHandlers(OpcodeRegistry& registry) {
     registry.registerHandler(Opcode::SWAP, swap);
     registry.registerHandler(Opcode::POP, pop);
     registry.registerHandler(Opcode::PEEK, peek);
+    registry.registerHandler(Opcode::NEW_OBJ, newObj);
 }
 
 void ControlFlowOpcodes::registerHandlers(OpcodeRegistry& registry) {

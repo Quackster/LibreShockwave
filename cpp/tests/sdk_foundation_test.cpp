@@ -2191,6 +2191,12 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 73) {
             return std::string("sort");
         }
+        if (nameId == 74) {
+            return std::string("script");
+        }
+        if (nameId == 75) {
+            return std::string("xtra");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.callStackFormatter = []() {
@@ -2277,6 +2283,7 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opcodeRegistry.hasHandler(Opcode::PUSH_FLOAT32));
     assert(opcodeRegistry.hasHandler(Opcode::PUSH_CONS));
     assert(opcodeRegistry.hasHandler(Opcode::PUSH_SYMB));
+    assert(opcodeRegistry.hasHandler(Opcode::NEW_OBJ));
     assert(opcodeRegistry.hasHandler(Opcode::SWAP));
     assert(opcodeRegistry.hasHandler(Opcode::POP));
     assert(opcodeRegistry.hasHandler(Opcode::PEEK));
@@ -2376,6 +2383,36 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opContext.pop().intValue() == 4);
     assert(opContext.pop().intValue() == 5);
     assert(opContext.pop().intValue() == 4);
+
+    int newObjCalls = 0;
+    builtinContext.newInstanceHandler = [&newObjCalls](const Datum& target, const std::vector<Datum>& args) {
+        ++newObjCalls;
+        assert(target.asScriptRef() != nullptr);
+        assert(target.asScriptRef()->memberRef.castLib == 4);
+        assert(target.asScriptRef()->memberRef.castMember == 8);
+        assert(args.size() == 1);
+        assert(args.front().intValue() == 99);
+        return Datum::scriptInstance("delegatedNew");
+    };
+    Scope newObjScope(&script, handler, {});
+    ExecutionContext newObjContext(newObjScope,
+                                   ScriptChunk::Instruction{0, Opcode::NEW_OBJ, libreshockwave::lingo::code(Opcode::NEW_OBJ), 74},
+                                   &registry,
+                                   &builtinContext,
+                                   callbacks);
+    newObjContext.push(Datum::argList({Datum::scriptRef(Datum::CastMemberRef{4, 8}), Datum::of(99)}));
+    assert(opcodeRegistry.execute(Opcode::NEW_OBJ, newObjContext));
+    assert(newObjCalls == 1);
+    assert(newObjContext.pop().scriptInstanceValue().scriptName() == "delegatedNew");
+
+    builtinContext.newInstanceHandler = {};
+    newObjContext.push(Datum::argList({Datum::symbol("fallbackScript")}));
+    assert(opcodeRegistry.execute(Opcode::NEW_OBJ, newObjContext));
+    assert(newObjContext.pop().scriptInstanceValue().scriptName() == "fallbackScript");
+    newObjContext.setInstruction(ScriptChunk::Instruction{0, Opcode::NEW_OBJ, libreshockwave::lingo::code(Opcode::NEW_OBJ), 75});
+    newObjContext.push(Datum::argList({Datum::symbol("notScript")}));
+    assert(opcodeRegistry.execute(Opcode::NEW_OBJ, newObjContext));
+    assert(newObjContext.pop().isVoid());
 
     Scope variableScope(&script, handler, {Datum::of(11), Datum::of(22)});
     ExecutionContext variableContext(variableScope,

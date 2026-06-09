@@ -436,7 +436,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `lingo::vm::OpcodeRegistry` now maps opcode enums to executable C++ handler callbacks with post-construction registration hooks.
 - Stack opcode handlers cover zero/int/float/literal/symbol pushes plus swap, pop, and peek behavior over `ExecutionContext`.
 - Control-flow opcode handlers cover return, factory return, absolute jump target lookup, conditional zero jump, and repeat-loop back jumps.
-- Object creation, provider-backed object method calls, string chunk extraction/mutation, and provider-backed property opcodes remain deferred to later focused VM slices.
+- Provider-backed object construction/method calls, string chunk extraction/mutation, and provider-backed property opcodes remain deferred to later focused VM slices.
 
 ### Lingo Opcode Arithmetic, Comparison, and Logical Foundation
 
@@ -473,6 +473,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `OBJ_CALL` now dispatches data-owned list, property-list, string, point, rectangle, and script-instance methods through the C++ opcode registry.
 - Receiver-style external calls now fall back to the same data-owned method dispatch path after handler and builtin lookup.
 - List and property-list method dispatch covers Java-compatible mutation and lookup helpers such as `getAt`, `setAt`, `append`, `addProp`, `getProp`, `count`, `sort`, and duplicate-preserving property insertion.
+
+### Lingo Opcode Object Construction Foundation
+
+- `NEW_OBJ` now handles script object construction from arg lists through the C++ opcode registry.
+- Script construction delegates to the registered `new` builtin/new-instance callback when available, then falls back to named C++ script-instance datums.
+- Cast-provider-backed script lookup, declared property preinitialization, and automatic `new` handler invocation remain deferred to the full C++ cast/VM runtime integration.
 
 ## Verification
 
@@ -561,6 +567,7 @@ Result:
 - OpcodeRegistry basic property handlers, object property reads/writes, built-in constants, and simple `the` lookups passed through the same CTest executable.
 - OpcodeRegistry local/external call handlers, builtin dispatch, no-return calls, constant fallback, and error-state handling passed through the same CTest executable.
 - OpcodeRegistry object method calls and receiver-style external method calls for lists, property lists, strings, points, and rectangles passed through the same CTest executable.
+- OpcodeRegistry `NEW_OBJ` script construction delegation, fallback construction, and non-script rejection passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -647,4 +654,5 @@ Result:
 - `b3c08a29 Port C++ VM name resolver foundation`
 - `753e8bcb Port C++ opcode property foundation`
 - `66292160 Port C++ opcode call foundation`
-- Current checkpoint commit message: `Port C++ opcode object call foundation`
+- `c9be4391 Port C++ opcode object call foundation`
+- Current checkpoint commit message: `Port C++ opcode object construction foundation`
