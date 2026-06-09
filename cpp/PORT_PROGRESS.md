@@ -263,6 +263,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `timeout::TimeoutManager` ports timeout creation, one-shot flag storage, forgetting, existence checks, property get/set behavior, timeout names/count, and clear state management.
 - VM handler firing and system-event dispatch remain deferred until the C++ Lingo VM dispatch layer is ported.
 
+### Bitmap Cache and Ink Helper Foundation
+
+- `render::pipeline::InkProcessor` ports ink-processing predicates, Copy-ink colorization eligibility, backColor resolution, foreground/backColor grayscale remapping, indexed color remapping, Darken foreColor offsets, and exact-color remapping helpers.
+- `render::pipeline::BitmapCache` ports processed-bitmap cache keys, decode-failure tracking, palette-version invalidation, non-native 32-bit alpha coercion, and indexed matte/background-transparent color remap selection.
+- Full matte/flood-fill ink processing, bitmap decoding through the player resolver, and SpriteBaker integration remain deferred to the larger render-pipeline port.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -315,6 +321,7 @@ Result:
 - TextRenderer split-line, character-line, line-start, wrapping, and default XMED delegation tests passed through the same CTest executable.
 - NetTask GET/POST construction, state transitions, result/error storage, stream status, and display formatting tests passed through the same CTest executable.
 - TimeoutManager creation, property access/mutation, one-shot/persistent flags, timeout references, names/count, forget, and clear tests passed through the same CTest executable.
+- BitmapCache cache-keying, palette invalidation, non-native alpha coercion, indexed matte remap selection/application, and InkProcessor color remap helpers passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -366,4 +373,5 @@ Result:
 - `183c22e Port C++ render pipeline context`
 - `c93152b Port C++ text renderer interface`
 - `d104c40 Port C++ network task foundation`
-- Current checkpoint commit message: `Port C++ timeout manager foundation`
+- `2aa7222 Port C++ timeout manager foundation`
+- Current checkpoint commit message: `Port C++ bitmap cache and ink foundation`

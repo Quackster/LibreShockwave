@@ -81,9 +81,11 @@
 #include "libreshockwave/player/render/RenderType.hpp"
 #include "libreshockwave/player/render/output/SoftwareFrameRenderer.hpp"
 #include "libreshockwave/player/render/output/TextRenderer.hpp"
+#include "libreshockwave/player/render/pipeline/BitmapCache.hpp"
 #include "libreshockwave/player/render/pipeline/FrameSnapshot.hpp"
 #include "libreshockwave/player/render/pipeline/FrameRenderPipelineContext.hpp"
 #include "libreshockwave/player/render/pipeline/FrameRenderPipelineStep.hpp"
+#include "libreshockwave/player/render/pipeline/InkProcessor.hpp"
 #include "libreshockwave/player/render/pipeline/RenderPipelineTrace.hpp"
 #include "libreshockwave/player/render/pipeline/RenderSprite.hpp"
 #include "libreshockwave/player/score/ScoreBehaviorRef.hpp"
@@ -183,9 +185,11 @@ using libreshockwave::player::render::RenderConfig;
 using libreshockwave::player::render::RenderType;
 using libreshockwave::player::render::output::SoftwareFrameRenderer;
 using libreshockwave::player::render::output::TextRenderer;
+using libreshockwave::player::render::pipeline::BitmapCache;
 using libreshockwave::player::render::pipeline::FrameSnapshot;
 using libreshockwave::player::render::pipeline::FrameRenderPipelineContext;
 using libreshockwave::player::render::pipeline::FrameRenderPipelineStep;
+using libreshockwave::player::render::pipeline::InkProcessor;
 using libreshockwave::player::render::pipeline::RenderPipelineStepTrace;
 using libreshockwave::player::render::pipeline::RenderPipelineTrace;
 using libreshockwave::player::render::pipeline::RenderSprite;
@@ -1026,6 +1030,96 @@ void testRenderPipelineFoundation() {
     assert(context.snapshot()->frameNumber == 8);
     assert(context.snapshot()->sprites.size() == 1);
     assert(context.snapshot()->pipelineTrace.steps()[0].spriteCount == 1);
+}
+
+void testBitmapCacheAndInkProcessorFoundation() {
+    assert(InkProcessor::shouldProcessInk(InkMode::MASK));
+    assert(InkProcessor::shouldProcessInk(InkMode::BACKGROUND_TRANSPARENT));
+    assert(!InkProcessor::shouldProcessInk(InkMode::COPY));
+    assert(InkProcessor::allowsColorize(0));
+    assert(!InkProcessor::allowsColorize(InkMode::MATTE));
+
+    Bitmap raw(3, 1, 8, {0xFFFFFFFFU, 0xFF7B5005U, 0xFF000000U});
+    raw.setPaletteIndices({0, 128, 255});
+
+    auto defaultRemap = BitmapCache::resolveIndexedMatteColorRemap(
+        &raw, libreshockwave::id::code(InkMode::MATTE), 0x000000, 0xFFFFFF, true, true, nullptr);
+    assert(!defaultRemap.has_value());
+
+    Palette remapPalette({0xFFFFFFFFU, 0xFF33CC66U}, "test-remap");
+    auto matteRemap = BitmapCache::resolveIndexedMatteColorRemap(
+        &raw, libreshockwave::id::code(InkMode::MATTE), 0x000000, 1, true, true, &remapPalette);
+    assert(matteRemap.has_value());
+    assert(matteRemap->foreColor == 0x000000U);
+    assert(matteRemap->backColor == 0x33CC66U);
+
+    Palette backgroundPalette({0xFFFFFFFFU, 0xFF6699FFU}, "test-background-remap");
+    auto backgroundRemap = BitmapCache::resolveIndexedMatteColorRemap(
+        &raw, libreshockwave::id::code(InkMode::BACKGROUND_TRANSPARENT), 0x000000, 1, true, true, &backgroundPalette);
+    assert(backgroundRemap.has_value());
+    assert(backgroundRemap->foreColor == 0x000000U);
+    assert(backgroundRemap->backColor == 0x6699FFU);
+
+    Bitmap masked(3, 1, 8, {0x00000000U, 0xFF7B5005U, 0xFF000000U});
+    Bitmap indexedRemapped = InkProcessor::applyIndexedColorRemap(raw, masked, 0x000000, 0x33CC66);
+    assert(indexedRemapped.getPixel(0, 0) == 0x00000000U);
+    assert(indexedRemapped.getPixel(1, 0) == 0xFF196633U);
+    assert(indexedRemapped.getPixel(2, 0) == 0xFF000000U);
+
+    Bitmap remappedThroughCache = BitmapCache::applyIndexedMatteColorRemap(&raw, masked, matteRemap);
+    assert(remappedThroughCache.getPixel(1, 0) == 0xFF196633U);
+
+    Bitmap darkenSource(2, 1, 8, {0xFF010203U, 0x00000000U});
+    darkenSource.setPaletteIndices({64, 128});
+    Bitmap darkenOffset = BitmapCache::applyIndexedMatteColorRemapIfNeeded(
+        &darkenSource, darkenSource, libreshockwave::id::code(InkMode::DARKEN), 0x102030, 0, true, false, nullptr);
+    assert(darkenOffset.getPixel(0, 0) == 0xFF112233U);
+    assert(darkenOffset.getPixel(1, 0) == 0x00000000U);
+
+    Bitmap transparent32(1, 1, 32, {0x00F0F0F0U});
+    Bitmap coerced = BitmapCache::coerceNonNativeAlphaToOpaque(transparent32, false);
+    assert(coerced.getPixel(0, 0) == 0xFFF0F0F0U);
+    auto nativeAlpha = std::make_shared<Bitmap>(1, 1, 32, std::vector<std::uint32_t>{0x00F0F0F0U});
+    nativeAlpha->setNativeAlpha(true);
+    auto preserved = BitmapCache::coerceNonNativeAlphaToOpaque(nativeAlpha, true);
+    assert(preserved == nativeAlpha);
+    assert(preserved->getPixel(0, 0) == 0x00F0F0F0U);
+
+    Bitmap grayscale32(3, 1, 32, {0xFF000000U, 0xFF808080U, 0xFFFFFFFFU});
+    Bitmap foreRemap = InkProcessor::applyForeColorRemap(grayscale32, 0xFF0000U, 0x0000FFU);
+    assert(foreRemap.getPixel(0, 0) == 0xFFFF0000U);
+    assert(foreRemap.getPixel(1, 0) == 0xFF7F0080U);
+    assert(foreRemap.getPixel(2, 0) == 0xFF0000FFU);
+
+    CastMemberChunk member(nullptr,
+                           ChunkId(501),
+                           MemberType::Bitmap,
+                           0,
+                           0,
+                           std::vector<std::uint8_t>{},
+                           std::vector<std::uint8_t>{},
+                           "cached",
+                           0,
+                           0,
+                           0);
+    BitmapCache cache;
+    auto cachedBitmap = std::make_shared<Bitmap>(1, 1, 32, std::vector<std::uint32_t>{0xFF010203U});
+    cache.putProcessed(member, 8, 0xFFFFFF, 0x000000, true, true, cachedBitmap);
+    assert(cache.cachedBitmapCount() == 1);
+    assert(cache.getCachedProcessed(member, 8, 0xFFFFFF, 0x000000, true, true) == cachedBitmap);
+    assert(cache.getCachedProcessed(member, 8, 0xFFFFFF, 0x111111, true, true) == nullptr);
+    cache.markDecodeFailed(member);
+    assert(cache.hasDecodeFailed(member));
+    assert(cache.decodeFailedCount() == 1);
+    assert(cache.invalidateIfPaletteChanged(member, 1));
+    assert(cache.cachedBitmapCount() == 0);
+    assert(!cache.hasDecodeFailed(member));
+    assert(cache.trackedPaletteVersionCount() == 1);
+    assert(!cache.invalidateIfPaletteChanged(member, 1));
+    cache.clear();
+    assert(cache.cachedBitmapCount() == 0);
+    assert(cache.decodeFailedCount() == 0);
+    assert(cache.trackedPaletteVersionCount() == 0);
 }
 
 void testSoftwareFrameRenderer() {
@@ -3776,6 +3870,7 @@ int main() {
     testScoreNavigationFoundation();
     testDebugFoundation();
     testRenderPipelineFoundation();
+    testBitmapCacheAndInkProcessorFoundation();
     testSoftwareFrameRenderer();
     testTextRendererFoundation();
     testNetTaskFoundation();
