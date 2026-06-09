@@ -374,6 +374,175 @@ std::vector<Datum> argListItems(const Datum& datum) {
     return {};
 }
 
+std::string keyNameLikeJava(const Datum& datum) {
+    if (const auto* symbol = datum.asSymbol()) {
+        return symbol->name;
+    }
+    return toStringLikeJava(datum);
+}
+
+std::optional<Datum> builtinConstant(std::string_view name) {
+    if (equalsIgnoreCase(name, "pi")) return Datum::of(3.14159265358979323846);
+    if (equalsIgnoreCase(name, "true")) return Datum::TRUE;
+    if (equalsIgnoreCase(name, "false")) return Datum::FALSE;
+    if (equalsIgnoreCase(name, "void")) return Datum::voidValue();
+    if (equalsIgnoreCase(name, "empty") || equalsIgnoreCase(name, "emptystring")) return Datum::of(std::string());
+    if (equalsIgnoreCase(name, "return")) return Datum::of(std::string("\r"));
+    if (equalsIgnoreCase(name, "enter")) return Datum::of(std::string("\n"));
+    if (equalsIgnoreCase(name, "tab")) return Datum::of(std::string("\t"));
+    if (equalsIgnoreCase(name, "quote")) return Datum::of(std::string("\""));
+    if (equalsIgnoreCase(name, "backspace")) return Datum::of(std::string("\b"));
+    if (equalsIgnoreCase(name, "space")) return Datum::of(std::string(" "));
+    return std::nullopt;
+}
+
+std::string ilkTypeName(const Datum& datum) {
+    switch (datum.type()) {
+        case DatumType::Int: return "integer";
+        case DatumType::Float: return "float";
+        case DatumType::String:
+        case DatumType::StringChunk: return "string";
+        case DatumType::Symbol: return "symbol";
+        case DatumType::List: return "list";
+        case DatumType::PropList: return "propList";
+        case DatumType::ScriptInstanceRef: return "instance";
+        case DatumType::IntPoint: return "point";
+        case DatumType::IntRect: return "rect";
+        case DatumType::ColorRef: return "color";
+        case DatumType::ImageRef: return "image";
+        case DatumType::CastLibRef: return "castLib";
+        case DatumType::CastMemberRef: return "member";
+        case DatumType::SpriteRef: return "sprite";
+        case DatumType::SoundChannel: return "sound";
+        case DatumType::TimeoutRef: return "timeout";
+        case DatumType::Xtra: return "xtra";
+        case DatumType::XtraInstance: return "xtraInstance";
+        case DatumType::Void: return "void";
+        case DatumType::Null: return "null";
+        default: return std::string(typeName(datum.type()));
+    }
+}
+
+Datum getPropListProp(const Datum::PropList& propList, std::string_view propName) {
+    if (equalsIgnoreCase(propName, "count") || equalsIgnoreCase(propName, "length")) {
+        return Datum::of(propList.count());
+    }
+    for (const auto& entry : propList.properties()) {
+        if (equalsIgnoreCase(keyNameLikeJava(entry.first), propName)) {
+            return entry.second;
+        }
+    }
+    if (equalsIgnoreCase(propName, "ilk")) {
+        return Datum::symbol("propList");
+    }
+    return Datum::voidValue();
+}
+
+void putPropListProp(Datum::PropList& propList, std::string_view propName, Datum value) {
+    for (auto& entry : propList.properties()) {
+        if (equalsIgnoreCase(keyNameLikeJava(entry.first), propName)) {
+            entry.second = std::move(value);
+            return;
+        }
+    }
+    propList.properties().emplace_back(Datum::symbol(std::string(propName)), std::move(value));
+}
+
+Datum getStringProp(std::string_view value, std::string_view propName) {
+    if (equalsIgnoreCase(propName, "length")) {
+        return Datum::of(static_cast<int>(value.size()));
+    }
+    if (equalsIgnoreCase(propName, "ilk")) {
+        return Datum::symbol("string");
+    }
+    return Datum::voidValue();
+}
+
+Datum getListProp(const Datum::List& list, std::string_view propName) {
+    if (equalsIgnoreCase(propName, "count") || equalsIgnoreCase(propName, "length")) {
+        return Datum::of(list.count());
+    }
+    if (equalsIgnoreCase(propName, "ilk")) {
+        return Datum::symbol("list");
+    }
+    if (const auto index = parseIntStrict(propName)) {
+        if (*index >= 1 && *index <= list.count()) {
+            return list.getAt(*index);
+        }
+    }
+    return Datum::voidValue();
+}
+
+Datum getPointProp(const Datum::IntPoint& point, std::string_view propName) {
+    if (equalsIgnoreCase(propName, "loch") || equalsIgnoreCase(propName, "x")) return Datum::of(point.x);
+    if (equalsIgnoreCase(propName, "locv") || equalsIgnoreCase(propName, "y")) return Datum::of(point.y);
+    if (equalsIgnoreCase(propName, "ilk")) return Datum::symbol("point");
+    return Datum::voidValue();
+}
+
+Datum getRectProp(const Datum::IntRect& rect, std::string_view propName) {
+    if (equalsIgnoreCase(propName, "left")) return Datum::of(rect.left);
+    if (equalsIgnoreCase(propName, "top")) return Datum::of(rect.top);
+    if (equalsIgnoreCase(propName, "right")) return Datum::of(rect.right);
+    if (equalsIgnoreCase(propName, "bottom")) return Datum::of(rect.bottom);
+    if (equalsIgnoreCase(propName, "width")) return Datum::of(rect.width());
+    if (equalsIgnoreCase(propName, "height")) return Datum::of(rect.height());
+    if (equalsIgnoreCase(propName, "ilk")) return Datum::symbol("rect");
+    return Datum::voidValue();
+}
+
+Datum getColorProp(const Datum::ColorRef& color, std::string_view propName) {
+    if (equalsIgnoreCase(propName, "red")) return Datum::of(color.r);
+    if (equalsIgnoreCase(propName, "green")) return Datum::of(color.g);
+    if (equalsIgnoreCase(propName, "blue")) return Datum::of(color.b);
+    if (equalsIgnoreCase(propName, "ilk")) return Datum::symbol("color");
+    return Datum::voidValue();
+}
+
+Datum getObjectProperty(const Datum& object, std::string_view propName) {
+    if (object.isVoid()) {
+        return Datum::voidValue();
+    }
+    if (object.type() == DatumType::ScriptInstanceRef) {
+        if (equalsIgnoreCase(propName, "ilk")) {
+            return Datum::symbol("instance");
+        }
+        return object.scriptInstanceValue().getProperty(std::string(propName));
+    }
+    if (object.isPropList()) {
+        return getPropListProp(object.propListValue(), propName);
+    }
+    if (object.isList()) {
+        return getListProp(object.listValue(), propName);
+    }
+    if (object.isString()) {
+        return getStringProp(object.stringValue(), propName);
+    }
+    if (const auto* point = object.asIntPoint()) {
+        return getPointProp(*point, propName);
+    }
+    if (const auto* rect = object.asIntRect()) {
+        return getRectProp(*rect, propName);
+    }
+    if (const auto* color = object.asColorRef()) {
+        return getColorProp(*color, propName);
+    }
+    if (equalsIgnoreCase(propName, "ilk")) {
+        return Datum::symbol(ilkTypeName(object));
+    }
+    return Datum::voidValue();
+}
+
+void setObjectProperty(Datum& object, std::string_view propName, Datum value) {
+    if (object.type() == DatumType::ScriptInstanceRef) {
+        object.scriptInstanceValue().setProperty(std::string(propName), std::move(value));
+        return;
+    }
+    if (object.isPropList()) {
+        putPropListProp(object.propListValue(), propName, std::move(value));
+    }
+}
+
 bool pushZero(ExecutionContext& context) {
     context.push(Datum::of(0));
     return true;
@@ -864,6 +1033,66 @@ bool pushArgListNoRet(ExecutionContext& context) {
     return true;
 }
 
+bool getProp(ExecutionContext& context) {
+    const std::string propName = context.resolveName(context.argument());
+    const Datum receiver = context.scope().receiver();
+    if (receiver.type() == DatumType::ScriptInstanceRef) {
+        context.push(receiver.scriptInstanceValue().getProperty(propName));
+    } else {
+        context.push(Datum::voidValue());
+    }
+    return true;
+}
+
+bool setProp(ExecutionContext& context) {
+    const std::string propName = context.resolveName(context.argument());
+    Datum receiver = context.scope().receiver();
+    Datum value = context.pop();
+    if (receiver.type() == DatumType::ScriptInstanceRef) {
+        receiver.scriptInstanceValue().setProperty(propName, std::move(value));
+    }
+    return true;
+}
+
+bool getMovieProp(ExecutionContext& context) {
+    const std::string propName = context.resolveName(context.argument());
+    context.push(builtinConstant(propName).value_or(Datum::voidValue()));
+    return true;
+}
+
+bool setMovieProp(ExecutionContext& context) {
+    (void)context.pop();
+    return true;
+}
+
+bool getObjProp(ExecutionContext& context) {
+    const std::string propName = context.resolveName(context.argument());
+    const Datum object = context.pop();
+    context.push(getObjectProperty(object, propName));
+    return true;
+}
+
+bool setObjProp(ExecutionContext& context) {
+    const std::string propName = context.resolveName(context.argument());
+    Datum value = context.pop();
+    Datum object = context.pop();
+    setObjectProperty(object, propName, std::move(value));
+    return true;
+}
+
+bool theBuiltin(ExecutionContext& context) {
+    (void)context.pop();
+    const std::string propName = context.resolveName(context.argument());
+    if (equalsIgnoreCase(propName, "paramcount")) {
+        context.push(Datum::of(static_cast<int>(context.scope().arguments().size())));
+    } else if (equalsIgnoreCase(propName, "result")) {
+        context.push(context.scope().returnValue());
+    } else {
+        context.push(builtinConstant(propName).value_or(Datum::voidValue()));
+    }
+    return true;
+}
+
 } // namespace
 
 OpcodeRegistry::OpcodeRegistry() {
@@ -875,6 +1104,7 @@ OpcodeRegistry::OpcodeRegistry() {
     VariableOpcodes::registerHandlers(*this);
     ControlFlowOpcodes::registerHandlers(*this);
     ListOpcodes::registerHandlers(*this);
+    PropertyOpcodes::registerHandlers(*this);
 }
 
 const OpcodeHandler* OpcodeRegistry::get(Opcode opcode) const {
@@ -963,6 +1193,16 @@ void ListOpcodes::registerHandlers(OpcodeRegistry& registry) {
     registry.registerHandler(Opcode::PUSH_PROP_LIST, pushPropList);
     registry.registerHandler(Opcode::PUSH_ARG_LIST, pushArgList);
     registry.registerHandler(Opcode::PUSH_ARG_LIST_NO_RET, pushArgListNoRet);
+}
+
+void PropertyOpcodes::registerHandlers(OpcodeRegistry& registry) {
+    registry.registerHandler(Opcode::GET_PROP, getProp);
+    registry.registerHandler(Opcode::SET_PROP, setProp);
+    registry.registerHandler(Opcode::GET_MOVIE_PROP, getMovieProp);
+    registry.registerHandler(Opcode::SET_MOVIE_PROP, setMovieProp);
+    registry.registerHandler(Opcode::GET_OBJ_PROP, getObjProp);
+    registry.registerHandler(Opcode::SET_OBJ_PROP, setObjProp);
+    registry.registerHandler(Opcode::THE_BUILTIN, theBuiltin);
 }
 
 } // namespace libreshockwave::lingo::vm

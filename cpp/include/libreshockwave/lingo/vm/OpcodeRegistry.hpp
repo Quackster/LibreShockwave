@@ -63,4 +63,9 @@ public:
     static void registerHandlers(OpcodeRegistry& registry);
 };
 
+class PropertyOpcodes {
+public:
+    static void registerHandlers(OpcodeRegistry& registry);
+};
+
 } // namespace libreshockwave::lingo::vm

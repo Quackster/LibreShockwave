@@ -2119,6 +2119,39 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 43) {
             return std::string("globalName2");
         }
+        if (nameId == 50) {
+            return std::string("health");
+        }
+        if (nameId == 51) {
+            return std::string("count");
+        }
+        if (nameId == 52) {
+            return std::string("x");
+        }
+        if (nameId == 53) {
+            return std::string("width");
+        }
+        if (nameId == 54) {
+            return std::string("length");
+        }
+        if (nameId == 55) {
+            return std::string("red");
+        }
+        if (nameId == 56) {
+            return std::string("ilk");
+        }
+        if (nameId == 57) {
+            return std::string("pi");
+        }
+        if (nameId == 58) {
+            return std::string("space");
+        }
+        if (nameId == 59) {
+            return std::string("paramCount");
+        }
+        if (nameId == 60) {
+            return std::string("result");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.callStackFormatter = []() {
@@ -2236,6 +2269,13 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opcodeRegistry.hasHandler(Opcode::GET_GLOBAL2));
     assert(opcodeRegistry.hasHandler(Opcode::SET_GLOBAL));
     assert(opcodeRegistry.hasHandler(Opcode::SET_GLOBAL2));
+    assert(opcodeRegistry.hasHandler(Opcode::GET_PROP));
+    assert(opcodeRegistry.hasHandler(Opcode::SET_PROP));
+    assert(opcodeRegistry.hasHandler(Opcode::GET_MOVIE_PROP));
+    assert(opcodeRegistry.hasHandler(Opcode::SET_MOVIE_PROP));
+    assert(opcodeRegistry.hasHandler(Opcode::GET_OBJ_PROP));
+    assert(opcodeRegistry.hasHandler(Opcode::SET_OBJ_PROP));
+    assert(opcodeRegistry.hasHandler(Opcode::THE_BUILTIN));
     assert(opcodeRegistry.hasHandler(Opcode::RET));
     assert(opcodeRegistry.hasHandler(Opcode::RET_FACTORY));
     assert(opcodeRegistry.hasHandler(Opcode::JMP));
@@ -2365,6 +2405,87 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(propList.propListValue().properties()[0].second.stringValue() == "first");
     assert(propList.propListValue().properties()[1].second.stringValue() == "duplicate");
     assert(propList.propListValue().properties()[2].second.intValue() == 3);
+
+    Datum receiverInstance = Datum::scriptInstance("behavior");
+    receiverInstance.scriptInstanceValue().setProperty("health", Datum::of(10));
+    Scope propertyScope(&script, handler, {}, receiverInstance);
+    ExecutionContext propertyContext(propertyScope, ScriptChunk::Instruction{0, Opcode::GET_PROP, libreshockwave::lingo::code(Opcode::GET_PROP), 50},
+                                     &registry, &builtinContext, callbacks);
+    assert(opcodeRegistry.execute(Opcode::GET_PROP, propertyContext));
+    assert(propertyContext.pop().intValue() == 10);
+    propertyContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_PROP, libreshockwave::lingo::code(Opcode::SET_PROP), 50});
+    propertyContext.push(Datum::of(11));
+    assert(opcodeRegistry.execute(Opcode::SET_PROP, propertyContext));
+    assert(receiverInstance.scriptInstanceValue().getProperty("health").intValue() == 11);
+
+    auto runObjectPropertyGet = [&](Datum object, int nameId) {
+        Scope objectScope(&script, handler, {});
+        ExecutionContext objectContext(objectScope,
+                                       ScriptChunk::Instruction{0, Opcode::GET_OBJ_PROP, libreshockwave::lingo::code(Opcode::GET_OBJ_PROP), nameId},
+                                       &registry,
+                                       &builtinContext,
+                                       callbacks);
+        objectContext.push(std::move(object));
+        assert(opcodeRegistry.execute(Opcode::GET_OBJ_PROP, objectContext));
+        return objectContext.pop();
+    };
+
+    Datum objectInstance = Datum::scriptInstance("objectBehavior");
+    objectInstance.scriptInstanceValue().setProperty("health", Datum::of(21));
+    assert(runObjectPropertyGet(objectInstance, 50).intValue() == 21);
+    assert(runObjectPropertyGet(Datum::list({Datum::of(4), Datum::of(5)}), 51).intValue() == 2);
+    assert(runObjectPropertyGet(Datum::of(std::string("abcd")), 54).intValue() == 4);
+    assert(runObjectPropertyGet(Datum::intPoint(9, 8), 52).intValue() == 9);
+    assert(runObjectPropertyGet(Datum::intRect(1, 2, 6, 9), 53).intValue() == 5);
+    assert(runObjectPropertyGet(Datum::colorRef(200, 20, 10), 55).intValue() == 200);
+    assert(runObjectPropertyGet(Datum::of(3), 56).stringValue() == "integer");
+
+    Datum objectPropList = Datum::propList();
+    objectPropList.propListValue().properties().emplace_back(Datum::symbol("health"), Datum::of(1));
+    assert(runObjectPropertyGet(objectPropList, 50).intValue() == 1);
+    Scope setObjectScope(&script, handler, {});
+    ExecutionContext setObjectContext(setObjectScope,
+                                      ScriptChunk::Instruction{0, Opcode::SET_OBJ_PROP, libreshockwave::lingo::code(Opcode::SET_OBJ_PROP), 50},
+                                      &registry,
+                                      &builtinContext,
+                                      callbacks);
+    setObjectContext.push(objectPropList);
+    setObjectContext.push(Datum::of(99));
+    assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
+    assert(objectPropList.propListValue().get(Datum::symbol("health")).intValue() == 99);
+
+    Datum setObjectInstance = Datum::scriptInstance("setObject");
+    setObjectContext.push(setObjectInstance);
+    setObjectContext.push(Datum::of(123));
+    assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
+    assert(setObjectInstance.scriptInstanceValue().getProperty("health").intValue() == 123);
+
+    Scope moviePropScope(&script, handler, {});
+    ExecutionContext moviePropContext(moviePropScope,
+                                      ScriptChunk::Instruction{0, Opcode::GET_MOVIE_PROP, libreshockwave::lingo::code(Opcode::GET_MOVIE_PROP), 57},
+                                      &registry,
+                                      &builtinContext,
+                                      callbacks);
+    assert(opcodeRegistry.execute(Opcode::GET_MOVIE_PROP, moviePropContext));
+    assert(std::fabs(moviePropContext.pop().floatValue() - 3.14159F) < 0.001F);
+    moviePropContext.setInstruction(ScriptChunk::Instruction{0, Opcode::GET_MOVIE_PROP, libreshockwave::lingo::code(Opcode::GET_MOVIE_PROP), 58});
+    assert(opcodeRegistry.execute(Opcode::GET_MOVIE_PROP, moviePropContext));
+    assert(moviePropContext.pop().stringValue() == " ");
+    moviePropContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_MOVIE_PROP, libreshockwave::lingo::code(Opcode::SET_MOVIE_PROP), 57});
+    moviePropContext.push(Datum::of(1));
+    assert(opcodeRegistry.execute(Opcode::SET_MOVIE_PROP, moviePropContext));
+
+    Scope theScope(&script, handler, {Datum::of(1), Datum::of(2)});
+    theScope.setReturnValue(Datum::of(std::string("done")));
+    ExecutionContext theContext(theScope, ScriptChunk::Instruction{0, Opcode::THE_BUILTIN, libreshockwave::lingo::code(Opcode::THE_BUILTIN), 59},
+                                &registry, &builtinContext, callbacks);
+    theContext.push(Datum::argList({}));
+    assert(opcodeRegistry.execute(Opcode::THE_BUILTIN, theContext));
+    assert(theContext.pop().intValue() == 2);
+    theContext.setInstruction(ScriptChunk::Instruction{0, Opcode::THE_BUILTIN, libreshockwave::lingo::code(Opcode::THE_BUILTIN), 60});
+    theContext.push(Datum::argList({}));
+    assert(opcodeRegistry.execute(Opcode::THE_BUILTIN, theContext));
+    assert(theContext.pop().stringValue() == "done");
 
     auto runUnary = [&](Opcode opcode, Datum value) {
         Scope unaryScope(&script, handler, {});
