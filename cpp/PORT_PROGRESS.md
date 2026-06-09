@@ -246,6 +246,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `behavior::BehaviorManager` ports instance registration, property parameter application from behavior refs, per-channel lookup, frame-script caching, instance removal, sprite-instance ordering, and clear state.
 - Handler invocation and VM/event dispatch remain deferred to the C++ event dispatcher and Lingo VM runtime slices.
 
+### Event Dispatcher Foundation
+
+- `event::EventDispatcher` ports Director event ordering for sprite behaviors, frame behavior, movie scripts, sprite-only dispatch, behavior-only dispatch, and movie-script-only dispatch.
+- Handler lookup uses real `ScriptChunk`/`ScriptNamesChunk` metadata where available, with callback hooks for handler invocation and dynamic script-instance response checks until the C++ Lingo VM is ported.
+- Pass propagation, stopEvent state, mouse-handler detection, and sprite mouse-interactivity checks across score behaviors and dynamic script instances are available in C++.
+
 ### Score Navigation Foundation
 
 - `score::ScoreBehaviorRef` ports behavior cast-member references with saved parameter storage.
@@ -378,6 +384,7 @@ Result:
 - HitTester front-to-back bounds hits, static native-alpha thresholds, dynamic transparency-ink alpha hits, forced bounding-box hits, all-hit ordering, type lookup, and flip/scale source sampling passed through the same CTest executable.
 - CursorManager editable text, button, explicit sprite cursor, interactive fallback, custom bitmap cursor, global cursor, mask application, hotspot, cursor member encoding, near-white, and navigator-whitespace suppression tests passed through the same CTest executable.
 - BehaviorInstance and BehaviorManager ID/property state, behavior-ref parameters, frame-script caching, channel lookup/removal, sprite-instance ordering, and clear tests passed through the same CTest executable.
+- EventDispatcher global, frame/movie, sprite/movie, sprite-only, behavior-only, and movie-only dispatch ordering, pass propagation, dynamic script-instance dispatch, sprite handler lookup, mouse interactivity, mouse-handler recognition, debug flag, and stopEvent state tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -438,4 +445,5 @@ Result:
 - `652eadf Port C++ sprite registry foundation`
 - `1e50517 Port C++ sound manager foundation`
 - `205a5d2 Port C++ net manager foundation`
-- Current checkpoint commit message: `Port C++ cursor manager foundation`
+- `4e98478 Port C++ cursor manager foundation`
+- Current checkpoint commit message: `Port C++ event dispatcher foundation`

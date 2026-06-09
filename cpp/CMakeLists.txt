@@ -60,6 +60,7 @@ add_library(libreshockwave
     src/player/debug/Breakpoint.cpp
     src/player/debug/BreakpointManager.cpp
     src/player/debug/WatchExpression.cpp
+    src/player/event/EventDispatcher.cpp
     src/player/render/RenderConfig.cpp
     src/player/render/RenderType.cpp
     src/player/render/SpriteRegistry.cpp

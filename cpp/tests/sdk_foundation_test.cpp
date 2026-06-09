@@ -77,6 +77,7 @@
 #include "libreshockwave/player/debug/BreakpointManager.hpp"
 #include "libreshockwave/player/debug/DebugSnapshot.hpp"
 #include "libreshockwave/player/debug/WatchExpression.hpp"
+#include "libreshockwave/player/event/EventDispatcher.hpp"
 #include "libreshockwave/player/frame/FrameEvent.hpp"
 #include "libreshockwave/player/input/DirectorKeyCodes.hpp"
 #include "libreshockwave/player/input/HitTester.hpp"
@@ -188,6 +189,10 @@ using libreshockwave::player::behavior::BehaviorManager;
 using libreshockwave::player::debug::DebugSnapshot;
 using libreshockwave::player::debug::InstructionDisplay;
 using libreshockwave::player::debug::WatchExpression;
+using libreshockwave::player::event::EventDispatcher;
+using libreshockwave::player::event::EventTarget;
+using libreshockwave::player::event::EventTargetKind;
+using libreshockwave::player::event::HandlerResult;
 using libreshockwave::player::frame::FrameEvent;
 using libreshockwave::player::input::AlphaHitRule;
 using libreshockwave::player::input::DirectorKeyCodes;
@@ -1274,6 +1279,36 @@ std::shared_ptr<ScriptChunk> makeBehaviorScript(int id, ScriptChunkType type = S
                                          std::vector<std::uint8_t>{});
 }
 
+std::shared_ptr<ScriptChunk> makeScriptWithHandlers(int id, ScriptChunkType type, std::vector<int> handlerNameIds) {
+    std::vector<ScriptChunk::Handler> handlers;
+    handlers.reserve(handlerNameIds.size());
+    for (int nameId : handlerNameIds) {
+        handlers.push_back(ScriptChunk::Handler{
+            nameId,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            {},
+            {},
+            {},
+            {}
+        });
+    }
+    return std::make_shared<ScriptChunk>(nullptr,
+                                         ChunkId(id),
+                                         type,
+                                         0,
+                                         std::move(handlers),
+                                         std::vector<ScriptChunk::LiteralEntry>{},
+                                         std::vector<ScriptChunk::PropertyEntry>{},
+                                         std::vector<ScriptChunk::GlobalEntry>{},
+                                         std::vector<std::uint8_t>{});
+}
+
 void testBehaviorFoundation() {
     auto script = makeBehaviorScript(701);
     auto params = Datum::propList();
@@ -1357,6 +1392,122 @@ void testBehaviorFoundation() {
     assert(manager.instanceCount() == 0);
     assert(manager.getAllInstances().empty());
     assert(manager.getSpriteInstances().empty());
+}
+
+void testEventDispatcherFoundation() {
+    auto names = std::make_shared<ScriptNamesChunk>(
+        nullptr,
+        ChunkId(900),
+        std::vector<std::string>{"", "mouseUp", "enterFrame", "startMovie", "mouseDown", "mouseEnter"});
+
+    auto mouseScript = makeScriptWithHandlers(901, ScriptChunkType::Behavior, {1});
+    auto frameScript = makeScriptWithHandlers(902, ScriptChunkType::Behavior, {1, 2});
+    auto movieScript = makeScriptWithHandlers(903, ScriptChunkType::MovieScript, {1, 2, 3});
+
+    BehaviorManager behaviorManager;
+    auto first = behaviorManager.createInstanceForScript(mouseScript, ScoreBehaviorRef(1, 11), 1);
+    auto second = behaviorManager.createInstanceForScript(mouseScript, ScoreBehaviorRef(1, 12), 1);
+    auto third = behaviorManager.createInstanceForScript(mouseScript, ScoreBehaviorRef(1, 13), 2);
+    auto frame = behaviorManager.getOrCreateFrameScriptForScript(frameScript, ScoreBehaviorRef(1, 20), 7);
+    assert(frame != nullptr);
+
+    SpriteRegistry spriteRegistry;
+    auto sprite = spriteRegistry.getOrCreateDynamic(1);
+    sprite->setScriptInstanceList({Datum::scriptInstance("dynamic")});
+
+    EventDispatcher dispatcher(&behaviorManager);
+    dispatcher.setSpriteRegistry(&spriteRegistry);
+    dispatcher.setScriptNamesResolver([names](const std::shared_ptr<ScriptChunk>&) {
+        return names;
+    });
+    dispatcher.addMovieScript(EventDispatcher::MovieScriptTarget{movieScript, names});
+
+    dispatcher.setRespondsPredicate([names](const EventTarget& target, std::string_view handler) {
+        if (target.kind == EventTargetKind::ScriptInstance) {
+            return handler == "mouseUp" || handler == "mouseDown";
+        }
+        return target.script && target.script->findHandler(handler, names.get()).has_value();
+    });
+
+    auto labelForTarget = [](const EventTarget& target) {
+        switch (target.kind) {
+            case EventTargetKind::Behavior:
+                return std::string("behavior:") + std::to_string(target.channel) + ":" +
+                       std::to_string(target.behavior ? target.behavior->behaviorRef().castMember() : 0);
+            case EventTargetKind::ScriptInstance:
+                return std::string("dynamic:") + std::to_string(target.channel);
+            case EventTargetKind::MovieScript:
+                return std::string("movie:") + std::to_string(target.script ? target.script->id().value() : 0);
+        }
+        return std::string("unknown");
+    };
+
+    std::vector<std::string> calls;
+    dispatcher.setHandlerInvoker([&](const EventTarget& target,
+                                     std::string_view handler,
+                                     const std::vector<Datum>& args) {
+        calls.push_back(labelForTarget(target) + ":" + std::string(handler) + ":" + std::to_string(args.size()));
+        if (target.kind == EventTargetKind::Behavior && target.behavior == first) {
+            return HandlerResult{true, false};
+        }
+        return HandlerResult{true, true};
+    });
+
+    dispatcher.dispatchGlobalEvent(PlayerEvent::MouseUp, {Datum::of(1)});
+    assert((calls == std::vector<std::string>{
+        "behavior:1:11:mouseUp:1",
+        "behavior:2:13:mouseUp:1",
+        "behavior:0:20:mouseUp:1",
+        "movie:903:mouseUp:1"
+    }));
+    assert(!dispatcher.isPropagationStopped());
+
+    calls.clear();
+    dispatcher.dispatchFrameAndMovieEvent(PlayerEvent::EnterFrame);
+    assert((calls == std::vector<std::string>{
+        "behavior:0:20:enterFrame:0",
+        "movie:903:enterFrame:0"
+    }));
+
+    calls.clear();
+    dispatcher.dispatchSpriteAndMovieEvent("mouseUp");
+    assert((calls == std::vector<std::string>{
+        "behavior:1:11:mouseUp:0",
+        "behavior:2:13:mouseUp:0",
+        "movie:903:mouseUp:0"
+    }));
+
+    calls.clear();
+    dispatcher.dispatchSpriteEvent(1, PlayerEvent::MouseUp);
+    assert((calls == std::vector<std::string>{
+        "behavior:1:11:mouseUp:0",
+        "behavior:1:12:mouseUp:0",
+        "dynamic:1:mouseUp:0"
+    }));
+
+    calls.clear();
+    dispatcher.dispatchBehaviorEvent(third, "mouseUp", {Datum::of(7), Datum::of(8)});
+    assert((calls == std::vector<std::string>{"behavior:2:13:mouseUp:2"}));
+
+    calls.clear();
+    dispatcher.dispatchToMovieScripts(PlayerEvent::StartMovie, {Datum::of("go")});
+    assert((calls == std::vector<std::string>{"movie:903:startMovie:1"}));
+
+    assert(dispatcher.spriteHasHandler(1, "mouseUp"));
+    assert(dispatcher.spriteHasHandler(1, "mouseDown"));
+    assert(!dispatcher.spriteHasHandler(99, "mouseUp"));
+    assert(dispatcher.isSpriteMouseInteractive(1));
+    assert(dispatcher.isMouseHandler("mouseUpOutSide"));
+    assert(!dispatcher.isMouseHandler("startMovie"));
+
+    dispatcher.pass();
+    assert(!dispatcher.isPropagationStopped());
+    dispatcher.stopEvent();
+    assert(dispatcher.isEventStopped());
+    dispatcher.resetEventStopped();
+    assert(!dispatcher.isEventStopped());
+    dispatcher.setDebugEnabled(true);
+    assert(dispatcher.debugEnabled());
 }
 
 void testDebugFoundation() {
@@ -4906,6 +5057,7 @@ int main() {
     testSpriteStateFoundation();
     testSpriteRegistryFoundation();
     testBehaviorFoundation();
+    testEventDispatcherFoundation();
     testDebugFoundation();
     testRenderPipelineFoundation();
     testBitmapCacheAndInkProcessorFoundation();
