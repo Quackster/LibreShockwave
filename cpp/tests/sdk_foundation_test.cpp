@@ -2293,6 +2293,12 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 107) {
             return std::string("draw");
         }
+        if (nameId == 108) {
+            return std::string("createMatte");
+        }
+        if (nameId == 109) {
+            return std::string("createMask");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.callStackFormatter = []() {
@@ -3318,6 +3324,57 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runObjCall(107, {Datum::imageRef(invalidDrawBitmap)}).isVoid());
     assert(invalidDrawBitmap->isScriptModified());
     assert(invalidDrawBitmap->getPixel(0, 0) == 0xFFFFFFFFU);
+    auto nativeMatteSource = std::make_shared<Bitmap>(
+        3, 1, 32, std::vector<std::uint32_t>{0x7FFFFFFFU, 0x80FFFFFFU, 0xFFFFFFFFU});
+    nativeMatteSource->setNativeAlpha(true);
+    const Datum nativeMatteDatum = runObjCall(108, {Datum::imageRef(nativeMatteSource), Datum::of(0x80)});
+    const auto* nativeMatte = nativeMatteDatum.asImageRef();
+    assert(nativeMatte != nullptr);
+    assert(nativeMatte->bitmap != nullptr);
+    assert(nativeMatte->bitmap->isNativeAlpha());
+    assert(nativeMatte->bitmap->getPixel(0, 0) == 0x00FFFFFFU);
+    assert(nativeMatte->bitmap->getPixel(1, 0) == 0x80FFFFFFU);
+    assert(nativeMatte->bitmap->getPixel(2, 0) == 0xFFFFFFFFU);
+    auto floodMatteSource = std::make_shared<Bitmap>(3, 3, 32, std::vector<std::uint32_t>{
+        0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU,
+        0xFFFFFFFFU, 0xFF224466U, 0xFFFFFFFFU,
+        0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU
+    });
+    const Datum floodMatteDatum = runObjCall(108, {Datum::imageRef(floodMatteSource)});
+    const auto* floodMatte = floodMatteDatum.asImageRef();
+    assert(floodMatte != nullptr);
+    assert(floodMatte->bitmap != nullptr);
+    assert(floodMatte->bitmap->isNativeAlpha());
+    assert(floodMatte->bitmap->getPixel(0, 0) == 0x00FFFFFFU);
+    assert(floodMatte->bitmap->getPixel(1, 1) == 0xFFFFFFFFU);
+    assert(floodMatte->bitmap->getPixel(2, 2) == 0x00FFFFFFU);
+    auto indexedMatteSource = std::make_shared<Bitmap>(3, 3, 8, std::vector<std::uint32_t>{
+        0xFF000000U, 0xFF000000U, 0xFF000000U,
+        0xFF000000U, 0xFF33CCFFU, 0xFF000000U,
+        0xFF000000U, 0xFF000000U, 0xFF000000U
+    });
+    indexedMatteSource->setPaletteIndices({0, 0, 0, 0, 7, 0, 0, 0, 0});
+    const Datum indexedMatteDatum = runObjCall(108, {Datum::imageRef(indexedMatteSource)});
+    const auto* indexedMatte = indexedMatteDatum.asImageRef();
+    assert(indexedMatte != nullptr);
+    assert(indexedMatte->bitmap != nullptr);
+    assert(indexedMatte->bitmap->getPixel(0, 0) == 0x00FFFFFFU);
+    assert(indexedMatte->bitmap->getPixel(1, 1) == 0xFFFFFFFFU);
+    assert(indexedMatte->bitmap->getPixel(2, 2) == 0x00FFFFFFU);
+    auto maskSource = std::make_shared<Bitmap>(3, 3, 8, std::vector<std::uint32_t>{
+        0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU,
+        0xFFFFFFFFU, 0xFF000000U, 0xFFFFFFFFU,
+        0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU
+    });
+    const Datum maskDatum = runObjCall(109, {Datum::imageRef(maskSource)});
+    const auto* mask = maskDatum.asImageRef();
+    assert(mask != nullptr);
+    assert(mask->bitmap != nullptr);
+    assert(!mask->bitmap->isNativeAlpha());
+    assert(mask->bitmap->bitDepth() == 8);
+    assert(mask->bitmap->getPixel(0, 1) == 0xFFFFFFFFU);
+    assert(mask->bitmap->getPixel(1, 1) == 0xFF000000U);
+    assert(mask->bitmap->getPixel(2, 1) == 0xFFFFFFFFU);
     const Datum duplicateImageDatum = runObjCall(72, {imageMethodRef});
     const auto* duplicateImage = duplicateImageDatum.asImageRef();
     assert(duplicateImage != nullptr);

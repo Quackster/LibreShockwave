@@ -3,15 +3,18 @@
 #include "libreshockwave/bitmap/Bitmap.hpp"
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <charconv>
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <optional>
+#include <queue>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <variant>
 
@@ -2065,6 +2068,449 @@ Datum imageSetAlpha(bitmap::Bitmap& bmp, const std::vector<Datum>& args) {
     return Datum::TRUE;
 }
 
+struct ImageFloodFillMatte {
+    std::optional<int> paletteIndex;
+    int colorRgb = 0xFFFFFF;
+    int tolerance = 0;
+
+    [[nodiscard]] bool usesPaletteIndex() const { return paletteIndex.has_value(); }
+};
+
+std::vector<int> imageCornerIndices(int width, int height) {
+    return {
+        0,
+        std::max(0, width - 1),
+        std::max(0, (height - 1) * width),
+        std::max(0, (height - 1) * width + (width - 1)),
+    };
+}
+
+std::vector<int> imageEdgeIndices(int width, int height) {
+    std::vector<int> indices;
+    indices.reserve(static_cast<std::size_t>(std::max(1, (width * 2) + std::max(0, height - 2) * 2)));
+    for (int x = 0; x < width; ++x) {
+        indices.push_back(x);
+        if (height > 1) {
+            indices.push_back((height - 1) * width + x);
+        }
+    }
+    for (int y = 1; y < height - 1; ++y) {
+        indices.push_back(y * width);
+        if (width > 1) {
+            indices.push_back(y * width + (width - 1));
+        }
+    }
+    return indices;
+}
+
+bool imageHasPaletteIndices(const std::optional<std::vector<std::uint8_t>>& paletteIndices, int width, int height) {
+    return paletteIndices.has_value() && paletteIndices->size() >= static_cast<std::size_t>(width * height);
+}
+
+bool imageIsUniformPaletteIndex(const std::vector<std::uint8_t>& paletteIndices, int paletteIndex) {
+    return std::all_of(paletteIndices.begin(), paletteIndices.end(), [&](std::uint8_t entry) {
+        return static_cast<int>(entry) == paletteIndex;
+    });
+}
+
+int imageResolvePaletteIndexRgb(const std::vector<std::uint32_t>& pixels,
+                                const std::vector<std::uint8_t>& paletteIndices,
+                                int paletteIndex) {
+    for (std::size_t index = 0; index < pixels.size() && index < paletteIndices.size(); ++index) {
+        if (static_cast<int>(paletteIndices[index]) == paletteIndex) {
+            return static_cast<int>(pixels[index] & 0x00FFFFFFU);
+        }
+    }
+    return 0xFFFFFF;
+}
+
+bool imageCornerContainsPaletteIndex(const std::vector<std::uint8_t>& paletteIndices,
+                                     int width,
+                                     int height,
+                                     int paletteIndex) {
+    for (const int index : imageCornerIndices(width, height)) {
+        if (index >= 0 && static_cast<std::size_t>(index) < paletteIndices.size() &&
+            static_cast<int>(paletteIndices[static_cast<std::size_t>(index)]) == paletteIndex) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool imageDefaultIndexedMatteRgb(int rgb) {
+    return rgb == 0x000000 || rgb == 0xFFFFFF;
+}
+
+std::optional<int> imageInferDominantEdgePaletteIndex(const std::vector<std::uint32_t>& pixels,
+                                                      const std::vector<std::uint8_t>& paletteIndices,
+                                                      int width,
+                                                      int height) {
+    if (width <= 0 || height <= 0) return std::nullopt;
+
+    std::array<int, 256> counts{};
+    int opaqueEdgeCount = 0;
+    int dominantIndex = -1;
+    int dominantCount = 0;
+    for (const int index : imageEdgeIndices(width, height)) {
+        const auto pixel = pixels[static_cast<std::size_t>(index)];
+        if (((pixel >> 24) & 0xFFU) == 0) {
+            continue;
+        }
+        const int paletteIndex = static_cast<int>(paletteIndices[static_cast<std::size_t>(index)]);
+        const int count = ++counts[static_cast<std::size_t>(paletteIndex)];
+        ++opaqueEdgeCount;
+        if (count > dominantCount) {
+            dominantCount = count;
+            dominantIndex = paletteIndex;
+        }
+    }
+    if (opaqueEdgeCount == 0 || dominantIndex < 0 || imageIsUniformPaletteIndex(paletteIndices, dominantIndex)) {
+        return std::nullopt;
+    }
+
+    int opaqueCornerCount = 0;
+    for (const int index : imageCornerIndices(width, height)) {
+        const auto pixel = pixels[static_cast<std::size_t>(index)];
+        if (((pixel >> 24) & 0xFFU) == 0) {
+            continue;
+        }
+        ++opaqueCornerCount;
+        if (static_cast<int>(paletteIndices[static_cast<std::size_t>(index)]) != dominantIndex) {
+            return std::nullopt;
+        }
+    }
+    if (opaqueCornerCount == 0 || dominantCount * 4 < opaqueEdgeCount * 3) {
+        return std::nullopt;
+    }
+    return dominantIndex;
+}
+
+std::optional<ImageFloodFillMatte> imageResolveIndexedFloodFillMatte(
+    const std::vector<std::uint32_t>& pixels,
+    const std::vector<std::uint8_t>& paletteIndices,
+    int width,
+    int height) {
+    if (const auto dominant = imageInferDominantEdgePaletteIndex(pixels, paletteIndices, width, height)) {
+        const int matteRgb = imageResolvePaletteIndexRgb(pixels, paletteIndices, *dominant);
+        if (*dominant == 0 && imageDefaultIndexedMatteRgb(matteRgb)) {
+            return ImageFloodFillMatte{*dominant, matteRgb, 0};
+        }
+    }
+    if (imageCornerContainsPaletteIndex(paletteIndices, width, height, 0)) {
+        const int indexZeroRgb = imageResolvePaletteIndexRgb(pixels, paletteIndices, 0);
+        if (imageDefaultIndexedMatteRgb(indexZeroRgb)) {
+            return ImageFloodFillMatte{0, indexZeroRgb, 0};
+        }
+    }
+    return std::nullopt;
+}
+
+bool imageIsUniformRgb(const std::vector<std::uint32_t>& pixels, int rgb) {
+    for (const auto pixel : pixels) {
+        if (((pixel >> 24) & 0xFFU) != 0 && static_cast<int>(pixel & 0x00FFFFFFU) != rgb) {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::optional<int> imageInferDominantEdgeRgb(const std::vector<std::uint32_t>& pixels, int width, int height) {
+    if (width <= 0 || height <= 0) return std::nullopt;
+
+    std::unordered_map<int, int> counts;
+    int opaqueEdgeCount = 0;
+    int dominantRgb = -1;
+    int dominantCount = 0;
+    for (const int index : imageEdgeIndices(width, height)) {
+        const auto pixel = pixels[static_cast<std::size_t>(index)];
+        if (((pixel >> 24) & 0xFFU) == 0) {
+            continue;
+        }
+        const int rgb = static_cast<int>(pixel & 0x00FFFFFFU);
+        const int count = ++counts[rgb];
+        ++opaqueEdgeCount;
+        if (count > dominantCount) {
+            dominantCount = count;
+            dominantRgb = rgb;
+        }
+    }
+    if (opaqueEdgeCount == 0 || dominantRgb < 0 || imageIsUniformRgb(pixels, dominantRgb)) {
+        return std::nullopt;
+    }
+
+    int opaqueCornerCount = 0;
+    for (const int index : imageCornerIndices(width, height)) {
+        const auto pixel = pixels[static_cast<std::size_t>(index)];
+        if (((pixel >> 24) & 0xFFU) == 0) {
+            continue;
+        }
+        ++opaqueCornerCount;
+        if (static_cast<int>(pixel & 0x00FFFFFFU) != dominantRgb) {
+            return std::nullopt;
+        }
+    }
+    if (opaqueCornerCount == 0 || dominantCount * 4 < opaqueEdgeCount * 3) {
+        return std::nullopt;
+    }
+    return dominantRgb;
+}
+
+bool imageCornerContainsOpaqueRgb(const std::vector<std::uint32_t>& pixels, int width, int height, int rgb) {
+    for (const int index : imageCornerIndices(width, height)) {
+        const auto pixel = pixels[static_cast<std::size_t>(index)];
+        if (((pixel >> 24) & 0xFFU) != 0 && static_cast<int>(pixel & 0x00FFFFFFU) == rgb) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::optional<ImageFloodFillMatte> imageResolveRgbFloodFillMatte(const std::vector<std::uint32_t>& pixels,
+                                                                 int width,
+                                                                 int height) {
+    if (const auto dominant = imageInferDominantEdgeRgb(pixels, width, height)) {
+        return ImageFloodFillMatte{std::nullopt, *dominant, 0};
+    }
+    if (!imageCornerContainsOpaqueRgb(pixels, width, height, 0xFFFFFF)) {
+        return std::nullopt;
+    }
+    return ImageFloodFillMatte{std::nullopt, 0xFFFFFF, 0};
+}
+
+std::optional<ImageFloodFillMatte> imageResolveFloodFillMatte(
+    const std::vector<std::uint32_t>& pixels,
+    const std::optional<std::vector<std::uint8_t>>& paletteIndices,
+    int width,
+    int height) {
+    if (imageHasPaletteIndices(paletteIndices, width, height)) {
+        return imageResolveIndexedFloodFillMatte(pixels, *paletteIndices, width, height);
+    }
+    return imageResolveRgbFloodFillMatte(pixels, width, height);
+}
+
+bool imageMatchesRgb(std::uint32_t pixel, int matteRgb, int tolerance) {
+    const int pr = static_cast<int>((pixel >> 16) & 0xFFU);
+    const int pg = static_cast<int>((pixel >> 8) & 0xFFU);
+    const int pb = static_cast<int>(pixel & 0xFFU);
+    const int mr = (matteRgb >> 16) & 0xFF;
+    const int mg = (matteRgb >> 8) & 0xFF;
+    const int mb = matteRgb & 0xFF;
+    return std::abs(pr - mr) <= tolerance && std::abs(pg - mg) <= tolerance && std::abs(pb - mb) <= tolerance;
+}
+
+bool imageIsTransparentOrMatte(const std::vector<std::uint32_t>& pixels,
+                               const std::optional<std::vector<std::uint8_t>>& paletteIndices,
+                               int index,
+                               const ImageFloodFillMatte& matte) {
+    const auto pixel = pixels[static_cast<std::size_t>(index)];
+    if (((pixel >> 24) & 0xFFU) == 0) {
+        return true;
+    }
+    if (matte.usesPaletteIndex() && paletteIndices.has_value() &&
+        static_cast<std::size_t>(index) < paletteIndices->size()) {
+        return static_cast<int>((*paletteIndices)[static_cast<std::size_t>(index)]) == *matte.paletteIndex;
+    }
+    return imageMatchesRgb(pixel, matte.colorRgb, matte.tolerance);
+}
+
+std::vector<bool> imageComputeFloodFillTransparency(
+    const std::vector<std::uint32_t>& pixels,
+    const std::optional<std::vector<std::uint8_t>>& paletteIndices,
+    int width,
+    int height,
+    const ImageFloodFillMatte& matte) {
+    std::vector<bool> transparent(static_cast<std::size_t>(width * height), false);
+    std::queue<int> queue;
+    const auto seed = [&](int x, int y) {
+        const int index = y * width + x;
+        if (!transparent[static_cast<std::size_t>(index)] &&
+            imageIsTransparentOrMatte(pixels, paletteIndices, index, matte)) {
+            transparent[static_cast<std::size_t>(index)] = true;
+            queue.push(index);
+        }
+    };
+
+    for (int x = 0; x < width; ++x) {
+        seed(x, 0);
+        seed(x, height - 1);
+    }
+    for (int y = 1; y < height - 1; ++y) {
+        seed(0, y);
+        seed(width - 1, y);
+    }
+
+    while (!queue.empty()) {
+        const int index = queue.front();
+        queue.pop();
+        const int x = index % width;
+        const int y = index / width;
+        if (x > 0) seed(x - 1, y);
+        if (x < width - 1) seed(x + 1, y);
+        if (y > 0) seed(x, y - 1);
+        if (y < height - 1) seed(x, y + 1);
+    }
+    return transparent;
+}
+
+std::shared_ptr<bitmap::Bitmap> imageCreateAlphaMatte(const bitmap::Bitmap& src, int alphaThreshold) {
+    const int width = src.width();
+    const int height = src.height();
+    const int threshold = std::clamp(alphaThreshold, 0, 255);
+    std::vector<std::uint32_t> mask(static_cast<std::size_t>(width * height), 0x00FFFFFFU);
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            int alpha = static_cast<int>((src.getPixel(x, y) >> 24) & 0xFFU);
+            if (alpha < threshold) {
+                alpha = 0;
+            }
+            mask[static_cast<std::size_t>(y * width + x)] =
+                (static_cast<std::uint32_t>(alpha) << 24) | 0x00FFFFFFU;
+        }
+    }
+    auto matte = std::make_shared<bitmap::Bitmap>(width, height, 32, std::move(mask));
+    matte->setNativeAlpha(true);
+    return matte;
+}
+
+std::shared_ptr<bitmap::Bitmap> imageCreateFloodFillMatte(const bitmap::Bitmap& src) {
+    const int width = src.width();
+    const int height = src.height();
+    const auto pixels = src.pixels();
+    const auto paletteIndices = src.paletteIndices();
+    const auto matte = imageResolveFloodFillMatte(pixels, paletteIndices, width, height);
+    const auto transparent = matte
+        ? imageComputeFloodFillTransparency(pixels, paletteIndices, width, height, *matte)
+        : std::vector<bool>(static_cast<std::size_t>(width * height), false);
+
+    std::vector<std::uint32_t> mask(static_cast<std::size_t>(width * height), 0x00FFFFFFU);
+    for (std::size_t index = 0; index < pixels.size(); ++index) {
+        if (transparent[index]) {
+            mask[index] = 0x00FFFFFFU;
+        } else {
+            auto alpha = static_cast<std::uint32_t>((pixels[index] >> 24) & 0xFFU);
+            if (alpha == 0) {
+                alpha = 0xFFU;
+            }
+            mask[index] = (alpha << 24) | 0x00FFFFFFU;
+        }
+    }
+
+    auto matteBitmap = std::make_shared<bitmap::Bitmap>(width, height, 32, std::move(mask));
+    matteBitmap->setNativeAlpha(true);
+    return matteBitmap;
+}
+
+bool imageIsGrayscaleMaskSource(const std::vector<std::uint32_t>& pixels, const std::vector<bool>& transparent) {
+    int opaquePixels = 0;
+    for (std::size_t index = 0; index < pixels.size(); ++index) {
+        if (transparent[index] || ((pixels[index] >> 24) & 0xFFU) == 0) {
+            continue;
+        }
+        const auto r = (pixels[index] >> 16) & 0xFFU;
+        const auto g = (pixels[index] >> 8) & 0xFFU;
+        const auto b = pixels[index] & 0xFFU;
+        if (r != g || g != b) {
+            return false;
+        }
+        ++opaquePixels;
+    }
+    return opaquePixels > 0 && opaquePixels * 4 <= static_cast<int>(pixels.size()) * 3;
+}
+
+bool imageIsWhiteBackedMaskSource(const std::vector<std::uint32_t>& pixels,
+                                  const std::vector<bool>& transparent,
+                                  const ImageFloodFillMatte& matte) {
+    if (imageMaskAlphaFromPixel(0xFF000000U | static_cast<std::uint32_t>(matte.colorRgb & 0x00FFFFFF)) < 250) {
+        return false;
+    }
+
+    bool hasTransparentMatte = false;
+    bool hasOpaqueInk = false;
+    for (std::size_t index = 0; index < pixels.size(); ++index) {
+        if (((pixels[index] >> 24) & 0xFFU) == 0) {
+            continue;
+        }
+        if (transparent[index]) {
+            hasTransparentMatte = true;
+        } else {
+            hasOpaqueInk = true;
+        }
+        if (hasTransparentMatte && hasOpaqueInk) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool imageIsMaskSource(const std::vector<std::uint32_t>& pixels,
+                       const std::vector<bool>& transparent,
+                       const ImageFloodFillMatte& matte) {
+    return imageIsGrayscaleMaskSource(pixels, transparent) ||
+           imageIsWhiteBackedMaskSource(pixels, transparent, matte);
+}
+
+std::shared_ptr<bitmap::Bitmap> imageCreateDirectMask(const bitmap::Bitmap& src,
+                                                      const ImageFloodFillMatte& matte,
+                                                      int alphaThreshold) {
+    const int width = src.width();
+    const int height = src.height();
+    const int threshold = std::clamp(alphaThreshold, 0, 255);
+    const auto pixels = src.pixels();
+    const int matteLuma = imageMaskAlphaFromPixel(0xFF000000U | static_cast<std::uint32_t>(matte.colorRgb & 0x00FFFFFF));
+    const bool lightMatte = matteLuma >= 128;
+
+    std::vector<std::uint32_t> mask(static_cast<std::size_t>(width * height), 0xFFFFFFFFU);
+    for (std::size_t index = 0; index < pixels.size(); ++index) {
+        const auto pixel = pixels[index];
+        if (((pixel >> 24) & 0xFFU) == 0) {
+            mask[index] = 0xFFFFFFFFU;
+            continue;
+        }
+        int maskLuma = imageMaskAlphaFromPixel(pixel);
+        if (!lightMatte) {
+            maskLuma = 255 - maskLuma;
+        }
+        const int opacity = 255 - maskLuma;
+        if (opacity < threshold) {
+            maskLuma = 255;
+        }
+        const auto luma = static_cast<std::uint32_t>(maskLuma & 0xFF);
+        mask[index] = 0xFF000000U | (luma << 16) | (luma << 8) | luma;
+    }
+    return std::make_shared<bitmap::Bitmap>(width, height, src.bitDepth(), std::move(mask));
+}
+
+std::shared_ptr<bitmap::Bitmap> imageCreateMatte(const bitmap::Bitmap& src, int alphaThreshold) {
+    if (src.width() <= 0 || src.height() <= 0) {
+        return std::make_shared<bitmap::Bitmap>(1, 1, 32);
+    }
+    if (src.hasNativeMatteAlpha()) {
+        return imageCreateAlphaMatte(src, alphaThreshold);
+    }
+    return imageCreateFloodFillMatte(src);
+}
+
+std::shared_ptr<bitmap::Bitmap> imageCreateMask(const bitmap::Bitmap& src, int alphaThreshold) {
+    if (src.width() <= 0 || src.height() <= 0) {
+        return std::make_shared<bitmap::Bitmap>(1, 1, 32);
+    }
+    if (src.hasNativeMatteAlpha()) {
+        return imageCreateAlphaMatte(src, alphaThreshold);
+    }
+
+    const auto pixels = src.pixels();
+    const auto paletteIndices = src.paletteIndices();
+    const auto matte = imageResolveFloodFillMatte(pixels, paletteIndices, src.width(), src.height());
+    if (matte.has_value()) {
+        const auto transparent =
+            imageComputeFloodFillTransparency(pixels, paletteIndices, src.width(), src.height(), *matte);
+        if (imageIsMaskSource(pixels, transparent, *matte)) {
+            return imageCreateDirectMask(src, *matte, alphaThreshold);
+        }
+    }
+    return imageCreateFloodFillMatte(src);
+}
+
 Datum imageObjectMethod(const Datum::ImageRef& image, std::string_view methodName, const std::vector<Datum>& args) {
     if (image.bitmap == nullptr) {
         if (equalsIgnoreCase(methodName, "duplicate")) {
@@ -2092,6 +2538,14 @@ Datum imageObjectMethod(const Datum::ImageRef& image, std::string_view methodNam
     if (equalsIgnoreCase(methodName, "draw")) {
         bmp.markScriptModified();
         return imageDraw(bmp, args);
+    }
+    if (equalsIgnoreCase(methodName, "createMatte")) {
+        const int alphaThreshold = !args.empty() && !args[0].isVoid() ? toIntLikeJava(args[0]) : 0;
+        return Datum::imageRef(imageCreateMatte(bmp, alphaThreshold));
+    }
+    if (equalsIgnoreCase(methodName, "createMask")) {
+        const int alphaThreshold = !args.empty() && !args[0].isVoid() ? toIntLikeJava(args[0]) : 0;
+        return Datum::imageRef(imageCreateMask(bmp, alphaThreshold));
     }
     if (equalsIgnoreCase(methodName, "duplicate")) {
         return Datum::imageRef(std::make_shared<bitmap::Bitmap>(bmp.copy()));
