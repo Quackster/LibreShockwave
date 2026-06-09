@@ -454,7 +454,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - Simple string opcode handlers now cover concatenation, padded concatenation, case-insensitive contains, and case-insensitive starts-with checks.
 - String coercion follows the Java datum `toStr` path for void, strings/string chunks, symbols, references, lists, and property lists.
-- Field-provider-backed string chunk mutation and movie-property-backed item delimiter integration remain deferred to later VM runtime integration slices.
+- String chunk mutation is covered by the focused `PUT_CHUNK`/`DELETE_CHUNK` opcode slices.
 
 ### Lingo Opcode Basic Property Foundation
 
@@ -497,7 +497,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `GET_CHUNK` now extracts string char, word, item, and line chunks through the C++ opcode registry.
 - Chunk extraction mirrors Java stack order, sequential line/item/word/char narrowing, negative-index last-chunk behavior, and out-of-range empty-string results.
-- String chunk mutation opcodes and movie-property-backed item delimiter integration remain deferred to the next focused string opcode slice.
+- String chunk mutation opcodes are covered by the focused `PUT_CHUNK`/`DELETE_CHUNK` opcode slices.
 
 ### Lingo Opcode Chunk Variable Reference Foundation
 
@@ -509,19 +509,20 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `PUT` now handles Java-compatible into, before, and after writes for local, parameter, global, and receiver-property variables.
 - Variable IDs are decoded from the stack and scaled by the active VM variable multiplier for locals and params, matching the existing get/set opcode behavior.
-- Field-provider-backed `PUT` remains a no-op until C++ field/member text mutation is wired into the VM runtime.
+- Field-provider-backed `PUT` writes now route through the C++ field setter hook with Java-compatible identifier normalization and cast-lib propagation.
 
 ### Lingo Opcode Delete Chunk Foundation
 
 - `DELETE_CHUNK` now deletes char, word, item, and line chunks from context variables through the C++ opcode registry.
 - Chunk deletion resolves Java-compatible chunk type precedence, negative last-index bounds, delimiter consumption for word/item/line chunks, and out-of-range no-op behavior.
-- Field-provider-backed chunk deletion remains deferred until C++ field/member text mutation is wired into the VM runtime.
+- Field-provider-backed chunk deletion now reads through the field resolver and writes through the field setter hook while preserving the field cast-lib operand.
 
 ### Lingo Opcode Put Chunk Foundation
 
 - `PUT_CHUNK` now handles into, before, and after mutations for char, word, item, and line chunks through the C++ opcode registry.
 - Chunk insertion/replacement mirrors Java chunk type precedence, char replacement no-op behavior, missing-boundary insertion clamping, and negative char/item/word/line target handling.
-- Field-provider-backed chunk replacement and movie-property-backed item delimiter integration remain deferred to the full VM runtime integration.
+- Field-provider-backed chunk replacement now reads through the field resolver and writes through the field setter hook while preserving the field cast-lib operand.
+- Movie-property-backed item delimiter integration is now covered for chunk deletion and replacement.
 
 ## Verification
 
@@ -753,4 +754,5 @@ Result:
 - `90d0d1cf Port C++ image copyPixels quad foundation`
 - `25a06812 Port C++ script instance methods foundation`
 - `b3bc50b9 Port C++ member registry method foundation`
-- Current checkpoint commit message: `Port C++ script instance handler dispatch foundation`
+- `b3e7470f Port C++ script instance handler dispatch foundation`
+- Current checkpoint commit message: `Port C++ field chunk mutation foundation`

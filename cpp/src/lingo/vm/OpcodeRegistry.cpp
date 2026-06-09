@@ -3360,8 +3360,15 @@ Datum spriteObjectMethod(ExecutionContext& context,
     return builtinContext->spriteMethodHandler(sprite.channel, std::string(methodName), args);
 }
 
-Datum getContextVar(ExecutionContext& context, id::VarType varType, const Datum& idDatum);
-void setContextVar(ExecutionContext& context, id::VarType varType, const Datum& idDatum, Datum value);
+Datum getContextVar(ExecutionContext& context,
+                    id::VarType varType,
+                    const Datum& idDatum,
+                    const std::optional<Datum>& fieldCastIdDatum = std::nullopt);
+void setContextVar(ExecutionContext& context,
+                   id::VarType varType,
+                   const Datum& idDatum,
+                   Datum value,
+                   const std::optional<Datum>& fieldCastIdDatum = std::nullopt);
 
 Datum chunkRefObjectMethod(ExecutionContext& context,
                            const Datum::ChunkRef& chunkRef,
@@ -4046,7 +4053,17 @@ bool getChunk(ExecutionContext& context) {
     return true;
 }
 
-Datum getContextVar(ExecutionContext& context, id::VarType varType, const Datum& idDatum) {
+Datum normalizedFieldIdentifier(const Datum& idDatum) {
+    if (idDatum.isString() || idDatum.isInt()) {
+        return idDatum;
+    }
+    return Datum::of(toStringLikeJava(idDatum));
+}
+
+Datum getContextVar(ExecutionContext& context,
+                    id::VarType varType,
+                    const Datum& idDatum,
+                    const std::optional<Datum>& fieldCastIdDatum) {
     switch (varType) {
         case id::VarType::LOCAL:
             return context.getLocal(toIntLikeJava(idDatum) / context.variableMultiplier());
@@ -4062,13 +4079,23 @@ Datum getContextVar(ExecutionContext& context, id::VarType varType, const Datum&
             }
             return Datum::voidValue();
         }
-        case id::VarType::FIELD:
+        case id::VarType::FIELD: {
+            auto* builtinContext = context.builtinContext();
+            if (builtinContext != nullptr && builtinContext->fieldResolver) {
+                const int castId = fieldCastIdDatum ? toIntLikeJava(*fieldCastIdDatum) : 0;
+                return builtinContext->fieldResolver(normalizedFieldIdentifier(idDatum), castId);
+            }
             return Datum::of(std::string());
+        }
     }
     return Datum::voidValue();
 }
 
-void setContextVar(ExecutionContext& context, id::VarType varType, const Datum& idDatum, Datum value) {
+void setContextVar(ExecutionContext& context,
+                   id::VarType varType,
+                   const Datum& idDatum,
+                   Datum value,
+                   const std::optional<Datum>& fieldCastIdDatum) {
     switch (varType) {
         case id::VarType::LOCAL:
             context.setLocal(toIntLikeJava(idDatum) / context.variableMultiplier(), std::move(value));
@@ -4087,8 +4114,14 @@ void setContextVar(ExecutionContext& context, id::VarType varType, const Datum& 
             }
             return;
         }
-        case id::VarType::FIELD:
+        case id::VarType::FIELD: {
+            auto* builtinContext = context.builtinContext();
+            if (builtinContext != nullptr && builtinContext->fieldSetter) {
+                const int castId = fieldCastIdDatum ? toIntLikeJava(*fieldCastIdDatum) : 0;
+                builtinContext->fieldSetter(normalizedFieldIdentifier(idDatum), castId, toStringLikeJava(value));
+            }
             return;
+        }
     }
 }
 
@@ -4097,34 +4130,35 @@ bool put(ExecutionContext& context) {
     const int putType = (encoded >> 4) & 0xF;
     const auto varType = id::varTypeFromCode(encoded & 0xF);
 
+    std::optional<Datum> fieldCastIdDatum;
     if (varType == id::VarType::FIELD) {
-        (void)context.pop();
+        fieldCastIdDatum = context.pop();
     }
     const Datum idDatum = context.pop();
     Datum value = context.pop();
 
     switch (putType) {
         case 1:
-            setContextVar(context, varType, idDatum, std::move(value));
+            setContextVar(context, varType, idDatum, std::move(value), fieldCastIdDatum);
             break;
         case 3: {
-            const Datum current = getContextVar(context, varType, idDatum);
+            const Datum current = getContextVar(context, varType, idDatum, fieldCastIdDatum);
             const std::string valueString = toStringLikeJava(value);
             const std::string currentString = toStringLikeJava(current);
             const std::string newValue = currentString.empty()
                                              ? valueString
                                              : valueString.empty() ? currentString : valueString + currentString;
-            setContextVar(context, varType, idDatum, Datum::of(newValue));
+            setContextVar(context, varType, idDatum, Datum::of(newValue), fieldCastIdDatum);
             break;
         }
         case 2: {
-            const Datum current = getContextVar(context, varType, idDatum);
+            const Datum current = getContextVar(context, varType, idDatum, fieldCastIdDatum);
             const std::string currentString = toStringLikeJava(current);
             const std::string valueString = toStringLikeJava(value);
             const std::string newValue = currentString.empty()
                                              ? valueString
                                              : valueString.empty() ? currentString : currentString + valueString;
-            setContextVar(context, varType, idDatum, Datum::of(newValue));
+            setContextVar(context, varType, idDatum, Datum::of(newValue), fieldCastIdDatum);
             break;
         }
         default:
@@ -4135,8 +4169,9 @@ bool put(ExecutionContext& context) {
 
 bool deleteChunk(ExecutionContext& context) {
     const auto varType = id::varTypeFromCode(context.argument());
+    std::optional<Datum> fieldCastIdDatum;
     if (varType == id::VarType::FIELD) {
-        (void)context.pop();
+        fieldCastIdDatum = context.pop();
     }
     const Datum idDatum = context.pop();
 
@@ -4158,7 +4193,7 @@ bool deleteChunk(ExecutionContext& context) {
                                             firstLine,
                                             lastLine);
 
-    const Datum current = getContextVar(context, varType, idDatum);
+    const Datum current = getContextVar(context, varType, idDatum, fieldCastIdDatum);
     const std::string currentString = toStringLikeJava(current);
     const char itemDelimiter = currentItemDelimiter(context);
 
@@ -4182,7 +4217,8 @@ bool deleteChunk(ExecutionContext& context) {
     setContextVar(context,
                   varType,
                   idDatum,
-                  Datum::of(deleteChunkValue(currentString, chunk.type, chunk.first, chunk.last, itemDelimiter)));
+                  Datum::of(deleteChunkValue(currentString, chunk.type, chunk.first, chunk.last, itemDelimiter)),
+                  fieldCastIdDatum);
     return true;
 }
 
@@ -4191,8 +4227,9 @@ bool putChunk(ExecutionContext& context) {
     const int putType = (encoded >> 4) & 0xF;
     const auto varType = id::varTypeFromCode(encoded & 0xF);
 
+    std::optional<Datum> fieldCastIdDatum;
     if (varType == id::VarType::FIELD) {
-        (void)context.pop();
+        fieldCastIdDatum = context.pop();
     }
     const Datum idDatum = context.pop();
     const Datum value = context.pop();
@@ -4215,7 +4252,7 @@ bool putChunk(ExecutionContext& context) {
                                             firstLine,
                                             lastLine);
 
-    const std::string currentString = toStringLikeJava(getContextVar(context, varType, idDatum));
+    const std::string currentString = toStringLikeJava(getContextVar(context, varType, idDatum, fieldCastIdDatum));
     const std::string valueString = toStringLikeJava(value);
     const char itemDelimiter = currentItemDelimiter(context);
     std::string newString = currentString;
@@ -4242,7 +4279,7 @@ bool putChunk(ExecutionContext& context) {
             default:
                 break;
         }
-        setContextVar(context, varType, idDatum, Datum::of(std::move(newString)));
+        setContextVar(context, varType, idDatum, Datum::of(std::move(newString)), fieldCastIdDatum);
         return true;
     }
 
@@ -4274,7 +4311,7 @@ bool putChunk(ExecutionContext& context) {
             break;
     }
 
-    setContextVar(context, varType, idDatum, Datum::of(std::move(newString)));
+    setContextVar(context, varType, idDatum, Datum::of(std::move(newString)), fieldCastIdDatum);
     return true;
 }
 

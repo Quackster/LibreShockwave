@@ -401,7 +401,8 @@ bool hasCastProvider(const BuiltinContext& context) {
            context.castMemberResolver ||
            context.castMemberNameResolver ||
            context.castMemberExistsResolver ||
-           context.fieldResolver;
+           context.fieldResolver ||
+           context.fieldSetter;
 }
 
 Datum castLibRefOrVoid(int castLib) {

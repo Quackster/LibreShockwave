@@ -2684,6 +2684,54 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opcodeRegistry.execute(Opcode::PUT, putPropertyContext));
     assert(putReceiver.scriptInstanceValue().getProperty("health").stringValue() == "max-hp");
 
+    std::string fieldBacking;
+    Datum lastFieldResolveIdentifier = Datum::voidValue();
+    int lastFieldResolveCastLib = -1;
+    Datum lastFieldIdentifier = Datum::voidValue();
+    int lastFieldCastLib = -1;
+    std::string lastFieldValue;
+    builtinContext.fieldResolver = [&fieldBacking, &lastFieldResolveIdentifier, &lastFieldResolveCastLib](
+                                       const Datum& identifier,
+                                       int castLib) {
+        lastFieldResolveIdentifier = identifier;
+        lastFieldResolveCastLib = castLib;
+        return Datum::of(fieldBacking);
+    };
+    builtinContext.fieldSetter = [&lastFieldIdentifier, &lastFieldCastLib, &lastFieldValue, &fieldBacking](
+                                     const Datum& identifier,
+                                     int castLib,
+                                     const std::string& value) {
+        lastFieldIdentifier = identifier;
+        lastFieldCastLib = castLib;
+        lastFieldValue = value;
+        fieldBacking = value;
+    };
+    variableContext.setInstruction(ScriptChunk::Instruction{0,
+                                                            Opcode::PUT,
+                                                            libreshockwave::lingo::code(Opcode::PUT),
+                                                            putArgument(1, VarType::FIELD)});
+    variableContext.push(Datum::of(std::string("field-new")));
+    variableContext.push(Datum::symbol("caption"));
+    variableContext.push(Datum::of(2));
+    assert(opcodeRegistry.execute(Opcode::PUT, variableContext));
+    assert(lastFieldIdentifier.stringValue() == "caption");
+    assert(lastFieldCastLib == 2);
+    assert(lastFieldValue == "field-new");
+    assert(fieldBacking == "field-new");
+    variableContext.setInstruction(ScriptChunk::Instruction{0,
+                                                            Opcode::PUT,
+                                                            libreshockwave::lingo::code(Opcode::PUT),
+                                                            putArgument(2, VarType::FIELD)});
+    variableContext.push(Datum::of(std::string("-tail")));
+    variableContext.push(Datum::of(std::string("caption")));
+    variableContext.push(Datum::of(2));
+    assert(opcodeRegistry.execute(Opcode::PUT, variableContext));
+    assert(lastFieldResolveIdentifier.stringValue() == "caption");
+    assert(lastFieldResolveCastLib == 2);
+    assert(lastFieldIdentifier.stringValue() == "caption");
+    assert(lastFieldCastLib == 2);
+    assert(fieldBacking == "field-new-tail");
+
     auto runDeleteLocalChunk = [&](std::string value,
                                    int firstChar,
                                    int lastChar,
@@ -2762,6 +2810,55 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runDeleteLocalChunk("red|green|blue", 0, 0, 0, 0, 2, 0, 0, 0) == "red|blue");
     assert(runPutLocalChunk("red|green|blue", "lime", 1, 0, 0, 0, 0, 2, 0, 0, 0) == "red|lime|blue");
     builtinContext.movieProperties = nullptr;
+
+    auto pushChunkRange = [&](int firstChar,
+                              int lastChar,
+                              int firstWord,
+                              int lastWord,
+                              int firstItem,
+                              int lastItem,
+                              int firstLine,
+                              int lastLine) {
+        variableContext.push(Datum::of(firstChar));
+        variableContext.push(Datum::of(lastChar));
+        variableContext.push(Datum::of(firstWord));
+        variableContext.push(Datum::of(lastWord));
+        variableContext.push(Datum::of(firstItem));
+        variableContext.push(Datum::of(lastItem));
+        variableContext.push(Datum::of(firstLine));
+        variableContext.push(Datum::of(lastLine));
+    };
+    fieldBacking = "abcd";
+    variableContext.setInstruction(ScriptChunk::Instruction{0,
+                                                            Opcode::DELETE_CHUNK,
+                                                            libreshockwave::lingo::code(Opcode::DELETE_CHUNK),
+                                                            libreshockwave::id::code(VarType::FIELD)});
+    pushChunkRange(2, 3, 0, 0, 0, 0, 0, 0);
+    variableContext.push(Datum::of(std::string("caption")));
+    variableContext.push(Datum::of(3));
+    assert(opcodeRegistry.execute(Opcode::DELETE_CHUNK, variableContext));
+    assert(lastFieldResolveIdentifier.stringValue() == "caption");
+    assert(lastFieldResolveCastLib == 3);
+    assert(lastFieldIdentifier.stringValue() == "caption");
+    assert(lastFieldCastLib == 3);
+    assert(fieldBacking == "ad");
+    fieldBacking = "abcd";
+    variableContext.setInstruction(ScriptChunk::Instruction{0,
+                                                            Opcode::PUT_CHUNK,
+                                                            libreshockwave::lingo::code(Opcode::PUT_CHUNK),
+                                                            putArgument(1, VarType::FIELD)});
+    pushChunkRange(2, 3, 0, 0, 0, 0, 0, 0);
+    variableContext.push(Datum::of(std::string("XX")));
+    variableContext.push(Datum::of(std::string("caption")));
+    variableContext.push(Datum::of(4));
+    assert(opcodeRegistry.execute(Opcode::PUT_CHUNK, variableContext));
+    assert(lastFieldResolveIdentifier.stringValue() == "caption");
+    assert(lastFieldResolveCastLib == 4);
+    assert(lastFieldIdentifier.stringValue() == "caption");
+    assert(lastFieldCastLib == 4);
+    assert(fieldBacking == "aXXd");
+    builtinContext.fieldResolver = {};
+    builtinContext.fieldSetter = {};
 
     Scope listScope(&script, handler, {});
     ExecutionContext listContext(listScope, ScriptChunk::Instruction{0, Opcode::PUSH_ARG_LIST, libreshockwave::lingo::code(Opcode::PUSH_ARG_LIST), 3});
