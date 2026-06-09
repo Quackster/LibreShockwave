@@ -223,6 +223,13 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `score::ScoreNavigator` ports score span construction, frame-label lookup, active sprite/channel queries, marker resolution, and frame counts.
 - Behavior parameter literal parsing is wired as a deferred empty result until the VM `LingoValueParser` equivalent is ported.
 
+### Debug Breakpoint Foundation
+
+- `debug::Breakpoint` and `BreakpointKey` port immutable breakpoint records and stable lookup keys.
+- `debug::BreakpointManager` ports add/remove/toggle, enable toggling, script offset maps, JSON serialization, JSON deserialization, and legacy serialization/deserialization.
+- `debug::WatchExpression` ports watch expression result/error state and display helpers.
+- `debug::DebugSnapshot`, `InstructionDisplay`, and `CallFrame` port immutable debugger UI state payloads without pulling in the full debug controller.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -268,6 +275,7 @@ Result:
 - PlayerEvent handler names, event payload records, RenderType, and RenderConfig tests passed through the same CTest executable.
 - PlayerState, InputEvent factories, DirectorKeyCodes, and InputState mutation/queue tests passed through the same CTest executable.
 - ScoreBehaviorRef, SpriteSpan, ScoreNavigator labels, marker resolution, active sprites/channels, and frame-count tests passed through the same CTest executable.
+- Breakpoint, BreakpointManager, WatchExpression, and DebugSnapshot tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -312,4 +320,5 @@ Result:
 - `f0ac5ed Port C++ cast member wrapper`
 - `7196f52 Port C++ player event foundation`
 - `25bdb9d Port C++ player input foundation`
-- Current checkpoint commit message: `Port C++ score navigation foundation`
+- `a7f4a2e Port C++ score navigation foundation`
+- Current checkpoint commit message: `Port C++ debug breakpoint foundation`

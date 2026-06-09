@@ -68,6 +68,10 @@
 #include "libreshockwave/player/PlayerEvent.hpp"
 #include "libreshockwave/player/PlayerEventInfo.hpp"
 #include "libreshockwave/player/PlayerState.hpp"
+#include "libreshockwave/player/debug/Breakpoint.hpp"
+#include "libreshockwave/player/debug/BreakpointManager.hpp"
+#include "libreshockwave/player/debug/DebugSnapshot.hpp"
+#include "libreshockwave/player/debug/WatchExpression.hpp"
 #include "libreshockwave/player/frame/FrameEvent.hpp"
 #include "libreshockwave/player/input/DirectorKeyCodes.hpp"
 #include "libreshockwave/player/input/InputEvent.hpp"
@@ -151,6 +155,13 @@ using libreshockwave::player::allPlayerEvents;
 using libreshockwave::player::handlerName;
 using libreshockwave::player::name;
 using libreshockwave::player::playerEventFromHandlerName;
+using libreshockwave::player::debug::Breakpoint;
+using libreshockwave::player::debug::BreakpointKey;
+using libreshockwave::player::debug::BreakpointManager;
+using libreshockwave::player::debug::CallFrame;
+using libreshockwave::player::debug::DebugSnapshot;
+using libreshockwave::player::debug::InstructionDisplay;
+using libreshockwave::player::debug::WatchExpression;
 using libreshockwave::player::frame::FrameEvent;
 using libreshockwave::player::input::DirectorKeyCodes;
 using libreshockwave::player::input::InputEvent;
@@ -692,6 +703,123 @@ void testScoreNavigationFoundation() {
     assert(emptyNavigator.getAllSpans().empty());
     assert(emptyNavigator.getFrameForLabel("anything") == -1);
     assert(emptyNavigator.getMarkerFrame(1, 0) == 0);
+}
+
+void testDebugFoundation() {
+    Breakpoint breakpoint = Breakpoint::simple(4, "mouseUp", 12);
+    assert(breakpoint.scriptId == 4);
+    assert(breakpoint.handlerName == "mouseUp");
+    assert(breakpoint.offset == 12);
+    assert(breakpoint.enabled);
+    assert(breakpoint.key() == "4:mouseUp:12");
+    assert(breakpoint.toString() == "Breakpoint[4:mouseUp:12]");
+
+    const auto disabled = breakpoint.withEnabled(false);
+    assert(!disabled.enabled);
+    assert(disabled.toString() == "Breakpoint[4:mouseUp:12, disabled]");
+    assert(BreakpointKey::of(disabled).toString() == "4:mouseUp:12");
+    assert(BreakpointKey::of(4, "mouseUp", 12) == BreakpointKey::of(disabled));
+
+    BreakpointManager manager;
+    assert(!manager.hasBreakpoint(4, "mouseUp", 12));
+    assert(!manager.getBreakpoint(4, "mouseUp", 12).has_value());
+    const auto added = manager.addBreakpoint(4, "mouseUp", 12);
+    assert(added == breakpoint);
+    assert(manager.hasBreakpoint(4, "mouseUp", 12));
+    assert(manager.getBreakpoint(4, "mouseUp", 12) == breakpoint);
+
+    const auto toggledDisabled = manager.toggleEnabled(4, "mouseUp", 12);
+    assert(toggledDisabled.has_value());
+    assert(!toggledDisabled->enabled);
+    assert(manager.getBreakpoint(4, "mouseUp", 12)->enabled == false);
+    assert(!manager.toggleEnabled(4, "missing", 12).has_value());
+
+    manager.setBreakpoint(Breakpoint::simple(4, "enterFrame", 20));
+    manager.setBreakpoint(Breakpoint::simple(5, "startMovie", 1));
+    assert(manager.getAllBreakpoints().size() == 3);
+    assert(manager.getBreakpointsForScript(4).size() == 2);
+    assert((manager.getOffsetsForScript(4) == std::set<int>{12, 20}));
+
+    const auto offsetMap = manager.toOffsetMap();
+    assert(offsetMap.at(4) == (std::set<int>{12, 20}));
+    assert(offsetMap.at(5) == (std::set<int>{1}));
+    assert(manager.serializeLegacy() == "4:12,20;5:1");
+
+    const auto removed = manager.removeBreakpoint(4, "enterFrame", 20);
+    assert(removed.has_value());
+    assert(removed->offset == 20);
+    assert(!manager.removeBreakpoint(4, "enterFrame", 20).has_value());
+
+    assert(!manager.toggleBreakpoint(4, "mouseUp", 12).has_value());
+    assert(!manager.hasBreakpoint(4, "mouseUp", 12));
+    assert(manager.toggleBreakpoint(4, "mouseUp", 12).has_value());
+    assert(manager.hasBreakpoint(4, "mouseUp", 12));
+
+    manager.clearAll();
+    assert(manager.serialize().empty());
+    manager.setFromOffsetMap({{2, {3, 7}}, {1, {9}}});
+    assert(manager.hasBreakpoint(2, "", 3));
+    assert(manager.hasBreakpoint(1, "", 9));
+    assert(manager.serializeLegacy() == "1:9;2:3,7");
+
+    manager.deserialize("7:1,2;8:3");
+    assert(manager.hasBreakpoint(7, "", 1));
+    assert(manager.hasBreakpoint(7, "", 2));
+    assert(manager.hasBreakpoint(8, "", 3));
+
+    manager.clearAll();
+    manager.setBreakpoint(Breakpoint{9, "line\nhandler", 44, false});
+    const auto json = manager.serialize();
+    assert(json == "{\"version\":3,\"breakpoints\":[{\"scriptId\":9,\"handlerName\":\"line\\nhandler\",\"offset\":44,\"enabled\":false}]}");
+    manager.deserialize(json);
+    const auto parsed = manager.getBreakpoint(9, "line\nhandler", 44);
+    assert(parsed.has_value());
+    assert(!parsed->enabled);
+
+    auto watch = WatchExpression::create("watch-id", "the mouseH");
+    assert(!watch.hasError());
+    assert(!watch.isEvaluated());
+    assert(watch.getResultDisplay() == "<not evaluated>");
+    assert(watch.getTypeName() == "-");
+    assert(watch.toString() == "Watch[the mouseH = <not evaluated>]");
+
+    auto watchWithValue = watch.withValue(Datum::of(42));
+    assert(watchWithValue.isEvaluated());
+    assert(!watchWithValue.hasError());
+    assert(watchWithValue.getResultDisplay() == "42");
+    assert(watchWithValue.getTypeName() == "int");
+
+    auto watchWithError = watch.withError("boom");
+    assert(watchWithError.hasError());
+    assert(watchWithError.getResultDisplay() == "<boom>");
+    assert(watchWithError.getTypeName() == "Error");
+    assert(watch.withExpression("the mouseV").expression == "the mouseV");
+    assert(!WatchExpression::create("random expression").id.empty());
+
+    DebugSnapshot snapshot{
+        4,
+        "Movie Script",
+        "mouseUp",
+        12,
+        2,
+        "pushInt",
+        42,
+        "literal",
+        {InstructionDisplay{12, 2, "pushInt", 42, "literal", true}},
+        {Datum::of(1), Datum::of("two")},
+        {{"localVar", Datum::of(3)}},
+        {{"globalVar", Datum::of(4)}},
+        {Datum::of(5)},
+        Datum::of(6),
+        {CallFrame{4, "Movie Script", "mouseUp", {Datum::of(7)}, Datum::of(8)}},
+        {watchWithValue}
+    };
+    assert(snapshot.scriptId == 4);
+    assert(snapshot.allInstructions[0].hasBreakpoint);
+    assert(snapshot.stack.size() == 2);
+    assert(snapshot.locals.at("localVar").intValue() == 3);
+    assert(snapshot.callStack[0].receiver->intValue() == 8);
+    assert(snapshot.watchResults[0].getResultDisplay() == "42");
 }
 
 void testPaletteAndColorRefs() {
@@ -3056,6 +3184,7 @@ int main() {
     testPlayerCoreFoundation();
     testPlayerInputFoundation();
     testScoreNavigationFoundation();
+    testDebugFoundation();
     testPaletteAndColorRefs();
     testBitmapAlphaAndPaletteBehavior();
     testBitmapRegionsAndMetadata();

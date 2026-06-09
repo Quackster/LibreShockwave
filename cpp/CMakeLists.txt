@@ -50,6 +50,9 @@ add_library(libreshockwave
     src/player/input/DirectorKeyCodes.cpp
     src/player/input/InputEvent.cpp
     src/player/input/InputState.cpp
+    src/player/debug/Breakpoint.cpp
+    src/player/debug/BreakpointManager.cpp
+    src/player/debug/WatchExpression.cpp
     src/player/render/RenderConfig.cpp
     src/player/render/RenderType.cpp
     src/player/score/ScoreBehaviorRef.cpp
