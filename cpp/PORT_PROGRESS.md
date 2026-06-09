@@ -454,7 +454,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - Simple string opcode handlers now cover concatenation, padded concatenation, case-insensitive contains, and case-insensitive starts-with checks.
 - String coercion follows the Java datum `toStr` path for void, strings/string chunks, symbols, references, lists, and property lists.
-- PUT_CHUNK and DELETE_CHUNK remain deferred to a focused string chunk mutation opcode slice.
+- PUT_CHUNK remains deferred to a focused string chunk insertion/replacement opcode slice.
 
 ### Lingo Opcode Basic Property Foundation
 
@@ -497,6 +497,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `PUT` now handles Java-compatible into, before, and after writes for local, parameter, global, and receiver-property variables.
 - Variable IDs are decoded from the stack and scaled by the active VM variable multiplier for locals and params, matching the existing get/set opcode behavior.
 - Field-provider-backed `PUT` remains a no-op until C++ field/member text mutation is wired into the VM runtime.
+
+### Lingo Opcode Delete Chunk Foundation
+
+- `DELETE_CHUNK` now deletes char, word, item, and line chunks from context variables through the C++ opcode registry.
+- Chunk deletion resolves Java-compatible chunk type precedence, negative last-index bounds, delimiter consumption for word/item/line chunks, and out-of-range no-op behavior.
+- Field-provider-backed chunk deletion remains deferred until C++ field/member text mutation is wired into the VM runtime.
 
 ## Verification
 
@@ -564,6 +570,7 @@ Result:
 - Lingo `GET_CHUNK` char/word/item/line extraction, range, negative last-index, and sequential narrowing tests passed through the same CTest executable.
 - Lingo `PUSH_CHUNK_VAR_REF` typed raw-index varref creation tests passed through the same CTest executable.
 - Lingo `PUT` local, parameter, global, receiver-property, before, and after mutation tests passed through the same CTest executable.
+- Lingo `DELETE_CHUNK` char, word, item, line, negative last-index, delimiter, and out-of-range tests passed through the same CTest executable.
 - MovieProperties movie/stage property reads and writes, file/input-backed values, xtra lists, item delimiters, timers, stage background color, random seed, navigation callbacks, and net navigation callbacks passed through the same CTest executable.
 - BuiltinRegistry case-insensitive lookup, custom registration, movie label/marker builtins, sprite puppet/cursor/spriteBox builtins, puppetPalette hooks, and Java-compatible no-op sprite builtins passed through the same CTest executable.
 - MathBuiltins numeric coercion, integer/float conversion, bit operations, trig, power, min/max, list min/max, and random callback hooks passed through the same CTest executable.
@@ -679,4 +686,5 @@ Result:
 - `10193311 Port C++ opcode object construction foundation`
 - `0487784f Port C++ opcode string chunk foundation`
 - `87e32e1d Port C++ opcode chunk varref foundation`
-- Current checkpoint commit message: `Port C++ opcode put foundation`
+- `c9ed19bd Port C++ opcode put foundation`
+- Current checkpoint commit message: `Port C++ opcode delete chunk foundation`

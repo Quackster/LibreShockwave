@@ -2313,6 +2313,7 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opcodeRegistry.hasHandler(Opcode::CONTAINS_STR));
     assert(opcodeRegistry.hasHandler(Opcode::CONTAINS_0_STR));
     assert(opcodeRegistry.hasHandler(Opcode::PUT));
+    assert(opcodeRegistry.hasHandler(Opcode::DELETE_CHUNK));
     assert(opcodeRegistry.hasHandler(Opcode::GET_LOCAL));
     assert(opcodeRegistry.hasHandler(Opcode::SET_LOCAL));
     assert(opcodeRegistry.hasHandler(Opcode::GET_PARAM));
@@ -2537,6 +2538,40 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     putPropertyContext.push(Datum::of(50));
     assert(opcodeRegistry.execute(Opcode::PUT, putPropertyContext));
     assert(putReceiver.scriptInstanceValue().getProperty("health").stringValue() == "max-hp");
+
+    auto runDeleteLocalChunk = [&](std::string value,
+                                   int firstChar,
+                                   int lastChar,
+                                   int firstWord,
+                                   int lastWord,
+                                   int firstItem,
+                                   int lastItem,
+                                   int firstLine,
+                                   int lastLine) {
+        variableScope.setLocal(1, Datum::of(std::move(value)));
+        variableContext.setInstruction(ScriptChunk::Instruction{0,
+                                                                Opcode::DELETE_CHUNK,
+                                                                libreshockwave::lingo::code(Opcode::DELETE_CHUNK),
+                                                                libreshockwave::id::code(VarType::LOCAL)});
+        variableContext.push(Datum::of(firstChar));
+        variableContext.push(Datum::of(lastChar));
+        variableContext.push(Datum::of(firstWord));
+        variableContext.push(Datum::of(lastWord));
+        variableContext.push(Datum::of(firstItem));
+        variableContext.push(Datum::of(lastItem));
+        variableContext.push(Datum::of(firstLine));
+        variableContext.push(Datum::of(lastLine));
+        variableContext.push(Datum::of(2));
+        assert(opcodeRegistry.execute(Opcode::DELETE_CHUNK, variableContext));
+        return variableScope.getLocal(1).stringValue();
+    };
+
+    assert(runDeleteLocalChunk("abcd", 2, 3, 0, 0, 0, 0, 0, 0) == "ad");
+    assert(runDeleteLocalChunk("abcd", -1, 0, 0, 0, 0, 0, 0, 0) == "abc");
+    assert(runDeleteLocalChunk("red,green,blue", 0, 0, 0, 0, 2, 0, 0, 0) == "red,blue");
+    assert(runDeleteLocalChunk("one two three", 0, 0, 2, 0, 0, 0, 0, 0) == "one three");
+    assert(runDeleteLocalChunk("top\nmiddle\nbottom", 0, 0, 0, 0, 0, 0, 2, 0) == "top\nbottom");
+    assert(runDeleteLocalChunk("short", 9, 0, 0, 0, 0, 0, 0, 0) == "short");
 
     Scope listScope(&script, handler, {});
     ExecutionContext listContext(listScope, ScriptChunk::Instruction{0, Opcode::PUSH_ARG_LIST, libreshockwave::lingo::code(Opcode::PUSH_ARG_LIST), 3});

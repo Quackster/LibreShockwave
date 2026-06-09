@@ -961,6 +961,10 @@ std::string chunkDelimiter(StringChunkType type, char itemDelimiter = ',') {
     return "";
 }
 
+std::string sourceChunkDelimiter(std::string_view value, StringChunkType type, char itemDelimiter = ',') {
+    return type == StringChunkType::Line ? pickLineDelimiter(value) : chunkDelimiter(type, itemDelimiter);
+}
+
 int countChunks(std::string_view value, StringChunkType type, char itemDelimiter = ',') {
     if (value.empty()) {
         return type == StringChunkType::Item || type == StringChunkType::Line ? 1 : 0;
@@ -1062,6 +1066,158 @@ std::string resolveChunkRange(std::string_view value,
         return getChunkValue(value, type, first, itemDelimiter);
     }
     return getChunkRangeValue(value, type, first, effectiveLast, itemDelimiter);
+}
+
+std::optional<std::pair<int, int>> itemByteRange(std::string_view value, int first, int last, char delimiter) {
+    int chunkNum = 1;
+    int chunkStart = 0;
+    int rangeStart = -1;
+    for (int index = 0; index <= static_cast<int>(value.size()); ++index) {
+        if (index == static_cast<int>(value.size()) || value[static_cast<std::size_t>(index)] == delimiter) {
+            if (chunkNum == first) {
+                rangeStart = chunkStart;
+            }
+            if (chunkNum == last) {
+                if (rangeStart < 0) {
+                    return std::nullopt;
+                }
+                return std::pair{rangeStart, index};
+            }
+            if (chunkNum > last) {
+                break;
+            }
+            ++chunkNum;
+            chunkStart = index + 1;
+        }
+    }
+    if (rangeStart >= 0) {
+        return std::pair{rangeStart, static_cast<int>(value.size())};
+    }
+    return std::nullopt;
+}
+
+std::optional<std::pair<int, int>> chunkByteRange(std::string_view value,
+                                                  StringChunkType type,
+                                                  int first,
+                                                  int last,
+                                                  char itemDelimiter = ',') {
+    if (value.empty()) {
+        return std::nullopt;
+    }
+    last = last == 0 ? first : last;
+    if (first < 1) {
+        first = 1;
+    }
+    if (last < first) {
+        return std::nullopt;
+    }
+
+    if (type == StringChunkType::Char) {
+        if (first > static_cast<int>(value.size())) {
+            return std::nullopt;
+        }
+        return std::pair{first - 1, std::min(last, static_cast<int>(value.size()))};
+    }
+    if (type == StringChunkType::Item) {
+        return itemByteRange(value, first, last, itemDelimiter);
+    }
+
+    const auto chunks = splitChunks(value, type, itemDelimiter);
+    if (chunks.empty() || first > static_cast<int>(chunks.size())) {
+        return std::nullopt;
+    }
+    last = std::min(last, static_cast<int>(chunks.size()));
+    const std::string delimiter = sourceChunkDelimiter(value, type, itemDelimiter);
+
+    int start = 0;
+    for (int index = 0; index < first - 1; ++index) {
+        start += static_cast<int>(chunks[static_cast<std::size_t>(index)].size());
+        if (index < static_cast<int>(chunks.size()) - 1) {
+            start += static_cast<int>(delimiter.size());
+        }
+    }
+
+    int end = start;
+    for (int index = first - 1; index < last; ++index) {
+        end += static_cast<int>(chunks[static_cast<std::size_t>(index)].size());
+        if (index < last - 1 && index < static_cast<int>(chunks.size()) - 1) {
+            end += static_cast<int>(delimiter.size());
+        }
+    }
+    return std::pair{start, end};
+}
+
+bool startsWithAt(std::string_view value, std::string_view needle, int offset) {
+    if (needle.empty() || offset < 0 || offset + static_cast<int>(needle.size()) > static_cast<int>(value.size())) {
+        return false;
+    }
+    return value.substr(static_cast<std::size_t>(offset), needle.size()) == needle;
+}
+
+bool prefixEndsWith(std::string_view value, int end, std::string_view needle) {
+    if (needle.empty() || end < static_cast<int>(needle.size()) || end > static_cast<int>(value.size())) {
+        return false;
+    }
+    return value.substr(static_cast<std::size_t>(end) - needle.size(), needle.size()) == needle;
+}
+
+std::string deleteChunkValue(std::string_view value,
+                             StringChunkType type,
+                             int first,
+                             int last,
+                             char itemDelimiter = ',') {
+    auto range = chunkByteRange(value, type, first, last, itemDelimiter);
+    if (!range) {
+        return std::string(value);
+    }
+
+    auto [deleteStart, deleteEnd] = *range;
+    if (type != StringChunkType::Char) {
+        const std::string delimiter = sourceChunkDelimiter(value, type, itemDelimiter);
+        if (deleteEnd < static_cast<int>(value.size()) && startsWithAt(value, delimiter, deleteEnd)) {
+            deleteEnd += static_cast<int>(delimiter.size());
+        } else if (deleteStart > 0 && prefixEndsWith(value, deleteStart, delimiter)) {
+            deleteStart -= static_cast<int>(delimiter.size());
+        }
+    }
+
+    if (deleteStart == 0) {
+        return std::string(value.substr(static_cast<std::size_t>(deleteEnd)));
+    }
+    if (deleteEnd >= static_cast<int>(value.size())) {
+        return std::string(value.substr(0, static_cast<std::size_t>(deleteStart)));
+    }
+    return std::string(value.substr(0, static_cast<std::size_t>(deleteStart))) +
+           std::string(value.substr(static_cast<std::size_t>(deleteEnd)));
+}
+
+struct ChunkSpec {
+    StringChunkType type;
+    int first;
+    int last;
+};
+
+ChunkSpec chooseSingleChunkSpec(int firstChar,
+                                int lastChar,
+                                int firstWord,
+                                int lastWord,
+                                int firstItem,
+                                int lastItem,
+                                int firstLine,
+                                int lastLine) {
+    if (firstLine != 0 || lastLine != 0) {
+        return {StringChunkType::Line, firstLine, lastLine};
+    }
+    if (firstItem != 0 || lastItem != 0) {
+        return {StringChunkType::Item, firstItem, lastItem};
+    }
+    if (firstWord != 0 || lastWord != 0) {
+        return {StringChunkType::Word, firstWord, lastWord};
+    }
+    if (firstChar != 0 || lastChar != 0) {
+        return {StringChunkType::Char, firstChar, lastChar};
+    }
+    return {StringChunkType::Char, 1, 1};
 }
 
 Datum stringObjectMethod(const Datum& target, std::string_view methodName, const std::vector<Datum>& args) {
@@ -1782,6 +1938,59 @@ bool put(ExecutionContext& context) {
     return true;
 }
 
+bool deleteChunk(ExecutionContext& context) {
+    const auto varType = id::varTypeFromCode(context.argument());
+    if (varType == id::VarType::FIELD) {
+        (void)context.pop();
+    }
+    const Datum idDatum = context.pop();
+
+    const int lastLine = toIntLikeJava(context.pop());
+    const int firstLine = toIntLikeJava(context.pop());
+    const int lastItem = toIntLikeJava(context.pop());
+    const int firstItem = toIntLikeJava(context.pop());
+    const int lastWord = toIntLikeJava(context.pop());
+    const int firstWord = toIntLikeJava(context.pop());
+    const int lastChar = toIntLikeJava(context.pop());
+    const int firstChar = toIntLikeJava(context.pop());
+
+    ChunkSpec chunk = chooseSingleChunkSpec(firstChar,
+                                            lastChar,
+                                            firstWord,
+                                            lastWord,
+                                            firstItem,
+                                            lastItem,
+                                            firstLine,
+                                            lastLine);
+
+    const Datum current = getContextVar(context, varType, idDatum);
+    const std::string currentString = toStringLikeJava(current);
+    constexpr char itemDelimiter = ',';
+
+    if (chunk.type == StringChunkType::Char) {
+        if (chunk.first < 0) {
+            chunk.first = static_cast<int>(currentString.size());
+        }
+        if (chunk.last < 0) {
+            chunk.last = static_cast<int>(currentString.size());
+        }
+    } else if (chunk.first < 0 || chunk.last < 0) {
+        const int count = countChunks(currentString, chunk.type, itemDelimiter);
+        if (chunk.first < 0) {
+            chunk.first = count;
+        }
+        if (chunk.last < 0) {
+            chunk.last = count;
+        }
+    }
+
+    setContextVar(context,
+                  varType,
+                  idDatum,
+                  Datum::of(deleteChunkValue(currentString, chunk.type, chunk.first, chunk.last, itemDelimiter)));
+    return true;
+}
+
 bool getLocal(ExecutionContext& context) {
     context.push(context.getLocal(context.scaledArgument()));
     return true;
@@ -2068,6 +2277,7 @@ void StringOpcodes::registerHandlers(OpcodeRegistry& registry) {
     registry.registerHandler(Opcode::CONTAINS_STR, containsStr);
     registry.registerHandler(Opcode::CONTAINS_0_STR, contains0Str);
     registry.registerHandler(Opcode::PUT, put);
+    registry.registerHandler(Opcode::DELETE_CHUNK, deleteChunk);
 }
 
 void VariableOpcodes::registerHandlers(OpcodeRegistry& registry) {
