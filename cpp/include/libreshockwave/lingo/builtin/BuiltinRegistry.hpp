@@ -93,6 +93,29 @@ public:
     [[nodiscard]] static Datum setPref(BuiltinContext& context, const std::vector<Datum>& args);
 };
 
+class ListBuiltins {
+public:
+    static void registerBuiltins(BuiltinRegistry& registry);
+    [[nodiscard]] static Datum count(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum getAt(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum setAt(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum addAt(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum deleteAt(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum append(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum getaProp(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum setaProp(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum addProp(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum deleteProp(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum getPropAt(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum findPos(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum getOne(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum deleteOne(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum sort(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum listp(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum list(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum getLast(BuiltinContext& context, const std::vector<Datum>& args);
+};
+
 class ConstructorBuiltins {
 public:
     static void registerBuiltins(BuiltinRegistry& registry);

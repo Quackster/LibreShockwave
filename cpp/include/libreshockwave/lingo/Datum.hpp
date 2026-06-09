@@ -429,6 +429,7 @@ public:
     [[nodiscard]] int count() const;
     [[nodiscard]] bool sorted() const;
     [[nodiscard]] const std::vector<std::pair<Datum, Datum>>& properties() const;
+    [[nodiscard]] std::vector<std::pair<Datum, Datum>>& properties();
 
     friend bool operator==(const PropList& lhs, const PropList& rhs);
 

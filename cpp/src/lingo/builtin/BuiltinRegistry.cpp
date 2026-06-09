@@ -138,6 +138,7 @@ int javaRoundToInt(double value) {
 
 std::string toStringLikeJava(const Datum& datum);
 std::string datumReprLikeJava(const Datum& datum);
+std::string keyName(const Datum& datum);
 
 std::string listStringLikeJava(const Datum::List& list) {
     std::ostringstream out;
@@ -242,6 +243,113 @@ bool regionMatchesIgnoreCase(const std::string& value, std::size_t offset, const
     return true;
 }
 
+bool equalsIgnoreCase(std::string_view lhs, std::string_view rhs) {
+    if (lhs.size() != rhs.size()) {
+        return false;
+    }
+    for (std::size_t index = 0; index < lhs.size(); ++index) {
+        const auto left = static_cast<unsigned char>(lhs[index]);
+        const auto right = static_cast<unsigned char>(rhs[index]);
+        if (std::tolower(left) != std::tolower(right)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool lessIgnoreCase(const std::string& lhs, const std::string& rhs) {
+    const std::size_t length = std::min(lhs.size(), rhs.size());
+    for (std::size_t index = 0; index < length; ++index) {
+        const auto left = static_cast<unsigned char>(lhs[index]);
+        const auto right = static_cast<unsigned char>(rhs[index]);
+        const int lowerLeft = std::tolower(left);
+        const int lowerRight = std::tolower(right);
+        if (lowerLeft != lowerRight) {
+            return lowerLeft < lowerRight;
+        }
+    }
+    return lhs.size() < rhs.size();
+}
+
+bool lingoEquals(const Datum& lhs, const Datum& rhs) {
+    if ((lhs.isVoid() && rhs.isNumber()) || (lhs.isNumber() && rhs.isVoid())) {
+        return toDoubleLikeJava(lhs) == toDoubleLikeJava(rhs);
+    }
+    if (lhs.isNumber() && rhs.isNumber()) {
+        return toDoubleLikeJava(lhs) == toDoubleLikeJava(rhs);
+    }
+    if ((lhs.isString() || lhs.isSymbol()) && (rhs.isString() || rhs.isSymbol())) {
+        return equalsIgnoreCase(keyName(lhs), keyName(rhs));
+    }
+    return lhs == rhs;
+}
+
+int findPropIndexTyped(const Datum::PropList& propList, const Datum& key) {
+    const std::string target = keyName(key);
+    const bool targetIsSymbol = key.asSymbol() != nullptr;
+    int fallback = -1;
+    const auto& properties = propList.properties();
+    for (std::size_t index = 0; index < properties.size(); ++index) {
+        const std::string entryName = keyName(properties[index].first);
+        if (equalsIgnoreCase(entryName, target)) {
+            const bool entryIsSymbol = properties[index].first.asSymbol() != nullptr;
+            if (entryIsSymbol == targetIsSymbol) {
+                return static_cast<int>(index);
+            }
+            if (fallback < 0 && entryName == target) {
+                fallback = static_cast<int>(index);
+            }
+        }
+    }
+    return fallback;
+}
+
+int findPropIndexSameType(const Datum::PropList& propList, const Datum& key) {
+    const std::string target = keyName(key);
+    const bool targetIsSymbol = key.asSymbol() != nullptr;
+    const auto& properties = propList.properties();
+    for (std::size_t index = 0; index < properties.size(); ++index) {
+        if ((properties[index].first.asSymbol() != nullptr) == targetIsSymbol &&
+            equalsIgnoreCase(keyName(properties[index].first), target)) {
+            return static_cast<int>(index);
+        }
+    }
+    return -1;
+}
+
+int findPropIndexUntyped(const Datum::PropList& propList, const Datum& key) {
+    const std::string target = keyName(key);
+    const auto& properties = propList.properties();
+    for (std::size_t index = 0; index < properties.size(); ++index) {
+        if (equalsIgnoreCase(keyName(properties[index].first), target)) {
+            return static_cast<int>(index);
+        }
+    }
+    return -1;
+}
+
+void putPropTyped(Datum::PropList& propList, const Datum& key, Datum value) {
+    const int index = findPropIndexTyped(propList, key);
+    if (index >= 0) {
+        propList.properties()[static_cast<std::size_t>(index)].second = std::move(value);
+        return;
+    }
+    propList.properties().emplace_back(key, std::move(value));
+}
+
+void putPropSameType(Datum::PropList& propList, const Datum& key, Datum value) {
+    const int index = findPropIndexSameType(propList, key);
+    if (index >= 0) {
+        propList.properties()[static_cast<std::size_t>(index)].second = std::move(value);
+        return;
+    }
+    propList.properties().emplace_back(key, std::move(value));
+}
+
+Datum& mutableArg(const std::vector<Datum>& args, std::size_t index) {
+    return const_cast<Datum&>(args[index]);
+}
+
 std::string keyName(const Datum& datum) {
     if (const auto* symbol = datum.asSymbol()) {
         return symbol->name;
@@ -291,6 +399,7 @@ std::string ilkType(const Datum& datum) {
 BuiltinRegistry::BuiltinRegistry() {
     MathBuiltins::registerBuiltins(*this);
     StringBuiltins::registerBuiltins(*this);
+    ListBuiltins::registerBuiltins(*this);
     ConstructorBuiltins::registerBuiltins(*this);
     TypeBuiltins::registerBuiltins(*this);
     SpriteBuiltins::registerBuiltins(*this);
@@ -648,6 +757,288 @@ Datum StringBuiltins::setPref(BuiltinContext& context, const std::vector<Datum>&
         return Datum::voidValue();
     }
     return context.setPrefHandler(key, args[1]);
+}
+
+void ListBuiltins::registerBuiltins(BuiltinRegistry& registry) {
+    registry.registerBuiltin("count", ListBuiltins::count);
+    registry.registerBuiltin("getat", ListBuiltins::getAt);
+    registry.registerBuiltin("setat", ListBuiltins::setAt);
+    registry.registerBuiltin("addat", ListBuiltins::addAt);
+    registry.registerBuiltin("deleteat", ListBuiltins::deleteAt);
+    registry.registerBuiltin("append", ListBuiltins::append);
+    registry.registerBuiltin("add", ListBuiltins::append);
+    registry.registerBuiltin("getaprop", ListBuiltins::getaProp);
+    registry.registerBuiltin("setaprop", ListBuiltins::setaProp);
+    registry.registerBuiltin("addprop", ListBuiltins::addProp);
+    registry.registerBuiltin("deleteprop", ListBuiltins::deleteProp);
+    registry.registerBuiltin("getpropat", ListBuiltins::getPropAt);
+    registry.registerBuiltin("findpos", ListBuiltins::findPos);
+    registry.registerBuiltin("getone", ListBuiltins::getOne);
+    registry.registerBuiltin("getpos", ListBuiltins::getOne);
+    registry.registerBuiltin("deleteone", ListBuiltins::deleteOne);
+    registry.registerBuiltin("sort", ListBuiltins::sort);
+    registry.registerBuiltin("listp", ListBuiltins::listp);
+    registry.registerBuiltin("list", ListBuiltins::list);
+    registry.registerBuiltin("getlast", ListBuiltins::getLast);
+}
+
+Datum ListBuiltins::count(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::of(0);
+    }
+    if (args[0].isList()) {
+        return Datum::of(args[0].listValue().count());
+    }
+    if (args[0].isPropList()) {
+        return Datum::of(args[0].propListValue().count());
+    }
+    return Datum::of(0);
+}
+
+Datum ListBuiltins::getAt(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.size() < 2) {
+        return Datum::voidValue();
+    }
+    const Datum& container = args[0];
+    const Datum& keyOrIndex = args[1];
+    if (container.isList()) {
+        const int index = toIntLikeJava(keyOrIndex);
+        const auto& items = container.listValue().items();
+        if (index >= 1 && index <= static_cast<int>(items.size())) {
+            return items[static_cast<std::size_t>(index - 1)];
+        }
+        return Datum::voidValue();
+    }
+    if (container.isPropList()) {
+        const auto& propList = container.propListValue();
+        int index = -1;
+        if (keyOrIndex.asSymbol() != nullptr || keyOrIndex.isString()) {
+            index = findPropIndexTyped(propList, keyOrIndex);
+        } else {
+            const int position = toIntLikeJava(keyOrIndex);
+            if (position >= 1 && position <= propList.count()) {
+                index = position - 1;
+            }
+        }
+        if (index >= 0) {
+            return propList.properties()[static_cast<std::size_t>(index)].second;
+        }
+        return Datum::voidValue();
+    }
+    if (const auto* point = container.asIntPoint()) {
+        switch (toIntLikeJava(keyOrIndex)) {
+            case 1: return Datum::of(point->x);
+            case 2: return Datum::of(point->y);
+            default: return Datum::voidValue();
+        }
+    }
+    if (const auto* rect = container.asIntRect()) {
+        switch (toIntLikeJava(keyOrIndex)) {
+            case 1: return Datum::of(rect->left);
+            case 2: return Datum::of(rect->top);
+            case 3: return Datum::of(rect->right);
+            case 4: return Datum::of(rect->bottom);
+            default: return Datum::voidValue();
+        }
+    }
+    return Datum::voidValue();
+}
+
+Datum ListBuiltins::setAt(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.size() < 3) {
+        return Datum::voidValue();
+    }
+    const Datum& keyOrIndex = args[1];
+    const Datum& value = args[2];
+    if (args[0].isList()) {
+        const int index = toIntLikeJava(keyOrIndex);
+        auto& items = mutableArg(args, 0).listValue().items();
+        if (index >= 1 && index <= static_cast<int>(items.size())) {
+            items[static_cast<std::size_t>(index - 1)] = value;
+        }
+        return Datum::voidValue();
+    }
+    if (args[0].isPropList()) {
+        auto& propList = mutableArg(args, 0).propListValue();
+        if (keyOrIndex.asSymbol() != nullptr || keyOrIndex.isString()) {
+            putPropSameType(propList, keyOrIndex, value);
+        } else {
+            const int position = toIntLikeJava(keyOrIndex);
+            if (position >= 1 && position <= propList.count()) {
+                propList.properties()[static_cast<std::size_t>(position - 1)].second = value;
+            }
+        }
+        return Datum::voidValue();
+    }
+    return Datum::voidValue();
+}
+
+Datum ListBuiltins::addAt(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.size() < 3 || !args[0].isList()) {
+        return Datum::voidValue();
+    }
+    auto& items = mutableArg(args, 0).listValue().items();
+    int position = toIntLikeJava(args[1]) - 1;
+    if (position < 0) {
+        position = 0;
+    }
+    if (position > static_cast<int>(items.size())) {
+        position = static_cast<int>(items.size());
+    }
+    items.insert(items.begin() + position, args[2]);
+    return Datum::voidValue();
+}
+
+Datum ListBuiltins::deleteAt(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.size() < 2) {
+        return Datum::voidValue();
+    }
+    const int position = toIntLikeJava(args[1]);
+    if (args[0].isList()) {
+        auto& items = mutableArg(args, 0).listValue().items();
+        if (position >= 1 && position <= static_cast<int>(items.size())) {
+            items.erase(items.begin() + (position - 1));
+        }
+        return Datum::voidValue();
+    }
+    if (args[0].isPropList()) {
+        auto& properties = mutableArg(args, 0).propListValue().properties();
+        if (position >= 1 && position <= static_cast<int>(properties.size())) {
+            properties.erase(properties.begin() + (position - 1));
+        }
+    }
+    return Datum::voidValue();
+}
+
+Datum ListBuiltins::append(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.size() < 2 || !args[0].isList()) {
+        return Datum::voidValue();
+    }
+    mutableArg(args, 0).listValue().items().push_back(args[1]);
+    return Datum::voidValue();
+}
+
+Datum ListBuiltins::getaProp(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.size() < 2 || !args[0].isPropList()) {
+        return Datum::voidValue();
+    }
+    const int index = findPropIndexTyped(args[0].propListValue(), args[1]);
+    return index >= 0 ? args[0].propListValue().properties()[static_cast<std::size_t>(index)].second
+                      : Datum::voidValue();
+}
+
+Datum ListBuiltins::setaProp(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.size() < 3 || !args[0].isPropList()) {
+        return Datum::voidValue();
+    }
+    putPropTyped(mutableArg(args, 0).propListValue(), args[1], args[2]);
+    return Datum::voidValue();
+}
+
+Datum ListBuiltins::addProp(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.size() < 3 || !args[0].isPropList()) {
+        return Datum::voidValue();
+    }
+    mutableArg(args, 0).propListValue().properties().emplace_back(args[1], args[2]);
+    return Datum::voidValue();
+}
+
+Datum ListBuiltins::deleteProp(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.size() < 2 || !args[0].isPropList()) {
+        return Datum::voidValue();
+    }
+    const int index = findPropIndexTyped(args[0].propListValue(), args[1]);
+    if (index >= 0) {
+        auto& properties = mutableArg(args, 0).propListValue().properties();
+        properties.erase(properties.begin() + index);
+    }
+    return Datum::voidValue();
+}
+
+Datum ListBuiltins::getPropAt(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.size() < 2 || !args[0].isPropList()) {
+        return Datum::voidValue();
+    }
+    const int position = toIntLikeJava(args[1]);
+    const auto& properties = args[0].propListValue().properties();
+    if (position >= 1 && position <= static_cast<int>(properties.size())) {
+        return properties[static_cast<std::size_t>(position - 1)].first;
+    }
+    return Datum::voidValue();
+}
+
+Datum ListBuiltins::findPos(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.size() < 2 || !args[0].isPropList()) {
+        return Datum::voidValue();
+    }
+    const int index = findPropIndexUntyped(args[0].propListValue(), args[1]);
+    return index >= 0 ? Datum::of(index + 1) : Datum::voidValue();
+}
+
+Datum ListBuiltins::getOne(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.size() < 2) {
+        return Datum::of(0);
+    }
+    if (args[0].isList()) {
+        const auto& items = args[0].listValue().items();
+        for (std::size_t index = 0; index < items.size(); ++index) {
+            if (lingoEquals(items[index], args[1])) {
+                return Datum::of(static_cast<int>(index + 1));
+            }
+        }
+    }
+    return Datum::of(0);
+}
+
+Datum ListBuiltins::deleteOne(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.size() < 2 || !args[0].isList()) {
+        return Datum::voidValue();
+    }
+    auto& items = mutableArg(args, 0).listValue().items();
+    for (auto iterator = items.begin(); iterator != items.end(); ++iterator) {
+        if (lingoEquals(*iterator, args[1])) {
+            items.erase(iterator);
+            break;
+        }
+    }
+    return Datum::voidValue();
+}
+
+Datum ListBuiltins::sort(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.empty() || !args[0].isList()) {
+        return Datum::voidValue();
+    }
+    auto& items = mutableArg(args, 0).listValue().items();
+    std::sort(items.begin(), items.end(), [](const Datum& lhs, const Datum& rhs) {
+        if (lhs.isInt() && rhs.isInt()) {
+            return lhs.intValue() < rhs.intValue();
+        }
+        return lessIgnoreCase(toStringLikeJava(lhs), toStringLikeJava(rhs));
+    });
+    return Datum::voidValue();
+}
+
+Datum ListBuiltins::listp(BuiltinContext&, const std::vector<Datum>& args) {
+    return boolDatum(!args.empty() && (args[0].isList() || args[0].isPropList()));
+}
+
+Datum ListBuiltins::list(BuiltinContext&, const std::vector<Datum>& args) {
+    return Datum::list(args);
+}
+
+Datum ListBuiltins::getLast(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::voidValue();
+    }
+    if (args[0].isList()) {
+        const auto& items = args[0].listValue().items();
+        return items.empty() ? Datum::voidValue() : items.back();
+    }
+    if (args[0].isPropList()) {
+        const auto& properties = args[0].propListValue().properties();
+        return properties.empty() ? Datum::voidValue() : properties.back().second;
+    }
+    return Datum::voidValue();
 }
 
 void ConstructorBuiltins::registerBuiltins(BuiltinRegistry& registry) {

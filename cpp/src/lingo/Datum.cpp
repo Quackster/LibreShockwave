@@ -603,6 +603,10 @@ const std::vector<std::pair<Datum, Datum>>& Datum::PropList::properties() const 
     return properties_;
 }
 
+std::vector<std::pair<Datum, Datum>>& Datum::PropList::properties() {
+    return properties_;
+}
+
 bool operator==(const Datum::PropList& lhs, const Datum::PropList& rhs) {
     return lhs.sorted_ == rhs.sorted_ && lhs.properties_ == rhs.properties_;
 }
