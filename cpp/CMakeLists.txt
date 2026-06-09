@@ -11,10 +11,17 @@ add_library(libreshockwave
     src/cast/TextInfo.cpp
     src/cast/XmedStyledText.cpp
     src/chunks/BitmapChunk.cpp
+    src/chunks/CastChunk.cpp
+    src/chunks/ConfigChunk.cpp
+    src/chunks/FontMapChunk.cpp
+    src/chunks/FrameLabelsChunk.cpp
+    src/chunks/KeyTableChunk.cpp
     src/chunks/MediaChunk.cpp
     src/chunks/PaletteChunk.cpp
     src/chunks/RawChunk.cpp
+    src/chunks/ScriptNamesChunk.cpp
     src/chunks/SoundChunk.cpp
+    src/chunks/TextChunk.cpp
     src/format/ChunkType.cpp
     src/format/MoaID.cpp
     src/io/BinaryReader.cpp

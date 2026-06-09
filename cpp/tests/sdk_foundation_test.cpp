@@ -20,10 +20,17 @@
 #include "libreshockwave/cast/TextInfo.hpp"
 #include "libreshockwave/cast/XmedStyledText.hpp"
 #include "libreshockwave/chunks/BitmapChunk.hpp"
+#include "libreshockwave/chunks/CastChunk.hpp"
+#include "libreshockwave/chunks/ConfigChunk.hpp"
+#include "libreshockwave/chunks/FontMapChunk.hpp"
+#include "libreshockwave/chunks/FrameLabelsChunk.hpp"
+#include "libreshockwave/chunks/KeyTableChunk.hpp"
 #include "libreshockwave/chunks/MediaChunk.hpp"
 #include "libreshockwave/chunks/PaletteChunk.hpp"
 #include "libreshockwave/chunks/RawChunk.hpp"
+#include "libreshockwave/chunks/ScriptNamesChunk.hpp"
 #include "libreshockwave/chunks/SoundChunk.hpp"
+#include "libreshockwave/chunks/TextChunk.hpp"
 #include "libreshockwave/format/ChunkInfo.hpp"
 #include "libreshockwave/format/ChunkType.hpp"
 #include "libreshockwave/format/MoaID.hpp"
@@ -60,10 +67,17 @@ using libreshockwave::cast::StyledSpan;
 using libreshockwave::cast::TextInfo;
 using libreshockwave::cast::XmedStyledText;
 using libreshockwave::chunks::BitmapChunk;
+using libreshockwave::chunks::CastChunk;
+using libreshockwave::chunks::ConfigChunk;
+using libreshockwave::chunks::FontMapChunk;
+using libreshockwave::chunks::FrameLabelsChunk;
+using libreshockwave::chunks::KeyTableChunk;
 using libreshockwave::chunks::MediaChunk;
 using libreshockwave::chunks::PaletteChunk;
 using libreshockwave::chunks::RawChunk;
+using libreshockwave::chunks::ScriptNamesChunk;
 using libreshockwave::chunks::SoundChunk;
+using libreshockwave::chunks::TextChunk;
 using libreshockwave::lingo::Datum;
 using libreshockwave::lingo::DatumType;
 using libreshockwave::lingo::LingoException;
@@ -648,6 +662,240 @@ void testShockwave3DInfoParser() {
     assert(info.cameraName == "cam");
 }
 
+void testCompactChunkParsers() {
+    auto putI16 = [](std::vector<std::uint8_t>& data, int offset, int value) {
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((value >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>(value & 0xFF);
+    };
+    auto putI32At = [](std::vector<std::uint8_t>& data, int offset, std::uint32_t value) {
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((value >> 24) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>((value >> 16) & 0xFF);
+        data[static_cast<std::size_t>(offset + 2)] = static_cast<std::uint8_t>((value >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 3)] = static_cast<std::uint8_t>(value & 0xFF);
+    };
+    auto appendI16 = [](std::vector<std::uint8_t>& data, int value) {
+        data.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(value & 0xFF));
+    };
+    auto appendI32 = [](std::vector<std::uint8_t>& data, std::uint32_t value) {
+        data.push_back(static_cast<std::uint8_t>((value >> 24) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 16) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(value & 0xFF));
+    };
+
+    std::vector<std::uint8_t> configData(80, 0);
+    putI16(configData, 0, 80);
+    putI16(configData, 2, 1200);
+    putI16(configData, 4, 10);
+    putI16(configData, 6, 20);
+    putI16(configData, 8, 250);
+    putI16(configData, 10, 340);
+    putI16(configData, 12, 1);
+    putI16(configData, 14, 99);
+    putI16(configData, 20, 3);
+    putI16(configData, 22, 12);
+    putI16(configData, 24, 1);
+    putI16(configData, 26, 5);
+    putI16(configData, 28, 8);
+    putI16(configData, 36, 0x0207);
+    putI16(configData, 54, 30);
+    putI16(configData, 56, 2);
+    putI16(configData, 76, 4);
+    putI16(configData, 78, 5);
+    BinaryReader configReader(configData, ByteOrder::LittleEndian);
+    ConfigChunk config = ConfigChunk::read(nullptr, configReader, ChunkId(20), 12);
+    assert(config.type() == ChunkType::DRCF);
+    assert(config.directorVersion() == 0x0207);
+    assert(config.stageWidth() == 320);
+    assert(config.stageHeight() == 240);
+    assert(config.minMember() == 1);
+    assert(config.maxMember() == 99);
+    assert(config.tempo() == 30);
+    assert(config.bgColor() == 8);
+    assert(config.stageColor() == 5);
+    assert(config.stageColorRGB() == static_cast<int>(Palette::systemMacPalette().getColor(5)));
+    assert(config.defaultPaletteCastLib() == 4);
+    assert(config.defaultPaletteMember() == 5);
+    assert(config.movieVersion() == 1200);
+    assert(config.platform() == 2);
+
+    std::vector<std::uint8_t> configD7(80, 0);
+    putI16(configD7, 2, 1950);
+    putI16(configD7, 4, 0);
+    putI16(configD7, 6, 0);
+    putI16(configD7, 8, 100);
+    putI16(configD7, 10, 200);
+    configD7[18] = 0x22;
+    configD7[19] = 0x33;
+    putI16(configD7, 36, 0x0208);
+    configD7[26] = 1;
+    configD7[27] = 0x11;
+    putI16(configD7, 54, 15);
+    putI16(configD7, 56, 1);
+    BinaryReader configD7Reader(configD7);
+    ConfigChunk d7 = ConfigChunk::read(nullptr, configD7Reader, ChunkId(21), 12);
+    assert(d7.stageColorRGB() == 0x112233);
+
+    std::vector<std::uint8_t> labelsData;
+    appendI16(labelsData, 2);
+    appendI16(labelsData, 10);
+    appendI16(labelsData, 6);
+    appendI16(labelsData, 2);
+    appendI16(labelsData, 0);
+    appendI32(labelsData, 11);
+    labelsData.insert(labelsData.end(), {'S', 't', 'a', 'r', 't', 0, 'L', 'a', 't', 'e', 'r'});
+    BinaryReader labelsReader(labelsData);
+    FrameLabelsChunk labels = FrameLabelsChunk::read(nullptr, labelsReader, ChunkId(22), 12);
+    assert(labels.labels().size() == 2);
+    assert(labels.getFrameByLabel("start") == 2);
+    assert(labels.getLabelForFrame(10) == "Later");
+    assert(labels.getFrameByLabel("missing") == -1);
+
+    std::vector<std::uint8_t> namesData(20, 0);
+    putI16(namesData, 16, 20);
+    putI16(namesData, 18, 3);
+    namesData.push_back(5);
+    namesData.insert(namesData.end(), {'s', 't', 'a', 'r', 't'});
+    namesData.push_back(6);
+    namesData.insert(namesData.end(), {'M', 'o', 'u', 's', 'e', 'U'});
+    namesData.push_back(1);
+    namesData.push_back(0x8E);
+    BinaryReader namesReader(namesData);
+    ScriptNamesChunk names = ScriptNamesChunk::read(nullptr, namesReader, ChunkId(23), 12);
+    assert(names.names().size() == 3);
+    assert(names.getName(0) == "start");
+    assert(names.findName("mouseu") == 1);
+    assert(names.getName(99) == "<unknown:99>");
+    assert(names.getName(2) == "\xC3\xA9");
+
+    std::vector<std::uint8_t> castData;
+    appendI32(castData, 100);
+    appendI32(castData, 200);
+    appendI32(castData, 300);
+    BinaryReader castReader(castData);
+    CastChunk cast = CastChunk::read(nullptr, castReader, ChunkId(24), 12);
+    assert(cast.type() == ChunkType::CASp);
+    assert(cast.memberCount() == 3);
+    assert(cast.memberIds()[1] == 200);
+
+    std::vector<std::uint8_t> keyData;
+    appendI16(keyData, 12);
+    appendI16(keyData, 12);
+    appendI32(keyData, 2);
+    appendI32(keyData, 2);
+    appendI32(keyData, 111);
+    appendI32(keyData, 7);
+    appendI32(keyData, BinaryReader::fourCC("BITD"));
+    appendI32(keyData, 112);
+    appendI32(keyData, 7);
+    appendI32(keyData, BinaryReader::fourCC("ALFA"));
+    BinaryReader keyReader(keyData);
+    KeyTableChunk key = KeyTableChunk::read(nullptr, keyReader, ChunkId(25), 12);
+    assert(key.type() == ChunkType::KEYp);
+    assert(key.entries().size() == 2);
+    assert(key.entries()[0].fourccString() == "BITD");
+    assert(key.getEntriesForOwner(ChunkId(7)).size() == 2);
+    assert(key.findEntry(ChunkId(7), BinaryReader::fourCC("ALFA")).has_value());
+    assert(key.getOwnerCastId(ChunkId(111))->value() == 7);
+    assert(key.getEntryBySectionId(ChunkId(112))->fourccString() == "ALFA");
+}
+
+void testTextAndFontMapChunks() {
+    auto putI16 = [](std::vector<std::uint8_t>& data, int offset, int value) {
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((value >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>(value & 0xFF);
+    };
+    auto putI32At = [](std::vector<std::uint8_t>& data, int offset, std::uint32_t value) {
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((value >> 24) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>((value >> 16) & 0xFF);
+        data[static_cast<std::size_t>(offset + 2)] = static_cast<std::uint8_t>((value >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 3)] = static_cast<std::uint8_t>(value & 0xFF);
+    };
+
+    const std::vector<std::uint8_t> legacyRaw{
+        0x00, 0x00, 0x00, 0x0c,
+        0x00, 0x00, 0x00, 0x18,
+        0x00, 0x00, 0x00, 0x16,
+        'C', 'o', 'p', 'y', 'r', 'i', 'g', 'h',
+        't', ' ', 'H', 'a', 'b', 'b', 'o', ' ',
+        'L', 't', 'd', ' ', '2', '0', '0', '1',
+        0x00, 0x01, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00,
+        0x80,
+        0x12, 0x00, 0x00,
+        0x00, 0x09,
+        0xFF, 0xFF, 0xFF,
+        0xFF
+    };
+    BinaryReader legacyReader(legacyRaw, ByteOrder::LittleEndian);
+    TextChunk legacy = TextChunk::read(nullptr, legacyReader, ChunkId(26), 1600);
+    assert(legacy.text() == "Copyright Habbo Ltd 2001");
+    assert(legacy.runs().size() == 1);
+    assert(legacy.runs()[0].fontSize == 9);
+    assert(legacy.runs()[0].fontStyle == 128);
+    assert(legacy.runs()[0].colorR == 255);
+    assert(legacyReader.order() == ByteOrder::LittleEndian);
+
+    const std::vector<std::uint8_t> modernRaw{
+        0x00, 0x00, 0x00, 0x0c,
+        0x00, 0x00, 0x00, 0x01,
+        0x00, 0x00, 0x00, 0x00,
+        'X',
+        0x00, 0x01, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00,
+        0x00,
+        0x00,
+        0x00, 0x0c,
+        0x00, 0x00,
+        0x11, 0x22, 0x33,
+        0x44
+    };
+    BinaryReader modernReader(modernRaw);
+    TextChunk modern = TextChunk::read(nullptr, modernReader, ChunkId(27), 1950);
+    assert(modern.text() == "X");
+    assert(modern.runs().size() == 1);
+    assert(modern.runs()[0].fontSize == 12);
+    assert(modern.runs()[0].colorR == 0x11);
+    assert(modern.runs()[0].colorG == 0x22);
+    assert(modern.runs()[0].colorB == 0x33);
+
+    std::vector<std::uint8_t> fontMap(118, 0);
+    putI32At(fontMap, 0, 0x34);
+    putI32At(fontMap, 4, 0x3A);
+    putI32At(fontMap, 16, 3);
+    putI32At(fontMap, 20, 3);
+    auto putEntry = [&](int offset, int nameOffset, int platform, int fontId) {
+        putI32At(fontMap, offset, static_cast<std::uint32_t>(nameOffset));
+        putI16(fontMap, offset + 4, platform);
+        putI16(fontMap, offset + 6, fontId);
+    };
+    auto putName = [&](int offset, const std::string& value) {
+        putI16(fontMap, offset, static_cast<int>(value.size()));
+        for (int index = 0; index < static_cast<int>(value.size()); ++index) {
+            fontMap[static_cast<std::size_t>(offset + 2 + index)] = static_cast<std::uint8_t>(value[static_cast<std::size_t>(index)]);
+        }
+    };
+    putEntry(36, 0x12, 1, 0x8001);
+    putEntry(44, 0x22, 1, 0x8002);
+    putEntry(52, 0x2E, 2, 0x8003);
+    putName(80, "Volter-Bold");
+    putName(96, "Charcoal");
+    putName(108, "Arial");
+
+    BinaryReader fontMapReader(fontMap, ByteOrder::LittleEndian);
+    FontMapChunk fonts = FontMapChunk::read(nullptr, fontMapReader, ChunkId(28));
+    assert(fonts.type() == ChunkType::Fmap);
+    assert(fonts.entries().size() == 3);
+    assert(fonts.fontNameForId(0x8001).value() == "Volter-Bold");
+    assert(fonts.fontNameForId(0x8002).value() == "Charcoal");
+    assert(fonts.fontNameForId(0x8003).value() == "Arial");
+    assert(fonts.entries()[2].platform == 2);
+    assert(fontMapReader.order() == ByteOrder::LittleEndian);
+}
+
 int main() {
     testBinaryReaderEndianAndBounds();
     testBinaryReaderStringsAndFourCC();
@@ -664,6 +912,8 @@ int main() {
     testCastMetadataTypes();
     testCastInfoParsers();
     testShockwave3DInfoParser();
+    testCompactChunkParsers();
+    testTextAndFontMapChunks();
 
     std::cout << "LibreShockwave C++ SDK foundation tests passed\n";
     return 0;

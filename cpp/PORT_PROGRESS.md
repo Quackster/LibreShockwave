@@ -50,6 +50,16 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `cast::FilmLoopInfo` parser and dimension/registration helpers.
 - `cast::Shockwave3DInfo` parser for basic camera, color, flag, and Pascal string metadata.
 
+### Compact Chunk Parsers
+
+- `chunks::ConfigChunk` DRCF/VWCF parser for stage dimensions, stage color, tempo, platform, and default palette metadata.
+- `chunks::FrameLabelsChunk` VWLB parser and label lookup helpers.
+- `chunks::ScriptNamesChunk` Lnam parser and case-insensitive name lookup.
+- `chunks::TextChunk` STXT parser with legacy and modern text-run layouts.
+- `chunks::FontMapChunk` Fmap parser and font-id lookup.
+- `chunks::CastChunk` CAS* cast member ID array parser.
+- `chunks::KeyTableChunk` KEY* parser with owner/section lookups.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -68,14 +78,15 @@ Result:
 - zlib support was detected in the local CMake build and the zlib decompression path is covered by the C++ tests.
 - Chunk/audio foundation tests passed through the same CTest executable.
 - Cast metadata parser tests passed through the same CTest executable.
+- Compact chunk parser tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
 
-- SDK chunk model and chunk parsers.
+- Remaining SDK chunk model and chunk parsers.
 - Director/Afterburner file loading.
 - Remaining bitmap, sound, font, text, score, and script chunk decoders.
-- `CastMemberChunk`, `CastChunk`, `CastListChunk`, and cast member resolution.
+- `CastMemberChunk`, `CastListChunk`, and cast member resolution.
 - Lingo opcode model, decompiler, VM runtime values, opcodes, dispatchers, and builtins.
 - Player core, rendering pipeline, input, networking, audio, cast management, and debugging.
 - WASM/web player replacement strategy in C++.
@@ -86,4 +97,5 @@ Result:
 
 - `b1d5f49 Add initial C++ port foundation`
 - `4034c08 Port C++ chunk audio foundation`
-- Pending commit: cast metadata foundation.
+- `7364e28 Port C++ cast metadata foundation`
+- Pending commit: compact chunk parsers.
