@@ -1829,6 +1829,114 @@ void testDirectorFileAfterburnerLoader() {
 #endif
 }
 
+void testDirectorFileRiffLoader() {
+    auto appendFourCC = [](std::vector<std::uint8_t>& data, const std::string& value) {
+        data.insert(data.end(), value.begin(), value.end());
+    };
+    auto appendI16 = [](std::vector<std::uint8_t>& data, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data.push_back(static_cast<std::uint8_t>((raw >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(raw & 0xFF));
+    };
+    auto appendU32LE = [](std::vector<std::uint8_t>& data, std::uint32_t value) {
+        data.push_back(static_cast<std::uint8_t>(value & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 16) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 24) & 0xFF));
+    };
+    auto appendI32 = [](std::vector<std::uint8_t>& data, std::uint32_t value) {
+        data.push_back(static_cast<std::uint8_t>((value >> 24) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 16) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(value & 0xFF));
+    };
+    auto putI16At = [](std::vector<std::uint8_t>& data, int offset, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((raw >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>(raw & 0xFF);
+    };
+    auto putU32LE = [](std::vector<std::uint8_t>& data, int offset, std::uint32_t value) {
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>(value & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>((value >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 2)] = static_cast<std::uint8_t>((value >> 16) & 0xFF);
+        data[static_cast<std::size_t>(offset + 3)] = static_cast<std::uint8_t>((value >> 24) & 0xFF);
+    };
+
+    std::vector<std::uint8_t> configData(80, 0);
+    putI16At(configData, 2, 1000);
+    putI16At(configData, 4, 0);
+    putI16At(configData, 6, 0);
+    putI16At(configData, 8, 200);
+    putI16At(configData, 10, 300);
+    putI16At(configData, 12, 1);
+    putI16At(configData, 14, 20);
+    putI16At(configData, 20, 3);
+    putI16At(configData, 22, 10);
+    putI16At(configData, 24, 1);
+    putI16At(configData, 26, 4);
+    putI16At(configData, 28, 8);
+    putI16At(configData, 36, 0x0205);
+    putI16At(configData, 54, 18);
+    putI16At(configData, 56, 1);
+
+    std::vector<std::uint8_t> namesData(20, 0);
+    putI16At(namesData, 16, 20);
+    putI16At(namesData, 18, 1);
+    namesData.push_back(4);
+    namesData.insert(namesData.end(), {'m', 'a', 'i', 'n'});
+
+    std::vector<std::uint8_t> fileData;
+    appendFourCC(fileData, "RIFF");
+    appendU32LE(fileData, 0);
+    appendFourCC(fileData, "RMMP");
+    appendFourCC(fileData, "CFTC");
+    appendU32LE(fileData, 36);
+    appendU32LE(fileData, 0);
+
+    const int firstEntryOffset = static_cast<int>(fileData.size());
+    appendFourCC(fileData, "DRCF");
+    appendU32LE(fileData, static_cast<std::uint32_t>(configData.size() + 6));
+    appendU32LE(fileData, 100);
+    appendU32LE(fileData, 0);
+    appendFourCC(fileData, "Lnam");
+    appendU32LE(fileData, static_cast<std::uint32_t>(namesData.size() + 6));
+    appendU32LE(fileData, 101);
+    appendU32LE(fileData, 0);
+
+    auto appendResource = [&](const std::string& fourcc, int id, const std::vector<std::uint8_t>& payload) {
+        const int offset = static_cast<int>(fileData.size());
+        appendFourCC(fileData, fourcc);
+        appendU32LE(fileData, static_cast<std::uint32_t>(payload.size() + 6));
+        appendU32LE(fileData, static_cast<std::uint32_t>(id));
+        fileData.push_back(1);
+        fileData.push_back('x');
+        fileData.insert(fileData.end(), payload.begin(), payload.end());
+        return offset;
+    };
+
+    const int configResourceOffset = appendResource("DRCF", 100, configData);
+    const int namesResourceOffset = appendResource("Lnam", 101, namesData);
+    putU32LE(fileData, firstEntryOffset + 12, static_cast<std::uint32_t>(configResourceOffset));
+    putU32LE(fileData, firstEntryOffset + 28, static_cast<std::uint32_t>(namesResourceOffset));
+    putU32LE(fileData, 4, static_cast<std::uint32_t>(fileData.size() - 8));
+
+    auto file = DirectorFile::load(fileData);
+    assert(file->endian() == ByteOrder::LittleEndian);
+    assert(!file->isAfterburner());
+    assert(file->movieType() == ChunkType::MV93);
+    assert(file->version() == 0x0205);
+    assert(file->chunkInfo().size() == 2);
+    assert(file->chunks().size() == 2);
+    assert(file->config().get() != nullptr);
+    assert(file->config()->stageWidth() == 300);
+    assert(file->config()->stageHeight() == 200);
+    assert(file->config()->tempo() == 18);
+    assert(file->scriptNames().get() != nullptr);
+    assert(file->scriptNames()->getName(0) == "main");
+    assert(file->getChunkInfo(ChunkId(0))->type() == ChunkType::DRCF);
+    assert(file->getChunk(ChunkId(1))->type() == ChunkType::Lnam);
+}
+
 int main() {
     testBinaryReaderEndianAndBounds();
     testBinaryReaderStringsAndFourCC();
@@ -1855,6 +1963,7 @@ int main() {
     testDirectorFileRifxLoader();
     testAfterburnerReader();
     testDirectorFileAfterburnerLoader();
+    testDirectorFileRiffLoader();
 
     std::cout << "LibreShockwave C++ SDK foundation tests passed\n";
     return 0;

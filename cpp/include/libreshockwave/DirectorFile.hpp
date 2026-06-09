@@ -78,6 +78,7 @@ private:
     [[nodiscard]] static std::shared_ptr<DirectorFile> loadRIFX(io::BinaryReader& reader,
                                                                 io::ByteOrder endian,
                                                                 format::ChunkType movieType);
+    [[nodiscard]] static std::shared_ptr<DirectorFile> loadRIFF(io::BinaryReader& reader, io::ByteOrder endian);
     [[nodiscard]] static std::shared_ptr<DirectorFile> loadAfterburner(io::BinaryReader& reader,
                                                                        io::ByteOrder endian,
                                                                        format::ChunkType movieType);

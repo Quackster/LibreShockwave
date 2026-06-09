@@ -108,6 +108,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Config chunks are parsed early to establish Director version before the full chunk pass.
 - Afterburner chunks are categorized into the same config/script/cast/score/media collections as uncompressed Director files.
 
+### D3 RIFF Loader Foundation
+
+- `DirectorFile::load` now accepts RIFF/FFIR containers with RMMP markers.
+- CFTC resource table parsing maps named RIFF resources to chunk payload offsets.
+- RIFF chunks reuse the existing C++ chunk dispatch and categorization path.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -134,11 +140,12 @@ Result:
 - Director file RIFX loader tests passed through the same CTest executable.
 - Afterburner reader tests passed through the same CTest executable.
 - Director file Afterburner loader tests passed through the same CTest executable.
+- Director file RIFF loader tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
 
-- D3 RIFF loading, lazy reparsing, and higher-level chunk integration.
+- Lazy reparsing and higher-level chunk integration.
 - Remaining bitmap, sound, font, text, score, and script chunk decoders.
 - Cast member resolution.
 - Lingo decompiler, VM runtime values, dispatchers, and builtins.
@@ -159,4 +166,5 @@ Result:
 - `1e8cfbf Port C++ score chunk parser`
 - `d4bcca5 Port C++ director file loader foundation`
 - `d0ddeff Port C++ Afterburner reader foundation`
-- Current checkpoint commit message: `Integrate C++ Afterburner file loading`
+- `cbe591d Integrate C++ Afterburner file loading`
+- Current checkpoint commit message: `Port C++ D3 RIFF file loading`

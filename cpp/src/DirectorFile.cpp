@@ -73,17 +73,32 @@ std::shared_ptr<DirectorFile> DirectorFile::load(const std::vector<std::uint8_t>
     const auto container = format::chunkTypeFromFourCC(containerFourCC);
 
     io::ByteOrder endian = io::ByteOrder::BigEndian;
+    bool isRiff = false;
     if (container == format::ChunkType::RIFX) {
         endian = io::ByteOrder::BigEndian;
     } else if (container == format::ChunkType::XFIR) {
         endian = io::ByteOrder::LittleEndian;
+    } else if (container == format::ChunkType::RIFF || container == format::ChunkType::FFIR) {
+        endian = io::ByteOrder::LittleEndian;
+        isRiff = true;
     } else {
-        throw DirectorFileLoadError("Not a supported Director RIFX/XFIR file: " +
+        throw DirectorFileLoadError("Not a supported Director RIFX/XFIR/RIFF file: " +
                                     io::BinaryReader::fourCCToString(containerFourCC));
     }
 
     reader.setOrder(endian);
     (void)reader.readI32();
+    if (isRiff) {
+        const auto rmmpFourCC = reader.readFourCC();
+        if (format::chunkTypeFromFourCC(rmmpFourCC) != format::ChunkType::RMMP) {
+            throw DirectorFileLoadError("Expected RMMP marker in RIFF file, got " +
+                                        io::BinaryReader::fourCCToString(rmmpFourCC));
+        }
+        auto file = loadRIFF(reader, endian);
+        file->dataStore_ = data;
+        return file;
+    }
+
     const auto movieType = format::chunkTypeFromFourCC(reader.readI32());
     if (format::isAfterburner(movieType)) {
         auto file = loadAfterburner(reader, endian, movieType);
@@ -155,6 +170,98 @@ std::shared_ptr<DirectorFile> DirectorFile::loadRIFX(io::BinaryReader& reader,
     }
 
     const int version = file->config_ ? file->config_->directorVersion() : imapDirectorVersion;
+    const bool capitalX = std::any_of(file->chunkInfo_.begin(), file->chunkInfo_.end(), [](const auto& entry) {
+        return entry.second.fourcc == io::BinaryReader::fourCC("LctX");
+    });
+    file->setCapitalX(capitalX);
+
+    for (const auto& [chunkIdValue, info] : file->chunkInfo_) {
+        try {
+            auto chunkReader = reader.sliceReaderAt(static_cast<std::size_t>(info.offset), static_cast<std::size_t>(info.length));
+            auto chunk = file->parseChunkFromReader(chunkReader, info, version, file->capitalX_);
+            if (chunk) {
+                file->chunks_[info.id.value()] = chunk;
+                file->categorizeChunk(chunk);
+                if (std::dynamic_pointer_cast<chunks::ScriptContextChunk>(chunk)) {
+                    file->setCapitalX(info.fourcc == io::BinaryReader::fourCC("LctX"));
+                }
+            }
+        } catch (const std::exception&) {
+        }
+    }
+
+    return file;
+}
+
+std::shared_ptr<DirectorFile> DirectorFile::loadRIFF(io::BinaryReader& reader, io::ByteOrder endian) {
+    auto file = std::make_shared<DirectorFile>(endian, false, 0, format::ChunkType::MV93);
+
+    const auto cftcFourCC = reader.readFourCC();
+    if (io::BinaryReader::fourCCToString(cftcFourCC) != "CFTC") {
+        throw DirectorFileLoadError("Expected CFTC in RIFF file, got " + io::BinaryReader::fourCCToString(cftcFourCC));
+    }
+
+    const int cftcSize = reader.readI32();
+    const auto cftcStart = reader.position();
+    if (reader.bytesLeft() < 4) {
+        return file;
+    }
+    reader.skip(4);
+
+    int chunkIndex = 0;
+    const auto cftcEnd = std::min(reader.length(), cftcStart + static_cast<std::size_t>(std::max(0, cftcSize)));
+    while (reader.position() < cftcEnd && reader.bytesLeft() >= 16) {
+        const auto tag = reader.readFourCC();
+        if (tag == 0) {
+            break;
+        }
+
+        const int size = reader.readI32();
+        (void)reader.readI32();
+        const int offset = reader.readI32();
+        const auto savedPosition = reader.position();
+        const int resourceHeaderOffset = offset + 12;
+
+        if (resourceHeaderOffset >= 0 && static_cast<std::size_t>(resourceHeaderOffset) < reader.length()) {
+            reader.seek(static_cast<std::size_t>(resourceHeaderOffset));
+            if (reader.bytesLeft() >= 1) {
+                const int nameLength = reader.readU8();
+                int dataOffset = resourceHeaderOffset + 1 + nameLength;
+                if ((dataOffset % 2) != 0) {
+                    ++dataOffset;
+                }
+                int dataSize = size - 4 - 1 - nameLength;
+                if (dataSize < 0) {
+                    dataSize = size;
+                }
+
+                if (dataOffset >= 0 && dataSize >= 0 &&
+                    static_cast<std::size_t>(dataOffset) <= reader.length()) {
+                    auto chunkId = id::ChunkId(chunkIndex);
+                    file->chunkInfo_.insert_or_assign(chunkId.value(),
+                                                      DirectorChunkInfo{chunkId, tag, dataOffset, dataSize, dataSize});
+                    ++chunkIndex;
+                }
+            }
+        }
+
+        reader.seek(savedPosition);
+    }
+
+    for (const auto& [chunkIdValue, info] : file->chunkInfo_) {
+        if (info.type() == format::ChunkType::DRCF || info.type() == format::ChunkType::VWCF) {
+            try {
+                auto chunkReader = reader.sliceReaderAt(static_cast<std::size_t>(info.offset), static_cast<std::size_t>(info.length));
+                auto config = chunks::ConfigChunk::read(file.get(), chunkReader, info.id, 0);
+                file->config_ = std::make_shared<chunks::ConfigChunk>(std::move(config));
+                file->setVersion(file->config_->directorVersion());
+                break;
+            } catch (const std::exception&) {
+            }
+        }
+    }
+
+    const int version = file->config_ ? file->config_->directorVersion() : 0;
     const bool capitalX = std::any_of(file->chunkInfo_.begin(), file->chunkInfo_.end(), [](const auto& entry) {
         return entry.second.fourcc == io::BinaryReader::fourCC("LctX");
     });
