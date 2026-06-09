@@ -2254,6 +2254,24 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 94) {
             return std::string("new");
         }
+        if (nameId == 95) {
+            return std::string("height");
+        }
+        if (nameId == 96) {
+            return std::string("rect");
+        }
+        if (nameId == 97) {
+            return std::string("depth");
+        }
+        if (nameId == 98) {
+            return std::string("useAlpha");
+        }
+        if (nameId == 99) {
+            return std::string("paletteRef");
+        }
+        if (nameId == 100) {
+            return std::string("image");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.callStackFormatter = []() {
@@ -2314,7 +2332,7 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(context.findLocalHandler(1)->nameId == 99);
     assert(!context.findLocalHandler(99).has_value());
     assert(context.resolveName(12) == "resolvedName");
-    assert(context.resolveName(99) == "#99");
+    assert(context.resolveName(999) == "#999");
     assert(context.findHandler("known")->handler.nameId == 99);
     assert(!context.findHandler("missing").has_value());
     assert(context.executeHandler(script, handler, {Datum::of(1)}, Datum::voidValue()).stringValue() == "exec:10:1");
@@ -2755,6 +2773,23 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runObjectPropertyGet(Datum::intRect(1, 2, 6, 9), 53).intValue() == 5);
     assert(runObjectPropertyGet(Datum::colorRef(200, 20, 10), 55).intValue() == 200);
     assert(runObjectPropertyGet(Datum::of(3), 56).stringValue() == "integer");
+    auto objectImageBitmap = std::make_shared<Bitmap>(4, 5, 32);
+    objectImageBitmap->setNativeAlpha(true);
+    objectImageBitmap->setPaletteRefCastMember(2, 9);
+    const Datum objectImage = Datum::imageRef(objectImageBitmap);
+    assert(runObjectPropertyGet(objectImage, 53).intValue() == 4);
+    assert(runObjectPropertyGet(objectImage, 95).intValue() == 5);
+    assert(runObjectPropertyGet(objectImage, 96) == Datum::intRect(0, 0, 4, 5));
+    assert(runObjectPropertyGet(objectImage, 97).intValue() == 32);
+    assert(runObjectPropertyGet(objectImage, 98).boolValue());
+    assert(runObjectPropertyGet(objectImage, 56).asSymbol()->name == "image");
+    assert(runObjectPropertyGet(objectImage, 99).asCastMemberRef()->memberNum() == 9);
+    assert(runObjectPropertyGet(objectImage, 100).asImageRef()->bitmap == objectImageBitmap);
+    auto systemPaletteImage = std::make_shared<Bitmap>(1, 1, 8);
+    systemPaletteImage->setPaletteRefSystemName("systemMac");
+    assert(runObjectPropertyGet(Datum::imageRef(systemPaletteImage), 99).asSymbol()->name == "systemMac");
+    assert(runObjectPropertyGet(Datum::imageRef(std::shared_ptr<Bitmap>{}), 96) == Datum::intRect(0, 0, 0, 0));
+    assert(!runObjectPropertyGet(Datum::imageRef(std::shared_ptr<Bitmap>{}), 98).boolValue());
     const Datum objectMemberRef = Datum::castMemberRef(CastLibId(2), MemberId(5));
     assert(runObjectPropertyGet(objectMemberRef, 88).intValue() == ((2 << 16) | 5));
     assert(runObjectPropertyGet(objectMemberRef, 89).intValue() == 5);

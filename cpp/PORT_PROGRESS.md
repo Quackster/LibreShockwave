@@ -458,7 +458,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 ### Lingo Opcode Basic Property Foundation
 
-- Property opcode handlers now cover receiver script-instance get/set, object property get/set for script instances and property lists, and object property reads for lists, strings, points, rectangles, and colors.
+- Property opcode handlers now cover receiver script-instance get/set, object property get/set for script instances and property lists, and object property reads for lists, strings, points, rectangles, colors, and images.
 - Chained property reads now reuse the same data-owned object property path, and top-level `_player`/`_movie` property reads produce C++ reference datums.
 - Legacy property ID opcodes now cover string chunk counts and last-chunk reads, with provider-backed targets consuming their stack operands as safe no-ops until runtime providers are wired.
 - `GET_FIELD` now consumes field identifier/cast operands and returns the Java-compatible empty string fallback when no field provider is wired.
@@ -585,6 +585,7 @@ Result:
 - Lingo `DELETE_CHUNK` char, word, item, line, negative last-index, provider-backed item delimiter, and out-of-range tests passed through the same CTest executable.
 - Lingo `PUT_CHUNK` char replacement/insertion, provider-backed item replacement, word/line insertion, negative target, and out-of-range no-op tests passed through the same CTest executable.
 - Lingo `GET_CHAINED_PROP` list, string, point, property-list, and script-instance reads plus `GET_TOP_LEVEL_PROP` `_player`/`_movie` refs passed through the same CTest executable.
+- Lingo image object-property width, height, rect, depth, useAlpha, ilk, image, and paletteRef reads passed through the same CTest executable.
 - Lingo legacy `GET` last-chunk/count chunk reads, provider-backed movie/sprite/sound property mappings, and provider-backed `SET` mutations passed through the same CTest executable.
 - Lingo `GET_FIELD` provider-backed field lookup, cast-library lookup, provider-missing empty-string fallback, and stack-consumption tests passed through the same CTest executable.
 - Lingo direct-string and VarRef object-call string chunk extraction, mutable char chunk-ref deletion, ScriptRef `new`, string method delegation, and provider-backed item counting tests passed through the same CTest executable.
@@ -723,4 +724,5 @@ Result:
 - `5ff40363 Port C++ chunk mutation delimiter coverage`
 - `c8ae0bef Port C++ direct string chunk methods`
 - `c9b5edcb Port C++ mutable chunk ref deletion foundation`
-- Current checkpoint commit message: `Port C++ script ref new method foundation`
+- `a98f45b6 Port C++ script ref new method foundation`
+- Current checkpoint commit message: `Port C++ image object property foundation`

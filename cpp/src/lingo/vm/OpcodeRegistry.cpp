@@ -522,6 +522,28 @@ Datum getColorProp(const Datum::ColorRef& color, std::string_view propName) {
     return Datum::voidValue();
 }
 
+Datum getImageProp(const Datum::ImageRef& image, std::string_view propName) {
+    const auto& bitmap = image.bitmap;
+    if (equalsIgnoreCase(propName, "rect")) {
+        return bitmap != nullptr ? Datum::intRect(0, 0, bitmap->width(), bitmap->height()) : Datum::intRect(0, 0, 0, 0);
+    }
+    if (equalsIgnoreCase(propName, "width")) return Datum::of(bitmap != nullptr ? bitmap->width() : 0);
+    if (equalsIgnoreCase(propName, "height")) return Datum::of(bitmap != nullptr ? bitmap->height() : 0);
+    if (equalsIgnoreCase(propName, "depth")) return Datum::of(bitmap != nullptr ? bitmap->bitDepth() : 0);
+    if (equalsIgnoreCase(propName, "usealpha")) return bitmap != nullptr && bitmap->isNativeAlpha() ? Datum::TRUE : Datum::FALSE;
+    if (equalsIgnoreCase(propName, "ilk")) return Datum::symbol("image");
+    if (equalsIgnoreCase(propName, "image")) return Datum::imageRef(bitmap);
+    if (equalsIgnoreCase(propName, "paletteref") && bitmap != nullptr) {
+        if (bitmap->paletteRefCastLib() >= 1 && bitmap->paletteRefMemberNum() >= 1) {
+            return Datum::castMemberRef(id::CastLibId(bitmap->paletteRefCastLib()), id::MemberId(bitmap->paletteRefMemberNum()));
+        }
+        if (bitmap->paletteRefSystemName()) {
+            return Datum::symbol(*bitmap->paletteRefSystemName());
+        }
+    }
+    return Datum::voidValue();
+}
+
 Datum getCastMemberProp(const Datum::CastMemberRef& member, std::string_view propName) {
     const bool invalidRef = member.castMember <= 0;
     if (equalsIgnoreCase(propName, "number")) {
@@ -607,6 +629,9 @@ Datum getObjectProperty(ExecutionContext& context, const Datum& object, std::str
     }
     if (const auto* color = object.asColorRef()) {
         return getColorProp(*color, propName);
+    }
+    if (const auto* image = object.asImageRef()) {
+        return getImageProp(*image, propName);
     }
     if (const auto* member = object.asCastMemberRef()) {
         return getCastMemberProp(*member, propName);
