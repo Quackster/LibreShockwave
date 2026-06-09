@@ -12,6 +12,8 @@ add_library(libreshockwave
     src/cast/XmedStyledText.cpp
     src/chunks/BitmapChunk.cpp
     src/chunks/CastChunk.cpp
+    src/chunks/CastListChunk.cpp
+    src/chunks/CastMemberChunk.cpp
     src/chunks/ConfigChunk.cpp
     src/chunks/FontMapChunk.cpp
     src/chunks/FrameLabelsChunk.cpp

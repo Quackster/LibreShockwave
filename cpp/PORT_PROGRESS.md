@@ -60,6 +60,14 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `chunks::CastChunk` CAS* cast member ID array parser.
 - `chunks::KeyTableChunk` KEY* parser with owner/section lookups.
 
+### Cast List and Member Chunks
+
+- `chunks::CastListChunk` MCsL parser for cast library names, paths, preload settings, member ranges, and cast IDs.
+- `chunks::CastMemberChunk` CASt parser for D5+ and D4 member layouts.
+- Cast member helpers for bitmap/script/text/sound/Shockwave 3D type checks, text Xtra signature detection, and script type decoding.
+- Member info list parsing for script ID and Pascal member name extraction.
+- Bitmap member registration point extraction through `cast::BitmapInfo`.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -79,6 +87,7 @@ Result:
 - Chunk/audio foundation tests passed through the same CTest executable.
 - Cast metadata parser tests passed through the same CTest executable.
 - Compact chunk parser tests passed through the same CTest executable.
+- Cast list/member chunk parser tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -86,7 +95,7 @@ Result:
 - Remaining SDK chunk model and chunk parsers.
 - Director/Afterburner file loading.
 - Remaining bitmap, sound, font, text, score, and script chunk decoders.
-- `CastMemberChunk`, `CastListChunk`, and cast member resolution.
+- Cast member resolution.
 - Lingo opcode model, decompiler, VM runtime values, opcodes, dispatchers, and builtins.
 - Player core, rendering pipeline, input, networking, audio, cast management, and debugging.
 - WASM/web player replacement strategy in C++.
@@ -98,4 +107,5 @@ Result:
 - `b1d5f49 Add initial C++ port foundation`
 - `4034c08 Port C++ chunk audio foundation`
 - `7364e28 Port C++ cast metadata foundation`
-- Pending commit: compact chunk parsers.
+- `d86665c Port C++ compact chunk parsers`
+- Current checkpoint commit message: `Port C++ cast list and member chunks`

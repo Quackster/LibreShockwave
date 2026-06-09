@@ -21,6 +21,8 @@
 #include "libreshockwave/cast/XmedStyledText.hpp"
 #include "libreshockwave/chunks/BitmapChunk.hpp"
 #include "libreshockwave/chunks/CastChunk.hpp"
+#include "libreshockwave/chunks/CastListChunk.hpp"
+#include "libreshockwave/chunks/CastMemberChunk.hpp"
 #include "libreshockwave/chunks/ConfigChunk.hpp"
 #include "libreshockwave/chunks/FontMapChunk.hpp"
 #include "libreshockwave/chunks/FrameLabelsChunk.hpp"
@@ -68,6 +70,9 @@ using libreshockwave::cast::TextInfo;
 using libreshockwave::cast::XmedStyledText;
 using libreshockwave::chunks::BitmapChunk;
 using libreshockwave::chunks::CastChunk;
+using libreshockwave::chunks::CastListChunk;
+using libreshockwave::chunks::CastMemberChunk;
+using libreshockwave::chunks::CastMemberScriptType;
 using libreshockwave::chunks::ConfigChunk;
 using libreshockwave::chunks::FontMapChunk;
 using libreshockwave::chunks::FrameLabelsChunk;
@@ -896,6 +901,134 @@ void testTextAndFontMapChunks() {
     assert(fontMapReader.order() == ByteOrder::LittleEndian);
 }
 
+void testCastListAndMemberChunks() {
+    auto appendI16 = [](std::vector<std::uint8_t>& data, int value) {
+        data.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(value & 0xFF));
+    };
+    auto appendI32 = [](std::vector<std::uint8_t>& data, std::uint32_t value) {
+        data.push_back(static_cast<std::uint8_t>((value >> 24) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 16) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(value & 0xFF));
+    };
+    auto appendPascal = [](std::vector<std::uint8_t>& data, const std::string& value) {
+        data.push_back(static_cast<std::uint8_t>(value.size()));
+        data.insert(data.end(), value.begin(), value.end());
+    };
+
+    std::vector<std::uint8_t> castListData;
+    appendI32(castListData, 12);
+    appendI16(castListData, 0);
+    appendI16(castListData, 1);
+    appendI16(castListData, 4);
+    appendI16(castListData, 0);
+    appendI16(castListData, 5);
+    appendI32(castListData, 0);
+    appendI32(castListData, 0);
+    appendI32(castListData, 5);
+    appendI32(castListData, 14);
+    appendI32(castListData, 16);
+    appendI32(castListData, 24);
+    appendPascal(castListData, "Main");
+    appendPascal(castListData, "cast.dir");
+    appendI16(castListData, 0x1234);
+    appendI16(castListData, 5);
+    appendI16(castListData, 9);
+    appendI32(castListData, 42);
+
+    BinaryReader castListReader(castListData, ByteOrder::LittleEndian);
+    CastListChunk castList = CastListChunk::read(nullptr, castListReader, ChunkId(29), 0x4B1);
+    assert(castList.type() == ChunkType::MCsL);
+    assert(castList.dataOffset() == 12);
+    assert(castList.itemCount() == 1);
+    assert(castList.itemsPerEntry() == 4);
+    assert(castList.entries().size() == 1);
+    assert(castList.entries()[0].name == "Main");
+    assert(castList.entries()[0].path == "cast.dir");
+    assert(castList.entries()[0].preloadSettings == 0x1234);
+    assert(castList.entries()[0].minMember == 5);
+    assert(castList.entries()[0].maxMember == 9);
+    assert(castList.entries()[0].memberCount == 5);
+    assert(castList.entries()[0].id == 42);
+    assert(castListReader.order() == ByteOrder::LittleEndian);
+
+    std::vector<std::uint8_t> memberInfo;
+    appendI32(memberInfo, 20);
+    appendI32(memberInfo, 0);
+    appendI32(memberInfo, 0);
+    appendI32(memberInfo, 0);
+    appendI32(memberInfo, 77);
+    appendI16(memberInfo, 3);
+    appendI32(memberInfo, 0);
+    appendI32(memberInfo, 0);
+    appendI32(memberInfo, 11);
+    appendI32(memberInfo, 11);
+    appendPascal(memberInfo, "BitmapName");
+
+    std::vector<std::uint8_t> bitmapSpecific;
+    appendI16(bitmapSpecific, 0x8018);
+    appendI16(bitmapSpecific, 2);
+    appendI16(bitmapSpecific, 3);
+    appendI16(bitmapSpecific, 18);
+    appendI16(bitmapSpecific, 19);
+    bitmapSpecific.insert(bitmapSpecific.end(), {0, 0, 0, 0, 0, 0, 0, 0});
+    appendI16(bitmapSpecific, 7);
+    appendI16(bitmapSpecific, 8);
+    bitmapSpecific.push_back(0);
+    bitmapSpecific.push_back(8);
+    appendI16(bitmapSpecific, 0);
+    appendI16(bitmapSpecific, 1);
+
+    std::vector<std::uint8_t> d5Member;
+    appendI32(d5Member, 1);
+    appendI32(d5Member, static_cast<std::uint32_t>(memberInfo.size()));
+    appendI32(d5Member, static_cast<std::uint32_t>(bitmapSpecific.size()));
+    d5Member.insert(d5Member.end(), memberInfo.begin(), memberInfo.end());
+    d5Member.insert(d5Member.end(), bitmapSpecific.begin(), bitmapSpecific.end());
+    BinaryReader d5MemberReader(d5Member, ByteOrder::LittleEndian);
+    CastMemberChunk bitmapMember = CastMemberChunk::read(nullptr, d5MemberReader, ChunkId(30), 0x4B1);
+    assert(bitmapMember.type() == ChunkType::CASt);
+    assert(bitmapMember.memberType() == MemberType::Bitmap);
+    assert(bitmapMember.isBitmap());
+    assert(bitmapMember.name() == "BitmapName");
+    assert(bitmapMember.scriptId() == 77);
+    assert(bitmapMember.regPointX() == 8);
+    assert(bitmapMember.regPointY() == 7);
+    assert(bitmapMember.infoLen() == static_cast<int>(memberInfo.size()));
+    assert(bitmapMember.dataLen() == static_cast<int>(bitmapSpecific.size()));
+    assert(bitmapMember.info() == memberInfo);
+    assert(bitmapMember.specificData() == bitmapSpecific);
+    assert(d5MemberReader.order() == ByteOrder::LittleEndian);
+
+    std::vector<std::uint8_t> d4Member;
+    appendI16(d4Member, 4);
+    appendI32(d4Member, 0);
+    d4Member.push_back(static_cast<std::uint8_t>(libreshockwave::cast::code(MemberType::Script)));
+    d4Member.push_back(0x99);
+    appendI16(d4Member, 2);
+    BinaryReader d4MemberReader(d4Member);
+    CastMemberChunk scriptMember = CastMemberChunk::read(nullptr, d4MemberReader, ChunkId(31), 0x400);
+    assert(scriptMember.isScript());
+    assert(scriptMember.dataLen() == 2);
+    assert(scriptMember.specificData().size() == 2);
+    assert(scriptMember.getScriptType().has_value());
+    assert(scriptMember.getScriptType().value() == CastMemberScriptType::Behavior);
+
+    CastMemberChunk textXtra(nullptr,
+                             ChunkId(32),
+                             MemberType::Xtra,
+                             0,
+                             8,
+                             {},
+                             {0, 0, 0, 0, 't', 'e', 'x', 't'},
+                             "",
+                             0,
+                             0,
+                             0);
+    assert(textXtra.isTextXtra());
+}
+
 int main() {
     testBinaryReaderEndianAndBounds();
     testBinaryReaderStringsAndFourCC();
@@ -914,6 +1047,7 @@ int main() {
     testShockwave3DInfoParser();
     testCompactChunkParsers();
     testTextAndFontMapChunks();
+    testCastListAndMemberChunks();
 
     std::cout << "LibreShockwave C++ SDK foundation tests passed\n";
     return 0;
