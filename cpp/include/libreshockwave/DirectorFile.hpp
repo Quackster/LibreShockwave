@@ -26,6 +26,10 @@ class ScriptContextChunk;
 class ScriptNamesChunk;
 }
 
+namespace libreshockwave::format {
+class AfterburnerReader;
+}
+
 namespace libreshockwave {
 
 class DirectorFileLoadError : public std::runtime_error {
@@ -46,6 +50,7 @@ struct DirectorChunkInfo {
 class DirectorFile {
 public:
     DirectorFile(io::ByteOrder endian, bool afterburner, int version, format::ChunkType movieType);
+    ~DirectorFile();
 
     [[nodiscard]] io::ByteOrder endian() const;
     [[nodiscard]] bool isAfterburner() const;
@@ -63,8 +68,9 @@ public:
 
     [[nodiscard]] const std::map<int, DirectorChunkInfo>& chunkInfo() const;
     [[nodiscard]] const std::map<int, std::shared_ptr<chunks::Chunk>>& chunks() const;
-    [[nodiscard]] std::shared_ptr<chunks::Chunk> getChunk(id::ChunkId id) const;
+    [[nodiscard]] std::shared_ptr<chunks::Chunk> getChunk(id::ChunkId id);
     [[nodiscard]] const DirectorChunkInfo* getChunkInfo(id::ChunkId id) const;
+    void releaseNonEssentialChunks();
 
     [[nodiscard]] const std::vector<std::shared_ptr<chunks::CastChunk>>& casts() const;
     [[nodiscard]] const std::vector<std::shared_ptr<chunks::CastMemberChunk>>& castMembers() const;
@@ -86,6 +92,7 @@ private:
                                                                       const DirectorChunkInfo& info,
                                                                       int version,
                                                                       bool capitalX);
+    [[nodiscard]] std::shared_ptr<chunks::Chunk> reparseChunk(id::ChunkId id);
     void categorizeChunk(const std::shared_ptr<chunks::Chunk>& chunk);
     void setVersion(int version);
     void setCapitalX(bool capitalX);
@@ -96,6 +103,7 @@ private:
     format::ChunkType movieType_;
     bool capitalX_ = false;
     std::vector<std::uint8_t> dataStore_;
+    std::unique_ptr<format::AfterburnerReader> afterburnerReader_;
 
     std::shared_ptr<chunks::ConfigChunk> config_;
     std::shared_ptr<chunks::KeyTableChunk> keyTable_;

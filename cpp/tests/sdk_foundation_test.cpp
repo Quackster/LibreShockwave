@@ -1478,12 +1478,15 @@ void testDirectorFileRifxLoader() {
     namesData.insert(namesData.end(), {'g', 'o'});
     namesData.push_back(4);
     namesData.insert(namesData.end(), {'s', 't', 'o', 'p'});
+    const std::vector<std::uint8_t> rawData{0xDE, 0xAD, 0xBE, 0xEF};
 
     constexpr int mmapOffset = 32;
-    constexpr int mmapDataStart = mmapOffset + 8 + 24 + 40;
+    constexpr int mmapDataStart = mmapOffset + 8 + 24 + 60;
     const int configOffset = mmapDataStart - 8;
     const int namesDataStart = mmapDataStart + static_cast<int>(configData.size());
     const int namesOffset = namesDataStart - 8;
+    const int rawDataStart = namesDataStart + static_cast<int>(namesData.size());
+    const int rawOffset = rawDataStart - 8;
 
     std::vector<std::uint8_t> fileData;
     appendFourCC(fileData, "RIFX");
@@ -1495,11 +1498,11 @@ void testDirectorFileRifxLoader() {
     appendI32(fileData, mmapOffset);
     appendI32(fileData, 0x0207);
     appendFourCC(fileData, "mmap");
-    appendI32(fileData, 24 + 40);
+    appendI32(fileData, 24 + 60);
     appendI16(fileData, 24);
     appendI16(fileData, 20);
-    appendI32(fileData, 2);
-    appendI32(fileData, 2);
+    appendI32(fileData, 3);
+    appendI32(fileData, 3);
     appendI32(fileData, 0);
     appendI32(fileData, 0);
     appendI32(fileData, 0);
@@ -1515,8 +1518,15 @@ void testDirectorFileRifxLoader() {
     appendI16(fileData, 0);
     appendI16(fileData, 0);
     appendI32(fileData, 0);
+    appendI32(fileData, BinaryReader::fourCC("junk"));
+    appendI32(fileData, static_cast<std::uint32_t>(rawData.size()));
+    appendI32(fileData, static_cast<std::uint32_t>(rawOffset));
+    appendI16(fileData, 0);
+    appendI16(fileData, 0);
+    appendI32(fileData, 0);
     fileData.insert(fileData.end(), configData.begin(), configData.end());
     fileData.insert(fileData.end(), namesData.begin(), namesData.end());
+    fileData.insert(fileData.end(), rawData.begin(), rawData.end());
     putI32(fileData, 4, static_cast<std::uint32_t>(fileData.size() - 8));
 
     auto file = DirectorFile::load(fileData);
@@ -1524,8 +1534,8 @@ void testDirectorFileRifxLoader() {
     assert(!file->isAfterburner());
     assert(file->movieType() == ChunkType::MV93);
     assert(file->version() == 0x0207);
-    assert(file->chunkInfo().size() == 2);
-    assert(file->chunks().size() == 2);
+    assert(file->chunkInfo().size() == 3);
+    assert(file->chunks().size() == 3);
     assert(file->config().get() != nullptr);
     assert(file->config()->file() == file.get());
     assert(file->config()->stageWidth() == 320);
@@ -1535,6 +1545,13 @@ void testDirectorFileRifxLoader() {
     assert(file->scriptNames()->getName(1) == "stop");
     assert(file->getChunkInfo(ChunkId(0))->type() == ChunkType::DRCF);
     assert(file->getChunk(ChunkId(1))->type() == ChunkType::Lnam);
+    assert(file->getChunk(ChunkId(2))->type() == ChunkType::JUNK);
+    file->releaseNonEssentialChunks();
+    assert(file->chunks().size() == 2);
+    auto reparsedRaw = file->getChunk(ChunkId(2));
+    assert(reparsedRaw.get() != nullptr);
+    assert(reparsedRaw->type() == ChunkType::JUNK);
+    assert(file->chunks().size() == 3);
 }
 
 void testAfterburnerReader() {
@@ -1746,12 +1763,15 @@ void testDirectorFileAfterburnerLoader() {
     putI16At(namesData, 18, 1);
     namesData.push_back(5);
     namesData.insert(namesData.end(), {'s', 't', 'a', 'r', 't'});
+    const std::vector<std::uint8_t> rawData{0xCA, 0xFE, 0xBA, 0xBE};
 
     std::vector<std::uint8_t> ilsData;
     appendVarInt(ilsData, 10);
     ilsData.insert(ilsData.end(), configData.begin(), configData.end());
     appendVarInt(ilsData, 11);
     ilsData.insert(ilsData.end(), namesData.begin(), namesData.end());
+    appendVarInt(ilsData, 12);
+    ilsData.insert(ilsData.end(), rawData.begin(), rawData.end());
     const auto compressedIls = compressZlib(ilsData);
 
     std::vector<std::uint8_t> fcdrData;
@@ -1764,7 +1784,7 @@ void testDirectorFileAfterburnerLoader() {
     std::vector<std::uint8_t> abmpData;
     appendVarInt(abmpData, 0);
     appendVarInt(abmpData, 0);
-    appendVarInt(abmpData, 3);
+    appendVarInt(abmpData, 4);
     appendVarInt(abmpData, 2);
     appendVarInt(abmpData, 0);
     appendVarInt(abmpData, static_cast<int>(compressedIls.size()));
@@ -1783,6 +1803,12 @@ void testDirectorFileAfterburnerLoader() {
     appendVarInt(abmpData, static_cast<int>(namesData.size()));
     appendVarInt(abmpData, 0);
     appendFourCC(abmpData, "Lnam");
+    appendVarInt(abmpData, 12);
+    appendVarInt(abmpData, static_cast<int>(configData.size() + namesData.size()));
+    appendVarInt(abmpData, static_cast<int>(rawData.size()));
+    appendVarInt(abmpData, static_cast<int>(rawData.size()));
+    appendVarInt(abmpData, 0);
+    appendFourCC(abmpData, "junk");
     const auto compressedAbmp = compressZlib(abmpData);
 
     std::vector<std::uint8_t> fverData;
@@ -1815,8 +1841,8 @@ void testDirectorFileAfterburnerLoader() {
     assert(file->isAfterburner());
     assert(file->movieType() == ChunkType::FGDM);
     assert(file->version() == 0x0207);
-    assert(file->chunkInfo().size() == 3);
-    assert(file->chunks().size() == 2);
+    assert(file->chunkInfo().size() == 4);
+    assert(file->chunks().size() == 3);
     assert(file->getChunkInfo(ChunkId(10))->type() == ChunkType::DRCF);
     assert(file->config().get() != nullptr);
     assert(file->config()->file() == file.get());
@@ -1826,6 +1852,13 @@ void testDirectorFileAfterburnerLoader() {
     assert(file->scriptNames().get() != nullptr);
     assert(file->scriptNames()->getName(0) == "start");
     assert(file->getChunk(ChunkId(11))->type() == ChunkType::Lnam);
+    assert(file->getChunk(ChunkId(12))->type() == ChunkType::JUNK);
+    file->releaseNonEssentialChunks();
+    assert(file->chunks().size() == 2);
+    auto reparsedRaw = file->getChunk(ChunkId(12));
+    assert(reparsedRaw.get() != nullptr);
+    assert(reparsedRaw->type() == ChunkType::JUNK);
+    assert(file->chunks().size() == 3);
 #endif
 }
 

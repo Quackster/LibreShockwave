@@ -114,6 +114,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - CFTC resource table parsing maps named RIFF resources to chunk payload offsets.
 - RIFF chunks reuse the existing C++ chunk dispatch and categorization path.
 
+### Lazy Chunk Reparse Foundation
+
+- `DirectorFile::getChunk` reparses evicted chunks from stored file bytes for RIFX/XFIR/RIFF/FFIR files.
+- Afterburner-loaded files retain their parsed `AfterburnerReader` for evicted chunk reloads.
+- `DirectorFile::releaseNonEssentialChunks` evicts sound, media, and raw chunks to match the Java memory-management path.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -141,11 +147,12 @@ Result:
 - Afterburner reader tests passed through the same CTest executable.
 - Director file Afterburner loader tests passed through the same CTest executable.
 - Director file RIFF loader tests passed through the same CTest executable.
+- Lazy chunk reparse and non-essential release tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
 
-- Lazy reparsing and higher-level chunk integration.
+- Higher-level chunk integration.
 - Remaining bitmap, sound, font, text, score, and script chunk decoders.
 - Cast member resolution.
 - Lingo decompiler, VM runtime values, dispatchers, and builtins.
@@ -167,4 +174,5 @@ Result:
 - `d4bcca5 Port C++ director file loader foundation`
 - `d0ddeff Port C++ Afterburner reader foundation`
 - `cbe591d Integrate C++ Afterburner file loading`
-- Current checkpoint commit message: `Port C++ D3 RIFF file loading`
+- `7a2276f Port C++ D3 RIFF file loading`
+- Current checkpoint commit message: `Port C++ lazy chunk reparsing`

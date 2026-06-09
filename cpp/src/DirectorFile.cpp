@@ -33,6 +33,8 @@ format::ChunkType DirectorChunkInfo::type() const {
 DirectorFile::DirectorFile(io::ByteOrder endian, bool afterburner, int version, format::ChunkType movieType)
     : endian_(endian), afterburner_(afterburner), version_(version), movieType_(movieType) {}
 
+DirectorFile::~DirectorFile() = default;
+
 io::ByteOrder DirectorFile::endian() const { return endian_; }
 bool DirectorFile::isAfterburner() const { return afterburner_; }
 int DirectorFile::version() const { return version_; }
@@ -53,11 +55,11 @@ const std::vector<std::shared_ptr<chunks::ScriptChunk>>& DirectorFile::scripts()
 const std::vector<std::shared_ptr<chunks::PaletteChunk>>& DirectorFile::palettes() const { return palettes_; }
 const std::vector<std::shared_ptr<chunks::FontMapChunk>>& DirectorFile::fontMaps() const { return fontMaps_; }
 
-std::shared_ptr<chunks::Chunk> DirectorFile::getChunk(id::ChunkId id) const {
+std::shared_ptr<chunks::Chunk> DirectorFile::getChunk(id::ChunkId id) {
     if (const auto found = chunks_.find(id.value()); found != chunks_.end()) {
         return found->second;
     }
-    return nullptr;
+    return reparseChunk(id);
 }
 
 const DirectorChunkInfo* DirectorFile::getChunkInfo(id::ChunkId id) const {
@@ -65,6 +67,19 @@ const DirectorChunkInfo* DirectorFile::getChunkInfo(id::ChunkId id) const {
         return &found->second;
     }
     return nullptr;
+}
+
+void DirectorFile::releaseNonEssentialChunks() {
+    for (auto it = chunks_.begin(); it != chunks_.end();) {
+        const auto& chunk = it->second;
+        if (std::dynamic_pointer_cast<chunks::SoundChunk>(chunk) ||
+            std::dynamic_pointer_cast<chunks::MediaChunk>(chunk) ||
+            std::dynamic_pointer_cast<chunks::RawChunk>(chunk)) {
+            it = chunks_.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 
 std::shared_ptr<DirectorFile> DirectorFile::load(const std::vector<std::uint8_t>& data) {
@@ -354,6 +369,7 @@ std::shared_ptr<DirectorFile> DirectorFile::loadAfterburner(io::BinaryReader& re
         }
     }
 
+    file->afterburnerReader_ = std::make_unique<format::AfterburnerReader>(std::move(afterburnerReader));
     return file;
 }
 
@@ -400,6 +416,47 @@ std::shared_ptr<chunks::Chunk> DirectorFile::parseChunkFromReader(io::BinaryRead
             return std::make_shared<chunks::MediaChunk>(chunks::MediaChunk::read(this, reader, info.id));
         default:
             return std::make_shared<chunks::RawChunk>(this, info.id, info.type(), reader.readBytes(reader.bytesLeft()));
+    }
+}
+
+std::shared_ptr<chunks::Chunk> DirectorFile::reparseChunk(id::ChunkId id) {
+    if (const auto found = chunks_.find(id.value()); found != chunks_.end()) {
+        return found->second;
+    }
+
+    const auto* info = getChunkInfo(id);
+    if (!info) {
+        return nullptr;
+    }
+
+    try {
+        io::BinaryReader chunkReader({}, endian_);
+        if (afterburner_) {
+            if (!afterburnerReader_) {
+                return nullptr;
+            }
+            const auto chunkData = afterburnerReader_->getChunkData(id.value());
+            if (!chunkData.has_value()) {
+                return nullptr;
+            }
+            chunkReader = io::BinaryReader(chunkData.value(), endian_);
+        } else {
+            if (dataStore_.empty()) {
+                return nullptr;
+            }
+            chunkReader = io::BinaryReader(dataStore_, endian_).sliceReaderAt(static_cast<std::size_t>(info->offset),
+                                                                              static_cast<std::size_t>(info->length));
+        }
+
+        const int version = config_ ? config_->directorVersion() : version_;
+        auto chunk = parseChunkFromReader(chunkReader, *info, version, capitalX_);
+        if (chunk) {
+            chunks_[id.value()] = chunk;
+            categorizeChunk(chunk);
+        }
+        return chunk;
+    } catch (const std::exception&) {
+        return nullptr;
     }
 }
 
