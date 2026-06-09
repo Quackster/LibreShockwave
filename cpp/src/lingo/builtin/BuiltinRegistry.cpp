@@ -443,6 +443,7 @@ BuiltinRegistry::BuiltinRegistry() {
     TimeoutBuiltins::registerBuiltins(*this);
     NetBuiltins::registerBuiltins(*this);
     ExternalParamBuiltins::registerBuiltins(*this);
+    SoundBuiltins::registerBuiltins(*this);
     MovieBuiltins::registerBuiltins(*this);
 }
 
@@ -1297,6 +1298,134 @@ Datum ExternalParamBuiltins::externalParamName(BuiltinContext& context, const st
 
 Datum ExternalParamBuiltins::externalParamCount(BuiltinContext& context, const std::vector<Datum>&) {
     return Datum::of(static_cast<int>(context.externalParams.size()));
+}
+
+void SoundBuiltins::registerBuiltins(BuiltinRegistry& registry) {
+    registry.registerBuiltin("sound", SoundBuiltins::sound);
+    registry.registerBuiltin("soundenabled", SoundBuiltins::soundEnabled);
+}
+
+Datum SoundBuiltins::sound(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::voidValue();
+    }
+    const int channel = toIntLikeJava(args[0]);
+    if (!player::audio::SoundManager::isValidChannel(channel)) {
+        return Datum::voidValue();
+    }
+    return Datum::soundChannel(channel);
+}
+
+Datum SoundBuiltins::soundEnabled(BuiltinContext&, const std::vector<Datum>&) {
+    return Datum::TRUE;
+}
+
+Datum SoundBuiltins::handleMethod(BuiltinContext& context,
+                                  const Datum::SoundChannel& channel,
+                                  std::string_view methodName,
+                                  const std::vector<Datum>& args) {
+    const std::string method = BuiltinRegistry::normalizeName(methodName);
+    auto* manager = context.soundManager;
+    const int channelNum = channel.channel;
+
+    if (method == "play" || method == "queue") {
+        if (manager != nullptr && !args.empty()) {
+            manager->play(channelNum, args[0]);
+        }
+        return Datum::voidValue();
+    }
+    if (method == "stop" || method == "fadeout") {
+        if (manager != nullptr) {
+            manager->stop(channelNum);
+        }
+        return Datum::voidValue();
+    }
+    if (method == "pause" || method == "resume" || method == "unpause" ||
+        method == "playfile" || method == "playnext" || method == "breakloop" ||
+        method == "rewind" || method == "fadein" || method == "fadeto" ||
+        method == "setplaylist") {
+        return Datum::voidValue();
+    }
+    if (method == "isbusy") {
+        return boolDatum(manager != nullptr && manager->isPlaying(channelNum));
+    }
+    if (method == "status") {
+        return Datum::of(manager != nullptr && manager->isPlaying(channelNum) ? 1 : 0);
+    }
+    if (method == "elapsedtime" || method == "currenttime") {
+        return Datum::of(manager != nullptr ? manager->getElapsedTime(channelNum) : 0);
+    }
+    if (method == "getplaylist") {
+        return Datum::list({});
+    }
+    if (method == "volume") {
+        if (!args.empty()) {
+            if (manager != nullptr) {
+                manager->setVolume(channelNum, toIntLikeJava(args[0]));
+            }
+            return Datum::voidValue();
+        }
+        return Datum::of(manager != nullptr ? manager->getVolume(channelNum) : 255);
+    }
+    if (method == "pan") {
+        return Datum::of(0);
+    }
+    if (method == "member") {
+        return Datum::voidValue();
+    }
+    if (method == "ilk") {
+        return Datum::symbol("instance");
+    }
+    return Datum::voidValue();
+}
+
+Datum SoundBuiltins::getProperty(BuiltinContext& context,
+                                 const Datum::SoundChannel& channel,
+                                 std::string_view propName) {
+    const std::string prop = BuiltinRegistry::normalizeName(propName);
+    auto* manager = context.soundManager;
+    const int channelNum = channel.channel;
+
+    if (prop == "volume") {
+        return Datum::of(manager != nullptr ? manager->getVolume(channelNum) : 255);
+    }
+    if (prop == "pan") {
+        return Datum::of(0);
+    }
+    if (prop == "status") {
+        return Datum::of(manager != nullptr && manager->isPlaying(channelNum) ? 1 : 0);
+    }
+    if (prop == "member") {
+        return Datum::voidValue();
+    }
+    if (prop == "loopcount") {
+        return Datum::of(1);
+    }
+    if (prop == "loopstarttime" || prop == "loopendtime" || prop == "starttime" || prop == "endtime") {
+        return Datum::of(0);
+    }
+    if (prop == "elapsedtime" || prop == "currenttime") {
+        return Datum::of(manager != nullptr ? manager->getElapsedTime(channelNum) : 0);
+    }
+    return Datum::voidValue();
+}
+
+bool SoundBuiltins::setProperty(BuiltinContext& context,
+                                const Datum::SoundChannel& channel,
+                                std::string_view propName,
+                                Datum value) {
+    const std::string prop = BuiltinRegistry::normalizeName(propName);
+    if (prop == "volume") {
+        if (context.soundManager != nullptr) {
+            context.soundManager->setVolume(channel.channel, toIntLikeJava(value));
+        }
+        return true;
+    }
+    if (prop == "pan" || prop == "loopcount" || prop == "starttime" || prop == "endtime" ||
+        prop == "loopstarttime" || prop == "loopendtime") {
+        return true;
+    }
+    return false;
 }
 
 void ConstructorBuiltins::registerBuiltins(BuiltinRegistry& registry) {

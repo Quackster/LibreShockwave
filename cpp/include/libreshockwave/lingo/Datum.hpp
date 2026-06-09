@@ -299,6 +299,7 @@ public:
     [[nodiscard]] static Datum intRect(int left, int top, int right, int bottom);
     [[nodiscard]] static Datum vector3(float x, float y, float z);
     [[nodiscard]] static Datum colorRef(int r, int g, int b);
+    [[nodiscard]] static Datum soundChannel(int channel);
     [[nodiscard]] static Datum scriptInstance(std::string scriptName, std::optional<CastMemberRef> scriptRef = std::nullopt);
     [[nodiscard]] static Datum argList(std::vector<Datum> args);
     [[nodiscard]] static Datum argListNoRet(std::vector<Datum> args);
@@ -331,6 +332,7 @@ public:
     [[nodiscard]] const ScriptRef* asScriptRef() const;
     [[nodiscard]] const SpriteRef* asSpriteRef() const;
     [[nodiscard]] const ColorRef* asColorRef() const;
+    [[nodiscard]] const SoundChannel* asSoundChannel() const;
     [[nodiscard]] const TimeoutRef* asTimeoutRef() const;
     [[nodiscard]] const IntPoint* asIntPoint() const;
     [[nodiscard]] const IntRect* asIntRect() const;

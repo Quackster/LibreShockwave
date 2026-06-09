@@ -1232,6 +1232,115 @@ void testBuiltinRegistryFoundation() {
     assert(registry.invoke("externalParamName", context, {Datum::of(2)}).stringValue() == "CaseKey");
     assert(registry.invoke("externalParamName", context, {Datum::of(9)}).isVoid());
 
+    assert(registry.contains("sound"));
+    assert(registry.contains("soundEnabled"));
+    assert(registry.invoke("soundEnabled", context).boolValue());
+    assert(registry.invoke("sound", context).isVoid());
+    assert(registry.invoke("sound", context, {Datum::of(0)}).isVoid());
+    assert(registry.invoke("sound", context, {Datum::of(9)}).isVoid());
+    const auto builtinSoundDatum = registry.invoke("sound", context, {Datum::of(std::string("2"))});
+    const auto* builtinSoundChannel = builtinSoundDatum.asSoundChannel();
+    assert(builtinSoundChannel != nullptr);
+    assert(builtinSoundChannel->channel == 2);
+    assert(libreshockwave::lingo::builtin::SoundBuiltins::handleMethod(context, *builtinSoundChannel, "volume", {}).intValue() == 255);
+    assert(!libreshockwave::lingo::builtin::SoundBuiltins::handleMethod(context, *builtinSoundChannel, "isBusy", {}).boolValue());
+    assert(libreshockwave::lingo::builtin::SoundBuiltins::handleMethod(context, *builtinSoundChannel, "status", {}).intValue() == 0);
+    assert(libreshockwave::lingo::builtin::SoundBuiltins::handleMethod(context, *builtinSoundChannel, "getPlaylist", {}).listValue().count() == 0);
+    assert(libreshockwave::lingo::builtin::SoundBuiltins::handleMethod(context, *builtinSoundChannel, "ilk", {}).asSymbol()->name == "instance");
+    assert(libreshockwave::lingo::builtin::SoundBuiltins::getProperty(context, *builtinSoundChannel, "loopCount").intValue() == 1);
+    assert(libreshockwave::lingo::builtin::SoundBuiltins::getProperty(context, *builtinSoundChannel, "currentTime").intValue() == 0);
+    assert(libreshockwave::lingo::builtin::SoundBuiltins::setProperty(context, *builtinSoundChannel, "volume", Datum::of(50)));
+    assert(!libreshockwave::lingo::builtin::SoundBuiltins::setProperty(context, *builtinSoundChannel, "unknown", Datum::of(1)));
+
+    class BuiltinRecordingAudioBackend final : public AudioBackend {
+    public:
+        void play(int channelNum,
+                  const std::vector<std::uint8_t>& audioData,
+                  std::string_view format,
+                  int loopCount) override {
+            ++playCount;
+            lastPlayChannel = channelNum;
+            lastAudioData = audioData;
+            lastFormat = std::string(format);
+            lastLoopCount = loopCount;
+            playing[channelNum] = true;
+        }
+
+        void stop(int channelNum) override {
+            ++stopCount;
+            lastStopChannel = channelNum;
+            playing[channelNum] = false;
+        }
+
+        void stopAll() override {
+            playing.clear();
+        }
+
+        void setVolume(int channelNum, int volume) override {
+            ++setVolumeCount;
+            lastVolumeChannel = channelNum;
+            lastVolume = volume;
+        }
+
+        [[nodiscard]] bool isPlaying(int channelNum) const override {
+            const auto found = playing.find(channelNum);
+            return found != playing.end() && found->second;
+        }
+
+        [[nodiscard]] int getElapsedTime(int channelNum) const override {
+            const auto found = elapsedTimes.find(channelNum);
+            return found == elapsedTimes.end() ? 0 : found->second;
+        }
+
+        int playCount{0};
+        int stopCount{0};
+        int setVolumeCount{0};
+        int lastPlayChannel{0};
+        int lastStopChannel{0};
+        int lastVolumeChannel{0};
+        int lastVolume{0};
+        int lastLoopCount{0};
+        std::vector<std::uint8_t> lastAudioData;
+        std::string lastFormat;
+        std::map<int, bool> playing;
+        std::map<int, int> elapsedTimes;
+    };
+
+    SoundManager builtinSoundManager;
+    BuiltinRecordingAudioBackend builtinSoundBackend;
+    builtinSoundManager.setBackend(&builtinSoundBackend);
+    builtinSoundManager.setAudioResolver([](const Datum::CastMemberRef& ref) {
+        assert(ref.castLib == 1);
+        assert(ref.memberNum() == 8);
+        return std::optional<std::vector<std::uint8_t>>{{'R', 'I', 'F', 'F'}};
+    });
+    context.soundManager = &builtinSoundManager;
+    builtinSoundBackend.elapsedTimes[2] = 37;
+    assert(libreshockwave::lingo::builtin::SoundBuiltins::handleMethod(context, *builtinSoundChannel, "volume", {Datum::of(123)}).isVoid());
+    assert(builtinSoundManager.getVolume(2) == 123);
+    assert(builtinSoundBackend.lastVolumeChannel == 2);
+    assert(builtinSoundBackend.lastVolume == 123);
+    assert(libreshockwave::lingo::builtin::SoundBuiltins::handleMethod(context, *builtinSoundChannel, "volume", {}).intValue() == 123);
+    assert(libreshockwave::lingo::builtin::SoundBuiltins::getProperty(context, *builtinSoundChannel, "volume").intValue() == 123);
+    assert(libreshockwave::lingo::builtin::SoundBuiltins::handleMethod(context,
+                                                                       *builtinSoundChannel,
+                                                                       "play",
+                                                                       {Datum::castMemberRef(CastLibId(1), MemberId(8))}).isVoid());
+    assert(builtinSoundBackend.playCount == 1);
+    assert(builtinSoundBackend.lastPlayChannel == 2);
+    assert(builtinSoundBackend.lastFormat == "wav");
+    assert(builtinSoundBackend.lastLoopCount == 1);
+    assert(libreshockwave::lingo::builtin::SoundBuiltins::handleMethod(context, *builtinSoundChannel, "isBusy", {}).boolValue());
+    assert(libreshockwave::lingo::builtin::SoundBuiltins::handleMethod(context, *builtinSoundChannel, "status", {}).intValue() == 1);
+    assert(libreshockwave::lingo::builtin::SoundBuiltins::handleMethod(context, *builtinSoundChannel, "elapsedTime", {}).intValue() == 37);
+    assert(libreshockwave::lingo::builtin::SoundBuiltins::getProperty(context, *builtinSoundChannel, "currentTime").intValue() == 37);
+    assert(libreshockwave::lingo::builtin::SoundBuiltins::handleMethod(context, *builtinSoundChannel, "stop", {}).isVoid());
+    assert(builtinSoundBackend.stopCount == 1);
+    assert(builtinSoundBackend.lastStopChannel == 2);
+    assert(!builtinSoundBackend.isPlaying(2));
+    assert(libreshockwave::lingo::builtin::SoundBuiltins::setProperty(context, *builtinSoundChannel, "volume", Datum::of(300)));
+    assert(builtinSoundManager.getVolume(2) == 255);
+
     auto assertColor = [](const Datum& datum, int r, int g, int b) {
         const auto* color = datum.asColorRef();
         assert(color != nullptr);

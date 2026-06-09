@@ -329,6 +329,10 @@ Datum Datum::colorRef(int r, int g, int b) {
     return Datum(ColorRef::fromRgb(r, g, b));
 }
 
+Datum Datum::soundChannel(int channel) {
+    return Datum(SoundChannel{channel});
+}
+
 Datum Datum::scriptInstance(std::string scriptName, std::optional<CastMemberRef> scriptRef) {
     return Datum(std::make_shared<ScriptInstanceRef>(std::move(scriptName), scriptRef));
 }
@@ -455,6 +459,7 @@ const Datum::CastMemberRef* Datum::asCastMemberRef() const { return std::get_if<
 const Datum::ScriptRef* Datum::asScriptRef() const { return std::get_if<ScriptRef>(&value_); }
 const Datum::SpriteRef* Datum::asSpriteRef() const { return std::get_if<SpriteRef>(&value_); }
 const Datum::ColorRef* Datum::asColorRef() const { return std::get_if<ColorRef>(&value_); }
+const Datum::SoundChannel* Datum::asSoundChannel() const { return std::get_if<SoundChannel>(&value_); }
 const Datum::TimeoutRef* Datum::asTimeoutRef() const { return std::get_if<TimeoutRef>(&value_); }
 const Datum::IntPoint* Datum::asIntPoint() const { return std::get_if<IntPoint>(&value_); }
 const Datum::IntRect* Datum::asIntRect() const { return std::get_if<IntRect>(&value_); }

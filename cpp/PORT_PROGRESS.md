@@ -300,6 +300,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Builtins delegate through the C++ `NetManager` and `MovieProperties` navigation callbacks, preserving Java missing-provider defaults and stream-status PropList shape.
 - External parameter builtins now resolve ordered context parameters by case-insensitive name or 1-based index.
 
+### Sound Builtins Foundation
+
+- Sound builtins now register Java-compatible `sound(channel)` and `soundEnabled`, returning valid 1-8 sound-channel datums and true availability by default.
+- `SoundBuiltins` exposes sound-channel method dispatch helpers for play/queue/stop/status/time/volume/list/ilk behavior backed by the C++ `SoundManager`.
+- Sound-channel property get/set helpers cover Java-compatible defaults and no-op accepted properties until C++ opcode property dispatch is wired to the helper surface.
+
 ### Constructor Builtins Foundation
 
 - Constructor builtins now register `point`, `rect`, `union`, `intersect`, `color`, `rgb`, `paletteIndex`, `sprite`, and `new` in the C++ builtin registry.
@@ -453,6 +459,7 @@ Result:
 - ListBuiltins list/proplist counts, access, mutation, searches, sorting, constructors, key namespace behavior, and aliases passed through the same CTest executable.
 - TimeoutBuiltins `timeout` creation, factory-mode `.new`, named `.new`, `.forget`, property get/set helpers, and missing-provider behavior passed through the same CTest executable.
 - NetBuiltins preload/get/post aliases, task result/error/status lookups, stream-status toggling, navigation callbacks, and ExternalParamBuiltins ordered parameter lookup passed through the same CTest executable.
+- SoundBuiltins channel creation, availability, sound-channel method dispatch, property defaults/mutation, and SoundManager playback delegation passed through the same CTest executable.
 - ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration and callback hooks passed through the same CTest executable.
 - TypeBuiltins object/void/type predicates, `value`/`script`/`callAncestor` callback hooks, symbol conversion, and `ilk` alias checks passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
@@ -526,4 +533,5 @@ Result:
 - `af6294f Port C++ string builtins foundation`
 - `4e7a9fe Port C++ list builtins foundation`
 - `9892975 Port C++ timeout builtins foundation`
-- Current checkpoint commit message: `Port C++ net builtins foundation`
+- `933317b Port C++ net builtins foundation`
+- Current checkpoint commit message: `Port C++ sound builtins foundation`

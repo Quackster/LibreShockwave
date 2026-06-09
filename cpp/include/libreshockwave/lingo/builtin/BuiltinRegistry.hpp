@@ -9,6 +9,7 @@
 
 #include "libreshockwave/lingo/Datum.hpp"
 #include "libreshockwave/player/MovieProperties.hpp"
+#include "libreshockwave/player/audio/SoundManager.hpp"
 #include "libreshockwave/player/net/NetManager.hpp"
 #include "libreshockwave/player/SpriteProperties.hpp"
 #include "libreshockwave/player/timeout/TimeoutManager.hpp"
@@ -28,6 +29,7 @@ struct BuiltinContext {
 
     player::MovieProperties* movieProperties{nullptr};
     player::net::NetManager* netManager{nullptr};
+    player::audio::SoundManager* soundManager{nullptr};
     player::SpriteProperties* spriteProperties{nullptr};
     player::timeout::TimeoutManager* timeoutManager{nullptr};
     std::vector<std::pair<std::string, std::string>> externalParams;
@@ -159,6 +161,24 @@ public:
     [[nodiscard]] static Datum externalParamValue(BuiltinContext& context, const std::vector<Datum>& args);
     [[nodiscard]] static Datum externalParamName(BuiltinContext& context, const std::vector<Datum>& args);
     [[nodiscard]] static Datum externalParamCount(BuiltinContext& context, const std::vector<Datum>& args);
+};
+
+class SoundBuiltins {
+public:
+    static void registerBuiltins(BuiltinRegistry& registry);
+    [[nodiscard]] static Datum sound(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum soundEnabled(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum handleMethod(BuiltinContext& context,
+                                            const Datum::SoundChannel& channel,
+                                            std::string_view methodName,
+                                            const std::vector<Datum>& args);
+    [[nodiscard]] static Datum getProperty(BuiltinContext& context,
+                                           const Datum::SoundChannel& channel,
+                                           std::string_view propName);
+    static bool setProperty(BuiltinContext& context,
+                            const Datum::SoundChannel& channel,
+                            std::string_view propName,
+                            Datum value);
 };
 
 class ConstructorBuiltins {
