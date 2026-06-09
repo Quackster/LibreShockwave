@@ -1695,6 +1695,93 @@ bool getChunk(ExecutionContext& context) {
     return true;
 }
 
+Datum getContextVar(ExecutionContext& context, id::VarType varType, const Datum& idDatum) {
+    switch (varType) {
+        case id::VarType::LOCAL:
+            return context.getLocal(toIntLikeJava(idDatum) / context.variableMultiplier());
+        case id::VarType::PARAM:
+            return context.getParam(toIntLikeJava(idDatum) / context.variableMultiplier());
+        case id::VarType::GLOBAL:
+        case id::VarType::GLOBAL2:
+            return context.getGlobal(context.resolveName(toIntLikeJava(idDatum)));
+        case id::VarType::PROPERTY: {
+            const Datum receiver = context.scope().receiver();
+            if (receiver.type() == DatumType::ScriptInstanceRef) {
+                return receiver.scriptInstanceValue().getProperty(context.resolveName(toIntLikeJava(idDatum)));
+            }
+            return Datum::voidValue();
+        }
+        case id::VarType::FIELD:
+            return Datum::of(std::string());
+    }
+    return Datum::voidValue();
+}
+
+void setContextVar(ExecutionContext& context, id::VarType varType, const Datum& idDatum, Datum value) {
+    switch (varType) {
+        case id::VarType::LOCAL:
+            context.setLocal(toIntLikeJava(idDatum) / context.variableMultiplier(), std::move(value));
+            return;
+        case id::VarType::PARAM:
+            context.setParam(toIntLikeJava(idDatum) / context.variableMultiplier(), std::move(value));
+            return;
+        case id::VarType::GLOBAL:
+        case id::VarType::GLOBAL2:
+            context.setGlobal(context.resolveName(toIntLikeJava(idDatum)), std::move(value));
+            return;
+        case id::VarType::PROPERTY: {
+            Datum receiver = context.scope().receiver();
+            if (receiver.type() == DatumType::ScriptInstanceRef) {
+                receiver.scriptInstanceValue().setProperty(context.resolveName(toIntLikeJava(idDatum)), std::move(value));
+            }
+            return;
+        }
+        case id::VarType::FIELD:
+            return;
+    }
+}
+
+bool put(ExecutionContext& context) {
+    const int encoded = context.argument();
+    const int putType = (encoded >> 4) & 0xF;
+    const auto varType = id::varTypeFromCode(encoded & 0xF);
+
+    if (varType == id::VarType::FIELD) {
+        (void)context.pop();
+    }
+    const Datum idDatum = context.pop();
+    Datum value = context.pop();
+
+    switch (putType) {
+        case 1:
+            setContextVar(context, varType, idDatum, std::move(value));
+            break;
+        case 3: {
+            const Datum current = getContextVar(context, varType, idDatum);
+            const std::string valueString = toStringLikeJava(value);
+            const std::string currentString = toStringLikeJava(current);
+            const std::string newValue = currentString.empty()
+                                             ? valueString
+                                             : valueString.empty() ? currentString : valueString + currentString;
+            setContextVar(context, varType, idDatum, Datum::of(newValue));
+            break;
+        }
+        case 2: {
+            const Datum current = getContextVar(context, varType, idDatum);
+            const std::string currentString = toStringLikeJava(current);
+            const std::string valueString = toStringLikeJava(value);
+            const std::string newValue = currentString.empty()
+                                             ? valueString
+                                             : valueString.empty() ? currentString : currentString + valueString;
+            setContextVar(context, varType, idDatum, Datum::of(newValue));
+            break;
+        }
+        default:
+            break;
+    }
+    return true;
+}
+
 bool getLocal(ExecutionContext& context) {
     context.push(context.getLocal(context.scaledArgument()));
     return true;
@@ -1980,6 +2067,7 @@ void StringOpcodes::registerHandlers(OpcodeRegistry& registry) {
     registry.registerHandler(Opcode::JOIN_PAD_STR, joinPadStr);
     registry.registerHandler(Opcode::CONTAINS_STR, containsStr);
     registry.registerHandler(Opcode::CONTAINS_0_STR, contains0Str);
+    registry.registerHandler(Opcode::PUT, put);
 }
 
 void VariableOpcodes::registerHandlers(OpcodeRegistry& registry) {

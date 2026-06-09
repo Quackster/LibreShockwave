@@ -2312,6 +2312,7 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opcodeRegistry.hasHandler(Opcode::JOIN_PAD_STR));
     assert(opcodeRegistry.hasHandler(Opcode::CONTAINS_STR));
     assert(opcodeRegistry.hasHandler(Opcode::CONTAINS_0_STR));
+    assert(opcodeRegistry.hasHandler(Opcode::PUT));
     assert(opcodeRegistry.hasHandler(Opcode::GET_LOCAL));
     assert(opcodeRegistry.hasHandler(Opcode::SET_LOCAL));
     assert(opcodeRegistry.hasHandler(Opcode::GET_PARAM));
@@ -2459,6 +2460,83 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     variableContext.push(Datum::of(77));
     assert(opcodeRegistry.execute(Opcode::SET_GLOBAL2, variableContext));
     assert(globals["globalName2"].intValue() == 77);
+
+    auto putArgument = [](int putType, VarType varType) {
+        return (putType << 4) | libreshockwave::id::code(varType);
+    };
+    variableContext.setInstruction(ScriptChunk::Instruction{0,
+                                                            Opcode::PUT,
+                                                            libreshockwave::lingo::code(Opcode::PUT),
+                                                            putArgument(1, VarType::LOCAL)});
+    variableContext.push(Datum::of(std::string("fresh")));
+    variableContext.push(Datum::of(2));
+    assert(opcodeRegistry.execute(Opcode::PUT, variableContext));
+    assert(variableScope.getLocal(1).stringValue() == "fresh");
+    variableContext.setInstruction(ScriptChunk::Instruction{0,
+                                                            Opcode::PUT,
+                                                            libreshockwave::lingo::code(Opcode::PUT),
+                                                            putArgument(3, VarType::LOCAL)});
+    variableContext.push(Datum::of(std::string("pre-")));
+    variableContext.push(Datum::of(2));
+    assert(opcodeRegistry.execute(Opcode::PUT, variableContext));
+    assert(variableScope.getLocal(1).stringValue() == "pre-fresh");
+    variableContext.setInstruction(ScriptChunk::Instruction{0,
+                                                            Opcode::PUT,
+                                                            libreshockwave::lingo::code(Opcode::PUT),
+                                                            putArgument(2, VarType::LOCAL)});
+    variableContext.push(Datum::of(std::string("-post")));
+    variableContext.push(Datum::of(2));
+    assert(opcodeRegistry.execute(Opcode::PUT, variableContext));
+    assert(variableScope.getLocal(1).stringValue() == "pre-fresh-post");
+
+    variableContext.setInstruction(ScriptChunk::Instruction{0,
+                                                            Opcode::PUT,
+                                                            libreshockwave::lingo::code(Opcode::PUT),
+                                                            putArgument(1, VarType::PARAM)});
+    variableContext.push(Datum::of(88));
+    variableContext.push(Datum::of(0));
+    assert(opcodeRegistry.execute(Opcode::PUT, variableContext));
+    assert(variableScope.getParam(0).intValue() == 88);
+
+    variableContext.setInstruction(ScriptChunk::Instruction{0,
+                                                            Opcode::PUT,
+                                                            libreshockwave::lingo::code(Opcode::PUT),
+                                                            putArgument(1, VarType::GLOBAL)});
+    variableContext.push(Datum::of(std::string("A")));
+    variableContext.push(Datum::of(42));
+    assert(opcodeRegistry.execute(Opcode::PUT, variableContext));
+    assert(globals["globalName"].stringValue() == "A");
+    variableContext.setInstruction(ScriptChunk::Instruction{0,
+                                                            Opcode::PUT,
+                                                            libreshockwave::lingo::code(Opcode::PUT),
+                                                            putArgument(2, VarType::GLOBAL)});
+    variableContext.push(Datum::of(std::string("B")));
+    variableContext.push(Datum::of(42));
+    assert(opcodeRegistry.execute(Opcode::PUT, variableContext));
+    assert(globals["globalName"].stringValue() == "AB");
+
+    Datum putReceiver = Datum::scriptInstance("putReceiver");
+    Scope putPropertyScope(&script, handler, {}, putReceiver);
+    ExecutionContext putPropertyContext(putPropertyScope,
+                                        ScriptChunk::Instruction{0,
+                                                                 Opcode::PUT,
+                                                                 libreshockwave::lingo::code(Opcode::PUT),
+                                                                 putArgument(1, VarType::PROPERTY)},
+                                        &registry,
+                                        &builtinContext,
+                                        callbacks);
+    putPropertyContext.push(Datum::of(std::string("hp")));
+    putPropertyContext.push(Datum::of(50));
+    assert(opcodeRegistry.execute(Opcode::PUT, putPropertyContext));
+    assert(putReceiver.scriptInstanceValue().getProperty("health").stringValue() == "hp");
+    putPropertyContext.setInstruction(ScriptChunk::Instruction{0,
+                                                               Opcode::PUT,
+                                                               libreshockwave::lingo::code(Opcode::PUT),
+                                                               putArgument(3, VarType::PROPERTY)});
+    putPropertyContext.push(Datum::of(std::string("max-")));
+    putPropertyContext.push(Datum::of(50));
+    assert(opcodeRegistry.execute(Opcode::PUT, putPropertyContext));
+    assert(putReceiver.scriptInstanceValue().getProperty("health").stringValue() == "max-hp");
 
     Scope listScope(&script, handler, {});
     ExecutionContext listContext(listScope, ScriptChunk::Instruction{0, Opcode::PUSH_ARG_LIST, libreshockwave::lingo::code(Opcode::PUSH_ARG_LIST), 3});

@@ -454,7 +454,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - Simple string opcode handlers now cover concatenation, padded concatenation, case-insensitive contains, and case-insensitive starts-with checks.
 - String coercion follows the Java datum `toStr` path for void, strings/string chunks, symbols, references, lists, and property lists.
-- PUT, PUT_CHUNK, and DELETE_CHUNK remain deferred to a focused string chunk mutation opcode slice.
+- PUT_CHUNK and DELETE_CHUNK remain deferred to a focused string chunk mutation opcode slice.
 
 ### Lingo Opcode Basic Property Foundation
 
@@ -491,6 +491,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - C++ `Datum::VarRef` now carries the Java-compatible variable type and raw index needed by chunk mutation opcodes.
 - `PUSH_CHUNK_VAR_REF` now pops the raw variable index and pushes a typed variable reference datum through the C++ opcode registry.
 - Resolving and mutating referenced locals, params, properties, globals, and fields remains deferred to the `PUT_CHUNK`/`DELETE_CHUNK` slice.
+
+### Lingo Opcode Put Variable Foundation
+
+- `PUT` now handles Java-compatible into, before, and after writes for local, parameter, global, and receiver-property variables.
+- Variable IDs are decoded from the stack and scaled by the active VM variable multiplier for locals and params, matching the existing get/set opcode behavior.
+- Field-provider-backed `PUT` remains a no-op until C++ field/member text mutation is wired into the VM runtime.
 
 ## Verification
 
@@ -557,6 +563,7 @@ Result:
 - SpriteProperties missing defaults, property get/set, revision bumps, cast member assignment, autosizing, registration-aware bounds, cursor lists, script-instance sprite numbers, release cleanup, color refs, and image callbacks passed through the same CTest executable.
 - Lingo `GET_CHUNK` char/word/item/line extraction, range, negative last-index, and sequential narrowing tests passed through the same CTest executable.
 - Lingo `PUSH_CHUNK_VAR_REF` typed raw-index varref creation tests passed through the same CTest executable.
+- Lingo `PUT` local, parameter, global, receiver-property, before, and after mutation tests passed through the same CTest executable.
 - MovieProperties movie/stage property reads and writes, file/input-backed values, xtra lists, item delimiters, timers, stage background color, random seed, navigation callbacks, and net navigation callbacks passed through the same CTest executable.
 - BuiltinRegistry case-insensitive lookup, custom registration, movie label/marker builtins, sprite puppet/cursor/spriteBox builtins, puppetPalette hooks, and Java-compatible no-op sprite builtins passed through the same CTest executable.
 - MathBuiltins numeric coercion, integer/float conversion, bit operations, trig, power, min/max, list min/max, and random callback hooks passed through the same CTest executable.
@@ -671,4 +678,5 @@ Result:
 - `c9be4391 Port C++ opcode object call foundation`
 - `10193311 Port C++ opcode object construction foundation`
 - `0487784f Port C++ opcode string chunk foundation`
-- Current checkpoint commit message: `Port C++ opcode chunk varref foundation`
+- `87e32e1d Port C++ opcode chunk varref foundation`
+- Current checkpoint commit message: `Port C++ opcode put foundation`
