@@ -228,6 +228,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Score synchronization preserves explicit Lingo overrides, score-default application uses Director's inverted blend-byte mapping, and score rebinding can either clear or preserve attached script instances.
 - Rendering integration through StageRenderer/SpriteBaker remains deferred until those C++ pipeline stages are ported.
 
+### Behavior Instance Manager Foundation
+
+- `behavior::BehaviorInstance` ports behavior IDs, script references, score behavior references, sprite/frame identity, persistent script-instance receiver properties, and begin/end sprite lifecycle flags.
+- `behavior::BehaviorManager` ports instance registration, property parameter application from behavior refs, per-channel lookup, frame-script caching, instance removal, sprite-instance ordering, and clear state.
+- Handler invocation and VM/event dispatch remain deferred to the C++ event dispatcher and Lingo VM runtime slices.
+
 ### Score Navigation Foundation
 
 - `score::ScoreBehaviorRef` ports behavior cast-member references with saved parameter storage.
@@ -343,6 +349,7 @@ Result:
 - BitmapCache cache-keying, palette invalidation, non-native alpha coercion, indexed matte remap selection/application, and InkProcessor color remap helpers passed through the same CTest executable.
 - SpriteState score construction, Director blend-byte mapping, explicit override preservation, dynamic defaults, cursor state, script-instance rebinding, and release resets passed through the same CTest executable.
 - HitTester front-to-back bounds hits, static native-alpha thresholds, dynamic transparency-ink alpha hits, forced bounding-box hits, all-hit ordering, type lookup, and flip/scale source sampling passed through the same CTest executable.
+- BehaviorInstance and BehaviorManager ID/property state, behavior-ref parameters, frame-script caching, channel lookup/removal, sprite-instance ordering, and clear tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -398,4 +405,5 @@ Result:
 - `c8e0755 Port C++ bitmap cache and ink foundation`
 - `402b179 Port C++ sprite state foundation`
 - `9f00ca8 Port C++ hit tester foundation`
-- Current checkpoint commit message: `Port C++ frame render pipeline foundation`
+- `1afd911 Port C++ frame render pipeline foundation`
+- Current checkpoint commit message: `Port C++ behavior manager foundation`

@@ -68,6 +68,8 @@
 #include "libreshockwave/player/PlayerEvent.hpp"
 #include "libreshockwave/player/PlayerEventInfo.hpp"
 #include "libreshockwave/player/PlayerState.hpp"
+#include "libreshockwave/player/behavior/BehaviorInstance.hpp"
+#include "libreshockwave/player/behavior/BehaviorManager.hpp"
 #include "libreshockwave/player/debug/Breakpoint.hpp"
 #include "libreshockwave/player/debug/BreakpointManager.hpp"
 #include "libreshockwave/player/debug/DebugSnapshot.hpp"
@@ -173,6 +175,8 @@ using libreshockwave::player::debug::Breakpoint;
 using libreshockwave::player::debug::BreakpointKey;
 using libreshockwave::player::debug::BreakpointManager;
 using libreshockwave::player::debug::CallFrame;
+using libreshockwave::player::behavior::BehaviorInstance;
+using libreshockwave::player::behavior::BehaviorManager;
 using libreshockwave::player::debug::DebugSnapshot;
 using libreshockwave::player::debug::InstructionDisplay;
 using libreshockwave::player::debug::WatchExpression;
@@ -1054,6 +1058,103 @@ void testSpriteStateFoundation() {
     dynamic.rebindToScore(nextData);
     assert(dynamic.scriptInstanceList().empty());
     assert(dynamic.effectiveCastMember() == 44);
+}
+
+std::shared_ptr<ScriptChunk> makeBehaviorScript(int id, ScriptChunkType type = ScriptChunkType::Behavior) {
+    return std::make_shared<ScriptChunk>(nullptr,
+                                         ChunkId(id),
+                                         type,
+                                         0,
+                                         std::vector<ScriptChunk::Handler>{},
+                                         std::vector<ScriptChunk::LiteralEntry>{},
+                                         std::vector<ScriptChunk::PropertyEntry>{},
+                                         std::vector<ScriptChunk::GlobalEntry>{},
+                                         std::vector<std::uint8_t>{});
+}
+
+void testBehaviorFoundation() {
+    auto script = makeBehaviorScript(701);
+    auto params = Datum::propList();
+    params.propListValue().put(Datum::symbol("speed"), Datum::of(7));
+    params.propListValue().put(Datum::of(std::string("label")), Datum::of("go"));
+    ScoreBehaviorRef ref(1, 23, {params});
+
+    BehaviorInstance instance(script, ref, 4);
+    assert(instance.id() > 0);
+    assert(instance.script() == script);
+    assert(instance.behaviorRef() == ref);
+    assert(instance.spriteNum() == 4);
+    assert(!instance.isFrameBehavior());
+    assert(instance.getProperty("spriteNum").intValue() == 4);
+    assert(instance.getProperty("missing").isVoid());
+    instance.setProperty("health", Datum::of(99));
+    assert(instance.getProperty("health").intValue() == 99);
+    assert(instance.properties().size() == 2);
+    assert(!instance.isBeginSpriteCalled());
+    instance.setBeginSpriteCalled(true);
+    instance.setEndSpriteCalled(true);
+    assert(instance.isBeginSpriteCalled());
+    assert(instance.isEndSpriteCalled());
+    auto receiver = instance.toDatum();
+    assert(receiver.type() == DatumType::ScriptInstanceRef);
+    receiver.scriptInstanceValue().setProperty("health", Datum::of(100));
+    assert(instance.getProperty("health").intValue() == 100);
+    assert(instance.toString().find("spriteNum=4") != std::string::npos);
+
+    BehaviorManager missingFileManager;
+    assert(missingFileManager.createInstance(ref, 1) == nullptr);
+
+    BehaviorManager manager;
+    assert(!manager.debugEnabled());
+    manager.setDebugEnabled(true);
+    assert(manager.debugEnabled());
+    auto first = manager.createInstanceForScript(script, ref, 4);
+    assert(first != nullptr);
+    assert(manager.instanceCount() == 1);
+    assert(manager.getInstance(first->id()) == first);
+    assert(manager.hasInstanceForChannel(4, ref));
+    assert(!manager.hasInstanceForChannel(5, ref));
+    assert(manager.getInstancesForChannel(4).size() == 1);
+    assert(manager.getInstancesForChannel(99).empty());
+    assert(first->getProperty("speed").intValue() == 7);
+    assert(first->getProperty("label").stringValue() == "go");
+
+    auto second = manager.createInstanceForScript(makeBehaviorScript(702), ScoreBehaviorRef(1, 24), 2);
+    auto third = manager.createInstanceForScript(makeBehaviorScript(703), ScoreBehaviorRef(1, 25), 6);
+    assert(manager.instanceCount() == 3);
+    const auto spriteInstances = manager.getSpriteInstances();
+    assert(spriteInstances.size() == 3);
+    assert(spriteInstances[0] == second);
+    assert(spriteInstances[1] == first);
+    assert(spriteInstances[2] == third);
+    assert(manager.getAllInstances().size() == 3);
+
+    auto frameRef = ScoreBehaviorRef(1, 30);
+    auto frameScript = makeBehaviorScript(710);
+    auto frame = manager.getOrCreateFrameScriptForScript(frameScript, frameRef, 12);
+    assert(frame != nullptr);
+    assert(frame->isFrameBehavior());
+    assert(manager.frameScriptInstance() == frame);
+    assert(manager.getOrCreateFrameScriptForScript(frameScript, frameRef, 12) == frame);
+    auto nextFrame = manager.getOrCreateFrameScriptForScript(makeBehaviorScript(711), frameRef, 13);
+    assert(nextFrame != nullptr);
+    assert(nextFrame != frame);
+    assert(manager.getInstance(frame->id()) == nullptr);
+    assert(manager.frameScriptInstance() == nextFrame);
+    manager.clearFrameScript();
+    assert(manager.frameScriptInstance() == nullptr);
+    assert(manager.getInstance(nextFrame->id()) == nullptr);
+
+    manager.removeInstance(second);
+    assert(manager.getInstance(second->id()) == nullptr);
+    assert(manager.getInstancesForChannel(2).empty());
+    manager.removeInstancesForChannel(4);
+    assert(!manager.hasInstanceForChannel(4, ref));
+    assert(manager.getInstance(first->id()) == nullptr);
+    manager.clear();
+    assert(manager.instanceCount() == 0);
+    assert(manager.getAllInstances().empty());
+    assert(manager.getSpriteInstances().empty());
 }
 
 void testDebugFoundation() {
@@ -4262,6 +4363,7 @@ int main() {
     testHitTesterFoundation();
     testScoreNavigationFoundation();
     testSpriteStateFoundation();
+    testBehaviorFoundation();
     testDebugFoundation();
     testRenderPipelineFoundation();
     testBitmapCacheAndInkProcessorFoundation();
