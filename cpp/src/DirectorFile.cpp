@@ -28,6 +28,28 @@
 #include "libreshockwave/lookup/ScriptLookup.hpp"
 
 namespace libreshockwave {
+namespace {
+
+std::optional<chunks::ScriptChunkType> scriptChunkTypeForCastMemberScriptType(chunks::CastMemberScriptType type) {
+    switch (type) {
+        case chunks::CastMemberScriptType::Score: return chunks::ScriptChunkType::Score;
+        case chunks::CastMemberScriptType::Behavior: return chunks::ScriptChunkType::Behavior;
+        case chunks::CastMemberScriptType::MovieScript: return chunks::ScriptChunkType::MovieScript;
+        case chunks::CastMemberScriptType::Parent: return chunks::ScriptChunkType::Parent;
+        case chunks::CastMemberScriptType::Unknown: return chunks::ScriptChunkType::Unknown;
+    }
+    return std::nullopt;
+}
+
+void appendUnique(std::vector<std::string>& result, const std::vector<std::string>& names) {
+    for (const auto& name : names) {
+        if (std::find(result.begin(), result.end(), name) == result.end()) {
+            result.push_back(name);
+        }
+    }
+}
+
+} // namespace
 
 format::ChunkType DirectorChunkInfo::type() const {
     return format::chunkTypeFromFourCC(fourcc);
@@ -78,8 +100,234 @@ std::vector<std::shared_ptr<chunks::ScriptChunk>> DirectorFile::getScriptsByCont
     return scriptLookup().getAllByContextId(scriptId);
 }
 
+std::shared_ptr<chunks::ScriptChunk> DirectorFile::getScriptForCastMember(
+    const std::shared_ptr<chunks::CastMemberChunk>& member) {
+    return getScriptForCastMember(member, nullptr);
+}
+
+std::shared_ptr<chunks::ScriptChunk> DirectorFile::getScriptForCastMember(
+    const std::shared_ptr<chunks::CastMemberChunk>& member,
+    const std::shared_ptr<chunks::CastChunk>& castChunk) {
+    if (!member || !member->isScript() || member->scriptId() <= 0) {
+        return nullptr;
+    }
+
+    const auto matches = getScriptsByContextId(member->scriptId());
+    if (matches.empty()) {
+        return nullptr;
+    }
+    if (matches.size() == 1) {
+        return matches.front();
+    }
+
+    std::optional<id::ChunkId> preferredContextOwner;
+    if (castChunk && keyTable_) {
+        preferredContextOwner = keyTable_->getOwnerCastId(castChunk->id());
+    }
+    if (preferredContextOwner.has_value() && keyTable_) {
+        for (const auto& context : allScriptContexts_) {
+            if (!context) {
+                continue;
+            }
+            const auto contextOwner = keyTable_->getOwnerCastId(context->id());
+            if (!contextOwner.has_value() || contextOwner->value() != preferredContextOwner->value()) {
+                continue;
+            }
+            const int index = member->scriptId() - 1;
+            if (index < 0 || index >= static_cast<int>(context->entries().size())) {
+                break;
+            }
+            const auto scriptId = context->entries()[static_cast<std::size_t>(index)].id;
+            if (scriptId.value() <= 0) {
+                break;
+            }
+            for (const auto& script : matches) {
+                if (script && script->id().value() == scriptId.value()) {
+                    return script;
+                }
+            }
+            break;
+        }
+    }
+
+    if (keyTable_) {
+        for (const auto& script : matches) {
+            if (!script) {
+                continue;
+            }
+            const auto ownerId = keyTable_->getOwnerCastId(script->id());
+            if (ownerId.has_value() && ownerId->value() == member->id().value()) {
+                return script;
+            }
+        }
+    }
+
+    if (const auto memberType = member->getScriptType(); memberType.has_value()) {
+        const auto scriptType = scriptChunkTypeForCastMemberScriptType(memberType.value());
+        if (scriptType.has_value()) {
+            for (const auto& script : matches) {
+                if (script && script->scriptType() == scriptType.value()) {
+                    return script;
+                }
+            }
+        }
+    }
+
+    return matches.front();
+}
+
 std::optional<chunks::CastMemberScriptType> DirectorFile::getScriptType(const std::shared_ptr<chunks::ScriptChunk>& script) {
+    if (!script) {
+        return std::nullopt;
+    }
+
+    if (keyTable_) {
+        const auto ownerId = keyTable_->getOwnerCastId(script->id());
+        if (ownerId.has_value()) {
+            for (const auto& member : castMembers_) {
+                if (member && member->id().value() == ownerId->value() && member->isScript()) {
+                    return member->getScriptType();
+                }
+            }
+        }
+    }
+
     return scriptLookup().getScriptType(script);
+}
+
+std::string DirectorFile::getScriptName(const std::shared_ptr<chunks::ScriptChunk>& script) {
+    if (!script) {
+        return "";
+    }
+
+    if (keyTable_) {
+        const auto ownerId = keyTable_->getOwnerCastId(script->id());
+        if (ownerId.has_value()) {
+            for (const auto& member : castMembers_) {
+                if (member && member->id().value() == ownerId->value() && member->isScript()) {
+                    return member->name();
+                }
+            }
+        }
+    }
+
+    for (const auto& member : castMembers_) {
+        if (!member || !member->isScript()) {
+            continue;
+        }
+        auto resolved = getScriptForCastMember(member);
+        if (resolved && resolved->id().value() == script->id().value()) {
+            return member->name();
+        }
+    }
+    return "";
+}
+
+std::shared_ptr<chunks::ScriptNamesChunk> DirectorFile::getScriptNamesById(id::ChunkId id) const {
+    if (const auto found = scriptNamesById_.find(id.value()); found != scriptNamesById_.end()) {
+        return found->second;
+    }
+    return nullptr;
+}
+
+std::shared_ptr<chunks::ScriptNamesChunk> DirectorFile::getScriptNamesForScript(
+    const std::shared_ptr<chunks::ScriptChunk>& script) {
+    if (!script) {
+        return scriptNames_;
+    }
+    if (const auto cached = scriptNamesForScriptCache_.find(script->id().value()); cached != scriptNamesForScriptCache_.end()) {
+        return cached->second;
+    }
+
+    for (const auto& context : allScriptContexts_) {
+        if (!context) {
+            continue;
+        }
+        for (const auto& entry : context->entries()) {
+            if (entry.id.value() != script->id().value()) {
+                continue;
+            }
+            auto names = getScriptNamesById(context->lnamSectionId());
+            auto resolved = names ? names : scriptNames_;
+            if (resolved) {
+                scriptNamesForScriptCache_[script->id().value()] = resolved;
+            }
+            return resolved;
+        }
+    }
+
+    if (scriptNames_) {
+        scriptNamesForScriptCache_[script->id().value()] = scriptNames_;
+    }
+    return scriptNames_;
+}
+
+std::vector<std::string> DirectorFile::getAllGlobalNames() {
+    std::vector<std::string> result;
+    if (!scriptNames_) {
+        return result;
+    }
+    for (const auto& script : scripts_) {
+        appendUnique(result, getScriptGlobals(script));
+    }
+    return result;
+}
+
+std::vector<std::string> DirectorFile::getAllPropertyNames() {
+    std::vector<std::string> result;
+    if (!scriptNames_) {
+        return result;
+    }
+    for (const auto& script : scripts_) {
+        appendUnique(result, getScriptProperties(script));
+    }
+    return result;
+}
+
+std::vector<std::string> DirectorFile::getScriptGlobals(const std::shared_ptr<chunks::ScriptChunk>& script) {
+    auto names = getScriptNamesForScript(script);
+    return script && names ? script->getGlobalNames(names.get()) : std::vector<std::string>{};
+}
+
+std::vector<std::string> DirectorFile::getScriptProperties(const std::shared_ptr<chunks::ScriptChunk>& script) {
+    auto names = getScriptNamesForScript(script);
+    return script && names ? script->getPropertyNames(names.get()) : std::vector<std::string>{};
+}
+
+std::vector<ScriptInfo> DirectorFile::getScriptInfoList() {
+    std::vector<ScriptInfo> result;
+    if (!scriptNames_) {
+        return result;
+    }
+
+    for (const auto& script : scripts_) {
+        if (!script) {
+            continue;
+        }
+        auto names = getScriptNamesForScript(script);
+        std::vector<std::string> handlerNames;
+        if (names) {
+            handlerNames.reserve(script->handlers().size());
+            for (const auto& handler : script->handlers()) {
+                handlerNames.push_back(names->getName(handler.nameId));
+            }
+        }
+
+        auto scriptType = script->scriptType();
+        if (const auto castType = getScriptType(script); castType.has_value()) {
+            if (const auto converted = scriptChunkTypeForCastMemberScriptType(castType.value()); converted.has_value()) {
+                scriptType = converted.value();
+            }
+        }
+
+        result.push_back(ScriptInfo{script->id().value(),
+                                    getScriptName(script),
+                                    scriptType,
+                                    names ? script->getGlobalNames(names.get()) : std::vector<std::string>{},
+                                    names ? script->getPropertyNames(names.get()) : std::vector<std::string>{},
+                                    std::move(handlerNames)});
+    }
+    return result;
 }
 
 std::shared_ptr<chunks::ScoreChunk> DirectorFile::getScoreForMember(
@@ -579,6 +827,7 @@ void DirectorFile::categorizeChunk(const std::shared_ptr<chunks::Chunk>& chunk) 
     castMemberLookup_.reset();
     paletteResolver_.reset();
     scriptLookup_.reset();
+    scriptNamesForScriptCache_.clear();
 
     if (auto config = std::dynamic_pointer_cast<chunks::ConfigChunk>(chunk)) {
         config_ = config;

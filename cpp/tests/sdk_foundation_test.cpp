@@ -1261,6 +1261,29 @@ void testScriptChunkParser() {
     assert(script.findHandlerByNameId(5).has_value());
     assert(!script.findHandlerByNameId(99).has_value());
     assert(script.rawBytecode().empty());
+
+    std::vector<std::string> names(15);
+    names[5] = "mouseUp";
+    names[9] = "localName";
+    names[12] = "firstProperty";
+    names[13] = "secondProperty";
+    names[14] = "sharedGlobal";
+    ScriptNamesChunk scriptNames(nullptr, ChunkId(35), names);
+    assert(script.getHandlerName(handler, &scriptNames) == "mouseUp");
+    assert(script.getHandlerName(handler, nullptr) == "handler#5");
+    assert(script.resolveName(9, &scriptNames) == "localName");
+    assert(script.resolveName(9, nullptr) == "#9");
+    assert(script.findHandler("MOUSEUP", &scriptNames).has_value());
+    assert(!script.findHandler("missing", &scriptNames).has_value());
+    const auto propertyNames = script.getPropertyNames(&scriptNames);
+    assert(propertyNames.size() == 2);
+    assert(propertyNames[0] == "firstProperty");
+    assert(propertyNames[1] == "secondProperty");
+    const auto globalNames = script.getGlobalNames(&scriptNames);
+    assert(globalNames.size() == 1);
+    assert(globalNames[0] == "sharedGlobal");
+    assert(script.getPropertyNames(nullptr).empty());
+    assert(script.getGlobalNames(nullptr).empty());
     assert(scriptReader.order() == ByteOrder::LittleEndian);
 }
 
@@ -2199,6 +2222,16 @@ void testLookupHelpers() {
     assert(emptyFile.tempo() == 15);
     assert(emptyFile.getScoreTempo(0) == -1);
     assert(!emptyFile.getScorePalette(0).has_value());
+    assert(emptyFile.getScriptForCastMember(nullptr).get() == nullptr);
+    assert(!emptyFile.getScriptType(nullptr).has_value());
+    assert(emptyFile.getScriptName(nullptr).empty());
+    assert(emptyFile.getScriptNamesById(ChunkId(1)).get() == nullptr);
+    assert(emptyFile.getScriptNamesForScript(nullptr).get() == nullptr);
+    assert(emptyFile.getAllGlobalNames().empty());
+    assert(emptyFile.getAllPropertyNames().empty());
+    assert(emptyFile.getScriptGlobals(nullptr).empty());
+    assert(emptyFile.getScriptProperties(nullptr).empty());
+    assert(emptyFile.getScriptInfoList().empty());
     assert(emptyFile.resolvePalette(Palette::SYSTEM_WIN).get() == &Palette::systemWinPalette());
     assert(emptyFile.resolvePaletteExact(999).get() == nullptr);
     assert(emptyFile.resolvePaletteByMemberNumber(42).get() == &Palette::systemMacPalette());

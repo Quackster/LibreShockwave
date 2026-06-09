@@ -5,6 +5,7 @@
 #include <memory>
 #include <optional>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "libreshockwave/format/ChunkType.hpp"
@@ -28,6 +29,7 @@ class ScriptContextChunk;
 class ScriptNamesChunk;
 class TextChunk;
 enum class CastMemberScriptType;
+enum class ScriptChunkType;
 }
 
 namespace libreshockwave::format {
@@ -59,6 +61,15 @@ struct DirectorChunkInfo {
     int uncompressedLength;
 
     [[nodiscard]] format::ChunkType type() const;
+};
+
+struct ScriptInfo {
+    int scriptId;
+    std::string scriptName;
+    chunks::ScriptChunkType scriptType;
+    std::vector<std::string> globals;
+    std::vector<std::string> properties;
+    std::vector<std::string> handlers;
 };
 
 class DirectorFile {
@@ -96,7 +107,21 @@ public:
     [[nodiscard]] std::shared_ptr<chunks::CastMemberChunk> getCastMemberByNumber(int castLib, int memberNumber);
     [[nodiscard]] std::shared_ptr<chunks::ScriptChunk> getScriptByContextId(int scriptId);
     [[nodiscard]] std::vector<std::shared_ptr<chunks::ScriptChunk>> getScriptsByContextId(int scriptId);
+    [[nodiscard]] std::shared_ptr<chunks::ScriptChunk> getScriptForCastMember(
+        const std::shared_ptr<chunks::CastMemberChunk>& member);
+    [[nodiscard]] std::shared_ptr<chunks::ScriptChunk> getScriptForCastMember(
+        const std::shared_ptr<chunks::CastMemberChunk>& member,
+        const std::shared_ptr<chunks::CastChunk>& castChunk);
     [[nodiscard]] std::optional<chunks::CastMemberScriptType> getScriptType(const std::shared_ptr<chunks::ScriptChunk>& script);
+    [[nodiscard]] std::string getScriptName(const std::shared_ptr<chunks::ScriptChunk>& script);
+    [[nodiscard]] std::shared_ptr<chunks::ScriptNamesChunk> getScriptNamesById(id::ChunkId id) const;
+    [[nodiscard]] std::shared_ptr<chunks::ScriptNamesChunk> getScriptNamesForScript(
+        const std::shared_ptr<chunks::ScriptChunk>& script);
+    [[nodiscard]] std::vector<std::string> getAllGlobalNames();
+    [[nodiscard]] std::vector<std::string> getAllPropertyNames();
+    [[nodiscard]] std::vector<std::string> getScriptGlobals(const std::shared_ptr<chunks::ScriptChunk>& script);
+    [[nodiscard]] std::vector<std::string> getScriptProperties(const std::shared_ptr<chunks::ScriptChunk>& script);
+    [[nodiscard]] std::vector<ScriptInfo> getScriptInfoList();
     [[nodiscard]] std::shared_ptr<chunks::ScoreChunk> getScoreForMember(const std::shared_ptr<chunks::CastMemberChunk>& member);
     [[nodiscard]] std::vector<std::shared_ptr<chunks::TextChunk>> getTextChunksForMember(
         const std::shared_ptr<chunks::CastMemberChunk>& member);
@@ -147,6 +172,7 @@ private:
     std::vector<std::shared_ptr<chunks::ScriptContextChunk>> allScriptContexts_;
     std::shared_ptr<chunks::ScriptNamesChunk> scriptNames_;
     std::map<int, std::shared_ptr<chunks::ScriptNamesChunk>> scriptNamesById_;
+    std::map<int, std::shared_ptr<chunks::ScriptNamesChunk>> scriptNamesForScriptCache_;
     std::shared_ptr<chunks::ScoreChunk> scoreChunk_;
     std::shared_ptr<chunks::FrameLabelsChunk> frameLabelsChunk_;
 

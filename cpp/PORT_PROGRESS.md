@@ -138,6 +138,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - KEY* backed member resource lookup now resolves embedded film-loop score chunks for cast members.
 - KEY* backed text lookup now returns all associated STXT chunks, chooses the first non-empty text chunk, and falls back to direct member-id STXT lookup.
 
+### Script Name and Info Helpers
+
+- `chunks::ScriptChunk` resolves handler, property, global, and arbitrary name IDs through `ScriptNamesChunk`.
+- Script handler lookup by case-insensitive authored name is available in the C++ SDK.
+- `DirectorFile` resolves per-script Lnam chunks, script cast-member ownership, script member display names, global/property name lists, and script info summaries.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -169,11 +175,12 @@ Result:
 - Cast member and script lookup tests passed through the same CTest executable.
 - Palette resolver and DirectorFile palette lookup tests passed through the same CTest executable.
 - DirectorFile stage/tempo, associated text, and associated score lookup tests passed through the same CTest executable.
+- ScriptChunk name resolution and DirectorFile script-helper empty fallback tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
 
-- Higher-level media/script-name integration.
+- Higher-level media integration.
 - Remaining bitmap, sound, font, text, score, and script chunk decoders.
 - Lingo decompiler, VM runtime values, dispatchers, and builtins.
 - Player core, rendering pipeline, input, networking, audio, cast management, and debugging.
@@ -198,4 +205,5 @@ Result:
 - `cc3203d Port C++ lazy chunk reparsing`
 - `ea9e01f Port C++ cast and script lookup`
 - `afbfbcb Port C++ palette resolver`
-- Current checkpoint commit message: `Port C++ DirectorFile member resources`
+- `d71ac1d Port C++ DirectorFile member resources`
+- Current checkpoint commit message: `Port C++ script name helpers`

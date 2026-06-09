@@ -2,12 +2,14 @@
 
 #include <algorithm>
 #include <bit>
+#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <sstream>
 #include <utility>
 
 #include "libreshockwave/io/BinaryReader.hpp"
+#include "libreshockwave/chunks/ScriptNamesChunk.hpp"
 
 namespace libreshockwave::chunks {
 namespace {
@@ -56,6 +58,19 @@ std::vector<int> readNameIds(io::BinaryReader& reader, int count, int offset) {
     }
     reader.seek(savedPosition);
     return ids;
+}
+
+bool equalsIgnoreCase(std::string_view lhs, std::string_view rhs) {
+    if (lhs.size() != rhs.size()) {
+        return false;
+    }
+    for (std::size_t index = 0; index < lhs.size(); ++index) {
+        if (std::tolower(static_cast<unsigned char>(lhs[index])) !=
+            std::tolower(static_cast<unsigned char>(rhs[index]))) {
+            return false;
+        }
+    }
+    return true;
 }
 
 } // namespace
@@ -125,6 +140,56 @@ std::optional<ScriptChunk::Handler> ScriptChunk::findHandlerByNameId(int nameId)
         }
     }
     return std::nullopt;
+}
+
+std::string ScriptChunk::getHandlerName(const Handler& handler, const ScriptNamesChunk* names) const {
+    if (names) {
+        return names->getName(handler.nameId);
+    }
+    return "handler#" + std::to_string(handler.nameId);
+}
+
+std::string ScriptChunk::resolveName(int nameId, const ScriptNamesChunk* names) const {
+    if (names) {
+        return names->getName(nameId);
+    }
+    return "#" + std::to_string(nameId);
+}
+
+std::optional<ScriptChunk::Handler> ScriptChunk::findHandler(std::string_view name, const ScriptNamesChunk* names) const {
+    if (!names) {
+        return std::nullopt;
+    }
+    for (const auto& handler : handlers_) {
+        if (equalsIgnoreCase(names->getName(handler.nameId), name)) {
+            return handler;
+        }
+    }
+    return std::nullopt;
+}
+
+std::vector<std::string> ScriptChunk::getPropertyNames(const ScriptNamesChunk* names) const {
+    std::vector<std::string> result;
+    if (!names) {
+        return result;
+    }
+    result.reserve(properties_.size());
+    for (const auto& property : properties_) {
+        result.push_back(names->getName(property.nameId));
+    }
+    return result;
+}
+
+std::vector<std::string> ScriptChunk::getGlobalNames(const ScriptNamesChunk* names) const {
+    std::vector<std::string> result;
+    if (!names) {
+        return result;
+    }
+    result.reserve(globals_.size());
+    for (const auto& global : globals_) {
+        result.push_back(names->getName(global.nameId));
+    }
+    return result;
 }
 
 ScriptChunk ScriptChunk::read(const DirectorFile* file,

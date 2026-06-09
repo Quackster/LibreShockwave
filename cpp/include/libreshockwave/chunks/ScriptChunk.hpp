@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <variant>
 #include <vector>
@@ -15,6 +16,8 @@ class BinaryReader;
 }
 
 namespace libreshockwave::chunks {
+
+class ScriptNamesChunk;
 
 enum class ScriptChunkType {
     Score = 1,
@@ -94,6 +97,11 @@ public:
     [[nodiscard]] bool hasProperties() const;
     [[nodiscard]] bool hasGlobals() const;
     [[nodiscard]] std::optional<Handler> findHandlerByNameId(int nameId) const;
+    [[nodiscard]] std::string getHandlerName(const Handler& handler, const ScriptNamesChunk* names) const;
+    [[nodiscard]] std::string resolveName(int nameId, const ScriptNamesChunk* names) const;
+    [[nodiscard]] std::optional<Handler> findHandler(std::string_view name, const ScriptNamesChunk* names) const;
+    [[nodiscard]] std::vector<std::string> getPropertyNames(const ScriptNamesChunk* names) const;
+    [[nodiscard]] std::vector<std::string> getGlobalNames(const ScriptNamesChunk* names) const;
 
     [[nodiscard]] static ScriptChunk read(const DirectorFile* file,
                                           io::BinaryReader& reader,
