@@ -430,7 +430,13 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `lingo::vm::OpcodeRegistry` now maps opcode enums to executable C++ handler callbacks with post-construction registration hooks.
 - Stack opcode handlers cover zero/int/float/literal/symbol pushes plus swap, pop, and peek behavior over `ExecutionContext`.
 - Control-flow opcode handlers cover return, factory return, absolute jump target lookup, conditional zero jump, and repeat-loop back jumps.
-- Object creation, arithmetic/comparison/logical/string/list/property/call/variable opcodes remain deferred to later focused VM slices.
+- Object creation, string/list/property/call/variable opcodes remain deferred to later focused VM slices.
+
+### Lingo Opcode Arithmetic, Comparison, and Logical Foundation
+
+- Arithmetic opcode handlers now cover add, subtract, multiply, divide, modulo, and unary inverse over `ExecutionContext`.
+- Numeric, point, rectangle, linear-list, and RGB color arithmetic mirrors the Java opcode foundation, including Java-style integer truncation and color-channel clamping.
+- Comparison and logical opcode handlers now cover numeric ordering, Lingo equality/inequality, and truthy `and`/`or`/`not` behavior.
 
 ## Verification
 
@@ -512,6 +518,7 @@ Result:
 - TypeBuiltins object/void/type predicates, `value`/`script`/`callAncestor` callback hooks, symbol conversion, and `ilk` alias checks passed through the same CTest executable.
 - Lingo VM Scope and ExecutionContext stack, param, local, return, loop, jump, global callback, handler callback, builtin invocation, and call-stack formatting behavior passed through the same CTest executable.
 - OpcodeRegistry stack/control handler registration, custom handler registration, literal/symbol pushes, stack manipulation, return/factory return, and jump opcodes passed through the same CTest executable.
+- OpcodeRegistry arithmetic, comparison, and logical handlers passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -591,4 +598,5 @@ Result:
 - `dbc9542 Port C++ control flow builtins foundation`
 - `c0cea9e Port C++ image builtins foundation`
 - `8e7b9b5 Port C++ Lingo VM scope foundation`
-- Current checkpoint commit message: `Port C++ opcode stack foundation`
+- `1b666a9c Port C++ opcode stack foundation`
+- Current checkpoint commit message: `Port C++ opcode arithmetic foundation`

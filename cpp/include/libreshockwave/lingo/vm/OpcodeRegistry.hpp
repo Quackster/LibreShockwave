@@ -33,4 +33,19 @@ public:
     static void registerHandlers(OpcodeRegistry& registry);
 };
 
+class ArithmeticOpcodes {
+public:
+    static void registerHandlers(OpcodeRegistry& registry);
+};
+
+class ComparisonOpcodes {
+public:
+    static void registerHandlers(OpcodeRegistry& registry);
+};
+
+class LogicalOpcodes {
+public:
+    static void registerHandlers(OpcodeRegistry& registry);
+};
+
 } // namespace libreshockwave::lingo::vm

@@ -2191,12 +2191,27 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opcodeRegistry.hasHandler(Opcode::SWAP));
     assert(opcodeRegistry.hasHandler(Opcode::POP));
     assert(opcodeRegistry.hasHandler(Opcode::PEEK));
+    assert(opcodeRegistry.hasHandler(Opcode::ADD));
+    assert(opcodeRegistry.hasHandler(Opcode::SUB));
+    assert(opcodeRegistry.hasHandler(Opcode::MUL));
+    assert(opcodeRegistry.hasHandler(Opcode::DIV));
+    assert(opcodeRegistry.hasHandler(Opcode::MOD));
+    assert(opcodeRegistry.hasHandler(Opcode::INV));
+    assert(opcodeRegistry.hasHandler(Opcode::LT));
+    assert(opcodeRegistry.hasHandler(Opcode::LT_EQ));
+    assert(opcodeRegistry.hasHandler(Opcode::GT));
+    assert(opcodeRegistry.hasHandler(Opcode::GT_EQ));
+    assert(opcodeRegistry.hasHandler(Opcode::EQ));
+    assert(opcodeRegistry.hasHandler(Opcode::NT_EQ));
+    assert(opcodeRegistry.hasHandler(Opcode::AND));
+    assert(opcodeRegistry.hasHandler(Opcode::OR));
+    assert(opcodeRegistry.hasHandler(Opcode::NOT));
     assert(opcodeRegistry.hasHandler(Opcode::RET));
     assert(opcodeRegistry.hasHandler(Opcode::RET_FACTORY));
     assert(opcodeRegistry.hasHandler(Opcode::JMP));
     assert(opcodeRegistry.hasHandler(Opcode::JMP_IF_Z));
     assert(opcodeRegistry.hasHandler(Opcode::END_REPEAT));
-    assert(!opcodeRegistry.hasHandler(Opcode::ADD));
+    assert(!opcodeRegistry.hasHandler(Opcode::INVALID));
 
     Scope opScope(&script, handler, {});
     ExecutionContext opContext(opScope, ScriptChunk::Instruction{0, Opcode::PUSH_ZERO, 0x03, 0});
@@ -2247,6 +2262,99 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opContext.pop().intValue() == 5);
     assert(opContext.pop().intValue() == 4);
 
+    auto runUnary = [&](Opcode opcode, Datum value) {
+        Scope unaryScope(&script, handler, {});
+        ExecutionContext unaryContext(unaryScope, ScriptChunk::Instruction{0, opcode, libreshockwave::lingo::code(opcode), 0});
+        unaryContext.push(std::move(value));
+        assert(opcodeRegistry.execute(opcode, unaryContext));
+        return unaryContext.pop();
+    };
+    auto runBinary = [&](Opcode opcode, Datum a, Datum b) {
+        Scope binaryScope(&script, handler, {});
+        ExecutionContext binaryContext(binaryScope, ScriptChunk::Instruction{0, opcode, libreshockwave::lingo::code(opcode), 0});
+        binaryContext.push(std::move(a));
+        binaryContext.push(std::move(b));
+        assert(opcodeRegistry.execute(opcode, binaryContext));
+        return binaryContext.pop();
+    };
+
+    assert(runBinary(Opcode::ADD, Datum::of(4), Datum::of(5)).intValue() == 9);
+    assert(std::fabs(runBinary(Opcode::ADD, Datum::of(1.5F), Datum::of(2)).floatValue() - 3.5F) < 0.0001F);
+    assert(runBinary(Opcode::ADD, Datum::castLibRef(libreshockwave::id::CastLibId(7)), Datum::of(2)).intValue() == 9);
+    assert(runBinary(Opcode::ADD, Datum::spriteRef(libreshockwave::id::ChannelId(5)), Datum::of(2)).intValue() == 7);
+    assert(std::fabs(runBinary(Opcode::ADD,
+                               Datum::stringChunk(Datum::of(std::string("2.5")),
+                                                  StringChunkType::Char,
+                                                  1,
+                                                  3,
+                                                  ',',
+                                                  "2.5"),
+                               Datum::of(0.5F)).floatValue() - 3.0F) < 0.0001F);
+    assert(runBinary(Opcode::ADD, Datum::intPoint(1, 2), Datum::intPoint(3, 4)) == Datum::intPoint(4, 6));
+    assert(runBinary(Opcode::ADD, Datum::intPoint(1, 2), Datum::list({Datum::of(5), Datum::of(6)})) == Datum::intPoint(6, 8));
+    assert(runBinary(Opcode::ADD, Datum::intRect(1, 2, 3, 4), Datum::of(10)) == Datum::intRect(11, 12, 13, 14));
+    assert(runBinary(Opcode::ADD,
+                     Datum::intRect(1, 2, 3, 4),
+                     Datum::list({Datum::of(2), Datum::of(3), Datum::of(4), Datum::of(5)})) == Datum::intRect(3, 5, 7, 9));
+    assert(runBinary(Opcode::ADD,
+                     Datum::list({Datum::of(1), Datum::of(2.5F)}),
+                     Datum::list({Datum::of(3), Datum::of(4)})).listValue().getAt(2).floatValue() == 6.5F);
+    assert(runBinary(Opcode::ADD, Datum::colorRef(250, 1, 2), Datum::colorRef(10, 20, 30)) == Datum::colorRef(255, 21, 32));
+
+    assert(runBinary(Opcode::SUB, Datum::of(10), Datum::of(3)).intValue() == 7);
+    assert(runBinary(Opcode::SUB, Datum::intPoint(10, 20), Datum::of(3)) == Datum::intPoint(7, 17));
+    assert(runBinary(Opcode::SUB, Datum::intRect(10, 20, 30, 40), Datum::of(5)) == Datum::intRect(5, 15, 25, 35));
+    assert(runBinary(Opcode::SUB,
+                     Datum::list({Datum::of(9), Datum::of(7.5F)}),
+                     Datum::list({Datum::of(2), Datum::of(1)})).listValue().getAt(1).intValue() == 7);
+    assert(runBinary(Opcode::SUB, Datum::colorRef(2, 20, 30), Datum::colorRef(10, 5, 40)) == Datum::colorRef(0, 15, 0));
+
+    assert(runBinary(Opcode::MUL, Datum::of(6), Datum::of(7)).intValue() == 42);
+    assert(std::fabs(runBinary(Opcode::MUL, Datum::of(2), Datum::of(2.5F)).floatValue() - 5.0F) < 0.0001F);
+    assert(runBinary(Opcode::MUL, Datum::intPoint(3, 4), Datum::of(2)) == Datum::intPoint(6, 8));
+    assert(runBinary(Opcode::MUL, Datum::of(3), Datum::intRect(1, 2, 3, 4)) == Datum::intRect(3, 6, 9, 12));
+    assert(runBinary(Opcode::MUL, Datum::list({Datum::of(2), Datum::of(3)}), Datum::of(4)).listValue().getAt(2).intValue() == 12);
+
+    assert(runBinary(Opcode::DIV, Datum::of(9), Datum::of(2)).intValue() == 4);
+    assert(std::fabs(runBinary(Opcode::DIV, Datum::of(9.0F), Datum::of(2)).floatValue() - 4.5F) < 0.0001F);
+    assert(runBinary(Opcode::DIV, Datum::intPoint(9, 4), Datum::of(2)) == Datum::intPoint(4, 2));
+    assert(runBinary(Opcode::DIV, Datum::intRect(60, 40, 120, 200), Datum::of(3)) == Datum::intRect(20, 13, 40, 66));
+    assert(runBinary(Opcode::DIV, Datum::list({Datum::of(8), Datum::of(6)}), Datum::of(2)).listValue().getAt(1).intValue() == 4);
+    bool divisionThrew = false;
+    try {
+        (void)runBinary(Opcode::DIV, Datum::of(1), Datum::of(0));
+    } catch (const LingoException& e) {
+        divisionThrew = std::string(e.what()) == "Division by zero";
+    }
+    assert(divisionThrew);
+
+    assert(runBinary(Opcode::MOD, Datum::of(10), Datum::of(4)).intValue() == 2);
+    bool moduloThrew = false;
+    try {
+        (void)runBinary(Opcode::MOD, Datum::of(1), Datum::of(0));
+    } catch (const LingoException& e) {
+        moduloThrew = std::string(e.what()) == "Modulo by zero";
+    }
+    assert(moduloThrew);
+
+    assert(runUnary(Opcode::INV, Datum::of(7)).intValue() == -7);
+    assert(std::fabs(runUnary(Opcode::INV, Datum::of(1.5F)).floatValue() + 1.5F) < 0.0001F);
+    assert(runUnary(Opcode::INV, Datum::intPoint(3, -4)) == Datum::intPoint(-3, 4));
+    assert(runUnary(Opcode::INV, Datum::intRect(1, -2, 3, -4)) == Datum::intRect(-1, 2, -3, 4));
+
+    assert(runBinary(Opcode::LT, Datum::of(2), Datum::of(3)).boolValue());
+    assert(runBinary(Opcode::LT_EQ, Datum::of(3), Datum::of(3.0F)).boolValue());
+    assert(runBinary(Opcode::GT, Datum::of(5), Datum::of(4)).boolValue());
+    assert(runBinary(Opcode::GT_EQ, Datum::of(5.0F), Datum::of(5)).boolValue());
+    assert(runBinary(Opcode::EQ, Datum::of(5), Datum::of(5.0F)).boolValue());
+    assert(runBinary(Opcode::EQ, Datum::of(std::string("Door")), Datum::symbol("door")).boolValue());
+    assert(runBinary(Opcode::NT_EQ, Datum::intPoint(1, 2), Datum::intPoint(1, 3)).boolValue());
+    assert(runBinary(Opcode::AND, Datum::TRUE, Datum::of(std::string("x"))).boolValue());
+    assert(!runBinary(Opcode::AND, Datum::TRUE, Datum::FALSE).boolValue());
+    assert(runBinary(Opcode::OR, Datum::FALSE, Datum::symbol("x")).boolValue());
+    assert(runUnary(Opcode::NOT, Datum::FALSE).boolValue());
+    assert(!runUnary(Opcode::NOT, Datum::of(3)).boolValue());
+
     Scope retScope(&script, handler, {});
     ExecutionContext retContext(retScope, ScriptChunk::Instruction{0, Opcode::RET, 0x01, 0});
     retContext.push(Datum::of(std::string("returned")));
@@ -2283,13 +2391,13 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(!opcodeRegistry.execute(Opcode::END_REPEAT, repeatContext));
     assert(repeatScope.bytecodeIndex() == 0);
 
-    assert(!opcodeRegistry.execute(Opcode::ADD, opContext));
-    opcodeRegistry.registerHandler(Opcode::ADD, [](ExecutionContext& customContext) {
+    assert(!opcodeRegistry.execute(Opcode::INVALID, opContext));
+    opcodeRegistry.registerHandler(Opcode::INVALID, [](ExecutionContext& customContext) {
         customContext.push(Datum::of(99));
         return true;
     });
-    assert(opcodeRegistry.hasHandler(Opcode::ADD));
-    assert(opcodeRegistry.execute(Opcode::ADD, opContext));
+    assert(opcodeRegistry.hasHandler(Opcode::INVALID));
+    assert(opcodeRegistry.execute(Opcode::INVALID, opContext));
     assert(opContext.pop().intValue() == 99);
 }
 
