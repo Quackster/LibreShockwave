@@ -367,6 +367,13 @@ std::string keyName(const Datum& datum) {
     }
 }
 
+std::string toKeyNameLikeJava(const Datum& datum) {
+    if (const auto* symbol = datum.asSymbol()) {
+        return symbol->name;
+    }
+    return toStringLikeJava(datum);
+}
+
 std::string ilkType(const Datum& datum) {
     switch (datum.type()) {
         case DatumType::Void: return "void";
@@ -403,6 +410,7 @@ BuiltinRegistry::BuiltinRegistry() {
     ConstructorBuiltins::registerBuiltins(*this);
     TypeBuiltins::registerBuiltins(*this);
     SpriteBuiltins::registerBuiltins(*this);
+    TimeoutBuiltins::registerBuiltins(*this);
     MovieBuiltins::registerBuiltins(*this);
 }
 
@@ -1039,6 +1047,77 @@ Datum ListBuiltins::getLast(BuiltinContext&, const std::vector<Datum>& args) {
         return properties.empty() ? Datum::voidValue() : properties.back().second;
     }
     return Datum::voidValue();
+}
+
+void TimeoutBuiltins::registerBuiltins(BuiltinRegistry& registry) {
+    registry.registerBuiltin("timeout", TimeoutBuiltins::timeout);
+}
+
+Datum TimeoutBuiltins::timeout(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::timeoutRef("");
+    }
+    return Datum::timeoutRef(toStringLikeJava(args[0]));
+}
+
+Datum TimeoutBuiltins::handleMethod(BuiltinContext& context,
+                                    const Datum::TimeoutRef& ref,
+                                    std::string_view methodName,
+                                    const std::vector<Datum>& args) {
+    const std::string method = BuiltinRegistry::normalizeName(methodName);
+    auto* manager = context.timeoutManager;
+
+    if (method == "new") {
+        if (manager == nullptr) {
+            return Datum::voidValue();
+        }
+
+        std::string name = ref.name;
+        std::size_t argOffset = 0;
+        if (name.empty() && !args.empty()) {
+            name = toStringLikeJava(args[0]);
+            argOffset = 1;
+        }
+        if (name.empty()) {
+            return Datum::voidValue();
+        }
+
+        const int periodMs = args.size() > argOffset ? toIntLikeJava(args[argOffset]) : 1000;
+        const std::string handler = args.size() > argOffset + 1 ? toKeyNameLikeJava(args[argOffset + 1]) : "";
+        const Datum target = args.size() > argOffset + 2 ? args[argOffset + 2] : Datum::voidValue();
+        return manager->createTimeout(name, periodMs, handler, target);
+    }
+
+    if (method == "forget") {
+        if (manager != nullptr && !ref.name.empty()) {
+            manager->forgetTimeout(ref.name);
+        }
+        return Datum::voidValue();
+    }
+
+    if (manager != nullptr && !ref.name.empty()) {
+        return manager->getTimeoutProp(ref.name, std::string(methodName));
+    }
+    return Datum::voidValue();
+}
+
+Datum TimeoutBuiltins::getProperty(BuiltinContext& context,
+                                   const Datum::TimeoutRef& ref,
+                                   std::string_view propName) {
+    if (context.timeoutManager == nullptr || ref.name.empty()) {
+        return Datum::voidValue();
+    }
+    return context.timeoutManager->getTimeoutProp(ref.name, std::string(propName));
+}
+
+bool TimeoutBuiltins::setProperty(BuiltinContext& context,
+                                  const Datum::TimeoutRef& ref,
+                                  std::string_view propName,
+                                  Datum value) {
+    if (context.timeoutManager == nullptr || ref.name.empty()) {
+        return false;
+    }
+    return context.timeoutManager->setTimeoutProp(ref.name, std::string(propName), std::move(value));
 }
 
 void ConstructorBuiltins::registerBuiltins(BuiltinRegistry& registry) {

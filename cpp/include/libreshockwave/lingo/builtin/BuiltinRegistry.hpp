@@ -10,6 +10,7 @@
 #include "libreshockwave/lingo/Datum.hpp"
 #include "libreshockwave/player/MovieProperties.hpp"
 #include "libreshockwave/player/SpriteProperties.hpp"
+#include "libreshockwave/player/timeout/TimeoutManager.hpp"
 
 namespace libreshockwave::lingo::builtin {
 
@@ -26,6 +27,7 @@ struct BuiltinContext {
 
     player::MovieProperties* movieProperties{nullptr};
     player::SpriteProperties* spriteProperties{nullptr};
+    player::timeout::TimeoutManager* timeoutManager{nullptr};
     PuppetPaletteHandler puppetPaletteHandler;
     CastMemberCreator castMemberCreator;
     NewInstanceHandler newInstanceHandler;
@@ -114,6 +116,23 @@ public:
     [[nodiscard]] static Datum listp(BuiltinContext& context, const std::vector<Datum>& args);
     [[nodiscard]] static Datum list(BuiltinContext& context, const std::vector<Datum>& args);
     [[nodiscard]] static Datum getLast(BuiltinContext& context, const std::vector<Datum>& args);
+};
+
+class TimeoutBuiltins {
+public:
+    static void registerBuiltins(BuiltinRegistry& registry);
+    [[nodiscard]] static Datum timeout(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum handleMethod(BuiltinContext& context,
+                                            const Datum::TimeoutRef& ref,
+                                            std::string_view methodName,
+                                            const std::vector<Datum>& args);
+    [[nodiscard]] static Datum getProperty(BuiltinContext& context,
+                                           const Datum::TimeoutRef& ref,
+                                           std::string_view propName);
+    static bool setProperty(BuiltinContext& context,
+                            const Datum::TimeoutRef& ref,
+                            std::string_view propName,
+                            Datum value);
 };
 
 class ConstructorBuiltins {

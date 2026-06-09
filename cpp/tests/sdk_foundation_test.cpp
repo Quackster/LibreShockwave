@@ -1096,6 +1096,50 @@ void testBuiltinRegistryFoundation() {
     assert(registry.invoke("deleteAt", context, {builtinProps, Datum::of(2)}).isVoid());
     assert(builtinProps.propListValue().count() == 1);
 
+    assert(registry.contains("timeout"));
+    assert(registry.invoke("timeout", context).asTimeoutRef()->name.empty());
+    assert(registry.invoke("timeout", context, {Datum::of(std::string("timer"))}).asTimeoutRef()->name == "timer");
+    assert(registry.invoke("timeout", context, {Datum::symbol("tick")}).asTimeoutRef()->name == "tick");
+    TimeoutManager builtinTimeouts;
+    context.timeoutManager = &builtinTimeouts;
+    const auto timerRefDatum = registry.invoke("timeout", context, {Datum::of(std::string("timer"))});
+    const auto* timerRef = timerRefDatum.asTimeoutRef();
+    assert(timerRef != nullptr);
+    assert(libreshockwave::lingo::builtin::TimeoutBuiltins::handleMethod(context,
+                                                                         *timerRef,
+                                                                         "new",
+                                                                         {Datum::of(500),
+                                                                          Datum::symbol("onTimer"),
+                                                                          Datum::of(std::string("target"))}).asTimeoutRef()->name == "timer");
+    assert(builtinTimeouts.timeoutExists("timer"));
+    assert(builtinTimeouts.getTimeoutProp("timer", "period").intValue() == 500);
+    assert(builtinTimeouts.getTimeoutProp("timer", "handler").asSymbol()->name == "onTimer");
+    assert(builtinTimeouts.getTimeoutProp("timer", "target").stringValue() == "target");
+    assert(libreshockwave::lingo::builtin::TimeoutBuiltins::getProperty(context, *timerRef, "period").intValue() == 500);
+    assert(libreshockwave::lingo::builtin::TimeoutBuiltins::setProperty(context, *timerRef, "period", Datum::of(250)));
+    assert(builtinTimeouts.getTimeoutProp("timer", "period").intValue() == 250);
+    assert(libreshockwave::lingo::builtin::TimeoutBuiltins::handleMethod(context, *timerRef, "period", {}).intValue() == 250);
+    assert(libreshockwave::lingo::builtin::TimeoutBuiltins::handleMethod(context, *timerRef, "forget", {}).isVoid());
+    assert(!builtinTimeouts.timeoutExists("timer"));
+    const auto factoryRefDatum = registry.invoke("timeout", context);
+    const auto* factoryRef = factoryRefDatum.asTimeoutRef();
+    assert(factoryRef != nullptr);
+    assert(libreshockwave::lingo::builtin::TimeoutBuiltins::handleMethod(context,
+                                                                         *factoryRef,
+                                                                         "new",
+                                                                         {Datum::of(std::string("factory")),
+                                                                          Datum::of(1000),
+                                                                          Datum::of(std::string("tick"))}).asTimeoutRef()->name == "factory");
+    assert(builtinTimeouts.timeoutExists("factory"));
+    assert(builtinTimeouts.getTimeoutProp("factory", "handler").asSymbol()->name == "tick");
+    assert(libreshockwave::lingo::builtin::TimeoutBuiltins::handleMethod(context, *factoryRef, "new", {}).isVoid());
+    assert(!libreshockwave::lingo::builtin::TimeoutBuiltins::setProperty(context, *factoryRef, "period", Datum::of(1)));
+    BuiltinContext noTimeoutContext;
+    assert(registry.invoke("timeout", noTimeoutContext, {Datum::of(std::string("timer"))}).asTimeoutRef()->name == "timer");
+    assert(libreshockwave::lingo::builtin::TimeoutBuiltins::handleMethod(noTimeoutContext, *timerRef, "new", {}).isVoid());
+    assert(libreshockwave::lingo::builtin::TimeoutBuiltins::getProperty(noTimeoutContext, *timerRef, "period").isVoid());
+    assert(!libreshockwave::lingo::builtin::TimeoutBuiltins::setProperty(noTimeoutContext, *timerRef, "period", Datum::of(1)));
+
     auto assertColor = [](const Datum& datum, int r, int g, int b) {
         const auto* color = datum.asColorRef();
         assert(color != nullptr);
