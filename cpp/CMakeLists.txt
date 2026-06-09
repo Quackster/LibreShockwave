@@ -28,6 +28,7 @@ add_library(libreshockwave
     src/chunks/ScoreChunk.cpp
     src/chunks/SoundChunk.cpp
     src/chunks/TextChunk.cpp
+    src/format/AfterburnerReader.cpp
     src/format/ChunkType.cpp
     src/format/MoaID.cpp
     src/io/BinaryReader.cpp

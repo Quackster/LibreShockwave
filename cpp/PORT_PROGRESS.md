@@ -94,6 +94,13 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - imap/mmap parsing, chunk-info table construction, version detection from config chunks, and chunk dispatch through the ported chunk readers.
 - Chunk categorization for config, key table, casts, cast members, scripts, script names/contexts, score, frame labels, palettes, and font maps.
 
+### Afterburner Reader Foundation
+
+- `format::AfterburnerReader` parser for Fver, Fcdr, ABMP, and FGEI/ILS sections.
+- Compression type directory parsing with MoaID-based zlib/null compression detection.
+- ABMP resource map parsing and ILS chunk cache extraction.
+- Chunk data lookup by resource ID and FourCC with zlib decompression where required.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -118,11 +125,12 @@ Result:
 - Script bytecode chunk parser tests passed through the same CTest executable.
 - Score chunk parser tests passed through the same CTest executable.
 - Director file RIFX loader tests passed through the same CTest executable.
+- Afterburner reader tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
 
-- D3 RIFF loading, Afterburner loading, lazy reparsing, and higher-level chunk integration.
+- D3 RIFF loading, DirectorFile Afterburner integration, lazy reparsing, and higher-level chunk integration.
 - Remaining bitmap, sound, font, text, score, and script chunk decoders.
 - Cast member resolution.
 - Lingo decompiler, VM runtime values, dispatchers, and builtins.
@@ -141,4 +149,5 @@ Result:
 - `4e3e971 Port C++ script context and opcode foundation`
 - `c160ac3 Port C++ script bytecode chunk parser`
 - `1e8cfbf Port C++ score chunk parser`
-- Current checkpoint commit message: `Port C++ director file loader foundation`
+- `d4bcca5 Port C++ director file loader foundation`
+- Current checkpoint commit message: `Port C++ Afterburner reader foundation`
