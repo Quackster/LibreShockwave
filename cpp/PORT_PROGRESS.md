@@ -197,6 +197,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - MP3 start detection, multi-frame validation, frame-boundary end detection, and MP3 payload extraction are available in C++.
 - IMA ADPCM decoding and ADPCM-to-WAV conversion are available with Java-compatible step/index table behavior.
 
+### Cast Member Metadata Wrapper
+
+- `cast::CastMember` ports the Java high-level cast member wrapper around `CastMemberChunk`.
+- Type-specific bitmap, shape, film-loop, script, and Shockwave 3D metadata are parsed lazily at wrapper construction.
+- Type checks, dimensions, registration point helpers, raw chunk access, and display string formatting are available in C++.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -238,6 +244,7 @@ Result:
 - BitmapColorizer 32-bit, indexed, foreground-only, packed-index, and ink predicate tests passed through the same CTest executable.
 - PfrBitReader byte, signed, skip, alignment, bit-buffer, and partial-EOF tests passed through the same CTest executable.
 - SoundConverter WAV layout, SoundChunk header stripping, signed/endianness conversion, MP3 extraction, IMA ADPCM, and duration tests passed through the same CTest executable.
+- CastMember bitmap, script, shape, dimension, type-check, raw chunk, and display string tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -278,4 +285,5 @@ Result:
 - `e4ebbae Port C++ utility formatting helpers`
 - `4636ee7 Port C++ bitmap colorizer`
 - `7e84729 Port C++ PFR bit reader`
-- Current checkpoint commit message: `Port C++ sound converter`
+- `59bf47d Port C++ sound converter`
+- Current checkpoint commit message: `Port C++ cast member wrapper`

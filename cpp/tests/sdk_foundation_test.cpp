@@ -24,6 +24,7 @@
 #include "libreshockwave/bitmap/ColorRef.hpp"
 #include "libreshockwave/bitmap/Palette.hpp"
 #include "libreshockwave/cast/BitmapInfo.hpp"
+#include "libreshockwave/cast/CastMember.hpp"
 #include "libreshockwave/cast/FilmLoopInfo.hpp"
 #include "libreshockwave/cast/MemberType.hpp"
 #include "libreshockwave/cast/ScriptType.hpp"
@@ -91,6 +92,7 @@ using libreshockwave::bitmap::BitmapDecoder;
 using libreshockwave::bitmap::ColorRef;
 using libreshockwave::bitmap::Palette;
 using libreshockwave::cast::BitmapInfo;
+using libreshockwave::cast::CastMember;
 using libreshockwave::cast::FilmLoopInfo;
 using libreshockwave::cast::MemberType;
 using libreshockwave::cast::ScriptType;
@@ -1463,6 +1465,76 @@ void testCastListAndMemberChunks() {
                              0,
                              0);
     assert(textXtra.isTextXtra());
+
+    auto bitmapMemberPtr = std::make_shared<CastMemberChunk>(bitmapMember);
+    CastMember parsedBitmap(30, 1, 1, bitmapMemberPtr);
+    assert(parsedBitmap.id() == 30);
+    assert(parsedBitmap.castLib() == 1);
+    assert(parsedBitmap.memberNum() == 1);
+    assert(parsedBitmap.memberType() == MemberType::Bitmap);
+    assert(parsedBitmap.name() == "BitmapName");
+    assert(parsedBitmap.scriptId() == 77);
+    assert(parsedBitmap.rawChunk() == bitmapMemberPtr);
+    assert(parsedBitmap.isBitmap());
+    assert(!parsedBitmap.isScript());
+    assert(parsedBitmap.bitmapInfo().has_value());
+    assert(parsedBitmap.width() == 16);
+    assert(parsedBitmap.height() == 16);
+    assert(parsedBitmap.regX() == 8);
+    assert(parsedBitmap.regY() == 7);
+    assert(parsedBitmap.toString().find("BitmapName") != std::string::npos);
+
+    auto scriptMemberPtr = std::make_shared<CastMemberChunk>(
+        nullptr,
+        ChunkId(120),
+        MemberType::Script,
+        0,
+        2,
+        std::vector<std::uint8_t>{},
+        std::vector<std::uint8_t>{0x00, 0x03},
+        "MovieScript",
+        0,
+        0,
+        0);
+    CastMember parsedScript(120, 1, 2, scriptMemberPtr);
+    assert(parsedScript.isScript());
+    assert(parsedScript.scriptType().has_value());
+    assert(parsedScript.scriptType().value() == ScriptType::Movie);
+    assert(parsedScript.width() == 0);
+    assert(parsedScript.toString().find("scriptType=movie") != std::string::npos);
+
+    const std::vector<std::uint8_t> shapeSpecific{
+        0x00, 0x01,
+        0x00, 0x00,
+        0x00, 0x00,
+        0x00, 0x39,
+        0x00, 0x39,
+        0x00, 0x01,
+        0xF9,
+        0x00,
+        0x00,
+        0x01,
+        0x05
+    };
+    auto shapeMemberPtr = std::make_shared<CastMemberChunk>(
+        nullptr,
+        ChunkId(121),
+        MemberType::Shape,
+        0,
+        static_cast<int>(shapeSpecific.size()),
+        std::vector<std::uint8_t>{},
+        shapeSpecific,
+        "Shape",
+        0,
+        0,
+        0);
+    CastMember parsedShape(121, 1, 3, shapeMemberPtr);
+    assert(parsedShape.isShape());
+    assert(parsedShape.shapeInfo().has_value());
+    assert(parsedShape.width() == 57);
+    assert(parsedShape.height() == 57);
+    assert(parsedShape.regX() == 0);
+    assert(parsedShape.regY() == 0);
 }
 
 void testScriptContextChunk() {

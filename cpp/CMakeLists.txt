@@ -8,6 +8,7 @@ add_library(libreshockwave
     src/bitmap/ColorRef.cpp
     src/bitmap/Palette.cpp
     src/cast/BitmapInfo.cpp
+    src/cast/CastMember.cpp
     src/cast/FilmLoopInfo.cpp
     src/cast/MemberType.cpp
     src/cast/ScriptType.cpp
