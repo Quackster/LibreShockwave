@@ -20,6 +20,8 @@ struct FrameSnapshot {
     std::shared_ptr<const bitmap::Bitmap> stageImage;
     int bakeTick{0};
     RenderPipelineTrace pipelineTrace;
+
+    [[nodiscard]] bitmap::Bitmap renderFrame() const;
 };
 
 } // namespace libreshockwave::player::render::pipeline

@@ -236,6 +236,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `render::pipeline::RenderSprite` ports renderable sprite metadata, ink-mode decoding, transform mirror detection, baked-bitmap copy helpers, and member identity/name fallbacks.
 - `render::pipeline::FrameSnapshot` ports the immutable frame render payload without invoking the not-yet-ported software frame renderer.
 
+### Software Frame Renderer
+
+- `render::output::SoftwareFrameRenderer` ports pure ARGB frame compositing for `FrameSnapshot` data.
+- Stage-image replacement, opaque background fill, sprite visibility filtering, clipping, nearest-neighbor scaling, flip handling, Director mirror transforms, alpha compositing, blend percentages, and special ink compositing are available in C++.
+- `FrameSnapshot::renderFrame()` now delegates to the C++ software renderer like the Java record helper.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -283,6 +289,7 @@ Result:
 - ScoreBehaviorRef, SpriteSpan, ScoreNavigator labels, marker resolution, active sprites/channels, and frame-count tests passed through the same CTest executable.
 - Breakpoint, BreakpointManager, WatchExpression, and DebugSnapshot tests passed through the same CTest executable.
 - RenderPipelineTrace, RenderSprite, transform mirror, baked bitmap helpers, and FrameSnapshot tests passed through the same CTest executable.
+- SoftwareFrameRenderer background, stage-image, alpha, blend, scaling, flip, Director mirror, and special-ink tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -329,4 +336,5 @@ Result:
 - `25bdb9d Port C++ player input foundation`
 - `a7f4a2e Port C++ score navigation foundation`
 - `3eb1f34 Port C++ debug breakpoint foundation`
-- Current checkpoint commit message: `Port C++ render pipeline data foundation`
+- `7b57f14 Port C++ render pipeline data foundation`
+- Current checkpoint commit message: `Port C++ software frame renderer`

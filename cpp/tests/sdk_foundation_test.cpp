@@ -78,6 +78,7 @@
 #include "libreshockwave/player/input/InputState.hpp"
 #include "libreshockwave/player/render/RenderConfig.hpp"
 #include "libreshockwave/player/render/RenderType.hpp"
+#include "libreshockwave/player/render/output/SoftwareFrameRenderer.hpp"
 #include "libreshockwave/player/render/pipeline/FrameSnapshot.hpp"
 #include "libreshockwave/player/render/pipeline/RenderPipelineTrace.hpp"
 #include "libreshockwave/player/render/pipeline/RenderSprite.hpp"
@@ -172,6 +173,7 @@ using libreshockwave::player::input::InputEventType;
 using libreshockwave::player::input::InputState;
 using libreshockwave::player::render::RenderConfig;
 using libreshockwave::player::render::RenderType;
+using libreshockwave::player::render::output::SoftwareFrameRenderer;
 using libreshockwave::player::render::pipeline::FrameSnapshot;
 using libreshockwave::player::render::pipeline::RenderPipelineStepTrace;
 using libreshockwave::player::render::pipeline::RenderPipelineTrace;
@@ -960,6 +962,177 @@ void testRenderPipelineFoundation() {
     assert(snapshot.stageImage == baked);
     assert(snapshot.bakeTick == 7);
     assert(snapshot.pipelineTrace.steps()[0].stepName == "bake");
+}
+
+void testSoftwareFrameRenderer() {
+    FrameSnapshot backgroundSnapshot{
+        1,
+        3,
+        2,
+        0x00010203,
+        {},
+        "",
+        nullptr,
+        0,
+        RenderPipelineTrace::empty()
+    };
+    auto background = backgroundSnapshot.renderFrame();
+    assert(background.width() == 3);
+    assert(background.height() == 2);
+    for (auto pixel : background.pixels()) {
+        assert(pixel == 0xFF010203U);
+    }
+
+    auto stageImage = std::make_shared<Bitmap>(2, 1, 32, std::vector<std::uint32_t>{
+        0xFF111111U,
+        0x80123456U
+    });
+    FrameSnapshot stageImageSnapshot{
+        2,
+        3,
+        2,
+        0x00FFFFFF,
+        {},
+        "",
+        stageImage,
+        0,
+        RenderPipelineTrace::empty()
+    };
+    auto stageImageRender = SoftwareFrameRenderer::renderFrame(stageImageSnapshot, 3, 2);
+    assert(stageImageRender.getPixel(0, 0) == 0xFF111111U);
+    assert(stageImageRender.getPixel(1, 0) == 0x80123456U);
+    assert(stageImageRender.getPixel(2, 0) == 0x00000000U);
+    assert(stageImageRender.getPixel(0, 1) == 0x00000000U);
+
+    auto translucentGreen = std::make_shared<Bitmap>(1, 1, 32, std::vector<std::uint32_t>{0x8000FF00U});
+    RenderSprite alphaSprite(1,
+                             0,
+                             0,
+                             1,
+                             1,
+                             0,
+                             true,
+                             SpriteType::Bitmap,
+                             nullptr,
+                             nullptr,
+                             0,
+                             0,
+                             false,
+                             false,
+                             0,
+                             100,
+                             false,
+                             false,
+                             translucentGreen,
+                             false);
+    FrameSnapshot alphaSnapshot{3, 1, 1, 0x00000000, {alphaSprite}, "", nullptr, 0, RenderPipelineTrace::empty()};
+    assert(alphaSnapshot.renderFrame().getPixel(0, 0) == 0xFF008000U);
+
+    auto opaqueRed = std::make_shared<Bitmap>(1, 1, 32, std::vector<std::uint32_t>{0xFFFF0000U});
+    RenderSprite blendSprite(1,
+                             0,
+                             0,
+                             1,
+                             1,
+                             0,
+                             true,
+                             SpriteType::Bitmap,
+                             nullptr,
+                             nullptr,
+                             0,
+                             0,
+                             false,
+                             false,
+                             0,
+                             50,
+                             false,
+                             false,
+                             opaqueRed,
+                             false);
+    FrameSnapshot blendSnapshot{4, 1, 1, 0x00000000, {blendSprite}, "", nullptr, 0, RenderPipelineTrace::empty()};
+    assert(blendSnapshot.renderFrame().getPixel(0, 0) == 0xFF7E0000U);
+
+    auto redBlue = std::make_shared<Bitmap>(2, 1, 32, std::vector<std::uint32_t>{
+        0xFFFF0000U,
+        0xFF0000FFU
+    });
+    RenderSprite scaledFlipSprite(1,
+                                  0,
+                                  0,
+                                  4,
+                                  1,
+                                  0,
+                                  true,
+                                  SpriteType::Bitmap,
+                                  nullptr,
+                                  nullptr,
+                                  0,
+                                  0,
+                                  false,
+                                  false,
+                                  0,
+                                  100,
+                                  true,
+                                  false,
+                                  redBlue,
+                                  false);
+    FrameSnapshot scaledFlipSnapshot{5, 4, 1, 0x00000000, {scaledFlipSprite}, "", nullptr, 0, RenderPipelineTrace::empty()};
+    auto scaledFlip = scaledFlipSnapshot.renderFrame();
+    assert(scaledFlip.getPixel(0, 0) == 0xFF0000FFU);
+    assert(scaledFlip.getPixel(1, 0) == 0xFF0000FFU);
+    assert(scaledFlip.getPixel(2, 0) == 0xFFFF0000U);
+    assert(scaledFlip.getPixel(3, 0) == 0xFFFF0000U);
+
+    RenderSprite directorMirrorSprite(1,
+                                      0,
+                                      0,
+                                      2,
+                                      1,
+                                      0,
+                                      true,
+                                      SpriteType::Bitmap,
+                                      nullptr,
+                                      nullptr,
+                                      0,
+                                      0,
+                                      false,
+                                      false,
+                                      0,
+                                      100,
+                                      false,
+                                      false,
+                                      180.0,
+                                      180.0,
+                                      redBlue,
+                                      false);
+    FrameSnapshot mirrorSnapshot{6, 2, 1, 0x00000000, {directorMirrorSprite}, "", nullptr, 0, RenderPipelineTrace::empty()};
+    auto mirror = mirrorSnapshot.renderFrame();
+    assert(mirror.getPixel(0, 0) == 0xFF0000FFU);
+    assert(mirror.getPixel(1, 0) == 0xFFFF0000U);
+
+    auto inkSource = std::make_shared<Bitmap>(1, 1, 32, std::vector<std::uint32_t>{0xFF010203U});
+    RenderSprite addInkSprite(1,
+                              0,
+                              0,
+                              1,
+                              1,
+                              0,
+                              true,
+                              SpriteType::Bitmap,
+                              nullptr,
+                              nullptr,
+                              0,
+                              0,
+                              false,
+                              false,
+                              34,
+                              100,
+                              false,
+                              false,
+                              inkSource,
+                              false);
+    FrameSnapshot addInkSnapshot{7, 1, 1, 0x00102030, {addInkSprite}, "", nullptr, 0, RenderPipelineTrace::empty()};
+    assert(addInkSnapshot.renderFrame().getPixel(0, 0) == 0xFF112233U);
 }
 
 void testPaletteAndColorRefs() {
@@ -3326,6 +3499,7 @@ int main() {
     testScoreNavigationFoundation();
     testDebugFoundation();
     testRenderPipelineFoundation();
+    testSoftwareFrameRenderer();
     testPaletteAndColorRefs();
     testBitmapAlphaAndPaletteBehavior();
     testBitmapRegionsAndMetadata();
