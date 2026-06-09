@@ -68,6 +68,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Member info list parsing for script ID and Pascal member name extraction.
 - Bitmap member registration point extraction through `cast::BitmapInfo`.
 
+### Lingo Opcode and Script Context Foundation
+
+- `lingo::Opcode` enum and helpers for opcode code lookup, mnemonic lookup, argument byte width, and push/jump/call/return classification.
+- `chunks::ScriptContextChunk` Lctx parser for script table metadata, Lnam section references, valid counts, flags, free pointer, and script entries.
+- Script context entry parsing clamps free/empty negative script chunk IDs to `ChunkId(0)` like the Java baseline.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -88,6 +94,7 @@ Result:
 - Cast metadata parser tests passed through the same CTest executable.
 - Compact chunk parser tests passed through the same CTest executable.
 - Cast list/member chunk parser tests passed through the same CTest executable.
+- Lingo opcode and script context parser tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -96,7 +103,7 @@ Result:
 - Director/Afterburner file loading.
 - Remaining bitmap, sound, font, text, score, and script chunk decoders.
 - Cast member resolution.
-- Lingo opcode model, decompiler, VM runtime values, opcodes, dispatchers, and builtins.
+- Lingo instruction decoding, decompiler, VM runtime values, dispatchers, and builtins.
 - Player core, rendering pipeline, input, networking, audio, cast management, and debugging.
 - WASM/web player replacement strategy in C++.
 - Editor replacement strategy in C++.
@@ -108,4 +115,5 @@ Result:
 - `4034c08 Port C++ chunk audio foundation`
 - `7364e28 Port C++ cast metadata foundation`
 - `d86665c Port C++ compact chunk parsers`
-- Current checkpoint commit message: `Port C++ cast list and member chunks`
+- `9f506a1 Port C++ cast list and member chunks`
+- Current checkpoint commit message: `Port C++ script context and opcode foundation`

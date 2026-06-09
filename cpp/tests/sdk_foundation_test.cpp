@@ -30,6 +30,7 @@
 #include "libreshockwave/chunks/MediaChunk.hpp"
 #include "libreshockwave/chunks/PaletteChunk.hpp"
 #include "libreshockwave/chunks/RawChunk.hpp"
+#include "libreshockwave/chunks/ScriptContextChunk.hpp"
 #include "libreshockwave/chunks/ScriptNamesChunk.hpp"
 #include "libreshockwave/chunks/SoundChunk.hpp"
 #include "libreshockwave/chunks/TextChunk.hpp"
@@ -39,6 +40,7 @@
 #include "libreshockwave/id/Ids.hpp"
 #include "libreshockwave/io/BinaryReader.hpp"
 #include "libreshockwave/lingo/Datum.hpp"
+#include "libreshockwave/lingo/Opcode.hpp"
 #include "libreshockwave/util/AudioCodecUtils.hpp"
 
 using libreshockwave::format::ChunkInfo;
@@ -80,12 +82,14 @@ using libreshockwave::chunks::KeyTableChunk;
 using libreshockwave::chunks::MediaChunk;
 using libreshockwave::chunks::PaletteChunk;
 using libreshockwave::chunks::RawChunk;
+using libreshockwave::chunks::ScriptContextChunk;
 using libreshockwave::chunks::ScriptNamesChunk;
 using libreshockwave::chunks::SoundChunk;
 using libreshockwave::chunks::TextChunk;
 using libreshockwave::lingo::Datum;
 using libreshockwave::lingo::DatumType;
 using libreshockwave::lingo::LingoException;
+using libreshockwave::lingo::Opcode;
 using libreshockwave::lingo::StringChunkType;
 
 void testBinaryReaderEndianAndBounds() {
@@ -263,6 +267,23 @@ void testLingoDatumTypes() {
     assert(instance.scriptInstanceValue().getProperty("localValue").intValue() == 4);
     assert(instance.scriptInstanceValue().getProperty("baseValue").intValue() == 3);
     assert(instance.scriptInstanceValue().getProperty("missing").isVoid());
+}
+
+void testLingoOpcodeHelpers() {
+    assert(libreshockwave::lingo::code(Opcode::RET) == 0x01);
+    assert(libreshockwave::lingo::mnemonic(Opcode::PUSH_INT16) == "pushInt16");
+    assert(libreshockwave::lingo::argBytes(Opcode::PUSH_INT16) == 2);
+    assert(libreshockwave::lingo::argBytes(Opcode::PUSH_INT32) == 4);
+    assert(libreshockwave::lingo::argBytes(Opcode::GET_GLOBAL) == 1);
+    assert(libreshockwave::lingo::opcodeFromCode(0x6F) == Opcode::PUSH_INT32);
+    assert(libreshockwave::lingo::opcodeFromCode(0x99) == Opcode::INVALID);
+    assert(libreshockwave::lingo::isSingleByte(Opcode::RET));
+    assert(libreshockwave::lingo::isMultiByte(Opcode::PUSH_INT8));
+    assert(libreshockwave::lingo::isJump(Opcode::JMP_IF_Z));
+    assert(libreshockwave::lingo::isCall(Opcode::OBJ_CALL));
+    assert(libreshockwave::lingo::isReturn(Opcode::RET_FACTORY));
+    assert(libreshockwave::lingo::isPush(Opcode::PUSH_FLOAT32));
+    assert(!libreshockwave::lingo::isPush(Opcode::ADD));
 }
 
 void testPaletteAndColorRefs() {
@@ -679,8 +700,9 @@ void testCompactChunkParsers() {
         data[static_cast<std::size_t>(offset + 3)] = static_cast<std::uint8_t>(value & 0xFF);
     };
     auto appendI16 = [](std::vector<std::uint8_t>& data, int value) {
-        data.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
-        data.push_back(static_cast<std::uint8_t>(value & 0xFF));
+        const auto raw = static_cast<std::uint16_t>(value);
+        data.push_back(static_cast<std::uint8_t>((raw >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(raw & 0xFF));
     };
     auto appendI32 = [](std::vector<std::uint8_t>& data, std::uint32_t value) {
         data.push_back(static_cast<std::uint8_t>((value >> 24) & 0xFF));
@@ -1029,6 +1051,63 @@ void testCastListAndMemberChunks() {
     assert(textXtra.isTextXtra());
 }
 
+void testScriptContextChunk() {
+    auto appendI16 = [](std::vector<std::uint8_t>& data, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data.push_back(static_cast<std::uint8_t>((raw >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(raw & 0xFF));
+    };
+    auto appendI32 = [](std::vector<std::uint8_t>& data, std::uint32_t value) {
+        data.push_back(static_cast<std::uint8_t>((value >> 24) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 16) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(value & 0xFF));
+    };
+
+    std::vector<std::uint8_t> contextData;
+    appendI32(contextData, 0x11111111);
+    appendI32(contextData, 0x22222222);
+    appendI32(contextData, 2);
+    appendI32(contextData, 2);
+    appendI16(contextData, 42);
+    appendI16(contextData, 0);
+    appendI32(contextData, 0);
+    appendI32(contextData, 0);
+    appendI32(contextData, 0);
+    appendI32(contextData, 123);
+    appendI16(contextData, 1);
+    appendI16(contextData, 0x00A5);
+    appendI16(contextData, -3);
+    appendI32(contextData, 7);
+    appendI32(contextData, 99);
+    appendI16(contextData, 0x0011);
+    appendI16(contextData, 0);
+    appendI32(contextData, 8);
+    appendI32(contextData, 0xFFFFFFFFU);
+    appendI16(contextData, 0x0022);
+    appendI16(contextData, -1);
+
+    BinaryReader contextReader(contextData, ByteOrder::LittleEndian);
+    ScriptContextChunk context = ScriptContextChunk::read(nullptr, contextReader, ChunkId(33), 0x4B1);
+    assert(context.type() == ChunkType::Lctx);
+    assert(context.id().value() == 33);
+    assert(context.unknown1() == 0x11111111);
+    assert(context.unknown2() == 0x22222222);
+    assert(context.entryCount() == 2);
+    assert(context.lnamSectionId().value() == 123);
+    assert(context.validCount() == 1);
+    assert(context.flags() == 0x00A5);
+    assert(context.freePtr() == -3);
+    assert(context.entries().size() == 2);
+    assert(context.entries()[0].unknown == 7);
+    assert(context.entries()[0].id.value() == 99);
+    assert(context.entries()[0].flags == 0x0011);
+    assert(context.entries()[1].unknown == 8);
+    assert(context.entries()[1].id.value() == 0);
+    assert(context.entries()[1].flags == 0x0022);
+    assert(contextReader.order() == ByteOrder::LittleEndian);
+}
+
 int main() {
     testBinaryReaderEndianAndBounds();
     testBinaryReaderStringsAndFourCC();
@@ -1037,6 +1116,7 @@ int main() {
     testIdsAndEnums();
     testFormatTypes();
     testLingoDatumTypes();
+    testLingoOpcodeHelpers();
     testPaletteAndColorRefs();
     testBitmapAlphaAndPaletteBehavior();
     testBitmapRegionsAndMetadata();
@@ -1048,6 +1128,7 @@ int main() {
     testCompactChunkParsers();
     testTextAndFontMapChunks();
     testCastListAndMemberChunks();
+    testScriptContextChunk();
 
     std::cout << "LibreShockwave C++ SDK foundation tests passed\n";
     return 0;

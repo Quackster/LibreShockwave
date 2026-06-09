@@ -21,6 +21,7 @@ add_library(libreshockwave
     src/chunks/MediaChunk.cpp
     src/chunks/PaletteChunk.cpp
     src/chunks/RawChunk.cpp
+    src/chunks/ScriptContextChunk.cpp
     src/chunks/ScriptNamesChunk.cpp
     src/chunks/SoundChunk.cpp
     src/chunks/TextChunk.cpp
@@ -28,6 +29,7 @@ add_library(libreshockwave
     src/format/MoaID.cpp
     src/io/BinaryReader.cpp
     src/lingo/Datum.cpp
+    src/lingo/Opcode.cpp
     src/util/AudioCodecUtils.cpp
 )
 
