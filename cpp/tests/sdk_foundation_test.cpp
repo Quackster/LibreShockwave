@@ -63,6 +63,12 @@
 #include "libreshockwave/lookup/CastMemberLookup.hpp"
 #include "libreshockwave/lookup/PaletteResolver.hpp"
 #include "libreshockwave/lookup/ScriptLookup.hpp"
+#include "libreshockwave/player/ExternalCastLoadEvent.hpp"
+#include "libreshockwave/player/PlayerEvent.hpp"
+#include "libreshockwave/player/PlayerEventInfo.hpp"
+#include "libreshockwave/player/frame/FrameEvent.hpp"
+#include "libreshockwave/player/render/RenderConfig.hpp"
+#include "libreshockwave/player/render/RenderType.hpp"
 #include "libreshockwave/util/AudioCodecUtils.hpp"
 #include "libreshockwave/util/FileUtil.hpp"
 
@@ -129,6 +135,16 @@ using libreshockwave::lingo::StringChunkType;
 using libreshockwave::lookup::CastMemberLookup;
 using libreshockwave::lookup::PaletteResolver;
 using libreshockwave::lookup::ScriptLookup;
+using libreshockwave::player::ExternalCastLoadEvent;
+using libreshockwave::player::PlayerEvent;
+using libreshockwave::player::PlayerEventInfo;
+using libreshockwave::player::allPlayerEvents;
+using libreshockwave::player::handlerName;
+using libreshockwave::player::name;
+using libreshockwave::player::playerEventFromHandlerName;
+using libreshockwave::player::frame::FrameEvent;
+using libreshockwave::player::render::RenderConfig;
+using libreshockwave::player::render::RenderType;
 using libreshockwave::w3d::W3DEntryType;
 
 void testBinaryReaderEndianAndBounds() {
@@ -412,6 +428,62 @@ void testLingoOpcodeHelpers() {
     assert(libreshockwave::lingo::isReturn(Opcode::RET_FACTORY));
     assert(libreshockwave::lingo::isPush(Opcode::PUSH_FLOAT32));
     assert(!libreshockwave::lingo::isPush(Opcode::ADD));
+}
+
+void testPlayerCoreFoundation() {
+    const auto& events = allPlayerEvents();
+    assert(events.size() == 20);
+    assert(events.front() == PlayerEvent::PrepareMovie);
+    assert(events.back() == PlayerEvent::KeyUp);
+
+    assert(name(PlayerEvent::PrepareMovie) == "PREPARE_MOVIE");
+    assert(handlerName(PlayerEvent::PrepareMovie) == "prepareMovie");
+    assert(handlerName(PlayerEvent::StartMovie) == "startMovie");
+    assert(handlerName(PlayerEvent::StopMovie) == "stopMovie");
+    assert(handlerName(PlayerEvent::PrepareFrame) == "prepareFrame");
+    assert(handlerName(PlayerEvent::EnterFrame) == "enterFrame");
+    assert(handlerName(PlayerEvent::ExitFrame) == "exitFrame");
+    assert(handlerName(PlayerEvent::StepFrame) == "stepFrame");
+    assert(handlerName(PlayerEvent::BeginSprite) == "beginSprite");
+    assert(handlerName(PlayerEvent::EndSprite) == "endSprite");
+    assert(handlerName(PlayerEvent::Idle) == "idle");
+    assert(handlerName(PlayerEvent::MouseDown) == "mouseDown");
+    assert(handlerName(PlayerEvent::MouseUp) == "mouseUp");
+    assert(handlerName(PlayerEvent::MouseEnter) == "mouseEnter");
+    assert(handlerName(PlayerEvent::MouseLeave) == "mouseLeave");
+    assert(handlerName(PlayerEvent::MouseWithin) == "mouseWithin");
+    assert(handlerName(PlayerEvent::MouseUpOutside) == "mouseUpOutside");
+    assert(handlerName(PlayerEvent::RightMouseDown) == "rightMouseDown");
+    assert(handlerName(PlayerEvent::RightMouseUp) == "rightMouseUp");
+    assert(handlerName(PlayerEvent::KeyDown) == "keyDown");
+    assert(handlerName(PlayerEvent::KeyUp) == "keyUp");
+
+    assert(playerEventFromHandlerName("mouseUpOutside") == PlayerEvent::MouseUpOutside);
+    assert(playerEventFromHandlerName("keyDown") == PlayerEvent::KeyDown);
+    assert(!playerEventFromHandlerName("missing").has_value());
+
+    PlayerEventInfo eventInfo{PlayerEvent::EnterFrame, 12, 99};
+    assert(eventInfo == (PlayerEventInfo{PlayerEvent::EnterFrame, 12, 99}));
+    assert(eventInfo.event == PlayerEvent::EnterFrame);
+    assert(eventInfo.frame == 12);
+    assert(eventInfo.data == 99);
+
+    FrameEvent frameEvent{PlayerEvent::ExitFrame, 13};
+    assert(frameEvent == (FrameEvent{PlayerEvent::ExitFrame, 13}));
+    assert(frameEvent.event == PlayerEvent::ExitFrame);
+    assert(frameEvent.frame == 13);
+
+    ExternalCastLoadEvent loadEvent{2, "external.cst"};
+    assert(loadEvent == (ExternalCastLoadEvent{2, "external.cst"}));
+    assert(loadEvent.castLibNumber == 2);
+    assert(loadEvent.fileName == "external.cst");
+
+    assert(libreshockwave::player::render::name(RenderType::Software) == "SOFTWARE");
+    assert(!RenderConfig::isAntialias());
+    RenderConfig::setAntialias(true);
+    assert(RenderConfig::isAntialias());
+    RenderConfig::setAntialias(false);
+    assert(!RenderConfig::isAntialias());
 }
 
 void testPaletteAndColorRefs() {
@@ -2773,6 +2845,7 @@ int main() {
     testUtilityFormatting();
     testLingoDatumTypes();
     testLingoOpcodeHelpers();
+    testPlayerCoreFoundation();
     testPaletteAndColorRefs();
     testBitmapAlphaAndPaletteBehavior();
     testBitmapRegionsAndMetadata();

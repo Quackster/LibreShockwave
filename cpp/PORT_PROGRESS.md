@@ -203,6 +203,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Type-specific bitmap, shape, film-loop, script, and Shockwave 3D metadata are parsed lazily at wrapper construction.
 - Type checks, dimensions, registration point helpers, raw chunk access, and display string formatting are available in C++.
 
+### Player Event and Render Configuration Foundation
+
+- `player::PlayerEvent` ports the Java player event enum and handler-name mapping used by script dispatch.
+- `PlayerEventInfo`, `FrameEvent`, and `ExternalCastLoadEvent` port the lightweight Java record payloads used by listeners.
+- `render::RenderType` and `render::RenderConfig` port the software-renderer enum and global antialias flag.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -245,6 +251,7 @@ Result:
 - PfrBitReader byte, signed, skip, alignment, bit-buffer, and partial-EOF tests passed through the same CTest executable.
 - SoundConverter WAV layout, SoundChunk header stripping, signed/endianness conversion, MP3 extraction, IMA ADPCM, and duration tests passed through the same CTest executable.
 - CastMember bitmap, script, shape, dimension, type-check, raw chunk, and display string tests passed through the same CTest executable.
+- PlayerEvent handler names, event payload records, RenderType, and RenderConfig tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -286,4 +293,5 @@ Result:
 - `4636ee7 Port C++ bitmap colorizer`
 - `7e84729 Port C++ PFR bit reader`
 - `59bf47d Port C++ sound converter`
-- Current checkpoint commit message: `Port C++ cast member wrapper`
+- `f0ac5ed Port C++ cast member wrapper`
+- Current checkpoint commit message: `Port C++ player event foundation`

@@ -45,6 +45,9 @@ add_library(libreshockwave
     src/lookup/CastMemberLookup.cpp
     src/lookup/PaletteResolver.cpp
     src/lookup/ScriptLookup.cpp
+    src/player/PlayerEvent.cpp
+    src/player/render/RenderConfig.cpp
+    src/player/render/RenderType.cpp
     src/util/AudioCodecUtils.cpp
     src/util/FileUtil.cpp
     src/w3d/W3DEntry.cpp
