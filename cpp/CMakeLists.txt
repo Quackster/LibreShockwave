@@ -33,6 +33,7 @@ add_library(libreshockwave
     src/format/AfterburnerReader.cpp
     src/format/ChunkType.cpp
     src/format/MoaID.cpp
+    src/fonts/FontDataDecoder.cpp
     src/io/BinaryReader.cpp
     src/lingo/Datum.cpp
     src/lingo/Opcode.cpp

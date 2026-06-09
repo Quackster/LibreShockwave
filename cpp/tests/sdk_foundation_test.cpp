@@ -50,6 +50,7 @@
 #include "libreshockwave/format/AfterburnerReader.hpp"
 #include "libreshockwave/format/ChunkType.hpp"
 #include "libreshockwave/format/MoaID.hpp"
+#include "libreshockwave/fonts/FontDataDecoder.hpp"
 #include "libreshockwave/id/Ids.hpp"
 #include "libreshockwave/io/BinaryReader.hpp"
 #include "libreshockwave/lingo/Datum.hpp"
@@ -63,6 +64,7 @@ using libreshockwave::format::ChunkInfo;
 using libreshockwave::format::AfterburnerReader;
 using libreshockwave::format::ChunkType;
 using libreshockwave::format::MoaID;
+using libreshockwave::fonts::FontDataDecoder;
 using libreshockwave::DirectorFile;
 using libreshockwave::W3DFile;
 using libreshockwave::id::CastLibId;
@@ -172,6 +174,19 @@ void testBinaryReaderZlib() {
     };
     const auto decompressed = BinaryReader::decompressZlib(compressed);
     assert(std::string(decompressed.begin(), decompressed.end()) == "hello");
+#endif
+}
+
+void testFontDataDecoder() {
+#ifdef LIBRESHOCKWAVE_HAVE_ZLIB
+    const auto decoded = FontDataDecoder::decode({"eJzLSM3J", "yQcABiwCFQ=="}, 13, 5);
+    assert(std::string(decoded.begin(), decoded.end()) == "hello");
+
+    const auto wrongSize = FontDataDecoder::decode({"eJzLSM3JyQcABiwCFQ=="}, 13, 6);
+    assert(wrongSize.empty());
+
+    const auto invalidDeflate = FontDataDecoder::decode({"AAAA"}, 3, 5);
+    assert(invalidDeflate.empty());
 #endif
 }
 
@@ -2492,6 +2507,7 @@ int main() {
     testBinaryReaderStringsAndFourCC();
     testBinaryReaderNumbers();
     testBinaryReaderZlib();
+    testFontDataDecoder();
     testIdsAndEnums();
     testFormatTypes();
     testLingoDatumTypes();

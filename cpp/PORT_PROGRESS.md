@@ -168,6 +168,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Typed W3D accessors now parse nodes/light data, shapes, mesh resources, textures, materials, and resource references.
 - W3D node transforms expose position helpers, and texture parsing detects JPEG payloads like the Java SDK.
 
+### Generated Font Data Decoder
+
+- `fonts::FontDataDecoder` ports the Java generated-font helper used by embedded font classes.
+- Base64 font chunks are decoded into a fixed compressed buffer before inflation, matching the Java generated source contract.
+- zlib inflation returns decoded font bytes only when the exact expected uncompressed length is produced, otherwise it returns an empty vector.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -204,6 +210,7 @@ Result:
 - Bitmap decoder RLE, scan-width, indexed, RGB555, 32-bit channel, and automatic dispatch tests passed through the same CTest executable.
 - DirectorFile BITD bitmap decode integration passed through the RIFX loader fixture in the same CTest executable.
 - W3D entry, typed resource, transform, texture format, and lookup tests passed through the same CTest executable.
+- Generated font Base64/zlib decode, wrong-length, and invalid-deflate tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -239,4 +246,5 @@ Result:
 - `f59edc1 Port C++ DirectorFile metadata helpers`
 - `de796a3 Port C++ bitmap decoder foundation`
 - `3afd372 Port C++ DirectorFile bitmap decode`
-- Current checkpoint commit message: `Port C++ W3D file parser`
+- `b870598 Port C++ W3D file parser`
+- Current checkpoint commit message: `Port C++ generated font decoder`
