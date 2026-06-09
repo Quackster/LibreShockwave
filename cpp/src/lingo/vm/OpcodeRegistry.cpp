@@ -2287,6 +2287,25 @@ bool getObjProp(ExecutionContext& context) {
     return true;
 }
 
+bool getChainedProp(ExecutionContext& context) {
+    const std::string propName = context.resolveName(context.argument());
+    const Datum object = context.pop();
+    context.push(getObjectProperty(object, propName));
+    return true;
+}
+
+bool getTopLevelProp(ExecutionContext& context) {
+    const std::string propName = context.resolveName(context.argument());
+    if (equalsIgnoreCase(propName, "_player")) {
+        context.push(Datum::playerRef());
+    } else if (equalsIgnoreCase(propName, "_movie")) {
+        context.push(Datum::movieRef());
+    } else {
+        context.push(Datum::voidValue());
+    }
+    return true;
+}
+
 bool setObjProp(ExecutionContext& context) {
     const std::string propName = context.resolveName(context.argument());
     Datum value = context.pop();
@@ -2499,6 +2518,8 @@ void PropertyOpcodes::registerHandlers(OpcodeRegistry& registry) {
     registry.registerHandler(Opcode::GET_OBJ_PROP, getObjProp);
     registry.registerHandler(Opcode::SET_OBJ_PROP, setObjProp);
     registry.registerHandler(Opcode::THE_BUILTIN, theBuiltin);
+    registry.registerHandler(Opcode::GET_CHAINED_PROP, getChainedProp);
+    registry.registerHandler(Opcode::GET_TOP_LEVEL_PROP, getTopLevelProp);
 }
 
 void CallOpcodes::registerHandlers(OpcodeRegistry& registry) {

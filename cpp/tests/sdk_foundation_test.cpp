@@ -2197,6 +2197,15 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 75) {
             return std::string("xtra");
         }
+        if (nameId == 76) {
+            return std::string("_player");
+        }
+        if (nameId == 77) {
+            return std::string("_movie");
+        }
+        if (nameId == 78) {
+            return std::string("2");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.callStackFormatter = []() {
@@ -2329,6 +2338,8 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opcodeRegistry.hasHandler(Opcode::SET_MOVIE_PROP));
     assert(opcodeRegistry.hasHandler(Opcode::GET_OBJ_PROP));
     assert(opcodeRegistry.hasHandler(Opcode::SET_OBJ_PROP));
+    assert(opcodeRegistry.hasHandler(Opcode::GET_CHAINED_PROP));
+    assert(opcodeRegistry.hasHandler(Opcode::GET_TOP_LEVEL_PROP));
     assert(opcodeRegistry.hasHandler(Opcode::THE_BUILTIN));
     assert(opcodeRegistry.hasHandler(Opcode::LOCAL_CALL));
     assert(opcodeRegistry.hasHandler(Opcode::EXT_CALL));
@@ -2707,6 +2718,47 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     setObjectContext.push(Datum::of(123));
     assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
     assert(setObjectInstance.scriptInstanceValue().getProperty("health").intValue() == 123);
+
+    Scope chainedScope(&script, handler, {});
+    ExecutionContext chainedContext(chainedScope,
+                                    ScriptChunk::Instruction{0, Opcode::GET_CHAINED_PROP, libreshockwave::lingo::code(Opcode::GET_CHAINED_PROP), 78},
+                                    &registry,
+                                    &builtinContext,
+                                    callbacks);
+    chainedContext.push(Datum::list({Datum::of(4), Datum::of(5)}));
+    assert(opcodeRegistry.execute(Opcode::GET_CHAINED_PROP, chainedContext));
+    assert(chainedContext.pop().intValue() == 5);
+    chainedContext.setInstruction(ScriptChunk::Instruction{0, Opcode::GET_CHAINED_PROP, libreshockwave::lingo::code(Opcode::GET_CHAINED_PROP), 54});
+    chainedContext.push(Datum::of(std::string("abc")));
+    assert(opcodeRegistry.execute(Opcode::GET_CHAINED_PROP, chainedContext));
+    assert(chainedContext.pop().intValue() == 3);
+    chainedContext.setInstruction(ScriptChunk::Instruction{0, Opcode::GET_CHAINED_PROP, libreshockwave::lingo::code(Opcode::GET_CHAINED_PROP), 52});
+    chainedContext.push(Datum::intPoint(6, 7));
+    assert(opcodeRegistry.execute(Opcode::GET_CHAINED_PROP, chainedContext));
+    assert(chainedContext.pop().intValue() == 6);
+    Datum chainedProps = Datum::propList();
+    chainedProps.propListValue().properties().emplace_back(Datum::symbol("health"), Datum::of(31));
+    chainedContext.setInstruction(ScriptChunk::Instruction{0, Opcode::GET_CHAINED_PROP, libreshockwave::lingo::code(Opcode::GET_CHAINED_PROP), 50});
+    chainedContext.push(chainedProps);
+    assert(opcodeRegistry.execute(Opcode::GET_CHAINED_PROP, chainedContext));
+    assert(chainedContext.pop().intValue() == 31);
+    Datum chainedInstance = Datum::scriptInstance("chained");
+    chainedInstance.scriptInstanceValue().setProperty("health", Datum::of(41));
+    chainedContext.push(chainedInstance);
+    assert(opcodeRegistry.execute(Opcode::GET_CHAINED_PROP, chainedContext));
+    assert(chainedContext.pop().intValue() == 41);
+
+    Scope topLevelScope(&script, handler, {});
+    ExecutionContext topLevelContext(topLevelScope,
+                                     ScriptChunk::Instruction{0, Opcode::GET_TOP_LEVEL_PROP, libreshockwave::lingo::code(Opcode::GET_TOP_LEVEL_PROP), 76},
+                                     &registry,
+                                     &builtinContext,
+                                     callbacks);
+    assert(opcodeRegistry.execute(Opcode::GET_TOP_LEVEL_PROP, topLevelContext));
+    assert(topLevelContext.pop().type() == DatumType::PlayerRef);
+    topLevelContext.setInstruction(ScriptChunk::Instruction{0, Opcode::GET_TOP_LEVEL_PROP, libreshockwave::lingo::code(Opcode::GET_TOP_LEVEL_PROP), 77});
+    assert(opcodeRegistry.execute(Opcode::GET_TOP_LEVEL_PROP, topLevelContext));
+    assert(topLevelContext.pop().type() == DatumType::MovieRef);
 
     Scope moviePropScope(&script, handler, {});
     ExecutionContext moviePropContext(moviePropScope,
