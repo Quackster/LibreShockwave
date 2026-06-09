@@ -42,6 +42,7 @@ add_library(libreshockwave
     src/io/BinaryReader.cpp
     src/lingo/Datum.cpp
     src/lingo/Opcode.cpp
+    src/lingo/builtin/BuiltinRegistry.cpp
     src/lookup/CastMemberLookup.cpp
     src/lookup/PaletteResolver.cpp
     src/lookup/ScriptLookup.cpp

@@ -62,6 +62,7 @@
 #include "libreshockwave/io/BinaryReader.hpp"
 #include "libreshockwave/lingo/Datum.hpp"
 #include "libreshockwave/lingo/Opcode.hpp"
+#include "libreshockwave/lingo/builtin/BuiltinRegistry.hpp"
 #include "libreshockwave/lookup/CastMemberLookup.hpp"
 #include "libreshockwave/lookup/PaletteResolver.hpp"
 #include "libreshockwave/lookup/ScriptLookup.hpp"
@@ -169,6 +170,8 @@ using libreshockwave::lingo::DatumType;
 using libreshockwave::lingo::LingoException;
 using libreshockwave::lingo::Opcode;
 using libreshockwave::lingo::StringChunkType;
+using libreshockwave::lingo::builtin::BuiltinContext;
+using libreshockwave::lingo::builtin::BuiltinRegistry;
 using libreshockwave::lookup::CastMemberLookup;
 using libreshockwave::lookup::PaletteResolver;
 using libreshockwave::lookup::ScriptLookup;
@@ -877,6 +880,99 @@ void testMoviePropertiesFoundation() {
     assert(noNavigation.getFrameForLabel("intro") == 0);
     assert(noNavigation.getMarkerFrame(1) == 0);
     assert(noNavigation.gotoNetMovie("next.dcr") == -1);
+}
+
+void testBuiltinRegistryFoundation() {
+    BuiltinRegistry registry;
+    BuiltinContext context;
+
+    assert(BuiltinRegistry::normalizeName("PuppetSprite") == "puppetsprite");
+    assert(registry.contains("LABEL"));
+    assert(registry.contains("setCursor"));
+    assert(!registry.contains("missingBuiltin"));
+    assert(registry.get("marker") != nullptr);
+    assert(!registry.invokeIfPresent("missingBuiltin", context).has_value());
+    assert(registry.invoke("missingBuiltin", context).isVoid());
+    assert(registry.invoke("label", context, {Datum::of(std::string("intro"))}).intValue() == 0);
+    assert(registry.invoke("marker", context, {Datum::of(1)}).intValue() == 0);
+    assert(registry.invoke("puppetSprite", context, {Datum::of(1), Datum::TRUE}).isVoid());
+    assert(registry.invoke("spriteBox", context, {Datum::of(1)}) == Datum::intRect(0, 0, 0, 0));
+
+    MovieProperties movie;
+    int requestedMarkerOffset = 0;
+    movie.setFrameForLabelResolver([](const std::string& label) {
+        if (label == "intro") {
+            return 5;
+        }
+        if (label == "negative") {
+            return -3;
+        }
+        return 0;
+    });
+    movie.setMarkerFrameResolver([&requestedMarkerOffset](int offset) {
+        requestedMarkerOffset = offset;
+        return offset == -1 ? 2 : -7;
+    });
+    context.movieProperties = &movie;
+
+    assert(registry.invoke("label", context, {Datum::of(std::string("intro"))}).intValue() == 5);
+    assert(registry.invoke("label", context, {Datum::movieRef(), Datum::of(std::string("intro"))}).intValue() == 5);
+    assert(registry.invoke("label", context, {Datum::of(std::string("negative"))}).intValue() == 0);
+    assert(registry.invoke("marker", context, {Datum::of(std::string("intro"))}).intValue() == 5);
+    assert(registry.invoke("marker", context, {Datum::movieRef(), Datum::of(std::string("intro"))}).intValue() == 5);
+    assert(registry.invoke("marker", context, {Datum::of(-1)}).intValue() == 2);
+    assert(requestedMarkerOffset == -1);
+    assert(registry.invoke("marker", context, {Datum::of(4)}).intValue() == 0);
+    assert(requestedMarkerOffset == 4);
+
+    SpriteRegistry spriteRegistry;
+    SpriteProperties spriteProps(&spriteRegistry);
+    context.spriteProperties = &spriteProps;
+
+    assert(registry.invoke("puppetTempo", context, {Datum::of(23)}).isVoid());
+    assert(movie.puppetTempo() == 23);
+    assert(registry.invoke("cursor", context, {Datum::of(4)}).isVoid());
+    assert(movie.getMovieProp("cursor").intValue() == 4);
+    assert(registry.invoke("setCursor", context, {Datum::of(2)}).isVoid());
+    assert(movie.getMovieProp("cursor").intValue() == 2);
+    assert(registry.invoke("cursor", context).isVoid());
+    assert(movie.getMovieProp("cursor").intValue() == 2);
+
+    assert(registry.invoke("puppetSprite", context, {Datum::of(4), Datum::TRUE}).isVoid());
+    assert(spriteProps.getSpriteProp(4, "puppet").intValue() == 1);
+    assert(spriteProps.setSpriteProp(4, "rect", Datum::intRect(1, 2, 11, 22)));
+    assert(registry.invoke("spriteBox", context, {Datum::of(4)}) == Datum::intRect(1, 2, 11, 22));
+    assert(registry.invoke("puppetSprite", context).isVoid());
+    assert(spriteProps.getSpriteProp(4, "puppet").intValue() == 1);
+
+    int paletteCalls = 0;
+    std::optional<Datum> capturedPalette;
+    context.puppetPaletteHandler = [&paletteCalls, &capturedPalette](std::optional<Datum> paletteRef) {
+        ++paletteCalls;
+        capturedPalette = std::move(paletteRef);
+    };
+    assert(registry.invoke("puppetPalette", context, {Datum::of(0)}).isVoid());
+    assert(paletteCalls == 1);
+    assert(!capturedPalette.has_value());
+    assert(registry.invoke("puppetPalette", context, {Datum::of(-1)}).isVoid());
+    assert(paletteCalls == 2);
+    assert(!capturedPalette.has_value());
+    assert(registry.invoke("puppetPalette", context, {Datum::castMemberRef(CastLibId(1), MemberId(9))}).isVoid());
+    assert(paletteCalls == 3);
+    assert(capturedPalette.has_value());
+    assert(capturedPalette->asCastMemberRef()->memberNum() == 9);
+
+    assert(registry.invoke("pauseUpdate", context).isVoid());
+    assert(registry.invoke("updateStage", context).isVoid());
+    assert(registry.invoke("moveToFront", context, {Datum::of(4)}).isVoid());
+    assert(registry.invoke("moveToBack", context, {Datum::of(4)}).isVoid());
+
+    registry.registerBuiltin("Echo", [](BuiltinContext&, const std::vector<Datum>& args) {
+        return args.empty() ? Datum::voidValue() : args.front();
+    });
+    assert(registry.contains("echo"));
+    assert(registry.invoke("ECHO", context, {Datum::of(42)}).intValue() == 42);
+    assert(registry.map().contains("echo"));
 }
 
 std::shared_ptr<Bitmap> makeSolidHitBitmap(std::uint32_t argb) {
@@ -5463,6 +5559,7 @@ int main() {
     testPlayerCoreFoundation();
     testPlayerInputFoundation();
     testMoviePropertiesFoundation();
+    testBuiltinRegistryFoundation();
     testHitTesterFoundation();
     testCursorManagerFoundation();
     testScoreNavigationFoundation();

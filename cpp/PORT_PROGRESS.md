@@ -264,6 +264,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Input-backed mouse, key, focus, and selection properties are wired to the C++ `InputState`; file-backed counts, stage size, tempo, base path, and color depth use `DirectorFile` when available.
 - Stage object properties, background-color mutation, item delimiter caching, frame/label/marker navigation, and net-page/net-movie requests are exposed through provider callbacks until the full C++ `Player` and stage renderer are ported.
 
+### Builtin Registry and Movie/Sprite Builtins Foundation
+
+- `lingo::builtin::BuiltinRegistry` ports the Java builtin registry's case-insensitive lookup, custom registration, direct lookup, missing-builtin handling, and optional invocation semantics.
+- Movie `label`/`marker` builtins route through `MovieProperties` callbacks, including movie-reference leading arguments and Java-compatible non-negative frame results.
+- Sprite builtins port `puppetTempo`, `puppetSprite`, `cursor`/`setCursor`, `spriteBox`, update/move no-ops, and a `puppetPalette` callback hook for the future C++ cast/palette provider.
+
 ### Score Navigation Foundation
 
 - `score::ScoreBehaviorRef` ports behavior cast-member references with saved parameter storage.
@@ -399,6 +405,7 @@ Result:
 - EventDispatcher global, frame/movie, sprite/movie, sprite-only, behavior-only, and movie-only dispatch ordering, pass propagation, dynamic script-instance dispatch, sprite handler lookup, mouse interactivity, mouse-handler recognition, debug flag, and stopEvent state tests passed through the same CTest executable.
 - SpriteProperties missing defaults, property get/set, revision bumps, cast member assignment, autosizing, registration-aware bounds, cursor lists, script-instance sprite numbers, release cleanup, color refs, and image callbacks passed through the same CTest executable.
 - MovieProperties movie/stage property reads and writes, file/input-backed values, xtra lists, item delimiters, timers, stage background color, random seed, navigation callbacks, and net navigation callbacks passed through the same CTest executable.
+- BuiltinRegistry case-insensitive lookup, custom registration, movie label/marker builtins, sprite puppet/cursor/spriteBox builtins, puppetPalette hooks, and Java-compatible no-op sprite builtins passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -462,4 +469,5 @@ Result:
 - `4e98478 Port C++ cursor manager foundation`
 - `55728d1 Port C++ event dispatcher foundation`
 - `737ad4b Port C++ sprite properties foundation`
-- Current checkpoint commit message: `Port C++ movie properties foundation`
+- `754d4bc Port C++ movie properties foundation`
+- Current checkpoint commit message: `Port C++ builtin registry foundation`
