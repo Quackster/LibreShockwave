@@ -2278,6 +2278,9 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 102) {
             return std::string("getPixel");
         }
+        if (nameId == 103) {
+            return std::string("fill");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.callStackFormatter = []() {
@@ -3155,6 +3158,37 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(imagePixel->g == 20);
     assert(imagePixel->b == 30);
     assert(runObjCall(102, {imageMethodRef, Datum::of(9), Datum::of(9)}).isVoid());
+    auto rectFillBitmap = std::make_shared<Bitmap>(2, 2, 32);
+    rectFillBitmap->fill(0xFFFFFFFFU);
+    const Datum rectFillRef = Datum::imageRef(rectFillBitmap);
+    assert(runObjCall(103, {rectFillRef, Datum::intRect(0, 1, 2, 2), Datum::of(std::string("#123456"))}).isVoid());
+    assert(rectFillBitmap->isScriptModified());
+    assert(rectFillBitmap->getPixel(0, 1) == 0xFF123456U);
+    assert(rectFillBitmap->getPixel(1, 1) == 0xFF123456U);
+    auto coordFillBitmap = std::make_shared<Bitmap>(2, 2, 32);
+    coordFillBitmap->fill(0xFF000000U);
+    const Datum coordFillRef = Datum::imageRef(coordFillBitmap);
+    assert(runObjCall(103, {coordFillRef, Datum::of(0), Datum::of(0), Datum::of(1), Datum::of(1), Datum::of(0)})
+               .isVoid());
+    assert(coordFillBitmap->isScriptModified());
+    assert(coordFillBitmap->getPixel(0, 0) == 0xFFFFFFFFU);
+    auto imageFillProps = Datum::propList();
+    imageFillProps.propListValue().put(Datum::symbol("color"), Datum::colorRef(70, 80, 90));
+    auto propFillBitmap = std::make_shared<Bitmap>(2, 2, 32);
+    propFillBitmap->fill(0xFFFFFFFFU);
+    const Datum propFillRef = Datum::imageRef(propFillBitmap);
+    assert(runObjCall(103, {propFillRef, Datum::intRect(1, 0, 2, 1), imageFillProps}).isVoid());
+    assert(propFillBitmap->isScriptModified());
+    assert(propFillBitmap->getPixel(1, 0) == 0xFF46505AU);
+    auto noOpFillBitmap = std::make_shared<Bitmap>(2, 2, 32);
+    noOpFillBitmap->fill(0xFFFFFFFFU);
+    const Datum noOpFillRef = Datum::imageRef(noOpFillBitmap);
+    assert(runObjCall(103, {noOpFillRef, Datum::intRect(0, 0, 1, 1), Datum::voidValue()}).isVoid());
+    assert(!noOpFillBitmap->isScriptModified());
+    assert(noOpFillBitmap->getPixel(0, 0) == 0xFFFFFFFFU);
+    assert(runObjCall(103, {noOpFillRef, Datum::intRect(1, 1, 1, 2), Datum::colorRef(1, 2, 3)}).isVoid());
+    assert(!noOpFillBitmap->isScriptModified());
+    assert(noOpFillBitmap->getPixel(1, 1) == 0xFFFFFFFFU);
     const Datum duplicateImageDatum = runObjCall(72, {imageMethodRef});
     const auto* duplicateImage = duplicateImageDatum.asImageRef();
     assert(duplicateImage != nullptr);

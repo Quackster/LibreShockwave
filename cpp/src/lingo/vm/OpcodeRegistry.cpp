@@ -1747,6 +1747,51 @@ Datum rectObjectMethod(const Datum::IntRect& rect, std::string_view methodName, 
     return Datum::voidValue();
 }
 
+bool imageFill(bitmap::Bitmap& bmp, const std::vector<Datum>& args) {
+    if (args.size() < 2) return false;
+
+    int left = 0;
+    int top = 0;
+    int right = 0;
+    int bottom = 0;
+    Datum colorDatum = Datum::voidValue();
+
+    if (const auto* rect = args[0].asIntRect()) {
+        left = rect->left;
+        top = rect->top;
+        right = rect->right;
+        bottom = rect->bottom;
+        colorDatum = args[1];
+    } else if (args.size() >= 5) {
+        left = toIntLikeJava(args[0]);
+        top = toIntLikeJava(args[1]);
+        right = toIntLikeJava(args[2]);
+        bottom = toIntLikeJava(args[3]);
+        colorDatum = args[4];
+    } else {
+        return false;
+    }
+
+    if (colorDatum.isPropList()) {
+        const Datum propColor = getPropListKey(colorDatum.propListValue(), "color");
+        if (!propColor.isVoid()) {
+            colorDatum = propColor;
+        }
+    }
+    if (colorDatum.isVoid()) {
+        return false;
+    }
+
+    const int width = right - left;
+    const int height = bottom - top;
+    if (width <= 0 || height <= 0) {
+        return false;
+    }
+
+    bmp.fillRect(left, top, width, height, imageColorArgb(colorDatum));
+    return true;
+}
+
 Datum imageObjectMethod(const Datum::ImageRef& image, std::string_view methodName, const std::vector<Datum>& args) {
     if (image.bitmap == nullptr) {
         if (equalsIgnoreCase(methodName, "duplicate")) {
@@ -1761,6 +1806,12 @@ Datum imageObjectMethod(const Datum::ImageRef& image, std::string_view methodNam
     }
 
     auto& bmp = *image.bitmap;
+    if (equalsIgnoreCase(methodName, "fill")) {
+        if (imageFill(bmp, args)) {
+            bmp.markScriptModified();
+        }
+        return Datum::voidValue();
+    }
     if (equalsIgnoreCase(methodName, "duplicate")) {
         return Datum::imageRef(std::make_shared<bitmap::Bitmap>(bmp.copy()));
     }
