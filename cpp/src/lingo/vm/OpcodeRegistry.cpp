@@ -1413,7 +1413,55 @@ Datum rectObjectMethod(const Datum::IntRect& rect, std::string_view methodName, 
     return Datum::voidValue();
 }
 
+Datum getContextVar(ExecutionContext& context, id::VarType varType, const Datum& idDatum);
+
+Datum varRefObjectMethod(ExecutionContext& context,
+                         const Datum::VarRef& varRef,
+                         std::string_view methodName,
+                         const std::vector<Datum>& args) {
+    Datum value = getContextVar(context, varRef.varType, Datum::of(varRef.rawIndex));
+    if (equalsIgnoreCase(methodName, "getProp")) {
+        if (args.size() < 2) {
+            return Datum::of(std::string());
+        }
+        StringChunkType chunkType = StringChunkType::Char;
+        try {
+            chunkType = stringChunkTypeFromName(keyNameLikeJava(args[0]));
+        } catch (const std::invalid_argument&) {
+            chunkType = StringChunkType::Char;
+        }
+        const int start = toIntLikeJava(args[1]);
+        const int end = args.size() >= 3 ? toIntLikeJava(args[2]) : start;
+        return Datum::of(resolveChunkRange(toStringLikeJava(value), chunkType, start, end));
+    }
+    if (equalsIgnoreCase(methodName, "getPropRef")) {
+        return Datum::voidValue();
+    }
+    if (value.isList()) {
+        return listObjectMethod(value.listValue(), methodName, args);
+    }
+    if (value.isPropList()) {
+        return propListObjectMethod(value.propListValue(), methodName, args);
+    }
+    if (value.isString()) {
+        return stringObjectMethod(value, methodName, args);
+    }
+    if (const auto* point = value.asIntPoint()) {
+        return pointObjectMethod(*point, methodName, args);
+    }
+    if (const auto* rect = value.asIntRect()) {
+        return rectObjectMethod(*rect, methodName, args);
+    }
+    if (value.type() == DatumType::ScriptInstanceRef) {
+        return value.scriptInstanceValue().getProperty(std::string(methodName));
+    }
+    return Datum::voidValue();
+}
+
 Datum dispatchObjectMethod(ExecutionContext& context, Datum target, std::string_view methodName, const std::vector<Datum>& args) {
+    if (const auto* varRef = target.asVarRef()) {
+        return varRefObjectMethod(context, *varRef, methodName, args);
+    }
     if (target.isList()) {
         return listObjectMethod(target.listValue(), methodName, args);
     }

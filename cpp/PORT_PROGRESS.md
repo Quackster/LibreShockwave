@@ -476,6 +476,8 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `OBJ_CALL` now dispatches data-owned list, property-list, string, point, rectangle, and script-instance methods through the C++ opcode registry.
 - Receiver-style external calls now fall back to the same data-owned method dispatch path after handler and builtin lookup.
 - List and property-list method dispatch covers Java-compatible mutation and lookup helpers such as `getAt`, `setAt`, `append`, `addProp`, `getProp`, `count`, `sort`, and duplicate-preserving property insertion.
+- VarRef receiver dispatch now resolves referenced context variables for string-like `getProp`, `char`, and `count` object methods.
+- Mutable ChunkRef creation/deletion remains deferred until a dedicated mutable chunk-reference datum is ported.
 
 ### Lingo Opcode Object Construction Foundation
 
@@ -584,6 +586,7 @@ Result:
 - Lingo `GET_CHAINED_PROP` list, string, point, property-list, and script-instance reads plus `GET_TOP_LEVEL_PROP` `_player`/`_movie` refs passed through the same CTest executable.
 - Lingo legacy `GET` last-chunk/count chunk reads and provider-backed `SET` stack-consumption no-op tests passed through the same CTest executable.
 - Lingo `GET_FIELD` provider-missing empty-string fallback and stack-consumption tests passed through the same CTest executable.
+- Lingo VarRef object-call string chunk extraction and string method delegation tests passed through the same CTest executable.
 - MovieProperties movie/stage property reads and writes, file/input-backed values, xtra lists, item delimiters, timers, stage background color, random seed, navigation callbacks, and net navigation callbacks passed through the same CTest executable.
 - BuiltinRegistry case-insensitive lookup, custom registration, movie label/marker builtins, sprite puppet/cursor/spriteBox builtins, puppetPalette hooks, and Java-compatible no-op sprite builtins passed through the same CTest executable.
 - MathBuiltins numeric coercion, integer/float conversion, bit operations, trig, power, min/max, list min/max, and random callback hooks passed through the same CTest executable.
@@ -704,4 +707,5 @@ Result:
 - `6be71365 Port C++ opcode put chunk foundation`
 - `cd997d5e Port C++ opcode chained property foundation`
 - `c78210ba Port C++ opcode legacy property foundation`
-- Current checkpoint commit message: `Port C++ opcode field fallback foundation`
+- `9ac23faa Port C++ opcode field fallback foundation`
+- Current checkpoint commit message: `Port C++ varref object method foundation`

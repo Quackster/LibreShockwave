@@ -2950,6 +2950,12 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(methodProps.propListValue().properties().size() == 3);
     assert(methodProps.propListValue().properties()[2].second.stringValue() == "second");
 
+    globals["globalName"] = Datum::of(std::string("abcd"));
+    Datum globalVarRef = Datum::varRef(VarType::GLOBAL, 42);
+    assert(runObjCall(67, {globalVarRef, Datum::symbol("char"), Datum::of(2), Datum::of(3)}).stringValue() == "bc");
+    assert(runObjCall(69, {globalVarRef, Datum::of(4)}).stringValue() == "d");
+    assert(runObjCall(70, {globalVarRef}).intValue() == 4);
+
     assert(runObjCall(69, {Datum::of(std::string("abc")), Datum::of(2)}).stringValue() == "b");
     assert(runObjCall(70, {Datum::of(std::string("one two")), Datum::symbol("word")}).intValue() == 2);
     assert(runObjCall(71, {Datum::intPoint(5, 6), Datum::intRect(0, 0, 10, 10)}).boolValue());
