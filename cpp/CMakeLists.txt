@@ -65,6 +65,7 @@ add_library(libreshockwave
     src/player/score/ScoreBehaviorRef.cpp
     src/player/score/ScoreNavigator.cpp
     src/player/score/SpriteSpan.cpp
+    src/player/timeout/TimeoutManager.cpp
     src/util/AudioCodecUtils.cpp
     src/util/FileUtil.cpp
     src/w3d/W3DEntry.cpp

@@ -257,6 +257,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `net::NetTask` ports individual GET/POST request task state, result/error storage, state transitions, stream status strings, and display formatting.
 
+### Timeout Manager State Foundation
+
+- `lingo::Datum` now exposes timeout reference construction and inspection helpers for runtime timeout APIs.
+- `timeout::TimeoutManager` ports timeout creation, one-shot flag storage, forgetting, existence checks, property get/set behavior, timeout names/count, and clear state management.
+- VM handler firing and system-event dispatch remain deferred until the C++ Lingo VM dispatch layer is ported.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -308,6 +314,7 @@ Result:
 - FrameRenderPipelineContext mutation, trace building, snapshot storage, and FrameRenderPipelineStep tests passed through the same CTest executable.
 - TextRenderer split-line, character-line, line-start, wrapping, and default XMED delegation tests passed through the same CTest executable.
 - NetTask GET/POST construction, state transitions, result/error storage, stream status, and display formatting tests passed through the same CTest executable.
+- TimeoutManager creation, property access/mutation, one-shot/persistent flags, timeout references, names/count, forget, and clear tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -358,4 +365,5 @@ Result:
 - `9f10f49 Port C++ software frame renderer`
 - `183c22e Port C++ render pipeline context`
 - `c93152b Port C++ text renderer interface`
-- Current checkpoint commit message: `Port C++ network task foundation`
+- `d104c40 Port C++ network task foundation`
+- Current checkpoint commit message: `Port C++ timeout manager foundation`

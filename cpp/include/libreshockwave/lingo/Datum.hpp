@@ -302,6 +302,7 @@ public:
     [[nodiscard]] static Datum scriptInstance(std::string scriptName, std::optional<CastMemberRef> scriptRef = std::nullopt);
     [[nodiscard]] static Datum argList(std::vector<Datum> args);
     [[nodiscard]] static Datum argListNoRet(std::vector<Datum> args);
+    [[nodiscard]] static Datum timeoutRef(std::string name);
 
     [[nodiscard]] DatumType type() const;
     [[nodiscard]] std::string typeString() const;
@@ -326,6 +327,7 @@ public:
     [[nodiscard]] const Str* asString() const;
     [[nodiscard]] const Symbol* asSymbol() const;
     [[nodiscard]] const CastMemberRef* asCastMemberRef() const;
+    [[nodiscard]] const TimeoutRef* asTimeoutRef() const;
     [[nodiscard]] const IntPoint* asIntPoint() const;
     [[nodiscard]] const IntRect* asIntRect() const;
 

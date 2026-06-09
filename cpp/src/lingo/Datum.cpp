@@ -341,6 +341,10 @@ Datum Datum::argListNoRet(std::vector<Datum> args) {
     return Datum(std::make_shared<ArgListNoRet>(std::move(args)));
 }
 
+Datum Datum::timeoutRef(std::string name) {
+    return Datum(TimeoutRef{std::move(name)});
+}
+
 DatumType Datum::type() const {
     if (std::holds_alternative<Null>(value_)) return DatumType::Null;
     if (std::holds_alternative<Void>(value_)) return DatumType::Void;
@@ -417,6 +421,7 @@ std::string Datum::stringValue() const {
     if (const auto* value = std::get_if<Int>(&value_)) return std::to_string(value->value);
     if (const auto* value = std::get_if<DFloat>(&value_)) return floatToString(value->value);
     if (const auto* value = std::get_if<Symbol>(&value_)) return value->name;
+    if (const auto* value = std::get_if<TimeoutRef>(&value_)) return value->name;
     if (std::holds_alternative<Void>(value_)) return "VOID";
     if (std::holds_alternative<Null>(value_)) return "";
     if (const auto* value = std::get_if<IntPoint>(&value_)) {
@@ -446,6 +451,7 @@ const Datum::DFloat* Datum::asFloat() const { return std::get_if<DFloat>(&value_
 const Datum::Str* Datum::asString() const { return std::get_if<Str>(&value_); }
 const Datum::Symbol* Datum::asSymbol() const { return std::get_if<Symbol>(&value_); }
 const Datum::CastMemberRef* Datum::asCastMemberRef() const { return std::get_if<CastMemberRef>(&value_); }
+const Datum::TimeoutRef* Datum::asTimeoutRef() const { return std::get_if<TimeoutRef>(&value_); }
 const Datum::IntPoint* Datum::asIntPoint() const { return std::get_if<IntPoint>(&value_); }
 const Datum::IntRect* Datum::asIntRect() const { return std::get_if<IntRect>(&value_); }
 

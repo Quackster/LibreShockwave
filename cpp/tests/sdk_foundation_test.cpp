@@ -89,6 +89,7 @@
 #include "libreshockwave/player/score/ScoreBehaviorRef.hpp"
 #include "libreshockwave/player/score/ScoreNavigator.hpp"
 #include "libreshockwave/player/score/SpriteSpan.hpp"
+#include "libreshockwave/player/timeout/TimeoutManager.hpp"
 #include "libreshockwave/util/AudioCodecUtils.hpp"
 #include "libreshockwave/util/FileUtil.hpp"
 
@@ -192,6 +193,7 @@ using libreshockwave::player::render::pipeline::SpriteType;
 using libreshockwave::player::score::ScoreBehaviorRef;
 using libreshockwave::player::score::ScoreNavigator;
 using libreshockwave::player::score::SpriteSpan;
+using libreshockwave::player::timeout::TimeoutManager;
 using libreshockwave::w3d::W3DEntryType;
 
 void testBinaryReaderEndianAndBounds() {
@@ -1359,6 +1361,55 @@ void testNetTaskFoundation() {
     assert(postTask.toString() == "NetTask{id=2, util=https://example.invalid/submit, method=POST, state=FAILED}");
     assert(libreshockwave::player::net::name(NetTaskMethod::Get) == "GET");
     assert(libreshockwave::player::net::name(NetTaskState::InProgress) == "IN_PROGRESS");
+}
+
+void testTimeoutManagerFoundation() {
+    TimeoutManager manager;
+    assert(manager.getTimeoutCount() == 0);
+    assert(manager.getTimeoutNames().empty());
+    assert(!manager.timeoutExists("timer"));
+    assert(manager.getTimeoutProp("timer", "name").isVoid());
+    assert(!manager.setTimeoutProp("timer", "period", Datum::of(1000)));
+
+    auto ref = manager.createTimeout("timer", 1000, "onTimer", Datum::of(std::string("target-id")));
+    assert(ref.type() == DatumType::TimeoutRef);
+    assert(ref.asTimeoutRef() != nullptr);
+    assert(ref.asTimeoutRef()->name == "timer");
+    assert(ref.stringValue() == "timer");
+    assert(manager.timeoutExists("timer"));
+    assert(manager.getTimeoutCount() == 1);
+    assert((manager.getTimeoutNames() == std::vector<std::string>{"timer"}));
+    assert(manager.getTimeoutProp("timer", "NAME").stringValue() == "timer");
+    assert(manager.getTimeoutProp("timer", "target").stringValue() == "target-id");
+    assert(manager.getTimeoutProp("timer", "period").intValue() == 1000);
+    assert(manager.getTimeoutProp("timer", "handler").asSymbol() != nullptr);
+    assert(manager.getTimeoutProp("timer", "handler").asSymbol()->name == "onTimer");
+    assert(!manager.getTimeoutProp("timer", "persistent").boolValue());
+    assert(manager.getTimeoutProp("timer", "time").intValue() >= 0);
+    assert(manager.getEntry("timer") != nullptr);
+    assert(!manager.getEntry("timer")->oneShot);
+
+    assert(manager.setTimeoutProp("timer", "period", Datum::of(250)));
+    assert(manager.setTimeoutProp("timer", "handler", Datum::symbol("onOther")));
+    assert(manager.setTimeoutProp("timer", "persistent", Datum::TRUE));
+    assert(manager.setTimeoutProp("timer", "oneshot", Datum::TRUE));
+    assert(manager.setTimeoutProp("timer", "target", Datum::of(42)));
+    assert(!manager.setTimeoutProp("timer", "missing", Datum::of(1)));
+    assert(manager.getTimeoutProp("timer", "period").intValue() == 250);
+    assert(manager.getTimeoutProp("timer", "handler").asSymbol()->name == "onOther");
+    assert(manager.getTimeoutProp("timer", "persistent").boolValue());
+    assert(manager.getTimeoutProp("timer", "target").intValue() == 42);
+    assert(manager.getEntry("timer")->oneShot);
+
+    auto oneShotRef = manager.createTimeout("once", 1, "go", Datum::voidValue(), true);
+    assert(oneShotRef.asTimeoutRef()->name == "once");
+    assert(manager.getEntry("once")->oneShot);
+    assert((manager.getTimeoutNames() == std::vector<std::string>{"once", "timer"}));
+    manager.forgetTimeout("timer");
+    assert(!manager.timeoutExists("timer"));
+    assert(manager.timeoutExists("once"));
+    manager.clear();
+    assert(manager.getTimeoutCount() == 0);
 }
 
 void testPaletteAndColorRefs() {
@@ -3728,6 +3779,7 @@ int main() {
     testSoftwareFrameRenderer();
     testTextRendererFoundation();
     testNetTaskFoundation();
+    testTimeoutManagerFoundation();
     testPaletteAndColorRefs();
     testBitmapAlphaAndPaletteBehavior();
     testBitmapRegionsAndMetadata();
