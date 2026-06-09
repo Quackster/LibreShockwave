@@ -66,6 +66,7 @@ struct BuiltinContext {
     using NewInstanceHandler = std::function<Datum(const Datum& target, const std::vector<Datum>& args)>;
     using ValueEvaluator = std::function<Datum(const Datum& value)>;
     using ScriptResolver = std::function<Datum(const Datum& identifier, const std::optional<Datum>& scope)>;
+    using ScriptPropertyNamesResolver = std::function<std::vector<std::string>(int castLib, int memberNum)>;
     using AncestorCallHandler = std::function<Datum(const std::vector<Datum>& args)>;
     using RandomIntHandler = std::function<int(int max)>;
     using GetPrefHandler = std::function<Datum(const std::string& name)>;
@@ -113,6 +114,7 @@ struct BuiltinContext {
     NewInstanceHandler newInstanceHandler;
     ValueEvaluator valueEvaluator;
     ScriptResolver scriptResolver;
+    ScriptPropertyNamesResolver scriptPropertyNamesResolver;
     AncestorCallHandler ancestorCallHandler;
     RandomIntHandler randomIntHandler;
     GetPrefHandler getPrefHandler;

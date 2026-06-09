@@ -493,7 +493,8 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `NEW_OBJ` now handles script object construction from arg lists through the C++ opcode registry.
 - Script construction delegates to the registered `new` builtin/new-instance callback when available, then falls back to named C++ script-instance datums.
-- Cast-provider-backed script lookup, declared property preinitialization, and automatic `new` handler invocation remain deferred to the full C++ cast/VM runtime integration.
+- Fallback script construction now resolves named scripts through the C++ script resolver hook, preinitializes declared provider properties to VOID, invokes a resolved `new` handler for side effects, and still pushes the constructed instance like the Java opcode path.
+- Full cast/VM runtime integration for provider-owned script dispatch remains deferred to later slices.
 
 ### Lingo Opcode String Chunk Extraction Foundation
 
@@ -628,7 +629,7 @@ Result:
 - OpcodeRegistry provider-backed object property gets/sets for movie, player, stage, sprite, integer-as-sprite refs, cast-member metadata/provider properties, and image `useAlpha`/`paletteRef` setters passed through the same CTest executable.
 - OpcodeRegistry local/external call handlers, builtin dispatch, no-return calls, constant fallback, and error-state handling passed through the same CTest executable.
 - OpcodeRegistry object method calls and receiver-style external method calls for lists, property lists, strings, points, rectangles, cast library member lookups/accessors, timeouts, sound channels, and Xtra instances passed through the same CTest executable.
-- OpcodeRegistry `NEW_OBJ` script construction delegation, fallback construction, and non-script rejection passed through the same CTest executable.
+- OpcodeRegistry `NEW_OBJ` script construction delegation, provider-resolved fallback construction, declared property preinitialization, automatic `new` handler invocation, and non-script rejection passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -760,4 +761,5 @@ Result:
 - `64362c2f Port C++ field chunk mutation foundation`
 - `58e7dee7 Port C++ image property setter foundation`
 - `881040e1 Port C++ castLib member accessor foundation`
-- Current checkpoint commit message: `Port C++ cast member property provider foundation`
+- `99a43fa8 Port C++ cast member property provider foundation`
+- Current checkpoint commit message: `Port C++ script construction provider fallback`

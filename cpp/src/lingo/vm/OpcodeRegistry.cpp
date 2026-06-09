@@ -3712,6 +3712,55 @@ Datum fallbackScriptInstance(const Datum& scriptArg) {
     return Datum::scriptInstance(toStringLikeJava(scriptArg));
 }
 
+Datum resolveScriptConstructorTarget(ExecutionContext& context, const Datum& scriptArg) {
+    if (scriptArg.asScriptRef() != nullptr || scriptArg.asCastMemberRef() != nullptr) {
+        return scriptArg;
+    }
+    auto* builtinContext = context.builtinContext();
+    if (builtinContext != nullptr && builtinContext->scriptResolver) {
+        Datum resolved = builtinContext->scriptResolver(scriptArg, std::nullopt);
+        if (resolved.asScriptRef() != nullptr || resolved.asCastMemberRef() != nullptr) {
+            return resolved;
+        }
+    }
+    return scriptArg;
+}
+
+std::optional<Datum::CastMemberRef> scriptConstructorMemberRef(const Datum& scriptArg) {
+    if (const auto* scriptRef = scriptArg.asScriptRef()) {
+        return scriptRef->memberRef;
+    }
+    if (const auto* memberRef = scriptArg.asCastMemberRef()) {
+        return *memberRef;
+    }
+    return std::nullopt;
+}
+
+void initializeDeclaredScriptProperties(ExecutionContext& context, Datum& instance, const Datum::CastMemberRef& memberRef) {
+    auto* builtinContext = context.builtinContext();
+    if (builtinContext == nullptr || !builtinContext->scriptPropertyNamesResolver ||
+        instance.type() != DatumType::ScriptInstanceRef) {
+        return;
+    }
+    for (const auto& propertyName : builtinContext->scriptPropertyNamesResolver(memberRef.castLib, memberRef.memberNum())) {
+        if (!instance.scriptInstanceValue().hasProperty(propertyName)) {
+            instance.scriptInstanceValue().setProperty(propertyName, Datum::voidValue());
+        }
+    }
+}
+
+Datum executeScriptNewHandler(ExecutionContext& context, const std::vector<Datum>& args, const Datum& receiver) {
+    const auto handler = context.findHandler("new");
+    if (!handler) {
+        return Datum::voidValue();
+    }
+    std::vector<Datum> extraArgs;
+    if (args.size() > 1) {
+        extraArgs.assign(args.begin() + 1, args.end());
+    }
+    return safeExecuteHandler(context, *handler->script, handler->handler, extraArgs, receiver);
+}
+
 bool newObj(ExecutionContext& context) {
     const std::string objectType = context.resolveName(context.argument());
     if (!equalsIgnoreCase(objectType, "script")) {
@@ -3731,7 +3780,13 @@ bool newObj(ExecutionContext& context) {
         return true;
     }
 
-    context.push(fallbackScriptInstance(args.front()));
+    const Datum constructorTarget = resolveScriptConstructorTarget(context, args.front());
+    Datum instance = fallbackScriptInstance(constructorTarget);
+    if (const auto memberRef = scriptConstructorMemberRef(constructorTarget)) {
+        initializeDeclaredScriptProperties(context, instance, *memberRef);
+        (void)executeScriptNewHandler(context, args, instance);
+    }
+    context.push(std::move(instance));
     return true;
 }
 

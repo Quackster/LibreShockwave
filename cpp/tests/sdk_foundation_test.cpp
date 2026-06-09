@@ -2583,6 +2583,58 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opcodeRegistry.execute(Opcode::NEW_OBJ, newObjContext));
     assert(newObjContext.pop().isVoid());
 
+    builtinContext.scriptResolver = [](const Datum& identifier, const std::optional<Datum>& scope) {
+        assert(!scope.has_value());
+        const std::string name = identifier.asSymbol() != nullptr ? identifier.asSymbol()->name : identifier.stringValue();
+        if (name == "ResolvedScript") {
+            return Datum::scriptRef(Datum::CastMemberRef{6, 7});
+        }
+        return Datum::voidValue();
+    };
+    builtinContext.scriptPropertyNamesResolver = [](int castLib, int memberNum) {
+        assert(castLib == 6);
+        assert(memberNum == 7);
+        return std::vector<std::string>{"pDeclared", "pOther"};
+    };
+    int fallbackNewHandlerCalls = 0;
+    ExecutionContext::Callbacks resolvedNewObjCallbacks = callbacks;
+    resolvedNewObjCallbacks.handlerFinder = [&script, &otherHandler](std::string_view name) -> std::optional<HandlerRef> {
+        if (name == "new") {
+            return HandlerRef{&script, otherHandler};
+        }
+        return std::nullopt;
+    };
+    resolvedNewObjCallbacks.handlerExecutor = [&fallbackNewHandlerCalls](const ScriptChunk& calledScript,
+                                                                         const ScriptChunk::Handler&,
+                                                                         const std::vector<Datum>& args,
+                                                                         const Datum& receiverArg) {
+        ++fallbackNewHandlerCalls;
+        assert(calledScript.id().value() == 700);
+        assert(args.size() == 1);
+        assert(args.front().intValue() == 77);
+        assert(receiverArg.type() == DatumType::ScriptInstanceRef);
+        assert(receiverArg.scriptInstanceValue().scriptRef()->castLib == 6);
+        assert(receiverArg.scriptInstanceValue().scriptRef()->memberNum() == 7);
+        assert(receiverArg.scriptInstanceValue().getProperty("pDeclared").isVoid());
+        return Datum::of(std::string("ignored"));
+    };
+    Scope resolvedNewObjScope(&script, handler, {});
+    ExecutionContext resolvedNewObjContext(resolvedNewObjScope,
+                                           ScriptChunk::Instruction{0, Opcode::NEW_OBJ, libreshockwave::lingo::code(Opcode::NEW_OBJ), 74},
+                                           &registry,
+                                           &builtinContext,
+                                           resolvedNewObjCallbacks);
+    resolvedNewObjContext.push(Datum::argList({Datum::symbol("ResolvedScript"), Datum::of(77)}));
+    assert(opcodeRegistry.execute(Opcode::NEW_OBJ, resolvedNewObjContext));
+    Datum resolvedNewInstance = resolvedNewObjContext.pop();
+    assert(fallbackNewHandlerCalls == 1);
+    assert(resolvedNewInstance.scriptInstanceValue().scriptRef()->castLib == 6);
+    assert(resolvedNewInstance.scriptInstanceValue().scriptRef()->memberNum() == 7);
+    assert(resolvedNewInstance.scriptInstanceValue().getProperty("pDeclared").isVoid());
+    assert(resolvedNewInstance.scriptInstanceValue().getProperty("pOther").isVoid());
+    builtinContext.scriptResolver = {};
+    builtinContext.scriptPropertyNamesResolver = {};
+
     Scope variableScope(&script, handler, {Datum::of(11), Datum::of(22)});
     ExecutionContext variableContext(variableScope,
                                      ScriptChunk::Instruction{0, Opcode::SET_LOCAL, libreshockwave::lingo::code(Opcode::SET_LOCAL), 2},
