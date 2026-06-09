@@ -2342,12 +2342,20 @@ bool setProp(ExecutionContext& context) {
 
 bool getMovieProp(ExecutionContext& context) {
     const std::string propName = context.resolveName(context.argument());
-    context.push(builtinConstant(propName).value_or(Datum::voidValue()));
+    if (auto* builtinContext = context.builtinContext(); builtinContext != nullptr && builtinContext->movieProperties != nullptr) {
+        context.push(builtinContext->movieProperties->getMovieProp(propName));
+    } else {
+        context.push(builtinConstant(propName).value_or(Datum::voidValue()));
+    }
     return true;
 }
 
 bool setMovieProp(ExecutionContext& context) {
-    (void)context.pop();
+    const std::string propName = context.resolveName(context.argument());
+    const Datum value = context.pop();
+    if (auto* builtinContext = context.builtinContext(); builtinContext != nullptr && builtinContext->movieProperties != nullptr) {
+        (void)builtinContext->movieProperties->setMovieProp(propName, value);
+    }
     return true;
 }
 
@@ -2466,6 +2474,12 @@ bool theBuiltin(ExecutionContext& context) {
         context.push(Datum::of(static_cast<int>(context.scope().arguments().size())));
     } else if (equalsIgnoreCase(propName, "result")) {
         context.push(context.scope().returnValue());
+    } else if (auto* builtinContext = context.builtinContext(); builtinContext != nullptr && builtinContext->movieProperties != nullptr) {
+        Datum value = builtinContext->movieProperties->getMovieProp(propName);
+        if (value.isVoid()) {
+            value = builtinConstant(propName).value_or(Datum::voidValue());
+        }
+        context.push(std::move(value));
     } else {
         context.push(builtinConstant(propName).value_or(Datum::voidValue()));
     }

@@ -2206,6 +2206,12 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 78) {
             return std::string("2");
         }
+        if (nameId == 79) {
+            return std::string("frame");
+        }
+        if (nameId == 80) {
+            return std::string("itemDelimiter");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.callStackFormatter = []() {
@@ -2848,6 +2854,16 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     moviePropContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_MOVIE_PROP, libreshockwave::lingo::code(Opcode::SET_MOVIE_PROP), 57});
     moviePropContext.push(Datum::of(1));
     assert(opcodeRegistry.execute(Opcode::SET_MOVIE_PROP, moviePropContext));
+    MovieProperties opcodeMovieProps;
+    opcodeMovieProps.setEffectiveFrameSupplier([]() { return 12; });
+    builtinContext.movieProperties = &opcodeMovieProps;
+    moviePropContext.setInstruction(ScriptChunk::Instruction{0, Opcode::GET_MOVIE_PROP, libreshockwave::lingo::code(Opcode::GET_MOVIE_PROP), 79});
+    assert(opcodeRegistry.execute(Opcode::GET_MOVIE_PROP, moviePropContext));
+    assert(moviePropContext.pop().intValue() == 12);
+    moviePropContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_MOVIE_PROP, libreshockwave::lingo::code(Opcode::SET_MOVIE_PROP), 80});
+    moviePropContext.push(Datum::of(std::string("|")));
+    assert(opcodeRegistry.execute(Opcode::SET_MOVIE_PROP, moviePropContext));
+    assert(opcodeMovieProps.getMovieProp("itemDelimiter").stringValue() == "|");
 
     Scope theScope(&script, handler, {Datum::of(1), Datum::of(2)});
     theScope.setReturnValue(Datum::of(std::string("done")));
@@ -2860,6 +2876,11 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     theContext.push(Datum::argList({}));
     assert(opcodeRegistry.execute(Opcode::THE_BUILTIN, theContext));
     assert(theContext.pop().stringValue() == "done");
+    theContext.setInstruction(ScriptChunk::Instruction{0, Opcode::THE_BUILTIN, libreshockwave::lingo::code(Opcode::THE_BUILTIN), 79});
+    theContext.push(Datum::argList({}));
+    assert(opcodeRegistry.execute(Opcode::THE_BUILTIN, theContext));
+    assert(theContext.pop().intValue() == 12);
+    builtinContext.movieProperties = nullptr;
 
     Scope localCallScope(&script, handler, {});
     ExecutionContext localCallContext(localCallScope,

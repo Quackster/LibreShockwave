@@ -94,6 +94,8 @@ public:
     [[nodiscard]] std::optional<Datum> invokeBuiltinIfPresent(std::string_view name, const std::vector<Datum>& args);
     [[nodiscard]] builtin::BuiltinRegistry* builtins();
     [[nodiscard]] const builtin::BuiltinRegistry* builtins() const;
+    [[nodiscard]] builtin::BuiltinContext* builtinContext();
+    [[nodiscard]] const builtin::BuiltinContext* builtinContext() const;
 
     [[nodiscard]] std::string formatCallStack() const;
     [[nodiscard]] LingoException error(const std::string& message) const;

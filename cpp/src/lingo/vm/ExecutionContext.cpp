@@ -218,6 +218,14 @@ const builtin::BuiltinRegistry* ExecutionContext::builtins() const {
     return builtins_;
 }
 
+builtin::BuiltinContext* ExecutionContext::builtinContext() {
+    return builtinContext_;
+}
+
+const builtin::BuiltinContext* ExecutionContext::builtinContext() const {
+    return builtinContext_;
+}
+
 std::string ExecutionContext::formatCallStack() const {
     if (callbacks_.callStackFormatter) {
         return callbacks_.callStackFormatter();
