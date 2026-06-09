@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
+#include <iostream>
 #include <limits>
 #include <sstream>
 #include <utility>
@@ -436,6 +437,7 @@ std::string ilkType(const Datum& datum) {
 BuiltinRegistry::BuiltinRegistry() {
     MathBuiltins::registerBuiltins(*this);
     StringBuiltins::registerBuiltins(*this);
+    OutputBuiltins::registerBuiltins(*this);
     ListBuiltins::registerBuiltins(*this);
     ConstructorBuiltins::registerBuiltins(*this);
     TypeBuiltins::registerBuiltins(*this);
@@ -798,6 +800,46 @@ Datum StringBuiltins::setPref(BuiltinContext& context, const std::vector<Datum>&
         return Datum::voidValue();
     }
     return context.setPrefHandler(key, args[1]);
+}
+
+void OutputBuiltins::registerBuiltins(BuiltinRegistry& registry) {
+    registry.registerBuiltin("put", OutputBuiltins::put);
+    registry.registerBuiltin("alert", OutputBuiltins::alert);
+}
+
+Datum OutputBuiltins::put(BuiltinContext& context, const std::vector<Datum>& args) {
+    std::ostringstream text;
+    for (std::size_t index = 0; index < args.size(); ++index) {
+        if (index > 0) {
+            text << ' ';
+        }
+        text << toStringLikeJava(args[index]);
+    }
+
+    if (!context.debugPlaybackEnabled) {
+        return Datum::voidValue();
+    }
+
+    const std::string value = text.str();
+    if (context.outputHandler) {
+        context.outputHandler("PUT", value);
+    } else {
+        std::cout << "[PUT] " << value << '\n';
+    }
+    return Datum::voidValue();
+}
+
+Datum OutputBuiltins::alert(BuiltinContext& context, const std::vector<Datum>& args) {
+    const std::string message = args.empty() ? "" : toStringLikeJava(args[0]);
+    if (context.alertHandler && context.alertHandler(message)) {
+        return Datum::voidValue();
+    }
+    if (context.outputHandler) {
+        context.outputHandler("ALERT", message);
+    } else {
+        std::cout << "[ALERT] " << message << '\n';
+    }
+    return Datum::voidValue();
 }
 
 void ListBuiltins::registerBuiltins(BuiltinRegistry& registry) {

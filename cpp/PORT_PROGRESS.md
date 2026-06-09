@@ -282,6 +282,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Java-compatible string coercion covers raw strings/symbols, common reference display strings, list/proplist display formatting, 1-based character slices, byte-code character conversion, and case-insensitive offsets.
 - Preference read/write builtins are exposed through VM-owned callback hooks until the C++ Lingo VM owns preference storage.
 
+### Output Builtins Foundation
+
+- Output builtins now register Java-compatible `put` and `alert`.
+- `put` is gated by a C++ debug-playback flag and writes through a VM-owned output callback before falling back to stdout.
+- `alert` uses a suppressible alert callback first, then writes through the same output callback/default stdout path for Java-compatible alert fallback behavior.
+
 ### List Builtins Foundation
 
 - List builtins now register `count`, `getAt`, `setAt`, `addAt`, `deleteAt`, `append`/`add`, prop-list accessors/mutators, `findPos`, `getOne`/`getPos`, `deleteOne`, `sort`, `listp`, `list`, and `getLast`.
@@ -456,6 +462,7 @@ Result:
 - BuiltinRegistry case-insensitive lookup, custom registration, movie label/marker builtins, sprite puppet/cursor/spriteBox builtins, puppetPalette hooks, and Java-compatible no-op sprite builtins passed through the same CTest executable.
 - MathBuiltins numeric coercion, integer/float conversion, bit operations, trig, power, min/max, list min/max, and random callback hooks passed through the same CTest executable.
 - StringBuiltins string coercion, length, chars, charToNum, numToChar, offset, and getPref/setPref callback hooks passed through the same CTest executable.
+- OutputBuiltins debug-gated `put`, Java-style argument joining, default alert output, and alert-hook suppression passed through the same CTest executable.
 - ListBuiltins list/proplist counts, access, mutation, searches, sorting, constructors, key namespace behavior, and aliases passed through the same CTest executable.
 - TimeoutBuiltins `timeout` creation, factory-mode `.new`, named `.new`, `.forget`, property get/set helpers, and missing-provider behavior passed through the same CTest executable.
 - NetBuiltins preload/get/post aliases, task result/error/status lookups, stream-status toggling, navigation callbacks, and ExternalParamBuiltins ordered parameter lookup passed through the same CTest executable.
@@ -534,4 +541,5 @@ Result:
 - `4e7a9fe Port C++ list builtins foundation`
 - `9892975 Port C++ timeout builtins foundation`
 - `933317b Port C++ net builtins foundation`
-- Current checkpoint commit message: `Port C++ sound builtins foundation`
+- `8e78d3c Port C++ sound builtins foundation`
+- Current checkpoint commit message: `Port C++ output builtins foundation`

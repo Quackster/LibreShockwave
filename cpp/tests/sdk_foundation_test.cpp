@@ -1020,6 +1020,34 @@ void testBuiltinRegistryFoundation() {
     assert(registry.invoke("setPref", context, {Datum::of(std::string("volume")), Datum::of(7)}).stringValue() == "7");
     assert(registry.invoke("getPref", context, {Datum::of(std::string("volume"))}).stringValue() == "7");
 
+    std::vector<std::pair<std::string, std::string>> outputMessages;
+    context.outputHandler = [&outputMessages](std::string_view kind, const std::string& text) {
+        outputMessages.emplace_back(std::string(kind), text);
+    };
+    assert(registry.contains("put"));
+    assert(registry.contains("alert"));
+    assert(registry.invoke("put", context, {Datum::of(std::string("hidden"))}).isVoid());
+    assert(outputMessages.empty());
+    context.debugPlaybackEnabled = true;
+    assert(registry.invoke("put",
+                           context,
+                           {Datum::of(std::string("score")), Datum::of(7), Datum::symbol("ready")}).isVoid());
+    assert(outputMessages.size() == 1);
+    assert(outputMessages.back().first == "PUT");
+    assert(outputMessages.back().second == "score 7 ready");
+    assert(registry.invoke("alert", context).isVoid());
+    assert(outputMessages.size() == 2);
+    assert(outputMessages.back().first == "ALERT");
+    assert(outputMessages.back().second.empty());
+    std::string handledAlert;
+    context.alertHandler = [&handledAlert](const std::string& text) {
+        handledAlert = text;
+        return true;
+    };
+    assert(registry.invoke("alert", context, {Datum::of(std::string("handled"))}).isVoid());
+    assert(handledAlert == "handled");
+    assert(outputMessages.size() == 2);
+
     assert(registry.contains("count"));
     assert(registry.contains("getAt"));
     assert(registry.contains("setAt"));

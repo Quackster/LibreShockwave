@@ -26,6 +26,8 @@ struct BuiltinContext {
     using RandomIntHandler = std::function<int(int max)>;
     using GetPrefHandler = std::function<Datum(const std::string& name)>;
     using SetPrefHandler = std::function<Datum(const std::string& name, const Datum& value)>;
+    using OutputHandler = std::function<void(std::string_view kind, const std::string& text)>;
+    using AlertHandler = std::function<bool(const std::string& text)>;
 
     player::MovieProperties* movieProperties{nullptr};
     player::net::NetManager* netManager{nullptr};
@@ -34,6 +36,7 @@ struct BuiltinContext {
     player::timeout::TimeoutManager* timeoutManager{nullptr};
     std::vector<std::pair<std::string, std::string>> externalParams;
     bool tellStreamStatusEnabled{false};
+    bool debugPlaybackEnabled{false};
     PuppetPaletteHandler puppetPaletteHandler;
     CastMemberCreator castMemberCreator;
     NewInstanceHandler newInstanceHandler;
@@ -43,6 +46,8 @@ struct BuiltinContext {
     RandomIntHandler randomIntHandler;
     GetPrefHandler getPrefHandler;
     SetPrefHandler setPrefHandler;
+    OutputHandler outputHandler;
+    AlertHandler alertHandler;
 };
 
 using BuiltinFunction = std::function<Datum(BuiltinContext& context, const std::vector<Datum>& args)>;
@@ -99,6 +104,13 @@ public:
     [[nodiscard]] static Datum offset(BuiltinContext& context, const std::vector<Datum>& args);
     [[nodiscard]] static Datum getPref(BuiltinContext& context, const std::vector<Datum>& args);
     [[nodiscard]] static Datum setPref(BuiltinContext& context, const std::vector<Datum>& args);
+};
+
+class OutputBuiltins {
+public:
+    static void registerBuiltins(BuiltinRegistry& registry);
+    [[nodiscard]] static Datum put(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum alert(BuiltinContext& context, const std::vector<Datum>& args);
 };
 
 class ListBuiltins {
