@@ -1792,6 +1792,138 @@ bool imageFill(bitmap::Bitmap& bmp, const std::vector<Datum>& args) {
     return true;
 }
 
+int imageMaskAlphaFromPixel(std::uint32_t pixel) {
+    const int r = static_cast<int>((pixel >> 16) & 0xFFU);
+    const int g = static_cast<int>((pixel >> 8) & 0xFFU);
+    const int b = static_cast<int>(pixel & 0xFFU);
+    return ((77 * r) + (150 * g) + (29 * b) + 128) >> 8;
+}
+
+bool imageAlphaHasTransparency(const bitmap::Bitmap& alpha) {
+    for (int y = 0; y < alpha.height(); ++y) {
+        for (int x = 0; x < alpha.width(); ++x) {
+            if (((alpha.getPixel(x, y) >> 24) & 0xFFU) < 255U) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool imageHasWhiteEdgeAndDarkInterior(const bitmap::Bitmap& alpha) {
+    const int width = alpha.width();
+    const int height = alpha.height();
+    if (width <= 0 || height <= 0) {
+        return false;
+    }
+
+    int edgePixels = 0;
+    int whiteEdgePixels = 0;
+    bool hasDarkPixel = false;
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            const int luma = imageMaskAlphaFromPixel(alpha.getPixel(x, y));
+            if (luma < 250) {
+                hasDarkPixel = true;
+            }
+            if (x == 0 || y == 0 || x == width - 1 || y == height - 1) {
+                ++edgePixels;
+                if (luma >= 250) {
+                    ++whiteEdgePixels;
+                }
+            }
+        }
+    }
+    return hasDarkPixel && edgePixels > 0 && whiteEdgePixels * 4 >= edgePixels * 3;
+}
+
+std::vector<std::pair<int, int>> imageUniqueCorners(int width, int height) {
+    if (width == 1 && height == 1) {
+        return {{0, 0}};
+    }
+    if (height == 1) {
+        return {{0, 0}, {width - 1, 0}};
+    }
+    if (width == 1) {
+        return {{0, 0}, {0, height - 1}};
+    }
+    return {{0, 0}, {width - 1, 0}, {0, height - 1}, {width - 1, height - 1}};
+}
+
+bool imageHasWhiteCornersAndDarkPixels(const bitmap::Bitmap& alpha) {
+    const int width = alpha.width();
+    const int height = alpha.height();
+    if (width <= 0 || height <= 0) {
+        return false;
+    }
+
+    const auto corners = imageUniqueCorners(width, height);
+    int whiteCorners = 0;
+    for (const auto& [x, y] : corners) {
+        if (imageMaskAlphaFromPixel(alpha.getPixel(x, y)) >= 250) {
+            ++whiteCorners;
+        }
+    }
+    if (whiteCorners < static_cast<int>(corners.size())) {
+        return false;
+    }
+
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            if (imageMaskAlphaFromPixel(alpha.getPixel(x, y)) < 250) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool imageHasMattePolarity(const bitmap::Bitmap& alpha) {
+    return imageAlphaHasTransparency(alpha) ||
+           imageHasWhiteEdgeAndDarkInterior(alpha) ||
+           imageHasWhiteCornersAndDarkPixels(alpha);
+}
+
+Datum imageSetAlpha(bitmap::Bitmap& bmp, const std::vector<Datum>& args) {
+    if (bmp.bitDepth() != 32 || args.empty()) {
+        return Datum::FALSE;
+    }
+
+    if (const auto* alphaRef = args[0].asImageRef()) {
+        const auto& alpha = alphaRef->bitmap;
+        if (alpha == nullptr ||
+            alpha->bitDepth() != 8 ||
+            alpha->width() != bmp.width() ||
+            alpha->height() != bmp.height()) {
+            return Datum::FALSE;
+        }
+
+        const bool mattePolarity = imageHasMattePolarity(*alpha);
+        for (int y = 0; y < bmp.height(); ++y) {
+            for (int x = 0; x < bmp.width(); ++x) {
+                int alphaLevel = imageMaskAlphaFromPixel(alpha->getPixel(x, y));
+                if (mattePolarity) {
+                    alphaLevel = 255 - alphaLevel;
+                }
+                const auto pixel = bmp.getPixel(x, y);
+                bmp.setPixel(x, y, (static_cast<std::uint32_t>(alphaLevel & 0xFF) << 24) | (pixel & 0x00FFFFFFU));
+            }
+        }
+        bmp.setNativeAlpha(true);
+        return Datum::TRUE;
+    }
+
+    const int alphaLevel = std::clamp(toIntLikeJava(args[0]), 0, 255);
+    for (int y = 0; y < bmp.height(); ++y) {
+        for (int x = 0; x < bmp.width(); ++x) {
+            const auto pixel = bmp.getPixel(x, y);
+            bmp.setPixel(x, y, (static_cast<std::uint32_t>(alphaLevel & 0xFF) << 24) | (pixel & 0x00FFFFFFU));
+        }
+    }
+    bmp.setNativeAlpha(true);
+    return Datum::TRUE;
+}
+
 Datum imageObjectMethod(const Datum::ImageRef& image, std::string_view methodName, const std::vector<Datum>& args) {
     if (image.bitmap == nullptr) {
         if (equalsIgnoreCase(methodName, "duplicate")) {
@@ -1811,6 +1943,10 @@ Datum imageObjectMethod(const Datum::ImageRef& image, std::string_view methodNam
             bmp.markScriptModified();
         }
         return Datum::voidValue();
+    }
+    if (equalsIgnoreCase(methodName, "setAlpha")) {
+        bmp.markScriptModified();
+        return imageSetAlpha(bmp, args);
     }
     if (equalsIgnoreCase(methodName, "duplicate")) {
         return Datum::imageRef(std::make_shared<bitmap::Bitmap>(bmp.copy()));

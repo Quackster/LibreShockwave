@@ -2287,6 +2287,9 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 105) {
             return std::string("trimWhiteSpace");
         }
+        if (nameId == 106) {
+            return std::string("setAlpha");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.callStackFormatter = []() {
@@ -3241,6 +3244,32 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(whiteTrimmedImage->bitmap->height() == 1);
     assert(whiteTrimmedImage->bitmap->bitDepth() == 8);
     assert(whiteTrimmedImage->bitmap->getPixel(0, 0) == 0xFFFFFFFFU);
+    auto numericAlphaBitmap = std::make_shared<Bitmap>(
+        2, 1, 32, std::vector<std::uint32_t>{0xFF112233U, 0x40445566U});
+    const Datum numericAlphaRef = Datum::imageRef(numericAlphaBitmap);
+    assert(runObjCall(106, {numericAlphaRef, Datum::of(128)}).boolValue());
+    assert(numericAlphaBitmap->isScriptModified());
+    assert(numericAlphaBitmap->isNativeAlpha());
+    assert(numericAlphaBitmap->getPixel(0, 0) == 0x80112233U);
+    assert(numericAlphaBitmap->getPixel(1, 0) == 0x80445566U);
+    auto alphaImageTarget = std::make_shared<Bitmap>(
+        2, 1, 32, std::vector<std::uint32_t>{0xFF112233U, 0xFF445566U});
+    auto alphaImage = std::make_shared<Bitmap>(
+        2, 1, 8, std::vector<std::uint32_t>{0xFF000000U, 0xFFFFFFFFU});
+    assert(runObjCall(106, {Datum::imageRef(alphaImageTarget), Datum::imageRef(alphaImage)}).boolValue());
+    assert(alphaImageTarget->isScriptModified());
+    assert(alphaImageTarget->isNativeAlpha());
+    assert(alphaImageTarget->getPixel(0, 0) == 0x00112233U);
+    assert(alphaImageTarget->getPixel(1, 0) == 0xFF445566U);
+    auto matteAlphaTarget = std::make_shared<Bitmap>(1, 1, 32, std::vector<std::uint32_t>{0x00112233U});
+    auto matteAlphaImage = std::make_shared<Bitmap>(1, 1, 8, std::vector<std::uint32_t>{0x00000000U});
+    assert(runObjCall(106, {Datum::imageRef(matteAlphaTarget), Datum::imageRef(matteAlphaImage)}).boolValue());
+    assert(matteAlphaTarget->getPixel(0, 0) == 0xFF112233U);
+    auto invalidAlphaTarget = std::make_shared<Bitmap>(1, 1, 8);
+    invalidAlphaTarget->fill(0xFFFFFFFFU);
+    assert(!runObjCall(106, {Datum::imageRef(invalidAlphaTarget), Datum::of(128)}).boolValue());
+    assert(invalidAlphaTarget->isScriptModified());
+    assert(invalidAlphaTarget->getPixel(0, 0) == 0xFFFFFFFFU);
     const Datum duplicateImageDatum = runObjCall(72, {imageMethodRef});
     const auto* duplicateImage = duplicateImageDatum.asImageRef();
     assert(duplicateImage != nullptr);
