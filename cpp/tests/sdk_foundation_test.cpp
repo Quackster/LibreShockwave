@@ -2212,6 +2212,18 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 80) {
             return std::string("itemDelimiter");
         }
+        if (nameId == 81) {
+            return std::string("bgColor");
+        }
+        if (nameId == 82) {
+            return std::string("title");
+        }
+        if (nameId == 83) {
+            return std::string("locH");
+        }
+        if (nameId == 84) {
+            return std::string("locV");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.callStackFormatter = []() {
@@ -2727,6 +2739,44 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     setObjectContext.push(Datum::of(123));
     assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
     assert(setObjectInstance.scriptInstanceValue().getProperty("health").intValue() == 123);
+
+    MovieProperties objectMovieProps;
+    objectMovieProps.setEffectiveFrameSupplier([]() { return 33; });
+    objectMovieProps.setStageBackgroundColorSupplier([]() { return 0x224466; });
+    SpriteRegistry objectSpriteRegistry;
+    auto objectSprite = objectSpriteRegistry.getOrCreateDynamic(9);
+    objectSprite->setLocH(44);
+    objectSprite->setLocV(55);
+    SpriteProperties objectSpriteProps(&objectSpriteRegistry);
+    builtinContext.movieProperties = &objectMovieProps;
+    builtinContext.spriteProperties = &objectSpriteProps;
+    assert(runObjectPropertyGet(Datum::movieRef(), 79).intValue() == 33);
+    assert(runObjectPropertyGet(Datum::playerRef(), 79).intValue() == 33);
+    assert(runObjectPropertyGet(Datum::stageRef(), 81).intValue() == 0x224466);
+    assert(runObjectPropertyGet(Datum::spriteRef(ChannelId(9)), 83).intValue() == 44);
+    assert(runObjectPropertyGet(Datum::of(9), 83).intValue() == 44);
+    setObjectContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_OBJ_PROP, libreshockwave::lingo::code(Opcode::SET_OBJ_PROP), 80});
+    setObjectContext.push(Datum::movieRef());
+    setObjectContext.push(Datum::of(std::string("|")));
+    assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
+    assert(objectMovieProps.getMovieProp("itemDelimiter").stringValue() == "|");
+    setObjectContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_OBJ_PROP, libreshockwave::lingo::code(Opcode::SET_OBJ_PROP), 82});
+    setObjectContext.push(Datum::stageRef());
+    setObjectContext.push(Datum::of(std::string("Main Stage")));
+    assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
+    assert(objectMovieProps.getStageProp("title").stringValue() == "Main Stage");
+    setObjectContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_OBJ_PROP, libreshockwave::lingo::code(Opcode::SET_OBJ_PROP), 84});
+    setObjectContext.push(Datum::spriteRef(ChannelId(9)));
+    setObjectContext.push(Datum::of(66));
+    assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
+    assert(objectSpriteProps.getSpriteProp(9, "locV").intValue() == 66);
+    setObjectContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_OBJ_PROP, libreshockwave::lingo::code(Opcode::SET_OBJ_PROP), 83});
+    setObjectContext.push(Datum::of(9));
+    setObjectContext.push(Datum::of(77));
+    assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
+    assert(objectSpriteProps.getSpriteProp(9, "locH").intValue() == 77);
+    builtinContext.movieProperties = nullptr;
+    builtinContext.spriteProperties = nullptr;
 
     Scope chainedScope(&script, handler, {});
     ExecutionContext chainedContext(chainedScope,

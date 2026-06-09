@@ -610,6 +610,7 @@ Result:
 - OpcodeRegistry simple string concatenation and containment handlers passed through the same CTest executable.
 - OpcodeRegistry basic property handlers, object property reads/writes, built-in constants, and simple `the` lookups passed through the same CTest executable.
 - OpcodeRegistry movie-property provider reads/writes and provider-backed `the` lookups passed through the same CTest executable.
+- OpcodeRegistry provider-backed object property gets/sets for movie, player, stage, sprite, and integer-as-sprite refs passed through the same CTest executable.
 - OpcodeRegistry local/external call handlers, builtin dispatch, no-return calls, constant fallback, and error-state handling passed through the same CTest executable.
 - OpcodeRegistry object method calls and receiver-style external method calls for lists, property lists, strings, points, and rectangles passed through the same CTest executable.
 - OpcodeRegistry `NEW_OBJ` script construction delegation, fallback construction, and non-script rejection passed through the same CTest executable.
@@ -710,4 +711,5 @@ Result:
 - `c78210ba Port C++ opcode legacy property foundation`
 - `9ac23faa Port C++ opcode field fallback foundation`
 - `03d07cd5 Port C++ opcode field resolver foundation`
-- Current checkpoint commit message: `Port C++ opcode movie property provider foundation`
+- `3996ec79 Port C++ opcode movie property provider foundation`
+- Current checkpoint commit message: `Port C++ opcode object property provider foundation`

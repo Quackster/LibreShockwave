@@ -522,9 +522,50 @@ Datum getColorProp(const Datum::ColorRef& color, std::string_view propName) {
     return Datum::voidValue();
 }
 
-Datum getObjectProperty(const Datum& object, std::string_view propName) {
+Datum getObjectProperty(ExecutionContext& context, const Datum& object, std::string_view propName) {
     if (object.isVoid()) {
         return Datum::voidValue();
+    }
+    auto* builtinContext = context.builtinContext();
+    if (object.type() == DatumType::MovieRef) {
+        return builtinContext != nullptr && builtinContext->movieProperties != nullptr
+                   ? builtinContext->movieProperties->getMovieProp(propName)
+                   : Datum::voidValue();
+    }
+    if (object.type() == DatumType::PlayerRef) {
+        if (const auto constant = builtinConstant(propName)) {
+            return *constant;
+        }
+        return builtinContext != nullptr && builtinContext->movieProperties != nullptr
+                   ? builtinContext->movieProperties->getMovieProp(propName)
+                   : Datum::voidValue();
+    }
+    if (object.type() == DatumType::StageRef) {
+        return builtinContext != nullptr && builtinContext->movieProperties != nullptr
+                   ? builtinContext->movieProperties->getStageProp(propName)
+                   : Datum::voidValue();
+    }
+    if (const auto* sprite = object.asSpriteRef()) {
+        return builtinContext != nullptr && builtinContext->spriteProperties != nullptr
+                   ? builtinContext->spriteProperties->getSpriteProp(sprite->channel, propName)
+                   : Datum::voidValue();
+    }
+    if (const auto* value = object.asInt(); value != nullptr && !equalsIgnoreCase(propName, "ilk")) {
+        return builtinContext != nullptr && builtinContext->spriteProperties != nullptr
+                   ? builtinContext->spriteProperties->getSpriteProp(value->value, propName)
+                   : Datum::voidValue();
+    }
+    if (const auto* timeout = object.asTimeoutRef()) {
+        return builtinContext != nullptr ? builtin::TimeoutBuiltins::getProperty(*builtinContext, *timeout, propName)
+                                         : Datum::voidValue();
+    }
+    if (const auto* soundChannel = object.asSoundChannel()) {
+        return builtinContext != nullptr ? builtin::SoundBuiltins::getProperty(*builtinContext, *soundChannel, propName)
+                                         : Datum::voidValue();
+    }
+    if (const auto* xtraInstance = object.asXtraInstance()) {
+        return builtinContext != nullptr ? builtin::XtraBuiltins::getProperty(*builtinContext, *xtraInstance, propName)
+                                         : Datum::voidValue();
     }
     if (object.type() == DatumType::ScriptInstanceRef) {
         if (equalsIgnoreCase(propName, "ilk")) {
@@ -556,7 +597,50 @@ Datum getObjectProperty(const Datum& object, std::string_view propName) {
     return Datum::voidValue();
 }
 
-void setObjectProperty(Datum& object, std::string_view propName, Datum value) {
+void setObjectProperty(ExecutionContext& context, Datum& object, std::string_view propName, Datum value) {
+    auto* builtinContext = context.builtinContext();
+    if (object.type() == DatumType::MovieRef || object.type() == DatumType::PlayerRef) {
+        if (builtinContext != nullptr && builtinContext->movieProperties != nullptr) {
+            (void)builtinContext->movieProperties->setMovieProp(propName, value);
+        }
+        return;
+    }
+    if (object.type() == DatumType::StageRef) {
+        if (builtinContext != nullptr && builtinContext->movieProperties != nullptr) {
+            (void)builtinContext->movieProperties->setStageProp(propName, value);
+        }
+        return;
+    }
+    if (const auto* sprite = object.asSpriteRef()) {
+        if (builtinContext != nullptr && builtinContext->spriteProperties != nullptr) {
+            (void)builtinContext->spriteProperties->setSpriteProp(sprite->channel, propName, value);
+        }
+        return;
+    }
+    if (const auto* intValue = object.asInt()) {
+        if (builtinContext != nullptr && builtinContext->spriteProperties != nullptr) {
+            (void)builtinContext->spriteProperties->setSpriteProp(intValue->value, propName, value);
+        }
+        return;
+    }
+    if (const auto* timeout = object.asTimeoutRef()) {
+        if (builtinContext != nullptr) {
+            (void)builtin::TimeoutBuiltins::setProperty(*builtinContext, *timeout, propName, std::move(value));
+        }
+        return;
+    }
+    if (const auto* soundChannel = object.asSoundChannel()) {
+        if (builtinContext != nullptr) {
+            (void)builtin::SoundBuiltins::setProperty(*builtinContext, *soundChannel, propName, std::move(value));
+        }
+        return;
+    }
+    if (const auto* xtraInstance = object.asXtraInstance()) {
+        if (builtinContext != nullptr) {
+            builtin::XtraBuiltins::setProperty(*builtinContext, *xtraInstance, propName, value);
+        }
+        return;
+    }
     if (object.type() == DatumType::ScriptInstanceRef) {
         object.scriptInstanceValue().setProperty(std::string(propName), std::move(value));
         return;
@@ -2362,14 +2446,14 @@ bool setMovieProp(ExecutionContext& context) {
 bool getObjProp(ExecutionContext& context) {
     const std::string propName = context.resolveName(context.argument());
     const Datum object = context.pop();
-    context.push(getObjectProperty(object, propName));
+    context.push(getObjectProperty(context, object, propName));
     return true;
 }
 
 bool getChainedProp(ExecutionContext& context) {
     const std::string propName = context.resolveName(context.argument());
     const Datum object = context.pop();
-    context.push(getObjectProperty(object, propName));
+    context.push(getObjectProperty(context, object, propName));
     return true;
 }
 
@@ -2389,7 +2473,7 @@ bool setObjProp(ExecutionContext& context) {
     const std::string propName = context.resolveName(context.argument());
     Datum value = context.pop();
     Datum object = context.pop();
-    setObjectProperty(object, propName, std::move(value));
+    setObjectProperty(context, object, propName, std::move(value));
     return true;
 }
 
