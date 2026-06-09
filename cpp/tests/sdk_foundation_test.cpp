@@ -1622,6 +1622,10 @@ void testDirectorFileRifxLoader() {
     assert(file->scoreChunk().get() != nullptr);
     assert(file->getScoreTempo(0) == -1);
     assert(!file->getScorePalette(0).has_value());
+    assert(!file->hasScore());
+    assert(file->basePath().empty());
+    file->setBasePath("casts");
+    assert(file->basePath() == "casts");
     assert(file->getChunkInfo(ChunkId(0))->type() == ChunkType::DRCF);
     assert(file->getChunk(ChunkId(1))->type() == ChunkType::Lnam);
     assert(file->getChunk(ChunkId(2))->type() == ChunkType::JUNK);
@@ -2232,6 +2236,13 @@ void testLookupHelpers() {
     assert(emptyFile.getScriptGlobals(nullptr).empty());
     assert(emptyFile.getScriptProperties(nullptr).empty());
     assert(emptyFile.getScriptInfoList().empty());
+    assert(emptyFile.getExternalCastPaths().empty());
+    assert(!emptyFile.hasExternalCasts());
+    assert(!emptyFile.hasScore());
+    assert(!emptyFile.getFontNameForId(1).has_value());
+    assert(emptyFile.basePath().empty());
+    emptyFile.setBasePath("movie-dir");
+    assert(emptyFile.basePath() == "movie-dir");
     assert(emptyFile.resolvePalette(Palette::SYSTEM_WIN).get() == &Palette::systemWinPalette());
     assert(emptyFile.resolvePaletteExact(999).get() == nullptr);
     assert(emptyFile.resolvePaletteByMemberNumber(42).get() == &Palette::systemMacPalette());

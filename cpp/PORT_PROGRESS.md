@@ -144,6 +144,11 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Script handler lookup by case-insensitive authored name is available in the C++ SDK.
 - `DirectorFile` resolves per-script Lnam chunks, script cast-member ownership, script member display names, global/property name lists, and script info summaries.
 
+### DirectorFile Metadata Helpers
+
+- `DirectorFile` tracks mutable base-path metadata for external cast resolution.
+- External cast path listing, external-cast presence checks, score-presence checks, and font-name lookup across Fmap chunks are exposed in C++.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -176,6 +181,7 @@ Result:
 - Palette resolver and DirectorFile palette lookup tests passed through the same CTest executable.
 - DirectorFile stage/tempo, associated text, and associated score lookup tests passed through the same CTest executable.
 - ScriptChunk name resolution and DirectorFile script-helper empty fallback tests passed through the same CTest executable.
+- DirectorFile base path, score presence, external cast, and font lookup fallback tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -206,4 +212,5 @@ Result:
 - `ea9e01f Port C++ cast and script lookup`
 - `afbfbcb Port C++ palette resolver`
 - `d71ac1d Port C++ DirectorFile member resources`
-- Current checkpoint commit message: `Port C++ script name helpers`
+- `89d38fc Port C++ script name helpers`
+- Current checkpoint commit message: `Port C++ DirectorFile metadata helpers`

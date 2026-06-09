@@ -72,6 +72,8 @@ std::shared_ptr<chunks::ScriptContextChunk> DirectorFile::scriptContext() const 
 std::shared_ptr<chunks::ScriptNamesChunk> DirectorFile::scriptNames() const { return scriptNames_; }
 std::shared_ptr<chunks::ScoreChunk> DirectorFile::scoreChunk() const { return scoreChunk_; }
 std::shared_ptr<chunks::FrameLabelsChunk> DirectorFile::frameLabelsChunk() const { return frameLabelsChunk_; }
+const std::string& DirectorFile::basePath() const { return basePath_; }
+void DirectorFile::setBasePath(std::string basePath) { basePath_ = std::move(basePath); }
 const std::map<int, DirectorChunkInfo>& DirectorFile::chunkInfo() const { return chunkInfo_; }
 const std::map<int, std::shared_ptr<chunks::Chunk>>& DirectorFile::chunks() const { return chunks_; }
 const std::vector<std::shared_ptr<chunks::CastChunk>>& DirectorFile::casts() const { return casts_; }
@@ -328,6 +330,53 @@ std::vector<ScriptInfo> DirectorFile::getScriptInfoList() {
                                     std::move(handlerNames)});
     }
     return result;
+}
+
+std::vector<std::string> DirectorFile::getExternalCastPaths() const {
+    std::vector<std::string> paths;
+    if (!castList_) {
+        return paths;
+    }
+
+    for (const auto& entry : castList_->entries()) {
+        if (!entry.path.empty()) {
+            paths.push_back(entry.path);
+        }
+    }
+    return paths;
+}
+
+bool DirectorFile::hasExternalCasts() const {
+    if (!castList_) {
+        return false;
+    }
+    return std::any_of(castList_->entries().begin(), castList_->entries().end(), [](const auto& entry) {
+        return !entry.path.empty();
+    });
+}
+
+bool DirectorFile::hasScore() const {
+    return scoreChunk_ && scoreChunk_->getFrameCount() > 0;
+}
+
+std::optional<std::string> DirectorFile::getFontNameForId(int fontId) const {
+    auto maps = fontMaps_;
+    std::sort(maps.begin(), maps.end(), [](const auto& left, const auto& right) {
+        const auto leftSize = left ? left->entries().size() : 0U;
+        const auto rightSize = right ? right->entries().size() : 0U;
+        return leftSize > rightSize;
+    });
+
+    for (const auto& map : maps) {
+        if (!map) {
+            continue;
+        }
+        auto fontName = map->fontNameForId(fontId);
+        if (fontName.has_value() && !fontName->empty()) {
+            return fontName;
+        }
+    }
+    return std::nullopt;
 }
 
 std::shared_ptr<chunks::ScoreChunk> DirectorFile::getScoreForMember(

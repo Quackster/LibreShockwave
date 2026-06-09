@@ -90,6 +90,8 @@ public:
     [[nodiscard]] std::shared_ptr<chunks::ScriptNamesChunk> scriptNames() const;
     [[nodiscard]] std::shared_ptr<chunks::ScoreChunk> scoreChunk() const;
     [[nodiscard]] std::shared_ptr<chunks::FrameLabelsChunk> frameLabelsChunk() const;
+    [[nodiscard]] const std::string& basePath() const;
+    void setBasePath(std::string basePath);
 
     [[nodiscard]] const std::map<int, DirectorChunkInfo>& chunkInfo() const;
     [[nodiscard]] const std::map<int, std::shared_ptr<chunks::Chunk>>& chunks() const;
@@ -122,6 +124,10 @@ public:
     [[nodiscard]] std::vector<std::string> getScriptGlobals(const std::shared_ptr<chunks::ScriptChunk>& script);
     [[nodiscard]] std::vector<std::string> getScriptProperties(const std::shared_ptr<chunks::ScriptChunk>& script);
     [[nodiscard]] std::vector<ScriptInfo> getScriptInfoList();
+    [[nodiscard]] std::vector<std::string> getExternalCastPaths() const;
+    [[nodiscard]] bool hasExternalCasts() const;
+    [[nodiscard]] bool hasScore() const;
+    [[nodiscard]] std::optional<std::string> getFontNameForId(int fontId) const;
     [[nodiscard]] std::shared_ptr<chunks::ScoreChunk> getScoreForMember(const std::shared_ptr<chunks::CastMemberChunk>& member);
     [[nodiscard]] std::vector<std::shared_ptr<chunks::TextChunk>> getTextChunksForMember(
         const std::shared_ptr<chunks::CastMemberChunk>& member);
@@ -162,6 +168,7 @@ private:
     int version_;
     format::ChunkType movieType_;
     bool capitalX_ = false;
+    std::string basePath_;
     std::vector<std::uint8_t> dataStore_;
     std::unique_ptr<format::AfterburnerReader> afterburnerReader_;
 
