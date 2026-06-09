@@ -91,6 +91,7 @@
 #include "libreshockwave/player/score/ScoreBehaviorRef.hpp"
 #include "libreshockwave/player/score/ScoreNavigator.hpp"
 #include "libreshockwave/player/score/SpriteSpan.hpp"
+#include "libreshockwave/player/sprite/SpriteState.hpp"
 #include "libreshockwave/player/timeout/TimeoutManager.hpp"
 #include "libreshockwave/util/AudioCodecUtils.hpp"
 #include "libreshockwave/util/FileUtil.hpp"
@@ -197,6 +198,7 @@ using libreshockwave::player::render::pipeline::SpriteType;
 using libreshockwave::player::score::ScoreBehaviorRef;
 using libreshockwave::player::score::ScoreNavigator;
 using libreshockwave::player::score::SpriteSpan;
+using libreshockwave::player::sprite::SpriteState;
 using libreshockwave::player::timeout::TimeoutManager;
 using libreshockwave::w3d::W3DEntryType;
 
@@ -729,6 +731,170 @@ void testScoreNavigationFoundation() {
     assert(emptyNavigator.getAllSpans().empty());
     assert(emptyNavigator.getFrameForLabel("anything") == -1);
     assert(emptyNavigator.getMarkerFrame(1, 0) == 0);
+}
+
+ScoreChunk::ChannelData makeSpriteChannelData(int ink, int blendByte, int castMember = 33) {
+    return ScoreChunk::ChannelData{
+        1,
+        ink,
+        1,
+        0,
+        7,
+        9,
+        2,
+        castMember,
+        0,
+        0,
+        22,
+        11,
+        44,
+        33,
+        0,
+        blendByte,
+        0x60,
+        0,
+        0,
+        0,
+        0
+    };
+}
+
+void testSpriteStateFoundation() {
+    SpriteState blendMax(1, makeSpriteChannelData(libreshockwave::id::code(InkMode::BLEND), 255));
+    assert(blendMax.blend() == 0);
+    SpriteState blendMid(1, makeSpriteChannelData(libreshockwave::id::code(InkMode::BLEND), 128));
+    assert(blendMid.blend() == 50);
+    SpriteState blendBackground(1, makeSpriteChannelData(libreshockwave::id::code(InkMode::BACKGROUND_TRANSPARENT), 204));
+    assert(blendBackground.blend() == 20);
+    assert(SpriteState::scoreBlendPercent(0) == 100);
+    assert(SpriteState::scoreBlendPercent(255) == 0);
+
+    auto baseData = makeSpriteChannelData(libreshockwave::id::code(InkMode::BLEND), 128);
+    SpriteState state(5, baseData);
+    assert(state.channelId().value() == 5);
+    assert(state.channel() == 5);
+    assert(state.locH() == 11);
+    assert(state.locV() == 22);
+    assert(state.locZ() == 0);
+    assert(state.width() == 33);
+    assert(state.height() == 44);
+    assert(state.isVisible());
+    assert(!state.isPuppet());
+    assert(state.inkMode() == InkMode::BLEND);
+    assert(state.ink() == libreshockwave::id::code(InkMode::BLEND));
+    assert(state.trails() == 1);
+    assert(state.stretch() == 0);
+    assert(state.foreColor() == 7);
+    assert(state.backColor() == 9);
+    assert(!state.hasForeColor());
+    assert(!state.hasBackColor());
+    assert(state.isFlipH());
+    assert(state.isFlipV());
+    assert(state.effectiveCastLib() == 2);
+    assert(state.effectiveCastMember() == 33);
+    assert(state.initialData().has_value());
+    assert(state.matchesScoreIdentity(baseData));
+    assert((state.snapshotPosition() == SpriteState::PositionSnapshot{11, 22, 0, 33, 44}));
+
+    state.setLocH(77);
+    state.setWidth(99);
+    state.setFlipH(false);
+    state.setInkMode(InkMode::DARKEN);
+    state.setBlend(42);
+    state.setTrails(3);
+    state.setStretch(4);
+    state.setForeColor(0x112233);
+    state.setBackColor(0x445566);
+    auto nextData = makeSpriteChannelData(libreshockwave::id::code(InkMode::MATTE), 64, 44);
+    nextData.posX = 123;
+    nextData.posY = 234;
+    nextData.width = 55;
+    nextData.height = 66;
+    nextData.thicknessFlags = 0;
+    state.syncFromScore(nextData);
+    assert(state.locH() == 77);
+    assert(state.locV() == 234);
+    assert(state.width() == 99);
+    assert(state.height() == 44);
+    assert(!state.isFlipH());
+    assert(!state.isFlipV());
+    assert(state.inkMode() == InkMode::DARKEN);
+    assert(state.blend() == 42);
+    assert(state.trails() == 3);
+    assert(state.stretch() == 4);
+    assert(state.foreColor() == 0x112233);
+    assert(state.backColor() == 0x445566);
+    assert(!state.matchesScoreIdentity(baseData));
+    assert(state.matchesScoreIdentity(nextData));
+
+    state.setCursor(4);
+    assert(state.cursor() == 4);
+    assert(!state.hasBitmapCursor());
+    state.setCursorMembers(0x00020021, 0x00020022);
+    assert(state.cursor() == 0);
+    assert(state.hasBitmapCursor());
+    assert(state.cursorMemberNum() == 0x00020021);
+    assert(state.cursorMaskNum() == 0x00020022);
+
+    SpriteState dynamic(9);
+    assert(dynamic.isDynamic());
+    assert(dynamic.isPuppet());
+    assert(dynamic.effectiveCastLib() == 0);
+    assert(dynamic.effectiveCastMember() == 0);
+    dynamic.applyIntrinsicSize(20, 30);
+    assert(dynamic.width() == 20);
+    assert(dynamic.height() == 30);
+    dynamic.setWidth(5);
+    dynamic.applyIntrinsicSize(100, 100);
+    assert(dynamic.width() == 5);
+    assert(dynamic.height() == 30);
+    assert(dynamic.hasSizeChanged());
+    dynamic.applyMemberAssignmentSize(12, 13);
+    assert(dynamic.width() == 12);
+    assert(dynamic.height() == 13);
+    assert(!dynamic.hasSizeChanged());
+    dynamic.setBlend(66);
+    dynamic.applyScoreDefaults(baseData);
+    assert(dynamic.inkMode() == InkMode::BLEND);
+    assert(dynamic.blend() == 66);
+    assert(dynamic.trails() == 1);
+    assert(dynamic.hasForeColor());
+    assert(dynamic.hasBackColor());
+    dynamic.applyScoreDefaults(nextData);
+    assert(dynamic.foreColor() == 7);
+    assert(dynamic.backColor() == 9);
+
+    dynamic.setDynamicMember(4, 0);
+    assert(dynamic.hasDynamicMember());
+    assert(dynamic.effectiveCastLib() == 4);
+    assert(dynamic.effectiveCastMember() == 0);
+    dynamic.clearDynamicMember();
+    assert(!dynamic.hasDynamicMember());
+    assert(dynamic.effectiveCastLib() == 0);
+
+    dynamic.setFlipH(true);
+    dynamic.setFlipV(true);
+    dynamic.setRotation(180.0);
+    dynamic.setSkew(45.0);
+    dynamic.resetReleasedSpriteTransforms();
+    assert(!dynamic.isFlipH());
+    assert(!dynamic.isFlipV());
+    assert(dynamic.rotation() == 0.0);
+    assert(dynamic.skew() == 0.0);
+    dynamic.resetReleasedChannelGeometry();
+    assert(dynamic.width() == 1);
+    assert(dynamic.height() == 1);
+
+    dynamic.setScriptInstanceList({Datum::of(1), Datum::of("behavior")});
+    assert(dynamic.hasScriptBehaviors());
+    assert(dynamic.scriptInstanceList().size() == 2);
+    dynamic.rebindToScorePreservingScriptInstances(baseData);
+    assert(!dynamic.isDynamic());
+    assert(!dynamic.isPuppet());
+    assert(dynamic.scriptInstanceList().size() == 2);
+    dynamic.rebindToScore(nextData);
+    assert(dynamic.scriptInstanceList().empty());
+    assert(dynamic.effectiveCastMember() == 44);
 }
 
 void testDebugFoundation() {
@@ -3868,6 +4034,7 @@ int main() {
     testPlayerCoreFoundation();
     testPlayerInputFoundation();
     testScoreNavigationFoundation();
+    testSpriteStateFoundation();
     testDebugFoundation();
     testRenderPipelineFoundation();
     testBitmapCacheAndInkProcessorFoundation();

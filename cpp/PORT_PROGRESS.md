@@ -216,6 +216,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `input::DirectorKeyCodes` ports Java/browser key-code conversion to Director Macintosh virtual key codes.
 - `input::InputState` ports mouse, keyboard, selection, caret blink, double-click, rollover, and event-queue state tracking.
 
+### Sprite Runtime State Foundation
+
+- `sprite::SpriteState` ports score-backed and dynamic sprite runtime state, including position, dimensions, visibility, puppet state, ink/blend/trails/stretch, colors, flip flags, rotation/skew, cursor members, script-instance lists, and dynamic member overrides.
+- Score synchronization preserves explicit Lingo overrides, score-default application uses Director's inverted blend-byte mapping, and score rebinding can either clear or preserve attached script instances.
+- Rendering integration through StageRenderer/SpriteBaker remains deferred until those C++ pipeline stages are ported.
+
 ### Score Navigation Foundation
 
 - `score::ScoreBehaviorRef` ports behavior cast-member references with saved parameter storage.
@@ -322,6 +328,7 @@ Result:
 - NetTask GET/POST construction, state transitions, result/error storage, stream status, and display formatting tests passed through the same CTest executable.
 - TimeoutManager creation, property access/mutation, one-shot/persistent flags, timeout references, names/count, forget, and clear tests passed through the same CTest executable.
 - BitmapCache cache-keying, palette invalidation, non-native alpha coercion, indexed matte remap selection/application, and InkProcessor color remap helpers passed through the same CTest executable.
+- SpriteState score construction, Director blend-byte mapping, explicit override preservation, dynamic defaults, cursor state, script-instance rebinding, and release resets passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -374,4 +381,5 @@ Result:
 - `c93152b Port C++ text renderer interface`
 - `d104c40 Port C++ network task foundation`
 - `2aa7222 Port C++ timeout manager foundation`
-- Current checkpoint commit message: `Port C++ bitmap cache and ink foundation`
+- `c8e0755 Port C++ bitmap cache and ink foundation`
+- Current checkpoint commit message: `Port C++ sprite state foundation`
