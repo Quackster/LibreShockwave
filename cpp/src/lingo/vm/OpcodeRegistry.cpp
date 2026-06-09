@@ -2708,6 +2708,17 @@ Datum castMemberObjectMethod(ExecutionContext& context,
     return builtinContext->castMemberMethodHandler(member.castLib, member.memberNum(), std::string(methodName), args);
 }
 
+Datum spriteObjectMethod(ExecutionContext& context,
+                         const Datum::SpriteRef& sprite,
+                         std::string_view methodName,
+                         const std::vector<Datum>& args) {
+    auto* builtinContext = context.builtinContext();
+    if (builtinContext == nullptr || !builtinContext->spriteMethodHandler) {
+        return Datum::voidValue();
+    }
+    return builtinContext->spriteMethodHandler(sprite.channel, std::string(methodName), args);
+}
+
 Datum getContextVar(ExecutionContext& context, id::VarType varType, const Datum& idDatum);
 void setContextVar(ExecutionContext& context, id::VarType varType, const Datum& idDatum, Datum value);
 
@@ -2821,6 +2832,9 @@ Datum dispatchObjectMethod(ExecutionContext& context, Datum target, std::string_
     if (const auto* xtraInstance = target.asXtraInstance()) {
         return builtinContext != nullptr ? builtin::XtraBuiltins::callHandler(*builtinContext, *xtraInstance, methodName, args)
                                          : Datum::voidValue();
+    }
+    if (const auto* sprite = target.asSpriteRef()) {
+        return spriteObjectMethod(context, *sprite, methodName, args);
     }
     if (const auto* castLib = target.asCastLibRef()) {
         return castLibObjectMethod(context, *castLib, methodName, args);

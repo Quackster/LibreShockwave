@@ -480,6 +480,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Mutable ChunkRef creation and char-range deletion now use a dedicated C++ datum; broader mutable chunk-ref operations remain deferred.
 - ScriptRef receiver dispatch now supports Java-compatible `new` method calls through the registered constructor builtin.
 - CastMemberRef receiver dispatch now delegates methods through a provider-backed C++ builtin context hook, matching Java's cast-member method provider path.
+- SpriteRef receiver dispatch now delegates methods through a provider-backed C++ builtin context hook for behavior/broker integration.
 - Image receiver dispatch now supports Java-compatible `fill`, `draw`, `setAlpha`, `createMatte`, `createMask`, `copyPixels`, `duplicate`, `crop`, `trimWhiteSpace`, `getAt`, `getPixel`, and `setPixel` methods over C++ bitmap refs.
 - Image `fill` and `draw` now resolve small integer colors through the target bitmap palette when one is attached, matching Java's bitmap-aware color conversion.
 - Image `createMatte` and `createMask` cover native-alpha matte extraction, RGB/indexed flood-fill matte extraction, and direct grayscale mask output; full `copyPixels` integration remains deferred.
@@ -595,6 +596,7 @@ Result:
 - Lingo `GET_FIELD` provider-backed field lookup, cast-library lookup, provider-missing empty-string fallback, and stack-consumption tests passed through the same CTest executable.
 - Lingo direct-string and VarRef object-call string chunk extraction, mutable char chunk-ref deletion, ScriptRef `new`, string method delegation, and provider-backed item counting tests passed through the same CTest executable.
 - Lingo CastMemberRef object-method provider dispatch tests passed through the same CTest executable.
+- Lingo SpriteRef object-method provider dispatch tests passed through the same CTest executable.
 - Lingo image object-method fill, draw, setAlpha, createMatte, createMask, copyPixels, duplicate, crop, trimWhiteSpace, getAt, getPixel, setPixel, and null-image fallback tests passed through the same CTest executable.
 - MovieProperties movie/stage property reads and writes, file/input-backed values, xtra lists, item delimiters, timers, stage background color, random seed, navigation callbacks, and net navigation callbacks passed through the same CTest executable.
 - BuiltinRegistry case-insensitive lookup, custom registration, movie label/marker builtins, sprite puppet/cursor/spriteBox builtins, puppetPalette hooks, and Java-compatible no-op sprite builtins passed through the same CTest executable.
@@ -740,4 +742,5 @@ Result:
 - `dc32dd5d Port C++ image draw method foundation`
 - `c9c11ee5 Port C++ image matte mask method foundation`
 - `dd6a1a7c Port C++ image copyPixels foundation`
-- Current checkpoint commit message: `Port C++ cast member method provider foundation`
+- `3d899bd0 Port C++ cast member method provider foundation`
+- Current checkpoint commit message: `Port C++ sprite method provider foundation`

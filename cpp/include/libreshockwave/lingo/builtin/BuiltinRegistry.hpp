@@ -41,6 +41,9 @@ struct BuiltinContext {
                                                         int memberNum,
                                                         const std::string& methodName,
                                                         const std::vector<Datum>& args)>;
+    using SpriteMethodHandler = std::function<Datum(int channel,
+                                                    const std::string& methodName,
+                                                    const std::vector<Datum>& args)>;
     using FieldResolver = std::function<Datum(const Datum& identifier, int castLib)>;
     using XtraRegisteredResolver = std::function<bool(const std::string& xtraName)>;
     using XtraInstanceCreator = std::function<Datum(const std::string& xtraName, const std::vector<Datum>& args)>;
@@ -90,6 +93,7 @@ struct BuiltinContext {
     CastMemberNameResolver castMemberNameResolver;
     CastMemberExistsResolver castMemberExistsResolver;
     CastMemberMethodHandler castMemberMethodHandler;
+    SpriteMethodHandler spriteMethodHandler;
     FieldResolver fieldResolver;
     XtraRegisteredResolver xtraRegisteredResolver;
     XtraInstanceCreator xtraInstanceCreator;

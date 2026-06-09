@@ -2305,6 +2305,9 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 111) {
             return std::string("charPosToLoc");
         }
+        if (nameId == 112) {
+            return std::string("setcursor");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.callStackFormatter = []() {
@@ -3537,6 +3540,22 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(castMemberMethodCalls == 1);
     builtinContext.castMemberMethodHandler = {};
     assert(runObjCall(111, {Datum::castMemberRef(CastLibId(2), MemberId(7)), Datum::of(4)}).isVoid());
+    int spriteMethodCalls = 0;
+    builtinContext.spriteMethodHandler = [&spriteMethodCalls](int channel,
+                                                              const std::string& methodName,
+                                                              const std::vector<Datum>& args) {
+        ++spriteMethodCalls;
+        assert(channel == 5);
+        assert(methodName == "setcursor");
+        assert(args.size() == 1);
+        assert(args.front().asSymbol() != nullptr);
+        assert(args.front().asSymbol()->name == "arrow");
+        return Datum::of(std::string("sprite-handled"));
+    };
+    assert(runObjCall(112, {Datum::spriteRef(ChannelId(5)), Datum::symbol("arrow")}).stringValue() == "sprite-handled");
+    assert(spriteMethodCalls == 1);
+    builtinContext.spriteMethodHandler = {};
+    assert(runObjCall(112, {Datum::spriteRef(ChannelId(5)), Datum::symbol("arrow")}).isVoid());
 
     assert(runObjCall(69, {Datum::of(std::string("abc")), Datum::of(2)}).stringValue() == "b");
     assert(runObjCall(70, {Datum::of(std::string("one two")), Datum::symbol("word")}).intValue() == 2);
