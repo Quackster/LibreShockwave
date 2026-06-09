@@ -286,6 +286,17 @@ std::uint32_t imageColorArgb(const Datum& datum) {
     return 0xFF000000U;
 }
 
+std::uint32_t imageColorArgb(const Datum& datum, const bitmap::Bitmap* target) {
+    if (const auto* value = datum.asInt(); value != nullptr &&
+        target != nullptr &&
+        target->imagePalette() != nullptr &&
+        value->value >= 0 &&
+        value->value <= 255) {
+        return 0xFF000000U | (target->resolvePaletteIndex(value->value, nullptr) & 0x00FFFFFFU);
+    }
+    return imageColorArgb(datum);
+}
+
 int toIntLikeJava(const Datum& datum) {
     if (const auto* value = datum.asInt()) {
         return value->value;
@@ -1788,8 +1799,138 @@ bool imageFill(bitmap::Bitmap& bmp, const std::vector<Datum>& args) {
         return false;
     }
 
-    bmp.fillRect(left, top, width, height, imageColorArgb(colorDatum));
+    bmp.fillRect(left, top, width, height, imageColorArgb(colorDatum, &bmp));
     return true;
+}
+
+void imageDrawRect(bitmap::Bitmap& bmp, int x, int y, int width, int height, std::uint32_t argb) {
+    for (int px = x; px < x + width; ++px) {
+        bmp.setPixel(px, y, argb);
+        bmp.setPixel(px, y + height - 1, argb);
+    }
+    for (int py = y; py < y + height; ++py) {
+        bmp.setPixel(x, py, argb);
+        bmp.setPixel(x + width - 1, py, argb);
+    }
+}
+
+void imageDrawLine(bitmap::Bitmap& bmp, int x0, int y0, int x1, int y1, std::uint32_t argb) {
+    const int dx = std::abs(x1 - x0);
+    const int dy = std::abs(y1 - y0);
+    const int sx = x0 < x1 ? 1 : -1;
+    const int sy = y0 < y1 ? 1 : -1;
+    int err = dx - dy;
+
+    while (true) {
+        bmp.setPixel(x0, y0, argb);
+        if (x0 == x1 && y0 == y1) {
+            break;
+        }
+        const int e2 = 2 * err;
+        if (e2 > -dy) {
+            err -= dy;
+            x0 += sx;
+        }
+        if (e2 < dx) {
+            err += dx;
+            y0 += sy;
+        }
+    }
+}
+
+void imageDrawEllipse(bitmap::Bitmap& bmp, int cx, int cy, int rx, int ry, std::uint32_t argb) {
+    int x = 0;
+    int y = ry;
+    const int rxSq = rx * rx;
+    const int rySq = ry * ry;
+    int p = static_cast<int>(rySq - rxSq * ry + 0.25 * rxSq);
+
+    while (rySq * x < rxSq * y) {
+        bmp.setPixel(cx + x, cy + y, argb);
+        bmp.setPixel(cx - x, cy + y, argb);
+        bmp.setPixel(cx + x, cy - y, argb);
+        bmp.setPixel(cx - x, cy - y, argb);
+        if (p < 0) {
+            ++x;
+            p += 2 * rySq * x + rySq;
+        } else {
+            ++x;
+            --y;
+            p += 2 * rySq * x - 2 * rxSq * y + rySq;
+        }
+    }
+
+    p = static_cast<int>(rySq * (x + 0.5) * (x + 0.5) + rxSq * (y - 1) * (y - 1) - rxSq * rySq);
+    while (y >= 0) {
+        bmp.setPixel(cx + x, cy + y, argb);
+        bmp.setPixel(cx - x, cy + y, argb);
+        bmp.setPixel(cx + x, cy - y, argb);
+        bmp.setPixel(cx - x, cy - y, argb);
+        if (p > 0) {
+            --y;
+            p -= 2 * rxSq * y + rxSq;
+        } else {
+            --y;
+            ++x;
+            p += 2 * rySq * x - 2 * rxSq * y + rxSq;
+        }
+    }
+}
+
+Datum imageDraw(bitmap::Bitmap& bmp, const std::vector<Datum>& args) {
+    if (args.size() < 2) return Datum::voidValue();
+
+    int left = 0;
+    int top = 0;
+    int right = 0;
+    int bottom = 0;
+    Datum propsArg = Datum::voidValue();
+
+    if (const auto* rect = args[0].asIntRect()) {
+        left = rect->left;
+        top = rect->top;
+        right = rect->right;
+        bottom = rect->bottom;
+        propsArg = args[1];
+    } else if (args.size() >= 5) {
+        left = toIntLikeJava(args[0]);
+        top = toIntLikeJava(args[1]);
+        right = toIntLikeJava(args[2]);
+        bottom = toIntLikeJava(args[3]);
+        propsArg = args[4];
+    } else {
+        return Datum::voidValue();
+    }
+
+    std::uint32_t colorArgb = 0xFF000000U;
+    std::string shapeType = "rect";
+    if (propsArg.isPropList()) {
+        const Datum colorDatum = getPropListKey(propsArg.propListValue(), "color");
+        if (!colorDatum.isVoid()) {
+            colorArgb = imageColorArgb(colorDatum, &bmp);
+        }
+        const Datum shapeDatum = getPropListKey(propsArg.propListValue(), "shapeType");
+        if (const auto* shape = shapeDatum.asSymbol()) {
+            shapeType = shape->name;
+        }
+    } else {
+        colorArgb = imageColorArgb(propsArg, &bmp);
+    }
+
+    const int width = right - left;
+    const int height = bottom - top;
+    if (width <= 0 || height <= 0) {
+        return Datum::voidValue();
+    }
+
+    if (equalsIgnoreCase(shapeType, "oval") || equalsIgnoreCase(shapeType, "ellipse")) {
+        imageDrawEllipse(bmp, left + width / 2, top + height / 2, width / 2, height / 2, colorArgb);
+    } else if (equalsIgnoreCase(shapeType, "line")) {
+        imageDrawLine(bmp, left, top, right, bottom, colorArgb);
+    } else {
+        imageDrawRect(bmp, left, top, width, height, colorArgb);
+    }
+    return Datum::voidValue();
 }
 
 int imageMaskAlphaFromPixel(std::uint32_t pixel) {
@@ -1947,6 +2088,10 @@ Datum imageObjectMethod(const Datum::ImageRef& image, std::string_view methodNam
     if (equalsIgnoreCase(methodName, "setAlpha")) {
         bmp.markScriptModified();
         return imageSetAlpha(bmp, args);
+    }
+    if (equalsIgnoreCase(methodName, "draw")) {
+        bmp.markScriptModified();
+        return imageDraw(bmp, args);
     }
     if (equalsIgnoreCase(methodName, "duplicate")) {
         return Datum::imageRef(std::make_shared<bitmap::Bitmap>(bmp.copy()));

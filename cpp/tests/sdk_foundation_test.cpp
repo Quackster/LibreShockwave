@@ -2290,6 +2290,9 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 106) {
             return std::string("setAlpha");
         }
+        if (nameId == 107) {
+            return std::string("draw");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.callStackFormatter = []() {
@@ -3189,6 +3192,14 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runObjCall(103, {propFillRef, Datum::intRect(1, 0, 2, 1), imageFillProps}).isVoid());
     assert(propFillBitmap->isScriptModified());
     assert(propFillBitmap->getPixel(1, 0) == 0xFF46505AU);
+    auto paletteFillBitmap = std::make_shared<Bitmap>(2, 2, 32);
+    paletteFillBitmap->setImagePalette(std::make_shared<Palette>(
+        std::vector<std::uint32_t>{0xFFFFFFU, 0xA6A6A6U}, "ui"));
+    paletteFillBitmap->fill(0xFFFFFFFFU);
+    const Datum paletteFillRef = Datum::imageRef(paletteFillBitmap);
+    assert(runObjCall(103, {paletteFillRef, Datum::intRect(0, 0, 1, 1), Datum::of(1)}).isVoid());
+    assert(paletteFillBitmap->getPixel(0, 0) == 0xFFA6A6A6U);
+    assert(!paletteFillBitmap->paletteIndices().has_value());
     auto noOpFillBitmap = std::make_shared<Bitmap>(2, 2, 32);
     noOpFillBitmap->fill(0xFFFFFFFFU);
     const Datum noOpFillRef = Datum::imageRef(noOpFillBitmap);
@@ -3270,6 +3281,43 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(!runObjCall(106, {Datum::imageRef(invalidAlphaTarget), Datum::of(128)}).boolValue());
     assert(invalidAlphaTarget->isScriptModified());
     assert(invalidAlphaTarget->getPixel(0, 0) == 0xFFFFFFFFU);
+    auto drawBitmap = std::make_shared<Bitmap>(3, 3, 32);
+    drawBitmap->setImagePalette(std::make_shared<Palette>(
+        std::vector<std::uint32_t>{0xFFFFFFU, 0xA6A6A6U}, "ui"));
+    drawBitmap->fill(0xFFFFFFFFU);
+    auto drawProps = Datum::propList();
+    drawProps.propListValue().put(Datum::symbol("color"), Datum::of(1));
+    drawProps.propListValue().put(Datum::symbol("shapeType"), Datum::symbol("rect"));
+    assert(runObjCall(107, {Datum::imageRef(drawBitmap), Datum::intRect(0, 0, 3, 3), drawProps}).isVoid());
+    assert(drawBitmap->isScriptModified());
+    assert(drawBitmap->getPixel(0, 0) == 0xFFA6A6A6U);
+    assert(drawBitmap->getPixel(1, 0) == 0xFFA6A6A6U);
+    assert(drawBitmap->getPixel(1, 1) == 0xFFFFFFFFU);
+    assert(!drawBitmap->paletteIndices().has_value());
+    auto lineBitmap = std::make_shared<Bitmap>(3, 3, 32);
+    lineBitmap->fill(0xFFFFFFFFU);
+    auto lineProps = Datum::propList();
+    lineProps.propListValue().put(Datum::symbol("color"), Datum::of(std::string("#123456")));
+    lineProps.propListValue().put(Datum::symbol("shapeType"), Datum::symbol("line"));
+    assert(runObjCall(107, {Datum::imageRef(lineBitmap), Datum::of(0), Datum::of(0), Datum::of(2), Datum::of(2), lineProps})
+               .isVoid());
+    assert(lineBitmap->getPixel(0, 0) == 0xFF123456U);
+    assert(lineBitmap->getPixel(1, 1) == 0xFF123456U);
+    assert(lineBitmap->getPixel(2, 2) == 0xFF123456U);
+    auto ovalBitmap = std::make_shared<Bitmap>(5, 5, 32);
+    ovalBitmap->fill(0xFFFFFFFFU);
+    auto ovalProps = Datum::propList();
+    ovalProps.propListValue().put(Datum::symbol("color"), Datum::colorRef(1, 2, 3));
+    ovalProps.propListValue().put(Datum::symbol("shapeType"), Datum::symbol("oval"));
+    assert(runObjCall(107, {Datum::imageRef(ovalBitmap), Datum::intRect(0, 0, 5, 5), ovalProps}).isVoid());
+    assert(ovalBitmap->getPixel(2, 0) == 0xFF010203U);
+    assert(ovalBitmap->getPixel(0, 2) == 0xFF010203U);
+    assert(ovalBitmap->getPixel(4, 2) == 0xFF010203U);
+    auto invalidDrawBitmap = std::make_shared<Bitmap>(1, 1, 32);
+    invalidDrawBitmap->fill(0xFFFFFFFFU);
+    assert(runObjCall(107, {Datum::imageRef(invalidDrawBitmap)}).isVoid());
+    assert(invalidDrawBitmap->isScriptModified());
+    assert(invalidDrawBitmap->getPixel(0, 0) == 0xFFFFFFFFU);
     const Datum duplicateImageDatum = runObjCall(72, {imageMethodRef});
     const auto* duplicateImage = duplicateImageDatum.asImageRef();
     assert(duplicateImage != nullptr);
