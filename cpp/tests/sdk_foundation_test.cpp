@@ -1560,22 +1560,26 @@ void testDirectorFileRifxLoader() {
     std::vector<std::uint8_t> keyData;
     appendI16(keyData, 12);
     appendI16(keyData, 12);
-    appendI32(keyData, 2);
-    appendI32(keyData, 2);
+    appendI32(keyData, 3);
+    appendI32(keyData, 3);
     appendI32(keyData, 4);
     appendI32(keyData, 7);
     appendI32(keyData, BinaryReader::fourCC("STXT"));
     appendI32(keyData, 5);
     appendI32(keyData, 7);
     appendI32(keyData, BinaryReader::fourCC("VWSC"));
+    appendI32(keyData, 6);
+    appendI32(keyData, 9);
+    appendI32(keyData, BinaryReader::fourCC("BITD"));
     std::vector<std::uint8_t> textData;
     appendI32(textData, 8);
     appendI32(textData, 5);
     textData.insert(textData.end(), {'H', 'e', 'l', 'l', 'o'});
     const std::vector<std::uint8_t> scoreData;
+    const std::vector<std::uint8_t> bitdData{0, 1};
 
     constexpr int mmapOffset = 32;
-    constexpr int mmapDataStart = mmapOffset + 8 + 24 + 120;
+    constexpr int mmapDataStart = mmapOffset + 8 + 24 + 140;
     const int configOffset = mmapDataStart - 8;
     const int namesDataStart = mmapDataStart + static_cast<int>(configData.size());
     const int namesOffset = namesDataStart - 8;
@@ -1587,6 +1591,8 @@ void testDirectorFileRifxLoader() {
     const int textOffset = textDataStart - 8;
     const int scoreDataStart = textDataStart + static_cast<int>(textData.size());
     const int scoreOffset = scoreDataStart - 8;
+    const int bitdDataStart = scoreDataStart + static_cast<int>(scoreData.size());
+    const int bitdOffset = bitdDataStart - 8;
 
     std::vector<std::uint8_t> fileData;
     appendFourCC(fileData, "RIFX");
@@ -1598,11 +1604,11 @@ void testDirectorFileRifxLoader() {
     appendI32(fileData, mmapOffset);
     appendI32(fileData, 0x0207);
     appendFourCC(fileData, "mmap");
-    appendI32(fileData, 24 + 120);
+    appendI32(fileData, 24 + 140);
     appendI16(fileData, 24);
     appendI16(fileData, 20);
-    appendI32(fileData, 6);
-    appendI32(fileData, 6);
+    appendI32(fileData, 7);
+    appendI32(fileData, 7);
     appendI32(fileData, 0);
     appendI32(fileData, 0);
     appendI32(fileData, 0);
@@ -1642,12 +1648,19 @@ void testDirectorFileRifxLoader() {
     appendI16(fileData, 0);
     appendI16(fileData, 0);
     appendI32(fileData, 0);
+    appendI32(fileData, BinaryReader::fourCC("BITD"));
+    appendI32(fileData, static_cast<std::uint32_t>(bitdData.size()));
+    appendI32(fileData, static_cast<std::uint32_t>(bitdOffset));
+    appendI16(fileData, 0);
+    appendI16(fileData, 0);
+    appendI32(fileData, 0);
     fileData.insert(fileData.end(), configData.begin(), configData.end());
     fileData.insert(fileData.end(), namesData.begin(), namesData.end());
     fileData.insert(fileData.end(), rawData.begin(), rawData.end());
     fileData.insert(fileData.end(), keyData.begin(), keyData.end());
     fileData.insert(fileData.end(), textData.begin(), textData.end());
     fileData.insert(fileData.end(), scoreData.begin(), scoreData.end());
+    fileData.insert(fileData.end(), bitdData.begin(), bitdData.end());
     putI32(fileData, 4, static_cast<std::uint32_t>(fileData.size() - 8));
 
     auto file = DirectorFile::load(fileData);
@@ -1655,8 +1668,8 @@ void testDirectorFileRifxLoader() {
     assert(!file->isAfterburner());
     assert(file->movieType() == ChunkType::MV93);
     assert(file->version() == 0x0207);
-    assert(file->chunkInfo().size() == 6);
-    assert(file->chunks().size() == 6);
+    assert(file->chunkInfo().size() == 7);
+    assert(file->chunks().size() == 7);
     assert(file->config().get() != nullptr);
     assert(file->config()->file() == file.get());
     assert(file->config()->stageWidth() == 320);
@@ -1681,6 +1694,7 @@ void testDirectorFileRifxLoader() {
     assert(file->getChunk(ChunkId(3))->type() == ChunkType::KEYp);
     assert(file->getChunk(ChunkId(4))->type() == ChunkType::STXT);
     assert(file->getChunk(ChunkId(5))->type() == ChunkType::VWSC);
+    assert(file->getChunk(ChunkId(6))->type() == ChunkType::BITD);
     auto member7 = std::make_shared<CastMemberChunk>(file.get(),
                                                      ChunkId(7),
                                                      MemberType::FilmLoop,
@@ -1709,12 +1723,45 @@ void testDirectorFileRifxLoader() {
                                                               0,
                                                               0);
     assert(file->getTextForMember(directTextMember)->text() == "Hello");
+    std::vector<std::uint8_t> bitmapSpecific;
+    appendI16(bitmapSpecific, 2);
+    appendI16(bitmapSpecific, 0);
+    appendI16(bitmapSpecific, 0);
+    appendI16(bitmapSpecific, 1);
+    appendI16(bitmapSpecific, 2);
+    bitmapSpecific.insert(bitmapSpecific.end(), 8, 0);
+    appendI16(bitmapSpecific, 0);
+    appendI16(bitmapSpecific, 0);
+    bitmapSpecific.push_back(0);
+    bitmapSpecific.push_back(8);
+    appendI16(bitmapSpecific, 1);
+    auto bitmapMember = std::make_shared<CastMemberChunk>(file.get(),
+                                                          ChunkId(9),
+                                                          MemberType::Bitmap,
+                                                          0,
+                                                          static_cast<int>(bitmapSpecific.size()),
+                                                          std::vector<std::uint8_t>{},
+                                                          bitmapSpecific,
+                                                          "Bitmap",
+                                                          0,
+                                                          0,
+                                                          0);
+    Palette decodePalette({0x010203U, 0xA0B0C0U}, "decode");
+    auto decodedBitmap = file->decodeBitmap(bitmapMember, &decodePalette);
+    assert(decodedBitmap.has_value());
+    assert(decodedBitmap->width() == 2);
+    assert(decodedBitmap->height() == 1);
+    assert(decodedBitmap->bitDepth() == 8);
+    assert(decodedBitmap->getPixel(0, 0) == 0xFF010203U);
+    assert(decodedBitmap->getPixel(1, 0) == 0xFFA0B0C0U);
+    assert(decodedBitmap->paletteIndex(1, 0).value() == 1);
+    assert(decodedBitmap->imagePalette().get() == &decodePalette);
     file->releaseNonEssentialChunks();
-    assert(file->chunks().size() == 5);
+    assert(file->chunks().size() == 6);
     auto reparsedRaw = file->getChunk(ChunkId(2));
     assert(reparsedRaw.get() != nullptr);
     assert(reparsedRaw->type() == ChunkType::JUNK);
-    assert(file->chunks().size() == 6);
+    assert(file->chunks().size() == 7);
 }
 
 void testAfterburnerReader() {

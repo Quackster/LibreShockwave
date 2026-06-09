@@ -12,6 +12,7 @@
 #include "libreshockwave/id/Ids.hpp"
 #include "libreshockwave/io/BinaryReader.hpp"
 #include "libreshockwave/chunks/ScoreChunk.hpp"
+#include "libreshockwave/bitmap/Bitmap.hpp"
 
 namespace libreshockwave::chunks {
 class CastChunk;
@@ -140,6 +141,9 @@ public:
     [[nodiscard]] std::shared_ptr<const bitmap::Palette> resolvePalette(int paletteId);
     [[nodiscard]] std::shared_ptr<const bitmap::Palette> resolvePaletteExact(int paletteId);
     [[nodiscard]] std::shared_ptr<const bitmap::Palette> resolvePaletteByMemberNumber(int memberNumber);
+    [[nodiscard]] std::optional<bitmap::Bitmap> decodeBitmap(const std::shared_ptr<chunks::CastMemberChunk>& member);
+    [[nodiscard]] std::optional<bitmap::Bitmap> decodeBitmap(const std::shared_ptr<chunks::CastMemberChunk>& member,
+                                                             const bitmap::Palette* paletteOverride);
 
     [[nodiscard]] static std::shared_ptr<DirectorFile> load(const std::vector<std::uint8_t>& data);
 

@@ -4,6 +4,8 @@
 #include <string>
 #include <utility>
 
+#include "libreshockwave/bitmap/BitmapDecoder.hpp"
+#include "libreshockwave/cast/BitmapInfo.hpp"
 #include "libreshockwave/chunks/BitmapChunk.hpp"
 #include "libreshockwave/chunks/CastChunk.hpp"
 #include "libreshockwave/chunks/CastListChunk.hpp"
@@ -465,6 +467,59 @@ std::shared_ptr<const bitmap::Palette> DirectorFile::resolvePaletteExact(int pal
 
 std::shared_ptr<const bitmap::Palette> DirectorFile::resolvePaletteByMemberNumber(int memberNumber) {
     return paletteResolver().resolve(memberNumber - 1);
+}
+
+std::optional<bitmap::Bitmap> DirectorFile::decodeBitmap(const std::shared_ptr<chunks::CastMemberChunk>& member) {
+    return decodeBitmap(member, nullptr);
+}
+
+std::optional<bitmap::Bitmap> DirectorFile::decodeBitmap(const std::shared_ptr<chunks::CastMemberChunk>& member,
+                                                         const bitmap::Palette* paletteOverride) {
+    if (!member || !member->isBitmap() || !keyTable_) {
+        return std::nullopt;
+    }
+
+    try {
+        const int directorVersion = config_ ? config_->directorVersion() : 1200;
+        const auto info = cast::BitmapInfo::parse(member->specificData(), directorVersion);
+
+        std::shared_ptr<chunks::BitmapChunk> bitmapChunk;
+        for (const auto& entry : keyTable_->getEntriesForOwner(member->id())) {
+            if (entry.fourcc != format::fourCC(format::ChunkType::BITD)) {
+                continue;
+            }
+            bitmapChunk = std::dynamic_pointer_cast<chunks::BitmapChunk>(getChunk(entry.sectionId));
+            if (bitmapChunk) {
+                break;
+            }
+        }
+        if (!bitmapChunk) {
+            return std::nullopt;
+        }
+
+        std::shared_ptr<const bitmap::Palette> resolvedPalette;
+        const bitmap::Palette* palette = paletteOverride;
+        if (!palette) {
+            resolvedPalette = resolvePalette(info.paletteId);
+            palette = resolvedPalette.get();
+        }
+
+        auto bitmap = bitmap::BitmapDecoder::decode(bitmapChunk->data(),
+                                                    info.width,
+                                                    info.height,
+                                                    info.bitDepth,
+                                                    palette,
+                                                    endian_ == io::ByteOrder::BigEndian,
+                                                    directorVersion,
+                                                    info.pitch);
+        bitmap.setNativeAlpha(info.useAlpha);
+        if (palette) {
+            bitmap.setImagePalette(palette);
+        }
+        return bitmap;
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
 }
 
 std::shared_ptr<chunks::Chunk> DirectorFile::getChunk(id::ChunkId id) {

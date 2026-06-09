@@ -155,6 +155,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Indexed bitmap decoding covers 1-bit, 2-bit, 4-bit, and 8-bit sources with palette-index metadata preservation.
 - 16-bit RGB555 and 32-bit separated/interleaved channel decoders are available, plus the automatic compression/bit-depth dispatch path.
 
+### DirectorFile Bitmap Decode Integration
+
+- `DirectorFile::decodeBitmap` resolves BITD chunks through KEY* owner mappings for bitmap cast members.
+- Bitmap member specific data is parsed through `cast::BitmapInfo`, palettes are resolved or overridden, and decoded bitmaps preserve native-alpha and palette metadata.
+- ediM/JPEG and ALFA sidecar decoding remain deferred to the higher-level media integration slice.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -189,12 +195,13 @@ Result:
 - ScriptChunk name resolution and DirectorFile script-helper empty fallback tests passed through the same CTest executable.
 - DirectorFile base path, score presence, external cast, and font lookup fallback tests passed through the same CTest executable.
 - Bitmap decoder RLE, scan-width, indexed, RGB555, 32-bit channel, and automatic dispatch tests passed through the same CTest executable.
+- DirectorFile BITD bitmap decode integration passed through the RIFX loader fixture in the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
 
 - Higher-level media integration.
-- Remaining bitmap decode integration, sound, font, text, score, and script chunk decoders.
+- Remaining ediM/ALFA bitmap integration, sound, font, text, score, and script chunk decoders.
 - Lingo decompiler, VM runtime values, dispatchers, and builtins.
 - Player core, rendering pipeline, input, networking, audio, cast management, and debugging.
 - WASM/web player replacement strategy in C++.
@@ -221,4 +228,5 @@ Result:
 - `d71ac1d Port C++ DirectorFile member resources`
 - `89d38fc Port C++ script name helpers`
 - `f59edc1 Port C++ DirectorFile metadata helpers`
-- Current checkpoint commit message: `Port C++ bitmap decoder foundation`
+- `de796a3 Port C++ bitmap decoder foundation`
+- Current checkpoint commit message: `Port C++ DirectorFile bitmap decode`
