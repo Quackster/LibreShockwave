@@ -2,6 +2,8 @@
 #include <bit>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -14,6 +16,7 @@
 #endif
 
 #include "libreshockwave/DirectorFile.hpp"
+#include "libreshockwave/W3DFile.hpp"
 #include "libreshockwave/bitmap/Bitmap.hpp"
 #include "libreshockwave/bitmap/BitmapDecoder.hpp"
 #include "libreshockwave/bitmap/ColorRef.hpp"
@@ -61,6 +64,7 @@ using libreshockwave::format::AfterburnerReader;
 using libreshockwave::format::ChunkType;
 using libreshockwave::format::MoaID;
 using libreshockwave::DirectorFile;
+using libreshockwave::W3DFile;
 using libreshockwave::id::CastLibId;
 using libreshockwave::id::ChannelId;
 using libreshockwave::id::ChunkId;
@@ -113,6 +117,7 @@ using libreshockwave::lingo::StringChunkType;
 using libreshockwave::lookup::CastMemberLookup;
 using libreshockwave::lookup::PaletteResolver;
 using libreshockwave::lookup::ScriptLookup;
+using libreshockwave::w3d::W3DEntryType;
 
 void testBinaryReaderEndianAndBounds() {
     BinaryReader big({0x01, 0x02, 0x03, 0x04});
@@ -755,6 +760,144 @@ void testShockwave3DInfoParser() {
     assert(info.worldName == "world");
     assert(info.textureName == "tex");
     assert(info.cameraName == "cam");
+}
+
+void testW3DFileParser() {
+    auto appendU16LE = [](std::vector<std::uint8_t>& data, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data.push_back(static_cast<std::uint8_t>(raw & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((raw >> 8) & 0xFF));
+    };
+    auto appendI32LE = [](std::vector<std::uint8_t>& data, std::uint32_t value) {
+        data.push_back(static_cast<std::uint8_t>(value & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 16) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 24) & 0xFF));
+    };
+    auto appendF32LE = [&](std::vector<std::uint8_t>& data, float value) {
+        appendI32LE(data, std::bit_cast<std::uint32_t>(value));
+    };
+    auto appendPString16LE = [&](std::vector<std::uint8_t>& data, const std::string& value) {
+        appendU16LE(data, static_cast<int>(value.size()));
+        data.insert(data.end(), value.begin(), value.end());
+    };
+    auto appendEntry = [&](std::vector<std::uint8_t>& data,
+                           int type,
+                           int parentRef,
+                           const std::vector<std::uint8_t>& payload) {
+        appendU16LE(data, type);
+        appendI32LE(data, static_cast<std::uint32_t>(payload.size()));
+        appendI32LE(data, static_cast<std::uint32_t>(parentRef));
+        data.insert(data.end(), payload.begin(), payload.end());
+    };
+
+    assert(libreshockwave::w3d::code(W3DEntryType::Node) == 0x72);
+    assert(libreshockwave::w3d::w3dEntryTypeFromCode(0x1234) == W3DEntryType::Unknown);
+
+    std::vector<std::uint8_t> data;
+
+    std::vector<std::uint8_t> version;
+    appendI32LE(version, 0x01020304);
+    appendEntry(data, 0x02, 0, version);
+
+    std::vector<std::uint8_t> node;
+    appendPString16LE(node, "RootNode");
+    appendPString16LE(node, "Scene");
+    appendI32LE(node, 7);
+    for (int index = 0; index < 16; ++index) {
+        appendF32LE(node, static_cast<float>(index));
+    }
+    appendPString16LE(node, "Mesh01");
+    appendPString16LE(node, "Ref01");
+    appendPString16LE(node, "Shader01");
+    appendEntry(data, 0x72, 1, node);
+
+    std::vector<std::uint8_t> shape;
+    appendPString16LE(shape, "Shape01");
+    appendPString16LE(shape, "RootNode");
+    appendI32LE(shape, 3);
+    for (int index = 16; index < 32; ++index) {
+        appendF32LE(shape, static_cast<float>(index));
+    }
+    shape.insert(shape.end(), {0xAA, 0xBB});
+    appendEntry(data, 0x74, 2, shape);
+
+    std::vector<std::uint8_t> mesh;
+    appendPString16LE(mesh, "Mesh01");
+    appendI32LE(mesh, 4);
+    appendI32LE(mesh, 2);
+    mesh.push_back(0xCC);
+    appendEntry(data, 0x73, 2, mesh);
+
+    std::vector<std::uint8_t> texture;
+    appendPString16LE(texture, "Tex01");
+    texture.push_back(0x01);
+    texture.insert(texture.end(), {0xFF, 0xD8, 0x00});
+    appendEntry(data, 0x21, 2, texture);
+
+    std::vector<std::uint8_t> material;
+    appendPString16LE(material, "Mat01");
+    material.insert(material.end(), {0x10, 0x20});
+    appendEntry(data, 0x49, 2, material);
+
+    std::vector<std::uint8_t> resourceRef;
+    appendPString16LE(resourceRef, "Ref01");
+    appendI32LE(resourceRef, 9);
+    resourceRef.push_back(0x44);
+    appendEntry(data, 0x48, 2, resourceRef);
+
+    appendEntry(data, 0x9999, 0, {0x55});
+
+    W3DFile file = W3DFile::load(data);
+    assert(file.version() == 0x01020304);
+    assert(file.entries().size() == 8);
+    assert(file.entries()[1].type == W3DEntryType::Node);
+    assert(file.entries()[1].parentRef == 1);
+    assert(file.entries()[7].type == W3DEntryType::Unknown);
+
+    assert(file.nodes().size() == 1);
+    assert(file.nodes()[0].name == "RootNode");
+    assert(file.nodes()[0].parentName == "Scene");
+    assert(file.nodes()[0].flags == 7);
+    assert(file.nodes()[0].transform.has_value());
+    assert(std::fabs(file.nodes()[0].posX() - 12.0F) < 0.0001F);
+    assert(std::fabs(file.nodes()[0].posY() - 13.0F) < 0.0001F);
+    assert(std::fabs(file.nodes()[0].posZ() - 14.0F) < 0.0001F);
+    assert(file.nodes()[0].resourceName == "Mesh01");
+    assert(file.nodes()[0].refName == "Ref01");
+    assert(file.nodes()[0].shaderName == "Shader01");
+
+    assert(file.shapes().size() == 1);
+    assert(file.shapes()[0].name == "Shape01");
+    assert(file.shapes()[0].shapeData.size() == 2);
+    assert(file.meshResources().size() == 1);
+    assert(file.meshResources()[0].vertexCount == 4);
+    assert(file.meshResources()[0].faceCount == 2);
+    assert(file.meshResources()[0].geometryData[0] == 0xCC);
+    assert(file.textures().size() == 1);
+    assert(file.textures()[0].format == "jpeg");
+    assert(file.materials().size() == 1);
+    assert(file.materials()[0].materialData.size() == 2);
+    assert(file.resourceRefs().size() == 1);
+    assert(file.resourceRefs()[0].refType == 9);
+
+    assert(file.findNode("RootNode").has_value());
+    assert(!file.findNode("Missing").has_value());
+    assert(file.findTexture("Tex01")->format == "jpeg");
+    assert(!file.findTexture("Missing").has_value());
+
+    const auto tmpPath = std::filesystem::temp_directory_path() / "libreshockwave_w3d_file_parser_test.w3d";
+    {
+        std::ofstream output(tmpPath, std::ios::binary);
+        output.write(reinterpret_cast<const char*>(data.data()), static_cast<std::streamsize>(data.size()));
+    }
+    W3DFile pathLoaded = W3DFile::load(tmpPath);
+    assert(pathLoaded.version() == file.version());
+    assert(pathLoaded.entries().size() == file.entries().size());
+    std::filesystem::remove(tmpPath);
+
+    assert(libreshockwave::w3d::W3DNode::parse({1, 2, 3}).name.empty());
+    assert(libreshockwave::w3d::W3DTexture::parse({1, 2, 3}).format == "raw");
 }
 
 void testCompactChunkParsers() {
@@ -2362,6 +2505,7 @@ int main() {
     testCastMetadataTypes();
     testCastInfoParsers();
     testShockwave3DInfoParser();
+    testW3DFileParser();
     testCompactChunkParsers();
     testTextAndFontMapChunks();
     testCastListAndMemberChunks();

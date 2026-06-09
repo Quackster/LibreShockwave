@@ -1,5 +1,6 @@
 add_library(libreshockwave
     src/DirectorFile.cpp
+    src/W3DFile.cpp
     src/bitmap/Bitmap.cpp
     src/bitmap/BitmapDecoder.cpp
     src/bitmap/ColorRef.cpp
@@ -39,6 +40,14 @@ add_library(libreshockwave
     src/lookup/PaletteResolver.cpp
     src/lookup/ScriptLookup.cpp
     src/util/AudioCodecUtils.cpp
+    src/w3d/W3DEntry.cpp
+    src/w3d/W3DEntryType.cpp
+    src/w3d/W3DMaterial.cpp
+    src/w3d/W3DMeshResource.cpp
+    src/w3d/W3DNode.cpp
+    src/w3d/W3DResourceRef.cpp
+    src/w3d/W3DShape.cpp
+    src/w3d/W3DTexture.cpp
 )
 
 add_library(LibreShockwave::libreshockwave ALIAS libreshockwave)

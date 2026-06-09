@@ -161,6 +161,13 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Bitmap member specific data is parsed through `cast::BitmapInfo`, palettes are resolved or overridden, and decoded bitmaps preserve native-alpha and palette metadata.
 - ediM/JPEG and ALFA sidecar decoding remain deferred to the higher-level media integration slice.
 
+### W3D File Parser Foundation
+
+- `W3DFile` ports the Java W3D byte-vector and path loading API for little-endian Shockwave 3D resource streams.
+- Raw W3D entries preserve type, parent reference, and payload bytes with Java-compatible unknown-type handling.
+- Typed W3D accessors now parse nodes/light data, shapes, mesh resources, textures, materials, and resource references.
+- W3D node transforms expose position helpers, and texture parsing detects JPEG payloads like the Java SDK.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -196,12 +203,14 @@ Result:
 - DirectorFile base path, score presence, external cast, and font lookup fallback tests passed through the same CTest executable.
 - Bitmap decoder RLE, scan-width, indexed, RGB555, 32-bit channel, and automatic dispatch tests passed through the same CTest executable.
 - DirectorFile BITD bitmap decode integration passed through the RIFX loader fixture in the same CTest executable.
+- W3D entry, typed resource, transform, texture format, and lookup tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
 
 - Higher-level media integration.
 - Remaining ediM/ALFA bitmap integration, sound, font, text, score, and script chunk decoders.
+- Detailed W3D geometry/material decoding and rendering integration.
 - Lingo decompiler, VM runtime values, dispatchers, and builtins.
 - Player core, rendering pipeline, input, networking, audio, cast management, and debugging.
 - WASM/web player replacement strategy in C++.
@@ -229,4 +238,5 @@ Result:
 - `89d38fc Port C++ script name helpers`
 - `f59edc1 Port C++ DirectorFile metadata helpers`
 - `de796a3 Port C++ bitmap decoder foundation`
-- Current checkpoint commit message: `Port C++ DirectorFile bitmap decode`
+- `3afd372 Port C++ DirectorFile bitmap decode`
+- Current checkpoint commit message: `Port C++ W3D file parser`
