@@ -2556,6 +2556,17 @@ int imagePercentToBlendAlpha(const Datum& blendDatum) {
     return std::clamp(static_cast<int>(std::lround(toDoubleLikeJava(blendDatum) * 255.0 / 100.0)), 0, 255);
 }
 
+bool imageMaskAllowsPixel(const bitmap::Bitmap& mask, int x, int y) {
+    if (x < 0 || x >= mask.width() || y < 0 || y >= mask.height()) {
+        return false;
+    }
+    const auto pixel = mask.getPixel(x, y);
+    if (mask.hasNativeMatteAlpha()) {
+        return ((pixel >> 24) & 0xFFU) != 0;
+    }
+    return imageMaskAlphaFromPixel(pixel) < 255;
+}
+
 Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
     if (args.size() < 3) return Datum::voidValue();
     const auto* srcRef = args[0].asImageRef();
@@ -2574,10 +2585,15 @@ Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
     }
 
     int blend = 255;
+    std::shared_ptr<bitmap::Bitmap> mask;
     if (args.size() >= 4 && args[3].isPropList()) {
         const Datum blendDatum = getPropListKey(args[3].propListValue(), "blend");
         if (!blendDatum.isVoid()) {
             blend = imagePercentToBlendAlpha(blendDatum);
+        }
+        const Datum maskDatum = getPropListKey(args[3].propListValue(), "maskImage");
+        if (const auto* maskRef = maskDatum.asImageRef()) {
+            mask = maskRef->bitmap;
         }
     }
 
@@ -2610,6 +2626,9 @@ Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
             const int sx = srcRect->left + (dx * srcWidth / destWidth);
             const int px = destRect->left + dx;
             if (sx < 0 || sx >= src.width() || px < 0 || px >= dest.width()) {
+                continue;
+            }
+            if (mask != nullptr && !imageMaskAllowsPixel(*mask, sx, sy)) {
                 continue;
             }
             dest.setPixelPreservePaletteIndex(px, py, imageApplyCopyInk(src.getPixel(sx, sy), dest.getPixel(px, py), blend));

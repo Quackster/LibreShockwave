@@ -3435,6 +3435,35 @@ void testLingoVmScopeAndExecutionContextFoundation() {
                             Datum::intRect(0, 0, 1, 1),
                             copyBlendProps}).isVoid());
     assert(blendCopyDest->getPixel(0, 0) == 0xFF7F7F7FU);
+    auto maskedCopySource = std::make_shared<Bitmap>(
+        2, 1, 32, std::vector<std::uint32_t>{0xFFFF0000U, 0xFF0000FFU});
+    auto maskedCopyDest = std::make_shared<Bitmap>(2, 1, 32);
+    maskedCopyDest->fill(0xFFFFFFFFU);
+    auto grayscaleMask = std::make_shared<Bitmap>(
+        2, 1, 8, std::vector<std::uint32_t>{0xFFFFFFFFU, 0xFF000000U});
+    auto maskCopyProps = Datum::propList();
+    maskCopyProps.propListValue().put(Datum::symbol("maskImage"), Datum::imageRef(grayscaleMask));
+    assert(runObjCall(110, {Datum::imageRef(maskedCopyDest),
+                            Datum::imageRef(maskedCopySource),
+                            Datum::intRect(0, 0, 2, 1),
+                            Datum::intRect(0, 0, 2, 1),
+                            maskCopyProps}).isVoid());
+    assert(maskedCopyDest->getPixel(0, 0) == 0xFFFFFFFFU);
+    assert(maskedCopyDest->getPixel(1, 0) == 0xFF0000FFU);
+    auto alphaMaskCopyDest = std::make_shared<Bitmap>(2, 1, 32);
+    alphaMaskCopyDest->fill(0xFFFFFFFFU);
+    auto nativeAlphaMask = std::make_shared<Bitmap>(
+        2, 1, 32, std::vector<std::uint32_t>{0x00000000U, 0x80FFFFFFU});
+    nativeAlphaMask->setNativeAlpha(true);
+    auto alphaMaskCopyProps = Datum::propList();
+    alphaMaskCopyProps.propListValue().put(Datum::symbol("maskImage"), Datum::imageRef(nativeAlphaMask));
+    assert(runObjCall(110, {Datum::imageRef(alphaMaskCopyDest),
+                            Datum::imageRef(maskedCopySource),
+                            Datum::intRect(0, 0, 2, 1),
+                            Datum::intRect(0, 0, 2, 1),
+                            alphaMaskCopyProps}).isVoid());
+    assert(alphaMaskCopyDest->getPixel(0, 0) == 0xFFFFFFFFU);
+    assert(alphaMaskCopyDest->getPixel(1, 0) == 0xFF0000FFU);
     auto paletteCopySource = std::make_shared<Bitmap>(
         2, 1, 8, std::vector<std::uint32_t>{0xFF000000U, 0xFF112233U});
     paletteCopySource->setImagePalette(std::make_shared<Palette>(
