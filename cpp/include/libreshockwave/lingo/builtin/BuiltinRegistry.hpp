@@ -19,6 +19,14 @@ namespace libreshockwave::lingo::builtin {
 struct BuiltinContext {
     using PuppetPaletteHandler = std::function<void(std::optional<Datum> paletteRef)>;
     using CastMemberCreator = std::function<Datum(int castLib, const std::string& memberType)>;
+    using NamedCastMemberCreator = std::function<Datum(const std::string& memberName, const std::string& memberType)>;
+    using CastLibNumberResolver = std::function<int(int castLib)>;
+    using CastLibNameResolver = std::function<int(const std::string& name)>;
+    using CastLibCountSupplier = std::function<int()>;
+    using CastMemberResolver = std::function<Datum(int castLib, int memberNum)>;
+    using CastMemberNameResolver = std::function<Datum(int castLib, const std::string& memberName)>;
+    using CastMemberExistsResolver = std::function<bool(int castLib, int memberNum)>;
+    using FieldResolver = std::function<Datum(const Datum& identifier, int castLib)>;
     using NewInstanceHandler = std::function<Datum(const Datum& target, const std::vector<Datum>& args)>;
     using ValueEvaluator = std::function<Datum(const Datum& value)>;
     using ScriptResolver = std::function<Datum(const Datum& identifier, const std::optional<Datum>& scope)>;
@@ -39,6 +47,14 @@ struct BuiltinContext {
     bool debugPlaybackEnabled{false};
     PuppetPaletteHandler puppetPaletteHandler;
     CastMemberCreator castMemberCreator;
+    NamedCastMemberCreator namedCastMemberCreator;
+    CastLibNumberResolver castLibNumberResolver;
+    CastLibNameResolver castLibNameResolver;
+    CastLibCountSupplier castLibCountSupplier;
+    CastMemberResolver castMemberResolver;
+    CastMemberNameResolver castMemberNameResolver;
+    CastMemberExistsResolver castMemberExistsResolver;
+    FieldResolver fieldResolver;
     NewInstanceHandler newInstanceHandler;
     ValueEvaluator valueEvaluator;
     ScriptResolver scriptResolver;
@@ -191,6 +207,15 @@ public:
                             const Datum::SoundChannel& channel,
                             std::string_view propName,
                             Datum value);
+};
+
+class CastLibBuiltins {
+public:
+    static void registerBuiltins(BuiltinRegistry& registry);
+    [[nodiscard]] static Datum castLib(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum member(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum field(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum createMember(BuiltinContext& context, const std::vector<Datum>& args);
 };
 
 class ConstructorBuiltins {

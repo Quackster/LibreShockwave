@@ -1048,6 +1048,88 @@ void testBuiltinRegistryFoundation() {
     assert(handledAlert == "handled");
     assert(outputMessages.size() == 2);
 
+    assert(registry.contains("castLib"));
+    assert(registry.contains("member"));
+    assert(registry.contains("field"));
+    assert(registry.contains("createMember"));
+    assert(!registry.contains("getMemNum"));
+    assert(!registry.contains("memberExists"));
+    assert(registry.invoke("castLib", context, {Datum::of(1)}).isVoid());
+    assert(registry.invoke("member", context).isVoid());
+    const auto placeholderMember = registry.invoke("member", context, {Datum::of(12)});
+    assert(placeholderMember.asCastMemberRef()->castLib == 1);
+    assert(placeholderMember.asCastMemberRef()->memberNum() == 12);
+    assert(registry.invoke("member", context, {Datum::of(-1)}).isVoid());
+    assert(registry.invoke("field", context).stringValue().empty());
+    assert(registry.invoke("createMember", context, {Datum::of(std::string("new")), Datum::symbol("bitmap")}).isVoid());
+
+    const std::map<std::string, int> castNames{{"main", 1}, {"external", 2}};
+    const std::map<std::pair<int, std::string>, std::pair<int, int>> memberNames{
+        {{0, "door"}, {2, 4}},
+        {{2, "palette"}, {2, 5}},
+    };
+    const std::set<std::pair<int, int>> existingMembers{{1, 3}, {2, 4}, {2, 5}};
+    context.castLibNumberResolver = [](int castLib) {
+        return castLib >= 1 && castLib <= 2 ? castLib : -1;
+    };
+    context.castLibNameResolver = [&castNames](const std::string& name) {
+        const auto found = castNames.find(name);
+        return found == castNames.end() ? -1 : found->second;
+    };
+    context.castLibCountSupplier = []() {
+        return 2;
+    };
+    context.castMemberExistsResolver = [&existingMembers](int castLib, int memberNum) {
+        return existingMembers.contains({castLib, memberNum});
+    };
+    context.castMemberResolver = [](int castLib, int memberNum) {
+        return Datum::castMemberRef(CastLibId(castLib), MemberId(memberNum));
+    };
+    context.castMemberNameResolver = [&memberNames](int castLib, const std::string& name) {
+        const auto found = memberNames.find({castLib, name});
+        if (found == memberNames.end()) {
+            return Datum::voidValue();
+        }
+        return Datum::castMemberRef(CastLibId(found->second.first), MemberId(found->second.second));
+    };
+    context.fieldResolver = [](const Datum& identifier, int castLib) {
+        if (const auto* value = identifier.asInt()) {
+            return Datum::of("field#" + std::to_string(value->value) + "@" + std::to_string(castLib));
+        }
+        return Datum::of("field:" + identifier.stringValue() + "@" + std::to_string(castLib));
+    };
+    std::string castBuiltinCreatedName;
+    std::string castBuiltinCreatedType;
+    context.namedCastMemberCreator = [&castBuiltinCreatedName, &castBuiltinCreatedType](const std::string& name,
+                                                                                        const std::string& memberType) {
+        castBuiltinCreatedName = name;
+        castBuiltinCreatedType = memberType;
+        return Datum::castMemberRef(CastLibId(1), MemberId(77));
+    };
+    assert(registry.invoke("castLib", context, {Datum::of(2)}).asCastLibRef()->castLib == 2);
+    assert(registry.invoke("castLib", context, {Datum::of(std::string("external"))}).asCastLibRef()->castLib == 2);
+    assert(registry.invoke("castLib", context, {Datum::symbol("main")}).asCastLibRef()->castLib == 1);
+    assert(registry.invoke("castLib", context, {Datum::of(9)}).isVoid());
+    assert(registry.invoke("member", context, {Datum::of(5), Datum::castLibRef(CastLibId(2))}).asCastMemberRef()->castLib == 2);
+    assert(registry.invoke("member", context, {Datum::of(5), Datum::castLibRef(CastLibId(2))}).asCastMemberRef()->memberNum() == 5);
+    assert(registry.invoke("member", context, {Datum::of(0)}).isVoid());
+    assert(registry.invoke("member", context, {Datum::of((2 << 16) | 5)}).asCastMemberRef()->castLib == 2);
+    assert(registry.invoke("member", context, {Datum::of(4)}).asCastMemberRef()->castLib == 2);
+    assert(registry.invoke("member", context, {Datum::of(99)}).asCastMemberRef()->castLib == 1);
+    assert(registry.invoke("member", context, {Datum::of(std::string("door"))}).asCastMemberRef()->memberNum() == 4);
+    assert(registry.invoke("member",
+                           context,
+                           {Datum::symbol("palette"), Datum::of(std::string("external"))}).asCastMemberRef()->memberNum() == 5);
+    assert(registry.invoke("member", context, {Datum::of(std::string("missing"))}).isVoid());
+    assert(registry.invoke("field", context, {Datum::of(std::string("caption"))}).stringValue() == "field:caption@0");
+    assert(registry.invoke("field", context, {Datum::of(3), Datum::castLibRef(CastLibId(2))}).stringValue() == "field#3@2");
+    assert(registry.invoke("field", context, {Datum::symbol("caption"), Datum::of(std::string("external"))}).stringValue() ==
+           "field:caption@2");
+    const auto dynamicMember = registry.invoke("createMember", context, {Datum::of(std::string("dynamic")), Datum::symbol("bitmap")});
+    assert(dynamicMember.asCastMemberRef()->memberNum() == 77);
+    assert(castBuiltinCreatedName == "dynamic");
+    assert(castBuiltinCreatedType == "bitmap");
+
     assert(registry.contains("count"));
     assert(registry.contains("getAt"));
     assert(registry.contains("setAt"));

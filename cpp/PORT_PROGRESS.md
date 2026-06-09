@@ -312,6 +312,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `SoundBuiltins` exposes sound-channel method dispatch helpers for play/queue/stop/status/time/volume/list/ilk behavior backed by the C++ `SoundManager`.
 - Sound-channel property get/set helpers cover Java-compatible defaults and no-op accepted properties until C++ opcode property dispatch is wired to the helper surface.
 
+### Cast Library Builtins Foundation
+
+- Cast library builtins now register `castLib`, `member`, `field`, and `createMember` while intentionally leaving Java's unregistered `getMemNum`/`memberExists` helpers unavailable as builtins.
+- Cast and member lookup behavior is exposed through VM/player-owned callback hooks for cast-library resolution, member number/name resolution, member existence, field text lookup, and dynamic member creation.
+- Java-compatible fallback behavior is covered for missing cast providers, encoded member slot numbers, search-all member lookup, and empty field defaults.
+
 ### Constructor Builtins Foundation
 
 - Constructor builtins now register `point`, `rect`, `union`, `intersect`, `color`, `rgb`, `paletteIndex`, `sprite`, and `new` in the C++ builtin registry.
@@ -463,6 +469,7 @@ Result:
 - MathBuiltins numeric coercion, integer/float conversion, bit operations, trig, power, min/max, list min/max, and random callback hooks passed through the same CTest executable.
 - StringBuiltins string coercion, length, chars, charToNum, numToChar, offset, and getPref/setPref callback hooks passed through the same CTest executable.
 - OutputBuiltins debug-gated `put`, Java-style argument joining, default alert output, and alert-hook suppression passed through the same CTest executable.
+- CastLibBuiltins castLib/member/field/createMember registration, missing-provider fallback, cast/member provider callbacks, encoded member numbers, search-all lookup, and omitted helper builtins passed through the same CTest executable.
 - ListBuiltins list/proplist counts, access, mutation, searches, sorting, constructors, key namespace behavior, and aliases passed through the same CTest executable.
 - TimeoutBuiltins `timeout` creation, factory-mode `.new`, named `.new`, `.forget`, property get/set helpers, and missing-provider behavior passed through the same CTest executable.
 - NetBuiltins preload/get/post aliases, task result/error/status lookups, stream-status toggling, navigation callbacks, and ExternalParamBuiltins ordered parameter lookup passed through the same CTest executable.
@@ -542,4 +549,5 @@ Result:
 - `9892975 Port C++ timeout builtins foundation`
 - `933317b Port C++ net builtins foundation`
 - `8e78d3c Port C++ sound builtins foundation`
-- Current checkpoint commit message: `Port C++ output builtins foundation`
+- `500e548 Port C++ output builtins foundation`
+- Current checkpoint commit message: `Port C++ cast builtins foundation`

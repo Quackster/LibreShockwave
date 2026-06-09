@@ -377,6 +377,55 @@ Datum defaultStreamStatusDatum() {
     return props;
 }
 
+bool hasCastProvider(const BuiltinContext& context) {
+    return context.namedCastMemberCreator ||
+           context.castLibNumberResolver ||
+           context.castLibNameResolver ||
+           context.castLibCountSupplier ||
+           context.castMemberResolver ||
+           context.castMemberNameResolver ||
+           context.castMemberExistsResolver ||
+           context.fieldResolver;
+}
+
+Datum castLibRefOrVoid(int castLib) {
+    if (castLib < 1) {
+        return Datum::voidValue();
+    }
+    return Datum::castLibRef(id::CastLibId(castLib));
+}
+
+Datum castMemberRefOrVoid(int castLib, int memberNum) {
+    if (castLib < 1 || memberNum < 0) {
+        return Datum::voidValue();
+    }
+    return Datum::castMemberRef(id::CastLibId(castLib), id::MemberId(memberNum));
+}
+
+int resolveCastLibArg(BuiltinContext& context, const Datum& castArg) {
+    if (castArg.isVoid() || castArg.isNull()) {
+        return 0;
+    }
+    if (const auto* ref = castArg.asCastLibRef()) {
+        return ref->castLib;
+    }
+    if (castArg.isInt() || castArg.isFloat()) {
+        if (!context.castLibNumberResolver) {
+            return 0;
+        }
+        const int resolved = context.castLibNumberResolver(toIntLikeJava(castArg));
+        return resolved >= 0 ? resolved : 0;
+    }
+    if (castArg.isString() || castArg.isSymbol()) {
+        if (!context.castLibNameResolver) {
+            return 0;
+        }
+        const int resolved = context.castLibNameResolver(toStringLikeJava(castArg));
+        return resolved >= 0 ? resolved : 0;
+    }
+    return 0;
+}
+
 Datum& mutableArg(const std::vector<Datum>& args, std::size_t index) {
     return const_cast<Datum&>(args[index]);
 }
@@ -446,6 +495,7 @@ BuiltinRegistry::BuiltinRegistry() {
     NetBuiltins::registerBuiltins(*this);
     ExternalParamBuiltins::registerBuiltins(*this);
     SoundBuiltins::registerBuiltins(*this);
+    CastLibBuiltins::registerBuiltins(*this);
     MovieBuiltins::registerBuiltins(*this);
 }
 
@@ -1468,6 +1518,118 @@ bool SoundBuiltins::setProperty(BuiltinContext& context,
         return true;
     }
     return false;
+}
+
+void CastLibBuiltins::registerBuiltins(BuiltinRegistry& registry) {
+    registry.registerBuiltin("castlib", CastLibBuiltins::castLib);
+    registry.registerBuiltin("member", CastLibBuiltins::member);
+    registry.registerBuiltin("field", CastLibBuiltins::field);
+    registry.registerBuiltin("createmember", CastLibBuiltins::createMember);
+}
+
+Datum CastLibBuiltins::castLib(BuiltinContext& context, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::voidValue();
+    }
+
+    int castLibNumber = -1;
+    if (args[0].isInt() || args[0].isFloat()) {
+        if (!context.castLibNumberResolver) {
+            return Datum::voidValue();
+        }
+        castLibNumber = context.castLibNumberResolver(toIntLikeJava(args[0]));
+    } else if (args[0].isString() || args[0].isSymbol()) {
+        if (!context.castLibNameResolver) {
+            return Datum::voidValue();
+        }
+        castLibNumber = context.castLibNameResolver(toStringLikeJava(args[0]));
+    } else {
+        return Datum::voidValue();
+    }
+
+    return castLibRefOrVoid(castLibNumber);
+}
+
+Datum CastLibBuiltins::member(BuiltinContext& context, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::voidValue();
+    }
+
+    const Datum& memberArg = args[0];
+    if (!hasCastProvider(context)) {
+        return castMemberRefOrVoid(1, toIntLikeJava(memberArg));
+    }
+
+    const int castLibNumber = args.size() > 1 ? resolveCastLibArg(context, args[1]) : 0;
+
+    if (memberArg.isInt() || memberArg.isFloat()) {
+        const int memberNumber = toIntLikeJava(memberArg);
+        if (memberNumber == 0) {
+            return Datum::voidValue();
+        }
+
+        const int normalizedMemberNumber = std::abs(memberNumber);
+        if (castLibNumber > 0) {
+            return context.castMemberResolver ? context.castMemberResolver(castLibNumber, normalizedMemberNumber)
+                                              : castMemberRefOrVoid(castLibNumber, normalizedMemberNumber);
+        }
+
+        const int encodedCast = (normalizedMemberNumber >> 16) & 0xFFFF;
+        const int encodedMember = normalizedMemberNumber & 0xFFFF;
+        if (encodedCast > 0 && encodedMember > 0 && context.castMemberExistsResolver &&
+            context.castMemberExistsResolver(encodedCast, encodedMember)) {
+            return context.castMemberResolver ? context.castMemberResolver(encodedCast, encodedMember)
+                                              : castMemberRefOrVoid(encodedCast, encodedMember);
+        }
+
+        const int totalCasts = context.castLibCountSupplier ? context.castLibCountSupplier() : 0;
+        if (context.castMemberExistsResolver) {
+            for (int castIndex = 1; castIndex <= totalCasts; ++castIndex) {
+                if (context.castMemberExistsResolver(castIndex, normalizedMemberNumber)) {
+                    return context.castMemberResolver ? context.castMemberResolver(castIndex, normalizedMemberNumber)
+                                                      : castMemberRefOrVoid(castIndex, normalizedMemberNumber);
+                }
+            }
+        }
+
+        return context.castMemberResolver ? context.castMemberResolver(1, normalizedMemberNumber)
+                                          : castMemberRefOrVoid(1, normalizedMemberNumber);
+    }
+
+    if (memberArg.isString() || memberArg.isSymbol()) {
+        if (!context.castMemberNameResolver) {
+            return Datum::voidValue();
+        }
+        Datum found = context.castMemberNameResolver(castLibNumber, toStringLikeJava(memberArg));
+        return found.isVoid() ? Datum::voidValue() : found;
+    }
+
+    return Datum::voidValue();
+}
+
+Datum CastLibBuiltins::field(BuiltinContext& context, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::of(std::string());
+    }
+    if (!context.fieldResolver) {
+        return Datum::of(std::string());
+    }
+
+    const int castLibNumber = args.size() > 1 ? resolveCastLibArg(context, args[1]) : 0;
+    const Datum& fieldArg = args[0];
+    if (fieldArg.isString() || fieldArg.isInt()) {
+        return context.fieldResolver(fieldArg, castLibNumber);
+    }
+    return context.fieldResolver(Datum::of(toStringLikeJava(fieldArg)), castLibNumber);
+}
+
+Datum CastLibBuiltins::createMember(BuiltinContext& context, const std::vector<Datum>& args) {
+    if (args.size() < 2 || !context.namedCastMemberCreator) {
+        return Datum::voidValue();
+    }
+    const std::string memberName = toStringLikeJava(args[0]);
+    const std::string memberType = args[1].asSymbol() != nullptr ? args[1].asSymbol()->name : toStringLikeJava(args[1]);
+    return context.namedCastMemberCreator(memberName, memberType);
 }
 
 void ConstructorBuiltins::registerBuiltins(BuiltinRegistry& registry) {
