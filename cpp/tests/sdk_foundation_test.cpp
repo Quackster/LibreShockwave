@@ -2813,6 +2813,26 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opcodeRegistry.execute(Opcode::GET_FIELD, fieldContext));
     assert(fieldContext.pop().stringValue().empty());
     assert(fieldScope.stackSize() == 0);
+    builtinContext.fieldResolver = [](const Datum& identifier, int castLib) {
+        if (const auto* value = identifier.asInt()) {
+            return Datum::of("field#" + std::to_string(value->value) + "@" + std::to_string(castLib));
+        }
+        return Datum::of("field:" + identifier.stringValue() + "@" + std::to_string(castLib));
+    };
+    fieldContext.push(Datum::of(std::string("fieldName")));
+    fieldContext.push(Datum::of(1));
+    assert(opcodeRegistry.execute(Opcode::GET_FIELD, fieldContext));
+    assert(fieldContext.pop().stringValue() == "field:fieldName@1");
+    fieldContext.push(Datum::of(7));
+    fieldContext.push(Datum::of(0));
+    assert(opcodeRegistry.execute(Opcode::GET_FIELD, fieldContext));
+    assert(fieldContext.pop().stringValue() == "field#7@0");
+    fieldContext.push(Datum::symbol("caption"));
+    fieldContext.push(Datum::of(2));
+    assert(opcodeRegistry.execute(Opcode::GET_FIELD, fieldContext));
+    assert(fieldContext.pop().stringValue() == "field:caption@2");
+    assert(fieldScope.stackSize() == 0);
+    builtinContext.fieldResolver = {};
 
     Scope moviePropScope(&script, handler, {});
     ExecutionContext moviePropContext(moviePropScope,

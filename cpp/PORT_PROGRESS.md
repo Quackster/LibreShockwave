@@ -585,7 +585,7 @@ Result:
 - Lingo `PUT_CHUNK` char replacement/insertion, item replacement, word/line insertion, negative target, and out-of-range no-op tests passed through the same CTest executable.
 - Lingo `GET_CHAINED_PROP` list, string, point, property-list, and script-instance reads plus `GET_TOP_LEVEL_PROP` `_player`/`_movie` refs passed through the same CTest executable.
 - Lingo legacy `GET` last-chunk/count chunk reads and provider-backed `SET` stack-consumption no-op tests passed through the same CTest executable.
-- Lingo `GET_FIELD` provider-missing empty-string fallback and stack-consumption tests passed through the same CTest executable.
+- Lingo `GET_FIELD` provider-backed field lookup, cast-library lookup, provider-missing empty-string fallback, and stack-consumption tests passed through the same CTest executable.
 - Lingo VarRef object-call string chunk extraction and string method delegation tests passed through the same CTest executable.
 - MovieProperties movie/stage property reads and writes, file/input-backed values, xtra lists, item delimiters, timers, stage background color, random seed, navigation callbacks, and net navigation callbacks passed through the same CTest executable.
 - BuiltinRegistry case-insensitive lookup, custom registration, movie label/marker builtins, sprite puppet/cursor/spriteBox builtins, puppetPalette hooks, and Java-compatible no-op sprite builtins passed through the same CTest executable.
@@ -708,4 +708,4 @@ Result:
 - `cd997d5e Port C++ opcode chained property foundation`
 - `c78210ba Port C++ opcode legacy property foundation`
 - `9ac23faa Port C++ opcode field fallback foundation`
-- Current checkpoint commit message: `Port C++ varref object method foundation`
+- Current checkpoint commit message: `Port C++ opcode field resolver foundation`

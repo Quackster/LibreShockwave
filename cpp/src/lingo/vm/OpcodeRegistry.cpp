@@ -2426,9 +2426,25 @@ bool getLegacyProperty(ExecutionContext& context) {
 }
 
 bool getField(ExecutionContext& context) {
-    (void)context.pop();
-    (void)context.pop();
-    context.push(Datum::of(std::string()));
+    const Datum castIdDatum = context.pop();
+    const Datum fieldNameOrNum = context.pop();
+    const int castId = toIntLikeJava(castIdDatum);
+
+    std::vector<Datum> args;
+    if (fieldNameOrNum.asString() != nullptr || fieldNameOrNum.asInt() != nullptr) {
+        args.push_back(fieldNameOrNum);
+    } else {
+        args.push_back(Datum::of(toStringLikeJava(fieldNameOrNum)));
+    }
+    if (castId > 0) {
+        args.push_back(Datum::castLibRef(id::CastLibId(castId)));
+    }
+
+    if (const auto result = context.invokeBuiltinIfPresent("field", args)) {
+        context.push(*result);
+    } else {
+        context.push(Datum::of(std::string()));
+    }
     return true;
 }
 
