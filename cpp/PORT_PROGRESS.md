@@ -347,7 +347,8 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `score::ScoreBehaviorRef` ports behavior cast-member references with saved parameter storage.
 - `score::SpriteSpan` ports frame-span/channel tracking for frame scripts and sprite behaviors.
 - `score::ScoreNavigator` ports score span construction, frame-label lookup, active sprite/channel queries, marker resolution, and frame counts.
-- Behavior parameter literal parsing is wired as a deferred empty result until the VM `LingoValueParser` equivalent is ported.
+- `lingo::LingoValueParser` ports Java-style literal parsing for saved behavior property lists, nested list/proplist values, symbols, strings, numbers, colors, points, rectangles, and partial expression fallback.
+- `ScoreNavigator` now decodes saved behavior parameter score entries through the C++ value parser and attaches parsed PropList parameters to behavior refs.
 
 ### Debug Breakpoint Foundation
 
@@ -571,7 +572,7 @@ Result:
 - CastMember bitmap, script, shape, dimension, type-check, raw chunk, and display string tests passed through the same CTest executable.
 - PlayerEvent handler names, event payload records, RenderType, and RenderConfig tests passed through the same CTest executable.
 - PlayerState, InputEvent factories, DirectorKeyCodes, and InputState mutation/queue tests passed through the same CTest executable.
-- ScoreBehaviorRef, SpriteSpan, ScoreNavigator labels, marker resolution, active sprites/channels, and frame-count tests passed through the same CTest executable.
+- ScoreBehaviorRef, SpriteSpan, ScoreNavigator labels, marker resolution, active sprites/channels, parsed behavior parameters, and frame-count tests passed through the same CTest executable.
 - Breakpoint, BreakpointManager, WatchExpression, and DebugSnapshot tests passed through the same CTest executable.
 - RenderPipelineTrace, RenderSprite, transform mirror, baked bitmap helpers, and FrameSnapshot tests passed through the same CTest executable.
 - SoftwareFrameRenderer background, stage-image, alpha, blend, scaling, flip, Director mirror, and special-ink tests passed through the same CTest executable.
@@ -764,4 +765,5 @@ Result:
 - `99a43fa8 Port C++ cast member property provider foundation`
 - `19b640a3 Port C++ script construction provider fallback`
 - `654802e7 Port C++ timeout object property dispatch`
-- Current checkpoint commit message: `Port C++ sound object property dispatch`
+- `c879164f Port C++ sound object property dispatch`
+- Current checkpoint commit message: `Port C++ behavior parameter value parser`

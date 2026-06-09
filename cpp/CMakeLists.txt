@@ -41,6 +41,7 @@ add_library(libreshockwave
     src/fonts/FontDataDecoder.cpp
     src/io/BinaryReader.cpp
     src/lingo/Datum.cpp
+    src/lingo/LingoValueParser.cpp
     src/lingo/Opcode.cpp
     src/lingo/builtin/BuiltinRegistry.cpp
     src/lingo/vm/ExecutionContext.cpp

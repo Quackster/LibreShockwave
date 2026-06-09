@@ -62,6 +62,7 @@
 #include "libreshockwave/id/Ids.hpp"
 #include "libreshockwave/io/BinaryReader.hpp"
 #include "libreshockwave/lingo/Datum.hpp"
+#include "libreshockwave/lingo/LingoValueParser.hpp"
 #include "libreshockwave/lingo/Opcode.hpp"
 #include "libreshockwave/lingo/builtin/BuiltinRegistry.hpp"
 #include "libreshockwave/lingo/vm/ExecutionContext.hpp"
@@ -171,6 +172,7 @@ using libreshockwave::chunks::SoundChunk;
 using libreshockwave::chunks::TextChunk;
 using libreshockwave::lingo::Datum;
 using libreshockwave::lingo::DatumType;
+using libreshockwave::lingo::LingoValueParser;
 using libreshockwave::lingo::LingoException;
 using libreshockwave::lingo::Opcode;
 using libreshockwave::lingo::StringChunkType;
@@ -4600,11 +4602,26 @@ void testScoreNavigationFoundation() {
 
     std::vector<std::vector<std::uint8_t>> entries{
         {},
-        {' ', '[', '#', 'p', ':', ' ', '1', ']', 0, 0}
+        {' ', '[', '#', 'p', ':', ' ', '1', ']', 0, 0},
+        {'[', '#', 'l', 'o', 'g', 'i', 'n', 'p', 'w', ':', ' ', '"', 'p', 'a', 's', 's', 'w', 'o', 'r', 'd', '_', 'f', 'i', 'e', 'l', 'd', '"', ',', ' ', '#', 'i', 's', 'L', 'o', 'g', 'i', 'n', 'F', 'i', 'e', 'l', 'd', ':', ' ', '0', ']', 0}
     };
     assert(ScoreNavigator::parseBehaviorParameters(entries, 0).empty());
-    assert(ScoreNavigator::parseBehaviorParameters(entries, 1).empty());
+    const auto parsedBehaviorParams = ScoreNavigator::parseBehaviorParameters(entries, 1);
+    assert(parsedBehaviorParams.size() == 1);
+    assert(parsedBehaviorParams[0].propListValue().get(Datum::symbol("p")).intValue() == 1);
+    const auto quotedBehaviorParams = ScoreNavigator::parseBehaviorParameters(entries, 2);
+    assert(quotedBehaviorParams.size() == 1);
+    assert(quotedBehaviorParams[0].propListValue().get(Datum::symbol("loginpw")).stringValue() == "password_field");
+    assert(quotedBehaviorParams[0].propListValue().get(Datum::symbol("isLoginField")).intValue() == 0);
     assert(ScoreNavigator::parseBehaviorParameters(entries, 99).empty());
+    assert(ScoreNavigator::parseBehaviorParameters({{}, {'n', 'o', 't', ' ', 'a', ' ', 'l', 'i', 's', 't'}}, 1).empty());
+
+    const Datum nestedLiteral = LingoValueParser::parseLiteral("[#states: [1, 2], #layers: [#main: [[#frames: [0]]]]]");
+    assert(nestedLiteral.isPropList());
+    assert(nestedLiteral.propListValue().get(Datum::symbol("states")).listValue().count() == 2);
+    const Datum layerLiteral = nestedLiteral.propListValue().get(Datum::symbol("layers"));
+    assert(layerLiteral.isPropList());
+    assert(layerLiteral.propListValue().get(Datum::symbol("main")).listValue().count() == 1);
 
     ScoreChunk::ScoreFrameData frameData = ScoreChunk::ScoreFrameData::empty();
     frameData.header.frameCount = 12;
@@ -4640,6 +4657,8 @@ void testScoreNavigationFoundation() {
     assert(navigator.getAllSpans().size() == 3);
     assert(navigator.getFrameScript(3) != nullptr);
     assert(navigator.getFrameScript(3)->castMember() == 7);
+    assert(navigator.getFrameScript(3)->parameters().size() == 1);
+    assert(navigator.getFrameScript(3)->parameters()[0].propListValue().get(Datum::symbol("p")).intValue() == 1);
     assert(navigator.getFrameScript(8) == nullptr);
 
     const auto spriteBehaviors = navigator.getSpriteBehaviors(5, 2);

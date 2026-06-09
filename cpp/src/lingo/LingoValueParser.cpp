@@ -1,0 +1,517 @@
+#include "libreshockwave/lingo/LingoValueParser.hpp"
+
+#include <algorithm>
+#include <cctype>
+#include <optional>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+namespace libreshockwave::lingo {
+namespace {
+
+std::string trim(std::string_view value) {
+    std::size_t begin = 0;
+    while (begin < value.size() && std::isspace(static_cast<unsigned char>(value[begin]))) {
+        ++begin;
+    }
+    std::size_t end = value.size();
+    while (end > begin && std::isspace(static_cast<unsigned char>(value[end - 1]))) {
+        --end;
+    }
+    return std::string(value.substr(begin, end - begin));
+}
+
+bool startsWith(std::string_view value, std::string_view prefix) {
+    return value.size() >= prefix.size() && value.substr(0, prefix.size()) == prefix;
+}
+
+bool endsWith(std::string_view value, std::string_view suffix) {
+    return value.size() >= suffix.size() && value.substr(value.size() - suffix.size()) == suffix;
+}
+
+bool equalsIgnoreCase(std::string_view lhs, std::string_view rhs) {
+    if (lhs.size() != rhs.size()) {
+        return false;
+    }
+    for (std::size_t i = 0; i < lhs.size(); ++i) {
+        if (std::tolower(static_cast<unsigned char>(lhs[i])) !=
+            std::tolower(static_cast<unsigned char>(rhs[i]))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool isIdentifier(std::string_view value) {
+    if (value.empty()) {
+        return false;
+    }
+    const auto first = static_cast<unsigned char>(value.front());
+    if (!std::isalpha(first) && value.front() != '_') {
+        return false;
+    }
+    return std::all_of(value.begin() + 1, value.end(), [](char ch) {
+        const auto uch = static_cast<unsigned char>(ch);
+        return std::isalnum(uch) || ch == '_';
+    });
+}
+
+bool isIntegerLiteral(std::string_view value) {
+    if (value.empty()) {
+        return false;
+    }
+    std::size_t start = value.front() == '-' ? 1 : 0;
+    if (start == value.size()) {
+        return false;
+    }
+    return std::all_of(value.begin() + static_cast<std::ptrdiff_t>(start), value.end(), [](char ch) {
+        return std::isdigit(static_cast<unsigned char>(ch));
+    });
+}
+
+bool isFloatLiteral(std::string_view value) {
+    if (value.empty()) {
+        return false;
+    }
+    std::size_t start = value.front() == '-' ? 1 : 0;
+    if (start == value.size()) {
+        return false;
+    }
+    std::optional<std::size_t> dotIndex;
+    for (std::size_t i = start; i < value.size(); ++i) {
+        if (value[i] == '.') {
+            if (dotIndex.has_value()) {
+                return false;
+            }
+            dotIndex = i;
+        } else if (!std::isdigit(static_cast<unsigned char>(value[i]))) {
+            return false;
+        }
+    }
+    return dotIndex.has_value() && *dotIndex > start && *dotIndex < value.size() - 1;
+}
+
+std::optional<int> parseInt(std::string_view value) {
+    if (!isIntegerLiteral(value)) {
+        return std::nullopt;
+    }
+    try {
+        return std::stoi(std::string(value));
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
+}
+
+std::optional<float> parseFloat(std::string_view value) {
+    if (!isFloatLiteral(value)) {
+        return std::nullopt;
+    }
+    try {
+        return std::stof(std::string(value));
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
+}
+
+std::string unescapeString(std::string_view value) {
+    std::string result;
+    result.reserve(value.size());
+    for (std::size_t i = 0; i < value.size(); ++i) {
+        char ch = value[i];
+        if (ch == '\\' && i + 1 < value.size()) {
+            char escaped = value[++i];
+            switch (escaped) {
+                case 'n': result.push_back('\n'); break;
+                case 'r': result.push_back('\r'); break;
+                case 't': result.push_back('\t'); break;
+                case '"': result.push_back('"'); break;
+                case '\\': result.push_back('\\'); break;
+                default: result.push_back(escaped); break;
+            }
+        } else {
+            result.push_back(ch);
+        }
+    }
+    return result;
+}
+
+std::vector<std::string> splitListElements(std::string_view content) {
+    std::vector<std::string> elements;
+    std::string current;
+    int bracketDepth = 0;
+    int parenDepth = 0;
+    bool inQuote = false;
+
+    for (std::size_t i = 0; i < content.size(); ++i) {
+        char ch = content[i];
+        if (ch == '"' && (i == 0 || content[i - 1] != '\\')) {
+            inQuote = !inQuote;
+            current.push_back(ch);
+        } else if (inQuote) {
+            current.push_back(ch);
+        } else if (ch == '[') {
+            ++bracketDepth;
+            current.push_back(ch);
+        } else if (ch == ']') {
+            --bracketDepth;
+            current.push_back(ch);
+        } else if (ch == '(') {
+            ++parenDepth;
+            current.push_back(ch);
+        } else if (ch == ')') {
+            --parenDepth;
+            current.push_back(ch);
+        } else if (ch == ',' && bracketDepth == 0 && parenDepth == 0) {
+            elements.push_back(current);
+            current.clear();
+        } else {
+            current.push_back(ch);
+        }
+    }
+
+    if (!current.empty()) {
+        elements.push_back(current);
+    }
+    return elements;
+}
+
+int findPropListColon(std::string_view element) {
+    int bracketDepth = 0;
+    int parenDepth = 0;
+    bool inQuote = false;
+
+    for (std::size_t i = 0; i < element.size(); ++i) {
+        char ch = element[i];
+        if (ch == '"' && (i == 0 || element[i - 1] != '\\')) {
+            inQuote = !inQuote;
+        } else if (!inQuote) {
+            if (ch == '[') {
+                ++bracketDepth;
+            } else if (ch == ']') {
+                --bracketDepth;
+            } else if (ch == '(') {
+                ++parenDepth;
+            } else if (ch == ')') {
+                --parenDepth;
+            } else if (ch == ':' && bracketDepth == 0 && parenDepth == 0) {
+                return static_cast<int>(i);
+            }
+        }
+    }
+    return -1;
+}
+
+std::optional<Datum> tryParseComplete(std::string_view expression);
+
+bool isPropListElement(std::string_view element) {
+    const int colonIndex = findPropListColon(element);
+    if (colonIndex < 0) {
+        return false;
+    }
+    const std::string rawKey = trim(element.substr(0, static_cast<std::size_t>(colonIndex)));
+    if (rawKey.empty()) {
+        return true;
+    }
+    if (startsWith(rawKey, "#")) {
+        const std::string key = trim(std::string_view(rawKey).substr(1));
+        return isIdentifier(key) || tryParseComplete(key).has_value();
+    }
+    if (startsWith(rawKey, "\"") && endsWith(rawKey, "\"") && rawKey.size() >= 2) {
+        return true;
+    }
+    return isIdentifier(rawKey);
+}
+
+Datum parsePropListKey(std::string_view rawKey) {
+    const std::string key = trim(rawKey);
+    if (startsWith(key, "#") && key.size() > 1) {
+        const std::string symbolText = trim(std::string_view(key).substr(1));
+        if (isIdentifier(symbolText)) {
+            return Datum::symbol(symbolText);
+        }
+        const auto parsed = tryParseComplete(symbolText);
+        return parsed.has_value() && !parsed->isVoid() ? *parsed : Datum::symbol(symbolText);
+    }
+    if (startsWith(key, "\"") && endsWith(key, "\"") && key.size() >= 2) {
+        const std::string unquoted = unescapeString(std::string_view(key).substr(1, key.size() - 2));
+        const auto parsed = tryParseComplete(unquoted);
+        return parsed.has_value() && !parsed->isVoid() ? *parsed : Datum::of(unquoted);
+    }
+    const auto parsed = tryParseComplete(key);
+    return parsed.has_value() && !parsed->isVoid() ? *parsed : Datum::of(key);
+}
+
+Datum parseListOrPropList(std::string_view content) {
+    const std::string trimmed = trim(content);
+    if (trimmed.empty()) {
+        return Datum::list();
+    }
+    if (trimmed == ":") {
+        return Datum::propList();
+    }
+
+    const auto elements = splitListElements(trimmed);
+    if (elements.empty()) {
+        return Datum::list();
+    }
+
+    if (isPropListElement(trim(elements.front()))) {
+        Datum props = Datum::propList();
+        for (const auto& rawElement : elements) {
+            const std::string element = trim(rawElement);
+            const int colonIndex = findPropListColon(element);
+            if (colonIndex <= 0) {
+                continue;
+            }
+            const Datum key = parsePropListKey(std::string_view(element).substr(0, static_cast<std::size_t>(colonIndex)));
+            const Datum value = LingoValueParser::parseWithPartial(
+                std::string_view(element).substr(static_cast<std::size_t>(colonIndex + 1)));
+            props.propListValue().properties().emplace_back(key, value);
+        }
+        return props;
+    }
+
+    std::vector<Datum> items;
+    items.reserve(elements.size());
+    for (const auto& element : elements) {
+        items.push_back(LingoValueParser::parseWithPartial(trim(element)));
+    }
+    return Datum::list(std::move(items));
+}
+
+std::optional<Datum> parseNumericCall(std::string_view expression, std::string_view name, int expectedParts) {
+    const std::string prefix = std::string(name) + "(";
+    if (!startsWith(expression, prefix) || !endsWith(expression, ")")) {
+        return std::nullopt;
+    }
+    const std::string inner = trim(expression.substr(prefix.size(), expression.size() - prefix.size() - 1));
+    const auto parts = splitListElements(inner);
+    if (static_cast<int>(parts.size()) != expectedParts) {
+        return std::nullopt;
+    }
+    std::vector<int> values;
+    values.reserve(parts.size());
+    for (const auto& part : parts) {
+        const auto parsed = parseInt(trim(part));
+        if (!parsed.has_value()) {
+            return std::nullopt;
+        }
+        values.push_back(*parsed);
+    }
+    if (name == "color" && values.size() == 3) {
+        return Datum::colorRef(values[0], values[1], values[2]);
+    }
+    if (name == "point" && values.size() == 2) {
+        return Datum::intPoint(values[0], values[1]);
+    }
+    if (name == "rect" && values.size() == 4) {
+        return Datum::intRect(values[0], values[1], values[2], values[3]);
+    }
+    return std::nullopt;
+}
+
+std::optional<Datum> parseRgb(std::string_view expression) {
+    if (!startsWith(expression, "rgb(") || !endsWith(expression, ")")) {
+        return std::nullopt;
+    }
+    const std::string inner = trim(expression.substr(4, expression.size() - 5));
+    if (startsWith(inner, "\"") && endsWith(inner, "\"") && inner.size() >= 2) {
+        std::string hex = trim(std::string_view(inner).substr(1, inner.size() - 2));
+        if (startsWith(hex, "#")) {
+            hex.erase(hex.begin());
+        }
+        try {
+            std::size_t parsedChars = 0;
+            const unsigned long value = std::stoul(hex, &parsedChars, 16);
+            if (parsedChars == hex.size()) {
+                return Datum::colorRef(static_cast<int>((value >> 16U) & 0xFFU),
+                                       static_cast<int>((value >> 8U) & 0xFFU),
+                                       static_cast<int>(value & 0xFFU));
+            }
+        } catch (const std::exception&) {
+            return std::nullopt;
+        }
+    }
+
+    const auto parts = splitListElements(inner);
+    if (parts.size() == 1) {
+        const auto parsed = parseInt(trim(parts[0]));
+        if (parsed.has_value()) {
+            const unsigned int value = static_cast<unsigned int>(*parsed);
+            return Datum::colorRef(static_cast<int>((value >> 16U) & 0xFFU),
+                                   static_cast<int>((value >> 8U) & 0xFFU),
+                                   static_cast<int>(value & 0xFFU));
+        }
+    }
+    if (parts.size() == 3) {
+        std::vector<int> values;
+        for (const auto& part : parts) {
+            const auto parsed = parseInt(trim(part));
+            if (!parsed.has_value()) {
+                return std::nullopt;
+            }
+            values.push_back(*parsed);
+        }
+        return Datum::colorRef(values[0], values[1], values[2]);
+    }
+    return std::nullopt;
+}
+
+std::optional<Datum> tryParseComplete(std::string_view expression) {
+    const std::string expr = trim(expression);
+    if (expr.empty()) {
+        return Datum::voidValue();
+    }
+    if (const auto parsed = parseInt(expr)) {
+        return Datum::of(*parsed);
+    }
+    if (const auto parsed = parseFloat(expr)) {
+        return Datum::of(*parsed);
+    }
+    if (startsWith(expr, "#") && expr.size() > 1) {
+        const std::string symbolName(std::string_view(expr).substr(1));
+        if (isIdentifier(symbolName)) {
+            return Datum::symbol(symbolName);
+        }
+    }
+    if (startsWith(expr, "\"") && endsWith(expr, "\"") && expr.size() >= 2) {
+        return Datum::of(unescapeString(std::string_view(expr).substr(1, expr.size() - 2)));
+    }
+    if (const auto parsed = parseNumericCall(expr, "color", 3)) {
+        return *parsed;
+    }
+    if (const auto parsed = parseRgb(expr)) {
+        return *parsed;
+    }
+    if (const auto parsed = parseNumericCall(expr, "rect", 4)) {
+        return *parsed;
+    }
+    if (const auto parsed = parseNumericCall(expr, "point", 2)) {
+        return *parsed;
+    }
+    if (startsWith(expr, "[") && endsWith(expr, "]")) {
+        return parseListOrPropList(std::string_view(expr).substr(1, expr.size() - 2));
+    }
+    if (isIdentifier(expr)) {
+        if (equalsIgnoreCase(expr, "TRUE")) return Datum::TRUE;
+        if (equalsIgnoreCase(expr, "FALSE")) return Datum::FALSE;
+        if (equalsIgnoreCase(expr, "VOID")) return Datum::voidValue();
+        if (equalsIgnoreCase(expr, "EMPTY")) return Datum::of(std::string());
+        return Datum::voidValue();
+    }
+    return std::nullopt;
+}
+
+Datum parseFirstValidExpression(std::string_view expression) {
+    const std::string expr = trim(expression);
+    if (expr.empty()) {
+        return Datum::voidValue();
+    }
+    std::size_t pos = 0;
+    const char first = expr[pos];
+    if (std::isdigit(static_cast<unsigned char>(first)) ||
+        (first == '-' && pos + 1 < expr.size() && std::isdigit(static_cast<unsigned char>(expr[pos + 1])))) {
+        const std::size_t start = pos;
+        if (first == '-') {
+            ++pos;
+        }
+        while (pos < expr.size() && std::isdigit(static_cast<unsigned char>(expr[pos]))) {
+            ++pos;
+        }
+        if (pos < expr.size() && expr[pos] == '.' && pos + 1 < expr.size() &&
+            std::isdigit(static_cast<unsigned char>(expr[pos + 1]))) {
+            ++pos;
+            while (pos < expr.size() && std::isdigit(static_cast<unsigned char>(expr[pos]))) {
+                ++pos;
+            }
+            if (const auto parsed = parseFloat(std::string_view(expr).substr(start, pos - start))) {
+                return Datum::of(*parsed);
+            }
+            return Datum::voidValue();
+        }
+        if (const auto parsed = parseInt(std::string_view(expr).substr(start, pos - start))) {
+            return Datum::of(*parsed);
+        }
+        return Datum::voidValue();
+    }
+
+    if (first == '"') {
+        std::string value;
+        for (++pos; pos < expr.size(); ++pos) {
+            if (expr[pos] == '\\' && pos + 1 < expr.size()) {
+                value.push_back(expr[++pos]);
+            } else if (expr[pos] == '"') {
+                return Datum::of(value);
+            } else {
+                value.push_back(expr[pos]);
+            }
+        }
+        return Datum::voidValue();
+    }
+
+    if (first == '#') {
+        ++pos;
+        const std::size_t start = pos;
+        while (pos < expr.size() &&
+               (std::isalnum(static_cast<unsigned char>(expr[pos])) || expr[pos] == '_')) {
+            ++pos;
+        }
+        return pos > start ? Datum::symbol(expr.substr(start, pos - start)) : Datum::voidValue();
+    }
+
+    if (first == '[') {
+        int bracketDepth = 1;
+        bool inQuote = false;
+        for (++pos; pos < expr.size() && bracketDepth > 0; ++pos) {
+            char ch = expr[pos];
+            if (ch == '"' && (pos == 0 || expr[pos - 1] != '\\')) {
+                inQuote = !inQuote;
+            } else if (!inQuote) {
+                if (ch == '[') {
+                    ++bracketDepth;
+                } else if (ch == ']') {
+                    --bracketDepth;
+                }
+            }
+        }
+        if (bracketDepth == 0) {
+            return parseListOrPropList(std::string_view(expr).substr(1, pos - 2));
+        }
+        return Datum::voidValue();
+    }
+
+    if (std::isalpha(static_cast<unsigned char>(first)) || first == '_') {
+        const std::size_t start = pos;
+        while (pos < expr.size() &&
+               (std::isalnum(static_cast<unsigned char>(expr[pos])) || expr[pos] == '_')) {
+            ++pos;
+        }
+        const std::string identifier = expr.substr(start, pos - start);
+        if (equalsIgnoreCase(identifier, "TRUE")) return Datum::TRUE;
+        if (equalsIgnoreCase(identifier, "FALSE")) return Datum::FALSE;
+        if (equalsIgnoreCase(identifier, "VOID")) return Datum::voidValue();
+        if (equalsIgnoreCase(identifier, "EMPTY")) return Datum::of(std::string());
+    }
+    return Datum::voidValue();
+}
+
+} // namespace
+
+Datum LingoValueParser::parseLiteral(std::string_view expression) {
+    return parseWithPartial(expression);
+}
+
+Datum LingoValueParser::parseWithPartial(std::string_view expression) {
+    const std::string expr = trim(expression);
+    if (expr.empty()) {
+        return Datum::voidValue();
+    }
+    const auto complete = tryParseComplete(expr);
+    if (complete.has_value()) {
+        return *complete;
+    }
+    return parseFirstValidExpression(expr);
+}
+
+} // namespace libreshockwave::lingo

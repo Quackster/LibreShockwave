@@ -7,6 +7,7 @@
 #include "libreshockwave/DirectorFile.hpp"
 #include "libreshockwave/chunks/FrameLabelsChunk.hpp"
 #include "libreshockwave/chunks/ScoreChunk.hpp"
+#include "libreshockwave/lingo/LingoValueParser.hpp"
 
 namespace libreshockwave::player::score {
 namespace {
@@ -85,8 +86,8 @@ std::vector<lingo::Datum> ScoreNavigator::parseBehaviorParameters(
         return {};
     }
 
-    // Full Lingo literal parsing is ported separately from the VM value parser.
-    return {};
+    const auto parsed = lingo::LingoValueParser::parseLiteral(text);
+    return parsed.isPropList() ? std::vector<lingo::Datum>{parsed} : std::vector<lingo::Datum>{};
 }
 
 void ScoreNavigator::buildFrameLabels() {
