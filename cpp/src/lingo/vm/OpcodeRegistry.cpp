@@ -1652,6 +1652,29 @@ Datum rectObjectMethod(const Datum::IntRect& rect, std::string_view methodName, 
     return Datum::voidValue();
 }
 
+Datum castLibObjectMethod(ExecutionContext& context,
+                          const Datum::CastLibRef& castLib,
+                          std::string_view methodName,
+                          const std::vector<Datum>& args) {
+    if ((!equalsIgnoreCase(methodName, "getProp") && !equalsIgnoreCase(methodName, "getPropRef")) || args.size() < 2 ||
+        !equalsIgnoreCase(keyNameLikeJava(args[0]), "member")) {
+        return Datum::voidValue();
+    }
+
+    auto* builtinContext = context.builtinContext();
+    if (builtinContext == nullptr) {
+        return Datum::voidValue();
+    }
+
+    const Datum& key = args[1];
+    if (key.isInt() || key.isFloat()) {
+        return builtinContext->castMemberResolver ? builtinContext->castMemberResolver(castLib.castLib, toIntLikeJava(key))
+                                                  : Datum::voidValue();
+    }
+    return builtinContext->castMemberNameResolver ? builtinContext->castMemberNameResolver(castLib.castLib, toStringLikeJava(key))
+                                                  : Datum::voidValue();
+}
+
 Datum getContextVar(ExecutionContext& context, id::VarType varType, const Datum& idDatum);
 
 Datum varRefObjectMethod(ExecutionContext& context,
@@ -1713,6 +1736,9 @@ Datum dispatchObjectMethod(ExecutionContext& context, Datum target, std::string_
     if (const auto* xtraInstance = target.asXtraInstance()) {
         return builtinContext != nullptr ? builtin::XtraBuiltins::callHandler(*builtinContext, *xtraInstance, methodName, args)
                                          : Datum::voidValue();
+    }
+    if (const auto* castLib = target.asCastLibRef()) {
+        return castLibObjectMethod(context, *castLib, methodName, args);
     }
     if (target.isList()) {
         return listObjectMethod(target.listValue(), methodName, args);

@@ -3109,6 +3109,25 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runObjCall(69, {globalVarRef, Datum::of(4)}).stringValue() == "d");
     assert(runObjCall(70, {globalVarRef}).intValue() == 4);
 
+    builtinContext.castMemberResolver = [](int castLib, int memberNum) {
+        return Datum::castMemberRef(CastLibId(castLib), MemberId(memberNum));
+    };
+    builtinContext.castMemberNameResolver = [](int castLib, const std::string& name) {
+        if (castLib == 3 && name == "door") {
+            return Datum::castMemberRef(CastLibId(3), MemberId(12));
+        }
+        return Datum::voidValue();
+    };
+    const Datum castLibMemberByNum = runObjCall(67, {Datum::castLibRef(CastLibId(3)), Datum::symbol("member"), Datum::of(8)});
+    assert(castLibMemberByNum.asCastMemberRef()->castLib == 3);
+    assert(castLibMemberByNum.asCastMemberRef()->memberNum() == 8);
+    const Datum castLibMemberByName =
+        runObjCall(67, {Datum::castLibRef(CastLibId(3)), Datum::symbol("member"), Datum::of(std::string("door"))});
+    assert(castLibMemberByName.asCastMemberRef()->castLib == 3);
+    assert(castLibMemberByName.asCastMemberRef()->memberNum() == 12);
+    builtinContext.castMemberResolver = {};
+    builtinContext.castMemberNameResolver = {};
+
     assert(runObjCall(69, {Datum::of(std::string("abc")), Datum::of(2)}).stringValue() == "b");
     assert(runObjCall(70, {Datum::of(std::string("one two")), Datum::symbol("word")}).intValue() == 2);
     assert(runObjCall(71, {Datum::intPoint(5, 6), Datum::intRect(0, 0, 10, 10)}).boolValue());

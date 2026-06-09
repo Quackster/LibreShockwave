@@ -612,7 +612,7 @@ Result:
 - OpcodeRegistry movie-property provider reads/writes and provider-backed `the` lookups passed through the same CTest executable.
 - OpcodeRegistry provider-backed object property gets/sets for movie, player, stage, sprite, integer-as-sprite refs, and cast-member metadata passed through the same CTest executable.
 - OpcodeRegistry local/external call handlers, builtin dispatch, no-return calls, constant fallback, and error-state handling passed through the same CTest executable.
-- OpcodeRegistry object method calls and receiver-style external method calls for lists, property lists, strings, points, rectangles, timeouts, sound channels, and Xtra instances passed through the same CTest executable.
+- OpcodeRegistry object method calls and receiver-style external method calls for lists, property lists, strings, points, rectangles, cast library member lookups, timeouts, sound channels, and Xtra instances passed through the same CTest executable.
 - OpcodeRegistry `NEW_OBJ` script construction delegation, fallback construction, and non-script rejection passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
@@ -715,4 +715,5 @@ Result:
 - `afc0c541 Port C++ opcode object property provider foundation`
 - `d3e3fbc1 Port C++ opcode object method provider foundation`
 - `c2223b5b Port C++ opcode legacy property provider foundation`
-- Current checkpoint commit message: `Port C++ opcode cast member property foundation`
+- `ca5a2a3b Port C++ opcode cast member property foundation`
+- Current checkpoint commit message: `Port C++ opcode cast library method foundation`
