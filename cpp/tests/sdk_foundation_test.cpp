@@ -2306,6 +2306,7 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opcodeRegistry.hasHandler(Opcode::AND));
     assert(opcodeRegistry.hasHandler(Opcode::OR));
     assert(opcodeRegistry.hasHandler(Opcode::NOT));
+    assert(opcodeRegistry.hasHandler(Opcode::GET_CHUNK));
     assert(opcodeRegistry.hasHandler(Opcode::JOIN_STR));
     assert(opcodeRegistry.hasHandler(Opcode::JOIN_PAD_STR));
     assert(opcodeRegistry.hasHandler(Opcode::CONTAINS_STR));
@@ -2700,7 +2701,44 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         assert(opcodeRegistry.execute(opcode, binaryContext));
         return binaryContext.pop();
     };
+    auto runGetChunk = [&](Datum value,
+                           int firstChar,
+                           int lastChar,
+                           int firstWord,
+                           int lastWord,
+                           int firstItem,
+                           int lastItem,
+                           int firstLine,
+                           int lastLine) {
+        Scope chunkScope(&script, handler, {});
+        ExecutionContext chunkContext(chunkScope,
+                                      ScriptChunk::Instruction{0,
+                                                               Opcode::GET_CHUNK,
+                                                               libreshockwave::lingo::code(Opcode::GET_CHUNK),
+                                                               0});
+        chunkContext.push(Datum::of(firstChar));
+        chunkContext.push(Datum::of(lastChar));
+        chunkContext.push(Datum::of(firstWord));
+        chunkContext.push(Datum::of(lastWord));
+        chunkContext.push(Datum::of(firstItem));
+        chunkContext.push(Datum::of(lastItem));
+        chunkContext.push(Datum::of(firstLine));
+        chunkContext.push(Datum::of(lastLine));
+        chunkContext.push(std::move(value));
+        assert(opcodeRegistry.execute(Opcode::GET_CHUNK, chunkContext));
+        return chunkContext.pop();
+    };
 
+    assert(runGetChunk(Datum::of(std::string("abcd")), 2, 0, 0, 0, 0, 0, 0, 0).stringValue() == "b");
+    assert(runGetChunk(Datum::of(std::string("abcd")), 2, 3, 0, 0, 0, 0, 0, 0).stringValue() == "bc");
+    assert(runGetChunk(Datum::of(std::string("abcd")), -1, 0, 0, 0, 0, 0, 0, 0).stringValue() == "d");
+    assert(runGetChunk(Datum::of(std::string("one  two\tthree")), 0, 0, 2, 3, 0, 0, 0, 0).stringValue() == "two three");
+    assert(runGetChunk(Datum::of(std::string("red,green,blue")), 0, 0, 0, 0, 2, 0, 0, 0).stringValue() == "green");
+    assert(runGetChunk(Datum::of(std::string("red,green,blue")), 0, 0, 0, 0, 2, 3, 0, 0).stringValue() == "green,blue");
+    assert(runGetChunk(Datum::of(std::string("top\nmiddle\nbottom")), 0, 0, 0, 0, 0, 0, 2, 0).stringValue() == "middle");
+    assert(runGetChunk(Datum::of(std::string("top\r\nmiddle")), 0, 0, 0, 0, 0, 0, 2, 0).stringValue() == "middle");
+    assert(runGetChunk(Datum::of(std::string("alpha beta\nred green blue")), 2, 4, 2, 0, 0, 0, 2, 0).stringValue() == "ree");
+    assert(runGetChunk(Datum::of(std::string("short")), 9, 0, 0, 0, 0, 0, 0, 0).stringValue().empty());
     assert(runBinary(Opcode::JOIN_STR, Datum::of(12), Datum::of(std::string("px"))).stringValue() == "12px");
     assert(runBinary(Opcode::JOIN_STR, Datum::voidValue(), Datum::of(std::string("tail"))).stringValue() == "tail");
     assert(runBinary(Opcode::JOIN_PAD_STR, Datum::of(std::string("hello")), Datum::of(std::string("world"))).stringValue() == "hello world");

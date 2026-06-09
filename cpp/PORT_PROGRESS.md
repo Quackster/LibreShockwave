@@ -436,7 +436,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `lingo::vm::OpcodeRegistry` now maps opcode enums to executable C++ handler callbacks with post-construction registration hooks.
 - Stack opcode handlers cover zero/int/float/literal/symbol pushes plus swap, pop, and peek behavior over `ExecutionContext`.
 - Control-flow opcode handlers cover return, factory return, absolute jump target lookup, conditional zero jump, and repeat-loop back jumps.
-- Provider-backed object construction/method calls, string chunk extraction/mutation, and provider-backed property opcodes remain deferred to later focused VM slices.
+- Provider-backed object construction/method calls, string chunk mutation, and provider-backed property opcodes remain deferred to later focused VM slices.
 
 ### Lingo Opcode Arithmetic, Comparison, and Logical Foundation
 
@@ -454,7 +454,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - Simple string opcode handlers now cover concatenation, padded concatenation, case-insensitive contains, and case-insensitive starts-with checks.
 - String coercion follows the Java datum `toStr` path for void, strings/string chunks, symbols, references, lists, and property lists.
-- GET_CHUNK, PUT, PUT_CHUNK, and DELETE_CHUNK remain deferred to a focused string chunk opcode slice.
+- PUT, PUT_CHUNK, and DELETE_CHUNK remain deferred to a focused string chunk mutation opcode slice.
 
 ### Lingo Opcode Basic Property Foundation
 
@@ -479,6 +479,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `NEW_OBJ` now handles script object construction from arg lists through the C++ opcode registry.
 - Script construction delegates to the registered `new` builtin/new-instance callback when available, then falls back to named C++ script-instance datums.
 - Cast-provider-backed script lookup, declared property preinitialization, and automatic `new` handler invocation remain deferred to the full C++ cast/VM runtime integration.
+
+### Lingo Opcode String Chunk Extraction Foundation
+
+- `GET_CHUNK` now extracts string char, word, item, and line chunks through the C++ opcode registry.
+- Chunk extraction mirrors Java stack order, sequential line/item/word/char narrowing, negative-index last-chunk behavior, and out-of-range empty-string results.
+- String chunk mutation opcodes and movie-property-backed item delimiter integration remain deferred to the next focused string opcode slice.
 
 ## Verification
 
@@ -543,6 +549,7 @@ Result:
 - BehaviorInstance and BehaviorManager ID/property state, behavior-ref parameters, frame-script caching, channel lookup/removal, sprite-instance ordering, and clear tests passed through the same CTest executable.
 - EventDispatcher global, frame/movie, sprite/movie, sprite-only, behavior-only, and movie-only dispatch ordering, pass propagation, dynamic script-instance dispatch, sprite handler lookup, mouse interactivity, mouse-handler recognition, debug flag, and stopEvent state tests passed through the same CTest executable.
 - SpriteProperties missing defaults, property get/set, revision bumps, cast member assignment, autosizing, registration-aware bounds, cursor lists, script-instance sprite numbers, release cleanup, color refs, and image callbacks passed through the same CTest executable.
+- Lingo `GET_CHUNK` char/word/item/line extraction, range, negative last-index, and sequential narrowing tests passed through the same CTest executable.
 - MovieProperties movie/stage property reads and writes, file/input-backed values, xtra lists, item delimiters, timers, stage background color, random seed, navigation callbacks, and net navigation callbacks passed through the same CTest executable.
 - BuiltinRegistry case-insensitive lookup, custom registration, movie label/marker builtins, sprite puppet/cursor/spriteBox builtins, puppetPalette hooks, and Java-compatible no-op sprite builtins passed through the same CTest executable.
 - MathBuiltins numeric coercion, integer/float conversion, bit operations, trig, power, min/max, list min/max, and random callback hooks passed through the same CTest executable.
@@ -655,4 +662,5 @@ Result:
 - `753e8bcb Port C++ opcode property foundation`
 - `66292160 Port C++ opcode call foundation`
 - `c9be4391 Port C++ opcode object call foundation`
-- Current checkpoint commit message: `Port C++ opcode object construction foundation`
+- `10193311 Port C++ opcode object construction foundation`
+- Current checkpoint commit message: `Port C++ opcode string chunk foundation`

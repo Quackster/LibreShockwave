@@ -843,7 +843,7 @@ std::vector<std::string> splitWords(std::string_view value) {
     std::vector<std::string> words;
     std::string current;
     for (const char ch : value) {
-        if (std::isspace(static_cast<unsigned char>(ch))) {
+        if (static_cast<unsigned char>(ch) <= static_cast<unsigned char>(' ')) {
             if (!current.empty()) {
                 words.push_back(current);
                 current.clear();
@@ -858,17 +858,72 @@ std::vector<std::string> splitWords(std::string_view value) {
     return words;
 }
 
+std::string pickLineDelimiter(std::string_view value) {
+    if (value.find("\r\n") != std::string_view::npos) {
+        return "\r\n";
+    }
+    if (value.find('\n') != std::string_view::npos) {
+        return "\n";
+    }
+    if (value.find('\r') != std::string_view::npos) {
+        return "\r";
+    }
+    return "\r\n";
+}
+
+std::vector<std::string> splitLines(std::string_view value) {
+    if (value.empty()) {
+        return {};
+    }
+
+    const std::string delimiter = pickLineDelimiter(value);
+    std::vector<std::string> lines;
+    std::size_t start = 0;
+    while (true) {
+        const std::size_t found = value.find(delimiter, start);
+        if (found == std::string_view::npos) {
+            lines.emplace_back(value.substr(start));
+            break;
+        }
+        lines.emplace_back(value.substr(start, found - start));
+        start = found + delimiter.size();
+    }
+    return lines;
+}
+
+std::vector<std::string> splitItems(std::string_view value, char delimiter = ',') {
+    if (value.empty()) {
+        return {};
+    }
+
+    std::vector<std::string> items;
+    std::string current;
+    for (const char ch : value) {
+        if (ch == delimiter) {
+            items.push_back(current);
+            current.clear();
+        } else {
+            current.push_back(ch);
+        }
+    }
+    items.push_back(std::move(current));
+    return items;
+}
+
+std::vector<std::string> splitChars(std::string_view value) {
+    std::vector<std::string> chars;
+    chars.reserve(value.size());
+    for (const char ch : value) {
+        chars.emplace_back(1, ch);
+    }
+    return chars;
+}
+
 int countLines(std::string_view value) {
     if (value.empty()) {
         return 1;
     }
-    int count = 1;
-    for (const char ch : value) {
-        if (ch == '\n' || ch == '\r') {
-            ++count;
-        }
-    }
-    return count;
+    return static_cast<int>(splitLines(value).size());
 }
 
 int countItems(std::string_view value, char delimiter = ',') {
@@ -876,6 +931,137 @@ int countItems(std::string_view value, char delimiter = ',') {
         return 1;
     }
     return static_cast<int>(std::count(value.begin(), value.end(), delimiter)) + 1;
+}
+
+std::vector<std::string> splitChunks(std::string_view value, StringChunkType type, char itemDelimiter = ',') {
+    switch (type) {
+        case StringChunkType::Char:
+            return splitChars(value);
+        case StringChunkType::Word:
+            return splitWords(value);
+        case StringChunkType::Item:
+            return splitItems(value, itemDelimiter);
+        case StringChunkType::Line:
+            return splitLines(value);
+    }
+    return {};
+}
+
+std::string chunkDelimiter(StringChunkType type, char itemDelimiter = ',') {
+    switch (type) {
+        case StringChunkType::Char:
+            return "";
+        case StringChunkType::Word:
+            return " ";
+        case StringChunkType::Item:
+            return std::string(1, itemDelimiter);
+        case StringChunkType::Line:
+            return "\r\n";
+    }
+    return "";
+}
+
+int countChunks(std::string_view value, StringChunkType type, char itemDelimiter = ',') {
+    if (value.empty()) {
+        return type == StringChunkType::Item || type == StringChunkType::Line ? 1 : 0;
+    }
+    if (type == StringChunkType::Char) {
+        return static_cast<int>(value.size());
+    }
+    if (type == StringChunkType::Item) {
+        return countItems(value, itemDelimiter);
+    }
+    return static_cast<int>(splitChunks(value, type, itemDelimiter).size());
+}
+
+std::string joinChunkRange(const std::vector<std::string>& chunks,
+                           int start,
+                           int end,
+                           const std::string& delimiter) {
+    if (chunks.empty() || start < 1 || start > static_cast<int>(chunks.size())) {
+        return "";
+    }
+
+    const int actualEnd = std::min(end, static_cast<int>(chunks.size()));
+    if (actualEnd < start) {
+        return "";
+    }
+
+    std::string result;
+    for (int index = start; index <= actualEnd; ++index) {
+        if (index > start) {
+            result += delimiter;
+        }
+        result += chunks[static_cast<std::size_t>(index - 1)];
+    }
+    return result;
+}
+
+std::string getChunkValue(std::string_view value, StringChunkType type, int index, char itemDelimiter = ',') {
+    if (value.empty() || index < 1) {
+        return "";
+    }
+    if (type == StringChunkType::Char) {
+        if (index > static_cast<int>(value.size())) {
+            return "";
+        }
+        return std::string(1, value[static_cast<std::size_t>(index - 1)]);
+    }
+
+    const auto chunks = splitChunks(value, type, itemDelimiter);
+    if (index > static_cast<int>(chunks.size())) {
+        return "";
+    }
+    return chunks[static_cast<std::size_t>(index - 1)];
+}
+
+std::string getChunkRangeValue(std::string_view value,
+                               StringChunkType type,
+                               int start,
+                               int end,
+                               char itemDelimiter = ',') {
+    if (value.empty() || start < 1) {
+        return "";
+    }
+    if (type == StringChunkType::Char) {
+        if (start > static_cast<int>(value.size())) {
+            return "";
+        }
+        const int actualEnd = std::min(end, static_cast<int>(value.size()));
+        if (actualEnd < start) {
+            return "";
+        }
+        return std::string(value.substr(static_cast<std::size_t>(start - 1),
+                                        static_cast<std::size_t>(actualEnd - start + 1)));
+    }
+
+    const auto chunks = splitChunks(value, type, itemDelimiter);
+    return joinChunkRange(chunks, start, end, chunkDelimiter(type, itemDelimiter));
+}
+
+std::string resolveChunkRange(std::string_view value,
+                              StringChunkType type,
+                              int first,
+                              int last,
+                              char itemDelimiter = ',') {
+    if (first == 0 && last == 0) {
+        return std::string(value);
+    }
+    if (first < 0 || last < 0) {
+        const int count = countChunks(value, type, itemDelimiter);
+        if (first < 0) {
+            first = count;
+        }
+        if (last < 0) {
+            last = count;
+        }
+    }
+
+    const int effectiveLast = last == 0 ? first : last;
+    if (first == effectiveLast) {
+        return getChunkValue(value, type, first, itemDelimiter);
+    }
+    return getChunkRangeValue(value, type, first, effectiveLast, itemDelimiter);
 }
 
 Datum stringObjectMethod(const Datum& target, std::string_view methodName, const std::vector<Datum>& args) {
@@ -1442,6 +1628,67 @@ bool contains0Str(ExecutionContext& context) {
     return true;
 }
 
+bool getChunk(ExecutionContext& context) {
+    const Datum stringDatum = context.pop();
+    const int lastLine = toIntLikeJava(context.pop());
+    const int firstLine = toIntLikeJava(context.pop());
+    const int lastItem = toIntLikeJava(context.pop());
+    const int firstItem = toIntLikeJava(context.pop());
+    const int lastWord = toIntLikeJava(context.pop());
+    const int firstWord = toIntLikeJava(context.pop());
+    const int lastChar = toIntLikeJava(context.pop());
+    const int firstChar = toIntLikeJava(context.pop());
+
+    const std::string value = toStringLikeJava(stringDatum);
+    if (firstChar != 0 && lastChar == 0 &&
+        firstWord == 0 && lastWord == 0 &&
+        firstItem == 0 && lastItem == 0 &&
+        firstLine == 0 && lastLine == 0) {
+        const int resolvedChar = firstChar < 0 ? static_cast<int>(value.size()) : firstChar;
+        const int index = resolvedChar - 1;
+        if (index >= 0 && index < static_cast<int>(value.size())) {
+            context.push(Datum::of(value.substr(static_cast<std::size_t>(index), 1)));
+        } else {
+            context.push(Datum::of(std::string()));
+        }
+        return true;
+    }
+
+    if (firstChar != 0 && lastChar != 0 &&
+        firstWord == 0 && lastWord == 0 &&
+        firstItem == 0 && lastItem == 0 &&
+        firstLine == 0 && lastLine == 0) {
+        const int resolvedFirst = firstChar < 0 ? static_cast<int>(value.size()) : firstChar;
+        const int resolvedLast = lastChar < 0 ? static_cast<int>(value.size()) : lastChar;
+        const int start = resolvedFirst - 1;
+        const int end = std::min(resolvedLast, static_cast<int>(value.size()));
+        if (start >= 0 && start < static_cast<int>(value.size()) && end > start) {
+            context.push(Datum::of(value.substr(static_cast<std::size_t>(start),
+                                                static_cast<std::size_t>(end - start))));
+        } else {
+            context.push(Datum::of(std::string()));
+        }
+        return true;
+    }
+
+    constexpr char itemDelimiter = ',';
+    std::string result = value;
+    if (firstLine != 0 || lastLine != 0) {
+        result = resolveChunkRange(result, StringChunkType::Line, firstLine, lastLine, itemDelimiter);
+    }
+    if (firstItem != 0 || lastItem != 0) {
+        result = resolveChunkRange(result, StringChunkType::Item, firstItem, lastItem, itemDelimiter);
+    }
+    if (firstWord != 0 || lastWord != 0) {
+        result = resolveChunkRange(result, StringChunkType::Word, firstWord, lastWord, itemDelimiter);
+    }
+    if (firstChar != 0 || lastChar != 0) {
+        result = resolveChunkRange(result, StringChunkType::Char, firstChar, lastChar, itemDelimiter);
+    }
+    context.push(Datum::of(std::move(result)));
+    return true;
+}
+
 bool getLocal(ExecutionContext& context) {
     context.push(context.getLocal(context.scaledArgument()));
     return true;
@@ -1721,6 +1968,7 @@ void LogicalOpcodes::registerHandlers(OpcodeRegistry& registry) {
 }
 
 void StringOpcodes::registerHandlers(OpcodeRegistry& registry) {
+    registry.registerHandler(Opcode::GET_CHUNK, getChunk);
     registry.registerHandler(Opcode::JOIN_STR, joinStr);
     registry.registerHandler(Opcode::JOIN_PAD_STR, joinPadStr);
     registry.registerHandler(Opcode::CONTAINS_STR, containsStr);
