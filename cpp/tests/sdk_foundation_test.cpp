@@ -2299,6 +2299,9 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 109) {
             return std::string("createMask");
         }
+        if (nameId == 110) {
+            return std::string("copyPixels");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.callStackFormatter = []() {
@@ -3375,6 +3378,59 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(mask->bitmap->getPixel(0, 1) == 0xFFFFFFFFU);
     assert(mask->bitmap->getPixel(1, 1) == 0xFF000000U);
     assert(mask->bitmap->getPixel(2, 1) == 0xFFFFFFFFU);
+    auto copySource = std::make_shared<Bitmap>(2, 2, 32, std::vector<std::uint32_t>{
+        0xFFFF0000U, 0xFF00FF00U,
+        0xFF0000FFU, 0xFFFFFFFFU
+    });
+    copySource->setAnchorPoint(1, 0);
+    auto copyDest = std::make_shared<Bitmap>(4, 4, 32);
+    copyDest->fill(0xFF000000U);
+    assert(runObjCall(110, {Datum::imageRef(copyDest),
+                            Datum::imageRef(copySource),
+                            Datum::intRect(1, 1, 3, 3),
+                            Datum::intRect(0, 0, 2, 2)}).isVoid());
+    assert(copyDest->isScriptModified());
+    assert(copyDest->getPixel(1, 1) == 0xFFFF0000U);
+    assert(copyDest->getPixel(2, 1) == 0xFF00FF00U);
+    assert(copyDest->getPixel(1, 2) == 0xFF0000FFU);
+    assert(copyDest->getPixel(2, 2) == 0xFFFFFFFFU);
+    assert(copyDest->hasAnchorPoint());
+    assert(copyDest->anchorX() == 2);
+    assert(copyDest->anchorY() == 1);
+    auto scaleSource = std::make_shared<Bitmap>(
+        2, 1, 32, std::vector<std::uint32_t>{0xFFFF0000U, 0xFF0000FFU});
+    auto scaleDest = std::make_shared<Bitmap>(4, 1, 32);
+    assert(runObjCall(110, {Datum::imageRef(scaleDest),
+                            Datum::imageRef(scaleSource),
+                            Datum::intRect(0, 0, 4, 1),
+                            Datum::intRect(0, 0, 2, 1)}).isVoid());
+    assert(scaleDest->getPixel(0, 0) == 0xFFFF0000U);
+    assert(scaleDest->getPixel(1, 0) == 0xFFFF0000U);
+    assert(scaleDest->getPixel(2, 0) == 0xFF0000FFU);
+    assert(scaleDest->getPixel(3, 0) == 0xFF0000FFU);
+    auto paletteCopySource = std::make_shared<Bitmap>(
+        2, 1, 8, std::vector<std::uint32_t>{0xFF000000U, 0xFF112233U});
+    paletteCopySource->setImagePalette(std::make_shared<Palette>(
+        std::vector<std::uint32_t>{0x000000U, 0x112233U}, "copy"));
+    paletteCopySource->setPaletteIndices({0, 1});
+    auto paletteCopyDest = std::make_shared<Bitmap>(2, 1, 8);
+    paletteCopyDest->fill(0xFFFFFFFFU);
+    assert(runObjCall(110, {Datum::imageRef(paletteCopyDest),
+                            Datum::imageRef(paletteCopySource),
+                            Datum::intRect(0, 0, 2, 1),
+                            Datum::intRect(0, 0, 2, 1)}).isVoid());
+    assert(paletteCopyDest->imagePalette() != nullptr);
+    assert(paletteCopyDest->getPixel(1, 0) == 0xFF112233U);
+    assert(paletteCopyDest->paletteIndex(0, 0).value() == 0);
+    assert(paletteCopyDest->paletteIndex(1, 0).value() == 1);
+    auto invalidCopyDest = std::make_shared<Bitmap>(1, 1, 32);
+    invalidCopyDest->fill(0xFFFFFFFFU);
+    assert(runObjCall(110, {Datum::imageRef(invalidCopyDest),
+                            Datum::imageRef(std::shared_ptr<Bitmap>{}),
+                            Datum::intRect(0, 0, 1, 1),
+                            Datum::intRect(0, 0, 1, 1)}).isVoid());
+    assert(invalidCopyDest->isScriptModified());
+    assert(invalidCopyDest->getPixel(0, 0) == 0xFFFFFFFFU);
     const Datum duplicateImageDatum = runObjCall(72, {imageMethodRef});
     const auto* duplicateImage = duplicateImageDatum.asImageRef();
     assert(duplicateImage != nullptr);

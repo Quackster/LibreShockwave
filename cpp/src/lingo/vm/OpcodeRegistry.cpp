@@ -2511,6 +2511,71 @@ std::shared_ptr<bitmap::Bitmap> imageCreateMask(const bitmap::Bitmap& src, int a
     return imageCreateFloodFillMatte(src);
 }
 
+Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
+    if (args.size() < 3) return Datum::voidValue();
+    const auto* srcRef = args[0].asImageRef();
+    if (srcRef == nullptr || srcRef->bitmap == nullptr) return Datum::voidValue();
+    const auto* destRect = args[1].asIntRect();
+    const auto* srcRect = args[2].asIntRect();
+    if (destRect == nullptr || srcRect == nullptr) return Datum::voidValue();
+
+    const auto& src = *srcRef->bitmap;
+    const int srcWidth = srcRect->right - srcRect->left;
+    const int srcHeight = srcRect->bottom - srcRect->top;
+    const int destWidth = destRect->right - destRect->left;
+    const int destHeight = destRect->bottom - destRect->top;
+    if (srcWidth <= 0 || srcHeight <= 0 || destWidth <= 0 || destHeight <= 0) {
+        return Datum::voidValue();
+    }
+
+    if (dest.imagePalette() == nullptr && src.imagePalette() != nullptr) {
+        dest.copyPaletteMetadataFrom(&src);
+    }
+    if (!dest.hasAnchorPoint() && src.hasAnchorPoint()) {
+        dest.setAnchorPoint(destRect->left + src.anchorX() - srcRect->left,
+                            destRect->top + src.anchorY() - srcRect->top);
+    }
+
+    const auto srcPaletteIndices = src.paletteIndices();
+    const bool preservePaletteIndices =
+        srcPaletteIndices.has_value() && srcPaletteIndices->size() == src.pixels().size();
+    std::optional<std::vector<std::uint8_t>> destPaletteIndices;
+    if (preservePaletteIndices) {
+        destPaletteIndices = dest.paletteIndices().value_or(
+            std::vector<std::uint8_t>(dest.pixels().size(), 0));
+    } else {
+        dest.clearPaletteIndices();
+    }
+
+    for (int dy = 0; dy < destHeight; ++dy) {
+        const int sy = srcRect->top + (dy * srcHeight / destHeight);
+        const int py = destRect->top + dy;
+        if (sy < 0 || sy >= src.height() || py < 0 || py >= dest.height()) {
+            continue;
+        }
+        for (int dx = 0; dx < destWidth; ++dx) {
+            const int sx = srcRect->left + (dx * srcWidth / destWidth);
+            const int px = destRect->left + dx;
+            if (sx < 0 || sx >= src.width() || px < 0 || px >= dest.width()) {
+                continue;
+            }
+            dest.setPixelPreservePaletteIndex(px, py, src.getPixel(sx, sy));
+            if (destPaletteIndices.has_value() && srcPaletteIndices.has_value()) {
+                const auto srcOffset = static_cast<std::size_t>(sy * src.width() + sx);
+                const auto destOffset = static_cast<std::size_t>(py * dest.width() + px);
+                if (srcOffset < srcPaletteIndices->size() && destOffset < destPaletteIndices->size()) {
+                    (*destPaletteIndices)[destOffset] = (*srcPaletteIndices)[srcOffset];
+                }
+            }
+        }
+    }
+
+    if (destPaletteIndices.has_value()) {
+        dest.setPaletteIndices(std::move(*destPaletteIndices));
+    }
+    return Datum::voidValue();
+}
+
 Datum imageObjectMethod(const Datum::ImageRef& image, std::string_view methodName, const std::vector<Datum>& args) {
     if (image.bitmap == nullptr) {
         if (equalsIgnoreCase(methodName, "duplicate")) {
@@ -2546,6 +2611,10 @@ Datum imageObjectMethod(const Datum::ImageRef& image, std::string_view methodNam
     if (equalsIgnoreCase(methodName, "createMask")) {
         const int alphaThreshold = !args.empty() && !args[0].isVoid() ? toIntLikeJava(args[0]) : 0;
         return Datum::imageRef(imageCreateMask(bmp, alphaThreshold));
+    }
+    if (equalsIgnoreCase(methodName, "copyPixels")) {
+        bmp.markScriptModified();
+        return imageCopyPixels(bmp, args);
     }
     if (equalsIgnoreCase(methodName, "duplicate")) {
         return Datum::imageRef(std::make_shared<bitmap::Bitmap>(bmp.copy()));
