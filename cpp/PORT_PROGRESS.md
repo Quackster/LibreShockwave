@@ -80,6 +80,13 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Literal parsing covers string, inline int, float numeric value, and raw unknown literal payloads.
 - Handler bytecode instruction decoding normalizes multi-byte opcodes, preserves raw opcode bytes, decodes signed push-int arguments, and builds bytecode-offset lookup maps.
 
+### Score Chunk Parser
+
+- `chunks::ScoreChunk` VWSC parser for score headers, entry tables, frame data, and behavior interval entries.
+- Delta-compressed score frame data expansion with D5 packed-main-channel handling and D6+ uniform channel handling.
+- Sprite channel parsing for ink, cast references, geometry, blend, flip flags, and indexed/RGB color resolution.
+- Tempo and palette channel extraction with frame lookup helpers.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -102,12 +109,12 @@ Result:
 - Cast list/member chunk parser tests passed through the same CTest executable.
 - Lingo opcode and script context parser tests passed through the same CTest executable.
 - Script bytecode chunk parser tests passed through the same CTest executable.
+- Score chunk parser tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
 
-- Remaining SDK chunk model and chunk parsers.
-- Director/Afterburner file loading.
+- Director/Afterburner file loading and higher-level chunk integration.
 - Remaining bitmap, sound, font, text, score, and script chunk decoders.
 - Cast member resolution.
 - Lingo decompiler, VM runtime values, dispatchers, and builtins.
@@ -124,4 +131,5 @@ Result:
 - `d86665c Port C++ compact chunk parsers`
 - `9f506a1 Port C++ cast list and member chunks`
 - `4e3e971 Port C++ script context and opcode foundation`
-- Current checkpoint commit message: `Port C++ script bytecode chunk parser`
+- `c160ac3 Port C++ script bytecode chunk parser`
+- Current checkpoint commit message: `Port C++ score chunk parser`

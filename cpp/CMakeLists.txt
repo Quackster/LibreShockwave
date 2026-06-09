@@ -24,6 +24,7 @@ add_library(libreshockwave
     src/chunks/ScriptContextChunk.cpp
     src/chunks/ScriptChunk.cpp
     src/chunks/ScriptNamesChunk.cpp
+    src/chunks/ScoreChunk.cpp
     src/chunks/SoundChunk.cpp
     src/chunks/TextChunk.cpp
     src/format/ChunkType.cpp

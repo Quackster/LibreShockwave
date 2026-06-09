@@ -34,6 +34,7 @@
 #include "libreshockwave/chunks/ScriptContextChunk.hpp"
 #include "libreshockwave/chunks/ScriptChunk.hpp"
 #include "libreshockwave/chunks/ScriptNamesChunk.hpp"
+#include "libreshockwave/chunks/ScoreChunk.hpp"
 #include "libreshockwave/chunks/SoundChunk.hpp"
 #include "libreshockwave/chunks/TextChunk.hpp"
 #include "libreshockwave/format/ChunkInfo.hpp"
@@ -88,6 +89,7 @@ using libreshockwave::chunks::ScriptContextChunk;
 using libreshockwave::chunks::ScriptChunk;
 using libreshockwave::chunks::ScriptChunkType;
 using libreshockwave::chunks::ScriptNamesChunk;
+using libreshockwave::chunks::ScoreChunk;
 using libreshockwave::chunks::SoundChunk;
 using libreshockwave::chunks::TextChunk;
 using libreshockwave::lingo::Datum;
@@ -1248,6 +1250,175 @@ void testScriptChunkParser() {
     assert(scriptReader.order() == ByteOrder::LittleEndian);
 }
 
+void testScoreChunkParser() {
+    auto appendI16 = [](std::vector<std::uint8_t>& data, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data.push_back(static_cast<std::uint8_t>((raw >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(raw & 0xFF));
+    };
+    auto appendI32 = [](std::vector<std::uint8_t>& data, std::uint32_t value) {
+        data.push_back(static_cast<std::uint8_t>((value >> 24) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 16) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(value & 0xFF));
+    };
+
+    auto appendDelta = [&](std::vector<std::uint8_t>& data, int channelOffset, const std::vector<std::uint8_t>& payload) {
+        appendI16(data, static_cast<int>(payload.size()));
+        appendI16(data, channelOffset);
+        data.insert(data.end(), payload.begin(), payload.end());
+    };
+
+    std::vector<std::uint8_t> frameEntry;
+    appendI32(frameEntry, 0);
+    appendI32(frameEntry, 0);
+    appendI32(frameEntry, 2);
+    appendI16(frameEntry, 14);
+    appendI16(frameEntry, 28);
+    appendI16(frameEntry, 6);
+    appendI16(frameEntry, 6);
+
+    std::vector<std::uint8_t> sprite(28, 0);
+    sprite[0] = 1;
+    sprite[1] = 0xC8;
+    sprite[2] = 0x11;
+    sprite[3] = 0x22;
+    sprite[4] = 0x00;
+    sprite[5] = 0x01;
+    sprite[6] = 0x00;
+    sprite[7] = 0x09;
+    sprite[8] = 0x33;
+    sprite[9] = 0x33;
+    sprite[10] = 0x44;
+    sprite[11] = 0x44;
+    sprite[12] = 0x00;
+    sprite[13] = 0x32;
+    sprite[14] = 0x00;
+    sprite[15] = 0x3C;
+    sprite[16] = 0x00;
+    sprite[17] = 0x14;
+    sprite[18] = 0x00;
+    sprite[19] = 0x1E;
+    sprite[20] = 0x30;
+    sprite[21] = 0x80;
+    sprite[22] = 0x60;
+    sprite[24] = 0x12;
+    sprite[25] = 0x23;
+    sprite[26] = 0x13;
+    sprite[27] = 0x24;
+
+    std::vector<std::uint8_t> tempo(7, 0);
+    tempo[6] = 30;
+    std::vector<std::uint8_t> palette{0x00, 0x01, 0x00, 0x07};
+
+    std::vector<std::uint8_t> frame0;
+    appendDelta(frame0, 2 * 28, sprite);
+    appendDelta(frame0, 4 * 28, tempo);
+    appendDelta(frame0, 5 * 28, palette);
+    appendI16(frameEntry, static_cast<int>(frame0.size()) + 2);
+    frameEntry.insert(frameEntry.end(), frame0.begin(), frame0.end());
+
+    std::vector<std::uint8_t> tempo2(7, 0);
+    tempo2[6] = 45;
+    std::vector<std::uint8_t> frame1;
+    appendDelta(frame1, 4 * 28, tempo2);
+    appendI16(frameEntry, static_cast<int>(frame1.size()) + 2);
+    frameEntry.insert(frameEntry.end(), frame1.begin(), frame1.end());
+
+    std::vector<std::uint8_t> primary;
+    appendI32(primary, 1);
+    appendI32(primary, 2);
+    appendI32(primary, 0);
+    appendI32(primary, 0);
+    appendI32(primary, 2);
+    appendI16(primary, 0);
+    appendI32(primary, 0);
+    appendI16(primary, 0);
+    appendI32(primary, 0);
+    appendI32(primary, 0);
+    appendI32(primary, 0);
+    appendI32(primary, 0);
+
+    std::vector<std::uint8_t> secondary;
+    appendI16(secondary, 1);
+    appendI16(secondary, 12);
+    appendI32(secondary, 99);
+
+    std::vector<std::uint8_t> scoreData;
+    appendI32(scoreData, static_cast<std::uint32_t>(frameEntry.size() + primary.size() + secondary.size()));
+    appendI32(scoreData, 0x11111111);
+    appendI32(scoreData, 0x22222222);
+    appendI32(scoreData, 4);
+    appendI32(scoreData, 0x33333333);
+    appendI32(scoreData, static_cast<std::uint32_t>(frameEntry.size() + primary.size() + secondary.size()));
+    appendI32(scoreData, 0);
+    appendI32(scoreData, static_cast<std::uint32_t>(frameEntry.size()));
+    appendI32(scoreData, static_cast<std::uint32_t>(frameEntry.size()));
+    appendI32(scoreData, static_cast<std::uint32_t>(frameEntry.size() + primary.size()));
+    appendI32(scoreData, static_cast<std::uint32_t>(frameEntry.size() + primary.size() + secondary.size()));
+    scoreData.insert(scoreData.end(), frameEntry.begin(), frameEntry.end());
+    scoreData.insert(scoreData.end(), primary.begin(), primary.end());
+    scoreData.insert(scoreData.end(), secondary.begin(), secondary.end());
+
+    BinaryReader scoreReader(scoreData, ByteOrder::LittleEndian);
+    ScoreChunk score = ScoreChunk::read(nullptr, scoreReader, ChunkId(35), 0x4B1);
+    assert(score.type() == ChunkType::VWSC);
+    assert(score.header().entryCount == 4);
+    assert(score.entries().size() == 4);
+    assert(score.entries()[0].size() == frameEntry.size());
+    assert(score.entries()[1].empty());
+    assert(score.getFrameCount() == 2);
+    assert(score.getChannelCount() == 6);
+    assert(score.getSpriteRecordSize() == 28);
+    assert(score.getRawChannelData().size() == 2 * 6 * 28);
+    assert(score.getFrameTempo(0) == 30);
+    assert(score.getFrameTempo(1) == 45);
+    assert(score.getFrameTempo(99) == 45);
+    assert(score.getFramePalette(0).has_value());
+    assert(score.getFramePalette(0)->castLib == 1);
+    assert(score.getFramePalette(0)->castMember == 7);
+    assert(score.getFramePalette(1).has_value());
+    assert(score.getFramePalette(1)->castMember == 7);
+
+    assert(score.frameData().frameChannelData.size() == 2);
+    const auto& channelEntry = score.frameData().frameChannelData[0];
+    assert(channelEntry.frameIndex.value() == 0);
+    assert(channelEntry.channelIndex.value() == 2);
+    const auto& channel = channelEntry.data;
+    assert(channel.spriteType == 1);
+    assert(channel.ink == 8);
+    assert(channel.trails == 1);
+    assert(channel.stretch == 1);
+    assert(channel.castLib == 1);
+    assert(channel.castMember == 9);
+    assert(channel.castLibId()->value() == 1);
+    assert(channel.memberId()->value() == 9);
+    assert(channel.posY == 50);
+    assert(channel.posX == 60);
+    assert(channel.height == 20);
+    assert(channel.width == 30);
+    assert(channel.blendByte == 0x80);
+    assert(channel.isForeColorRGB());
+    assert(channel.isBackColorRGB());
+    assert(channel.resolvedForeColor() == 0x111213);
+    assert(channel.resolvedBackColor() == 0x222324);
+    assert(channel.isFlipH());
+    assert(channel.isFlipV());
+
+    assert(score.frameIntervals().size() == 1);
+    const auto& interval = score.frameIntervals()[0];
+    assert(interval.primary.startFrameId().value() == 1);
+    assert(interval.primary.endFrameId().value() == 2);
+    assert(interval.primary.channelId().value() == 2);
+    assert(interval.secondary.has_value());
+    assert(interval.secondary->castLib == 1);
+    assert(interval.secondary->castMember == 12);
+    assert(interval.secondary->castLibId()->value() == 1);
+    assert(interval.secondary->memberId()->value() == 12);
+    assert(interval.secondary->unk0 == 99);
+    assert(scoreReader.order() == ByteOrder::LittleEndian);
+}
+
 int main() {
     testBinaryReaderEndianAndBounds();
     testBinaryReaderStringsAndFourCC();
@@ -1270,6 +1441,7 @@ int main() {
     testCastListAndMemberChunks();
     testScriptContextChunk();
     testScriptChunkParser();
+    testScoreChunkParser();
 
     std::cout << "LibreShockwave C++ SDK foundation tests passed\n";
     return 0;
