@@ -66,7 +66,11 @@
 #include "libreshockwave/player/ExternalCastLoadEvent.hpp"
 #include "libreshockwave/player/PlayerEvent.hpp"
 #include "libreshockwave/player/PlayerEventInfo.hpp"
+#include "libreshockwave/player/PlayerState.hpp"
 #include "libreshockwave/player/frame/FrameEvent.hpp"
+#include "libreshockwave/player/input/DirectorKeyCodes.hpp"
+#include "libreshockwave/player/input/InputEvent.hpp"
+#include "libreshockwave/player/input/InputState.hpp"
 #include "libreshockwave/player/render/RenderConfig.hpp"
 #include "libreshockwave/player/render/RenderType.hpp"
 #include "libreshockwave/util/AudioCodecUtils.hpp"
@@ -138,11 +142,16 @@ using libreshockwave::lookup::ScriptLookup;
 using libreshockwave::player::ExternalCastLoadEvent;
 using libreshockwave::player::PlayerEvent;
 using libreshockwave::player::PlayerEventInfo;
+using libreshockwave::player::PlayerState;
 using libreshockwave::player::allPlayerEvents;
 using libreshockwave::player::handlerName;
 using libreshockwave::player::name;
 using libreshockwave::player::playerEventFromHandlerName;
 using libreshockwave::player::frame::FrameEvent;
+using libreshockwave::player::input::DirectorKeyCodes;
+using libreshockwave::player::input::InputEvent;
+using libreshockwave::player::input::InputEventType;
+using libreshockwave::player::input::InputState;
 using libreshockwave::player::render::RenderConfig;
 using libreshockwave::player::render::RenderType;
 using libreshockwave::w3d::W3DEntryType;
@@ -431,6 +440,10 @@ void testLingoOpcodeHelpers() {
 }
 
 void testPlayerCoreFoundation() {
+    assert(name(PlayerState::Stopped) == "STOPPED");
+    assert(name(PlayerState::Paused) == "PAUSED");
+    assert(name(PlayerState::Playing) == "PLAYING");
+
     const auto& events = allPlayerEvents();
     assert(events.size() == 20);
     assert(events.front() == PlayerEvent::PrepareMovie);
@@ -484,6 +497,96 @@ void testPlayerCoreFoundation() {
     assert(RenderConfig::isAntialias());
     RenderConfig::setAntialias(false);
     assert(!RenderConfig::isAntialias());
+}
+
+void testPlayerInputFoundation() {
+    assert(libreshockwave::player::input::name(InputEventType::MouseDown) == "MOUSE_DOWN");
+    assert(libreshockwave::player::input::name(InputEventType::KeyUp) == "KEY_UP");
+
+    const auto mouseDown = InputEvent::mouseDown(10, 20);
+    assert(mouseDown == (InputEvent{InputEventType::MouseDown, 10, 20, 1, 0, ""}));
+    assert(InputEvent::mouseUp(11, 21) == (InputEvent{InputEventType::MouseUp, 11, 21, 1, 0, ""}));
+    assert(InputEvent::rightMouseDown(12, 22) == (InputEvent{InputEventType::RightMouseDown, 12, 22, 3, 0, ""}));
+    assert(InputEvent::rightMouseUp(13, 23) == (InputEvent{InputEventType::RightMouseUp, 13, 23, 3, 0, ""}));
+    assert(InputEvent::keyDown(36, "a") == (InputEvent{InputEventType::KeyDown, 0, 0, 0, 36, "a"}));
+    assert(InputEvent::keyUp(36, "a") == (InputEvent{InputEventType::KeyUp, 0, 0, 0, 36, "a"}));
+
+    assert(DirectorKeyCodes::fromJavaKeyCode(10) == 36);
+    assert(DirectorKeyCodes::fromJavaKeyCode(127) == 117);
+    assert(DirectorKeyCodes::fromJavaKeyCode(37) == 123);
+    assert(DirectorKeyCodes::fromJavaKeyCode(65) == 0);
+    assert(DirectorKeyCodes::fromJavaKeyCode(90) == 6);
+    assert(DirectorKeyCodes::fromJavaKeyCode(48) == 29);
+    assert(DirectorKeyCodes::fromJavaKeyCode(57) == 25);
+    assert(DirectorKeyCodes::fromJavaKeyCode(999) == 999);
+    assert(DirectorKeyCodes::fromBrowserKeyCode(13) == 36);
+    assert(DirectorKeyCodes::fromBrowserKeyCode(46) == 117);
+    assert(DirectorKeyCodes::fromBrowserKeyCode(65) == 0);
+    assert(DirectorKeyCodes::fromBrowserKeyCode(57) == 25);
+
+    InputState state;
+    assert(state.mouseH() == InputState::INITIAL_MOUSE_POSITION);
+    assert(state.mouseV() == InputState::INITIAL_MOUSE_POSITION);
+    assert(!state.isMouseDown());
+    assert(!state.isRightMouseDown());
+    state.setMousePosition(33, 44);
+    assert(state.mouseH() == 33);
+    assert(state.mouseV() == 44);
+    state.setMouseDown(true);
+    state.setRightMouseDown(true);
+    assert(state.isMouseDown());
+    assert(state.isRightMouseDown());
+
+    state.setClickOnSprite(7);
+    state.setClickLoc(30, 40);
+    assert(state.clickOnSprite() == 7);
+    assert(state.clickLocH() == 30);
+    assert(state.clickLocV() == 40);
+    state.updateDoubleClick(50, 60);
+    assert(!state.isDoubleClick());
+    state.updateDoubleClick(54, 64);
+    assert(state.isDoubleClick());
+
+    state.setRolloverSprite(9);
+    assert(state.rolloverSprite() == 9);
+    state.setLastKey("a");
+    assert(state.lastKey() == "a");
+    state.setLastKey(nullptr);
+    assert(state.lastKey().empty());
+    state.setLastKeyCode(36);
+    state.setShiftDown(true);
+    state.setControlDown(true);
+    state.setAltDown(true);
+    assert(state.lastKeyCode() == 36);
+    assert(state.isShiftDown());
+    assert(state.isControlDown());
+    assert(state.isAltDown());
+
+    state.setKeyboardFocusSprite(3);
+    assert(state.keyboardFocusSprite() == 3);
+    assert(state.isCaretVisible());
+    state.setCaretBlinkRate(15);
+    for (int i = 0; i < 8; ++i) {
+        state.incrementCaretBlink();
+    }
+    assert(!state.isCaretVisible());
+    state.resetCaretBlink();
+    assert(state.isCaretVisible());
+
+    state.setSelStart(2);
+    state.setSelEnd(5);
+    assert(state.selStart() == 2);
+    assert(state.selEnd() == 5);
+
+    assert(!state.hasEvents());
+    assert(!state.pollEvent().has_value());
+    state.queueEvent(InputEvent::mouseDown(1, 2));
+    state.queueEvent(InputEvent::keyDown(36, "x"));
+    assert(state.hasEvents());
+    assert(state.pollEvent() == InputEvent::mouseDown(1, 2));
+    assert(state.pollEvent() == InputEvent::keyDown(36, "x"));
+    assert(!state.hasEvents());
+    assert(!state.pollEvent().has_value());
 }
 
 void testPaletteAndColorRefs() {
@@ -2846,6 +2949,7 @@ int main() {
     testLingoDatumTypes();
     testLingoOpcodeHelpers();
     testPlayerCoreFoundation();
+    testPlayerInputFoundation();
     testPaletteAndColorRefs();
     testBitmapAlphaAndPaletteBehavior();
     testBitmapRegionsAndMetadata();

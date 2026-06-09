@@ -46,6 +46,10 @@ add_library(libreshockwave
     src/lookup/PaletteResolver.cpp
     src/lookup/ScriptLookup.cpp
     src/player/PlayerEvent.cpp
+    src/player/PlayerState.cpp
+    src/player/input/DirectorKeyCodes.cpp
+    src/player/input/InputEvent.cpp
+    src/player/input/InputState.cpp
     src/player/render/RenderConfig.cpp
     src/player/render/RenderType.cpp
     src/util/AudioCodecUtils.cpp

@@ -209,6 +209,13 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `PlayerEventInfo`, `FrameEvent`, and `ExternalCastLoadEvent` port the lightweight Java record payloads used by listeners.
 - `render::RenderType` and `render::RenderConfig` port the software-renderer enum and global antialias flag.
 
+### Player Input State Foundation
+
+- `player::PlayerState` ports the stopped/paused/playing playback enum.
+- `input::InputEvent` ports queued mouse, right-mouse, and keyboard input payload factories.
+- `input::DirectorKeyCodes` ports Java/browser key-code conversion to Director Macintosh virtual key codes.
+- `input::InputState` ports mouse, keyboard, selection, caret blink, double-click, rollover, and event-queue state tracking.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -252,6 +259,7 @@ Result:
 - SoundConverter WAV layout, SoundChunk header stripping, signed/endianness conversion, MP3 extraction, IMA ADPCM, and duration tests passed through the same CTest executable.
 - CastMember bitmap, script, shape, dimension, type-check, raw chunk, and display string tests passed through the same CTest executable.
 - PlayerEvent handler names, event payload records, RenderType, and RenderConfig tests passed through the same CTest executable.
+- PlayerState, InputEvent factories, DirectorKeyCodes, and InputState mutation/queue tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -294,4 +302,5 @@ Result:
 - `7e84729 Port C++ PFR bit reader`
 - `59bf47d Port C++ sound converter`
 - `f0ac5ed Port C++ cast member wrapper`
-- Current checkpoint commit message: `Port C++ player event foundation`
+- `7196f52 Port C++ player event foundation`
+- Current checkpoint commit message: `Port C++ player input foundation`
