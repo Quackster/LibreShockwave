@@ -24,6 +24,7 @@
 #include "libreshockwave/chunks/TextChunk.hpp"
 #include "libreshockwave/format/AfterburnerReader.hpp"
 #include "libreshockwave/lookup/CastMemberLookup.hpp"
+#include "libreshockwave/lookup/PaletteResolver.hpp"
 #include "libreshockwave/lookup/ScriptLookup.hpp"
 
 namespace libreshockwave {
@@ -79,6 +80,18 @@ std::vector<std::shared_ptr<chunks::ScriptChunk>> DirectorFile::getScriptsByCont
 
 std::optional<chunks::CastMemberScriptType> DirectorFile::getScriptType(const std::shared_ptr<chunks::ScriptChunk>& script) {
     return scriptLookup().getScriptType(script);
+}
+
+std::shared_ptr<const bitmap::Palette> DirectorFile::resolvePalette(int paletteId) {
+    return paletteResolver().resolve(paletteId);
+}
+
+std::shared_ptr<const bitmap::Palette> DirectorFile::resolvePaletteExact(int paletteId) {
+    return paletteResolver().resolveExact(paletteId);
+}
+
+std::shared_ptr<const bitmap::Palette> DirectorFile::resolvePaletteByMemberNumber(int memberNumber) {
+    return paletteResolver().resolve(memberNumber - 1);
 }
 
 std::shared_ptr<chunks::Chunk> DirectorFile::getChunk(id::ChunkId id) {
@@ -488,6 +501,7 @@ std::shared_ptr<chunks::Chunk> DirectorFile::reparseChunk(id::ChunkId id) {
 
 void DirectorFile::categorizeChunk(const std::shared_ptr<chunks::Chunk>& chunk) {
     castMemberLookup_.reset();
+    paletteResolver_.reset();
     scriptLookup_.reset();
 
     if (auto config = std::dynamic_pointer_cast<chunks::ConfigChunk>(chunk)) {
@@ -529,6 +543,16 @@ lookup::CastMemberLookup& DirectorFile::castMemberLookup() {
         castMemberLookup_ = std::make_unique<lookup::CastMemberLookup>(casts_, castMembers_, castList_, config_);
     }
     return *castMemberLookup_;
+}
+
+lookup::PaletteResolver& DirectorFile::paletteResolver() {
+    if (!paletteResolver_) {
+        paletteResolver_ = std::make_unique<lookup::PaletteResolver>(
+            casts_, castMembers_, palettes_, castList_, config_, keyTable_, [this](id::ChunkId chunkId) {
+                return getChunk(chunkId);
+            });
+    }
+    return *paletteResolver_;
 }
 
 lookup::ScriptLookup& DirectorFile::scriptLookup() {

@@ -126,6 +126,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `lookup::ScriptLookup` resolves scripts by Lctx context ID, including overlapping context spaces across multiple script contexts.
 - `DirectorFile` exposes cast member, mapped cast, script-by-context, and script-type lookup helpers backed by lazy lookup caches.
 
+### Palette Resolution Integration
+
+- `lookup::PaletteResolver` resolves built-in palettes, custom palette cast members, direct CLUT chunk references, indexed palette members, and first-palette/System Mac fallbacks.
+- Custom 256-color palette resolution inherits the System Mac trailing grayscale ramp for black placeholder entries in indices 246-255.
+- `DirectorFile` exposes `resolvePalette`, `resolvePaletteExact`, and `resolvePaletteByMemberNumber` helpers backed by a lazy palette resolver cache.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -155,11 +161,12 @@ Result:
 - Director file RIFF loader tests passed through the same CTest executable.
 - Lazy chunk reparse and non-essential release tests passed through the same CTest executable.
 - Cast member and script lookup tests passed through the same CTest executable.
+- Palette resolver and DirectorFile palette lookup tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
 
-- Higher-level palette/text/media/script-name integration.
+- Higher-level text/media/script-name integration.
 - Remaining bitmap, sound, font, text, score, and script chunk decoders.
 - Lingo decompiler, VM runtime values, dispatchers, and builtins.
 - Player core, rendering pipeline, input, networking, audio, cast management, and debugging.
@@ -182,4 +189,5 @@ Result:
 - `cbe591d Integrate C++ Afterburner file loading`
 - `7a2276f Port C++ D3 RIFF file loading`
 - `cc3203d Port C++ lazy chunk reparsing`
-- Current checkpoint commit message: `Port C++ cast and script lookup`
+- `ea9e01f Port C++ cast and script lookup`
+- Current checkpoint commit message: `Port C++ palette resolver`

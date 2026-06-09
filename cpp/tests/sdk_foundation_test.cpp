@@ -51,6 +51,7 @@
 #include "libreshockwave/lingo/Datum.hpp"
 #include "libreshockwave/lingo/Opcode.hpp"
 #include "libreshockwave/lookup/CastMemberLookup.hpp"
+#include "libreshockwave/lookup/PaletteResolver.hpp"
 #include "libreshockwave/lookup/ScriptLookup.hpp"
 #include "libreshockwave/util/AudioCodecUtils.hpp"
 
@@ -108,6 +109,7 @@ using libreshockwave::lingo::LingoException;
 using libreshockwave::lingo::Opcode;
 using libreshockwave::lingo::StringChunkType;
 using libreshockwave::lookup::CastMemberLookup;
+using libreshockwave::lookup::PaletteResolver;
 using libreshockwave::lookup::ScriptLookup;
 
 void testBinaryReaderEndianAndBounds() {
@@ -2043,6 +2045,77 @@ void testLookupHelpers() {
     assert(scriptLookup.getByContextId(99) == nullptr);
     assert(scriptLookup.getScriptType(script).has_value());
     assert(scriptLookup.getScriptType(script).value() == CastMemberScriptType::Behavior);
+
+    std::vector<std::uint32_t> customColors(256, 0);
+    customColors[0] = 0x112233U;
+    customColors[1] = 0x445566U;
+    const auto systemMacTail = Palette::systemMacPalette().getColor(248);
+    assert(systemMacTail != 0);
+    auto paletteChunk = std::make_shared<PaletteChunk>(nullptr, ChunkId(91), customColors);
+    auto paletteMember = std::make_shared<CastMemberChunk>(nullptr,
+                                                           ChunkId(90),
+                                                           MemberType::Palette,
+                                                           0,
+                                                           0,
+                                                           std::vector<std::uint8_t>{},
+                                                           std::vector<std::uint8_t>{},
+                                                           "Palette",
+                                                           0,
+                                                           0,
+                                                           0);
+    auto paletteCast = std::make_shared<CastChunk>(nullptr, ChunkId(92), std::vector<int>{0, 90});
+    CastListChunk::CastListEntry paletteEntry{"PaletteLib", "", 0, 10, 11, 2, 1};
+    auto paletteCastList = std::make_shared<CastListChunk>(
+        nullptr, ChunkId(93), 0, 4, 1, std::vector<CastListChunk::CastListEntry>{paletteEntry});
+    auto paletteKey = std::make_shared<KeyTableChunk>(
+        nullptr,
+        ChunkId(94),
+        std::vector<KeyTableChunk::KeyTableEntry>{
+            KeyTableChunk::KeyTableEntry{ChunkId(91), ChunkId(90), BinaryReader::fourCC("CLUT")}
+        });
+    PaletteResolver paletteResolver(
+        {paletteCast},
+        {paletteMember},
+        {paletteChunk},
+        paletteCastList,
+        nullptr,
+        paletteKey,
+        [paletteChunk](ChunkId id) -> std::shared_ptr<libreshockwave::chunks::Chunk> {
+            return id.value() == paletteChunk->id().value() ? paletteChunk : nullptr;
+        });
+    assert(paletteResolver.resolve(Palette::RAINBOW).get() == &Palette::rainbowPalette());
+
+    auto resolvedByMemberNumber = paletteResolver.resolveExact(10);
+    assert(resolvedByMemberNumber.get() != nullptr);
+    assert(resolvedByMemberNumber->getColor(0) == 0x112233U);
+    assert(resolvedByMemberNumber->getColor(1) == 0x445566U);
+    assert(resolvedByMemberNumber->getColor(248) == systemMacTail);
+    assert(paletteResolver.resolve(10).get() == resolvedByMemberNumber.get());
+    assert(paletteResolver.resolveExact(90).get() == resolvedByMemberNumber.get());
+    assert(paletteResolver.resolveExact(91).get() == resolvedByMemberNumber.get());
+
+    PaletteResolver indexedPaletteResolver(
+        {},
+        {paletteMember},
+        {paletteChunk},
+        nullptr,
+        nullptr,
+        paletteKey,
+        [paletteChunk](ChunkId id) -> std::shared_ptr<libreshockwave::chunks::Chunk> {
+            return id.value() == paletteChunk->id().value() ? paletteChunk : nullptr;
+        });
+    assert(indexedPaletteResolver.resolveExact(0)->getColor(0) == 0x112233U);
+    assert(paletteResolver.resolveExact(999).get() == nullptr);
+    assert(paletteResolver.resolve(999)->getColor(0) == 0x112233U);
+
+    PaletteResolver emptyPaletteResolver({}, {}, {}, nullptr, nullptr, nullptr, {});
+    assert(emptyPaletteResolver.resolveExact(999).get() == nullptr);
+    assert(emptyPaletteResolver.resolve(999).get() == &Palette::systemMacPalette());
+
+    DirectorFile emptyFile(ByteOrder::BigEndian, false, 0, ChunkType::MV93);
+    assert(emptyFile.resolvePalette(Palette::SYSTEM_WIN).get() == &Palette::systemWinPalette());
+    assert(emptyFile.resolvePaletteExact(999).get() == nullptr);
+    assert(emptyFile.resolvePaletteByMemberNumber(42).get() == &Palette::systemMacPalette());
 }
 
 int main() {

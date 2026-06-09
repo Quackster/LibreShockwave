@@ -32,8 +32,13 @@ namespace libreshockwave::format {
 class AfterburnerReader;
 }
 
+namespace libreshockwave::bitmap {
+class Palette;
+}
+
 namespace libreshockwave::lookup {
 class CastMemberLookup;
+class PaletteResolver;
 class ScriptLookup;
 }
 
@@ -90,6 +95,9 @@ public:
     [[nodiscard]] std::shared_ptr<chunks::ScriptChunk> getScriptByContextId(int scriptId);
     [[nodiscard]] std::vector<std::shared_ptr<chunks::ScriptChunk>> getScriptsByContextId(int scriptId);
     [[nodiscard]] std::optional<chunks::CastMemberScriptType> getScriptType(const std::shared_ptr<chunks::ScriptChunk>& script);
+    [[nodiscard]] std::shared_ptr<const bitmap::Palette> resolvePalette(int paletteId);
+    [[nodiscard]] std::shared_ptr<const bitmap::Palette> resolvePaletteExact(int paletteId);
+    [[nodiscard]] std::shared_ptr<const bitmap::Palette> resolvePaletteByMemberNumber(int memberNumber);
 
     [[nodiscard]] static std::shared_ptr<DirectorFile> load(const std::vector<std::uint8_t>& data);
 
@@ -108,6 +116,7 @@ private:
     [[nodiscard]] std::shared_ptr<chunks::Chunk> reparseChunk(id::ChunkId id);
     void categorizeChunk(const std::shared_ptr<chunks::Chunk>& chunk);
     [[nodiscard]] lookup::CastMemberLookup& castMemberLookup();
+    [[nodiscard]] lookup::PaletteResolver& paletteResolver();
     [[nodiscard]] lookup::ScriptLookup& scriptLookup();
     void setVersion(int version);
     void setCapitalX(bool capitalX);
@@ -138,6 +147,7 @@ private:
     std::vector<std::shared_ptr<chunks::PaletteChunk>> palettes_;
     std::vector<std::shared_ptr<chunks::FontMapChunk>> fontMaps_;
     std::unique_ptr<lookup::CastMemberLookup> castMemberLookup_;
+    std::unique_ptr<lookup::PaletteResolver> paletteResolver_;
     std::unique_ptr<lookup::ScriptLookup> scriptLookup_;
 };
 

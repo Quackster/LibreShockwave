@@ -35,6 +35,7 @@ add_library(libreshockwave
     src/lingo/Datum.cpp
     src/lingo/Opcode.cpp
     src/lookup/CastMemberLookup.cpp
+    src/lookup/PaletteResolver.cpp
     src/lookup/ScriptLookup.cpp
     src/util/AudioCodecUtils.cpp
 )
