@@ -253,6 +253,39 @@ int packedColor(const Datum::ColorRef& color) {
     return (color.r << 16) | (color.g << 8) | color.b;
 }
 
+std::uint32_t imageColorArgb(const Datum& datum) {
+    if (const auto* color = datum.asColorRef()) {
+        return 0xFF000000U |
+               (static_cast<std::uint32_t>(color->r & 0xFF) << 16) |
+               (static_cast<std::uint32_t>(color->g & 0xFF) << 8) |
+               static_cast<std::uint32_t>(color->b & 0xFF);
+    }
+    if (const auto* value = datum.asInt()) {
+        if (value->value > 255) {
+            return 0xFF000000U | (static_cast<std::uint32_t>(value->value) & 0x00FFFFFFU);
+        }
+        const auto gray = static_cast<std::uint32_t>((255 - value->value) & 0xFF);
+        return 0xFF000000U | (gray << 16) | (gray << 8) | gray;
+    }
+    if (datum.isString()) {
+        std::string value = trimCopy(datum.stringValue());
+        if (value.size() >= 2 &&
+            ((value.front() == '"' && value.back() == '"') || (value.front() == '\'' && value.back() == '\''))) {
+            value = trimCopy(value.substr(1, value.size() - 2));
+        }
+        if (!value.empty() && value.front() == '#') {
+            value.erase(value.begin());
+        }
+        if (value.size() == 6) {
+            try {
+                return 0xFF000000U | (static_cast<std::uint32_t>(std::stoul(value, nullptr, 16)) & 0x00FFFFFFU);
+            } catch (...) {
+            }
+        }
+    }
+    return 0xFF000000U;
+}
+
 int toIntLikeJava(const Datum& datum) {
     if (const auto* value = datum.asInt()) {
         return value->value;
@@ -1714,6 +1747,59 @@ Datum rectObjectMethod(const Datum::IntRect& rect, std::string_view methodName, 
     return Datum::voidValue();
 }
 
+Datum imageObjectMethod(const Datum::ImageRef& image, std::string_view methodName, const std::vector<Datum>& args) {
+    if (image.bitmap == nullptr) {
+        if (equalsIgnoreCase(methodName, "duplicate")) {
+            return Datum::imageRef(nullptr);
+        }
+        if (equalsIgnoreCase(methodName, "getAt")) {
+            if (args.empty()) return Datum::voidValue();
+            const int index = toIntLikeJava(args[0]);
+            return index == 1 || index == 2 ? Datum::of(0) : Datum::voidValue();
+        }
+        return Datum::voidValue();
+    }
+
+    auto& bmp = *image.bitmap;
+    if (equalsIgnoreCase(methodName, "duplicate")) {
+        return Datum::imageRef(std::make_shared<bitmap::Bitmap>(bmp.copy()));
+    }
+    if (equalsIgnoreCase(methodName, "getAt")) {
+        if (args.empty()) return Datum::voidValue();
+        const int index = toIntLikeJava(args[0]);
+        if (index == 1) return Datum::of(bmp.width());
+        if (index == 2) return Datum::of(bmp.height());
+        return Datum::voidValue();
+    }
+    if (equalsIgnoreCase(methodName, "getPixel")) {
+        if (args.size() < 2) return Datum::voidValue();
+        const int x = toIntLikeJava(args[0]);
+        const int y = toIntLikeJava(args[1]);
+        if (x < 0 || x >= bmp.width() || y < 0 || y >= bmp.height()) {
+            return Datum::voidValue();
+        }
+        if (const auto index = bmp.paletteIndex(x, y)) {
+            return Datum::colorRef(*index, *index, *index);
+        }
+        const auto pixel = bmp.getPixel(x, y);
+        return Datum::colorRef(static_cast<int>((pixel >> 16) & 0xFF),
+                               static_cast<int>((pixel >> 8) & 0xFF),
+                               static_cast<int>(pixel & 0xFF));
+    }
+    if (equalsIgnoreCase(methodName, "setPixel")) {
+        if (args.size() >= 3) {
+            const int x = toIntLikeJava(args[0]);
+            const int y = toIntLikeJava(args[1]);
+            if (x >= 0 && x < bmp.width() && y >= 0 && y < bmp.height()) {
+                bmp.setPixel(x, y, imageColorArgb(args[2]));
+                bmp.markScriptModified();
+            }
+        }
+        return Datum::voidValue();
+    }
+    return Datum::voidValue();
+}
+
 Datum castLibObjectMethod(ExecutionContext& context,
                           const Datum::CastLibRef& castLib,
                           std::string_view methodName,
@@ -1868,6 +1954,9 @@ Datum dispatchObjectMethod(ExecutionContext& context, Datum target, std::string_
     }
     if (const auto* rect = target.asIntRect()) {
         return rectObjectMethod(*rect, methodName, args);
+    }
+    if (const auto* image = target.asImageRef()) {
+        return imageObjectMethod(*image, methodName, args);
     }
     if (target.type() == DatumType::ScriptInstanceRef) {
         return target.scriptInstanceValue().getProperty(std::string(methodName));

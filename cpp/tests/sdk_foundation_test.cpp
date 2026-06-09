@@ -2272,6 +2272,12 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 100) {
             return std::string("image");
         }
+        if (nameId == 101) {
+            return std::string("setPixel");
+        }
+        if (nameId == 102) {
+            return std::string("getPixel");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.callStackFormatter = []() {
@@ -3134,6 +3140,33 @@ void testLingoVmScopeAndExecutionContextFoundation() {
                .scriptName() == "scriptRefNew");
     assert(scriptRefNewCalls == 1);
     builtinContext.newInstanceHandler = {};
+
+    auto imageMethodBitmap = std::make_shared<Bitmap>(2, 2, 32);
+    imageMethodBitmap->fill(0xFFFFFFFFU);
+    const Datum imageMethodRef = Datum::imageRef(imageMethodBitmap);
+    assert(runObjCall(64, {imageMethodRef, Datum::of(1)}).intValue() == 2);
+    assert(runObjCall(64, {imageMethodRef, Datum::of(2)}).intValue() == 2);
+    assert(runObjCall(101, {imageMethodRef, Datum::of(1), Datum::of(0), Datum::colorRef(10, 20, 30)}).isVoid());
+    assert(imageMethodBitmap->isScriptModified());
+    const Datum imagePixelDatum = runObjCall(102, {imageMethodRef, Datum::of(1), Datum::of(0)});
+    const auto* imagePixel = imagePixelDatum.asColorRef();
+    assert(imagePixel != nullptr);
+    assert(imagePixel->r == 10);
+    assert(imagePixel->g == 20);
+    assert(imagePixel->b == 30);
+    assert(runObjCall(102, {imageMethodRef, Datum::of(9), Datum::of(9)}).isVoid());
+    const Datum duplicateImageDatum = runObjCall(72, {imageMethodRef});
+    const auto* duplicateImage = duplicateImageDatum.asImageRef();
+    assert(duplicateImage != nullptr);
+    assert(duplicateImage->bitmap != nullptr);
+    assert(duplicateImage->bitmap != imageMethodBitmap);
+    assert(duplicateImage->bitmap->width() == 2);
+    assert(duplicateImage->bitmap->getPixel(1, 0) == imageMethodBitmap->getPixel(1, 0));
+    const Datum nullDuplicateImageDatum = runObjCall(72, {Datum::imageRef(std::shared_ptr<Bitmap>{})});
+    const auto* nullDuplicateImage = nullDuplicateImageDatum.asImageRef();
+    assert(nullDuplicateImage != nullptr);
+    assert(nullDuplicateImage->bitmap == nullptr);
+    assert(runObjCall(64, {Datum::imageRef(std::shared_ptr<Bitmap>{}), Datum::of(1)}).intValue() == 0);
 
     Datum methodList = Datum::list({Datum::of(10), Datum::of(20)});
     assert(runObjCall(64, {methodList, Datum::of(2)}).intValue() == 20);
