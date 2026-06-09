@@ -3083,6 +3083,18 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runObjectPropertyGet(objectPropertyTimer, 124).intValue() == 250);
     builtinContext.timeoutManager = nullptr;
 
+    SoundManager objectPropertySoundManager;
+    objectPropertySoundManager.setVolume(4, 80);
+    builtinContext.soundManager = &objectPropertySoundManager;
+    assert(runObjectPropertyGet(Datum::soundChannel(4), 86).intValue() == 80);
+    setObjectContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_OBJ_PROP, libreshockwave::lingo::code(Opcode::SET_OBJ_PROP), 86});
+    setObjectContext.push(Datum::soundChannel(4));
+    setObjectContext.push(Datum::of(300));
+    assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
+    assert(objectPropertySoundManager.getVolume(4) == 255);
+    assert(runObjectPropertyGet(Datum::soundChannel(4), 86).intValue() == 255);
+    builtinContext.soundManager = nullptr;
+
     auto imageSetBitmap = std::make_shared<Bitmap>(1, 1, 32);
     assert(!imageSetBitmap->isNativeAlpha());
     setObjectContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_OBJ_PROP, libreshockwave::lingo::code(Opcode::SET_OBJ_PROP), 98});

@@ -310,7 +310,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - Sound builtins now register Java-compatible `sound(channel)` and `soundEnabled`, returning valid 1-8 sound-channel datums and true availability by default.
 - `SoundBuiltins` exposes sound-channel method dispatch helpers for play/queue/stop/status/time/volume/list/ilk behavior backed by the C++ `SoundManager`.
-- Sound-channel property get/set helpers cover Java-compatible defaults and no-op accepted properties until C++ opcode property dispatch is wired to the helper surface.
+- Sound-channel property get/set helpers cover Java-compatible defaults and no-op accepted properties, with VM object-property opcodes wired to the helper surface.
 
 ### Cast Library Builtins Foundation
 
@@ -615,7 +615,7 @@ Result:
 - TimeoutBuiltins `timeout` creation, factory-mode `.new`, named `.new`, `.forget`, property get/set helpers, VM object-property get/set dispatch, and missing-provider behavior passed through the same CTest executable.
 - NetBuiltins preload/get/post aliases, task result/error/status lookups, stream-status toggling, navigation callbacks, and ExternalParamBuiltins ordered parameter lookup passed through the same CTest executable.
 - ImageBuiltins image creation, invalid-dimension handling, white fill defaults, built-in/system palette metadata, provider-resolved member palette metadata, string/ilk behavior, and `importFileInto` callback delegation passed through the same CTest executable.
-- SoundBuiltins channel creation, availability, sound-channel method dispatch, property defaults/mutation, and SoundManager playback delegation passed through the same CTest executable.
+- SoundBuiltins channel creation, availability, sound-channel method dispatch, VM object-property defaults/mutation, and SoundManager playback delegation passed through the same CTest executable.
 - ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration and callback hooks passed through the same CTest executable.
 - TypeBuiltins object/void/type predicates, `value`/`script`/`callAncestor` callback hooks, symbol conversion, and `ilk` alias checks passed through the same CTest executable.
 - Lingo VM Scope and ExecutionContext stack, param, local, return, loop, jump, global callback, handler callback, builtin invocation, and call-stack formatting behavior passed through the same CTest executable.
@@ -626,7 +626,7 @@ Result:
 - OpcodeRegistry simple string concatenation and containment handlers passed through the same CTest executable.
 - OpcodeRegistry basic property handlers, object property reads/writes, built-in constants, and simple `the` lookups passed through the same CTest executable.
 - OpcodeRegistry movie-property provider reads/writes and provider-backed `the` lookups passed through the same CTest executable.
-- OpcodeRegistry provider-backed object property gets/sets for movie, player, stage, sprite, integer-as-sprite refs, cast-member metadata/provider properties, and image `useAlpha`/`paletteRef` setters passed through the same CTest executable.
+- OpcodeRegistry provider-backed object property gets/sets for movie, player, stage, sprite, integer-as-sprite refs, cast-member metadata/provider properties, timeout refs, sound channels, and image `useAlpha`/`paletteRef` setters passed through the same CTest executable.
 - OpcodeRegistry local/external call handlers, builtin dispatch, no-return calls, constant fallback, and error-state handling passed through the same CTest executable.
 - OpcodeRegistry object method calls and receiver-style external method calls for lists, property lists, strings, points, rectangles, cast library member lookups/accessors, timeouts, sound channels, and Xtra instances passed through the same CTest executable.
 - OpcodeRegistry `NEW_OBJ` script construction delegation, provider-resolved fallback construction, declared property preinitialization, automatic `new` handler invocation, and non-script rejection passed through the same CTest executable.
@@ -763,4 +763,5 @@ Result:
 - `881040e1 Port C++ castLib member accessor foundation`
 - `99a43fa8 Port C++ cast member property provider foundation`
 - `19b640a3 Port C++ script construction provider fallback`
-- Current checkpoint commit message: `Port C++ timeout object property dispatch`
+- `654802e7 Port C++ timeout object property dispatch`
+- Current checkpoint commit message: `Port C++ sound object property dispatch`
