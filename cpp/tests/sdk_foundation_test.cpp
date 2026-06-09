@@ -3130,6 +3130,13 @@ void testLingoVmScopeAndExecutionContextFoundation() {
 
     assert(runObjCall(69, {Datum::of(std::string("abc")), Datum::of(2)}).stringValue() == "b");
     assert(runObjCall(70, {Datum::of(std::string("one two")), Datum::symbol("word")}).intValue() == 2);
+    MovieProperties stringMethodMovieProps;
+    stringMethodMovieProps.setItemDelimiter('|');
+    builtinContext.movieProperties = &stringMethodMovieProps;
+    assert(runObjCall(70, {Datum::of(std::string("red|green|blue")), Datum::symbol("item")}).intValue() == 3);
+    globals["globalName"] = Datum::of(std::string("red|green|blue"));
+    assert(runObjCall(70, {globalVarRef, Datum::symbol("item")}).intValue() == 3);
+    builtinContext.movieProperties = nullptr;
     assert(runObjCall(71, {Datum::intPoint(5, 6), Datum::intRect(0, 0, 10, 10)}).boolValue());
     assert(runObjCall(64, {Datum::intPoint(5, 6), Datum::of(2)}).intValue() == 6);
     assert(runObjCall(64, {Datum::intRect(1, 2, 3, 4), Datum::of(3)}).intValue() == 3);

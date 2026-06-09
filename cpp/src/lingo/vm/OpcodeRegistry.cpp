@@ -1589,7 +1589,10 @@ ChunkSpec chooseSingleChunkSpec(int firstChar,
     return {StringChunkType::Char, 1, 1};
 }
 
-Datum stringObjectMethod(const Datum& target, std::string_view methodName, const std::vector<Datum>& args) {
+Datum stringObjectMethod(ExecutionContext& context,
+                         const Datum& target,
+                         std::string_view methodName,
+                         const std::vector<Datum>& args) {
     const std::string value = toStringLikeJava(target);
     if (equalsIgnoreCase(methodName, "length")) {
         return Datum::of(static_cast<int>(value.size()));
@@ -1612,7 +1615,7 @@ Datum stringObjectMethod(const Datum& target, std::string_view methodName, const
         if (equalsIgnoreCase(chunkType, "char")) return Datum::of(static_cast<int>(value.size()));
         if (equalsIgnoreCase(chunkType, "word")) return Datum::of(static_cast<int>(splitWords(value).size()));
         if (equalsIgnoreCase(chunkType, "line")) return Datum::of(countLines(value));
-        if (equalsIgnoreCase(chunkType, "item")) return Datum::of(countItems(value));
+        if (equalsIgnoreCase(chunkType, "item")) return Datum::of(countItems(value, currentItemDelimiter(context)));
         return Datum::of(static_cast<int>(value.size()));
     }
     return Datum::voidValue();
@@ -1713,7 +1716,7 @@ Datum varRefObjectMethod(ExecutionContext& context,
         return propListObjectMethod(value.propListValue(), methodName, args);
     }
     if (value.isString()) {
-        return stringObjectMethod(value, methodName, args);
+        return stringObjectMethod(context, value, methodName, args);
     }
     if (const auto* point = value.asIntPoint()) {
         return pointObjectMethod(*point, methodName, args);
@@ -1754,7 +1757,7 @@ Datum dispatchObjectMethod(ExecutionContext& context, Datum target, std::string_
         return propListObjectMethod(target.propListValue(), methodName, args);
     }
     if (target.isString()) {
-        return stringObjectMethod(target, methodName, args);
+        return stringObjectMethod(context, target, methodName, args);
     }
     if (const auto* point = target.asIntPoint()) {
         return pointObjectMethod(*point, methodName, args);

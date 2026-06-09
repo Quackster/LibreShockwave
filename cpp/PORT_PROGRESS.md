@@ -586,7 +586,7 @@ Result:
 - Lingo `GET_CHAINED_PROP` list, string, point, property-list, and script-instance reads plus `GET_TOP_LEVEL_PROP` `_player`/`_movie` refs passed through the same CTest executable.
 - Lingo legacy `GET` last-chunk/count chunk reads, provider-backed movie/sprite/sound property mappings, and provider-backed `SET` mutations passed through the same CTest executable.
 - Lingo `GET_FIELD` provider-backed field lookup, cast-library lookup, provider-missing empty-string fallback, and stack-consumption tests passed through the same CTest executable.
-- Lingo VarRef object-call string chunk extraction and string method delegation tests passed through the same CTest executable.
+- Lingo VarRef object-call string chunk extraction, string method delegation, and provider-backed item counting tests passed through the same CTest executable.
 - MovieProperties movie/stage property reads and writes, file/input-backed values, xtra lists, item delimiters, timers, stage background color, random seed, navigation callbacks, and net navigation callbacks passed through the same CTest executable.
 - BuiltinRegistry case-insensitive lookup, custom registration, movie label/marker builtins, sprite puppet/cursor/spriteBox builtins, puppetPalette hooks, and Java-compatible no-op sprite builtins passed through the same CTest executable.
 - MathBuiltins numeric coercion, integer/float conversion, bit operations, trig, power, min/max, list min/max, and random callback hooks passed through the same CTest executable.
@@ -717,4 +717,5 @@ Result:
 - `c2223b5b Port C++ opcode legacy property provider foundation`
 - `ca5a2a3b Port C++ opcode cast member property foundation`
 - `0f0a7ca0 Port C++ opcode cast library method foundation`
-- Current checkpoint commit message: `Port C++ opcode item delimiter foundation`
+- `f6600078 Port C++ opcode item delimiter foundation`
+- Current checkpoint commit message: `Port C++ string item count delimiter foundation`
