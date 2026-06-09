@@ -2,6 +2,14 @@ add_library(libreshockwave
     src/bitmap/Bitmap.cpp
     src/bitmap/ColorRef.cpp
     src/bitmap/Palette.cpp
+    src/cast/BitmapInfo.cpp
+    src/cast/FilmLoopInfo.cpp
+    src/cast/MemberType.cpp
+    src/cast/ScriptType.cpp
+    src/cast/ShapeInfo.cpp
+    src/cast/Shockwave3DInfo.cpp
+    src/cast/TextInfo.cpp
+    src/cast/XmedStyledText.cpp
     src/chunks/BitmapChunk.cpp
     src/chunks/MediaChunk.cpp
     src/chunks/PaletteChunk.cpp

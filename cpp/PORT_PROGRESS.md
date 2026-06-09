@@ -40,6 +40,16 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `chunks::MediaChunk` reader with raw MP3 detection, header parsing, GUID-based IMA ADPCM detection, endian restoration, and `toSoundChunk`.
 - `util::containsMp3SyncFrame`.
 
+### Cast Metadata Foundation
+
+- `cast::MemberType` and `cast::ScriptType`.
+- `cast::StyledSpan` and `cast::XmedStyledText` helpers.
+- `cast::BitmapInfo` parser for D4/D5 and D6+ bitmap specific data.
+- `cast::TextInfo` parser for compact and D7+ text specific data.
+- `cast::ShapeInfo` parser and shape helpers.
+- `cast::FilmLoopInfo` parser and dimension/registration helpers.
+- `cast::Shockwave3DInfo` parser for basic camera, color, flag, and Pascal string metadata.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -57,13 +67,15 @@ Result:
 - `libreshockwave_cpp_tests`: passed.
 - zlib support was detected in the local CMake build and the zlib decompression path is covered by the C++ tests.
 - Chunk/audio foundation tests passed through the same CTest executable.
+- Cast metadata parser tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
 
 - SDK chunk model and chunk parsers.
 - Director/Afterburner file loading.
-- Remaining bitmap, sound, font, text, cast, score, and script chunk decoders.
+- Remaining bitmap, sound, font, text, score, and script chunk decoders.
+- `CastMemberChunk`, `CastChunk`, `CastListChunk`, and cast member resolution.
 - Lingo opcode model, decompiler, VM runtime values, opcodes, dispatchers, and builtins.
 - Player core, rendering pipeline, input, networking, audio, cast management, and debugging.
 - WASM/web player replacement strategy in C++.
@@ -73,4 +85,5 @@ Result:
 ## Commit Log
 
 - `b1d5f49 Add initial C++ port foundation`
-- Pending commit: chunk and audio foundation.
+- `4034c08 Port C++ chunk audio foundation`
+- Pending commit: cast metadata foundation.

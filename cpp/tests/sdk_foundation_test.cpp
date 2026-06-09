@@ -1,4 +1,5 @@
 #include <cassert>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <iostream>
@@ -10,6 +11,14 @@
 #include "libreshockwave/bitmap/Bitmap.hpp"
 #include "libreshockwave/bitmap/ColorRef.hpp"
 #include "libreshockwave/bitmap/Palette.hpp"
+#include "libreshockwave/cast/BitmapInfo.hpp"
+#include "libreshockwave/cast/FilmLoopInfo.hpp"
+#include "libreshockwave/cast/MemberType.hpp"
+#include "libreshockwave/cast/ScriptType.hpp"
+#include "libreshockwave/cast/ShapeInfo.hpp"
+#include "libreshockwave/cast/Shockwave3DInfo.hpp"
+#include "libreshockwave/cast/TextInfo.hpp"
+#include "libreshockwave/cast/XmedStyledText.hpp"
 #include "libreshockwave/chunks/BitmapChunk.hpp"
 #include "libreshockwave/chunks/MediaChunk.hpp"
 #include "libreshockwave/chunks/PaletteChunk.hpp"
@@ -40,6 +49,16 @@ using libreshockwave::io::ByteOrder;
 using libreshockwave::bitmap::Bitmap;
 using libreshockwave::bitmap::ColorRef;
 using libreshockwave::bitmap::Palette;
+using libreshockwave::cast::BitmapInfo;
+using libreshockwave::cast::FilmLoopInfo;
+using libreshockwave::cast::MemberType;
+using libreshockwave::cast::ScriptType;
+using libreshockwave::cast::ShapeInfo;
+using libreshockwave::cast::ShapeType;
+using libreshockwave::cast::Shockwave3DInfo;
+using libreshockwave::cast::StyledSpan;
+using libreshockwave::cast::TextInfo;
+using libreshockwave::cast::XmedStyledText;
 using libreshockwave::chunks::BitmapChunk;
 using libreshockwave::chunks::MediaChunk;
 using libreshockwave::chunks::PaletteChunk;
@@ -444,6 +463,191 @@ void testAudioAndMediaChunks() {
     assert(invalid.audioData() == invalidHeader);
 }
 
+void testCastMetadataTypes() {
+    assert(libreshockwave::cast::memberTypeFromCode(1) == MemberType::Bitmap);
+    assert(libreshockwave::cast::memberTypeFromCode(17) == MemberType::Shockwave3D);
+    assert(libreshockwave::cast::memberTypeFromCode(1234) == MemberType::Unknown);
+    assert(libreshockwave::cast::name(MemberType::FilmLoop) == "filmLoop");
+
+    assert(libreshockwave::cast::scriptTypeFromCode(1) == ScriptType::Score);
+    assert(libreshockwave::cast::scriptTypeFromCode(3) == ScriptType::Movie);
+    assert(libreshockwave::cast::scriptTypeFromCode(7) == ScriptType::Parent);
+    assert(libreshockwave::cast::isBehavior(ScriptType::Score));
+    assert(libreshockwave::cast::isMovieScript(ScriptType::Movie));
+    assert(libreshockwave::cast::isParentScript(ScriptType::Parent));
+
+    XmedStyledText text{
+        "hello",
+        {StyledSpan{0, 5, "Verdana", 12, false, true, true, 0x12, 0x34, 0x56}},
+        {"Verdana"},
+        "left",
+        0,
+        0,
+        1,
+        true,
+        0,
+        100,
+        20,
+        "Verdana",
+        12,
+        true,
+        2,
+        true,
+        0x12,
+        0x34,
+        0x56
+    };
+    assert(text.fontStyleString() == "bold,italic,underline");
+    assert(text.textColorARGB() == 0xFF123456U);
+}
+
+void testCastInfoParsers() {
+    const std::vector<std::uint8_t> bitmapData{
+        0x00, 0x18,
+        0x00, 0x02,
+        0x00, 0x03,
+        0x00, 0x12,
+        0x00, 0x13,
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x07,
+        0x00, 0x08,
+        0x00,
+        0x08,
+        0x00, 0x00,
+        0xFF, 0xFA
+    };
+    BitmapInfo bitmap = BitmapInfo::parse(bitmapData, 1100);
+    assert(bitmap.width == 16);
+    assert(bitmap.height == 16);
+    assert(bitmap.regX == 8);
+    assert(bitmap.regY == 7);
+    assert(bitmap.regXLocal() == 5);
+    assert(bitmap.regYLocal() == 5);
+    assert(bitmap.bitDepth == 8);
+    assert(bitmap.paletteId == Palette::METALLIC);
+    assert(bitmap.pitch == 24);
+    assert(bitmap.bytesPerPixel() == 1);
+    assert(bitmap.isPaletted());
+
+    const std::vector<std::uint8_t> textData{
+        0x00, 0x05,
+        0x00, 0x02,
+        0x00, 0x01,
+        0xFF, 0xCC,
+        0xFF, 0xDD,
+        0xFF, 0xEE,
+        0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x14, 0x00, 0xAA,
+        0x00, 0x0B,
+        0x00, 0x00, 0x00, 0x00
+    };
+    TextInfo text = TextInfo::parse(textData);
+    assert(text.textAlign == 1);
+    assert(text.bgRed == 0xCC);
+    assert(text.bgGreen == 0xDD);
+    assert(text.bgBlue == 0xEE);
+    assert(text.borderSize == 0);
+    assert(text.gutterSize == 5);
+    assert(text.textHeight == 11);
+
+    const std::vector<std::uint8_t> shapeData{
+        0x00, 0x01,
+        0x00, 0x00,
+        0x00, 0x00,
+        0x00, 0x39,
+        0x00, 0x39,
+        0x00, 0x01,
+        0xF9,
+        0x00,
+        0x00,
+        0x01,
+        0x05
+    };
+    ShapeInfo shape = ShapeInfo::parse(shapeData);
+    assert(shape.shapeType == ShapeType::Rect);
+    assert(shape.width == 57);
+    assert(shape.height == 57);
+    assert(shape.color == 0xF9);
+    assert(shape.backColor == 0);
+    assert(shape.fillType == 0);
+    assert(shape.lineThickness == 1);
+    assert(shape.lineDirection == 5);
+    assert(!shape.isFilled());
+    assert(shape.isOutlineInvisible());
+
+    const std::vector<std::uint8_t> filmLoopData{
+        0xFF, 0xF6,
+        0xFF, 0xEC,
+        0x00, 0x1E,
+        0x00, 0x28,
+        0x00, 0x00, 0x00,
+        0b00001001
+    };
+    FilmLoopInfo filmLoop = FilmLoopInfo::parse(filmLoopData);
+    assert(filmLoop.rectTop == -10);
+    assert(filmLoop.rectLeft == -20);
+    assert(filmLoop.width() == 60);
+    assert(filmLoop.height() == 40);
+    assert(filmLoop.regX() == 20);
+    assert(filmLoop.regY() == 10);
+    assert(filmLoop.center);
+    assert(filmLoop.crop);
+    assert(filmLoop.sound);
+    assert(filmLoop.loops);
+}
+
+void testShockwave3DInfoParser() {
+    std::vector<std::uint8_t> data;
+    auto appendI32 = [&](std::uint32_t value) {
+        data.push_back(static_cast<std::uint8_t>((value >> 24) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 16) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(value & 0xFF));
+    };
+    auto appendF32 = [&](float value) {
+        appendI32(std::bit_cast<std::uint32_t>(value));
+    };
+    auto appendPascal = [&](const std::string& value) {
+        data.push_back(static_cast<std::uint8_t>(value.size()));
+        data.insert(data.end(), value.begin(), value.end());
+    };
+
+    appendI32(0x01020304);
+    appendI32(0x05060708);
+    appendF32(100.0F);
+    appendF32(1.0F);
+    appendF32(2.0F);
+    appendF32(3.0F);
+    appendF32(4.0F);
+    appendF32(5.0F);
+    appendF32(6.0F);
+    data.insert(data.end(), {1, 2, 3, 4, 5, 6});
+    appendPascal("shader");
+    appendPascal("world");
+    appendPascal("tex");
+    appendPascal("cam");
+
+    assert(Shockwave3DInfo::isShockwave3D(data));
+    Shockwave3DInfo info = Shockwave3DInfo::parse(data);
+    assert(info.headerFlags.size() == 2);
+    assert(info.headerFlags[0] == 0x01020304);
+    assert(std::fabs(info.drawDistance - 100.0F) < 0.0001F);
+    assert(std::fabs(info.cameraPosition[1] - 2.0F) < 0.0001F);
+    assert(std::fabs(info.cameraTarget[2] - 6.0F) < 0.0001F);
+    assert(info.ambientR == 1);
+    assert(info.ambientG == 2);
+    assert(info.ambientB == 3);
+    assert(info.bgColorR == 4);
+    assert(info.bgColorG == 5);
+    assert(info.bgColorB == 6);
+    assert(info.defaultShaderName == "shader");
+    assert(info.worldName == "world");
+    assert(info.textureName == "tex");
+    assert(info.cameraName == "cam");
+}
+
 int main() {
     testBinaryReaderEndianAndBounds();
     testBinaryReaderStringsAndFourCC();
@@ -457,6 +661,9 @@ int main() {
     testBitmapRegionsAndMetadata();
     testBasicChunks();
     testAudioAndMediaChunks();
+    testCastMetadataTypes();
+    testCastInfoParsers();
+    testShockwave3DInfoParser();
 
     std::cout << "LibreShockwave C++ SDK foundation tests passed\n";
     return 0;
