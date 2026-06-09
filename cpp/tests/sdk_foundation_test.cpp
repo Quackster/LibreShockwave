@@ -2665,6 +2665,12 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runPutLocalChunk("one two", "new ", 3, 0, 0, 2, 0, 0, 0, 0, 0) == "one new two");
     assert(runPutLocalChunk("top\nbottom", "\nend", 2, 0, 0, 0, 0, 0, 0, 2, 0) == "top\nbottom\nend");
     assert(runPutLocalChunk("short", "X", 1, 9, 0, 0, 0, 0, 0, 0, 0) == "short");
+    MovieProperties chunkMutationMovieProps;
+    chunkMutationMovieProps.setItemDelimiter('|');
+    builtinContext.movieProperties = &chunkMutationMovieProps;
+    assert(runDeleteLocalChunk("red|green|blue", 0, 0, 0, 0, 2, 0, 0, 0) == "red|blue");
+    assert(runPutLocalChunk("red|green|blue", "lime", 1, 0, 0, 0, 0, 2, 0, 0, 0) == "red|lime|blue");
+    builtinContext.movieProperties = nullptr;
 
     Scope listScope(&script, handler, {});
     ExecutionContext listContext(listScope, ScriptChunk::Instruction{0, Opcode::PUSH_ARG_LIST, libreshockwave::lingo::code(Opcode::PUSH_ARG_LIST), 3});

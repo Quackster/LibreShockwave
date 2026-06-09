@@ -581,8 +581,8 @@ Result:
 - Lingo `GET_CHUNK` char/word/item/line extraction, range, negative last-index, sequential narrowing, and provider-backed item delimiters passed through the same CTest executable.
 - Lingo `PUSH_CHUNK_VAR_REF` typed raw-index varref creation tests passed through the same CTest executable.
 - Lingo `PUT` local, parameter, global, receiver-property, before, and after mutation tests passed through the same CTest executable.
-- Lingo `DELETE_CHUNK` char, word, item, line, negative last-index, delimiter, and out-of-range tests passed through the same CTest executable.
-- Lingo `PUT_CHUNK` char replacement/insertion, item replacement, word/line insertion, negative target, and out-of-range no-op tests passed through the same CTest executable.
+- Lingo `DELETE_CHUNK` char, word, item, line, negative last-index, provider-backed item delimiter, and out-of-range tests passed through the same CTest executable.
+- Lingo `PUT_CHUNK` char replacement/insertion, provider-backed item replacement, word/line insertion, negative target, and out-of-range no-op tests passed through the same CTest executable.
 - Lingo `GET_CHAINED_PROP` list, string, point, property-list, and script-instance reads plus `GET_TOP_LEVEL_PROP` `_player`/`_movie` refs passed through the same CTest executable.
 - Lingo legacy `GET` last-chunk/count chunk reads, provider-backed movie/sprite/sound property mappings, and provider-backed `SET` mutations passed through the same CTest executable.
 - Lingo `GET_FIELD` provider-backed field lookup, cast-library lookup, provider-missing empty-string fallback, and stack-consumption tests passed through the same CTest executable.
@@ -718,4 +718,5 @@ Result:
 - `ca5a2a3b Port C++ opcode cast member property foundation`
 - `0f0a7ca0 Port C++ opcode cast library method foundation`
 - `f6600078 Port C++ opcode item delimiter foundation`
-- Current checkpoint commit message: `Port C++ string item count delimiter foundation`
+- `3bbcf4a4 Port C++ string item count delimiter foundation`
+- Current checkpoint commit message: `Port C++ chunk mutation delimiter coverage`
