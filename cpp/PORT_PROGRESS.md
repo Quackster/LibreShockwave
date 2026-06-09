@@ -270,6 +270,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Movie `label`/`marker` builtins route through `MovieProperties` callbacks, including movie-reference leading arguments and Java-compatible non-negative frame results.
 - Sprite builtins port `puppetTempo`, `puppetSprite`, `cursor`/`setCursor`, `spriteBox`, update/move no-ops, and a `puppetPalette` callback hook for the future C++ cast/palette provider.
 
+### Math Builtins Foundation
+
+- Math builtins now register `abs`, `sqrt`, `sin`, `cos`, `random`, `integer`, `float`, bit operations, `power`, `min`, and `max`.
+- Numeric coercion covers Java-compatible string parsing, packed RGB color integer conversion, invalid-string handling, Java-style rounding for `integer`, and degree-based trig functions.
+- `random(max)` is exposed through a VM-owned callback hook while preserving the Java fallback result of `1` for missing or non-positive ranges.
+
 ### Constructor Builtins Foundation
 
 - Constructor builtins now register `point`, `rect`, `union`, `intersect`, `color`, `rgb`, `paletteIndex`, `sprite`, and `new` in the C++ builtin registry.
@@ -418,6 +424,7 @@ Result:
 - SpriteProperties missing defaults, property get/set, revision bumps, cast member assignment, autosizing, registration-aware bounds, cursor lists, script-instance sprite numbers, release cleanup, color refs, and image callbacks passed through the same CTest executable.
 - MovieProperties movie/stage property reads and writes, file/input-backed values, xtra lists, item delimiters, timers, stage background color, random seed, navigation callbacks, and net navigation callbacks passed through the same CTest executable.
 - BuiltinRegistry case-insensitive lookup, custom registration, movie label/marker builtins, sprite puppet/cursor/spriteBox builtins, puppetPalette hooks, and Java-compatible no-op sprite builtins passed through the same CTest executable.
+- MathBuiltins numeric coercion, integer/float conversion, bit operations, trig, power, min/max, list min/max, and random callback hooks passed through the same CTest executable.
 - ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration and callback hooks passed through the same CTest executable.
 - TypeBuiltins object/void/type predicates, `value`/`script`/`callAncestor` callback hooks, symbol conversion, and `ilk` alias checks passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
@@ -486,4 +493,5 @@ Result:
 - `754d4bc Port C++ movie properties foundation`
 - `0450558 Port C++ builtin registry foundation`
 - `9dd2ddf Port C++ constructor builtins foundation`
-- Current checkpoint commit message: `Port C++ type builtins foundation`
+- `ca6105f Port C++ type builtins foundation`
+- Current checkpoint commit message: `Port C++ math builtins foundation`

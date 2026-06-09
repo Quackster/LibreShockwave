@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
+#include <limits>
 #include <utility>
 
 namespace libreshockwave::lingo::builtin {
@@ -42,6 +44,95 @@ std::string trimCopy(const std::string& value) {
         --end;
     }
     return std::string(begin, end);
+}
+
+std::optional<long long> parseLongStrict(const std::string& value, int base) {
+    const std::string trimmed = trimCopy(value);
+    if (trimmed.empty()) {
+        return std::nullopt;
+    }
+    char* end = nullptr;
+    const long long result = std::strtoll(trimmed.c_str(), &end, base);
+    if (end == trimmed.c_str() || *end != '\0') {
+        return std::nullopt;
+    }
+    return result;
+}
+
+std::optional<int> parseIntStrict(const std::string& value) {
+    const auto parsed = parseLongStrict(value, 10);
+    if (!parsed || *parsed < std::numeric_limits<int>::min() || *parsed > std::numeric_limits<int>::max()) {
+        return std::nullopt;
+    }
+    return static_cast<int>(*parsed);
+}
+
+std::optional<double> parseDoubleStrict(const std::string& value) {
+    const std::string trimmed = trimCopy(value);
+    if (trimmed.empty()) {
+        return std::nullopt;
+    }
+    char* end = nullptr;
+    const double result = std::strtod(trimmed.c_str(), &end);
+    if (end == trimmed.c_str() || *end != '\0') {
+        return std::nullopt;
+    }
+    return result;
+}
+
+int packedColor(const Datum::ColorRef& color) {
+    return (color.r << 16) | (color.g << 8) | color.b;
+}
+
+int toIntLikeJava(const Datum& datum) {
+    if (const auto* value = datum.asInt()) {
+        return value->value;
+    }
+    if (const auto* value = datum.asFloat()) {
+        return static_cast<int>(value->value);
+    }
+    if (datum.isString()) {
+        return parseIntStrict(datum.stringValue()).value_or(0);
+    }
+    if (const auto* value = datum.asCastLibRef()) {
+        return value->castLib;
+    }
+    if (const auto* value = datum.asSpriteRef()) {
+        return value->channel;
+    }
+    if (const auto* value = datum.asColorRef()) {
+        return packedColor(*value);
+    }
+    return 0;
+}
+
+double toDoubleLikeJava(const Datum& datum) {
+    if (const auto* value = datum.asInt()) {
+        return static_cast<double>(value->value);
+    }
+    if (const auto* value = datum.asFloat()) {
+        return static_cast<double>(value->value);
+    }
+    if (datum.isString()) {
+        return parseDoubleStrict(datum.stringValue()).value_or(0.0);
+    }
+    if (const auto* value = datum.asCastLibRef()) {
+        return static_cast<double>(value->castLib);
+    }
+    if (const auto* value = datum.asSpriteRef()) {
+        return static_cast<double>(value->channel);
+    }
+    if (const auto* value = datum.asColorRef()) {
+        return static_cast<double>(packedColor(*value));
+    }
+    return 0.0;
+}
+
+int javaRoundToInt(double value) {
+    if (!std::isfinite(value)) {
+        return 0;
+    }
+    return static_cast<int>(std::floor(value + 0.5));
 }
 
 std::string keyName(const Datum& datum) {
@@ -91,6 +182,7 @@ std::string ilkType(const Datum& datum) {
 } // namespace
 
 BuiltinRegistry::BuiltinRegistry() {
+    MathBuiltins::registerBuiltins(*this);
     ConstructorBuiltins::registerBuiltins(*this);
     TypeBuiltins::registerBuiltins(*this);
     SpriteBuiltins::registerBuiltins(*this);
@@ -139,6 +231,203 @@ std::string BuiltinRegistry::normalizeName(std::string_view name) {
         return static_cast<char>(std::tolower(ch));
     });
     return result;
+}
+
+void MathBuiltins::registerBuiltins(BuiltinRegistry& registry) {
+    registry.registerBuiltin("abs", MathBuiltins::abs);
+    registry.registerBuiltin("sqrt", MathBuiltins::sqrt);
+    registry.registerBuiltin("sin", MathBuiltins::sin);
+    registry.registerBuiltin("cos", MathBuiltins::cos);
+    registry.registerBuiltin("random", MathBuiltins::random);
+    registry.registerBuiltin("integer", MathBuiltins::integer);
+    registry.registerBuiltin("float", MathBuiltins::toFloat);
+    registry.registerBuiltin("bitand", MathBuiltins::bitAnd);
+    registry.registerBuiltin("bitor", MathBuiltins::bitOr);
+    registry.registerBuiltin("bitxor", MathBuiltins::bitXor);
+    registry.registerBuiltin("bitnot", MathBuiltins::bitNot);
+    registry.registerBuiltin("power", MathBuiltins::power);
+    registry.registerBuiltin("min", MathBuiltins::min);
+    registry.registerBuiltin("max", MathBuiltins::max);
+}
+
+Datum MathBuiltins::abs(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::of(0);
+    }
+    if (args[0].isFloat()) {
+        return Datum::of(std::fabs(toDoubleLikeJava(args[0])));
+    }
+    const int value = toIntLikeJava(args[0]);
+    if (value == std::numeric_limits<int>::min()) {
+        return Datum::of(value);
+    }
+    return Datum::of(std::abs(value));
+}
+
+Datum MathBuiltins::sqrt(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::of(0);
+    }
+    return Datum::of(std::sqrt(toDoubleLikeJava(args[0])));
+}
+
+Datum MathBuiltins::sin(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::of(0);
+    }
+    return Datum::of(std::sin(toDoubleLikeJava(args[0]) * 3.14159265358979323846 / 180.0));
+}
+
+Datum MathBuiltins::cos(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::of(0);
+    }
+    return Datum::of(std::cos(toDoubleLikeJava(args[0]) * 3.14159265358979323846 / 180.0));
+}
+
+Datum MathBuiltins::random(BuiltinContext& context, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::of(1);
+    }
+    const int max = toIntLikeJava(args[0]);
+    if (max <= 0) {
+        return Datum::of(1);
+    }
+    if (context.randomIntHandler) {
+        return Datum::of(context.randomIntHandler(max));
+    }
+    return Datum::of(1);
+}
+
+Datum MathBuiltins::integer(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::of(0);
+    }
+    if (args[0].isString()) {
+        const std::string trimmed = trimCopy(args[0].stringValue());
+        if (trimmed.empty()) {
+            return Datum::of(0);
+        }
+        if (trimmed.front() == '*' && trimmed.size() > 1) {
+            if (const auto parsed = parseLongStrict(trimmed.substr(1), 16)) {
+                return Datum::of(static_cast<int>(*parsed));
+            }
+        }
+        if (const auto parsedInt = parseIntStrict(trimmed)) {
+            return Datum::of(*parsedInt);
+        }
+        if (const auto parsedDouble = parseDoubleStrict(trimmed)) {
+            return Datum::of(javaRoundToInt(*parsedDouble));
+        }
+        return Datum::voidValue();
+    }
+    return Datum::of(javaRoundToInt(toDoubleLikeJava(args[0])));
+}
+
+Datum MathBuiltins::toFloat(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::of(0.0);
+    }
+    if (args[0].isString()) {
+        if (const auto parsed = parseDoubleStrict(args[0].stringValue())) {
+            return Datum::of(*parsed);
+        }
+        return args[0];
+    }
+    return Datum::of(toDoubleLikeJava(args[0]));
+}
+
+Datum MathBuiltins::bitAnd(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.size() < 2) {
+        return Datum::of(0);
+    }
+    return Datum::of(toIntLikeJava(args[0]) & toIntLikeJava(args[1]));
+}
+
+Datum MathBuiltins::bitOr(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.size() < 2) {
+        return Datum::of(0);
+    }
+    return Datum::of(toIntLikeJava(args[0]) | toIntLikeJava(args[1]));
+}
+
+Datum MathBuiltins::bitXor(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.size() < 2) {
+        return Datum::of(0);
+    }
+    return Datum::of(toIntLikeJava(args[0]) ^ toIntLikeJava(args[1]));
+}
+
+Datum MathBuiltins::bitNot(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::of(0);
+    }
+    return Datum::of(~toIntLikeJava(args[0]));
+}
+
+Datum MathBuiltins::power(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.size() < 2) {
+        return Datum::of(0);
+    }
+    const double result = std::pow(toDoubleLikeJava(args[0]), toDoubleLikeJava(args[1]));
+    if (result == static_cast<int>(result) && !args[0].isFloat() && !args[1].isFloat()) {
+        return Datum::of(static_cast<int>(result));
+    }
+    return Datum::of(result);
+}
+
+Datum MathBuiltins::min(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.size() == 1 && args[0].isList()) {
+        const auto& items = args[0].listValue().items();
+        if (items.empty()) {
+            return Datum::of(0);
+        }
+        Datum result = items.front();
+        bool floatResult = result.isFloat();
+        for (std::size_t index = 1; index < items.size(); ++index) {
+            floatResult = floatResult || items[index].isFloat();
+            if (floatResult) {
+                result = Datum::of(std::min(toDoubleLikeJava(result), toDoubleLikeJava(items[index])));
+            } else {
+                result = Datum::of(std::min(toIntLikeJava(result), toIntLikeJava(items[index])));
+            }
+        }
+        return result;
+    }
+    if (args.size() < 2) {
+        return args.empty() ? Datum::of(0) : args[0];
+    }
+    if (args[0].isFloat() || args[1].isFloat()) {
+        return Datum::of(std::min(toDoubleLikeJava(args[0]), toDoubleLikeJava(args[1])));
+    }
+    return Datum::of(std::min(toIntLikeJava(args[0]), toIntLikeJava(args[1])));
+}
+
+Datum MathBuiltins::max(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.size() == 1 && args[0].isList()) {
+        const auto& items = args[0].listValue().items();
+        if (items.empty()) {
+            return Datum::of(0);
+        }
+        Datum result = items.front();
+        bool floatResult = result.isFloat();
+        for (std::size_t index = 1; index < items.size(); ++index) {
+            floatResult = floatResult || items[index].isFloat();
+            if (floatResult) {
+                result = Datum::of(std::max(toDoubleLikeJava(result), toDoubleLikeJava(items[index])));
+            } else {
+                result = Datum::of(std::max(toIntLikeJava(result), toIntLikeJava(items[index])));
+            }
+        }
+        return result;
+    }
+    if (args.size() < 2) {
+        return args.empty() ? Datum::of(0) : args[0];
+    }
+    if (args[0].isFloat() || args[1].isFloat()) {
+        return Datum::of(std::max(toDoubleLikeJava(args[0]), toDoubleLikeJava(args[1])));
+    }
+    return Datum::of(std::max(toIntLikeJava(args[0]), toIntLikeJava(args[1])));
 }
 
 void ConstructorBuiltins::registerBuiltins(BuiltinRegistry& registry) {

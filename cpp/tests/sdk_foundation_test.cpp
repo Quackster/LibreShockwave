@@ -906,6 +906,67 @@ void testBuiltinRegistryFoundation() {
     assert(registry.invoke("puppetSprite", context, {Datum::of(1), Datum::TRUE}).isVoid());
     assert(registry.invoke("spriteBox", context, {Datum::of(1)}) == Datum::intRect(0, 0, 0, 0));
 
+    assert(registry.contains("abs"));
+    assert(registry.contains("sqrt"));
+    assert(registry.contains("sin"));
+    assert(registry.contains("cos"));
+    assert(registry.contains("random"));
+    assert(registry.contains("integer"));
+    assert(registry.contains("float"));
+    assert(registry.contains("bitAnd"));
+    assert(registry.contains("bitOr"));
+    assert(registry.contains("bitXor"));
+    assert(registry.contains("bitNot"));
+    assert(registry.contains("power"));
+    assert(registry.contains("min"));
+    assert(registry.contains("max"));
+    assert(registry.invoke("abs", context).intValue() == 0);
+    assert(registry.invoke("abs", context, {Datum::of(-4)}).intValue() == 4);
+    assert(std::fabs(registry.invoke("abs", context, {Datum::of(-2.5F)}).floatValue() - 2.5F) < 0.0001F);
+    assert(std::fabs(registry.invoke("sqrt", context, {Datum::of(9)}).floatValue() - 3.0F) < 0.0001F);
+    assert(std::fabs(registry.invoke("sin", context, {Datum::of(90)}).floatValue() - 1.0F) < 0.0001F);
+    assert(std::fabs(registry.invoke("cos", context, {Datum::of(180)}).floatValue() + 1.0F) < 0.0001F);
+    assert(registry.invoke("random", context).intValue() == 1);
+    assert(registry.invoke("random", context, {Datum::of(0)}).intValue() == 1);
+    int randomCalls = 0;
+    context.randomIntHandler = [&randomCalls](int max) {
+        ++randomCalls;
+        assert(max == 5);
+        return 3;
+    };
+    assert(registry.invoke("random", context, {Datum::of(5)}).intValue() == 3);
+    assert(randomCalls == 1);
+    assert(registry.invoke("integer", context).intValue() == 0);
+    assert(registry.invoke("integer", context, {Datum::of(3.7F)}).intValue() == 4);
+    assert(registry.invoke("integer", context, {Datum::of(std::string("42"))}).intValue() == 42);
+    assert(registry.invoke("integer", context, {Datum::of(std::string("3.7"))}).intValue() == 4);
+    assert(registry.invoke("integer", context, {Datum::of(std::string(""))}).intValue() == 0);
+    assert(registry.invoke("integer", context, {Datum::of(std::string("*FF"))}).intValue() == 255);
+    assert(registry.invoke("integer", context, {Datum::of(std::string("hello"))}).isVoid());
+    assert(registry.invoke("integer", context, {Datum::colorRef(1, 2, 3)}).intValue() == 0x010203);
+    assert(std::fabs(registry.invoke("float", context).floatValue()) < 0.0001F);
+    assert(std::fabs(registry.invoke("float", context, {Datum::of(7)}).floatValue() - 7.0F) < 0.0001F);
+    assert(std::fabs(registry.invoke("float", context, {Datum::of(std::string("1.5"))}).floatValue() - 1.5F) < 0.0001F);
+    assert(registry.invoke("float", context, {Datum::of(std::string("hello"))}).stringValue() == "hello");
+    assert(registry.invoke("bitAnd", context, {Datum::of(0x0F), Datum::of(0x33)}).intValue() == 0x03);
+    assert(registry.invoke("bitOr", context, {Datum::of(0x0F), Datum::of(0x30)}).intValue() == 0x3F);
+    assert(registry.invoke("bitXor", context, {Datum::of(0x0F), Datum::of(0x33)}).intValue() == 0x3C);
+    assert(registry.invoke("bitNot", context, {Datum::of(0)}).intValue() == -1);
+    assert(registry.invoke("power", context, {Datum::of(2), Datum::of(3)}).intValue() == 8);
+    assert(std::fabs(registry.invoke("power", context, {Datum::of(2), Datum::of(0.5F)}).floatValue() -
+                     std::sqrt(2.0F)) < 0.0001F);
+    assert(registry.invoke("min", context).intValue() == 0);
+    assert(registry.invoke("min", context, {Datum::of(7)}).intValue() == 7);
+    assert(registry.invoke("min", context, {Datum::of(4), Datum::of(2)}).intValue() == 2);
+    assert(std::fabs(registry.invoke("min", context, {Datum::of(4.5F), Datum::of(2)}).floatValue() - 2.0F) < 0.0001F);
+    assert(registry.invoke("max", context, {Datum::of(4), Datum::of(2)}).intValue() == 4);
+    assert(std::fabs(registry.invoke("max", context, {Datum::of(4), Datum::of(2.5F)}).floatValue() - 4.0F) < 0.0001F);
+    assert(registry.invoke("min", context, {Datum::list({Datum::of(7), Datum::of(2), Datum::of(9)})}).intValue() == 2);
+    assert(std::fabs(registry.invoke("max",
+                                     context,
+                                     {Datum::list({Datum::of(7), Datum::of(2.5F), Datum::of(9)})}).floatValue() -
+                     9.0F) < 0.0001F);
+
     auto assertColor = [](const Datum& datum, int r, int g, int b) {
         const auto* color = datum.asColorRef();
         assert(color != nullptr);

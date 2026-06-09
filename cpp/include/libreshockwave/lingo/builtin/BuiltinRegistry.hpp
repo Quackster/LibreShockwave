@@ -20,6 +20,7 @@ struct BuiltinContext {
     using ValueEvaluator = std::function<Datum(const Datum& value)>;
     using ScriptResolver = std::function<Datum(const Datum& identifier, const std::optional<Datum>& scope)>;
     using AncestorCallHandler = std::function<Datum(const std::vector<Datum>& args)>;
+    using RandomIntHandler = std::function<int(int max)>;
 
     player::MovieProperties* movieProperties{nullptr};
     player::SpriteProperties* spriteProperties{nullptr};
@@ -29,6 +30,7 @@ struct BuiltinContext {
     ValueEvaluator valueEvaluator;
     ScriptResolver scriptResolver;
     AncestorCallHandler ancestorCallHandler;
+    RandomIntHandler randomIntHandler;
 };
 
 using BuiltinFunction = std::function<Datum(BuiltinContext& context, const std::vector<Datum>& args)>;
@@ -53,6 +55,25 @@ public:
 
 private:
     std::unordered_map<std::string, BuiltinFunction> builtins_;
+};
+
+class MathBuiltins {
+public:
+    static void registerBuiltins(BuiltinRegistry& registry);
+    [[nodiscard]] static Datum abs(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum sqrt(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum sin(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum cos(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum random(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum integer(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum toFloat(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum bitAnd(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum bitOr(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum bitXor(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum bitNot(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum power(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum min(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum max(BuiltinContext& context, const std::vector<Datum>& args);
 };
 
 class ConstructorBuiltins {
