@@ -108,6 +108,7 @@ std::string_view typeName(DatumType type) {
         case DatumType::StringChunk: return "string_chunk";
         case DatumType::Symbol: return "symbol";
         case DatumType::VarRef: return "var_ref";
+        case DatumType::ChunkRef: return "chunk_ref";
         case DatumType::List: return "list";
         case DatumType::PropList: return "prop_list";
         case DatumType::ArgList: return "arg_list";
@@ -368,6 +369,10 @@ Datum Datum::varRef(id::VarType varType, int rawIndex) {
     return Datum(VarRef{varType, rawIndex});
 }
 
+Datum Datum::chunkRef(id::VarType varType, int rawIndex, StringChunkType chunkType, int start, int end) {
+    return Datum(ChunkRef{varType, rawIndex, chunkType, start, end});
+}
+
 DatumType Datum::type() const {
     if (std::holds_alternative<Null>(value_)) return DatumType::Null;
     if (std::holds_alternative<Void>(value_)) return DatumType::Void;
@@ -405,6 +410,7 @@ DatumType Datum::type() const {
     if (std::holds_alternative<DateRef>(value_)) return DatumType::DateRef;
     if (std::holds_alternative<MathRef>(value_)) return DatumType::MathRef;
     if (std::holds_alternative<VarRef>(value_)) return DatumType::VarRef;
+    if (std::holds_alternative<ChunkRef>(value_)) return DatumType::ChunkRef;
     if (std::holds_alternative<ArgListPtr>(value_)) return DatumType::ArgList;
     return DatumType::ArgListNoRet;
 }
@@ -446,6 +452,10 @@ std::string Datum::stringValue() const {
     if (const auto* value = std::get_if<DFloat>(&value_)) return floatToString(value->value);
     if (const auto* value = std::get_if<Symbol>(&value_)) return value->name;
     if (const auto* value = std::get_if<TimeoutRef>(&value_)) return value->name;
+    if (const auto* value = std::get_if<ChunkRef>(&value_)) {
+        return "<chunkref:" + std::string(name(value->chunkType)) + "[" + std::to_string(value->start) + ".." +
+               std::to_string(value->end) + "]>";
+    }
     if (std::holds_alternative<Void>(value_)) return "VOID";
     if (std::holds_alternative<Null>(value_)) return "";
     if (const auto* value = std::get_if<IntPoint>(&value_)) {
@@ -485,6 +495,7 @@ const Datum::Xtra* Datum::asXtra() const { return std::get_if<Xtra>(&value_); }
 const Datum::XtraInstance* Datum::asXtraInstance() const { return std::get_if<XtraInstance>(&value_); }
 const Datum::TimeoutRef* Datum::asTimeoutRef() const { return std::get_if<TimeoutRef>(&value_); }
 const Datum::VarRef* Datum::asVarRef() const { return std::get_if<VarRef>(&value_); }
+const Datum::ChunkRef* Datum::asChunkRef() const { return std::get_if<ChunkRef>(&value_); }
 const Datum::IntPoint* Datum::asIntPoint() const { return std::get_if<IntPoint>(&value_); }
 const Datum::IntRect* Datum::asIntRect() const { return std::get_if<IntRect>(&value_); }
 
@@ -786,6 +797,7 @@ bool operator==(const Datum& lhs, const Datum& rhs) {
     if (auto value = std::get_if<Datum::DateRef>(&lhs.value_)) return *value == std::get<Datum::DateRef>(rhs.value_);
     if (auto value = std::get_if<Datum::MathRef>(&lhs.value_)) return *value == std::get<Datum::MathRef>(rhs.value_);
     if (auto value = std::get_if<Datum::VarRef>(&lhs.value_)) return *value == std::get<Datum::VarRef>(rhs.value_);
+    if (auto value = std::get_if<Datum::ChunkRef>(&lhs.value_)) return *value == std::get<Datum::ChunkRef>(rhs.value_);
     if (auto value = std::get_if<Datum::ArgListPtr>(&lhs.value_)) return **value == **std::get_if<Datum::ArgListPtr>(&rhs.value_);
     return **std::get_if<Datum::ArgListNoRetPtr>(&lhs.value_) == **std::get_if<Datum::ArgListNoRetPtr>(&rhs.value_);
 }

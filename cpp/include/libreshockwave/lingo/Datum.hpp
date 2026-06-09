@@ -37,6 +37,7 @@ enum class DatumType {
     StringChunk,
     Symbol,
     VarRef,
+    ChunkRef,
     List,
     PropList,
     ArgList,
@@ -286,6 +287,15 @@ public:
         friend bool operator==(const VarRef&, const VarRef&) = default;
     };
 
+    struct ChunkRef {
+        id::VarType varType;
+        int rawIndex;
+        StringChunkType chunkType;
+        int start;
+        int end;
+        friend bool operator==(const ChunkRef&, const ChunkRef&) = default;
+    };
+
     Datum();
 
     [[nodiscard]] static Datum nullValue();
@@ -319,6 +329,7 @@ public:
     [[nodiscard]] static Datum argListNoRet(std::vector<Datum> args);
     [[nodiscard]] static Datum timeoutRef(std::string name);
     [[nodiscard]] static Datum varRef(id::VarType varType, int rawIndex);
+    [[nodiscard]] static Datum chunkRef(id::VarType varType, int rawIndex, StringChunkType chunkType, int start, int end);
 
     [[nodiscard]] DatumType type() const;
     [[nodiscard]] std::string typeString() const;
@@ -353,6 +364,7 @@ public:
     [[nodiscard]] const XtraInstance* asXtraInstance() const;
     [[nodiscard]] const TimeoutRef* asTimeoutRef() const;
     [[nodiscard]] const VarRef* asVarRef() const;
+    [[nodiscard]] const ChunkRef* asChunkRef() const;
     [[nodiscard]] const IntPoint* asIntPoint() const;
     [[nodiscard]] const IntRect* asIntRect() const;
 
@@ -414,6 +426,7 @@ private:
         DateRef,
         MathRef,
         VarRef,
+        ChunkRef,
         ArgListPtr,
         ArgListNoRetPtr>;
 

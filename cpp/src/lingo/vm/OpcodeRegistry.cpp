@@ -1460,6 +1460,19 @@ std::string deleteChunkValue(std::string_view value,
            std::string(value.substr(static_cast<std::size_t>(deleteEnd)));
 }
 
+std::string deleteCharChunkRefValue(std::string_view value, int first, int last) {
+    if (value.empty() || first < 1) {
+        return std::string(value);
+    }
+    const int start = std::max(0, first - 1);
+    const int end = std::max(start, std::min(static_cast<int>(value.size()), last));
+    if (start >= static_cast<int>(value.size()) || start >= end) {
+        return std::string(value);
+    }
+    return std::string(value.substr(0, static_cast<std::size_t>(start))) +
+           std::string(value.substr(static_cast<std::size_t>(end)));
+}
+
 int normalizeCharChunkIndex(int index, int length, bool before) {
     if (index < 0) {
         return length;
@@ -1700,6 +1713,23 @@ Datum castLibObjectMethod(ExecutionContext& context,
 }
 
 Datum getContextVar(ExecutionContext& context, id::VarType varType, const Datum& idDatum);
+void setContextVar(ExecutionContext& context, id::VarType varType, const Datum& idDatum, Datum value);
+
+Datum chunkRefObjectMethod(ExecutionContext& context,
+                           const Datum::ChunkRef& chunkRef,
+                           std::string_view methodName,
+                           const std::vector<Datum>&) {
+    if (!equalsIgnoreCase(methodName, "delete") || chunkRef.chunkType != StringChunkType::Char) {
+        return Datum::voidValue();
+    }
+
+    const Datum current = getContextVar(context, chunkRef.varType, Datum::of(chunkRef.rawIndex));
+    setContextVar(context,
+                  chunkRef.varType,
+                  Datum::of(chunkRef.rawIndex),
+                  Datum::of(deleteCharChunkRefValue(toStringLikeJava(current), chunkRef.start, chunkRef.end)));
+    return Datum::voidValue();
+}
 
 Datum varRefObjectMethod(ExecutionContext& context,
                          const Datum::VarRef& varRef,
@@ -1721,7 +1751,18 @@ Datum varRefObjectMethod(ExecutionContext& context,
         return Datum::of(resolveChunkRange(toStringLikeJava(value), chunkType, start, end, currentItemDelimiter(context)));
     }
     if (equalsIgnoreCase(methodName, "getPropRef")) {
-        return Datum::voidValue();
+        if (args.size() < 2) {
+            return Datum::voidValue();
+        }
+        StringChunkType chunkType = StringChunkType::Char;
+        try {
+            chunkType = stringChunkTypeFromName(keyNameLikeJava(args[0]));
+        } catch (const std::invalid_argument&) {
+            chunkType = StringChunkType::Char;
+        }
+        const int start = toIntLikeJava(args[1]);
+        const int end = args.size() >= 3 ? toIntLikeJava(args[2]) : start;
+        return Datum::chunkRef(varRef.varType, varRef.rawIndex, chunkType, start, end);
     }
     if (value.isList()) {
         return listObjectMethod(value.listValue(), methodName, args);
@@ -1747,6 +1788,9 @@ Datum varRefObjectMethod(ExecutionContext& context,
 Datum dispatchObjectMethod(ExecutionContext& context, Datum target, std::string_view methodName, const std::vector<Datum>& args) {
     if (const auto* varRef = target.asVarRef()) {
         return varRefObjectMethod(context, *varRef, methodName, args);
+    }
+    if (const auto* chunkRef = target.asChunkRef()) {
+        return chunkRefObjectMethod(context, *chunkRef, methodName, args);
     }
     auto* builtinContext = context.builtinContext();
     if (const auto* timeout = target.asTimeoutRef()) {

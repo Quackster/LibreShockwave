@@ -2248,6 +2248,9 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 92) {
             return std::string("getPropRef");
         }
+        if (nameId == 93) {
+            return std::string("delete");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.callStackFormatter = []() {
@@ -3117,6 +3120,17 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runObjCall(67, {globalVarRef, Datum::symbol("char"), Datum::of(2), Datum::of(3)}).stringValue() == "bc");
     assert(runObjCall(69, {globalVarRef, Datum::of(4)}).stringValue() == "d");
     assert(runObjCall(70, {globalVarRef}).intValue() == 4);
+    globals["globalName"] = Datum::of(std::string("\\TCODE/client/"));
+    Datum globalChunkRef = runObjCall(92, {globalVarRef, Datum::symbol("char"), Datum::of(1), Datum::of(6)});
+    const auto* chunkRefValue = globalChunkRef.asChunkRef();
+    assert(chunkRefValue != nullptr);
+    assert(chunkRefValue->varType == libreshockwave::id::VarType::GLOBAL);
+    assert(chunkRefValue->rawIndex == 42);
+    assert(chunkRefValue->chunkType == StringChunkType::Char);
+    assert(chunkRefValue->start == 1);
+    assert(chunkRefValue->end == 6);
+    assert(runObjCall(93, {globalChunkRef}).isVoid());
+    assert(globals["globalName"].stringValue() == "/client/");
 
     builtinContext.castMemberResolver = [](int castLib, int memberNum) {
         return Datum::castMemberRef(CastLibId(castLib), MemberId(memberNum));
