@@ -222,6 +222,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Bounds fallback, scaled bitmap sampling, flip/mirror coordinate adjustment, static native-alpha bitmap thresholds, and dynamic transparency-ink alpha checks are available in C++.
 - Direct `StageRenderer` overloads remain deferred until the C++ stage renderer object is ported.
 
+### Cursor Manager Foundation
+
+- `player::CursorManager` ports cursor-code selection for hit sprites, editable text fields, button members, explicit sprite cursors, interactive sprite fallback, global cursor values, and custom bitmap cursors.
+- Custom cursor bitmap/mask resolution, cursor hotspot lookup, cursor member encoding, and Director-style white-mask transparency are available through provider callbacks until the C++ stage/cast managers are ported.
+- Navigator-whitespace suppression over matte, behavior-backed baked sprites is ported to keep interactive cursors from appearing over near-white masked UI regions.
+
 ### Sprite Runtime State Foundation
 
 - `sprite::SpriteState` ports score-backed and dynamic sprite runtime state, including position, dimensions, visibility, puppet state, ink/blend/trails/stretch, colors, flip flags, rotation/skew, cursor members, script-instance lists, and dynamic member overrides.
@@ -370,6 +376,7 @@ Result:
 - SpriteState score construction, Director blend-byte mapping, explicit override preservation, dynamic defaults, cursor state, script-instance rebinding, and release resets passed through the same CTest executable.
 - SpriteRegistry score/dynamic creation, lookup, score-behavior channel tracking, score updates, identity rebinding, dynamic-member cleanup, revision tracking, removal, and clear tests passed through the same CTest executable.
 - HitTester front-to-back bounds hits, static native-alpha thresholds, dynamic transparency-ink alpha hits, forced bounding-box hits, all-hit ordering, type lookup, and flip/scale source sampling passed through the same CTest executable.
+- CursorManager editable text, button, explicit sprite cursor, interactive fallback, custom bitmap cursor, global cursor, mask application, hotspot, cursor member encoding, near-white, and navigator-whitespace suppression tests passed through the same CTest executable.
 - BehaviorInstance and BehaviorManager ID/property state, behavior-ref parameters, frame-script caching, channel lookup/removal, sprite-instance ordering, and clear tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
@@ -430,4 +437,5 @@ Result:
 - `2b6b93a Port C++ behavior manager foundation`
 - `652eadf Port C++ sprite registry foundation`
 - `1e50517 Port C++ sound manager foundation`
-- Current checkpoint commit message: `Port C++ net manager foundation`
+- `205a5d2 Port C++ net manager foundation`
+- Current checkpoint commit message: `Port C++ cursor manager foundation`

@@ -68,6 +68,7 @@
 #include "libreshockwave/player/PlayerEvent.hpp"
 #include "libreshockwave/player/PlayerEventInfo.hpp"
 #include "libreshockwave/player/PlayerState.hpp"
+#include "libreshockwave/player/CursorManager.hpp"
 #include "libreshockwave/player/audio/AudioBackend.hpp"
 #include "libreshockwave/player/audio/SoundManager.hpp"
 #include "libreshockwave/player/behavior/BehaviorInstance.hpp"
@@ -168,6 +169,7 @@ using libreshockwave::lookup::CastMemberLookup;
 using libreshockwave::lookup::PaletteResolver;
 using libreshockwave::lookup::ScriptLookup;
 using libreshockwave::player::ExternalCastLoadEvent;
+using libreshockwave::player::CursorManager;
 using libreshockwave::player::PlayerEvent;
 using libreshockwave::player::PlayerEventInfo;
 using libreshockwave::player::PlayerState;
@@ -804,6 +806,98 @@ void testHitTesterFoundation() {
                           hidden.bakedBitmap(),
                           false);
     assert(HitTester::hitTest({hidden, lower}, 11, 11) == 40);
+}
+
+void testCursorManagerFoundation() {
+    InputState input;
+    SpriteRegistry registry;
+    std::vector<RenderSprite> sprites;
+    CursorManager manager(&input, &registry);
+    manager.setSpriteProvider([&sprites]() { return sprites; });
+
+    std::map<std::pair<int, int>, CursorManager::MemberInfo> memberInfo;
+    manager.setMemberInfoResolver([&memberInfo](int castLib, int memberNum) -> std::optional<CursorManager::MemberInfo> {
+        auto found = memberInfo.find({castLib, memberNum});
+        return found == memberInfo.end() ? std::nullopt : std::optional<CursorManager::MemberInfo>(found->second);
+    });
+
+    std::map<std::pair<int, int>, Bitmap> cursorBitmaps;
+    manager.setBitmapResolver([&cursorBitmaps](int castLib, int memberNum) -> std::optional<Bitmap> {
+        auto found = cursorBitmaps.find({castLib, memberNum});
+        return found == cursorBitmaps.end() ? std::nullopt : std::optional<Bitmap>(found->second);
+    });
+
+    bool interactive = false;
+    manager.setInteractivePredicate([&interactive](int channel) {
+        return interactive && channel == 3;
+    });
+
+    input.setMousePosition(11, 11);
+    auto state = registry.getOrCreateDynamic(3);
+    state->setDynamicMember(1, 10);
+    sprites = {makeHitSprite(3, makeSolidHitBitmap(0xFFCCCCCCU))};
+
+    memberInfo[{1, 10}] = CursorManager::MemberInfo{MemberType::Text, true, 0, 0};
+    assert(manager.getCursorAtMouse() == CursorManager::IBEAM_CURSOR);
+
+    memberInfo[{1, 10}] = CursorManager::MemberInfo{MemberType::Button, false, 0, 0};
+    assert(manager.getCursorAtMouse() == CursorManager::POINTER_CURSOR);
+
+    memberInfo[{1, 10}] = CursorManager::MemberInfo{MemberType::Bitmap, false, 0, 0};
+    state->setCursor(2);
+    assert(manager.getCursorAtMouse() == 2);
+
+    state->setCursor(0);
+    interactive = true;
+    assert(manager.getCursorAtMouse() == CursorManager::POINTER_CURSOR);
+    interactive = false;
+
+    state->setCursorMembers((1 << 16) | 20, (1 << 16) | 21);
+    cursorBitmaps.emplace(std::pair{1, 20}, Bitmap(2, 1, 32, {0xFFFF0000U, 0xFF00FF00U}));
+    cursorBitmaps.emplace(std::pair{1, 21}, Bitmap(2, 1, 32, {0xFFFFFFFFU, 0xFF000000U}));
+    memberInfo[{1, 20}] = CursorManager::MemberInfo{MemberType::Bitmap, false, 4, 5};
+    assert(manager.getCursorAtMouse() == CursorManager::CUSTOM_BITMAP_CURSOR);
+    auto cursorBitmap = manager.getCursorBitmap();
+    assert(cursorBitmap.has_value());
+    assert(cursorBitmap->width() == 2);
+    assert(cursorBitmap->height() == 1);
+    assert(cursorBitmap->getPixel(0, 0) == 0x00000000U);
+    assert(cursorBitmap->getPixel(1, 0) == 0xFF00FF00U);
+    auto regPoint = manager.getCursorRegPoint();
+    assert(regPoint.has_value());
+    assert((*regPoint)[0] == 4);
+    assert((*regPoint)[1] == 5);
+
+    assert(CursorManager::encodeCursorMember(Datum::castMemberRef(CastLibId(2), MemberId(9))) == ((2 << 16) | 9));
+    assert(CursorManager::encodeCursorMember(Datum::of((3 << 16) | 7)) == ((3 << 16) | 7));
+    assert(CursorManager::isNearWhite(0xFFFAFAFAU));
+    assert(!CursorManager::isNearWhite(0xFFF9FAFAU));
+    Bitmap masked = CursorManager::applyCursorMask(Bitmap(1, 2, 32, {0xFF010203U, 0xFF040506U}),
+                                                   Bitmap(1, 1, 32, {0xFF000000U}));
+    assert(masked.getPixel(0, 0) == 0xFF010203U);
+    assert(masked.getPixel(0, 1) == 0x00000000U);
+
+    input.setMousePosition(99, 99);
+    manager.setGlobalCursorSupplier([]() { return Datum::of(CursorManager::WAIT_CURSOR); });
+    assert(manager.getCursorAtMouse() == CursorManager::WAIT_CURSOR);
+    manager.setGlobalCursorSupplier([]() {
+        return Datum::list({Datum::castMemberRef(CastLibId(1), MemberId(20)), Datum::of((1 << 16) | 21)});
+    });
+    assert(manager.getCursorAtMouse() == CursorManager::CUSTOM_BITMAP_CURSOR);
+    auto globalBitmap = manager.getCursorBitmap();
+    assert(globalBitmap.has_value());
+    assert(globalBitmap->getPixel(0, 0) == 0x00000000U);
+    assert(manager.getCursorRegPoint().value()[0] == 4);
+
+    manager.setGlobalCursorSupplier(nullptr);
+    input.setMousePosition(10, 10);
+    auto navState = registry.getOrCreateDynamic(4);
+    navState->setCursor(CursorManager::WAIT_CURSOR);
+    auto navBitmap = std::make_shared<Bitmap>(1, 1, 32, std::vector<std::uint32_t>{0xFFFFFFFFU});
+    sprites = {makeHitSprite(4, navBitmap, libreshockwave::id::code(InkMode::MATTE))};
+    assert(manager.getCursorAtMouse() == CursorManager::ARROW_CURSOR);
+    assert(!manager.getCursorBitmap().has_value());
+    assert(!manager.getCursorRegPoint().has_value());
 }
 
 void testScoreNavigationFoundation() {
@@ -4807,6 +4901,7 @@ int main() {
     testPlayerCoreFoundation();
     testPlayerInputFoundation();
     testHitTesterFoundation();
+    testCursorManagerFoundation();
     testScoreNavigationFoundation();
     testSpriteStateFoundation();
     testSpriteRegistryFoundation();
