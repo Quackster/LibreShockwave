@@ -10,18 +10,25 @@
 #include "libreshockwave/bitmap/Bitmap.hpp"
 #include "libreshockwave/bitmap/ColorRef.hpp"
 #include "libreshockwave/bitmap/Palette.hpp"
+#include "libreshockwave/chunks/BitmapChunk.hpp"
+#include "libreshockwave/chunks/MediaChunk.hpp"
+#include "libreshockwave/chunks/PaletteChunk.hpp"
+#include "libreshockwave/chunks/RawChunk.hpp"
+#include "libreshockwave/chunks/SoundChunk.hpp"
 #include "libreshockwave/format/ChunkInfo.hpp"
 #include "libreshockwave/format/ChunkType.hpp"
 #include "libreshockwave/format/MoaID.hpp"
 #include "libreshockwave/id/Ids.hpp"
 #include "libreshockwave/io/BinaryReader.hpp"
 #include "libreshockwave/lingo/Datum.hpp"
+#include "libreshockwave/util/AudioCodecUtils.hpp"
 
 using libreshockwave::format::ChunkInfo;
 using libreshockwave::format::ChunkType;
 using libreshockwave::format::MoaID;
 using libreshockwave::id::CastLibId;
 using libreshockwave::id::ChannelId;
+using libreshockwave::id::ChunkId;
 using libreshockwave::id::FrameId;
 using libreshockwave::id::InkMode;
 using libreshockwave::id::MemberId;
@@ -33,6 +40,11 @@ using libreshockwave::io::ByteOrder;
 using libreshockwave::bitmap::Bitmap;
 using libreshockwave::bitmap::ColorRef;
 using libreshockwave::bitmap::Palette;
+using libreshockwave::chunks::BitmapChunk;
+using libreshockwave::chunks::MediaChunk;
+using libreshockwave::chunks::PaletteChunk;
+using libreshockwave::chunks::RawChunk;
+using libreshockwave::chunks::SoundChunk;
 using libreshockwave::lingo::Datum;
 using libreshockwave::lingo::DatumType;
 using libreshockwave::lingo::LingoException;
@@ -326,6 +338,112 @@ void testBitmapRegionsAndMetadata() {
     assert(swatch.getPixel(0, 2) == 0xFF336699U);
 }
 
+void testBasicChunks() {
+    RawChunk raw(nullptr, ChunkId(9), ChunkType::JUNK, {1, 2, 3, 4});
+    assert(raw.file() == nullptr);
+    assert(raw.id().value() == 9);
+    assert(raw.type() == ChunkType::JUNK);
+    assert(raw.length() == 4);
+
+    BinaryReader paletteReader({
+        0x12, 0x00, 0x34, 0x00, 0x56, 0x00,
+        0xAA, 0x00, 0xBB, 0x00, 0xCC, 0x00
+    });
+    PaletteChunk palette = PaletteChunk::read(nullptr, paletteReader, ChunkId(10), 12);
+    assert(palette.type() == ChunkType::CLUT);
+    assert(palette.colorCount() == 2);
+    assert(palette.getColor(0) == 0x123456U);
+    assert(palette.getColor(1) == 0xAABBCCU);
+    assert(palette.getColor(2) == 0);
+
+    BinaryReader bitmapReader({0x01, 0x02, 0x03});
+    BitmapChunk bitmap = BitmapChunk::read(nullptr, bitmapReader, ChunkId(11), 12);
+    assert(bitmap.type() == ChunkType::BITD);
+    assert(bitmap.data().size() == 3);
+    assert(bitmap.width() == 0);
+    BitmapChunk dimensioned = bitmap.withDimensions(nullptr, 640, 480, 8, PaletteId(Palette::SYSTEM_MAC));
+    assert(dimensioned.width() == 640);
+    assert(dimensioned.height() == 480);
+    assert(dimensioned.bitDepth() == 8);
+    assert(dimensioned.paletteId().value() == Palette::SYSTEM_MAC);
+    assert(dimensioned.data() == bitmap.data());
+}
+
+void testAudioAndMediaChunks() {
+    const std::vector<std::uint8_t> mp3Like{0x00, 0x11, 0xFF, 0xFB, 0x90, 0x64, 0x00, 0x00};
+    assert(libreshockwave::util::containsMp3SyncFrame(mp3Like, 512));
+    assert(!libreshockwave::util::containsMp3SyncFrame({0xFF, 0x00, 0x00, 0x00, 0x00}, 512));
+
+    std::vector<std::uint8_t> soundData(68, 0);
+    soundData[0x16] = 0x56;
+    soundData[0x17] = 0x22;
+    soundData[64] = 0x01;
+    soundData[65] = 0x02;
+    soundData[66] = 0x03;
+    soundData[67] = 0x04;
+    BinaryReader soundReader(soundData);
+    SoundChunk sound = SoundChunk::read(nullptr, soundReader, ChunkId(12));
+    assert(sound.type() == ChunkType::snd_);
+    assert(sound.sampleRate() == 22050);
+    assert(sound.sampleCount() == 2);
+    assert(sound.bitsPerSample() == 16);
+    assert(sound.channelCount() == 1);
+    assert(sound.codec() == "raw_pcm");
+    assert(sound.durationSeconds() > 0.0);
+
+    std::vector<std::uint8_t> soundMp3(70, 0);
+    soundMp3[10] = 0xFF;
+    soundMp3[11] = 0xFB;
+    soundMp3[12] = 0x90;
+    soundMp3[13] = 0x64;
+    BinaryReader soundMp3Reader(soundMp3);
+    SoundChunk mp3Sound = SoundChunk::read(nullptr, soundMp3Reader, ChunkId(13));
+    assert(mp3Sound.isMp3());
+    assert(mp3Sound.sampleCount() == 0);
+
+    BinaryReader rawMp3Reader({'I', 'D', '3', 0x04, 0x00, 0x00});
+    MediaChunk rawMp3 = MediaChunk::read(nullptr, rawMp3Reader, ChunkId(14));
+    assert(rawMp3.type() == ChunkType::ediM);
+    assert(rawMp3.isMp3());
+    assert(rawMp3.sampleRate() == 22050);
+
+    std::vector<std::uint8_t> mediaHeader;
+    auto appendI32 = [&](std::uint32_t value) {
+        mediaHeader.push_back(static_cast<std::uint8_t>((value >> 24) & 0xFF));
+        mediaHeader.push_back(static_cast<std::uint8_t>((value >> 16) & 0xFF));
+        mediaHeader.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
+        mediaHeader.push_back(static_cast<std::uint8_t>(value & 0xFF));
+    };
+    appendI32(40);
+    appendI32(0);
+    appendI32(44100);
+    appendI32(44100);
+    appendI32(0);
+    appendI32(100);
+    mediaHeader.insert(mediaHeader.end(), {0x5A, 0x08, 0xCD, 0x40, 0x53, 0x5B, 0x11, 0xD0,
+                                           0xA8, 0xBB, 0x00, 0xA0, 0xC9, 0x00, 0x8A, 0x48});
+    mediaHeader.insert(mediaHeader.end(), {0x10, 0x20, 0x30, 0x40});
+    BinaryReader mediaReader(mediaHeader, ByteOrder::LittleEndian);
+    MediaChunk media = MediaChunk::read(nullptr, mediaReader, ChunkId(15));
+    assert(media.sampleRate() == 44100);
+    assert(media.dataSizeField() == 100);
+    assert(media.guid().has_value());
+    assert(media.isAdpcm());
+    assert(media.audioData().size() == 4);
+    assert(mediaReader.order() == ByteOrder::LittleEndian);
+
+    SoundChunk converted = media.toSoundChunk();
+    assert(converted.codec() == "ima_adpcm");
+    assert(converted.channelCount() == 1);
+
+    std::vector<std::uint8_t> invalidHeader{0, 0, 0, 100, 1, 2, 3, 4, 5, 6, 7, 8,
+                                            9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20};
+    BinaryReader invalidMediaReader(invalidHeader);
+    MediaChunk invalid = MediaChunk::read(nullptr, invalidMediaReader, ChunkId(16));
+    assert(invalid.sampleRate() == 22050);
+    assert(invalid.audioData() == invalidHeader);
+}
+
 int main() {
     testBinaryReaderEndianAndBounds();
     testBinaryReaderStringsAndFourCC();
@@ -337,6 +455,8 @@ int main() {
     testPaletteAndColorRefs();
     testBitmapAlphaAndPaletteBehavior();
     testBitmapRegionsAndMetadata();
+    testBasicChunks();
+    testAudioAndMediaChunks();
 
     std::cout << "LibreShockwave C++ SDK foundation tests passed\n";
     return 0;

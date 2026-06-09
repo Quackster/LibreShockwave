@@ -2,10 +2,16 @@ add_library(libreshockwave
     src/bitmap/Bitmap.cpp
     src/bitmap/ColorRef.cpp
     src/bitmap/Palette.cpp
+    src/chunks/BitmapChunk.cpp
+    src/chunks/MediaChunk.cpp
+    src/chunks/PaletteChunk.cpp
+    src/chunks/RawChunk.cpp
+    src/chunks/SoundChunk.cpp
     src/format/ChunkType.cpp
     src/format/MoaID.cpp
     src/io/BinaryReader.cpp
     src/lingo/Datum.cpp
+    src/util/AudioCodecUtils.cpp
 )
 
 add_library(LibreShockwave::libreshockwave ALIAS libreshockwave)

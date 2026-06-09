@@ -30,6 +30,16 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `bitmap::ColorRef`.
 - `bitmap::Bitmap` with ARGB pixel storage, palette index metadata, palette remapping/quantization, alpha helpers, region extraction, anchor metadata, and swatch generation.
 
+### Chunk and Audio Foundation
+
+- `chunks::Chunk` base interface with a forward-declared `DirectorFile` owner pointer.
+- `chunks::RawChunk`.
+- `chunks::PaletteChunk` CLUT reader.
+- `chunks::BitmapChunk` BITD raw data reader and dimension metadata copy helper.
+- `chunks::SoundChunk` reader with sample-rate detection, MP3 detection, sample count, and duration helper.
+- `chunks::MediaChunk` reader with raw MP3 detection, header parsing, GUID-based IMA ADPCM detection, endian restoration, and `toSoundChunk`.
+- `util::containsMp3SyncFrame`.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -39,18 +49,21 @@ Commands:
 ```bash
 cmake --build cmake-build-debug --parallel
 ctest --test-dir cmake-build-debug --output-on-failure
+./gradlew test
 ```
 
 Result:
 
 - `libreshockwave_cpp_tests`: passed.
 - zlib support was detected in the local CMake build and the zlib decompression path is covered by the C++ tests.
+- Chunk/audio foundation tests passed through the same CTest executable.
+- Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
 
 - SDK chunk model and chunk parsers.
 - Director/Afterburner file loading.
-- Bitmap, sound, font, text, cast, score, and script chunk decoders.
+- Remaining bitmap, sound, font, text, cast, score, and script chunk decoders.
 - Lingo opcode model, decompiler, VM runtime values, opcodes, dispatchers, and builtins.
 - Player core, rendering pipeline, input, networking, audio, cast management, and debugging.
 - WASM/web player replacement strategy in C++.
@@ -59,4 +72,5 @@ Result:
 
 ## Commit Log
 
-- Pending commit: initial C++ foundation and bitmap foundation.
+- `b1d5f49 Add initial C++ port foundation`
+- Pending commit: chunk and audio foundation.
