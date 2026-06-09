@@ -28,6 +28,10 @@ bool isEmptyRect(const Datum::IntRect& rect) {
     return rect.right <= rect.left || rect.bottom <= rect.top;
 }
 
+Datum boolDatum(bool value) {
+    return value ? Datum::TRUE : Datum::FALSE;
+}
+
 std::string trimCopy(const std::string& value) {
     auto begin = value.begin();
     while (begin != value.end() && std::isspace(static_cast<unsigned char>(*begin))) {
@@ -40,10 +44,55 @@ std::string trimCopy(const std::string& value) {
     return std::string(begin, end);
 }
 
+std::string keyName(const Datum& datum) {
+    if (const auto* symbol = datum.asSymbol()) {
+        return symbol->name;
+    }
+    if (datum.isVoid()) {
+        return "";
+    }
+    if (datum.isString() || datum.isNumber()) {
+        return datum.stringValue();
+    }
+    try {
+        return datum.stringValue();
+    } catch (const LingoException&) {
+        return datum.typeString();
+    }
+}
+
+std::string ilkType(const Datum& datum) {
+    switch (datum.type()) {
+        case DatumType::Void: return "void";
+        case DatumType::Int: return "integer";
+        case DatumType::Float: return "float";
+        case DatumType::String:
+        case DatumType::StringChunk: return "string";
+        case DatumType::Symbol: return "symbol";
+        case DatumType::List: return "list";
+        case DatumType::PropList: return "propList";
+        case DatumType::IntPoint: return "point";
+        case DatumType::IntRect: return "rect";
+        case DatumType::ColorRef: return "color";
+        case DatumType::BitmapRef: return "image";
+        case DatumType::SpriteRef: return "sprite";
+        case DatumType::CastMemberRef: return "member";
+        case DatumType::CastLibRef: return "castLib";
+        case DatumType::ScriptInstanceRef: return "instance";
+        case DatumType::SoundChannel: return "instance";
+        case DatumType::ScriptRef: return "script";
+        case DatumType::Xtra: return "xtra";
+        case DatumType::XtraInstance: return "xtraInstance";
+        case DatumType::StageRef: return "stage";
+        default: return "object";
+    }
+}
+
 } // namespace
 
 BuiltinRegistry::BuiltinRegistry() {
     ConstructorBuiltins::registerBuiltins(*this);
+    TypeBuiltins::registerBuiltins(*this);
     SpriteBuiltins::registerBuiltins(*this);
     MovieBuiltins::registerBuiltins(*this);
 }
@@ -238,6 +287,161 @@ Datum ConstructorBuiltins::newInstance(BuiltinContext& context, const std::vecto
 
     if (context.newInstanceHandler) {
         return context.newInstanceHandler(target, constructorArgs);
+    }
+    return Datum::voidValue();
+}
+
+void TypeBuiltins::registerBuiltins(BuiltinRegistry& registry) {
+    registry.registerBuiltin("objectp", TypeBuiltins::objectp);
+    registry.registerBuiltin("voidp", TypeBuiltins::voidp);
+    registry.registerBuiltin("value", TypeBuiltins::value);
+    registry.registerBuiltin("script", TypeBuiltins::script);
+    registry.registerBuiltin("ilk", TypeBuiltins::ilk);
+    registry.registerBuiltin("listp", TypeBuiltins::listp);
+    registry.registerBuiltin("stringp", TypeBuiltins::stringp);
+    registry.registerBuiltin("integerp", TypeBuiltins::integerp);
+    registry.registerBuiltin("floatp", TypeBuiltins::floatp);
+    registry.registerBuiltin("symbolp", TypeBuiltins::symbolp);
+    registry.registerBuiltin("symbol", TypeBuiltins::symbol);
+    registry.registerBuiltin("callancestor", TypeBuiltins::callAncestor);
+}
+
+Datum TypeBuiltins::objectp(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::FALSE;
+    }
+    const Datum& value = args[0];
+    return boolDatum(!(value.isVoid() || value.isNumber() || value.isSymbol() || value.isString()));
+}
+
+Datum TypeBuiltins::voidp(BuiltinContext&, const std::vector<Datum>& args) {
+    return boolDatum(args.empty() || args[0].isVoid());
+}
+
+Datum TypeBuiltins::value(BuiltinContext& context, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::voidValue();
+    }
+    if (!args[0].isString()) {
+        return args[0];
+    }
+    if (context.valueEvaluator) {
+        return context.valueEvaluator(args[0]);
+    }
+    return Datum::voidValue();
+}
+
+Datum TypeBuiltins::script(BuiltinContext& context, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::voidValue();
+    }
+
+    const Datum& identifier = args[0];
+    std::optional<Datum> scope;
+    if (args.size() >= 2) {
+        scope = args[1];
+    }
+
+    if (const auto* member = identifier.asCastMemberRef()) {
+        return Datum::scriptRef(*member);
+    }
+
+    if (identifier.isList()) {
+        for (const auto& item : identifier.listValue().items()) {
+            std::vector<Datum> nestedArgs{item};
+            if (scope) {
+                nestedArgs.push_back(*scope);
+            }
+            Datum result = script(context, nestedArgs);
+            if (!result.isVoid()) {
+                return result;
+            }
+        }
+        return Datum::voidValue();
+    }
+
+    if (context.scriptResolver) {
+        return context.scriptResolver(identifier, scope);
+    }
+    return Datum::voidValue();
+}
+
+Datum TypeBuiltins::ilk(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::symbol("void");
+    }
+
+    const std::string typeName = ilkType(args[0]);
+    if (args.size() < 2) {
+        return Datum::symbol(typeName);
+    }
+
+    const std::string typeKey = BuiltinRegistry::normalizeName(typeName);
+    const std::string checkKey = BuiltinRegistry::normalizeName(keyName(args[1]));
+    if (typeKey == checkKey) {
+        return Datum::TRUE;
+    }
+    if (checkKey == "list" && (typeKey == "proplist" || typeKey == "rect" || typeKey == "point")) {
+        return Datum::TRUE;
+    }
+    if (checkKey == "linearlist" && typeKey == "list") {
+        return Datum::TRUE;
+    }
+    if (checkKey == "number" && (typeKey == "integer" || typeKey == "float")) {
+        return Datum::TRUE;
+    }
+    if (checkKey == "object" &&
+        (typeKey == "instance" || typeKey == "member" || typeKey == "xtra" || typeKey == "xtrainstance" ||
+         typeKey == "script" || typeKey == "castlib" || typeKey == "sprite" || typeKey == "stage" ||
+         typeKey == "image")) {
+        return Datum::TRUE;
+    }
+    return Datum::FALSE;
+}
+
+Datum TypeBuiltins::listp(BuiltinContext&, const std::vector<Datum>& args) {
+    return boolDatum(!args.empty() && (args[0].isList() || args[0].isPropList()));
+}
+
+Datum TypeBuiltins::stringp(BuiltinContext&, const std::vector<Datum>& args) {
+    return boolDatum(!args.empty() && args[0].isString());
+}
+
+Datum TypeBuiltins::integerp(BuiltinContext&, const std::vector<Datum>& args) {
+    return boolDatum(!args.empty() && args[0].isInt());
+}
+
+Datum TypeBuiltins::floatp(BuiltinContext&, const std::vector<Datum>& args) {
+    return boolDatum(!args.empty() && args[0].isFloat());
+}
+
+Datum TypeBuiltins::symbolp(BuiltinContext&, const std::vector<Datum>& args) {
+    return boolDatum(!args.empty() && args[0].isSymbol());
+}
+
+Datum TypeBuiltins::symbol(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::voidValue();
+    }
+    if (args[0].isSymbol()) {
+        return args[0];
+    }
+    if (!args[0].isString()) {
+        return Datum::voidValue();
+    }
+    std::string value = args[0].stringValue();
+    if (!value.empty() && value.front() == '#') {
+        value.erase(value.begin());
+    }
+    return Datum::symbol(std::move(value));
+}
+
+Datum TypeBuiltins::callAncestor(BuiltinContext& context, const std::vector<Datum>& args) {
+    if (args.size() < 2) {
+        return Datum::voidValue();
+    }
+    if (context.ancestorCallHandler) {
+        return context.ancestorCallHandler(args);
     }
     return Datum::voidValue();
 }

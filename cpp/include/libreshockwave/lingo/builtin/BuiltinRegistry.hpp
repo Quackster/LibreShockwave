@@ -17,12 +17,18 @@ struct BuiltinContext {
     using PuppetPaletteHandler = std::function<void(std::optional<Datum> paletteRef)>;
     using CastMemberCreator = std::function<Datum(int castLib, const std::string& memberType)>;
     using NewInstanceHandler = std::function<Datum(const Datum& target, const std::vector<Datum>& args)>;
+    using ValueEvaluator = std::function<Datum(const Datum& value)>;
+    using ScriptResolver = std::function<Datum(const Datum& identifier, const std::optional<Datum>& scope)>;
+    using AncestorCallHandler = std::function<Datum(const std::vector<Datum>& args)>;
 
     player::MovieProperties* movieProperties{nullptr};
     player::SpriteProperties* spriteProperties{nullptr};
     PuppetPaletteHandler puppetPaletteHandler;
     CastMemberCreator castMemberCreator;
     NewInstanceHandler newInstanceHandler;
+    ValueEvaluator valueEvaluator;
+    ScriptResolver scriptResolver;
+    AncestorCallHandler ancestorCallHandler;
 };
 
 using BuiltinFunction = std::function<Datum(BuiltinContext& context, const std::vector<Datum>& args)>;
@@ -61,6 +67,23 @@ public:
     [[nodiscard]] static Datum paletteIndex(BuiltinContext& context, const std::vector<Datum>& args);
     [[nodiscard]] static Datum sprite(BuiltinContext& context, const std::vector<Datum>& args);
     [[nodiscard]] static Datum newInstance(BuiltinContext& context, const std::vector<Datum>& args);
+};
+
+class TypeBuiltins {
+public:
+    static void registerBuiltins(BuiltinRegistry& registry);
+    [[nodiscard]] static Datum objectp(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum voidp(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum value(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum script(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum ilk(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum listp(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum stringp(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum integerp(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum floatp(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum symbolp(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum symbol(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum callAncestor(BuiltinContext& context, const std::vector<Datum>& args);
 };
 
 class MovieBuiltins {

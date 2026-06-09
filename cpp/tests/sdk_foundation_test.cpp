@@ -987,6 +987,110 @@ void testBuiltinRegistryFoundation() {
     assert(genericNewCalls == 1);
     assert(newScript.scriptInstanceValue().scriptName() == "created");
 
+    assert(registry.contains("objectp"));
+    assert(registry.contains("voidp"));
+    assert(registry.contains("value"));
+    assert(registry.contains("script"));
+    assert(registry.contains("ilk"));
+    assert(registry.contains("listp"));
+    assert(registry.contains("stringp"));
+    assert(registry.contains("integerp"));
+    assert(registry.contains("floatp"));
+    assert(registry.contains("symbolp"));
+    assert(registry.contains("symbol"));
+    assert(registry.contains("callAncestor"));
+
+    assert(!registry.invoke("objectp", context).boolValue());
+    assert(!registry.invoke("objectp", context, {Datum::of(1)}).boolValue());
+    assert(!registry.invoke("objectp", context, {Datum::of(std::string("text"))}).boolValue());
+    assert(!registry.invoke("objectp", context, {Datum::symbol("name")}).boolValue());
+    assert(registry.invoke("objectp", context, {Datum::list()}).boolValue());
+    assert(registry.invoke("objectp", context, {Datum::scriptInstance("instance")}).boolValue());
+    assert(registry.invoke("voidp", context).boolValue());
+    assert(registry.invoke("voidp", context, {Datum::voidValue()}).boolValue());
+    assert(!registry.invoke("voidp", context, {Datum::of(1)}).boolValue());
+    assert(registry.invoke("value", context).isVoid());
+    assert(registry.invoke("value", context, {Datum::of(17)}).intValue() == 17);
+    assert(registry.invoke("value", context, {Datum::of(std::string("3"))}).isVoid());
+    context.valueEvaluator = [](const Datum& value) {
+        assert(value.stringValue() == "3");
+        return Datum::of(3);
+    };
+    assert(registry.invoke("value", context, {Datum::of(std::string("3"))}).intValue() == 3);
+
+    assert(registry.invoke("script", context).isVoid());
+    const auto directScript = registry.invoke("script",
+                                              context,
+                                              {Datum::castMemberRef(CastLibId(2), MemberId(7))});
+    assert(directScript.asScriptRef()->memberRef.castLib == 2);
+    assert(directScript.asScriptRef()->memberRef.castMember == 7);
+    int scriptResolveCalls = 0;
+    context.scriptResolver = [&scriptResolveCalls](const Datum& identifier, const std::optional<Datum>& scope) {
+        ++scriptResolveCalls;
+        if (scope.has_value()) {
+            assert(scope->asCastLibRef() != nullptr);
+            assert(scope->asCastLibRef()->castLib == 4);
+        }
+        const std::string name = identifier.asSymbol() != nullptr ? identifier.asSymbol()->name : identifier.stringValue();
+        if (name == "Parent") {
+            return Datum::scriptRef(Datum::CastMemberRef{4, 9});
+        }
+        return Datum::voidValue();
+    };
+    assert(registry.invoke("script", context, {Datum::of(std::string("Missing")), Datum::castLibRef(CastLibId(4))}).isVoid());
+    const auto resolvedScript = registry.invoke("script",
+                                                context,
+                                                {Datum::symbol("Parent"), Datum::castLibRef(CastLibId(4))});
+    assert(resolvedScript.asScriptRef()->memberRef.castMember == 9);
+    const auto scriptCandidates = Datum::list({Datum::of(std::string("Missing")), Datum::symbol("Parent")});
+    const auto resolvedFromList = registry.invoke("script", context, {scriptCandidates, Datum::castLibRef(CastLibId(4))});
+    assert(resolvedFromList.asScriptRef()->memberRef.castMember == 9);
+    assert(scriptResolveCalls == 4);
+
+    assert(registry.invoke("ilk", context).asSymbol()->name == "void");
+    assert(registry.invoke("ilk", context, {Datum::of(1)}).asSymbol()->name == "integer");
+    assert(registry.invoke("ilk", context, {Datum::of(1.5F)}).asSymbol()->name == "float");
+    assert(registry.invoke("ilk", context, {Datum::of(std::string("x"))}).asSymbol()->name == "string");
+    assert(registry.invoke("ilk", context, {Datum::symbol("x")}).asSymbol()->name == "symbol");
+    assert(registry.invoke("ilk", context, {Datum::propList()}).asSymbol()->name == "propList");
+    assert(registry.invoke("ilk", context, {Datum::colorRef(1, 2, 3)}).asSymbol()->name == "color");
+    assert(registry.invoke("ilk", context, {Datum::castMemberRef(CastLibId(1), MemberId(2))}).asSymbol()->name == "member");
+    assert(registry.invoke("ilk", context, {Datum::castLibRef(CastLibId(1))}).asSymbol()->name == "castLib");
+    assert(registry.invoke("ilk", context, {Datum::spriteRef(ChannelId(2))}).asSymbol()->name == "sprite");
+    assert(registry.invoke("ilk", context, {Datum::stageRef()}).asSymbol()->name == "stage");
+    assert(registry.invoke("ilk", context, {Datum::propList(), Datum::symbol("list")}).boolValue());
+    assert(registry.invoke("ilk", context, {Datum::intPoint(1, 2), Datum::symbol("list")}).boolValue());
+    assert(registry.invoke("ilk", context, {Datum::list(), Datum::symbol("linearList")}).boolValue());
+    assert(registry.invoke("ilk", context, {Datum::of(1.5F), Datum::symbol("number")}).boolValue());
+    assert(registry.invoke("ilk", context, {Datum::scriptInstance("child"), Datum::symbol("object")}).boolValue());
+    assert(registry.invoke("ilk", context, {Datum::colorRef(1, 2, 3), Datum::symbol("object")}) == Datum::FALSE);
+    assert(registry.invoke("listp", context, {Datum::list()}).boolValue());
+    assert(registry.invoke("listp", context, {Datum::propList()}).boolValue());
+    assert(!registry.invoke("listp", context, {Datum::intPoint(1, 2)}).boolValue());
+    assert(registry.invoke("stringp", context, {Datum::of(std::string("x"))}).boolValue());
+    assert(registry.invoke("integerp", context, {Datum::of(1)}).boolValue());
+    assert(registry.invoke("floatp", context, {Datum::of(1.0F)}).boolValue());
+    assert(registry.invoke("symbolp", context, {Datum::symbol("x")}).boolValue());
+    assert(registry.invoke("symbol", context).isVoid());
+    assert(registry.invoke("symbol", context, {Datum::of(7)}).isVoid());
+    assert(registry.invoke("symbol", context, {Datum::symbol("already")}).asSymbol()->name == "already");
+    assert(registry.invoke("symbol", context, {Datum::of(std::string("#door"))}).asSymbol()->name == "door");
+    assert(registry.invoke("symbol", context, {Datum::of(std::string(""))}).asSymbol()->name.empty());
+    assert(registry.invoke("callAncestor", context).isVoid());
+    assert(registry.invoke("callAncestor", context, {Datum::symbol("new"), Datum::scriptInstance("child")}).isVoid());
+    int ancestorCalls = 0;
+    context.ancestorCallHandler = [&ancestorCalls](const std::vector<Datum>& args) {
+        ++ancestorCalls;
+        assert(args.size() == 3);
+        assert(args[0].asSymbol()->name == "new");
+        assert(args[2].intValue() == 5);
+        return Datum::of(88);
+    };
+    assert(registry.invoke("callAncestor",
+                           context,
+                           {Datum::symbol("new"), Datum::scriptInstance("child"), Datum::of(5)}).intValue() == 88);
+    assert(ancestorCalls == 1);
+
     MovieProperties movie;
     int requestedMarkerOffset = 0;
     movie.setFrameForLabelResolver([](const std::string& label) {

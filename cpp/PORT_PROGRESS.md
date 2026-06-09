@@ -276,6 +276,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Point/rect geometry constructors, rectangle union/intersection, RGB and palette-index color construction, color pass-through, and trimmed hex-string RGB parsing match the Java constructor helpers.
 - `new(#memberType, castLib)` and generic object construction are exposed through callback hooks until the C++ cast provider, Xtra support, and script-instance VM runtime are ported.
 
+### Type Builtins Foundation
+
+- Type builtins now register `objectp`, `voidp`, `value`, `script`, `ilk`, `listp`, `stringp`, `integerp`, `floatp`, `symbolp`, `symbol`, and `callAncestor`.
+- Java-compatible type predicates, symbol conversion, `ilk` type names, and Director alias checks such as `#list`, `#linearList`, `#number`, and `#object` are covered in C++.
+- VM/provider-dependent `value`, script resolution, and `callAncestor` dispatch are exposed through callback hooks until the C++ Lingo VM runtime is ported.
+
 ### Score Navigation Foundation
 
 - `score::ScoreBehaviorRef` ports behavior cast-member references with saved parameter storage.
@@ -413,6 +419,7 @@ Result:
 - MovieProperties movie/stage property reads and writes, file/input-backed values, xtra lists, item delimiters, timers, stage background color, random seed, navigation callbacks, and net navigation callbacks passed through the same CTest executable.
 - BuiltinRegistry case-insensitive lookup, custom registration, movie label/marker builtins, sprite puppet/cursor/spriteBox builtins, puppetPalette hooks, and Java-compatible no-op sprite builtins passed through the same CTest executable.
 - ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration and callback hooks passed through the same CTest executable.
+- TypeBuiltins object/void/type predicates, `value`/`script`/`callAncestor` callback hooks, symbol conversion, and `ilk` alias checks passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -478,4 +485,5 @@ Result:
 - `737ad4b Port C++ sprite properties foundation`
 - `754d4bc Port C++ movie properties foundation`
 - `0450558 Port C++ builtin registry foundation`
-- Current checkpoint commit message: `Port C++ constructor builtins foundation`
+- `9dd2ddf Port C++ constructor builtins foundation`
+- Current checkpoint commit message: `Port C++ type builtins foundation`
