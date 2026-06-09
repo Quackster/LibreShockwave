@@ -2323,6 +2323,18 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 117) {
             return std::string("handler");
         }
+        if (nameId == 118) {
+            return std::string("getmemnum");
+        }
+        if (nameId == 119) {
+            return std::string("memberExists");
+        }
+        if (nameId == 120) {
+            return std::string("getmember");
+        }
+        if (nameId == 121) {
+            return std::string("readAliasIndexesFromField");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.callStackFormatter = []() {
@@ -3213,6 +3225,26 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runObjCall(117, {scriptInstance, Datum::symbol("known")}).boolValue());
     assert(runObjCall(116, {scriptInstance, Datum::symbol("newLocal")}).isVoid());
     assert(scriptInstance.scriptInstanceValue().getProperty("newLocal").isVoid());
+    auto memberRegistry = Datum::propList();
+    const int chairSlot = SlotId::of(2, 7).value();
+    const int mirrorSlot = -SlotId::of(3, 4).value();
+    memberRegistry.propListValue().put(Datum::of(std::string("chair")), Datum::of(chairSlot));
+    memberRegistry.propListValue().put(Datum::symbol("mirror"), Datum::of(mirrorSlot));
+    auto registryInstance = Datum::scriptInstance("resourceRegistry");
+    registryInstance.scriptInstanceValue().setProperty("pAllMemNumList", memberRegistry);
+    assert(runObjCall(118, {registryInstance, Datum::of(std::string("chair"))}).intValue() == chairSlot);
+    assert(runObjCall(118, {registryInstance, Datum::of(SlotId::of(5, 6).value())}).intValue() ==
+           SlotId::of(5, 6).value());
+    assert(runObjCall(119, {registryInstance, Datum::of(std::string("mirror"))}).boolValue());
+    const Datum registryMemberDatum = runObjCall(120, {registryInstance, Datum::of(std::string("chair"))});
+    const auto* registryMember = registryMemberDatum.asCastMemberRef();
+    assert(registryMember != nullptr);
+    assert(registryMember->castLib == 2);
+    assert(registryMember->castMember == 7);
+    assert(runObjCall(118, {registryInstance, Datum::of(std::string("missing"))}).intValue() == 0);
+    assert(!runObjCall(119, {registryInstance, Datum::of(std::string("missing"))}).boolValue());
+    assert(runObjCall(120, {registryInstance, Datum::of(std::string("missing"))}).isVoid());
+    assert(runObjCall(121, {registryInstance, Datum::of(std::string("memberalias.index")), Datum::of(11)}).intValue() == 0);
 
     auto imageMethodBitmap = std::make_shared<Bitmap>(2, 2, 32);
     imageMethodBitmap->fill(0xFFFFFFFFU);

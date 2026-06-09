@@ -1844,6 +1844,62 @@ void scriptInstanceDeleteLocalProperty(Datum::ScriptInstanceRef& instance, std::
         properties.end());
 }
 
+std::optional<int> scriptInstanceRegisteredMemberSlot(Datum::ScriptInstanceRef& instance,
+                                                      const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return 0;
+    }
+    const Datum registry = instance.getProperty("pAllMemNumList");
+    if (!registry.isPropList()) {
+        return std::nullopt;
+    }
+    if (args[0].isInt() || args[0].isFloat()) {
+        return toIntLikeJava(args[0]);
+    }
+
+    const std::string memberName = keyNameLikeJava(args[0]);
+    if (memberName.empty()) {
+        return 0;
+    }
+    const Datum registered = getPropListKey(registry.propListValue(), memberName);
+    return registered.isVoid() ? 0 : toIntLikeJava(registered);
+}
+
+std::optional<Datum> scriptInstanceMemberRegistryMethod(Datum::ScriptInstanceRef& instance,
+                                                        std::string_view methodName,
+                                                        const std::vector<Datum>& args) {
+    if (!equalsIgnoreCase(methodName, "getmemnum") &&
+        !equalsIgnoreCase(methodName, "exists") &&
+        !equalsIgnoreCase(methodName, "memberexists") &&
+        !equalsIgnoreCase(methodName, "getmember") &&
+        !equalsIgnoreCase(methodName, "readaliasindexesfromfield")) {
+        return std::nullopt;
+    }
+
+    if (equalsIgnoreCase(methodName, "readaliasindexesfromfield")) {
+        return instance.getProperty("pAllMemNumList").isPropList() ? std::optional<Datum>{Datum::of(0)} : std::nullopt;
+    }
+
+    const auto slot = scriptInstanceRegisteredMemberSlot(instance, args);
+    if (!slot.has_value()) {
+        return std::nullopt;
+    }
+    if (equalsIgnoreCase(methodName, "getmemnum")) {
+        return Datum::of(*slot);
+    }
+    if (equalsIgnoreCase(methodName, "exists") || equalsIgnoreCase(methodName, "memberexists")) {
+        return std::abs(*slot) > 0 ? Datum::TRUE : Datum::FALSE;
+    }
+
+    const id::SlotId slotId(std::abs(*slot));
+    const auto castLib = slotId.castLibId();
+    const auto member = slotId.memberId();
+    if (castLib.has_value() && member.has_value()) {
+        return Datum::castMemberRef(*castLib, *member);
+    }
+    return Datum::voidValue();
+}
+
 Datum scriptInstanceObjectMethod(ExecutionContext& context,
                                  Datum::ScriptInstanceRef& instance,
                                  std::string_view methodName,
@@ -1915,6 +1971,9 @@ Datum scriptInstanceObjectMethod(ExecutionContext& context,
     if (equalsIgnoreCase(methodName, "handler")) {
         if (args.empty()) return Datum::FALSE;
         return context.findHandler(keyNameLikeJava(args[0])).has_value() ? Datum::TRUE : Datum::FALSE;
+    }
+    if (const auto registryResult = scriptInstanceMemberRegistryMethod(instance, methodName, args)) {
+        return *registryResult;
     }
 
     const Datum property = instance.getProperty(std::string(methodName));
