@@ -1901,9 +1901,10 @@ std::optional<Datum> scriptInstanceMemberRegistryMethod(Datum::ScriptInstanceRef
 }
 
 Datum scriptInstanceObjectMethod(ExecutionContext& context,
-                                 Datum::ScriptInstanceRef& instance,
+                                 Datum& receiver,
                                  std::string_view methodName,
                                  const std::vector<Datum>& args) {
+    auto& instance = receiver.scriptInstanceValue();
     if (equalsIgnoreCase(methodName, "setAt") || equalsIgnoreCase(methodName, "setAProp")) {
         if (args.size() >= 2) {
             instance.setProperty(keyNameLikeJava(args[0]), args[1]);
@@ -1971,6 +1972,9 @@ Datum scriptInstanceObjectMethod(ExecutionContext& context,
     if (equalsIgnoreCase(methodName, "handler")) {
         if (args.empty()) return Datum::FALSE;
         return context.findHandler(keyNameLikeJava(args[0])).has_value() ? Datum::TRUE : Datum::FALSE;
+    }
+    if (const auto handler = context.findHandler(methodName)) {
+        return safeExecuteHandler(context, *handler->script, handler->handler, args, receiver);
     }
     if (const auto registryResult = scriptInstanceMemberRegistryMethod(instance, methodName, args)) {
         return *registryResult;
@@ -3442,7 +3446,7 @@ Datum varRefObjectMethod(ExecutionContext& context,
         return rectObjectMethod(*rect, methodName, args);
     }
     if (value.type() == DatumType::ScriptInstanceRef) {
-        return scriptInstanceObjectMethod(context, value.scriptInstanceValue(), methodName, args);
+        return scriptInstanceObjectMethod(context, value, methodName, args);
     }
     return Datum::voidValue();
 }
@@ -3498,7 +3502,7 @@ Datum dispatchObjectMethod(ExecutionContext& context, Datum target, std::string_
         return castMemberObjectMethod(context, *member, methodName, args);
     }
     if (target.type() == DatumType::ScriptInstanceRef) {
-        return scriptInstanceObjectMethod(context, target.scriptInstanceValue(), methodName, args);
+        return scriptInstanceObjectMethod(context, target, methodName, args);
     }
 
     std::vector<Datum> fullArgs;

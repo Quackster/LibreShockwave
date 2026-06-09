@@ -2351,11 +2351,12 @@ void testLingoVmScopeAndExecutionContextFoundation() {
                                    const std::vector<Datum>& args,
                                    const Datum& receiverArg) {
         assert(calledScript.id().value() == 700);
-        assert(receiverArg.isVoid());
+        assert(receiverArg.isVoid() || receiverArg.type() == DatumType::ScriptInstanceRef);
         if (!args.empty() && args[0].isString() && args[0].stringValue() == "throw") {
             throw LingoException("call failed");
         }
-        return Datum::of("exec:" + std::to_string(calledHandler.nameId) + ":" + std::to_string(args.size()));
+        return Datum::of((receiverArg.isVoid() ? "exec:" : "receiver-exec:") +
+                         std::to_string(calledHandler.nameId) + ":" + std::to_string(args.size()));
     };
 
     Scope contextScope(&script, handler, {});
@@ -3245,6 +3246,7 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(!runObjCall(119, {registryInstance, Datum::of(std::string("missing"))}).boolValue());
     assert(runObjCall(120, {registryInstance, Datum::of(std::string("missing"))}).isVoid());
     assert(runObjCall(121, {registryInstance, Datum::of(std::string("memberalias.index")), Datum::of(11)}).intValue() == 0);
+    assert(runObjCall(61, {scriptInstance, Datum::of(123)}).stringValue() == "receiver-exec:99:1");
 
     auto imageMethodBitmap = std::make_shared<Bitmap>(2, 2, 32);
     imageMethodBitmap->fill(0xFFFFFFFFU);

@@ -479,7 +479,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - String receiver dispatch now covers direct `getProp`/`getPropRef` chunk extraction, and VarRef receiver dispatch resolves referenced context variables for string-like `getProp`, `getPropRef`, `char`, and `count` object methods.
 - Mutable ChunkRef creation and char-range deletion now use a dedicated C++ datum; broader mutable chunk-ref operations remain deferred.
 - ScriptRef receiver dispatch now supports Java-compatible `new` method calls through the registered constructor builtin.
-- ScriptInstance receiver dispatch now supports Java-compatible property/list-like `getAt`, `setAt`, `getAProp`, `setAProp`, `getProp`, `getPropRef`, `setProp`, `addProp`, `deleteProp`, `count`, `ilk`, `addAt`, handler-existence methods, and prefilled `pAllMemNumList` member-registry lookups over C++ script-instance datums.
+- ScriptInstance receiver dispatch now supports Java-compatible property/list-like `getAt`, `setAt`, `getAProp`, `setAProp`, `getProp`, `getPropRef`, `setProp`, `addProp`, `deleteProp`, `count`, `ilk`, `addAt`, handler-existence/dispatch methods, and prefilled `pAllMemNumList` member-registry lookups over C++ script-instance datums.
 - CastMemberRef receiver dispatch now delegates methods through a provider-backed C++ builtin context hook, matching Java's cast-member method provider path.
 - SpriteRef receiver dispatch now delegates methods through a provider-backed C++ builtin context hook for behavior/broker integration.
 - Image receiver dispatch now supports Java-compatible `fill`, `draw`, `setAlpha`, `createMatte`, `createMask`, `copyPixels`, `duplicate`, `crop`, `trimWhiteSpace`, `getAt`, `getPixel`, and `setPixel` methods over C++ bitmap refs.
@@ -752,4 +752,5 @@ Result:
 - `e703ec0d Port C++ image copyPixels remap foundation`
 - `90d0d1cf Port C++ image copyPixels quad foundation`
 - `25a06812 Port C++ script instance methods foundation`
-- Current checkpoint commit message: `Port C++ member registry method foundation`
+- `b3bc50b9 Port C++ member registry method foundation`
+- Current checkpoint commit message: `Port C++ script instance handler dispatch foundation`
