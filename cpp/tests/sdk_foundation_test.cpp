@@ -76,6 +76,7 @@
 #include "libreshockwave/player/input/DirectorKeyCodes.hpp"
 #include "libreshockwave/player/input/InputEvent.hpp"
 #include "libreshockwave/player/input/InputState.hpp"
+#include "libreshockwave/player/net/NetTask.hpp"
 #include "libreshockwave/player/render/RenderConfig.hpp"
 #include "libreshockwave/player/render/RenderType.hpp"
 #include "libreshockwave/player/render/output/SoftwareFrameRenderer.hpp"
@@ -174,6 +175,9 @@ using libreshockwave::player::input::DirectorKeyCodes;
 using libreshockwave::player::input::InputEvent;
 using libreshockwave::player::input::InputEventType;
 using libreshockwave::player::input::InputState;
+using libreshockwave::player::net::NetTask;
+using libreshockwave::player::net::NetTaskMethod;
+using libreshockwave::player::net::NetTaskState;
 using libreshockwave::player::render::RenderConfig;
 using libreshockwave::player::render::RenderType;
 using libreshockwave::player::render::output::SoftwareFrameRenderer;
@@ -1309,6 +1313,52 @@ void testTextRendererFoundation() {
     assert(renderer.lastAntialias);
     assert(renderer.lastFixedLineSpace == 14);
     assert(renderer.lastTopSpacing == 0);
+}
+
+void testNetTaskFoundation() {
+    auto getTask = NetTask::get(1, "movie.dir", "https://example.invalid/movie.dir");
+    assert(getTask.taskId() == 1);
+    assert(getTask.originalUrl() == "movie.dir");
+    assert(getTask.url() == "https://example.invalid/movie.dir");
+    assert(getTask.method() == NetTaskMethod::Get);
+    assert(!getTask.postData().has_value());
+    assert(getTask.state() == NetTaskState::Pending);
+    assert(!getTask.isDone());
+    assert(!getTask.result().has_value());
+    assert(getTask.resultAsString().empty());
+    assert(getTask.errorCode() == 0);
+    assert(!getTask.errorMessage().has_value());
+    assert(getTask.streamStatus() == "Connecting");
+    assert(getTask.toString() == "NetTask{id=1, util=https://example.invalid/movie.dir, method=GET, state=PENDING}");
+
+    getTask.markInProgress();
+    assert(getTask.state() == NetTaskState::InProgress);
+    assert(getTask.streamStatus() == "Loading");
+    assert(!getTask.isDone());
+    getTask.complete(std::vector<std::uint8_t>{'O', 'K'});
+    assert(getTask.state() == NetTaskState::Completed);
+    assert(getTask.isDone());
+    assert(getTask.result().has_value());
+    assert(getTask.resultAsString() == "OK");
+    assert(getTask.errorCode() == 0);
+    assert(getTask.streamStatus() == "Complete");
+    assert(getTask.toString() == "NetTask{id=1, util=https://example.invalid/movie.dir, method=GET, state=COMPLETED}");
+
+    auto postTask = NetTask::post(2, "submit", "https://example.invalid/submit", "a=b");
+    assert(postTask.method() == NetTaskMethod::Post);
+    assert(postTask.postData().has_value());
+    assert(postTask.postData().value() == "a=b");
+    assert(postTask.streamStatus() == "Connecting");
+    postTask.fail(404, "not found");
+    assert(postTask.state() == NetTaskState::Failed);
+    assert(postTask.isDone());
+    assert(postTask.errorCode() == 404);
+    assert(postTask.errorMessage().value() == "not found");
+    assert(postTask.streamStatus() == "Error");
+    assert(postTask.resultAsString().empty());
+    assert(postTask.toString() == "NetTask{id=2, util=https://example.invalid/submit, method=POST, state=FAILED}");
+    assert(libreshockwave::player::net::name(NetTaskMethod::Get) == "GET");
+    assert(libreshockwave::player::net::name(NetTaskState::InProgress) == "IN_PROGRESS");
 }
 
 void testPaletteAndColorRefs() {
@@ -3677,6 +3727,7 @@ int main() {
     testRenderPipelineFoundation();
     testSoftwareFrameRenderer();
     testTextRendererFoundation();
+    testNetTaskFoundation();
     testPaletteAndColorRefs();
     testBitmapAlphaAndPaletteBehavior();
     testBitmapRegionsAndMetadata();

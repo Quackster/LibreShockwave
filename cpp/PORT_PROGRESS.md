@@ -253,6 +253,10 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Shared line splitting, character-line lookup, line-start lookup, and word-wrap helpers are available in C++.
 - The default XMED rendering path delegates to `renderText` using parsed `XmedStyledText` fields, matching the Java interface contract.
 
+### Network Task Foundation
+
+- `net::NetTask` ports individual GET/POST request task state, result/error storage, state transitions, stream status strings, and display formatting.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -303,6 +307,7 @@ Result:
 - SoftwareFrameRenderer background, stage-image, alpha, blend, scaling, flip, Director mirror, and special-ink tests passed through the same CTest executable.
 - FrameRenderPipelineContext mutation, trace building, snapshot storage, and FrameRenderPipelineStep tests passed through the same CTest executable.
 - TextRenderer split-line, character-line, line-start, wrapping, and default XMED delegation tests passed through the same CTest executable.
+- NetTask GET/POST construction, state transitions, result/error storage, stream status, and display formatting tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -352,4 +357,5 @@ Result:
 - `7b57f14 Port C++ render pipeline data foundation`
 - `9f10f49 Port C++ software frame renderer`
 - `183c22e Port C++ render pipeline context`
-- Current checkpoint commit message: `Port C++ text renderer interface`
+- `c93152b Port C++ text renderer interface`
+- Current checkpoint commit message: `Port C++ network task foundation`
