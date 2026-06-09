@@ -17,6 +17,7 @@
 
 #include "libreshockwave/DirectorFile.hpp"
 #include "libreshockwave/W3DFile.hpp"
+#include "libreshockwave/audio/SoundConverter.hpp"
 #include "libreshockwave/bitmap/Bitmap.hpp"
 #include "libreshockwave/bitmap/BitmapColorizer.hpp"
 #include "libreshockwave/bitmap/BitmapDecoder.hpp"
@@ -72,6 +73,7 @@ using libreshockwave::font::PfrBitReader;
 using libreshockwave::fonts::FontDataDecoder;
 using libreshockwave::DirectorFile;
 using libreshockwave::W3DFile;
+using libreshockwave::audio::SoundConverter;
 using libreshockwave::id::CastLibId;
 using libreshockwave::id::ChannelId;
 using libreshockwave::id::ChunkId;
@@ -712,6 +714,69 @@ void testAudioAndMediaChunks() {
     MediaChunk invalid = MediaChunk::read(nullptr, invalidMediaReader, ChunkId(16));
     assert(invalid.sampleRate() == 22050);
     assert(invalid.audioData() == invalidHeader);
+}
+
+void testSoundConverter() {
+    auto readU32LE = [](const std::vector<std::uint8_t>& data, std::size_t offset) {
+        return static_cast<std::uint32_t>(data[offset]) |
+               (static_cast<std::uint32_t>(data[offset + 1]) << 8) |
+               (static_cast<std::uint32_t>(data[offset + 2]) << 16) |
+               (static_cast<std::uint32_t>(data[offset + 3]) << 24);
+    };
+
+    const auto wav16 = SoundConverter::toWav({0x12, 0x34}, 8000, 16, 1, true);
+    assert(wav16.size() == 46);
+    assert(std::string(wav16.begin(), wav16.begin() + 4) == "RIFF");
+    assert(std::string(wav16.begin() + 8, wav16.begin() + 12) == "WAVE");
+    assert(readU32LE(wav16, 40) == 2);
+    assert(wav16[44] == 0x34);
+    assert(wav16[45] == 0x12);
+
+    const auto wav8 = SoundConverter::toWav({0x80, 0x00}, 8000, 8, 1, true);
+    assert(wav8[44] == 0x00);
+    assert(wav8[45] == 0x80);
+
+    std::vector<std::uint8_t> soundData(66, 0);
+    soundData[64] = 0x12;
+    soundData[65] = 0x34;
+    SoundChunk rawSound(nullptr, ChunkId(130), 8000, 1, 16, 1, soundData, "raw_pcm");
+    const auto soundWav = SoundConverter::toWav(rawSound);
+    assert(soundWav.size() == 46);
+    assert(soundWav[44] == 0x34);
+    assert(soundWav[45] == 0x12);
+
+    const auto adpcm = SoundConverter::decodeImaAdpcm({0x11}, 0, 0);
+    assert((adpcm == std::vector<std::uint8_t>{0x01, 0x00, 0x02, 0x00}));
+    const auto adpcmWav = SoundConverter::imaAdpcmToWav({0x11}, 8000, 1, 0, 0);
+    assert(adpcmWav.size() == 48);
+    assert(readU32LE(adpcmWav, 40) == 4);
+    assert(std::fabs(SoundConverter::getDuration(4, 2, 16, 1) - 1.0) < 0.0001);
+    assert(SoundConverter::getDuration(4, 0, 16, 1) == 0.0);
+    assert(std::fabs(SoundConverter::getDuration(rawSound) - rawSound.durationSeconds()) < 0.0001);
+
+    auto makeMp3Frame = []() {
+        std::vector<std::uint8_t> frame(417, 0);
+        frame[0] = 0xFF;
+        frame[1] = 0xFB;
+        frame[2] = 0x90;
+        frame[3] = 0x64;
+        return frame;
+    };
+    std::vector<std::uint8_t> mp3Data{0x00, 0x01};
+    auto frame = makeMp3Frame();
+    mp3Data.insert(mp3Data.end(), frame.begin(), frame.end());
+    mp3Data.insert(mp3Data.end(), frame.begin(), frame.end());
+    mp3Data.insert(mp3Data.end(), {0xFF, 0xFF});
+    assert(SoundConverter::findMp3Start(mp3Data) == 2);
+    assert(SoundConverter::isMp3(mp3Data));
+    SoundChunk mp3Sound(nullptr, ChunkId(131), 44100, 0, 16, 2, mp3Data, "mp3");
+    const auto extracted = SoundConverter::extractMp3(mp3Sound);
+    assert(extracted.has_value());
+    assert(extracted->size() == 834);
+    assert((*extracted)[0] == 0xFF);
+    assert((*extracted)[1] == 0xFB);
+    SoundChunk nonMp3Sound(nullptr, ChunkId(132), 44100, 0, 16, 2, mp3Data, "raw_pcm");
+    assert(!SoundConverter::extractMp3(nonMp3Sound).has_value());
 }
 
 void testCastMetadataTypes() {
@@ -2643,6 +2708,7 @@ int main() {
     testBitmapColorizer();
     testBasicChunks();
     testAudioAndMediaChunks();
+    testSoundConverter();
     testCastMetadataTypes();
     testCastInfoParsers();
     testShockwave3DInfoParser();

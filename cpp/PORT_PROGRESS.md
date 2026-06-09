@@ -191,6 +191,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Signed 8-bit, 16-bit, and 24-bit reads preserve Java sign-extension behavior.
 - Bit reads preserve partial EOF behavior and byte-alignment reset on byte-level reads, position changes, and skips.
 
+### Sound Converter
+
+- `audio::SoundConverter` ports WAV construction for raw PCM and `SoundChunk` data, including Director big-endian 16-bit swapping and signed 8-bit conversion.
+- MP3 start detection, multi-frame validation, frame-boundary end detection, and MP3 payload extraction are available in C++.
+- IMA ADPCM decoding and ADPCM-to-WAV conversion are available with Java-compatible step/index table behavior.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -231,6 +237,7 @@ Result:
 - File/path fallback utilities and script formatting utilities passed through the same CTest executable.
 - BitmapColorizer 32-bit, indexed, foreground-only, packed-index, and ink predicate tests passed through the same CTest executable.
 - PfrBitReader byte, signed, skip, alignment, bit-buffer, and partial-EOF tests passed through the same CTest executable.
+- SoundConverter WAV layout, SoundChunk header stripping, signed/endianness conversion, MP3 extraction, IMA ADPCM, and duration tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -270,4 +277,5 @@ Result:
 - `382f342 Port C++ generated font decoder`
 - `e4ebbae Port C++ utility formatting helpers`
 - `4636ee7 Port C++ bitmap colorizer`
-- Current checkpoint commit message: `Port C++ PFR bit reader`
+- `7e84729 Port C++ PFR bit reader`
+- Current checkpoint commit message: `Port C++ sound converter`
