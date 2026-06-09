@@ -1140,6 +1140,98 @@ void testBuiltinRegistryFoundation() {
     assert(libreshockwave::lingo::builtin::TimeoutBuiltins::getProperty(noTimeoutContext, *timerRef, "period").isVoid());
     assert(!libreshockwave::lingo::builtin::TimeoutBuiltins::setProperty(noTimeoutContext, *timerRef, "period", Datum::of(1)));
 
+    auto builtinStatusProp = [](const Datum& props, const std::string& key) {
+        return props.propListValue().get(Datum::of(key));
+    };
+    assert(registry.contains("preloadNetThing"));
+    assert(registry.contains("getNetThing"));
+    assert(registry.contains("getNetText"));
+    assert(registry.contains("postNetThing"));
+    assert(registry.contains("postNetText"));
+    assert(registry.contains("netDone"));
+    assert(registry.contains("netTextResult"));
+    assert(registry.contains("netError"));
+    assert(registry.contains("getStreamStatus"));
+    assert(registry.contains("tellStreamStatus"));
+    assert(registry.contains("gotoNetPage"));
+    assert(registry.contains("gotoNetMovie"));
+    assert(registry.invoke("preloadNetThing", context, {Datum::of(std::string("movie.dir"))}).intValue() == -1);
+    assert(registry.invoke("postNetText", context, {Datum::of(std::string("movie.dir"))}).intValue() == -1);
+    assert(registry.invoke("netDone", context).boolValue());
+    assert(registry.invoke("netTextResult", context).stringValue().empty());
+    assert(registry.invoke("netError", context).stringValue() == "OK");
+    const auto missingBuiltinStatus = registry.invoke("getStreamStatus", context);
+    assert(builtinStatusProp(missingBuiltinStatus, "state").stringValue() == "Error");
+    assert(builtinStatusProp(missingBuiltinStatus, "bytesSoFar").intValue() == 0);
+    assert(!registry.invoke("tellStreamStatus", context).boolValue());
+    assert(registry.invoke("tellStreamStatus", context, {Datum::TRUE}).boolValue());
+    assert(registry.invoke("tellStreamStatus", context).boolValue());
+    assert(!registry.invoke("tellStreamStatus", context, {Datum::FALSE}).boolValue());
+    assert(!registry.invoke("gotoNetPage", context, {Datum::of(std::string("https://example.invalid"))}).boolValue());
+    assert(registry.invoke("gotoNetMovie", context, {Datum::of(std::string("next.dir"))}).intValue() == -1);
+
+    NetManager builtinNet;
+    builtinNet.setFetchHandler([](const NetTask& task) {
+        if (task.method() == NetTaskMethod::Post) {
+            return NetManager::LoadResult::success(std::vector<std::uint8_t>{'P', 'O', 'S', 'T'});
+        }
+        return NetManager::LoadResult::success(std::vector<std::uint8_t>{'O', 'K'});
+    });
+    context.netManager = &builtinNet;
+    const int builtinGetTask = registry.invoke("preloadNetThing", context, {Datum::of(std::string("movie.dir"))}).intValue();
+    assert(builtinGetTask == 1);
+    assert(registry.invoke("getNetThing", context, {Datum::of(std::string("cached.dir"))}).intValue() == 2);
+    assert(registry.invoke("getNetText", context, {Datum::of(std::string("text.dir"))}).intValue() == 3);
+    assert(registry.invoke("netDone", context, {Datum::of(builtinGetTask)}).boolValue());
+    assert(registry.invoke("netTextResult", context, {Datum::of(builtinGetTask)}).stringValue() == "OK");
+    assert(registry.invoke("netError", context, {Datum::of(builtinGetTask)}).stringValue() == "OK");
+    const auto builtinStatus = registry.invoke("getStreamStatus", context, {Datum::of(builtinGetTask)});
+    assert(builtinStatusProp(builtinStatus, "state").stringValue() == "Complete");
+    assert(builtinStatusProp(registry.invoke("getStreamStatus", context, {Datum::of(std::string("movie.dir"))}), "state").stringValue() == "Complete");
+    const int builtinPostTask = registry.invoke("postNetText",
+                                                context,
+                                                {Datum::of(std::string("submit")), Datum::of(std::string("a=b"))}).intValue();
+    assert(builtinPostTask == 4);
+    assert(builtinNet.getTask(builtinPostTask)->postData().value() == "a=b");
+    assert(registry.invoke("netTextResult", context, {Datum::of(builtinPostTask)}).stringValue() == "POST");
+
+    std::string builtinPageUrl;
+    std::string builtinPageTarget;
+    std::string builtinMovieUrl;
+    MovieProperties builtinNavigationMovie;
+    builtinNavigationMovie.setGotoNetPageHandler([&builtinPageUrl, &builtinPageTarget](const std::string& url,
+                                                                                       const std::string& target) {
+        builtinPageUrl = url;
+        builtinPageTarget = target;
+    });
+    builtinNavigationMovie.setGotoNetMovieHandler([&builtinMovieUrl](const std::string& url) {
+        builtinMovieUrl = url;
+        return 91;
+    });
+    context.movieProperties = &builtinNavigationMovie;
+    assert(registry.invoke("gotoNetPage",
+                           context,
+                           {Datum::of(std::string("https://example.invalid")), Datum::of(std::string("_blank"))}).boolValue());
+    assert(builtinPageUrl == "https://example.invalid");
+    assert(builtinPageTarget == "_blank");
+    assert(registry.invoke("gotoNetMovie", context, {Datum::of(std::string("next.dir"))}).intValue() == 91);
+    assert(builtinMovieUrl == "next.dir");
+
+    assert(registry.contains("externalParamValue"));
+    assert(registry.contains("externalParamName"));
+    assert(registry.contains("externalParamCount"));
+    assert(registry.invoke("externalParamCount", context).intValue() == 0);
+    assert(registry.invoke("externalParamValue", context).isVoid());
+    context.externalParams = {{"sw1", "alpha"}, {"CaseKey", "Beta"}};
+    assert(registry.invoke("externalParamCount", context).intValue() == 2);
+    assert(registry.invoke("externalParamValue", context, {Datum::of(std::string("casekey"))}).stringValue() == "Beta");
+    assert(registry.invoke("externalParamValue", context, {Datum::of(1)}).stringValue() == "alpha");
+    assert(registry.invoke("externalParamValue", context, {Datum::of(0)}).isVoid());
+    assert(registry.invoke("externalParamValue", context, {Datum::symbol("sw1")}).isVoid());
+    assert(registry.invoke("externalParamName", context, {Datum::of(std::string("CASEKEY"))}).stringValue() == "CaseKey");
+    assert(registry.invoke("externalParamName", context, {Datum::of(2)}).stringValue() == "CaseKey");
+    assert(registry.invoke("externalParamName", context, {Datum::of(9)}).isVoid());
+
     auto assertColor = [](const Datum& datum, int r, int g, int b) {
         const auto* color = datum.asColorRef();
         assert(color != nullptr);

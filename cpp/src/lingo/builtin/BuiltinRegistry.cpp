@@ -284,6 +284,22 @@ bool lingoEquals(const Datum& lhs, const Datum& rhs) {
     return lhs == rhs;
 }
 
+bool truthyLikeJava(const Datum& datum) {
+    if (datum.isVoid() || datum.isNull()) {
+        return false;
+    }
+    if (const auto* value = datum.asInt()) {
+        return value->value != 0;
+    }
+    if (const auto* value = datum.asFloat()) {
+        return value->value != 0.0F;
+    }
+    if (datum.isString()) {
+        return !datum.stringValue().empty();
+    }
+    return true;
+}
+
 int findPropIndexTyped(const Datum::PropList& propList, const Datum& key) {
     const std::string target = keyName(key);
     const bool targetIsSymbol = key.asSymbol() != nullptr;
@@ -344,6 +360,20 @@ void putPropSameType(Datum::PropList& propList, const Datum& key, Datum value) {
         return;
     }
     propList.properties().emplace_back(key, std::move(value));
+}
+
+void putStringProp(Datum& propList, const std::string& key, Datum value) {
+    propList.propListValue().put(Datum::of(key), std::move(value));
+}
+
+Datum defaultStreamStatusDatum() {
+    auto props = Datum::propList();
+    putStringProp(props, "URL", Datum::of(std::string()));
+    putStringProp(props, "state", Datum::of(std::string("Error")));
+    putStringProp(props, "bytesSoFar", Datum::of(0));
+    putStringProp(props, "bytesTotal", Datum::of(0));
+    putStringProp(props, "error", Datum::of(std::string("OK")));
+    return props;
 }
 
 Datum& mutableArg(const std::vector<Datum>& args, std::size_t index) {
@@ -411,6 +441,8 @@ BuiltinRegistry::BuiltinRegistry() {
     TypeBuiltins::registerBuiltins(*this);
     SpriteBuiltins::registerBuiltins(*this);
     TimeoutBuiltins::registerBuiltins(*this);
+    NetBuiltins::registerBuiltins(*this);
+    ExternalParamBuiltins::registerBuiltins(*this);
     MovieBuiltins::registerBuiltins(*this);
 }
 
@@ -1118,6 +1150,153 @@ bool TimeoutBuiltins::setProperty(BuiltinContext& context,
         return false;
     }
     return context.timeoutManager->setTimeoutProp(ref.name, std::string(propName), std::move(value));
+}
+
+void NetBuiltins::registerBuiltins(BuiltinRegistry& registry) {
+    registry.registerBuiltin("preloadnetthing", NetBuiltins::preloadNetThing);
+    registry.registerBuiltin("getnetthing", NetBuiltins::preloadNetThing);
+    registry.registerBuiltin("getnettext", NetBuiltins::preloadNetThing);
+    registry.registerBuiltin("postnetthing", NetBuiltins::postNetText);
+    registry.registerBuiltin("postnettext", NetBuiltins::postNetText);
+    registry.registerBuiltin("netdone", NetBuiltins::netDone);
+    registry.registerBuiltin("nettextresult", NetBuiltins::netTextResult);
+    registry.registerBuiltin("neterror", NetBuiltins::netError);
+    registry.registerBuiltin("getstreamstatus", NetBuiltins::getStreamStatus);
+    registry.registerBuiltin("tellstreamstatus", NetBuiltins::tellStreamStatus);
+    registry.registerBuiltin("gotonetpage", NetBuiltins::gotoNetPage);
+    registry.registerBuiltin("gotonetmovie", NetBuiltins::gotoNetMovie);
+}
+
+Datum NetBuiltins::preloadNetThing(BuiltinContext& context, const std::vector<Datum>& args) {
+    if (context.netManager == nullptr || args.empty()) {
+        return Datum::of(-1);
+    }
+    return Datum::of(context.netManager->preloadNetThing(toStringLikeJava(args[0])));
+}
+
+Datum NetBuiltins::postNetText(BuiltinContext& context, const std::vector<Datum>& args) {
+    if (context.netManager == nullptr || args.empty()) {
+        return Datum::of(-1);
+    }
+    const std::string postData = args.size() > 1 ? toStringLikeJava(args[1]) : "";
+    return Datum::of(context.netManager->postNetText(toStringLikeJava(args[0]), postData));
+}
+
+Datum NetBuiltins::netDone(BuiltinContext& context, const std::vector<Datum>& args) {
+    if (context.netManager == nullptr) {
+        return Datum::TRUE;
+    }
+    const std::optional<int> taskId = args.empty() ? std::nullopt
+                                                   : std::optional<int>{toIntLikeJava(args[0])};
+    return boolDatum(context.netManager->netDone(taskId));
+}
+
+Datum NetBuiltins::netTextResult(BuiltinContext& context, const std::vector<Datum>& args) {
+    if (context.netManager == nullptr) {
+        return Datum::of(std::string());
+    }
+    const std::optional<int> taskId = args.empty() ? std::nullopt
+                                                   : std::optional<int>{toIntLikeJava(args[0])};
+    return Datum::of(context.netManager->netTextResult(taskId));
+}
+
+Datum NetBuiltins::netError(BuiltinContext& context, const std::vector<Datum>& args) {
+    if (context.netManager == nullptr) {
+        return Datum::of(std::string("OK"));
+    }
+    const std::optional<int> taskId = args.empty() ? std::nullopt
+                                                   : std::optional<int>{toIntLikeJava(args[0])};
+    const int error = context.netManager->netError(taskId);
+    return error == 0 ? Datum::of(std::string("OK")) : Datum::of(std::to_string(error));
+}
+
+Datum NetBuiltins::getStreamStatus(BuiltinContext& context, const std::vector<Datum>& args) {
+    if (context.netManager == nullptr) {
+        return defaultStreamStatusDatum();
+    }
+    if (!args.empty() && (args[0].isString() || args[0].isSymbol())) {
+        return context.netManager->getStreamStatusDatum(toStringLikeJava(args[0]));
+    }
+    const std::optional<int> taskId = args.empty() ? std::nullopt
+                                                   : std::optional<int>{toIntLikeJava(args[0])};
+    return context.netManager->getStreamStatusDatum(taskId);
+}
+
+Datum NetBuiltins::tellStreamStatus(BuiltinContext& context, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return boolDatum(context.tellStreamStatusEnabled);
+    }
+    context.tellStreamStatusEnabled = truthyLikeJava(args[0]);
+    return boolDatum(context.tellStreamStatusEnabled);
+}
+
+Datum NetBuiltins::gotoNetPage(BuiltinContext& context, const std::vector<Datum>& args) {
+    if (context.movieProperties == nullptr || args.empty()) {
+        return Datum::FALSE;
+    }
+    const std::string target = args.size() > 1 ? toStringLikeJava(args[1]) : "";
+    context.movieProperties->gotoNetPage(toStringLikeJava(args[0]), target);
+    return Datum::TRUE;
+}
+
+Datum NetBuiltins::gotoNetMovie(BuiltinContext& context, const std::vector<Datum>& args) {
+    if (context.movieProperties == nullptr || args.empty()) {
+        return Datum::of(-1);
+    }
+    return Datum::of(context.movieProperties->gotoNetMovie(toStringLikeJava(args[0])));
+}
+
+void ExternalParamBuiltins::registerBuiltins(BuiltinRegistry& registry) {
+    registry.registerBuiltin("externalparamvalue", ExternalParamBuiltins::externalParamValue);
+    registry.registerBuiltin("externalparamname", ExternalParamBuiltins::externalParamName);
+    registry.registerBuiltin("externalparamcount", ExternalParamBuiltins::externalParamCount);
+}
+
+Datum ExternalParamBuiltins::externalParamValue(BuiltinContext& context, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::voidValue();
+    }
+    if (const auto* str = args[0].asString()) {
+        for (const auto& [name, value] : context.externalParams) {
+            if (equalsIgnoreCase(name, str->value)) {
+                return Datum::of(value);
+            }
+        }
+        return Datum::voidValue();
+    }
+    if (const auto* value = args[0].asInt()) {
+        const int index = value->value;
+        if (index >= 1 && index <= static_cast<int>(context.externalParams.size())) {
+            return Datum::of(context.externalParams[static_cast<std::size_t>(index - 1)].second);
+        }
+    }
+    return Datum::voidValue();
+}
+
+Datum ExternalParamBuiltins::externalParamName(BuiltinContext& context, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::voidValue();
+    }
+    if (const auto* str = args[0].asString()) {
+        for (const auto& [name, value] : context.externalParams) {
+            (void)value;
+            if (equalsIgnoreCase(name, str->value)) {
+                return Datum::of(name);
+            }
+        }
+        return Datum::voidValue();
+    }
+    if (const auto* value = args[0].asInt()) {
+        const int index = value->value;
+        if (index >= 1 && index <= static_cast<int>(context.externalParams.size())) {
+            return Datum::of(context.externalParams[static_cast<std::size_t>(index - 1)].first);
+        }
+    }
+    return Datum::voidValue();
+}
+
+Datum ExternalParamBuiltins::externalParamCount(BuiltinContext& context, const std::vector<Datum>&) {
+    return Datum::of(static_cast<int>(context.externalParams.size()));
 }
 
 void ConstructorBuiltins::registerBuiltins(BuiltinRegistry& registry) {

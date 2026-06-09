@@ -294,6 +294,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `TimeoutBuiltins` exposes method dispatch helpers for `new`, `forget`, and property-style timeout lookup, backed by the ported C++ `TimeoutManager`.
 - Timeout property mutation is exposed through a static helper for future object-property dispatch, while unregistered Java helper functions remain deferred to movie scripts as in the Java baseline.
 
+### Network and External Parameter Builtins Foundation
+
+- Network builtins now register preload/get/post aliases, `netDone`, `netTextResult`, `netError`, `getStreamStatus`, `tellStreamStatus`, `gotoNetPage`, and `gotoNetMovie`.
+- Builtins delegate through the C++ `NetManager` and `MovieProperties` navigation callbacks, preserving Java missing-provider defaults and stream-status PropList shape.
+- External parameter builtins now resolve ordered context parameters by case-insensitive name or 1-based index.
+
 ### Constructor Builtins Foundation
 
 - Constructor builtins now register `point`, `rect`, `union`, `intersect`, `color`, `rgb`, `paletteIndex`, `sprite`, and `new` in the C++ builtin registry.
@@ -446,6 +452,7 @@ Result:
 - StringBuiltins string coercion, length, chars, charToNum, numToChar, offset, and getPref/setPref callback hooks passed through the same CTest executable.
 - ListBuiltins list/proplist counts, access, mutation, searches, sorting, constructors, key namespace behavior, and aliases passed through the same CTest executable.
 - TimeoutBuiltins `timeout` creation, factory-mode `.new`, named `.new`, `.forget`, property get/set helpers, and missing-provider behavior passed through the same CTest executable.
+- NetBuiltins preload/get/post aliases, task result/error/status lookups, stream-status toggling, navigation callbacks, and ExternalParamBuiltins ordered parameter lookup passed through the same CTest executable.
 - ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration and callback hooks passed through the same CTest executable.
 - TypeBuiltins object/void/type predicates, `value`/`script`/`callAncestor` callback hooks, symbol conversion, and `ilk` alias checks passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
@@ -518,4 +525,5 @@ Result:
 - `ec745ee Port C++ math builtins foundation`
 - `af6294f Port C++ string builtins foundation`
 - `4e7a9fe Port C++ list builtins foundation`
-- Current checkpoint commit message: `Port C++ timeout builtins foundation`
+- `9892975 Port C++ timeout builtins foundation`
+- Current checkpoint commit message: `Port C++ net builtins foundation`
