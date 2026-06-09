@@ -9,6 +9,7 @@
 #include <variant>
 #include <vector>
 
+#include "libreshockwave/DirectorFile.hpp"
 #include "libreshockwave/bitmap/Bitmap.hpp"
 #include "libreshockwave/bitmap/ColorRef.hpp"
 #include "libreshockwave/bitmap/Palette.hpp"
@@ -49,6 +50,7 @@
 using libreshockwave::format::ChunkInfo;
 using libreshockwave::format::ChunkType;
 using libreshockwave::format::MoaID;
+using libreshockwave::DirectorFile;
 using libreshockwave::id::CastLibId;
 using libreshockwave::id::ChannelId;
 using libreshockwave::id::ChunkId;
@@ -1419,6 +1421,116 @@ void testScoreChunkParser() {
     assert(scoreReader.order() == ByteOrder::LittleEndian);
 }
 
+void testDirectorFileRifxLoader() {
+    auto appendFourCC = [](std::vector<std::uint8_t>& data, const std::string& value) {
+        data.insert(data.end(), value.begin(), value.end());
+    };
+    auto appendI16 = [](std::vector<std::uint8_t>& data, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data.push_back(static_cast<std::uint8_t>((raw >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(raw & 0xFF));
+    };
+    auto appendI32 = [](std::vector<std::uint8_t>& data, std::uint32_t value) {
+        data.push_back(static_cast<std::uint8_t>((value >> 24) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 16) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(value & 0xFF));
+    };
+    auto putI32 = [](std::vector<std::uint8_t>& data, int offset, std::uint32_t value) {
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((value >> 24) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>((value >> 16) & 0xFF);
+        data[static_cast<std::size_t>(offset + 2)] = static_cast<std::uint8_t>((value >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 3)] = static_cast<std::uint8_t>(value & 0xFF);
+    };
+
+    std::vector<std::uint8_t> configData(80, 0);
+    auto putI16At = [](std::vector<std::uint8_t>& data, int offset, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((raw >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>(raw & 0xFF);
+    };
+    putI16At(configData, 2, 1200);
+    putI16At(configData, 4, 10);
+    putI16At(configData, 6, 20);
+    putI16At(configData, 8, 250);
+    putI16At(configData, 10, 340);
+    putI16At(configData, 12, 1);
+    putI16At(configData, 14, 99);
+    putI16At(configData, 20, 3);
+    putI16At(configData, 22, 12);
+    putI16At(configData, 24, 1);
+    putI16At(configData, 26, 5);
+    putI16At(configData, 28, 8);
+    putI16At(configData, 36, 0x0207);
+    putI16At(configData, 54, 30);
+    putI16At(configData, 56, 2);
+
+    std::vector<std::uint8_t> namesData(20, 0);
+    putI16At(namesData, 16, 20);
+    putI16At(namesData, 18, 2);
+    namesData.push_back(2);
+    namesData.insert(namesData.end(), {'g', 'o'});
+    namesData.push_back(4);
+    namesData.insert(namesData.end(), {'s', 't', 'o', 'p'});
+
+    constexpr int mmapOffset = 32;
+    constexpr int mmapDataStart = mmapOffset + 8 + 24 + 40;
+    const int configOffset = mmapDataStart - 8;
+    const int namesDataStart = mmapDataStart + static_cast<int>(configData.size());
+    const int namesOffset = namesDataStart - 8;
+
+    std::vector<std::uint8_t> fileData;
+    appendFourCC(fileData, "RIFX");
+    appendI32(fileData, 0);
+    appendFourCC(fileData, "MV93");
+    appendFourCC(fileData, "imap");
+    appendI32(fileData, 12);
+    appendI32(fileData, 1);
+    appendI32(fileData, mmapOffset);
+    appendI32(fileData, 0x0207);
+    appendFourCC(fileData, "mmap");
+    appendI32(fileData, 24 + 40);
+    appendI16(fileData, 24);
+    appendI16(fileData, 20);
+    appendI32(fileData, 2);
+    appendI32(fileData, 2);
+    appendI32(fileData, 0);
+    appendI32(fileData, 0);
+    appendI32(fileData, 0);
+    appendI32(fileData, BinaryReader::fourCC("DRCF"));
+    appendI32(fileData, static_cast<std::uint32_t>(configData.size()));
+    appendI32(fileData, static_cast<std::uint32_t>(configOffset));
+    appendI16(fileData, 0);
+    appendI16(fileData, 0);
+    appendI32(fileData, 0);
+    appendI32(fileData, BinaryReader::fourCC("Lnam"));
+    appendI32(fileData, static_cast<std::uint32_t>(namesData.size()));
+    appendI32(fileData, static_cast<std::uint32_t>(namesOffset));
+    appendI16(fileData, 0);
+    appendI16(fileData, 0);
+    appendI32(fileData, 0);
+    fileData.insert(fileData.end(), configData.begin(), configData.end());
+    fileData.insert(fileData.end(), namesData.begin(), namesData.end());
+    putI32(fileData, 4, static_cast<std::uint32_t>(fileData.size() - 8));
+
+    auto file = DirectorFile::load(fileData);
+    assert(file->endian() == ByteOrder::BigEndian);
+    assert(!file->isAfterburner());
+    assert(file->movieType() == ChunkType::MV93);
+    assert(file->version() == 0x0207);
+    assert(file->chunkInfo().size() == 2);
+    assert(file->chunks().size() == 2);
+    assert(file->config().get() != nullptr);
+    assert(file->config()->file() == file.get());
+    assert(file->config()->stageWidth() == 320);
+    assert(file->config()->tempo() == 30);
+    assert(file->scriptNames().get() != nullptr);
+    assert(file->scriptNames()->names().size() == 2);
+    assert(file->scriptNames()->getName(1) == "stop");
+    assert(file->getChunkInfo(ChunkId(0))->type() == ChunkType::DRCF);
+    assert(file->getChunk(ChunkId(1))->type() == ChunkType::Lnam);
+}
+
 int main() {
     testBinaryReaderEndianAndBounds();
     testBinaryReaderStringsAndFourCC();
@@ -1442,6 +1554,7 @@ int main() {
     testScriptContextChunk();
     testScriptChunkParser();
     testScoreChunkParser();
+    testDirectorFileRifxLoader();
 
     std::cout << "LibreShockwave C++ SDK foundation tests passed\n";
     return 0;
