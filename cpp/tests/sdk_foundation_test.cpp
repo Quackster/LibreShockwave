@@ -1517,6 +1517,90 @@ void testBuiltinRegistryFoundation() {
     assert(registry.invoke("externalParamName", context, {Datum::of(2)}).stringValue() == "CaseKey");
     assert(registry.invoke("externalParamName", context, {Datum::of(9)}).isVoid());
 
+    assert(registry.contains("image"));
+    assert(registry.contains("importFileInto"));
+    assert(registry.invoke("image", context).isVoid());
+    assert(registry.invoke("image", context, {Datum::of(0), Datum::of(2)}).isVoid());
+    assert(registry.invoke("image", context, {Datum::of(2), Datum::of(-1)}).isVoid());
+    const auto imageDatum = registry.invoke("image", context, {Datum::of(std::string("2")), Datum::of(3)});
+    const auto* imageRef = imageDatum.asImageRef();
+    assert(imageRef != nullptr);
+    assert(imageRef->bitmap != nullptr);
+    assert(imageRef->bitmap->width() == 2);
+    assert(imageRef->bitmap->height() == 3);
+    assert(imageRef->bitmap->bitDepth() == 32);
+    for (const auto pixel : imageRef->bitmap->pixels()) {
+        assert(pixel == 0xFFFFFFFFU);
+    }
+    assert(registry.invoke("string", context, {imageDatum}).stringValue() == "(image 2x3)");
+    assert(registry.invoke("ilk", context, {imageDatum}).asSymbol()->name == "image");
+
+    const auto systemImageDatum = registry.invoke("image",
+                                                  context,
+                                                  {Datum::of(1), Datum::of(1), Datum::of(8), Datum::symbol("systemMac")});
+    const auto* systemImageRef = systemImageDatum.asImageRef();
+    assert(systemImageRef != nullptr);
+    assert(systemImageRef->bitmap->imagePalette().get() == &Palette::systemMacPalette());
+    assert(systemImageRef->bitmap->paletteRefSystemName().has_value());
+    assert(systemImageRef->bitmap->paletteRefSystemName().value() == "systemMac");
+
+    const auto customPalette = std::make_shared<Palette>(std::vector<std::uint32_t>{0x000000U, 0xFFFFFFU}, "custom");
+    context.imagePaletteResolver = [customPalette](const Datum& paletteArg) -> std::optional<BuiltinContext::ResolvedPalette> {
+        const auto* ref = paletteArg.asCastMemberRef();
+        assert(ref != nullptr);
+        assert(ref->castLib == 2);
+        assert(ref->memberNum() == 9);
+        return BuiltinContext::ResolvedPalette{customPalette, Datum::CastMemberRef{2, 9}, std::nullopt};
+    };
+    const auto memberPaletteImageDatum = registry.invoke("image",
+                                                         context,
+                                                         {Datum::of(1),
+                                                          Datum::of(1),
+                                                          Datum::of(8),
+                                                          Datum::castMemberRef(CastLibId(2), MemberId(9))});
+    const auto* memberPaletteImageRef = memberPaletteImageDatum.asImageRef();
+    assert(memberPaletteImageRef != nullptr);
+    assert(memberPaletteImageRef->bitmap->imagePalette() == customPalette);
+    assert(memberPaletteImageRef->bitmap->paletteRefCastLib() == 2);
+    assert(memberPaletteImageRef->bitmap->paletteRefMemberNum() == 9);
+    assert(!memberPaletteImageRef->bitmap->paletteRefSystemName().has_value());
+    context.imagePaletteResolver = nullptr;
+
+    assert(!registry.invoke("importFileInto", context).boolValue());
+    assert(!registry.invoke("importFileInto", context, {Datum::castMemberRef(CastLibId(1), MemberId(5)), Datum::of(std::string("a.png"))}).boolValue());
+    std::string importedUrl;
+    Datum importedOptions = Datum::voidValue();
+    Datum::CastMemberRef importedRef{0, 0};
+    context.importFileIntoHandler = [&importedRef, &importedUrl, &importedOptions](
+                                        const Datum::CastMemberRef& ref,
+                                        const std::string& url,
+                                        const Datum& options) {
+        importedRef = ref;
+        importedUrl = url;
+        importedOptions = options;
+        return true;
+    };
+    auto importOptions = Datum::propList();
+    importOptions.propListValue().put(Datum::symbol("trimWhiteSpace"), Datum::TRUE);
+    assert(!registry.invoke("importFileInto", context, {Datum::of(7), Datum::of(std::string("a.png"))}).boolValue());
+    assert(registry.invoke("importFileInto",
+                           context,
+                           {Datum::castMemberRef(CastLibId(3), MemberId(12)),
+                            Datum::of(std::string("media/a.png")),
+                            importOptions}).boolValue());
+    assert(importedRef.castLib == 3);
+    assert(importedRef.memberNum() == 12);
+    assert(importedUrl == "media/a.png");
+    assert(importedOptions.propListValue().get(Datum::symbol("trimWhiteSpace")).boolValue());
+    context.importFileIntoHandler = [](const Datum::CastMemberRef&, const std::string&, const Datum&) {
+        return false;
+    };
+    assert(!registry.invoke("importFileInto",
+                            context,
+                            {Datum::castMemberRef(CastLibId(3), MemberId(12)),
+                             Datum::of(std::string("media/a.png"))}).boolValue());
+    context.importFileIntoHandler = nullptr;
+
     assert(registry.contains("sound"));
     assert(registry.contains("soundEnabled"));
     assert(registry.invoke("soundEnabled", context).boolValue());

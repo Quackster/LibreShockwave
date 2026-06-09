@@ -1,5 +1,8 @@
 #include "libreshockwave/lingo/builtin/BuiltinRegistry.hpp"
 
+#include "libreshockwave/bitmap/Bitmap.hpp"
+#include "libreshockwave/bitmap/Palette.hpp"
+
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -197,6 +200,13 @@ std::string toStringLikeJava(const Datum& datum) {
     }
     if (const auto* value = datum.asSpriteRef()) {
         return "sprite(" + std::to_string(value->channel) + ")";
+    }
+    if (const auto* value = datum.asImageRef()) {
+        if (!value->bitmap) {
+            return "(image null)";
+        }
+        return "(image " + std::to_string(value->bitmap->width()) + "x" +
+               std::to_string(value->bitmap->height()) + ")";
     }
     if (const auto* value = datum.asCastMemberRef()) {
         return "member(" + std::to_string(value->castMember) + ", " + std::to_string(value->castLib) + ")";
@@ -473,6 +483,7 @@ std::string ilkType(const Datum& datum) {
         case DatumType::IntPoint: return "point";
         case DatumType::IntRect: return "rect";
         case DatumType::ColorRef: return "color";
+        case DatumType::ImageRef: return "image";
         case DatumType::BitmapRef: return "image";
         case DatumType::SpriteRef: return "sprite";
         case DatumType::CastMemberRef: return "member";
@@ -500,6 +511,7 @@ BuiltinRegistry::BuiltinRegistry() {
     TimeoutBuiltins::registerBuiltins(*this);
     NetBuiltins::registerBuiltins(*this);
     ExternalParamBuiltins::registerBuiltins(*this);
+    ImageBuiltins::registerBuiltins(*this);
     SoundBuiltins::registerBuiltins(*this);
     CastLibBuiltins::registerBuiltins(*this);
     XtraBuiltins::registerBuiltins(*this);
@@ -1398,6 +1410,71 @@ Datum ExternalParamBuiltins::externalParamName(BuiltinContext& context, const st
 
 Datum ExternalParamBuiltins::externalParamCount(BuiltinContext& context, const std::vector<Datum>&) {
     return Datum::of(static_cast<int>(context.externalParams.size()));
+}
+
+void ImageBuiltins::registerBuiltins(BuiltinRegistry& registry) {
+    registry.registerBuiltin("image", ImageBuiltins::image);
+    registry.registerBuiltin("importfileinto", ImageBuiltins::importFileInto);
+}
+
+Datum ImageBuiltins::image(BuiltinContext& context, const std::vector<Datum>& args) {
+    if (args.size() < 2) {
+        return Datum::voidValue();
+    }
+
+    const int width = toIntLikeJava(args[0]);
+    const int height = toIntLikeJava(args[1]);
+    const int bitDepth = args.size() >= 3 ? toIntLikeJava(args[2]) : 32;
+    if (width <= 0 || height <= 0) {
+        return Datum::voidValue();
+    }
+
+    auto image = std::make_shared<bitmap::Bitmap>(width, height, bitDepth);
+    if (args.size() >= 4) {
+        const Datum& paletteArg = args[3];
+        bool resolved = false;
+        if (paletteArg.isString() || paletteArg.isSymbol()) {
+            const std::string name = toStringLikeJava(paletteArg);
+            if (const auto* palette = bitmap::Palette::builtInBySymbolName(name)) {
+                image->setImagePalette(palette);
+                if (auto normalized = bitmap::Palette::normalizeBuiltInSymbolName(name)) {
+                    image->setPaletteRefSystemName(*normalized);
+                }
+                resolved = true;
+            }
+        }
+
+        if (!resolved && context.imagePaletteResolver) {
+            if (auto palette = context.imagePaletteResolver(paletteArg)) {
+                if (palette->palette) {
+                    image->setImagePalette(palette->palette);
+                }
+                if (palette->memberRef) {
+                    image->setPaletteRefCastMember(palette->memberRef->castLib, palette->memberRef->memberNum());
+                }
+                if (palette->systemName) {
+                    image->setPaletteRefSystemName(*palette->systemName);
+                }
+            }
+        }
+    }
+
+    image->fill(0xFFFFFFFFU);
+    return Datum::imageRef(std::move(image));
+}
+
+Datum ImageBuiltins::importFileInto(BuiltinContext& context, const std::vector<Datum>& args) {
+    if (args.size() < 2 || !context.importFileIntoHandler) {
+        return Datum::FALSE;
+    }
+    const auto* ref = args[0].asCastMemberRef();
+    if (ref == nullptr) {
+        return Datum::FALSE;
+    }
+
+    const std::string url = toStringLikeJava(args[1]);
+    const Datum options = args.size() >= 3 ? args[2] : Datum::voidValue();
+    return boolDatum(context.importFileIntoHandler(*ref, url, options));
 }
 
 void SoundBuiltins::registerBuiltins(BuiltinRegistry& registry) {

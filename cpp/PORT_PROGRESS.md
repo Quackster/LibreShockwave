@@ -413,6 +413,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `render::pipeline::BitmapCache` ports processed-bitmap cache keys, decode-failure tracking, palette-version invalidation, non-native 32-bit alpha coercion, and indexed matte/background-transparent color remap selection.
 - Full matte/flood-fill ink processing, bitmap decoding through the player resolver, and SpriteBaker integration remain deferred to the larger render-pipeline port.
 
+### Image Builtins Foundation
+
+- `lingo::Datum` now exposes first-party image references backed by shared `bitmap::Bitmap` instances.
+- `ImageBuiltins` ports `image(width, height, bitDepth [, paletteRef])` with white-filled bitmap creation, built-in palette symbol resolution, provider-backed palette metadata, and Java-compatible image display/ilk behavior.
+- `importFileInto` delegates platform-specific media import through an injectable context callback and preserves Director-style TRUE/FALSE results.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -487,6 +493,7 @@ Result:
 - ListBuiltins list/proplist counts, access, mutation, searches, sorting, constructors, key namespace behavior, and aliases passed through the same CTest executable.
 - TimeoutBuiltins `timeout` creation, factory-mode `.new`, named `.new`, `.forget`, property get/set helpers, and missing-provider behavior passed through the same CTest executable.
 - NetBuiltins preload/get/post aliases, task result/error/status lookups, stream-status toggling, navigation callbacks, and ExternalParamBuiltins ordered parameter lookup passed through the same CTest executable.
+- ImageBuiltins image creation, invalid-dimension handling, white fill defaults, built-in/system palette metadata, provider-resolved member palette metadata, string/ilk behavior, and `importFileInto` callback delegation passed through the same CTest executable.
 - SoundBuiltins channel creation, availability, sound-channel method dispatch, property defaults/mutation, and SoundManager playback delegation passed through the same CTest executable.
 - ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration and callback hooks passed through the same CTest executable.
 - TypeBuiltins object/void/type predicates, `value`/`script`/`callAncestor` callback hooks, symbol conversion, and `ilk` alias checks passed through the same CTest executable.
@@ -566,4 +573,5 @@ Result:
 - `500e548 Port C++ output builtins foundation`
 - `a7963de Port C++ cast builtins foundation`
 - `c1374bd Port C++ xtra builtins foundation`
-- Current checkpoint commit message: `Port C++ control flow builtins foundation`
+- `dbc9542 Port C++ control flow builtins foundation`
+- Current checkpoint commit message: `Port C++ image builtins foundation`

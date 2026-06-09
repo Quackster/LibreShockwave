@@ -1,5 +1,7 @@
 #include "libreshockwave/lingo/Datum.hpp"
 
+#include "libreshockwave/bitmap/Bitmap.hpp"
+
 #include <algorithm>
 #include <charconv>
 #include <cctype>
@@ -122,6 +124,7 @@ std::string_view typeName(DatumType type) {
         case DatumType::IntRect: return "rect";
         case DatumType::Vector: return "vector";
         case DatumType::ColorRef: return "color_ref";
+        case DatumType::ImageRef: return "image";
         case DatumType::BitmapRef: return "bitmap_ref";
         case DatumType::PaletteRef: return "palette_ref";
         case DatumType::Matte: return "matte";
@@ -329,6 +332,10 @@ Datum Datum::colorRef(int r, int g, int b) {
     return Datum(ColorRef::fromRgb(r, g, b));
 }
 
+Datum Datum::imageRef(std::shared_ptr<bitmap::Bitmap> bitmap) {
+    return Datum(ImageRef{std::move(bitmap)});
+}
+
 Datum Datum::soundChannel(int channel) {
     return Datum(SoundChannel{channel});
 }
@@ -380,6 +387,7 @@ DatumType Datum::type() const {
     if (std::holds_alternative<IntRect>(value_)) return DatumType::IntRect;
     if (std::holds_alternative<Vector3>(value_)) return DatumType::Vector;
     if (std::holds_alternative<ColorRef>(value_)) return DatumType::ColorRef;
+    if (std::holds_alternative<ImageRef>(value_)) return DatumType::ImageRef;
     if (std::holds_alternative<BitmapRef>(value_)) return DatumType::BitmapRef;
     if (std::holds_alternative<PaletteRef>(value_)) return DatumType::PaletteRef;
     if (std::holds_alternative<Matte>(value_)) return DatumType::Matte;
@@ -467,6 +475,7 @@ const Datum::CastMemberRef* Datum::asCastMemberRef() const { return std::get_if<
 const Datum::ScriptRef* Datum::asScriptRef() const { return std::get_if<ScriptRef>(&value_); }
 const Datum::SpriteRef* Datum::asSpriteRef() const { return std::get_if<SpriteRef>(&value_); }
 const Datum::ColorRef* Datum::asColorRef() const { return std::get_if<ColorRef>(&value_); }
+const Datum::ImageRef* Datum::asImageRef() const { return std::get_if<ImageRef>(&value_); }
 const Datum::SoundChannel* Datum::asSoundChannel() const { return std::get_if<SoundChannel>(&value_); }
 const Datum::Xtra* Datum::asXtra() const { return std::get_if<Xtra>(&value_); }
 const Datum::XtraInstance* Datum::asXtraInstance() const { return std::get_if<XtraInstance>(&value_); }

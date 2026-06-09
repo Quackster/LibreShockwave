@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -14,9 +15,19 @@
 #include "libreshockwave/player/SpriteProperties.hpp"
 #include "libreshockwave/player/timeout/TimeoutManager.hpp"
 
+namespace libreshockwave::bitmap {
+class Palette;
+} // namespace libreshockwave::bitmap
+
 namespace libreshockwave::lingo::builtin {
 
 struct BuiltinContext {
+    struct ResolvedPalette {
+        std::shared_ptr<const bitmap::Palette> palette;
+        std::optional<Datum::CastMemberRef> memberRef;
+        std::optional<std::string> systemName;
+    };
+
     using PuppetPaletteHandler = std::function<void(std::optional<Datum> paletteRef)>;
     using CastMemberCreator = std::function<Datum(int castLib, const std::string& memberType)>;
     using NamedCastMemberCreator = std::function<Datum(const std::string& memberName, const std::string& memberType)>;
@@ -48,6 +59,10 @@ struct BuiltinContext {
     using SetPrefHandler = std::function<Datum(const std::string& name, const Datum& value)>;
     using OutputHandler = std::function<void(std::string_view kind, const std::string& text)>;
     using AlertHandler = std::function<bool(const std::string& text)>;
+    using ImagePaletteResolver = std::function<std::optional<ResolvedPalette>(const Datum& paletteRef)>;
+    using ImportFileIntoHandler = std::function<bool(const Datum::CastMemberRef& ref,
+                                                     const std::string& url,
+                                                     const Datum& options)>;
 
     player::MovieProperties* movieProperties{nullptr};
     player::net::NetManager* netManager{nullptr};
@@ -86,6 +101,8 @@ struct BuiltinContext {
     SetPrefHandler setPrefHandler;
     OutputHandler outputHandler;
     AlertHandler alertHandler;
+    ImagePaletteResolver imagePaletteResolver;
+    ImportFileIntoHandler importFileIntoHandler;
 };
 
 using BuiltinFunction = std::function<Datum(BuiltinContext& context, const std::vector<Datum>& args)>;
@@ -211,6 +228,13 @@ public:
     [[nodiscard]] static Datum externalParamValue(BuiltinContext& context, const std::vector<Datum>& args);
     [[nodiscard]] static Datum externalParamName(BuiltinContext& context, const std::vector<Datum>& args);
     [[nodiscard]] static Datum externalParamCount(BuiltinContext& context, const std::vector<Datum>& args);
+};
+
+class ImageBuiltins {
+public:
+    static void registerBuiltins(BuiltinRegistry& registry);
+    [[nodiscard]] static Datum image(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum importFileInto(BuiltinContext& context, const std::vector<Datum>& args);
 };
 
 class SoundBuiltins {

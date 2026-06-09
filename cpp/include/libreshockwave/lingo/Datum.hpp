@@ -12,6 +12,10 @@
 
 #include "libreshockwave/id/Ids.hpp"
 
+namespace libreshockwave::bitmap {
+class Bitmap;
+} // namespace libreshockwave::bitmap
+
 namespace libreshockwave::lingo {
 
 class LingoException : public std::runtime_error {
@@ -49,6 +53,7 @@ enum class DatumType {
     IntRect,
     Vector,
     ColorRef,
+    ImageRef,
     BitmapRef,
     PaletteRef,
     Matte,
@@ -210,6 +215,11 @@ public:
         friend bool operator==(const ColorRef&, const ColorRef&) = default;
     };
 
+    struct ImageRef {
+        std::shared_ptr<bitmap::Bitmap> bitmap;
+        friend bool operator==(const ImageRef&, const ImageRef&) = default;
+    };
+
     struct BitmapRef {
         int bitmapId;
         friend bool operator==(const BitmapRef&, const BitmapRef&) = default;
@@ -299,6 +309,7 @@ public:
     [[nodiscard]] static Datum intRect(int left, int top, int right, int bottom);
     [[nodiscard]] static Datum vector3(float x, float y, float z);
     [[nodiscard]] static Datum colorRef(int r, int g, int b);
+    [[nodiscard]] static Datum imageRef(std::shared_ptr<bitmap::Bitmap> bitmap);
     [[nodiscard]] static Datum soundChannel(int channel);
     [[nodiscard]] static Datum xtra(std::string name);
     [[nodiscard]] static Datum xtraInstance(std::string xtraName, int instanceId);
@@ -334,6 +345,7 @@ public:
     [[nodiscard]] const ScriptRef* asScriptRef() const;
     [[nodiscard]] const SpriteRef* asSpriteRef() const;
     [[nodiscard]] const ColorRef* asColorRef() const;
+    [[nodiscard]] const ImageRef* asImageRef() const;
     [[nodiscard]] const SoundChannel* asSoundChannel() const;
     [[nodiscard]] const Xtra* asXtra() const;
     [[nodiscard]] const XtraInstance* asXtraInstance() const;
@@ -385,6 +397,7 @@ private:
         IntRect,
         Vector3,
         ColorRef,
+        ImageRef,
         BitmapRef,
         PaletteRef,
         Matte,
