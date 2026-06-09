@@ -2697,6 +2697,17 @@ Datum castLibObjectMethod(ExecutionContext& context,
                                                   : Datum::voidValue();
 }
 
+Datum castMemberObjectMethod(ExecutionContext& context,
+                             const Datum::CastMemberRef& member,
+                             std::string_view methodName,
+                             const std::vector<Datum>& args) {
+    auto* builtinContext = context.builtinContext();
+    if (builtinContext == nullptr || !builtinContext->castMemberMethodHandler) {
+        return Datum::voidValue();
+    }
+    return builtinContext->castMemberMethodHandler(member.castLib, member.memberNum(), std::string(methodName), args);
+}
+
 Datum getContextVar(ExecutionContext& context, id::VarType varType, const Datum& idDatum);
 void setContextVar(ExecutionContext& context, id::VarType varType, const Datum& idDatum, Datum value);
 
@@ -2831,6 +2842,9 @@ Datum dispatchObjectMethod(ExecutionContext& context, Datum target, std::string_
     }
     if (const auto* image = target.asImageRef()) {
         return imageObjectMethod(*image, methodName, args);
+    }
+    if (const auto* member = target.asCastMemberRef()) {
+        return castMemberObjectMethod(context, *member, methodName, args);
     }
     if (target.type() == DatumType::ScriptInstanceRef) {
         return target.scriptInstanceValue().getProperty(std::string(methodName));

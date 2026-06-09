@@ -2302,6 +2302,9 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 110) {
             return std::string("copyPixels");
         }
+        if (nameId == 111) {
+            return std::string("charPosToLoc");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.callStackFormatter = []() {
@@ -3513,6 +3516,27 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(castLibMemberByName.asCastMemberRef()->memberNum() == 12);
     builtinContext.castMemberResolver = {};
     builtinContext.castMemberNameResolver = {};
+    int castMemberMethodCalls = 0;
+    builtinContext.castMemberMethodHandler = [&castMemberMethodCalls](int castLib,
+                                                                      int memberNum,
+                                                                      const std::string& methodName,
+                                                                      const std::vector<Datum>& args) {
+        ++castMemberMethodCalls;
+        assert(castLib == 2);
+        assert(memberNum == 7);
+        assert(methodName == "charPosToLoc");
+        assert(args.size() == 1);
+        assert(args.front().intValue() == 4);
+        return Datum::intPoint(12, 34);
+    };
+    const Datum castMemberMethodResult =
+        runObjCall(111, {Datum::castMemberRef(CastLibId(2), MemberId(7)), Datum::of(4)});
+    assert(castMemberMethodResult.asIntPoint() != nullptr);
+    assert(castMemberMethodResult.asIntPoint()->x == 12);
+    assert(castMemberMethodResult.asIntPoint()->y == 34);
+    assert(castMemberMethodCalls == 1);
+    builtinContext.castMemberMethodHandler = {};
+    assert(runObjCall(111, {Datum::castMemberRef(CastLibId(2), MemberId(7)), Datum::of(4)}).isVoid());
 
     assert(runObjCall(69, {Datum::of(std::string("abc")), Datum::of(2)}).stringValue() == "b");
     assert(runObjCall(70, {Datum::of(std::string("one two")), Datum::symbol("word")}).intValue() == 2);
