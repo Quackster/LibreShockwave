@@ -78,6 +78,9 @@
 #include "libreshockwave/player/input/InputState.hpp"
 #include "libreshockwave/player/render/RenderConfig.hpp"
 #include "libreshockwave/player/render/RenderType.hpp"
+#include "libreshockwave/player/render/pipeline/FrameSnapshot.hpp"
+#include "libreshockwave/player/render/pipeline/RenderPipelineTrace.hpp"
+#include "libreshockwave/player/render/pipeline/RenderSprite.hpp"
 #include "libreshockwave/player/score/ScoreBehaviorRef.hpp"
 #include "libreshockwave/player/score/ScoreNavigator.hpp"
 #include "libreshockwave/player/score/SpriteSpan.hpp"
@@ -169,6 +172,11 @@ using libreshockwave::player::input::InputEventType;
 using libreshockwave::player::input::InputState;
 using libreshockwave::player::render::RenderConfig;
 using libreshockwave::player::render::RenderType;
+using libreshockwave::player::render::pipeline::FrameSnapshot;
+using libreshockwave::player::render::pipeline::RenderPipelineStepTrace;
+using libreshockwave::player::render::pipeline::RenderPipelineTrace;
+using libreshockwave::player::render::pipeline::RenderSprite;
+using libreshockwave::player::render::pipeline::SpriteType;
 using libreshockwave::player::score::ScoreBehaviorRef;
 using libreshockwave::player::score::ScoreNavigator;
 using libreshockwave::player::score::SpriteSpan;
@@ -820,6 +828,138 @@ void testDebugFoundation() {
     assert(snapshot.locals.at("localVar").intValue() == 3);
     assert(snapshot.callStack[0].receiver->intValue() == 8);
     assert(snapshot.watchResults[0].getResultDisplay() == "42");
+}
+
+void testRenderPipelineFoundation() {
+    RenderPipelineStepTrace traceStep{"bake", "2 sprites", 2};
+    RenderPipelineTrace trace({traceStep});
+    assert(trace.steps().size() == 1);
+    assert(trace.steps()[0] == traceStep);
+    assert(RenderPipelineTrace::empty().steps().empty());
+    assert(libreshockwave::player::render::pipeline::name(SpriteType::Bitmap) == "BITMAP");
+    assert(libreshockwave::player::render::pipeline::name(SpriteType::FilmLoop) == "FILM_LOOP");
+
+    auto staticChunk = std::make_shared<CastMemberChunk>(nullptr,
+                                                         ChunkId(400),
+                                                         MemberType::Bitmap,
+                                                         0,
+                                                         0,
+                                                         std::vector<std::uint8_t>{},
+                                                         std::vector<std::uint8_t>{},
+                                                         "StaticBitmap",
+                                                         0,
+                                                         0,
+                                                         0);
+    RenderSprite simpleSprite(1, 10, 20, 30, 40, true, SpriteType::Bitmap, staticChunk, 0x111111, 0x222222, 41, 75);
+    assert(simpleSprite.channel() == 1);
+    assert(simpleSprite.x() == 10);
+    assert(simpleSprite.y() == 20);
+    assert(simpleSprite.width() == 30);
+    assert(simpleSprite.height() == 40);
+    assert(simpleSprite.locZ() == 0);
+    assert(simpleSprite.isVisible());
+    assert(simpleSprite.type() == SpriteType::Bitmap);
+    assert(simpleSprite.castMember() == staticChunk);
+    assert(simpleSprite.dynamicMember() == nullptr);
+    assert(simpleSprite.foreColor() == 0x111111);
+    assert(simpleSprite.backColor() == 0x222222);
+    assert(!simpleSprite.hasForeColor());
+    assert(!simpleSprite.hasBackColor());
+    assert(simpleSprite.inkMode() == InkMode::DARKEN);
+    assert(simpleSprite.ink() == 41);
+    assert(simpleSprite.blend() == 75);
+    assert(!simpleSprite.isFlipH());
+    assert(!simpleSprite.isFlipV());
+    assert(!simpleSprite.hasBehaviors());
+    assert(simpleSprite.castMemberId() == 400);
+    assert(simpleSprite.memberName().has_value());
+    assert(simpleSprite.memberName().value() == "StaticBitmap");
+    assert(!simpleSprite.hasDirectorHorizontalMirror());
+
+    auto dynamicChunk = std::make_shared<CastMemberChunk>(nullptr,
+                                                          ChunkId(401),
+                                                          MemberType::Bitmap,
+                                                          0,
+                                                          0,
+                                                          std::vector<std::uint8_t>{},
+                                                          std::vector<std::uint8_t>{},
+                                                          "DynamicBitmap",
+                                                          0,
+                                                          0,
+                                                          0);
+    auto dynamicMember = std::make_shared<CastMember>(99, 2, 33, dynamicChunk);
+    auto baked = std::make_shared<Bitmap>(2, 2, 32);
+    RenderSprite fullSprite(3,
+                            1,
+                            2,
+                            3,
+                            4,
+                            5,
+                            true,
+                            SpriteType::Text,
+                            nullptr,
+                            dynamicMember,
+                            0x333333,
+                            0x444444,
+                            true,
+                            true,
+                            32,
+                            50,
+                            true,
+                            false,
+                            540.0,
+                            -180.0,
+                            baked,
+                            true);
+    assert(fullSprite.channelId().value() == 3);
+    assert(fullSprite.locZ() == 5);
+    assert(fullSprite.hasForeColor());
+    assert(fullSprite.hasBackColor());
+    assert(fullSprite.inkMode() == InkMode::BLEND);
+    assert(fullSprite.isFlipH());
+    assert(!fullSprite.isFlipV());
+    assert(fullSprite.rotation() == 540.0);
+    assert(fullSprite.skew() == -180.0);
+    assert(fullSprite.bakedBitmap() == baked);
+    assert(fullSprite.hasBehaviors());
+    assert(fullSprite.hasDirectorHorizontalMirror());
+    assert(fullSprite.castMemberId() == 33);
+    assert(fullSprite.memberName().value() == "DynamicBitmap");
+
+    auto replacementBitmap = std::make_shared<Bitmap>(4, 4, 32);
+    auto withBaked = fullSprite.withBakedBitmap(replacementBitmap);
+    assert(withBaked.bakedBitmap() == replacementBitmap);
+    assert(withBaked.width() == fullSprite.width());
+    assert(withBaked.height() == fullSprite.height());
+    auto withSize = fullSprite.withBakedBitmapAndSize(replacementBitmap, 10, 11);
+    assert(withSize.bakedBitmap() == replacementBitmap);
+    assert(withSize.width() == 10);
+    assert(withSize.height() == 11);
+    assert(withSize.hasDirectorHorizontalMirror());
+
+    RenderSprite memberless(4, 0, 0, 1, 1, true, SpriteType::Unknown, nullptr, 0, 0, 0, 0);
+    assert(memberless.castMemberId() == -1);
+    assert(!memberless.memberName().has_value());
+
+    FrameSnapshot snapshot{
+        12,
+        640,
+        480,
+        0x00ABCDEF,
+        {simpleSprite, fullSprite},
+        "frame 12",
+        baked,
+        7,
+        trace
+    };
+    assert(snapshot.frameNumber == 12);
+    assert(snapshot.stageWidth == 640);
+    assert(snapshot.stageHeight == 480);
+    assert(snapshot.backgroundColor == 0x00ABCDEF);
+    assert(snapshot.sprites.size() == 2);
+    assert(snapshot.stageImage == baked);
+    assert(snapshot.bakeTick == 7);
+    assert(snapshot.pipelineTrace.steps()[0].stepName == "bake");
 }
 
 void testPaletteAndColorRefs() {
@@ -3185,6 +3325,7 @@ int main() {
     testPlayerInputFoundation();
     testScoreNavigationFoundation();
     testDebugFoundation();
+    testRenderPipelineFoundation();
     testPaletteAndColorRefs();
     testBitmapAlphaAndPaletteBehavior();
     testBitmapRegionsAndMetadata();

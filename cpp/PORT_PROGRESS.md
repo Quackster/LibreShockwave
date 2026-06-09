@@ -230,6 +230,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `debug::WatchExpression` ports watch expression result/error state and display helpers.
 - `debug::DebugSnapshot`, `InstructionDisplay`, and `CallFrame` port immutable debugger UI state payloads without pulling in the full debug controller.
 
+### Render Pipeline Data Foundation
+
+- `render::pipeline::RenderPipelineStepTrace` and `RenderPipelineTrace` port immutable render-pipeline trace records.
+- `render::pipeline::RenderSprite` ports renderable sprite metadata, ink-mode decoding, transform mirror detection, baked-bitmap copy helpers, and member identity/name fallbacks.
+- `render::pipeline::FrameSnapshot` ports the immutable frame render payload without invoking the not-yet-ported software frame renderer.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -276,6 +282,7 @@ Result:
 - PlayerState, InputEvent factories, DirectorKeyCodes, and InputState mutation/queue tests passed through the same CTest executable.
 - ScoreBehaviorRef, SpriteSpan, ScoreNavigator labels, marker resolution, active sprites/channels, and frame-count tests passed through the same CTest executable.
 - Breakpoint, BreakpointManager, WatchExpression, and DebugSnapshot tests passed through the same CTest executable.
+- RenderPipelineTrace, RenderSprite, transform mirror, baked bitmap helpers, and FrameSnapshot tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -321,4 +328,5 @@ Result:
 - `7196f52 Port C++ player event foundation`
 - `25bdb9d Port C++ player input foundation`
 - `a7f4a2e Port C++ score navigation foundation`
-- Current checkpoint commit message: `Port C++ debug breakpoint foundation`
+- `3eb1f34 Port C++ debug breakpoint foundation`
+- Current checkpoint commit message: `Port C++ render pipeline data foundation`
