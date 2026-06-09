@@ -460,6 +460,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - Property opcode handlers now cover receiver script-instance get/set, object property get/set for script instances and property lists, and object property reads for lists, strings, points, rectangles, and colors.
 - Chained property reads now reuse the same data-owned object property path, and top-level `_player`/`_movie` property reads produce C++ reference datums.
+- Legacy property ID opcodes now cover string chunk counts and last-chunk reads, with provider-backed targets consuming their stack operands as safe no-ops until runtime providers are wired.
 - Built-in movie constants and basic `the paramCount`/`the result` lookups are available without a provider.
 - Sprite, cast member/library, Xtra, timeout, sound, image, and full movie/stage provider-backed property dispatch remain deferred to later runtime integration slices.
 
@@ -580,6 +581,7 @@ Result:
 - Lingo `DELETE_CHUNK` char, word, item, line, negative last-index, delimiter, and out-of-range tests passed through the same CTest executable.
 - Lingo `PUT_CHUNK` char replacement/insertion, item replacement, word/line insertion, negative target, and out-of-range no-op tests passed through the same CTest executable.
 - Lingo `GET_CHAINED_PROP` list, string, point, property-list, and script-instance reads plus `GET_TOP_LEVEL_PROP` `_player`/`_movie` refs passed through the same CTest executable.
+- Lingo legacy `GET` last-chunk/count chunk reads and provider-backed `SET` stack-consumption no-op tests passed through the same CTest executable.
 - MovieProperties movie/stage property reads and writes, file/input-backed values, xtra lists, item delimiters, timers, stage background color, random seed, navigation callbacks, and net navigation callbacks passed through the same CTest executable.
 - BuiltinRegistry case-insensitive lookup, custom registration, movie label/marker builtins, sprite puppet/cursor/spriteBox builtins, puppetPalette hooks, and Java-compatible no-op sprite builtins passed through the same CTest executable.
 - MathBuiltins numeric coercion, integer/float conversion, bit operations, trig, power, min/max, list min/max, and random callback hooks passed through the same CTest executable.
@@ -698,4 +700,5 @@ Result:
 - `c9ed19bd Port C++ opcode put foundation`
 - `a533d8ff Port C++ opcode delete chunk foundation`
 - `6be71365 Port C++ opcode put chunk foundation`
-- Current checkpoint commit message: `Port C++ opcode chained property foundation`
+- `cd997d5e Port C++ opcode chained property foundation`
+- Current checkpoint commit message: `Port C++ opcode legacy property foundation`

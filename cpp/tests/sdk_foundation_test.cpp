@@ -2340,6 +2340,8 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opcodeRegistry.hasHandler(Opcode::SET_OBJ_PROP));
     assert(opcodeRegistry.hasHandler(Opcode::GET_CHAINED_PROP));
     assert(opcodeRegistry.hasHandler(Opcode::GET_TOP_LEVEL_PROP));
+    assert(opcodeRegistry.hasHandler(Opcode::GET));
+    assert(opcodeRegistry.hasHandler(Opcode::SET));
     assert(opcodeRegistry.hasHandler(Opcode::THE_BUILTIN));
     assert(opcodeRegistry.hasHandler(Opcode::LOCAL_CALL));
     assert(opcodeRegistry.hasHandler(Opcode::EXT_CALL));
@@ -2759,6 +2761,45 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     topLevelContext.setInstruction(ScriptChunk::Instruction{0, Opcode::GET_TOP_LEVEL_PROP, libreshockwave::lingo::code(Opcode::GET_TOP_LEVEL_PROP), 77});
     assert(opcodeRegistry.execute(Opcode::GET_TOP_LEVEL_PROP, topLevelContext));
     assert(topLevelContext.pop().type() == DatumType::MovieRef);
+
+    auto runLegacyGet = [&](int propertyType, Datum target, int propertyId) {
+        Scope legacyGetScope(&script, handler, {});
+        ExecutionContext legacyGetContext(legacyGetScope,
+                                          ScriptChunk::Instruction{0, Opcode::GET, libreshockwave::lingo::code(Opcode::GET), propertyType},
+                                          &registry,
+                                          &builtinContext,
+                                          callbacks);
+        legacyGetContext.push(std::move(target));
+        legacyGetContext.push(Datum::of(propertyId));
+        assert(opcodeRegistry.execute(Opcode::GET, legacyGetContext));
+        return legacyGetContext.pop();
+    };
+    assert(runLegacyGet(0x00, Datum::of(std::string("red,green,blue")), 0x0C).stringValue() == "blue");
+    assert(runLegacyGet(0x00, Datum::of(std::string("one two three")), 0x0D).stringValue() == "three");
+    assert(runLegacyGet(0x00, Datum::of(std::string("abcd")), 0x0E).stringValue() == "d");
+    assert(runLegacyGet(0x00, Datum::of(std::string("top\nbottom")), 0x0F).stringValue() == "bottom");
+    assert(runLegacyGet(0x01, Datum::of(std::string("red,green,blue")), 0x01).intValue() == 3);
+    assert(runLegacyGet(0x01, Datum::of(std::string("one two three")), 0x02).intValue() == 3);
+    assert(runLegacyGet(0x01, Datum::of(std::string("abcd")), 0x03).intValue() == 4);
+    assert(runLegacyGet(0x01, Datum::of(std::string("top\nbottom")), 0x04).intValue() == 2);
+    assert(runLegacyGet(0x00, Datum::voidValue(), 0x01).isVoid());
+
+    Scope legacySetScope(&script, handler, {});
+    ExecutionContext legacySetContext(legacySetScope,
+                                      ScriptChunk::Instruction{0, Opcode::SET, libreshockwave::lingo::code(Opcode::SET), 0x00},
+                                      &registry,
+                                      &builtinContext,
+                                      callbacks);
+    legacySetContext.push(Datum::of(std::string("value")));
+    legacySetContext.push(Datum::of(0x01));
+    assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
+    assert(legacySetScope.stackSize() == 0);
+    legacySetContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET, libreshockwave::lingo::code(Opcode::SET), 0x06});
+    legacySetContext.push(Datum::of(7));
+    legacySetContext.push(Datum::of(std::string("spriteValue")));
+    legacySetContext.push(Datum::of(0x01));
+    assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
+    assert(legacySetScope.stackSize() == 0);
 
     Scope moviePropScope(&script, handler, {});
     ExecutionContext moviePropContext(moviePropScope,

@@ -1068,6 +1068,29 @@ std::string resolveChunkRange(std::string_view value,
     return getChunkRangeValue(value, type, first, effectiveLast, itemDelimiter);
 }
 
+std::optional<StringChunkType> stringChunkTypeByCode(int value) {
+    switch (value) {
+        case 0x01:
+            return StringChunkType::Item;
+        case 0x02:
+            return StringChunkType::Word;
+        case 0x03:
+            return StringChunkType::Char;
+        case 0x04:
+            return StringChunkType::Line;
+        default:
+            return std::nullopt;
+    }
+}
+
+std::string getLastChunkValue(std::string_view value, StringChunkType type, char itemDelimiter = ',') {
+    if (value.empty()) {
+        return "";
+    }
+    const int count = countChunks(value, type, itemDelimiter);
+    return count == 0 ? std::string() : getChunkValue(value, type, count, itemDelimiter);
+}
+
 std::optional<std::pair<int, int>> itemByteRange(std::string_view value, int first, int last, char delimiter) {
     int chunkNum = 1;
     int chunkStart = 0;
@@ -2314,6 +2337,57 @@ bool setObjProp(ExecutionContext& context) {
     return true;
 }
 
+bool getLegacyProperty(ExecutionContext& context) {
+    const int propertyId = toIntLikeJava(context.pop());
+    const int propertyType = context.argument();
+    constexpr char itemDelimiter = ',';
+
+    if (propertyType == 0x00) {
+        if (propertyId <= 0x0B) {
+            context.push(Datum::voidValue());
+            return true;
+        }
+        if (const auto chunkType = stringChunkTypeByCode(propertyId - 0x0B)) {
+            const std::string value = toStringLikeJava(context.pop());
+            context.push(Datum::of(getLastChunkValue(value, *chunkType, itemDelimiter)));
+            return true;
+        }
+        context.push(Datum::voidValue());
+        return true;
+    }
+
+    if (propertyType == 0x01) {
+        const std::string value = toStringLikeJava(context.pop());
+        if (const auto chunkType = stringChunkTypeByCode(propertyId)) {
+            context.push(Datum::of(countChunks(value, *chunkType, itemDelimiter)));
+        } else {
+            context.push(Datum::voidValue());
+        }
+        return true;
+    }
+
+    if (propertyType == 0x06 || propertyType == 0x0B) {
+        (void)context.pop();
+    } else if (propertyType == 0x08 && propertyId == 0x02) {
+        (void)context.pop();
+        context.push(Datum::of(0));
+        return true;
+    }
+    context.push(Datum::voidValue());
+    return true;
+}
+
+bool setLegacyProperty(ExecutionContext& context) {
+    const int propertyId = toIntLikeJava(context.pop());
+    (void)propertyId;
+    (void)context.pop();
+    const int propertyType = context.argument();
+    if (propertyType == 0x04 || propertyType == 0x06) {
+        (void)context.pop();
+    }
+    return true;
+}
+
 bool theBuiltin(ExecutionContext& context) {
     (void)context.pop();
     const std::string propName = context.resolveName(context.argument());
@@ -2520,6 +2594,8 @@ void PropertyOpcodes::registerHandlers(OpcodeRegistry& registry) {
     registry.registerHandler(Opcode::THE_BUILTIN, theBuiltin);
     registry.registerHandler(Opcode::GET_CHAINED_PROP, getChainedProp);
     registry.registerHandler(Opcode::GET_TOP_LEVEL_PROP, getTopLevelProp);
+    registry.registerHandler(Opcode::GET, getLegacyProperty);
+    registry.registerHandler(Opcode::SET, setLegacyProperty);
 }
 
 void CallOpcodes::registerHandlers(OpcodeRegistry& registry) {
