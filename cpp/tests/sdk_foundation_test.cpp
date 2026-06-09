@@ -2210,6 +2210,10 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opcodeRegistry.hasHandler(Opcode::AND));
     assert(opcodeRegistry.hasHandler(Opcode::OR));
     assert(opcodeRegistry.hasHandler(Opcode::NOT));
+    assert(opcodeRegistry.hasHandler(Opcode::JOIN_STR));
+    assert(opcodeRegistry.hasHandler(Opcode::JOIN_PAD_STR));
+    assert(opcodeRegistry.hasHandler(Opcode::CONTAINS_STR));
+    assert(opcodeRegistry.hasHandler(Opcode::CONTAINS_0_STR));
     assert(opcodeRegistry.hasHandler(Opcode::GET_LOCAL));
     assert(opcodeRegistry.hasHandler(Opcode::SET_LOCAL));
     assert(opcodeRegistry.hasHandler(Opcode::GET_PARAM));
@@ -2363,6 +2367,15 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         assert(opcodeRegistry.execute(opcode, binaryContext));
         return binaryContext.pop();
     };
+
+    assert(runBinary(Opcode::JOIN_STR, Datum::of(12), Datum::of(std::string("px"))).stringValue() == "12px");
+    assert(runBinary(Opcode::JOIN_STR, Datum::voidValue(), Datum::of(std::string("tail"))).stringValue() == "tail");
+    assert(runBinary(Opcode::JOIN_PAD_STR, Datum::of(std::string("hello")), Datum::of(std::string("world"))).stringValue() == "hello world");
+    assert(runBinary(Opcode::JOIN_PAD_STR, Datum::of(std::string()), Datum::of(std::string("solo"))).stringValue() == "solo");
+    assert(runBinary(Opcode::CONTAINS_STR, Datum::of(std::string("Hello Director")), Datum::of(std::string("direct"))).boolValue());
+    assert(!runBinary(Opcode::CONTAINS_STR, Datum::of(std::string("Hello")), Datum::of(std::string())).boolValue());
+    assert(runBinary(Opcode::CONTAINS_0_STR, Datum::of(std::string("Shockwave")), Datum::of(std::string("shock"))).boolValue());
+    assert(!runBinary(Opcode::CONTAINS_0_STR, Datum::voidValue(), Datum::of(std::string("x"))).boolValue());
 
     assert(runBinary(Opcode::ADD, Datum::of(4), Datum::of(5)).intValue() == 9);
     assert(std::fabs(runBinary(Opcode::ADD, Datum::of(1.5F), Datum::of(2)).floatValue() - 3.5F) < 0.0001F);

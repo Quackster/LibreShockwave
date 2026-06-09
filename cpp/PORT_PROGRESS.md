@@ -430,7 +430,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `lingo::vm::OpcodeRegistry` now maps opcode enums to executable C++ handler callbacks with post-construction registration hooks.
 - Stack opcode handlers cover zero/int/float/literal/symbol pushes plus swap, pop, and peek behavior over `ExecutionContext`.
 - Control-flow opcode handlers cover return, factory return, absolute jump target lookup, conditional zero jump, and repeat-loop back jumps.
-- Object creation, string/property/call opcodes remain deferred to later focused VM slices.
+- Object creation, string chunk extraction/mutation, property, and call opcodes remain deferred to later focused VM slices.
 
 ### Lingo Opcode Arithmetic, Comparison, and Logical Foundation
 
@@ -443,6 +443,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Variable opcode handlers now cover local, parameter, and global get/set behavior through `ExecutionContext`.
 - Global opcodes resolve script name IDs before delegating to VM-owned global callbacks, matching the Java registry path.
 - List opcode handlers now cover arg-list and no-return arg-list packing, linear-list construction, and duplicate-preserving property-list construction.
+
+### Lingo Opcode Simple String Foundation
+
+- Simple string opcode handlers now cover concatenation, padded concatenation, case-insensitive contains, and case-insensitive starts-with checks.
+- String coercion follows the Java datum `toStr` path for void, strings/string chunks, symbols, references, lists, and property lists.
+- GET_CHUNK, PUT, PUT_CHUNK, and DELETE_CHUNK remain deferred to a focused string chunk opcode slice.
 
 ## Verification
 
@@ -526,6 +532,7 @@ Result:
 - OpcodeRegistry stack/control handler registration, custom handler registration, literal/symbol pushes, stack manipulation, return/factory return, and jump opcodes passed through the same CTest executable.
 - OpcodeRegistry arithmetic, comparison, and logical handlers passed through the same CTest executable.
 - OpcodeRegistry variable, arg-list, linear-list, and property-list handlers passed through the same CTest executable.
+- OpcodeRegistry simple string concatenation and containment handlers passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -607,4 +614,5 @@ Result:
 - `8e7b9b5 Port C++ Lingo VM scope foundation`
 - `1b666a9c Port C++ opcode stack foundation`
 - `4d98a05f Port C++ opcode arithmetic foundation`
-- Current checkpoint commit message: `Port C++ opcode variable list foundation`
+- `c799873c Port C++ opcode variable list foundation`
+- Current checkpoint commit message: `Port C++ opcode string foundation`

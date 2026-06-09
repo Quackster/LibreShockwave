@@ -1,5 +1,7 @@
 #include "libreshockwave/lingo/vm/OpcodeRegistry.hpp"
 
+#include "libreshockwave/bitmap/Bitmap.hpp"
+
 #include <algorithm>
 #include <bit>
 #include <charconv>
@@ -7,6 +9,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -105,6 +108,145 @@ std::optional<double> parseDoubleStrict(std::string_view value) {
         return std::nullopt;
     }
     return result;
+}
+
+std::string toStringLikeJava(const Datum& datum);
+
+std::string datumReprLikeJava(const Datum& datum) {
+    if (datum.isVoid()) {
+        return "<Void>";
+    }
+    if (datum.isString()) {
+        return "\"" + datum.stringValue() + "\"";
+    }
+    if (const auto* value = datum.asSymbol()) {
+        return "#" + value->name;
+    }
+    return toStringLikeJava(datum);
+}
+
+std::string listStringLikeJava(const Datum::List& list) {
+    std::ostringstream out;
+    out << '[';
+    for (std::size_t index = 0; index < list.items().size(); ++index) {
+        if (index > 0) {
+            out << ", ";
+        }
+        out << datumReprLikeJava(list.items()[index]);
+    }
+    out << ']';
+    return out.str();
+}
+
+std::string propListStringLikeJava(const Datum::PropList& propList) {
+    std::ostringstream out;
+    out << '[';
+    const auto& properties = propList.properties();
+    for (std::size_t index = 0; index < properties.size(); ++index) {
+        if (index > 0) {
+            out << ", ";
+        }
+        out << datumReprLikeJava(properties[index].first) << ": " << datumReprLikeJava(properties[index].second);
+    }
+    out << ']';
+    return out.str();
+}
+
+std::string toStringLikeJava(const Datum& datum) {
+    if (datum.isVoid() || datum.isNull()) {
+        return "";
+    }
+    if (datum.isString()) {
+        return datum.stringValue();
+    }
+    if (const auto* value = datum.asSymbol()) {
+        return value->name;
+    }
+    if (const auto* value = datum.asColorRef()) {
+        return "color(" + std::to_string(value->r) + ", " + std::to_string(value->g) + ", " +
+               std::to_string(value->b) + ")";
+    }
+    if (const auto* value = datum.asSpriteRef()) {
+        return "sprite(" + std::to_string(value->channel) + ")";
+    }
+    if (const auto* value = datum.asImageRef()) {
+        if (!value->bitmap) {
+            return "(image null)";
+        }
+        return "(image " + std::to_string(value->bitmap->width()) + "x" +
+               std::to_string(value->bitmap->height()) + ")";
+    }
+    if (const auto* value = datum.asCastMemberRef()) {
+        return "member(" + std::to_string(value->castMember) + ", " + std::to_string(value->castLib) + ")";
+    }
+    if (const auto* value = datum.asCastLibRef()) {
+        return "castLib(" + std::to_string(value->castLib) + ")";
+    }
+    if (const auto* value = datum.asScriptRef()) {
+        return "<script " + std::to_string(value->memberRef.castMember) + ", " +
+               std::to_string(value->memberRef.castLib) + ">";
+    }
+    if (const auto* value = datum.asXtra()) {
+        return "<Xtra \"" + value->name + "\">";
+    }
+    if (const auto* value = datum.asXtraInstance()) {
+        return "<XtraInstance \"" + value->xtraName + "\" #" + std::to_string(value->instanceId) + ">";
+    }
+    if (datum.isList()) {
+        return listStringLikeJava(datum.listValue());
+    }
+    if (datum.isPropList()) {
+        return propListStringLikeJava(datum.propListValue());
+    }
+    if (datum.type() == DatumType::StageRef) {
+        return "(the stage)";
+    }
+    if (datum.type() == DatumType::MovieRef) {
+        return "(the movie)";
+    }
+    if (datum.type() == DatumType::PlayerRef) {
+        return "(the player)";
+    }
+    try {
+        return datum.stringValue();
+    } catch (const LingoException&) {
+        return datum.typeString();
+    }
+}
+
+bool containsIgnoreCase(std::string_view haystack, std::string_view needle) {
+    if (needle.empty() || needle.size() > haystack.size()) {
+        return false;
+    }
+    for (std::size_t offset = 0; offset + needle.size() <= haystack.size(); ++offset) {
+        bool matches = true;
+        for (std::size_t index = 0; index < needle.size(); ++index) {
+            const auto left = static_cast<unsigned char>(haystack[offset + index]);
+            const auto right = static_cast<unsigned char>(needle[index]);
+            if (std::tolower(left) != std::tolower(right)) {
+                matches = false;
+                break;
+            }
+        }
+        if (matches) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool startsWithIgnoreCase(std::string_view haystack, std::string_view needle) {
+    if (needle.empty() || needle.size() > haystack.size()) {
+        return false;
+    }
+    for (std::size_t index = 0; index < needle.size(); ++index) {
+        const auto left = static_cast<unsigned char>(haystack[index]);
+        const auto right = static_cast<unsigned char>(needle[index]);
+        if (std::tolower(left) != std::tolower(right)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 int packedColor(const Datum::ColorRef& color) {
@@ -605,6 +747,58 @@ bool logicalNot(ExecutionContext& context) {
     return true;
 }
 
+bool joinStr(ExecutionContext& context) {
+    const Datum b = context.pop();
+    const Datum a = context.pop();
+    const std::string aString = toStringLikeJava(a);
+    const std::string bString = toStringLikeJava(b);
+    if (aString.empty()) {
+        context.push(b.asString() != nullptr ? b : Datum::of(bString));
+        return true;
+    }
+    if (bString.empty()) {
+        context.push(a.asString() != nullptr ? a : Datum::of(aString));
+        return true;
+    }
+    context.push(Datum::of(aString + bString));
+    return true;
+}
+
+bool joinPadStr(ExecutionContext& context) {
+    const Datum b = context.pop();
+    const Datum a = context.pop();
+    const std::string aString = toStringLikeJava(a);
+    const std::string bString = toStringLikeJava(b);
+    if (aString.empty()) {
+        context.push(b.asString() != nullptr ? b : Datum::of(bString));
+        return true;
+    }
+    if (bString.empty()) {
+        context.push(a.asString() != nullptr ? a : Datum::of(aString));
+        return true;
+    }
+    context.push(Datum::of(aString + " " + bString));
+    return true;
+}
+
+bool containsStr(ExecutionContext& context) {
+    const Datum needle = context.pop();
+    const Datum haystack = context.pop();
+    context.push(containsIgnoreCase(toStringLikeJava(haystack), toStringLikeJava(needle)) ? Datum::TRUE : Datum::FALSE);
+    return true;
+}
+
+bool contains0Str(ExecutionContext& context) {
+    const Datum needle = context.pop();
+    const Datum haystack = context.pop();
+    if (haystack.isVoid()) {
+        context.push(Datum::FALSE);
+        return true;
+    }
+    context.push(startsWithIgnoreCase(toStringLikeJava(haystack), toStringLikeJava(needle)) ? Datum::TRUE : Datum::FALSE);
+    return true;
+}
+
 bool getLocal(ExecutionContext& context) {
     context.push(context.getLocal(context.scaledArgument()));
     return true;
@@ -677,6 +871,7 @@ OpcodeRegistry::OpcodeRegistry() {
     ArithmeticOpcodes::registerHandlers(*this);
     ComparisonOpcodes::registerHandlers(*this);
     LogicalOpcodes::registerHandlers(*this);
+    StringOpcodes::registerHandlers(*this);
     VariableOpcodes::registerHandlers(*this);
     ControlFlowOpcodes::registerHandlers(*this);
     ListOpcodes::registerHandlers(*this);
@@ -743,6 +938,13 @@ void LogicalOpcodes::registerHandlers(OpcodeRegistry& registry) {
     registry.registerHandler(Opcode::AND, logicalAnd);
     registry.registerHandler(Opcode::OR, logicalOr);
     registry.registerHandler(Opcode::NOT, logicalNot);
+}
+
+void StringOpcodes::registerHandlers(OpcodeRegistry& registry) {
+    registry.registerHandler(Opcode::JOIN_STR, joinStr);
+    registry.registerHandler(Opcode::JOIN_PAD_STR, joinPadStr);
+    registry.registerHandler(Opcode::CONTAINS_STR, containsStr);
+    registry.registerHandler(Opcode::CONTAINS_0_STR, contains0Str);
 }
 
 void VariableOpcodes::registerHandlers(OpcodeRegistry& registry) {

@@ -48,6 +48,11 @@ public:
     static void registerHandlers(OpcodeRegistry& registry);
 };
 
+class StringOpcodes {
+public:
+    static void registerHandlers(OpcodeRegistry& registry);
+};
+
 class VariableOpcodes {
 public:
     static void registerHandlers(OpcodeRegistry& registry);
