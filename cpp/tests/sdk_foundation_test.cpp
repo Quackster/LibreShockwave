@@ -3509,6 +3509,44 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runInkCopy(Datum::symbol("mask"), 0xFF000000U, 0xFFFFFFFFU) == 0xFFFFFFFFU);
     assert(runInkCopy(Datum::symbol("lightest"), 0xFF1020F0U, 0xFF803010U) == 0xFF8030F0U);
     assert(runInkCopy(Datum::symbol("darkest"), 0xFF1020F0U, 0xFF803010U) == 0xFF102010U);
+    auto remapSource = std::make_shared<Bitmap>(
+        3, 1, 32, std::vector<std::uint32_t>{0xFF000000U, 0xFF808080U, 0xFFFFFFFFU});
+    auto remapDest = std::make_shared<Bitmap>(3, 1, 32);
+    remapDest->fill(0xFF000000U);
+    auto remapProps = Datum::propList();
+    remapProps.propListValue().put(Datum::symbol("color"), Datum::colorRef(255, 0, 0));
+    remapProps.propListValue().put(Datum::symbol("bgColor"), Datum::colorRef(0, 0, 255));
+    assert(runObjCall(110, {Datum::imageRef(remapDest),
+                            Datum::imageRef(remapSource),
+                            Datum::intRect(0, 0, 3, 1),
+                            Datum::intRect(0, 0, 3, 1),
+                            remapProps}).isVoid());
+    assert(remapDest->getPixel(0, 0) == 0xFFFF0000U);
+    assert(remapDest->getPixel(1, 0) == 0xFF7F0080U);
+    assert(remapDest->getPixel(2, 0) == 0xFF0000FFU);
+    auto transparentRemapDest = std::make_shared<Bitmap>(3, 1, 32);
+    transparentRemapDest->fill(0xFF00FF00U);
+    auto transparentRemapProps = Datum::propList();
+    transparentRemapProps.propListValue().put(Datum::symbol("color"), Datum::colorRef(255, 0, 0));
+    assert(runObjCall(110, {Datum::imageRef(transparentRemapDest),
+                            Datum::imageRef(remapSource),
+                            Datum::intRect(0, 0, 3, 1),
+                            Datum::intRect(0, 0, 3, 1),
+                            transparentRemapProps}).isVoid());
+    assert(transparentRemapDest->getPixel(0, 0) == 0xFFFF0000U);
+    assert(transparentRemapDest->getPixel(1, 0) == 0xFF7F8000U);
+    assert(transparentRemapDest->getPixel(2, 0) == 0xFF00FF00U);
+    auto coloredRemapSource = std::make_shared<Bitmap>(
+        2, 1, 32, std::vector<std::uint32_t>{0xFF112233U, 0xFFFFFFFFU});
+    auto coloredRemapDest = std::make_shared<Bitmap>(2, 1, 32);
+    coloredRemapDest->fill(0xFF000000U);
+    assert(runObjCall(110, {Datum::imageRef(coloredRemapDest),
+                            Datum::imageRef(coloredRemapSource),
+                            Datum::intRect(0, 0, 2, 1),
+                            Datum::intRect(0, 0, 2, 1),
+                            remapProps}).isVoid());
+    assert(coloredRemapDest->getPixel(0, 0) == 0xFF112233U);
+    assert(coloredRemapDest->getPixel(1, 0) == 0xFFFFFFFFU);
     auto paletteCopySource = std::make_shared<Bitmap>(
         2, 1, 8, std::vector<std::uint32_t>{0xFF000000U, 0xFF112233U});
     paletteCopySource->setImagePalette(std::make_shared<Palette>(

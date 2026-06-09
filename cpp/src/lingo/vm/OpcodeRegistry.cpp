@@ -2650,6 +2650,71 @@ bool imageMaskAllowsPixel(const bitmap::Bitmap& mask, int x, int y) {
     return imageMaskAlphaFromPixel(pixel) < 255;
 }
 
+bool imageRegionIsMostlyGrayscale(const bitmap::Bitmap& src, const Datum::IntRect& rect) {
+    const int width = rect.right - rect.left;
+    const int height = rect.bottom - rect.top;
+    if (width <= 0 || height <= 0) return false;
+
+    int sampled = 0;
+    int grayscale = 0;
+    const int step = std::max(1, (width * height) / 64);
+    for (int index = 0; index < width * height; index += step) {
+        const int x = rect.left + (index % width);
+        const int y = rect.top + (index / width);
+        if (x < 0 || x >= src.width() || y < 0 || y >= src.height()) {
+            continue;
+        }
+        const auto pixel = src.getPixel(x, y);
+        if (((pixel >> 24) & 0xFFU) == 0) {
+            continue;
+        }
+        ++sampled;
+        const auto r = (pixel >> 16) & 0xFFU;
+        const auto g = (pixel >> 8) & 0xFFU;
+        const auto b = pixel & 0xFFU;
+        if (std::abs(static_cast<int>(r) - static_cast<int>(g)) <= 3 &&
+            std::abs(static_cast<int>(g) - static_cast<int>(b)) <= 3) {
+            ++grayscale;
+        }
+    }
+    return sampled > 0 && grayscale * 4 >= sampled * 3;
+}
+
+std::uint32_t imageRemapGrayscalePixel(std::uint32_t pixel,
+                                       std::optional<int> colorRemap,
+                                       std::optional<int> bgColorRemap) {
+    if (!colorRemap.has_value() && !bgColorRemap.has_value()) {
+        return pixel;
+    }
+    const int alpha = static_cast<int>((pixel >> 24) & 0xFFU);
+    const int gray = static_cast<int>(((pixel >> 16) & 0xFFU));
+    const int fg = colorRemap.value_or(0);
+    const int bg = bgColorRemap.value_or(0xFFFFFF);
+    const int fgR = (fg >> 16) & 0xFF;
+    const int fgG = (fg >> 8) & 0xFF;
+    const int fgB = fg & 0xFF;
+    const int bgR = (bg >> 16) & 0xFF;
+    const int bgG = (bg >> 8) & 0xFF;
+    const int bgB = bg & 0xFF;
+
+    if (colorRemap.has_value() && !bgColorRemap.has_value()) {
+        const int maskAlpha = (255 - gray) * alpha / 255;
+        return (static_cast<std::uint32_t>(maskAlpha & 0xFF) << 24) |
+               (static_cast<std::uint32_t>(fgR & 0xFF) << 16) |
+               (static_cast<std::uint32_t>(fgG & 0xFF) << 8) |
+               static_cast<std::uint32_t>(fgB & 0xFF);
+    }
+
+    const float t = static_cast<float>(gray) / 255.0F;
+    const int r = static_cast<int>((1.0F - t) * static_cast<float>(fgR) + t * static_cast<float>(bgR) + 0.5F);
+    const int g = static_cast<int>((1.0F - t) * static_cast<float>(fgG) + t * static_cast<float>(bgG) + 0.5F);
+    const int b = static_cast<int>((1.0F - t) * static_cast<float>(fgB) + t * static_cast<float>(bgB) + 0.5F);
+    return (static_cast<std::uint32_t>(alpha & 0xFF) << 24) |
+           (static_cast<std::uint32_t>(r & 0xFF) << 16) |
+           (static_cast<std::uint32_t>(g & 0xFF) << 8) |
+           static_cast<std::uint32_t>(b & 0xFF);
+}
+
 Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
     if (args.size() < 3) return Datum::voidValue();
     const auto* srcRef = args[0].asImageRef();
@@ -2670,6 +2735,8 @@ Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
     int blend = 255;
     id::InkMode ink = id::InkMode::COPY;
     int backgroundKeyRgb = 0xFFFFFF;
+    std::optional<int> colorRemap;
+    std::optional<int> bgColorRemap;
     std::shared_ptr<bitmap::Bitmap> mask;
     if (args.size() >= 4 && args[3].isPropList()) {
         const Datum blendDatum = getPropListKey(args[3].propListValue(), "blend");
@@ -2686,7 +2753,12 @@ Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
         }
         const Datum bgColorDatum = getPropListKey(args[3].propListValue(), "bgColor");
         if (!bgColorDatum.isVoid()) {
-            backgroundKeyRgb = static_cast<int>(imageColorArgb(bgColorDatum, &dest) & 0x00FFFFFFU);
+            bgColorRemap = static_cast<int>(imageColorArgb(bgColorDatum, &dest) & 0x00FFFFFFU);
+            backgroundKeyRgb = *bgColorRemap;
+        }
+        const Datum colorDatum = getPropListKey(args[3].propListValue(), "color");
+        if (!colorDatum.isVoid()) {
+            colorRemap = static_cast<int>(imageColorArgb(colorDatum, &dest) & 0x00FFFFFFU);
         }
         const Datum maskDatum = getPropListKey(args[3].propListValue(), "maskImage");
         if (const auto* maskRef = maskDatum.asImageRef()) {
@@ -2713,6 +2785,11 @@ Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
         dest.clearPaletteIndices();
     }
 
+    const bool applyGrayscaleRemap =
+        (colorRemap.has_value() || bgColorRemap.has_value()) &&
+        !src.hasNativeMatteAlpha() &&
+        imageRegionIsMostlyGrayscale(src, *srcRect);
+
     for (int dy = 0; dy < destHeight; ++dy) {
         const int sy = srcRect->top + (dy * srcHeight / destHeight);
         const int py = destRect->top + dy;
@@ -2728,10 +2805,13 @@ Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
             if (mask != nullptr && !imageMaskAllowsPixel(*mask, sx, sy)) {
                 continue;
             }
+            const auto sourcePixel = applyGrayscaleRemap
+                ? imageRemapGrayscalePixel(src.getPixel(sx, sy), colorRemap, bgColorRemap)
+                : src.getPixel(sx, sy);
             dest.setPixelPreservePaletteIndex(
                 px,
                 py,
-                imageApplyCopyPixelsInk(src.getPixel(sx, sy), dest.getPixel(px, py), ink, blend, backgroundKeyRgb));
+                imageApplyCopyPixelsInk(sourcePixel, dest.getPixel(px, py), ink, blend, backgroundKeyRgb));
             if (destPaletteIndices.has_value() && srcPaletteIndices.has_value()) {
                 const auto srcOffset = static_cast<std::size_t>(sy * src.width() + sx);
                 const auto destOffset = static_cast<std::size_t>(py * dest.width() + px);

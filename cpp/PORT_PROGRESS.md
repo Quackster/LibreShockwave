@@ -484,7 +484,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Image receiver dispatch now supports Java-compatible `fill`, `draw`, `setAlpha`, `createMatte`, `createMask`, `copyPixels`, `duplicate`, `crop`, `trimWhiteSpace`, `getAt`, `getPixel`, and `setPixel` methods over C++ bitmap refs.
 - Image `fill` and `draw` now resolve small integer colors through the target bitmap palette when one is attached, matching Java's bitmap-aware color conversion.
 - Image `createMatte` and `createMask` cover native-alpha matte extraction, RGB/indexed flood-fill matte extraction, and direct grayscale mask output; full `copyPixels` integration remains deferred.
-- Image `copyPixels` covers default rectangular copy, nearest-neighbor scaling, COPY source-alpha/global-blend compositing, maskImage clipping, transparent/background-transparent keying, arithmetic ink modes, palette-index metadata, palette metadata, and anchor propagation; remaps and quad transforms remain deferred.
+- Image `copyPixels` covers default rectangular copy, nearest-neighbor scaling, COPY source-alpha/global-blend compositing, maskImage clipping, transparent/background-transparent keying, arithmetic ink modes, grayscale #color/#bgColor remaps, palette-index metadata, palette metadata, and anchor propagation; quad transforms remain deferred.
 
 ### Lingo Opcode Object Construction Foundation
 
@@ -747,4 +747,5 @@ Result:
 - `e490d500 Port C++ image copyPixels blend foundation`
 - `fb2b36d3 Port C++ image copyPixels mask foundation`
 - `ecc37203 Port C++ image copyPixels transparent ink foundation`
-- Current checkpoint commit message: `Port C++ image copyPixels ink modes foundation`
+- `39560416 Port C++ image copyPixels ink modes foundation`
+- Current checkpoint commit message: `Port C++ image copyPixels remap foundation`
