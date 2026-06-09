@@ -578,7 +578,7 @@ Result:
 - BehaviorInstance and BehaviorManager ID/property state, behavior-ref parameters, frame-script caching, channel lookup/removal, sprite-instance ordering, and clear tests passed through the same CTest executable.
 - EventDispatcher global, frame/movie, sprite/movie, sprite-only, behavior-only, and movie-only dispatch ordering, pass propagation, dynamic script-instance dispatch, sprite handler lookup, mouse interactivity, mouse-handler recognition, debug flag, and stopEvent state tests passed through the same CTest executable.
 - SpriteProperties missing defaults, property get/set, revision bumps, cast member assignment, autosizing, registration-aware bounds, cursor lists, script-instance sprite numbers, release cleanup, color refs, and image callbacks passed through the same CTest executable.
-- Lingo `GET_CHUNK` char/word/item/line extraction, range, negative last-index, and sequential narrowing tests passed through the same CTest executable.
+- Lingo `GET_CHUNK` char/word/item/line extraction, range, negative last-index, sequential narrowing, and provider-backed item delimiters passed through the same CTest executable.
 - Lingo `PUSH_CHUNK_VAR_REF` typed raw-index varref creation tests passed through the same CTest executable.
 - Lingo `PUT` local, parameter, global, receiver-property, before, and after mutation tests passed through the same CTest executable.
 - Lingo `DELETE_CHUNK` char, word, item, line, negative last-index, delimiter, and out-of-range tests passed through the same CTest executable.
@@ -716,4 +716,5 @@ Result:
 - `d3e3fbc1 Port C++ opcode object method provider foundation`
 - `c2223b5b Port C++ opcode legacy property provider foundation`
 - `ca5a2a3b Port C++ opcode cast member property foundation`
-- Current checkpoint commit message: `Port C++ opcode cast library method foundation`
+- `0f0a7ca0 Port C++ opcode cast library method foundation`
+- Current checkpoint commit message: `Port C++ opcode item delimiter foundation`

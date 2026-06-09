@@ -1322,6 +1322,13 @@ std::optional<std::string_view> soundPropNameById(int id) {
     }
 }
 
+char currentItemDelimiter(ExecutionContext& context) {
+    if (auto* builtinContext = context.builtinContext(); builtinContext != nullptr && builtinContext->movieProperties != nullptr) {
+        return builtinContext->movieProperties->getItemDelimiter();
+    }
+    return ',';
+}
+
 std::string getLastChunkValue(std::string_view value, StringChunkType type, char itemDelimiter = ',') {
     if (value.empty()) {
         return "";
@@ -1694,7 +1701,7 @@ Datum varRefObjectMethod(ExecutionContext& context,
         }
         const int start = toIntLikeJava(args[1]);
         const int end = args.size() >= 3 ? toIntLikeJava(args[2]) : start;
-        return Datum::of(resolveChunkRange(toStringLikeJava(value), chunkType, start, end));
+        return Datum::of(resolveChunkRange(toStringLikeJava(value), chunkType, start, end, currentItemDelimiter(context)));
     }
     if (equalsIgnoreCase(methodName, "getPropRef")) {
         return Datum::voidValue();
@@ -2282,7 +2289,7 @@ bool getChunk(ExecutionContext& context) {
         return true;
     }
 
-    constexpr char itemDelimiter = ',';
+    const char itemDelimiter = currentItemDelimiter(context);
     std::string result = value;
     if (firstLine != 0 || lastLine != 0) {
         result = resolveChunkRange(result, StringChunkType::Line, firstLine, lastLine, itemDelimiter);
@@ -2414,7 +2421,7 @@ bool deleteChunk(ExecutionContext& context) {
 
     const Datum current = getContextVar(context, varType, idDatum);
     const std::string currentString = toStringLikeJava(current);
-    constexpr char itemDelimiter = ',';
+    const char itemDelimiter = currentItemDelimiter(context);
 
     if (chunk.type == StringChunkType::Char) {
         if (chunk.first < 0) {
@@ -2471,7 +2478,7 @@ bool putChunk(ExecutionContext& context) {
 
     const std::string currentString = toStringLikeJava(getContextVar(context, varType, idDatum));
     const std::string valueString = toStringLikeJava(value);
-    constexpr char itemDelimiter = ',';
+    const char itemDelimiter = currentItemDelimiter(context);
     std::string newString = currentString;
 
     if (chunk.type == StringChunkType::Char) {
@@ -2674,7 +2681,7 @@ bool setObjProp(ExecutionContext& context) {
 bool getLegacyProperty(ExecutionContext& context) {
     const int propertyId = toIntLikeJava(context.pop());
     const int propertyType = context.argument();
-    constexpr char itemDelimiter = ',';
+    const char itemDelimiter = currentItemDelimiter(context);
     auto* builtinContext = context.builtinContext();
 
     if (propertyType == 0x00) {

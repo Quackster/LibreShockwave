@@ -3193,7 +3193,10 @@ void testLingoVmScopeAndExecutionContextFoundation() {
                                       ScriptChunk::Instruction{0,
                                                                Opcode::GET_CHUNK,
                                                                libreshockwave::lingo::code(Opcode::GET_CHUNK),
-                                                               0});
+                                                               0},
+                                      &registry,
+                                      &builtinContext,
+                                      callbacks);
         chunkContext.push(Datum::of(firstChar));
         chunkContext.push(Datum::of(lastChar));
         chunkContext.push(Datum::of(firstWord));
@@ -3213,6 +3216,12 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runGetChunk(Datum::of(std::string("one  two\tthree")), 0, 0, 2, 3, 0, 0, 0, 0).stringValue() == "two three");
     assert(runGetChunk(Datum::of(std::string("red,green,blue")), 0, 0, 0, 0, 2, 0, 0, 0).stringValue() == "green");
     assert(runGetChunk(Datum::of(std::string("red,green,blue")), 0, 0, 0, 0, 2, 3, 0, 0).stringValue() == "green,blue");
+    MovieProperties chunkMovieProps;
+    chunkMovieProps.setItemDelimiter('|');
+    builtinContext.movieProperties = &chunkMovieProps;
+    assert(runGetChunk(Datum::of(std::string("red|green|blue")), 0, 0, 0, 0, 2, 0, 0, 0).stringValue() == "green");
+    assert(runGetChunk(Datum::of(std::string("red|green|blue")), 0, 0, 0, 0, 2, 3, 0, 0).stringValue() == "green|blue");
+    builtinContext.movieProperties = nullptr;
     assert(runGetChunk(Datum::of(std::string("top\nmiddle\nbottom")), 0, 0, 0, 0, 0, 0, 2, 0).stringValue() == "middle");
     assert(runGetChunk(Datum::of(std::string("top\r\nmiddle")), 0, 0, 0, 0, 0, 0, 2, 0).stringValue() == "middle");
     assert(runGetChunk(Datum::of(std::string("alpha beta\nred green blue")), 2, 4, 2, 0, 0, 0, 2, 0).stringValue() == "ree");
