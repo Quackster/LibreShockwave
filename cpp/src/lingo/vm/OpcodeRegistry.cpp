@@ -381,6 +381,20 @@ std::string keyNameLikeJava(const Datum& datum) {
     return toStringLikeJava(datum);
 }
 
+bool lessIgnoreCase(std::string_view lhs, std::string_view rhs) {
+    const std::size_t length = std::min(lhs.size(), rhs.size());
+    for (std::size_t index = 0; index < length; ++index) {
+        const auto left = static_cast<unsigned char>(lhs[index]);
+        const auto right = static_cast<unsigned char>(rhs[index]);
+        const int lowerLeft = std::tolower(left);
+        const int lowerRight = std::tolower(right);
+        if (lowerLeft != lowerRight) {
+            return lowerLeft < lowerRight;
+        }
+    }
+    return lhs.size() < rhs.size();
+}
+
 std::optional<Datum> builtinConstant(std::string_view name) {
     if (equalsIgnoreCase(name, "pi")) return Datum::of(3.14159265358979323846);
     if (equalsIgnoreCase(name, "true")) return Datum::TRUE;
@@ -434,6 +448,15 @@ Datum getPropListProp(const Datum::PropList& propList, std::string_view propName
     }
     if (equalsIgnoreCase(propName, "ilk")) {
         return Datum::symbol("propList");
+    }
+    return Datum::voidValue();
+}
+
+Datum getPropListKey(const Datum::PropList& propList, std::string_view keyName) {
+    for (const auto& entry : propList.properties()) {
+        if (equalsIgnoreCase(keyNameLikeJava(entry.first), keyName)) {
+            return entry.second;
+        }
     }
     return Datum::voidValue();
 }
@@ -558,6 +581,401 @@ Datum safeExecuteHandler(ExecutionContext& context,
         context.setErrorState(true);
         return Datum::voidValue();
     }
+}
+
+void listSetAt(Datum::List& list, int index, Datum value) {
+    if (index < 1) {
+        return;
+    }
+    auto& items = list.items();
+    const auto zeroIndex = static_cast<std::size_t>(index - 1);
+    if (zeroIndex < items.size()) {
+        items[zeroIndex] = std::move(value);
+        return;
+    }
+    while (items.size() < zeroIndex) {
+        items.push_back(Datum::voidValue());
+    }
+    items.push_back(std::move(value));
+}
+
+Datum listObjectMethod(Datum::List& list, std::string_view methodName, const std::vector<Datum>& args) {
+    auto& items = list.items();
+    if (equalsIgnoreCase(methodName, "getAt")) {
+        if (args.empty()) {
+            return Datum::voidValue();
+        }
+        const int index = toIntLikeJava(args[0]);
+        if (index < 1 || index > static_cast<int>(items.size())) {
+            throw LingoException("getAt: index " + std::to_string(index) +
+                                 " out of range (list size: " + std::to_string(items.size()) + ")");
+        }
+        return items[static_cast<std::size_t>(index - 1)];
+    }
+    if (equalsIgnoreCase(methodName, "setAt")) {
+        if (args.size() >= 2) {
+            listSetAt(list, toIntLikeJava(args[0]), args[1]);
+        }
+        return Datum::voidValue();
+    }
+    if (equalsIgnoreCase(methodName, "count")) {
+        return Datum::of(static_cast<int>(items.size()));
+    }
+    if (equalsIgnoreCase(methodName, "append") || equalsIgnoreCase(methodName, "add")) {
+        if (!args.empty()) {
+            items.push_back(args[0]);
+        }
+        return Datum::voidValue();
+    }
+    if (equalsIgnoreCase(methodName, "addAt")) {
+        if (args.size() >= 2) {
+            int index = toIntLikeJava(args[0]) - 1;
+            if (index < 0) {
+                index = 0;
+            }
+            const auto insertIndex = static_cast<std::size_t>(index);
+            if (insertIndex >= items.size()) {
+                items.push_back(args[1]);
+            } else {
+                items.insert(items.begin() + static_cast<std::ptrdiff_t>(insertIndex), args[1]);
+            }
+        }
+        return Datum::voidValue();
+    }
+    if (equalsIgnoreCase(methodName, "deleteAt")) {
+        if (!args.empty()) {
+            const int index = toIntLikeJava(args[0]) - 1;
+            if (index >= 0 && index < static_cast<int>(items.size())) {
+                items.erase(items.begin() + index);
+            }
+        }
+        return Datum::voidValue();
+    }
+    if (equalsIgnoreCase(methodName, "getOne") || equalsIgnoreCase(methodName, "findPos") ||
+        equalsIgnoreCase(methodName, "getPos")) {
+        if (args.empty()) {
+            return Datum::of(0);
+        }
+        for (std::size_t index = 0; index < items.size(); ++index) {
+            if (lingoEquals(items[index], args[0])) {
+                return Datum::of(static_cast<int>(index + 1));
+            }
+        }
+        return Datum::of(0);
+    }
+    if (equalsIgnoreCase(methodName, "getLast")) {
+        return items.empty() ? Datum::voidValue() : items.back();
+    }
+    if (equalsIgnoreCase(methodName, "deleteOne")) {
+        if (args.empty()) {
+            return Datum::FALSE;
+        }
+        for (auto iterator = items.begin(); iterator != items.end(); ++iterator) {
+            if (lingoEquals(*iterator, args[0])) {
+                items.erase(iterator);
+                return Datum::TRUE;
+            }
+        }
+        return Datum::FALSE;
+    }
+    if (equalsIgnoreCase(methodName, "join")) {
+        const std::string separator = args.empty() ? "&" : toStringLikeJava(args[0]);
+        std::ostringstream out;
+        for (std::size_t index = 0; index < items.size(); ++index) {
+            if (index > 0) {
+                out << separator;
+            }
+            out << toStringLikeJava(items[index]);
+        }
+        return Datum::of(out.str());
+    }
+    if (equalsIgnoreCase(methodName, "sort")) {
+        std::sort(items.begin(), items.end(), [](const Datum& lhs, const Datum& rhs) {
+            if (lhs.isInt() && rhs.isInt()) {
+                return lhs.intValue() < rhs.intValue();
+            }
+            return lessIgnoreCase(toStringLikeJava(lhs), toStringLikeJava(rhs));
+        });
+        return Datum::voidValue();
+    }
+    if (equalsIgnoreCase(methodName, "duplicate")) {
+        return Datum::list(items, list.sorted());
+    }
+    return Datum::voidValue();
+}
+
+int findPropIndexByKey(const Datum::PropList& propList, const Datum& key) {
+    const std::string target = keyNameLikeJava(key);
+    const auto& properties = propList.properties();
+    for (std::size_t index = 0; index < properties.size(); ++index) {
+        if (equalsIgnoreCase(keyNameLikeJava(properties[index].first), target)) {
+            return static_cast<int>(index);
+        }
+    }
+    return -1;
+}
+
+Datum propListObjectMethod(Datum::PropList& propList, std::string_view methodName, const std::vector<Datum>& args) {
+    auto& properties = propList.properties();
+    if (equalsIgnoreCase(methodName, "count")) {
+        if (!args.empty()) {
+            const Datum value = getPropListKey(propList, keyNameLikeJava(args[0]));
+            if (value.isList()) return Datum::of(value.listValue().count());
+            if (value.isPropList()) return Datum::of(value.propListValue().count());
+            return Datum::of(0);
+        }
+        return Datum::of(propList.count());
+    }
+    if (equalsIgnoreCase(methodName, "getProp") || equalsIgnoreCase(methodName, "getPropRef") ||
+        equalsIgnoreCase(methodName, "getAProp") || equalsIgnoreCase(methodName, "getProperty")) {
+        if (args.empty()) {
+            return Datum::voidValue();
+        }
+        Datum value = getPropListKey(propList, keyNameLikeJava(args[0]));
+        if (args.size() >= 2 && value.isList()) {
+            const int index = toIntLikeJava(args[1]);
+            if (index >= 1 && index <= value.listValue().count()) {
+                return value.listValue().getAt(index);
+            }
+            return Datum::voidValue();
+        }
+        return value;
+    }
+    if (equalsIgnoreCase(methodName, "setProp") || equalsIgnoreCase(methodName, "setAProp")) {
+        if (args.size() >= 2) {
+            putPropListProp(propList, keyNameLikeJava(args[0]), args[1]);
+        }
+        return Datum::voidValue();
+    }
+    if (equalsIgnoreCase(methodName, "addProp")) {
+        if (args.size() >= 2) {
+            properties.emplace_back(args[0], args[1]);
+        }
+        return Datum::voidValue();
+    }
+    if (equalsIgnoreCase(methodName, "getAt")) {
+        if (args.empty()) {
+            return Datum::voidValue();
+        }
+        if (args[0].isString() || args[0].isSymbol()) {
+            return getPropListKey(propList, keyNameLikeJava(args[0]));
+        }
+        const int index = toIntLikeJava(args[0]) - 1;
+        if (index >= 0 && index < static_cast<int>(properties.size())) {
+            return properties[static_cast<std::size_t>(index)].second;
+        }
+        if (args[0].isInt()) {
+            return getPropListKey(propList, keyNameLikeJava(args[0]));
+        }
+        return Datum::voidValue();
+    }
+    if (equalsIgnoreCase(methodName, "setAt")) {
+        if (args.size() >= 2) {
+            const int index = toIntLikeJava(args[0]) - 1;
+            if (args[0].isInt() && index >= 0 && index < static_cast<int>(properties.size())) {
+                properties[static_cast<std::size_t>(index)].second = args[1];
+            } else {
+                putPropListProp(propList, keyNameLikeJava(args[0]), args[1]);
+            }
+        }
+        return Datum::voidValue();
+    }
+    if (equalsIgnoreCase(methodName, "getOne")) {
+        if (args.empty()) {
+            return Datum::of(0);
+        }
+        for (const auto& entry : properties) {
+            if (lingoEquals(entry.second, args[0])) {
+                return entry.first;
+            }
+        }
+        return Datum::of(0);
+    }
+    if (equalsIgnoreCase(methodName, "deleteProp")) {
+        if (!args.empty()) {
+            const int index = findPropIndexByKey(propList, args[0]);
+            if (index >= 0) {
+                properties.erase(properties.begin() + index);
+            }
+        }
+        return Datum::voidValue();
+    }
+    if (equalsIgnoreCase(methodName, "findPos")) {
+        if (args.empty()) {
+            return Datum::voidValue();
+        }
+        const int index = findPropIndexByKey(propList, args[0]);
+        return index >= 0 ? Datum::of(index + 1) : Datum::voidValue();
+    }
+    if (equalsIgnoreCase(methodName, "getPropAt")) {
+        if (!args.empty()) {
+            const int index = toIntLikeJava(args[0]) - 1;
+            if (index >= 0 && index < static_cast<int>(properties.size())) {
+                return properties[static_cast<std::size_t>(index)].first;
+            }
+        }
+        return Datum::voidValue();
+    }
+    if (equalsIgnoreCase(methodName, "deleteAt")) {
+        if (!args.empty()) {
+            const int index = toIntLikeJava(args[0]) - 1;
+            if (index >= 0 && index < static_cast<int>(properties.size())) {
+                properties.erase(properties.begin() + index);
+            }
+        }
+        return Datum::voidValue();
+    }
+    if (equalsIgnoreCase(methodName, "getLast")) {
+        return properties.empty() ? Datum::voidValue() : properties.back().second;
+    }
+    if (equalsIgnoreCase(methodName, "getFirst")) {
+        return properties.empty() ? Datum::voidValue() : properties.front().second;
+    }
+    if (equalsIgnoreCase(methodName, "duplicate")) {
+        Datum copy = Datum::propList(propList.sorted());
+        copy.propListValue().properties() = properties;
+        return copy;
+    }
+    return Datum::voidValue();
+}
+
+std::vector<std::string> splitWords(std::string_view value) {
+    std::vector<std::string> words;
+    std::string current;
+    for (const char ch : value) {
+        if (std::isspace(static_cast<unsigned char>(ch))) {
+            if (!current.empty()) {
+                words.push_back(current);
+                current.clear();
+            }
+        } else {
+            current.push_back(ch);
+        }
+    }
+    if (!current.empty()) {
+        words.push_back(std::move(current));
+    }
+    return words;
+}
+
+int countLines(std::string_view value) {
+    if (value.empty()) {
+        return 1;
+    }
+    int count = 1;
+    for (const char ch : value) {
+        if (ch == '\n' || ch == '\r') {
+            ++count;
+        }
+    }
+    return count;
+}
+
+int countItems(std::string_view value, char delimiter = ',') {
+    if (value.empty()) {
+        return 1;
+    }
+    return static_cast<int>(std::count(value.begin(), value.end(), delimiter)) + 1;
+}
+
+Datum stringObjectMethod(const Datum& target, std::string_view methodName, const std::vector<Datum>& args) {
+    const std::string value = toStringLikeJava(target);
+    if (equalsIgnoreCase(methodName, "length")) {
+        return Datum::of(static_cast<int>(value.size()));
+    }
+    if (equalsIgnoreCase(methodName, "char")) {
+        if (args.empty()) {
+            return Datum::of(std::string());
+        }
+        const int index = toIntLikeJava(args[0]);
+        if (index >= 1 && index <= static_cast<int>(value.size())) {
+            return Datum::of(value.substr(static_cast<std::size_t>(index - 1), 1));
+        }
+        return Datum::of(std::string());
+    }
+    if (equalsIgnoreCase(methodName, "count")) {
+        if (args.empty()) {
+            return Datum::of(static_cast<int>(value.size()));
+        }
+        const std::string chunkType = keyNameLikeJava(args[0]);
+        if (equalsIgnoreCase(chunkType, "char")) return Datum::of(static_cast<int>(value.size()));
+        if (equalsIgnoreCase(chunkType, "word")) return Datum::of(static_cast<int>(splitWords(value).size()));
+        if (equalsIgnoreCase(chunkType, "line")) return Datum::of(countLines(value));
+        if (equalsIgnoreCase(chunkType, "item")) return Datum::of(countItems(value));
+        return Datum::of(static_cast<int>(value.size()));
+    }
+    return Datum::voidValue();
+}
+
+Datum pointObjectMethod(const Datum::IntPoint& point, std::string_view methodName, const std::vector<Datum>& args) {
+    if (equalsIgnoreCase(methodName, "getAt")) {
+        if (args.empty()) return Datum::voidValue();
+        const int index = toIntLikeJava(args[0]);
+        if (index == 1) return Datum::of(point.x);
+        if (index == 2) return Datum::of(point.y);
+        return Datum::voidValue();
+    }
+    if (equalsIgnoreCase(methodName, "duplicate")) {
+        return Datum::intPoint(point.x, point.y);
+    }
+    if (equalsIgnoreCase(methodName, "inside")) {
+        if (!args.empty()) {
+            if (const auto* rect = args[0].asIntRect()) {
+                const bool inside = point.x >= rect->left && point.x < rect->right &&
+                                    point.y >= rect->top && point.y < rect->bottom;
+                return inside ? Datum::TRUE : Datum::FALSE;
+            }
+        }
+        return Datum::FALSE;
+    }
+    return Datum::voidValue();
+}
+
+Datum rectObjectMethod(const Datum::IntRect& rect, std::string_view methodName, const std::vector<Datum>& args) {
+    if (equalsIgnoreCase(methodName, "getAt")) {
+        if (args.empty()) return Datum::voidValue();
+        switch (toIntLikeJava(args[0])) {
+            case 1: return Datum::of(rect.left);
+            case 2: return Datum::of(rect.top);
+            case 3: return Datum::of(rect.right);
+            case 4: return Datum::of(rect.bottom);
+            default: return Datum::voidValue();
+        }
+    }
+    if (equalsIgnoreCase(methodName, "duplicate")) {
+        return Datum::intRect(rect.left, rect.top, rect.right, rect.bottom);
+    }
+    return Datum::voidValue();
+}
+
+Datum dispatchObjectMethod(ExecutionContext& context, Datum target, std::string_view methodName, const std::vector<Datum>& args) {
+    if (target.isList()) {
+        return listObjectMethod(target.listValue(), methodName, args);
+    }
+    if (target.isPropList()) {
+        return propListObjectMethod(target.propListValue(), methodName, args);
+    }
+    if (target.isString()) {
+        return stringObjectMethod(target, methodName, args);
+    }
+    if (const auto* point = target.asIntPoint()) {
+        return pointObjectMethod(*point, methodName, args);
+    }
+    if (const auto* rect = target.asIntRect()) {
+        return rectObjectMethod(*rect, methodName, args);
+    }
+    if (target.type() == DatumType::ScriptInstanceRef) {
+        return target.scriptInstanceValue().getProperty(std::string(methodName));
+    }
+
+    std::vector<Datum> fullArgs;
+    fullArgs.reserve(args.size() + 1);
+    fullArgs.push_back(target);
+    fullArgs.insert(fullArgs.end(), args.begin(), args.end());
+    if (const auto builtinResult = context.invokeBuiltinIfPresent(methodName, fullArgs)) {
+        return *builtinResult;
+    }
+    return Datum::voidValue();
 }
 
 bool pushZero(ExecutionContext& context) {
@@ -1145,17 +1563,39 @@ bool extCall(ExecutionContext& context) {
     const std::string handlerName = context.resolveName(context.argument());
     const Datum argListDatum = context.pop();
     const bool noReturn = isNoReturnArgList(argListDatum);
-    const std::vector<Datum> args = argListItems(argListDatum);
+    std::vector<Datum> args = argListItems(argListDatum);
 
     Datum result = Datum::voidValue();
     if (const auto handler = context.findHandler(handlerName)) {
         result = safeExecuteHandler(context, *handler->script, handler->handler, args, Datum::voidValue());
     } else if (const auto builtinResult = context.invokeBuiltinIfPresent(handlerName, args)) {
         result = *builtinResult;
+    } else if (!args.empty()) {
+        Datum target = args.front();
+        args.erase(args.begin());
+        result = dispatchObjectMethod(context, std::move(target), handlerName, args);
     } else if (args.empty()) {
         result = builtinConstant(handlerName).value_or(Datum::voidValue());
     }
 
+    if (!noReturn) {
+        context.push(result);
+    }
+    return true;
+}
+
+bool objCall(ExecutionContext& context) {
+    const std::string methodName = context.resolveName(context.argument());
+    const Datum argListDatum = context.pop();
+    const bool noReturn = isNoReturnArgList(argListDatum);
+    std::vector<Datum> args = argListItems(argListDatum);
+    Datum target = Datum::voidValue();
+    if (!args.empty()) {
+        target = args.front();
+        args.erase(args.begin());
+    }
+
+    const Datum result = dispatchObjectMethod(context, std::move(target), methodName, args);
     if (!noReturn) {
         context.push(result);
     }
@@ -1278,6 +1718,7 @@ void PropertyOpcodes::registerHandlers(OpcodeRegistry& registry) {
 void CallOpcodes::registerHandlers(OpcodeRegistry& registry) {
     registry.registerHandler(Opcode::LOCAL_CALL, localCall);
     registry.registerHandler(Opcode::EXT_CALL, extCall);
+    registry.registerHandler(Opcode::OBJ_CALL, objCall);
 }
 
 } // namespace libreshockwave::lingo::vm

@@ -2161,6 +2161,36 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 63) {
             return std::string("space");
         }
+        if (nameId == 64) {
+            return std::string("getAt");
+        }
+        if (nameId == 65) {
+            return std::string("setAt");
+        }
+        if (nameId == 66) {
+            return std::string("append");
+        }
+        if (nameId == 67) {
+            return std::string("getProp");
+        }
+        if (nameId == 68) {
+            return std::string("addProp");
+        }
+        if (nameId == 69) {
+            return std::string("char");
+        }
+        if (nameId == 70) {
+            return std::string("count");
+        }
+        if (nameId == 71) {
+            return std::string("inside");
+        }
+        if (nameId == 72) {
+            return std::string("duplicate");
+        }
+        if (nameId == 73) {
+            return std::string("sort");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.callStackFormatter = []() {
@@ -2290,6 +2320,7 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opcodeRegistry.hasHandler(Opcode::THE_BUILTIN));
     assert(opcodeRegistry.hasHandler(Opcode::LOCAL_CALL));
     assert(opcodeRegistry.hasHandler(Opcode::EXT_CALL));
+    assert(opcodeRegistry.hasHandler(Opcode::OBJ_CALL));
     assert(opcodeRegistry.hasHandler(Opcode::RET));
     assert(opcodeRegistry.hasHandler(Opcode::RET_FACTORY));
     assert(opcodeRegistry.hasHandler(Opcode::JMP));
@@ -2555,6 +2586,67 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opcodeRegistry.execute(Opcode::EXT_CALL, extCallContext));
     assert(extCallContext.pop().isVoid());
     assert(errorState);
+
+    auto runObjCall = [&](int nameId, std::vector<Datum> args, bool noReturn = false) {
+        Scope objectCallScope(&script, handler, {});
+        ExecutionContext objectCallContext(objectCallScope,
+                                           ScriptChunk::Instruction{0, Opcode::OBJ_CALL, libreshockwave::lingo::code(Opcode::OBJ_CALL), nameId},
+                                           &registry,
+                                           &builtinContext,
+                                           callbacks);
+        if (noReturn) {
+            objectCallContext.push(Datum::argListNoRet(std::move(args)));
+        } else {
+            objectCallContext.push(Datum::argList(std::move(args)));
+        }
+        assert(opcodeRegistry.execute(Opcode::OBJ_CALL, objectCallContext));
+        if (noReturn) {
+            assert(objectCallScope.stackSize() == 0);
+            return Datum::voidValue();
+        }
+        return objectCallContext.pop();
+    };
+
+    Datum methodList = Datum::list({Datum::of(10), Datum::of(20)});
+    assert(runObjCall(64, {methodList, Datum::of(2)}).intValue() == 20);
+    assert(runObjCall(65, {methodList, Datum::of(4), Datum::of(40)}).isVoid());
+    assert(methodList.listValue().count() == 4);
+    assert(methodList.listValue().getAt(3).isVoid());
+    assert(methodList.listValue().getAt(4).intValue() == 40);
+    assert(runObjCall(66, {methodList, Datum::of(50)}, true).isVoid());
+    assert(methodList.listValue().getAt(5).intValue() == 50);
+    Datum sortableList = Datum::list({Datum::of(std::string("b")), Datum::of(std::string("A"))});
+    assert(runObjCall(70, {sortableList}).intValue() == 2);
+    assert(runObjCall(66, {sortableList, Datum::of(std::string("c"))}).isVoid());
+    assert(runObjCall(73, {sortableList}).isVoid());
+    assert(sortableList.listValue().getAt(1).stringValue() == "A");
+
+    Scope receiverStyleScope(&script, handler, {});
+    ExecutionContext receiverStyleContext(receiverStyleScope,
+                                          ScriptChunk::Instruction{0, Opcode::EXT_CALL, libreshockwave::lingo::code(Opcode::EXT_CALL), 64},
+                                          &registry,
+                                          &builtinContext,
+                                          callbacks);
+    receiverStyleContext.push(Datum::argList({methodList, Datum::of(1)}));
+    assert(opcodeRegistry.execute(Opcode::EXT_CALL, receiverStyleContext));
+    assert(receiverStyleContext.pop().intValue() == 10);
+
+    Datum methodProps = Datum::propList();
+    methodProps.propListValue().properties().emplace_back(Datum::symbol("name"), Datum::of(std::string("first")));
+    assert(runObjCall(67, {methodProps, Datum::symbol("name")}).stringValue() == "first");
+    methodProps.propListValue().properties().emplace_back(Datum::symbol("count"), Datum::of(std::string("authored")));
+    assert(runObjCall(67, {methodProps, Datum::symbol("count")}).stringValue() == "authored");
+    assert(runObjCall(70, {methodProps}).intValue() == 2);
+    assert(runObjCall(68, {methodProps, Datum::symbol("name"), Datum::of(std::string("second"))}).isVoid());
+    assert(methodProps.propListValue().properties().size() == 3);
+    assert(methodProps.propListValue().properties()[2].second.stringValue() == "second");
+
+    assert(runObjCall(69, {Datum::of(std::string("abc")), Datum::of(2)}).stringValue() == "b");
+    assert(runObjCall(70, {Datum::of(std::string("one two")), Datum::symbol("word")}).intValue() == 2);
+    assert(runObjCall(71, {Datum::intPoint(5, 6), Datum::intRect(0, 0, 10, 10)}).boolValue());
+    assert(runObjCall(64, {Datum::intPoint(5, 6), Datum::of(2)}).intValue() == 6);
+    assert(runObjCall(64, {Datum::intRect(1, 2, 3, 4), Datum::of(3)}).intValue() == 3);
+    assert(runObjCall(72, {Datum::intRect(1, 2, 3, 4)}) == Datum::intRect(1, 2, 3, 4));
 
     auto runUnary = [&](Opcode opcode, Datum value) {
         Scope unaryScope(&script, handler, {});
