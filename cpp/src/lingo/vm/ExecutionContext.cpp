@@ -161,6 +161,9 @@ const std::vector<chunks::ScriptChunk::LiteralEntry>& ExecutionContext::literals
 }
 
 std::string ExecutionContext::resolveName(int nameId) const {
+    if (callbacks_.nameResolver) {
+        return callbacks_.nameResolver(nameId);
+    }
     const auto* script = scope_->script();
     return script != nullptr ? script->resolveName(nameId, nullptr) : "#" + std::to_string(nameId);
 }

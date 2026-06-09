@@ -425,6 +425,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `lingo::vm::ExecutionContext` ports the opcode-facing context layer for stack/local/param/global access, return/error state callbacks, jump-target lookup, local/global handler callback plumbing, builtin invocation, and argument popping.
 - Full opcode-handler registration and bytecode execution remain deferred to the next VM runtime slices.
 
+### Lingo VM Name Resolution Foundation
+
+- `ExecutionContext` now accepts a VM-owned name resolver callback for bytecode name IDs.
+- Opcode-facing name resolution falls back to script-local `#id` placeholders when no resolver is installed.
+- Variable/global opcode tests now exercise resolved names through the same `ExecutionContext::resolveName` path needed by property and call opcodes.
+
 ### Lingo Opcode Registry and Stack/Control Foundation
 
 - `lingo::vm::OpcodeRegistry` now maps opcode enums to executable C++ handler callbacks with post-construction registration hooks.
@@ -529,6 +535,7 @@ Result:
 - ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration and callback hooks passed through the same CTest executable.
 - TypeBuiltins object/void/type predicates, `value`/`script`/`callAncestor` callback hooks, symbol conversion, and `ilk` alias checks passed through the same CTest executable.
 - Lingo VM Scope and ExecutionContext stack, param, local, return, loop, jump, global callback, handler callback, builtin invocation, and call-stack formatting behavior passed through the same CTest executable.
+- Lingo VM ExecutionContext name resolver callback and resolver-backed global opcode behavior passed through the same CTest executable.
 - OpcodeRegistry stack/control handler registration, custom handler registration, literal/symbol pushes, stack manipulation, return/factory return, and jump opcodes passed through the same CTest executable.
 - OpcodeRegistry arithmetic, comparison, and logical handlers passed through the same CTest executable.
 - OpcodeRegistry variable, arg-list, linear-list, and property-list handlers passed through the same CTest executable.
@@ -615,4 +622,5 @@ Result:
 - `1b666a9c Port C++ opcode stack foundation`
 - `4d98a05f Port C++ opcode arithmetic foundation`
 - `c799873c Port C++ opcode variable list foundation`
-- Current checkpoint commit message: `Port C++ opcode string foundation`
+- `4fa1851a Port C++ opcode string foundation`
+- Current checkpoint commit message: `Port C++ VM name resolver foundation`

@@ -2109,6 +2109,18 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     callbacks.errorStateSetter = [&errorState](bool value) {
         errorState = value;
     };
+    callbacks.nameResolver = [](int nameId) {
+        if (nameId == 12) {
+            return std::string("resolvedName");
+        }
+        if (nameId == 42) {
+            return std::string("globalName");
+        }
+        if (nameId == 43) {
+            return std::string("globalName2");
+        }
+        return "#" + std::to_string(nameId);
+    };
     callbacks.callStackFormatter = []() {
         return std::string("stack");
     };
@@ -2163,6 +2175,8 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(contextScope.bytecodeIndex() == 2);
     assert(context.findLocalHandler(1)->nameId == 99);
     assert(!context.findLocalHandler(99).has_value());
+    assert(context.resolveName(12) == "resolvedName");
+    assert(context.resolveName(99) == "#99");
     assert(context.findHandler("known")->handler.nameId == 99);
     assert(!context.findHandler("missing").has_value());
     assert(context.executeHandler(script, handler, {Datum::of(1)}, Datum::voidValue()).stringValue() == "exec:10:1");
@@ -2302,14 +2316,14 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     variableContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_GLOBAL, libreshockwave::lingo::code(Opcode::SET_GLOBAL), 42});
     variableContext.push(Datum::of(std::string("scoreValue")));
     assert(opcodeRegistry.execute(Opcode::SET_GLOBAL, variableContext));
-    assert(globals["#42"].stringValue() == "scoreValue");
+    assert(globals["globalName"].stringValue() == "scoreValue");
     variableContext.setInstruction(ScriptChunk::Instruction{0, Opcode::GET_GLOBAL2, libreshockwave::lingo::code(Opcode::GET_GLOBAL2), 42});
     assert(opcodeRegistry.execute(Opcode::GET_GLOBAL2, variableContext));
     assert(variableContext.pop().stringValue() == "scoreValue");
     variableContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_GLOBAL2, libreshockwave::lingo::code(Opcode::SET_GLOBAL2), 43});
     variableContext.push(Datum::of(77));
     assert(opcodeRegistry.execute(Opcode::SET_GLOBAL2, variableContext));
-    assert(globals["#43"].intValue() == 77);
+    assert(globals["globalName2"].intValue() == 77);
 
     Scope listScope(&script, handler, {});
     ExecutionContext listContext(listScope, ScriptChunk::Instruction{0, Opcode::PUSH_ARG_LIST, libreshockwave::lingo::code(Opcode::PUSH_ARG_LIST), 3});

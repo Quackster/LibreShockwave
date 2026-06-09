@@ -24,6 +24,7 @@ public:
                                                 const chunks::ScriptChunk::Handler& handler,
                                                 const std::vector<Datum>& args,
                                                 const Datum& receiver)>;
+    using NameResolver = std::function<std::string(int nameId)>;
     using HandlerFinder = std::function<std::optional<HandlerRef>(std::string_view name)>;
     using GlobalGetter = std::function<Datum(std::string_view name)>;
     using GlobalSetter = std::function<void(std::string_view name, const Datum& value)>;
@@ -33,6 +34,7 @@ public:
 
     struct Callbacks {
         HandlerExecutor handlerExecutor;
+        NameResolver nameResolver;
         HandlerFinder handlerFinder;
         GlobalGetter globalGetter;
         GlobalSetter globalSetter;
