@@ -679,7 +679,7 @@ Datum Datum::ScriptInstanceRef::getProperty(const std::string& name) const {
     }
 
     for (const auto& entry : properties_) {
-        if (entry.first == name) {
+        if (equalsIgnoreCase(entry.first, name)) {
             return entry.second;
         }
     }
@@ -700,7 +700,7 @@ void Datum::ScriptInstanceRef::setProperty(const std::string& name, Datum value)
     }
 
     for (auto& entry : properties_) {
-        if (entry.first == name) {
+        if (equalsIgnoreCase(entry.first, name)) {
             entry.second = std::move(value);
             return;
         }
@@ -716,7 +716,7 @@ void Datum::ScriptInstanceRef::setProperty(const std::string& name, Datum value)
 
 bool Datum::ScriptInstanceRef::hasProperty(const std::string& name) const {
     for (const auto& entry : properties_) {
-        if (entry.first == name) {
+        if (equalsIgnoreCase(entry.first, name)) {
             return true;
         }
     }
@@ -724,6 +724,10 @@ bool Datum::ScriptInstanceRef::hasProperty(const std::string& name) const {
 }
 
 const std::vector<std::pair<std::string, Datum>>& Datum::ScriptInstanceRef::properties() const {
+    return properties_;
+}
+
+std::vector<std::pair<std::string, Datum>>& Datum::ScriptInstanceRef::properties() {
     return properties_;
 }
 

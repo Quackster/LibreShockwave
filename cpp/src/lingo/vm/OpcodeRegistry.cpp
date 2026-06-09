@@ -1761,6 +1761,166 @@ Datum rectObjectMethod(const Datum::IntRect& rect, std::string_view methodName, 
     return Datum::voidValue();
 }
 
+Datum scriptInstanceCountValue(const Datum& value) {
+    if (value.isVoid()) return Datum::of(0);
+    if (value.isList()) return Datum::of(value.listValue().count());
+    if (value.isPropList()) return Datum::of(value.propListValue().count());
+    if (value.isString()) return Datum::of(static_cast<int>(value.stringValue().size()));
+    return Datum::of(0);
+}
+
+Datum scriptInstanceNestedProperty(const Datum& container, const Datum& subKey) {
+    if (container.isList()) {
+        const int index = toIntLikeJava(subKey);
+        if (index >= 1 && index <= container.listValue().count()) {
+            return container.listValue().getAt(index);
+        }
+        return Datum::voidValue();
+    }
+    if (container.isPropList()) {
+        const auto& properties = container.propListValue().properties();
+        if (subKey.isInt() || subKey.isFloat()) {
+            const int index = toIntLikeJava(subKey);
+            if (index >= 1 && index <= static_cast<int>(properties.size())) {
+                return properties[static_cast<std::size_t>(index - 1)].second;
+            }
+            return Datum::voidValue();
+        }
+        return getPropListKey(container.propListValue(), keyNameLikeJava(subKey));
+    }
+    return Datum::voidValue();
+}
+
+void scriptInstanceSetNestedProperty(Datum& container, const Datum& subKey, Datum value) {
+    if (container.isList()) {
+        const int index = toIntLikeJava(subKey);
+        if (index < 1) {
+            return;
+        }
+        auto& items = container.listValue().items();
+        while (static_cast<int>(items.size()) < index) {
+            items.push_back(Datum::voidValue());
+        }
+        items[static_cast<std::size_t>(index - 1)] = std::move(value);
+        return;
+    }
+    if (container.isPropList()) {
+        auto& properties = container.propListValue().properties();
+        if (subKey.isInt() || subKey.isFloat()) {
+            const int index = toIntLikeJava(subKey);
+            if (index >= 1 && index <= static_cast<int>(properties.size())) {
+                properties[static_cast<std::size_t>(index - 1)].second = std::move(value);
+            }
+            return;
+        }
+        container.propListValue().put(subKey, std::move(value));
+    }
+}
+
+void scriptInstancePutLocalProperty(Datum::ScriptInstanceRef& instance, std::string_view propName, Datum value) {
+    if (equalsIgnoreCase(propName, "ancestor")) {
+        instance.setProperty(std::string(propName), std::move(value));
+        return;
+    }
+    for (auto& entry : instance.properties()) {
+        if (equalsIgnoreCase(entry.first, propName)) {
+            entry.second = std::move(value);
+            return;
+        }
+    }
+    instance.properties().emplace_back(std::string(propName), std::move(value));
+}
+
+void scriptInstanceDeleteLocalProperty(Datum::ScriptInstanceRef& instance, std::string_view propName) {
+    if (equalsIgnoreCase(propName, "ancestor")) {
+        instance.setProperty(std::string(propName), Datum::voidValue());
+        return;
+    }
+    auto& properties = instance.properties();
+    properties.erase(
+        std::remove_if(properties.begin(), properties.end(), [&](const auto& entry) {
+            return equalsIgnoreCase(entry.first, propName);
+        }),
+        properties.end());
+}
+
+Datum scriptInstanceObjectMethod(ExecutionContext& context,
+                                 Datum::ScriptInstanceRef& instance,
+                                 std::string_view methodName,
+                                 const std::vector<Datum>& args) {
+    if (equalsIgnoreCase(methodName, "setAt") || equalsIgnoreCase(methodName, "setAProp")) {
+        if (args.size() >= 2) {
+            instance.setProperty(keyNameLikeJava(args[0]), args[1]);
+        }
+        return Datum::voidValue();
+    }
+    if (equalsIgnoreCase(methodName, "setProp")) {
+        if (args.size() == 2) {
+            instance.setProperty(keyNameLikeJava(args[0]), args[1]);
+        } else if (args.size() >= 3) {
+            const std::string propName = keyNameLikeJava(args[0]);
+            Datum localProp = instance.getProperty(propName);
+            if (localProp.isVoid()) {
+                localProp = Datum::propList();
+                instance.setProperty(propName, localProp);
+            }
+            scriptInstanceSetNestedProperty(localProp, args[1], args[2]);
+        }
+        return Datum::voidValue();
+    }
+    if (equalsIgnoreCase(methodName, "getAt")) {
+        if (args.empty()) return Datum::voidValue();
+        const std::string key = keyNameLikeJava(args[0]);
+        if (equalsIgnoreCase(key, "ancestor")) {
+            const Datum ancestor = instance.getProperty(key);
+            return ancestor.isVoid() ? Datum::of(0) : ancestor;
+        }
+        return instance.getProperty(key);
+    }
+    if (equalsIgnoreCase(methodName, "getAProp")) {
+        return args.empty() ? Datum::voidValue() : instance.getProperty(keyNameLikeJava(args[0]));
+    }
+    if (equalsIgnoreCase(methodName, "getProp") || equalsIgnoreCase(methodName, "getPropRef")) {
+        if (args.empty()) return Datum::voidValue();
+        Datum localProp = instance.getProperty(keyNameLikeJava(args[0]));
+        if (args.size() >= 2) {
+            return scriptInstanceNestedProperty(localProp, args[1]);
+        }
+        return localProp;
+    }
+    if (equalsIgnoreCase(methodName, "addProp")) {
+        if (args.size() >= 2) {
+            scriptInstancePutLocalProperty(instance, keyNameLikeJava(args[0]), args[1]);
+        }
+        return Datum::voidValue();
+    }
+    if (equalsIgnoreCase(methodName, "deleteProp")) {
+        if (!args.empty()) {
+            scriptInstanceDeleteLocalProperty(instance, keyNameLikeJava(args[0]));
+        }
+        return Datum::voidValue();
+    }
+    if (equalsIgnoreCase(methodName, "count")) {
+        if (!args.empty()) {
+            return scriptInstanceCountValue(instance.getProperty(keyNameLikeJava(args[0])));
+        }
+        return Datum::of(static_cast<int>(instance.properties().size()) + (instance.ancestor() ? 1 : 0));
+    }
+    if (equalsIgnoreCase(methodName, "ilk")) {
+        return Datum::symbol("instance");
+    }
+    if (equalsIgnoreCase(methodName, "addAt")) {
+        return Datum::voidValue();
+    }
+    if (equalsIgnoreCase(methodName, "handler")) {
+        if (args.empty()) return Datum::FALSE;
+        return context.findHandler(keyNameLikeJava(args[0])).has_value() ? Datum::TRUE : Datum::FALSE;
+    }
+
+    const Datum property = instance.getProperty(std::string(methodName));
+    return property.isVoid() ? Datum::voidValue() : property;
+}
+
 bool imageFill(bitmap::Bitmap& bmp, const std::vector<Datum>& args) {
     if (args.size() < 2) return false;
 
@@ -3223,7 +3383,7 @@ Datum varRefObjectMethod(ExecutionContext& context,
         return rectObjectMethod(*rect, methodName, args);
     }
     if (value.type() == DatumType::ScriptInstanceRef) {
-        return value.scriptInstanceValue().getProperty(std::string(methodName));
+        return scriptInstanceObjectMethod(context, value.scriptInstanceValue(), methodName, args);
     }
     return Datum::voidValue();
 }
@@ -3279,7 +3439,7 @@ Datum dispatchObjectMethod(ExecutionContext& context, Datum target, std::string_
         return castMemberObjectMethod(context, *member, methodName, args);
     }
     if (target.type() == DatumType::ScriptInstanceRef) {
-        return target.scriptInstanceValue().getProperty(std::string(methodName));
+        return scriptInstanceObjectMethod(context, target.scriptInstanceValue(), methodName, args);
     }
 
     std::vector<Datum> fullArgs;

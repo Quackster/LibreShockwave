@@ -486,6 +486,7 @@ public:
     void setProperty(const std::string& name, Datum value);
     [[nodiscard]] bool hasProperty(const std::string& name) const;
     [[nodiscard]] const std::vector<std::pair<std::string, Datum>>& properties() const;
+    [[nodiscard]] std::vector<std::pair<std::string, Datum>>& properties();
 
 private:
     std::string scriptName_;

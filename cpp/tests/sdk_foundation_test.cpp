@@ -2308,6 +2308,21 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 112) {
             return std::string("setcursor");
         }
+        if (nameId == 113) {
+            return std::string("setProp");
+        }
+        if (nameId == 114) {
+            return std::string("getAProp");
+        }
+        if (nameId == 115) {
+            return std::string("setAProp");
+        }
+        if (nameId == 116) {
+            return std::string("deleteProp");
+        }
+        if (nameId == 117) {
+            return std::string("handler");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.callStackFormatter = []() {
@@ -3170,6 +3185,34 @@ void testLingoVmScopeAndExecutionContextFoundation() {
                .scriptName() == "scriptRefNew");
     assert(scriptRefNewCalls == 1);
     builtinContext.newInstanceHandler = {};
+
+    auto scriptAncestor = Datum::scriptInstance("parent");
+    scriptAncestor.scriptInstanceValue().setProperty("shared", Datum::of(9));
+    auto scriptInstance = Datum::scriptInstance("child");
+    scriptInstance.scriptInstanceValue().setProperty("ancestor", scriptAncestor);
+    scriptInstance.scriptInstanceValue().setProperty("local", Datum::of(4));
+    assert(runObjCall(64, {scriptInstance, Datum::symbol("local")}).intValue() == 4);
+    assert(runObjCall(64, {scriptInstance, Datum::symbol("shared")}).intValue() == 9);
+    assert(runObjCall(114, {scriptInstance, Datum::symbol("LOCAL")}).intValue() == 4);
+    assert(runObjCall(65, {scriptInstance, Datum::symbol("shared"), Datum::of(11)}).isVoid());
+    assert(scriptAncestor.scriptInstanceValue().getProperty("shared").intValue() == 11);
+    assert(runObjCall(68, {scriptInstance, Datum::symbol("newLocal"), Datum::of(22)}).isVoid());
+    assert(scriptInstance.scriptInstanceValue().getProperty("newLocal").intValue() == 22);
+    auto nestedList = Datum::list({Datum::of(1)});
+    scriptInstance.scriptInstanceValue().setProperty("nestedList", nestedList);
+    assert(runObjCall(113, {scriptInstance, Datum::symbol("nestedList"), Datum::of(3), Datum::of(33)}).isVoid());
+    assert(runObjCall(67, {scriptInstance, Datum::symbol("nestedList"), Datum::of(3)}).intValue() == 33);
+    auto nestedProps = Datum::propList();
+    nestedProps.propListValue().put(Datum::symbol("key"), Datum::of(5));
+    scriptInstance.scriptInstanceValue().setProperty("nestedProps", nestedProps);
+    assert(runObjCall(67, {scriptInstance, Datum::symbol("nestedProps"), Datum::symbol("key")}).intValue() == 5);
+    assert(runObjCall(113, {scriptInstance, Datum::symbol("nestedProps"), Datum::symbol("other"), Datum::of(44)}).isVoid());
+    assert(runObjCall(67, {scriptInstance, Datum::symbol("nestedProps"), Datum::symbol("other")}).intValue() == 44);
+    assert(runObjCall(70, {scriptInstance, Datum::symbol("nestedProps")}).intValue() == 2);
+    assert(runObjCall(56, {scriptInstance}).asSymbol()->name == "instance");
+    assert(runObjCall(117, {scriptInstance, Datum::symbol("known")}).boolValue());
+    assert(runObjCall(116, {scriptInstance, Datum::symbol("newLocal")}).isVoid());
+    assert(scriptInstance.scriptInstanceValue().getProperty("newLocal").isVoid());
 
     auto imageMethodBitmap = std::make_shared<Bitmap>(2, 2, 32);
     imageMethodBitmap->fill(0xFFFFFFFFU);
