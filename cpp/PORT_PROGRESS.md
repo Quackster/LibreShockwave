@@ -179,6 +179,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `util::getFileName`, `getFileNameWithoutExtension`, and `getUrlsWithFallbacks` port the Java path/URL fallback helper behavior for movie and cast files.
 - `format::ScriptFormatUtils` ports literal type names, literal formatting, script type display names, name/handler fallback resolution, truncation, and line-ending normalization.
 
+### Bitmap Colorizer
+
+- `bitmap::BitmapColorizer` ports Director foreColor/backColor bitmap recoloring for 32-bit and indexed bitmap surfaces.
+- Raw indexed-data colorization handles 1-bit, 2-bit, 4-bit, and 8-bit packed palette indices before bitmap decode.
+- Ink-mode helper predicates for colorization and backColor usage are available in C++.
+
 ## Verification
 
 Last verified: 2026-06-10
@@ -217,6 +223,7 @@ Result:
 - W3D entry, typed resource, transform, texture format, and lookup tests passed through the same CTest executable.
 - Generated font Base64/zlib decode, wrong-length, and invalid-deflate tests passed through the same CTest executable.
 - File/path fallback utilities and script formatting utilities passed through the same CTest executable.
+- BitmapColorizer 32-bit, indexed, foreground-only, packed-index, and ink predicate tests passed through the same CTest executable.
 - Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
@@ -254,4 +261,5 @@ Result:
 - `3afd372 Port C++ DirectorFile bitmap decode`
 - `b870598 Port C++ W3D file parser`
 - `382f342 Port C++ generated font decoder`
-- Current checkpoint commit message: `Port C++ utility formatting helpers`
+- `e4ebbae Port C++ utility formatting helpers`
+- Current checkpoint commit message: `Port C++ bitmap colorizer`

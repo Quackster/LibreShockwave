@@ -2,6 +2,7 @@ add_library(libreshockwave
     src/DirectorFile.cpp
     src/W3DFile.cpp
     src/bitmap/Bitmap.cpp
+    src/bitmap/BitmapColorizer.cpp
     src/bitmap/BitmapDecoder.cpp
     src/bitmap/ColorRef.cpp
     src/bitmap/Palette.cpp

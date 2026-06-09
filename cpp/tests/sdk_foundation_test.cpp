@@ -18,6 +18,7 @@
 #include "libreshockwave/DirectorFile.hpp"
 #include "libreshockwave/W3DFile.hpp"
 #include "libreshockwave/bitmap/Bitmap.hpp"
+#include "libreshockwave/bitmap/BitmapColorizer.hpp"
 #include "libreshockwave/bitmap/BitmapDecoder.hpp"
 #include "libreshockwave/bitmap/ColorRef.hpp"
 #include "libreshockwave/bitmap/Palette.hpp"
@@ -81,6 +82,7 @@ using libreshockwave::id::VarType;
 using libreshockwave::io::BinaryReader;
 using libreshockwave::io::ByteOrder;
 using libreshockwave::bitmap::Bitmap;
+using libreshockwave::bitmap::BitmapColorizer;
 using libreshockwave::bitmap::BitmapDecoder;
 using libreshockwave::bitmap::ColorRef;
 using libreshockwave::bitmap::Palette;
@@ -525,6 +527,46 @@ void testBitmapDecoder() {
     Bitmap empty = BitmapDecoder::decode({}, 0, 0, 8, nullptr);
     assert(empty.width() == 1);
     assert(empty.height() == 1);
+}
+
+void testBitmapColorizer() {
+    Bitmap grayscale32(3, 1, 32, {0xFF000000U, 0xFF808080U, 0xFFFFFFFFU});
+    Bitmap redToBlue = BitmapColorizer::colorize(grayscale32, 0xFF0000U, 0x0000FFU);
+    assert(redToBlue.getPixel(0, 0) == 0xFFFF0000U);
+    assert(redToBlue.getPixel(1, 0) == 0xFF7F0080U);
+    assert(redToBlue.getPixel(2, 0) == 0xFF0000FFU);
+
+    const ColorRef green(ColorRef::Rgb(0, 255, 0));
+    Bitmap foregroundOnly = BitmapColorizer::colorize(grayscale32, green, nullptr);
+    assert(foregroundOnly.getPixel(0, 0) == 0xFF00FF00U);
+    assert(foregroundOnly.getPixel(1, 0) == 0xFF808080U);
+
+    Bitmap indexed(4, 1, 2, {0xFF000000U, 0xFF555555U, 0xFFAAAAAAU, 0xFFFFFFFFU});
+    Bitmap indexedColorized = BitmapColorizer::colorize(indexed, 0xFF0000U, 0x0000FFU);
+    assert(indexedColorized.getPixel(0, 0) == 0xFFFF0000U);
+    assert(indexedColorized.getPixel(1, 0) == 0xFFAA0055U);
+    assert(indexedColorized.getPixel(2, 0) == 0xFF5500AAU);
+    assert(indexedColorized.getPixel(3, 0) == 0xFF0000FFU);
+
+    assert(BitmapColorizer::allowsColorization(8, 8));
+    assert(BitmapColorizer::allowsColorization(32, 0));
+    assert(!BitmapColorizer::allowsColorization(16, 8));
+    assert(BitmapColorizer::usesBackColor(32, 0));
+    assert(!BitmapColorizer::usesBackColor(8, 8));
+
+    const ColorRef black(ColorRef::Rgb(0, 0, 0));
+    const ColorRef white(ColorRef::Rgb(255, 255, 255));
+    const auto unpacked = BitmapColorizer::colorizeIndexedData({0b00011011}, 2, &black, &white, nullptr);
+    assert(unpacked.size() == 4);
+    assert(unpacked[0] == 0xFF000000U);
+    assert(unpacked[1] == 0xFF555555U);
+    assert(unpacked[2] == 0xFFAAAAAAU);
+    assert(unpacked[3] == 0xFFFFFFFFU);
+
+    const auto grayscale = BitmapColorizer::colorizeIndexedData({0, 255}, 8, nullptr, nullptr, nullptr);
+    assert(grayscale.size() == 2);
+    assert(grayscale[0] == 0xFF000000U);
+    assert(grayscale[1] == 0xFFFFFFFFU);
 }
 
 void testBasicChunks() {
@@ -2558,6 +2600,7 @@ int main() {
     testBitmapAlphaAndPaletteBehavior();
     testBitmapRegionsAndMetadata();
     testBitmapDecoder();
+    testBitmapColorizer();
     testBasicChunks();
     testAudioAndMediaChunks();
     testCastMetadataTypes();
