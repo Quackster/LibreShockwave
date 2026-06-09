@@ -2511,6 +2511,51 @@ std::shared_ptr<bitmap::Bitmap> imageCreateMask(const bitmap::Bitmap& src, int a
     return imageCreateFloodFillMatte(src);
 }
 
+int imageCombineAlpha(int srcAlpha, int blendAlpha) {
+    if (srcAlpha <= 0 || blendAlpha <= 0) return 0;
+    if (srcAlpha >= 255) return blendAlpha;
+    if (blendAlpha >= 255) return srcAlpha;
+    return (srcAlpha * blendAlpha) / 255;
+}
+
+std::uint32_t imageAlphaBlend(std::uint32_t fg, std::uint32_t bg, int alpha) {
+    if (alpha <= 0) return bg;
+    if (alpha >= 255) return fg;
+
+    const int fgR = static_cast<int>((fg >> 16) & 0xFFU);
+    const int fgG = static_cast<int>((fg >> 8) & 0xFFU);
+    const int fgB = static_cast<int>(fg & 0xFFU);
+    const int bgR = static_cast<int>((bg >> 16) & 0xFFU);
+    const int bgG = static_cast<int>((bg >> 8) & 0xFFU);
+    const int bgB = static_cast<int>(bg & 0xFFU);
+    const int invAlpha = 255 - alpha;
+    const int r = (fgR * alpha + bgR * invAlpha) / 255;
+    const int g = (fgG * alpha + bgG * invAlpha) / 255;
+    const int b = (fgB * alpha + bgB * invAlpha) / 255;
+    return 0xFF000000U |
+           (static_cast<std::uint32_t>(r & 0xFF) << 16) |
+           (static_cast<std::uint32_t>(g & 0xFF) << 8) |
+           static_cast<std::uint32_t>(b & 0xFF);
+}
+
+std::uint32_t imageApplyCopyInk(std::uint32_t src, std::uint32_t dest, int blend) {
+    const int srcAlpha = static_cast<int>((src >> 24) & 0xFFU);
+    if (blend < 255) {
+        return imageAlphaBlend(src, dest, imageCombineAlpha(srcAlpha, blend));
+    }
+    if (srcAlpha == 0) {
+        return dest;
+    }
+    if (srcAlpha < 255) {
+        return imageAlphaBlend(src, dest, srcAlpha);
+    }
+    return src;
+}
+
+int imagePercentToBlendAlpha(const Datum& blendDatum) {
+    return std::clamp(static_cast<int>(std::lround(toDoubleLikeJava(blendDatum) * 255.0 / 100.0)), 0, 255);
+}
+
 Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
     if (args.size() < 3) return Datum::voidValue();
     const auto* srcRef = args[0].asImageRef();
@@ -2526,6 +2571,14 @@ Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
     const int destHeight = destRect->bottom - destRect->top;
     if (srcWidth <= 0 || srcHeight <= 0 || destWidth <= 0 || destHeight <= 0) {
         return Datum::voidValue();
+    }
+
+    int blend = 255;
+    if (args.size() >= 4 && args[3].isPropList()) {
+        const Datum blendDatum = getPropListKey(args[3].propListValue(), "blend");
+        if (!blendDatum.isVoid()) {
+            blend = imagePercentToBlendAlpha(blendDatum);
+        }
     }
 
     if (dest.imagePalette() == nullptr && src.imagePalette() != nullptr) {
@@ -2559,7 +2612,7 @@ Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
             if (sx < 0 || sx >= src.width() || px < 0 || px >= dest.width()) {
                 continue;
             }
-            dest.setPixelPreservePaletteIndex(px, py, src.getPixel(sx, sy));
+            dest.setPixelPreservePaletteIndex(px, py, imageApplyCopyInk(src.getPixel(sx, sy), dest.getPixel(px, py), blend));
             if (destPaletteIndices.has_value() && srcPaletteIndices.has_value()) {
                 const auto srcOffset = static_cast<std::size_t>(sy * src.width() + sx);
                 const auto destOffset = static_cast<std::size_t>(py * dest.width() + px);

@@ -3414,6 +3414,27 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(scaleDest->getPixel(1, 0) == 0xFFFF0000U);
     assert(scaleDest->getPixel(2, 0) == 0xFF0000FFU);
     assert(scaleDest->getPixel(3, 0) == 0xFF0000FFU);
+    auto alphaCopySource = std::make_shared<Bitmap>(
+        1, 1, 32, std::vector<std::uint32_t>{0x80000000U});
+    auto alphaCopyDest = std::make_shared<Bitmap>(1, 1, 32);
+    alphaCopyDest->fill(0xFFFFFFFFU);
+    assert(runObjCall(110, {Datum::imageRef(alphaCopyDest),
+                            Datum::imageRef(alphaCopySource),
+                            Datum::intRect(0, 0, 1, 1),
+                            Datum::intRect(0, 0, 1, 1)}).isVoid());
+    assert(alphaCopyDest->getPixel(0, 0) == 0xFF7F7F7FU);
+    auto blendCopySource = std::make_shared<Bitmap>(
+        1, 1, 32, std::vector<std::uint32_t>{0xFF000000U});
+    auto blendCopyDest = std::make_shared<Bitmap>(1, 1, 32);
+    blendCopyDest->fill(0xFFFFFFFFU);
+    auto copyBlendProps = Datum::propList();
+    copyBlendProps.propListValue().put(Datum::symbol("blend"), Datum::of(50));
+    assert(runObjCall(110, {Datum::imageRef(blendCopyDest),
+                            Datum::imageRef(blendCopySource),
+                            Datum::intRect(0, 0, 1, 1),
+                            Datum::intRect(0, 0, 1, 1),
+                            copyBlendProps}).isVoid());
+    assert(blendCopyDest->getPixel(0, 0) == 0xFF7F7F7FU);
     auto paletteCopySource = std::make_shared<Bitmap>(
         2, 1, 8, std::vector<std::uint32_t>{0xFF000000U, 0xFF112233U});
     paletteCopySource->setImagePalette(std::make_shared<Palette>(
