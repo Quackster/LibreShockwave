@@ -3816,15 +3816,36 @@ Datum chunkRefObjectMethod(ExecutionContext& context,
                            const Datum::ChunkRef& chunkRef,
                            std::string_view methodName,
                            const std::vector<Datum>&) {
-    if (!equalsIgnoreCase(methodName, "delete") || chunkRef.chunkType != StringChunkType::Char) {
+    if (!equalsIgnoreCase(methodName, "delete")) {
         return Datum::voidValue();
     }
 
     const Datum current = getContextVar(context, chunkRef.varType, Datum::of(chunkRef.rawIndex));
+    const std::string currentString = toStringLikeJava(current);
+    std::string newValue;
+
+    if (chunkRef.chunkType == StringChunkType::Char) {
+        newValue = deleteCharChunkRefValue(currentString, chunkRef.start, chunkRef.end);
+    } else {
+        int first = chunkRef.start;
+        int last = chunkRef.end;
+        const char itemDelimiter = currentItemDelimiter(context);
+        if (first < 0 || last < 0) {
+            const int count = countChunks(currentString, chunkRef.chunkType, itemDelimiter);
+            if (first < 0) {
+                first = count;
+            }
+            if (last < 0) {
+                last = count;
+            }
+        }
+        newValue = deleteChunkValue(currentString, chunkRef.chunkType, first, last, itemDelimiter);
+    }
+
     setContextVar(context,
                   chunkRef.varType,
                   Datum::of(chunkRef.rawIndex),
-                  Datum::of(deleteCharChunkRefValue(toStringLikeJava(current), chunkRef.start, chunkRef.end)));
+                  Datum::of(std::move(newValue)));
     return Datum::voidValue();
 }
 

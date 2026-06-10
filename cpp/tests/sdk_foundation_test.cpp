@@ -9029,6 +9029,29 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(globals["globalName"].stringValue() == "abc");
     assert(runObjCall(93, {runObjCall(92, {globalVarRef, Datum::symbol("char"), Datum::of(3), Datum::of(1)})}).isVoid());
     assert(globals["globalName"].stringValue() == "abc");
+    globals["globalName"] = Datum::of(std::string("alpha beta gamma"));
+    Datum wordChunkRef = runObjCall(92, {globalVarRef, Datum::symbol("word"), Datum::of(2), Datum::of(3)});
+    assert(wordChunkRef.asChunkRef()->chunkType == StringChunkType::Word);
+    assert(runObjCall(93, {wordChunkRef}).isVoid());
+    assert(globals["globalName"].stringValue() == "alpha");
+    globals["globalName"] = Datum::of(std::string("one\ntwo\nthree"));
+    Datum lineChunkRef = runObjCall(92, {globalVarRef, Datum::symbol("line"), Datum::of(1)});
+    assert(lineChunkRef.asChunkRef()->chunkType == StringChunkType::Line);
+    assert(runObjCall(93, {lineChunkRef}).isVoid());
+    assert(globals["globalName"].stringValue() == "two\nthree");
+    MovieProperties chunkRefMovieProps;
+    chunkRefMovieProps.setItemDelimiter('|');
+    builtinContext.movieProperties = &chunkRefMovieProps;
+    globals["globalName"] = Datum::of(std::string("red|green|blue"));
+    Datum itemChunkRef = runObjCall(92, {globalVarRef, Datum::symbol("item"), Datum::of(2)});
+    assert(itemChunkRef.asChunkRef()->chunkType == StringChunkType::Item);
+    assert(runObjCall(93, {itemChunkRef}).isVoid());
+    assert(globals["globalName"].stringValue() == "red|blue");
+    globals["globalName"] = Datum::of(std::string("red|green|blue"));
+    Datum lastItemChunkRef = runObjCall(92, {globalVarRef, Datum::symbol("item"), Datum::of(-1)});
+    assert(runObjCall(93, {lastItemChunkRef}).isVoid());
+    assert(globals["globalName"].stringValue() == "red|green");
+    builtinContext.movieProperties = nullptr;
 
     builtinContext.castMemberResolver = [](int castLib, int memberNum) {
         return Datum::castMemberRef(CastLibId(castLib), MemberId(memberNum));
