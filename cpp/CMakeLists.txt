@@ -83,6 +83,7 @@ add_library(libreshockwave
     src/player/debug/Breakpoint.cpp
     src/player/debug/BreakpointManager.cpp
     src/player/debug/ExpressionEvaluator.cpp
+    src/player/debug/LifecycleDiagnostics.cpp
     src/player/debug/WatchExpression.cpp
     src/player/event/EventDispatcher.cpp
     src/player/frame/FrameContext.cpp

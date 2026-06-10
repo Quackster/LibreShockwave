@@ -116,6 +116,7 @@
 #include "libreshockwave/player/debug/BreakpointManager.hpp"
 #include "libreshockwave/player/debug/DebugSnapshot.hpp"
 #include "libreshockwave/player/debug/ExpressionEvaluator.hpp"
+#include "libreshockwave/player/debug/LifecycleDiagnostics.hpp"
 #include "libreshockwave/player/debug/WatchExpression.hpp"
 #include "libreshockwave/player/event/EventDispatcher.hpp"
 #include "libreshockwave/player/frame/FrameContext.hpp"
@@ -261,6 +262,7 @@ using libreshockwave::player::cast::FontRegistry;
 using libreshockwave::player::debug::DebugSnapshot;
 using libreshockwave::player::debug::ExpressionEvaluator;
 using libreshockwave::player::debug::InstructionDisplay;
+using libreshockwave::player::debug::LifecycleDiagnostics;
 using libreshockwave::player::debug::WatchExpression;
 using libreshockwave::player::event::EventDispatcher;
 using libreshockwave::player::event::EventTarget;
@@ -8841,6 +8843,53 @@ void testDebugFoundation() {
     assert(emptyEval.error == "Empty expression");
     assert(evaluator.interpolateLogMessage("i={i}, name={name}, bad={1 / 0}", evalContext) ==
            "i=5, name=Door, bad=<Division by zero>");
+
+    std::ostringstream lifecycleOut;
+    auto* previousCout = std::cout.rdbuf(lifecycleOut.rdbuf());
+    LifecycleDiagnostics::setEnabled(false);
+    assert(!LifecycleDiagnostics::isEnabled());
+    assert(LifecycleDiagnostics::isInterestingHandler("CreateThread"));
+    assert(LifecycleDiagnostics::isInterestingHandler("changeRoom"));
+    assert(!LifecycleDiagnostics::isInterestingHandler("mouseUp"));
+    assert(!LifecycleDiagnostics::isInterestingHandler(""));
+    libreshockwave::lingo::vm::TraceListener::HandlerInfo handlerInfo{
+        "createThread",
+        17,
+        "Lifecycle Script",
+        {Datum::of(7), Datum::symbol("door")},
+        Datum::of(std::string("receiver")),
+    };
+    LifecycleDiagnostics::logHandlerEnter(handlerInfo);
+    assert(lifecycleOut.str().empty());
+    LifecycleDiagnostics::setEnabled(true);
+    assert(LifecycleDiagnostics::isEnabled());
+    LifecycleDiagnostics::logHandlerEnter(handlerInfo);
+    LifecycleDiagnostics::logHandlerExit(handlerInfo, Datum::of(99));
+    LifecycleDiagnostics::logExternalCastLoaded(3, "rooms\nmain.cst");
+    SpriteState lifecycleSprite(22);
+    lifecycleSprite.setDynamicMember(4, 55);
+    lifecycleSprite.setLocH(10);
+    lifecycleSprite.setLocV(20);
+    lifecycleSprite.setLocZ(30);
+    lifecycleSprite.setWidth(40);
+    lifecycleSprite.setHeight(50);
+    lifecycleSprite.setScriptInstanceList({Datum::scriptInstance("Life")});
+    LifecycleDiagnostics::logSpriteRemoved("removed", lifecycleSprite);
+    LifecycleDiagnostics::logSpriteMemberCleared("cleared", lifecycleSprite, 8, 9);
+    LifecycleDiagnostics::logSpriteEmptyOverride("emptyOverride", lifecycleSprite);
+    LifecycleDiagnostics::logReleasedEmptyChannel("released", lifecycleSprite);
+    LifecycleDiagnostics::logError("", "fallback error");
+    std::cout.rdbuf(previousCout);
+    LifecycleDiagnostics::setEnabled(false);
+    assert(lifecycleOut.str() ==
+           "[Lifecycle] enter handler=\"createThread\" script=\"Lifecycle Script\" receiver=\"\"receiver\"\" args=[\"7\", \"#door\"]\n"
+           "[Lifecycle] exit handler=\"createThread\" script=\"Lifecycle Script\" result=\"99\"\n"
+           "[Lifecycle] externalCastLoaded cast=3 file=\"rooms main.cst\"\n"
+           "[Lifecycle] removed channel=22 dynamic=true puppet=true cast=4 member=55 scripts=1 loc=10,20,30 size=40x50\n"
+           "[Lifecycle] cleared channel=22 retired=8:9 fallback=4:55 puppet=true scripts=1\n"
+           "[Lifecycle] emptyOverride channel=22 puppet=true scripts=1\n"
+           "[Lifecycle] released channel=22 visible=true size=40x50 scripts=1\n"
+           "[Lifecycle] error \"fallback error\"\n");
 
     DebugSnapshot snapshot{
         4,

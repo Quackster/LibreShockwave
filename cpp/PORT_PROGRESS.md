@@ -446,6 +446,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `debug::BreakpointManager` ports add/remove/toggle, enable toggling, script offset maps, JSON serialization, JSON deserialization, and legacy serialization/deserialization.
 - `debug::WatchExpression` ports watch expression result/error state and display helpers.
 - `debug::ExpressionEvaluator` ports debugger watch/condition expression parsing and evaluation, including variables, literals, arithmetic, comparisons, logical operators with short-circuiting, prop-list/script-instance property access, and log-message interpolation.
+- `debug::LifecycleDiagnostics` ports the runtime lifecycle trace toggle, interesting-handler detection, handler/cast/sprite/error log formatting, argument formatting, and printable datum sanitization.
 - `debug::DebugSnapshot`, `InstructionDisplay`, and `CallFrame` port immutable debugger UI state payloads without pulling in the full debug controller.
 
 ### Render Pipeline Data Foundation
@@ -831,7 +832,7 @@ Result:
 - PlayerState, InputEvent factories, DirectorKeyCodes, and InputState mutation/queue tests passed through the same CTest executable.
 - InputHandler mouse/key queueing, interactive hit filtering, rollover dispatch, mouse-up-outside fallback, focused key dispatch, blur synthesis, dispatcher/sprite supplier hooks, and sprite-registry revision bumps passed through the same CTest executable.
 - ScoreBehaviorRef, SpriteSpan, ScoreNavigator labels, marker resolution, active sprites/channels, parsed behavior parameters, and frame-count tests passed through the same CTest executable.
-- Breakpoint, BreakpointManager, WatchExpression, ExpressionEvaluator, and DebugSnapshot tests passed through the same CTest executable.
+- Breakpoint, BreakpointManager, WatchExpression, ExpressionEvaluator, LifecycleDiagnostics, and DebugSnapshot tests passed through the same CTest executable.
 - RenderPipelineTrace, RenderSprite, transform mirror, baked bitmap helpers, and FrameSnapshot tests passed through the same CTest executable.
 - StageRenderer stage-image lifecycle, dynamic/puppeted sprite collection, locZ/channel sorting, last-baked sprite storage, sprite-end cleanup, reset behavior, and RGB555 expansion tests passed through the same CTest executable.
 - SpriteBaker tick counting, default/custom bake-step dispatch, bitmap decode-provider caching, palette-version cache invalidation, provider-backed live script-modified bitmap priority, live COPY exact-white backColor remapping, live DARKEN white-canvas neutralization, live indexed DARKEN foreColor/backColor ramping, 1-bit Copy-ink color remap, shared bitmap ink processing, text baked-size replacement, file-backed STXT renderer dispatch, file-backed XMED parser/renderer dispatch, provider-backed film-loop parent ink processing, file-backed film-loop sub-score compositing, shape baking, transparency-key shape ink, unsupported pass-through, and external BitmapCache ownership tests passed through the same CTest executable.
