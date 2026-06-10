@@ -88,6 +88,7 @@
 #include "libreshockwave/lingo/Opcode.hpp"
 #include "libreshockwave/lingo/builtin/BuiltinRegistry.hpp"
 #include "libreshockwave/lingo/vm/DebugConfig.hpp"
+#include "libreshockwave/lingo/vm/datum/DatumFormatter.hpp"
 #include "libreshockwave/lingo/vm/ExecutionContext.hpp"
 #include "libreshockwave/lingo/vm/LingoVM.hpp"
 #include "libreshockwave/lingo/vm/OpcodeRegistry.hpp"
@@ -1160,6 +1161,36 @@ void testLingoDatumTypes() {
     const auto chunk = Datum::stringChunk(Datum::of("hello"), StringChunkType::Char, 2, 2, ',', "e");
     assert(chunk.isString());
     assert(chunk.stringValue() == "e");
+    assert(libreshockwave::lingo::vm::datum::format(Datum::of(std::string("abcdef")), 5) == "\"ab...\"");
+    assert(libreshockwave::lingo::vm::datum::format(static_cast<const Datum*>(nullptr)) == "<null>");
+    assert(libreshockwave::lingo::vm::datum::formatWithType(Datum::symbol("mouseUp")) == "symbol: #mouseUp");
+    assert(libreshockwave::lingo::vm::datum::formatBrief(Datum::of(std::string("a\nb"))) == "\"a\\nb\"");
+    assert(libreshockwave::lingo::vm::datum::format(Datum::intPoint(5, 6)) == "point(5, 6)");
+    assert(libreshockwave::lingo::vm::datum::format(Datum::intRect(1, 2, 3, 4)) == "rect(1, 2, 3, 4)");
+    assert(libreshockwave::lingo::vm::datum::format(Datum::castMemberRef(CastLibId(2), MemberId(9))) ==
+           "member(9, 2)");
+    assert(libreshockwave::lingo::vm::datum::getTypeName(Datum::argList({})) == "ArgList");
+    assert(libreshockwave::lingo::vm::datum::getTypeName(static_cast<const Datum*>(nullptr)) == "null");
+    assert(libreshockwave::lingo::vm::datum::formatExpanded(
+               Datum::list({Datum::of(1), Datum::symbol("ready")})) == "[1, #ready]");
+    auto formatterPropList = Datum::propList();
+    formatterPropList.propListValue().put(Datum::symbol("name"), Datum::of(std::string("alice")));
+    formatterPropList.propListValue().put(Datum::of(std::string("score")), Datum::of(7));
+    assert(libreshockwave::lingo::vm::datum::formatExpanded(formatterPropList) ==
+           "[#name: \"alice\", \"score\": 7]");
+    auto recursiveList = Datum::list();
+    recursiveList.listValue().add(recursiveList);
+    assert(libreshockwave::lingo::vm::datum::formatExpanded(recursiveList) == "[[<recursive-list>]]");
+    auto formatterInstance = Datum::scriptInstance("agent");
+    formatterInstance.scriptInstanceValue().setProperty("self", formatterInstance);
+    assert(libreshockwave::lingo::vm::datum::formatExpanded(formatterInstance) ==
+           "<script#agent {self: <script#agent <recursive>>}>");
+    assert(libreshockwave::lingo::vm::datum::formatDetailed(
+               Datum::list({Datum::of(1), Datum::symbol("go")})) == "[\n  1,\n  \"#go\"\n]");
+    assert(libreshockwave::lingo::vm::datum::formatDetailed(
+               Datum::of(std::string("a\r\nb\t\"c"))) == "\"a[CR][LF]b[TAB]\\\"c\"");
+    assert(libreshockwave::lingo::vm::datum::formatDetailed(formatterPropList) ==
+           "{\n  \"#name\": \"alice\",\n  \"#score\": 7\n}");
 
     const auto fieldText = Datum::fieldText("42", 3, 9);
     assert(fieldText.type() == DatumType::FieldText);

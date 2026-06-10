@@ -51,6 +51,7 @@ add_library(libreshockwave
     src/lingo/Opcode.cpp
     src/lingo/builtin/BuiltinRegistry.cpp
     src/lingo/vm/DebugConfig.cpp
+    src/lingo/vm/datum/DatumFormatter.cpp
     src/lingo/vm/ExecutionContext.cpp
     src/lingo/vm/LingoVM.cpp
     src/lingo/vm/OpcodeRegistry.cpp
