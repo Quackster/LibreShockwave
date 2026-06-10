@@ -2816,6 +2816,87 @@ bool imageIsMaskSource(const std::vector<std::uint32_t>& pixels,
            imageIsWhiteBackedMaskSource(pixels, transparent, matte);
 }
 
+bool imageIsMostlyWhiteRegion(const bitmap::Bitmap& bitmap, const Datum::IntRect& rect) {
+    const int width = rect.right - rect.left;
+    const int height = rect.bottom - rect.top;
+    if (width <= 0 || height <= 0) {
+        return false;
+    }
+
+    int sampled = 0;
+    int white = 0;
+    const int step = std::max(1, (width * height) / 64);
+    for (int index = 0; index < width * height; index += step) {
+        const int x = rect.left + (index % width);
+        const int y = rect.top + (index / width);
+        if (x < 0 || x >= bitmap.width() || y < 0 || y >= bitmap.height()) {
+            continue;
+        }
+        ++sampled;
+        if ((bitmap.getPixel(x, y) & 0x00FFFFFFU) == 0x00FFFFFFU) {
+            ++white;
+        }
+    }
+    return sampled > 0 && white * 4 >= sampled * 3;
+}
+
+bool imageCopyMatteToMaskImage(bitmap::Bitmap& dest,
+                               const bitmap::Bitmap& src,
+                               const Datum::IntRect& destRect,
+                               const Datum::IntRect& srcRect) {
+    const int destWidth = destRect.right - destRect.left;
+    const int destHeight = destRect.bottom - destRect.top;
+    const int srcWidth = srcRect.right - srcRect.left;
+    const int srcHeight = srcRect.bottom - srcRect.top;
+    if (src.width() <= 0 || src.height() <= 0 ||
+        srcWidth <= 0 || srcHeight <= 0 ||
+        destWidth <= 0 || destHeight <= 0 ||
+        !imageIsMostlyWhiteRegion(dest, destRect)) {
+        return false;
+    }
+
+    const auto pixels = src.pixels();
+    const auto paletteIndices = src.paletteIndices();
+    const auto matte = imageResolveFloodFillMatte(pixels, paletteIndices, src.width(), src.height());
+    if (!matte.has_value()) {
+        return false;
+    }
+    const auto transparent =
+        imageComputeFloodFillTransparency(pixels, paletteIndices, src.width(), src.height(), *matte);
+    if (!imageIsMaskSource(pixels, transparent, *matte)) {
+        return false;
+    }
+
+    const int matteLuma =
+        imageMaskAlphaFromPixel(0xFF000000U | static_cast<std::uint32_t>(matte->colorRgb & 0x00FFFFFF));
+    const bool lightMatte = matteLuma >= 128;
+    for (int dy = 0; dy < destHeight; ++dy) {
+        const int sy = srcRect.top + (dy * srcHeight / destHeight);
+        const int py = destRect.top + dy;
+        if (sy < 0 || sy >= src.height() || py < 0 || py >= dest.height()) {
+            continue;
+        }
+        for (int dx = 0; dx < destWidth; ++dx) {
+            const int sx = srcRect.left + (dx * srcWidth / destWidth);
+            const int px = destRect.left + dx;
+            if (sx < 0 || sx >= src.width() || px < 0 || px >= dest.width()) {
+                continue;
+            }
+            const auto srcOffset = static_cast<std::size_t>(sy * src.width() + sx);
+            if (srcOffset >= transparent.size() || transparent[srcOffset]) {
+                continue;
+            }
+            int maskLuma = imageMaskAlphaFromPixel(pixels[srcOffset]);
+            if (!lightMatte) {
+                maskLuma = 255 - maskLuma;
+            }
+            const auto luma = static_cast<std::uint32_t>(maskLuma & 0xFF);
+            dest.setPixelPreservePaletteIndex(px, py, 0xFF000000U | (luma << 16) | (luma << 8) | luma);
+        }
+    }
+    return true;
+}
+
 std::shared_ptr<bitmap::Bitmap> imageCreateDirectMask(const bitmap::Bitmap& src,
                                                       const ImageFloodFillMatte& matte,
                                                       int alphaThreshold) {
@@ -3738,6 +3819,12 @@ Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
     if (!dest.hasAnchorPoint() && src.hasAnchorPoint()) {
         dest.setAnchorPoint(destRect->left + src.anchorX() - srcRect->left,
                             destRect->top + src.anchorY() - srcRect->top);
+    }
+
+    if (ink == id::InkMode::MATTE &&
+        dest.bitDepth() <= 8 &&
+        imageCopyMatteToMaskImage(dest, src, *destRect, *srcRect)) {
+        return Datum::voidValue();
     }
 
     std::shared_ptr<bitmap::Bitmap> matteSource;

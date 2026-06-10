@@ -6794,6 +6794,80 @@ void testLingoVmScopeAndExecutionContextFoundation() {
                             Datum::intRect(0, 0, 1, 1),
                             matteCopyProps}).isVoid());
     assert(nativeAlphaMatteCopyDest->getPixel(0, 0) == 0xFFFFFFFFU);
+    auto blackOnWhiteMaskDest = std::make_shared<Bitmap>(
+        3, 3, 8, std::vector<std::uint32_t>{
+            0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU,
+            0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU,
+            0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU,
+        });
+    auto blackOnWhiteText = std::make_shared<Bitmap>(
+        3, 3, 32, std::vector<std::uint32_t>{
+            0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU,
+            0xFFFFFFFFU, 0xFF000000U, 0xFFFFFFFFU,
+            0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU,
+        });
+    assert(runObjCall(110, {Datum::imageRef(blackOnWhiteMaskDest),
+                            Datum::imageRef(blackOnWhiteText),
+                            Datum::intRect(0, 0, 3, 3),
+                            Datum::intRect(0, 0, 3, 3),
+                            matteCopyProps}).isVoid());
+    assert(blackOnWhiteMaskDest->getPixel(0, 0) == 0xFFFFFFFFU);
+    assert(blackOnWhiteMaskDest->getPixel(1, 1) == 0xFF000000U);
+    assert(blackOnWhiteMaskDest->getPixel(2, 2) == 0xFFFFFFFFU);
+    auto whiteOnBlackMaskDest = std::make_shared<Bitmap>(
+        3, 3, 8, std::vector<std::uint32_t>{
+            0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU,
+            0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU,
+            0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU,
+        });
+    auto whiteOnBlackText = std::make_shared<Bitmap>(
+        3, 3, 32, std::vector<std::uint32_t>{
+            0xFF000000U, 0xFF000000U, 0xFF000000U,
+            0xFF000000U, 0xFFFFFFFFU, 0xFF000000U,
+            0xFF000000U, 0xFF000000U, 0xFF000000U,
+        });
+    assert(runObjCall(110, {Datum::imageRef(whiteOnBlackMaskDest),
+                            Datum::imageRef(whiteOnBlackText),
+                            Datum::intRect(0, 0, 3, 3),
+                            Datum::intRect(0, 0, 3, 3),
+                            matteCopyProps}).isVoid());
+    assert(whiteOnBlackMaskDest->getPixel(0, 0) == 0xFFFFFFFFU);
+    assert(whiteOnBlackMaskDest->getPixel(1, 1) == 0xFF000000U);
+    assert(whiteOnBlackMaskDest->getPixel(2, 2) == 0xFFFFFFFFU);
+    auto coloredTextMaskDest = std::make_shared<Bitmap>(
+        3, 3, 8, std::vector<std::uint32_t>{
+            0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU,
+            0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU,
+            0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU,
+        });
+    auto coloredTextMaskSource = std::make_shared<Bitmap>(
+        3, 3, 32, std::vector<std::uint32_t>{
+            0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU,
+            0xFFFFFFFFU, 0xFF336666U, 0xFFFFFFFFU,
+            0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU,
+        });
+    assert(runObjCall(110, {Datum::imageRef(coloredTextMaskDest),
+                            Datum::imageRef(coloredTextMaskSource),
+                            Datum::intRect(0, 0, 3, 3),
+                            Datum::intRect(0, 0, 3, 3),
+                            matteCopyProps}).isVoid());
+    assert(coloredTextMaskDest->getPixel(0, 0) == 0xFFFFFFFFU);
+    assert(coloredTextMaskDest->getPixel(1, 1) == 0xFF575757U);
+    assert(coloredTextMaskDest->getPixel(2, 2) == 0xFFFFFFFFU);
+    auto blackMaskDest = std::make_shared<Bitmap>(
+        3, 3, 8, std::vector<std::uint32_t>{
+            0xFF000000U, 0xFF000000U, 0xFF000000U,
+            0xFF000000U, 0xFF000000U, 0xFF000000U,
+            0xFF000000U, 0xFF000000U, 0xFF000000U,
+        });
+    assert(runObjCall(110, {Datum::imageRef(blackMaskDest),
+                            Datum::imageRef(whiteOnBlackText),
+                            Datum::intRect(0, 0, 3, 3),
+                            Datum::intRect(0, 0, 3, 3),
+                            matteCopyProps}).isVoid());
+    assert(blackMaskDest->getPixel(0, 0) == 0xFF000000U);
+    assert(blackMaskDest->getPixel(1, 1) == 0xFFFFFFFFU);
+    assert(blackMaskDest->getPixel(2, 2) == 0xFF000000U);
     auto transparentInkSource = std::make_shared<Bitmap>(
         2, 1, 32, std::vector<std::uint32_t>{0xFFFFFFFFU, 0xFFFF0000U});
     auto transparentInkDest = std::make_shared<Bitmap>(
