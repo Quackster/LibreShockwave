@@ -62,6 +62,7 @@ public:
     using ErrorListener = std::function<void(std::string_view message, std::string_view errorDetail)>;
 
     explicit Player(std::shared_ptr<DirectorFile> file = nullptr);
+    Player(std::shared_ptr<DirectorFile> file, net::NetProvider* netProvider);
     ~Player();
 
     Player(const Player&) = delete;

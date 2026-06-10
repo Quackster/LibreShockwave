@@ -151,6 +151,11 @@ Player::Player(std::shared_ptr<DirectorFile> file)
     wireComponents();
 }
 
+Player::Player(std::shared_ptr<DirectorFile> file, net::NetProvider* netProvider)
+    : Player(std::move(file)) {
+    setNetProvider(netProvider);
+}
+
 Player::~Player() {
     if (debugController_) {
         debugController_->reset();

@@ -3841,6 +3841,20 @@ void testPlayerFacadeFoundation() {
         int nextTaskId = 700;
     };
 
+    PlayerFacadeNetProvider constructorNetProvider;
+    Player providerConstructedPlayer(file, &constructorNetProvider);
+    assert(providerConstructedPlayer.builtinContext().netManager == &constructorNetProvider);
+    const int constructorTask = providerConstructedPlayer.builtinRegistry()
+                                    .invoke("preloadNetThing",
+                                            providerConstructedPlayer.builtinContext(),
+                                            {Datum::of(std::string("constructor.txt"))})
+                                    .intValue();
+    assert(constructorTask == 700);
+    assert((constructorNetProvider.preloadUrls == std::vector<std::string>{"constructor.txt"}));
+    assert(providerConstructedPlayer.netManager().getTask(constructorTask) == nullptr);
+    providerConstructedPlayer.setNetProvider(nullptr);
+    assert(providerConstructedPlayer.builtinContext().netManager == &providerConstructedPlayer.netManager());
+
     PlayerFacadeNetProvider overrideNetProvider;
     player.setNetProvider(&overrideNetProvider);
     const int overrideGetTask = player.builtinRegistry()
