@@ -24,7 +24,9 @@ CastMember::CastMember(int castLib, int memberNum, MemberType memberType)
       castLib_(castLib),
       memberNum_(memberNum),
       memberType_(memberType),
-      scriptId_(0) {}
+      scriptId_(0) {
+    regPointPinnedToMember_ = false;
+}
 
 int CastMember::id() const { return id_; }
 int CastMember::castLib() const { return castLib_; }
@@ -94,11 +96,18 @@ int CastMember::regY() const {
 }
 
 void CastMember::setRegPoint(int x, int y) {
+    setRegPointState(x, y, true);
+}
+
+bool CastMember::regPointPinnedToMember() const {
+    return regPointPinnedToMember_;
+}
+
+void CastMember::setRegPointState(int x, int y, bool pinnedToMember) {
     runtimeRegX_ = x;
     runtimeRegY_ = y;
-    if (runtimeBitmap_) {
-        runtimeBitmap_->setAnchorPoint(x, y);
-    }
+    regPointPinnedToMember_ = pinnedToMember;
+    syncRuntimeBitmapAnchorState();
 }
 
 std::shared_ptr<bitmap::Bitmap> CastMember::runtimeBitmap() const {
@@ -155,13 +164,24 @@ bool CastMember::editable() const { return editable_; }
 void CastMember::setEditable(bool editable) { editable_ = editable; }
 
 void CastMember::setRuntimeBitmap(const bitmap::Bitmap& bitmap, bool markScriptModified) {
+    const int currentRegX = regX();
+    const int currentRegY = regY();
     auto copy = std::make_shared<bitmap::Bitmap>(bitmap.copy());
     if (markScriptModified) {
         copy->markScriptModified();
     }
-    runtimeRegX_ = bitmap.hasAnchorPoint() ? std::optional<int>(bitmap.anchorX()) : std::optional<int>(0);
-    runtimeRegY_ = bitmap.hasAnchorPoint() ? std::optional<int>(bitmap.anchorY()) : std::optional<int>(0);
+    if (regPointPinnedToMember_) {
+        runtimeRegX_ = currentRegX;
+        runtimeRegY_ = currentRegY;
+    } else if (bitmap.hasAnchorPoint()) {
+        runtimeRegX_ = bitmap.anchorX();
+        runtimeRegY_ = bitmap.anchorY();
+    } else {
+        runtimeRegX_ = 0;
+        runtimeRegY_ = 0;
+    }
     runtimeBitmap_ = std::move(copy);
+    syncRuntimeBitmapAnchorState();
 }
 
 void CastMember::erase() {
@@ -235,6 +255,7 @@ void CastMember::resetRuntimePayload() {
     runtimeBitmap_.reset();
     runtimeRegX_.reset();
     runtimeRegY_.reset();
+    regPointPinnedToMember_ = false;
     dynamicText_.reset();
     resetTextProperties();
 }
@@ -256,6 +277,20 @@ void CastMember::resetTextProperties() {
     textFixedLineSpace_ = 0;
     textTopSpacing_ = 0;
     editable_ = false;
+}
+
+void CastMember::syncRuntimeBitmapAnchorState() {
+    if (!runtimeBitmap_) {
+        return;
+    }
+    if (regPointPinnedToMember_) {
+        runtimeBitmap_->setAnchorPoint(regX(), regY());
+        return;
+    }
+    if (runtimeBitmap_->hasAnchorPoint()) {
+        runtimeRegX_ = runtimeBitmap_->anchorX();
+        runtimeRegY_ = runtimeBitmap_->anchorY();
+    }
 }
 
 } // namespace libreshockwave::cast

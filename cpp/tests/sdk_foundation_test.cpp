@@ -12468,6 +12468,19 @@ void testCastLibManagerFoundation() {
     assert(copiedFileBitmap->paletteIndex(1, 0).value() == 1);
     assert(manager.getMemberProp(1, fileBackedCopyRef->memberNum(), "regPoint").asIntPoint()->x == 8);
     assert(manager.getMemberProp(1, fileBackedCopyRef->memberNum(), "regPoint").asIntPoint()->y == 7);
+    auto copiedReplacement = std::make_shared<Bitmap>(1, 1, 32);
+    copiedReplacement->setPixel(0, 0, 0xFFAABBCCU);
+    copiedReplacement->setAnchorPoint(1, 0);
+    assert(manager.setMemberProp(1,
+                                 fileBackedCopyRef->memberNum(),
+                                 "image",
+                                 Datum::imageRef(copiedReplacement)));
+    auto copiedReplacementRuntime = manager.resolveMember(1, fileBackedCopyRef->memberNum())->runtimeBitmap();
+    assert(copiedReplacementRuntime != nullptr);
+    assert(manager.getMemberProp(1, fileBackedCopyRef->memberNum(), "regPoint").asIntPoint()->x == 8);
+    assert(manager.getMemberProp(1, fileBackedCopyRef->memberNum(), "regPoint").asIntPoint()->y == 7);
+    assert(copiedReplacementRuntime->anchorX() == 8);
+    assert(copiedReplacementRuntime->anchorY() == 7);
     assert(manager.callMemberMethod(1, fileBackedCopyRef->memberNum(), "erase", {}).intValue() == 1);
 
     auto runtimeImage = std::make_shared<Bitmap>(3, 1, 32);
@@ -12485,8 +12498,11 @@ void testCastLibManagerFoundation() {
     assert(manager.getMemberProp(1, 2, "width").intValue() == 3);
     assert(manager.getMemberProp(1, 2, "height").intValue() == 1);
     assert(manager.getMemberProp(1, 2, "depth").intValue() == 32);
-    assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->x == 2);
-    assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->y == 1);
+    assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->x == 8);
+    assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->y == 7);
+    assert(assignedRuntime->hasAnchorPoint());
+    assert(assignedRuntime->anchorX() == 8);
+    assert(assignedRuntime->anchorY() == 7);
     assert(manager.setMemberProp(1, 2, "regPoint", Datum::intPoint(9, 11)));
     assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->x == 9);
     assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->y == 11);
@@ -12779,7 +12795,10 @@ void testCastLibManagerFoundation() {
     assert(importedRuntime->height() == 1);
     assert(importedRuntime->getPixel(0, 0) == 0xFF102030U);
     assert(importedRuntime->getPixel(1, 0) == 0x80405060U);
-    assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->x == 0);
+    assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->x == 9);
+    assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->y == 11);
+    assert(importedRuntime->anchorX() == 9);
+    assert(importedRuntime->anchorY() == 11);
 
     std::vector<std::uint8_t> directorInfo(32, 0);
     putI16At(directorInfo, 0, 0x8008);
@@ -12814,8 +12833,10 @@ void testCastLibManagerFoundation() {
     assert(directorRuntime->height() == 1);
     assert(directorRuntime->getPixel(0, 0) == 0xFF112233U);
     assert(directorRuntime->getPixel(1, 0) == 0x80445566U);
-    assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->x == 3);
-    assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->y == 4);
+    assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->x == 9);
+    assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->y == 11);
+    assert(directorRuntime->anchorX() == 9);
+    assert(directorRuntime->anchorY() == 11);
 
     std::vector<std::uint8_t> indexedInfo(32, 0);
     putI16At(indexedInfo, 0, 0x8002);
@@ -12841,6 +12862,8 @@ void testCastLibManagerFoundation() {
     assert(indexedRuntime->imagePalette().get() == &Palette::rainbowPalette());
     assert(indexedRuntime->paletteIndex(0, 0).value() == 1);
     assert(indexedRuntime->paletteIndex(1, 0).value() == 2);
+    assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->x == 9);
+    assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->y == 11);
     assert(!registry.invoke("importFileInto",
                             context,
                             {Datum::castMemberRef(CastLibId(1), MemberId(2)),
@@ -12882,6 +12905,14 @@ void testCastLibManagerFoundation() {
                                                  playerRuntimeRef->memberNum(),
                                                  "image",
                                                  Datum::imageRef(playerRuntimeImage)));
+    assert(player.castLibManager()
+               .getMemberProp(playerRuntimeRef->castLib, playerRuntimeRef->memberNum(), "regPoint")
+               .asIntPoint()
+               ->x == 1);
+    assert(player.castLibManager()
+               .getMemberProp(playerRuntimeRef->castLib, playerRuntimeRef->memberNum(), "regPoint")
+               .asIntPoint()
+               ->y == 0);
     assert(player.spriteProperties().setSpriteProp(7, "loc", Datum::intPoint(4, 5)));
     assert(player.spriteProperties().setSpriteProp(7, "member", playerRuntimeMember));
     const auto runtimeSnapshot = player.frameSnapshot();

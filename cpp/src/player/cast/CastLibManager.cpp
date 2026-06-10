@@ -1048,6 +1048,7 @@ bool CastLibManager::copyMemberMedia(int targetCastLibNumber,
 
     if (target->isBitmap() && source->isBitmap()) {
         if (auto bitmap = source->runtimeBitmap()) {
+            target->setRegPointState(source->regX(), source->regY(), source->regPointPinnedToMember());
             target->setRuntimeBitmap(*bitmap);
             return true;
         }
@@ -1055,6 +1056,7 @@ bool CastLibManager::copyMemberMedia(int targetCastLibNumber,
             ::libreshockwave::player::BitmapResolver resolver(file_, this, nullptr);
             if (auto bitmap = resolver.decodeBitmap(source->rawChunk())) {
                 bitmap->setAnchorPoint(source->regX(), source->regY());
+                target->setRegPointState(source->regX(), source->regY(), source->regPointPinnedToMember());
                 target->setRuntimeBitmap(*bitmap);
                 return true;
             }

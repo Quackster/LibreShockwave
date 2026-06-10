@@ -58,7 +58,9 @@ public:
     [[nodiscard]] int height() const;
     [[nodiscard]] int regX() const;
     [[nodiscard]] int regY() const;
+    [[nodiscard]] bool regPointPinnedToMember() const;
     void setRegPoint(int x, int y);
+    void setRegPointState(int x, int y, bool pinnedToMember);
     [[nodiscard]] bool hasDynamicText() const;
     [[nodiscard]] std::string textContent() const;
     void setDynamicText(std::string text);
@@ -103,6 +105,7 @@ private:
     void parseSpecificData();
     void resetRuntimePayload();
     void resetTextProperties();
+    void syncRuntimeBitmapAnchorState();
 
     int id_;
     int castLib_;
@@ -120,6 +123,7 @@ private:
     std::shared_ptr<bitmap::Bitmap> runtimeBitmap_;
     std::optional<int> runtimeRegX_;
     std::optional<int> runtimeRegY_;
+    bool regPointPinnedToMember_ = true;
     std::optional<std::string> dynamicText_;
     std::string textFont_ = "Arial";
     int textFontSize_ = 12;
