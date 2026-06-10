@@ -7709,7 +7709,7 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runObjCall(67, {scriptInstance, Datum::symbol("nestedProps"), Datum::symbol("other")}).intValue() == 44);
     assert(runObjCall(70, {scriptInstance, Datum::symbol("nestedProps")}).intValue() == 2);
     assert(runObjCall(56, {scriptInstance}).asSymbol()->name == "instance");
-    assert(runObjCall(117, {scriptInstance, Datum::symbol("known")}).boolValue());
+    assert(!runObjCall(117, {scriptInstance, Datum::symbol("known")}).boolValue());
 
     builtinContext.scriptHandlerFinder = [&script, directProviderHandler, ancestorProviderHandler](
                                              int castLib,
@@ -7865,9 +7865,18 @@ void testLingoVmScopeAndExecutionContextFoundation() {
                .get(Datum::of(std::string("chair_alias")))
                .intValue() == SlotId::of(11, 7).value());
 
-    auto authoredAliasRegistryInstance = Datum::scriptInstance("authoredAliasRegistry");
+    builtinContext.scriptHandlerFinder = [&script, otherHandler](
+                                             int castLib,
+                                             int memberNum,
+                                             const std::string& methodName)
+        -> std::optional<BuiltinContext::ScriptHandlerLocation> {
+        if (castLib == 6 && memberNum == 20 && methodName == "readAliasIndexesFromField") {
+            return BuiltinContext::ScriptHandlerLocation{&script, otherHandler};
+        }
+        return std::nullopt;
+    };
+    auto authoredAliasRegistryInstance = Datum::scriptInstance("authoredAliasRegistry", Datum::CastMemberRef{6, 20});
     authoredAliasRegistryInstance.scriptInstanceValue().setProperty("pAllMemNumList", Datum::propList());
-    exposeReadAliasHandler = true;
     assert(runObjCall(
                121,
                {authoredAliasRegistryInstance, Datum::of(std::string("memberalias.index")), Datum::of(11)})
@@ -7877,7 +7886,7 @@ void testLingoVmScopeAndExecutionContextFoundation() {
                .propListValue()
                .get(Datum::of(std::string("chair_alias")))
                .intValue() == SlotId::of(11, 7).value());
-    exposeReadAliasHandler = false;
+    builtinContext.scriptHandlerFinder = {};
     builtinContext.fieldResolver = {};
     builtinContext.castLibCountSupplier = {};
     builtinContext.castMemberNameResolver = {};
@@ -7957,9 +7966,18 @@ void testLingoVmScopeAndExecutionContextFoundation() {
                .get(Datum::of(std::string("Bootstrap Script")))
                .intValue() == SlotId::of(2, 74).value());
 
-    auto authoredRegistryInstance = Datum::scriptInstance("authoredResourceRegistry");
+    builtinContext.scriptHandlerFinder = [&script, otherHandler](
+                                             int castLib,
+                                             int memberNum,
+                                             const std::string& methodName)
+        -> std::optional<BuiltinContext::ScriptHandlerLocation> {
+        if (castLib == 6 && memberNum == 21 && methodName == "getmemnum") {
+            return BuiltinContext::ScriptHandlerLocation{&script, otherHandler};
+        }
+        return std::nullopt;
+    };
+    auto authoredRegistryInstance = Datum::scriptInstance("authoredResourceRegistry", Datum::CastMemberRef{6, 21});
     authoredRegistryInstance.scriptInstanceValue().setProperty("pAllMemNumList", Datum::propList());
-    exposeGetMemNumHandler = true;
     assert(runObjCall(118, {authoredRegistryInstance, Datum::of(std::string("Bootstrap Script"))}).stringValue() ==
            "receiver-exec:99:1");
     assert(authoredRegistryInstance.scriptInstanceValue()
@@ -7967,11 +7985,11 @@ void testLingoVmScopeAndExecutionContextFoundation() {
                .propListValue()
                .get(Datum::of(std::string("Bootstrap Script")))
                .intValue() == SlotId::of(2, 74).value());
-    exposeGetMemNumHandler = false;
+    builtinContext.scriptHandlerFinder = {};
     builtinContext.castMemberNameResolver = {};
     builtinContext.registryVisibleMemberResolver = {};
     builtinContext.castMemberPropertyGetter = {};
-    assert(runObjCall(61, {scriptInstance, Datum::of(123)}).stringValue() == "receiver-exec:99:1");
+    assert(runObjCall(61, {scriptInstance, Datum::of(123)}).isVoid());
     int closeThreadDeferrals = 0;
     builtinContext.scriptInstanceMethodDeferrer = [&closeThreadDeferrals](
                                                       const Datum& target,
@@ -9229,14 +9247,23 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         assert(args.front().asSymbol()->name == "arrow");
         return Datum::of(std::string("sprite-handled"));
     };
-    auto spriteObjectBehavior = Datum::scriptInstance("sprite-object-behavior");
+    auto spriteObjectBehavior = Datum::scriptInstance("sprite-object-behavior", Datum::CastMemberRef{6, 22});
     assert(objectSpriteProps.setSpriteProp(5, "scriptInstanceList", Datum::list({spriteObjectBehavior})));
-    exposeSpriteSetCursorHandler = true;
+    builtinContext.scriptHandlerFinder = [&script, otherHandler](
+                                             int castLib,
+                                             int memberNum,
+                                             const std::string& methodName)
+        -> std::optional<BuiltinContext::ScriptHandlerLocation> {
+        if (castLib == 6 && memberNum == 22 && methodName == "setcursor") {
+            return BuiltinContext::ScriptHandlerLocation{&script, otherHandler};
+        }
+        return std::nullopt;
+    };
     builtinContext.spriteProperties = &objectSpriteProps;
     assert(runObjCall(112, {Datum::spriteRef(ChannelId(5)), Datum::symbol("arrow")}).stringValue() ==
            "receiver-exec:99:1");
     assert(spriteMethodCalls == 0);
-    exposeSpriteSetCursorHandler = false;
+    builtinContext.scriptHandlerFinder = {};
     builtinContext.spriteProperties = nullptr;
     assert(runObjCall(112, {Datum::spriteRef(ChannelId(5)), Datum::symbol("arrow")}).stringValue() == "sprite-handled");
     assert(spriteMethodCalls == 1);

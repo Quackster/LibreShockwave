@@ -2117,17 +2117,11 @@ Datum scriptInstanceObjectMethod(ExecutionContext& context,
     if (equalsIgnoreCase(methodName, "handler")) {
         if (args.empty()) return Datum::FALSE;
         const std::string handlerName = keyNameLikeJava(args[0]);
-        if (findScriptInstanceScriptHandler(context, instance, handlerName).has_value()) {
-            return Datum::TRUE;
-        }
-        return context.findHandler(handlerName).has_value() ? Datum::TRUE : Datum::FALSE;
+        return findScriptInstanceScriptHandler(context, instance, handlerName).has_value() ? Datum::TRUE : Datum::FALSE;
     }
     auto* builtinContext = context.builtinContext();
     (void)dispatch::MemberRegistryMethodDispatcher::prefill(instance, methodName, args, builtinContext);
     if (const auto handler = findScriptInstanceScriptHandler(context, instance, methodName)) {
-        return safeExecuteHandler(context, *handler->script, handler->handler, args, receiver);
-    }
-    if (const auto handler = context.findHandler(methodName)) {
         return safeExecuteHandler(context, *handler->script, handler->handler, args, receiver);
     }
     const auto registryResult =
