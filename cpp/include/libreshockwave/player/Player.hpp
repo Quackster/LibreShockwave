@@ -162,6 +162,7 @@ public:
 private:
     class PlayerTraceListener;
 
+    Player(std::shared_ptr<DirectorFile> file, bool registerSocketMultiuserXtra);
     void wireComponents();
     void prepareMovieFoundation();
     void executeFrameCycle(bool processUpdates);

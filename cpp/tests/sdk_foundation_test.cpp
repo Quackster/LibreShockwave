@@ -3842,8 +3842,20 @@ void testPlayerFacadeFoundation() {
     };
 
     PlayerFacadeNetProvider constructorNetProvider;
+    libreshockwave::player::xtra::SocketMultiuserBridge providerMultiuserBridge;
     Player providerConstructedPlayer(file, &constructorNetProvider);
     assert(providerConstructedPlayer.builtinContext().netManager == &constructorNetProvider);
+    assert(providerConstructedPlayer.xtraManager().isXtraRegistered("xmlparser"));
+    assert(!providerConstructedPlayer.xtraManager().isXtraRegistered("Multiusr"));
+    assert(providerConstructedPlayer.movieProperties().getMovieProp("number of xtras").intValue() == 1);
+    auto providerXtraList = providerConstructedPlayer.movieProperties().getMovieProp("xtraList");
+    assert(providerXtraList.isList());
+    assert(providerXtraList.listValue().count() == 1);
+    assert(providerXtraList.listValue().getAt(1).propListValue().get(Datum::of(std::string("name"))).stringValue() ==
+           "xmlparser");
+    providerConstructedPlayer.registerMultiuserXtra(providerMultiuserBridge);
+    assert(providerConstructedPlayer.xtraManager().isXtraRegistered("Multiusr"));
+    assert(providerConstructedPlayer.movieProperties().getMovieProp("number of xtras").intValue() == 2);
     const int constructorTask = providerConstructedPlayer.builtinRegistry()
                                     .invoke("preloadNetThing",
                                             providerConstructedPlayer.builtinContext(),

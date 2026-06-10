@@ -122,6 +122,9 @@ private:
 };
 
 Player::Player(std::shared_ptr<DirectorFile> file)
+    : Player(std::move(file), true) {}
+
+Player::Player(std::shared_ptr<DirectorFile> file, bool registerSocketMultiuserXtra)
     : file_(std::move(file)),
       frameContext_(file_.get()),
       stageRenderer_(file_.get()),
@@ -144,22 +147,24 @@ Player::Player(std::shared_ptr<DirectorFile> file)
       vm_(file_.get()),
       tempo_(configuredTempo(file_)) {
     xtraManager_.registerXtra(std::make_unique<lingo::xtra::XmlParserXtra>());
-    socketMultiuserBridge_ = std::make_unique<xtra::SocketMultiuserBridge>();
-    registerMultiuserXtra(*socketMultiuserBridge_);
+    if (registerSocketMultiuserXtra) {
+        socketMultiuserBridge_ = std::make_unique<xtra::SocketMultiuserBridge>();
+        registerMultiuserXtra(*socketMultiuserBridge_);
+    }
     playerTraceListener_ = std::make_shared<PlayerTraceListener>(*this);
     vm_.setTraceListener(playerTraceListener_);
     wireComponents();
 }
 
 Player::Player(std::shared_ptr<DirectorFile> file, net::NetProvider* netProvider)
-    : Player(std::move(file)) {
+    : Player(std::move(file), false) {
     setNetProvider(netProvider);
 }
 
 Player::Player(std::shared_ptr<DirectorFile> file,
                net::NetProvider* netProvider,
                CastDataRequestCallback castDataRequestCallback)
-    : Player(std::move(file)) {
+    : Player(std::move(file), false) {
     castDataRequestCallback_ = std::move(castDataRequestCallback);
     setNetProvider(netProvider);
 }
