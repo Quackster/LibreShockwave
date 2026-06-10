@@ -3469,6 +3469,44 @@ bool imageRegionIsMostlyGrayscale(const bitmap::Bitmap& src, const Datum::IntRec
     return true;
 }
 
+bool imageIsWhiteBackedAlreadyColorized(const bitmap::Bitmap& src, const Datum::IntRect& rect, int colorRgb) {
+    const int width = rect.right - rect.left;
+    const int height = rect.bottom - rect.top;
+    if (width <= 0 || height <= 0) {
+        return false;
+    }
+
+    constexpr int keyRgb = 0xFFFFFF;
+    const int targetRgb = colorRgb & 0x00FFFFFF;
+    bool hasKey = false;
+    bool hasColored = false;
+    for (int y = 0; y < height; ++y) {
+        const int sy = rect.top + y;
+        if (sy < 0 || sy >= src.height()) {
+            continue;
+        }
+        for (int x = 0; x < width; ++x) {
+            const int sx = rect.left + x;
+            if (sx < 0 || sx >= src.width()) {
+                continue;
+            }
+            const auto pixel = src.getPixel(sx, sy);
+            if (((pixel >> 24) & 0xFFU) == 0) {
+                continue;
+            }
+            const int rgb = static_cast<int>(pixel & 0x00FFFFFFU);
+            if (rgb == keyRgb) {
+                hasKey = true;
+            } else if (rgb == targetRgb) {
+                hasColored = true;
+            } else {
+                return false;
+            }
+        }
+    }
+    return hasKey && hasColored;
+}
+
 bool imageUsesIndexedShadeForDarken(const bitmap::Bitmap& src) {
     if (!src.paletteIndices().has_value() || src.bitDepth() > 8 || src.imagePalette() == nullptr) {
         return false;
@@ -3842,10 +3880,14 @@ Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
     const auto& copySrc = *effectiveSource;
     const auto srcPaletteIndices = copySrc.paletteIndices();
 
+    const bool transparentBackgroundRemap = colorRemap.has_value() && !bgColorRemap.has_value();
+    const bool alreadyColorizedWhiteBacked =
+        transparentBackgroundRemap && imageIsWhiteBackedAlreadyColorized(copySrc, *srcRect, *colorRemap);
     const bool applyGrayscaleRemap =
         (colorRemap.has_value() || bgColorRemap.has_value()) &&
         !copySrc.hasNativeMatteAlpha() &&
-        imageRegionIsMostlyGrayscale(copySrc, *srcRect);
+        imageRegionIsMostlyGrayscale(copySrc, *srcRect) &&
+        !alreadyColorizedWhiteBacked;
     const bool darkenBgTint =
         ink == id::InkMode::DARKEN && bgColorRemap.has_value() && !colorRemap.has_value();
     const bool indexedShadeForDarken = imageUsesIndexedShadeForDarken(copySrc);

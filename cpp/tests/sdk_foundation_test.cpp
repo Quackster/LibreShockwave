@@ -7181,6 +7181,21 @@ void testLingoVmScopeAndExecutionContextFoundation() {
                             remapProps}).isVoid());
     assert(coloredRemapDest->getPixel(0, 0) == 0xFF112233U);
     assert(coloredRemapDest->getPixel(1, 0) == 0xFFFFFFFFU);
+    auto alreadyColoredTextDest = std::make_shared<Bitmap>(
+        3, 1, 32, std::vector<std::uint32_t>{0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU});
+    auto alreadyColoredTextSource = std::make_shared<Bitmap>(
+        3, 1, 32, std::vector<std::uint32_t>{0xFFFFFFFFU, 0xFFEEEEEEU, 0xFFFFFFFFU});
+    auto alreadyColoredTextProps = Datum::propList();
+    alreadyColoredTextProps.propListValue().put(Datum::symbol("ink"), Datum::of(36));
+    alreadyColoredTextProps.propListValue().put(Datum::symbol("color"), Datum::colorRef(0xEE, 0xEE, 0xEE));
+    assert(runObjCall(110, {Datum::imageRef(alreadyColoredTextDest),
+                            Datum::imageRef(alreadyColoredTextSource),
+                            Datum::intRect(0, 0, 3, 1),
+                            Datum::intRect(0, 0, 3, 1),
+                            alreadyColoredTextProps}).isVoid());
+    assert(alreadyColoredTextDest->getPixel(0, 0) == 0xFFFFFFFFU);
+    assert(alreadyColoredTextDest->getPixel(1, 0) == 0xFFEEEEEEU);
+    assert(alreadyColoredTextDest->getPixel(2, 0) == 0xFFFFFFFFU);
     auto paletteCopySource = std::make_shared<Bitmap>(
         2, 1, 8, std::vector<std::uint32_t>{0xFF000000U, 0xFF112233U});
     paletteCopySource->setImagePalette(std::make_shared<Palette>(
