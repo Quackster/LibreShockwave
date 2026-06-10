@@ -1278,6 +1278,15 @@ bool CastLibManager::copyMemberMedia(int targetCastLibNumber,
         target->setPaletteData(clonePalette(*palette));
         return true;
     }
+    if (target->isScript() && source->isScript()) {
+        auto sourceCastLibObject = getCastLib(sourceCastLib);
+        auto script = sourceCastLibObject ? sourceCastLibObject->getScript(source->memberNum()) : nullptr;
+        if (!script) {
+            return false;
+        }
+        target->setRuntimeScript(std::move(script));
+        return true;
+    }
     return false;
 }
 

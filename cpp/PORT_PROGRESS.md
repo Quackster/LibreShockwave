@@ -217,6 +217,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Runtime-created cast members can now erase their runtime payload, expose `#empty`, and be reused in place as a new dynamic member type.
 - Runtime text content can now be stored on cast-member wrappers and survives through the text/field property surface until the runtime payload is erased or reused.
 - Runtime palette data can now be stored on cast-member wrappers and clears with the rest of the runtime payload on erase/reuse.
+- Runtime script payloads can now be stored on cast-member wrappers and clear with the rest of the runtime payload on erase/reuse.
 
 ### Cast Library Manager Foundation
 
@@ -226,7 +227,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Bitmap cast-member `paletteRef`/`palette` getters now expose runtime palette metadata first, then fall back to embedded BitmapInfo palette references and built-in palette symbols.
 - Bitmap cast-member `paletteRef`/`palette` setters now resolve built-in symbols, palette member refs, and named runtime palette members through the CastLibManager palette surface while storing the member-level override and applying it to existing runtime bitmaps.
 - `player::cast::CastLibManager` ports DirectorFile-backed cast-library initialization from MCsL/CAS* chunks, castLib/member number and name lookup, registry-visible member filtering, external-cast cache keys, pending external load tracking, preload-mode loading, and builtin callback installation.
-- Runtime bitmap member image mutation, direct raw-media bitmap assignment, cached imported-image assignment, Director BITD imported-media assignment, dynamic member creation/reuse, dynamic member `erase`, dynamic field text mutation, dynamic palette storage and media copy, field provider lookup/setter callbacks, text-like member media copy, mutable and pinned registration-point properties, dynamic bitmap member sprite rendering, dynamic text sprite baking, common text styling property mutation, editable field input mutation, and editable field overlay/clipboard helper state are available for existing cast libraries; non-bitmap imported media payload decoding, platform overlay drawing, and remaining CastLibProvider edge cases remain deferred to later player runtime slices.
+- Runtime bitmap member image mutation, direct raw-media bitmap assignment, cached imported-image assignment, Director BITD imported-media assignment, dynamic member creation/reuse, dynamic member `erase`, dynamic field text mutation, dynamic palette storage and media copy, script member type properties and script-to-script media copy, field provider lookup/setter callbacks, text-like member media copy, mutable and pinned registration-point properties, dynamic bitmap member sprite rendering, dynamic text sprite baking, common text styling property mutation, editable field input mutation, and editable field overlay/clipboard helper state are available for existing cast libraries; non-bitmap imported media payload decoding, platform overlay drawing, and remaining CastLibProvider edge cases remain deferred to later player runtime slices.
 
 ### Bitmap Resolver Foundation
 
@@ -564,6 +565,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `CastLibManager::setMemberProp("media", castMemberRef)` now clones palette member colors into palette targets, while palette resolution by member/name prefers runtime payloads before file-backed CLUT fallback.
 - `CastLibManager::callMemberMethod("duplicate")` now shares palette data between palette members, accepts cast-member refs, encoded slot targets, and raw member-number targets, and supports copying an argument palette into an empty receiver.
 
+### Runtime Script Media Copy Foundation
+
+- `CastMember` now stores runtime script payloads for dynamic script members.
+- `CastLib::getMemberProp("scriptType")` exposes runtime/file-backed script chunk types and `member.text` reports Director-compatible empty text for script members.
+- `CastLibManager::setMemberProp("media", castMemberRef)` now copies script payloads between script members while rejecting incompatible targets.
+
 ### Runtime Cast Member RegPoint Foundation
 
 - `cast::CastMember` now tracks Java-style pinned registration-point state: authored members preserve their member regPoint across image/media assignments, dynamic/reused members adopt assigned bitmap anchors until explicitly pinned, and copied bitmap media inherits the source member's pin state.
@@ -834,7 +841,7 @@ Result:
 - ImageBuiltins image creation, invalid-dimension handling, white fill defaults, built-in/system palette metadata, provider-resolved member palette metadata, string/ilk behavior, and `importFileInto` callback delegation passed through the same CTest executable.
 - Runtime member image assignment, direct raw-media `LSWI`/Director `DTIB`/BITD bitmap assignment, cached `LSWI` and Director `DTIB`/BITD `importFileInto` assignment, imported-image alpha preservation, imported anchor-point propagation, indexed imported-media palette metadata, runtime member property reflection, authored bitmap palette override decoding, and Player SpriteBaker live runtime bitmap rendering passed through the same CTest executable.
 - Runtime dynamic member creation, named encoded slot creation, `new(#type, castLib)` callback creation, stable authored member counts, and dynamic member name/type lookup passed through the same CTest executable.
-- Common cast-member `number`, `memberNum`, `castLibNum`, `castLib`, `script`, `scriptText`, `mediaReady`, Director-facing `type`, and bitmap `paletteRef`/`palette` property getters/setters passed through the same CTest executable.
+- Common cast-member `number`, `memberNum`, `castLibNum`, `castLib`, `script`, `scriptText`, `scriptType`, script-member empty `text`, `mediaReady`, Director-facing `type`, and bitmap `paletteRef`/`palette` property getters/setters passed through the same CTest executable.
 - Runtime-created bitmap member render sprites, runtime registration-point placement, Player StageRenderer-to-CastLibManager resolver wiring, SpriteBaker live dynamic bitmap baking, and rendered frame pixels for dynamic bitmap sprites passed through the same CTest executable.
 - Dynamic member `erase`, `#empty` type reflection, first erased-slot reuse, cast-member method callback routing, and Player sprite binding cleanup on slot retirement passed through the same CTest executable.
 - Runtime field text storage, `member.text`/`member.html`/text-like `member.media` mutation, field lookup by name/number/encoded reference, builtin `field`, and field setter callback routing passed through the same CTest executable.
@@ -843,6 +850,7 @@ Result:
 - Runtime text-like `media` assignment from another cast member, including copied text content and style state through the cast-member property callback, passed through the same CTest executable.
 - Runtime and file-backed bitmap `media` assignment from another cast member, including decoded BITD pixels, script-modified runtime copies, and registration-point propagation, passed through the same CTest executable.
 - Runtime palette payload storage, `member.color` list exposure, palette member lookup by member/name, palette-to-palette `media` copying, and palette-member `duplicate` target handling passed through the same CTest executable.
+- Runtime script payload storage plus script-to-script `media` copying and incompatible target rejection passed through the same CTest executable.
 - Runtime cast-member `regPoint` property mutation, non-point rejection, member-method sub-property reads, live runtime-bitmap anchor synchronization, authored-member pinned image/import assignment, copied-media pin inheritance, and dynamic-member unpinned image assignment passed through the same CTest executable.
 - Runtime text-like member `charPosToLoc`/`locToCharPos` method dispatch, no-renderer fallbacks, builtin callback routing, and Player text-renderer wiring passed through the same CTest executable.
 - Runtime text `lineCount`/`line` properties plus cast-member `getProp` and `count(#char/#word/#line/#item)` method helpers passed through the same CTest executable.
@@ -1055,4 +1063,5 @@ Result:
 - `37b19cb3 Port C++ member type surface`
 - `3f81ef7b Port C++ bitmap member palette refs`
 - `21ff6605 Port C++ bitmap member palette setters`
-- Current checkpoint commit message: `Port C++ bitmap palette override decoding`
+- `b951b032 Port C++ bitmap palette override decoding`
+- Current checkpoint commit message: `Port C++ script member media copy`

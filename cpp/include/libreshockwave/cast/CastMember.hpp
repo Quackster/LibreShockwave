@@ -13,6 +13,7 @@
 
 namespace libreshockwave::chunks {
 class CastMemberChunk;
+class ScriptChunk;
 }
 
 namespace libreshockwave::bitmap {
@@ -41,6 +42,8 @@ public:
     [[nodiscard]] const std::optional<FilmLoopInfo>& filmLoopInfo() const;
     [[nodiscard]] const std::optional<ScriptType>& scriptType() const;
     [[nodiscard]] const std::optional<Shockwave3DInfo>& shockwave3DInfo() const;
+    [[nodiscard]] std::shared_ptr<chunks::ScriptChunk> runtimeScript() const;
+    void setRuntimeScript(std::shared_ptr<chunks::ScriptChunk> script);
 
     [[nodiscard]] bool isBitmap() const;
     [[nodiscard]] bool isText() const;
@@ -133,6 +136,7 @@ private:
     std::optional<FilmLoopInfo> filmLoopInfo_;
     std::optional<ScriptType> scriptType_;
     std::optional<Shockwave3DInfo> shockwave3DInfo_;
+    std::shared_ptr<chunks::ScriptChunk> runtimeScript_;
     std::shared_ptr<bitmap::Bitmap> runtimeBitmap_;
     std::shared_ptr<const bitmap::Palette> runtimePaletteOverride_;
     int paletteRefCastLib_ = -1;

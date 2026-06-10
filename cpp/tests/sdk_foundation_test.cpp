@@ -13144,6 +13144,49 @@ void testCastLibManagerFoundation() {
     assert(playerMethodLoc->y == 45);
     assert(playerTextRenderer.lastText == "Player text");
 
+    const auto sourceScriptMember = manager.createMember(1, "script");
+    const auto* sourceScriptRef = sourceScriptMember.asCastMemberRef();
+    assert(sourceScriptRef != nullptr);
+    auto sourceScriptRuntime = manager.resolveMember(1, sourceScriptRef->memberNum());
+    assert(sourceScriptRuntime != nullptr);
+    sourceScriptRuntime->setRuntimeScript(std::make_shared<ScriptChunk>(nullptr,
+                                                                         ChunkId(300),
+                                                                         ScriptChunkType::Behavior,
+                                                                         0,
+                                                                         std::vector<ScriptChunk::Handler>{},
+                                                                         std::vector<ScriptChunk::LiteralEntry>{},
+                                                                         std::vector<ScriptChunk::PropertyEntry>{},
+                                                                         std::vector<ScriptChunk::GlobalEntry>{},
+                                                                         std::vector<std::uint8_t>{}));
+    assert(manager.getMemberProp(1, sourceScriptRef->memberNum(), "script").asScriptRef() != nullptr);
+    assert(manager.getMemberProp(1, sourceScriptRef->memberNum(), "scriptType").stringValue() == "behavior");
+    assert(manager.getMemberProp(1, sourceScriptRef->memberNum(), "text").stringValue().empty());
+
+    const auto copiedScriptMember = manager.createMember(1, "script");
+    const auto* copiedScriptRef = copiedScriptMember.asCastMemberRef();
+    assert(copiedScriptRef != nullptr);
+    assert(manager.setMemberProp(1,
+                                 copiedScriptRef->memberNum(),
+                                 "media",
+                                 Datum::castMemberRef(CastLibId(1), MemberId(sourceScriptRef->memberNum()))));
+    const auto copiedScriptProp = manager.getMemberProp(1, copiedScriptRef->memberNum(), "script").asScriptRef();
+    assert(copiedScriptProp != nullptr);
+    assert(copiedScriptProp->memberRef.castLib == 1);
+    assert(copiedScriptProp->memberRef.memberNum() == copiedScriptRef->memberNum());
+    assert(manager.getMemberProp(1, copiedScriptRef->memberNum(), "scriptType").stringValue() == "behavior");
+    const auto secondCopiedScriptMember = manager.createMember(1, "script");
+    const auto* secondCopiedScriptRef = secondCopiedScriptMember.asCastMemberRef();
+    assert(secondCopiedScriptRef != nullptr);
+    assert(manager.setMemberProp(1,
+                                 secondCopiedScriptRef->memberNum(),
+                                 "media",
+                                 Datum::castMemberRef(CastLibId(1), MemberId(copiedScriptRef->memberNum()))));
+    assert(manager.getMemberProp(1, secondCopiedScriptRef->memberNum(), "scriptType").stringValue() == "behavior");
+    assert(!manager.setMemberProp(1,
+                                  2,
+                                  "media",
+                                  Datum::castMemberRef(CastLibId(1), MemberId(copiedScriptRef->memberNum()))));
+
     const auto matching = manager.getMatchingCastLibNumbersByUrl("https://cdn.example/ext.cst");
     assert(matching.size() == 1);
     assert(matching[0] == 2);

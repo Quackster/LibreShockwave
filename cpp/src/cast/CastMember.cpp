@@ -43,6 +43,10 @@ const std::optional<ShapeInfo>& CastMember::shapeInfo() const { return shapeInfo
 const std::optional<FilmLoopInfo>& CastMember::filmLoopInfo() const { return filmLoopInfo_; }
 const std::optional<ScriptType>& CastMember::scriptType() const { return scriptType_; }
 const std::optional<Shockwave3DInfo>& CastMember::shockwave3DInfo() const { return shockwave3DInfo_; }
+std::shared_ptr<chunks::ScriptChunk> CastMember::runtimeScript() const { return runtimeScript_; }
+void CastMember::setRuntimeScript(std::shared_ptr<chunks::ScriptChunk> script) {
+    runtimeScript_ = std::move(script);
+}
 
 bool CastMember::isBitmap() const { return memberType_ == MemberType::Bitmap; }
 bool CastMember::isText() const { return memberType_ == MemberType::Text; }
@@ -309,6 +313,7 @@ void CastMember::resetRuntimePayload() {
     filmLoopInfo_.reset();
     scriptType_.reset();
     shockwave3DInfo_.reset();
+    runtimeScript_.reset();
     runtimeBitmap_.reset();
     runtimePaletteOverride_.reset();
     paletteRefCastLib_ = -1;

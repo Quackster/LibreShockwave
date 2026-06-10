@@ -83,6 +83,17 @@ std::string directorMemberTypeName(const std::shared_ptr<libreshockwave::cast::C
     return std::string(libreshockwave::cast::name(type));
 }
 
+std::string scriptChunkTypePropName(chunks::ScriptChunkType type) {
+    switch (type) {
+        case chunks::ScriptChunkType::Score: return "score";
+        case chunks::ScriptChunkType::Behavior: return "behavior";
+        case chunks::ScriptChunkType::MovieScript: return "movie_script";
+        case chunks::ScriptChunkType::Parent: return "parent";
+        case chunks::ScriptChunkType::Unknown: return "unknown";
+    }
+    return "unknown";
+}
+
 lingo::Datum bitmapPaletteRefDatum(const std::shared_ptr<libreshockwave::cast::CastMember>& member,
                                    id::CastLibId castLibId) {
     if (!member || !member->isBitmap()) {
@@ -549,6 +560,9 @@ std::shared_ptr<chunks::ScriptChunk> CastLib::getScript(int memberNumber) {
     if (!isLoaded()) {
         load();
     }
+    if (auto member = getMember(memberNumber); member && member->runtimeScript()) {
+        return member->runtimeScript();
+    }
     if (const auto found = scripts_.find(memberNumber); found != scripts_.end()) {
         return found->second;
     }
@@ -672,6 +686,13 @@ lingo::Datum CastLib::getMemberProp(int memberNumber, const std::string& propNam
     }
     if (member->isBitmap() && (prop == "paletteref" || prop == "palette")) {
         return bitmapPaletteRefDatum(member, castLibId_);
+    }
+    if (member->isScript()) {
+        if (prop == "text") return stringDatum("");
+        if (prop == "scripttype") {
+            auto script = getScript(memberNumber);
+            return script ? stringDatum(scriptChunkTypePropName(script->scriptType())) : lingo::Datum::voidValue();
+        }
     }
     if (prop == "width") return lingo::Datum::of(member->width());
     if (prop == "height") return lingo::Datum::of(member->height());
