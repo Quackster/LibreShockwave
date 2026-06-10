@@ -19824,6 +19824,55 @@ void testCastLibManagerFoundation() {
     assert(cachedFileNameHandler.fileName == "runtime/newCast.cct");
     assert(cachedFileNameNotifications == 1);
 
+    class ExternalCastFallbackNetProvider final : public NetProvider {
+    public:
+        [[nodiscard]] int preloadNetThing(std::string url) override {
+            preloadUrls.push_back(std::move(url));
+            return nextTaskId++;
+        }
+
+        [[nodiscard]] int postNetText(std::string, std::string) override { return nextTaskId++; }
+        [[nodiscard]] bool netDone(std::optional<int> = std::nullopt) const override { return true; }
+        [[nodiscard]] std::string netTextResult(std::optional<int> = std::nullopt) const override { return {}; }
+        [[nodiscard]] int netError(std::optional<int> = std::nullopt) const override { return 0; }
+        [[nodiscard]] std::string_view getStreamStatus(std::optional<int> = std::nullopt) const override { return "Complete"; }
+        [[nodiscard]] Datum getStreamStatusDatum(std::optional<int> = std::nullopt) const override { return Datum::propList(); }
+        [[nodiscard]] Datum getStreamStatusDatum(std::string_view) const override { return Datum::propList(); }
+
+        std::vector<std::string> preloadUrls;
+        int nextTaskId = 900;
+    };
+
+    ExternalCastFallbackNetProvider callbackProvider;
+    std::vector<std::pair<int, std::string>> fallbackRequests;
+    Player callbackFileNamePlayer(file,
+                                  &callbackProvider,
+                                  [&fallbackRequests](int castLibNumber, const std::string& fileName) {
+                                      fallbackRequests.emplace_back(castLibNumber, fileName);
+                                  });
+    RecordingExternalCastLoadHandler callbackFileNameHandler;
+    callbackFileNamePlayer.addExternalCastLoadHandler(&callbackFileNameHandler);
+    assert(callbackFileNamePlayer.builtinContext().netManager == &callbackProvider);
+    assert(callbackFileNamePlayer.castLibManager().setCastLibProp(
+        2,
+        "fileName",
+        Datum::of(std::string("runtime/missingCast.cct"))));
+    assert((fallbackRequests == std::vector<std::pair<int, std::string>>{
+        {2, "runtime/missingCast.cct"}
+    }));
+    auto callbackFileNameCast = callbackFileNamePlayer.castLibManager().castLibs().find(2);
+    assert(callbackFileNameCast != callbackFileNamePlayer.castLibManager().castLibs().end());
+    assert(callbackFileNameCast->second != nullptr);
+    assert(!callbackFileNameCast->second->isLoaded());
+    callbackFileNamePlayer.onNetFetchComplete("runtime/missingCast.cct", externalCastData);
+    callbackFileNameCast = callbackFileNamePlayer.castLibManager().castLibs().find(2);
+    assert(callbackFileNameCast != callbackFileNamePlayer.castLibManager().castLibs().end());
+    assert(callbackFileNameCast->second != nullptr);
+    assert(callbackFileNameCast->second->isLoaded());
+    assert(callbackFileNameHandler.player == &callbackFileNamePlayer);
+    assert(callbackFileNameHandler.castLibNumber == 2);
+    assert(callbackFileNameHandler.fileName == "runtime/missingCast.cct");
+
     CastLib typeSurfaceCast(4, nullptr, nullptr);
     auto buttonMember = typeSurfaceCast.createDynamicMember("button");
     assert(buttonMember != nullptr);

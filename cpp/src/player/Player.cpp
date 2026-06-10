@@ -156,6 +156,14 @@ Player::Player(std::shared_ptr<DirectorFile> file, net::NetProvider* netProvider
     setNetProvider(netProvider);
 }
 
+Player::Player(std::shared_ptr<DirectorFile> file,
+               net::NetProvider* netProvider,
+               CastDataRequestCallback castDataRequestCallback)
+    : Player(std::move(file)) {
+    castDataRequestCallback_ = std::move(castDataRequestCallback);
+    setNetProvider(netProvider);
+}
+
 Player::~Player() {
     if (debugController_) {
         debugController_->reset();
@@ -1333,11 +1341,15 @@ void Player::loadCastFromNetCache(int castLibNumber, const std::string& fileName
     }
 
     const auto baseName = util::getFileNameWithoutExtension(util::getFileName(fileName));
-    if (baseName.empty()) {
-        return;
+    if (!baseName.empty()) {
+        if (auto cached = castLibManager_.getCachedExternalData(baseName); cached.has_value()) {
+            (void)loadExternalCastFromCachedData(castLibNumber, *cached);
+            return;
+        }
     }
-    if (auto cached = castLibManager_.getCachedExternalData(baseName); cached.has_value()) {
-        (void)loadExternalCastFromCachedData(castLibNumber, *cached);
+
+    if (castDataRequestCallback_) {
+        castDataRequestCallback_(castLibNumber, fileName);
     }
 }
 

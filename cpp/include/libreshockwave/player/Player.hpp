@@ -60,9 +60,13 @@ class ExternalCastLoadHandler;
 class Player {
 public:
     using ErrorListener = std::function<void(std::string_view message, std::string_view errorDetail)>;
+    using CastDataRequestCallback = cast::CastLibManager::CastDataRequestCallback;
 
     explicit Player(std::shared_ptr<DirectorFile> file = nullptr);
     Player(std::shared_ptr<DirectorFile> file, net::NetProvider* netProvider);
+    Player(std::shared_ptr<DirectorFile> file,
+           net::NetProvider* netProvider,
+           CastDataRequestCallback castDataRequestCallback);
     ~Player();
 
     Player(const Player&) = delete;
@@ -203,6 +207,7 @@ private:
     std::mutex vmThreadMutex_;
     std::thread vmThread_;
     net::NetProvider* overrideNetProvider_{nullptr};
+    CastDataRequestCallback castDataRequestCallback_;
     int tempo_{15};
     bool debugEnabled_{false};
     std::function<void(const PlayerEventInfo&)> eventListener_;
