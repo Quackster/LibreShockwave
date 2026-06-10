@@ -12547,7 +12547,7 @@ void testCastLibManagerFoundation() {
 
     const auto namedRuntime = manager.createMember("Runtime Field", "field");
     assert(namedRuntime.intValue() == ((1 << 16) | 10001));
-    assert(manager.getMemberProp(1, 10001, "type").asSymbol()->name == "text");
+    assert(manager.getMemberProp(1, 10001, "type").asSymbol()->name == "field");
     assert(manager.getMemberProp(1, 10001, "name").stringValue() == "Runtime Field");
     assert(manager.getMemberByName(0, "Runtime Field").asCastMemberRef()->memberNum() == 10001);
     assert(manager.findCastMemberByName("Runtime Field")->memberNum() == 10001);
@@ -13117,6 +13117,11 @@ void testCastLibManagerFoundation() {
     assert(requestedSlots[0] == 2);
     manager.clearPendingExternalLoad(2);
     assert(manager.getRequestedExternalCastSlots("newCast.cst").empty());
+
+    CastLib typeSurfaceCast(4, nullptr, nullptr);
+    auto buttonMember = typeSurfaceCast.createDynamicMember("button");
+    assert(buttonMember != nullptr);
+    assert(typeSurfaceCast.getMemberProp(buttonMember->memberNum(), "type").asSymbol()->name == "field");
 }
 
 void testBitmapResolverFoundation() {

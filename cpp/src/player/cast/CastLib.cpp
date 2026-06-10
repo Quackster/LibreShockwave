@@ -68,6 +68,21 @@ lingo::Datum stringDatum(const std::string& value) {
     return lingo::Datum::of(value);
 }
 
+std::string directorMemberTypeName(const std::shared_ptr<libreshockwave::cast::CastMember>& member) {
+    if (!member || member->memberType() == libreshockwave::cast::MemberType::Null) {
+        return "empty";
+    }
+    const auto type = member->memberType();
+    if (type == libreshockwave::cast::MemberType::Text ||
+        type == libreshockwave::cast::MemberType::Button ||
+        (type == libreshockwave::cast::MemberType::Xtra &&
+         member->rawChunk() != nullptr &&
+         member->rawChunk()->isTextXtra())) {
+        return "field";
+    }
+    return std::string(libreshockwave::cast::name(type));
+}
+
 std::string normalizeTextLineEndings(std::string value) {
     std::string result;
     result.reserve(value.size());
@@ -561,12 +576,7 @@ lingo::Datum CastLib::getMemberProp(int memberNumber, const std::string& propNam
     if (prop == "name") return stringDatum(member->name());
     if (prop == "number") return lingo::Datum::of(id::SlotId::of(castLibId_, id::MemberId(memberNumber)).value());
     if (prop == "membernum") return lingo::Datum::of(memberNumber);
-    if (prop == "type") {
-        if (member->memberType() == libreshockwave::cast::MemberType::Null) {
-            return lingo::Datum::symbol("empty");
-        }
-        return lingo::Datum::symbol(std::string(libreshockwave::cast::name(member->memberType())));
-    }
+    if (prop == "type") return lingo::Datum::symbol(directorMemberTypeName(member));
     if (prop == "castlibnum") return lingo::Datum::of(castLibId_.value());
     if (prop == "castlib") return lingo::Datum::castLibRef(castLibId_);
     if (prop == "script") {
