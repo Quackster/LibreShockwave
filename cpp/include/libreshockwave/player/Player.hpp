@@ -128,6 +128,8 @@ private:
     void prepareMovieFoundation();
     void applyInitialBuiltinVariables();
     void processUpdatingObjects();
+    void loadCastFromNetCache(int castLibNumber, const std::string& fileName);
+    void handleExternalCastFetch(const std::string& url, const std::vector<std::uint8_t>& data);
     [[nodiscard]] bool applyExternalCastDataNow(int castLibNumber,
                                                 const std::vector<std::uint8_t>& data,
                                                 std::function<void()> afterLoad);

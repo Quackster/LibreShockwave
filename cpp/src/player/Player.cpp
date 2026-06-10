@@ -63,7 +63,9 @@ Player::Player(std::shared_ptr<DirectorFile> file)
       xtraManager_(),
       movieProperties_(file_.get()),
       spriteProperties_(&stageRenderer_.spriteRegistry()),
-      castLibManager_(file_),
+      castLibManager_(file_, [this](int castLibNumber, const std::string& fileName) {
+          loadCastFromNetCache(castLibNumber, fileName);
+      }),
       timeoutManager_(),
       soundManager_(file_.get()),
       bitmapCache_(),
@@ -418,6 +420,9 @@ void Player::wireComponents() {
     if (file_ != nullptr && !file_->basePath().empty()) {
         netManager_.setBasePath(file_->basePath());
     }
+    netManager_.setCompletionCallback([this](const std::string& url, const std::vector<std::uint8_t>& data) {
+        handleExternalCastFetch(url, data);
+    });
 
     movieProperties_.setInputState(&inputState_);
     movieProperties_.setEffectiveFrameSupplier([this] {
@@ -954,6 +959,42 @@ void Player::processUpdatingObjects() {
         } catch (...) {
             // Java's update-provider dispatch suppresses per-target handler failures.
         }
+    }
+}
+
+void Player::loadCastFromNetCache(int castLibNumber, const std::string& fileName) {
+    if (fileName.empty()) {
+        return;
+    }
+
+    if (auto data = netManager_.getCachedData(fileName); data.has_value()) {
+        (void)loadExternalCastFromCachedData(castLibNumber, *data);
+        return;
+    }
+
+    const auto baseName = util::getFileNameWithoutExtension(util::getFileName(fileName));
+    if (baseName.empty()) {
+        return;
+    }
+    if (auto cached = castLibManager_.getCachedExternalData(baseName); cached.has_value()) {
+        (void)loadExternalCastFromCachedData(castLibNumber, *cached);
+    }
+}
+
+void Player::handleExternalCastFetch(const std::string& url, const std::vector<std::uint8_t>& data) {
+    castLibManager_.cacheExternalData(url, data);
+    try {
+        auto castNumbers = castLibManager_.getRequestedExternalCastSlots(url);
+        for (const int castLibNumber : castLibManager_.getMatchingCastLibNumbersByUrl(url)) {
+            if (std::find(castNumbers.begin(), castNumbers.end(), castLibNumber) == castNumbers.end()) {
+                castNumbers.push_back(castLibNumber);
+            }
+        }
+
+        for (const int castLibNumber : castNumbers) {
+            (void)loadExternalCastFromCachedData(castLibNumber, data);
+        }
+    } catch (...) {
     }
 }
 

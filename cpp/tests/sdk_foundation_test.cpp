@@ -18945,6 +18945,63 @@ void testCastLibManagerFoundation() {
     }));
     assert(compatibilityCastLoadNotifications == 1);
 
+    Player fetchPlayer(file);
+    RecordingExternalCastLoadHandler fetchLoadHandler;
+    std::vector<ExternalCastLoadEvent> fetchLoadEvents;
+    int fetchCompatibilityNotifications = 0;
+    int fetchCount = 0;
+    fetchPlayer.addExternalCastLoadHandler(&fetchLoadHandler);
+    fetchPlayer.setExternalCastLoadListener([&fetchLoadEvents](const ExternalCastLoadEvent& event) {
+        fetchLoadEvents.push_back(event);
+    });
+    fetchPlayer.setCastLoadedListener([&fetchCompatibilityNotifications] {
+        ++fetchCompatibilityNotifications;
+    });
+    fetchPlayer.netManager().setFetchHandler([&](const NetTask& task) {
+        ++fetchCount;
+        assert(task.originalUrl() == "ext.cct");
+        return NetManager::LoadResult::success(externalCastData);
+    });
+    const int fetchRevisionBeforeExternalLoad = fetchPlayer.stageRenderer().spriteRegistry().revision();
+    assert(fetchPlayer.preloadAllCasts() == 1);
+    auto fetchedExternalCast = fetchPlayer.castLibManager().castLibs().find(2);
+    assert(fetchedExternalCast != fetchPlayer.castLibManager().castLibs().end());
+    assert(fetchedExternalCast->second != nullptr);
+    assert(fetchedExternalCast->second->isLoaded());
+    assert(fetchCount == 1);
+    assert(fetchPlayer.netManager().getTask(1)->state() == NetTaskState::Completed);
+    assert(fetchPlayer.castLibManager().getCachedExternalData("ext").value() == externalCastData);
+    assert(fetchPlayer.stageRenderer().spriteRegistry().revision() ==
+           fetchRevisionBeforeExternalLoad + 1);
+    assert(fetchLoadHandler.player == &fetchPlayer);
+    assert(fetchLoadHandler.castLibNumber == 2);
+    assert(fetchLoadHandler.fileName == "casts/ext.cct");
+    assert((fetchLoadEvents == std::vector<ExternalCastLoadEvent>{
+        ExternalCastLoadEvent{2, "casts/ext.cct"}
+    }));
+    assert(fetchCompatibilityNotifications == 1);
+
+    Player cachedFileNamePlayer(file);
+    RecordingExternalCastLoadHandler cachedFileNameHandler;
+    int cachedFileNameNotifications = 0;
+    cachedFileNamePlayer.addExternalCastLoadHandler(&cachedFileNameHandler);
+    cachedFileNamePlayer.setCastLoadedListener([&cachedFileNameNotifications] {
+        ++cachedFileNameNotifications;
+    });
+    cachedFileNamePlayer.netManager().cacheData("runtime/newCast.cct", externalCastData);
+    assert(cachedFileNamePlayer.castLibManager().setCastLibProp(
+        2,
+        "fileName",
+        Datum::of(std::string("runtime/newCast.cct"))));
+    auto cachedFileNameCast = cachedFileNamePlayer.castLibManager().castLibs().find(2);
+    assert(cachedFileNameCast != cachedFileNamePlayer.castLibManager().castLibs().end());
+    assert(cachedFileNameCast->second != nullptr);
+    assert(cachedFileNameCast->second->isLoaded());
+    assert(cachedFileNameHandler.player == &cachedFileNamePlayer);
+    assert(cachedFileNameHandler.castLibNumber == 2);
+    assert(cachedFileNameHandler.fileName == "runtime/newCast.cct");
+    assert(cachedFileNameNotifications == 1);
+
     CastLib typeSurfaceCast(4, nullptr, nullptr);
     auto buttonMember = typeSurfaceCast.createDynamicMember("button");
     assert(buttonMember != nullptr);
