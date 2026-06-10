@@ -75,6 +75,7 @@ struct BuiltinContext {
     using GetPrefHandler = std::function<Datum(const std::string& name)>;
     using SetPrefHandler = std::function<Datum(const std::string& name, const Datum& value)>;
     using OutputHandler = std::function<void(std::string_view kind, const std::string& text)>;
+    using AlertHookHandler = std::function<bool(const std::string& alertType, const std::string& text)>;
     using AlertHandler = std::function<bool(const std::string& text)>;
     using ImagePaletteResolver = std::function<std::optional<ResolvedPalette>(const Datum& paletteRef)>;
     using ImportFileIntoHandler = std::function<bool(const Datum::CastMemberRef& ref,
@@ -124,6 +125,7 @@ struct BuiltinContext {
     GetPrefHandler getPrefHandler;
     SetPrefHandler setPrefHandler;
     OutputHandler outputHandler;
+    AlertHookHandler alertHookHandler;
     AlertHandler alertHandler;
     ImagePaletteResolver imagePaletteResolver;
     ImportFileIntoHandler importFileIntoHandler;

@@ -413,12 +413,13 @@ void Player::wireComponents() {
         return std::nullopt;
     };
 
-    auto invokeTarget = [this, findEventHandler](const event::EventTarget& target,
-                                                 std::string_view handlerName,
-                                                 const std::vector<lingo::Datum>& args) {
+    auto executeTarget = [this, findEventHandler](const event::EventTarget& target,
+                                                  std::string_view handlerName,
+                                                  const std::vector<lingo::Datum>& args)
+        -> std::optional<std::pair<lingo::Datum, bool>> {
         auto handler = findEventHandler(target, handlerName);
         if (!handler || handler->script == nullptr) {
-            return event::HandlerResult{false, false};
+            return std::nullopt;
         }
 
         lingo::Datum receiver = lingo::Datum::voidValue();
@@ -434,8 +435,9 @@ void Player::wireComponents() {
             passed = true;
             eventDispatcher().pass();
         });
+        lingo::Datum result = lingo::Datum::voidValue();
         try {
-            (void)vm_.executeHandler(*handler->script, handler->handler, args, receiver);
+            result = vm_.executeHandler(*handler->script, handler->handler, args, receiver);
         } catch (...) {
             vm_.clearPassCallback();
             vm_.resetEventStopped();
@@ -446,7 +448,17 @@ void Player::wireComponents() {
             eventDispatcher().stopEvent();
             vm_.resetEventStopped();
         }
-        return event::HandlerResult{true, passed};
+        return std::make_pair(result, passed);
+    };
+
+    auto invokeTarget = [executeTarget](const event::EventTarget& target,
+                                        std::string_view handlerName,
+                                        const std::vector<lingo::Datum>& args) {
+        auto result = executeTarget(target, handlerName, args);
+        if (!result.has_value()) {
+            return event::HandlerResult{false, false};
+        }
+        return event::HandlerResult{true, result->second};
     };
 
     context.callTargetHandler = [this, invokeTarget](const lingo::Datum& target,
@@ -486,6 +498,25 @@ void Player::wireComponents() {
             (void)invokeTarget(eventTarget, handlerName, args);
         }
         return lingo::Datum::voidValue();
+    };
+    context.alertHookHandler = [this, executeTarget](const std::string& alertType, const std::string& text) {
+        const auto& hook = movieProperties_.alertHook();
+        if (hook.type() != lingo::DatumType::ScriptInstanceRef) {
+            return false;
+        }
+
+        event::EventTarget eventTarget;
+        eventTarget.kind = event::EventTargetKind::ScriptInstance;
+        eventTarget.scriptInstance = hook;
+        try {
+            const auto result = executeTarget(
+                eventTarget,
+                "alertHook",
+                {lingo::Datum::of(alertType), lingo::Datum::of(text)});
+            return result.has_value() && result->first.boolValue();
+        } catch (...) {
+            return false;
+        }
     };
 
     eventDispatcher().setScriptNamesResolver([this](const std::shared_ptr<chunks::ScriptChunk>& script) {

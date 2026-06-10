@@ -366,6 +366,22 @@ Datum LingoVM::callBuiltin(std::string_view handlerNameValue, const std::vector<
     return Datum::voidValue();
 }
 
+bool LingoVM::fireAlertHook(std::string_view errorMessage) {
+    return fireAlertHook("Alert", errorMessage);
+}
+
+bool LingoVM::fireAlertHook(std::string_view errorType, std::string_view errorMessage) {
+    if (alertHookDepth_ > 0 || !builtinContext_.alertHookHandler) {
+        return false;
+    }
+
+    try {
+        return builtinContext_.alertHookHandler(std::string(errorType), std::string(errorMessage));
+    } catch (...) {
+        return false;
+    }
+}
+
 Datum LingoVM::executeHandler(const chunks::ScriptChunk& script,
                               const chunks::ScriptChunk::Handler& handler,
                               const std::vector<Datum>& args,
@@ -375,6 +391,12 @@ Datum LingoVM::executeHandler(const chunks::ScriptChunk& script,
     }
     if (callStack_.size() >= MAX_CALL_STACK_DEPTH) {
         throw LingoException("Call stack overflow (max " + std::to_string(MAX_CALL_STACK_DEPTH) + " frames)");
+    }
+
+    const std::string currentHandlerName = handlerName(script, handler);
+    const bool isAlertHookHandler = equalsIgnoreCase(currentHandlerName, "alertHook");
+    if (isAlertHookHandler && alertHookDepth_ > 0) {
+        return Datum::voidValue();
     }
 
     std::vector<Datum> effectiveArgs = args;
@@ -387,6 +409,19 @@ Datum LingoVM::executeHandler(const chunks::ScriptChunk& script,
     callStack_.emplace_back(&script, handler, std::move(effectiveArgs), receiver, firstParamDeclaredMe);
     Scope& scope = callStack_.back();
     Datum result = Datum::voidValue();
+    bool alertHookDepthIncremented = false;
+    if (isAlertHookHandler) {
+        ++alertHookDepth_;
+        alertHookDepthIncremented = true;
+    }
+    auto leaveHandler = [&] {
+        if (alertHookDepthIncremented) {
+            --alertHookDepth_;
+            alertHookDepthIncremented = false;
+        }
+        callStack_.pop_back();
+        flushDeferredScriptInstanceCalls();
+    };
     try {
         if (const auto* first = scope.currentInstruction()) {
             auto callbacks = callbacksFor(script);
@@ -402,13 +437,22 @@ Datum LingoVM::executeHandler(const chunks::ScriptChunk& script,
             }
         }
         result = scope.returnValue();
+    } catch (const std::exception& error) {
+        if (!isAlertHookHandler && fireAlertHook("Script Error", error.what())) {
+            leaveHandler();
+            return Datum::voidValue();
+        }
+        leaveHandler();
+        throw;
     } catch (...) {
-        callStack_.pop_back();
-        flushDeferredScriptInstanceCalls();
+        if (!isAlertHookHandler && fireAlertHook("Script Error", "Unknown script error")) {
+            leaveHandler();
+            return Datum::voidValue();
+        }
+        leaveHandler();
         throw;
     }
-    callStack_.pop_back();
-    flushDeferredScriptInstanceCalls();
+    leaveHandler();
     return result;
 }
 

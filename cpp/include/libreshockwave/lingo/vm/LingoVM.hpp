@@ -98,6 +98,8 @@ public:
                                     const std::vector<Datum>& args,
                                     const Datum& receiver);
     [[nodiscard]] Datum callBuiltin(std::string_view handlerName, const std::vector<Datum>& args = {});
+    [[nodiscard]] bool fireAlertHook(std::string_view errorMessage);
+    [[nodiscard]] bool fireAlertHook(std::string_view errorType, std::string_view errorMessage);
     [[nodiscard]] Datum executeHandler(const chunks::ScriptChunk& script,
                                        const chunks::ScriptChunk::Handler& handler,
                                        const std::vector<Datum>& args = {},
@@ -142,6 +144,7 @@ private:
     bool inErrorState_{false};
     bool flushingDeferredScriptInstanceCalls_{false};
     bool flushingDeferredTasks_{false};
+    int alertHookDepth_{0};
     int stepLimit_{0};
     int randomSeed_{0};
     std::int64_t randomState_{0};

@@ -1198,6 +1198,8 @@ void testPlayerFacadeFoundation() {
     assert(player.builtinContext().soundManager == &player.soundManager());
     assert(player.builtinContext().spriteProperties == &player.spriteProperties());
     assert(player.builtinContext().timeoutManager == &player.timeoutManager());
+    assert(player.builtinContext().alertHookHandler);
+    assert(!player.builtinContext().alertHookHandler("Alert", "no hook"));
     assert(player.builtinRegistry().contains("puppetTempo"));
     assert(player.builtinRegistry().contains("preloadNetThing"));
 
@@ -1913,6 +1915,16 @@ void testBuiltinRegistryFoundation() {
     assert(outputMessages.size() == 2);
     assert(outputMessages.back().first == "ALERT");
     assert(outputMessages.back().second.empty());
+    std::pair<std::string, std::string> hookedAlert;
+    context.alertHookHandler = [&hookedAlert](const std::string& alertType, const std::string& text) {
+        hookedAlert = {alertType, text};
+        return true;
+    };
+    assert(registry.invoke("alert", context, {Datum::of(std::string("hooked"))}).isVoid());
+    assert(hookedAlert.first == "Alert");
+    assert(hookedAlert.second == "hooked");
+    assert(outputMessages.size() == 2);
+    context.alertHookHandler = {};
     std::string handledAlert;
     context.alertHandler = [&handledAlert](const std::string& text) {
         handledAlert = text;
@@ -5527,6 +5539,54 @@ void testLingoVmRuntimeFoundation() {
     vm.flushDeferredTasks();
     assert((deferredMethodTasks == std::vector<std::string>{"queued:closeThread:77"}));
     vm.builtinContext().callTargetHandler = {};
+
+    int alertHookCalls = 0;
+    vm.builtinContext().alertHookHandler = [&vm, &alertHookCalls](
+                                               const std::string& alertType,
+                                               const std::string& message) {
+        ++alertHookCalls;
+        assert(!vm.hasActiveCallStack());
+        assert(alertType == "Alert");
+        assert(message == "manual");
+        return true;
+    };
+    assert(vm.fireAlertHook("manual"));
+    assert(alertHookCalls == 1);
+
+    vm.opcodeRegistry().registerHandler(Opcode::ADD, [](ExecutionContext&) -> bool {
+        throw LingoException("alert boom");
+    });
+    vm.builtinContext().alertHookHandler = [&vm, &alertHookCalls](
+                                               const std::string& alertType,
+                                               const std::string& message) {
+        ++alertHookCalls;
+        assert(vm.hasActiveCallStack());
+        assert(alertType == "Script Error");
+        assert(message.find("alert boom") != std::string::npos);
+        return true;
+    };
+    assert(vm.executeHandler(script, stepLimitHandler).isVoid());
+    assert(alertHookCalls == 2);
+    assert(vm.callStackDepth() == 0);
+
+    vm.builtinContext().alertHookHandler = [&alertHookCalls](
+                                               const std::string& alertType,
+                                               const std::string& message) {
+        ++alertHookCalls;
+        assert(alertType == "Script Error");
+        assert(message.find("alert boom") != std::string::npos);
+        return false;
+    };
+    bool alertHookRethrew = false;
+    try {
+        (void)vm.executeHandler(script, stepLimitHandler);
+    } catch (const LingoException&) {
+        alertHookRethrew = true;
+    }
+    assert(alertHookRethrew);
+    assert(alertHookCalls == 3);
+    assert(vm.callStackDepth() == 0);
+    vm.builtinContext().alertHookHandler = {};
 
     vm.setStepLimit(1);
     bool threw = false;
