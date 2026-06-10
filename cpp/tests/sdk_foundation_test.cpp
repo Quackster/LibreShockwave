@@ -326,6 +326,7 @@ using libreshockwave::player::input::InputEvent;
 using libreshockwave::player::input::InputEventType;
 using libreshockwave::player::input::InputState;
 using libreshockwave::player::net::NetManager;
+using libreshockwave::player::net::NetProvider;
 using libreshockwave::player::net::NetTask;
 using libreshockwave::player::net::NetTaskMethod;
 using libreshockwave::player::net::NetTaskState;
@@ -3782,6 +3783,110 @@ void testPlayerFacadeFoundation() {
     assert(taskId == 1);
     assert(player.netManager().netDone(taskId));
     assert(player.netManager().netTextResult(taskId) == "OK");
+
+    class PlayerFacadeNetProvider final : public NetProvider {
+    public:
+        [[nodiscard]] int preloadNetThing(std::string url) override {
+            preloadUrls.push_back(std::move(url));
+            return nextTaskId++;
+        }
+
+        [[nodiscard]] int postNetText(std::string url, std::string postData) override {
+            postUrls.push_back(std::move(url));
+            postBodies.push_back(std::move(postData));
+            return nextTaskId++;
+        }
+
+        [[nodiscard]] bool netDone(std::optional<int> taskId = std::nullopt) const override {
+            lastQueriedTask = taskId;
+            return true;
+        }
+
+        [[nodiscard]] std::string netTextResult(std::optional<int> taskId = std::nullopt) const override {
+            lastQueriedTask = taskId;
+            return "OVERRIDE";
+        }
+
+        [[nodiscard]] int netError(std::optional<int> taskId = std::nullopt) const override {
+            lastQueriedTask = taskId;
+            return 0;
+        }
+
+        [[nodiscard]] std::string_view getStreamStatus(std::optional<int> taskId = std::nullopt) const override {
+            lastQueriedTask = taskId;
+            return "Complete";
+        }
+
+        [[nodiscard]] Datum getStreamStatusDatum(std::optional<int> taskId = std::nullopt) const override {
+            lastQueriedTask = taskId;
+            auto props = Datum::propList();
+            props.propListValue().put(Datum::of(std::string("state")), Datum::of(std::string("Override")));
+            props.propListValue().put(Datum::of(std::string("bytesSoFar")), Datum::of(8));
+            return props;
+        }
+
+        [[nodiscard]] Datum getStreamStatusDatum(std::string_view url) const override {
+            lastQueriedUrl = std::string(url);
+            auto props = Datum::propList();
+            props.propListValue().put(Datum::of(std::string("state")), Datum::of(std::string("OverrideUrl")));
+            props.propListValue().put(Datum::of(std::string("bytesSoFar")), Datum::of(9));
+            return props;
+        }
+
+        std::vector<std::string> preloadUrls;
+        std::vector<std::string> postUrls;
+        std::vector<std::string> postBodies;
+        mutable std::optional<int> lastQueriedTask;
+        mutable std::string lastQueriedUrl;
+        int nextTaskId = 700;
+    };
+
+    PlayerFacadeNetProvider overrideNetProvider;
+    player.setNetProvider(&overrideNetProvider);
+    const int overrideGetTask = player.builtinRegistry()
+                                    .invoke("preloadNetThing",
+                                            player.builtinContext(),
+                                            {Datum::of(std::string("override.txt"))})
+                                    .intValue();
+    assert(overrideGetTask == 700);
+    assert((overrideNetProvider.preloadUrls == std::vector<std::string>{"override.txt"}));
+    assert(player.netManager().getTask(overrideGetTask) == nullptr);
+    const int overridePostTask = player.builtinRegistry()
+                                     .invoke("postNetText",
+                                             player.builtinContext(),
+                                             {Datum::of(std::string("submit.txt")), Datum::of(std::string("a=b"))})
+                                     .intValue();
+    assert(overridePostTask == 701);
+    assert((overrideNetProvider.postUrls == std::vector<std::string>{"submit.txt"}));
+    assert((overrideNetProvider.postBodies == std::vector<std::string>{"a=b"}));
+    assert(player.builtinRegistry()
+               .invoke("netDone", player.builtinContext(), {Datum::of(overrideGetTask)})
+               .boolValue());
+    assert(player.builtinRegistry()
+               .invoke("netTextResult", player.builtinContext(), {Datum::of(overrideGetTask)})
+               .stringValue() == "OVERRIDE");
+    const auto overrideStatus = player.builtinRegistry()
+                                    .invoke("getStreamStatus",
+                                            player.builtinContext(),
+                                            {Datum::of(std::string("override.txt"))});
+    assert(overrideStatus.propListValue().get(Datum::of(std::string("state"))).stringValue() == "OverrideUrl");
+    assert(overrideNetProvider.lastQueriedUrl == "override.txt");
+    (void)player.builtinRegistry()
+        .invoke("gotoNetPage", player.builtinContext(), {Datum::of(std::string("page.txt")), Datum::of(std::string("_self"))});
+    assert((overrideNetProvider.preloadUrls == std::vector<std::string>{"override.txt", "page.txt"}));
+    assert(player.builtinRegistry()
+               .invoke("gotoNetMovie", player.builtinContext(), {Datum::of(std::string("movie.dir"))})
+               .intValue() == 703);
+    assert((overrideNetProvider.preloadUrls == std::vector<std::string>{"override.txt", "page.txt", "movie.dir"}));
+    player.setNetProvider(nullptr);
+    player.netManager().cacheData("default-again.txt", std::vector<std::uint8_t>{'D'});
+    const int restoredTask = player.builtinRegistry()
+                                 .invoke("preloadNetThing",
+                                         player.builtinContext(),
+                                         {Datum::of(std::string("default-again.txt"))})
+                                 .intValue();
+    assert(restoredTask != overrideNetProvider.nextTaskId);
+    assert(player.netManager().netTextResult(restoredTask) == "D");
 
     const auto soundDatum = player.builtinRegistry().invoke("sound", player.builtinContext(), {Datum::of(1)});
     assert(soundDatum.asSoundChannel() != nullptr);

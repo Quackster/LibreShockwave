@@ -13,7 +13,22 @@
 
 namespace libreshockwave::player::net {
 
-class NetManager {
+class NetProvider {
+public:
+    virtual ~NetProvider() = default;
+
+    [[nodiscard]] virtual int preloadNetThing(std::string url) = 0;
+    [[nodiscard]] virtual int postNetText(std::string url, std::string postData) = 0;
+
+    [[nodiscard]] virtual bool netDone(std::optional<int> taskId = std::nullopt) const = 0;
+    [[nodiscard]] virtual std::string netTextResult(std::optional<int> taskId = std::nullopt) const = 0;
+    [[nodiscard]] virtual int netError(std::optional<int> taskId = std::nullopt) const = 0;
+    [[nodiscard]] virtual std::string_view getStreamStatus(std::optional<int> taskId = std::nullopt) const = 0;
+    [[nodiscard]] virtual lingo::Datum getStreamStatusDatum(std::optional<int> taskId = std::nullopt) const = 0;
+    [[nodiscard]] virtual lingo::Datum getStreamStatusDatum(std::string_view url) const = 0;
+};
+
+class NetManager : public NetProvider {
 public:
     struct LoadResult {
         std::optional<std::vector<std::uint8_t>> data;
@@ -37,15 +52,15 @@ public:
     void setFetchHandler(FetchHandler handler);
     void setCompletionCallback(CompletionCallback callback);
 
-    [[nodiscard]] int preloadNetThing(std::string url);
-    [[nodiscard]] int postNetText(std::string url, std::string postData);
+    [[nodiscard]] int preloadNetThing(std::string url) override;
+    [[nodiscard]] int postNetText(std::string url, std::string postData) override;
 
-    [[nodiscard]] bool netDone(std::optional<int> taskId = std::nullopt) const;
-    [[nodiscard]] std::string netTextResult(std::optional<int> taskId = std::nullopt) const;
-    [[nodiscard]] int netError(std::optional<int> taskId = std::nullopt) const;
-    [[nodiscard]] std::string_view getStreamStatus(std::optional<int> taskId = std::nullopt) const;
-    [[nodiscard]] lingo::Datum getStreamStatusDatum(std::optional<int> taskId = std::nullopt) const;
-    [[nodiscard]] lingo::Datum getStreamStatusDatum(std::string_view url) const;
+    [[nodiscard]] bool netDone(std::optional<int> taskId = std::nullopt) const override;
+    [[nodiscard]] std::string netTextResult(std::optional<int> taskId = std::nullopt) const override;
+    [[nodiscard]] int netError(std::optional<int> taskId = std::nullopt) const override;
+    [[nodiscard]] std::string_view getStreamStatus(std::optional<int> taskId = std::nullopt) const override;
+    [[nodiscard]] lingo::Datum getStreamStatusDatum(std::optional<int> taskId = std::nullopt) const override;
+    [[nodiscard]] lingo::Datum getStreamStatusDatum(std::string_view url) const override;
     [[nodiscard]] std::optional<std::vector<std::uint8_t>> getNetBytes(std::optional<int> taskId = std::nullopt) const;
 
     [[nodiscard]] NetTask* getTask(std::optional<int> taskId = std::nullopt);

@@ -114,6 +114,7 @@ public:
     void setDebugEnabled(bool enabled);
     void setDebugController(std::shared_ptr<debug::DebugControllerApi> controller);
     [[nodiscard]] std::shared_ptr<debug::DebugControllerApi> getDebugController() const;
+    void setNetProvider(net::NetProvider* provider);
     void setAudioBackend(audio::AudioBackend* backend);
     void setTextRenderer(render::output::TextRenderer* renderer);
     void registerMultiuserXtra(lingo::xtra::MultiuserNetBridge& bridge);
@@ -162,6 +163,9 @@ private:
     void applyInitialBuiltinVariables();
     void processUpdatingObjects();
     void refreshDebugControllerGlobals();
+    [[nodiscard]] net::NetProvider& activeNetProvider();
+    [[nodiscard]] const net::NetProvider& activeNetProvider() const;
+    void refreshBuiltinNetProvider();
     void launchVmWorker(std::function<void()> work, std::function<void()> callback);
     void joinVmWorker();
     void handleTraceError(std::string_view message, std::string_view errorDetail);
@@ -197,6 +201,7 @@ private:
     std::atomic_bool vmRunning_{false};
     std::mutex vmThreadMutex_;
     std::thread vmThread_;
+    net::NetProvider* overrideNetProvider_{nullptr};
     int tempo_{15};
     bool debugEnabled_{false};
     std::function<void(const PlayerEventInfo&)> eventListener_;

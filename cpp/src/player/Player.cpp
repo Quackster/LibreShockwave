@@ -271,6 +271,11 @@ std::shared_ptr<debug::DebugControllerApi> Player::getDebugController() const {
     return debugController_;
 }
 
+void Player::setNetProvider(net::NetProvider* provider) {
+    overrideNetProvider_ = provider;
+    refreshBuiltinNetProvider();
+}
+
 void Player::setAudioBackend(audio::AudioBackend* backend) {
     soundManager_.setBackend(backend);
 }
@@ -579,7 +584,7 @@ int Player::preloadAllCasts() {
             continue;
         }
         castLib->markFetching();
-        (void)netManager_.preloadNetThing(fileName);
+        (void)activeNetProvider().preloadNetThing(fileName);
         ++count;
     }
     return count;
@@ -741,10 +746,10 @@ void Player::wireComponents() {
     });
     movieProperties_.setGotoNetPageHandler([this](const std::string& url, const std::string& target) {
         (void)target;
-        (void)netManager_.preloadNetThing(url);
+        (void)activeNetProvider().preloadNetThing(url);
     });
     movieProperties_.setGotoNetMovieHandler([this](const std::string& url) {
-        return netManager_.preloadNetThing(url);
+        return activeNetProvider().preloadNetThing(url);
     });
 
     spriteProperties_.setMemberInfoResolver([this](int castLib,
@@ -849,7 +854,7 @@ void Player::wireComponents() {
 
     auto& context = vm_.builtinContext();
     context.movieProperties = &movieProperties_;
-    context.netManager = &netManager_;
+    refreshBuiltinNetProvider();
     context.soundManager = &soundManager_;
     context.spriteProperties = &spriteProperties_;
     context.timeoutManager = &timeoutManager_;
@@ -1250,6 +1255,18 @@ void Player::refreshDebugControllerGlobals() {
         globals.emplace(name, value);
     }
     debugController_->setGlobalsSnapshot(std::move(globals));
+}
+
+net::NetProvider& Player::activeNetProvider() {
+    return overrideNetProvider_ != nullptr ? *overrideNetProvider_ : static_cast<net::NetProvider&>(netManager_);
+}
+
+const net::NetProvider& Player::activeNetProvider() const {
+    return overrideNetProvider_ != nullptr ? *overrideNetProvider_ : static_cast<const net::NetProvider&>(netManager_);
+}
+
+void Player::refreshBuiltinNetProvider() {
+    vm_.builtinContext().netManager = &activeNetProvider();
 }
 
 void Player::launchVmWorker(std::function<void()> work, std::function<void()> callback) {

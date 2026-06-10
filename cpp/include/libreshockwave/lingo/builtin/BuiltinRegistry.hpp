@@ -99,7 +99,7 @@ struct BuiltinContext {
                                                      const Datum& options)>;
 
     player::MovieProperties* movieProperties{nullptr};
-    player::net::NetManager* netManager{nullptr};
+    player::net::NetProvider* netManager{nullptr};
     player::audio::SoundManager* soundManager{nullptr};
     player::SpriteProperties* spriteProperties{nullptr};
     player::timeout::TimeoutManager* timeoutManager{nullptr};
