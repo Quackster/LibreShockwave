@@ -61,15 +61,19 @@ void emitCaseNode(const CaseNode& caseNode,
     caseLine.push_back(':');
     lines.push_back(LingoDecompiler::DecompiledLine{prefix + caseLine, caseNode.bytecodeOffset()});
 
-    if (caseNode.block() != nullptr) {
-        emitBlock(*caseNode.block(), lines, indentLevel + 1, dotSyntax);
+    const auto* branchCase = &caseNode;
+    while (branchCase->nextOr() != nullptr) {
+        branchCase = branchCase->nextOr();
     }
-    if (caseNode.nextCase() != nullptr) {
-        emitCaseNode(*caseNode.nextCase(), lines, indentLevel, dotSyntax);
+    if (branchCase->block() != nullptr) {
+        emitBlock(*branchCase->block(), lines, indentLevel + 1, dotSyntax);
     }
-    if (caseNode.otherwise() != nullptr) {
+    if (branchCase->nextCase() != nullptr) {
+        emitCaseNode(*branchCase->nextCase(), lines, indentLevel, dotSyntax);
+    }
+    if (branchCase->otherwise() != nullptr) {
         lines.push_back(LingoDecompiler::DecompiledLine{prefix + "otherwise:", -1});
-        emitBlock(*caseNode.otherwise(), lines, indentLevel + 1, dotSyntax);
+        emitBlock(*branchCase->otherwise(), lines, indentLevel + 1, dotSyntax);
     }
 }
 
