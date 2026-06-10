@@ -145,6 +145,12 @@ void ExecutionContext::setErrorState(bool errorState) {
     }
 }
 
+void ExecutionContext::tracePropertySet(std::string_view propName, const Datum& value) const {
+    if (callbacks_.variableSetListener) {
+        callbacks_.variableSetListener("property", "me." + std::string(propName), value);
+    }
+}
+
 void ExecutionContext::jumpTo(int targetOffset) {
     int targetIndex = -1;
     if (targetOffset == cachedJumpOffset_) {

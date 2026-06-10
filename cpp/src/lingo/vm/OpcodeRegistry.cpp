@@ -830,7 +830,9 @@ void setObjectProperty(ExecutionContext& context, Datum& object, std::string_vie
         return;
     }
     if (object.type() == DatumType::ScriptInstanceRef) {
+        const Datum tracedValue = value;
         object.scriptInstanceValue().setProperty(std::string(propName), std::move(value));
+        context.tracePropertySet(propName, tracedValue);
         return;
     }
     if (object.isPropList()) {
@@ -4296,7 +4298,10 @@ void setContextVar(ExecutionContext& context,
         case id::VarType::PROPERTY: {
             Datum receiver = context.scope().receiver();
             if (receiver.type() == DatumType::ScriptInstanceRef) {
-                receiver.scriptInstanceValue().setProperty(context.resolveName(toIntLikeJava(idDatum)), std::move(value));
+                const std::string propName = context.resolveName(toIntLikeJava(idDatum));
+                const Datum tracedValue = value;
+                receiver.scriptInstanceValue().setProperty(propName, std::move(value));
+                context.tracePropertySet(propName, tracedValue);
             }
             return;
         }
@@ -4582,7 +4587,9 @@ bool setProp(ExecutionContext& context) {
     Datum receiver = context.scope().receiver();
     Datum value = context.pop();
     if (receiver.type() == DatumType::ScriptInstanceRef) {
+        const Datum tracedValue = value;
         receiver.scriptInstanceValue().setProperty(propName, std::move(value));
+        context.tracePropertySet(propName, tracedValue);
     }
     return true;
 }

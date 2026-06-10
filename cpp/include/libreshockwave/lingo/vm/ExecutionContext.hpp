@@ -82,6 +82,7 @@ public:
     void setReturnValue(Datum value);
     void setReturned(bool returned);
     void setErrorState(bool errorState);
+    void tracePropertySet(std::string_view propName, const Datum& value) const;
 
     void jumpTo(int targetOffset);
     [[nodiscard]] std::optional<chunks::ScriptChunk::Handler> findLocalHandler(int index) const;

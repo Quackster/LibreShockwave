@@ -3000,6 +3000,12 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     BuiltinContext builtinContext;
     std::map<std::string, Datum> globals;
     bool errorState = false;
+    struct VariableTrace {
+        std::string type;
+        std::string name;
+        Datum value;
+    };
+    std::vector<VariableTrace> variableTraces;
     ExecutionContext::Callbacks callbacks;
     callbacks.globalGetter = [&globals](std::string_view name) {
         const auto found = globals.find(std::string(name));
@@ -3250,6 +3256,11 @@ void testLingoVmScopeAndExecutionContextFoundation() {
             return std::string("closeThread");
         }
         return "#" + std::to_string(nameId);
+    };
+    callbacks.variableSetListener = [&variableTraces](std::string_view type,
+                                                       std::string_view name,
+                                                       const Datum& value) {
+        variableTraces.push_back(VariableTrace{std::string(type), std::string(name), value});
     };
     callbacks.callStackFormatter = []() {
         return std::string("stack");
@@ -3956,8 +3967,13 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(propertyContext.pop().intValue() == 10);
     propertyContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_PROP, libreshockwave::lingo::code(Opcode::SET_PROP), 50});
     propertyContext.push(Datum::of(11));
+    variableTraces.clear();
     assert(opcodeRegistry.execute(Opcode::SET_PROP, propertyContext));
     assert(receiverInstance.scriptInstanceValue().getProperty("health").intValue() == 11);
+    assert(variableTraces.size() == 1);
+    assert(variableTraces[0].type == "property");
+    assert(variableTraces[0].name == "me.health");
+    assert(variableTraces[0].value.intValue() == 11);
 
     auto runObjectPropertyGet = [&](Datum object, int nameId) {
         Scope objectScope(&script, handler, {});
@@ -4020,16 +4036,23 @@ void testLingoVmScopeAndExecutionContextFoundation() {
                                       &registry,
                                       &builtinContext,
                                       callbacks);
+    variableTraces.clear();
     setObjectContext.push(objectPropList);
     setObjectContext.push(Datum::of(99));
     assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
     assert(objectPropList.propListValue().get(Datum::symbol("health")).intValue() == 99);
+    assert(variableTraces.empty());
 
     Datum setObjectInstance = Datum::scriptInstance("setObject");
+    variableTraces.clear();
     setObjectContext.push(setObjectInstance);
     setObjectContext.push(Datum::of(123));
     assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
     assert(setObjectInstance.scriptInstanceValue().getProperty("health").intValue() == 123);
+    assert(variableTraces.size() == 1);
+    assert(variableTraces[0].type == "property");
+    assert(variableTraces[0].name == "me.health");
+    assert(variableTraces[0].value.intValue() == 123);
 
     std::string setCastMemberPropertyName;
     Datum setCastMemberPropertyValue = Datum::voidValue();
