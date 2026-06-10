@@ -8108,6 +8108,43 @@ void testSpriteBakerFoundation() {
     assert(bakedLiveDarken.bakedBitmap()->getPixel(1, 0) == 0xFF503810U);
     assert(bakedLiveDarken.bakedBitmap()->getPixel(2, 0) == 0x00000000U);
 
+    auto indexedDarkenLiveBitmap = std::make_shared<Bitmap>(3, 1, 8, std::vector<std::uint32_t>{
+        0xFF383838U,
+        0xFF282828U,
+        0xFF808080U
+    });
+    indexedDarkenLiveBitmap->setImagePalette(&Palette::grayscalePalette());
+    indexedDarkenLiveBitmap->setPaletteIndices({199, 215, 127});
+    indexedDarkenLiveBitmap->markScriptModified();
+    SpriteBaker indexedDarkenBaker;
+    indexedDarkenBaker.setLiveBitmapProvider([&](const RenderSprite&) -> std::shared_ptr<const Bitmap> {
+        return indexedDarkenLiveBitmap;
+    });
+    RenderSprite indexedDarkenSprite(45,
+                                     0,
+                                     0,
+                                     3,
+                                     1,
+                                     0,
+                                     true,
+                                     SpriteType::Bitmap,
+                                     nullptr,
+                                     nullptr,
+                                     0x681F10,
+                                     0xFFCC66,
+                                     true,
+                                     true,
+                                     libreshockwave::id::code(InkMode::DARKEN),
+                                     100,
+                                     false,
+                                     false,
+                                     nullptr,
+                                     false);
+    auto bakedIndexedDarken = indexedDarkenBaker.bake(indexedDarkenSprite);
+    assert(bakedIndexedDarken.bakedBitmap()->getPixel(0, 0) == 0xFFA04B26U);
+    assert(bakedIndexedDarken.bakedBitmap()->getPixel(1, 0) == 0xFF903E1FU);
+    assert(bakedIndexedDarken.bakedBitmap()->getPixel(2, 0) == 0xFFE88543U);
+
     int textCalls = 0;
     baker.setTextBakeProvider([&textCalls](const RenderSprite& sprite) {
         ++textCalls;
