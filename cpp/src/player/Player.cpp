@@ -196,6 +196,15 @@ void Player::registerMultiuserXtra(lingo::xtra::MultiuserNetBridge& bridge) {
         }));
 }
 
+void Player::setExternalParams(std::vector<std::pair<std::string, std::string>> params) {
+    externalParams_ = std::move(params);
+    vm_.builtinContext().externalParams = externalParams_;
+}
+
+const std::vector<std::pair<std::string, std::string>>& Player::externalParams() const {
+    return externalParams_;
+}
+
 bool Player::debugEnabled() const { return debugEnabled_; }
 
 void Player::play() {
@@ -523,6 +532,7 @@ void Player::wireComponents() {
     context.soundManager = &soundManager_;
     context.spriteProperties = &spriteProperties_;
     context.timeoutManager = &timeoutManager_;
+    context.externalParams = externalParams_;
     context.debugPlaybackEnabled = debugEnabled_;
     castLibManager_.installBuiltinCallbacks(context);
     context.xtraRegisteredResolver = [this](const std::string& name) {

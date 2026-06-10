@@ -3348,6 +3348,24 @@ void testPlayerFacadeFoundation() {
     assert(playerBrokerMouseDown.listValue().getAt(2).asSymbol()->name == "room_interface");
     assert(player.builtinRegistry().contains("puppetTempo"));
     assert(player.builtinRegistry().contains("preloadNetThing"));
+    assert(player.builtinRegistry().invoke("externalParamCount", player.builtinContext()).intValue() == 0);
+    player.setExternalParams({{"sw1", "alpha"}, {"CaseKey", "Beta"}});
+    assert(player.externalParams().size() == 2);
+    assert(player.externalParams()[0].first == "sw1");
+    assert(player.externalParams()[1].second == "Beta");
+    assert(player.builtinRegistry().invoke("externalParamCount", player.builtinContext()).intValue() == 2);
+    assert(player.builtinRegistry()
+               .invoke("externalParamValue", player.builtinContext(), {Datum::of(std::string("casekey"))})
+               .stringValue() == "Beta");
+    assert(player.builtinRegistry()
+               .invoke("externalParamValue", player.builtinContext(), {Datum::of(1)})
+               .stringValue() == "alpha");
+    assert(player.builtinRegistry()
+               .invoke("externalParamName", player.builtinContext(), {Datum::of(2)})
+               .stringValue() == "CaseKey");
+    player.setExternalParams({});
+    assert(player.externalParams().empty());
+    assert(player.builtinRegistry().invoke("externalParamCount", player.builtinContext()).intValue() == 0);
 
     player.setTempo(24);
     assert(player.baseTempo() == 24);

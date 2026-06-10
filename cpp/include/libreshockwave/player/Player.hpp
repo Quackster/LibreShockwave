@@ -3,7 +3,9 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "libreshockwave/DirectorFile.hpp"
@@ -98,6 +100,8 @@ public:
     void setDebugEnabled(bool enabled);
     void setTextRenderer(render::output::TextRenderer* renderer);
     void registerMultiuserXtra(lingo::xtra::MultiuserNetBridge& bridge);
+    void setExternalParams(std::vector<std::pair<std::string, std::string>> params);
+    [[nodiscard]] const std::vector<std::pair<std::string, std::string>>& externalParams() const;
     [[nodiscard]] bool debugEnabled() const;
 
     void play();
@@ -151,6 +155,7 @@ private:
     std::function<void()> castLoadedListener_;
     std::function<void(const ExternalCastLoadEvent&)> externalCastLoadListener_;
     std::vector<ExternalCastLoadHandler*> externalCastLoadHandlers_;
+    std::vector<std::pair<std::string, std::string>> externalParams_;
     std::vector<lingo::Datum> updatingObjects_;
     std::function<void()> timeoutProcessor_;
     std::function<void(std::string_view handlerName)> timeoutSystemEventDispatcher_;
