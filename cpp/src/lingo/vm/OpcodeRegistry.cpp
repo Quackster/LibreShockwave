@@ -781,6 +781,15 @@ Datum getObjectProperty(ExecutionContext& context, const Datum& object, std::str
     return Datum::voidValue();
 }
 
+void setScriptInstancePropertyThroughAncestorWalker(Datum::ScriptInstanceRef& instance,
+                                                    std::string_view propName,
+                                                    Datum value) {
+    if (equalsIgnoreCase(propName, "ancestor") && value.type() != DatumType::ScriptInstanceRef) {
+        return;
+    }
+    instance.setProperty(std::string(propName), std::move(value));
+}
+
 void setObjectProperty(ExecutionContext& context, Datum& object, std::string_view propName, Datum value) {
     auto* builtinContext = context.builtinContext();
     if (object.type() == DatumType::MovieRef || object.type() == DatumType::PlayerRef) {
@@ -833,7 +842,7 @@ void setObjectProperty(ExecutionContext& context, Datum& object, std::string_vie
     }
     if (object.type() == DatumType::ScriptInstanceRef) {
         const Datum tracedValue = value;
-        object.scriptInstanceValue().setProperty(std::string(propName), std::move(value));
+        setScriptInstancePropertyThroughAncestorWalker(object.scriptInstanceValue(), propName, std::move(value));
         context.tracePropertySet(propName, tracedValue);
         return;
     }
@@ -2440,19 +2449,19 @@ Datum scriptInstanceObjectMethod(ExecutionContext& context,
     }
     if (equalsIgnoreCase(methodName, "setAt") || equalsIgnoreCase(methodName, "setAProp")) {
         if (args.size() >= 2) {
-            instance.setProperty(keyNameLikeJava(args[0]), args[1]);
+            setScriptInstancePropertyThroughAncestorWalker(instance, keyNameLikeJava(args[0]), args[1]);
         }
         return Datum::voidValue();
     }
     if (equalsIgnoreCase(methodName, "setProp")) {
         if (args.size() == 2) {
-            instance.setProperty(keyNameLikeJava(args[0]), args[1]);
+            setScriptInstancePropertyThroughAncestorWalker(instance, keyNameLikeJava(args[0]), args[1]);
         } else if (args.size() >= 3) {
             const std::string propName = keyNameLikeJava(args[0]);
             Datum localProp = instance.getProperty(propName);
             if (localProp.isVoid()) {
                 localProp = Datum::propList();
-                instance.setProperty(propName, localProp);
+                setScriptInstancePropertyThroughAncestorWalker(instance, propName, localProp);
             }
             scriptInstanceSetNestedProperty(localProp, args[1], args[2]);
         }
@@ -4739,7 +4748,7 @@ void setContextVar(ExecutionContext& context,
             if (receiver.type() == DatumType::ScriptInstanceRef) {
                 const std::string propName = context.resolveName(toIntLikeJava(idDatum));
                 const Datum tracedValue = value;
-                receiver.scriptInstanceValue().setProperty(propName, std::move(value));
+                setScriptInstancePropertyThroughAncestorWalker(receiver.scriptInstanceValue(), propName, std::move(value));
                 context.tracePropertySet(propName, tracedValue);
             }
             return;
@@ -5027,7 +5036,7 @@ bool setProp(ExecutionContext& context) {
     Datum value = context.pop();
     if (receiver.type() == DatumType::ScriptInstanceRef) {
         const Datum tracedValue = value;
-        receiver.scriptInstanceValue().setProperty(propName, std::move(value));
+        setScriptInstancePropertyThroughAncestorWalker(receiver.scriptInstanceValue(), propName, std::move(value));
         context.tracePropertySet(propName, tracedValue);
     }
     return true;

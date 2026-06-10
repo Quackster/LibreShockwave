@@ -928,6 +928,9 @@ void testLingoDatumTypes() {
     assert(instance.scriptInstanceValue().getProperty("localValue").intValue() == 4);
     assert(instance.scriptInstanceValue().getProperty("baseValue").intValue() == 3);
     assert(instance.scriptInstanceValue().getProperty("missing").isVoid());
+    instance.scriptInstanceValue().setProperty("ancestor", Datum::voidValue());
+    assert(instance.scriptInstanceValue().getProperty("ancestor").isVoid());
+    assert(instance.scriptInstanceValue().getProperty("baseValue").isVoid());
 }
 
 void testLingoOpcodeHelpers() {
@@ -3612,6 +3615,9 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 125) {
             return std::string("closeThread");
         }
+        if (nameId == 126) {
+            return std::string("ancestor");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.variableSetListener = [&variableTraces](std::string_view type,
@@ -4383,6 +4389,19 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(variableTraces[0].type == "property");
     assert(variableTraces[0].name == "me.health");
     assert(variableTraces[0].value.intValue() == 11);
+    auto receiverAncestor = Datum::scriptInstance("receiverParent");
+    receiverAncestor.scriptInstanceValue().setProperty("shared", Datum::of(33));
+    receiverInstance.scriptInstanceValue().setProperty("ancestor", receiverAncestor);
+    propertyContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_PROP, libreshockwave::lingo::code(Opcode::SET_PROP), 126});
+    propertyContext.push(Datum::voidValue());
+    variableTraces.clear();
+    assert(opcodeRegistry.execute(Opcode::SET_PROP, propertyContext));
+    assert(receiverInstance.scriptInstanceValue().getProperty("shared").intValue() == 33);
+    auto receiverReplacement = Datum::scriptInstance("receiverReplacement");
+    receiverReplacement.scriptInstanceValue().setProperty("shared", Datum::of(44));
+    propertyContext.push(receiverReplacement);
+    assert(opcodeRegistry.execute(Opcode::SET_PROP, propertyContext));
+    assert(receiverInstance.scriptInstanceValue().getProperty("shared").intValue() == 44);
 
     auto runObjectPropertyGet = [&](Datum object, int nameId) {
         Scope objectScope(&script, handler, {});
@@ -4462,6 +4481,20 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(variableTraces[0].type == "property");
     assert(variableTraces[0].name == "me.health");
     assert(variableTraces[0].value.intValue() == 123);
+    auto setObjectAncestor = Datum::scriptInstance("setObjectParent");
+    setObjectAncestor.scriptInstanceValue().setProperty("shared", Datum::of(31));
+    setObjectInstance.scriptInstanceValue().setProperty("ancestor", setObjectAncestor);
+    setObjectContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_OBJ_PROP, libreshockwave::lingo::code(Opcode::SET_OBJ_PROP), 126});
+    setObjectContext.push(setObjectInstance);
+    setObjectContext.push(Datum::of(777));
+    assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
+    assert(setObjectInstance.scriptInstanceValue().getProperty("shared").intValue() == 31);
+    auto setObjectReplacement = Datum::scriptInstance("setObjectReplacement");
+    setObjectReplacement.scriptInstanceValue().setProperty("shared", Datum::of(32));
+    setObjectContext.push(setObjectInstance);
+    setObjectContext.push(setObjectReplacement);
+    assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
+    assert(setObjectInstance.scriptInstanceValue().getProperty("shared").intValue() == 32);
 
     std::string setCastMemberPropertyName;
     Datum setCastMemberPropertyValue = Datum::voidValue();
@@ -4870,6 +4903,12 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runObjCall(114, {scriptInstance, Datum::symbol("LOCAL")}).intValue() == 4);
     assert(runObjCall(65, {scriptInstance, Datum::symbol("shared"), Datum::of(11)}).isVoid());
     assert(scriptAncestor.scriptInstanceValue().getProperty("shared").intValue() == 11);
+    assert(runObjCall(115, {scriptInstance, Datum::symbol("ancestor"), Datum::voidValue()}).isVoid());
+    assert(scriptInstance.scriptInstanceValue().getProperty("shared").intValue() == 11);
+    auto methodReplacement = Datum::scriptInstance("methodReplacement");
+    methodReplacement.scriptInstanceValue().setProperty("shared", Datum::of(13));
+    assert(runObjCall(115, {scriptInstance, Datum::symbol("ancestor"), methodReplacement}).isVoid());
+    assert(scriptInstance.scriptInstanceValue().getProperty("shared").intValue() == 13);
     assert(runObjCall(68, {scriptInstance, Datum::symbol("newLocal"), Datum::of(22)}).isVoid());
     assert(scriptInstance.scriptInstanceValue().getProperty("newLocal").intValue() == 22);
     auto nestedList = Datum::list({Datum::of(1)});
