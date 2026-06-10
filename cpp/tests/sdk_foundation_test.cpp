@@ -7862,6 +7862,16 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(primitiveDrawBitmap.getPixel(3, 1) == 0xFF505050U);
     assert(primitiveDrawBitmap.getPixel(1, 3) == 0xFF505050U);
     assert(primitiveDrawBitmap.getPixel(5, 3) == 0xFF505050U);
+    assert(libreshockwave::bitmap::Drawing::combineAlpha(128, 128) == 64);
+    assert(libreshockwave::bitmap::Drawing::alphaBlend(0xFF000000U, 0xFFFFFFFFU, 128) == 0xFF7F7F7FU);
+    assert(libreshockwave::bitmap::Drawing::applyInk(
+               0x80000000U, 0xFFFFFFFFU, InkMode::COPY, 255) == 0xFF7F7F7FU);
+    assert(libreshockwave::bitmap::Drawing::applyInk(
+               0xFFFFFFFFU, 0xFF010203U, InkMode::TRANSPARENT, 255) == 0xFF010203U);
+    assert(libreshockwave::bitmap::Drawing::applyInk(
+               0xFFFFFFFFU, 0xFF000000U, InkMode::MASK, 255) == 0xFFFFFFFFU);
+    assert(libreshockwave::bitmap::Drawing::applyInk(
+               0xFF050607U, 0xFF010203U, InkMode::ADD, 255) == 0xFF06080AU);
 
     auto drawBitmap = std::make_shared<Bitmap>(3, 3, 32);
     drawBitmap->setImagePalette(std::make_shared<Palette>(

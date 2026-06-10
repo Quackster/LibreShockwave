@@ -2801,130 +2801,6 @@ std::shared_ptr<bitmap::Bitmap> imageApplyBackgroundTransparentToRegion(const bi
     return result;
 }
 
-int imageCombineAlpha(int srcAlpha, int blendAlpha) {
-    if (srcAlpha <= 0 || blendAlpha <= 0) return 0;
-    if (srcAlpha >= 255) return blendAlpha;
-    if (blendAlpha >= 255) return srcAlpha;
-    return (srcAlpha * blendAlpha) / 255;
-}
-
-std::uint32_t imageAlphaBlend(std::uint32_t fg, std::uint32_t bg, int alpha) {
-    if (alpha <= 0) return bg;
-    if (alpha >= 255) return fg;
-
-    const int fgR = static_cast<int>((fg >> 16) & 0xFFU);
-    const int fgG = static_cast<int>((fg >> 8) & 0xFFU);
-    const int fgB = static_cast<int>(fg & 0xFFU);
-    const int bgR = static_cast<int>((bg >> 16) & 0xFFU);
-    const int bgG = static_cast<int>((bg >> 8) & 0xFFU);
-    const int bgB = static_cast<int>(bg & 0xFFU);
-    const int invAlpha = 255 - alpha;
-    const int r = (fgR * alpha + bgR * invAlpha) / 255;
-    const int g = (fgG * alpha + bgG * invAlpha) / 255;
-    const int b = (fgB * alpha + bgB * invAlpha) / 255;
-    return 0xFF000000U |
-           (static_cast<std::uint32_t>(r & 0xFF) << 16) |
-           (static_cast<std::uint32_t>(g & 0xFF) << 8) |
-           static_cast<std::uint32_t>(b & 0xFF);
-}
-
-std::uint32_t imageApplyCopyPixelsInk(std::uint32_t src, std::uint32_t dest, id::InkMode ink, int blend, int backgroundKeyRgb) {
-    const int srcAlpha = static_cast<int>((src >> 24) & 0xFFU);
-    const int srcR = static_cast<int>((src >> 16) & 0xFFU);
-    const int srcG = static_cast<int>((src >> 8) & 0xFFU);
-    const int srcB = static_cast<int>(src & 0xFFU);
-    const int destR = static_cast<int>((dest >> 16) & 0xFFU);
-    const int destG = static_cast<int>((dest >> 8) & 0xFFU);
-    const int destB = static_cast<int>(dest & 0xFFU);
-    const int srcRgb = static_cast<int>(src & 0x00FFFFFFU);
-    const auto packOpaque = [](int r, int g, int b) {
-        return 0xFF000000U |
-               (static_cast<std::uint32_t>(r & 0xFF) << 16) |
-               (static_cast<std::uint32_t>(g & 0xFF) << 8) |
-               static_cast<std::uint32_t>(b & 0xFF);
-    };
-
-    if (ink == id::InkMode::TRANSPARENT) {
-        return srcRgb == 0xFFFFFF ? dest : src;
-    }
-    if (ink == id::InkMode::REVERSE) {
-        return packOpaque(destR ^ srcR, destG ^ srcG, destB ^ srcB);
-    }
-    if (ink == id::InkMode::GHOST) {
-        return packOpaque((srcR + destR) / 2, (srcG + destG) / 2, (srcB + destB) / 2);
-    }
-    if (ink == id::InkMode::NOT_COPY) {
-        return packOpaque(255 - srcR, 255 - srcG, 255 - srcB);
-    }
-    if (ink == id::InkMode::NOT_TRANSPARENT) {
-        return srcRgb == 0 ? dest : packOpaque(255 - srcR, 255 - srcG, 255 - srcB);
-    }
-    if (ink == id::InkMode::NOT_REVERSE) {
-        return packOpaque(destR ^ (255 - srcR), destG ^ (255 - srcG), destB ^ (255 - srcB));
-    }
-    if (ink == id::InkMode::NOT_GHOST) {
-        return packOpaque(((255 - srcR) + destR) / 2,
-                          ((255 - srcG) + destG) / 2,
-                          ((255 - srcB) + destB) / 2);
-    }
-    if (ink == id::InkMode::MATTE) {
-        if (srcAlpha == 0) return dest;
-        if (blend < 255) {
-            const int matteAlpha = (srcAlpha * blend) / 255;
-            return matteAlpha == 0 ? dest : imageAlphaBlend(src, dest, matteAlpha);
-        }
-        return imageAlphaBlend(src, dest, srcAlpha);
-    }
-    if (ink == id::InkMode::MASK) {
-        const int alpha = imageCombineAlpha(srcAlpha, imageMaskAlphaFromPixel(src));
-        return alpha == 0 ? dest : imageAlphaBlend(src, dest, alpha);
-    }
-    if (ink == id::InkMode::BACKGROUND_TRANSPARENT) {
-        if (srcAlpha == 0 || srcRgb == (backgroundKeyRgb & 0x00FFFFFF)) {
-            return dest;
-        }
-        if (blend < 255 || srcAlpha < 255) {
-            return imageAlphaBlend(src, dest, imageCombineAlpha(srcAlpha, blend));
-        }
-        return src;
-    }
-    if (ink == id::InkMode::BLEND) {
-        return imageAlphaBlend(src, dest, imageCombineAlpha(srcAlpha, blend));
-    }
-    if (ink == id::InkMode::ADD_PIN) {
-        return packOpaque(std::min(255, srcR + destR), std::min(255, srcG + destG), std::min(255, srcB + destB));
-    }
-    if (ink == id::InkMode::ADD) {
-        return packOpaque(srcR + destR, srcG + destG, srcB + destB);
-    }
-    if (ink == id::InkMode::SUBTRACT_PIN) {
-        return packOpaque(std::max(0, destR - srcR), std::max(0, destG - srcG), std::max(0, destB - srcB));
-    }
-    if (ink == id::InkMode::SUBTRACT) {
-        return packOpaque(destR - srcR, destG - srcG, destB - srcB);
-    }
-    if (ink == id::InkMode::LIGHTEST) {
-        return srcAlpha == 0 ? dest : packOpaque(std::max(srcR, destR), std::max(srcG, destG), std::max(srcB, destB));
-    }
-    if (ink == id::InkMode::DARKEST) {
-        return srcAlpha == 0 ? dest : packOpaque(std::min(srcR, destR), std::min(srcG, destG), std::min(srcB, destB));
-    }
-    if (ink == id::InkMode::LIGHTEN || ink == id::InkMode::DARKEN) {
-        return srcAlpha == 0 ? dest : imageAlphaBlend(src, dest, imageCombineAlpha(srcAlpha, blend));
-    }
-
-    if (blend < 255) {
-        return imageAlphaBlend(src, dest, imageCombineAlpha(srcAlpha, blend));
-    }
-    if (srcAlpha == 0) {
-        return dest;
-    }
-    if (srcAlpha < 255) {
-        return imageAlphaBlend(src, dest, srcAlpha);
-    }
-    return src;
-}
-
 int imagePercentToBlendAlpha(const Datum& blendDatum) {
     return std::clamp(static_cast<int>(std::lround(toDoubleLikeJava(blendDatum) * 255.0 / 100.0)), 0, 255);
 }
@@ -3796,7 +3672,7 @@ Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
             const auto currentDestPixel = dest.getPixel(px, py);
             const auto destPixel = skipSource
                 ? currentDestPixel
-                : imageApplyCopyPixelsInk(sourcePixel, currentDestPixel, effectiveInk, blend, backgroundKeyRgb);
+                : bitmap::Drawing::applyInk(sourcePixel, currentDestPixel, effectiveInk, blend, backgroundKeyRgb);
             dest.setPixelPreservePaletteIndex(px, py, destPixel);
             const auto destOffset = static_cast<std::size_t>(py * dest.width() + px);
             if (preservePaletteIndices && destPaletteIndices.has_value() && srcPaletteIndices.has_value()) {
