@@ -1647,7 +1647,10 @@ void testLingoDecompilerNodeFoundation() {
                                   "readyFlag",
                                   "loopOps",
                                   "nextLoopOps",
-                                  "exitLoopOps"});
+                                  "exitLoopOps",
+                                  "loopVar",
+                                  "toLoopOps",
+                                  "downLoopOps"});
     ScriptChunk::Handler bytecodeHandler{
         0,
         0,
@@ -2098,6 +2101,111 @@ void testLingoDecompilerNodeFoundation() {
     assert(repeatWhileMapping.lines[3].bytecodeOffset == -1);
     assert(repeatWhileMapping.lines[4].bytecodeOffset == 16);
     assert(repeatWhileMapping.lines[5].bytecodeOffset == -1);
+
+    ScriptChunk::Handler toLoopHandler{
+        26,
+        0,
+        0,
+        0,
+        0,
+        2,
+        0,
+        0,
+        {},
+        {25, 4},
+        {
+            ScriptChunk::Instruction{0, Opcode::PUSH_INT8, 0x41, 1},
+            ScriptChunk::Instruction{2, Opcode::SET_LOCAL, 0x52, 0},
+            ScriptChunk::Instruction{4, Opcode::GET_LOCAL, 0x4C, 0},
+            ScriptChunk::Instruction{6, Opcode::PUSH_INT8, 0x41, 3},
+            ScriptChunk::Instruction{8, Opcode::LT_EQ, 0x0D, 0},
+            ScriptChunk::Instruction{9, Opcode::JMP_IF_Z, 0x55, 19},
+            ScriptChunk::Instruction{11, Opcode::PUSH_INT8, 0x41, 9},
+            ScriptChunk::Instruction{13, Opcode::SET_LOCAL, 0x52, 8},
+            ScriptChunk::Instruction{15, Opcode::PUSH_INT8, 0x41, 1},
+            ScriptChunk::Instruction{17, Opcode::GET_LOCAL, 0x4C, 0},
+            ScriptChunk::Instruction{19, Opcode::ADD, 0x05, 0},
+            ScriptChunk::Instruction{20, Opcode::SET_LOCAL, 0x52, 0},
+            ScriptChunk::Instruction{22, Opcode::END_REPEAT, 0x54, 18},
+            ScriptChunk::Instruction{28, Opcode::RET, 0x01, 0}
+        },
+        {}
+    };
+    ScriptChunk toLoopScript(nullptr,
+                             ChunkId(509),
+                             ScriptChunkType::MovieScript,
+                             0,
+                             {toLoopHandler},
+                             {},
+                             {},
+                             {},
+                             {});
+    assert(decompiler.decompileHandler(toLoopScript.handlers().front(), toLoopScript, &scriptNames) ==
+           "on toLoopOps\n"
+           "  repeat with loopVar = 1 to 3\n"
+           "    localOne = 9\n\n"
+           "  end repeat\n\n"
+           "end");
+    const auto toLoopMapping = decompiler.decompileHandlerWithMapping(toLoopScript.handlers().front(),
+                                                                      toLoopScript,
+                                                                      &scriptNames);
+    assert(toLoopMapping.toText() ==
+           "on toLoopOps\n"
+           "  repeat with loopVar = 1 to 3\n"
+           "    localOne = 9\n"
+           "  end repeat\n"
+           "end\n");
+    assert(toLoopMapping.lines.size() == 5);
+    assert(toLoopMapping.lines[0].bytecodeOffset == -1);
+    assert(toLoopMapping.lines[1].bytecodeOffset == 9);
+    assert(toLoopMapping.lines[2].bytecodeOffset == 13);
+    assert(toLoopMapping.lines[3].bytecodeOffset == -1);
+    assert(toLoopMapping.lines[4].bytecodeOffset == -1);
+
+    ScriptChunk::Handler downLoopHandler{
+        27,
+        0,
+        0,
+        0,
+        0,
+        2,
+        0,
+        0,
+        {},
+        {25, 4},
+        {
+            ScriptChunk::Instruction{0, Opcode::PUSH_INT8, 0x41, 3},
+            ScriptChunk::Instruction{2, Opcode::SET_LOCAL, 0x52, 0},
+            ScriptChunk::Instruction{4, Opcode::GET_LOCAL, 0x4C, 0},
+            ScriptChunk::Instruction{6, Opcode::PUSH_INT8, 0x41, 1},
+            ScriptChunk::Instruction{8, Opcode::GT_EQ, 0x11, 0},
+            ScriptChunk::Instruction{9, Opcode::JMP_IF_Z, 0x55, 19},
+            ScriptChunk::Instruction{11, Opcode::PUSH_INT8, 0x41, 9},
+            ScriptChunk::Instruction{13, Opcode::SET_LOCAL, 0x52, 8},
+            ScriptChunk::Instruction{15, Opcode::PUSH_INT8, 0x41, -1},
+            ScriptChunk::Instruction{17, Opcode::GET_LOCAL, 0x4C, 0},
+            ScriptChunk::Instruction{19, Opcode::ADD, 0x05, 0},
+            ScriptChunk::Instruction{20, Opcode::SET_LOCAL, 0x52, 0},
+            ScriptChunk::Instruction{22, Opcode::END_REPEAT, 0x54, 18},
+            ScriptChunk::Instruction{28, Opcode::RET, 0x01, 0}
+        },
+        {}
+    };
+    ScriptChunk downLoopScript(nullptr,
+                               ChunkId(510),
+                               ScriptChunkType::MovieScript,
+                               0,
+                               {downLoopHandler},
+                               {},
+                               {},
+                               {},
+                               {});
+    assert(decompiler.decompileHandler(downLoopScript.handlers().front(), downLoopScript, &scriptNames) ==
+           "on downLoopOps\n"
+           "  repeat with loopVar = 3 down to 1\n"
+           "    localOne = 9\n\n"
+           "  end repeat\n\n"
+           "end");
 
     ScriptChunk::Handler nextLoopHandler{
         23,

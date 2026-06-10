@@ -55,6 +55,7 @@ private:
     [[nodiscard]] bool isRepeatWithInLoop(std::size_t startIndex, int endIndex) const;
     [[nodiscard]] bool isRepeatWithToLoop(std::size_t startIndex, int endIndex) const;
     [[nodiscard]] int instructionIndexForOffset(int offset) const;
+    [[nodiscard]] std::string getVarNameFromSet(const chunks::ScriptChunk::Instruction& instruction) const;
     [[nodiscard]] std::unique_ptr<HandlerNode> translateHandler(const chunks::ScriptChunk::Handler& handler);
     void translateInstruction(const chunks::ScriptChunk::Instruction& instruction,
                               std::size_t index,

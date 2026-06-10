@@ -21,6 +21,8 @@ namespace {
 constexpr int tagNone = 0;
 constexpr int tagSkip = 1;
 constexpr int tagRepeatWhile = 2;
+constexpr int tagRepeatWithTo = 4;
+constexpr int tagRepeatWithDownTo = 5;
 constexpr int tagNextRepeatTarget = 6;
 
 std::string indent(int level) {
@@ -339,7 +341,29 @@ void LingoDecompiler::tagLoops() {
         if ((endRepeat.offset - endRepeat.argument) > jmpIfZero.offset) {
             continue;
         }
-        if (isRepeatWithInLoop(startIndex, endIndex) || isRepeatWithToLoop(startIndex, endIndex)) {
+        if (isRepeatWithInLoop(startIndex, endIndex)) {
+            continue;
+        }
+        if (isRepeatWithToLoop(startIndex, endIndex)) {
+            const auto& endRepeat = instructions[static_cast<std::size_t>(endIndex - 1)];
+            const int condStart = instructionIndexForOffset(endRepeat.offset - endRepeat.argument);
+            if (condStart < 1) {
+                continue;
+            }
+
+            tags_[startIndex] = instructions[startIndex - 1].opcode == Opcode::LT_EQ
+                ? tagRepeatWithTo
+                : tagRepeatWithDownTo;
+            tags_[static_cast<std::size_t>(condStart - 1)] = tagSkip;
+            tags_[static_cast<std::size_t>(condStart)] = tagSkip;
+            tags_[startIndex - 1] = tagSkip;
+            tags_[static_cast<std::size_t>(endIndex - 5)] = tagNextRepeatTarget;
+            ownerLoops_[static_cast<std::size_t>(endIndex - 5)] = static_cast<int>(startIndex);
+            tags_[static_cast<std::size_t>(endIndex - 4)] = tagSkip;
+            tags_[static_cast<std::size_t>(endIndex - 3)] = tagSkip;
+            tags_[static_cast<std::size_t>(endIndex - 2)] = tagSkip;
+            tags_[static_cast<std::size_t>(endIndex - 1)] = tagSkip;
+            ownerLoops_[static_cast<std::size_t>(endIndex - 1)] = static_cast<int>(startIndex);
             continue;
         }
 
@@ -447,6 +471,21 @@ int LingoDecompiler::instructionIndexForOffset(int offset) const {
         return -1;
     }
     return static_cast<int>(std::distance(instructions.begin(), found));
+}
+
+std::string LingoDecompiler::getVarNameFromSet(const chunks::ScriptChunk::Instruction& instruction) const {
+    switch (instruction.opcode) {
+        case Opcode::SET_GLOBAL:
+        case Opcode::SET_GLOBAL2:
+        case Opcode::SET_PROP:
+            return resolveName(instruction.argument);
+        case Opcode::SET_PARAM:
+            return getArgumentName(instruction.argument);
+        case Opcode::SET_LOCAL:
+            return getLocalName(instruction.argument);
+        default:
+            return "ERROR";
+    }
 }
 
 std::unique_ptr<HandlerNode> LingoDecompiler::translateHandler(const chunks::ScriptChunk::Handler& handler) {
@@ -826,6 +865,32 @@ void LingoDecompiler::translateInstruction(const chunks::ScriptChunk::Instructio
                 block.addChild(std::move(loop));
                 enterBlock(*nextBlock);
                 return;
+            }
+            if (index < tags_.size() &&
+                (tags_[index] == tagRepeatWithTo || tags_[index] == tagRepeatWithDownTo)) {
+                auto end = popNode();
+                auto start = popNode();
+                const int endIndex = instructionIndexForOffset(endPos);
+                if (endIndex >= 1 && currentHandler_ != nullptr) {
+                    const auto& endRepeat = currentHandler_->instructions[static_cast<std::size_t>(endIndex - 1)];
+                    const int condStart = instructionIndexForOffset(endRepeat.offset - endRepeat.argument);
+                    if (condStart >= 1) {
+                        auto loop = std::make_unique<RepeatWithToStmtNode>(
+                            static_cast<int>(index),
+                            getVarNameFromSet(currentHandler_->instructions[static_cast<std::size_t>(condStart - 1)]),
+                            std::move(start),
+                            tags_[index] == tagRepeatWithTo,
+                            std::move(end));
+                        loop->setBytecodeOffset(instruction.offset);
+                        loop->block().endPos = endPos;
+                        auto* nextBlock = &loop->block();
+                        block.addChild(std::move(loop));
+                        enterBlock(*nextBlock);
+                        return;
+                    }
+                }
+                translation = std::make_unique<CommentNode>("ERROR: Could not identify repeat with to");
+                break;
             }
 
             auto ifStmt = std::make_unique<IfStmtNode>(popNode());
