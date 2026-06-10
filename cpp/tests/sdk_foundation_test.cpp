@@ -1187,6 +1187,146 @@ void testPlayerInputFoundation() {
         return stageRenderer.lastBakedSprites();
     });
     assert(supplierHandler.hitTestExact(5, 5) == 2);
+
+    CastLibManager editableManager(nullptr);
+    auto editableCast = std::make_shared<CastLib>(1, nullptr, nullptr);
+    editableManager.castLibs()[1] = editableCast;
+    auto editableField = editableCast->createDynamicMember("text");
+    editableField->setDynamicText("abc");
+    editableField->setEditable(true);
+    auto secondEditableField = editableCast->createDynamicMember("text");
+    secondEditableField->setDynamicText("next");
+    secondEditableField->setEditable(true);
+    auto nonEditableField = editableCast->createDynamicMember("text");
+    nonEditableField->setDynamicText("locked");
+
+    class EditableInputTextRenderer final : public TextRenderer {
+    public:
+        int lastFieldWidth = 0;
+
+        std::shared_ptr<Bitmap> renderText(std::string,
+                                           int,
+                                           int,
+                                           std::string,
+                                           int,
+                                           std::string,
+                                           std::string,
+                                           int,
+                                           int,
+                                           bool,
+                                           bool,
+                                           int,
+                                           int) override {
+            return nullptr;
+        }
+
+        std::vector<int> charPosToLoc(std::string,
+                                      int charIndex,
+                                      std::string,
+                                      int,
+                                      std::string,
+                                      int,
+                                      std::string,
+                                      int) override {
+            return {charIndex * 10, 0};
+        }
+
+        int locToCharPos(std::string text,
+                         int x,
+                         int,
+                         std::string,
+                         int,
+                         std::string,
+                         int,
+                         std::string,
+                         int fieldWidth) override {
+            lastFieldWidth = fieldWidth;
+            return std::clamp(x / 10, 0, static_cast<int>(text.size()));
+        }
+
+        int getLineHeight(std::string, int, std::string, int) override {
+            return 10;
+        }
+    } editableTextRenderer;
+    editableManager.setTextRenderer(&editableTextRenderer);
+
+    StageRenderer editableRenderer;
+    EventDispatcher editableDispatcher;
+    editableDispatcher.setSpriteRegistry(&editableRenderer.spriteRegistry());
+    auto editableSprite = editableRenderer.spriteRegistry().getOrCreateDynamic(12);
+    editableSprite->setDynamicMember(1, editableField->memberNum());
+    auto secondEditableSprite = editableRenderer.spriteRegistry().getOrCreateDynamic(13);
+    secondEditableSprite->setDynamicMember(1, secondEditableField->memberNum());
+    auto lockedSprite = editableRenderer.spriteRegistry().getOrCreateDynamic(14);
+    lockedSprite->setDynamicMember(1, nonEditableField->memberNum());
+    editableRenderer.setLastBakedSprites({
+        RenderSprite(12, 50, 40, 80, 18, 1, true, SpriteType::Text, nullptr, editableField, 0, 0, false, false, 0, 100, false, false, nullptr, false),
+        RenderSprite(13, 50, 70, 80, 18, 2, true, SpriteType::Text, nullptr, secondEditableField, 0, 0, false, false, 0, 100, false, false, nullptr, false),
+        RenderSprite(14, 50, 100, 80, 18, 3, true, SpriteType::Text, nullptr, nonEditableField, 0, 0, false, false, 0, 100, false, false, nullptr, false),
+    });
+
+    InputState editableState;
+    InputHandler editableInput(&editableState, &editableRenderer, &editableDispatcher, &editableManager);
+    editableInput.onMouseDown(55, 45);
+    assert(editableState.clickOnSprite() == 0);
+    assert(editableInput.processInputEvents());
+    assert(editableState.keyboardFocusSprite() == 12);
+    assert(editableState.selStart() == 0);
+    assert(editableState.selEnd() == 0);
+    assert(editableTextRenderer.lastFieldWidth == 80);
+    editableInput.onMouseMove(82, 45);
+    assert(editableState.selStart() == 0);
+    assert(editableState.selEnd() == 3);
+    assert(editableTextRenderer.lastFieldWidth == 80);
+    editableInput.onMouseUp(82, 45);
+    assert(editableInput.processInputEvents());
+    editableState.setSelStart(0);
+    editableState.setSelEnd(0);
+
+    editableInput.onKeyDown(0, "Z", false, false, false);
+    assert(editableInput.processInputEvents());
+    assert(editableField->textContent() == "Zabc");
+    assert(editableState.selStart() == 1);
+    assert(editableState.selEnd() == 1);
+
+    editableState.setSelStart(1);
+    editableState.setSelEnd(3);
+    editableInput.onKeyDown(0, "y", false, false, false);
+    assert(editableInput.processInputEvents());
+    assert(editableField->textContent() == "Zyc");
+    assert(editableState.selStart() == 2);
+    assert(editableState.selEnd() == 2);
+
+    editableInput.onKeyDown(51, "", false, false, false);
+    assert(editableInput.processInputEvents());
+    assert(editableField->textContent() == "Zc");
+    assert(editableState.selStart() == 1);
+    assert(editableState.selEnd() == 1);
+
+    editableInput.onKeyDown(124, "", false, false, false);
+    assert(editableInput.processInputEvents());
+    assert(editableState.selStart() == 2);
+    assert(editableState.selEnd() == 2);
+    editableInput.onKeyDown(123, "", false, false, false);
+    assert(editableInput.processInputEvents());
+    assert(editableState.selStart() == 1);
+    assert(editableState.selEnd() == 1);
+
+    editableInput.onKeyDown(48, "\t", false, false, false);
+    assert(editableInput.processInputEvents());
+    assert(editableState.keyboardFocusSprite() == 13);
+    assert(editableState.selStart() == 0);
+    assert(editableState.selEnd() == 4);
+    editableInput.onKeyDown(48, "\t", true, false, false);
+    assert(editableInput.processInputEvents());
+    assert(editableState.keyboardFocusSprite() == 12);
+
+    editableInput.onMouseDown(55, 105);
+    assert(editableInput.processInputEvents());
+    assert(editableState.keyboardFocusSprite() == 0);
+    editableInput.onMouseDown(10, 10);
+    assert(editableInput.processInputEvents());
+    assert(editableState.keyboardFocusSprite() == 0);
 }
 
 void testPlayerFacadeFoundation() {

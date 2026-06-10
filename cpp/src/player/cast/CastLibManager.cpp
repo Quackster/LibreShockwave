@@ -481,6 +481,26 @@ lingo::Datum CastLibManager::getParsedFieldValue(int castLibNumber, int memberNu
     return parsed;
 }
 
+int CastLibManager::locToCharPos(int castLibNumber, int memberNumber, int x, int y, int fieldWidth) {
+    auto member = resolveMember(castLibNumber, memberNumber);
+    if (!member || !member->isTextLike() || !textRenderer_) {
+        return 0;
+    }
+    const std::string text = getMemberProp(member->castLib(), member->memberNum(), "text").stringValue();
+    if (text.empty()) {
+        return 0;
+    }
+    return textRenderer_->locToCharPos(text,
+                                       x,
+                                       y,
+                                       member->textFont(),
+                                       member->textFontSize(),
+                                       member->textFontStyle(),
+                                       member->textFixedLineSpace(),
+                                       member->textAlignment(),
+                                       std::max(1, fieldWidth));
+}
+
 void CastLibManager::setFieldValue(const lingo::Datum& identifier, int castLibNumber, const std::string& value) {
     auto member = resolveFieldMember(identifier, castLibNumber);
     if (member) {
@@ -690,15 +710,7 @@ lingo::Datum CastLibManager::callMemberMethod(int castLibNumber,
             return lingo::Datum::of(0);
         }
         const int fieldWidth = std::max(1, member->textRectRight() - member->textRectLeft());
-        return lingo::Datum::of(textRenderer_->locToCharPos(text,
-                                                            x,
-                                                            y,
-                                                            member->textFont(),
-                                                            member->textFontSize(),
-                                                            member->textFontStyle(),
-                                                            member->textFixedLineSpace(),
-                                                            member->textAlignment(),
-                                                            fieldWidth));
+        return lingo::Datum::of(locToCharPos(member->castLib(), member->memberNum(), x, y, fieldWidth));
     }
     return lingo::Datum::voidValue();
 }

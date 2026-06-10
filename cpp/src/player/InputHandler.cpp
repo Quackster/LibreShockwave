@@ -1,9 +1,15 @@
 #include "libreshockwave/player/InputHandler.hpp"
 
 #include <algorithm>
+#include <cctype>
+#include <iterator>
+#include <optional>
 #include <utility>
 
+#include "libreshockwave/cast/CastMember.hpp"
+#include "libreshockwave/cast/MemberType.hpp"
 #include "libreshockwave/player/PlayerEvent.hpp"
+#include "libreshockwave/player/cast/CastLibManager.hpp"
 #include "libreshockwave/player/event/EventDispatcher.hpp"
 #include "libreshockwave/player/input/HitTester.hpp"
 #include "libreshockwave/player/input/InputState.hpp"
@@ -14,10 +20,12 @@ namespace libreshockwave::player {
 
 InputHandler::InputHandler(input::InputState* inputState,
                            render::pipeline::StageRenderer* stageRenderer,
-                           event::EventDispatcher* eventDispatcher)
+                           event::EventDispatcher* eventDispatcher,
+                           cast::CastLibManager* castLibManager)
     : inputState_(inputState),
       stageRenderer_(stageRenderer),
-      eventDispatcher_(eventDispatcher) {}
+      eventDispatcher_(eventDispatcher),
+      castLibManager_(castLibManager) {}
 
 void InputHandler::setInputState(input::InputState* inputState) {
     inputState_ = inputState;
@@ -29,6 +37,10 @@ void InputHandler::setStageRenderer(render::pipeline::StageRenderer* stageRender
 
 void InputHandler::setEventDispatcher(event::EventDispatcher* eventDispatcher) {
     eventDispatcher_ = eventDispatcher;
+}
+
+void InputHandler::setCastLibManager(cast::CastLibManager* castLibManager) {
+    castLibManager_ = castLibManager;
 }
 
 void InputHandler::setEventDispatcherSupplier(EventDispatcherSupplier supplier) {
@@ -67,6 +79,23 @@ void InputHandler::onMouseMove(int stageX, int stageY) {
     }
     inputState_->setMousePosition(stageX, stageY);
     inputState_->setRolloverSprite(hitTestExact(stageX, stageY));
+
+    if (inputState_->isMouseDown() && inputState_->keyboardFocusSprite() > 0) {
+        auto member = resolveSpriteMember(inputState_->keyboardFocusSprite());
+        auto sprite = findHitSprite(inputState_->keyboardFocusSprite());
+        if (member != nullptr && sprite.has_value() && member->editable()) {
+            const int localX = stageX - sprite->x();
+            const int localY = stageY - sprite->y();
+            const int charPos = castLibManager_->locToCharPos(
+                member->castLib(),
+                member->memberNum(),
+                localX,
+                localY,
+                sprite->width());
+            inputState_->setSelEnd(charPos);
+            inputState_->resetCaretBlink();
+        }
+    }
 }
 
 void InputHandler::onMouseDown(int stageX, int stageY, bool rightButton) {
@@ -256,12 +285,14 @@ void InputHandler::dispatchInputEvent(const input::InputEvent& inputEvent) {
     switch (inputEvent.type) {
         case input::InputEventType::MouseDown: {
             const int hitSprite = hitTestExact(inputEvent.stageX, inputEvent.stageY);
+            const int stageHitSprite = hitTestStage(inputEvent.stageX, inputEvent.stageY);
             const int lastClicked = inputState_->clickOnSprite();
             if (lastClicked > 0 && lastClicked != hitSprite) {
                 dispatcher->dispatchSpriteEvent(lastClicked, "mouseUpOutSide");
             }
 
             inputState_->setClickOnSprite(hitSprite);
+            autoFocusEditableField(stageHitSprite, inputEvent.stageX, inputEvent.stageY);
             dispatcher->resetEventStopped();
             if (hitSprite > 0) {
                 dispatcher->dispatchSpriteEvent(hitSprite, PlayerEvent::MouseDown);
@@ -297,6 +328,7 @@ void InputHandler::dispatchInputEvent(const input::InputEvent& inputEvent) {
             inputState_->setLastKeyCode(inputEvent.keyCode);
             const int focusSprite = inputState_->keyboardFocusSprite();
             if (focusSprite > 0) {
+                handleEditableFieldInput(focusSprite, inputEvent.keyChar);
                 dispatcher->dispatchSpriteEvent(focusSprite, PlayerEvent::KeyDown);
             }
             dispatcher->dispatchFrameAndMovieEvent(PlayerEvent::KeyDown);
@@ -313,6 +345,154 @@ void InputHandler::dispatchInputEvent(const input::InputEvent& inputEvent) {
             break;
         }
     }
+}
+
+int InputHandler::hitTestStage(int stageX, int stageY) const {
+    return input::HitTester::hitTest(hitSprites(), stageX, stageY);
+}
+
+std::optional<render::pipeline::RenderSprite> InputHandler::findHitSprite(int channel) const {
+    auto sprites = hitSprites();
+    auto found = std::find_if(sprites.begin(), sprites.end(), [channel](const auto& sprite) {
+        return sprite.channel() == channel;
+    });
+    if (found == sprites.end()) {
+        return std::nullopt;
+    }
+    return *found;
+}
+
+std::shared_ptr<::libreshockwave::cast::CastMember> InputHandler::resolveSpriteMember(int channel) const {
+    if (stageRenderer_ == nullptr || castLibManager_ == nullptr || channel <= 0) {
+        return nullptr;
+    }
+    const auto sprite = stageRenderer_->spriteRegistry().get(channel);
+    if (sprite == nullptr || sprite->effectiveCastMember() <= 0) {
+        return nullptr;
+    }
+    return castLibManager_->resolveMember(sprite->effectiveCastLib(), sprite->effectiveCastMember());
+}
+
+void InputHandler::autoFocusEditableField(int hitChannel, int stageX, int stageY) {
+    if (inputState_ == nullptr) {
+        return;
+    }
+    auto member = resolveSpriteMember(hitChannel);
+    auto sprite = findHitSprite(hitChannel);
+    if (member != nullptr && sprite.has_value() && member->editable() &&
+        member->memberType() == ::libreshockwave::cast::MemberType::Text) {
+        inputState_->setKeyboardFocusSprite(hitChannel);
+        const int localX = stageX - sprite->x();
+        const int localY = stageY - sprite->y();
+        const int charPos = castLibManager_->locToCharPos(
+            member->castLib(),
+            member->memberNum(),
+            localX,
+            localY,
+            sprite->width());
+        inputState_->setSelStart(charPos);
+        inputState_->setSelEnd(charPos);
+        inputState_->resetCaretBlink();
+        return;
+    }
+
+    inputState_->setKeyboardFocusSprite(0);
+}
+
+void InputHandler::handleEditableFieldInput(int channel, const std::string& keyChar) {
+    if (inputState_ == nullptr || castLibManager_ == nullptr) {
+        return;
+    }
+
+    auto member = resolveSpriteMember(channel);
+    if (member == nullptr || !member->editable()) {
+        return;
+    }
+    const auto type = member->memberType();
+    if (type != ::libreshockwave::cast::MemberType::Text &&
+        type != ::libreshockwave::cast::MemberType::Button) {
+        return;
+    }
+
+    std::string text = castLibManager_->getMemberProp(member->castLib(), member->memberNum(), "text").stringValue();
+    int selStart = std::clamp(inputState_->selStart(), 0, static_cast<int>(text.size()));
+    int selEnd = std::clamp(inputState_->selEnd(), 0, static_cast<int>(text.size()));
+    const int selMin = std::min(selStart, selEnd);
+    const int selMax = std::max(selStart, selEnd);
+    const int keyCode = inputState_->lastKeyCode();
+
+    if (keyCode == 51) {
+        if (selMin != selMax) {
+            text.erase(static_cast<std::size_t>(selMin), static_cast<std::size_t>(selMax - selMin));
+            selStart = selEnd = selMin;
+        } else if (selStart > 0) {
+            text.erase(static_cast<std::size_t>(selStart - 1), 1);
+            selStart = selEnd = selStart - 1;
+        }
+        member->setDynamicText(text);
+    } else if (keyCode == 123) {
+        selStart = selEnd = std::max(0, selMin - (selMin == selMax ? 1 : 0));
+    } else if (keyCode == 124) {
+        selStart = selEnd = std::min(static_cast<int>(text.size()), selMax + (selMin == selMax ? 1 : 0));
+    } else if (keyCode == 48) {
+        tabToNextField(channel, inputState_->isShiftDown());
+        return;
+    } else if (keyCode == 36) {
+        return;
+    } else if (keyChar.size() == 1 && std::isprint(static_cast<unsigned char>(keyChar.front())) != 0) {
+        text.replace(static_cast<std::size_t>(selMin), static_cast<std::size_t>(selMax - selMin), keyChar);
+        selStart = selEnd = selMin + 1;
+        member->setDynamicText(text);
+    } else {
+        return;
+    }
+
+    inputState_->setSelStart(selStart);
+    inputState_->setSelEnd(selEnd);
+    inputState_->resetCaretBlink();
+}
+
+void InputHandler::tabToNextField(int currentChannel, bool reverse) {
+    if (inputState_ == nullptr || stageRenderer_ == nullptr || castLibManager_ == nullptr) {
+        return;
+    }
+
+    std::vector<int> editableChannels;
+    for (const auto& [channel, state] : stageRenderer_->spriteRegistry().getAll()) {
+        if (state == nullptr || state->effectiveCastMember() <= 0) {
+            continue;
+        }
+        auto member = castLibManager_->resolveMember(state->effectiveCastLib(), state->effectiveCastMember());
+        if (member != nullptr && member->editable() &&
+            member->memberType() == ::libreshockwave::cast::MemberType::Text) {
+            editableChannels.push_back(channel);
+        }
+    }
+    if (editableChannels.empty()) {
+        return;
+    }
+    std::ranges::sort(editableChannels);
+
+    const auto found = std::ranges::find(editableChannels, currentChannel);
+    const int index = found == editableChannels.end()
+        ? -1
+        : static_cast<int>(std::distance(editableChannels.begin(), found));
+    int nextIndex = 0;
+    if (reverse) {
+        nextIndex = index <= 0 ? static_cast<int>(editableChannels.size()) - 1 : index - 1;
+    } else {
+        nextIndex = index < 0 || index >= static_cast<int>(editableChannels.size()) - 1 ? 0 : index + 1;
+    }
+
+    const int nextChannel = editableChannels[static_cast<std::size_t>(nextIndex)];
+    inputState_->setKeyboardFocusSprite(nextChannel);
+    auto member = resolveSpriteMember(nextChannel);
+    const std::string text = member != nullptr
+        ? castLibManager_->getMemberProp(member->castLib(), member->memberNum(), "text").stringValue()
+        : "";
+    inputState_->setSelStart(0);
+    inputState_->setSelEnd(static_cast<int>(text.size()));
+    inputState_->resetCaretBlink();
 }
 
 } // namespace libreshockwave::player

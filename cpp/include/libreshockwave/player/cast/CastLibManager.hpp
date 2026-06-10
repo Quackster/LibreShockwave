@@ -71,6 +71,7 @@ public:
     [[nodiscard]] lingo::Datum getFieldValue(const lingo::Datum& identifier, int castLibNumber);
     [[nodiscard]] lingo::Datum getFieldDatum(const lingo::Datum& identifier, int castLibNumber);
     [[nodiscard]] lingo::Datum getParsedFieldValue(int castLibNumber, int memberNumber);
+    [[nodiscard]] int locToCharPos(int castLibNumber, int memberNumber, int x, int y, int fieldWidth);
     void setFieldValue(const lingo::Datum& identifier, int castLibNumber, const std::string& value);
     [[nodiscard]] std::shared_ptr<chunks::CastMemberChunk> getCastMember(int castLibNumber, int memberNumber);
     [[nodiscard]] std::shared_ptr<chunks::CastMemberChunk> getCastMemberByName(const std::string& memberName);

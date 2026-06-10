@@ -64,7 +64,7 @@ Player::Player(std::shared_ptr<DirectorFile> file)
       inputState_(),
       bitmapResolver_(file_, &castLibManager_, &frameContext_),
       cursorManager_(&inputState_, &stageRenderer_.spriteRegistry()),
-      inputHandler_(&inputState_, &stageRenderer_, &frameContext_.eventDispatcher()),
+      inputHandler_(&inputState_, &stageRenderer_, &frameContext_.eventDispatcher(), &castLibManager_),
       vm_(file_.get()),
       tempo_(configuredTempo(file_)) {
     wireComponents();

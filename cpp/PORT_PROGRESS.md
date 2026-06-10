@@ -221,7 +221,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `player::cast::CastLib` ports lazy cast-library metadata, authored/external file binding state, stable registry binding checks, member chunk maps, script maps, source-prefixed member-name fallback, font-alias/PFR XMED scanning, and Java-compatible cast/member property fallbacks.
 - `player::cast::CastLibManager` ports DirectorFile-backed cast-library initialization from MCsL/CAS* chunks, castLib/member number and name lookup, registry-visible member filtering, external-cast cache keys, pending external load tracking, preload-mode loading, and builtin callback installation.
-- Runtime bitmap member image mutation, cached imported-image assignment, Director BITD imported-media assignment, dynamic member creation/reuse, dynamic member `erase`, dynamic field text mutation, field provider lookup/setter callbacks, text-like member media copy, dynamic bitmap member sprite rendering, dynamic text sprite baking, and common text styling property mutation are available for existing cast libraries; non-bitmap imported media payload decoding, ediM/JPEG/ALFA sidecars, editable field UI, and remaining CastLibProvider edge cases remain deferred to later player runtime slices.
+- Runtime bitmap member image mutation, cached imported-image assignment, Director BITD imported-media assignment, dynamic member creation/reuse, dynamic member `erase`, dynamic field text mutation, field provider lookup/setter callbacks, text-like member media copy, dynamic bitmap member sprite rendering, dynamic text sprite baking, common text styling property mutation, and editable field input mutation are available for existing cast libraries; non-bitmap imported media payload decoding, ediM/JPEG/ALFA sidecars, editable field rendering overlays, and remaining CastLibProvider edge cases remain deferred to later player runtime slices.
 
 ### Bitmap Resolver Foundation
 
@@ -246,7 +246,8 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `player::InputHandler` ports host mouse/key entry points, queued input processing, rollover `mouseEnter`/`mouseLeave`/`mouseWithin` dispatch, mouse-down/up sprite targeting, `mouseUpOutSide` fallback routing, right-mouse and key event routing, and sprite-registry revision bumps after queued input.
 - Hit selection uses baked or supplied `RenderSprite` vectors plus `EventDispatcher::isSpriteMouseInteractive`, matching the Java interactive-hit filter without requiring the full C++ `Player` object yet.
-- Built-in editable text field focus, caret geometry, selection rectangles, clipboard operations, and StageRenderer-owning overloads remain deferred; the lower-level C++ runtime cast-member text mutation, text styling, and sprite baking paths are now available for those input slices.
+- Built-in editable text field focus, selection start/end placement, selection drag extension, printable character insertion, selected-text replacement, backspace, left/right arrow movement, and tab/shift-tab field cycling now mutate runtime text through `CastLibManager` while preserving normal mouse/key event routing.
+- Caret geometry, selection rectangles, clipboard operations, and StageRenderer-owning overloads remain deferred; the lower-level C++ runtime cast-member text mutation, text styling, and sprite baking paths are available for those input slices.
 
 ### Player Facade Foundation
 
@@ -819,6 +820,7 @@ Result:
 - Runtime text-like member `charPosToLoc`/`locToCharPos` method dispatch, no-renderer fallbacks, builtin callback routing, and Player text-renderer wiring passed through the same CTest executable.
 - Runtime text `lineCount`/`line` properties plus cast-member `getProp` and `count(#char/#word/#line/#item)` method helpers passed through the same CTest executable.
 - FieldText datum identity, field builtin member identity preservation, and `value(field(...))` parsed-field callback behavior passed through the same CTest executable.
+- Editable text field no-handler click focus, drag selection extension, focus clearing, printable insertion, selected-text replacement, backspace, left/right arrow caret movement, and tab/shift-tab field cycling passed through the same CTest executable.
 - SoundBuiltins channel creation, availability, sound-channel method dispatch, VM object-property defaults/mutation, and SoundManager playback delegation passed through the same CTest executable.
 - ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration and callback hooks passed through the same CTest executable.
 - TypeBuiltins object/void/type predicates, `value` literal parsing/provider fallback, `script`/`callAncestor` callback hooks, symbol conversion, and `ilk` alias checks passed through the same CTest executable.
@@ -1011,4 +1013,5 @@ Result:
 - `f686fc32 Port C++ text media copy`
 - `942d700f Port C++ text member methods`
 - `360ac5a7 Port C++ cast member utility methods`
-- Current checkpoint commit message: `Port C++ field datum identity`
+- `1434fb05 Port C++ field datum identity`
+- Current checkpoint commit message: `Port C++ editable field input`
