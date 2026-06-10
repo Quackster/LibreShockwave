@@ -331,6 +331,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `player::SpriteProperties` ports Lingo sprite property get/set behavior over `SpriteState` and `SpriteRegistry`, including missing-sprite defaults, dynamic sprite auto-creation, revision bumps, loc/rect/visibility/puppet/ink/blend/stretch/trails/color/transform/cursor/script-instance properties, and no-op acceptance for Director compatibility properties.
 - Member assignment supports cast member refs, encoded slot numbers, name-resolution callbacks, empty-member release resets, intrinsic/runtime autosizing, and synthetic sprite-event broker retention during empty-channel release.
+- Sprite event-broker method dispatch now mirrors the Java support for `registerProcedure`, `removeProcedure`, `setID`/`getID`, `setLink`/`getLink`, `setCursor`/`getCursor`, and `setMember`/`getMember`, including synthetic broker creation and pProcList template/expansion semantics.
 - Registration-aware sprite bounds, bitmap registration scaling, flip/mirror handling, member image get/set callbacks, and cursor member encoding are available through provider hooks until the C++ cast manager is ported.
 
 ### Movie Properties Foundation
@@ -845,7 +846,7 @@ Result:
 - EventDispatcher global, frame/movie, sprite/movie, sprite-only, behavior-only, and movie-only dispatch ordering, pass propagation, dynamic script-instance dispatch, sprite handler lookup, mouse interactivity, mouse-handler recognition, debug flag, and stopEvent state tests passed through the same CTest executable.
 - FrameContext first-frame setup, pending frame navigation, begin/end sprite dispatch, frame events, actor/timeout hooks, puppeted sprite persistence, force navigation, reset, and BehaviorManager script-resolver hooks passed through the same CTest executable.
 - BitmapResolver RIFX-backed BITD bitmap decode, `ediM` JPEG/`ALFA` sidecar decode, explicit and member-stored palette override decode, SpriteBaker provider adapter, movie palette config fallback, null fallback behavior, and CastLibManager palette-member lookup passed through the same CTest executable.
-- SpriteProperties missing defaults, property get/set, revision bumps, cast member assignment, autosizing, registration-aware bounds, cursor lists, script-instance sprite numbers, release cleanup, color refs, and image callbacks passed through the same CTest executable.
+- SpriteProperties missing defaults, property get/set, revision bumps, cast member assignment, autosizing, registration-aware bounds, cursor lists, script-instance sprite numbers, release cleanup, color refs, image callbacks, sprite event broker synthetic registration, per-event expansion, removeProcedure reset, id/link/cursor/member helpers, and Player sprite method hook wiring passed through the same CTest executable.
 - Lingo `GET_CHUNK` char/word/item/line extraction, range, negative last-index, sequential narrowing, and provider-backed item delimiters passed through the same CTest executable.
 - Lingo `PUSH_CHUNK_VAR_REF` typed raw-index varref creation tests passed through the same CTest executable.
 - Lingo `PUT` local, parameter, global, receiver-property, before, and after mutation tests passed through the same CTest executable.

@@ -75,6 +75,7 @@ public:
     void setCursorMembers(int member, int mask);
 
     [[nodiscard]] const std::vector<lingo::Datum>& scriptInstanceList() const;
+    [[nodiscard]] std::vector<lingo::Datum>& scriptInstanceList();
     [[nodiscard]] bool hasScriptBehaviors() const;
     void setScriptInstanceList(std::vector<lingo::Datum> list);
 

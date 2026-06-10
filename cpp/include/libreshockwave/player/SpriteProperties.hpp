@@ -54,6 +54,9 @@ public:
     [[nodiscard]] lingo::Datum getSpriteProp(int spriteNum, std::string_view propName) const;
     [[nodiscard]] bool setSpriteProp(int spriteNum, std::string_view propName, const lingo::Datum& value);
     [[nodiscard]] bool setSpriteMember(int spriteNum, const lingo::Datum& value);
+    [[nodiscard]] lingo::Datum callSpriteMethod(int spriteNum,
+                                                std::string_view methodName,
+                                                const std::vector<lingo::Datum>& args);
 
     [[nodiscard]] SpriteBounds resolveSpriteBounds(const sprite::SpriteState& sprite) const;
 
@@ -72,8 +75,17 @@ private:
 
     static void applyEmptyMemberOverride(sprite::SpriteState& sprite);
     static void resetReleasedEmptyChannel(sprite::SpriteState& sprite);
+    [[nodiscard]] static lingo::Datum createProcListTemplate();
+    [[nodiscard]] static lingo::Datum createSyntheticBroker(int spriteNum);
     [[nodiscard]] static std::vector<lingo::Datum> retainSyntheticBrokerInstances(
         const std::vector<lingo::Datum>& scriptInstances);
+
+    [[nodiscard]] std::vector<lingo::Datum>* getOrCreateBrokerScriptList(int spriteNum);
+    [[nodiscard]] lingo::Datum* primaryBroker(int spriteNum);
+    [[nodiscard]] static lingo::Datum::PropList& ensureProcList(lingo::Datum& broker);
+    [[nodiscard]] static std::string keyName(const lingo::Datum& datum);
+    static void putProcEntry(lingo::Datum::PropList& procList, const lingo::Datum& key, lingo::Datum value);
+    [[nodiscard]] static bool hasProcEntry(const lingo::Datum::PropList& procList, std::string_view key);
 
     render::SpriteRegistry* registry_{nullptr};
     MemberInfoResolver memberInfoResolver_;

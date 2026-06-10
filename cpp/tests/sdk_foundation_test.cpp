@@ -1453,6 +1453,25 @@ void testPlayerFacadeFoundation() {
     assert(player.builtinContext().timeoutManager == &player.timeoutManager());
     assert(player.builtinContext().alertHookHandler);
     assert(!player.builtinContext().alertHookHandler("Alert", "no hook"));
+    assert(player.builtinContext().spriteMethodHandler);
+    assert(player.builtinContext()
+               .spriteMethodHandler(12,
+                                    "registerProcedure",
+                                    {Datum::symbol("eventProcRoom"),
+                                     Datum::symbol("room_interface"),
+                                     Datum::symbol("mouseDown")})
+               .boolValue());
+    auto playerBrokerScripts = player.spriteProperties().getScriptInstanceList(12);
+    assert(playerBrokerScripts.has_value());
+    assert(playerBrokerScripts->size() == 1);
+    assert((*playerBrokerScripts)[0].type() == DatumType::ScriptInstanceRef);
+    const auto playerBrokerProcList =
+        (*playerBrokerScripts)[0].scriptInstanceValue().getProperty("pProcList");
+    assert(playerBrokerProcList.isPropList());
+    const auto playerBrokerMouseDown =
+        playerBrokerProcList.propListValue().get(Datum::symbol("mouseDown"));
+    assert(playerBrokerMouseDown.listValue().getAt(1).asSymbol()->name == "eventProcRoom");
+    assert(playerBrokerMouseDown.listValue().getAt(2).asSymbol()->name == "room_interface");
     assert(player.builtinRegistry().contains("puppetTempo"));
     assert(player.builtinRegistry().contains("preloadNetThing"));
 
@@ -7457,6 +7476,65 @@ void testSpritePropertiesFoundation() {
     assert(behavior.scriptInstanceValue().getProperty("spritenum").intValue() == 3);
     assert(props.getSpriteProp(3, "scriptInstanceList").listValue().count() == 2);
 
+    assert(props.callSpriteMethod(44, "missingMethod", {}).isVoid());
+    assert(!props.getScriptInstanceList(44).has_value());
+
+    assert(props.callSpriteMethod(42,
+                                  "registerProcedure",
+                                  {Datum::symbol("eventProcRoom"),
+                                   Datum::symbol("room_interface"),
+                                   Datum::symbol("mouseDown")})
+               .boolValue());
+    auto brokerScripts = props.getScriptInstanceList(42);
+    assert(brokerScripts.has_value());
+    assert(brokerScripts->size() == 1);
+    assert((*brokerScripts)[0].type() == DatumType::ScriptInstanceRef);
+    const auto syntheticBroker = (*brokerScripts)[0];
+    assert(syntheticBroker.scriptInstanceValue().getProperty("spritenum").intValue() == 42);
+    assert(syntheticBroker.scriptInstanceValue().getProperty("__spriteEventBroker__").boolValue());
+    const auto brokerProcListDatum = syntheticBroker.scriptInstanceValue().getProperty("pProcList");
+    assert(brokerProcListDatum.isPropList());
+    const auto mouseDownEntry = brokerProcListDatum.propListValue().get(Datum::symbol("mouseDown"));
+    assert(mouseDownEntry.isList());
+    assert(mouseDownEntry.listValue().getAt(1).asSymbol()->name == "eventProcRoom");
+    assert(mouseDownEntry.listValue().getAt(2).asSymbol()->name == "room_interface");
+    assert(props.callSpriteMethod(42, "setID", {Datum::of(std::string("sprite-id"))}).boolValue());
+    assert(props.callSpriteMethod(42, "getID", {}).stringValue() == "sprite-id");
+    assert(props.callSpriteMethod(42, "setLink", {Datum::of(std::string("link-id"))}).boolValue());
+    assert(props.callSpriteMethod(42, "getLink", {}).stringValue() == "link-id");
+
+    const auto clientId = Datum::symbol("login_a");
+    assert(props.callSpriteMethod(43, "registerProcedure", {Datum::voidValue(), clientId, Datum::voidValue()})
+               .boolValue());
+    auto expandedBrokerScripts = props.getScriptInstanceList(43);
+    assert(expandedBrokerScripts.has_value());
+    const auto expandedProcListDatum =
+        (*expandedBrokerScripts)[0].scriptInstanceValue().getProperty("pProcList");
+    assert(expandedProcListDatum.isPropList());
+    for (const auto* eventName : {
+             "mouseEnter",
+             "mouseLeave",
+             "mouseWithin",
+             "mouseDown",
+             "mouseUp",
+             "mouseUpOutSide",
+             "keyDown",
+             "keyUp"
+         }) {
+        const auto entry = expandedProcListDatum.propListValue().get(Datum::symbol(eventName));
+        assert(entry.isList());
+        assert(entry.listValue().getAt(1).asSymbol()->name == eventName);
+        assert(entry.listValue().getAt(2).asSymbol()->name == "login_a");
+    }
+    assert(props.callSpriteMethod(43, "removeProcedure", {Datum::symbol("mouseDown")}).boolValue());
+    const auto removedMouseDown = (*expandedBrokerScripts)[0]
+                                      .scriptInstanceValue()
+                                      .getProperty("pProcList")
+                                      .propListValue()
+                                      .get(Datum::symbol("mouseDown"));
+    assert(removedMouseDown.listValue().getAt(1).asSymbol()->name == "null");
+    assert(removedMouseDown.listValue().getAt(2).intValue() == 0);
+
     assert(props.setSpriteProp(3, "cursor", Datum::list({
         Datum::castMemberRef(CastLibId(2), MemberId(9)),
         Datum::of((3 << 16) | 7)
@@ -7532,6 +7610,14 @@ void testSpritePropertiesFoundation() {
     assert(runtimeSprite->width() == 12);
     assert(runtimeSprite->height() == 13);
     assert(!runtimeSprite->hasSizeChanged());
+    assert(props.callSpriteMethod(19, "setMember", {Datum::castMemberRef(CastLibId(3), MemberId(41))}).boolValue());
+    const auto methodMemberSprite = registry.get(19);
+    assert(methodMemberSprite->effectiveCastLib() == 3);
+    assert(methodMemberSprite->effectiveCastMember() == 41);
+    assert(props.callSpriteMethod(19, "getMember", {}).asCastMemberRef()->castLib == 3);
+    assert(props.callSpriteMethod(19, "getMember", {}).asCastMemberRef()->memberNum() == 41);
+    assert(props.callSpriteMethod(19, "setCursor", {Datum::of(17)}).boolValue());
+    assert(props.callSpriteMethod(19, "getCursor", {}).intValue() == 17);
 
     assert(props.setSpriteProp(7, "member", Datum::of(std::string("logo"))));
     auto namedSprite = registry.get(7);

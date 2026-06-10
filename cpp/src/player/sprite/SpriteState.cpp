@@ -134,6 +134,7 @@ void SpriteState::setCursorMembers(int member, int mask) {
 }
 
 const std::vector<lingo::Datum>& SpriteState::scriptInstanceList() const { return scriptInstanceList_; }
+std::vector<lingo::Datum>& SpriteState::scriptInstanceList() { return scriptInstanceList_; }
 bool SpriteState::hasScriptBehaviors() const { return !scriptInstanceList_.empty(); }
 
 void SpriteState::setScriptInstanceList(std::vector<lingo::Datum> list) {

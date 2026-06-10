@@ -311,6 +311,106 @@ bool SpriteProperties::setSpriteMember(int spriteNum, const lingo::Datum& value)
     return assignMember(*sprite, value, true);
 }
 
+lingo::Datum SpriteProperties::callSpriteMethod(int spriteNum,
+                                                std::string_view methodName,
+                                                const std::vector<lingo::Datum>& args) {
+    if (registry_ == nullptr || spriteNum <= 0) {
+        return lingo::Datum::voidValue();
+    }
+
+    const std::string method = lowerProp(methodName);
+    if (method == "setcursor") {
+        if (args.empty()) {
+            return lingo::Datum::FALSE;
+        }
+        (void)setSpriteProp(spriteNum, "cursor", args[0]);
+        return lingo::Datum::TRUE;
+    }
+    if (method == "getcursor") {
+        return getSpriteProp(spriteNum, "cursor");
+    }
+    if (method == "setmember") {
+        if (args.empty()) {
+            return lingo::Datum::FALSE;
+        }
+        (void)setSpriteMember(spriteNum, args[0]);
+        return lingo::Datum::TRUE;
+    }
+    if (method == "getmember") {
+        return getSpriteProp(spriteNum, "member");
+    }
+
+    if (method != "setid" && method != "getid" &&
+        method != "setlink" && method != "getlink" &&
+        method != "registerprocedure" && method != "removeprocedure") {
+        return lingo::Datum::voidValue();
+    }
+
+    lingo::Datum* broker = primaryBroker(spriteNum);
+    if (broker == nullptr) {
+        return lingo::Datum::FALSE;
+    }
+
+    if (method == "setid") {
+        if (args.empty()) {
+            return lingo::Datum::FALSE;
+        }
+        broker->scriptInstanceValue().setProperty("id", args[0]);
+        return lingo::Datum::TRUE;
+    }
+    if (method == "getid") {
+        return broker->scriptInstanceValue().getProperty("id");
+    }
+    if (method == "setlink") {
+        if (args.empty()) {
+            return lingo::Datum::FALSE;
+        }
+        broker->scriptInstanceValue().setProperty("pLink", args[0]);
+        return lingo::Datum::TRUE;
+    }
+    if (method == "getlink") {
+        return broker->scriptInstanceValue().getProperty("pLink");
+    }
+
+    auto& procList = ensureProcList(*broker);
+    if (method == "removeprocedure") {
+        const lingo::Datum eventDatum = args.empty() ? lingo::Datum::voidValue() : args[0];
+        if (eventDatum.isVoid()) {
+            broker->scriptInstanceValue().setProperty("pProcList", createProcListTemplate());
+            return lingo::Datum::TRUE;
+        }
+        const std::string eventKey = keyName(eventDatum);
+        if (hasProcEntry(procList, eventKey)) {
+            putProcEntry(procList,
+                         eventDatum,
+                         lingo::Datum::list({lingo::Datum::symbol("null"), lingo::Datum::of(0)}));
+        }
+        return lingo::Datum::TRUE;
+    }
+
+    const lingo::Datum methodDatum = !args.empty() ? args[0] : lingo::Datum::voidValue();
+    const lingo::Datum clientId = args.size() > 1 ? args[1] : lingo::Datum::of(0);
+    const lingo::Datum eventDatum = args.size() > 2 ? args[2] : lingo::Datum::voidValue();
+    if (eventDatum.isVoid() && methodDatum.isVoid()) {
+        auto entries = procList.properties();
+        for (const auto& entry : entries) {
+            putProcEntry(procList, entry.first, lingo::Datum::list({entry.first, clientId}));
+        }
+        return lingo::Datum::TRUE;
+    }
+    if (eventDatum.isVoid()) {
+        auto entries = procList.properties();
+        for (const auto& entry : entries) {
+            putProcEntry(procList, entry.first, lingo::Datum::list({methodDatum, clientId}));
+        }
+        return lingo::Datum::TRUE;
+    }
+
+    const lingo::Datum resolvedMethod = methodDatum.isVoid() ? eventDatum : methodDatum;
+    putProcEntry(procList, lingo::Datum::symbol(keyName(eventDatum)), lingo::Datum::list({resolvedMethod, clientId}));
+    return lingo::Datum::TRUE;
+}
+
 SpriteProperties::SpriteBounds SpriteProperties::resolveSpriteBounds(const sprite::SpriteState& sprite) const {
     const int width = sprite.width();
     const int height = sprite.height();
@@ -508,6 +608,33 @@ void SpriteProperties::resetReleasedEmptyChannel(sprite::SpriteState& sprite) {
     sprite.resetReleasedSpriteTransforms();
 }
 
+lingo::Datum SpriteProperties::createProcListTemplate() {
+    auto procList = lingo::Datum::propList();
+    for (const auto* eventName : {
+             "mouseEnter",
+             "mouseLeave",
+             "mouseWithin",
+             "mouseDown",
+             "mouseUp",
+             "mouseUpOutSide",
+             "keyDown",
+             "keyUp"
+         }) {
+        procList.propListValue().put(lingo::Datum::symbol(eventName),
+                                     lingo::Datum::list({lingo::Datum::symbol("null"), lingo::Datum::of(0)}));
+    }
+    return procList;
+}
+
+lingo::Datum SpriteProperties::createSyntheticBroker(int spriteNum) {
+    auto broker = lingo::Datum::scriptInstance("spriteEventBroker");
+    broker.scriptInstanceValue().setProperty("spritenum", lingo::Datum::of(spriteNum));
+    broker.scriptInstanceValue().setProperty("pProcList", createProcListTemplate());
+    broker.scriptInstanceValue().setProperty("pLink", lingo::Datum::voidValue());
+    broker.scriptInstanceValue().setProperty(syntheticBrokerFlag, lingo::Datum::TRUE);
+    return broker;
+}
+
 std::vector<lingo::Datum> SpriteProperties::retainSyntheticBrokerInstances(
     const std::vector<lingo::Datum>& scriptInstances) {
     std::vector<lingo::Datum> retained;
@@ -520,6 +647,92 @@ std::vector<lingo::Datum> SpriteProperties::retainSyntheticBrokerInstances(
         }
     }
     return retained;
+}
+
+std::vector<lingo::Datum>* SpriteProperties::getOrCreateBrokerScriptList(int spriteNum) {
+    if (registry_ == nullptr) {
+        return nullptr;
+    }
+    auto sprite = registry_->getOrCreateDynamic(spriteNum);
+    if (sprite == nullptr) {
+        return nullptr;
+    }
+    if (sprite->scriptInstanceList().empty()) {
+        sprite->setScriptInstanceList({createSyntheticBroker(spriteNum)});
+        registry_->bumpRevision();
+    }
+    return &sprite->scriptInstanceList();
+}
+
+lingo::Datum* SpriteProperties::primaryBroker(int spriteNum) {
+    auto* scripts = getOrCreateBrokerScriptList(spriteNum);
+    if (scripts == nullptr || scripts->empty()) {
+        return nullptr;
+    }
+    for (auto& script : *scripts) {
+        if (script.type() == lingo::DatumType::ScriptInstanceRef) {
+            return &script;
+        }
+    }
+    return nullptr;
+}
+
+lingo::Datum::PropList& SpriteProperties::ensureProcList(lingo::Datum& broker) {
+    auto& properties = broker.scriptInstanceValue().properties();
+    for (auto& entry : properties) {
+        if (lowerProp(entry.first) == "pproclist") {
+            if (!entry.second.isPropList()) {
+                entry.second = createProcListTemplate();
+            }
+            return entry.second.propListValue();
+        }
+    }
+
+    properties.emplace_back("pProcList", createProcListTemplate());
+    return properties.back().second.propListValue();
+}
+
+std::string SpriteProperties::keyName(const lingo::Datum& datum) {
+    if (const auto* symbol = datum.asSymbol()) {
+        return symbol->name;
+    }
+    return datum.stringValue();
+}
+
+void SpriteProperties::putProcEntry(lingo::Datum::PropList& procList, const lingo::Datum& key, lingo::Datum value) {
+    const std::string target = keyName(key);
+    const bool targetIsSymbol = key.asSymbol() != nullptr;
+    int fallback = -1;
+    auto& properties = procList.properties();
+    for (std::size_t index = 0; index < properties.size(); ++index) {
+        const std::string entryName = keyName(properties[index].first);
+        if (lowerProp(entryName) != lowerProp(target)) {
+            continue;
+        }
+        const bool entryIsSymbol = properties[index].first.asSymbol() != nullptr;
+        if (entryIsSymbol == targetIsSymbol) {
+            properties[index].second = std::move(value);
+            return;
+        }
+        if (fallback < 0 && entryName == target) {
+            fallback = static_cast<int>(index);
+        }
+    }
+    if (fallback >= 0) {
+        properties[static_cast<std::size_t>(fallback)].second = std::move(value);
+        return;
+    }
+    properties.emplace_back(key, std::move(value));
+}
+
+bool SpriteProperties::hasProcEntry(const lingo::Datum::PropList& procList, std::string_view key) {
+    const std::string target = lowerProp(key);
+    for (const auto& entry : procList.properties()) {
+        if (lowerProp(keyName(entry.first)) == target) {
+            return true;
+        }
+    }
+    return false;
 }
 
 } // namespace libreshockwave::player

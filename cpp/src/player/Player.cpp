@@ -391,6 +391,11 @@ void Player::wireComponents() {
     context.timeoutManager = &timeoutManager_;
     context.debugPlaybackEnabled = debugEnabled_;
     castLibManager_.installBuiltinCallbacks(context);
+    context.spriteMethodHandler = [this](int channel,
+                                         const std::string& methodName,
+                                         const std::vector<lingo::Datum>& args) {
+        return spriteProperties_.callSpriteMethod(channel, methodName, args);
+    };
     context.imagePaletteResolver = [this](const lingo::Datum& paletteRef)
         -> std::optional<lingo::builtin::BuiltinContext::ResolvedPalette> {
         const auto* member = paletteRef.asCastMemberRef();
@@ -538,7 +543,7 @@ void Player::wireComponents() {
 
         const auto scriptInstances = spriteProperties_.getScriptInstanceList(channel);
         if (!scriptInstances.has_value()) {
-            return lingo::Datum::voidValue();
+            return spriteProperties_.callSpriteMethod(channel, handlerName, args);
         }
 
         for (const auto& scriptInstance : *scriptInstances) {
