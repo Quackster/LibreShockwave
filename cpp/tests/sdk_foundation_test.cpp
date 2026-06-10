@@ -3320,7 +3320,7 @@ void testBuiltinRegistryFoundation() {
     assert(systemImageRef->bitmap->paletteRefSystemName().has_value());
     assert(systemImageRef->bitmap->paletteRefSystemName().value() == "systemMac");
 
-    const auto customPalette = std::make_shared<Palette>(std::vector<std::uint32_t>{0x000000U, 0xFFFFFFU}, "custom");
+    const auto customPalette = std::make_shared<Palette>(std::vector<std::uint32_t>{0xFFFFFFU, 0xDADADAU}, "custom");
     context.imagePaletteResolver = [customPalette](const Datum& paletteArg) -> std::optional<BuiltinContext::ResolvedPalette> {
         const auto* ref = paletteArg.asCastMemberRef();
         assert(ref != nullptr);
@@ -3337,6 +3337,9 @@ void testBuiltinRegistryFoundation() {
     const auto* memberPaletteImageRef = memberPaletteImageDatum.asImageRef();
     assert(memberPaletteImageRef != nullptr);
     assert(memberPaletteImageRef->bitmap->imagePalette() == customPalette);
+    assert(memberPaletteImageRef->bitmap->paletteIndices().has_value());
+    assert(memberPaletteImageRef->bitmap->paletteIndices().value() == (std::vector<std::uint8_t>{0}));
+    assert(memberPaletteImageRef->bitmap->getPixel(0, 0) == 0xFFFFFFFFU);
     assert(memberPaletteImageRef->bitmap->paletteRefCastLib() == 2);
     assert(memberPaletteImageRef->bitmap->paletteRefMemberNum() == 9);
     assert(!memberPaletteImageRef->bitmap->paletteRefSystemName().has_value());
@@ -7211,6 +7214,33 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(paletteCopyDest->getPixel(1, 0) == 0xFF112233U);
     assert(paletteCopyDest->paletteIndex(0, 0).value() == 0);
     assert(paletteCopyDest->paletteIndex(1, 0).value() == 1);
+    auto scaledPalette = std::make_shared<Palette>(
+        std::vector<std::uint32_t>{0xFFFFFFU, 0xDEDEDEU, 0x000000U}, "scaled-ui");
+    auto scaledPaletteSource = std::make_shared<Bitmap>(3, 1, 8);
+    scaledPaletteSource->setImagePalette(scaledPalette);
+    scaledPaletteSource->fillRectPaletteIndex(0, 0, 1, 1, 2, 0xFF000000U);
+    scaledPaletteSource->fillRectPaletteIndex(1, 0, 2, 1, 1, 0xFFDEDEDEU);
+    auto scaledPaletteDest = std::make_shared<Bitmap>(3, 6, 8);
+    scaledPaletteDest->setImagePalette(scaledPalette);
+    scaledPaletteDest->fill(0xFFFFFFFFU);
+    auto scaledPaletteProps = Datum::propList();
+    scaledPaletteProps.propListValue().put(Datum::symbol("ink"), Datum::of(36));
+    assert(runObjCall(110, {Datum::imageRef(scaledPaletteDest),
+                            Datum::imageRef(scaledPaletteSource),
+                            Datum::intRect(0, 0, 3, 6),
+                            Datum::intRect(0, 0, 3, 1),
+                            scaledPaletteProps}).isVoid());
+    assert(scaledPaletteDest->paletteIndex(0, 0).value() == 2);
+    assert(scaledPaletteDest->paletteIndex(1, 0).value() == 1);
+    assert(scaledPaletteDest->paletteIndex(2, 5).value() == 1);
+    auto scaledPaletteBuffer = std::make_shared<Bitmap>(3, 6, 8);
+    scaledPaletteBuffer->setImagePalette(scaledPalette);
+    scaledPaletteBuffer->fill(0xFFFFFFFFU);
+    assert(runObjCall(110, {Datum::imageRef(scaledPaletteBuffer),
+                            Datum::imageRef(scaledPaletteDest),
+                            Datum::intRect(0, 0, 3, 6),
+                            Datum::intRect(0, 0, 3, 6)}).isVoid());
+    assert(scaledPaletteBuffer->getPixel(1, 3) == 0xFFDEDEDEU);
     auto quadCopySource = std::make_shared<Bitmap>(2, 3, 32, std::vector<std::uint32_t>{
         0xFFFF0000U, 0xFF00FF00U,
         0xFF0000FFU, 0xFFFFFF00U,

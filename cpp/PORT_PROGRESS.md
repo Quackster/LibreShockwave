@@ -534,6 +534,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `lingo::Datum` now exposes first-party image references backed by shared `bitmap::Bitmap` instances.
 - `ImageBuiltins` ports `image(width, height, bitDepth [, paletteRef])` with white-filled bitmap creation, built-in palette symbol resolution, provider-backed palette metadata, and Java-compatible image display/ilk behavior.
+- Paletted `image()` construction and scaled paletted `copyPixels` now have C++ parity coverage for preserving the backing palette-index buffer used by later remaps and sprite processing.
 - `importFileInto` delegates platform-specific media import through an injectable context callback and preserves Director-style TRUE/FALSE results.
 
 ### Runtime Member Image Import Foundation
@@ -1191,4 +1192,5 @@ Result:
 - `7f2fe0cf Port C++ copyPixels near-white matte keying`
 - `8d440f40 Port C++ copyPixels matte flood fill`
 - `1b529579 Port C++ copyPixels matte mask destinations`
-- Current checkpoint commit message: `Port C++ copyPixels color remap preservation`
+- `3c00a226 Port C++ copyPixels color remap preservation`
+- Current checkpoint commit message: `Cover C++ paletted image index parity`
