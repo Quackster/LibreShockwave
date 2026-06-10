@@ -12223,6 +12223,21 @@ void testCastLibManagerFoundation() {
     assert(newRuntime.asCastMemberRef()->memberNum() == 10003);
     assert(manager.getMemberProp(1, 10003, "type").asSymbol()->name == "shape");
 
+    auto reusableRuntime = manager.resolveMember(1, 10000);
+    assert(reusableRuntime != nullptr);
+    assert(manager.setMemberProp(1, 10000, "name", Datum::of(std::string("Reusable Bitmap"))));
+    assert(manager.getMemberProp(1, 10000, "name").stringValue() == "Reusable Bitmap");
+    assert(manager.callMemberMethod(1, 10000, "erase", {}).intValue() == 1);
+    assert(manager.memberExists(1, 10000));
+    assert(manager.getMemberProp(1, 10000, "type").asSymbol()->name == "empty");
+    assert(manager.getMemberProp(1, 10000, "name").stringValue().empty());
+    assert(manager.getMemberProp(1, 10000, "image").isVoid());
+    const auto reusedRuntime = manager.createMember(1, "palette");
+    assert(reusedRuntime.asCastMemberRef() != nullptr);
+    assert(reusedRuntime.asCastMemberRef()->memberNum() == 10000);
+    assert(manager.resolveMember(1, 10000) == reusableRuntime);
+    assert(manager.getMemberProp(1, 10000, "type").asSymbol()->name == "palette");
+
     std::vector<std::uint8_t> importedImage{
         'L', 'S', 'W', 'I',
         0, 0, 0, 2,
@@ -12370,6 +12385,18 @@ void testCastLibManagerFoundation() {
     const auto renderedRuntimeFrame = runtimeSnapshot.renderFrame();
     assert(renderedRuntimeFrame.getPixel(3, 5) == 0xFF0A0B0CU);
     assert(renderedRuntimeFrame.getPixel(4, 5) == 0xFF0D0E0FU);
+    assert(player.builtinContext()
+               .castMemberMethodHandler(playerRuntimeRef->castLib, playerRuntimeRef->memberNum(), "erase", {})
+               .intValue() == 1);
+    auto retiredSprite = player.stageRenderer().spriteRegistry().get(7);
+    assert(retiredSprite != nullptr);
+    assert(!retiredSprite->hasDynamicMember());
+    assert(retiredSprite->width() == 1);
+    assert(retiredSprite->height() == 1);
+    const auto reusedPlayerRuntime = player.builtinRegistry()
+        .invoke("new", player.builtinContext(), {Datum::symbol("bitmap"), Datum::castLibRef(CastLibId(1))});
+    assert(reusedPlayerRuntime.asCastMemberRef() != nullptr);
+    assert(reusedPlayerRuntime.asCastMemberRef()->memberNum() == playerRuntimeRef->memberNum());
 
     const auto matching = manager.getMatchingCastLibNumbersByUrl("https://cdn.example/ext.cst");
     assert(matching.size() == 1);

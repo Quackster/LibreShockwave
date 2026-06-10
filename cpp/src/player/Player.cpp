@@ -228,6 +228,9 @@ void Player::wireComponents() {
             stageRenderer_.onFrameEnter(event.frame);
         }
     });
+    castLibManager_.setMemberSlotRetiredCallback([this](int castLib, int memberNum) {
+        (void)stageRenderer_.spriteRegistry().clearDynamicMemberBindings(castLib, memberNum);
+    });
 
     if (file_ != nullptr && !file_->basePath().empty()) {
         netManager_.setBasePath(file_->basePath());

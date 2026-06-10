@@ -50,6 +50,8 @@ public:
     [[nodiscard]] bool isPalette() const;
     [[nodiscard]] bool isFont() const;
     [[nodiscard]] bool isShockwave3D() const;
+    [[nodiscard]] bool isRuntimeDynamic() const;
+    [[nodiscard]] bool isReusableDynamicSlot() const;
 
     [[nodiscard]] int width() const;
     [[nodiscard]] int height() const;
@@ -57,10 +59,13 @@ public:
     [[nodiscard]] int regY() const;
     [[nodiscard]] std::shared_ptr<bitmap::Bitmap> runtimeBitmap() const;
     void setRuntimeBitmap(const bitmap::Bitmap& bitmap, bool markScriptModified = true);
+    void erase();
+    void reuseAs(MemberType memberType);
     [[nodiscard]] std::string toString() const;
 
 private:
     void parseSpecificData();
+    void resetRuntimePayload();
 
     int id_;
     int castLib_;

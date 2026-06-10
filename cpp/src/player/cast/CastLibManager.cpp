@@ -487,6 +487,30 @@ lingo::Datum CastLibManager::createMember(const std::string& memberName, const s
     return lingo::Datum::of((castLib->number() << 16) | member->memberNum());
 }
 
+bool CastLibManager::eraseMember(int castLibNumber, int memberNumber) {
+    auto member = resolveMember(castLibNumber, memberNumber);
+    if (!member) {
+        return false;
+    }
+    const bool retiredDynamicSlot = member->isRuntimeDynamic();
+    member->erase();
+    if (retiredDynamicSlot && memberSlotRetiredCallback_) {
+        memberSlotRetiredCallback_(castLibNumber, memberNumber);
+    }
+    return true;
+}
+
+lingo::Datum CastLibManager::callMemberMethod(int castLibNumber,
+                                              int memberNumber,
+                                              const std::string& methodName,
+                                              const std::vector<lingo::Datum>& args) {
+    (void)args;
+    if (equalsIgnoreCase(methodName, "erase")) {
+        return eraseMember(castLibNumber, memberNumber) ? lingo::Datum::of(1) : lingo::Datum::voidValue();
+    }
+    return lingo::Datum::voidValue();
+}
+
 bool CastLibManager::importFileIntoMember(int castLibNumber,
                                           int memberNumber,
                                           const std::string& url,
@@ -608,6 +632,10 @@ void CastLibManager::clearPendingExternalLoad(int castLibNumber) {
     pendingExternalLoads_.erase(castLibNumber);
 }
 
+void CastLibManager::setMemberSlotRetiredCallback(MemberSlotRetiredCallback callback) {
+    memberSlotRetiredCallback_ = std::move(callback);
+}
+
 void CastLibManager::installBuiltinCallbacks(lingo::builtin::BuiltinContext& context) {
     context.castMemberCreator = [this](int castLib, const std::string& memberType) {
         return createMember(castLib, memberType);
@@ -632,6 +660,12 @@ void CastLibManager::installBuiltinCallbacks(lingo::builtin::BuiltinContext& con
     };
     context.castMemberExistsResolver = [this](int castLib, int memberNum) {
         return memberExists(castLib, memberNum);
+    };
+    context.castMemberMethodHandler = [this](int castLib,
+                                             int memberNum,
+                                             const std::string& methodName,
+                                             const std::vector<lingo::Datum>& args) {
+        return callMemberMethod(castLib, memberNum, methodName, args);
     };
     context.castMemberPropertyGetter = [this](int castLib, int memberNum, const std::string& propertyName) {
         return getMemberProp(castLib, memberNum, propertyName);

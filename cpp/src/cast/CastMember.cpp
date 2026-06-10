@@ -50,6 +50,10 @@ bool CastMember::isFilmLoop() const { return memberType_ == MemberType::FilmLoop
 bool CastMember::isPalette() const { return memberType_ == MemberType::Palette; }
 bool CastMember::isFont() const { return memberType_ == MemberType::Font; }
 bool CastMember::isShockwave3D() const { return memberType_ == MemberType::Shockwave3D; }
+bool CastMember::isRuntimeDynamic() const { return rawChunk_ == nullptr; }
+bool CastMember::isReusableDynamicSlot() const {
+    return isRuntimeDynamic() && memberType_ == MemberType::Null && name_.empty();
+}
 
 int CastMember::width() const {
     if (runtimeBitmap_) return runtimeBitmap_->width();
@@ -95,6 +99,16 @@ void CastMember::setRuntimeBitmap(const bitmap::Bitmap& bitmap, bool markScriptM
     runtimeRegX_ = bitmap.hasAnchorPoint() ? std::optional<int>(bitmap.anchorX()) : std::optional<int>(0);
     runtimeRegY_ = bitmap.hasAnchorPoint() ? std::optional<int>(bitmap.anchorY()) : std::optional<int>(0);
     runtimeBitmap_ = std::move(copy);
+}
+
+void CastMember::erase() {
+    resetRuntimePayload();
+    memberType_ = MemberType::Null;
+}
+
+void CastMember::reuseAs(MemberType memberType) {
+    resetRuntimePayload();
+    memberType_ = memberType;
 }
 
 std::string CastMember::toString() const {
@@ -145,6 +159,19 @@ void CastMember::parseSpecificData() {
         default:
             break;
     }
+}
+
+void CastMember::resetRuntimePayload() {
+    name_.clear();
+    scriptId_ = 0;
+    bitmapInfo_.reset();
+    shapeInfo_.reset();
+    filmLoopInfo_.reset();
+    scriptType_.reset();
+    shockwave3DInfo_.reset();
+    runtimeBitmap_.reset();
+    runtimeRegX_.reset();
+    runtimeRegY_.reset();
 }
 
 } // namespace libreshockwave::cast

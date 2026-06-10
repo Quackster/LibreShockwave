@@ -34,6 +34,7 @@ namespace libreshockwave::player::cast {
 class CastLibManager {
 public:
     using CastDataRequestCallback = std::function<void(int castLibNumber, const std::string& fileName)>;
+    using MemberSlotRetiredCallback = std::function<void(int castLibNumber, int memberNumber)>;
 
     explicit CastLibManager(std::shared_ptr<DirectorFile> file,
                             CastDataRequestCallback castDataRequestCallback = {});
@@ -72,6 +73,11 @@ public:
     [[nodiscard]] std::shared_ptr<const bitmap::Palette> resolvePaletteByMember(int castLibNumber, int memberNumber);
     [[nodiscard]] lingo::Datum createMember(int castLibNumber, const std::string& memberType);
     [[nodiscard]] lingo::Datum createMember(const std::string& memberName, const std::string& memberType);
+    bool eraseMember(int castLibNumber, int memberNumber);
+    [[nodiscard]] lingo::Datum callMemberMethod(int castLibNumber,
+                                                int memberNumber,
+                                                const std::string& methodName,
+                                                const std::vector<lingo::Datum>& args);
     bool importFileIntoMember(int castLibNumber,
                               int memberNumber,
                               const std::string& url,
@@ -85,6 +91,7 @@ public:
     [[nodiscard]] std::vector<int> getMatchingCastLibNumbersByUrl(const std::string& url);
     [[nodiscard]] std::vector<int> getRequestedExternalCastSlots(const std::string& url);
     void clearPendingExternalLoad(int castLibNumber);
+    void setMemberSlotRetiredCallback(MemberSlotRetiredCallback callback);
 
     void installBuiltinCallbacks(lingo::builtin::BuiltinContext& context);
 
@@ -103,6 +110,7 @@ private:
     std::unordered_map<std::string, std::vector<std::uint8_t>> castDataCache_;
     std::map<int, std::string> pendingExternalLoads_;
     CastDataRequestCallback castDataRequestCallback_;
+    MemberSlotRetiredCallback memberSlotRetiredCallback_;
     bool initialized_ = false;
 };
 

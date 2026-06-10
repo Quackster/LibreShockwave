@@ -299,11 +299,22 @@ std::shared_ptr<libreshockwave::cast::CastMember> CastLib::createDynamicMember(c
     if (!isLoaded()) {
         load();
     }
+    const auto type = dynamicMemberTypeFor(memberType);
+    for (int memberNumber = 10000; memberNumber < nextDynamicMember_; ++memberNumber) {
+        if (memberChunks_.contains(memberNumber)) {
+            continue;
+        }
+        if (const auto found = members_.find(memberNumber);
+            found != members_.end() && found->second && found->second->isReusableDynamicSlot()) {
+            found->second->reuseAs(type);
+            return found->second;
+        }
+    }
     const int memberNumber = nextAvailableDynamicMemberNumber();
     auto member = std::make_shared<libreshockwave::cast::CastMember>(
         castLibId_.value(),
         memberNumber,
-        dynamicMemberTypeFor(memberType));
+        type);
     members_[memberNumber] = member;
     return member;
 }
@@ -405,7 +416,12 @@ lingo::Datum CastLib::getMemberProp(int memberNumber, const std::string& propNam
     const auto prop = lower(propName);
     if (prop == "name") return stringDatum(member->name());
     if (prop == "number" || prop == "membernum") return lingo::Datum::of(memberNumber);
-    if (prop == "type") return lingo::Datum::symbol(std::string(libreshockwave::cast::name(member->memberType())));
+    if (prop == "type") {
+        if (member->memberType() == libreshockwave::cast::MemberType::Null) {
+            return lingo::Datum::symbol("empty");
+        }
+        return lingo::Datum::symbol(std::string(libreshockwave::cast::name(member->memberType())));
+    }
     if (prop == "castlibnum" || prop == "castlib") return lingo::Datum::of(castLibId_.value());
     if (prop == "width") return lingo::Datum::of(member->width());
     if (prop == "height") return lingo::Datum::of(member->height());
@@ -432,6 +448,10 @@ bool CastLib::setMemberProp(int memberNumber, const std::string& propName, const
     }
 
     const auto prop = lower(propName);
+    if (prop == "name" && member->isRuntimeDynamic()) {
+        member->setName(value.stringValue());
+        return true;
+    }
     if (prop == "image") {
         const auto* image = value.asImageRef();
         if (image == nullptr || image->bitmap == nullptr) {

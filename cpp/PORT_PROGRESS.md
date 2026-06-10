@@ -214,12 +214,13 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Type checks, dimensions, registration point helpers, raw chunk access, and display string formatting are available in C++.
 - Runtime bitmap image assignment now stores a copied, script-modified member bitmap and updates member width/height/registration metadata for downstream sprite and property providers.
 - Runtime-created cast members can now be constructed without a raw chunk, carry mutable names, and expose their runtime type through the same property surface.
+- Runtime-created cast members can now erase their runtime payload, expose `#empty`, and be reused in place as a new dynamic member type.
 
 ### Cast Library Manager Foundation
 
 - `player::cast::CastLib` ports lazy cast-library metadata, authored/external file binding state, stable registry binding checks, member chunk maps, script maps, source-prefixed member-name fallback, font-alias/PFR XMED scanning, and Java-compatible cast/member property fallbacks.
 - `player::cast::CastLibManager` ports DirectorFile-backed cast-library initialization from MCsL/CAS* chunks, castLib/member number and name lookup, registry-visible member filtering, external-cast cache keys, pending external load tracking, preload-mode loading, and builtin callback installation.
-- Runtime bitmap member image mutation, cached imported-image assignment, Director BITD imported-media assignment, dynamic member creation, and dynamic bitmap member sprite rendering are available for existing cast libraries; non-bitmap media mutation, ediM/JPEG/ALFA sidecars, dynamic slot erase/reuse, and full CastLibProvider palette/field integration remain deferred to later player runtime slices.
+- Runtime bitmap member image mutation, cached imported-image assignment, Director BITD imported-media assignment, dynamic member creation/reuse, dynamic member `erase`, and dynamic bitmap member sprite rendering are available for existing cast libraries; non-bitmap media mutation, ediM/JPEG/ALFA sidecars, and full CastLibProvider palette/field integration remain deferred to later player runtime slices.
 
 ### Bitmap Resolver Foundation
 
@@ -507,14 +508,15 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `CastLib` now allocates runtime member slots from 10000, skips authored/dynamic collisions, maps Director type names (`field`/`text`, bitmap, palette, script, button, shape, sound) to C++ `MemberType`, and leaves authored member counts unchanged.
 - `CastLibManager` wires `new(#type, castLib)` through the cast-member creator callback and `createMember(name, #type)` through the named creator callback; named creation returns the Java-compatible encoded slot integer.
 - Dynamic members resolve by number and name through the existing cast-member lookup and property paths, including runtime name/type property reflection.
-- Dynamic slot erase/reuse remains deferred.
+- Dynamic member `erase` now clears runtime payloads, marks the slot `#empty`, keeps the slot addressable, and lets the next `createDynamicMember` reuse the first erased high slot in place.
+- Player wires member-slot retirement notifications to `SpriteRegistry::clearDynamicMemberBindings`, preventing stale dynamic sprites from holding reused slots.
 
 ### Runtime Dynamic Member Render Pipeline
 
 - `StageRenderer` now accepts a high-level cast-member resolver and preserves the prior DirectorFile chunk fallback when no provider resolves a member.
 - Dynamic sprite collection now resolves runtime-created cast members, infers sprite type from the high-level member, applies runtime bitmap registration points, and attaches the `CastMember` wrapper to `RenderSprite::dynamicMember`.
 - `Player` wires the StageRenderer resolver to `CastLibManager::resolveMember`, so runtime-created bitmap members with script-assigned images flow through the default frame pipeline and SpriteBaker live-bitmap path.
-- Non-bitmap dynamic member baking and dynamic slot erase/reuse remain deferred.
+- Non-bitmap dynamic member baking remains deferred.
 
 ### Lingo VM Scope and Execution Context Foundation
 
@@ -763,6 +765,7 @@ Result:
 - Runtime member image assignment, cached `LSWI` and Director `DTIB`/BITD `importFileInto` assignment, imported-image alpha preservation, imported anchor-point propagation, indexed imported-media palette metadata, runtime member property reflection, and Player SpriteBaker live runtime bitmap rendering passed through the same CTest executable.
 - Runtime dynamic member creation, named encoded slot creation, `new(#type, castLib)` callback creation, stable authored member counts, and dynamic member name/type lookup passed through the same CTest executable.
 - Runtime-created bitmap member render sprites, runtime registration-point placement, Player StageRenderer-to-CastLibManager resolver wiring, SpriteBaker live dynamic bitmap baking, and rendered frame pixels for dynamic bitmap sprites passed through the same CTest executable.
+- Dynamic member `erase`, `#empty` type reflection, first erased-slot reuse, cast-member method callback routing, and Player sprite binding cleanup on slot retirement passed through the same CTest executable.
 - SoundBuiltins channel creation, availability, sound-channel method dispatch, VM object-property defaults/mutation, and SoundManager playback delegation passed through the same CTest executable.
 - ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration and callback hooks passed through the same CTest executable.
 - TypeBuiltins object/void/type predicates, `value` literal parsing/provider fallback, `script`/`callAncestor` callback hooks, symbol conversion, and `ilk` alias checks passed through the same CTest executable.
@@ -947,4 +950,5 @@ Result:
 - `3d7a59cf Port C++ runtime member image import`
 - `d1463491 Port C++ Director BITD media import`
 - `1b81514f Port C++ dynamic member creation`
-- Current checkpoint commit message: `Port C++ dynamic member rendering`
+- `ee3200d8 Port C++ dynamic member rendering`
+- Current checkpoint commit message: `Port C++ dynamic member lifecycle`
