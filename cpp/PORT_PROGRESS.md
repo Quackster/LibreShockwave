@@ -684,6 +684,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `lingo::BuiltinContext` now exposes an alertHook callback used by `alert()` before fallback alert/output handling.
 - `lingo::vm::LingoVM` now exposes `fireAlertHook`, guards recursive alertHook execution, and suppresses script errors when the hook returns truthy while preserving call-stack unwind and deferred-call flushing.
+- `lingo::vm::AlertHookHandler` ports Java alertHook recursion-depth tracking, error-handler recognition, skip diagnostics, and guarded hook invocation; `LingoVM` delegates alertHook depth checks through it.
 - `player::Player` now wires the movie `alertHook` script-instance property through the existing VM event dispatch path and uses the handler return value to decide whether the alert/error was handled.
 - Higher-level debug UI/export wiring remains deferred to later VM/player integration slices.
 
@@ -925,7 +926,7 @@ Result:
 - Lingo VM-backed nested `value(...)` list/proplist global identifier resolution passed through the same CTest executable.
 - Lingo VM trace listener handler enter/exit, optional instruction tracing, stack/global snapshots, reusable TracingHelper payload building, shared instruction annotations, local/param/global/script-instance-property variable-set callbacks, error callbacks, and trace argument formatting passed through the same CTest executable.
 - Lingo VM deferred script-instance call ordering, automatic outer-handler flush, deferred task explicit flushing, flush-state guards, Player call-target provider wiring, and numeric `closeThread` task deferral passed through the same CTest executable.
-- Lingo VM alertHook manual firing, `alert()` suppression, script-error suppression/rethrow behavior, and Player no-hook fallback passed through the same CTest executable.
+- Lingo VM AlertHookHandler skip/depth diagnostics, guarded hook invocation, alertHook manual firing, `alert()` suppression, script-error suppression/rethrow behavior, and Player no-hook fallback passed through the same CTest executable.
 - Lingo Datum deep-copy behavior, DatumFormatter scalar/brief/expanded/detailed/recursive output, AncestorChainWalker property/depth traversal, `call(...)` message-struct argument snapshots, non-message prop-list forwarding, and per-target call snapshot freshness passed through the same CTest executable.
 - Player-owned LingoVM builtin delegation, file-backed dispatcher movie-script discovery/bytecode invocation, startup movie-script frame lifecycle and timeout-target dispatch, actorList frame-event dispatch, elapsed timeout target/global dispatch, `stopMovie` timeout/movie dispatch, and VM preference storage passed through the same CTest executable.
 - OpcodeRegistry stack/control handler registration, custom handler registration, literal/symbol pushes, stack manipulation, return/factory return, and jump opcodes passed through the same CTest executable.
@@ -1158,4 +1159,4 @@ Result:
 - `3b15a1e5 Port C++ random seed trace parity`
 - `7c27afaf Port C++ VM value identifier fallback`
 - `1aafff66 Port C++ nested value identifier fallback`
-- Current checkpoint commit message: `Port C++ multiuser bridge surface`
+- Current checkpoint commit message: `Port C++ alert hook handler`

@@ -87,6 +87,7 @@
 #include "libreshockwave/lingo/LingoValueParser.hpp"
 #include "libreshockwave/lingo/Opcode.hpp"
 #include "libreshockwave/lingo/builtin/BuiltinRegistry.hpp"
+#include "libreshockwave/lingo/vm/AlertHookHandler.hpp"
 #include "libreshockwave/lingo/vm/DebugConfig.hpp"
 #include "libreshockwave/lingo/vm/datum/DatumFormatter.hpp"
 #include "libreshockwave/lingo/vm/ExecutionContext.hpp"
@@ -232,6 +233,7 @@ using libreshockwave::lingo::Opcode;
 using libreshockwave::lingo::StringChunkType;
 using libreshockwave::lingo::builtin::BuiltinContext;
 using libreshockwave::lingo::builtin::BuiltinRegistry;
+using libreshockwave::lingo::vm::AlertHookHandler;
 using libreshockwave::lingo::vm::DebugConfig;
 using libreshockwave::lingo::vm::ExecutionContext;
 using libreshockwave::lingo::vm::HandlerRef;
@@ -7628,6 +7630,55 @@ void testLingoVmRuntimeFoundation() {
     vm.flushDeferredTasks();
     assert((deferredMethodTasks == std::vector<std::string>{"queued:closeThread:77"}));
     vm.builtinContext().callTargetHandler = {};
+
+    AlertHookHandler alertHookHandler;
+    std::vector<std::string> alertHookSkipMessages;
+    alertHookHandler.setErrorHandlerSkipCallback([&alertHookSkipMessages](const std::string& message) {
+        alertHookSkipMessages.push_back(message);
+    });
+    assert(alertHookHandler.getErrorHandlerDepth() == 0);
+    assert(alertHookHandler.isErrorHandler("alertHook"));
+    assert(alertHookHandler.isErrorHandler("ALERThook"));
+    assert(!alertHookHandler.isErrorHandler("mouseUp"));
+    assert(!alertHookHandler.shouldSkipErrorHandler("mouseUp", {Datum::of(std::string("ignored"))}));
+    assert(alertHookSkipMessages.empty());
+    assert(!alertHookHandler.shouldSkipErrorHandler(
+        "alertHook",
+        {Datum::of(std::string("Alert")), Datum::of(std::string("boom"))}));
+    assert((alertHookSkipMessages == std::vector<std::string>{"ENTER:alertHook depth=0 msg=\"boom\""}));
+    int alertHookHandlerInvocations = 0;
+    assert(alertHookHandler.fireAlertHook(
+        "Alert",
+        "manual",
+        [&alertHookHandlerInvocations](const std::string& alertType, const std::string& message) {
+            ++alertHookHandlerInvocations;
+            assert(alertType == "Alert");
+            assert(message == "manual");
+            return true;
+        }));
+    assert(alertHookHandlerInvocations == 1);
+    alertHookHandler.incrementDepth();
+    assert(alertHookHandler.getErrorHandlerDepth() == 1);
+    assert(alertHookHandler.shouldSkipErrorHandler("ALERThook", {}));
+    assert(alertHookSkipMessages.back() == "SKIP:ALERThook depth=1");
+    assert(!alertHookHandler.fireAlertHook(
+        "Alert",
+        "blocked",
+        [&alertHookHandlerInvocations](const std::string&, const std::string&) {
+            ++alertHookHandlerInvocations;
+            return true;
+        }));
+    assert(alertHookHandlerInvocations == 1);
+    alertHookHandler.decrementDepth();
+    assert(alertHookHandler.getErrorHandlerDepth() == 0);
+    AlertHookHandler::HookInvoker emptyAlertHookInvoker;
+    assert(!alertHookHandler.fireAlertHook("Alert", "missing", emptyAlertHookInvoker));
+    assert(!alertHookHandler.fireAlertHook(
+        "Alert",
+        "throws",
+        [](const std::string&, const std::string&) -> bool {
+            throw std::runtime_error("alert hook failed");
+        }));
 
     int alertHookCalls = 0;
     vm.builtinContext().alertHookHandler = [&vm, &alertHookCalls](

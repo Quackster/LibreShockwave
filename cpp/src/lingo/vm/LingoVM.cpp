@@ -324,6 +324,10 @@ void LingoVM::resetErrorState() {
     inErrorState_ = false;
 }
 
+void LingoVM::setErrorHandlerSkipCallback(AlertHookHandler::SkipCallback callback) {
+    alertHookHandler_.setErrorHandlerSkipCallback(std::move(callback));
+}
+
 void LingoVM::setTraceListener(std::shared_ptr<TraceListener> listener) {
     traceListener_ = std::move(listener);
 }
@@ -539,15 +543,7 @@ bool LingoVM::fireAlertHook(std::string_view errorMessage) {
 }
 
 bool LingoVM::fireAlertHook(std::string_view errorType, std::string_view errorMessage) {
-    if (alertHookDepth_ > 0 || !builtinContext_.alertHookHandler) {
-        return false;
-    }
-
-    try {
-        return builtinContext_.alertHookHandler(std::string(errorType), std::string(errorMessage));
-    } catch (...) {
-        return false;
-    }
+    return alertHookHandler_.fireAlertHook(errorType, errorMessage, builtinContext_.alertHookHandler);
 }
 
 Datum LingoVM::executeHandler(const chunks::ScriptChunk& script,
@@ -560,8 +556,8 @@ Datum LingoVM::executeHandler(const chunks::ScriptChunk& script,
 
     const std::string currentHandlerName = handlerName(script, handler);
     const std::string normalizedHandlerName = normalizeLookupName(currentHandlerName);
-    const bool isAlertHookHandler = equalsIgnoreCase(currentHandlerName, "alertHook");
-    if (isAlertHookHandler && alertHookDepth_ > 0) {
+    const bool isAlertHookHandler = alertHookHandler_.isErrorHandler(currentHandlerName);
+    if (alertHookHandler_.shouldSkipErrorHandler(currentHandlerName, args)) {
         return Datum::voidValue();
     }
 
@@ -611,7 +607,7 @@ Datum LingoVM::executeHandler(const chunks::ScriptChunk& script,
     std::optional<TraceListener::HandlerInfo> handlerInfo;
     bool alertHookDepthIncremented = false;
     if (isAlertHookHandler) {
-        ++alertHookDepth_;
+        alertHookHandler_.incrementDepth();
         alertHookDepthIncremented = true;
     }
     auto leaveHandler = [&] {
@@ -622,7 +618,7 @@ Datum LingoVM::executeHandler(const chunks::ScriptChunk& script,
             emitConsoleHandlerExit(*handlerInfo, result);
         }
         if (alertHookDepthIncremented) {
-            --alertHookDepth_;
+            alertHookHandler_.decrementDepth();
             alertHookDepthIncremented = false;
         }
         callStack_.pop_back();

@@ -15,6 +15,7 @@
 #include "libreshockwave/chunks/ScriptChunk.hpp"
 #include "libreshockwave/lingo/Datum.hpp"
 #include "libreshockwave/lingo/builtin/BuiltinRegistry.hpp"
+#include "libreshockwave/lingo/vm/AlertHookHandler.hpp"
 #include "libreshockwave/lingo/vm/ExecutionContext.hpp"
 #include "libreshockwave/lingo/vm/OpcodeRegistry.hpp"
 #include "libreshockwave/lingo/vm/Scope.hpp"
@@ -84,6 +85,7 @@ public:
     void setErrorState(bool errorState);
     [[nodiscard]] bool isInErrorState() const;
     void resetErrorState();
+    void setErrorHandlerSkipCallback(AlertHookHandler::SkipCallback callback);
 
     void setTraceListener(std::shared_ptr<TraceListener> listener);
     [[nodiscard]] std::shared_ptr<TraceListener> traceListener() const;
@@ -200,7 +202,7 @@ private:
     bool traceEnabled_{false};
     bool consoleLoopSuppressed_{false};
     bool explicitRandomSeed_{false};
-    int alertHookDepth_{0};
+    AlertHookHandler alertHookHandler_;
     int consoleCurrentHandlerId_{-1};
     int stepLimit_{0};
     std::int64_t tickDeadlineMs_{0};

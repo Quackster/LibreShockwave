@@ -50,6 +50,7 @@ add_library(libreshockwave
     src/lingo/LingoValueParser.cpp
     src/lingo/Opcode.cpp
     src/lingo/builtin/BuiltinRegistry.cpp
+    src/lingo/vm/AlertHookHandler.cpp
     src/lingo/vm/DebugConfig.cpp
     src/lingo/vm/datum/DatumFormatter.cpp
     src/lingo/vm/ExecutionContext.cpp
