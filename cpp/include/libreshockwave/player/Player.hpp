@@ -1,12 +1,15 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <iosfwd>
 #include <memory>
+#include <mutex>
 #include <set>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -125,8 +128,10 @@ public:
     [[nodiscard]] std::string formatLingoCallStack() const;
     [[nodiscard]] std::string getRecentScriptErrorMessage(std::int64_t maxAgeMs) const;
     [[nodiscard]] std::string getRecentScriptErrorStack(std::int64_t maxAgeMs) const;
+    [[nodiscard]] bool isVmRunning() const;
 
     void play();
+    void playAsync(std::function<void()> onReady = {});
     void pause();
     void resume();
     void stop();
@@ -134,7 +139,9 @@ public:
     void goToFrame(int frame);
     void goToLabel(std::string_view label);
     void stepFrame();
+    void stepFrameAsync(std::function<void()> onComplete = {});
     [[nodiscard]] bool tick();
+    void tickAsync(std::function<void()> onComplete = {});
     [[nodiscard]] bool fireTestError(std::string_view errorMessage);
     void onNetFetchComplete(std::string_view url, const std::vector<std::uint8_t>& data);
     [[nodiscard]] int preloadAllCasts();
@@ -151,9 +158,12 @@ private:
 
     void wireComponents();
     void prepareMovieFoundation();
+    void executeFrameCycle(bool processUpdates);
     void applyInitialBuiltinVariables();
     void processUpdatingObjects();
     void refreshDebugControllerGlobals();
+    void launchVmWorker(std::function<void()> work, std::function<void()> callback);
+    void joinVmWorker();
     void handleTraceError(std::string_view message, std::string_view errorDetail);
     [[nodiscard]] bool recentScriptErrorIsFresh(std::int64_t maxAgeMs) const;
     void loadCastFromNetCache(int castLibNumber, const std::string& fileName);
@@ -184,6 +194,9 @@ private:
     lingo::vm::LingoVM vm_;
     std::shared_ptr<lingo::vm::TraceListener> playerTraceListener_;
     PlayerState state_{PlayerState::Stopped};
+    std::atomic_bool vmRunning_{false};
+    std::mutex vmThreadMutex_;
+    std::thread vmThread_;
     int tempo_{15};
     bool debugEnabled_{false};
     std::function<void(const PlayerEventInfo&)> eventListener_;

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <exception>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -151,6 +152,10 @@ Player::Player(std::shared_ptr<DirectorFile> file)
 }
 
 Player::~Player() {
+    if (debugController_) {
+        debugController_->reset();
+    }
+    joinVmWorker();
     vm_.setTraceListener(nullptr);
     lingo::vm::dispatch::ImageMethodDispatcher::clearImageMutationCallback(this);
 }
@@ -397,12 +402,31 @@ std::string Player::getRecentScriptErrorStack(std::int64_t maxAgeMs) const {
     return recentScriptErrorIsFresh(maxAgeMs) ? lastScriptErrorStack_ : std::string();
 }
 
+bool Player::isVmRunning() const {
+    return vmRunning_.load();
+}
+
 void Player::play() {
     const bool wasStopped = state_ == PlayerState::Stopped;
     state_ = PlayerState::Playing;
     if (wasStopped) {
         prepareMovieFoundation();
     }
+}
+
+void Player::playAsync(std::function<void()> onReady) {
+    if (state_ != PlayerState::Stopped) {
+        state_ = PlayerState::Playing;
+        if (onReady) {
+            onReady();
+        }
+        return;
+    }
+
+    launchVmWorker([this] {
+        prepareMovieFoundation();
+        state_ = PlayerState::Playing;
+    }, std::move(onReady));
 }
 
 void Player::pause() {
@@ -439,6 +463,7 @@ void Player::shutdown() {
     if (debugController_) {
         debugController_->reset();
     }
+    joinVmWorker();
     lingo::vm::dispatch::ImageMethodDispatcher::clearImageMutationCallback(this);
 }
 
@@ -456,16 +481,20 @@ void Player::stepFrame() {
         state_ = PlayerState::Paused;
     }
 
-    TickDeadlineGuard deadlineGuard(vm_);
-    refreshDebugControllerGlobals();
-    (void)inputHandler_.processInputEvents();
-    (void)frameContext_.executeFrame();
-    if (timeoutProcessor_) {
-        timeoutProcessor_();
-    }
-    xtraManager_.tickAll();
-    vm_.flushDeferredTasks();
-    (void)frameContext_.advanceFrame();
+    executeFrameCycle(false);
+}
+
+void Player::stepFrameAsync(std::function<void()> onComplete) {
+    launchVmWorker([this] {
+        if (state_ == PlayerState::Stopped) {
+            prepareMovieFoundation();
+            state_ = PlayerState::Paused;
+        }
+
+        do {
+            executeFrameCycle(false);
+        } while (debugController_ && debugController_->isAwaitingStepContinuation());
+    }, std::move(onComplete));
 }
 
 bool Player::tick() {
@@ -473,18 +502,20 @@ bool Player::tick() {
         return state_ == PlayerState::Paused;
     }
 
-    TickDeadlineGuard deadlineGuard(vm_);
-    refreshDebugControllerGlobals();
-    (void)inputHandler_.processInputEvents();
-    (void)frameContext_.executeFrame();
-    if (timeoutProcessor_) {
-        timeoutProcessor_();
-    }
-    xtraManager_.tickAll();
-    processUpdatingObjects();
-    vm_.flushDeferredTasks();
-    (void)frameContext_.advanceFrame();
+    executeFrameCycle(true);
     return true;
+}
+
+void Player::tickAsync(std::function<void()> onComplete) {
+    if (state_ != PlayerState::Playing) {
+        return;
+    }
+
+    launchVmWorker([this] {
+        do {
+            executeFrameCycle(true);
+        } while (debugController_ && debugController_->isAwaitingStepContinuation());
+    }, std::move(onComplete));
 }
 
 bool Player::fireTestError(std::string_view errorMessage) {
@@ -496,6 +527,22 @@ bool Player::fireTestError(std::string_view errorMessage) {
         vm_.flushDeferredTasks();
         throw;
     }
+}
+
+void Player::executeFrameCycle(bool processUpdates) {
+    TickDeadlineGuard deadlineGuard(vm_);
+    refreshDebugControllerGlobals();
+    (void)inputHandler_.processInputEvents();
+    (void)frameContext_.executeFrame();
+    if (timeoutProcessor_) {
+        timeoutProcessor_();
+    }
+    xtraManager_.tickAll();
+    if (processUpdates) {
+        processUpdatingObjects();
+    }
+    vm_.flushDeferredTasks();
+    (void)frameContext_.advanceFrame();
 }
 
 void Player::onNetFetchComplete(std::string_view url, const std::vector<std::uint8_t>& data) {
@@ -1203,6 +1250,54 @@ void Player::refreshDebugControllerGlobals() {
         globals.emplace(name, value);
     }
     debugController_->setGlobalsSnapshot(std::move(globals));
+}
+
+void Player::launchVmWorker(std::function<void()> work, std::function<void()> callback) {
+    if (vmRunning_.exchange(true)) {
+        return;
+    }
+
+    joinVmWorker();
+    std::lock_guard<std::mutex> lock(vmThreadMutex_);
+    vmThread_ = std::thread([this, work = std::move(work), callback = std::move(callback)]() mutable {
+        try {
+            if (work) {
+                work();
+            }
+        } catch (const std::exception& error) {
+            handleTraceError("Async VM error", error.what());
+        } catch (...) {
+            handleTraceError("Async VM error", "unknown exception");
+        }
+
+        vmRunning_.store(false);
+        if (callback) {
+            try {
+                callback();
+            } catch (const std::exception& error) {
+                handleTraceError("Async VM callback error", error.what());
+            } catch (...) {
+                handleTraceError("Async VM callback error", "unknown exception");
+            }
+        }
+    });
+}
+
+void Player::joinVmWorker() {
+    std::thread threadToJoin;
+    {
+        std::lock_guard<std::mutex> lock(vmThreadMutex_);
+        if (!vmThread_.joinable()) {
+            return;
+        }
+        if (vmThread_.get_id() == std::this_thread::get_id()) {
+            vmThread_.detach();
+            return;
+        }
+        threadToJoin = std::move(vmThread_);
+    }
+
+    threadToJoin.join();
 }
 
 void Player::loadCastFromNetCache(int castLibNumber, const std::string& fileName) {

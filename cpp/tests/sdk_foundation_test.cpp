@@ -3699,6 +3699,54 @@ void testPlayerFacadeFoundation() {
     debugWiringPlayer.shutdown();
     assert(debugWiringController->resetCount == 1);
 
+    auto waitUntil = [](const auto& predicate) {
+        for (int attempt = 0; attempt < 200; ++attempt) {
+            if (predicate()) {
+                return true;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        return predicate();
+    };
+
+    Player asyncPlayer(file);
+    assert(!asyncPlayer.isVmRunning());
+    std::atomic<int> playReadyCallbacks{0};
+    asyncPlayer.playAsync([&playReadyCallbacks] {
+        ++playReadyCallbacks;
+    });
+    assert(waitUntil([&] { return playReadyCallbacks.load() == 1; }));
+    assert(!asyncPlayer.isVmRunning());
+    assert(asyncPlayer.state() == PlayerState::Playing);
+    assert(asyncPlayer.currentFrame() == 1);
+    std::atomic<int> tickCallbacks{0};
+    asyncPlayer.tickAsync([&tickCallbacks] {
+        ++tickCallbacks;
+    });
+    assert(waitUntil([&] { return tickCallbacks.load() == 1; }));
+    assert(!asyncPlayer.isVmRunning());
+    assert(asyncPlayer.currentFrame() == 2);
+    asyncPlayer.shutdown();
+
+    Player asyncStepPlayer(file);
+    auto asyncDebugController = std::make_shared<PlayerFacadeDebugController>();
+    asyncStepPlayer.setDebugController(asyncDebugController);
+    asyncStepPlayer.vm().setGlobal("asyncDebugGlobal", Datum::of(42));
+    std::atomic<int> stepCallbacks{0};
+    asyncStepPlayer.stepFrameAsync([&stepCallbacks] {
+        ++stepCallbacks;
+    });
+    assert(waitUntil([&] { return stepCallbacks.load() == 1; }));
+    assert(!asyncStepPlayer.isVmRunning());
+    assert(asyncStepPlayer.state() == PlayerState::Paused);
+    assert(asyncStepPlayer.currentFrame() == 2);
+    auto asyncDebugGlobal = asyncDebugController->globalsSnapshot.find("asyncDebugGlobal");
+    assert(asyncDebugGlobal != asyncDebugController->globalsSnapshot.end());
+    assert(asyncDebugGlobal->second.intValue() == 42);
+    assert(asyncDebugController->resetCount == 0);
+    asyncStepPlayer.shutdown();
+    assert(asyncDebugController->resetCount == 1);
+
     player.setDebugController(nullptr);
     assert(player.getDebugController() == nullptr);
     assert(!player.vm().traceListener()->needsInstructionTrace());
