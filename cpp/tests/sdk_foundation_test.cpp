@@ -804,6 +804,14 @@ void testBitmapFontAndFontRegistry() {
     };
 
     rasterPfr.glyphs['A'] = makeTriangleGlyph('A');
+    Pfr1Font::OutlineGlyph curveGlyph;
+    curveGlyph.charCode = 'C';
+    curveGlyph.setWidth = 500.0F;
+    Pfr1Font::Contour curveContour;
+    curveContour.moveTo(0.0F, 0.0F);
+    curveContour.curveTo(0.0F, 800.0F, 500.0F, 800.0F, 500.0F, 0.0F);
+    curveGlyph.contours.push_back(std::move(curveContour));
+    rasterPfr.glyphs['C'] = std::move(curveGlyph);
     rasterPfr.glyphs[0xE9] = makeTriangleGlyph(0xE9);
     Pfr1Font::OutlineGlyph bitmapCarrier;
     bitmapCarrier.charCode = 'B';
@@ -829,6 +837,7 @@ void testBitmapFontAndFontRegistry() {
     assert(pfrBitmapFont->getCharWidth('A') == 10);
     assert(pfrBitmapFont->getCharWidth('a') == 10);
     assert(pfrBitmapFont->getCharWidth('B') == 8);
+    assert(pfrBitmapFont->getCharWidth('C') == 10);
     assert(pfrBitmapFont->getCharWidth(0xE9) == 10);
 
     auto countInk = [](const std::vector<std::uint32_t>& pixels) {
@@ -848,6 +857,10 @@ void testBitmapFontAndFontRegistry() {
     std::vector<std::uint32_t> pfrLowerDst(30 * 30, 0);
     pfrBitmapFont->drawChar('a', pfrLowerDst, 30, 30, 0, 0, 0xFF335577U);
     assert(countInk(pfrLowerDst) == aInk);
+
+    std::vector<std::uint32_t> pfrCurveDst(30 * 30, 0);
+    pfrBitmapFont->drawChar('C', pfrCurveDst, 30, 30, 0, 0, 0xFF224466U);
+    assert(countInk(pfrCurveDst) > 0);
 
     std::vector<std::uint32_t> pfrOverflowDst(30 * 30, 0);
     pfrBitmapFont->drawChar(0xE9, pfrOverflowDst, 30, 30, 0, 0, 0xFF556677U);

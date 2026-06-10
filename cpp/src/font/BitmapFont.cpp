@@ -15,6 +15,11 @@ int javaRound(float value) {
     return static_cast<int>(std::floor(value + 0.5F));
 }
 
+struct Point {
+    float x = 0.0F;
+    float y = 0.0F;
+};
+
 bool cellHasInk(const std::vector<std::uint32_t>& argb,
                 int bitmapWidth,
                 int cx,
@@ -60,6 +65,40 @@ void copyCell(std::vector<std::uint32_t>& argb,
     }
 }
 
+float scaledDistance(Point lhs, Point rhs, float scaleX, float scaleY) {
+    const float dx = (rhs.x - lhs.x) * scaleX;
+    const float dy = (rhs.y - lhs.y) * scaleY;
+    return std::sqrt(dx * dx + dy * dy);
+}
+
+Point cubicPoint(Point p0, Point p1, Point p2, Point p3, float t) {
+    const float mt = 1.0F - t;
+    const float mt2 = mt * mt;
+    const float t2 = t * t;
+    return Point{
+        mt2 * mt * p0.x + 3.0F * mt2 * t * p1.x + 3.0F * mt * t2 * p2.x + t2 * t * p3.x,
+        mt2 * mt * p0.y + 3.0F * mt2 * t * p1.y + 3.0F * mt * t2 * p2.y + t2 * t * p3.y,
+    };
+}
+
+void appendCubicFlattened(std::vector<Point>& points,
+                          Point start,
+                          const Pfr1Font::Contour::Command& command,
+                          float scaleX,
+                          float scaleY) {
+    const Point control1{command.x1, command.y1};
+    const Point control2{command.x2, command.y2};
+    const Point end{command.x, command.y};
+    const float controlLength = scaledDistance(start, control1, scaleX, scaleY) +
+                                scaledDistance(control1, control2, scaleX, scaleY) +
+                                scaledDistance(control2, end, scaleX, scaleY);
+    const int segments = std::clamp(static_cast<int>(std::ceil(controlLength / 3.0F)), 4, 64);
+    for (int i = 1; i <= segments; ++i) {
+        const float t = static_cast<float>(i) / static_cast<float>(segments);
+        points.push_back(cubicPoint(start, control1, control2, end, t));
+    }
+}
+
 void rasterizeGlyph(const Pfr1Font::OutlineGlyph& glyph,
                     std::vector<std::uint32_t>& argb,
                     int bitmapWidth,
@@ -72,12 +111,35 @@ void rasterizeGlyph(const Pfr1Font::OutlineGlyph& glyph,
                     float scaleY,
                     float offsetX,
                     float offsetY) {
-    std::vector<std::vector<std::pair<float, float>>> polygons;
+    std::vector<std::vector<Point>> polygons;
     for (const auto& contour : glyph.contours) {
-        std::vector<std::pair<float, float>> points;
+        std::vector<Point> points;
+        Point current;
+        bool hasCurrent = false;
         for (const auto& command : contour.commands) {
-            if (command.type == 0 || command.type == 1 || command.type == 2) {
-                points.emplace_back(command.x, command.y);
+            if (command.type == 0) {
+                if (points.size() >= 3) {
+                    polygons.push_back(std::move(points));
+                    points = {};
+                } else {
+                    points.clear();
+                }
+                current = Point{command.x, command.y};
+                points.push_back(current);
+                hasCurrent = true;
+            } else if (command.type == 1) {
+                current = Point{command.x, command.y};
+                points.push_back(current);
+                hasCurrent = true;
+            } else if (command.type == 2) {
+                if (!hasCurrent) {
+                    current = Point{command.x, command.y};
+                    points.push_back(current);
+                    hasCurrent = true;
+                    continue;
+                }
+                appendCubicFlattened(points, current, command, scaleX, scaleY);
+                current = Point{command.x, command.y};
             }
         }
         if (points.size() >= 3) {
@@ -98,10 +160,10 @@ void rasterizeGlyph(const Pfr1Font::OutlineGlyph& glyph,
             for (int i = 0; i < n; ++i) {
                 const auto& p0 = polygon[static_cast<std::size_t>(i)];
                 const auto& p1 = polygon[static_cast<std::size_t>((i + 1) % n)];
-                const float x0 = p0.first * scaleX + offsetX;
-                const float y0 = p0.second * scaleY + offsetY;
-                const float x1 = p1.first * scaleX + offsetX;
-                const float y1 = p1.second * scaleY + offsetY;
+                const float x0 = p0.x * scaleX + offsetX;
+                const float y0 = p0.y * scaleY + offsetY;
+                const float x1 = p1.x * scaleX + offsetX;
+                const float y1 = p1.y * scaleY + offsetY;
 
                 if (std::abs(y0 - y1) < 0.001F) {
                     continue;
@@ -236,6 +298,10 @@ std::shared_ptr<BitmapFont> BitmapFont::fromPfr1(const Pfr1Font& font, int targe
             for (const auto& command : contour.commands) {
                 minX = std::min(minX, command.x);
                 maxX = std::max(maxX, command.x);
+                if (command.type == 2) {
+                    minX = std::min({minX, command.x1, command.x2});
+                    maxX = std::max({maxX, command.x1, command.x2});
+                }
             }
         }
         if (minX < maxX) {
