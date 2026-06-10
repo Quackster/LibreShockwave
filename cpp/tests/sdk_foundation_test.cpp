@@ -5787,6 +5787,37 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runObjCall(68, {methodProps, Datum::symbol("name"), Datum::of(std::string("second"))}).isVoid());
     assert(methodProps.propListValue().properties().size() == 3);
     assert(methodProps.propListValue().properties()[2].second.stringValue() == "second");
+
+    Datum typedObjectProps = Datum::propList();
+    typedObjectProps.propListValue().properties().emplace_back(Datum::symbol("room_interface"), Datum::of(1));
+    typedObjectProps.propListValue().properties().emplace_back(Datum::of(std::string("room_interface")), Datum::of(2));
+    assert(runObjCall(64, {typedObjectProps, Datum::symbol("room_interface")}).intValue() == 1);
+    assert(runObjCall(64, {typedObjectProps, Datum::of(std::string("room_interface"))}).intValue() == 2);
+    Datum symbolOnlyObjectProps = Datum::propList();
+    symbolOnlyObjectProps.propListValue().properties().emplace_back(Datum::symbol("room_interface"), Datum::of(3));
+    assert(runObjCall(64, {symbolOnlyObjectProps, Datum::of(std::string("Room_interface"))}).isVoid());
+
+    Datum numericKeyObjectProps = Datum::propList();
+    assert(runObjCall(65, {numericKeyObjectProps, Datum::of(9), Datum::of(90)}).isVoid());
+    assert(numericKeyObjectProps.propListValue().properties().size() == 1);
+    assert(numericKeyObjectProps.propListValue().properties()[0].first.stringValue() == "9");
+    assert(runObjCall(64, {numericKeyObjectProps, Datum::of(std::string("9"))}).intValue() == 90);
+
+    Datum setPropObjectProps = Datum::propList();
+    setPropObjectProps.propListValue().properties().emplace_back(Datum::symbol("room_interface"), Datum::of(1));
+    assert(runObjCall(113,
+                      {setPropObjectProps,
+                       Datum::of(std::string("Room_interface")),
+                       Datum::of(2)})
+               .isVoid());
+    assert(setPropObjectProps.propListValue().count() == 2);
+    assert(runObjCall(64, {setPropObjectProps, Datum::symbol("room_interface")}).intValue() == 1);
+    assert(runObjCall(64, {setPropObjectProps, Datum::of(std::string("Room_interface"))}).intValue() == 2);
+
+    assert(runObjCall(116, {typedObjectProps, Datum::of(std::string("room_interface"))}).isVoid());
+    assert(typedObjectProps.propListValue().count() == 1);
+    assert(typedObjectProps.propListValue().properties()[0].first.asSymbol() != nullptr);
+    assert(typedObjectProps.propListValue().properties()[0].second.intValue() == 1);
     Datum nestedMethodProps = Datum::propList();
     nestedMethodProps.propListValue().put(Datum::symbol("child"), Datum::list({Datum::of(1)}));
     Datum duplicatedMethodProps = runObjCall(72, {nestedMethodProps});

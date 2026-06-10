@@ -712,6 +712,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `OBJ_CALL` now dispatches data-owned list, property-list, string, point, rectangle, and script-instance methods through the C++ opcode registry.
 - Receiver-style external calls now fall back to the same data-owned method dispatch path after handler and builtin lookup.
 - List and property-list method dispatch covers Java-compatible mutation and lookup helpers such as `getAt`, `setAt`, `append`, `addProp`, `getProp`, `count`, `sort`, and duplicate-preserving property insertion.
+- Property-list object methods now preserve Java's symbol/string key namespace rules for `getAt`, `setAt`, `setProp`, and `deleteProp`, including exact-case cross-type fallback and numeric out-of-range `setAt` string-key insertion.
 - List and property-list `duplicate` object methods now use Java-style deep copies so nested mutable containers are independent of the source value.
 - String receiver dispatch now covers direct `getProp`/`getPropRef` chunk extraction, and VarRef receiver dispatch resolves referenced context variables for string-like `getProp`, `getPropRef`, `char`, and `count` object methods.
 - Mutable ChunkRef creation and char-range deletion now use a dedicated C++ datum; broader mutable chunk-ref operations remain deferred.
@@ -912,7 +913,7 @@ Result:
 - OpcodeRegistry movie-property provider reads/writes and provider-backed `the` lookups passed through the same CTest executable.
 - OpcodeRegistry provider-backed object property gets/sets for movie, player, stage, sprite, integer-as-sprite refs, cast-member metadata/provider properties, timeout refs, sound channels, and image `useAlpha`/`paletteRef` setters passed through the same CTest executable.
 - OpcodeRegistry local/external call handlers, builtin dispatch, no-return calls, constant fallback, and error-state handling passed through the same CTest executable.
-- OpcodeRegistry object method calls and receiver-style external method calls for lists, property lists, nested list/proplist deep-copy `duplicate`, strings, VarRef inverted char ranges, mutable ChunkRef inverted delete ranges, points, rectangles, script-instance ancestor assignment guards/bounded cyclic ancestor traversal/registry bootstrap/prefill/alias import/stale cleanup/persistent alias refresh, cast library member lookups/accessors, timeouts, sound channels, and Xtra instances passed through the same CTest executable.
+- OpcodeRegistry object method calls and receiver-style external method calls for lists, property-list typed symbol/string namespaces and nested list/proplist deep-copy `duplicate`, strings, VarRef inverted char ranges, mutable ChunkRef inverted delete ranges, points, rectangles, script-instance ancestor assignment guards/bounded cyclic ancestor traversal/registry bootstrap/prefill/alias import/stale cleanup/persistent alias refresh, cast library member lookups/accessors, timeouts, sound channels, and Xtra instances passed through the same CTest executable.
 - OpcodeRegistry `NEW_OBJ` script construction delegation, provider-resolved fallback construction, declared property preinitialization, automatic `new` handler invocation, and non-script rejection passed through the same CTest executable.
 
 ## Remaining Major Work
