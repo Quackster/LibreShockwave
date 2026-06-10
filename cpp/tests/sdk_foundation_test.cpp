@@ -6158,6 +6158,39 @@ void testSpriteBakerFoundation() {
     assert(liveCache.cachedBitmapCount() == 1);
     assert(liveCache.getCachedProcessed(*liveMember, 0, 0, 0, false, false) == staleBitmap);
 
+    auto liveCopyBitmap = std::make_shared<Bitmap>(2, 1, 32, std::vector<std::uint32_t>{
+        0xFFFFFFFFU,
+        0xFF112233U
+    });
+    liveCopyBitmap->markScriptModified();
+    SpriteBaker liveCopyBaker;
+    liveCopyBaker.setLiveBitmapProvider([&](const RenderSprite&) -> std::shared_ptr<const Bitmap> {
+        return liveCopyBitmap;
+    });
+    RenderSprite liveCopySprite(11,
+                                0,
+                                0,
+                                2,
+                                1,
+                                0,
+                                true,
+                                SpriteType::Bitmap,
+                                nullptr,
+                                nullptr,
+                                0,
+                                0x224466,
+                                false,
+                                true,
+                                libreshockwave::id::code(InkMode::COPY),
+                                100,
+                                false,
+                                false,
+                                nullptr,
+                                false);
+    auto bakedLiveCopy = liveCopyBaker.bake(liveCopySprite);
+    assert(bakedLiveCopy.bakedBitmap()->getPixel(0, 0) == 0xFF224466U);
+    assert(bakedLiveCopy.bakedBitmap()->getPixel(1, 0) == 0xFF112233U);
+
     auto darkenLiveBitmap = std::make_shared<Bitmap>(3, 1, 32, std::vector<std::uint32_t>{
         0xFFFFFFFFU,
         0xFF808080U,

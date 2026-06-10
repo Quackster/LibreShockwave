@@ -263,14 +263,20 @@ bitmap::Bitmap SpriteBaker::processLiveBitmap(const bitmap::Bitmap& live, const 
                                      inkSource.imagePalette().get());
     }
 
-    return BitmapCache::applyIndexedMatteColorRemapIfNeeded(&source,
-                                                            processed,
-                                                            sprite.ink(),
-                                                            sprite.foreColor(),
-                                                            sprite.backColor(),
-                                                            sprite.hasForeColor(),
-                                                            sprite.hasBackColor(),
-                                                            source.imagePalette().get());
+    bitmap::Bitmap result = BitmapCache::applyIndexedMatteColorRemapIfNeeded(&source,
+                                                                              processed,
+                                                                              sprite.ink(),
+                                                                              sprite.foreColor(),
+                                                                              sprite.backColor(),
+                                                                              sprite.hasForeColor(),
+                                                                              sprite.hasBackColor(),
+                                                                              source.imagePalette().get());
+    if (sprite.hasBackColor() &&
+        InkProcessor::allowsColorize(sprite.inkMode()) &&
+        (sprite.backColor() & 0x00FFFFFF) != 0x00FFFFFF) {
+        result = InkProcessor::remapExactColor(result, 0x00FFFFFFU, static_cast<std::uint32_t>(sprite.backColor()));
+    }
+    return result;
 }
 
 std::shared_ptr<const bitmap::Bitmap> SpriteBaker::cachedBitmap(const RenderSprite& sprite) const {
