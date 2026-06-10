@@ -56,6 +56,7 @@ add_library(libreshockwave
     src/lingo/vm/OpcodeRegistry.cpp
     src/lingo/vm/Scope.cpp
     src/lingo/vm/trace/ConsoleTracePrinter.cpp
+    src/lingo/vm/trace/InstructionAnnotator.cpp
     src/lingo/xtra/MultiuserXtra.cpp
     src/lingo/xtra/XtraManager.cpp
     src/lingo/xtra/XmlParserXtra.cpp

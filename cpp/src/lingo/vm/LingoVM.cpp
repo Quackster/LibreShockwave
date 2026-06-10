@@ -17,6 +17,7 @@
 #include "libreshockwave/lingo/Opcode.hpp"
 #include "libreshockwave/lingo/vm/DebugConfig.hpp"
 #include "libreshockwave/lingo/vm/trace/ConsoleTracePrinter.hpp"
+#include "libreshockwave/lingo/vm/trace/InstructionAnnotator.hpp"
 
 namespace libreshockwave::lingo::vm {
 namespace {
@@ -831,12 +832,20 @@ TraceListener::InstructionInfo LingoVM::buildInstructionInfo(
         stackSnapshot.push_back(scope.peek(index));
     }
 
+    const auto* script = scope.script();
+    std::shared_ptr<chunks::ScriptNamesChunk> names;
+    std::string annotation = instruction.toString();
+    if (script != nullptr) {
+        names = scriptNamesForScript(*script);
+        annotation = trace::InstructionAnnotator::annotate(*script, instruction, names.get());
+    }
+
     return TraceListener::InstructionInfo{
         scope.bytecodeIndex(),
         instruction.offset,
         std::string(mnemonic(instruction.opcode)),
         instruction.argument,
-        instruction.toString(),
+        std::move(annotation),
         scope.stackSize(),
         std::move(stackSnapshot),
         captureLocals(scope),

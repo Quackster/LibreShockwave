@@ -92,6 +92,7 @@
 #include "libreshockwave/lingo/vm/OpcodeRegistry.hpp"
 #include "libreshockwave/lingo/vm/Scope.hpp"
 #include "libreshockwave/lingo/vm/trace/ConsoleTracePrinter.hpp"
+#include "libreshockwave/lingo/vm/trace/InstructionAnnotator.hpp"
 #include "libreshockwave/lingo/xtra/MultiuserXtra.hpp"
 #include "libreshockwave/lingo/xtra/XmlParserXtra.hpp"
 #include "libreshockwave/lookup/CastMemberLookup.hpp"
@@ -230,6 +231,7 @@ using libreshockwave::lingo::vm::OpcodeRegistry;
 using libreshockwave::lingo::vm::Scope;
 using libreshockwave::lingo::vm::TraceListener;
 using libreshockwave::lingo::vm::trace::ConsoleTracePrinter;
+using libreshockwave::lingo::vm::trace::InstructionAnnotator;
 using libreshockwave::lingo::xtra::MultiuserNetBridge;
 using libreshockwave::lingo::xtra::MultiuserXtra;
 using libreshockwave::lingo::xtra::XmlParserXtra;
@@ -7064,7 +7066,8 @@ void testLingoVmRuntimeFoundation() {
     assert(traceListener->instructions[1].opcode == "setGlobal");
     assert(traceListener->instructions[1].stackSize == 1);
     assert(traceListener->instructions[1].stackSnapshot[0].intValue() == 7);
-    assert(traceListener->instructions[1].annotation.find("setGlobal") != std::string::npos);
+    assert(traceListener->instructions[0].annotation == "<7>");
+    assert(traceListener->instructions[1].annotation == "<#3>");
     assert(traceListener->instructions[2].globalsSnapshot.at("#3").intValue() == 7);
     assert(traceListener->variableSets.size() == 1);
     assert(traceListener->variableSets[0].type == "global");
@@ -13290,6 +13293,8 @@ void testScriptChunkParser() {
 
     std::vector<std::string> names(15);
     names[5] = "mouseUp";
+    names[7] = "argOne";
+    names[8] = "argTwo";
     names[9] = "localName";
     names[12] = "firstProperty";
     names[13] = "secondProperty";
@@ -13310,6 +13315,87 @@ void testScriptChunkParser() {
     assert(globalNames[0] == "sharedGlobal");
     assert(script.getPropertyNames(nullptr).empty());
     assert(script.getGlobalNames(nullptr).empty());
+    assert(InstructionAnnotator::annotate(script,
+                                          &handler,
+                                          ScriptChunk::Instruction{0, Opcode::PUSH_INT8, 0x41, -2},
+                                          &scriptNames,
+                                          true) == "<-2>");
+    assert(InstructionAnnotator::annotate(script,
+                                          &handler,
+                                          ScriptChunk::Instruction{0, Opcode::PUSH_CONS, 0x44, 0},
+                                          &scriptNames,
+                                          true) == "<hi>");
+    assert(InstructionAnnotator::annotate(script,
+                                          &handler,
+                                          ScriptChunk::Instruction{0, Opcode::PUSH_CONS, 0x44, 9},
+                                          &scriptNames,
+                                          true) == "<literal#9>");
+    assert(InstructionAnnotator::annotate(script,
+                                          &handler,
+                                          ScriptChunk::Instruction{0,
+                                                                   Opcode::PUSH_FLOAT32,
+                                                                   0x71,
+                                                                   std::bit_cast<int>(1.25F)},
+                                          &scriptNames,
+                                          true) == "<1.25>");
+    assert(InstructionAnnotator::annotate(script,
+                                          &handler,
+                                          ScriptChunk::Instruction{0, Opcode::PUSH_SYMB, 0x45, 5},
+                                          &scriptNames,
+                                          true) == "<#mouseUp>");
+    assert(InstructionAnnotator::annotate(script,
+                                          &handler,
+                                          ScriptChunk::Instruction{0, Opcode::GET_LOCAL, 0x4C, 0},
+                                          &scriptNames,
+                                          true) == "<localName>");
+    assert(InstructionAnnotator::annotate(script,
+                                          &handler,
+                                          ScriptChunk::Instruction{0, Opcode::GET_LOCAL, 0x4C, 0},
+                                          &scriptNames,
+                                          false) == "<local0>");
+    assert(InstructionAnnotator::annotate(script,
+                                          &handler,
+                                          ScriptChunk::Instruction{0, Opcode::GET_PARAM, 0x4B, 1},
+                                          &scriptNames,
+                                          true) == "<argTwo>");
+    assert(InstructionAnnotator::annotate(script,
+                                          &handler,
+                                          ScriptChunk::Instruction{0, Opcode::GET_GLOBAL, 0x49, 14},
+                                          &scriptNames,
+                                          true) == "<sharedGlobal>");
+    assert(InstructionAnnotator::annotate(script,
+                                          &handler,
+                                          ScriptChunk::Instruction{0, Opcode::GET_PROP, 0x4A, 12},
+                                          &scriptNames,
+                                          true) == "<me.firstProperty>");
+    assert(InstructionAnnotator::annotate(script,
+                                          &handler,
+                                          ScriptChunk::Instruction{0, Opcode::LOCAL_CALL, 0x56, 0},
+                                          &scriptNames,
+                                          true) == "<mouseUp()>");
+    assert(InstructionAnnotator::annotate(script,
+                                          &handler,
+                                          ScriptChunk::Instruction{0, Opcode::LOCAL_CALL, 0x56, 6},
+                                          &scriptNames,
+                                          true) == "<handler#6()>");
+    assert(InstructionAnnotator::annotate(script,
+                                          &handler,
+                                          ScriptChunk::Instruction{0, Opcode::EXT_CALL, 0x57, 5},
+                                          &scriptNames,
+                                          true) == "<mouseUp()>");
+    assert(InstructionAnnotator::annotate(script,
+                                          &handler,
+                                          ScriptChunk::Instruction{10, Opcode::JMP, 0x53, 4},
+                                          &scriptNames,
+                                          true) == "<offset 4 -> 14>");
+    assert(InstructionAnnotator::annotate(script,
+                                          &handler,
+                                          ScriptChunk::Instruction{10, Opcode::END_REPEAT, 0x54, 3},
+                                          &scriptNames,
+                                          true) == "<back 3 -> 7>");
+    assert(InstructionAnnotator::annotate(script,
+                                          ScriptChunk::Instruction{0, Opcode::GET_LOCAL, 0x4C, 0},
+                                          nullptr) == "<local0>");
     assert(scriptReader.order() == ByteOrder::LittleEndian);
 }
 
