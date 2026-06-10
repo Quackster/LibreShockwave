@@ -1383,7 +1383,7 @@ void testPlayerVmEventDispatchFoundation() {
 
     std::vector<std::uint8_t> namesData(20, 0);
     putI16(namesData, 16, 20);
-    putI16(namesData, 18, 12);
+    putI16(namesData, 18, 20);
     auto appendName = [&namesData](const std::string& value) {
         namesData.push_back(static_cast<std::uint8_t>(value.size()));
         namesData.insert(namesData.end(), value.begin(), value.end());
@@ -1400,6 +1400,14 @@ void testPlayerVmEventDispatchFoundation() {
     appendName("stopMovie");
     appendName("stopped");
     appendName("timeoutStopped");
+    appendName("stepFrame");
+    appendName("actorStep");
+    appendName("prepareFrame");
+    appendName("actorPrepare");
+    appendName("enterFrame");
+    appendName("actorEnter");
+    appendName("exitFrame");
+    appendName("actorExit");
 
     auto putHandlerRecord = [&](std::vector<std::uint8_t>& data, int offset, int nameId, int bytecodeOffset) {
         putI16(data, offset, nameId);
@@ -1444,17 +1452,25 @@ void testPlayerVmEventDispatchFoundation() {
     scriptMemberData.insert(scriptMemberData.end(), scriptMemberInfo.begin(), scriptMemberInfo.end());
     appendI16(scriptMemberData, 2);
 
-    std::vector<std::uint8_t> timeoutScriptData(250, 0);
-    putI16(timeoutScriptData, 18, 3);
+    std::vector<std::uint8_t> timeoutScriptData(500, 0);
+    putI16(timeoutScriptData, 18, 7);
     putI32(timeoutScriptData, 38, 0x00000002);
-    putI16(timeoutScriptData, 72, 3);
+    putI16(timeoutScriptData, 72, 7);
     putI32(timeoutScriptData, 74, 110);
-    putHandlerRecord(timeoutScriptData, 110, 3, 220);
-    putHandlerRecord(timeoutScriptData, 152, 5, 225);
-    putHandlerRecord(timeoutScriptData, 194, 9, 230);
-    putSetGlobalHandlerBytecode(timeoutScriptData, 220, 77, 7);
-    putSetGlobalHandlerBytecode(timeoutScriptData, 225, 88, 8);
-    putSetGlobalHandlerBytecode(timeoutScriptData, 230, 99, 11);
+    putHandlerRecord(timeoutScriptData, 110, 3, 450);
+    putHandlerRecord(timeoutScriptData, 152, 5, 455);
+    putHandlerRecord(timeoutScriptData, 194, 9, 460);
+    putHandlerRecord(timeoutScriptData, 236, 12, 465);
+    putHandlerRecord(timeoutScriptData, 278, 14, 470);
+    putHandlerRecord(timeoutScriptData, 320, 16, 475);
+    putHandlerRecord(timeoutScriptData, 362, 18, 480);
+    putSetGlobalHandlerBytecode(timeoutScriptData, 450, 77, 7);
+    putSetGlobalHandlerBytecode(timeoutScriptData, 455, 88, 8);
+    putSetGlobalHandlerBytecode(timeoutScriptData, 460, 99, 11);
+    putSetGlobalHandlerBytecode(timeoutScriptData, 465, 33, 13);
+    putSetGlobalHandlerBytecode(timeoutScriptData, 470, 34, 15);
+    putSetGlobalHandlerBytecode(timeoutScriptData, 475, 35, 17);
+    putSetGlobalHandlerBytecode(timeoutScriptData, 480, 36, 19);
 
     auto file = DirectorFile::load(buildRifx({
         {"Lnam", namesData},
@@ -1482,6 +1498,15 @@ void testPlayerVmEventDispatchFoundation() {
     assert(player.vm().getGlobal("timeoutPrepared").intValue() == 77);
     assert(player.vm().getGlobal("timeoutStarted").intValue() == 88);
 
+    player.timeoutManager().clear();
+    assert(player.movieProperties().setMovieProp("actorList", Datum::list({timeoutTarget, Datum::of(123)})));
+    assert(player.tick());
+    assert(player.vm().getGlobal("actorStep").intValue() == 33);
+    assert(player.vm().getGlobal("actorPrepare").intValue() == 34);
+    assert(player.vm().getGlobal("actorEnter").intValue() == 35);
+    assert(player.vm().getGlobal("actorExit").intValue() == 36);
+
+    (void)player.timeoutManager().createTimeout("stop", 0, "unused", timeoutTarget);
     player.stop();
     assert(player.state() == PlayerState::Stopped);
     assert(player.vm().getGlobal("stopped").intValue() == 70);

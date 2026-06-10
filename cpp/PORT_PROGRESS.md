@@ -248,7 +248,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `player::Player` now owns and wires the C++ frame context, stage renderer, cast library manager, movie/sprite properties, bitmap resolver, cursor manager, input handler, network manager, timeout manager, sound manager, sprite baker, bitmap cache, and frame render pipeline.
 - Playback control ports the Java state transitions for play, pause, resume, stop, manual step, tick, direct frame/label navigation, event-listener forwarding, base/puppet/score tempo lookup, debug flag propagation, and render snapshot creation with player-state debug metadata.
-- Full VM provider setup, remaining first-frame startup `prepareFrame`/`enterFrame`/`exitFrame` ordering, Xtra ticking, actorList dispatch, asynchronous playback, imported-media mutation, and external-cast fetch completion remain deferred to later player runtime slices.
+- Full VM provider setup, remaining first-frame startup `prepareFrame`/`enterFrame`/`exitFrame` ordering, Xtra ticking, asynchronous playback, imported-media mutation, and external-cast fetch completion remain deferred to later player runtime slices.
 
 ### Player Builtin Context Foundation
 
@@ -263,7 +263,8 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `EventDispatcher` can now merge manually registered movie-script targets with a dynamic movie-script supplier; Player supplies main-movie scripts from `DirectorFile` and already loaded external-cast movie scripts without forcing external cast loads.
 - Script-instance event targets can resolve bytecode from their cast-member script references, enabling timeout targets and sprite-attached script instances to use the same VM invoker as score behaviors.
 - `Player::prepareMovieFoundation` now dispatches timeout-backed `prepareMovie`, movie-script `prepareMovie`, preload-mode-1 casts, first-frame sprite initialization, movie-script `startMovie`, and timeout-backed `startMovie`; `stop()` dispatches timeout-backed `stopMovie` before movie scripts.
-- Tests cover file-backed Player dispatcher movie-script discovery, explicit movie-script bytecode dispatch, startup `prepareMovie`/`startMovie` movie-script and timeout-target bytecode dispatch, `stopMovie` timeout/movie dispatch, plus VM-backed Player builtin and preference storage access.
+- Player now snapshots `_movie.actorList` script instances during frame cycles and dispatches `stepFrame`, `prepareFrame`, `enterFrame`, and `exitFrame` through the VM with the actor instance argument.
+- Tests cover file-backed Player dispatcher movie-script discovery, explicit movie-script bytecode dispatch, startup `prepareMovie`/`startMovie` movie-script and timeout-target bytecode dispatch, actorList frame-event dispatch, `stopMovie` timeout/movie dispatch, plus VM-backed Player builtin and preference storage access.
 
 ### Hit Testing Foundation
 
@@ -705,7 +706,7 @@ Result:
 - TypeBuiltins object/void/type predicates, `value` literal parsing/provider fallback, `script`/`callAncestor` callback hooks, symbol conversion, and `ilk` alias checks passed through the same CTest executable.
 - Lingo VM Scope and ExecutionContext stack, param, local, return, loop, jump, global callback, handler callback, builtin invocation, and call-stack formatting behavior passed through the same CTest executable.
 - Lingo VM ExecutionContext name resolver callback and resolver-backed global opcode behavior passed through the same CTest executable.
-- Player-owned LingoVM builtin delegation, file-backed dispatcher movie-script discovery/bytecode invocation, startup movie-script and timeout-target dispatch, `stopMovie` timeout/movie dispatch, and VM preference storage passed through the same CTest executable.
+- Player-owned LingoVM builtin delegation, file-backed dispatcher movie-script discovery/bytecode invocation, startup movie-script and timeout-target dispatch, actorList frame-event dispatch, `stopMovie` timeout/movie dispatch, and VM preference storage passed through the same CTest executable.
 - OpcodeRegistry stack/control handler registration, custom handler registration, literal/symbol pushes, stack manipulation, return/factory return, and jump opcodes passed through the same CTest executable.
 - OpcodeRegistry arithmetic, comparison, and logical handlers passed through the same CTest executable.
 - OpcodeRegistry variable, arg-list, linear-list, and property-list handlers passed through the same CTest executable.
@@ -864,4 +865,5 @@ Result:
 - `1d0b61d1 Port C++ player VM event dispatch`
 - `c1bb9eba Port C++ movie script source dispatch`
 - `26cbcfe0 Port C++ player startup movie scripts`
-- Current checkpoint commit message: `Port C++ timeout system events`
+- `1fd8f7e3 Port C++ timeout system events`
+- Current checkpoint commit message: `Port C++ actorList VM dispatch`

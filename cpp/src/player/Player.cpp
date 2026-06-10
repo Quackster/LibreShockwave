@@ -496,6 +496,26 @@ void Player::wireComponents() {
         });
     };
     frameContext_.setTimeoutEventDispatcher(timeoutSystemEventDispatcher_);
+    frameContext_.setActorListDispatcher([this, invokeTarget](std::string_view handlerName) {
+        const auto& actorList = movieProperties_.actorList();
+        if (!actorList.isList()) {
+            return;
+        }
+
+        std::vector<lingo::Datum> actors;
+        for (const auto& item : actorList.listValue().items()) {
+            if (item.type() == lingo::DatumType::ScriptInstanceRef) {
+                actors.push_back(item);
+            }
+        }
+
+        for (const auto& actor : actors) {
+            event::EventTarget target;
+            target.kind = event::EventTargetKind::ScriptInstance;
+            target.scriptInstance = actor;
+            (void)invokeTarget(target, handlerName, {actor});
+        }
+    });
 }
 
 void Player::prepareMovieFoundation() {
