@@ -3,6 +3,7 @@
 #include <functional>
 #include <memory>
 #include <set>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -14,8 +15,13 @@ namespace libreshockwave {
 class DirectorFile;
 }
 
+namespace libreshockwave::chunks {
+class ScriptChunk;
+}
+
 namespace libreshockwave::player::behavior {
 class BehaviorManager;
+class BehaviorInstance;
 }
 
 namespace libreshockwave::player::event {
@@ -37,6 +43,7 @@ public:
     using EventListener = std::function<void(const FrameEvent&)>;
     using ActorListDispatcher = std::function<void(std::string_view handlerName)>;
     using TimeoutEventDispatcher = std::function<void(std::string_view handlerName)>;
+    using ScriptNameResolver = std::function<std::string(const std::shared_ptr<chunks::ScriptChunk>& script)>;
 
     explicit FrameContext(DirectorFile* file = nullptr);
     FrameContext(DirectorFile* file,
@@ -55,6 +62,7 @@ public:
     void setEventListener(EventListener listener);
     void setActorListDispatcher(ActorListDispatcher dispatcher);
     void setTimeoutEventDispatcher(TimeoutEventDispatcher dispatcher);
+    void setScriptNameResolver(ScriptNameResolver resolver);
     void setSpriteRegistry(render::SpriteRegistry* registry);
 
     [[nodiscard]] int currentFrame() const;
@@ -91,6 +99,9 @@ private:
     void dispatchBeginSprite();
     [[nodiscard]] bool hasScoreSpriteBehaviors(int frame) const;
     [[nodiscard]] bool hasFrameOneFrameScriptAndFrameTwoSpriteBehaviorStartupShape() const;
+    [[nodiscard]] std::string scriptNameFor(const std::shared_ptr<chunks::ScriptChunk>& script) const;
+    void maybeDelayFlagsStartupCycle(const std::shared_ptr<behavior::BehaviorInstance>& instance,
+                                     bool v1StartupShape);
     void logEvent(std::string_view message) const;
     void notifyEvent(PlayerEvent event);
 
@@ -105,6 +116,7 @@ private:
 
     ActorListDispatcher actorListDispatcher_;
     TimeoutEventDispatcher timeoutEventDispatcher_;
+    ScriptNameResolver scriptNameResolver_;
     EventListener eventListener_;
     int currentFrame_{1};
     int pendingFrame_{0};

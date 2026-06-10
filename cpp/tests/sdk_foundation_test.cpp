@@ -11423,6 +11423,73 @@ void testFrameContextFoundation() {
     assert(context.effectiveFrame() == 1);
     assert(context.activeChannels().empty());
     assert(behaviorManager.instanceCount() == 0);
+
+    auto flagsScript = makeScriptWithHandlers(930, ScriptChunkType::Behavior, {1});
+    auto startupFrameScript = makeScriptWithHandlers(931, ScriptChunkType::Behavior, {1});
+    const std::string waitParams = "[#pWait: 3]";
+    std::vector<std::vector<std::uint8_t>> startupEntries{
+        {},
+        std::vector<std::uint8_t>(waitParams.begin(), waitParams.end())
+    };
+    std::vector<ScoreChunk::FrameInterval> startupIntervals{
+        ScoreChunk::FrameInterval{
+            ScoreChunk::FrameIntervalPrimary{1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+            ScoreChunk::FrameIntervalSecondary{1, 30, 0}
+        },
+        ScoreChunk::FrameInterval{
+            ScoreChunk::FrameIntervalPrimary{2, 2, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0},
+            ScoreChunk::FrameIntervalSecondary{1, 31, 1}
+        }
+    };
+    ScoreChunk::ScoreFrameData startupFrameData = ScoreChunk::ScoreFrameData::empty();
+    startupFrameData.header.frameCount = 2;
+    startupFrameData.header.numChannels = 8;
+    auto startupScore = std::make_shared<ScoreChunk>(
+        nullptr,
+        ChunkId(932),
+        ScoreChunk::Header{0, 0, 0, 0, 0, 0},
+        startupEntries,
+        startupFrameData,
+        startupIntervals);
+    ScoreNavigator startupNavigator(startupScore, nullptr);
+
+    BehaviorManager startupBehaviorManager;
+    startupBehaviorManager.setScriptResolver([flagsScript, startupFrameScript](const ScoreBehaviorRef& ref) {
+        return ref.castMember() == 30 ? startupFrameScript : flagsScript;
+    });
+
+    EventDispatcher startupDispatcher(&startupBehaviorManager);
+    startupDispatcher.setScriptNamesResolver([names](const std::shared_ptr<ScriptChunk>&) {
+        return names;
+    });
+    startupDispatcher.setRespondsPredicate([names](const EventTarget& target, std::string_view handler) {
+        return target.script && target.script->findHandler(handler, names.get()).has_value();
+    });
+
+    int startupBeginCalls = 0;
+    startupDispatcher.setHandlerInvoker([&startupBeginCalls](const EventTarget&,
+                                                             std::string_view handler,
+                                                             const std::vector<Datum>&) {
+        if (handler == "beginSprite") {
+            ++startupBeginCalls;
+        }
+        return HandlerResult{true, true};
+    });
+
+    FrameContext startupContext(nullptr, &startupNavigator, &startupBehaviorManager, &startupDispatcher);
+    startupContext.setScriptNameResolver([flagsScript](const std::shared_ptr<ScriptChunk>& script) {
+        return script == flagsScript ? std::string("Flags behavior") : std::string("Startup frame script");
+    });
+    startupContext.initializeFirstFrame();
+    assert(startupContext.activeChannels().empty());
+    assert(startupBehaviorManager.frameScriptInstance() != nullptr);
+    assert(startupBehaviorManager.getInstancesForChannel(6).empty());
+    assert(startupContext.advanceFrame() == 2);
+    const auto flagsInstances = startupBehaviorManager.getInstancesForChannel(6);
+    assert(flagsInstances.size() == 1);
+    assert(flagsInstances.front()->isBeginSpriteCalled());
+    assert(flagsInstances.front()->getProperty("pWait").intValue() == 7);
+    assert(startupBeginCalls == 1);
 }
 
 void testDebugFoundation() {

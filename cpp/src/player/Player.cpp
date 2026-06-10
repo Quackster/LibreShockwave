@@ -343,6 +343,9 @@ void Player::wireComponents() {
             stageRenderer_.onFrameEnter(event.frame);
         }
     });
+    frameContext_.setScriptNameResolver([this](const std::shared_ptr<chunks::ScriptChunk>& script) {
+        return file_ != nullptr ? file_->getScriptName(script) : std::string();
+    });
     castLibManager_.setMemberSlotRetiredCallback([this](int castLib, int memberNum) {
         (void)stageRenderer_.spriteRegistry().clearDynamicMemberBindings(castLib, memberNum);
     });

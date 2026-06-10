@@ -356,7 +356,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `player::frame::FrameContext` ports frame navigation state, pending go-to-frame behavior, first-frame initialization, active/entered channel tracking, beginSprite/endSprite lifecycle dispatch, frame script setup, actor/timeout callback hooks, event listener notifications, and reset behavior.
 - Frame transitions coordinate `ScoreNavigator`, `BehaviorManager`, `EventDispatcher`, and `SpriteRegistry`, including puppeted sprite persistence across score-span exits and external-cast behavior rebinding hooks.
-- Startup Flags behavior quirks and full Player render-loop integration remain deferred to later C++ VM/player slices.
+- The Startup Flags `pWait` delay quirk for frame-1 frame-script/frame-2 sprite-behavior startup movies is ported; full Player render-loop integration remains deferred to later C++ VM/player slices.
 
 ### Sprite Properties Foundation
 
@@ -905,7 +905,7 @@ Result:
 - CursorManager editable text, button, explicit sprite cursor, interactive fallback, custom bitmap cursor, global cursor, mask application, hotspot, cursor member encoding, near-white, and navigator-whitespace suppression tests passed through the same CTest executable.
 - BehaviorInstance and BehaviorManager ID/property state, behavior-ref parameters, frame-script caching, channel lookup/removal, sprite-instance ordering, and clear tests passed through the same CTest executable.
 - EventDispatcher global, frame/movie, sprite/movie, sprite-only, behavior-only, and movie-only dispatch ordering, pass propagation, dynamic script-instance dispatch, sprite handler lookup, mouse interactivity, mouse-handler recognition, debug flag, and stopEvent state tests passed through the same CTest executable.
-- FrameContext first-frame setup, pending frame navigation, begin/end sprite dispatch, frame events, actor/timeout hooks, puppeted sprite persistence, force navigation, reset, and BehaviorManager script-resolver hooks passed through the same CTest executable.
+- FrameContext first-frame setup, pending frame navigation, begin/end sprite dispatch, frame events, actor/timeout hooks, puppeted sprite persistence, force navigation, reset, BehaviorManager script-resolver hooks, and Startup Flags `pWait` delay behavior passed through the same CTest executable.
 - BitmapResolver RIFX-backed BITD bitmap decode, `ediM` JPEG/`ALFA` sidecar decode, explicit and member-stored palette override decode, SpriteBaker provider adapter, movie palette config fallback, null fallback behavior, and CastLibManager palette-member lookup passed through the same CTest executable.
 - SpriteProperties missing defaults, property get/set, revision bumps, cast member assignment, autosizing, registration-aware bounds, cursor lists, script-instance sprite numbers, release cleanup, color refs, image callbacks, sprite event broker synthetic registration, per-event expansion, removeProcedure reset, id/link/cursor/member helpers, and Player sprite method hook wiring passed through the same CTest executable.
 - Lingo `GET_CHUNK` char/word/item/line extraction, range, negative last-index, sequential narrowing, and provider-backed item delimiters passed through the same CTest executable.
@@ -1231,4 +1231,4 @@ Result:
 - `5df5e6fd Port C++ decompiler fallback mapping`
 - `2d9420b0 Port C++ decompiler linear bytecode`
 - `1e40b253 Port C++ decompiler chunk opcodes`
-- Current checkpoint commit message: `Port C++ explicit unsupported sprite bake step`
+- Current checkpoint commit message: `Port C++ Startup Flags pWait quirk`

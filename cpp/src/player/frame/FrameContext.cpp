@@ -7,6 +7,7 @@
 
 #include "libreshockwave/DirectorFile.hpp"
 #include "libreshockwave/chunks/ScoreChunk.hpp"
+#include "libreshockwave/chunks/ScriptChunk.hpp"
 #include "libreshockwave/player/behavior/BehaviorInstance.hpp"
 #include "libreshockwave/player/behavior/BehaviorManager.hpp"
 #include "libreshockwave/player/event/EventDispatcher.hpp"
@@ -77,6 +78,10 @@ void FrameContext::setActorListDispatcher(ActorListDispatcher dispatcher) {
 
 void FrameContext::setTimeoutEventDispatcher(TimeoutEventDispatcher dispatcher) {
     timeoutEventDispatcher_ = std::move(dispatcher);
+}
+
+void FrameContext::setScriptNameResolver(ScriptNameResolver resolver) {
+    scriptNameResolver_ = std::move(resolver);
 }
 
 void FrameContext::setSpriteRegistry(render::SpriteRegistry* registry) {
@@ -361,12 +366,14 @@ void FrameContext::dispatchEvent(PlayerEvent event) {
 }
 
 void FrameContext::dispatchBeginSprite() {
+    const bool v1StartupShape = hasFrameOneFrameScriptAndFrameTwoSpriteBehaviorStartupShape();
     for (const int channel : enteredChannels_) {
         for (const auto& instance : behaviorManager().getInstancesForChannel(channel)) {
             if (!instance || instance->isBeginSpriteCalled()) {
                 continue;
             }
             eventDispatcher().dispatchBehaviorEvent(instance, PlayerEvent::BeginSprite);
+            maybeDelayFlagsStartupCycle(instance, v1StartupShape);
             instance->setBeginSpriteCalled(true);
         }
     }
@@ -391,6 +398,34 @@ bool FrameContext::hasFrameOneFrameScriptAndFrameTwoSpriteBehaviorStartupShape()
     return navigator().getFrameScript(1) != nullptr &&
            !hasScoreSpriteBehaviors(1) &&
            hasScoreSpriteBehaviors(2);
+}
+
+std::string FrameContext::scriptNameFor(const std::shared_ptr<chunks::ScriptChunk>& script) const {
+    if (!script) {
+        return "";
+    }
+    if (scriptNameResolver_) {
+        return scriptNameResolver_(script);
+    }
+    if (script->file() != nullptr) {
+        return const_cast<DirectorFile*>(script->file())->getScriptName(script);
+    }
+    return "";
+}
+
+void FrameContext::maybeDelayFlagsStartupCycle(const std::shared_ptr<behavior::BehaviorInstance>& instance,
+                                               bool v1StartupShape) {
+    if (!v1StartupShape || !instance || !instance->script()) {
+        return;
+    }
+    if (scriptNameFor(instance->script()) != "Flags behavior") {
+        return;
+    }
+
+    const auto wait = instance->getProperty("pWait");
+    if (const auto* waitInt = wait.asInt(); waitInt != nullptr && waitInt->value == 3) {
+        instance->setProperty("pWait", lingo::Datum::of(7));
+    }
 }
 
 void FrameContext::logEvent(std::string_view message) const {
