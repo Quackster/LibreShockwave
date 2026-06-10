@@ -8074,6 +8074,7 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     const auto* nullImage = nullImageRef.asImageRef();
     assert(nullImage != nullptr);
     assert(ImageMethodDispatcher::getProperty(*nullImage, "height").intValue() == 0);
+    assert(ImageMethodDispatcher::getProperty(*nullImage, "image").asImageRef()->bitmap == nullptr);
     assert(ImageMethodDispatcher::dispatch(*nullImage, "getAt", {Datum::of(1)}).intValue() == 0);
     assert(ImageMethodDispatcher::dispatch(*nullImage, "duplicate", {}).asImageRef()->bitmap == nullptr);
     assert(runObjCall(64, {imageMethodRef, Datum::of(1)}).intValue() == 2);
@@ -8137,6 +8138,19 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runObjCall(103, {noOpFillRef, Datum::intRect(1, 1, 1, 2), Datum::colorRef(1, 2, 3)}).isVoid());
     assert(!noOpFillBitmap->isScriptModified());
     assert(noOpFillBitmap->getPixel(1, 1) == 0xFFFFFFFFU);
+    int selfImageMutationCallbackCount = 0;
+    auto selfImageBitmap = std::make_shared<Bitmap>(1, 1, 32);
+    const Datum selfImageRef = Datum::imageRef(selfImageBitmap, [&](Bitmap& mutated) {
+        assert(&mutated == selfImageBitmap.get());
+        ++selfImageMutationCallbackCount;
+    });
+    const Datum selfImageProperty = ImageMethodDispatcher::getProperty(*selfImageRef.asImageRef(), "image");
+    assert(selfImageProperty.asImageRef()->bitmap == selfImageBitmap);
+    assert(ImageMethodDispatcher::dispatch(*selfImageProperty.asImageRef(),
+                                           "setPixel",
+                                           {Datum::of(0), Datum::of(0), Datum::colorRef(1, 2, 3)}).isVoid());
+    assert(selfImageBitmap->getPixel(0, 0) == 0xFF010203U);
+    assert(selfImageMutationCallbackCount == 1);
     int imageMutationCallbackCount = 0;
     ImageMethodDispatcher::setImageMutationCallback([&imageMutationCallbackCount]() {
         ++imageMutationCallbackCount;

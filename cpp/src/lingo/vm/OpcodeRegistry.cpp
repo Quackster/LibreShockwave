@@ -654,7 +654,7 @@ Datum getImageProp(const Datum::ImageRef& image, std::string_view propName) {
     if (equalsIgnoreCase(propName, "depth")) return Datum::of(bitmap != nullptr ? bitmap->bitDepth() : 0);
     if (equalsIgnoreCase(propName, "usealpha")) return bitmap != nullptr && bitmap->isNativeAlpha() ? Datum::TRUE : Datum::FALSE;
     if (equalsIgnoreCase(propName, "ilk")) return Datum::symbol("image");
-    if (equalsIgnoreCase(propName, "image")) return Datum::imageRef(bitmap);
+    if (equalsIgnoreCase(propName, "image")) return Datum::imageRef(bitmap, image.mutationCallback);
     if (equalsIgnoreCase(propName, "paletteref") && bitmap != nullptr) {
         if (bitmap->paletteRefCastLib() >= 1 && bitmap->paletteRefMemberNum() >= 1) {
             return Datum::castMemberRef(id::CastLibId(bitmap->paletteRefCastLib()), id::MemberId(bitmap->paletteRefMemberNum()));

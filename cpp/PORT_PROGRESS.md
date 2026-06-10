@@ -765,7 +765,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Receiver-style external calls now fall back to the same data-owned method dispatch path after handler and builtin lookup.
 - Point and rectangle object methods now support Java-compatible mutable `setAt` component writes in addition to `getAt`, `duplicate`, and point `inside`.
 - List and property-list method dispatch covers Java-compatible mutation and lookup helpers such as `getAt`, `setAt`, `append`, `addProp`, `getProp`, `count`, `sort`, and duplicate-preserving property insertion.
-- `lingo::vm::dispatch::ImageMethodDispatcher` ports Java image receiver method/property dispatch through the existing C++ image helper surface, including null-image fallbacks, `fill`/`draw`/`copyPixels`/`setAlpha` mutation, image duplication/cropping/trimming/matte-mask creation, indexed palette fill/getPixel color identity, pixel access, `useAlpha`, palette-reference property routing, and the Java-style image mutation callback hook.
+- `lingo::vm::dispatch::ImageMethodDispatcher` ports Java image receiver method/property dispatch through the existing C++ image helper surface, including null-image fallbacks, self-image property references that preserve live mutation callbacks, `fill`/`draw`/`copyPixels`/`setAlpha` mutation, image duplication/cropping/trimming/matte-mask creation, indexed palette fill/getPixel color identity, pixel access, `useAlpha`, palette-reference property routing, and the Java-style image mutation callback hook.
 - `lingo::vm::dispatch::ListMethodDispatcher` ports Java linear-list receiver methods, including padded `setAt`, clamped `addAt`, value search/delete, `join`, case-insensitive sort, deep-copy `duplicate`, and out-of-range `getAt` diagnostics for `OBJ_CALL`.
 - `lingo::vm::dispatch::MemberRegistryMethodDispatcher` ports Java script-instance member-registry receiver prefill/fallback dispatch over the existing C++ alias registry logic, including `getMemNum`, `exists`/`memberExists`, `getMember`, `readAliasIndexesFromField`, stale slot cleanup, bootstrap script-member visibility, and persistent alias lookup.
 - `lingo::vm::dispatch::PropListMethodDispatcher` ports Java property-list receiver methods, including sub-list indexed `getProp`, typed `getAt`/`setAt`, duplicate-preserving `addProp`, `getOne`/`findPos`, positional key reads/deletes, first/last reads, and deep-copy `duplicate`.
@@ -914,7 +914,7 @@ Result:
 - Lingo `DELETE_CHUNK` char, word, item, line, negative last-index, local/param/global/property/field targets, provider-backed item delimiter, and out-of-range tests passed through the same CTest executable.
 - Lingo `PUT_CHUNK` char replacement/insertion, local/param/global/property/field targets, provider-backed item replacement, word/line insertion, negative target, and out-of-range no-op tests passed through the same CTest executable.
 - Lingo `GET_CHAINED_PROP` list index/nonnumeric behavior, string length-only behavior, point/color `ilk` suppression, property-list key-only reads, script-instance read/`ilk`/numeric-index behavior, and `GET_TOP_LEVEL_PROP` `_player`/`_movie` refs passed through the same CTest executable.
-- Lingo image object-property width, height, rect, depth, useAlpha, ilk, image, and paletteRef reads passed through the same CTest executable.
+- Lingo image object-property width, height, rect, depth, useAlpha, ilk, self-image callback preservation, and paletteRef reads passed through the same CTest executable.
 - Lingo legacy `GET` last-chunk/count chunk reads, provider-backed movie/sprite/sound property mappings, and provider-backed `SET` mutations passed through the same CTest executable.
 - Lingo `GET_FIELD` provider-backed field lookup, cast-library lookup, provider-missing empty-string fallback, and stack-consumption tests passed through the same CTest executable.
 - Lingo direct-string and VarRef object-call string chunk extraction, mutable char/word/item/line chunk-ref deletion, ScriptRef `new`, string method delegation, and provider-backed item counting tests passed through the same CTest executable.
@@ -1231,4 +1231,4 @@ Result:
 - `5df5e6fd Port C++ decompiler fallback mapping`
 - `2d9420b0 Port C++ decompiler linear bytecode`
 - `1e40b253 Port C++ decompiler chunk opcodes`
-- Current checkpoint commit message: `Port C++ debug log datum formatting`
+- Current checkpoint commit message: `Preserve C++ image self mutation callbacks`
