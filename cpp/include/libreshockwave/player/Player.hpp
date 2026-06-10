@@ -102,6 +102,8 @@ public:
     void registerMultiuserXtra(lingo::xtra::MultiuserNetBridge& bridge);
     void setExternalParams(std::vector<std::pair<std::string, std::string>> params);
     [[nodiscard]] const std::vector<std::pair<std::string, std::string>>& externalParams() const;
+    void setInitialBuiltinVariable(std::string variableName, lingo::Datum defaultValue);
+    void setInitialBuiltinVariables(std::vector<std::pair<std::string, lingo::Datum>> values);
     [[nodiscard]] bool debugEnabled() const;
 
     void play();
@@ -123,6 +125,7 @@ public:
 private:
     void wireComponents();
     void prepareMovieFoundation();
+    void applyInitialBuiltinVariables();
     void processUpdatingObjects();
     [[nodiscard]] bool applyExternalCastDataNow(int castLibNumber,
                                                 const std::vector<std::uint8_t>& data,
@@ -156,6 +159,7 @@ private:
     std::function<void(const ExternalCastLoadEvent&)> externalCastLoadListener_;
     std::vector<ExternalCastLoadHandler*> externalCastLoadHandlers_;
     std::vector<std::pair<std::string, std::string>> externalParams_;
+    std::vector<std::pair<std::string, lingo::Datum>> initialBuiltinVariables_;
     std::vector<lingo::Datum> updatingObjects_;
     std::function<void()> timeoutProcessor_;
     std::function<void(std::string_view handlerName)> timeoutSystemEventDispatcher_;

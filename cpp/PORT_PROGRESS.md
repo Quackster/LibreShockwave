@@ -300,6 +300,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Player-owned image method mutations now bump the sprite-registry revision through an owner-scoped image mutation callback, so `(the stage).image` and other script image edits invalidate rendered output like Java while avoiding dangling global callback state after player destruction.
 - Player now ports Java's UpdateProvider-style per-frame update target registration, deduplication, removal, tick-time snapshot dispatch, and script-instance-only `update` callback routing through the VM target handler.
 - Player now exposes ordered Shockwave external PARAM storage through `setExternalParams`/`externalParams` and keeps VM-owned `externalParamValue`/`externalParamName`/`externalParamCount` builtins synchronized with the facade state.
+- Player now ports Java's initial builtin variable facade, storing deep-copied startup defaults, replacing configured defaults by name, ignoring empty names, and applying missing globals before movie startup dispatch without overwriting existing VM globals.
 - Full VM provider setup, asynchronous playback, non-bitmap imported-media mutation, and platform external-cast fetching remain deferred to later player runtime slices.
 
 ### Player Builtin Context Foundation
@@ -969,7 +970,7 @@ Result:
 - Lingo VM deferred script-instance call ordering, automatic outer-handler flush, deferred task explicit flushing, flush-state guards, Player call-target provider wiring, and numeric `closeThread` task deferral passed through the same CTest executable.
 - Lingo VM AlertHookHandler skip/depth diagnostics, guarded hook invocation, alertHook manual firing, `alert()` suppression, script-error suppression/rethrow behavior, and Player no-hook fallback passed through the same CTest executable.
 - Lingo Datum deep-copy behavior, DatumFormatter scalar/brief/expanded/detailed/recursive output, AncestorChainWalker property/depth traversal, `call(...)` message-struct argument snapshots, non-message prop-list forwarding, and per-target call snapshot freshness passed through the same CTest executable.
-- Player-owned LingoVM builtin delegation, file-backed dispatcher movie-script discovery/bytecode invocation, direct and sprite `call(...)` target return propagation, startup movie-script frame lifecycle and timeout-target dispatch, actorList frame-event dispatch, elapsed timeout target/global dispatch, per-frame update-provider target dispatch, Player-backed external PARAM builtins, `stopMovie` timeout/movie dispatch, VM preference storage, and Player-wired stage-image mutation invalidation passed through the same CTest executable.
+- Player-owned LingoVM builtin delegation, file-backed dispatcher movie-script discovery/bytecode invocation, direct and sprite `call(...)` target return propagation, startup movie-script frame lifecycle and timeout-target dispatch, Player initial builtin variable defaults, actorList frame-event dispatch, elapsed timeout target/global dispatch, per-frame update-provider target dispatch, Player-backed external PARAM builtins, `stopMovie` timeout/movie dispatch, VM preference storage, and Player-wired stage-image mutation invalidation passed through the same CTest executable.
 - OpcodeRegistry stack/control handler registration, custom handler registration, literal/symbol pushes, stack manipulation, return/factory return, and jump opcodes passed through the same CTest executable.
 - OpcodeRegistry arithmetic, comparison, and logical handlers passed through the same CTest executable.
 - OpcodeRegistry variable, arg-list, linear-list, and property-list handlers passed through the same CTest executable.
@@ -1233,4 +1234,4 @@ Result:
 - `5df5e6fd Port C++ decompiler fallback mapping`
 - `2d9420b0 Port C++ decompiler linear bytecode`
 - `1e40b253 Port C++ decompiler chunk opcodes`
-- Current checkpoint commit message: `Port C++ player external params`
+- Current checkpoint commit message: `Port C++ player initial builtins`

@@ -205,6 +205,26 @@ const std::vector<std::pair<std::string, std::string>>& Player::externalParams()
     return externalParams_;
 }
 
+void Player::setInitialBuiltinVariable(std::string variableName, lingo::Datum defaultValue) {
+    if (variableName.empty()) {
+        return;
+    }
+    for (auto& entry : initialBuiltinVariables_) {
+        if (entry.first == variableName) {
+            entry.second = defaultValue.deepCopy();
+            return;
+        }
+    }
+    initialBuiltinVariables_.emplace_back(std::move(variableName), defaultValue.deepCopy());
+}
+
+void Player::setInitialBuiltinVariables(std::vector<std::pair<std::string, lingo::Datum>> values) {
+    initialBuiltinVariables_.clear();
+    for (auto& [name, value] : values) {
+        setInitialBuiltinVariable(std::move(name), std::move(value));
+    }
+}
+
 bool Player::debugEnabled() const { return debugEnabled_; }
 
 void Player::play() {
@@ -867,6 +887,7 @@ void Player::wireComponents() {
 }
 
 void Player::prepareMovieFoundation() {
+    applyInitialBuiltinVariables();
     castLibManager_.preloadCasts(2);
     if (timeoutSystemEventDispatcher_) {
         timeoutSystemEventDispatcher_("prepareMovie");
@@ -889,6 +910,14 @@ void Player::prepareMovieFoundation() {
     }
     eventDispatcher().dispatchSpriteAndMovieEvent(handlerName(PlayerEvent::ExitFrame));
     castLibManager_.preloadCasts(1);
+}
+
+void Player::applyInitialBuiltinVariables() {
+    for (const auto& [name, value] : initialBuiltinVariables_) {
+        if (vm_.globals().find(name) == vm_.globals().end()) {
+            vm_.setGlobal(name, value.deepCopy());
+        }
+    }
 }
 
 void Player::processUpdatingObjects() {

@@ -3366,6 +3366,14 @@ void testPlayerFacadeFoundation() {
     player.setExternalParams({});
     assert(player.externalParams().empty());
     assert(player.builtinRegistry().invoke("externalParamCount", player.builtinContext()).intValue() == 0);
+    Datum bootstrapList = Datum::list({Datum::of(1)});
+    player.setInitialBuiltinVariable("", Datum::of(99));
+    player.setInitialBuiltinVariable("bootstrap.list", bootstrapList);
+    bootstrapList.listValue().items()[0] = Datum::of(7);
+    player.setInitialBuiltinVariable("connection.info.id", Datum::symbol("info"));
+    player.setInitialBuiltinVariable("connection.room.id", Datum::symbol("room"));
+    player.setInitialBuiltinVariable("connection.room.id", Datum::symbol("roomOverride"));
+    player.vm().setGlobal("connection.info.id", Datum::symbol("existing"));
 
     player.setTempo(24);
     assert(player.baseTempo() == 24);
@@ -3440,6 +3448,10 @@ void testPlayerFacadeFoundation() {
     assert(player.state() == PlayerState::Playing);
     assert(player.currentFrame() == 1);
     assert(events.empty());
+    assert(player.vm().getGlobal("connection.info.id").asSymbol()->name == "existing");
+    assert(player.vm().getGlobal("connection.room.id").asSymbol()->name == "roomOverride");
+    assert(player.vm().getGlobal("bootstrap.list").listValue().getAt(1).intValue() == 1);
+    assert(player.vm().getGlobal("").isVoid());
 
     assert(player.tick());
     assert(player.currentFrame() == 2);
@@ -3504,6 +3516,17 @@ void testPlayerFacadeFoundation() {
     updatePlayer.removeUpdate(updateTarget);
     assert(updatePlayer.tick());
     assert((updateCalls == std::vector<std::string>{"updater", "removed-during-update", "updater"}));
+
+    Player initialSetPlayer;
+    initialSetPlayer.setInitialBuiltinVariable("old.seed", Datum::of(1));
+    initialSetPlayer.setInitialBuiltinVariables({
+        {"replacement.seed", Datum::of(2)},
+        {"", Datum::of(3)}
+    });
+    initialSetPlayer.play();
+    assert(initialSetPlayer.vm().getGlobal("old.seed").isVoid());
+    assert(initialSetPlayer.vm().getGlobal("replacement.seed").intValue() == 2);
+    assert(initialSetPlayer.vm().getGlobal("").isVoid());
 
     Player stageImagePlayer;
     assert(stageImagePlayer.movieProperties().setStageProp("bgcolor", Datum::colorRef(0x12, 0x34, 0x56)));
