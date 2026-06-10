@@ -12485,7 +12485,12 @@ void testCastLibManagerFoundation() {
     assert(manager.getMemberProp(1, 2, "paletteRef").asSymbol()->name == "systemMac");
     assert(manager.resolveMember(1, 2)->runtimeBitmap() == nullptr);
     assert(manager.getMemberProp(1, 99, "type").asSymbol()->name == "empty");
-    assert(!manager.setMemberProp(1, 2, "name", Datum::of("Other")));
+    assert(manager.setMemberProp(1, 2, "name", Datum::of("Renamed Hero")));
+    assert(manager.getMemberProp(1, 2, "name").stringValue() == "Renamed Hero");
+    assert(manager.getMemberByName(0, "Renamed Hero").asCastMemberRef()->memberNum() == 2);
+    assert(manager.findCastMemberByName("Renamed Hero")->memberNum() == 2);
+    assert(manager.setMemberProp(1, 2, "name", Datum::of("Hero")));
+    assert(manager.getMemberProp(1, 2, "name").stringValue() == "Hero");
 
     const auto fileBackedCopy = manager.createMember(1, "bitmap");
     const auto* fileBackedCopyRef = fileBackedCopy.asCastMemberRef();

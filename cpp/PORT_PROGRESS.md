@@ -222,7 +222,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 ### Cast Library Manager Foundation
 
 - `player::cast::CastLib` ports lazy cast-library metadata, authored/external file binding state, stable registry binding checks, member chunk maps, script maps, source-prefixed member-name fallback, font-alias/PFR XMED scanning, and Java-compatible cast/member property fallbacks.
-- Common cast-member properties now distinguish encoded `number` from raw `memberNum`, expose `castLib` as a cast-lib ref, and provide Java-compatible `script`, `scriptText`, and `mediaReady` defaults.
+- Common cast-member properties now distinguish encoded `number` from raw `memberNum`, expose `castLib` as a cast-lib ref, provide Java-compatible `script`, `scriptText`, and `mediaReady` defaults, and allow Java-compatible authored/runtime `member.name` mutation through the wrapper property surface.
 - Common cast-member `type` now reports Director's public `#field` symbol for text, button, and text-Xtra members while preserving internal enum names for non-text member types.
 - Bitmap cast-member `paletteRef`/`palette` getters now expose runtime palette metadata first, then fall back to embedded BitmapInfo palette references and built-in palette symbols.
 - Bitmap cast-member `paletteRef`/`palette` setters now resolve built-in symbols, palette member refs, and named runtime palette members through the CastLibManager palette surface while storing the member-level override and applying it to existing runtime bitmaps.
@@ -840,7 +840,7 @@ Result:
 - NetBuiltins preload/get/post aliases, task result/error/status lookups, stream-status toggling, navigation callbacks, and ExternalParamBuiltins ordered parameter lookup passed through the same CTest executable.
 - ImageBuiltins image creation, invalid-dimension handling, white fill defaults, built-in/system palette metadata, provider-resolved member palette metadata, string/ilk behavior, and `importFileInto` callback delegation passed through the same CTest executable.
 - Runtime member image assignment, image-ref bitmap `media` assignment, direct raw-media `LSWI`/Director `DTIB`/BITD bitmap assignment, cached `LSWI` and Director `DTIB`/BITD `importFileInto` assignment, imported-image alpha preservation, imported anchor-point propagation, indexed imported-media palette metadata, runtime member property reflection, authored bitmap palette override decoding, and Player SpriteBaker live runtime bitmap rendering passed through the same CTest executable.
-- Runtime dynamic member creation, named encoded slot creation, `new(#type, castLib)` callback creation, stable authored member counts, and dynamic member name/type lookup passed through the same CTest executable.
+- Runtime dynamic member creation, named encoded slot creation, `new(#type, castLib)` callback creation, stable authored member counts, authored/runtime member name mutation, and dynamic member name/type lookup passed through the same CTest executable.
 - Common cast-member `number`, `memberNum`, `castLibNum`, `castLib`, `script`, `scriptText`, `scriptType`, script-member empty `text`, `mediaReady`, Director-facing `type`, and bitmap `paletteRef`/`palette` property getters/setters passed through the same CTest executable.
 - Runtime-created bitmap member render sprites, runtime registration-point placement, Player StageRenderer-to-CastLibManager resolver wiring, SpriteBaker live dynamic bitmap baking, and rendered frame pixels for dynamic bitmap sprites passed through the same CTest executable.
 - Dynamic member `erase`, `#empty` type reflection, first erased-slot reuse, cast-member method callback routing, and Player sprite binding cleanup on slot retirement passed through the same CTest executable.
@@ -1065,4 +1065,5 @@ Result:
 - `21ff6605 Port C++ bitmap member palette setters`
 - `b951b032 Port C++ bitmap palette override decoding`
 - `e7caae90 Port C++ script member media copy`
-- Current checkpoint commit message: `Port C++ bitmap media image refs`
+- `f4f1f8a8 Port C++ bitmap media image refs`
+- Current checkpoint commit message: `Port C++ authored member name mutation`

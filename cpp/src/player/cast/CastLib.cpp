@@ -719,7 +719,7 @@ bool CastLib::setMemberProp(int memberNumber, const std::string& propName, const
     }
 
     const auto prop = lower(propName);
-    if (prop == "name" && member->isRuntimeDynamic()) {
+    if (prop == "name") {
         member->setName(value.stringValue());
         return true;
     }
