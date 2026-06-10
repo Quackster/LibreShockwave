@@ -10547,6 +10547,32 @@ void testCastMetadataTypes() {
     assert(styledRecords->styledSpans[1].underline);
     assert(styledRecords->fontName == "Geneva");
     assert(styledRecords->fontSize == 12);
+
+    std::vector<std::uint8_t> paragraphRecordXmed;
+    appendAsciiBytes(paragraphRecordXmed, "0002");
+    paragraphRecordXmed.push_back(0);
+    appendAsciiBytes(paragraphRecordXmed, "4,Text");
+    paragraphRecordXmed.push_back(3);
+    appendAsciiBytes(paragraphRecordXmed, "00050000000400000001");
+    paragraphRecordXmed.push_back(2);
+    appendAsciiBytes(paragraphRecordXmed, "0");
+    paragraphRecordXmed.push_back(1);
+    appendAsciiBytes(paragraphRecordXmed, "0");
+    paragraphRecordXmed.push_back(3);
+    appendAsciiBytes(paragraphRecordXmed, "00070000000600000001");
+    paragraphRecordXmed.push_back(0xC2);
+    paragraphRecordXmed.push_back(0x0F);
+    paragraphRecordXmed.push_back(1);
+    appendAsciiBytes(paragraphRecordXmed, "3");
+    paragraphRecordXmed.push_back(0xC2);
+    paragraphRecordXmed.push_back(0x12);
+    paragraphRecordXmed.push_back(3);
+    auto paragraphRecord = XmedTextParser::parseStyled(paragraphRecordXmed, xmedSpecific);
+    assert(paragraphRecord.has_value());
+    assert(paragraphRecord->primaryParagraphStyleIndex == 0);
+    assert(paragraphRecord->primaryParagraphAlignmentCode == 3);
+    assert(paragraphRecord->paragraphStyleCount == 1);
+    assert(paragraphRecord->alignment == "right");
 }
 
 void testCastInfoParsers() {

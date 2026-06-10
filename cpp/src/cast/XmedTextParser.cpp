@@ -696,6 +696,55 @@ int extractPrimaryParagraphStyleIndex(const std::vector<std::uint8_t>& data, std
     return 0;
 }
 
+std::vector<std::vector<std::uint8_t>> extractParagraphStyleRecords(const std::vector<std::uint8_t>& data,
+                                                                    std::string_view ascii) {
+    const auto section = findSection(data, "0007");
+    if (!section.has_value()) {
+        return {};
+    }
+
+    const auto secStart = *section + 20;
+    const int secLen = parseSectionLength(ascii, *section);
+    const auto secEnd = secLen > 0 ? std::min(secStart + static_cast<std::size_t>(secLen), data.size()) : data.size();
+    std::vector<std::vector<std::uint8_t>> records;
+    auto start = secStart;
+    for (std::size_t i = secStart; i + 1 < secEnd; ++i) {
+        if (data[i] == 0xC2 && data[i + 1] == 0x12) {
+            records.emplace_back(data.begin() + static_cast<std::ptrdiff_t>(start),
+                                 data.begin() + static_cast<std::ptrdiff_t>(i + 2));
+            start = i + 2;
+        }
+    }
+    return records;
+}
+
+int extractParagraphAlignmentCode(const std::vector<std::uint8_t>& paragraphStyleRecord) {
+    if (paragraphStyleRecord.empty()) {
+        return -1;
+    }
+    for (std::size_t i = 0; i + 1 < paragraphStyleRecord.size(); ++i) {
+        if (paragraphStyleRecord[i] != 0xC2 || paragraphStyleRecord[i + 1] != 0x0F) {
+            continue;
+        }
+        for (std::size_t j = i + 2; j < paragraphStyleRecord.size(); ++j) {
+            const int byte = paragraphStyleRecord[j] & 0xFF;
+            if (byte == 0x01 || byte == 0x02) {
+                return parseHexValue(paragraphStyleRecord, j + 1);
+            }
+        }
+    }
+    return -1;
+}
+
+std::string alignmentFromParagraphAlignmentCode(int value) {
+    switch (value) {
+        case 1: return "center";
+        case 2: return "left";
+        case 3: return "right";
+        default: return "";
+    }
+}
+
 std::string alignmentFromParagraphStyleIndex(int value) {
     switch (value) {
         case 1: return "center";
@@ -742,7 +791,17 @@ std::optional<XmedStyledText> XmedTextParser::parseStyled(const std::vector<std:
     const auto [fontSize, fontStyle] = extractFontSizeAndStyle(xmedData, ascii, textLen);
     const auto color = extractColor(xmedData, ascii);
     const int paragraphStyleIndex = extractPrimaryParagraphStyleIndex(xmedData, ascii);
-    const std::string alignment = alignmentFromParagraphStyleIndex(paragraphStyleIndex);
+    const auto paragraphStyleRecords = extractParagraphStyleRecords(xmedData, ascii);
+    int paragraphAlignmentCode = -1;
+    if (paragraphStyleIndex >= 0 &&
+        paragraphStyleIndex < static_cast<int>(paragraphStyleRecords.size())) {
+        paragraphAlignmentCode =
+            extractParagraphAlignmentCode(paragraphStyleRecords[static_cast<std::size_t>(paragraphStyleIndex)]);
+    }
+    std::string alignment = alignmentFromParagraphAlignmentCode(paragraphAlignmentCode);
+    if (alignment.empty()) {
+        alignment = alignmentFromParagraphStyleIndex(paragraphStyleIndex);
+    }
 
     int width = 0;
     int height = 0;
@@ -785,8 +844,8 @@ std::optional<XmedStyledText> XmedTextParser::parseStyled(const std::vector<std:
         fontCandidates,
         alignment,
         paragraphStyleIndex,
-        -1,
-        0,
+        paragraphAlignmentCode,
+        static_cast<int>(paragraphStyleRecords.size()),
         true,
         0,
         width,
