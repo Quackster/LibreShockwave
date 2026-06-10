@@ -78,6 +78,7 @@
 #include "libreshockwave/lingo/vm/LingoVM.hpp"
 #include "libreshockwave/lingo/vm/OpcodeRegistry.hpp"
 #include "libreshockwave/lingo/vm/Scope.hpp"
+#include "libreshockwave/lingo/xtra/MultiuserXtra.hpp"
 #include "libreshockwave/lingo/xtra/XmlParserXtra.hpp"
 #include "libreshockwave/lookup/CastMemberLookup.hpp"
 #include "libreshockwave/lookup/PaletteResolver.hpp"
@@ -209,6 +210,8 @@ using libreshockwave::lingo::vm::LingoVM;
 using libreshockwave::lingo::vm::OpcodeRegistry;
 using libreshockwave::lingo::vm::Scope;
 using libreshockwave::lingo::vm::TraceListener;
+using libreshockwave::lingo::xtra::MultiuserNetBridge;
+using libreshockwave::lingo::xtra::MultiuserXtra;
 using libreshockwave::lingo::xtra::XmlParserXtra;
 using libreshockwave::lingo::xtra::Xtra;
 using libreshockwave::lingo::xtra::XtraManager;
@@ -3512,6 +3515,172 @@ void testXmlParserXtraFoundation() {
     assert(tickingManager.getProperty(*multiusrInstance, "state").stringValue() == "tick-prop");
     tickingManager.tickAll();
     assert(ticks == 1);
+}
+
+void testMultiuserXtraFoundation() {
+    class FakeBridge final : public MultiuserNetBridge {
+    public:
+        struct ConnectCall {
+            int instanceId = 0;
+            std::string host;
+            int port = 0;
+            int mode = 0;
+        };
+        struct SendCall {
+            int instanceId = 0;
+            std::string senderID;
+            std::string subject;
+            Datum content = Datum::voidValue();
+        };
+
+        void requestConnect(int instanceId, const std::string& host, int port, int mode) override {
+            connects.push_back({instanceId, host, port, mode});
+            connectedIds.insert(instanceId);
+        }
+        void requestSend(int instanceId,
+                         const std::string& senderID,
+                         const std::string& subject,
+                         const Datum& content) override {
+            sends.push_back({instanceId, senderID, subject, content});
+        }
+        void requestDisconnect(int instanceId) override {
+            disconnects.push_back(instanceId);
+            connectedIds.erase(instanceId);
+        }
+        bool isConnected(int instanceId) const override {
+            return connectedIds.contains(instanceId);
+        }
+        std::vector<MultiuserNetBridge::NetMessage> pollMessages(int instanceId) override {
+            ++pollCount;
+            auto found = messages.find(instanceId);
+            if (found == messages.end()) {
+                return {};
+            }
+            auto result = found->second;
+            found->second.clear();
+            return result;
+        }
+        void destroyInstance(int instanceId) override {
+            destroys.push_back(instanceId);
+        }
+
+        std::vector<ConnectCall> connects;
+        std::vector<SendCall> sends;
+        std::vector<int> disconnects;
+        std::vector<int> destroys;
+        std::map<int, std::vector<MultiuserNetBridge::NetMessage>> messages;
+        std::set<int> connectedIds;
+        int pollCount = 0;
+    };
+
+    FakeBridge bridge;
+    MultiuserXtra* xtraPtr = nullptr;
+    int instanceId = 0;
+    std::vector<std::string> callbacks;
+    std::vector<std::string> callbackMessages;
+    MultiuserXtra xtra(&bridge, [&](const Datum& target, const std::string& handlerName, const std::vector<Datum>& args) {
+        callbacks.push_back(target.scriptInstanceValue().scriptName() + ":" + handlerName + ":" +
+                            std::to_string(args.size()));
+        const auto message = xtraPtr->callHandler(instanceId, "getNetMessage", {});
+        assert(message.isPropList());
+        callbackMessages.push_back(message.propListValue().get(Datum::symbol("senderID")).stringValue() + ":" +
+                                  message.propListValue().get(Datum::symbol("subject")).stringValue() + ":" +
+                                  message.propListValue().get(Datum::symbol("content")).stringValue());
+    });
+    xtraPtr = &xtra;
+
+    assert(xtra.name() == "Multiuser");
+    instanceId = xtra.createInstance({});
+    assert(instanceId == 1);
+    assert(xtra.callHandler(999, "setNetBufferLimits", {}).isVoid());
+    assert(xtra.callHandler(instanceId, "setNetBufferLimits", {Datum::of(16), Datum::of(1024), Datum::of(7)})
+               .intValue() == 0);
+    const auto target = Datum::scriptInstance("receiver");
+    assert(xtra.callHandler(instanceId, "setNetMessageHandler", {Datum::symbol("onMsg"), target}).intValue() == 0);
+
+    assert(xtra.callHandler(instanceId,
+                            "connectToNetServer",
+                            {Datum::of(std::string("*")),
+                             Datum::of(std::string("*")),
+                             Datum::of(std::string("hotel.example")),
+                             Datum::of(1234),
+                             Datum::of(std::string("*")),
+                             Datum::of(0)})
+               .intValue() == 0);
+    assert(bridge.connects.size() == 1);
+    assert(bridge.connects[0].instanceId == instanceId);
+    assert(bridge.connects[0].host == "hotel.example");
+    assert(bridge.connects[0].port == 1234);
+    assert(bridge.connects[0].mode == 0);
+    assert(bridge.isConnected(instanceId));
+
+    assert(xtra.callHandler(instanceId,
+                            "sendNetMessage",
+                            {Datum::of(std::string("me")),
+                             Datum::of(std::string("HELLO")),
+                             Datum::of(std::string("payload"))})
+               .intValue() == 0);
+    assert(bridge.sends.size() == 1);
+    assert(bridge.sends[0].instanceId == instanceId);
+    assert(bridge.sends[0].senderID == "me");
+    assert(bridge.sends[0].subject == "HELLO");
+    assert(bridge.sends[0].content.stringValue() == "payload");
+
+    bridge.messages[instanceId].push_back({0, "sender", "SUBJ", Datum::of(std::string("hello"))});
+    assert(xtra.callHandler(instanceId, "getNumberWaitingNetMessages", {}).intValue() == 1);
+    assert(xtra.callHandler(instanceId, "checkNetMessages", {Datum::of(1)}).intValue() == 1);
+    assert((callbacks == std::vector<std::string>{"receiver:onMsg:0"}));
+    assert((callbackMessages == std::vector<std::string>{"sender:SUBJ:hello"}));
+    assert(xtra.callHandler(instanceId, "getNetMessage", {}).isVoid());
+
+    bridge.messages[instanceId].push_back({0, "a", "ONE", Datum::of(std::string("first"))});
+    bridge.messages[instanceId].push_back({0, "b", "TWO", Datum::of(std::string("second"))});
+    assert(xtra.callHandler(instanceId, "checkNetMessages", {}).intValue() == 1);
+    assert(callbackMessages.back() == "a:ONE:first");
+    assert(xtra.callHandler(instanceId, "getNumberWaitingNetMessages", {}).intValue() == 1);
+    assert(xtra.callHandler(instanceId, "checkNetMessages", {Datum::of(5)}).intValue() == 1);
+    assert(callbackMessages.back() == "b:TWO:second");
+
+    assert(xtra.callHandler(instanceId, "setNetMessageHandler", {Datum::voidValue(), Datum::voidValue()}).intValue() == 0);
+    const int pollsBeforeTickWithoutHandler = bridge.pollCount;
+    bridge.messages[instanceId].push_back({0, "c", "IGNORED", Datum::of(std::string("ignored"))});
+    xtra.tick();
+    assert(bridge.pollCount == pollsBeforeTickWithoutHandler);
+    assert(xtra.callHandler(instanceId, "getNumberWaitingNetMessages", {}).intValue() == 1);
+
+    assert(xtra.callHandler(instanceId, "setNetMessageHandler", {Datum::of(std::string("stringHandler")), target})
+               .intValue() == 0);
+    bridge.messages[instanceId].push_back({0, "d", "AUTO", Datum::of(std::string("auto"))});
+    xtra.tick();
+    assert(callbacks.back() == "receiver:stringHandler:0");
+    assert(callbackMessages.back() == "d:AUTO:auto");
+
+    assert(xtra.callHandler(instanceId, "getNetErrorString", {}).stringValue().empty());
+    assert(xtra.callHandler(instanceId, "getNetErrorString", {Datum::of(0)}).stringValue() == "No error");
+    assert(xtra.callHandler(instanceId, "getNetErrorString", {Datum::of(-4)}).stringValue() ==
+           "Connection timed out");
+    assert(xtra.callHandler(instanceId, "getNetErrorString", {Datum::of(7)}).stringValue() ==
+           "Unknown error (7)");
+    assert(xtra.callHandler(instanceId, "unknownHandler", {}).isVoid());
+    assert(xtra.getProperty(instanceId, "state").isVoid());
+    xtra.setProperty(instanceId, "state", Datum::of(1));
+
+    xtra.destroyInstance(instanceId);
+    assert(bridge.disconnects.size() == 1);
+    assert(bridge.disconnects[0] == instanceId);
+    assert(bridge.destroys.size() == 1);
+    assert(bridge.destroys[0] == instanceId);
+    assert(!bridge.isConnected(instanceId));
+    assert(xtra.callHandler(instanceId, "checkNetMessages", {}).isVoid());
+
+    FakeBridge managerBridge;
+    XtraManager manager;
+    manager.registerXtra(std::make_unique<MultiuserXtra>(&managerBridge, MultiuserXtra::ScriptCallback{}));
+    assert(manager.isXtraRegistered("Multiusr"));
+    assert(manager.registeredXtraNames()[0] == "Multiusr");
+    const auto managerInstance = manager.createInstance("Multiusr", {});
+    assert(managerInstance.asXtraInstance() != nullptr);
+    assert(managerInstance.asXtraInstance()->xtraName == "Multiusr");
 }
 
 void testLingoVmScopeAndExecutionContextFoundation() {
@@ -15137,6 +15306,7 @@ int main() {
     testMoviePropertiesFoundation();
     testBuiltinRegistryFoundation();
     testXmlParserXtraFoundation();
+    testMultiuserXtraFoundation();
     testLingoVmScopeAndExecutionContextFoundation();
     testLingoVmRuntimeFoundation();
     testHitTesterFoundation();
