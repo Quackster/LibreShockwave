@@ -12319,6 +12319,110 @@ void testCastLibManagerFoundation() {
     assert(manager.getMemberProp(1, 10001, "topSpacing").intValue() == 2);
     assert(manager.getMemberProp(1, 10001, "editable").intValue() == 1);
 
+    class ManagerMethodTextRenderer final : public TextRenderer {
+    public:
+        int charCalls = 0;
+        int locCalls = 0;
+        std::string lastText;
+        int lastCharIndex = 0;
+        int lastX = 0;
+        int lastY = 0;
+        std::string lastFont;
+        int lastFontSize = 0;
+        std::string lastFontStyle;
+        int lastFixedLineSpace = 0;
+        std::string lastAlignment;
+        int lastFieldWidth = 0;
+
+        std::shared_ptr<Bitmap> renderText(std::string,
+                                           int,
+                                           int,
+                                           std::string,
+                                           int,
+                                           std::string,
+                                           std::string,
+                                           int,
+                                           int,
+                                           bool,
+                                           bool,
+                                           int,
+                                           int) override {
+            return nullptr;
+        }
+
+        std::vector<int> charPosToLoc(std::string text,
+                                      int charIndex,
+                                      std::string fontName,
+                                      int fontSize,
+                                      std::string fontStyle,
+                                      int fixedLineSpace,
+                                      std::string alignment,
+                                      int fieldWidth) override {
+            ++charCalls;
+            lastText = std::move(text);
+            lastCharIndex = charIndex;
+            lastFont = std::move(fontName);
+            lastFontSize = fontSize;
+            lastFontStyle = std::move(fontStyle);
+            lastFixedLineSpace = fixedLineSpace;
+            lastAlignment = std::move(alignment);
+            lastFieldWidth = fieldWidth;
+            return {123, 45};
+        }
+
+        int locToCharPos(std::string text,
+                         int x,
+                         int y,
+                         std::string fontName,
+                         int fontSize,
+                         std::string fontStyle,
+                         int fixedLineSpace,
+                         std::string alignment,
+                         int fieldWidth) override {
+            ++locCalls;
+            lastText = std::move(text);
+            lastX = x;
+            lastY = y;
+            lastFont = std::move(fontName);
+            lastFontSize = fontSize;
+            lastFontStyle = std::move(fontStyle);
+            lastFixedLineSpace = fixedLineSpace;
+            lastAlignment = std::move(alignment);
+            lastFieldWidth = fieldWidth;
+            return 77;
+        }
+
+        int getLineHeight(std::string, int fontSize, std::string, int fixedLineSpace) override {
+            return fixedLineSpace > 0 ? fixedLineSpace : fontSize;
+        }
+    };
+
+    auto missingRendererLoc = manager.callMemberMethod(1, 10001, "charPosToLoc", {Datum::of(3)}).asIntPoint();
+    assert(missingRendererLoc != nullptr);
+    assert(missingRendererLoc->x == 0);
+    assert(missingRendererLoc->y == 0);
+    assert(manager.callMemberMethod(1, 10001, "locToCharPos", {Datum::intPoint(11, 22)}).intValue() == 0);
+
+    ManagerMethodTextRenderer methodRenderer;
+    manager.setTextRenderer(&methodRenderer);
+    auto methodLoc = manager.callMemberMethod(1, 10001, "charPosToLoc", {Datum::of(4)}).asIntPoint();
+    assert(methodLoc != nullptr);
+    assert(methodLoc->x == 123);
+    assert(methodLoc->y == 45);
+    assert(methodRenderer.charCalls == 1);
+    assert(methodRenderer.lastText == "Symbolic");
+    assert(methodRenderer.lastCharIndex == 4);
+    assert(methodRenderer.lastFont == "Courier");
+    assert(methodRenderer.lastFontSize == 18);
+    assert(methodRenderer.lastFontStyle == "bold,italic");
+    assert(methodRenderer.lastFixedLineSpace == 14);
+    assert(methodRenderer.lastAlignment == "right");
+    assert(methodRenderer.lastFieldWidth == 50);
+    assert(context.castMemberMethodHandler(1, 10001, "locToCharPos", {Datum::intPoint(11, 22)}).intValue() == 77);
+    assert(methodRenderer.locCalls == 1);
+    assert(methodRenderer.lastX == 11);
+    assert(methodRenderer.lastY == 22);
+
     const auto builtinRuntime = registry.invoke("createMember",
                                                 context,
                                                 {Datum::of(std::string("Runtime Bitmap")), Datum::symbol("bitmap")});
@@ -12522,6 +12626,24 @@ void testCastLibManagerFoundation() {
         .invoke("new", player.builtinContext(), {Datum::symbol("bitmap"), Datum::castLibRef(CastLibId(1))});
     assert(reusedPlayerRuntime.asCastMemberRef() != nullptr);
     assert(reusedPlayerRuntime.asCastMemberRef()->memberNum() == playerRuntimeRef->memberNum());
+
+    ManagerMethodTextRenderer playerTextRenderer;
+    player.setTextRenderer(&playerTextRenderer);
+    const auto playerTextMember = player.builtinRegistry()
+        .invoke("new", player.builtinContext(), {Datum::symbol("text"), Datum::castLibRef(CastLibId(1))});
+    const auto* playerTextRef = playerTextMember.asCastMemberRef();
+    assert(playerTextRef != nullptr);
+    assert(player.castLibManager().setMemberProp(playerTextRef->castLib,
+                                                 playerTextRef->memberNum(),
+                                                 "text",
+                                                 Datum::of(std::string("Player text"))));
+    const auto playerMethodLoc = player.builtinContext()
+        .castMemberMethodHandler(playerTextRef->castLib, playerTextRef->memberNum(), "charPosToLoc", {Datum::of(2)})
+        .asIntPoint();
+    assert(playerMethodLoc != nullptr);
+    assert(playerMethodLoc->x == 123);
+    assert(playerMethodLoc->y == 45);
+    assert(playerTextRenderer.lastText == "Player text");
 
     const auto matching = manager.getMatchingCastLibNumbersByUrl("https://cdn.example/ext.cst");
     assert(matching.size() == 1);

@@ -538,13 +538,19 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `CastMember` now stores Java-compatible runtime text defaults for font, font size, font style, alignment, text color, background color, word wrap, antialias, box type, text rect, fixed line space, top spacing, and editable state.
 - `CastLib::getMemberProp` and `setMemberProp` now expose those text-like member properties, including list-valued `fontStyle`, symbol/string `alignment`, Director-style color coercion, and rect/width/height text geometry mutation.
 - Dynamic text baking now consumes the runtime text style state while retaining sprite-driven transparent/background color handling.
-- Character-position helpers, parsed field datum identity, and editable selection/caret rendering remain deferred.
+- Parsed field datum identity and editable selection/caret rendering remain deferred.
 
 ### Runtime Text Media Copy Foundation
 
 - `CastLibManager::setMemberProp("media", castMemberRef)` now resolves source and target members and copies text content plus runtime text style state when both members are text-like.
 - Runtime bitmap-to-bitmap media copy now handles live runtime bitmaps through the same manager-owned member-resolution path.
 - File-backed bitmap media copy and imported non-bitmap media payload decoding remain deferred.
+
+### Runtime Text Member Method Foundation
+
+- `CastLibManager::callMemberMethod` now dispatches text-like `charPosToLoc` and `locToCharPos` through an injected `TextRenderer`, using runtime text content, font, style, alignment, fixed-line-space, and rect width with Java-compatible empty/no-renderer fallbacks.
+- `Player::setTextRenderer` now installs a platform text renderer into both `SpriteBaker` and `CastLibManager`, keeping dynamic text sprite baking and Director member-method measurement on the same renderer surface.
+- Parsed field datum identity and editable selection/caret rendering remain deferred.
 
 ### Lingo VM Scope and Execution Context Foundation
 
@@ -798,6 +804,7 @@ Result:
 - Runtime dynamic text member baking, default renderer arguments, transparent-text native-alpha marking, and dynamic text sprite sizing passed through the same CTest executable.
 - Runtime text member style property get/set, Director-style text color coercion, rect/width/height geometry mutation, and SpriteBaker dynamic text style propagation passed through the same CTest executable.
 - Runtime text-like `media` assignment from another cast member, including copied text content and style state through the cast-member property callback, passed through the same CTest executable.
+- Runtime text-like member `charPosToLoc`/`locToCharPos` method dispatch, no-renderer fallbacks, builtin callback routing, and Player text-renderer wiring passed through the same CTest executable.
 - SoundBuiltins channel creation, availability, sound-channel method dispatch, VM object-property defaults/mutation, and SoundManager playback delegation passed through the same CTest executable.
 - ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration and callback hooks passed through the same CTest executable.
 - TypeBuiltins object/void/type predicates, `value` literal parsing/provider fallback, `script`/`callAncestor` callback hooks, symbol conversion, and `ilk` alias checks passed through the same CTest executable.
@@ -987,4 +994,5 @@ Result:
 - `d9297b79 Port C++ runtime field text`
 - `ec988333 Port C++ dynamic text rendering`
 - `1e761636 Port C++ runtime text styling`
-- Current checkpoint commit message: `Port C++ text media copy`
+- `f686fc32 Port C++ text media copy`
+- Current checkpoint commit message: `Port C++ text member methods`

@@ -15,6 +15,7 @@
 #include "libreshockwave/chunks/CastListChunk.hpp"
 #include "libreshockwave/chunks/CastMemberChunk.hpp"
 #include "libreshockwave/id/Ids.hpp"
+#include "libreshockwave/player/render/output/TextRenderer.hpp"
 #include "libreshockwave/util/FileUtil.hpp"
 
 namespace libreshockwave::player::cast {
@@ -531,9 +532,60 @@ lingo::Datum CastLibManager::callMemberMethod(int castLibNumber,
                                               int memberNumber,
                                               const std::string& methodName,
                                               const std::vector<lingo::Datum>& args) {
-    (void)args;
     if (equalsIgnoreCase(methodName, "erase")) {
         return eraseMember(castLibNumber, memberNumber) ? lingo::Datum::of(1) : lingo::Datum::voidValue();
+    }
+
+    auto member = resolveMember(castLibNumber, memberNumber);
+    if (!member || !member->isTextLike()) {
+        return lingo::Datum::voidValue();
+    }
+
+    if (equalsIgnoreCase(methodName, "charPosToLoc") || equalsIgnoreCase(methodName, "charposttoloc")) {
+        if (args.empty() || !textRenderer_) {
+            return lingo::Datum::intPoint(0, 0);
+        }
+        const int charIndex = args.front().intValue();
+        const std::string text = getMemberProp(member->castLib(), member->memberNum(), "text").stringValue();
+        if (text.empty() || charIndex <= 0) {
+            return lingo::Datum::intPoint(0, 0);
+        }
+        const int fieldWidth = std::max(1, member->textRectRight() - member->textRectLeft());
+        const auto loc = textRenderer_->charPosToLoc(text,
+                                                     charIndex,
+                                                     member->textFont(),
+                                                     member->textFontSize(),
+                                                     member->textFontStyle(),
+                                                     member->textFixedLineSpace(),
+                                                     member->textAlignment(),
+                                                     fieldWidth);
+        if (loc.size() < 2) {
+            return lingo::Datum::intPoint(0, 0);
+        }
+        return lingo::Datum::intPoint(loc[0], loc[1]);
+    }
+
+    if (equalsIgnoreCase(methodName, "locToCharPos")) {
+        if (args.empty() || !textRenderer_) {
+            return lingo::Datum::of(0);
+        }
+        const auto* point = args.front().asIntPoint();
+        const int x = point ? point->x : args.front().intValue();
+        const int y = point ? point->y : (args.size() > 1 ? args[1].intValue() : 0);
+        const std::string text = getMemberProp(member->castLib(), member->memberNum(), "text").stringValue();
+        if (text.empty()) {
+            return lingo::Datum::of(0);
+        }
+        const int fieldWidth = std::max(1, member->textRectRight() - member->textRectLeft());
+        return lingo::Datum::of(textRenderer_->locToCharPos(text,
+                                                            x,
+                                                            y,
+                                                            member->textFont(),
+                                                            member->textFontSize(),
+                                                            member->textFontStyle(),
+                                                            member->textFixedLineSpace(),
+                                                            member->textAlignment(),
+                                                            fieldWidth));
     }
     return lingo::Datum::voidValue();
 }
@@ -661,6 +713,10 @@ void CastLibManager::clearPendingExternalLoad(int castLibNumber) {
 
 void CastLibManager::setMemberSlotRetiredCallback(MemberSlotRetiredCallback callback) {
     memberSlotRetiredCallback_ = std::move(callback);
+}
+
+void CastLibManager::setTextRenderer(render::output::TextRenderer* renderer) {
+    textRenderer_ = renderer;
 }
 
 void CastLibManager::installBuiltinCallbacks(lingo::builtin::BuiltinContext& context) {

@@ -81,6 +81,7 @@ public:
 
     void setEventListener(std::function<void(const PlayerEventInfo&)> listener);
     void setDebugEnabled(bool enabled);
+    void setTextRenderer(render::output::TextRenderer* renderer);
     [[nodiscard]] bool debugEnabled() const;
 
     void play();

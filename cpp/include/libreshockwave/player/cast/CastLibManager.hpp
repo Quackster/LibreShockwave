@@ -29,6 +29,10 @@ namespace libreshockwave::chunks {
 class CastMemberChunk;
 }
 
+namespace libreshockwave::player::render::output {
+class TextRenderer;
+}
+
 namespace libreshockwave::player::cast {
 
 class CastLibManager {
@@ -94,6 +98,7 @@ public:
     [[nodiscard]] std::vector<int> getRequestedExternalCastSlots(const std::string& url);
     void clearPendingExternalLoad(int castLibNumber);
     void setMemberSlotRetiredCallback(MemberSlotRetiredCallback callback);
+    void setTextRenderer(render::output::TextRenderer* renderer);
 
     void installBuiltinCallbacks(lingo::builtin::BuiltinContext& context);
 
@@ -119,6 +124,7 @@ private:
     std::map<int, std::string> pendingExternalLoads_;
     CastDataRequestCallback castDataRequestCallback_;
     MemberSlotRetiredCallback memberSlotRetiredCallback_;
+    render::output::TextRenderer* textRenderer_{nullptr};
     bool initialized_ = false;
 };
 

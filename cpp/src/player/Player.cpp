@@ -129,6 +129,11 @@ void Player::setDebugEnabled(bool enabled) {
     frameContext_.setDebugEnabled(enabled);
 }
 
+void Player::setTextRenderer(render::output::TextRenderer* renderer) {
+    spriteBaker_.setTextRenderer(renderer);
+    castLibManager_.setTextRenderer(renderer);
+}
+
 bool Player::debugEnabled() const { return debugEnabled_; }
 
 void Player::play() {
