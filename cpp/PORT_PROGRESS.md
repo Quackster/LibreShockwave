@@ -400,6 +400,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Xtra builtins now register Java-compatible `xtra(name)` and expose C++ Xtra/XtraInstance datum factories/accessors.
 - `new(xtraRef, ...)` now delegates through an Xtra instance-creation callback before falling back to generic object construction.
 - Xtra instance handler calls and property get/set behavior are exposed through VM-owned callbacks until the C++ Xtra manager is ported.
+- `lingo::xtra::XmlParserXtra` now ports the Java XML Parser Xtra's lightweight `parseString`, `getError`, `count`, `getProp`/`getPropRef`/`getAProp`/`getProperty`, direct property read, empty-document fallback, entity decoding, and instance lifecycle behavior.
 
 ### Control Flow Builtins Foundation
 
@@ -866,7 +867,7 @@ Result:
 - StringBuiltins string coercion, length, chars, charToNum, numToChar, offset, and getPref/setPref callback hooks passed through the same CTest executable.
 - OutputBuiltins debug-gated `put`, Java-style argument joining, default alert output, and alert-hook suppression passed through the same CTest executable.
 - CastLibBuiltins castLib/member/field/createMember registration, missing-provider fallback, cast/member provider callbacks, encoded member numbers, search-all lookup, and omitted helper builtins passed through the same CTest executable.
-- XtraBuiltins registration, missing-manager behavior, registered-Xtra lookup, `new(xtraRef, ...)` instance creation, handler dispatch, property get/set callbacks, and Java-style display strings passed through the same CTest executable.
+- XtraBuiltins registration, missing-manager behavior, registered-Xtra lookup, `new(xtraRef, ...)` instance creation, handler dispatch, property get/set callbacks, Java-style display strings, and XML Parser Xtra parse/error/property/count lifecycle behavior passed through the same CTest executable.
 - ControlFlowBuiltins return/abort state, param lookup, frame/label `go`, call-target dispatch, list/proplist call snapshots, and omitted update builtins passed through the same CTest executable.
 - ListBuiltins list/proplist counts, access, mutation, searches, sorting, constructors, key namespace behavior, and aliases passed through the same CTest executable.
 - TimeoutBuiltins `timeout` creation, factory-mode `.new`, named `.new`, `.forget`, property get/set helpers, VM object-property get/set dispatch, and missing-provider behavior passed through the same CTest executable.

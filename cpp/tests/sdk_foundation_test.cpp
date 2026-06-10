@@ -78,6 +78,7 @@
 #include "libreshockwave/lingo/vm/LingoVM.hpp"
 #include "libreshockwave/lingo/vm/OpcodeRegistry.hpp"
 #include "libreshockwave/lingo/vm/Scope.hpp"
+#include "libreshockwave/lingo/xtra/XmlParserXtra.hpp"
 #include "libreshockwave/lookup/CastMemberLookup.hpp"
 #include "libreshockwave/lookup/PaletteResolver.hpp"
 #include "libreshockwave/lookup/ScriptLookup.hpp"
@@ -208,6 +209,7 @@ using libreshockwave::lingo::vm::LingoVM;
 using libreshockwave::lingo::vm::OpcodeRegistry;
 using libreshockwave::lingo::vm::Scope;
 using libreshockwave::lingo::vm::TraceListener;
+using libreshockwave::lingo::xtra::XmlParserXtra;
 using libreshockwave::lookup::CastMemberLookup;
 using libreshockwave::lookup::PaletteResolver;
 using libreshockwave::lookup::ScriptLookup;
@@ -3363,6 +3365,64 @@ void testBuiltinRegistryFoundation() {
     assert(registry.contains("echo"));
     assert(registry.invoke("ECHO", context, {Datum::of(42)}).intValue() == 42);
     assert(registry.map().contains("echo"));
+}
+
+void testXmlParserXtraFoundation() {
+    XmlParserXtra xtra;
+    assert(xtra.name() == "xmlparser");
+    const int id = xtra.createInstance();
+
+    const auto parsed = xtra.callHandler(
+        id,
+        "parseString",
+        {Datum::of(std::string("<?xml version=\"1.0\"?><partSets><partSet id=\"h\">"
+                               "<label>value</label>"
+                               "<part set-type=\"hd\" swim=\"0\" small=\"1\"/>"
+                               "</partSet></partSets>"))});
+    assert(parsed.boolValue());
+    assert(xtra.callHandler(id, "getError").isVoid());
+    assert(xtra.callHandler(id, "count", {Datum::symbol("child")}).intValue() == 1);
+
+    const auto root = xtra.callHandler(id, "getPropRef", {Datum::symbol("child"), Datum::of(1)});
+    assert(root.isPropList());
+    assert(root.propListValue().get(Datum::symbol("name")).stringValue() == "partSets");
+    assert(xtra.getProperty(id, "name").stringValue() == "#document");
+
+    const auto partSetChildren = root.propListValue().get(Datum::symbol("child"));
+    assert(partSetChildren.isList());
+    const auto partSet = partSetChildren.listValue().getAt(1);
+    assert(partSet.isPropList());
+    assert(partSet.propListValue().get(Datum::symbol("name")).stringValue() == "partSet");
+
+    const auto attrNames = partSet.propListValue().get(Datum::symbol("attributeName"));
+    const auto attrValues = partSet.propListValue().get(Datum::symbol("attributeValue"));
+    assert(attrNames.isList());
+    assert(attrValues.isList());
+    assert(attrNames.listValue().getAt(1).stringValue() == "id");
+    assert(attrValues.listValue().getAt(1).stringValue() == "h");
+
+    const auto label = partSet.propListValue().get(Datum::symbol("child")).listValue().getAt(1);
+    assert(label.isPropList());
+    const auto labelText =
+        label.propListValue().get(Datum::symbol("child")).listValue().getAt(1);
+    assert(labelText.propListValue().get(Datum::symbol("name")).stringValue() == "#text");
+    assert(labelText.propListValue().get(Datum::symbol("text")).stringValue() == "value");
+
+    assert(xtra.callHandler(id, "parseString", {Datum::of(std::string("<root a=\"&amp;&lt;\"/>"))}).boolValue());
+    const auto entityRoot = xtra.callHandler(id, "getPropRef", {Datum::symbol("child"), Datum::of(1)});
+    assert(entityRoot.propListValue().get(Datum::symbol("attributeValue")).listValue().getAt(1).stringValue() == "&<");
+
+    assert(!xtra.callHandler(id, "parseString", {Datum::of(std::string("<root>"))}).boolValue());
+    const auto error = xtra.callHandler(id, "getError");
+    assert(error.isString());
+    assert(error.stringValue().find("Unclosed tag: root") != std::string::npos);
+    assert(xtra.callHandler(id, "count", {Datum::symbol("child")}).intValue() == 0);
+
+    xtra.setProperty(id, "name", Datum::of(std::string("ignored")));
+    assert(xtra.getProperty(id, "name").isVoid());
+    xtra.destroyInstance(id);
+    assert(xtra.callHandler(id, "count").isVoid());
+    assert(xtra.getProperty(id, "child").isVoid());
 }
 
 void testLingoVmScopeAndExecutionContextFoundation() {
@@ -14987,6 +15047,7 @@ int main() {
     testPlayerVmEventDispatchFoundation();
     testMoviePropertiesFoundation();
     testBuiltinRegistryFoundation();
+    testXmlParserXtraFoundation();
     testLingoVmScopeAndExecutionContextFoundation();
     testLingoVmRuntimeFoundation();
     testHitTesterFoundation();
