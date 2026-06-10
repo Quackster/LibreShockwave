@@ -58,6 +58,7 @@ public:
     [[nodiscard]] int height() const;
     [[nodiscard]] int regX() const;
     [[nodiscard]] int regY() const;
+    void setRegPoint(int x, int y);
     [[nodiscard]] bool hasDynamicText() const;
     [[nodiscard]] std::string textContent() const;
     void setDynamicText(std::string text);

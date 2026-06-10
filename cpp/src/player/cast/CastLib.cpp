@@ -622,6 +622,14 @@ bool CastLib::setMemberProp(int memberNumber, const std::string& propName, const
         member->setName(value.stringValue());
         return true;
     }
+    if (prop == "regpoint") {
+        const auto* point = value.asIntPoint();
+        if (point == nullptr) {
+            return false;
+        }
+        member->setRegPoint(point->x, point->y);
+        return true;
+    }
     if (member->isTextLike()) {
         if (prop == "text") {
             member->setDynamicText(value.stringValue());

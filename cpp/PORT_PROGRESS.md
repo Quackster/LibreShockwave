@@ -221,7 +221,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `player::cast::CastLib` ports lazy cast-library metadata, authored/external file binding state, stable registry binding checks, member chunk maps, script maps, source-prefixed member-name fallback, font-alias/PFR XMED scanning, and Java-compatible cast/member property fallbacks.
 - `player::cast::CastLibManager` ports DirectorFile-backed cast-library initialization from MCsL/CAS* chunks, castLib/member number and name lookup, registry-visible member filtering, external-cast cache keys, pending external load tracking, preload-mode loading, and builtin callback installation.
-- Runtime bitmap member image mutation, cached imported-image assignment, Director BITD imported-media assignment, dynamic member creation/reuse, dynamic member `erase`, dynamic field text mutation, field provider lookup/setter callbacks, text-like member media copy, dynamic bitmap member sprite rendering, dynamic text sprite baking, common text styling property mutation, editable field input mutation, and editable field overlay/clipboard helper state are available for existing cast libraries; non-bitmap imported media payload decoding, platform overlay drawing, and remaining CastLibProvider edge cases remain deferred to later player runtime slices.
+- Runtime bitmap member image mutation, cached imported-image assignment, Director BITD imported-media assignment, dynamic member creation/reuse, dynamic member `erase`, dynamic field text mutation, field provider lookup/setter callbacks, text-like member media copy, mutable registration-point properties, dynamic bitmap member sprite rendering, dynamic text sprite baking, common text styling property mutation, editable field input mutation, and editable field overlay/clipboard helper state are available for existing cast libraries; non-bitmap imported media payload decoding, platform overlay drawing, and remaining CastLibProvider edge cases remain deferred to later player runtime slices.
 
 ### Bitmap Resolver Foundation
 
@@ -548,6 +548,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Bitmap-to-bitmap media copy now handles live runtime bitmaps and file-backed authored bitmap sources through the same manager-owned member-resolution path.
 - Imported non-bitmap media payload decoding remains deferred.
 
+### Runtime Cast Member RegPoint Foundation
+
+- `cast::CastMember` now exposes runtime registration-point mutation and synchronizes the anchor metadata on any live runtime bitmap.
+- `CastLib::setMemberProp("regPoint", point)` now ports the Java property setter path while rejecting non-point values.
+- Full Java pinned-registration behavior for later image assignments remains deferred to a separate parity pass.
+
 ### Runtime Text Member Method Foundation
 
 - `CastLibManager::callMemberMethod` now dispatches text-like `charPosToLoc` and `locToCharPos` through an injected `TextRenderer`, using runtime text content, font, style, alignment, fixed-line-space, and rect width with Java-compatible empty/no-renderer fallbacks.
@@ -819,6 +825,7 @@ Result:
 - Runtime text member style property get/set, Director-style text color coercion, rect/width/height geometry mutation, and SpriteBaker dynamic text style propagation passed through the same CTest executable.
 - Runtime text-like `media` assignment from another cast member, including copied text content and style state through the cast-member property callback, passed through the same CTest executable.
 - Runtime and file-backed bitmap `media` assignment from another cast member, including decoded BITD pixels, script-modified runtime copies, and registration-point propagation, passed through the same CTest executable.
+- Runtime cast-member `regPoint` property mutation, non-point rejection, member-method sub-property reads, and live runtime-bitmap anchor synchronization passed through the same CTest executable.
 - Runtime text-like member `charPosToLoc`/`locToCharPos` method dispatch, no-renderer fallbacks, builtin callback routing, and Player text-renderer wiring passed through the same CTest executable.
 - Runtime text `lineCount`/`line` properties plus cast-member `getProp` and `count(#char/#word/#line/#item)` method helpers passed through the same CTest executable.
 - FieldText datum identity, field builtin member identity preservation, and `value(field(...))` parsed-field callback behavior passed through the same CTest executable.
@@ -1020,4 +1027,5 @@ Result:
 - `3759c22a Port C++ editable field input`
 - `7cf00e5f Port C++ editable field helpers`
 - `36bac722 Port C++ ediM bitmap sidecars`
-- Current checkpoint commit message: `Port C++ file-backed bitmap media copy`
+- `f4d38f93 Port C++ file-backed bitmap media copy`
+- Current checkpoint commit message: `Port C++ cast member regPoint mutation`

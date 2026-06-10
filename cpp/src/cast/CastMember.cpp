@@ -93,6 +93,14 @@ int CastMember::regY() const {
     return 0;
 }
 
+void CastMember::setRegPoint(int x, int y) {
+    runtimeRegX_ = x;
+    runtimeRegY_ = y;
+    if (runtimeBitmap_) {
+        runtimeBitmap_->setAnchorPoint(x, y);
+    }
+}
+
 std::shared_ptr<bitmap::Bitmap> CastMember::runtimeBitmap() const {
     return runtimeBitmap_;
 }

@@ -12487,6 +12487,13 @@ void testCastLibManagerFoundation() {
     assert(manager.getMemberProp(1, 2, "depth").intValue() == 32);
     assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->x == 2);
     assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->y == 1);
+    assert(manager.setMemberProp(1, 2, "regPoint", Datum::intPoint(9, 11)));
+    assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->x == 9);
+    assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->y == 11);
+    assert(assignedRuntime->hasAnchorPoint());
+    assert(assignedRuntime->anchorX() == 9);
+    assert(assignedRuntime->anchorY() == 11);
+    assert(!manager.setMemberProp(1, 2, "regPoint", Datum::of(42)));
     const auto memberImage = manager.getMemberProp(1, 2, "image").asImageRef();
     assert(memberImage != nullptr);
     assert(memberImage->bitmap == assignedRuntime);
@@ -12600,7 +12607,7 @@ void testCastLibManagerFoundation() {
     assert(context.castMemberMethodHandler(1, 10001, "getProp", {Datum::symbol("rect"), Datum::of(3)}).intValue() == 52);
     assert(context.castMemberMethodHandler(1, 10001, "getProp", {Datum::symbol("line"), Datum::of(2)}).stringValue() ==
            "Gamma,Delta,");
-    assert(context.castMemberMethodHandler(1, 2, "getProp", {Datum::symbol("regPoint"), Datum::of(2)}).intValue() == 1);
+    assert(context.castMemberMethodHandler(1, 2, "getProp", {Datum::symbol("regPoint"), Datum::of(2)}).intValue() == 11);
     assert(context.castMemberMethodHandler(1, 10001, "getProp", {Datum::symbol("line"), Datum::of(3)}).isVoid());
     assert(manager.setMemberProp(1, 10001, "text", Datum::of(std::string("Symbolic"))));
 
