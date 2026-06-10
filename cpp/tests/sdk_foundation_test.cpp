@@ -7604,8 +7604,25 @@ void testStageRendererFoundation() {
     noFill->setWidth(2);
     noFill->setHeight(2);
 
+    Bitmap runtimeBitmap(2, 1, 32);
+    runtimeBitmap.setPixel(0, 0, 0xFF010203U);
+    runtimeBitmap.setPixel(1, 0, 0xFF040506U);
+    runtimeBitmap.setAnchorPoint(1, 0);
+    auto runtimeMember = std::make_shared<CastMember>(1, 10000, MemberType::Bitmap);
+    runtimeMember->setName("Runtime Bitmap");
+    runtimeMember->setRuntimeBitmap(runtimeBitmap);
+    renderer.setCastMemberResolver([runtimeMember](int castLib,
+                                                   int memberNum) -> std::shared_ptr<const CastMember> {
+        return castLib == 1 && memberNum == 10000 ? runtimeMember : nullptr;
+    });
+    auto runtime = registry.getOrCreateDynamic(7);
+    runtime->setDynamicMember(1, 10000);
+    runtime->setLocH(20);
+    runtime->setLocV(30);
+    runtime->setLocZ(2);
+
     const auto sprites = renderer.getSpritesForFrame(99);
-    assert(sprites.size() == 2);
+    assert(sprites.size() == 3);
     assert(sprites[0].channel() == 4);
     assert(sprites[0].x() == 5);
     assert(sprites[0].y() == 6);
@@ -7623,12 +7640,24 @@ void testStageRendererFoundation() {
     assert(sprites[0].isFlipV());
     assert(!sprites[0].hasBehaviors());
 
-    assert(sprites[1].channel() == 12);
-    assert(sprites[1].locZ() == 3);
-    assert(sprites[1].blend() == 80);
-    assert(sprites[1].hasBehaviors());
+    assert(sprites[1].channel() == 7);
+    assert(sprites[1].x() == 19);
+    assert(sprites[1].y() == 30);
+    assert(sprites[1].width() == 2);
+    assert(sprites[1].height() == 1);
+    assert(sprites[1].locZ() == 2);
+    assert(sprites[1].type() == SpriteType::Bitmap);
+    assert(sprites[1].castMember() == nullptr);
+    assert(sprites[1].dynamicMember().get() == runtimeMember.get());
+    assert(sprites[1].castMemberId() == 10000);
+    assert(sprites[1].memberName().value() == "Runtime Bitmap");
 
-    renderer.setLastBakedSprites({sprites[1]});
+    assert(sprites[2].channel() == 12);
+    assert(sprites[2].locZ() == 3);
+    assert(sprites[2].blend() == 80);
+    assert(sprites[2].hasBehaviors());
+
+    renderer.setLastBakedSprites({sprites[2]});
     assert(renderer.lastBakedSprites().size() == 1);
     assert(renderer.lastBakedSprites()[0].channel() == 12);
 
@@ -12304,6 +12333,43 @@ void testCastLibManagerFoundation() {
     const auto bakedLive = player.spriteBaker().bake(liveSprite);
     assert(bakedLive.bakedBitmap() != nullptr);
     assert(bakedLive.bakedBitmap()->getPixel(1, 0) == 0x80405060U);
+
+    const auto playerRuntimeMember = player.builtinRegistry()
+        .invoke("new", player.builtinContext(), {Datum::symbol("bitmap"), Datum::castLibRef(CastLibId(1))});
+    const auto* playerRuntimeRef = playerRuntimeMember.asCastMemberRef();
+    assert(playerRuntimeRef != nullptr);
+    auto playerRuntimeImage = std::make_shared<Bitmap>(2, 1, 32);
+    playerRuntimeImage->setPixel(0, 0, 0xFF0A0B0CU);
+    playerRuntimeImage->setPixel(1, 0, 0xFF0D0E0FU);
+    playerRuntimeImage->setAnchorPoint(1, 0);
+    assert(player.castLibManager().setMemberProp(playerRuntimeRef->castLib,
+                                                 playerRuntimeRef->memberNum(),
+                                                 "image",
+                                                 Datum::imageRef(playerRuntimeImage)));
+    assert(player.spriteProperties().setSpriteProp(7, "loc", Datum::intPoint(4, 5)));
+    assert(player.spriteProperties().setSpriteProp(7, "member", playerRuntimeMember));
+    const auto runtimeSnapshot = player.frameSnapshot();
+    const RenderSprite* runtimeRendered = nullptr;
+    for (const auto& sprite : runtimeSnapshot.sprites) {
+        if (sprite.channel() == 7) {
+            runtimeRendered = &sprite;
+            break;
+        }
+    }
+    assert(runtimeRendered != nullptr);
+    assert(runtimeRendered->castMember() == nullptr);
+    assert(runtimeRendered->dynamicMember() != nullptr);
+    assert(runtimeRendered->dynamicMember()->memberNum() == playerRuntimeRef->memberNum());
+    assert(runtimeRendered->type() == SpriteType::Bitmap);
+    assert(runtimeRendered->x() == 3);
+    assert(runtimeRendered->y() == 5);
+    assert(runtimeRendered->width() == 2);
+    assert(runtimeRendered->height() == 1);
+    assert(runtimeRendered->bakedBitmap() != nullptr);
+    assert(runtimeRendered->bakedBitmap()->getPixel(1, 0) == 0xFF0D0E0FU);
+    const auto renderedRuntimeFrame = runtimeSnapshot.renderFrame();
+    assert(renderedRuntimeFrame.getPixel(3, 5) == 0xFF0A0B0CU);
+    assert(renderedRuntimeFrame.getPixel(4, 5) == 0xFF0D0E0FU);
 
     const auto matching = manager.getMatchingCastLibNumbersByUrl("https://cdn.example/ext.cst");
     assert(matching.size() == 1);

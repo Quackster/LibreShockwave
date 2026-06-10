@@ -9,6 +9,7 @@
 #include "libreshockwave/bitmap/Bitmap.hpp"
 #include "libreshockwave/bitmap/Palette.hpp"
 #include "libreshockwave/cast/BitmapInfo.hpp"
+#include "libreshockwave/cast/CastMember.hpp"
 #include "libreshockwave/cast/FilmLoopInfo.hpp"
 #include "libreshockwave/cast/MemberType.hpp"
 #include "libreshockwave/chunks/CastMemberChunk.hpp"
@@ -101,6 +102,10 @@ void StageRenderer::setLastBakedSprites(std::vector<RenderSprite> sprites) {
 
 const std::vector<RenderSprite>& StageRenderer::lastBakedSprites() const {
     return lastBakedSprites_;
+}
+
+void StageRenderer::setCastMemberResolver(CastMemberResolver resolver) {
+    castMemberResolver_ = std::move(resolver);
 }
 
 std::vector<RenderSprite> StageRenderer::getSpritesForFrame(int frame) {
@@ -220,10 +225,19 @@ std::optional<RenderSprite> StageRenderer::createRenderSprite(int channel,
     const int height = pos.height;
     const bool visible = state->isVisible();
 
+    auto dynamicMember = resolveCastMember(data.castLib, data.castMember);
     std::shared_ptr<chunks::CastMemberChunk> member =
-        file_ != nullptr ? file_->getCastMemberByNumber(data.castLib, data.castMember) : nullptr;
+        dynamicMember != nullptr && dynamicMember->rawChunk() != nullptr
+            ? dynamicMember->rawChunk()
+            : (file_ != nullptr ? file_->getCastMemberByNumber(data.castLib, data.castMember) : nullptr);
 
-    if (member != nullptr) {
+    if (dynamicMember != nullptr) {
+        const auto reg = scaledRegPoint(*dynamicMember, width, height, x, y,
+                                        state->isFlipH() ^ hasDirectorHorizontalMirror(state->rotation(), state->skew()),
+                                        state->isFlipV());
+        x -= reg.x;
+        y -= reg.y;
+    } else if (member != nullptr) {
         const auto reg = scaledRegPoint(*member, width, height, x, y,
                                         state->isFlipH() ^ hasDirectorHorizontalMirror(state->rotation(), state->skew()),
                                         state->isFlipV());
@@ -232,7 +246,8 @@ std::optional<RenderSprite> StageRenderer::createRenderSprite(int channel,
     }
     y = rasterY(y);
 
-    SpriteType type = member != nullptr ? determineSpriteTypeFromMember(member) : SpriteType::Unknown;
+    SpriteType type = dynamicMember != nullptr ? determineSpriteTypeFromMember(dynamicMember) :
+        (member != nullptr ? determineSpriteTypeFromMember(member) : SpriteType::Unknown);
     if (type == SpriteType::Unknown && data.spriteType >= 2 && data.spriteType <= 8 &&
         member != nullptr && member->memberType() == ::libreshockwave::cast::MemberType::Shape) {
         type = SpriteType::Shape;
@@ -254,7 +269,7 @@ std::optional<RenderSprite> StageRenderer::createRenderSprite(int channel,
                         visible,
                         type,
                         member,
-                        nullptr,
+                        dynamicMember,
                         foreColor,
                         backColor,
                         state->hasForeColor(),
@@ -307,11 +322,25 @@ std::optional<RenderSprite> StageRenderer::createDynamicRenderSprite(const sprit
     int y = pos.locV;
     int width = pos.width;
     int height = pos.height;
+    auto dynamicMember = resolveCastMember(castLib, castMember);
     std::shared_ptr<chunks::CastMemberChunk> member =
-        file_ != nullptr ? file_->getCastMemberByIndex(castLib, castMember) : nullptr;
+        dynamicMember != nullptr && dynamicMember->rawChunk() != nullptr
+            ? dynamicMember->rawChunk()
+            : (file_ != nullptr ? file_->getCastMemberByIndex(castLib, castMember) : nullptr);
 
     SpriteType type = SpriteType::Unknown;
-    if (member != nullptr) {
+    if (dynamicMember != nullptr) {
+        type = determineSpriteTypeFromMember(dynamicMember);
+        if (width == 0 && height == 0 && dynamicMember->width() > 0 && dynamicMember->height() > 0) {
+            width = dynamicMember->width();
+            height = dynamicMember->height();
+        }
+        const auto reg = scaledRegPoint(*dynamicMember, width, height, x, y,
+                                        state.isFlipH() ^ hasDirectorHorizontalMirror(state.rotation(), state.skew()),
+                                        state.isFlipV());
+        x -= reg.x;
+        y -= reg.y;
+    } else if (member != nullptr) {
         type = determineSpriteTypeFromMember(member);
         const auto reg = scaledRegPoint(*member, width, height, x, y,
                                         state.isFlipH() ^ hasDirectorHorizontalMirror(state.rotation(), state.skew()),
@@ -338,7 +367,7 @@ std::optional<RenderSprite> StageRenderer::createDynamicRenderSprite(const sprit
                         state.isVisible(),
                         type,
                         member,
-                        nullptr,
+                        dynamicMember,
                         state.foreColor(),
                         state.backColor(),
                         state.hasForeColor(),
@@ -351,6 +380,14 @@ std::optional<RenderSprite> StageRenderer::createDynamicRenderSprite(const sprit
                         state.skew(),
                         nullptr,
                         hasAnyBehavior(state));
+}
+
+std::shared_ptr<const ::libreshockwave::cast::CastMember> StageRenderer::resolveCastMember(int castLib,
+                                                                                           int memberNum) const {
+    if (memberNum <= 0 || !castMemberResolver_) {
+        return nullptr;
+    }
+    return castMemberResolver_(castLib, memberNum);
 }
 
 bool StageRenderer::hasAnyBehavior(const sprite::SpriteState& state) const {
@@ -370,6 +407,32 @@ SpriteType StageRenderer::determineSpriteTypeFromMember(
     }
 
     switch (member->memberType()) {
+        case ::libreshockwave::cast::MemberType::Shape:
+            return SpriteType::Shape;
+        case ::libreshockwave::cast::MemberType::Text:
+        case ::libreshockwave::cast::MemberType::RichText:
+            return SpriteType::Text;
+        case ::libreshockwave::cast::MemberType::Button:
+            return SpriteType::Button;
+        case ::libreshockwave::cast::MemberType::FilmLoop:
+            return SpriteType::FilmLoop;
+        default:
+            return SpriteType::Unknown;
+    }
+}
+
+SpriteType StageRenderer::determineSpriteTypeFromMember(
+    const std::shared_ptr<const ::libreshockwave::cast::CastMember>& member) const {
+    if (member == nullptr) {
+        return SpriteType::Unknown;
+    }
+    if (member->rawChunk() != nullptr) {
+        return determineSpriteTypeFromMember(member->rawChunk());
+    }
+
+    switch (member->memberType()) {
+        case ::libreshockwave::cast::MemberType::Bitmap:
+            return SpriteType::Bitmap;
         case ::libreshockwave::cast::MemberType::Shape:
             return SpriteType::Shape;
         case ::libreshockwave::cast::MemberType::Text:
@@ -416,6 +479,36 @@ StageRenderer::RegPoint StageRenderer::scaledRegPoint(const chunks::CastMemberCh
     return RegPoint{
         mirrorOffset(member.regPointX(), spriteWidth, flipH),
         mirrorOffset(member.regPointY(), spriteHeight, flipV)
+    };
+}
+
+StageRenderer::RegPoint StageRenderer::scaledRegPoint(const ::libreshockwave::cast::CastMember& member,
+                                                      int spriteWidth,
+                                                      int spriteHeight,
+                                                      int posX,
+                                                      int posY,
+                                                      bool flipH,
+                                                      bool flipV) const {
+    if (member.rawChunk() != nullptr) {
+        return scaledRegPoint(*member.rawChunk(), spriteWidth, spriteHeight, posX, posY, flipH, flipV);
+    }
+
+    int regX = member.regX();
+    int regY = member.regY();
+    const int memberWidth = member.width();
+    const int memberHeight = member.height();
+    if (member.isBitmap()) {
+        if (spriteWidth > 0 && memberWidth > 0 && memberWidth != spriteWidth) {
+            regX = scaleRegistrationOffset(regX, spriteWidth, memberWidth);
+        }
+        if (spriteHeight > 0 && memberHeight > 0 && memberHeight != spriteHeight) {
+            regY = scaleRegistrationOffset(regY, spriteHeight, memberHeight);
+        }
+    }
+
+    return RegPoint{
+        mirrorOffset(regX, spriteWidth > 0 ? spriteWidth : memberWidth, flipH),
+        mirrorOffset(regY, spriteHeight > 0 ? spriteHeight : memberHeight, flipV)
     };
 }
 

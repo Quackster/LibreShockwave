@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <set>
@@ -17,6 +18,10 @@ namespace libreshockwave::bitmap {
 class Bitmap;
 }
 
+namespace libreshockwave::cast {
+class CastMember;
+}
+
 namespace libreshockwave::chunks {
 class CastMemberChunk;
 }
@@ -29,6 +34,10 @@ namespace libreshockwave::player::render::pipeline {
 
 class StageRenderer {
 public:
+    using CastMemberResolver = std::function<std::shared_ptr<const ::libreshockwave::cast::CastMember>(
+        int castLib,
+        int memberNum)>;
+
     explicit StageRenderer(DirectorFile* file = nullptr);
 
     [[nodiscard]] SpriteRegistry& spriteRegistry();
@@ -48,6 +57,7 @@ public:
 
     void setLastBakedSprites(std::vector<RenderSprite> sprites);
     [[nodiscard]] const std::vector<RenderSprite>& lastBakedSprites() const;
+    void setCastMemberResolver(CastMemberResolver resolver);
 
     [[nodiscard]] std::vector<RenderSprite> getSpritesForFrame(int frame);
     void collectScoreSprites(int frame, std::vector<RenderSprite>& sprites, std::set<int>& renderedChannels);
@@ -70,10 +80,21 @@ private:
     [[nodiscard]] std::optional<RenderSprite> createRenderSprite(int channel,
                                                                  const chunks::ScoreChunk::ChannelData& data);
     [[nodiscard]] std::optional<RenderSprite> createDynamicRenderSprite(const sprite::SpriteState& state);
+    [[nodiscard]] std::shared_ptr<const ::libreshockwave::cast::CastMember> resolveCastMember(int castLib,
+                                                                                              int memberNum) const;
     [[nodiscard]] bool hasAnyBehavior(const sprite::SpriteState& state) const;
     [[nodiscard]] SpriteType determineSpriteTypeFromMember(
         const std::shared_ptr<const chunks::CastMemberChunk>& member) const;
+    [[nodiscard]] SpriteType determineSpriteTypeFromMember(
+        const std::shared_ptr<const ::libreshockwave::cast::CastMember>& member) const;
     [[nodiscard]] RegPoint scaledRegPoint(const chunks::CastMemberChunk& member,
+                                          int spriteWidth,
+                                          int spriteHeight,
+                                          int posX,
+                                          int posY,
+                                          bool flipH,
+                                          bool flipV) const;
+    [[nodiscard]] RegPoint scaledRegPoint(const ::libreshockwave::cast::CastMember& member,
                                           int spriteWidth,
                                           int spriteHeight,
                                           int posX,
@@ -98,6 +119,7 @@ private:
     int defaultBackgroundColor_{0xFFFFFF};
     std::shared_ptr<bitmap::Bitmap> stageImage_;
     std::vector<RenderSprite> lastBakedSprites_;
+    CastMemberResolver castMemberResolver_;
 };
 
 } // namespace libreshockwave::player::render::pipeline

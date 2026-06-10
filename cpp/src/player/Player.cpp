@@ -309,6 +309,11 @@ void Player::wireComponents() {
             );
         });
 
+    stageRenderer_.setCastMemberResolver([this](int castLib, int memberNum)
+        -> std::shared_ptr<const ::libreshockwave::cast::CastMember> {
+        return castLibManager_.resolveMember(castLib, memberNum);
+    });
+
     spriteBaker_.setBitmapDecodeProvider([this](const chunks::CastMemberChunk& member,
                                                 const bitmap::Palette* palette) {
         return bitmapResolver_.decodeBitmapForProvider(member, palette);
