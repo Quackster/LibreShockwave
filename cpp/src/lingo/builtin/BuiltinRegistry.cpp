@@ -2431,7 +2431,7 @@ Datum SpriteBuiltins::puppetTempo(BuiltinContext& context, const std::vector<Dat
         return Datum::voidValue();
     }
     if (context.movieProperties != nullptr) {
-        (void)context.movieProperties->setMovieProp("puppetTempo", Datum::of(args[0].intValue()));
+        (void)context.movieProperties->setMovieProp("puppetTempo", Datum::of(toIntLikeJava(args[0])));
     }
     return Datum::voidValue();
 }
@@ -2441,9 +2441,9 @@ Datum SpriteBuiltins::puppetSprite(BuiltinContext& context, const std::vector<Da
         return Datum::voidValue();
     }
     if (context.spriteProperties != nullptr) {
-        (void)context.spriteProperties->setSpriteProp(args[0].intValue(),
+        (void)context.spriteProperties->setSpriteProp(toIntLikeJava(args[0]),
                                                       "puppet",
-                                                      Datum::of(args[1].boolValue() ? 1 : 0));
+                                                      Datum::of(truthyLikeJava(args[1]) ? 1 : 0));
     }
     return Datum::voidValue();
 }
@@ -2476,7 +2476,7 @@ Datum SpriteBuiltins::spriteBox(BuiltinContext& context, const std::vector<Datum
     if (args.empty() || context.spriteProperties == nullptr) {
         return Datum::intRect(0, 0, 0, 0);
     }
-    return context.spriteProperties->getSpriteProp(args[0].intValue(), "rect");
+    return context.spriteProperties->getSpriteProp(toIntLikeJava(args[0]), "rect");
 }
 
 } // namespace libreshockwave::lingo::builtin

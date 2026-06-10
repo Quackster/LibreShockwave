@@ -375,7 +375,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `lingo::builtin::BuiltinRegistry` ports the Java builtin registry's case-insensitive lookup, custom registration, direct lookup, missing-builtin handling, and optional invocation semantics.
 - Movie `label`/`marker` builtins route through `MovieProperties` callbacks, including movie-reference leading arguments and Java-compatible non-negative frame results.
-- Sprite builtins port `puppetTempo`, `puppetSprite`, `cursor`/`setCursor`, `spriteBox`, update/move no-ops, and a `puppetPalette` callback hook for the future C++ cast/palette provider.
+- Sprite builtins port `puppetTempo`, `puppetSprite`, `cursor`/`setCursor`, `spriteBox`, update/move no-ops, Java-style tempo/channel/truthiness coercion, and a `puppetPalette` callback hook for the future C++ cast/palette provider.
 
 ### Math Builtins Foundation
 
@@ -921,7 +921,7 @@ Result:
 - Lingo SpriteRef object-method provider dispatch tests passed through the same CTest executable.
 - Lingo image object-method fill, draw, setAlpha, createMatte, createMask, direct `bitmap::Drawing` matte/mask, flood-fill transparency, applyInk, mask, simple copyPixels, and quad-transform helpers, copyPixels source-palette `paletteIndex(...)` remaps, MATTE native-alpha and full-source flood-fill preprocessing, MATTE text-mask conversion into mostly white 8-bit destinations, DARKEN #bgColor source tinting, background-transparent native-alpha source fallback, inverse white alpha-mask ink conversion, near-white matte border keying, non-native background-transparent flood-fill preprocessing, white-backed grayscale text background transparency, already-colored white-backed text preservation for color-only remaps, indexed destination palette-index refresh/preserve behavior, and background-transparent quad palette-index refresh, duplicate, crop, trimWhiteSpace, indexed palette fill/getPixel color identity, getAt, getPixel, setPixel, and null-image fallback tests passed through the same CTest executable.
 - MovieProperties movie/stage property reads and writes, file/input-backed values, xtra lists, item delimiters, timers, stage background color, random seed, navigation callbacks, and net navigation callbacks passed through the same CTest executable.
-- BuiltinRegistry case-insensitive lookup, custom registration, movie label/marker builtins, sprite puppet/cursor/spriteBox builtins, puppetPalette hooks, and Java-compatible no-op sprite builtins passed through the same CTest executable.
+- BuiltinRegistry case-insensitive lookup, custom registration, movie label/marker builtins, sprite puppet/cursor/spriteBox builtins, sprite builtin Java-style argument coercion, puppetPalette hooks, and Java-compatible no-op sprite builtins passed through the same CTest executable.
 - MathBuiltins numeric coercion, integer/float conversion, bit operations, trig, power, min/max, list min/max, and random callback hooks passed through the same CTest executable.
 - StringBuiltins string coercion, length, chars, charToNum, numToChar, offset, and getPref/setPref callback hooks passed through the same CTest executable.
 - OutputBuiltins context/global-debug-gated `put`, Java-style argument joining, default alert output, and alert-hook suppression passed through the same CTest executable.
@@ -1230,4 +1230,4 @@ Result:
 - `5df5e6fd Port C++ decompiler fallback mapping`
 - `2d9420b0 Port C++ decompiler linear bytecode`
 - `1e40b253 Port C++ decompiler chunk opcodes`
-- Current checkpoint commit message: `Port C++ mutable chunk ref deletion`
+- Current checkpoint commit message: `Port C++ sprite builtin coercion`

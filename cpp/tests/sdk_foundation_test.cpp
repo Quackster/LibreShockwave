@@ -5215,6 +5215,8 @@ void testBuiltinRegistryFoundation() {
 
     assert(registry.invoke("puppetTempo", context, {Datum::of(23)}).isVoid());
     assert(movie.puppetTempo() == 23);
+    assert(registry.invoke("puppetTempo", context, {Datum::of(std::string("17"))}).isVoid());
+    assert(movie.puppetTempo() == 17);
     assert(registry.invoke("cursor", context, {Datum::of(4)}).isVoid());
     assert(movie.getMovieProp("cursor").intValue() == 4);
     assert(registry.invoke("setCursor", context, {Datum::of(2)}).isVoid());
@@ -5226,6 +5228,11 @@ void testBuiltinRegistryFoundation() {
     assert(spriteProps.getSpriteProp(4, "puppet").intValue() == 1);
     assert(spriteProps.setSpriteProp(4, "rect", Datum::intRect(1, 2, 11, 22)));
     assert(registry.invoke("spriteBox", context, {Datum::of(4)}) == Datum::intRect(1, 2, 11, 22));
+    assert(registry.invoke("spriteBox", context, {Datum::of(std::string("4"))}) == Datum::intRect(1, 2, 11, 22));
+    assert(registry.invoke("puppetSprite", context, {Datum::of(std::string("5")), Datum::symbol("enabled")}).isVoid());
+    assert(spriteProps.getSpriteProp(5, "puppet").intValue() == 1);
+    assert(registry.invoke("puppetSprite", context, {Datum::of(std::string("5")), Datum::of(std::string(""))}).isVoid());
+    assert(spriteProps.getSpriteProp(5, "puppet").intValue() == 0);
     assert(registry.invoke("puppetSprite", context).isVoid());
     assert(spriteProps.getSpriteProp(4, "puppet").intValue() == 1);
 
