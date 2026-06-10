@@ -3680,6 +3680,25 @@ void testPlayerFacadeFoundation() {
     assert(debugController->handlerExitCount == 1);
     assert(debugController->lastReturnValue.intValue() == 9);
     assert(player.getRecentScriptErrorMessage(1000) == "Debug controller error");
+
+    Player debugWiringPlayer(file);
+    auto debugWiringController = std::make_shared<PlayerFacadeDebugController>();
+    debugWiringPlayer.setDebugController(debugWiringController);
+    debugWiringPlayer.vm().setGlobal("debugGlobal", Datum::of(1234));
+    debugWiringPlayer.stepFrame();
+    auto debugGlobal = debugWiringController->globalsSnapshot.find("debugGlobal");
+    assert(debugGlobal != debugWiringController->globalsSnapshot.end());
+    assert(debugGlobal->second.intValue() == 1234);
+    debugWiringPlayer.vm().setGlobal("debugGlobal", Datum::of(5678));
+    debugWiringPlayer.resume();
+    assert(debugWiringPlayer.tick());
+    debugGlobal = debugWiringController->globalsSnapshot.find("debugGlobal");
+    assert(debugGlobal != debugWiringController->globalsSnapshot.end());
+    assert(debugGlobal->second.intValue() == 5678);
+    assert(debugWiringController->resetCount == 0);
+    debugWiringPlayer.shutdown();
+    assert(debugWiringController->resetCount == 1);
+
     player.setDebugController(nullptr);
     assert(player.getDebugController() == nullptr);
     assert(!player.vm().traceListener()->needsInstructionTrace());

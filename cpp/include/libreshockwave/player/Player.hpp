@@ -153,6 +153,7 @@ private:
     void prepareMovieFoundation();
     void applyInitialBuiltinVariables();
     void processUpdatingObjects();
+    void refreshDebugControllerGlobals();
     void handleTraceError(std::string_view message, std::string_view errorDetail);
     [[nodiscard]] bool recentScriptErrorIsFresh(std::int64_t maxAgeMs) const;
     void loadCastFromNetCache(int castLibNumber, const std::string& fileName);

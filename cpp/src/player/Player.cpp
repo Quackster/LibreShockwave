@@ -4,6 +4,7 @@
 #include <cctype>
 #include <chrono>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -435,6 +436,9 @@ void Player::stop() {
 void Player::shutdown() {
     stop();
     netManager_.shutdown();
+    if (debugController_) {
+        debugController_->reset();
+    }
     lingo::vm::dispatch::ImageMethodDispatcher::clearImageMutationCallback(this);
 }
 
@@ -453,6 +457,7 @@ void Player::stepFrame() {
     }
 
     TickDeadlineGuard deadlineGuard(vm_);
+    refreshDebugControllerGlobals();
     (void)inputHandler_.processInputEvents();
     (void)frameContext_.executeFrame();
     if (timeoutProcessor_) {
@@ -469,6 +474,7 @@ bool Player::tick() {
     }
 
     TickDeadlineGuard deadlineGuard(vm_);
+    refreshDebugControllerGlobals();
     (void)inputHandler_.processInputEvents();
     (void)frameContext_.executeFrame();
     if (timeoutProcessor_) {
@@ -1185,6 +1191,18 @@ void Player::processUpdatingObjects() {
             // Java's update-provider dispatch suppresses per-target handler failures.
         }
     }
+}
+
+void Player::refreshDebugControllerGlobals() {
+    if (!debugController_) {
+        return;
+    }
+
+    std::map<std::string, lingo::Datum> globals;
+    for (const auto& [name, value] : vm_.globals()) {
+        globals.emplace(name, value);
+    }
+    debugController_->setGlobalsSnapshot(std::move(globals));
 }
 
 void Player::loadCastFromNetCache(int castLibNumber, const std::string& fileName) {
