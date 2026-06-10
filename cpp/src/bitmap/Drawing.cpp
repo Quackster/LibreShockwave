@@ -574,4 +574,35 @@ std::shared_ptr<Bitmap> createMask(const Bitmap& src, int alphaThreshold) {
     return createFloodFillMatte(src);
 }
 
+Bitmap applyMatteToRegion(const Bitmap& src, int x, int y, int width, int height) {
+    if (width <= 0 || height <= 0) {
+        return Bitmap(std::max(width, 1), std::max(height, 1), src.bitDepth());
+    }
+    auto region = src.getRegion(x, y, width, height);
+    if (src.hasNativeMatteAlpha()) {
+        region.setNativeAlpha(true);
+        return region;
+    }
+
+    const auto pixels = region.pixels();
+    const auto paletteIndices = region.paletteIndices();
+    const auto matte = resolveFloodFillMatte(pixels, paletteIndices, width, height);
+    if (!matte.has_value()) {
+        return region;
+    }
+
+    const auto transparent = computeFloodFillTransparency(pixels, paletteIndices, width, height, *matte);
+    auto& regionPixels = region.pixels();
+    for (std::size_t index = 0; index < regionPixels.size() && index < transparent.size(); ++index) {
+        if (transparent[index]) {
+            regionPixels[index] &= 0x00FFFFFFU;
+        }
+    }
+    return region;
+}
+
+Bitmap applyFloodFillTransparency(const Bitmap& src) {
+    return applyMatteToRegion(src, 0, 0, src.width(), src.height());
+}
+
 } // namespace libreshockwave::bitmap::Drawing

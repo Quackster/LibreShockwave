@@ -7928,6 +7928,17 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(directFloodMatte->getPixel(0, 0) == 0x00FFFFFFU);
     assert(directFloodMatte->getPixel(1, 1) == 0xFFFFFFFFU);
     assert(directFloodMatte->getPixel(2, 2) == 0x00FFFFFFU);
+    const auto directFloodTransparent =
+        libreshockwave::bitmap::Drawing::applyFloodFillTransparency(*floodMatteSource);
+    assert(!directFloodTransparent.isNativeAlpha());
+    assert(directFloodTransparent.getPixel(0, 0) == 0x00FFFFFFU);
+    assert(directFloodTransparent.getPixel(1, 1) == 0xFF224466U);
+    assert(directFloodTransparent.getPixel(2, 2) == 0x00FFFFFFU);
+    const auto directFloodRegion =
+        libreshockwave::bitmap::Drawing::applyMatteToRegion(*floodMatteSource, 0, 0, 3, 3);
+    assert(directFloodRegion.getPixel(0, 0) == 0x00FFFFFFU);
+    assert(directFloodRegion.getPixel(1, 1) == 0xFF224466U);
+    assert(directFloodRegion.getPixel(2, 2) == 0x00FFFFFFU);
     const Datum floodMatteDatum = runObjCall(108, {Datum::imageRef(floodMatteSource)});
     const auto* floodMatte = floodMatteDatum.asImageRef();
     assert(floodMatte != nullptr);

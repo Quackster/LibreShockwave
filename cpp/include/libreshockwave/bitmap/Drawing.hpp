@@ -16,6 +16,8 @@ void fillEllipse(Bitmap& dest, int cx, int cy, int rx, int ry, std::uint32_t arg
 void drawEllipse(Bitmap& dest, int cx, int cy, int rx, int ry, std::uint32_t argb);
 [[nodiscard]] std::shared_ptr<Bitmap> createMatte(const Bitmap& src, int alphaThreshold = 0);
 [[nodiscard]] std::shared_ptr<Bitmap> createMask(const Bitmap& src, int alphaThreshold = 0);
+[[nodiscard]] Bitmap applyMatteToRegion(const Bitmap& src, int x, int y, int width, int height);
+[[nodiscard]] Bitmap applyFloodFillTransparency(const Bitmap& src);
 
 } // namespace Drawing
 
