@@ -532,9 +532,9 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 ### Network Manager Foundation
 
-- `net::NetManager` ports task ID allocation, latest-task lookup, GET/POST task registration, cache hits, completion callbacks, task byte/text/error/status accessors, and Java-compatible stream-status prop-list payloads.
+- `net::NetManager` ports task ID allocation, latest-task lookup, GET/POST task registration, cache hits, local basePath/localHttpRoot filesystem loading with Java-style extension fallbacks, completion callbacks, task byte/text/error/status accessors, and Java-compatible stream-status prop-list payloads.
 - URL resolution, origin/path extraction, cache key calculation, URL-based stream-status lookup, and `.cct`/`.cst` cache fallback matching are available in C++.
-- Actual platform HTTP/filesystem loading is exposed through an injectable fetch handler until the C++ platform networking backend is ported.
+- Actual platform HTTP loading is exposed through an injectable fetch handler until the C++ platform networking backend is ported.
 
 ### Sound Manager Foundation
 
@@ -895,7 +895,7 @@ Result:
 - FrameRenderPipeline step ordering, snapshot return, null-step rejection, and missing-snapshot failure tests passed through the same CTest executable.
 - TextRenderer split-line, character-line, line-start, wrapping, and default XMED delegation tests passed through the same CTest executable.
 - NetTask GET/POST construction, state transitions, result/error storage, stream status, and display formatting tests passed through the same CTest executable.
-- NetManager URL resolution, cache fallback, GET/POST registration, handler-backed completion/failure, latest-task lookup, stream-status prop lists, raw byte/text results, callbacks, shutdown, and clear tests passed through the same CTest executable.
+- NetManager URL resolution, cache fallback, local basePath/localHttpRoot filesystem loading, GET/POST registration, handler-backed completion/failure, latest-task lookup, stream-status prop lists, raw byte/text results, callbacks, shutdown, and clear tests passed through the same CTest executable.
 - SoundManager channel validation, volume clamping, backend delegation, Lingo play argument parsing, resolver lookup, format detection, KEY-owned member lookup, and SoundChunk playable conversion tests passed through the same CTest executable.
 - TimeoutManager creation, property access/mutation, one-shot/persistent flags, timeout references, names/count, elapsed-time processing, one-shot removal-before-fire recreation, system-event script-instance target filtering, forget, and clear tests passed through the same CTest executable.
 - BitmapCache cache-keying, palette invalidation, non-native alpha coercion, indexed matte remap selection/application, and InkProcessor color remap/applyInk helpers, exact background-transparent keying, native-alpha background-border keying, native-alpha MATTE skip, 32-bit MATTE fallback preservation, MATTE palette fallback, duplicate-RGB explicit indexed MATTE selection, black/white default indexed MATTE fallback, indexed window-shadow MATTE selection, ADD/ADD_PIN flood-fill isolation, RGB ADD_PIN preservation, outlined-white body matte preservation, and DARKEN/LIGHTEN rectangular-media matte skipping passed through the same CTest executable.
@@ -1231,4 +1231,4 @@ Result:
 - `5df5e6fd Port C++ decompiler fallback mapping`
 - `2d9420b0 Port C++ decompiler linear bytecode`
 - `1e40b253 Port C++ decompiler chunk opcodes`
-- Current checkpoint commit message: `Port C++ decompiler unknown literal fallbacks`
+- Current checkpoint commit message: `Port C++ net manager local file loading`

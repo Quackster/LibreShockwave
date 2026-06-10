@@ -14796,6 +14796,41 @@ void testNetManagerFoundation() {
     assert(statusProp(failedStatus, "error").stringValue() == "-7");
     assert(!manager.getNetBytes(failedTaskId).has_value());
 
+    const auto localNetRoot = std::filesystem::temp_directory_path() / "libreshockwave_net_manager_local_test";
+    std::filesystem::remove_all(localNetRoot);
+    std::filesystem::create_directories(localNetRoot / "gamedata");
+    auto writeLocalFile = [](const std::filesystem::path& path, const std::vector<std::uint8_t>& bytes) {
+        std::ofstream output(path, std::ios::binary);
+        output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    };
+    writeLocalFile(localNetRoot / "movie.dir", {'D', 'I', 'R'});
+    writeLocalFile(localNetRoot / "external.cst", {'L', 'O', 'C', 'A', 'L'});
+    writeLocalFile(localNetRoot / "gamedata" / "vars.txt", {'R', 'O', 'O', 'T'});
+
+    NetManager localFileManager;
+    std::vector<std::string> localCompletedUrls;
+    localFileManager.setBasePath((localNetRoot / "movie.dir").string());
+    localFileManager.setCompletionCallback([&](const std::string& url, const std::vector<std::uint8_t>& data) {
+        localCompletedUrls.push_back(url + ":" + std::to_string(data.size()));
+    });
+    const int localFallbackTask = localFileManager.preloadNetThing("casts/external.cct");
+    assert(localFileManager.netDone(localFallbackTask));
+    assert(localFileManager.netError(localFallbackTask) == 0);
+    assert(localFileManager.netTextResult(localFallbackTask) == "LOCAL");
+    assert(localFileManager.getCachedData("external.cst").value() ==
+           std::vector<std::uint8_t>({'L', 'O', 'C', 'A', 'L'}));
+    assert(localCompletedUrls == std::vector<std::string>{"casts/external.cct:5"});
+
+    NetManager localHttpManager;
+    localHttpManager.setBasePath("http://localhost:8080/movie.dir");
+    localHttpManager.setLocalHttpRoot(localNetRoot.string());
+    const int localHttpTask =
+        localHttpManager.preloadNetThing("http://localhost:8080/gamedata/vars.txt?cache=1");
+    assert(localHttpManager.netDone(localHttpTask));
+    assert(localHttpManager.netTextResult(localHttpTask) == "ROOT");
+    assert(localHttpManager.getCachedData("vars.txt").value() == std::vector<std::uint8_t>({'R', 'O', 'O', 'T'}));
+    std::filesystem::remove_all(localNetRoot);
+
     NetManager noFetcher;
     const int noFetcherTask = noFetcher.preloadNetThing("no-handler");
     assert(noFetcher.netDone(noFetcherTask));

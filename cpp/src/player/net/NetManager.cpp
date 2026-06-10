@@ -2,6 +2,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <utility>
 
 #include "libreshockwave/util/FileUtil.hpp"
@@ -22,8 +25,80 @@ bool startsWith(std::string_view value, std::string_view prefix) {
     return value.size() >= prefix.size() && value.substr(0, prefix.size()) == prefix;
 }
 
+bool isHttpUrl(std::string_view value) {
+    return startsWith(value, "http://") || startsWith(value, "https://");
+}
+
+bool isLocalHttpUrl(std::string_view value) {
+    return startsWith(value, "http://localhost") || startsWith(value, "http://127.0.0.1");
+}
+
 void putProp(lingo::Datum& propList, std::string key, lingo::Datum value) {
     propList.propListValue().put(lingo::Datum::of(std::move(key)), std::move(value));
+}
+
+std::string extensionLower(const std::filesystem::path& path) {
+    auto ext = path.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return ext;
+}
+
+std::optional<std::filesystem::path> resolvePathWithFallbacks(const std::filesystem::path& path) {
+    if (std::filesystem::exists(path)) {
+        return path;
+    }
+
+    const auto parent = path.parent_path();
+    const auto stem = path.stem().string();
+    const auto fileName = path.filename().string();
+    const auto ext = extensionLower(path);
+    const auto sibling = [&](std::string_view suffix) {
+        return parent.empty() ? std::filesystem::path(stem + std::string(suffix))
+                              : parent / (stem + std::string(suffix));
+    };
+
+    if (ext == ".cst" || ext == ".cct") {
+        for (const auto& candidate : {sibling(".cst"), sibling(".cct")}) {
+            if (std::filesystem::exists(candidate)) {
+                return candidate;
+            }
+        }
+    } else if (ext == ".dcr" || ext == ".dxr" || ext == ".dir") {
+        for (const auto& candidate : {sibling(".dir"), sibling(".dcr"), sibling(".dxr")}) {
+            if (std::filesystem::exists(candidate)) {
+                return candidate;
+            }
+        }
+    } else if (fileName.find('.') == std::string::npos) {
+        const auto extensionlessSibling = [&](std::string_view suffix) {
+            return parent.empty() ? std::filesystem::path(fileName + std::string(suffix))
+                                  : parent / (fileName + std::string(suffix));
+        };
+        for (const auto& candidate : {extensionlessSibling(".cct"), extensionlessSibling(".cst")}) {
+            if (std::filesystem::exists(candidate)) {
+                return candidate;
+            }
+        }
+    }
+
+    return std::nullopt;
+}
+
+std::optional<std::vector<std::uint8_t>> readFileWithFallbacks(const std::filesystem::path& path) {
+    const auto resolved = resolvePathWithFallbacks(path);
+    if (!resolved.has_value() || !std::filesystem::is_regular_file(*resolved)) {
+        return std::nullopt;
+    }
+
+    std::ifstream input(*resolved, std::ios::binary);
+    if (!input) {
+        return std::nullopt;
+    }
+    return std::vector<std::uint8_t>(
+        std::istreambuf_iterator<char>(input),
+        std::istreambuf_iterator<char>());
 }
 
 } // namespace
@@ -329,6 +404,41 @@ void NetManager::executeTask(NetTask& task, bool useCache) {
     task.markInProgress();
 
     if (fetchHandler_ == nullptr) {
+        if (task.method() == NetTaskMethod::Get) {
+            std::optional<std::vector<std::uint8_t>> localData;
+
+            if (!localHttpRoot_.empty()) {
+                std::string httpUrl = task.originalUrl();
+                if (startsWith(httpUrl, "/") && isHttpUrl(basePath_)) {
+                    const auto origin = extractOrigin(basePath_);
+                    if (!origin.empty()) {
+                        httpUrl = origin + httpUrl;
+                    }
+                }
+                if (isLocalHttpUrl(httpUrl)) {
+                    auto urlPath = extractUrlPath(httpUrl);
+                    if (!urlPath.empty()) {
+                        if (urlPath.front() == '/') {
+                            urlPath.erase(urlPath.begin());
+                        }
+                        localData = readFileWithFallbacks(std::filesystem::path(localHttpRoot_) / urlPath);
+                    }
+                }
+            }
+
+            if (!localData.has_value() && !basePath_.empty() && !isHttpUrl(basePath_)) {
+                auto base = std::filesystem::path(basePath_);
+                if (std::filesystem::is_regular_file(base)) {
+                    base = base.parent_path();
+                }
+                localData = readFileWithFallbacks(base / util::getFileName(task.originalUrl()));
+            }
+
+            if (localData.has_value()) {
+                completeTask(task, std::move(*localData), useCache);
+                return;
+            }
+        }
         task.fail(404, "No fetch handler configured");
         return;
     }
