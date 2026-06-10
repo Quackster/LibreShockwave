@@ -182,6 +182,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `util::getFileName`, `getFileNameWithoutExtension`, and `getUrlsWithFallbacks` port the Java path/URL fallback helper behavior for movie and cast files.
 - `util::StringUtils` ports Java display-string truncation, escaped control-character display, and HTML text escaping helpers.
 - `lingo::vm::util::StringChunkUtils` ports Java string chunk counting, last/specific/ranged chunk extraction, direct item/word/line range scanning, char splitting, whitespace-word detection, item delimiters, and Director line-delimiter selection.
+- `lingo::vm::util::AncestorChainWalker` ports Java script-instance property lookup, owner discovery, property mutation, ancestor-depth reads, depth-limited traversal, and non-script ancestor assignment rejection for opcode and method dispatch paths.
 - `lingo::vm::datum::DatumFormatter` ports Java stack/display formatting helpers for scalars, nested lists, prop-lists, arg-lists, script instances, refs, control-character escaping, and JSON-style detailed output.
 - `format::ScriptFormatUtils` ports literal type names, literal formatting, script type display names, name/handler fallback resolution, shared truncation, and line-ending normalization.
 
@@ -923,7 +924,7 @@ Result:
 - Lingo VM trace listener handler enter/exit, optional instruction tracing, stack/global snapshots, reusable TracingHelper payload building, shared instruction annotations, local/param/global/script-instance-property variable-set callbacks, error callbacks, and trace argument formatting passed through the same CTest executable.
 - Lingo VM deferred script-instance call ordering, automatic outer-handler flush, deferred task explicit flushing, flush-state guards, Player call-target provider wiring, and numeric `closeThread` task deferral passed through the same CTest executable.
 - Lingo VM alertHook manual firing, `alert()` suppression, script-error suppression/rethrow behavior, and Player no-hook fallback passed through the same CTest executable.
-- Lingo Datum deep-copy behavior, DatumFormatter scalar/brief/expanded/detailed/recursive output, `call(...)` message-struct argument snapshots, non-message prop-list forwarding, and per-target call snapshot freshness passed through the same CTest executable.
+- Lingo Datum deep-copy behavior, DatumFormatter scalar/brief/expanded/detailed/recursive output, AncestorChainWalker property/depth traversal, `call(...)` message-struct argument snapshots, non-message prop-list forwarding, and per-target call snapshot freshness passed through the same CTest executable.
 - Player-owned LingoVM builtin delegation, file-backed dispatcher movie-script discovery/bytecode invocation, startup movie-script frame lifecycle and timeout-target dispatch, actorList frame-event dispatch, elapsed timeout target/global dispatch, `stopMovie` timeout/movie dispatch, and VM preference storage passed through the same CTest executable.
 - OpcodeRegistry stack/control handler registration, custom handler registration, literal/symbol pushes, stack manipulation, return/factory return, and jump opcodes passed through the same CTest executable.
 - OpcodeRegistry arithmetic, comparison, and logical handlers passed through the same CTest executable.
@@ -1155,4 +1156,4 @@ Result:
 - `3b15a1e5 Port C++ random seed trace parity`
 - `7c27afaf Port C++ VM value identifier fallback`
 - `1aafff66 Port C++ nested value identifier fallback`
-- Current checkpoint commit message: `Port C++ datum formatter`
+- Current checkpoint commit message: `Port C++ ancestor chain walker`

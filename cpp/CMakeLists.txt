@@ -59,6 +59,7 @@ add_library(libreshockwave
     src/lingo/vm/trace/ConsoleTracePrinter.cpp
     src/lingo/vm/trace/InstructionAnnotator.cpp
     src/lingo/vm/trace/TracingHelper.cpp
+    src/lingo/vm/util/AncestorChainWalker.cpp
     src/lingo/vm/util/StringChunkUtils.cpp
     src/lingo/xtra/MultiuserXtra.cpp
     src/lingo/xtra/XtraManager.cpp

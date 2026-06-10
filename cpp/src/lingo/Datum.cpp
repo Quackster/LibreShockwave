@@ -384,6 +384,10 @@ Datum Datum::scriptInstance(std::string scriptName, std::optional<CastMemberRef>
     return Datum(std::make_shared<ScriptInstanceRef>(std::move(scriptName), scriptRef));
 }
 
+Datum Datum::scriptInstanceRef(std::shared_ptr<ScriptInstanceRef> instance) {
+    return Datum(std::move(instance));
+}
+
 Datum Datum::argList(std::vector<Datum> args) {
     return Datum(std::make_shared<ArgList>(std::move(args)));
 }
@@ -615,6 +619,14 @@ const Datum::ScriptInstanceRef& Datum::scriptInstanceValue() const {
         throw LingoException("Cannot convert " + typeString() + " to script_instance");
     }
     return **value;
+}
+
+std::shared_ptr<Datum::ScriptInstanceRef> Datum::scriptInstancePtr() const {
+    const auto* value = std::get_if<ScriptInstancePtr>(&value_);
+    if (value == nullptr || !*value) {
+        throw LingoException("Cannot convert " + typeString() + " to script_instance");
+    }
+    return *value;
 }
 
 const Datum::ArgList& Datum::argListValue() const {

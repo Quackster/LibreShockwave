@@ -352,6 +352,7 @@ public:
     [[nodiscard]] static Datum xtra(std::string name);
     [[nodiscard]] static Datum xtraInstance(std::string xtraName, int instanceId);
     [[nodiscard]] static Datum scriptInstance(std::string scriptName, std::optional<CastMemberRef> scriptRef = std::nullopt);
+    [[nodiscard]] static Datum scriptInstanceRef(std::shared_ptr<ScriptInstanceRef> instance);
     [[nodiscard]] static Datum argList(std::vector<Datum> args);
     [[nodiscard]] static Datum argListNoRet(std::vector<Datum> args);
     [[nodiscard]] static Datum timeoutRef(std::string name);
@@ -406,6 +407,7 @@ public:
     [[nodiscard]] const PropList& propListValue() const;
     [[nodiscard]] ScriptInstanceRef& scriptInstanceValue();
     [[nodiscard]] const ScriptInstanceRef& scriptInstanceValue() const;
+    [[nodiscard]] std::shared_ptr<ScriptInstanceRef> scriptInstancePtr() const;
     [[nodiscard]] const ArgList& argListValue() const;
     [[nodiscard]] const ArgListNoRet& argListNoRetValue() const;
 

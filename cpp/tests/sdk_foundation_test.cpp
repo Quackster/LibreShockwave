@@ -96,6 +96,7 @@
 #include "libreshockwave/lingo/vm/trace/ConsoleTracePrinter.hpp"
 #include "libreshockwave/lingo/vm/trace/InstructionAnnotator.hpp"
 #include "libreshockwave/lingo/vm/trace/TracingHelper.hpp"
+#include "libreshockwave/lingo/vm/util/AncestorChainWalker.hpp"
 #include "libreshockwave/lingo/vm/util/StringChunkUtils.hpp"
 #include "libreshockwave/lingo/xtra/MultiuserXtra.hpp"
 #include "libreshockwave/lingo/xtra/XmlParserXtra.hpp"
@@ -1243,6 +1244,56 @@ void testLingoDatumTypes() {
     assert(cycleChild.scriptInstanceValue().getProperty("missingCycleProperty").isVoid());
     cycleParent.scriptInstanceValue().setProperty("ancestor", Datum::voidValue());
     cycleChild.scriptInstanceValue().setProperty("ancestor", Datum::voidValue());
+
+    auto walkerParent = Datum::scriptInstance("walkerParent");
+    walkerParent.scriptInstanceValue().setProperty("SharedValue", Datum::of(10));
+    auto walkerChild = Datum::scriptInstance("walkerChild");
+    walkerChild.scriptInstanceValue().setProperty("LocalValue", Datum::of(20));
+    walkerChild.scriptInstanceValue().setProperty("ancestor", walkerParent);
+    assert(libreshockwave::lingo::vm::util::getProperty(walkerChild.scriptInstanceValue(), "LocalValue").intValue() ==
+           20);
+    assert(libreshockwave::lingo::vm::util::getProperty(walkerChild.scriptInstanceValue(), "sharedvalue").intValue() ==
+           10);
+    assert(libreshockwave::lingo::vm::util::hasProperty(walkerChild.scriptInstanceValue(), "SHAREDVALUE"));
+    assert(libreshockwave::lingo::vm::util::findOwner(walkerChild.scriptInstanceValue(), "sharedvalue") ==
+           &walkerParent.scriptInstanceValue());
+    libreshockwave::lingo::vm::util::setProperty(walkerChild.scriptInstanceValue(),
+                                                 "sharedvalue",
+                                                 Datum::of(30));
+    assert(walkerParent.scriptInstanceValue().getProperty("SharedValue").intValue() == 30);
+    assert(walkerParent.scriptInstanceValue().properties()[0].first == "SharedValue");
+    libreshockwave::lingo::vm::util::setProperty(walkerChild.scriptInstanceValue(),
+                                                 "newProp",
+                                                 Datum::of(40));
+    assert(walkerChild.scriptInstanceValue().getProperty("newProp").intValue() == 40);
+    assert(libreshockwave::lingo::vm::util::getAncestorDepth(walkerChild.scriptInstanceValue()) == 1);
+    assert(libreshockwave::lingo::vm::util::getAncestorAtDepth(walkerChild.scriptInstanceValue(), 0) == nullptr);
+    assert(libreshockwave::lingo::vm::util::getAncestorAtDepth(walkerChild.scriptInstanceValue(), 1)->scriptName() ==
+           "walkerParent");
+    assert(libreshockwave::lingo::vm::util::hasProperty(walkerChild.scriptInstanceValue(), "ancestor"));
+    assert(libreshockwave::lingo::vm::util::findOwner(walkerChild.scriptInstanceValue(), "ancestor") ==
+           &walkerChild.scriptInstanceValue());
+    libreshockwave::lingo::vm::util::setProperty(walkerChild.scriptInstanceValue(),
+                                                 "ancestor",
+                                                 Datum::voidValue());
+    assert(libreshockwave::lingo::vm::util::getAncestorDepth(walkerChild.scriptInstanceValue()) == 1);
+    auto walkerReplacement = Datum::scriptInstance("walkerReplacement");
+    walkerReplacement.scriptInstanceValue().setProperty("SharedValue", Datum::of(50));
+    libreshockwave::lingo::vm::util::setProperty(walkerChild.scriptInstanceValue(),
+                                                 "ancestor",
+                                                 walkerReplacement);
+    assert(libreshockwave::lingo::vm::util::getAncestorAtDepth(walkerChild.scriptInstanceValue(), 1)->scriptName() ==
+           "walkerReplacement");
+    assert(libreshockwave::lingo::vm::util::getProperty(walkerChild.scriptInstanceValue(), "sharedvalue").intValue() ==
+           50);
+
+    auto walkerCycleParent = Datum::scriptInstance("walkerCycleParent");
+    auto walkerCycleChild = Datum::scriptInstance("walkerCycleChild");
+    walkerCycleParent.scriptInstanceValue().setProperty("ancestor", walkerCycleChild);
+    walkerCycleChild.scriptInstanceValue().setProperty("ancestor", walkerCycleParent);
+    assert(libreshockwave::lingo::vm::util::getProperty(walkerCycleParent.scriptInstanceValue(), "missing").isVoid());
+    assert(libreshockwave::lingo::vm::util::getAncestorDepth(walkerCycleParent.scriptInstanceValue()) ==
+           libreshockwave::lingo::vm::util::MAX_ANCESTOR_DEPTH);
 }
 
 void testLingoOpcodeHelpers() {
