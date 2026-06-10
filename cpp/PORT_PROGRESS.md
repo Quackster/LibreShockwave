@@ -215,12 +215,13 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Runtime bitmap image assignment now stores a copied, script-modified member bitmap and updates member width/height/registration metadata for downstream sprite and property providers.
 - Runtime-created cast members can now be constructed without a raw chunk, carry mutable names, and expose their runtime type through the same property surface.
 - Runtime-created cast members can now erase their runtime payload, expose `#empty`, and be reused in place as a new dynamic member type.
+- Runtime text content can now be stored on cast-member wrappers and survives through the text/field property surface until the runtime payload is erased or reused.
 
 ### Cast Library Manager Foundation
 
 - `player::cast::CastLib` ports lazy cast-library metadata, authored/external file binding state, stable registry binding checks, member chunk maps, script maps, source-prefixed member-name fallback, font-alias/PFR XMED scanning, and Java-compatible cast/member property fallbacks.
 - `player::cast::CastLibManager` ports DirectorFile-backed cast-library initialization from MCsL/CAS* chunks, castLib/member number and name lookup, registry-visible member filtering, external-cast cache keys, pending external load tracking, preload-mode loading, and builtin callback installation.
-- Runtime bitmap member image mutation, cached imported-image assignment, Director BITD imported-media assignment, dynamic member creation/reuse, dynamic member `erase`, and dynamic bitmap member sprite rendering are available for existing cast libraries; non-bitmap media mutation, ediM/JPEG/ALFA sidecars, and full CastLibProvider palette/field integration remain deferred to later player runtime slices.
+- Runtime bitmap member image mutation, cached imported-image assignment, Director BITD imported-media assignment, dynamic member creation/reuse, dynamic member `erase`, dynamic field text mutation, field provider lookup/setter callbacks, and dynamic bitmap member sprite rendering are available for existing cast libraries; non-bitmap imported media, ediM/JPEG/ALFA sidecars, dynamic text rendering, and remaining CastLibProvider edge cases remain deferred to later player runtime slices.
 
 ### Bitmap Resolver Foundation
 
@@ -245,7 +246,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `player::InputHandler` ports host mouse/key entry points, queued input processing, rollover `mouseEnter`/`mouseLeave`/`mouseWithin` dispatch, mouse-down/up sprite targeting, `mouseUpOutSide` fallback routing, right-mouse and key event routing, and sprite-registry revision bumps after queued input.
 - Hit selection uses baked or supplied `RenderSprite` vectors plus `EventDispatcher::isSpriteMouseInteractive`, matching the Java interactive-hit filter without requiring the full C++ `Player` object yet.
-- Built-in editable text field focus, text mutation, caret geometry, selection rectangles, clipboard operations, and StageRenderer-owning overloads remain deferred until the C++ runtime cast-member text mutation path is ported.
+- Built-in editable text field focus, caret geometry, selection rectangles, clipboard operations, dynamic text rendering, and StageRenderer-owning overloads remain deferred; the lower-level C++ runtime cast-member text mutation path is now available for those input slices.
 
 ### Player Facade Foundation
 
@@ -518,6 +519,13 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `Player` wires the StageRenderer resolver to `CastLibManager::resolveMember`, so runtime-created bitmap members with script-assigned images flow through the default frame pipeline and SpriteBaker live-bitmap path.
 - Non-bitmap dynamic member baking remains deferred.
 
+### Runtime Field Text Foundation
+
+- `CastMember` now tracks Java-style dynamic text separately from file-backed text content and clears it as part of dynamic payload erase/reuse.
+- `CastLib::getMemberProp("text")` resolves dynamic text first, then associated STXT text with Director-style carriage-return line endings; `setMemberProp("text")`, `setMemberProp("html")`, and text-like string/symbol `media` assignment update runtime text.
+- `CastLibManager` now wires `BuiltinContext::fieldResolver` and `fieldSetter` to cast-member text lookup and mutation for member names, scoped member numbers, and encoded cast/member identifiers.
+- Field datum identity, parsed field values, editable field UI, and dynamic text sprite baking remain deferred.
+
 ### Lingo VM Scope and Execution Context Foundation
 
 - `lingo::vm::Scope` ports handler stack-frame state, including bytecode position, stack operations, local variables, mutable parameters, receiver-aware display arguments, return state, and loop-return tracking.
@@ -766,6 +774,7 @@ Result:
 - Runtime dynamic member creation, named encoded slot creation, `new(#type, castLib)` callback creation, stable authored member counts, and dynamic member name/type lookup passed through the same CTest executable.
 - Runtime-created bitmap member render sprites, runtime registration-point placement, Player StageRenderer-to-CastLibManager resolver wiring, SpriteBaker live dynamic bitmap baking, and rendered frame pixels for dynamic bitmap sprites passed through the same CTest executable.
 - Dynamic member `erase`, `#empty` type reflection, first erased-slot reuse, cast-member method callback routing, and Player sprite binding cleanup on slot retirement passed through the same CTest executable.
+- Runtime field text storage, `member.text`/`member.html`/text-like `member.media` mutation, field lookup by name/number/encoded reference, builtin `field`, and field setter callback routing passed through the same CTest executable.
 - SoundBuiltins channel creation, availability, sound-channel method dispatch, VM object-property defaults/mutation, and SoundManager playback delegation passed through the same CTest executable.
 - ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration and callback hooks passed through the same CTest executable.
 - TypeBuiltins object/void/type predicates, `value` literal parsing/provider fallback, `script`/`callAncestor` callback hooks, symbol conversion, and `ilk` alias checks passed through the same CTest executable.
@@ -951,4 +960,5 @@ Result:
 - `d1463491 Port C++ Director BITD media import`
 - `1b81514f Port C++ dynamic member creation`
 - `ee3200d8 Port C++ dynamic member rendering`
-- Current checkpoint commit message: `Port C++ dynamic member lifecycle`
+- `a113570a Port C++ dynamic member lifecycle`
+- Current checkpoint commit message: `Port C++ runtime field text`

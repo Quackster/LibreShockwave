@@ -57,6 +57,9 @@ public:
     [[nodiscard]] int height() const;
     [[nodiscard]] int regX() const;
     [[nodiscard]] int regY() const;
+    [[nodiscard]] bool hasDynamicText() const;
+    [[nodiscard]] std::string textContent() const;
+    void setDynamicText(std::string text);
     [[nodiscard]] std::shared_ptr<bitmap::Bitmap> runtimeBitmap() const;
     void setRuntimeBitmap(const bitmap::Bitmap& bitmap, bool markScriptModified = true);
     void erase();
@@ -83,6 +86,7 @@ private:
     std::shared_ptr<bitmap::Bitmap> runtimeBitmap_;
     std::optional<int> runtimeRegX_;
     std::optional<int> runtimeRegY_;
+    std::optional<std::string> dynamicText_;
 };
 
 } // namespace libreshockwave::cast

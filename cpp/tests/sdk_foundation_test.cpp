@@ -12210,6 +12210,22 @@ void testCastLibManagerFoundation() {
     assert(manager.getMemberProp(1, 10001, "name").stringValue() == "Runtime Field");
     assert(manager.getMemberByName(0, "Runtime Field").asCastMemberRef()->memberNum() == 10001);
     assert(manager.findCastMemberByName("Runtime Field")->memberNum() == 10001);
+    assert(manager.getMemberProp(1, 10001, "text").stringValue().empty());
+    assert(manager.setMemberProp(1, 10001, "text", Datum::of(std::string("Hello\nField"))));
+    assert(manager.getMemberProp(1, 10001, "text").stringValue() == "Hello\nField");
+    assert(manager.getMemberProp(1, 10001, "media").asCastMemberRef()->memberNum() == 10001);
+    assert(manager.getFieldValue(Datum::of(std::string("Runtime Field")), 0).stringValue() == "Hello\nField");
+    assert(context.fieldResolver(Datum::of(std::string("Runtime Field")), 0).stringValue() == "Hello\nField");
+    assert(registry.invoke("field", context, {Datum::of(std::string("Runtime Field"))}).stringValue() == "Hello\nField");
+    context.fieldSetter(Datum::of(std::string("Runtime Field")), 0, "Updated Field");
+    assert(manager.getMemberProp(1, 10001, "text").stringValue() == "Updated Field");
+    assert(manager.getFieldValue(Datum::of(10001), 1).stringValue() == "Updated Field");
+    context.fieldSetter(Datum::of((1 << 16) | 10001), 0, "Encoded Field");
+    assert(registry.invoke("field", context, {Datum::of(10001), Datum::castLibRef(CastLibId(1))}).stringValue() == "Encoded Field");
+    assert(manager.setMemberProp(1, 10001, "html", Datum::of(std::string("<b>Plain</b> <i>Text</i>"))));
+    assert(manager.getMemberProp(1, 10001, "text").stringValue() == "Plain Text");
+    assert(manager.setMemberProp(1, 10001, "media", Datum::symbol("Symbolic")));
+    assert(manager.getMemberProp(1, 10001, "text").stringValue() == "Symbolic");
 
     const auto builtinRuntime = registry.invoke("createMember",
                                                 context,

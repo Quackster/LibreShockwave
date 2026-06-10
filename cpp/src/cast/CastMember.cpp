@@ -91,6 +91,18 @@ std::shared_ptr<bitmap::Bitmap> CastMember::runtimeBitmap() const {
     return runtimeBitmap_;
 }
 
+bool CastMember::hasDynamicText() const {
+    return dynamicText_.has_value();
+}
+
+std::string CastMember::textContent() const {
+    return dynamicText_.value_or("");
+}
+
+void CastMember::setDynamicText(std::string text) {
+    dynamicText_ = std::move(text);
+}
+
 void CastMember::setRuntimeBitmap(const bitmap::Bitmap& bitmap, bool markScriptModified) {
     auto copy = std::make_shared<bitmap::Bitmap>(bitmap.copy());
     if (markScriptModified) {
@@ -172,6 +184,7 @@ void CastMember::resetRuntimePayload() {
     runtimeBitmap_.reset();
     runtimeRegX_.reset();
     runtimeRegY_.reset();
+    dynamicText_.reset();
 }
 
 } // namespace libreshockwave::cast

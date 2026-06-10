@@ -64,6 +64,8 @@ public:
     [[nodiscard]] int getMemberCount(int castLibNumber);
     [[nodiscard]] lingo::Datum getMemberProp(int castLibNumber, int memberNumber, const std::string& propName);
     bool setMemberProp(int castLibNumber, int memberNumber, const std::string& propName, const lingo::Datum& value);
+    [[nodiscard]] lingo::Datum getFieldValue(const lingo::Datum& identifier, int castLibNumber);
+    void setFieldValue(const lingo::Datum& identifier, int castLibNumber, const std::string& value);
     [[nodiscard]] std::shared_ptr<chunks::CastMemberChunk> getCastMember(int castLibNumber, int memberNumber);
     [[nodiscard]] std::shared_ptr<chunks::CastMemberChunk> getCastMemberByName(const std::string& memberName);
     [[nodiscard]] std::shared_ptr<libreshockwave::cast::CastMember> resolveMember(int castLibNumber, int memberNumber);
@@ -104,6 +106,9 @@ private:
     [[nodiscard]] static lingo::Datum getMemberByNameInCast(const std::shared_ptr<CastLib>& castLib,
                                                             const std::string& memberName);
     [[nodiscard]] static bool isRegistryFallbackEligibleCast(const std::shared_ptr<CastLib>& castLib);
+    [[nodiscard]] std::shared_ptr<libreshockwave::cast::CastMember> resolveFieldMember(
+        const lingo::Datum& identifier,
+        int castLibNumber);
 
     std::shared_ptr<DirectorFile> file_;
     std::map<int, std::shared_ptr<CastLib>> castLibs_;

@@ -112,6 +112,7 @@ private:
     [[nodiscard]] bool sameFileBinding(const std::string& currentFileName, const std::string& newFileName) const;
     [[nodiscard]] bool usesGeneratedPlaceholderName(const std::string& candidateName) const;
     [[nodiscard]] bool looksLikeDirectFileBindingName(const std::string& candidateName) const;
+    [[nodiscard]] std::string resolveMemberText(const std::shared_ptr<libreshockwave::cast::CastMember>& member);
     [[nodiscard]] int nextAvailableDynamicMemberNumber();
     [[nodiscard]] std::shared_ptr<chunks::CastMemberChunk> findMemberChunkByNameExact(const std::string& memberName);
     [[nodiscard]] std::shared_ptr<libreshockwave::cast::CastMember> findMemberByNameExact(const std::string& memberName);

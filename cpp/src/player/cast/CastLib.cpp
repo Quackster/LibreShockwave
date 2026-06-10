@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <exception>
+#include <string_view>
 #include <utility>
 
 #include "libreshockwave/DirectorFile.hpp"
@@ -16,6 +17,7 @@
 #include "libreshockwave/chunks/RawChunk.hpp"
 #include "libreshockwave/chunks/ScriptChunk.hpp"
 #include "libreshockwave/chunks/ScriptNamesChunk.hpp"
+#include "libreshockwave/chunks/TextChunk.hpp"
 #include "libreshockwave/format/ChunkType.hpp"
 #include "libreshockwave/io/BinaryReader.hpp"
 #include "libreshockwave/player/cast/FontRegistry.hpp"
@@ -61,6 +63,45 @@ bool endsWith(const std::string& value, const std::string& suffix) {
 
 lingo::Datum stringDatum(const std::string& value) {
     return lingo::Datum::of(value);
+}
+
+std::string normalizeTextLineEndings(std::string value) {
+    std::string result;
+    result.reserve(value.size());
+    for (std::size_t index = 0; index < value.size(); ++index) {
+        const char ch = value[index];
+        if (ch == '\r') {
+            result.push_back('\r');
+            if (index + 1 < value.size() && value[index + 1] == '\n') {
+                ++index;
+            }
+        } else if (ch == '\n') {
+            result.push_back('\r');
+        } else {
+            result.push_back(ch);
+        }
+    }
+    return result;
+}
+
+std::string stripHtmlTags(std::string_view value) {
+    std::string result;
+    result.reserve(value.size());
+    bool inTag = false;
+    for (const char ch : value) {
+        if (ch == '<') {
+            inTag = true;
+            continue;
+        }
+        if (ch == '>' && inTag) {
+            inTag = false;
+            continue;
+        }
+        if (!inTag) {
+            result.push_back(ch);
+        }
+    }
+    return result;
 }
 
 } // namespace
@@ -423,6 +464,8 @@ lingo::Datum CastLib::getMemberProp(int memberNumber, const std::string& propNam
         return lingo::Datum::symbol(std::string(libreshockwave::cast::name(member->memberType())));
     }
     if (prop == "castlibnum" || prop == "castlib") return lingo::Datum::of(castLibId_.value());
+    if (prop == "media") return lingo::Datum::castMemberRef(castLibId_, id::MemberId(memberNumber));
+    if (member->isText() && prop == "text") return stringDatum(resolveMemberText(member));
     if (prop == "width") return lingo::Datum::of(member->width());
     if (prop == "height") return lingo::Datum::of(member->height());
     if (prop == "depth") {
@@ -450,6 +493,18 @@ bool CastLib::setMemberProp(int memberNumber, const std::string& propName, const
     const auto prop = lower(propName);
     if (prop == "name" && member->isRuntimeDynamic()) {
         member->setName(value.stringValue());
+        return true;
+    }
+    if (member->isText() && prop == "text") {
+        member->setDynamicText(value.stringValue());
+        return true;
+    }
+    if (member->isText() && prop == "html") {
+        member->setDynamicText(stripHtmlTags(value.stringValue()));
+        return true;
+    }
+    if (member->isText() && prop == "media" && (value.isString() || value.isSymbol())) {
+        member->setDynamicText(value.stringValue());
         return true;
     }
     if (prop == "image") {
@@ -696,6 +751,21 @@ bool CastLib::looksLikeDirectFileBindingName(const std::string& candidateName) c
         return true;
     }
     return !fileName_.empty() && normalizedName == lower(trim(fileName_));
+}
+
+std::string CastLib::resolveMemberText(const std::shared_ptr<libreshockwave::cast::CastMember>& member) {
+    if (!member || !member->isText()) {
+        return "";
+    }
+    if (member->hasDynamicText()) {
+        return member->textContent();
+    }
+    if (sourceFile_ && member->rawChunk()) {
+        if (auto text = sourceFile_->getTextForMember(member->rawChunk())) {
+            return normalizeTextLineEndings(text->text());
+        }
+    }
+    return "";
 }
 
 int CastLib::nextAvailableDynamicMemberNumber() {

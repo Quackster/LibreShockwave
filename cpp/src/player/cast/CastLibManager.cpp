@@ -389,6 +389,28 @@ bool CastLibManager::setMemberProp(int castLibNumber,
     return castLib && castLib->setMemberProp(memberNumber, propName, value);
 }
 
+lingo::Datum CastLibManager::getFieldValue(const lingo::Datum& identifier, int castLibNumber) {
+    auto member = resolveFieldMember(identifier, castLibNumber);
+    if (!member) {
+        return lingo::Datum::of(std::string());
+    }
+    if (member->hasDynamicText()) {
+        return lingo::Datum::of(member->textContent());
+    }
+    if (!member->isText()) {
+        return lingo::Datum::of(std::string());
+    }
+    auto text = getMemberProp(member->castLib(), member->memberNum(), "text");
+    return text.isVoid() ? lingo::Datum::of(std::string()) : text;
+}
+
+void CastLibManager::setFieldValue(const lingo::Datum& identifier, int castLibNumber, const std::string& value) {
+    auto member = resolveFieldMember(identifier, castLibNumber);
+    if (member) {
+        member->setDynamicText(value);
+    }
+}
+
 std::shared_ptr<chunks::CastMemberChunk> CastLibManager::getCastMember(int castLibNumber, int memberNumber) {
     auto castLib = getCastLib(castLibNumber);
     return castLib ? castLib->findMemberByNumber(memberNumber) : nullptr;
@@ -673,6 +695,12 @@ void CastLibManager::installBuiltinCallbacks(lingo::builtin::BuiltinContext& con
     context.castMemberPropertySetter = [this](int castLib, int memberNum, const std::string& propertyName, const lingo::Datum& value) {
         return setMemberProp(castLib, memberNum, propertyName, value);
     };
+    context.fieldResolver = [this](const lingo::Datum& identifier, int castLib) {
+        return getFieldValue(identifier, castLib);
+    };
+    context.fieldSetter = [this](const lingo::Datum& identifier, int castLib, const std::string& value) {
+        setFieldValue(identifier, castLib, value);
+    };
     context.importFileIntoHandler = [this](const lingo::Datum::CastMemberRef& ref,
                                            const std::string& url,
                                            const lingo::Datum& options) {
@@ -795,6 +823,44 @@ lingo::Datum CastLibManager::getMemberByNameInCast(const std::shared_ptr<CastLib
 
 bool CastLibManager::isRegistryFallbackEligibleCast(const std::shared_ptr<CastLib>& castLib) {
     return castLib != nullptr && castLib->usesStableRegistryBinding();
+}
+
+std::shared_ptr<libreshockwave::cast::CastMember> CastLibManager::resolveFieldMember(
+    const lingo::Datum& identifier,
+    int castLibNumber) {
+    ensureInitialized();
+
+    if (identifier.isInt()) {
+        const int rawNumber = identifier.intValue();
+        int effectiveCastLib = castLibNumber > 0 ? castLibNumber : 1;
+        int effectiveMemberNumber = rawNumber;
+        if (rawNumber > 0xFFFF) {
+            effectiveCastLib = (rawNumber >> 16) & 0xFFFF;
+            effectiveMemberNumber = rawNumber & 0xFFFF;
+        }
+        return resolveMember(effectiveCastLib, effectiveMemberNumber);
+    }
+
+    const std::string memberName = identifier.stringValue();
+    if (memberName.empty()) {
+        return nullptr;
+    }
+
+    if (castLibNumber > 0) {
+        auto castLib = getCastLib(castLibNumber);
+        return castLib ? castLib->getMemberByName(memberName) : nullptr;
+    }
+
+    for (const auto& [_, castLib] : castLibs_) {
+        auto loadedCast = getCastLib(castLib->number());
+        if (!loadedCast) {
+            continue;
+        }
+        if (auto member = loadedCast->getMemberByName(memberName)) {
+            return member;
+        }
+    }
+    return nullptr;
 }
 
 } // namespace libreshockwave::player::cast
