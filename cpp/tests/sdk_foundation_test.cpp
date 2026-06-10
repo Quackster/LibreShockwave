@@ -1623,7 +1623,7 @@ void testLingoDecompilerNodeFoundation() {
 
     ScriptNamesChunk scriptNames(nullptr,
                                  ChunkId(501),
-                                 {"prepareMovie", "argOne", "pFlag", "gFlag", "localOne", "doThing"});
+                                 {"prepareMovie", "argOne", "pFlag", "gFlag", "localOne", "doThing", "fieldRef", "chunkOps"});
     ScriptChunk::Handler bytecodeHandler{
         0,
         0,
@@ -1706,6 +1706,103 @@ void testLingoDecompilerNodeFoundation() {
     ScriptChunk::Handler unresolvedHandler = bytecodeHandler;
     unresolvedHandler.nameId = 99;
     assert(decompiler.decompileHandler(unresolvedHandler, script, &scriptNames).starts_with("on #99 argOne\n"));
+
+    ScriptChunk::Handler chunkHandler{
+        7,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        {},
+        {4},
+        {
+            ScriptChunk::Instruction{0, Opcode::PUSH_INT8, 0x41, 5},
+            ScriptChunk::Instruction{2, Opcode::PUSH_INT8, 0x41, 0},
+            ScriptChunk::Instruction{4, Opcode::GET_FIELD, 0x1B, 0},
+            ScriptChunk::Instruction{5, Opcode::SET_LOCAL, 0x52, 0},
+
+            ScriptChunk::Instruction{7, Opcode::PUSH_INT8, 0x41, 2},
+            ScriptChunk::Instruction{9, Opcode::PUSH_INT8, 0x41, 0x25},
+            ScriptChunk::Instruction{11, Opcode::GET, 0x5C, 0x06},
+            ScriptChunk::Instruction{13, Opcode::SET_LOCAL, 0x52, 0},
+
+            ScriptChunk::Instruction{15, Opcode::PUSH_INT8, 0x41, 0},
+            ScriptChunk::Instruction{17, Opcode::PUSH_INT8, 0x41, 0},
+            ScriptChunk::Instruction{19, Opcode::PUSH_INT8, 0x41, 2},
+            ScriptChunk::Instruction{21, Opcode::PUSH_INT8, 0x41, 3},
+            ScriptChunk::Instruction{23, Opcode::PUSH_INT8, 0x41, 0},
+            ScriptChunk::Instruction{25, Opcode::PUSH_INT8, 0x41, 0},
+            ScriptChunk::Instruction{27, Opcode::PUSH_INT8, 0x41, 0},
+            ScriptChunk::Instruction{29, Opcode::PUSH_INT8, 0x41, 0},
+            ScriptChunk::Instruction{31, Opcode::PUSH_VAR_REF, 0x46, 6},
+            ScriptChunk::Instruction{33, Opcode::GET_CHUNK, 0x17, 0},
+            ScriptChunk::Instruction{34, Opcode::SET_LOCAL, 0x52, 0},
+
+            ScriptChunk::Instruction{36, Opcode::PUSH_CONS, 0x44, 0},
+            ScriptChunk::Instruction{38, Opcode::PUSH_VAR_REF, 0x46, 6},
+            ScriptChunk::Instruction{40, Opcode::PUT, 0x59, 0x11},
+
+            ScriptChunk::Instruction{42, Opcode::PUSH_CONS, 0x44, 8},
+            ScriptChunk::Instruction{44, Opcode::PUSH_INT8, 0x41, 1},
+            ScriptChunk::Instruction{46, Opcode::PUSH_INT8, 0x41, 2},
+            ScriptChunk::Instruction{48, Opcode::PUSH_INT8, 0x41, 0},
+            ScriptChunk::Instruction{50, Opcode::PUSH_INT8, 0x41, 0},
+            ScriptChunk::Instruction{52, Opcode::PUSH_INT8, 0x41, 0},
+            ScriptChunk::Instruction{54, Opcode::PUSH_INT8, 0x41, 0},
+            ScriptChunk::Instruction{56, Opcode::PUSH_INT8, 0x41, 0},
+            ScriptChunk::Instruction{58, Opcode::PUSH_INT8, 0x41, 0},
+            ScriptChunk::Instruction{60, Opcode::PUSH_VAR_REF, 0x46, 6},
+            ScriptChunk::Instruction{62, Opcode::PUT_CHUNK, 0x5A, 0x21},
+
+            ScriptChunk::Instruction{64, Opcode::PUSH_INT8, 0x41, 0},
+            ScriptChunk::Instruction{66, Opcode::PUSH_INT8, 0x41, 0},
+            ScriptChunk::Instruction{68, Opcode::PUSH_INT8, 0x41, 0},
+            ScriptChunk::Instruction{70, Opcode::PUSH_INT8, 0x41, 0},
+            ScriptChunk::Instruction{72, Opcode::PUSH_INT8, 0x41, 0},
+            ScriptChunk::Instruction{74, Opcode::PUSH_INT8, 0x41, 0},
+            ScriptChunk::Instruction{76, Opcode::PUSH_INT8, 0x41, 4},
+            ScriptChunk::Instruction{78, Opcode::PUSH_INT8, 0x41, 0},
+            ScriptChunk::Instruction{80, Opcode::PUSH_VAR_REF, 0x46, 6},
+            ScriptChunk::Instruction{82, Opcode::DELETE_CHUNK, 0x5B, 1},
+
+            ScriptChunk::Instruction{84, Opcode::RET, 0x01, 0}
+        },
+        {}
+    };
+    ScriptChunk chunkScript(nullptr,
+                            ChunkId(502),
+                            ScriptChunkType::MovieScript,
+                            0,
+                            {chunkHandler},
+                            {
+                                ScriptChunk::LiteralEntry{1, 0, std::string("Hi"), 0.0},
+                                ScriptChunk::LiteralEntry{1, 0, std::string("!"), 0.0}
+                            },
+                            {},
+                            {},
+                            {});
+    assert(decompiler.decompileHandler(chunkScript.handlers().front(), chunkScript, &scriptNames) ==
+           "on chunkOps\n"
+           "  localOne = field(5)\n\n"
+           "  localOne = the member of sprite 2\n\n"
+           "  localOne = word 2 to 3 of fieldRef\n\n"
+           "  put \"Hi\" into fieldRef\n\n"
+           "  put \"!\" after char 1 to 2 of fieldRef\n\n"
+           "  delete line 4 of fieldRef\n\n"
+           "end");
+    const auto chunkMapping = decompiler.decompileHandlerWithMapping(chunkScript.handlers().front(),
+                                                                     chunkScript,
+                                                                     &scriptNames);
+    assert(chunkMapping.lines.size() == 8);
+    assert(chunkMapping.lines[1].bytecodeOffset == 5);
+    assert(chunkMapping.lines[2].bytecodeOffset == 13);
+    assert(chunkMapping.lines[3].bytecodeOffset == 34);
+    assert(chunkMapping.lines[4].bytecodeOffset == 40);
+    assert(chunkMapping.lines[5].bytecodeOffset == 62);
+    assert(chunkMapping.lines[6].bytecodeOffset == 82);
 
     HandlerNode mappedHandler("mapped", {"me"}, {"gFlag"});
     auto ifNode = std::make_unique<IfStmtNode>(std::make_unique<VarNode>("ready"));

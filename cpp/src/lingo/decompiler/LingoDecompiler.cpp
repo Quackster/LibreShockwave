@@ -12,6 +12,7 @@
 #include "libreshockwave/chunks/ScriptNamesChunk.hpp"
 #include "libreshockwave/format/ScriptFormatUtils.hpp"
 #include "libreshockwave/lingo/Opcode.hpp"
+#include "libreshockwave/lingo/decompiler/LingoProperties.hpp"
 
 namespace libreshockwave::lingo::decompiler {
 namespace {
@@ -349,6 +350,44 @@ void LingoDecompiler::translateInstruction(const chunks::ScriptChunk::Instructio
             translation = std::make_unique<NotOpNode>(popNode());
             break;
 
+        case Opcode::GET_CHUNK:
+            translation = readChunkRef(popNode());
+            break;
+
+        case Opcode::HILITE_CHUNK: {
+            NodePtr castId;
+            if (version_ >= 500) {
+                castId = popNode();
+            }
+            auto fieldId = popNode();
+            auto field = std::make_unique<MemberExprNode>("field", std::move(fieldId), std::move(castId));
+            translation = std::make_unique<ChunkHiliteStmtNode>(readChunkRef(std::move(field)));
+            break;
+        }
+
+        case Opcode::ONTO_SPR: {
+            auto right = popNode();
+            auto left = popNode();
+            translation = std::make_unique<SpriteIntersectsExprNode>(std::move(left), std::move(right));
+            break;
+        }
+
+        case Opcode::INTO_SPR: {
+            auto right = popNode();
+            auto left = popNode();
+            translation = std::make_unique<SpriteWithinExprNode>(std::move(left), std::move(right));
+            break;
+        }
+
+        case Opcode::GET_FIELD: {
+            NodePtr castId;
+            if (version_ >= 500) {
+                castId = popNode();
+            }
+            translation = std::make_unique<MemberExprNode>("field", popNode(), std::move(castId));
+            break;
+        }
+
         case Opcode::PUSH_INT8:
         case Opcode::PUSH_INT16:
         case Opcode::PUSH_INT32:
@@ -434,6 +473,60 @@ void LingoDecompiler::translateInstruction(const chunks::ScriptChunk::Instructio
                 popNode());
             break;
 
+        case Opcode::PUT: {
+            const int putType = (instruction.argument >> 4) & 0xF;
+            const int varType = instruction.argument & 0xF;
+            auto variable = readVar(varType);
+            auto value = popNode();
+            translation = std::make_unique<PutStmtNode>(putType, std::move(variable), std::move(value));
+            break;
+        }
+
+        case Opcode::PUT_CHUNK: {
+            const int putType = (instruction.argument >> 4) & 0xF;
+            const int varType = instruction.argument & 0xF;
+            auto chunk = readChunkRef(readVar(varType));
+            auto value = popNode();
+            translation = std::make_unique<PutStmtNode>(putType, std::move(chunk), std::move(value));
+            break;
+        }
+
+        case Opcode::DELETE_CHUNK:
+            translation = std::make_unique<ChunkDeleteStmtNode>(readChunkRef(readVar(instruction.argument)));
+            break;
+
+        case Opcode::GET: {
+            const auto propId = popNode()->intValue();
+            translation = readV4Property(instruction.argument, propId);
+            break;
+        }
+
+        case Opcode::SET: {
+            const auto propId = popNode()->intValue();
+            auto value = popNode();
+            if (instruction.argument == 0x00 &&
+                propId >= 0x01 &&
+                propId <= 0x05 &&
+                value->valueType() == ValueType::String) {
+                auto script = value->stringValue();
+                if (!script.empty() && (script.front() == ' ' || script.find('\r') != std::string::npos)) {
+                    translation = std::make_unique<WhenStmtNode>(propId, std::move(script));
+                }
+            }
+            if (!translation) {
+                auto property = readV4Property(instruction.argument, propId);
+                if (dynamic_cast<CommentNode*>(property.get()) != nullptr) {
+                    translation = std::move(property);
+                } else {
+                    translation = std::make_unique<AssignmentStmtNode>(
+                        std::move(property),
+                        std::move(value),
+                        true);
+                }
+            }
+            break;
+        }
+
         case Opcode::LOCAL_CALL: {
             auto argList = popNode();
             std::string callName = "handler#" + std::to_string(instruction.argument);
@@ -478,6 +571,10 @@ void LingoDecompiler::translateInstruction(const chunks::ScriptChunk::Instructio
         case Opcode::THE_BUILTIN:
             (void)popNode();
             translation = std::make_unique<TheExprNode>(resolveName(instruction.argument));
+            break;
+
+        case Opcode::PUSH_CHUNK_VAR_REF:
+            translation = readVar(instruction.argument);
             break;
 
         case Opcode::NEW_OBJ:
@@ -534,6 +631,152 @@ NodePtr LingoDecompiler::popNode() {
     return node;
 }
 
+NodePtr LingoDecompiler::readVar(int varType) {
+    NodePtr castId;
+    if (varType == 0x6 && version_ >= 500) {
+        castId = popNode();
+    }
+    auto id = popNode();
+
+    switch (varType) {
+        case 0x1:
+        case 0x2:
+        case 0x3:
+            return id;
+        case 0x4:
+            return std::make_unique<LiteralNode>(ValueType::VarRef, getArgumentName(id->intValue()));
+        case 0x5:
+            return std::make_unique<LiteralNode>(ValueType::VarRef, getLocalName(id->intValue()));
+        case 0x6:
+            return std::make_unique<MemberExprNode>("field", std::move(id), std::move(castId));
+        default:
+            return std::make_unique<ErrorNode>();
+    }
+}
+
+NodePtr LingoDecompiler::readChunkRef(NodePtr string) {
+    auto lastLine = popNode();
+    auto firstLine = popNode();
+    auto lastItem = popNode();
+    auto firstItem = popNode();
+    auto lastWord = popNode();
+    auto firstWord = popNode();
+    auto lastChar = popNode();
+    auto firstChar = popNode();
+
+    if (!isZeroLiteral(*firstLine)) {
+        string = std::make_unique<ChunkExprNode>(
+            4,
+            std::move(firstLine),
+            std::move(lastLine),
+            std::move(string));
+    }
+    if (!isZeroLiteral(*firstItem)) {
+        string = std::make_unique<ChunkExprNode>(
+            3,
+            std::move(firstItem),
+            std::move(lastItem),
+            std::move(string));
+    }
+    if (!isZeroLiteral(*firstWord)) {
+        string = std::make_unique<ChunkExprNode>(
+            2,
+            std::move(firstWord),
+            std::move(lastWord),
+            std::move(string));
+    }
+    if (!isZeroLiteral(*firstChar)) {
+        string = std::make_unique<ChunkExprNode>(
+            1,
+            std::move(firstChar),
+            std::move(lastChar),
+            std::move(string));
+    }
+
+    return string;
+}
+
+NodePtr LingoDecompiler::readV4Property(int propertyType, int propertyId) {
+    switch (propertyType) {
+        case 0x00:
+            if (propertyId <= 0x0b) {
+                return std::make_unique<TheExprNode>(std::string(moviePropertyName(propertyId)));
+            }
+            return std::make_unique<LastStringChunkExprNode>(propertyId - 0x0b, popNode());
+
+        case 0x01:
+            return std::make_unique<StringChunkCountExprNode>(propertyId, popNode());
+
+        case 0x02:
+            return std::make_unique<MenuPropExprNode>(popNode(), propertyId);
+
+        case 0x03: {
+            auto menuId = popNode();
+            return std::make_unique<MenuItemPropExprNode>(std::move(menuId), popNode(), propertyId);
+        }
+
+        case 0x04:
+            return std::make_unique<SoundPropExprNode>(popNode(), propertyId);
+
+        case 0x05:
+            return std::make_unique<CommentNode>("ERROR: Resource property");
+
+        case 0x06:
+            return std::make_unique<SpritePropExprNode>(popNode(), propertyId);
+
+        case 0x07:
+            return std::make_unique<TheExprNode>(std::string(animationPropertyName(propertyId)));
+
+        case 0x08:
+            if (propertyId == 0x02 && version_ >= 500) {
+                auto castLib = popNode();
+                if (!isZeroLiteral(*castLib)) {
+                    return std::make_unique<ThePropExprNode>(
+                        std::make_unique<MemberExprNode>("castLib", std::move(castLib)),
+                        std::string(animation2PropertyName(propertyId)));
+                }
+            }
+            return std::make_unique<TheExprNode>(std::string(animation2PropertyName(propertyId)));
+
+        case 0x09:
+        case 0x0a:
+        case 0x0b:
+        case 0x0c:
+        case 0x0d:
+        case 0x0e:
+        case 0x0f:
+        case 0x10:
+        case 0x11:
+        case 0x12:
+        case 0x13:
+        case 0x14:
+        case 0x15: {
+            NodePtr castId;
+            if (version_ >= 500) {
+                castId = popNode();
+            }
+            auto memberId = popNode();
+            std::string prefix;
+            if (propertyType == 0x0b || propertyType == 0x0c) {
+                prefix = "field";
+            } else if (propertyType == 0x14 || propertyType == 0x15) {
+                prefix = "script";
+            } else {
+                prefix = version_ >= 500 ? "member" : "cast";
+            }
+
+            NodePtr entity = std::make_unique<MemberExprNode>(std::move(prefix), std::move(memberId), std::move(castId));
+            if (propertyType == 0x0a || propertyType == 0x0c || propertyType == 0x15) {
+                entity = readChunkRef(std::move(entity));
+            }
+            return std::make_unique<ThePropExprNode>(std::move(entity), std::string(memberPropertyName(propertyId)));
+        }
+
+        default:
+            return std::make_unique<CommentNode>("ERROR: Unknown property type " + std::to_string(propertyType));
+    }
+}
+
 int LingoDecompiler::variableMultiplier() const {
     if (capitalX_) {
         return 1;
@@ -584,6 +827,10 @@ NodePtr LingoDecompiler::literalToNode(const chunks::ScriptChunk::LiteralEntry& 
             }
             return std::make_unique<LiteralNode>(ValueType::String, "");
     }
+}
+
+bool LingoDecompiler::isZeroLiteral(const LingoNode& node) {
+    return node.valueType() == ValueType::Int && node.intValue() == 0;
 }
 
 } // namespace libreshockwave::lingo::decompiler

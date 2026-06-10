@@ -81,7 +81,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `lingo::decompiler::LingoProperties` ports Java decompiler operator, chunk, put, event, and property-name lookup tables used while reconstructing Lingo source.
 - `lingo::decompiler::LingoNode` ports the Java decompiler AST/source-rendering node foundation for literals, unary/binary expressions, member/object/chunk expressions, calls, assignments, puts, when scripts, blocks, handlers, loops, cases, and Director 4 versus dot-syntax output forms.
-- `lingo::decompiler::LingoDecompiler` now ports Java-compatible script header/property/global emission, bytecode-only handler fallback formatting, handler line-to-bytecode mapping, AST-to-line mapping, and a straight-line bytecode-to-AST translator for literals, variables, arguments, locals, binary/unary expressions, assignments, calls, object/movie properties, and object construction while control-flow reconstruction remains deferred.
+- `lingo::decompiler::LingoDecompiler` now ports Java-compatible script header/property/global emission, bytecode-only handler fallback formatting, handler line-to-bytecode mapping, AST-to-line mapping, and a straight-line bytecode-to-AST translator for literals, variables, arguments, locals, binary/unary expressions, assignments, calls, object/movie properties, v4 field/sprite/member property reads, chunk refs, put/delete chunk statements, sprite intersection/within expressions, and object construction while control-flow reconstruction remains deferred.
 
 ### Script Bytecode Chunk Parser
 
@@ -936,7 +936,7 @@ Result:
 - SoundBuiltins channel creation, availability, SoundChannelMethodDispatcher-backed sound-channel method/property dispatch, VM object-property defaults/mutation, and SoundManager playback delegation passed through the same CTest executable.
 - ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration, Java-style constructor argument coercion, palette-index color identity/display, callback hooks, direct script-instance fallback, and `NEW_OBJ` script-ref handler dispatch passed through the same CTest executable.
 - TypeBuiltins object/void/type predicates, `value` literal parsing/provider fallback, direct `script` lookup/scoping/unscoped list fallback, `script`/`callAncestor` callback hooks and list fanout, symbol conversion, and `ilk` alias/field-text checks passed through the same CTest executable.
-- Lingo decompiler property-name lookup, AST/source-rendering nodes for literals, operator precedence, member/object/chunk expressions, calls, statements, blocks, and handlers, straight-line bytecode translation, bytecode-only handler fallback output, script header/property/global emission, argument/local/unresolved-name fallback, and handler line mapping passed through the same CTest executable.
+- Lingo decompiler property-name lookup, AST/source-rendering nodes for literals, operator precedence, member/object/chunk expressions, calls, statements, blocks, and handlers, straight-line bytecode translation, v4 field/sprite property reads, chunk refs, put/delete chunk statements, bytecode-only handler fallback output, script header/property/global emission, argument/local/unresolved-name fallback, and handler line mapping passed through the same CTest executable.
 - Lingo VM Scope and ExecutionContext stack, param, local, return, loop, jump, global callback, handler callback, builtin invocation, global debug-config propagation, and call-stack formatting behavior passed through the same CTest executable.
 - Lingo VM ExecutionContext name resolver callback and resolver-backed global opcode behavior passed through the same CTest executable.
 - Lingo VM long-handler safepoint callback, tick deadline, handler timeout, and cleanup behavior passed through the same CTest executable.
@@ -1210,4 +1210,5 @@ Result:
 - `8f705ce9 Cover C++ StageRenderer regPoint transforms`
 - `f9399a50 Port C++ decompiler AST foundation`
 - `5df5e6fd Port C++ decompiler fallback mapping`
-- Current checkpoint commit message: `Port C++ decompiler linear bytecode`
+- `2d9420b0 Port C++ decompiler linear bytecode`
+- Current checkpoint commit message: `Port C++ decompiler chunk opcodes`

@@ -53,11 +53,15 @@ private:
                               std::size_t index,
                               BlockNode& block);
     [[nodiscard]] NodePtr popNode();
+    [[nodiscard]] NodePtr readVar(int varType);
+    [[nodiscard]] NodePtr readChunkRef(NodePtr string);
+    [[nodiscard]] NodePtr readV4Property(int propertyType, int propertyId);
     [[nodiscard]] int variableMultiplier() const;
     [[nodiscard]] std::string resolveName(int nameId) const;
     [[nodiscard]] std::string getArgumentName(int rawIndex) const;
     [[nodiscard]] std::string getLocalName(int rawIndex) const;
     [[nodiscard]] NodePtr literalToNode(const chunks::ScriptChunk::LiteralEntry& literal) const;
+    [[nodiscard]] static bool isZeroLiteral(const LingoNode& node);
 };
 
 } // namespace libreshockwave::lingo::decompiler
