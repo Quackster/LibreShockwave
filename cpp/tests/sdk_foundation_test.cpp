@@ -5859,6 +5859,61 @@ void testRenderPipelineFoundation() {
         missingSnapshotThrew = true;
     }
     assert(missingSnapshotThrew);
+
+    StageRenderer stageRenderer;
+    stageRenderer.setDefaultBackgroundColor(0x102030);
+    SpriteBaker spriteBaker;
+    auto low = stageRenderer.spriteRegistry().getOrCreateDynamic(5);
+    low->setLocH(0);
+    low->setLocV(0);
+    low->setLocZ(1);
+    low->setWidth(2);
+    low->setHeight(2);
+    low->setBackColor(0xFF0000);
+    auto high = stageRenderer.spriteRegistry().getOrCreateDynamic(9);
+    high->setLocH(0);
+    high->setLocV(0);
+    high->setLocZ(2);
+    high->setWidth(1);
+    high->setHeight(1);
+    high->setBackColor(0x00FF00);
+
+    FrameRenderPipeline defaultPipeline(&stageRenderer, &spriteBaker);
+    assert(defaultPipeline.stepCount() == 6);
+    assert(defaultPipeline.steps()[0]->name() == "collect-score-sprites");
+    assert(defaultPipeline.steps()[1]->name() == "collect-dynamic-sprites");
+    assert(defaultPipeline.steps()[2]->name() == "order-sprites");
+    assert(defaultPipeline.steps()[3]->name() == "bake-sprites");
+    assert(defaultPipeline.steps()[4]->name() == "publish-baked-sprites");
+    assert(defaultPipeline.steps()[5]->name() == "build-frame-snapshot");
+
+    auto defaultSnapshot = defaultPipeline.renderFrame(33);
+    assert(defaultSnapshot.frameNumber == 33);
+    assert(defaultSnapshot.stageWidth == 640);
+    assert(defaultSnapshot.stageHeight == 480);
+    assert(defaultSnapshot.backgroundColor == 0x102030);
+    assert(defaultSnapshot.debugInfo == "Frame 33");
+    assert(defaultSnapshot.bakeTick == 1);
+    assert(defaultSnapshot.sprites.size() == 2);
+    assert(defaultSnapshot.sprites[0].channel() == 5);
+    assert(defaultSnapshot.sprites[1].channel() == 9);
+    assert(defaultSnapshot.sprites[0].bakedBitmap() != nullptr);
+    assert(defaultSnapshot.sprites[1].bakedBitmap() != nullptr);
+    assert(stageRenderer.lastBakedSprites().size() == 2);
+    assert(stageRenderer.lastBakedSprites()[0].channel() == 5);
+    assert(stageRenderer.lastBakedSprites()[1].channel() == 9);
+    assert(defaultSnapshot.pipelineTrace.steps().size() == 6);
+    assert(defaultSnapshot.pipelineTrace.steps()[0].stepName == "collect-score-sprites");
+    assert(defaultSnapshot.pipelineTrace.steps()[0].summary == "Collected 0 score sprites");
+    assert(defaultSnapshot.pipelineTrace.steps()[1].stepName == "collect-dynamic-sprites");
+    assert(defaultSnapshot.pipelineTrace.steps()[1].summary == "Collected 2 dynamic sprites");
+    assert(defaultSnapshot.pipelineTrace.steps()[3].stepName == "bake-sprites");
+    assert(defaultSnapshot.pipelineTrace.steps()[3].spriteCount == 2);
+    assert(defaultSnapshot.pipelineTrace.steps()[5].stepName == "build-frame-snapshot");
+    auto renderedDefault = defaultSnapshot.renderFrame();
+    assert(renderedDefault.getPixel(0, 0) == 0xFF00FF00U);
+    assert(renderedDefault.getPixel(1, 0) == 0xFFFF0000U);
+    assert(renderedDefault.getPixel(2, 0) == 0xFF102030U);
 }
 
 void testStageRendererFoundation() {

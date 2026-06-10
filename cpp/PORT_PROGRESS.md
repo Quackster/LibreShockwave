@@ -392,7 +392,8 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `render::pipeline::FrameRenderPipeline` ports ordered step registration and linear step execution over `FrameRenderPipelineContext`.
 - Rendering requires a step-produced immutable `FrameSnapshot`, matching the Java pipeline failure behavior when no snapshot is published.
-- Default StageRenderer/SpriteBaker collection, baking, publishing, and snapshot steps remain deferred until the C++ pipeline step wiring is ported.
+- Default StageRenderer/SpriteBaker frame rendering now ports score collection, dynamic collection, locZ/channel ordering, sprite baking, baked-sprite publication for hit testing, and immutable snapshot building.
+- Runtime cast-library backed asset resolution inside the default pipeline remains limited by the currently ported StageRenderer/SpriteBaker providers.
 
 ### Text Renderer Interface Foundation
 
@@ -591,6 +592,7 @@ Result:
 - RenderPipelineTrace, RenderSprite, transform mirror, baked bitmap helpers, and FrameSnapshot tests passed through the same CTest executable.
 - StageRenderer stage-image lifecycle, dynamic/puppeted sprite collection, locZ/channel sorting, last-baked sprite storage, sprite-end cleanup, reset behavior, and RGB555 expansion tests passed through the same CTest executable.
 - SpriteBaker tick counting, default/custom bake-step dispatch, bitmap decode-provider caching, 1-bit Copy-ink color remap, text baked-size replacement, shape baking, transparency-key shape ink, unsupported pass-through, and external BitmapCache ownership tests passed through the same CTest executable.
+- FrameRenderPipeline default StageRenderer/SpriteBaker path, default step names/order, score/dynamic trace summaries, bake tick propagation, baked-sprite publication, snapshot generation, and software-rendered default output tests passed through the same CTest executable.
 - SoftwareFrameRenderer background, stage-image, alpha, blend, scaling, flip, Director mirror, and special-ink tests passed through the same CTest executable.
 - FrameRenderPipelineContext mutation, trace building, snapshot storage, and FrameRenderPipelineStep tests passed through the same CTest executable.
 - FrameRenderPipeline step ordering, snapshot return, null-step rejection, and missing-snapshot failure tests passed through the same CTest executable.
