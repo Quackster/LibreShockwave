@@ -190,6 +190,26 @@ bool cornerContainsPaletteIndex(const std::vector<std::uint8_t>& paletteIndices,
     return false;
 }
 
+bool cornerContainsOpaqueRgb(const bitmap::Bitmap& src, int rgb) {
+    const int width = src.width();
+    const int height = src.height();
+    if (width <= 0 || height <= 0) {
+        return false;
+    }
+    const std::size_t corners[] = {
+        0U,
+        static_cast<std::size_t>(std::max(0, width - 1)),
+        static_cast<std::size_t>(std::max(0, height - 1) * width),
+        static_cast<std::size_t>(std::max(0, height - 1) * width + std::max(0, width - 1))
+    };
+    for (const auto index : corners) {
+        if (index < src.pixels().size() && isOpaqueColor(src.pixels()[index], rgb & 0x00FFFFFF)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool isDefaultIndexedMatteRgb(int rgb) {
     return (rgb & 0x00FFFFFF) == 0x000000 || (rgb & 0x00FFFFFF) == 0xFFFFFF;
 }
@@ -435,6 +455,35 @@ std::optional<bitmap::Bitmap> applyOutlinedWhiteBodyMatteIfNeeded(const bitmap::
     return applyOutlinedWhiteBodyMatte(src);
 }
 
+int resolveMatteColorForInk(const bitmap::Bitmap& src,
+                            id::InkMode ink,
+                            int backColor,
+                            bool useAlpha,
+                            const bitmap::Palette* palette,
+                            bool preserveScriptOutlinedWhiteBody) {
+    if (src.hasNativeMatteAlpha() && useAlpha) {
+        return -1;
+    }
+    if (preserveScriptOutlinedWhiteBody &&
+        ink == id::InkMode::MATTE &&
+        src.bitDepth() == 32 &&
+        src.isScriptModified() &&
+        !src.isNativeAlpha() &&
+        hasOpaqueBorderColor(src, 0xFFFFFF)) {
+        return 0xFFFFFF;
+    }
+    if (src.bitDepth() == 32 && !src.isScriptModified()) {
+        return 0xFFFFFF;
+    }
+    if ((ink == id::InkMode::DARKEN || ink == id::InkMode::LIGHTEN) && src.isRectangularMedia()) {
+        return -1;
+    }
+    if (!src.paletteIndices().has_value() && cornerContainsOpaqueRgb(src, 0xFFFFFF)) {
+        return 0xFFFFFF;
+    }
+    return InkProcessor::resolveBackColor(src, ink, backColor, useAlpha, palette);
+}
+
 bitmap::Bitmap applyInkInternal(const bitmap::Bitmap& src,
                                 id::InkMode ink,
                                 int backColor,
@@ -454,10 +503,8 @@ bitmap::Bitmap applyInkInternal(const bitmap::Bitmap& src,
     const auto& input = *working;
 
     if (ink == id::InkMode::MATTE) {
-        if (input.hasNativeMatteAlpha() && useAlpha) {
-            return input.copy();
-        }
-        const int matteColor = InkProcessor::resolveBackColor(input, ink, backColor, useAlpha, palette);
+        const int matteColor = resolveMatteColorForInk(
+            input, ink, backColor, useAlpha, palette, preserveScriptOutlinedWhiteBody);
         if (matteColor < 0) {
             return input.copy();
         }
