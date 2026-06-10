@@ -93,6 +93,7 @@
 #include "libreshockwave/lingo/vm/Scope.hpp"
 #include "libreshockwave/lingo/vm/trace/ConsoleTracePrinter.hpp"
 #include "libreshockwave/lingo/vm/trace/InstructionAnnotator.hpp"
+#include "libreshockwave/lingo/vm/trace/TracingHelper.hpp"
 #include "libreshockwave/lingo/xtra/MultiuserXtra.hpp"
 #include "libreshockwave/lingo/xtra/XmlParserXtra.hpp"
 #include "libreshockwave/lookup/CastMemberLookup.hpp"
@@ -232,6 +233,7 @@ using libreshockwave::lingo::vm::Scope;
 using libreshockwave::lingo::vm::TraceListener;
 using libreshockwave::lingo::vm::trace::ConsoleTracePrinter;
 using libreshockwave::lingo::vm::trace::InstructionAnnotator;
+using libreshockwave::lingo::vm::trace::TracingHelper;
 using libreshockwave::lingo::xtra::MultiuserNetBridge;
 using libreshockwave::lingo::xtra::MultiuserXtra;
 using libreshockwave::lingo::xtra::XmlParserXtra;
@@ -4152,6 +4154,81 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(firstParamMeScope.getParam(0) == receiver);
     assert(firstParamMeScope.displayArguments().size() == 1);
     assert(firstParamMeScope.displayArguments()[0].intValue() == 7);
+
+    ScriptChunk::Handler traceHandler{
+        20,
+        0,
+        2,
+        0,
+        2,
+        1,
+        0,
+        0,
+        {7, 8},
+        {9},
+        {ScriptChunk::Instruction{0, Opcode::PUSH_INT8, 0x41, 5},
+         ScriptChunk::Instruction{1, Opcode::GET_LOCAL, 0x4C, 0}},
+        {{0, 0}, {1, 1}},
+    };
+    ScriptChunk traceScript(nullptr,
+                            ChunkId(701),
+                            ScriptChunkType::MovieScript,
+                            0,
+                            {traceHandler},
+                            {ScriptChunk::LiteralEntry{1, 0, std::string("trace literal"), 0.0}},
+                            {},
+                            {},
+                            {});
+    std::vector<std::string> traceNames(21);
+    traceNames[7] = "firstArg";
+    traceNames[8] = "secondArg";
+    traceNames[9] = "traceLocal";
+    traceNames[20] = "traceHandler";
+    ScriptNamesChunk traceScriptNames(nullptr, ChunkId(702), traceNames);
+
+    Scope traceScope(&traceScript, traceHandler, {Datum::of(10), Datum::of(11)});
+    traceScope.setParam(1, Datum::of(99));
+    traceScope.setLocal(0, Datum::list({Datum::of(44)}));
+    for (int value = 1; value <= 12; ++value) {
+        traceScope.push(Datum::of(value));
+    }
+    std::unordered_map<std::string, Datum> traceGlobals{{"globalScore", Datum::of(77)}};
+    TracingHelper tracingHelper;
+    const auto localsSnapshot = tracingHelper.captureLocals(traceScope, &traceScriptNames);
+    assert(localsSnapshot.at("firstArg").intValue() == 10);
+    assert(localsSnapshot.at("secondArg").intValue() == 99);
+    assert(localsSnapshot.at("traceLocal").listValue().items()[0].intValue() == 44);
+    assert(tracingHelper.buildAnnotation(traceScope, traceHandler.instructions[1], &traceScriptNames) ==
+           "<local0>");
+    const auto instructionInfo =
+        tracingHelper.buildInstructionInfo(traceScope, traceHandler.instructions[0], traceGlobals, &traceScriptNames);
+    assert(instructionInfo.bytecodeIndex == 0);
+    assert(instructionInfo.offset == 0);
+    assert(instructionInfo.opcode == "pushInt8");
+    assert(instructionInfo.argument == 5);
+    assert(instructionInfo.annotation == "<5>");
+    assert(instructionInfo.stackSize == 12);
+    assert(instructionInfo.stackSnapshot.size() == 10);
+    assert(instructionInfo.stackSnapshot.front().intValue() == 12);
+    assert(instructionInfo.stackSnapshot.back().intValue() == 3);
+    assert(instructionInfo.localsSnapshot.at("traceLocal").listValue().items()[0].intValue() == 44);
+    assert(instructionInfo.globalsSnapshot.at("globalScore").intValue() == 77);
+    const auto handlerInfo = tracingHelper.buildHandlerInfo(traceScript,
+                                                            traceHandler,
+                                                            {Datum::of(10), Datum::of(99)},
+                                                            receiver,
+                                                            traceGlobals,
+                                                            &traceScriptNames,
+                                                            "Trace Display");
+    assert(handlerInfo.handlerName == "traceHandler");
+    assert(handlerInfo.scriptId == 701);
+    assert(handlerInfo.scriptDisplayName == "Trace Display");
+    assert(handlerInfo.arguments.size() == 2);
+    assert(handlerInfo.receiver == receiver);
+    assert(handlerInfo.globals.at("globalScore").intValue() == 77);
+    assert(handlerInfo.literals.size() == 1);
+    assert(handlerInfo.localCount == 1);
+    assert(handlerInfo.argCount == 2);
 
     BuiltinRegistry registry;
     BuiltinContext builtinContext;

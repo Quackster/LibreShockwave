@@ -17,7 +17,7 @@
 #include "libreshockwave/lingo/Opcode.hpp"
 #include "libreshockwave/lingo/vm/DebugConfig.hpp"
 #include "libreshockwave/lingo/vm/trace/ConsoleTracePrinter.hpp"
-#include "libreshockwave/lingo/vm/trace/InstructionAnnotator.hpp"
+#include "libreshockwave/lingo/vm/trace/TracingHelper.hpp"
 
 namespace libreshockwave::lingo::vm {
 namespace {
@@ -809,65 +809,23 @@ TraceListener::HandlerInfo LingoVM::buildHandlerInfo(
     const chunks::ScriptChunk::Handler& handler,
     const std::vector<Datum>& args,
     const Datum& receiver) const {
-    return TraceListener::HandlerInfo{
-        handlerName(script, handler),
-        script.id().value(),
-        scriptDisplayName(script),
-        args,
-        receiver,
-        globals_,
-        script.literals(),
-        handler.localCount,
-        handler.argCount
-    };
+    const auto names = scriptNamesForScript(script);
+    return trace::TracingHelper().buildHandlerInfo(
+        script, handler, args, receiver, globals_, names.get(), scriptDisplayName(script));
 }
 
 TraceListener::InstructionInfo LingoVM::buildInstructionInfo(
     const Scope& scope,
     const chunks::ScriptChunk::Instruction& instruction) const {
-    std::vector<Datum> stackSnapshot;
-    const int snapshotCount = std::min(10, scope.stackSize());
-    stackSnapshot.reserve(static_cast<std::size_t>(snapshotCount));
-    for (int index = 0; index < snapshotCount; ++index) {
-        stackSnapshot.push_back(scope.peek(index));
-    }
-
     const auto* script = scope.script();
-    std::shared_ptr<chunks::ScriptNamesChunk> names;
-    std::string annotation = instruction.toString();
-    if (script != nullptr) {
-        names = scriptNamesForScript(*script);
-        annotation = trace::InstructionAnnotator::annotate(*script, instruction, names.get());
-    }
-
-    return TraceListener::InstructionInfo{
-        scope.bytecodeIndex(),
-        instruction.offset,
-        std::string(mnemonic(instruction.opcode)),
-        instruction.argument,
-        std::move(annotation),
-        scope.stackSize(),
-        std::move(stackSnapshot),
-        captureLocals(scope),
-        globals_
-    };
+    const auto names = script != nullptr ? scriptNamesForScript(*script) : nullptr;
+    return trace::TracingHelper().buildInstructionInfo(scope, instruction, globals_, names.get());
 }
 
 std::unordered_map<std::string, Datum> LingoVM::captureLocals(const Scope& scope) const {
-    std::unordered_map<std::string, Datum> locals;
     const auto* script = scope.script();
-    if (script == nullptr) {
-        return locals;
-    }
-
-    const auto& handler = scope.handler();
-    for (int index = 0; index < static_cast<int>(handler.argNameIds.size()); ++index) {
-        locals[resolveName(*script, handler.argNameIds[static_cast<std::size_t>(index)])] = scope.getParam(index);
-    }
-    for (int index = 0; index < static_cast<int>(handler.localNameIds.size()); ++index) {
-        locals[resolveName(*script, handler.localNameIds[static_cast<std::size_t>(index)])] = scope.getLocal(index);
-    }
-    return locals;
+    const auto names = script != nullptr ? scriptNamesForScript(*script) : nullptr;
+    return trace::TracingHelper().captureLocals(scope, names.get());
 }
 
 bool LingoVM::handlerDeclaresMeAsFirstParam(const chunks::ScriptChunk& script,

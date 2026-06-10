@@ -652,6 +652,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `lingo::vm::LingoVM` now exposes trace-listener setters/getters, Java-compatible trace argument formatting, handler enter/exit notifications, instruction snapshots with stack/local/global state, and error notifications before alertHook suppression.
 - `lingo::vm::ExecutionContext` now emits local, parameter, global, and script-instance property variable-set trace callbacks from the normal bytecode mutation path.
 - `lingo::vm::trace::InstructionAnnotator` ports Java's shared bytecode annotation utility for literal pushes, symbols, locals, params, globals, properties, local/external/object calls, and jump targets.
+- `lingo::vm::trace::TracingHelper` ports Java's reusable trace payload builder for handler info, instruction info, stack snapshots, named local/parameter capture, globals snapshots, and annotation construction; `LingoVM` now delegates trace payload construction through it.
 
 ### Lingo VM Console Trace Foundation
 
@@ -913,7 +914,7 @@ Result:
 - Lingo VM startup random seed override, invalid seed fallback, and Java-compatible seed-4096 random sequence passed through the same CTest executable.
 - Lingo VM-backed `value(...)` global lookup, partial identifier lookup, and zero-argument movie-handler fallback passed through the same CTest executable.
 - Lingo VM-backed nested `value(...)` list/proplist global identifier resolution passed through the same CTest executable.
-- Lingo VM trace listener handler enter/exit, optional instruction tracing, stack/global snapshots, shared instruction annotations, local/param/global/script-instance-property variable-set callbacks, error callbacks, and trace argument formatting passed through the same CTest executable.
+- Lingo VM trace listener handler enter/exit, optional instruction tracing, stack/global snapshots, reusable TracingHelper payload building, shared instruction annotations, local/param/global/script-instance-property variable-set callbacks, error callbacks, and trace argument formatting passed through the same CTest executable.
 - Lingo VM deferred script-instance call ordering, automatic outer-handler flush, deferred task explicit flushing, flush-state guards, Player call-target provider wiring, and numeric `closeThread` task deferral passed through the same CTest executable.
 - Lingo VM alertHook manual firing, `alert()` suppression, script-error suppression/rethrow behavior, and Player no-hook fallback passed through the same CTest executable.
 - Lingo Datum deep-copy behavior, `call(...)` message-struct argument snapshots, non-message prop-list forwarding, and per-target call snapshot freshness passed through the same CTest executable.
@@ -1148,4 +1149,4 @@ Result:
 - `3b15a1e5 Port C++ random seed trace parity`
 - `7c27afaf Port C++ VM value identifier fallback`
 - `1aafff66 Port C++ nested value identifier fallback`
-- Current checkpoint commit message: `Port C++ instruction annotator`
+- Current checkpoint commit message: `Port C++ tracing helper`
