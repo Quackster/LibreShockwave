@@ -6,6 +6,7 @@
 #include "libreshockwave/lingo/vm/dispatch/ListMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/MemberRegistryMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/PropListMethodDispatcher.hpp"
+#include "libreshockwave/lingo/vm/dispatch/ScriptInstanceMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/SoundChannelMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/StringMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/PropertyIdMappings.hpp"
@@ -3420,7 +3421,7 @@ Datum varRefObjectMethod(ExecutionContext& context,
         return rectObjectMethod(*rect, methodName, args);
     }
     if (value.type() == DatumType::ScriptInstanceRef) {
-        return scriptInstanceObjectMethod(context, value, methodName, args);
+        return dispatch::ScriptInstanceMethodDispatcher::dispatch(context, value, methodName, args);
     }
     return Datum::voidValue();
 }
@@ -3481,7 +3482,7 @@ Datum dispatchObjectMethod(ExecutionContext& context, Datum target, std::string_
         return castMemberObjectMethod(context, *member, methodName, args);
     }
     if (target.type() == DatumType::ScriptInstanceRef) {
-        return scriptInstanceObjectMethod(context, target, methodName, args);
+        return dispatch::ScriptInstanceMethodDispatcher::dispatch(context, target, methodName, args);
     }
 
     std::vector<Datum> fullArgs;
@@ -4754,6 +4755,13 @@ bool objCall(ExecutionContext& context) {
 } // namespace
 
 namespace dispatch {
+
+Datum ScriptInstanceMethodDispatcher::dispatch(ExecutionContext& context,
+                                               Datum& receiver,
+                                               std::string_view methodName,
+                                               const std::vector<Datum>& args) {
+    return scriptInstanceObjectMethod(context, receiver, methodName, args);
+}
 
 bool MemberRegistryMethodDispatcher::isMethod(std::string_view methodName) {
     return isScriptInstanceMemberRegistryMethod(methodName);

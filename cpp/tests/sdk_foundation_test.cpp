@@ -99,6 +99,7 @@
 #include "libreshockwave/lingo/vm/dispatch/ListMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/MemberRegistryMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/PropListMethodDispatcher.hpp"
+#include "libreshockwave/lingo/vm/dispatch/ScriptInstanceMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/SoundChannelMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/StringMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/trace/ConsoleTracePrinter.hpp"
@@ -253,6 +254,7 @@ using libreshockwave::lingo::vm::dispatch::ImageMethodDispatcher;
 using libreshockwave::lingo::vm::dispatch::ListMethodDispatcher;
 using libreshockwave::lingo::vm::dispatch::MemberRegistryMethodDispatcher;
 using libreshockwave::lingo::vm::dispatch::PropListMethodDispatcher;
+using libreshockwave::lingo::vm::dispatch::ScriptInstanceMethodDispatcher;
 using libreshockwave::lingo::vm::dispatch::SoundChannelMethodDispatcher;
 using libreshockwave::lingo::vm::dispatch::StringMethodDispatcher;
 using libreshockwave::lingo::vm::trace::ConsoleTracePrinter;
@@ -6072,6 +6074,54 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     auto scriptInstance = Datum::scriptInstance("child");
     scriptInstance.scriptInstanceValue().setProperty("ancestor", scriptAncestor);
     scriptInstance.scriptInstanceValue().setProperty("local", Datum::of(4));
+    auto directScriptInstance = Datum::scriptInstance("directChild");
+    directScriptInstance.scriptInstanceValue().setProperty("local", Datum::of(4));
+    Scope directScriptInstanceScope(&script, handler, {});
+    ExecutionContext directScriptInstanceContext(
+        directScriptInstanceScope,
+        ScriptChunk::Instruction{0, Opcode::OBJ_CALL, libreshockwave::lingo::code(Opcode::OBJ_CALL), 0},
+        &registry,
+        &builtinContext,
+        callbacks);
+    assert(ScriptInstanceMethodDispatcher::dispatch(
+               directScriptInstanceContext,
+               directScriptInstance,
+               "getAt",
+               {Datum::symbol("local")})
+               .intValue() == 4);
+    assert(ScriptInstanceMethodDispatcher::dispatch(
+               directScriptInstanceContext,
+               directScriptInstance,
+               "setAt",
+               {Datum::symbol("directLocal"), Datum::of(31)})
+               .isVoid());
+    assert(directScriptInstance.scriptInstanceValue().getProperty("directLocal").intValue() == 31);
+    directScriptInstance.scriptInstanceValue().setProperty("directNested", Datum::list({Datum::of(1)}));
+    assert(ScriptInstanceMethodDispatcher::dispatch(
+               directScriptInstanceContext,
+               directScriptInstance,
+               "setProp",
+               {Datum::symbol("directNested"), Datum::of(2), Datum::of(22)})
+               .isVoid());
+    assert(ScriptInstanceMethodDispatcher::dispatch(
+               directScriptInstanceContext,
+               directScriptInstance,
+               "getProp",
+               {Datum::symbol("directNested"), Datum::of(2)})
+               .intValue() == 22);
+    assert(ScriptInstanceMethodDispatcher::dispatch(
+               directScriptInstanceContext,
+               directScriptInstance,
+               "count",
+               {Datum::symbol("directNested")})
+               .intValue() == 2);
+    assert(ScriptInstanceMethodDispatcher::dispatch(
+               directScriptInstanceContext,
+               directScriptInstance,
+               "ilk",
+               {})
+               .asSymbol()
+               ->name == "instance");
     assert(runObjCall(64, {scriptInstance, Datum::symbol("local")}).intValue() == 4);
     assert(runObjCall(64, {scriptInstance, Datum::symbol("shared")}).intValue() == 9);
     assert(runObjCall(114, {scriptInstance, Datum::symbol("LOCAL")}).intValue() == 4);
