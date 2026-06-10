@@ -2228,6 +2228,24 @@ Datum TypeBuiltins::callAncestor(BuiltinContext& context, const std::vector<Datu
     if (args.size() < 2) {
         return Datum::voidValue();
     }
+    if (args[1].isList()) {
+        Datum result = Datum::voidValue();
+        for (const auto& item : args[1].listValue().items()) {
+            if (item.type() != DatumType::ScriptInstanceRef) {
+                continue;
+            }
+            std::vector<Datum> nestedArgs;
+            nestedArgs.reserve(args.size());
+            nestedArgs.push_back(args[0]);
+            nestedArgs.push_back(item);
+            nestedArgs.insert(nestedArgs.end(), args.begin() + 2, args.end());
+            result = callAncestor(context, nestedArgs);
+        }
+        return result;
+    }
+    if (args[1].type() != DatumType::ScriptInstanceRef) {
+        return Datum::voidValue();
+    }
     if (context.ancestorCallHandler) {
         return context.ancestorCallHandler(args);
     }

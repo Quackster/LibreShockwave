@@ -3033,6 +3033,27 @@ void testBuiltinRegistryFoundation() {
                            context,
                            {Datum::symbol("new"), Datum::scriptInstance("child"), Datum::of(5)}).intValue() == 88);
     assert(ancestorCalls == 1);
+    assert(registry.invoke("callAncestor", context, {Datum::symbol("new"), Datum::of(7), Datum::of(5)}).isVoid());
+    assert(ancestorCalls == 1);
+    std::vector<std::string> ancestorTargets;
+    context.ancestorCallHandler = [&ancestorTargets](const std::vector<Datum>& args) {
+        ancestorTargets.push_back(args[1].scriptInstanceValue().scriptName());
+        assert(args.size() == 3);
+        assert(args[0].asSymbol()->name == "new");
+        assert(args[2].intValue() == 5);
+        return Datum::of(100 + static_cast<int>(ancestorTargets.size()));
+    };
+    const auto ancestorTargetList = Datum::list({
+        Datum::scriptInstance("firstAncestorTarget"),
+        Datum::of(17),
+        Datum::scriptInstance("secondAncestorTarget"),
+    });
+    assert(registry.invoke("callAncestor", context, {Datum::symbol("new"), ancestorTargetList, Datum::of(5)}).intValue() ==
+           102);
+    assert(ancestorTargets.size() == 2);
+    assert(ancestorTargets[0] == "firstAncestorTarget");
+    assert(ancestorTargets[1] == "secondAncestorTarget");
+    context.ancestorCallHandler = {};
 
     MovieProperties movie;
     int requestedMarkerOffset = 0;
