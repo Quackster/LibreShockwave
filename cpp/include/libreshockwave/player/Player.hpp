@@ -101,6 +101,7 @@ public:
     void setExternalCastLoadListener(std::function<void(const ExternalCastLoadEvent&)> listener);
     void addExternalCastLoadHandler(ExternalCastLoadHandler* handler);
     void setDebugEnabled(bool enabled);
+    void setAudioBackend(audio::AudioBackend* backend);
     void setTextRenderer(render::output::TextRenderer* renderer);
     void registerMultiuserXtra(lingo::xtra::MultiuserNetBridge& bridge);
     void setExternalParams(std::vector<std::pair<std::string, std::string>> params);

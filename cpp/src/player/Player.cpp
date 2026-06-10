@@ -184,6 +184,10 @@ void Player::setDebugEnabled(bool enabled) {
     frameContext_.setDebugEnabled(enabled);
 }
 
+void Player::setAudioBackend(audio::AudioBackend* backend) {
+    soundManager_.setBackend(backend);
+}
+
 void Player::setTextRenderer(render::output::TextRenderer* renderer) {
     spriteBaker_.setTextRenderer(renderer);
     castLibManager_.setTextRenderer(renderer);

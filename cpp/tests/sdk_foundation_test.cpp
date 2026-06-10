@@ -3463,6 +3463,21 @@ void testPlayerFacadeFoundation() {
     player.setInitialBuiltinVariable("connection.room.id", Datum::symbol("roomOverride"));
     player.vm().setGlobal("connection.info.id", Datum::symbol("existing"));
 
+    class PlayerFacadeAudioBackend final : public AudioBackend {
+    public:
+        void play(int, const std::vector<std::uint8_t>&, std::string_view, int) override {}
+        void stop(int) override {}
+        void stopAll() override {}
+        void setVolume(int, int) override {}
+        [[nodiscard]] bool isPlaying(int) const override { return false; }
+        [[nodiscard]] int getElapsedTime(int) const override { return 0; }
+    };
+    PlayerFacadeAudioBackend playerAudioBackend;
+    player.setAudioBackend(&playerAudioBackend);
+    assert(player.soundManager().backend() == &playerAudioBackend);
+    player.setAudioBackend(nullptr);
+    assert(player.soundManager().backend() == nullptr);
+
     player.setTempo(24);
     assert(player.baseTempo() == 24);
     assert(player.tempo() == 24);
