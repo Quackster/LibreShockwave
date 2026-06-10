@@ -21,6 +21,7 @@ namespace {
 constexpr int tagNone = 0;
 constexpr int tagSkip = 1;
 constexpr int tagRepeatWhile = 2;
+constexpr int tagRepeatWithIn = 3;
 constexpr int tagRepeatWithTo = 4;
 constexpr int tagRepeatWithDownTo = 5;
 constexpr int tagNextRepeatTarget = 6;
@@ -342,6 +343,21 @@ void LingoDecompiler::tagLoops() {
             continue;
         }
         if (isRepeatWithInLoop(startIndex, endIndex)) {
+            tags_[startIndex] = tagRepeatWithIn;
+            for (std::size_t index = startIndex - 7; index <= startIndex - 1; ++index) {
+                tags_[index] = tagSkip;
+            }
+            for (std::size_t index = startIndex + 1; index <= startIndex + 5; ++index) {
+                tags_[index] = tagSkip;
+            }
+            tags_[static_cast<std::size_t>(endIndex - 3)] = tagNextRepeatTarget;
+            ownerLoops_[static_cast<std::size_t>(endIndex - 3)] = static_cast<int>(startIndex);
+            tags_[static_cast<std::size_t>(endIndex - 2)] = tagSkip;
+            tags_[static_cast<std::size_t>(endIndex - 1)] = tagSkip;
+            ownerLoops_[static_cast<std::size_t>(endIndex - 1)] = static_cast<int>(startIndex);
+            if (endIndex < static_cast<int>(tags_.size())) {
+                tags_[static_cast<std::size_t>(endIndex)] = tagSkip;
+            }
             continue;
         }
         if (isRepeatWithToLoop(startIndex, endIndex)) {
@@ -859,6 +875,18 @@ void LingoDecompiler::translateInstruction(const chunks::ScriptChunk::Instructio
             const int endPos = instruction.offset + instruction.argument;
             if (index < tags_.size() && tags_[index] == tagRepeatWhile) {
                 auto loop = std::make_unique<RepeatWhileStmtNode>(static_cast<int>(index), popNode());
+                loop->setBytecodeOffset(instruction.offset);
+                loop->block().endPos = endPos;
+                auto* nextBlock = &loop->block();
+                block.addChild(std::move(loop));
+                enterBlock(*nextBlock);
+                return;
+            }
+            if (index < tags_.size() && tags_[index] == tagRepeatWithIn) {
+                auto loop = std::make_unique<RepeatWithInStmtNode>(
+                    static_cast<int>(index),
+                    getVarNameFromSet(currentHandler_->instructions[index + 5]),
+                    popNode());
                 loop->setBytecodeOffset(instruction.offset);
                 loop->block().endPos = endPos;
                 auto* nextBlock = &loop->block();
