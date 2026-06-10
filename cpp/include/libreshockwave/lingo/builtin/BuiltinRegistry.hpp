@@ -34,6 +34,8 @@ struct BuiltinContext {
     using CastLibNumberResolver = std::function<int(int castLib)>;
     using CastLibNameResolver = std::function<int(const std::string& name)>;
     using CastLibCountSupplier = std::function<int()>;
+    using CastLibPropertyGetter = std::function<Datum(int castLib, const std::string& propertyName)>;
+    using CastLibPropertySetter = std::function<bool(int castLib, const std::string& propertyName, const Datum& value)>;
     using CastMemberCountSupplier = std::function<int(int castLib)>;
     using CastMemberResolver = std::function<Datum(int castLib, int memberNum)>;
     using CastMemberNameResolver = std::function<Datum(int castLib, const std::string& memberName)>;
@@ -104,6 +106,8 @@ struct BuiltinContext {
     CastLibNumberResolver castLibNumberResolver;
     CastLibNameResolver castLibNameResolver;
     CastLibCountSupplier castLibCountSupplier;
+    CastLibPropertyGetter castLibPropertyGetter;
+    CastLibPropertySetter castLibPropertySetter;
     CastMemberCountSupplier castMemberCountSupplier;
     CastMemberResolver castMemberResolver;
     CastMemberNameResolver castMemberNameResolver;

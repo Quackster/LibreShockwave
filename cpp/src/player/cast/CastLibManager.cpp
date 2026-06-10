@@ -1177,6 +1177,12 @@ void CastLibManager::installBuiltinCallbacks(lingo::builtin::BuiltinContext& con
     context.castLibCountSupplier = [this]() {
         return getCastLibCount();
     };
+    context.castLibPropertyGetter = [this](int castLib, const std::string& propertyName) {
+        return getCastLibProp(castLib, propertyName);
+    };
+    context.castLibPropertySetter = [this](int castLib, const std::string& propertyName, const lingo::Datum& value) {
+        return setCastLibProp(castLib, propertyName, value);
+    };
     context.castMemberCountSupplier = [this](int castLib) {
         return getMemberCount(castLib);
     };

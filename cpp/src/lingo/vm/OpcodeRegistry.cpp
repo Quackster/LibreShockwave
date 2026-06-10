@@ -801,7 +801,9 @@ Datum getObjectProperty(ExecutionContext& context, const Datum& object, std::str
         if (equalsIgnoreCase(propName, "member")) {
             return Datum::castLibMemberAccessor(id::CastLibId(castLib->castLib));
         }
-        return Datum::voidValue();
+        return builtinContext != nullptr && builtinContext->castLibPropertyGetter
+                   ? builtinContext->castLibPropertyGetter(castLib->castLib, std::string(propName))
+                   : Datum::voidValue();
     }
     if (const auto* accessor = object.asCastLibMemberAccessor()) {
         return getCastLibMemberAccessorValue(context, *accessor, Datum::of(std::string(propName)));
@@ -874,6 +876,12 @@ void setObjectProperty(ExecutionContext& context, Datum& object, std::string_vie
     if (object.type() == DatumType::StageRef) {
         if (builtinContext != nullptr && builtinContext->movieProperties != nullptr) {
             (void)builtinContext->movieProperties->setStageProp(propName, value);
+        }
+        return;
+    }
+    if (const auto* castLib = object.asCastLibRef()) {
+        if (builtinContext != nullptr && builtinContext->castLibPropertySetter) {
+            (void)builtinContext->castLibPropertySetter(castLib->castLib, std::string(propName), value);
         }
         return;
     }

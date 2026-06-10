@@ -6980,6 +6980,12 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runObjectPropertyGet(Datum::imageRef(systemPaletteImage), 99).asSymbol()->name == "systemMac");
     assert(runObjectPropertyGet(Datum::imageRef(std::shared_ptr<Bitmap>{}), 96) == Datum::intRect(0, 0, 0, 0));
     assert(!runObjectPropertyGet(Datum::imageRef(std::shared_ptr<Bitmap>{}), 98).boolValue());
+    builtinContext.castLibPropertyGetter = [](int castLib, const std::string& propertyName) {
+        assert(castLib == 3);
+        assert(propertyName == "name");
+        return Datum::of(std::string("Main Cast"));
+    };
+    assert(runObjectPropertyGet(Datum::castLibRef(CastLibId(3)), 123).stringValue() == "Main Cast");
     const Datum objectMemberRef = Datum::castMemberRef(CastLibId(2), MemberId(5));
     assert(runObjectPropertyGet(objectMemberRef, 88).intValue() == ((2 << 16) | 5));
     assert(runObjectPropertyGet(objectMemberRef, 89).intValue() == 5);
@@ -7010,8 +7016,29 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(objectPropList.propListValue().get(Datum::symbol("health")).intValue() == 99);
     assert(variableTraces.empty());
 
+    std::string setCastLibPropertyName;
+    Datum setCastLibPropertyValue = Datum::voidValue();
+    builtinContext.castLibPropertySetter = [&setCastLibPropertyName, &setCastLibPropertyValue](
+                                               int castLib,
+                                               const std::string& propertyName,
+                                               const Datum& value) {
+        assert(castLib == 3);
+        setCastLibPropertyName = propertyName;
+        setCastLibPropertyValue = value;
+        return true;
+    };
+    setObjectContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_OBJ_PROP, libreshockwave::lingo::code(Opcode::SET_OBJ_PROP), 123});
+    setObjectContext.push(Datum::castLibRef(CastLibId(3)));
+    setObjectContext.push(Datum::of(std::string("Updated Cast")));
+    assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
+    assert(setCastLibPropertyName == "name");
+    assert(setCastLibPropertyValue.stringValue() == "Updated Cast");
+    builtinContext.castLibPropertyGetter = {};
+    builtinContext.castLibPropertySetter = {};
+
     Datum setObjectInstance = Datum::scriptInstance("setObject");
     variableTraces.clear();
+    setObjectContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_OBJ_PROP, libreshockwave::lingo::code(Opcode::SET_OBJ_PROP), 50});
     setObjectContext.push(setObjectInstance);
     setObjectContext.push(Datum::of(123));
     assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
@@ -17331,6 +17358,7 @@ void testCastLibManagerFoundation() {
     assert(registry.invoke("castLib", context, {Datum::of(std::string("Internal"))}).asCastLibRef()->castLib == 1);
     assert(registry.invoke("member", context, {Datum::of(std::string("Hero"))}).asCastMemberRef()->memberNum() == 2);
     assert(context.castMemberExistsResolver(1, 2));
+    assert(context.castLibPropertyGetter(1, "number").intValue() == 1);
     assert(context.castMemberPropertyGetter(1, 2, "name").stringValue() == "Hero");
 
     const auto createdRuntime = manager.createMember(1, "bitmap");

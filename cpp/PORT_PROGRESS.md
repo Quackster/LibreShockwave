@@ -749,6 +749,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `GET_FIELD` now consumes field identifier/cast operands and returns the Java-compatible empty string fallback when no field provider is wired.
 - Built-in movie constants and basic `the paramCount`/`the result` lookups are available without a provider.
 - Cast-member object property reads/writes now delegate unknown member properties through C++ provider hooks after built-in metadata handling.
+- Cast-library object property reads/writes now delegate through C++ provider hooks after preserving the special `member` accessor path.
 - Remaining specialized provider-backed property cases remain deferred to later runtime integration slices.
 
 ### Lingo Opcode Local and External Call Foundation
@@ -972,7 +973,7 @@ Result:
 - OpcodeRegistry simple string concatenation, containment, and shared string-chunk helper routing passed through the same CTest executable.
 - OpcodeRegistry basic property handlers, object property reads/writes, string/FieldText `lineCount`/`line` properties, Java-compatible PropertyIdMappings tables, legacy cast-member count property IDs, built-in constants, and simple `the` lookups passed through the same CTest executable.
 - OpcodeRegistry movie-property provider reads/writes and provider-backed `the` lookups passed through the same CTest executable.
-- OpcodeRegistry provider-backed object property gets/sets for movie, player, stage, sprite, integer-as-sprite refs, cast-member metadata/provider properties, timeout refs, sound channels, and ImageMethodDispatcher-backed image `useAlpha`/`paletteRef` setters passed through the same CTest executable.
+- OpcodeRegistry provider-backed object property gets/sets for movie, player, stage, sprite, integer-as-sprite refs, cast-library properties, cast-member metadata/provider properties, timeout refs, sound channels, and ImageMethodDispatcher-backed image `useAlpha`/`paletteRef` setters passed through the same CTest executable.
 - OpcodeRegistry local/external call handlers, builtin dispatch, no-return calls, constant fallback, and error-state handling passed through the same CTest executable.
 - OpcodeRegistry object method calls and receiver-style external method calls for ImageMethodDispatcher-backed images, ListMethodDispatcher-backed lists, MemberRegistryMethodDispatcher-backed script-instance registry prefill/fallbacks, PropListMethodDispatcher-backed property-list typed symbol/string namespaces and nested list/proplist deep-copy `duplicate`, ScriptInstanceMethodDispatcher-backed script-instance receivers and SpriteRef scriptInstanceList dispatch before provider fallback, StringMethodDispatcher-backed string receiver methods, SoundChannelMethodDispatcher-backed sound channels, VarRef inverted char ranges, mutable ChunkRef inverted delete ranges, points, rectangles, script-instance ancestor assignment guards/bounded cyclic ancestor traversal/registry bootstrap/prefill/alias import/stale cleanup/persistent alias refresh, cast library member lookups/accessors, timeouts, and Xtra instances passed through the same CTest executable.
 - OpcodeRegistry `NEW_OBJ` script construction delegation, provider-resolved fallback construction, declared property preinitialization, automatic `new` handler invocation, and non-script rejection passed through the same CTest executable.
