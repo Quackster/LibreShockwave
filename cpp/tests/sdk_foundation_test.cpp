@@ -78,6 +78,7 @@
 #include "libreshockwave/lookup/ScriptLookup.hpp"
 #include "libreshockwave/player/BitmapResolver.hpp"
 #include "libreshockwave/player/ExternalCastLoadEvent.hpp"
+#include "libreshockwave/player/Player.hpp"
 #include "libreshockwave/player/PlayerEvent.hpp"
 #include "libreshockwave/player/PlayerEventInfo.hpp"
 #include "libreshockwave/player/PlayerState.hpp"
@@ -208,6 +209,7 @@ using libreshockwave::player::ExternalCastLoadEvent;
 using libreshockwave::player::CursorManager;
 using libreshockwave::player::InputHandler;
 using libreshockwave::player::MovieProperties;
+using libreshockwave::player::Player;
 using libreshockwave::player::PlayerEvent;
 using libreshockwave::player::PlayerEventInfo;
 using libreshockwave::player::PlayerState;
@@ -1171,6 +1173,88 @@ void testPlayerInputFoundation() {
         return stageRenderer.lastBakedSprites();
     });
     assert(supplierHandler.hitTestExact(5, 5) == 2);
+}
+
+void testPlayerFacadeFoundation() {
+    auto file = std::make_shared<DirectorFile>(ByteOrder::BigEndian, false, 0, ChunkType::MV93);
+    file->setBasePath("/movies/example.dir");
+
+    Player player(file);
+    assert(player.file() == file);
+    assert(player.state() == PlayerState::Stopped);
+    assert(player.currentFrame() == 1);
+    assert(player.effectiveFrame() == 1);
+    assert(player.frameCount() == 0);
+    assert(player.baseTempo() == 15);
+    assert(player.tempo() == 15);
+    assert(player.netManager().basePath() == "/movies/example.dir");
+    assert(&player.eventDispatcher() == &player.frameContext().eventDispatcher());
+    assert(&player.behaviorManager() == &player.frameContext().behaviorManager());
+    assert(&player.navigator() == &player.frameContext().navigator());
+
+    player.setTempo(24);
+    assert(player.baseTempo() == 24);
+    assert(player.tempo() == 24);
+    assert(player.movieProperties().getMovieProp("tempo").intValue() == 24);
+    player.movieProperties().setPuppetTempo(12);
+    assert(player.tempo() == 12);
+    assert(player.movieProperties().getMovieProp("tempo").intValue() == 12);
+    player.movieProperties().setPuppetTempo(0);
+    assert(player.movieProperties().setMovieProp("tempo", Datum::of(0)));
+    assert(player.baseTempo() == 15);
+    assert(player.tempo() == 15);
+
+    assert(player.movieProperties().setStageProp("bgcolor", Datum::colorRef(0x12, 0x34, 0x56)));
+    assert(player.stageRenderer().backgroundColor() == 0x123456);
+    assert(player.movieProperties().getMovieProp("frame").intValue() == 1);
+    assert(player.movieProperties().getMovieProp("lastframe").intValue() == 0);
+
+    std::vector<PlayerEventInfo> events;
+    player.setEventListener([&events](const PlayerEventInfo& event) {
+        events.push_back(event);
+    });
+
+    assert(!player.tick());
+    assert(events.empty());
+
+    player.play();
+    assert(player.state() == PlayerState::Playing);
+    assert(player.currentFrame() == 1);
+    assert(events.empty());
+
+    assert(player.tick());
+    assert(player.currentFrame() == 2);
+    assert((events == std::vector<PlayerEventInfo>{
+        PlayerEventInfo{PlayerEvent::StepFrame, 1, 0},
+        PlayerEventInfo{PlayerEvent::PrepareFrame, 1, 0},
+        PlayerEventInfo{PlayerEvent::EnterFrame, 1, 0},
+        PlayerEventInfo{PlayerEvent::ExitFrame, 1, 0}
+    }));
+    assert(player.movieProperties().getMovieProp("frame").intValue() == 2);
+
+    auto snapshot = player.frameSnapshot();
+    assert(snapshot.frameNumber == 2);
+    assert(snapshot.debugInfo == "Frame 2 | PLAYING");
+    assert(snapshot.backgroundColor == 0x123456);
+
+    player.pause();
+    assert(player.state() == PlayerState::Paused);
+    assert(player.tick());
+    assert(player.currentFrame() == 2);
+
+    player.resume();
+    assert(player.state() == PlayerState::Playing);
+    assert(player.tick());
+    assert(player.currentFrame() == 3);
+
+    player.stop();
+    assert(player.state() == PlayerState::Stopped);
+    assert(player.currentFrame() == 1);
+    assert(player.stageRenderer().lastBakedSprites().empty());
+
+    player.stepFrame();
+    assert(player.state() == PlayerState::Paused);
+    assert(player.currentFrame() == 2);
 }
 
 void testMoviePropertiesFoundation() {
@@ -11502,6 +11586,7 @@ int main() {
     testLingoOpcodeHelpers();
     testPlayerCoreFoundation();
     testPlayerInputFoundation();
+    testPlayerFacadeFoundation();
     testMoviePropertiesFoundation();
     testBuiltinRegistryFoundation();
     testLingoVmScopeAndExecutionContextFoundation();

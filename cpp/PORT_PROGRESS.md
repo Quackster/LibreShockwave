@@ -244,6 +244,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Hit selection uses baked or supplied `RenderSprite` vectors plus `EventDispatcher::isSpriteMouseInteractive`, matching the Java interactive-hit filter without requiring the full C++ `Player` object yet.
 - Built-in editable text field focus, text mutation, caret geometry, selection rectangles, clipboard operations, and StageRenderer-owning overloads remain deferred until the C++ runtime cast-member text mutation path is ported.
 
+### Player Facade Foundation
+
+- `player::Player` now owns and wires the C++ frame context, stage renderer, cast library manager, movie/sprite properties, bitmap resolver, cursor manager, input handler, network manager, timeout manager, sound manager, sprite baker, bitmap cache, and frame render pipeline.
+- Playback control ports the Java state transitions for play, pause, resume, stop, manual step, tick, direct frame/label navigation, event-listener forwarding, base/puppet/score tempo lookup, debug flag propagation, and render snapshot creation with player-state debug metadata.
+- Full VM provider setup, startup movie-script/timeout ordering, Xtra ticking, actorList dispatch, asynchronous playback, imported-media mutation, and external-cast fetch completion remain deferred to later player runtime slices.
+
 ### Hit Testing Foundation
 
 - `input::HitTester` ports front-to-back visible sprite hit selection over baked `RenderSprite` lists, hit type lookup, and all-hit collection with channel filter/forced bounding-box support.
@@ -829,4 +835,5 @@ Result:
 - `cee0bb98 Port C++ cast library manager foundation`
 - `4326a2c7 Port C++ frame context foundation`
 - `0b0c2afa Port C++ bitmap resolver foundation`
-- Current checkpoint commit message: `Port C++ input handler foundation`
+- `eb545ccc Port C++ input handler foundation`
+- Current checkpoint commit message: `Port C++ player foundation`

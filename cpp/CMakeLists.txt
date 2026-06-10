@@ -57,6 +57,7 @@ add_library(libreshockwave
     src/lookup/ScriptLookup.cpp
     src/player/PlayerEvent.cpp
     src/player/PlayerState.cpp
+    src/player/Player.cpp
     src/player/BitmapResolver.cpp
     src/player/CursorManager.cpp
     src/player/InputHandler.cpp
