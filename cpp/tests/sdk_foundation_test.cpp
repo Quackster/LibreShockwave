@@ -6437,6 +6437,21 @@ void testBitmapCacheAndInkProcessorFoundation() {
     assert(duplicateWhiteMatte.getPixel(1, 1) == 0xFFFFFFFFU);
     assert(duplicateWhiteMatte.getPixel(2, 2) == 0x00000000U);
 
+    Bitmap blackIndexedMatte(3, 3, 8, {
+        0xFF000000U, 0xFF000000U, 0xFF000000U,
+        0xFF000000U, 0xFF33CCFFU, 0xFF000000U,
+        0xFF000000U, 0xFF000000U, 0xFF000000U
+    });
+    blackIndexedMatte.setPaletteIndices({
+        0, 0, 0,
+        0, 7, 0,
+        0, 0, 0
+    });
+    Bitmap blackIndexedMatteResult = InkProcessor::applyInk(blackIndexedMatte, InkMode::MATTE, 0, false, nullptr);
+    assert(blackIndexedMatteResult.getPixel(0, 0) == 0x00000000U);
+    assert(blackIndexedMatteResult.getPixel(1, 1) == 0xFF33CCFFU);
+    assert(blackIndexedMatteResult.getPixel(2, 2) == 0x00000000U);
+
     Bitmap darkenTintSource(2, 1, 32, {0xFFFFFFFFU, 0xFF808080U});
     Bitmap darkenTint = InkProcessor::applyInk(darkenTintSource, InkMode::DARKEN, 0x804020, false, nullptr);
     assert(darkenTint.getPixel(0, 0) == 0xFF804020U);

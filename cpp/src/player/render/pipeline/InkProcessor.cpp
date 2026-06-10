@@ -592,18 +592,25 @@ bitmap::Bitmap applyInkInternal(const bitmap::Bitmap& src,
 
     if (ink == id::InkMode::MATTE) {
         const auto explicitMatteIndex = resolveExplicitIndexedMatteIndex(input, backColor, palette);
-        const int matteColor = resolveMatteColorForInk(
-            input, ink, backColor, useAlpha, palette, preserveScriptOutlinedWhiteBody);
+        const auto paletteIndices = input.paletteIndices();
+        const auto defaultMatteIndex =
+            explicitMatteIndex.has_value() || !paletteIndices.has_value()
+                ? std::optional<int>{}
+                : resolveDefaultIndexedFloodFillMatteIndex(input, *paletteIndices);
+        const auto mattePaletteIndex = explicitMatteIndex.has_value() ? explicitMatteIndex : defaultMatteIndex;
+        const int matteColor = mattePaletteIndex.has_value() && paletteIndices.has_value()
+            ? resolvePaletteIndexRgb(input, *paletteIndices, *mattePaletteIndex)
+            : resolveMatteColorForInk(input, ink, backColor, useAlpha, palette, preserveScriptOutlinedWhiteBody);
         if (matteColor < 0) {
             return input.copy();
         }
         auto outlined = applyOutlinedWhiteBodyMatteIfNeeded(
-            input, matteColor, 0, preserveScriptOutlinedWhiteBody, explicitMatteIndex);
+            input, matteColor, 0, preserveScriptOutlinedWhiteBody, mattePaletteIndex);
         if (outlined.has_value()) {
             return std::move(*outlined);
         }
-        if (explicitMatteIndex.has_value()) {
-            return applyIndexedMatteInternal(input, *explicitMatteIndex, true);
+        if (mattePaletteIndex.has_value()) {
+            return applyIndexedMatteInternal(input, *mattePaletteIndex, true);
         }
         return InkProcessor::applyMatte(input, matteColor);
     }
