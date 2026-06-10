@@ -227,8 +227,8 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `font::BitmapFont::fromPfr1` ports Java's direct PFR bitmap-font rasterization path, including target-size scaling, matrix-aware outline scanline fill with cubic curve flattening, overflow glyph cells, embedded bitmap-glyph copy, lowercase fallback cell copying, and PFR ascent/line-height metrics.
 - `font::Pfr1TtfConverter` ports the Java minimal TrueType table writer for parsed PFR1 outlines, including `cmap`, `glyf`, `head`, `hhea`, `hmtx`, `loca`, `maxp`, `name`, `OS/2`, and `post` table construction.
 - `font::TtfBitmapRasterizer` ports Java's pure TrueType table parser and bitmap rasterizer for simple glyph outlines, including `cmap` format 4 parsing, `loca`/`glyf` glyph decoding, repeated flags, quadratic-curve flattening, overflow glyph cells, metrics, and blank-font rejection for PFR fallback.
-- `player::cast::FontRegistry` ports prebuilt bitmap-font cache lookup, PFR1 font registration, converted PFR-to-TTF byte caching, pure TTF bitmap rasterization/cache population, direct PFR bitmap-font rasterization fallback, embedded TTF variant registration/fallback, Director font aliases, canonical font-name normalization, and basic alias resolution for the future C++ simple text renderer path.
-- Renderer-side PFR anti-alias fidelity, platform text shaping, and automatic bundled platform font-family installation remain deferred to later font-rendering slices.
+- `player::cast::FontRegistry` ports prebuilt bitmap-font cache lookup, PFR1 font registration, converted PFR-to-TTF byte caching, pure TTF bitmap rasterization/cache population, direct PFR bitmap-font rasterization fallback, size-aware embedded TTF family registration/fallback, Director font aliases, canonical font-name normalization, and basic alias resolution for the future C++ simple text renderer path.
+- Renderer-side PFR anti-alias fidelity, platform text shaping, and automatic bundled platform font asset installation remain deferred to later font-rendering slices.
 
 ### Sound Converter
 
@@ -876,7 +876,7 @@ Result:
 - File/path fallback utilities, shared string display/HTML escaping helpers, string chunk counting/extraction helpers, Java-compatible ImageMethodDispatcher/StringMethodDispatcher/ListMethodDispatcher/MemberRegistryMethodDispatcher/PropListMethodDispatcher/ScriptInstanceMethodDispatcher/SoundChannelMethodDispatcher receiver methods, and script formatting utilities passed through the same CTest executable.
 - BitmapColorizer 32-bit, indexed, foreground-only, packed-index, and ink predicate tests passed through the same CTest executable.
 - PfrBitReader byte, signed, skip, alignment, bit-buffer, and partial-EOF tests passed through the same CTest executable.
-- BitmapFont glyph drawing, overflow metrics, BDF parsing, direct PFR outline/bitmap/curve glyph rasterization, PFR1 metadata/character-record/simple/compound/curve-outline parsing, PFR-to-TTF table generation/cache registration, pure TTF bitmap rasterization with the bundled Verdana fixture, and FontRegistry prebuilt-cache/PFR-registration/rasterization/embedded-TTF/alias behavior passed through the same CTest executable.
+- BitmapFont glyph drawing, overflow metrics, BDF parsing, direct PFR outline/bitmap/curve glyph rasterization, PFR1 metadata/character-record/simple/compound/curve-outline parsing, PFR-to-TTF table generation/cache registration, pure TTF bitmap rasterization with the bundled Verdana fixture, and FontRegistry prebuilt-cache/PFR-registration/rasterization/size-aware embedded-TTF/alias behavior passed through the same CTest executable.
 - SoundConverter WAV layout, SoundChunk header stripping, signed/endianness conversion, MP3 extraction, IMA ADPCM, and duration tests passed through the same CTest executable.
 - CastMember bitmap, script, shape, dimension, type-check, raw chunk, and display string tests passed through the same CTest executable.
 - CastLib and CastLibManager lazy MCsL/CAS* initialization, member count/name lookup, source-prefixed lookup fallback, member metadata properties, registry filtering, builtin callback installation, external-cache keys, pending external-load bookkeeping, and Player external-cast cached-load callbacks passed through the same CTest executable.
@@ -1230,4 +1230,4 @@ Result:
 - `5df5e6fd Port C++ decompiler fallback mapping`
 - `2d9420b0 Port C++ decompiler linear bytecode`
 - `1e40b253 Port C++ decompiler chunk opcodes`
-- Current checkpoint commit message: `Port C++ embedded TTF font fallback`
+- Current checkpoint commit message: `Port C++ size-aware embedded TTF fonts`

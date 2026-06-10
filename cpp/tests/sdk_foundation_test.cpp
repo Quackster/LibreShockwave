@@ -997,8 +997,26 @@ void testBitmapFontAndFontRegistry() {
     const auto embeddedVerdanaBold = FontRegistry::getBitmapFont("Embedded Verdana", 9, true, false);
     assert(embeddedVerdanaBold != nullptr);
     assert(FontRegistry::getBitmapFont("Embedded Verdana", 9, true, false) == embeddedVerdanaBold);
+    FontRegistry::registerEmbeddedTtfFont("Sized Verdana", 9, verdanaBytes);
+    FontRegistry::registerEmbeddedTtfFont("Sized Verdana", 14, verdanaBytes, verdanaBytes);
+    assert(FontRegistry::hasEmbeddedBoldVariant("sized verdana"));
+    assert(FontRegistry::hasEmbeddedBoldVariant("Sized_Verdana_400_0"));
+    assert(FontRegistry::resolveFont("Sized_Verdana_400_0").value() == "sized verdana");
+    const auto sizedClosest = FontRegistry::getBitmapFont("Sized Verdana", 13);
+    assert(sizedClosest != nullptr);
+    assert(sizedClosest->getFontSize() == 14);
+    const auto sizedExact = FontRegistry::getBitmapFont("Sized Verdana", 14);
+    assert(sizedExact == sizedClosest);
+    const auto sizedCanonical = FontRegistry::getBitmapFont("Sized_Verdana_400_0", 13);
+    assert(sizedCanonical != nullptr);
+    assert(sizedCanonical->getFontSize() == 14);
+    assert(sizedCanonical->getCharWidth('H') == sizedClosest->getCharWidth('H'));
+    const auto sizedBoldClosest = FontRegistry::getBitmapFont("Sized Verdana", 13, true, false);
+    assert(sizedBoldClosest != nullptr);
+    assert(sizedBoldClosest->getFontSize() == 14);
     FontRegistry::clear();
     assert(!FontRegistry::hasEmbeddedBoldVariant("embedded verdana"));
+    assert(!FontRegistry::hasEmbeddedBoldVariant("sized verdana"));
 }
 
 void testIdsAndEnums() {

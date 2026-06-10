@@ -36,6 +36,12 @@ public:
                                         std::vector<std::uint8_t> bold = {},
                                         std::vector<std::uint8_t> italic = {},
                                         std::vector<std::uint8_t> boldItalic = {});
+    static void registerEmbeddedTtfFont(const std::string& fontName,
+                                        int fontSize,
+                                        std::vector<std::uint8_t> regular,
+                                        std::vector<std::uint8_t> bold = {},
+                                        std::vector<std::uint8_t> italic = {},
+                                        std::vector<std::uint8_t> boldItalic = {});
     [[nodiscard]] static bool hasEmbeddedBoldVariant(const std::string& fontName);
 
     static void registerFontAlias(const std::string& alias,
