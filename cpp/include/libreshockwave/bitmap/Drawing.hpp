@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <memory>
 
@@ -48,6 +49,17 @@ void copyPixels(Bitmap& dest,
                 int destY,
                 id::InkMode ink,
                 int blend);
+[[nodiscard]] std::shared_ptr<Bitmap> transformQuadBitmap(const Bitmap& src,
+                                                          int srcLeft,
+                                                          int srcTop,
+                                                          int srcRight,
+                                                          int srcBottom,
+                                                          const std::array<int, 4>& px,
+                                                          const std::array<int, 4>& py,
+                                                          int minX,
+                                                          int minY,
+                                                          int maxX,
+                                                          int maxY);
 
 } // namespace Drawing
 

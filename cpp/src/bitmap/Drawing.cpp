@@ -1079,6 +1079,101 @@ void copyPixels(Bitmap& dest,
     copyPixels(dest, src, destX, destY, 0, 0, src.width(), src.height(), ink, blend);
 }
 
+std::shared_ptr<Bitmap> transformQuadBitmap(const Bitmap& src,
+                                            int srcLeft,
+                                            int srcTop,
+                                            int srcRight,
+                                            int srcBottom,
+                                            const std::array<int, 4>& px,
+                                            const std::array<int, 4>& py,
+                                            int minX,
+                                            int minY,
+                                            int maxX,
+                                            int maxY) {
+    const int srcWidth = srcRight - srcLeft;
+    const int srcHeight = srcBottom - srcTop;
+    const int destWidth = maxX - minX;
+    const int destHeight = maxY - minY;
+    auto transformed = std::make_shared<Bitmap>(destWidth, destHeight, src.bitDepth());
+    transformed->copyPaletteMetadataFrom(&src);
+
+    const auto srcPaletteIndices = src.paletteIndices();
+    std::optional<std::vector<std::uint8_t>> transformedIndices;
+    if (srcPaletteIndices.has_value() && srcPaletteIndices->size() == src.pixels().size()) {
+        transformedIndices = std::vector<std::uint8_t>(static_cast<std::size_t>(destWidth * destHeight), 0);
+    } else {
+        transformed->clearPaletteIndices();
+    }
+
+    const bool axisAligned =
+        (px[0] == minX || px[0] == maxX) && (py[0] == minY || py[0] == maxY) &&
+        (px[1] == minX || px[1] == maxX) && (py[1] == minY || py[1] == maxY) &&
+        (px[2] == minX || px[2] == maxX) && (py[2] == minY || py[2] == maxY) &&
+        (px[3] == minX || px[3] == maxX) && (py[3] == minY || py[3] == maxY);
+
+    if (axisAligned) {
+        const double c0x = px[0] == minX ? 0.0 : 1.0;
+        const double c0y = py[0] == minY ? 0.0 : 1.0;
+        const double axisXX = (px[1] == minX ? 0.0 : 1.0) - c0x;
+        const double axisXY = (py[1] == minY ? 0.0 : 1.0) - c0y;
+        const double axisYX = (px[3] == minX ? 0.0 : 1.0) - c0x;
+        const double axisYY = (py[3] == minY ? 0.0 : 1.0) - c0y;
+
+        for (int y = 0; y < destHeight; ++y) {
+            const double dv = (static_cast<double>(y) + 0.5) / static_cast<double>(destHeight);
+            for (int x = 0; x < destWidth; ++x) {
+                const double du = (static_cast<double>(x) + 0.5) / static_cast<double>(destWidth);
+                const double relX = du - c0x;
+                const double relY = dv - c0y;
+                const double srcU = relX * axisXX + relY * axisXY;
+                const double srcV = relX * axisYX + relY * axisYY;
+                const int srcX = srcLeft + std::clamp(
+                    static_cast<int>(std::floor(srcU * static_cast<double>(srcWidth))), 0, srcWidth - 1);
+                const int srcY = srcTop + std::clamp(
+                    static_cast<int>(std::floor(srcV * static_cast<double>(srcHeight))), 0, srcHeight - 1);
+                if (srcX < 0 || srcX >= src.width() || srcY < 0 || srcY >= src.height()) {
+                    continue;
+                }
+                transformed->setPixelPreservePaletteIndex(x, y, src.getPixel(srcX, srcY));
+                if (transformedIndices.has_value() && srcPaletteIndices.has_value()) {
+                    const auto srcOffset = static_cast<std::size_t>(srcY * src.width() + srcX);
+                    const auto destOffset = static_cast<std::size_t>(y * destWidth + x);
+                    if (srcOffset < srcPaletteIndices->size() && destOffset < transformedIndices->size()) {
+                        (*transformedIndices)[destOffset] = (*srcPaletteIndices)[srcOffset];
+                    }
+                }
+            }
+        }
+    } else {
+        const bool flipH = px[0] > px[1];
+        const bool flipV = py[0] > py[3];
+        for (int y = 0; y < destHeight; ++y) {
+            const int localY = y * srcHeight / destHeight;
+            const int srcY = srcTop + (flipV ? (srcHeight - 1 - localY) : localY);
+            for (int x = 0; x < destWidth; ++x) {
+                const int localX = x * srcWidth / destWidth;
+                const int srcX = srcLeft + (flipH ? (srcWidth - 1 - localX) : localX);
+                if (srcX < 0 || srcX >= src.width() || srcY < 0 || srcY >= src.height()) {
+                    continue;
+                }
+                transformed->setPixelPreservePaletteIndex(x, y, src.getPixel(srcX, srcY));
+                if (transformedIndices.has_value() && srcPaletteIndices.has_value()) {
+                    const auto srcOffset = static_cast<std::size_t>(srcY * src.width() + srcX);
+                    const auto destOffset = static_cast<std::size_t>(y * destWidth + x);
+                    if (srcOffset < srcPaletteIndices->size() && destOffset < transformedIndices->size()) {
+                        (*transformedIndices)[destOffset] = (*srcPaletteIndices)[srcOffset];
+                    }
+                }
+            }
+        }
+    }
+
+    if (transformedIndices.has_value()) {
+        transformed->setPaletteIndices(std::move(*transformedIndices));
+    }
+    return transformed;
+}
+
 std::shared_ptr<Bitmap> createMatte(const Bitmap& src, int alphaThreshold) {
     if (src.width() <= 0 || src.height() <= 0) {
         return std::make_shared<Bitmap>(1, 1, 32);

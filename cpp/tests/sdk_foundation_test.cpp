@@ -8588,6 +8588,17 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         Datum::intPoint(0, 2),
         Datum::intPoint(0, 0),
     });
+    const std::array<int, 4> clockwiseQuadX{3, 3, 0, 0};
+    const std::array<int, 4> clockwiseQuadY{0, 2, 2, 0};
+    const auto directQuadTransform = libreshockwave::bitmap::Drawing::transformQuadBitmap(
+        *quadCopySource, 0, 0, 2, 3, clockwiseQuadX, clockwiseQuadY, 0, 0, 3, 2);
+    assert(directQuadTransform != nullptr);
+    assert(directQuadTransform->getPixel(0, 0) == 0xFFFF00FFU);
+    assert(directQuadTransform->getPixel(1, 0) == 0xFF0000FFU);
+    assert(directQuadTransform->getPixel(2, 0) == 0xFFFF0000U);
+    assert(directQuadTransform->getPixel(0, 1) == 0xFF00FFFFU);
+    assert(directQuadTransform->getPixel(1, 1) == 0xFFFFFF00U);
+    assert(directQuadTransform->getPixel(2, 1) == 0xFF00FF00U);
     assert(runObjCall(110, {Datum::imageRef(quadCopyDest),
                             Datum::imageRef(quadCopySource),
                             clockwiseQuad,
@@ -8626,6 +8637,16 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     quadPaletteSource->setImagePalette(std::make_shared<Palette>(
         std::vector<std::uint32_t>{0x000000U, 0x111111U, 0x222222U, 0x333333U, 0x444444U, 0x555555U}, "quad"));
     quadPaletteSource->setPaletteIndices({0, 1, 2, 3, 4, 5});
+    const auto directQuadPaletteTransform = libreshockwave::bitmap::Drawing::transformQuadBitmap(
+        *quadPaletteSource, 0, 0, 2, 3, clockwiseQuadX, clockwiseQuadY, 0, 0, 3, 2);
+    assert(directQuadPaletteTransform != nullptr);
+    assert(directQuadPaletteTransform->imagePalette() != nullptr);
+    assert(directQuadPaletteTransform->paletteIndex(0, 0).value() == 4);
+    assert(directQuadPaletteTransform->paletteIndex(1, 0).value() == 2);
+    assert(directQuadPaletteTransform->paletteIndex(2, 0).value() == 0);
+    assert(directQuadPaletteTransform->paletteIndex(0, 1).value() == 5);
+    assert(directQuadPaletteTransform->paletteIndex(1, 1).value() == 3);
+    assert(directQuadPaletteTransform->paletteIndex(2, 1).value() == 1);
     auto quadPaletteDest = std::make_shared<Bitmap>(3, 2, 8);
     assert(runObjCall(110, {Datum::imageRef(quadPaletteDest),
                             Datum::imageRef(quadPaletteSource),
