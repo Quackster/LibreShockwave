@@ -138,6 +138,7 @@
 #include "libreshockwave/player/cast/FontRegistry.hpp"
 #include "libreshockwave/player/debug/Breakpoint.hpp"
 #include "libreshockwave/player/debug/BreakpointManager.hpp"
+#include "libreshockwave/player/debug/DebugController.hpp"
 #include "libreshockwave/player/debug/DebugControllerApi.hpp"
 #include "libreshockwave/player/debug/DebugSnapshot.hpp"
 #include "libreshockwave/player/debug/DebugStateListener.hpp"
@@ -297,8 +298,10 @@ using libreshockwave::player::debug::Breakpoint;
 using libreshockwave::player::debug::BreakpointKey;
 using libreshockwave::player::debug::BreakpointManager;
 using libreshockwave::player::debug::CallFrame;
+using libreshockwave::player::debug::DebugController;
 using libreshockwave::player::debug::DebugControllerApi;
 using libreshockwave::player::debug::DebugState;
+using libreshockwave::player::debug::StepMode;
 using libreshockwave::player::behavior::BehaviorInstance;
 using libreshockwave::player::behavior::BehaviorManager;
 using libreshockwave::player::cast::CastLib;
@@ -12273,6 +12276,242 @@ void testDebugFoundation() {
     debugStateListener.onResumed();
     debugStateListener.onBreakpointsChanged();
     debugStateListener.onWatchExpressionsChanged();
+
+    class RecordingDebugStateListener final : public DebugStateListener {
+    public:
+        void onPaused(const DebugSnapshot& pausedSnapshot) override {
+            ++pausedCount;
+            lastPausedSnapshot = pausedSnapshot;
+        }
+
+        void onResumed() override { ++resumedCount; }
+        void onBreakpointsChanged() override { ++breakpointsChangedCount; }
+        void onWatchExpressionsChanged() override { ++watchExpressionsChangedCount; }
+
+        int pausedCount = 0;
+        int resumedCount = 0;
+        int breakpointsChangedCount = 0;
+        int watchExpressionsChangedCount = 0;
+        std::optional<DebugSnapshot> lastPausedSnapshot;
+    };
+
+    class RecordingTraceDelegate final : public TraceListener {
+    public:
+        void onHandlerEnter(const HandlerInfo& info) override {
+            ++handlerEnterCount;
+            lastHandler = info.handlerName;
+        }
+
+        void onHandlerExit(const HandlerInfo&, const Datum& returnValue) override {
+            ++handlerExitCount;
+            lastReturnValue = returnValue;
+        }
+
+        void onInstruction(const InstructionInfo& info) override {
+            ++instructionCount;
+            lastInstruction = info.opcode;
+        }
+
+        void onVariableSet(std::string_view type, std::string_view name, const Datum& value) override {
+            ++variableSetCount;
+            lastVariableSet = std::string(type) + ":" + std::string(name);
+            lastVariableValue = value;
+        }
+
+        void onError(std::string_view message, std::string_view error) override {
+            ++errorCount;
+            lastError = std::string(message) + "|" + std::string(error);
+        }
+
+        void onDebugMessage(std::string_view message) override {
+            ++debugMessageCount;
+            lastDebugMessage = std::string(message);
+        }
+
+        int handlerEnterCount = 0;
+        int handlerExitCount = 0;
+        int instructionCount = 0;
+        int variableSetCount = 0;
+        int errorCount = 0;
+        int debugMessageCount = 0;
+        std::string lastHandler;
+        std::string lastInstruction;
+        std::string lastVariableSet;
+        std::string lastError;
+        std::string lastDebugMessage;
+        Datum lastVariableValue = Datum::voidValue();
+        Datum lastReturnValue = Datum::voidValue();
+    };
+
+    DebugController controller;
+    RecordingDebugStateListener stateListener;
+    auto traceDelegate = std::make_shared<RecordingTraceDelegate>();
+    controller.addListener(&stateListener);
+    controller.setDelegateListener(traceDelegate);
+    assert(controller.needsInstructionTrace());
+    assert(controller.state() == DebugState::Running);
+    assert(controller.stepMode() == StepMode::None);
+    assert(!controller.isPaused());
+    assert(!controller.isAwaitingStepContinuation());
+
+    assert(controller.toggleBreakpoint(10, "handler", 12));
+    assert(stateListener.breakpointsChangedCount == 1);
+    assert(controller.hasBreakpoint(10, "handler", 12));
+    assert(controller.serializeBreakpoints().find("\"handlerName\":\"handler\"") != std::string::npos);
+    const auto debuggerWatch = controller.addWatchExpression("localValue + arg0 + globalValue");
+    assert(stateListener.watchExpressionsChangedCount == 1);
+    assert(controller.watchExpressions().size() == 1);
+    assert(controller.updateWatchExpression(debuggerWatch.id, "localValue + arg0 + globalValue").has_value());
+    assert(stateListener.watchExpressionsChangedCount == 2);
+
+    libreshockwave::lingo::vm::TraceListener::HandlerInfo debuggerHandler{
+        "handler",
+        10,
+        "Debug Movie Script",
+        {Datum::of(4)},
+        Datum::of(std::string("receiver")),
+    };
+    controller.onHandlerEnter(debuggerHandler);
+    assert(controller.callDepth() == 1);
+    assert(controller.currentHandlerName() == "handler");
+    assert(controller.callStackSnapshot().size() == 1);
+    assert(traceDelegate->handlerEnterCount == 1);
+    assert(traceDelegate->lastHandler == "handler");
+
+    libreshockwave::lingo::vm::TraceListener::InstructionInfo debuggerInstruction{
+        2,
+        12,
+        "pushInt8",
+        4,
+        "<4>",
+        1,
+        {Datum::of(99)},
+        {{"localValue", Datum::of(5)}},
+        {{"globalValue", Datum::of(3)}}
+    };
+
+    auto waitUntil = [](const std::function<bool()>& predicate) {
+        for (int attempt = 0; attempt < 100; ++attempt) {
+            if (predicate()) {
+                return true;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        return predicate();
+    };
+
+    std::atomic<bool> debuggerInstructionReturned = false;
+    std::thread debuggerVmThread([&] {
+        controller.onInstruction(debuggerInstruction);
+        debuggerInstructionReturned = true;
+    });
+    assert(waitUntil([&] { return controller.isPaused(); }));
+    assert(!debuggerInstructionReturned);
+    assert(stateListener.pausedCount == 1);
+    assert(traceDelegate->instructionCount == 1);
+    assert(traceDelegate->lastInstruction == "pushInt8");
+    const auto pausedSnapshot = controller.currentSnapshot();
+    assert(pausedSnapshot.has_value());
+    assert(pausedSnapshot->scriptId == 10);
+    assert(pausedSnapshot->scriptName == "Debug Movie Script");
+    assert(pausedSnapshot->handlerName == "handler");
+    assert(pausedSnapshot->instructionOffset == 12);
+    assert(pausedSnapshot->instructionIndex == 2);
+    assert(pausedSnapshot->stack[0].intValue() == 99);
+    assert(pausedSnapshot->locals.at("localValue").intValue() == 5);
+    assert(pausedSnapshot->globals.at("globalValue").intValue() == 3);
+    assert(pausedSnapshot->arguments[0].intValue() == 4);
+    assert(pausedSnapshot->receiver->stringValue() == "receiver");
+    assert(pausedSnapshot->callStack.size() == 1);
+    assert(pausedSnapshot->watchResults.size() == 1);
+    assert(pausedSnapshot->watchResults[0].lastValue->intValue() == 12);
+    assert(stateListener.lastPausedSnapshot == pausedSnapshot);
+    controller.continueExecution();
+    debuggerVmThread.join();
+    assert(debuggerInstructionReturned);
+    assert(controller.state() == DebugState::Running);
+    assert(stateListener.resumedCount == 1);
+
+    controller.pause();
+    assert(!controller.isPaused());
+    assert(controller.state() == DebugState::Running);
+    debuggerInstructionReturned = false;
+    std::thread requestedPauseThread([&] {
+        controller.onInstruction(libreshockwave::lingo::vm::TraceListener::InstructionInfo{
+            3,
+            44,
+            "ret",
+            0,
+            "",
+            0,
+            {},
+            {{"localValue", Datum::of(1)}},
+            {{"globalValue", Datum::of(2)}}
+        });
+        debuggerInstructionReturned = true;
+    });
+    assert(waitUntil([&] { return controller.isPaused(); }));
+    controller.stepInto();
+    requestedPauseThread.join();
+    assert(debuggerInstructionReturned);
+    assert(controller.state() == DebugState::Stepping);
+    assert(controller.stepMode() == StepMode::StepInto);
+    assert(controller.isAwaitingStepContinuation());
+
+    debuggerInstructionReturned = false;
+    std::thread stepThread([&] {
+        controller.onInstruction(libreshockwave::lingo::vm::TraceListener::InstructionInfo{
+            4,
+            45,
+            "ret",
+            0,
+            "",
+            0,
+            {},
+            {{"localValue", Datum::of(1)}},
+            {{"globalValue", Datum::of(2)}}
+        });
+        debuggerInstructionReturned = true;
+    });
+    assert(waitUntil([&] { return controller.isPaused(); }));
+    controller.stepOver();
+    stepThread.join();
+    assert(debuggerInstructionReturned);
+    assert(controller.state() == DebugState::Stepping);
+    assert(controller.stepMode() == StepMode::StepOver);
+    assert(stateListener.resumedCount == 3);
+
+    controller.onVariableSet("local", "debugVar", Datum::of(7));
+    controller.onDebugMessage("debug text");
+    controller.onError("debug error", "details");
+    assert(traceDelegate->variableSetCount == 1);
+    assert(traceDelegate->lastVariableSet == "local:debugVar");
+    assert(traceDelegate->lastVariableValue.intValue() == 7);
+    assert(traceDelegate->debugMessageCount == 1);
+    assert(traceDelegate->lastDebugMessage == "debug text");
+    assert(traceDelegate->errorCount == 1);
+    assert(traceDelegate->lastError == "debug error|details");
+    controller.onHandlerExit(debuggerHandler, Datum::of(13));
+    assert(controller.callDepth() == 0);
+    assert(!controller.currentHandlerName().has_value());
+    assert(controller.callStackSnapshot().empty());
+    assert(traceDelegate->handlerExitCount == 1);
+    assert(traceDelegate->lastReturnValue.intValue() == 13);
+
+    assert(controller.removeWatchExpression(debuggerWatch.id));
+    assert(controller.watchExpressions().empty());
+    controller.clearWatchExpressions();
+    assert(stateListener.watchExpressionsChangedCount == 4);
+    controller.clearAllBreakpoints();
+    assert(!controller.hasBreakpoint(10, "handler", 12));
+    assert(stateListener.breakpointsChangedCount == 2);
+    controller.removeListener(&stateListener);
+    const auto afterRemoveBreakpoint = controller.addBreakpoint(20, "afterRemove", 1);
+    assert(afterRemoveBreakpoint.scriptId == 20);
+    assert(stateListener.breakpointsChangedCount == 2);
+    controller.reset();
+    assert(controller.state() == DebugState::Running);
+    assert(controller.stepMode() == StepMode::None);
 }
 
 void testRenderPipelineFoundation() {

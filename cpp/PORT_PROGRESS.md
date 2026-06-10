@@ -491,7 +491,8 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `debug::ExpressionEvaluator` ports debugger watch/condition expression parsing and evaluation, including variables, literals, arithmetic, comparisons, logical operators with short-circuiting, prop-list/script-instance property access, and Java-compatible log-message interpolation for string, symbol, list, prop-list, and void values.
 - `debug::LifecycleDiagnostics` ports the runtime lifecycle trace toggle, interesting-handler detection, handler/cast/sprite/error log formatting, argument formatting, and printable datum sanitization.
 - `debug::DebugSnapshot`, `InstructionDisplay`, and `CallFrame` port immutable debugger UI state payloads without pulling in the full debug controller.
-- `debug::DebugControllerApi`, `DebugState`, and `DebugStateListener` port the Java debugger control/listener interfaces over the C++ `TraceListener`, breakpoint manager, watch expression, call-stack, and snapshot payload types; the blocking debugger controller implementation remains deferred.
+- `debug::DebugControllerApi`, `DebugState`, and `DebugStateListener` port the Java debugger control/listener interfaces over the C++ `TraceListener`, breakpoint manager, watch expression, call-stack, and snapshot payload types.
+- `debug::DebugController` ports Java's trace-driven debugger core, including handler call-stack tracking, delegate trace forwarding, breakpoint add/remove/toggle/serialization helpers, watch expression management/evaluation, pause requests, step-into/over/out state, current snapshots, listener notifications, reset cleanup, and condition-variable VM-thread blocking until continue/step/reset resumes execution.
 
 ### Render Pipeline Data Foundation
 
@@ -898,7 +899,7 @@ Result:
 - PlayerState, Player frame-label/test-error/shutdown/audio-backend/error-listener/debug-script-dump/debug-controller facades, InputEvent factories, DirectorKeyCodes, and InputState mutation/queue tests passed through the same CTest executable.
 - InputHandler mouse/key queueing, interactive hit filtering, rollover dispatch, mouse-up-outside fallback, focused key dispatch, blur synthesis, dispatcher/sprite supplier hooks, and sprite-registry revision bumps passed through the same CTest executable.
 - ScoreBehaviorRef, SpriteSpan, ScoreNavigator labels, marker resolution, active sprites/channels, parsed behavior parameters, and frame-count tests passed through the same CTest executable.
-- Breakpoint, BreakpointManager, WatchExpression, ExpressionEvaluator condition/watch evaluation, compound-value log interpolation, LifecycleDiagnostics, DebugSnapshot, and DebugControllerApi delegation tests passed through the same CTest executable.
+- Breakpoint, BreakpointManager, WatchExpression, ExpressionEvaluator condition/watch evaluation, compound-value log interpolation, LifecycleDiagnostics, DebugSnapshot, DebugControllerApi delegation, and DebugController breakpoint/pause/step/watch/listener/delegate tests passed through the same CTest executable.
 - RenderPipelineTrace, RenderSprite, transform mirror, baked bitmap helpers, and FrameSnapshot tests passed through the same CTest executable.
 - StageRenderer stage-image lifecycle, dynamic/puppeted sprite collection, locZ/channel sorting, registration-point mirror/stretch placement, last-baked sprite storage, sprite-end cleanup, reset behavior, and RGB555 expansion tests passed through the same CTest executable.
 - SpriteBaker tick counting, default/custom bake-step dispatch, explicit unsupported pass-through step ordering, bitmap decode-provider caching, palette-version cache invalidation, provider-backed live script-modified bitmap priority, live COPY exact-white backColor remapping, live DARKEN white-canvas neutralization, chat-background MATTE outlined-white preservation, live indexed DARKEN foreColor/backColor ramping, 1-bit Copy-ink color remap, shared bitmap ink processing, text baked-size replacement, file-backed STXT renderer dispatch, legacy embedded STXT font fallback, file-backed XMED parser/renderer dispatch, provider-backed film-loop parent ink processing, file-backed film-loop sub-score compositing, shape baking, transparency-key shape ink, unsupported pass-through, and external BitmapCache ownership tests passed through the same CTest executable.
@@ -1244,4 +1245,4 @@ Result:
 - `5df5e6fd Port C++ decompiler fallback mapping`
 - `2d9420b0 Port C++ decompiler linear bytecode`
 - `1e40b253 Port C++ decompiler chunk opcodes`
-- Current checkpoint commit message: `Port C++ player debug controller facade`
+- Current checkpoint commit message: `Port C++ debug controller foundation`

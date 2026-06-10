@@ -99,6 +99,7 @@ add_library(libreshockwave
     src/player/net/NetTask.cpp
     src/player/debug/Breakpoint.cpp
     src/player/debug/BreakpointManager.cpp
+    src/player/debug/DebugController.cpp
     src/player/debug/ExpressionEvaluator.cpp
     src/player/debug/LifecycleDiagnostics.cpp
     src/player/debug/WatchExpression.cpp
