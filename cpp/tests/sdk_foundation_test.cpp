@@ -10468,6 +10468,52 @@ void testStageRendererFoundation() {
     assert(StageRenderer::expandScoreRgb555(0x080808) == 0x080808);
     assert(StageRenderer::expandScoreRgb555(0xF8F8F8) == 0xFFFFFF);
 
+    StageRenderer regRenderer;
+    auto mirroredMember = std::make_shared<CastMember>(1, 10001, MemberType::Bitmap);
+    Bitmap mirroredBitmap(20, 40, 32);
+    mirroredBitmap.setAnchorPoint(6, 5);
+    mirroredMember->setRuntimeBitmap(mirroredBitmap);
+    auto stretchedMember = std::make_shared<CastMember>(1, 10002, MemberType::Bitmap);
+    Bitmap stretchedBitmap(214, 2, 32);
+    stretchedBitmap.setAnchorPoint(0, 1);
+    stretchedMember->setRuntimeBitmap(stretchedBitmap);
+    regRenderer.setCastMemberResolver([mirroredMember, stretchedMember](
+                                           int castLib,
+                                           int memberNum) -> std::shared_ptr<const CastMember> {
+        if (castLib == 1 && memberNum == 10001) {
+            return mirroredMember;
+        }
+        if (castLib == 1 && memberNum == 10002) {
+            return stretchedMember;
+        }
+        return nullptr;
+    });
+    auto mirroredState = regRenderer.spriteRegistry().getOrCreateDynamic(20);
+    mirroredState->setDynamicMember(1, 10001);
+    mirroredState->setLocH(100);
+    mirroredState->setLocV(100);
+    mirroredState->setLocZ(1);
+    mirroredState->setWidth(20);
+    mirroredState->setHeight(40);
+    mirroredState->setRotation(180.0);
+    mirroredState->setSkew(180.0);
+    auto stretchedState = regRenderer.spriteRegistry().getOrCreateDynamic(21);
+    stretchedState->setDynamicMember(1, 10002);
+    stretchedState->setLocH(100);
+    stretchedState->setLocV(100);
+    stretchedState->setLocZ(2);
+    stretchedState->setWidth(214);
+    stretchedState->setHeight(67);
+    const auto regSprites = regRenderer.getSpritesForFrame(1);
+    assert(regSprites.size() == 2);
+    assert(regSprites[0].channel() == 20);
+    assert(regSprites[0].x() == 86);
+    assert(regSprites[0].y() == 95);
+    assert(regSprites[0].hasDirectorHorizontalMirror());
+    assert(regSprites[1].channel() == 21);
+    assert(regSprites[1].x() == 100);
+    assert(regSprites[1].y() == 67);
+
     renderer.reset();
     assert(registry.getAll().empty());
     assert(renderer.lastBakedSprites().empty());
