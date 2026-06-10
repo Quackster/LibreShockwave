@@ -17,6 +17,21 @@ namespace {
 
 constexpr int DEFAULT_TEMPO = 15;
 
+class TickDeadlineGuard {
+public:
+    explicit TickDeadlineGuard(lingo::vm::LingoVM& vm)
+        : vm_(vm) {
+        vm_.armTickDeadline();
+    }
+
+    ~TickDeadlineGuard() {
+        vm_.setTickDeadline(0);
+    }
+
+private:
+    lingo::vm::LingoVM& vm_;
+};
+
 struct ResolvedScriptTarget {
     std::shared_ptr<chunks::ScriptChunk> script;
     std::shared_ptr<const chunks::ScriptNamesChunk> scriptNames;
@@ -165,6 +180,7 @@ void Player::stepFrame() {
         state_ = PlayerState::Paused;
     }
 
+    TickDeadlineGuard deadlineGuard(vm_);
     (void)inputHandler_.processInputEvents();
     (void)frameContext_.executeFrame();
     if (timeoutProcessor_) {
@@ -179,6 +195,7 @@ bool Player::tick() {
         return state_ == PlayerState::Paused;
     }
 
+    TickDeadlineGuard deadlineGuard(vm_);
     (void)inputHandler_.processInputEvents();
     (void)frameContext_.executeFrame();
     if (timeoutProcessor_) {

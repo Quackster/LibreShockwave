@@ -1,6 +1,7 @@
 #include "libreshockwave/lingo/vm/LingoVM.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cctype>
 #include <sstream>
 #include <stdexcept>
@@ -14,6 +15,9 @@ namespace libreshockwave::lingo::vm {
 namespace {
 
 constexpr int MAX_CALL_STACK_DEPTH = 50;
+constexpr int SAFEPOINT_CHECK_INTERVAL = 0x10000;
+constexpr std::int64_t GC_SAFEPOINT_INTERVAL_MS = 1000;
+constexpr std::int64_t HANDLER_TIMEOUT_MS = 60000;
 constexpr std::int64_t RANDOM_MULTIPLIER = 0x5DEECE66DLL;
 constexpr std::int64_t RANDOM_ADDEND = 0xBLL;
 constexpr std::int64_t RANDOM_MASK = (1LL << 48) - 1;
@@ -40,6 +44,8 @@ std::string lower(std::string_view value) {
 }
 
 } // namespace
+
+std::function<void()> LingoVM::gcCallback_;
 
 LingoVM::LingoVM(DirectorFile* file)
     : file_(file) {
@@ -158,6 +164,34 @@ void LingoVM::setStepLimit(int limit) {
 
 int LingoVM::stepLimit() const {
     return stepLimit_;
+}
+
+void LingoVM::setTickDeadlineMs(std::int64_t milliseconds) {
+    tickDeadlineMs_ = std::max<std::int64_t>(0, milliseconds);
+}
+
+std::int64_t LingoVM::tickDeadlineMs() const {
+    return tickDeadlineMs_;
+}
+
+void LingoVM::setTickDeadline(std::int64_t deadlineMillis) {
+    tickDeadline_ = std::max<std::int64_t>(0, deadlineMillis);
+}
+
+std::int64_t LingoVM::tickDeadline() const {
+    return tickDeadline_;
+}
+
+void LingoVM::armTickDeadline() {
+    tickDeadline_ = tickDeadlineMs_ > 0 ? currentTimeMillis() + tickDeadlineMs_ : 0;
+}
+
+void LingoVM::setTimeProvider(std::function<std::int64_t()> provider) {
+    timeProvider_ = std::move(provider);
+}
+
+void LingoVM::setGcCallback(std::function<void()> callback) {
+    gcCallback_ = std::move(callback);
 }
 
 void LingoVM::setPassCallback(std::function<void()> callback) {
@@ -437,11 +471,30 @@ Datum LingoVM::executeHandler(const chunks::ScriptChunk& script,
             auto callbacks = callbacksFor(script);
             ExecutionContext context(scope, *first, &builtinRegistry_, &builtinContext_, std::move(callbacks));
             int steps = 0;
+            const std::int64_t startTime = currentTimeMillis();
+            std::int64_t lastGcTime = startTime;
             while (scope.hasMoreInstructions() && !scope.returned()) {
                 ++steps;
                 if (stepLimit_ > 0 && steps > stepLimit_) {
                     throw LingoException("Step limit exceeded (" + std::to_string(stepLimit_) +
                                          " instructions) in handler '" + handlerName(script, handler) + "'");
+                }
+                if ((steps % SAFEPOINT_CHECK_INTERVAL) == 0) {
+                    const std::int64_t now = currentTimeMillis();
+                    if (now - lastGcTime >= GC_SAFEPOINT_INTERVAL_MS) {
+                        if (gcCallback_) {
+                            gcCallback_();
+                        }
+                        lastGcTime = now;
+                    }
+                    if (now - startTime > HANDLER_TIMEOUT_MS) {
+                        throw LingoException("Handler timeout (60s, " + std::to_string(steps) +
+                                             " instructions) in handler '" + currentHandlerName + "'");
+                    }
+                    if (tickDeadline_ > 0 && now > tickDeadline_) {
+                        throw LingoException("Tick deadline exceeded in handler '" + currentHandlerName +
+                                             "' (" + std::to_string(steps) + " instructions)");
+                    }
                 }
                 executeInstruction(scope, context);
             }
@@ -654,6 +707,14 @@ void LingoVM::executeInstruction(Scope& scope, ExecutionContext& context) {
     if (advance) {
         scope.advanceBytecodeIndex();
     }
+}
+
+std::int64_t LingoVM::currentTimeMillis() const {
+    if (timeProvider_) {
+        return timeProvider_();
+    }
+    using namespace std::chrono;
+    return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
 }
 
 LingoVM::CallStackFrame LingoVM::toCallStackFrame(const Scope& scope) const {

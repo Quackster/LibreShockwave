@@ -66,6 +66,13 @@ public:
 
     void setStepLimit(int limit);
     [[nodiscard]] int stepLimit() const;
+    void setTickDeadlineMs(std::int64_t milliseconds);
+    [[nodiscard]] std::int64_t tickDeadlineMs() const;
+    void setTickDeadline(std::int64_t deadlineMillis);
+    [[nodiscard]] std::int64_t tickDeadline() const;
+    void armTickDeadline();
+    void setTimeProvider(std::function<std::int64_t()> provider);
+    static void setGcCallback(std::function<void()> callback);
 
     void setPassCallback(std::function<void()> callback);
     void clearPassCallback();
@@ -134,6 +141,7 @@ private:
     [[nodiscard]] bool handlerDeclaresMeAsFirstParam(const chunks::ScriptChunk& script,
                                                      const chunks::ScriptChunk::Handler& handler) const;
     void executeInstruction(Scope& scope, ExecutionContext& context);
+    [[nodiscard]] std::int64_t currentTimeMillis() const;
     [[nodiscard]] CallStackFrame toCallStackFrame(const Scope& scope) const;
     void registerRuntimeBuiltins();
     void flushDeferredScriptInstanceCalls();
@@ -163,8 +171,12 @@ private:
     bool flushingDeferredTasks_{false};
     int alertHookDepth_{0};
     int stepLimit_{0};
+    std::int64_t tickDeadlineMs_{0};
+    std::int64_t tickDeadline_{0};
     int randomSeed_{0};
     std::int64_t randomState_{0};
+    std::function<std::int64_t()> timeProvider_;
+    static std::function<void()> gcCallback_;
 };
 
 } // namespace libreshockwave::lingo::vm

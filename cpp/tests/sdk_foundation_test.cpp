@@ -5549,6 +5549,89 @@ void testLingoVmRuntimeFoundation() {
     vm.setTraceListener(nullptr);
     assert(vm.traceListener() == nullptr);
 
+    std::vector<std::pair<Opcode, int>> longOps;
+    longOps.reserve(65537);
+    for (int index = 0; index < 65536; ++index) {
+        longOps.emplace_back(Opcode::PUSH_ZERO, 0);
+    }
+    longOps.emplace_back(Opcode::RET, 0);
+    auto longHandler = makeHandler(6, std::move(longOps));
+    ScriptChunk longScript(nullptr,
+                           ChunkId(961),
+                           ScriptChunkType::MovieScript,
+                           0,
+                           {longHandler},
+                           {},
+                           {},
+                           {},
+                           {});
+    auto installNoopPushZero = [](LingoVM& target, int& calls) {
+        target.opcodeRegistry().registerHandler(Opcode::PUSH_ZERO, [&calls](ExecutionContext&) {
+            ++calls;
+            return true;
+        });
+    };
+
+    LingoVM safepointVm;
+    int safepointPushes = 0;
+    int gcCallbacks = 0;
+    std::vector<std::int64_t> safepointTimes{0, 1000};
+    std::size_t safepointTimeIndex = 0;
+    safepointVm.setTimeProvider([&safepointTimes, &safepointTimeIndex] {
+        const auto index = std::min(safepointTimeIndex++, safepointTimes.size() - 1);
+        return safepointTimes[index];
+    });
+    installNoopPushZero(safepointVm, safepointPushes);
+    LingoVM::setGcCallback([&gcCallbacks] {
+        ++gcCallbacks;
+    });
+    assert(safepointVm.executeHandler(longScript, longHandler).isVoid());
+    assert(safepointPushes == 65536);
+    assert(gcCallbacks == 1);
+    LingoVM::setGcCallback(nullptr);
+
+    LingoVM deadlineVm;
+    int deadlinePushes = 0;
+    std::vector<std::int64_t> deadlineTimes{0, 251};
+    std::size_t deadlineTimeIndex = 0;
+    deadlineVm.setTimeProvider([&deadlineTimes, &deadlineTimeIndex] {
+        const auto index = std::min(deadlineTimeIndex++, deadlineTimes.size() - 1);
+        return deadlineTimes[index];
+    });
+    installNoopPushZero(deadlineVm, deadlinePushes);
+    deadlineVm.setTickDeadlineMs(250);
+    assert(deadlineVm.tickDeadlineMs() == 250);
+    deadlineVm.setTickDeadline(250);
+    assert(deadlineVm.tickDeadline() == 250);
+    bool tickDeadlineThrew = false;
+    try {
+        (void)deadlineVm.executeHandler(longScript, longHandler);
+    } catch (const LingoException& error) {
+        tickDeadlineThrew = std::string(error.what()).find("Tick deadline exceeded") != std::string::npos;
+    }
+    assert(tickDeadlineThrew);
+    assert(deadlineVm.callStackDepth() == 0);
+    deadlineVm.setTickDeadline(0);
+    assert(deadlineVm.tickDeadline() == 0);
+
+    LingoVM handlerTimeoutVm;
+    int timeoutPushes = 0;
+    std::vector<std::int64_t> timeoutTimes{0, 60001};
+    std::size_t timeoutTimeIndex = 0;
+    handlerTimeoutVm.setTimeProvider([&timeoutTimes, &timeoutTimeIndex] {
+        const auto index = std::min(timeoutTimeIndex++, timeoutTimes.size() - 1);
+        return timeoutTimes[index];
+    });
+    installNoopPushZero(handlerTimeoutVm, timeoutPushes);
+    bool handlerTimeoutThrew = false;
+    try {
+        (void)handlerTimeoutVm.executeHandler(longScript, longHandler);
+    } catch (const LingoException& error) {
+        handlerTimeoutThrew = std::string(error.what()).find("Handler timeout") != std::string::npos;
+    }
+    assert(handlerTimeoutThrew);
+    assert(handlerTimeoutVm.callStackDepth() == 0);
+
     assert(vm.executeHandler(script, paramHandler, {Datum::of(123)}).intValue() == 123);
     assert(vm.callHandler("abs", {Datum::of(-11)}).intValue() == 11);
     assert(vm.callBuiltin("abs", {Datum::of(-12)}).intValue() == 12);
