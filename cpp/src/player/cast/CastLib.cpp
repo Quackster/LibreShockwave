@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "libreshockwave/DirectorFile.hpp"
 #include "libreshockwave/bitmap/Bitmap.hpp"
@@ -83,6 +84,39 @@ std::string normalizeTextLineEndings(std::string value) {
         }
     }
     return result;
+}
+
+std::string pickTextLineDelimiter(std::string_view value) {
+    if (value.find("\r\n") != std::string_view::npos) {
+        return "\r\n";
+    }
+    if (value.find('\n') != std::string_view::npos) {
+        return "\n";
+    }
+    if (value.find('\r') != std::string_view::npos) {
+        return "\r";
+    }
+    return "\r\n";
+}
+
+std::vector<std::string> splitTextLines(std::string_view value) {
+    if (value.empty()) {
+        return {""};
+    }
+
+    const std::string delimiter = pickTextLineDelimiter(value);
+    std::vector<std::string> lines;
+    std::size_t start = 0;
+    while (true) {
+        const std::size_t found = value.find(delimiter, start);
+        if (found == std::string_view::npos) {
+            lines.emplace_back(value.substr(start));
+            break;
+        }
+        lines.emplace_back(value.substr(start, found - start));
+        start = found + delimiter.size();
+    }
+    return lines;
 }
 
 std::string stripHtmlTags(std::string_view value) {
@@ -526,6 +560,18 @@ lingo::Datum CastLib::getMemberProp(int memberNumber, const std::string& propNam
     if (prop == "media") return lingo::Datum::castMemberRef(castLibId_, id::MemberId(memberNumber));
     if (member->isTextLike()) {
         if (prop == "text") return stringDatum(resolveMemberText(member));
+        if (prop == "linecount") {
+            const auto lines = splitTextLines(resolveMemberText(member));
+            return lingo::Datum::of(static_cast<int>(lines.size()));
+        }
+        if (prop == "line") {
+            std::vector<lingo::Datum> lines;
+            const auto textLines = splitTextLines(resolveMemberText(member));
+            for (const auto& line : textLines) {
+                lines.push_back(stringDatum(line));
+            }
+            return lingo::Datum::list(std::move(lines));
+        }
         if (prop == "width") return lingo::Datum::of(member->textRectRight() - member->textRectLeft());
         if (prop == "height") return lingo::Datum::of(member->textRectBottom() - member->textRectTop());
         if (prop == "rect") {

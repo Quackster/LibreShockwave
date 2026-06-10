@@ -12319,6 +12319,27 @@ void testCastLibManagerFoundation() {
     assert(manager.getMemberProp(1, 10001, "topSpacing").intValue() == 2);
     assert(manager.getMemberProp(1, 10001, "editable").intValue() == 1);
 
+    const std::string countedText = "Alpha beta\rGamma,Delta,";
+    assert(manager.setMemberProp(1, 10001, "text", Datum::of(countedText)));
+    assert(manager.getMemberProp(1, 10001, "lineCount").intValue() == 2);
+    const auto lineList = manager.getMemberProp(1, 10001, "line");
+    const auto& textLines = lineList.listValue().items();
+    assert(textLines.size() == 2);
+    assert(textLines[0].stringValue() == "Alpha beta");
+    assert(textLines[1].stringValue() == "Gamma,Delta,");
+    assert(manager.callMemberMethod(1, 10001, "count", {Datum::symbol("char")}).intValue() ==
+           static_cast<int>(countedText.size()));
+    assert(manager.callMemberMethod(1, 10001, "count", {Datum::symbol("word")}).intValue() == 3);
+    assert(manager.callMemberMethod(1, 10001, "count", {Datum::symbol("line")}).intValue() == 2);
+    assert(manager.callMemberMethod(1, 10001, "count", {Datum::symbol("item")}).intValue() == 3);
+    assert(manager.callMemberMethod(1, 10001, "count", {Datum::symbol("unknown")}).intValue() == 0);
+    assert(context.castMemberMethodHandler(1, 10001, "getProp", {Datum::symbol("rect"), Datum::of(3)}).intValue() == 52);
+    assert(context.castMemberMethodHandler(1, 10001, "getProp", {Datum::symbol("line"), Datum::of(2)}).stringValue() ==
+           "Gamma,Delta,");
+    assert(context.castMemberMethodHandler(1, 2, "getProp", {Datum::symbol("regPoint"), Datum::of(2)}).intValue() == 1);
+    assert(context.castMemberMethodHandler(1, 10001, "getProp", {Datum::symbol("line"), Datum::of(3)}).isVoid());
+    assert(manager.setMemberProp(1, 10001, "text", Datum::of(std::string("Symbolic"))));
+
     class ManagerMethodTextRenderer final : public TextRenderer {
     public:
         int charCalls = 0;

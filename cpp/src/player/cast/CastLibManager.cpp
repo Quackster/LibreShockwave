@@ -4,6 +4,7 @@
 #include <cctype>
 #include <limits>
 #include <optional>
+#include <string_view>
 #include <utility>
 
 #include "libreshockwave/DirectorFile.hpp"
@@ -30,6 +31,48 @@ std::string lower(std::string value) {
 
 bool equalsIgnoreCase(const std::string& lhs, const std::string& rhs) {
     return lower(lhs) == lower(rhs);
+}
+
+std::string keyNameLikeJava(const lingo::Datum& value) {
+    if (const auto* symbol = value.asSymbol()) {
+        return symbol->name;
+    }
+    return value.stringValue();
+}
+
+int countMethodWords(std::string_view text) {
+    int count = 0;
+    bool inWord = false;
+    for (const char ch : text) {
+        if (std::isspace(static_cast<unsigned char>(ch))) {
+            inWord = false;
+        } else if (!inWord) {
+            ++count;
+            inWord = true;
+        }
+    }
+    return count;
+}
+
+int countMethodTextChunks(std::string_view text, const std::string& chunkType) {
+    if (text.empty()) {
+        return 0;
+    }
+    const std::string type = lower(chunkType);
+    if (type == "char") {
+        return static_cast<int>(text.size());
+    }
+    if (type == "word") {
+        return countMethodWords(text);
+    }
+    if (type == "line") {
+        return static_cast<int>(std::count(text.begin(), text.end(), '\r') +
+                                std::count(text.begin(), text.end(), '\n') + 1);
+    }
+    if (type == "item") {
+        return static_cast<int>(std::count(text.begin(), text.end(), ',') + 1);
+    }
+    return 0;
 }
 
 std::uint32_t readU32BE(const std::vector<std::uint8_t>& data, std::size_t offset) {
@@ -537,7 +580,49 @@ lingo::Datum CastLibManager::callMemberMethod(int castLibNumber,
     }
 
     auto member = resolveMember(castLibNumber, memberNumber);
-    if (!member || !member->isTextLike()) {
+    if (!member) {
+        return lingo::Datum::voidValue();
+    }
+
+    if (equalsIgnoreCase(methodName, "getProp")) {
+        if (args.size() < 2) {
+            return lingo::Datum::voidValue();
+        }
+        const std::string propName = keyNameLikeJava(args[0]);
+        const int index = args[1].intValue();
+        const lingo::Datum propValue = getMemberProp(castLibNumber, memberNumber, propName);
+        if (const auto* point = propValue.asIntPoint()) {
+            return lingo::Datum::of(index == 1 ? point->x : point->y);
+        }
+        if (const auto* rect = propValue.asIntRect()) {
+            switch (index) {
+                case 1: return lingo::Datum::of(rect->left);
+                case 2: return lingo::Datum::of(rect->top);
+                case 3: return lingo::Datum::of(rect->right);
+                case 4: return lingo::Datum::of(rect->bottom);
+                default: return lingo::Datum::voidValue();
+            }
+        }
+        if (propValue.isList()) {
+            const auto& items = propValue.listValue().items();
+            const int zeroIndex = index - 1;
+            if (zeroIndex >= 0 && zeroIndex < static_cast<int>(items.size())) {
+                return items[static_cast<std::size_t>(zeroIndex)];
+            }
+            return lingo::Datum::voidValue();
+        }
+        return propValue;
+    }
+
+    if (equalsIgnoreCase(methodName, "count")) {
+        if (args.empty() || !member->isTextLike()) {
+            return lingo::Datum::of(0);
+        }
+        const std::string text = getMemberProp(member->castLib(), member->memberNum(), "text").stringValue();
+        return lingo::Datum::of(countMethodTextChunks(text, keyNameLikeJava(args.front())));
+    }
+
+    if (!member->isTextLike()) {
         return lingo::Datum::voidValue();
     }
 

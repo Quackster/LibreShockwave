@@ -552,6 +552,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `Player::setTextRenderer` now installs a platform text renderer into both `SpriteBaker` and `CastLibManager`, keeping dynamic text sprite baking and Director member-method measurement on the same renderer surface.
 - Parsed field datum identity and editable selection/caret rendering remain deferred.
 
+### Cast Member Utility Method Foundation
+
+- `CastLib` now exposes Java-compatible text `lineCount` and `line` member properties over runtime/file-backed text content.
+- `CastLibManager::callMemberMethod` now ports Java's simple member `getProp` and text `count(#char/#word/#line/#item)` helper methods, including point/rect/list sub-property extraction through the same builtin callback surface used by VM object calls.
+- Parsed field datum identity and editable selection/caret rendering remain deferred.
+
 ### Lingo VM Scope and Execution Context Foundation
 
 - `lingo::vm::Scope` ports handler stack-frame state, including bytecode position, stack operations, local variables, mutable parameters, receiver-aware display arguments, return state, and loop-return tracking.
@@ -805,6 +811,7 @@ Result:
 - Runtime text member style property get/set, Director-style text color coercion, rect/width/height geometry mutation, and SpriteBaker dynamic text style propagation passed through the same CTest executable.
 - Runtime text-like `media` assignment from another cast member, including copied text content and style state through the cast-member property callback, passed through the same CTest executable.
 - Runtime text-like member `charPosToLoc`/`locToCharPos` method dispatch, no-renderer fallbacks, builtin callback routing, and Player text-renderer wiring passed through the same CTest executable.
+- Runtime text `lineCount`/`line` properties plus cast-member `getProp` and `count(#char/#word/#line/#item)` method helpers passed through the same CTest executable.
 - SoundBuiltins channel creation, availability, sound-channel method dispatch, VM object-property defaults/mutation, and SoundManager playback delegation passed through the same CTest executable.
 - ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration and callback hooks passed through the same CTest executable.
 - TypeBuiltins object/void/type predicates, `value` literal parsing/provider fallback, `script`/`callAncestor` callback hooks, symbol conversion, and `ilk` alias checks passed through the same CTest executable.
@@ -995,4 +1002,5 @@ Result:
 - `ec988333 Port C++ dynamic text rendering`
 - `1e761636 Port C++ runtime text styling`
 - `f686fc32 Port C++ text media copy`
-- Current checkpoint commit message: `Port C++ text member methods`
+- `942d700f Port C++ text member methods`
+- Current checkpoint commit message: `Port C++ cast member utility methods`
