@@ -12127,12 +12127,13 @@ void testSpriteBakerFoundation() {
     BitmapCache cache;
     SpriteBaker baker(&cache);
     assert(baker.tickCounter() == 0);
-    assert(baker.bakeStepCount() == 4);
+    assert(baker.bakeStepCount() == 5);
     assert(&baker.bitmapCache() == &cache);
     assert(baker.bakeSteps()[0].name == "bitmap");
     assert(baker.bakeSteps()[1].name == "text");
     assert(baker.bakeSteps()[2].name == "shape");
     assert(baker.bakeSteps()[3].name == "film-loop");
+    assert(baker.bakeSteps()[4].name == "unsupported");
 
     int decodeCalls = 0;
     baker.setBitmapDecodeProvider([&decodeCalls](const CastMemberChunk& member, const Palette*) {
@@ -13425,7 +13426,9 @@ void testSpriteBakerFoundation() {
             return std::make_shared<Bitmap>(1, 1, 32, std::vector<std::uint32_t>{0xFFABCDEFU});
         }
     });
-    assert(baker.bakeStepCount() == 5);
+    assert(baker.bakeStepCount() == 6);
+    assert(baker.bakeSteps()[4].name == "unknown-test");
+    assert(baker.bakeSteps()[5].name == "unsupported");
     auto customUnknown = baker.bake(unsupported);
     assert(customUnknown.bakedBitmap() != nullptr);
     assert(customUnknown.bakedBitmap()->getPixel(0, 0) == 0xFFABCDEFU);

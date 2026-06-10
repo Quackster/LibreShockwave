@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <utility>
@@ -320,6 +321,10 @@ std::vector<RenderSprite> SpriteBaker::bakeSprites(const std::vector<RenderSprit
 }
 
 void SpriteBaker::registerBakeStep(SpriteBakeStep step) {
+    if (!bakeSteps_.empty() && bakeSteps_.back().name == "unsupported") {
+        bakeSteps_.insert(std::prev(bakeSteps_.end()), std::move(step));
+        return;
+    }
     bakeSteps_.push_back(std::move(step));
 }
 
@@ -385,6 +390,11 @@ void SpriteBaker::registerDefaultSteps() {
         "film-loop",
         [](const RenderSprite& sprite) { return sprite.type() == SpriteType::FilmLoop; },
         [this](const RenderSprite& sprite) { return bakeFilmLoop(sprite); }
+    });
+    registerBakeStep(SpriteBakeStep{
+        "unsupported",
+        [](const RenderSprite&) { return true; },
+        [](const RenderSprite&) -> std::shared_ptr<const bitmap::Bitmap> { return nullptr; }
     });
 }
 
