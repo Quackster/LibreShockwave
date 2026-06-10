@@ -1088,6 +1088,28 @@ Datum ListBuiltins::setAt(BuiltinContext&, const std::vector<Datum>& args) {
         }
         return Datum::voidValue();
     }
+    if (auto* point = mutableArg(args, 0).asIntPoint()) {
+        const int component = toIntLikeJava(keyOrIndex);
+        const int newValue = toIntLikeJava(value);
+        if (component == 1) {
+            point->x = newValue;
+        } else if (component == 2) {
+            point->y = newValue;
+        }
+        return Datum::voidValue();
+    }
+    if (auto* rect = mutableArg(args, 0).asIntRect()) {
+        const int component = toIntLikeJava(keyOrIndex);
+        const int newValue = toIntLikeJava(value);
+        switch (component) {
+            case 1: rect->left = newValue; break;
+            case 2: rect->top = newValue; break;
+            case 3: rect->right = newValue; break;
+            case 4: rect->bottom = newValue; break;
+            default: break;
+        }
+        return Datum::voidValue();
+    }
     return Datum::voidValue();
 }
 

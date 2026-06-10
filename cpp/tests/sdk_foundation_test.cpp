@@ -2460,6 +2460,22 @@ void testBuiltinRegistryFoundation() {
     assert(registry.invoke("listp", context, {constructedList}).boolValue());
     assert(registry.invoke("getAt", context, {Datum::intPoint(7, 8), Datum::of(2)}).intValue() == 8);
     assert(registry.invoke("getAt", context, {Datum::intRect(1, 2, 3, 4), Datum::of(3)}).intValue() == 3);
+    auto builtinPoint = Datum::intPoint(7, 8);
+    auto builtinPointAlias = builtinPoint;
+    assert(registry.invoke("setAt", context, {builtinPointAlias, Datum::of(2), Datum::of(std::string("12"))}).isVoid());
+    assert(builtinPoint.asIntPoint()->x == 7);
+    assert(builtinPoint.asIntPoint()->y == 12);
+    assert(registry.invoke("setAt", context, {builtinPoint, Datum::of(9), Datum::of(99)}).isVoid());
+    assert(builtinPoint.asIntPoint()->y == 12);
+    auto builtinRect = Datum::intRect(1, 2, 3, 4);
+    auto builtinRectAlias = builtinRect;
+    assert(registry.invoke("setAt", context, {builtinRectAlias, Datum::of(1), Datum::castLibRef(CastLibId(9))}).isVoid());
+    assert(registry.invoke("setAt", context, {builtinRectAlias, Datum::of(4), Datum::of(20.6F)}).isVoid());
+    assert(builtinRect.asIntRect()->left == 9);
+    assert(builtinRect.asIntRect()->top == 2);
+    assert(builtinRect.asIntRect()->right == 3);
+    assert(builtinRect.asIntRect()->bottom == 20);
+    assert(builtinRect == Datum::intRect(9, 2, 3, 20));
 
     auto builtinProps = Datum::propList();
     assert(registry.invoke("setaProp", context, {builtinProps, Datum::symbol("name"), Datum::of(std::string("Ada"))}).isVoid());

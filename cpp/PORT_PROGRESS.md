@@ -366,6 +366,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - List builtins now register `count`, `getAt`, `setAt`, `addAt`, `deleteAt`, `append`/`add`, prop-list accessors/mutators, `findPos`, `getOne`/`getPos`, `deleteOne`, `sort`, `listp`, `list`, and `getLast`.
 - Linear list mutation, proplist positional/key lookup, duplicate `addProp`, type-aware symbol/string key handling, case-insensitive key searches, Lingo-style list equality, and list sorting are covered in C++.
+- Point and rectangle datums now share mutable backing across copies, allowing `setAt(point, index, value)` and `setAt(rect, index, value)` to mutate components like the Java runtime.
 - `getAt(castLib.member, key)` now resolves cast members by number or name through the C++ cast-member provider hooks.
 
 ### Timeout Builtins Foundation
@@ -877,6 +878,7 @@ Result:
 - FieldText datum identity, field builtin member identity preservation, and `value(field(...))` parsed-field callback behavior passed through the same CTest executable.
 - Editable text field no-handler click focus, drag selection extension, focus clearing, printable insertion, selected-text replacement, backspace, left/right arrow caret movement, and tab/shift-tab field cycling passed through the same CTest executable.
 - Editable text field caret geometry, single-line and multi-line selection rectangles, paste replacement, selected-text extraction, cut mutation, select-all, no-focus fallbacks, and sprite-registry revision bumps passed through the same CTest executable.
+- ListBuiltins point/rect positional reads, shared mutable point/rect datum copies, and `setAt` component mutation passed through the same CTest executable.
 - SoundBuiltins channel creation, availability, sound-channel method dispatch, VM object-property defaults/mutation, and SoundManager playback delegation passed through the same CTest executable.
 - ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration, Java-style constructor argument coercion, callback hooks, direct script-instance fallback, and `NEW_OBJ` script-ref handler dispatch passed through the same CTest executable.
 - TypeBuiltins object/void/type predicates, `value` literal parsing/provider fallback, direct `script` lookup/scoping/unscoped list fallback, `script`/`callAncestor` callback hooks and list fanout, symbol conversion, and `ilk` alias/field-text checks passed through the same CTest executable.
@@ -1111,4 +1113,5 @@ Result:
 - `288d5c4d Port C++ FieldText ilk parity`
 - `8b63f843 Port C++ script list scope parity`
 - `2f1bf76a Port C++ script constructor fallback`
-- Current checkpoint commit message: `Port C++ constructor argument coercion`
+- `1c8b39dd Port C++ constructor argument coercion`
+- Current checkpoint commit message: `Port C++ mutable point rect setAt`

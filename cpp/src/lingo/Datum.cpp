@@ -343,11 +343,11 @@ Datum Datum::movieRef() {
 }
 
 Datum Datum::intPoint(int x, int y) {
-    return Datum(IntPoint{x, y});
+    return Datum(std::make_shared<IntPoint>(IntPoint{x, y}));
 }
 
 Datum Datum::intRect(int left, int top, int right, int bottom) {
-    return Datum(IntRect{left, top, right, bottom});
+    return Datum(std::make_shared<IntRect>(IntRect{left, top, right, bottom}));
 }
 
 Datum Datum::vector3(float x, float y, float z) {
@@ -423,8 +423,8 @@ DatumType Datum::type() const {
     if (std::holds_alternative<Stage>(value_)) return DatumType::StageRef;
     if (std::holds_alternative<PlayerRef>(value_)) return DatumType::PlayerRef;
     if (std::holds_alternative<MovieRef>(value_)) return DatumType::MovieRef;
-    if (std::holds_alternative<IntPoint>(value_)) return DatumType::IntPoint;
-    if (std::holds_alternative<IntRect>(value_)) return DatumType::IntRect;
+    if (std::holds_alternative<IntPointPtr>(value_)) return DatumType::IntPoint;
+    if (std::holds_alternative<IntRectPtr>(value_)) return DatumType::IntRect;
     if (std::holds_alternative<Vector3>(value_)) return DatumType::Vector;
     if (std::holds_alternative<ColorRef>(value_)) return DatumType::ColorRef;
     if (std::holds_alternative<Media>(value_)) return DatumType::Media;
@@ -500,12 +500,12 @@ std::string Datum::stringValue() const {
     }
     if (std::holds_alternative<Void>(value_)) return "VOID";
     if (std::holds_alternative<Null>(value_)) return "";
-    if (const auto* value = std::get_if<IntPoint>(&value_)) {
-        return "point(" + std::to_string(value->x) + ", " + std::to_string(value->y) + ")";
+    if (const auto* value = std::get_if<IntPointPtr>(&value_)) {
+        return "point(" + std::to_string((*value)->x) + ", " + std::to_string((*value)->y) + ")";
     }
-    if (const auto* value = std::get_if<IntRect>(&value_)) {
-        return "rect(" + std::to_string(value->left) + ", " + std::to_string(value->top) + ", " +
-               std::to_string(value->right) + ", " + std::to_string(value->bottom) + ")";
+    if (const auto* value = std::get_if<IntRectPtr>(&value_)) {
+        return "rect(" + std::to_string((*value)->left) + ", " + std::to_string((*value)->top) + ", " +
+               std::to_string((*value)->right) + ", " + std::to_string((*value)->bottom) + ")";
     }
     if (const auto* value = std::get_if<Vector3>(&value_)) {
         return "vector(" + fixedFloat(value->x) + ", " + fixedFloat(value->y) + ", " + fixedFloat(value->z) + ")";
@@ -547,8 +547,25 @@ const Datum::XtraInstance* Datum::asXtraInstance() const { return std::get_if<Xt
 const Datum::TimeoutRef* Datum::asTimeoutRef() const { return std::get_if<TimeoutRef>(&value_); }
 const Datum::VarRef* Datum::asVarRef() const { return std::get_if<VarRef>(&value_); }
 const Datum::ChunkRef* Datum::asChunkRef() const { return std::get_if<ChunkRef>(&value_); }
-const Datum::IntPoint* Datum::asIntPoint() const { return std::get_if<IntPoint>(&value_); }
-const Datum::IntRect* Datum::asIntRect() const { return std::get_if<IntRect>(&value_); }
+Datum::IntPoint* Datum::asIntPoint() {
+    auto* value = std::get_if<IntPointPtr>(&value_);
+    return value != nullptr ? value->get() : nullptr;
+}
+
+const Datum::IntPoint* Datum::asIntPoint() const {
+    const auto* value = std::get_if<IntPointPtr>(&value_);
+    return value != nullptr ? value->get() : nullptr;
+}
+
+Datum::IntRect* Datum::asIntRect() {
+    auto* value = std::get_if<IntRectPtr>(&value_);
+    return value != nullptr ? value->get() : nullptr;
+}
+
+const Datum::IntRect* Datum::asIntRect() const {
+    const auto* value = std::get_if<IntRectPtr>(&value_);
+    return value != nullptr ? value->get() : nullptr;
+}
 
 Datum::List& Datum::listValue() {
     auto* value = std::get_if<ListPtr>(&value_);
@@ -843,8 +860,14 @@ bool operator==(const Datum& lhs, const Datum& rhs) {
     if (auto value = std::get_if<Datum::Stage>(&lhs.value_)) return *value == std::get<Datum::Stage>(rhs.value_);
     if (auto value = std::get_if<Datum::PlayerRef>(&lhs.value_)) return *value == std::get<Datum::PlayerRef>(rhs.value_);
     if (auto value = std::get_if<Datum::MovieRef>(&lhs.value_)) return *value == std::get<Datum::MovieRef>(rhs.value_);
-    if (auto value = std::get_if<Datum::IntPoint>(&lhs.value_)) return *value == std::get<Datum::IntPoint>(rhs.value_);
-    if (auto value = std::get_if<Datum::IntRect>(&lhs.value_)) return *value == std::get<Datum::IntRect>(rhs.value_);
+    if (auto value = std::get_if<Datum::IntPointPtr>(&lhs.value_)) {
+        const auto& other = std::get<Datum::IntPointPtr>(rhs.value_);
+        return **value == *other;
+    }
+    if (auto value = std::get_if<Datum::IntRectPtr>(&lhs.value_)) {
+        const auto& other = std::get<Datum::IntRectPtr>(rhs.value_);
+        return **value == *other;
+    }
     if (auto value = std::get_if<Datum::Vector3>(&lhs.value_)) return *value == std::get<Datum::Vector3>(rhs.value_);
     if (auto value = std::get_if<Datum::ColorRef>(&lhs.value_)) return *value == std::get<Datum::ColorRef>(rhs.value_);
     if (auto value = std::get_if<Datum::BitmapRef>(&lhs.value_)) return *value == std::get<Datum::BitmapRef>(rhs.value_);

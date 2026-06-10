@@ -395,7 +395,9 @@ public:
     [[nodiscard]] const TimeoutRef* asTimeoutRef() const;
     [[nodiscard]] const VarRef* asVarRef() const;
     [[nodiscard]] const ChunkRef* asChunkRef() const;
+    [[nodiscard]] IntPoint* asIntPoint();
     [[nodiscard]] const IntPoint* asIntPoint() const;
+    [[nodiscard]] IntRect* asIntRect();
     [[nodiscard]] const IntRect* asIntRect() const;
 
     [[nodiscard]] List& listValue();
@@ -419,6 +421,8 @@ private:
     using ScriptInstancePtr = std::shared_ptr<ScriptInstanceRef>;
     using ArgListPtr = std::shared_ptr<ArgList>;
     using ArgListNoRetPtr = std::shared_ptr<ArgListNoRet>;
+    using IntPointPtr = std::shared_ptr<IntPoint>;
+    using IntRectPtr = std::shared_ptr<IntRect>;
     using Value = std::variant<
         Null,
         Void,
@@ -440,8 +444,8 @@ private:
         Stage,
         PlayerRef,
         MovieRef,
-        IntPoint,
-        IntRect,
+        IntPointPtr,
+        IntRectPtr,
         Vector3,
         ColorRef,
         Media,
