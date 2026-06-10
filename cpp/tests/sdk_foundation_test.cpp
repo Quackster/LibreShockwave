@@ -12935,6 +12935,117 @@ void testSpriteBakerFoundation() {
     assert(bakedFileText.height() == 3);
     assert(bakedFileText.bakedBitmap()->getPixel(6, 2) == 0xFFABCDEFU);
 
+    auto makeTextRifx = [&](const std::vector<std::pair<std::string, std::vector<std::uint8_t>>>& chunkList) {
+        const int localMmapLen = 24 + static_cast<int>(chunkList.size()) * 20;
+        int localDataStart = mmapOffset + 8 + localMmapLen;
+        std::vector<int> localChunkDataStarts;
+        localChunkDataStarts.reserve(chunkList.size());
+        for (const auto& chunk : chunkList) {
+            localChunkDataStarts.push_back(localDataStart);
+            localDataStart += static_cast<int>(chunk.second.size());
+        }
+
+        std::vector<std::uint8_t> data;
+        appendFourCC(data, "RIFX");
+        appendI32(data, 0);
+        appendFourCC(data, "MV93");
+        appendFourCC(data, "imap");
+        appendI32(data, 12);
+        appendI32(data, 1);
+        appendI32(data, mmapOffset);
+        appendI32(data, 0x04B1);
+        appendFourCC(data, "mmap");
+        appendI32(data, static_cast<std::uint32_t>(localMmapLen));
+        appendI16(data, 24);
+        appendI16(data, 20);
+        appendI32(data, static_cast<std::uint32_t>(chunkList.size()));
+        appendI32(data, static_cast<std::uint32_t>(chunkList.size()));
+        appendI32(data, 0);
+        appendI32(data, 0);
+        appendI32(data, 0);
+        for (std::size_t index = 0; index < chunkList.size(); ++index) {
+            appendI32(data, BinaryReader::fourCC(chunkList[index].first));
+            appendI32(data, static_cast<std::uint32_t>(chunkList[index].second.size()));
+            appendI32(data, static_cast<std::uint32_t>(localChunkDataStarts[index] - 8));
+            appendI16(data, 0);
+            appendI16(data, 0);
+            appendI32(data, 0);
+        }
+        for (const auto& chunk : chunkList) {
+            data.insert(data.end(), chunk.second.begin(), chunk.second.end());
+        }
+        putI32At(data, 4, static_cast<std::uint32_t>(data.size() - 8));
+        return data;
+    };
+
+    const std::string legacyText = "Legacy text";
+    std::vector<std::uint8_t> legacyStxtData;
+    appendI32(legacyStxtData, 8);
+    appendI32(legacyStxtData, static_cast<std::uint32_t>(legacyText.size()));
+    legacyStxtData.insert(legacyStxtData.end(), legacyText.begin(), legacyText.end());
+    appendI16(legacyStxtData, 1);
+    appendI16(legacyStxtData, 0);
+    appendI32(legacyStxtData, 0);
+    appendI16(legacyStxtData, 0);
+    legacyStxtData.push_back(0x80);
+    legacyStxtData.insert(legacyStxtData.end(), {0, 0, 0});
+    appendI16(legacyStxtData, 9);
+    legacyStxtData.insert(legacyStxtData.end(), {0x11, 0x22, 0x33, 0});
+    auto legacyTextFile = DirectorFile::load(makeTextRifx({
+        {"DRCF", textConfigData},
+        {"KEY*", textKeyData},
+        {"STXT", legacyStxtData}
+    }));
+    auto legacyTextMember = std::make_shared<CastMemberChunk>(legacyTextFile.get(),
+                                                              ChunkId(3),
+                                                              MemberType::Text,
+                                                              0,
+                                                              static_cast<int>(textSpecificData.size()),
+                                                              std::vector<std::uint8_t>{},
+                                                              textSpecificData,
+                                                              "legacy-file-text",
+                                                              0,
+                                                              0,
+                                                              0);
+    FontRegistry::clear();
+    try {
+        FontRegistry::registerEmbeddedTtfFont("LegacyPixel", readFixtureBytes("player-core/src/main/resources/fonts/windows/Verdana.ttf"));
+        RecordingSpriteBakerTextRenderer legacyTextRenderer;
+        SpriteBaker legacyTextBaker;
+        legacyTextBaker.setTextRenderer(&legacyTextRenderer);
+        RenderSprite legacyTextSprite(23,
+                                      0,
+                                      0,
+                                      20,
+                                      9,
+                                      0,
+                                      true,
+                                      SpriteType::Text,
+                                      legacyTextMember,
+                                      nullptr,
+                                      0x445566,
+                                      0,
+                                      true,
+                                      false,
+                                      0,
+                                      100,
+                                      false,
+                                      false,
+                                      nullptr,
+                                      false);
+        auto bakedLegacyText = legacyTextBaker.bake(legacyTextSprite);
+        assert(legacyTextRenderer.lastText == legacyText);
+        assert(legacyTextRenderer.lastFontName == "LegacyPixel");
+        assert(legacyTextRenderer.lastFontSize == 9);
+        assert(legacyTextRenderer.lastFontStyle == "bold");
+        assert(legacyTextRenderer.lastTextColor == static_cast<int>(0xFF445566U));
+        assert(bakedLegacyText.bakedBitmap() != nullptr);
+    } catch (...) {
+        FontRegistry::clear();
+        throw;
+    }
+    FontRegistry::clear();
+
     RecordingSpriteBakerTextRenderer dynamicTextRenderer;
     SpriteBaker dynamicTextBaker;
     dynamicTextBaker.setTextRenderer(&dynamicTextRenderer);

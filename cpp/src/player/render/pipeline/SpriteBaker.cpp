@@ -17,6 +17,8 @@
 #include "libreshockwave/chunks/ScoreChunk.hpp"
 #include "libreshockwave/chunks/TextChunk.hpp"
 #include "libreshockwave/id/Ids.hpp"
+#include "libreshockwave/player/cast/FontRegistry.hpp"
+#include "libreshockwave/player/render/output/SimpleTextRenderer.hpp"
 #include "libreshockwave/player/render/output/TextRenderer.hpp"
 #include "libreshockwave/player/render/pipeline/InkProcessor.hpp"
 
@@ -135,6 +137,11 @@ std::string defaultStxtFontName(const DirectorFile& file) {
     return version > 0 && version <= 1600 ? "Geneva" : "Arial";
 }
 
+bool usesLegacyEmbeddedTextFont(const DirectorFile& file, int fontId, int fontStyle) {
+    const int version = directorVersionFor(file);
+    return fontId == 0 && (fontStyle & 0x80) != 0 && version > 0 && version <= 1600;
+}
+
 std::string textAlignment(int textAlign) {
     switch (textAlign) {
         case 1: return "center";
@@ -143,9 +150,9 @@ std::string textAlignment(int textAlign) {
     }
 }
 
-std::string fontStyleString(int fontStyle) {
+std::string fontStyleString(int fontStyle, bool forceBold = false) {
     std::string style;
-    if ((fontStyle & 1) != 0) {
+    if ((fontStyle & 1) != 0 || forceBold) {
         style += "bold";
     }
     if ((fontStyle & 2) != 0) {
@@ -536,6 +543,7 @@ std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeFileBackedText(const Rend
     std::string fontName = defaultStxtFontName(*file);
     int fontSize = 12;
     int fontStyle = 0;
+    bool legacyEmbeddedTextFont = false;
     int runR = -1;
     int runG = -1;
     int runB = -1;
@@ -543,6 +551,12 @@ std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeFileBackedText(const Rend
         const auto& run = textChunk->runs().front();
         if (auto mapped = file->getFontNameForId(run.fontId); mapped.has_value() && !mapped->empty()) {
             fontName = *mapped;
+        } else if (usesLegacyEmbeddedTextFont(*file, run.fontId, run.fontStyle)) {
+            if (auto embedded = ::libreshockwave::player::cast::FontRegistry::getPreferredDirectorPixelFont();
+                embedded.has_value() && !embedded->empty()) {
+                fontName = *embedded;
+                legacyEmbeddedTextFont = true;
+            }
         }
         fontSize = run.fontSize;
         fontStyle = run.fontStyle;
@@ -563,19 +577,40 @@ std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeFileBackedText(const Rend
     const int fixedLineSpace = textInfo.textHeight > fontSize ? fontSize : 0;
     const int topSpacing = textInfo.textHeight > fontSize ? textInfo.textHeight - fontSize : 0;
 
-    auto rendered = textRenderer_->renderText(textChunk->text(),
-                                              renderWidth,
-                                              height,
-                                              fontName,
-                                              fontSize,
-                                              fontStyleString(fontStyle),
-                                              textAlignment(textInfo.textAlign),
-                                              textColor,
-                                              bgColor,
-                                              textInfo.isWordWrap,
-                                              false,
-                                              fixedLineSpace,
-                                              topSpacing);
+    const auto style = fontStyleString(fontStyle, legacyEmbeddedTextFont);
+    std::shared_ptr<bitmap::Bitmap> rendered;
+    if (legacyEmbeddedTextFont) {
+        if (auto* simpleRenderer = dynamic_cast<output::SimpleTextRenderer*>(textRenderer_)) {
+            rendered = simpleRenderer->renderLegacyStxtText(textChunk->text(),
+                                                            renderWidth,
+                                                            height,
+                                                            fontName,
+                                                            fontSize,
+                                                            style,
+                                                            textAlignment(textInfo.textAlign),
+                                                            textColor,
+                                                            bgColor,
+                                                            textInfo.isWordWrap,
+                                                            false,
+                                                            fixedLineSpace,
+                                                            topSpacing);
+        }
+    }
+    if (rendered == nullptr) {
+        rendered = textRenderer_->renderText(textChunk->text(),
+                                             renderWidth,
+                                             height,
+                                             fontName,
+                                             fontSize,
+                                             style,
+                                             textAlignment(textInfo.textAlign),
+                                             textColor,
+                                             bgColor,
+                                             textInfo.isWordWrap,
+                                             false,
+                                             fixedLineSpace,
+                                             topSpacing);
+    }
     auto textImage = insetTextBitmap(std::move(rendered), width, height, horizontalInset, bgColor);
     if (textImage == nullptr || isTransparentTextInk(sprite)) {
         return textImage;
