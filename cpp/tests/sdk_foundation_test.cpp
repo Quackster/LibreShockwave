@@ -1621,7 +1621,9 @@ void testLingoDecompilerNodeFoundation() {
         std::make_unique<LiteralNode>(1)));
     assert(handler.toLingo(true) == "on demo arg1, arg2\n  global gOne\n  x = 1\n\nend");
 
-    ScriptNamesChunk scriptNames(nullptr, ChunkId(501), {"prepareMovie", "argOne", "pFlag", "gFlag"});
+    ScriptNamesChunk scriptNames(nullptr,
+                                 ChunkId(501),
+                                 {"prepareMovie", "argOne", "pFlag", "gFlag", "localOne", "doThing"});
     ScriptChunk::Handler bytecodeHandler{
         0,
         0,
@@ -1632,12 +1634,20 @@ void testLingoDecompilerNodeFoundation() {
         0,
         0,
         {1},
-        {},
+        {4},
         {
             ScriptChunk::Instruction{0, Opcode::PUSH_INT8, 0x41, 7},
-            ScriptChunk::Instruction{2, Opcode::RET, 0x01, 0}
+            ScriptChunk::Instruction{2, Opcode::SET_PROP, 0x50, 2},
+            ScriptChunk::Instruction{4, Opcode::GET_PARAM, 0x4B, 0},
+            ScriptChunk::Instruction{6, Opcode::PUSH_INT8, 0x41, 3},
+            ScriptChunk::Instruction{8, Opcode::ADD, 0x05, 0},
+            ScriptChunk::Instruction{9, Opcode::SET_LOCAL, 0x52, 0},
+            ScriptChunk::Instruction{11, Opcode::PUSH_INT8, 0x41, 9},
+            ScriptChunk::Instruction{13, Opcode::PUSH_ARG_LIST_NO_RET, 0x42, 1},
+            ScriptChunk::Instruction{15, Opcode::EXT_CALL, 0x57, 5},
+            ScriptChunk::Instruction{17, Opcode::RET, 0x01, 0}
         },
-        {{0, 0}, {2, 1}}
+        {{0, 0}, {2, 1}, {4, 2}, {6, 3}, {8, 4}, {9, 5}, {11, 6}, {13, 7}, {15, 8}, {17, 9}}
     };
     ScriptChunk script(nullptr,
                        ChunkId(500),
@@ -1649,35 +1659,53 @@ void testLingoDecompilerNodeFoundation() {
                        {ScriptChunk::GlobalEntry{3}},
                        {});
     LingoDecompiler decompiler;
-    const auto handlerBytecode = decompiler.decompileHandler(script.handlers().front(), script, &scriptNames);
+    const auto handlerSource = decompiler.decompileHandler(script.handlers().front(), script, &scriptNames);
+    assert(handlerSource ==
+           "on prepareMovie argOne\n"
+           "  pFlag = 7\n\n"
+           "  localOne = argOne + 3\n\n"
+           "  doThing(9)\n\n"
+           "end");
+    const auto handlerBytecode = decompiler.formatHandlerBytecodeOnly(script.handlers().front(), &scriptNames);
     assert(handlerBytecode ==
            "on prepareMovie\n"
            "  [0000] pushInt8         7\n"
-           "  [0002] ret             \n"
+           "  [0002] setProp          2\n"
+           "  [0004] getParam         0\n"
+           "  [0006] pushInt8         3\n"
+           "  [0008] add             \n"
+           "  [0009] setLocal         0\n"
+           "  [0011] pushInt8         9\n"
+           "  [0013] pushArgListNoRet 1\n"
+           "  [0015] extCall          5\n"
+           "  [0017] ret             \n"
            "end\n");
     assert(decompiler.decompile(script, &scriptNames) ==
            "-- Movie Script\n\n"
            "property pFlag\n\n"
            "global gFlag\n\n"
-           "on prepareMovie\n"
-           "  [0000] pushInt8         7\n"
-           "  [0002] ret             \n"
-           "end\n\n");
+           "on prepareMovie argOne\n"
+           "  pFlag = 7\n\n"
+           "  localOne = argOne + 3\n\n"
+           "  doThing(9)\n\n"
+           "end\n");
     const auto bytecodeMapping = decompiler.decompileHandlerWithMapping(script.handlers().front(), script, &scriptNames);
     assert(bytecodeMapping.toText() ==
-           "on prepareMovie\n"
-           "  [0] pushInt8 7\n"
-           "  [2] ret\n"
+           "on prepareMovie argOne\n"
+           "  pFlag = 7\n"
+           "  localOne = argOne + 3\n"
+           "  doThing(9)\n"
            "end\n");
-    assert(bytecodeMapping.lines.size() == 4);
+    assert(bytecodeMapping.lines.size() == 5);
     assert(bytecodeMapping.lines[0].bytecodeOffset == -1);
-    assert(bytecodeMapping.lines[1].bytecodeOffset == 0);
-    assert(bytecodeMapping.lines[2].bytecodeOffset == 2);
-    assert(bytecodeMapping.lines[3].bytecodeOffset == -1);
+    assert(bytecodeMapping.lines[1].bytecodeOffset == 2);
+    assert(bytecodeMapping.lines[2].bytecodeOffset == 9);
+    assert(bytecodeMapping.lines[3].bytecodeOffset == 15);
+    assert(bytecodeMapping.lines[4].bytecodeOffset == -1);
 
     ScriptChunk::Handler unresolvedHandler = bytecodeHandler;
     unresolvedHandler.nameId = 99;
-    assert(decompiler.decompileHandler(unresolvedHandler, script, &scriptNames).starts_with("on #99\n"));
+    assert(decompiler.decompileHandler(unresolvedHandler, script, &scriptNames).starts_with("on #99 argOne\n"));
 
     HandlerNode mappedHandler("mapped", {"me"}, {"gFlag"});
     auto ifNode = std::make_unique<IfStmtNode>(std::make_unique<VarNode>("ready"));

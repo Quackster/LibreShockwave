@@ -41,8 +41,23 @@ public:
 private:
     const chunks::ScriptChunk* script_ = nullptr;
     const chunks::ScriptNamesChunk* names_ = nullptr;
+    const chunks::ScriptChunk::Handler* currentHandler_ = nullptr;
+    int version_ = 0x4C1;
+    bool capitalX_ = false;
+    bool dotSyntax_ = false;
+    std::vector<NodePtr> stack_;
 
+    void initFileInfo(const chunks::ScriptChunk& script);
+    [[nodiscard]] std::unique_ptr<HandlerNode> translateHandler(const chunks::ScriptChunk::Handler& handler);
+    void translateInstruction(const chunks::ScriptChunk::Instruction& instruction,
+                              std::size_t index,
+                              BlockNode& block);
+    [[nodiscard]] NodePtr popNode();
+    [[nodiscard]] int variableMultiplier() const;
     [[nodiscard]] std::string resolveName(int nameId) const;
+    [[nodiscard]] std::string getArgumentName(int rawIndex) const;
+    [[nodiscard]] std::string getLocalName(int rawIndex) const;
+    [[nodiscard]] NodePtr literalToNode(const chunks::ScriptChunk::LiteralEntry& literal) const;
 };
 
 } // namespace libreshockwave::lingo::decompiler

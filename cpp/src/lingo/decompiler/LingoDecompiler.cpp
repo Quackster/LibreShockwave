@@ -1,9 +1,14 @@
 #include "libreshockwave/lingo/decompiler/LingoDecompiler.hpp"
 
+#include <algorithm>
+#include <bit>
+#include <cstdint>
 #include <iomanip>
 #include <sstream>
 #include <string_view>
+#include <variant>
 
+#include "libreshockwave/DirectorFile.hpp"
 #include "libreshockwave/chunks/ScriptNamesChunk.hpp"
 #include "libreshockwave/format/ScriptFormatUtils.hpp"
 #include "libreshockwave/lingo/Opcode.hpp"
@@ -171,6 +176,7 @@ std::string LingoDecompiler::decompile(const chunks::ScriptChunk& script,
                                        const chunks::ScriptNamesChunk* names) {
     script_ = &script;
     names_ = names;
+    initFileInfo(script);
 
     std::string result = "-- " + format::getScriptTypeName(script.scriptType()) + "\n\n";
 
@@ -205,7 +211,8 @@ std::string LingoDecompiler::decompileHandler(const chunks::ScriptChunk::Handler
                                               const chunks::ScriptNamesChunk* names) {
     script_ = &script;
     names_ = names;
-    return formatHandlerBytecodeOnly(handler, names);
+    initFileInfo(script);
+    return translateHandler(handler)->toLingo(dotSyntax_);
 }
 
 LingoDecompiler::DecompiledHandler LingoDecompiler::decompileHandlerWithMapping(
@@ -214,14 +221,8 @@ LingoDecompiler::DecompiledHandler LingoDecompiler::decompileHandlerWithMapping(
     const chunks::ScriptNamesChunk* names) {
     script_ = &script;
     names_ = names;
-
-    DecompiledHandler result;
-    result.lines.push_back(DecompiledLine{"on " + resolveName(handler.nameId), -1});
-    for (const auto& instruction : handler.instructions) {
-        result.lines.push_back(DecompiledLine{"  " + instruction.toString(), instruction.offset});
-    }
-    result.lines.push_back(DecompiledLine{"end", -1});
-    return result;
+    initFileInfo(script);
+    return buildLineMapping(*translateHandler(handler), dotSyntax_);
 }
 
 std::string LingoDecompiler::formatHandlerBytecodeOnly(const chunks::ScriptChunk::Handler& handler,
@@ -270,6 +271,319 @@ std::string LingoDecompiler::resolveName(int nameId) const {
         return names_->getName(nameId);
     }
     return "#" + std::to_string(nameId);
+}
+
+void LingoDecompiler::initFileInfo(const chunks::ScriptChunk& script) {
+    version_ = 0x4C1;
+    capitalX_ = false;
+    if (script.file() != nullptr) {
+        version_ = script.file()->version();
+        capitalX_ = script.file()->isCapitalX();
+    }
+    dotSyntax_ = version_ >= 700;
+}
+
+std::unique_ptr<HandlerNode> LingoDecompiler::translateHandler(const chunks::ScriptChunk::Handler& handler) {
+    currentHandler_ = &handler;
+    stack_.clear();
+
+    std::vector<std::string> argumentNames;
+    argumentNames.reserve(handler.argNameIds.size());
+    for (const auto nameId : handler.argNameIds) {
+        argumentNames.push_back(resolveName(nameId));
+    }
+
+    auto root = std::make_unique<HandlerNode>(resolveName(handler.nameId), std::move(argumentNames), std::vector<std::string>{});
+    for (std::size_t index = 0; index < handler.instructions.size(); ++index) {
+        translateInstruction(handler.instructions[index], index, root->block());
+    }
+    return root;
+}
+
+void LingoDecompiler::translateInstruction(const chunks::ScriptChunk::Instruction& instruction,
+                                           std::size_t index,
+                                           BlockNode& block) {
+    NodePtr translation;
+
+    switch (instruction.opcode) {
+        case Opcode::RET:
+        case Opcode::RET_FACTORY:
+            if (script_ != nullptr && currentHandler_ != nullptr && index + 1 == currentHandler_->instructions.size()) {
+                return;
+            }
+            translation = std::make_unique<ExitStmtNode>();
+            break;
+
+        case Opcode::PUSH_ZERO:
+            translation = std::make_unique<LiteralNode>(0);
+            break;
+
+        case Opcode::MUL:
+        case Opcode::ADD:
+        case Opcode::SUB:
+        case Opcode::DIV:
+        case Opcode::MOD:
+        case Opcode::JOIN_STR:
+        case Opcode::JOIN_PAD_STR:
+        case Opcode::LT:
+        case Opcode::LT_EQ:
+        case Opcode::NT_EQ:
+        case Opcode::EQ:
+        case Opcode::GT:
+        case Opcode::GT_EQ:
+        case Opcode::AND:
+        case Opcode::OR:
+        case Opcode::CONTAINS_STR:
+        case Opcode::CONTAINS_0_STR: {
+            auto right = popNode();
+            auto left = popNode();
+            translation = std::make_unique<BinaryOpNode>(instruction.opcode, std::move(left), std::move(right));
+            break;
+        }
+
+        case Opcode::INV:
+            translation = std::make_unique<InverseOpNode>(popNode());
+            break;
+
+        case Opcode::NOT:
+            translation = std::make_unique<NotOpNode>(popNode());
+            break;
+
+        case Opcode::PUSH_INT8:
+        case Opcode::PUSH_INT16:
+        case Opcode::PUSH_INT32:
+            translation = std::make_unique<LiteralNode>(instruction.argument);
+            break;
+
+        case Opcode::PUSH_FLOAT32: {
+            const auto bits = static_cast<std::uint32_t>(instruction.argument);
+            translation = std::make_unique<LiteralNode>(static_cast<double>(std::bit_cast<float>(bits)));
+            break;
+        }
+
+        case Opcode::PUSH_ARG_LIST:
+        case Opcode::PUSH_ARG_LIST_NO_RET: {
+            std::vector<NodePtr> args;
+            const int count = std::max(0, instruction.argument);
+            args.reserve(static_cast<std::size_t>(count));
+            for (int argIndex = 0; argIndex < count; ++argIndex) {
+                args.insert(args.begin(), popNode());
+            }
+            translation = std::make_unique<LiteralNode>(
+                instruction.opcode == Opcode::PUSH_ARG_LIST ? ValueType::ArgList : ValueType::ArgListNoRet,
+                std::move(args));
+            break;
+        }
+
+        case Opcode::PUSH_LIST:
+        case Opcode::PUSH_PROP_LIST:
+            translation = popNode();
+            translation->setValueType(instruction.opcode == Opcode::PUSH_LIST ? ValueType::List : ValueType::PropList);
+            break;
+
+        case Opcode::PUSH_CONS: {
+            const int literalId = instruction.argument / variableMultiplier();
+            if (script_ != nullptr && literalId >= 0 && literalId < static_cast<int>(script_->literals().size())) {
+                translation = literalToNode(script_->literals()[static_cast<std::size_t>(literalId)]);
+            } else {
+                translation = std::make_unique<ErrorNode>();
+            }
+            break;
+        }
+
+        case Opcode::PUSH_SYMB:
+            translation = std::make_unique<LiteralNode>(ValueType::Symbol, resolveName(instruction.argument));
+            break;
+
+        case Opcode::PUSH_VAR_REF:
+            translation = std::make_unique<LiteralNode>(ValueType::VarRef, resolveName(instruction.argument));
+            break;
+
+        case Opcode::GET_GLOBAL:
+        case Opcode::GET_GLOBAL2:
+        case Opcode::GET_PROP:
+        case Opcode::GET_TOP_LEVEL_PROP:
+            translation = std::make_unique<VarNode>(resolveName(instruction.argument));
+            break;
+
+        case Opcode::GET_PARAM:
+            translation = std::make_unique<VarNode>(getArgumentName(instruction.argument));
+            break;
+
+        case Opcode::GET_LOCAL:
+            translation = std::make_unique<VarNode>(getLocalName(instruction.argument));
+            break;
+
+        case Opcode::SET_GLOBAL:
+        case Opcode::SET_GLOBAL2:
+        case Opcode::SET_PROP:
+            translation = std::make_unique<AssignmentStmtNode>(
+                std::make_unique<VarNode>(resolveName(instruction.argument)),
+                popNode());
+            break;
+
+        case Opcode::SET_PARAM:
+            translation = std::make_unique<AssignmentStmtNode>(
+                std::make_unique<VarNode>(getArgumentName(instruction.argument)),
+                popNode());
+            break;
+
+        case Opcode::SET_LOCAL:
+            translation = std::make_unique<AssignmentStmtNode>(
+                std::make_unique<VarNode>(getLocalName(instruction.argument)),
+                popNode());
+            break;
+
+        case Opcode::LOCAL_CALL: {
+            auto argList = popNode();
+            std::string callName = "handler#" + std::to_string(instruction.argument);
+            if (script_ != nullptr &&
+                instruction.argument >= 0 &&
+                instruction.argument < static_cast<int>(script_->handlers().size())) {
+                callName = resolveName(script_->handlers()[static_cast<std::size_t>(instruction.argument)].nameId);
+            }
+            translation = std::make_unique<CallNode>(std::move(callName), std::move(argList));
+            break;
+        }
+
+        case Opcode::EXT_CALL:
+        case Opcode::TELL_CALL:
+            translation = std::make_unique<CallNode>(resolveName(instruction.argument), popNode());
+            break;
+
+        case Opcode::GET_MOVIE_PROP:
+            translation = std::make_unique<TheExprNode>(resolveName(instruction.argument));
+            break;
+
+        case Opcode::SET_MOVIE_PROP:
+            translation = std::make_unique<AssignmentStmtNode>(
+                std::make_unique<TheExprNode>(resolveName(instruction.argument)),
+                popNode());
+            break;
+
+        case Opcode::GET_OBJ_PROP:
+        case Opcode::GET_CHAINED_PROP:
+            translation = std::make_unique<ObjPropExprNode>(popNode(), resolveName(instruction.argument));
+            break;
+
+        case Opcode::SET_OBJ_PROP: {
+            auto value = popNode();
+            auto object = popNode();
+            translation = std::make_unique<AssignmentStmtNode>(
+                std::make_unique<ObjPropExprNode>(std::move(object), resolveName(instruction.argument)),
+                std::move(value));
+            break;
+        }
+
+        case Opcode::THE_BUILTIN:
+            (void)popNode();
+            translation = std::make_unique<TheExprNode>(resolveName(instruction.argument));
+            break;
+
+        case Opcode::NEW_OBJ:
+            translation = std::make_unique<NewObjNode>(resolveName(instruction.argument), popNode());
+            break;
+
+        case Opcode::SWAP:
+            if (stack_.size() >= 2) {
+                std::swap(stack_[stack_.size() - 1], stack_[stack_.size() - 2]);
+            }
+            return;
+
+        case Opcode::POP:
+            for (int count = 0; count < instruction.argument; ++count) {
+                (void)popNode();
+            }
+            return;
+
+        case Opcode::CALL_JAVASCRIPT:
+            stack_.clear();
+            translation = std::make_unique<CommentNode>("@js");
+            break;
+
+        default: {
+            std::string text(lingo::mnemonic(instruction.opcode));
+            if (instruction.rawOpcode >= 0x40) {
+                text.push_back(' ');
+                text.append(std::to_string(instruction.argument));
+            }
+            translation = std::make_unique<CommentNode>(std::move(text));
+            stack_.clear();
+            break;
+        }
+    }
+
+    if (!translation) {
+        translation = std::make_unique<ErrorNode>();
+    }
+    translation->setBytecodeOffset(instruction.offset);
+
+    if (translation->isExpression()) {
+        stack_.push_back(std::move(translation));
+    } else {
+        block.addChild(std::move(translation));
+    }
+}
+
+NodePtr LingoDecompiler::popNode() {
+    if (stack_.empty()) {
+        return std::make_unique<ErrorNode>();
+    }
+    auto node = std::move(stack_.back());
+    stack_.pop_back();
+    return node;
+}
+
+int LingoDecompiler::variableMultiplier() const {
+    if (capitalX_) {
+        return 1;
+    }
+    if (version_ >= 500) {
+        return 8;
+    }
+    return 6;
+}
+
+std::string LingoDecompiler::getArgumentName(int rawIndex) const {
+    const int index = rawIndex / variableMultiplier();
+    if (currentHandler_ != nullptr &&
+        index >= 0 &&
+        index < static_cast<int>(currentHandler_->argNameIds.size())) {
+        return resolveName(currentHandler_->argNameIds[static_cast<std::size_t>(index)]);
+    }
+    return "UNKNOWN_ARG_" + std::to_string(index);
+}
+
+std::string LingoDecompiler::getLocalName(int rawIndex) const {
+    const int index = rawIndex / variableMultiplier();
+    if (currentHandler_ != nullptr &&
+        index >= 0 &&
+        index < static_cast<int>(currentHandler_->localNameIds.size())) {
+        return resolveName(currentHandler_->localNameIds[static_cast<std::size_t>(index)]);
+    }
+    return "UNKNOWN_LOCAL_" + std::to_string(index);
+}
+
+NodePtr LingoDecompiler::literalToNode(const chunks::ScriptChunk::LiteralEntry& literal) const {
+    switch (literal.type) {
+        case 1:
+            if (std::holds_alternative<std::string>(literal.value)) {
+                return std::make_unique<LiteralNode>(ValueType::String, std::get<std::string>(literal.value));
+            }
+            return std::make_unique<LiteralNode>(ValueType::String, "");
+        case 4:
+            if (std::holds_alternative<int>(literal.value)) {
+                return std::make_unique<LiteralNode>(std::get<int>(literal.value));
+            }
+            return std::make_unique<LiteralNode>(0);
+        case 9:
+            return std::make_unique<LiteralNode>(literal.numericValue);
+        default:
+            if (std::holds_alternative<std::string>(literal.value)) {
+                return std::make_unique<LiteralNode>(ValueType::String, std::get<std::string>(literal.value));
+            }
+            return std::make_unique<LiteralNode>(ValueType::String, "");
+    }
 }
 
 } // namespace libreshockwave::lingo::decompiler
