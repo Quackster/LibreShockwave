@@ -99,6 +99,7 @@
 #include "libreshockwave/lingo/vm/util/AncestorChainWalker.hpp"
 #include "libreshockwave/lingo/vm/util/StringChunkUtils.hpp"
 #include "libreshockwave/lingo/xtra/MultiuserXtra.hpp"
+#include "libreshockwave/lingo/xtra/ScriptCallback.hpp"
 #include "libreshockwave/lingo/xtra/XmlParserXtra.hpp"
 #include "libreshockwave/lookup/CastMemberLookup.hpp"
 #include "libreshockwave/lookup/PaletteResolver.hpp"
@@ -242,6 +243,7 @@ using libreshockwave::lingo::vm::trace::InstructionAnnotator;
 using libreshockwave::lingo::vm::trace::TracingHelper;
 using libreshockwave::lingo::xtra::MultiuserNetBridge;
 using libreshockwave::lingo::xtra::MultiuserXtra;
+using libreshockwave::lingo::xtra::ScriptCallback;
 using libreshockwave::lingo::xtra::XmlParserXtra;
 using libreshockwave::lingo::xtra::Xtra;
 using libreshockwave::lingo::xtra::XtraManager;
@@ -3930,7 +3932,7 @@ void testMultiuserXtraFoundation() {
     int instanceId = 0;
     std::vector<std::string> callbacks;
     std::vector<std::string> callbackMessages;
-    MultiuserXtra xtra(&bridge, [&](const Datum& target, const std::string& handlerName, const std::vector<Datum>& args) {
+    ScriptCallback callback = [&](const Datum& target, const std::string& handlerName, const std::vector<Datum>& args) {
         callbacks.push_back(target.scriptInstanceValue().scriptName() + ":" + handlerName + ":" +
                             std::to_string(args.size()));
         const auto message = xtraPtr->callHandler(instanceId, "getNetMessage", {});
@@ -3938,7 +3940,8 @@ void testMultiuserXtraFoundation() {
         callbackMessages.push_back(message.propListValue().get(Datum::symbol("senderID")).stringValue() + ":" +
                                   message.propListValue().get(Datum::symbol("subject")).stringValue() + ":" +
                                   message.propListValue().get(Datum::symbol("content")).stringValue());
-    });
+    };
+    MultiuserXtra xtra(&bridge, callback);
     xtraPtr = &xtra;
 
     assert(xtra.name() == "Multiuser");
@@ -4027,7 +4030,7 @@ void testMultiuserXtraFoundation() {
 
     FakeBridge managerBridge;
     XtraManager manager;
-    manager.registerXtra(std::make_unique<MultiuserXtra>(&managerBridge, MultiuserXtra::ScriptCallback{}));
+    manager.registerXtra(std::make_unique<MultiuserXtra>(&managerBridge, ScriptCallback{}));
     assert(manager.isXtraRegistered("Multiusr"));
     assert(manager.registeredXtraNames()[0] == "Multiusr");
     const auto managerInstance = manager.createInstance("Multiusr", {});

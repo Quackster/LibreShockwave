@@ -1,6 +1,5 @@
 #pragma once
 
-#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -8,6 +7,7 @@
 #include <vector>
 
 #include "libreshockwave/lingo/Datum.hpp"
+#include "libreshockwave/lingo/xtra/ScriptCallback.hpp"
 #include "libreshockwave/lingo/xtra/XtraManager.hpp"
 
 namespace libreshockwave::lingo::xtra {
@@ -36,10 +36,6 @@ public:
 
 class MultiuserXtra : public Xtra {
 public:
-    using ScriptCallback = std::function<void(const Datum& target,
-                                              const std::string& handlerName,
-                                              const std::vector<Datum>& args)>;
-
     MultiuserXtra(MultiuserNetBridge* bridge, ScriptCallback callback);
 
     [[nodiscard]] std::string name() const override;
