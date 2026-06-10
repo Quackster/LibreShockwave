@@ -3,6 +3,7 @@
 #include "libreshockwave/bitmap/Bitmap.hpp"
 #include "libreshockwave/bitmap/Palette.hpp"
 #include "libreshockwave/lingo/LingoValueParser.hpp"
+#include "libreshockwave/lingo/vm/DebugConfig.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -981,7 +982,7 @@ Datum OutputBuiltins::put(BuiltinContext& context, const std::vector<Datum>& arg
         text << toStringLikeJava(args[index]);
     }
 
-    if (!context.debugPlaybackEnabled) {
+    if (!context.debugPlaybackEnabled && !vm::DebugConfig::isDebugPlaybackEnabled()) {
         return Datum::voidValue();
     }
 

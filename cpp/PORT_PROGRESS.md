@@ -363,7 +363,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 ### Output Builtins Foundation
 
 - Output builtins now register Java-compatible `put` and `alert`.
-- `put` is gated by a C++ debug-playback flag and writes through a VM-owned output callback before falling back to stdout.
+- `put` is gated by either the C++ VM context debug-playback flag or the global `lingo::vm::DebugConfig` debug-playback toggle, and writes through a VM-owned output callback before falling back to stdout.
 - `alert` uses a suppressible alert callback first, then writes through the same output callback/default stdout path for Java-compatible alert fallback behavior.
 
 ### List Builtins Foundation
@@ -637,6 +637,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - The VM can execute `ScriptChunk::Handler` bytecode end to end through reusable `Scope` and `ExecutionContext` callbacks, including global get/set opcodes, parameter reads, return values, direct builtin calls, builtin fallback from `callHandler`, and formatted call-stack frames.
 - VM-backed `value(...)` evaluation now mirrors Java's identifier fallback by resolving active globals and zero-argument global handlers through the C++ VM before returning void for unresolved identifiers.
 - Handler execution now mirrors Java's effective-receiver path for script instances passed as the first `me` argument, and same-script/same-receiver `deconstruct` reentry is skipped while ancestor-script cleanup remains allowed.
+- `lingo::vm::DebugConfig` ports the Java global debug-playback toggle; new VM contexts sample it into their builtin context while the existing player-owned debug flag remains available through the VM builtin context.
 - Tests cover direct handler execution, VM-backed globals/prefs/random, pass and stopEvent callbacks, step-limit cleanup, and visible call-stack state during opcode execution.
 
 ### Lingo VM Safepoint Foundation
@@ -872,7 +873,7 @@ Result:
 - BuiltinRegistry case-insensitive lookup, custom registration, movie label/marker builtins, sprite puppet/cursor/spriteBox builtins, puppetPalette hooks, and Java-compatible no-op sprite builtins passed through the same CTest executable.
 - MathBuiltins numeric coercion, integer/float conversion, bit operations, trig, power, min/max, list min/max, and random callback hooks passed through the same CTest executable.
 - StringBuiltins string coercion, length, chars, charToNum, numToChar, offset, and getPref/setPref callback hooks passed through the same CTest executable.
-- OutputBuiltins debug-gated `put`, Java-style argument joining, default alert output, and alert-hook suppression passed through the same CTest executable.
+- OutputBuiltins context/global-debug-gated `put`, Java-style argument joining, default alert output, and alert-hook suppression passed through the same CTest executable.
 - CastLibBuiltins castLib/member/field/createMember registration, missing-provider fallback, cast/member provider callbacks, encoded member numbers, search-all lookup, and omitted helper builtins passed through the same CTest executable.
 - XtraBuiltins registration, missing-manager behavior, registered-Xtra lookup, `new(xtraRef, ...)` instance creation, handler dispatch, property get/set callbacks, Java-style display strings, XML Parser Xtra parse/error/property/count lifecycle behavior, Multiuser Xtra bridge/connect/send/message/callback/tick/error/destroy behavior, socket Multiuser bridge loopback connect/send/poll/disconnect behavior, XtraManager lookup/list/alias/replacement/lifecycle/tick dispatch, and Player-owned XML plus socket Multiuser Xtra builtin wiring passed through the same CTest executable.
 - ControlFlowBuiltins return/abort state, param lookup, frame/label `go`, call-target dispatch, list/proplist call snapshots, and omitted update builtins passed through the same CTest executable.
@@ -902,7 +903,7 @@ Result:
 - SoundBuiltins channel creation, availability, sound-channel method dispatch, VM object-property defaults/mutation, and SoundManager playback delegation passed through the same CTest executable.
 - ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration, Java-style constructor argument coercion, callback hooks, direct script-instance fallback, and `NEW_OBJ` script-ref handler dispatch passed through the same CTest executable.
 - TypeBuiltins object/void/type predicates, `value` literal parsing/provider fallback, direct `script` lookup/scoping/unscoped list fallback, `script`/`callAncestor` callback hooks and list fanout, symbol conversion, and `ilk` alias/field-text checks passed through the same CTest executable.
-- Lingo VM Scope and ExecutionContext stack, param, local, return, loop, jump, global callback, handler callback, builtin invocation, and call-stack formatting behavior passed through the same CTest executable.
+- Lingo VM Scope and ExecutionContext stack, param, local, return, loop, jump, global callback, handler callback, builtin invocation, global debug-config propagation, and call-stack formatting behavior passed through the same CTest executable.
 - Lingo VM ExecutionContext name resolver callback and resolver-backed global opcode behavior passed through the same CTest executable.
 - Lingo VM long-handler safepoint callback, tick deadline, handler timeout, and cleanup behavior passed through the same CTest executable.
 - Lingo VM console trace controls, targeted handler trace output, random-call trace seed output, trace-enabled handler/instruction/return output, and output redirection passed through the same CTest executable.

@@ -16,6 +16,7 @@
 #include "libreshockwave/DirectorFile.hpp"
 #include "libreshockwave/chunks/ScriptNamesChunk.hpp"
 #include "libreshockwave/lingo/Opcode.hpp"
+#include "libreshockwave/lingo/vm/DebugConfig.hpp"
 
 namespace libreshockwave::lingo::vm {
 namespace {
@@ -148,6 +149,7 @@ LingoVM::LingoVM(DirectorFile* file)
     builtinContext_.randomIntHandler = [this](int max) {
         return randomInt(max);
     };
+    builtinContext_.debugPlaybackEnabled = DebugConfig::isDebugPlaybackEnabled();
     builtinContext_.getPrefHandler = [this](const std::string& name) {
         return getPref(name);
     };

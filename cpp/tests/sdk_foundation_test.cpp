@@ -86,6 +86,7 @@
 #include "libreshockwave/lingo/LingoValueParser.hpp"
 #include "libreshockwave/lingo/Opcode.hpp"
 #include "libreshockwave/lingo/builtin/BuiltinRegistry.hpp"
+#include "libreshockwave/lingo/vm/DebugConfig.hpp"
 #include "libreshockwave/lingo/vm/ExecutionContext.hpp"
 #include "libreshockwave/lingo/vm/LingoVM.hpp"
 #include "libreshockwave/lingo/vm/OpcodeRegistry.hpp"
@@ -220,6 +221,7 @@ using libreshockwave::lingo::Opcode;
 using libreshockwave::lingo::StringChunkType;
 using libreshockwave::lingo::builtin::BuiltinContext;
 using libreshockwave::lingo::builtin::BuiltinRegistry;
+using libreshockwave::lingo::vm::DebugConfig;
 using libreshockwave::lingo::vm::ExecutionContext;
 using libreshockwave::lingo::vm::HandlerRef;
 using libreshockwave::lingo::vm::LingoVM;
@@ -2436,17 +2438,31 @@ void testBuiltinRegistryFoundation() {
     };
     assert(registry.contains("put"));
     assert(registry.contains("alert"));
+    DebugConfig::setDebugPlaybackEnabled(false);
     assert(registry.invoke("put", context, {Datum::of(std::string("hidden"))}).isVoid());
     assert(outputMessages.empty());
+    assert(!DebugConfig::isDebugPlaybackEnabled());
+    DebugConfig::setDebugPlaybackEnabled(true);
+    assert(DebugConfig::isDebugPlaybackEnabled());
+    BuiltinContext debugConfigContext;
+    debugConfigContext.outputHandler = context.outputHandler;
+    assert(registry.invoke("put", debugConfigContext, {Datum::of(std::string("global"))}).isVoid());
+    assert(outputMessages.size() == 1);
+    assert(outputMessages.back().first == "PUT");
+    assert(outputMessages.back().second == "global");
+    LingoVM debugConfigVm;
+    assert(debugConfigVm.builtinContext().debugPlaybackEnabled);
+    DebugConfig::setDebugPlaybackEnabled(false);
+    assert(!DebugConfig::isDebugPlaybackEnabled());
     context.debugPlaybackEnabled = true;
     assert(registry.invoke("put",
                            context,
                            {Datum::of(std::string("score")), Datum::of(7), Datum::symbol("ready")}).isVoid());
-    assert(outputMessages.size() == 1);
+    assert(outputMessages.size() == 2);
     assert(outputMessages.back().first == "PUT");
     assert(outputMessages.back().second == "score 7 ready");
     assert(registry.invoke("alert", context).isVoid());
-    assert(outputMessages.size() == 2);
+    assert(outputMessages.size() == 3);
     assert(outputMessages.back().first == "ALERT");
     assert(outputMessages.back().second.empty());
     std::pair<std::string, std::string> hookedAlert;
@@ -2457,7 +2473,7 @@ void testBuiltinRegistryFoundation() {
     assert(registry.invoke("alert", context, {Datum::of(std::string("hooked"))}).isVoid());
     assert(hookedAlert.first == "Alert");
     assert(hookedAlert.second == "hooked");
-    assert(outputMessages.size() == 2);
+    assert(outputMessages.size() == 3);
     context.alertHookHandler = {};
     std::string handledAlert;
     context.alertHandler = [&handledAlert](const std::string& text) {
@@ -2466,7 +2482,7 @@ void testBuiltinRegistryFoundation() {
     };
     assert(registry.invoke("alert", context, {Datum::of(std::string("handled"))}).isVoid());
     assert(handledAlert == "handled");
-    assert(outputMessages.size() == 2);
+    assert(outputMessages.size() == 3);
 
     assert(registry.contains("castLib"));
     assert(registry.contains("member"));
