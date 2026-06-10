@@ -1660,7 +1660,8 @@ void testLingoDecompilerNodeFoundation() {
                                   "caseOps",
                                   "caseOtherwiseOps",
                                   "caseOrOps",
-                                  "caseExpressionOps"});
+                                  "caseExpressionOps",
+                                  "jsOps"});
     ScriptChunk::Handler bytecodeHandler{
         0,
         0,
@@ -1739,6 +1740,51 @@ void testLingoDecompilerNodeFoundation() {
     assert(bytecodeMapping.lines[2].bytecodeOffset == 9);
     assert(bytecodeMapping.lines[3].bytecodeOffset == 15);
     assert(bytecodeMapping.lines[4].bytecodeOffset == -1);
+
+    ScriptChunk::Handler jsHandler{
+        scriptNames.findName("jsOps"),
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        {},
+        {},
+        {
+            ScriptChunk::Instruction{0, Opcode::CALL_JAVASCRIPT, 0x26, 0},
+            ScriptChunk::Instruction{1, Opcode::RET, 0x01, 0}
+        },
+        {}
+    };
+    ScriptChunk jsScript(nullptr,
+                         ChunkId(501),
+                         ScriptChunkType::MovieScript,
+                         0,
+                         {jsHandler},
+                         {ScriptChunk::LiteralEntry{1, 0, std::string("window.alert('ok')"), 0.0}},
+                         {},
+                         {},
+                         {});
+    assert(decompiler.decompileHandler(jsScript.handlers().front(), jsScript, &scriptNames) ==
+           "on jsOps\n"
+           "  -- @js\n"
+           "  window.alert('ok')\n\n"
+           "end");
+    const auto jsMapping = decompiler.decompileHandlerWithMapping(jsScript.handlers().front(),
+                                                                  jsScript,
+                                                                  &scriptNames);
+    assert(jsMapping.toText() ==
+           "on jsOps\n"
+           "  -- @js\n"
+           "  window.alert('ok')\n"
+           "end\n");
+    assert(jsMapping.lines.size() == 4);
+    assert(jsMapping.lines[0].bytecodeOffset == -1);
+    assert(jsMapping.lines[1].bytecodeOffset == 0);
+    assert(jsMapping.lines[2].bytecodeOffset == -1);
+    assert(jsMapping.lines[3].bytecodeOffset == -1);
 
     ScriptChunk::Handler unresolvedHandler = bytecodeHandler;
     unresolvedHandler.nameId = 99;

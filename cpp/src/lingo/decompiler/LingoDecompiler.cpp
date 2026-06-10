@@ -999,10 +999,17 @@ void LingoDecompiler::translateInstruction(const chunks::ScriptChunk::Instructio
             }
             return;
 
-        case Opcode::CALL_JAVASCRIPT:
+        case Opcode::CALL_JAVASCRIPT: {
             stack_.clear();
-            translation = std::make_unique<CommentNode>("@js");
+            std::string script;
+            if (script_ != nullptr && !script_->literals().empty()) {
+                if (const auto* text = std::get_if<std::string>(&script_->literals().front().value); text != nullptr) {
+                    script = *text;
+                }
+            }
+            translation = std::make_unique<CommentNode>("@js\n" + script);
             break;
+        }
 
         default: {
             std::string text(lingo::mnemonic(instruction.opcode));
