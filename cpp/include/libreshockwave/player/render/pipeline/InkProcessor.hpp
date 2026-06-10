@@ -25,6 +25,16 @@ public:
                                                  int backColor,
                                                  bool useAlpha,
                                                  const bitmap::Palette* palette);
+    [[nodiscard]] static bitmap::Bitmap applyInkPreservingOutlinedWhiteBody(const bitmap::Bitmap& src,
+                                                                            int ink,
+                                                                            int backColor,
+                                                                            bool useAlpha,
+                                                                            const bitmap::Palette* palette);
+    [[nodiscard]] static bitmap::Bitmap applyInkPreservingOutlinedWhiteBody(const bitmap::Bitmap& src,
+                                                                            id::InkMode ink,
+                                                                            int backColor,
+                                                                            bool useAlpha,
+                                                                            const bitmap::Palette* palette);
     [[nodiscard]] static int resolveBackColor(const bitmap::Bitmap& src,
                                               id::InkMode ink,
                                               int backColor,
@@ -50,6 +60,7 @@ public:
     [[nodiscard]] static bitmap::Bitmap applyMatte(const bitmap::Bitmap& src,
                                                    int matteColorRgb,
                                                    int tolerance = 0);
+    [[nodiscard]] static bitmap::Bitmap applyFloodFillTransparency(const bitmap::Bitmap& src);
     [[nodiscard]] static bitmap::Bitmap convertOpaqueWhiteToTransparent(const bitmap::Bitmap& src);
     [[nodiscard]] static bitmap::Bitmap multiplyColor(const bitmap::Bitmap& src, int tintRgb);
 };

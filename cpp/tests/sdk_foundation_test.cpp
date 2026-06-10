@@ -6417,6 +6417,99 @@ void testBitmapCacheAndInkProcessorFoundation() {
     assert(transparentWhite.getPixel(0, 0) == 0x00FFFFFFU);
     assert(transparentWhite.getPixel(1, 0) == 0xFF010203U);
 
+    Bitmap floodFillSource(3, 3, 8, {
+        0xFF000000U, 0xFF000000U, 0xFF000000U,
+        0xFF000000U, 0xFF33CCFFU, 0xFF000000U,
+        0xFF000000U, 0xFF000000U, 0xFF000000U
+    });
+    floodFillSource.setPaletteIndices({0, 0, 0, 0, 7, 0, 0, 0, 0});
+    Bitmap floodFillTransparent = InkProcessor::applyFloodFillTransparency(floodFillSource);
+    assert(floodFillTransparent.getPixel(0, 0) == 0x00000000U);
+    assert(floodFillTransparent.getPixel(1, 1) == 0xFF33CCFFU);
+    assert(floodFillTransparent.getPixel(2, 2) == 0x00000000U);
+
+    Bitmap addPinSource(5, 5, 8, {
+        0xFF000000U, 0xFF000000U, 0xFF000000U, 0xFF000000U, 0xFF000000U,
+        0xFF000000U, 0xFF202020U, 0xFF202020U, 0xFF202020U, 0xFF000000U,
+        0xFF000000U, 0xFF202020U, 0xFF000000U, 0xFF202020U, 0xFF000000U,
+        0xFF000000U, 0xFF202020U, 0xFF202020U, 0xFF202020U, 0xFF000000U,
+        0xFF000000U, 0xFF000000U, 0xFF000000U, 0xFF000000U, 0xFF000000U
+    });
+    addPinSource.setPaletteIndices({
+        0, 0, 0, 0, 0,
+        0, 7, 7, 7, 0,
+        0, 7, 0, 7, 0,
+        0, 7, 7, 7, 0,
+        0, 0, 0, 0, 0
+    });
+    Bitmap addPinIsolated = InkProcessor::applyInk(addPinSource, InkMode::ADD_PIN, 0, false, nullptr);
+    assert(addPinIsolated.getPixel(0, 0) == 0x00000000U);
+    assert(addPinIsolated.getPixel(2, 2) == 0xFF000000U);
+    assert(addPinIsolated.getPixel(1, 1) == 0xFF202020U);
+
+    Bitmap outlinedIndexed(6, 5, 8, {
+        0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU, 0xFF000000U, 0xFF000000U, 0xFFFFFFFFU,
+        0xFFFFFFFFU, 0xFF000000U, 0xFF000000U, 0xFFEEEEEEU, 0xFFEEEEEEU, 0xFF000000U,
+        0xFF000000U, 0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFBBBBBBU, 0xFFBBBBBBU, 0xFF000000U,
+        0xFF000000U, 0xFFBBBBBBU, 0xFFBBBBBBU, 0xFF000000U, 0xFF000000U, 0xFFFFFFFFU,
+        0xFFFFFFFFU, 0xFF000000U, 0xFF000000U, 0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU
+    });
+    outlinedIndexed.setPaletteIndices({
+        0, 0, 0, 255, 255, 0,
+        0, 255, 255, 17, 17, 255,
+        255, 0, 0, 68, 68, 255,
+        255, 68, 68, 255, 255, 0,
+        0, 255, 255, 0, 0, 0
+    });
+    Bitmap outlinedMatte = InkProcessor::applyInk(outlinedIndexed, InkMode::MATTE, 0, false, nullptr);
+    assert(outlinedMatte.getPixel(0, 0) == 0x00000000U);
+    assert(outlinedMatte.getPixel(1, 2) == 0xFFFFFFFFU);
+    assert(outlinedMatte.getPixel(2, 2) == 0xFFFFFFFFU);
+    assert(outlinedMatte.getPixel(3, 2) == 0xFFBBBBBBU);
+    assert(outlinedMatte.getPixel(0, 2) == 0xFF000000U);
+
+    auto makeScriptBubble = [] {
+        Bitmap bubble(20, 10, 32);
+        bubble.fill(0xFFFFFFFFU);
+        for (int x = 4; x <= 15; ++x) {
+            bubble.setPixel(x, 0, 0xFF000000U);
+        }
+        for (int y = 1; y <= 7; ++y) {
+            bubble.setPixel(0, y, 0xFF000000U);
+            bubble.setPixel(19, y, 0xFF000000U);
+        }
+        for (int x = 0; x <= 7; ++x) {
+            bubble.setPixel(x, 7, 0xFF000000U);
+        }
+        for (int x = 12; x <= 19; ++x) {
+            bubble.setPixel(x, 7, 0xFF000000U);
+        }
+        bubble.setPixel(9, 8, 0xFF000000U);
+        bubble.setPixel(10, 8, 0xFF000000U);
+        bubble.setPixel(9, 9, 0xFF000000U);
+        bubble.setPixel(10, 9, 0xFF000000U);
+        bubble.setPixel(2, 2, 0xFF3A8ABFU);
+        for (int x = 6; x <= 9; ++x) {
+            bubble.setPixel(x, 4, 0xFF000000U);
+        }
+        bubble.setPixel(6, 5, 0xFF000000U);
+        bubble.setPixel(9, 5, 0xFF000000U);
+        bubble.markScriptModified();
+        return bubble;
+    };
+    Bitmap defaultScriptBubbleMatte = InkProcessor::applyInk(makeScriptBubble(), InkMode::MATTE, 0, false, nullptr);
+    assert(defaultScriptBubbleMatte.getPixel(10, 4) == 0x00000000U);
+    assert(defaultScriptBubbleMatte.getPixel(6, 4) == 0xFF000000U);
+    assert(defaultScriptBubbleMatte.getPixel(2, 2) == 0xFF3A8ABFU);
+
+    Bitmap preservedScriptBubbleMatte = InkProcessor::applyInkPreservingOutlinedWhiteBody(
+        makeScriptBubble(), InkMode::MATTE, 0, false, nullptr);
+    assert(preservedScriptBubbleMatte.getPixel(0, 9) == 0x00000000U);
+    assert(preservedScriptBubbleMatte.getPixel(10, 4) == 0xFFFFFFFFU);
+    assert(preservedScriptBubbleMatte.getPixel(6, 4) == 0xFF000000U);
+    assert(preservedScriptBubbleMatte.getPixel(2, 2) == 0xFF3A8ABFU);
+    assert(preservedScriptBubbleMatte.getPixel(9, 9) == 0xFF000000U);
+
     CastMemberChunk member(nullptr,
                            ChunkId(501),
                            MemberType::Bitmap,
