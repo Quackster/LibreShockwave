@@ -98,6 +98,7 @@
 #include "libreshockwave/lingo/vm/trace/TracingHelper.hpp"
 #include "libreshockwave/lingo/vm/util/AncestorChainWalker.hpp"
 #include "libreshockwave/lingo/vm/util/StringChunkUtils.hpp"
+#include "libreshockwave/lingo/xtra/MultiuserNetBridge.hpp"
 #include "libreshockwave/lingo/xtra/MultiuserXtra.hpp"
 #include "libreshockwave/lingo/xtra/ScriptCallback.hpp"
 #include "libreshockwave/lingo/xtra/XmlParserXtra.hpp"

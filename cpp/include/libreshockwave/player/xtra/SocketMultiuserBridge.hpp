@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "libreshockwave/lingo/xtra/MultiuserXtra.hpp"
+#include "libreshockwave/lingo/xtra/MultiuserNetBridge.hpp"
 
 namespace libreshockwave::player::xtra {
 
