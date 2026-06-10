@@ -46,7 +46,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `cast::StyledSpan` and `cast::XmedStyledText` helpers.
 - `cast::BitmapInfo` parser for D4/D5 and D6+ bitmap specific data.
 - `cast::TextInfo` parser for compact and D7+ text specific data.
-- `cast::XmedTextParser` foundation for Director text-Xtra XMED chunks, including text/font/color/alignment/dimension parsing into `XmedStyledText`.
+- `cast::XmedTextParser` foundation for Director text-Xtra XMED chunks, including text/font/color/alignment/dimension parsing, section `0004` style-run ranges, section `0006` style-record font/size resolution, and primary span font selection into `XmedStyledText`.
 - `cast::ShapeInfo` parser and shape helpers.
 - `cast::FilmLoopInfo` parser and dimension/registration helpers.
 - `cast::Shockwave3DInfo` parser for basic camera, color, flag, and Pascal string metadata.
@@ -451,7 +451,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Bitmap sprites can now bake through an injected decode provider, consume provider-backed live script-modified bitmap buffers before cache/decode, reuse `BitmapCache`, record decode failures, apply Copy-ink 1-bit foreColor/backColor remapping, apply live COPY exact-white backColor remapping, run shared `InkProcessor.applyInk`, and preserve indexed matte/background-transparent remap behavior.
 - Bitmap sprite cache reuse now invalidates on provider-supplied palette-version changes, letting member-level palette overrides re-decode authored bitmap sprites instead of reusing stale processed cache entries.
 - Text/button sprites can bake through an injected text provider, file-backed STXT chunks, or file-backed XMED text-Xtra chunks using an injected `TextRenderer`, film-loop sprites can bake from file-backed embedded score chunks or through an injected tick-aware raw-composite provider with parent sprite ink processing, shape sprites bake solid and authored shape bitmaps through shared ink processing, and unsupported sprites pass through without a baked bitmap until their backing resolvers are ported.
-- Runtime CastLibManager lookup, advanced XMED multi-span style-record fidelity, and remaining Java `InkProcessor.applyInk` edge cases remain deferred.
+- Runtime CastLibManager lookup and remaining Java `InkProcessor.applyInk` edge cases remain deferred.
 
 ### Software Frame Renderer
 
@@ -785,6 +785,7 @@ Result:
 - DirectorFile base path, score presence, external cast, and font lookup fallback tests passed through the same CTest executable.
 - Bitmap decoder RLE, scan-width, indexed, RGB555, 32-bit channel, and automatic dispatch tests passed through the same CTest executable.
 - DirectorFile BITD bitmap decode integration plus pluggable `ediM` JPEG/`ALFA` sidecar bitmap decode passed through the RIFX loader fixture in the same CTest executable.
+- XMED text parsing for multi-span style runs, underline ranges, referenced style-run font-size selection, and per-span font records passed through the same CTest executable.
 - W3D entry, typed resource, transform, texture format, and lookup tests passed through the same CTest executable.
 - Generated font Base64/zlib decode, wrong-length, and invalid-deflate tests passed through the same CTest executable.
 - File/path fallback utilities and script formatting utilities passed through the same CTest executable.
@@ -1083,4 +1084,5 @@ Result:
 - `f0ebc6ee Port C++ text member auto image props`
 - `dd2674e5 Port C++ copied bitmap palette refs`
 - `b9bad38e Port C++ text image native alpha`
-- Current checkpoint commit message: `Port C++ text image assignment copy`
+- `212f84d3 Port C++ text image assignment copy`
+- Current checkpoint commit message: `Port C++ XMED style spans`

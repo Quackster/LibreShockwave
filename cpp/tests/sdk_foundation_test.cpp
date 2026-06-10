@@ -4,11 +4,13 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <map>
 #include <memory>
 #include <optional>
 #include <set>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -10400,6 +10402,151 @@ void testCastMetadataTypes() {
     };
     assert(text.fontStyleString() == "bold,italic,underline");
     assert(text.textColorARGB() == 0xFF123456U);
+
+    auto appendAsciiBytes = [](std::vector<std::uint8_t>& data, const std::string& value) {
+        data.insert(data.end(), value.begin(), value.end());
+    };
+    auto appendHex8 = [&appendAsciiBytes](std::vector<std::uint8_t>& data, std::size_t value) {
+        std::ostringstream out;
+        out << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << value;
+        appendAsciiBytes(data, out.str());
+    };
+    auto textSpecificData = [](int width, int height) {
+        std::vector<std::uint8_t> data(56, 0);
+        data[4] = 't';
+        data[5] = 'e';
+        data[6] = 'x';
+        data[7] = 't';
+        data[48] = static_cast<std::uint8_t>((height >> 24) & 0xFF);
+        data[49] = static_cast<std::uint8_t>((height >> 16) & 0xFF);
+        data[50] = static_cast<std::uint8_t>((height >> 8) & 0xFF);
+        data[51] = static_cast<std::uint8_t>(height & 0xFF);
+        data[52] = static_cast<std::uint8_t>((width >> 24) & 0xFF);
+        data[53] = static_cast<std::uint8_t>((width >> 16) & 0xFF);
+        data[54] = static_cast<std::uint8_t>((width >> 8) & 0xFF);
+        data[55] = static_cast<std::uint8_t>(width & 0xFF);
+        return data;
+    };
+    const auto xmedSpecific = textSpecificData(120, 20);
+
+    std::vector<std::uint8_t> styleRunXmed;
+    appendAsciiBytes(styleRunXmed, "0002");
+    styleRunXmed.push_back(0);
+    appendAsciiBytes(styleRunXmed, "4,ABCD");
+    styleRunXmed.push_back(3);
+    appendAsciiBytes(styleRunXmed, "00040000000C00000003");
+    styleRunXmed.push_back(2);
+    appendAsciiBytes(styleRunXmed, "0");
+    styleRunXmed.push_back(1);
+    appendAsciiBytes(styleRunXmed, "4");
+    styleRunXmed.push_back(2);
+    appendAsciiBytes(styleRunXmed, "2");
+    styleRunXmed.push_back(1);
+    appendAsciiBytes(styleRunXmed, "5");
+    styleRunXmed.push_back(2);
+    appendAsciiBytes(styleRunXmed, "4");
+    styleRunXmed.push_back(1);
+    appendAsciiBytes(styleRunXmed, "4");
+    styleRunXmed.push_back(3);
+    auto styledRuns = XmedTextParser::parseStyled(styleRunXmed, xmedSpecific);
+    assert(styledRuns.has_value());
+    assert(styledRuns->text == "ABCD");
+    assert(styledRuns->styledSpans.size() == 2);
+    assert(styledRuns->styledSpans[0].startOffset == 0);
+    assert(styledRuns->styledSpans[0].endOffset == 2);
+    assert(!styledRuns->styledSpans[0].underline);
+    assert(styledRuns->styledSpans[1].startOffset == 2);
+    assert(styledRuns->styledSpans[1].endOffset == 4);
+    assert(styledRuns->styledSpans[1].underline);
+
+    std::vector<std::uint8_t> referencedSizeBody;
+    for (const auto& size : std::vector<std::string>{"C0000", "C0000", "A0000", "A0000", "90000"}) {
+        referencedSizeBody.push_back(2);
+        appendAsciiBytes(referencedSizeBody, size);
+        referencedSizeBody.push_back(2);
+        appendAsciiBytes(referencedSizeBody, "0");
+    }
+    std::vector<std::uint8_t> referencedSizeXmed;
+    appendAsciiBytes(referencedSizeXmed, "0002");
+    referencedSizeXmed.push_back(0);
+    appendAsciiBytes(referencedSizeXmed, "12,Name of your Habbo");
+    referencedSizeXmed.push_back(3);
+    appendAsciiBytes(referencedSizeXmed, "00040000000A00000002");
+    referencedSizeXmed.push_back(2);
+    appendAsciiBytes(referencedSizeXmed, "0");
+    referencedSizeXmed.push_back(1);
+    appendAsciiBytes(referencedSizeXmed, "4");
+    referencedSizeXmed.push_back(2);
+    appendAsciiBytes(referencedSizeXmed, "12");
+    referencedSizeXmed.push_back(1);
+    appendAsciiBytes(referencedSizeXmed, "4");
+    referencedSizeXmed.push_back(3);
+    appendAsciiBytes(referencedSizeXmed, "0006");
+    appendHex8(referencedSizeXmed, referencedSizeBody.size());
+    appendHex8(referencedSizeXmed, 5);
+    referencedSizeXmed.insert(referencedSizeXmed.end(), referencedSizeBody.begin(), referencedSizeBody.end());
+    referencedSizeXmed.push_back(3);
+    auto referencedSize = XmedTextParser::parseStyled(referencedSizeXmed, xmedSpecific);
+    assert(referencedSize.has_value());
+    assert(referencedSize->fontSize == 9);
+
+    auto appendFontEntry = [&appendAsciiBytes](std::vector<std::uint8_t>& data, const std::string& name) {
+        data.push_back(0);
+        appendAsciiBytes(data, "40,");
+        data.push_back(static_cast<std::uint8_t>(name.size()));
+        appendAsciiBytes(data, name);
+        data.resize(data.size() + (64 - name.size()), 0);
+    };
+    std::vector<std::uint8_t> fontBody;
+    appendFontEntry(fontBody, "Geneva");
+    appendFontEntry(fontBody, "Verdana");
+    std::vector<std::uint8_t> recordBody;
+    recordBody.push_back(1);
+    appendAsciiBytes(recordBody, "0");
+    recordBody.push_back(2);
+    appendAsciiBytes(recordBody, "C0000");
+    recordBody.push_back(0xC2);
+    recordBody.push_back(0x0A);
+    recordBody.push_back(1);
+    appendAsciiBytes(recordBody, "1");
+    recordBody.push_back(2);
+    appendAsciiBytes(recordBody, "90000");
+    std::vector<std::uint8_t> recordXmed;
+    appendAsciiBytes(recordXmed, "0002");
+    recordXmed.push_back(0);
+    appendAsciiBytes(recordXmed, "4,ABCD");
+    recordXmed.push_back(3);
+    appendAsciiBytes(recordXmed, "0008");
+    appendHex8(recordXmed, fontBody.size());
+    appendHex8(recordXmed, 2);
+    recordXmed.insert(recordXmed.end(), fontBody.begin(), fontBody.end());
+    recordXmed.push_back(3);
+    appendAsciiBytes(recordXmed, "00040000000800000002");
+    recordXmed.push_back(2);
+    appendAsciiBytes(recordXmed, "0");
+    recordXmed.push_back(1);
+    appendAsciiBytes(recordXmed, "0");
+    recordXmed.push_back(2);
+    appendAsciiBytes(recordXmed, "2");
+    recordXmed.push_back(1);
+    appendAsciiBytes(recordXmed, "1");
+    recordXmed.push_back(3);
+    appendAsciiBytes(recordXmed, "0006");
+    appendHex8(recordXmed, recordBody.size());
+    appendHex8(recordXmed, 2);
+    recordXmed.insert(recordXmed.end(), recordBody.begin(), recordBody.end());
+    recordXmed.push_back(3);
+    auto styledRecords = XmedTextParser::parseStyled(recordXmed, xmedSpecific);
+    assert(styledRecords.has_value());
+    assert(styledRecords->styledSpans.size() == 2);
+    assert(styledRecords->styledSpans[0].fontName == "Geneva");
+    assert(styledRecords->styledSpans[0].fontSize == 12);
+    assert(!styledRecords->styledSpans[0].underline);
+    assert(styledRecords->styledSpans[1].fontName == "Verdana");
+    assert(styledRecords->styledSpans[1].fontSize == 9);
+    assert(styledRecords->styledSpans[1].underline);
+    assert(styledRecords->fontName == "Geneva");
+    assert(styledRecords->fontSize == 12);
 }
 
 void testCastInfoParsers() {
