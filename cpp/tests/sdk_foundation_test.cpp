@@ -5407,8 +5407,27 @@ void testLingoVmRuntimeFoundation() {
     vm.resetEventStopped();
     assert(!vm.eventStopped());
 
+    std::vector<std::string> deferredCalls;
+    const auto queuedInstance = Datum::scriptInstance("queued");
+    vm.builtinContext().callTargetHandler = [&vm, &deferredCalls](
+                                                const Datum& target,
+                                                const std::string& handlerName,
+                                                const std::vector<Datum>& args) {
+        assert(vm.isFlushingDeferredScriptInstanceCalls());
+        assert(!vm.hasActiveCallStack());
+        assert(target.type() == DatumType::ScriptInstanceRef);
+        assert(!args.empty());
+        deferredCalls.push_back(target.scriptInstanceValue().scriptName() + ":" +
+                                handlerName + ":" +
+                                std::to_string(args.front().intValue()));
+        if (handlerName == "afterHandler") {
+            vm.deferScriptInstanceCall(target, "secondDeferred", {Datum::of(6)});
+        }
+        return Datum::voidValue();
+    };
     vm.opcodeRegistry().registerHandler(Opcode::PUSH_ZERO, [&vm](ExecutionContext& context) {
         assert(vm.callStackDepth() == 1);
+        assert(vm.hasActiveCallStack());
         assert(vm.currentScope() != nullptr);
         assert(vm.callStack().size() == 1);
         assert(vm.callStack().front().handlerName == "handler#4");
@@ -5416,7 +5435,39 @@ void testLingoVmRuntimeFoundation() {
         context.push(Datum::of(88));
         return true;
     });
+    vm.deferScriptInstanceCall(Datum::of(3), "ignored", {});
+    vm.deferScriptInstanceCall(queuedInstance, "", {});
+    vm.deferScriptInstanceCall(queuedInstance, "afterHandler", {Datum::of(5)});
+    assert(deferredCalls.empty());
     assert(vm.executeHandler(script, stackHandler).intValue() == 88);
+    assert((deferredCalls == std::vector<std::string>{"queued:afterHandler:5", "queued:secondDeferred:6"}));
+    vm.builtinContext().callTargetHandler = {};
+
+    int deferredTaskCalls = 0;
+    vm.deferTask([&vm, &deferredTaskCalls] {
+        assert(vm.isFlushingDeferredTasks());
+        ++deferredTaskCalls;
+        vm.deferTask([&deferredTaskCalls] {
+            ++deferredTaskCalls;
+        });
+    });
+    assert(deferredTaskCalls == 0);
+    vm.flushDeferredTasks();
+    assert(deferredTaskCalls == 2);
+
+    vm.opcodeRegistry().registerHandler(Opcode::PUSH_ZERO, [&vm, &deferredTaskCalls](ExecutionContext& context) {
+        vm.deferTask([&deferredTaskCalls] {
+            ++deferredTaskCalls;
+        });
+        vm.flushDeferredTasks();
+        assert(deferredTaskCalls == 2);
+        context.push(Datum::of(89));
+        return true;
+    });
+    assert(vm.executeHandler(script, stackHandler).intValue() == 89);
+    assert(deferredTaskCalls == 2);
+    vm.flushDeferredTasks();
+    assert(deferredTaskCalls == 3);
 
     vm.setStepLimit(1);
     bool threw = false;

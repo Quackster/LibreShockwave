@@ -170,6 +170,7 @@ void Player::stepFrame() {
     if (timeoutProcessor_) {
         timeoutProcessor_();
     }
+    vm_.flushDeferredTasks();
     (void)frameContext_.advanceFrame();
 }
 
@@ -183,6 +184,7 @@ bool Player::tick() {
     if (timeoutProcessor_) {
         timeoutProcessor_();
     }
+    vm_.flushDeferredTasks();
     (void)frameContext_.advanceFrame();
     return true;
 }
@@ -445,6 +447,45 @@ void Player::wireComponents() {
             vm_.resetEventStopped();
         }
         return event::HandlerResult{true, passed};
+    };
+
+    context.callTargetHandler = [this, invokeTarget](const lingo::Datum& target,
+                                                     const std::string& handlerName,
+                                                     const std::vector<lingo::Datum>& args) {
+        if (target.type() == lingo::DatumType::ScriptInstanceRef) {
+            event::EventTarget eventTarget;
+            eventTarget.kind = event::EventTargetKind::ScriptInstance;
+            eventTarget.scriptInstance = target;
+            (void)invokeTarget(eventTarget, handlerName, args);
+            return lingo::Datum::voidValue();
+        }
+
+        int channel = 0;
+        if (const auto* sprite = target.asSpriteRef()) {
+            channel = sprite->channel;
+        } else if (target.isInt() || target.isFloat()) {
+            channel = target.intValue();
+        }
+        if (channel <= 0) {
+            return lingo::Datum::voidValue();
+        }
+
+        const auto scriptInstances = spriteProperties_.getScriptInstanceList(channel);
+        if (!scriptInstances.has_value()) {
+            return lingo::Datum::voidValue();
+        }
+
+        for (const auto& scriptInstance : *scriptInstances) {
+            if (scriptInstance.type() != lingo::DatumType::ScriptInstanceRef) {
+                continue;
+            }
+            event::EventTarget eventTarget;
+            eventTarget.kind = event::EventTargetKind::ScriptInstance;
+            eventTarget.channel = channel;
+            eventTarget.scriptInstance = scriptInstance;
+            (void)invokeTarget(eventTarget, handlerName, args);
+        }
+        return lingo::Datum::voidValue();
     };
 
     eventDispatcher().setScriptNamesResolver([this](const std::shared_ptr<chunks::ScriptChunk>& script) {

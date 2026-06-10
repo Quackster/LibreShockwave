@@ -183,6 +183,10 @@ int LingoVM::callStackDepth() const {
     return static_cast<int>(callStack_.size());
 }
 
+bool LingoVM::hasActiveCallStack() const {
+    return !callStack_.empty();
+}
+
 Scope* LingoVM::currentScope() {
     return callStack_.empty() ? nullptr : &callStack_.back();
 }
@@ -218,6 +222,51 @@ std::string LingoVM::formatCallStack() const {
         out << ") (" << frame.scriptName << ") [bytecode " << frame.bytecodeIndex << "]\n";
     }
     return out.str();
+}
+
+bool LingoVM::isFlushingDeferredScriptInstanceCalls() const {
+    return flushingDeferredScriptInstanceCalls_;
+}
+
+void LingoVM::deferScriptInstanceCall(Datum instance, std::string methodName, std::vector<Datum> args) {
+    if (instance.type() != DatumType::ScriptInstanceRef || methodName.empty()) {
+        return;
+    }
+    deferredScriptInstanceCalls_.push_back(
+        DeferredScriptInstanceCall{std::move(instance), std::move(methodName), std::move(args)});
+}
+
+void LingoVM::deferTask(std::function<void()> task) {
+    if (!task) {
+        return;
+    }
+    deferredTasks_.push_back(std::move(task));
+}
+
+void LingoVM::flushDeferredTasks() {
+    if (flushingDeferredTasks_ || deferredTasks_.empty() || !callStack_.empty()) {
+        return;
+    }
+
+    flushingDeferredTasks_ = true;
+    try {
+        while (!deferredTasks_.empty()) {
+            auto task = std::move(deferredTasks_.front());
+            deferredTasks_.pop_front();
+            task();
+            if (!callStack_.empty()) {
+                break;
+            }
+        }
+    } catch (...) {
+        flushingDeferredTasks_ = false;
+        throw;
+    }
+    flushingDeferredTasks_ = false;
+}
+
+bool LingoVM::isFlushingDeferredTasks() const {
+    return flushingDeferredTasks_;
 }
 
 std::optional<HandlerRef> LingoVM::findHandler(std::string_view handlerNameValue) {
@@ -334,9 +383,11 @@ Datum LingoVM::executeHandler(const chunks::ScriptChunk& script,
         result = scope.returnValue();
     } catch (...) {
         callStack_.pop_back();
+        flushDeferredScriptInstanceCalls();
         throw;
     }
     callStack_.pop_back();
+    flushDeferredScriptInstanceCalls();
     return result;
 }
 
@@ -458,6 +509,29 @@ void LingoVM::registerRuntimeBuiltins() {
         eventStopped_ = true;
         return Datum::voidValue();
     });
+}
+
+void LingoVM::flushDeferredScriptInstanceCalls() {
+    if (flushingDeferredScriptInstanceCalls_ || deferredScriptInstanceCalls_.empty() || !callStack_.empty()) {
+        return;
+    }
+
+    flushingDeferredScriptInstanceCalls_ = true;
+    while (!deferredScriptInstanceCalls_.empty()) {
+        auto call = std::move(deferredScriptInstanceCalls_.front());
+        deferredScriptInstanceCalls_.pop_front();
+
+        try {
+            if (builtinContext_.callTargetHandler) {
+                (void)builtinContext_.callTargetHandler(call.instance, call.methodName, call.args);
+            } else {
+                (void)callHandler(call.methodName, call.args, call.instance);
+            }
+        } catch (...) {
+            // Java's deferred script-instance dispatcher suppresses per-target failures.
+        }
+    }
+    flushingDeferredScriptInstanceCalls_ = false;
 }
 
 } // namespace libreshockwave::lingo::vm

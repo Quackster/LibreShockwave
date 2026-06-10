@@ -76,10 +76,17 @@ public:
     void resetErrorState();
 
     [[nodiscard]] int callStackDepth() const;
+    [[nodiscard]] bool hasActiveCallStack() const;
     [[nodiscard]] Scope* currentScope();
     [[nodiscard]] const Scope* currentScope() const;
     [[nodiscard]] std::vector<CallStackFrame> callStack() const;
     [[nodiscard]] std::string formatCallStack() const;
+
+    [[nodiscard]] bool isFlushingDeferredScriptInstanceCalls() const;
+    void deferScriptInstanceCall(Datum instance, std::string methodName, std::vector<Datum> args);
+    void deferTask(std::function<void()> task);
+    void flushDeferredTasks();
+    [[nodiscard]] bool isFlushingDeferredTasks() const;
 
     [[nodiscard]] std::optional<HandlerRef> findHandler(std::string_view handlerName);
     [[nodiscard]] std::optional<HandlerRef> findHandler(const chunks::ScriptChunk& script,
@@ -111,11 +118,20 @@ private:
     void executeInstruction(Scope& scope, ExecutionContext& context);
     [[nodiscard]] CallStackFrame toCallStackFrame(const Scope& scope) const;
     void registerRuntimeBuiltins();
+    void flushDeferredScriptInstanceCalls();
+
+    struct DeferredScriptInstanceCall {
+        Datum instance{Datum::voidValue()};
+        std::string methodName;
+        std::vector<Datum> args;
+    };
 
     DirectorFile* file_{nullptr};
     std::unordered_map<std::string, Datum> globals_;
     std::map<std::string, Datum> prefs_;
     std::deque<Scope> callStack_;
+    std::deque<DeferredScriptInstanceCall> deferredScriptInstanceCalls_;
+    std::deque<std::function<void()>> deferredTasks_;
     builtin::BuiltinRegistry builtinRegistry_;
     builtin::BuiltinContext builtinContext_;
     OpcodeRegistry opcodeRegistry_;
@@ -124,6 +140,8 @@ private:
     std::function<void()> passCallback_;
     bool eventStopped_{false};
     bool inErrorState_{false};
+    bool flushingDeferredScriptInstanceCalls_{false};
+    bool flushingDeferredTasks_{false};
     int stepLimit_{0};
     int randomSeed_{0};
     std::int64_t randomState_{0};
