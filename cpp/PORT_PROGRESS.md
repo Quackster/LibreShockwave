@@ -449,7 +449,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Constructor builtins now register `point`, `rect`, `union`, `intersect`, `color`, `rgb`, `paletteIndex`, `sprite`, and `new` in the C++ builtin registry.
 - Point/rect geometry constructors, rectangle union/intersection, RGB and palette-index color construction, palette-index color identity/display, color pass-through, and trimmed hex-string RGB parsing match the Java constructor helpers.
 - Point, rect, color, numeric RGB, palette-index, and sprite constructors now share Java-style integer coercion for strings, field text, floats, cast-library refs, sprite refs, and colors.
-- Direct `new(scriptRef, ...)` now creates C++ script instances with their cast-member reference and preinitializes declared script properties through provider hooks, while `NEW_OBJ` keeps the VM-aware path for authored `new` handler execution.
+- Direct `new(scriptRef, ...)` now creates C++ script instances with their cast-member reference, preinitializes declared script properties through provider hooks, and invokes provider-backed `new` handlers through the call-target hook, returning non-void handler results like Java's constructor builtin.
 - `new(#memberType, castLib)` and generic object construction are exposed through callback hooks until the C++ cast provider, Xtra support, and script-instance VM runtime are ported.
 
 ### Type Builtins Foundation
@@ -719,7 +719,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `lingo::vm::OpcodeRegistry` now maps opcode enums to executable C++ handler callbacks with post-construction registration hooks.
 - Stack opcode handlers cover zero/int/float/literal/symbol pushes, chunk variable reference pushes, swap, pop, and peek behavior over `ExecutionContext`.
 - Control-flow opcode handlers cover return, factory return, absolute jump target lookup, conditional zero jump, and repeat-loop back jumps.
-- Provider-backed object construction/method calls, string chunk mutation, and provider-backed property opcodes remain deferred to later focused VM slices.
+- Provider-backed script construction and object-method calls now cover direct script refs, named script resolution, `NEW_OBJ`, and script-instance receiver dispatch; remaining specialized provider-backed property opcodes remain deferred to later focused VM slices.
 
 ### Lingo Opcode Arithmetic, Comparison, and Logical Foundation
 
@@ -799,7 +799,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `NEW_OBJ` now handles script object construction from arg lists through the C++ opcode registry.
 - Script construction delegates to the registered `new` builtin/new-instance callback when available, then falls back to named C++ script-instance datums.
-- Fallback script construction now resolves named scripts through the C++ script resolver hook, preinitializes declared provider properties to VOID, invokes a resolved `new` handler for side effects, and still pushes the constructed instance like the Java opcode path.
+- Fallback script construction now resolves named scripts through the C++ script resolver hook, preinitializes declared provider properties to VOID, invokes provider-owned `new` handlers through script-member lookup for side effects, and still pushes the constructed instance like the Java opcode path.
 - Full cast/VM runtime integration for provider-owned script dispatch remains deferred to later slices.
 
 ### Lingo Opcode String Chunk Extraction Foundation
@@ -953,7 +953,7 @@ Result:
 - Editable text field caret geometry, single-line and multi-line selection rectangles, paste replacement, selected-text extraction, cut mutation, select-all, no-focus fallbacks, and sprite-registry revision bumps passed through the same CTest executable.
 - ListBuiltins point/rect positional reads, shared mutable point/rect datum copies, and `setAt` component mutation passed through the same CTest executable.
 - SoundBuiltins channel creation, availability, SoundChannelMethodDispatcher-backed sound-channel method/property dispatch, VM object-property defaults/mutation, and SoundManager playback delegation passed through the same CTest executable.
-- ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration, Java-style constructor argument coercion, palette-index color identity/display, callback hooks, direct script-instance fallback, and `NEW_OBJ` script-ref handler dispatch passed through the same CTest executable.
+- ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration, Java-style constructor argument coercion, palette-index color identity/display, callback hooks, direct script-instance fallback, provider-backed script-ref `new` handler dispatch, and `NEW_OBJ` script-ref handler dispatch passed through the same CTest executable.
 - TypeBuiltins object/void/type predicates, `value` literal parsing/provider fallback, direct `script` lookup/scoping/unscoped list fallback, `script`/`callAncestor` callback hooks and list fanout, symbol conversion, and `ilk` alias/field-text checks passed through the same CTest executable.
 - Lingo decompiler property-name lookup, AST/source-rendering nodes for literals, operator precedence, member/object/chunk expressions, calls, statements, blocks, and handlers, straight-line bytecode translation, v4 field/sprite property reads, chunk refs, put/delete chunk statements, object-call bracket/property/content rewrites, V4 object-call syntax, JavaScript comment payloads, bytecode-only handler fallback output, script header/property/global emission, argument/local/unresolved-name fallback, case reconstruction including comma-separated and computed expression labels, and handler line mapping passed through the same CTest executable.
 - Lingo VM Scope and ExecutionContext stack, param, local, return, loop, jump, global callback, handler callback, builtin invocation, global debug-config propagation, and call-stack formatting behavior passed through the same CTest executable.
@@ -977,7 +977,7 @@ Result:
 - OpcodeRegistry provider-backed object property gets/sets for movie, player, stage, sprite, integer-as-sprite refs, cast-library properties, cast-member metadata/provider properties, timeout refs, sound channels, and ImageMethodDispatcher-backed image `useAlpha`/`paletteRef` setters passed through the same CTest executable.
 - OpcodeRegistry local/external call handlers, builtin dispatch, no-return calls, constant fallback, and error-state handling passed through the same CTest executable.
 - OpcodeRegistry object method calls and receiver-style external method calls for ImageMethodDispatcher-backed images, ListMethodDispatcher-backed lists, MemberRegistryMethodDispatcher-backed script-instance registry prefill/fallbacks, PropListMethodDispatcher-backed property-list typed symbol/string namespaces and nested list/proplist deep-copy `duplicate`, ScriptInstanceMethodDispatcher-backed script-instance receivers, provider-owned direct/ancestor script-ref method dispatch, and SpriteRef scriptInstanceList dispatch before provider fallback, StringMethodDispatcher-backed string receiver methods, SoundChannelMethodDispatcher-backed sound channels, VarRef inverted char ranges, mutable ChunkRef inverted delete ranges plus word/item/line deletion, points, rectangles, script-instance ancestor assignment guards/bounded cyclic ancestor traversal/registry bootstrap/prefill/alias import/stale cleanup/persistent alias refresh, cast library member lookups/accessors, timeouts, and Xtra instances passed through the same CTest executable.
-- OpcodeRegistry `NEW_OBJ` script construction delegation, provider-resolved fallback construction, declared property preinitialization, automatic `new` handler invocation, and non-script rejection passed through the same CTest executable.
+- OpcodeRegistry `NEW_OBJ` script construction delegation, provider-resolved fallback construction, declared property preinitialization, provider-owned automatic `new` handler invocation, and non-script rejection passed through the same CTest executable.
 
 ## Remaining Major Work
 
@@ -1231,4 +1231,4 @@ Result:
 - `5df5e6fd Port C++ decompiler fallback mapping`
 - `2d9420b0 Port C++ decompiler linear bytecode`
 - `1e40b253 Port C++ decompiler chunk opcodes`
-- Current checkpoint commit message: `Port C++ provider script instance dispatch`
+- Current checkpoint commit message: `Port C++ provider script construction handlers`

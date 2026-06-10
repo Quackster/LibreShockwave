@@ -140,14 +140,21 @@ Datum scriptRefFromCastMemberDatum(const Datum& memberRef) {
     return Datum::voidValue();
 }
 
-Datum createScriptInstanceFromRef(BuiltinContext& context, const Datum::CastMemberRef& memberRef) {
+Datum createScriptInstanceFromRef(BuiltinContext& context,
+                                  const Datum::CastMemberRef& memberRef,
+                                  const std::vector<Datum>& constructorArgs = {}) {
     Datum instance = Datum::scriptInstance("script", memberRef);
-    if (!context.scriptPropertyNamesResolver) {
-        return instance;
+    if (context.scriptPropertyNamesResolver) {
+        for (const auto& propertyName : context.scriptPropertyNamesResolver(memberRef.castLib, memberRef.memberNum())) {
+            if (!instance.scriptInstanceValue().hasProperty(propertyName)) {
+                instance.scriptInstanceValue().setProperty(propertyName, Datum::voidValue());
+            }
+        }
     }
-    for (const auto& propertyName : context.scriptPropertyNamesResolver(memberRef.castLib, memberRef.memberNum())) {
-        if (!instance.scriptInstanceValue().hasProperty(propertyName)) {
-            instance.scriptInstanceValue().setProperty(propertyName, Datum::voidValue());
+    if (context.callTargetHandler) {
+        Datum result = context.callTargetHandler(instance, "new", constructorArgs);
+        if (!result.isVoid()) {
+            return result;
         }
     }
     return instance;
@@ -2158,7 +2165,7 @@ Datum ConstructorBuiltins::newInstance(BuiltinContext& context, const std::vecto
         return context.newInstanceHandler(target, constructorArgs);
     }
     if (const auto* scriptRef = target.asScriptRef()) {
-        return createScriptInstanceFromRef(context, scriptRef->memberRef);
+        return createScriptInstanceFromRef(context, scriptRef->memberRef, constructorArgs);
     }
     return Datum::voidValue();
 }

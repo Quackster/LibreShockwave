@@ -4161,14 +4161,22 @@ void initializeDeclaredScriptProperties(ExecutionContext& context, Datum& instan
     }
 }
 
-Datum executeScriptNewHandler(ExecutionContext& context, const std::vector<Datum>& args, const Datum& receiver) {
-    const auto handler = context.findHandler("new");
-    if (!handler) {
-        return Datum::voidValue();
-    }
+Datum executeScriptNewHandler(ExecutionContext& context, const std::vector<Datum>& args, Datum& receiver) {
     std::vector<Datum> extraArgs;
     if (args.size() > 1) {
         extraArgs.assign(args.begin() + 1, args.end());
+    }
+
+    if (receiver.type() == DatumType::ScriptInstanceRef) {
+        auto& instance = receiver.scriptInstanceValue();
+        if (const auto handler = findScriptInstanceScriptHandler(context, instance, "new")) {
+            return safeExecuteHandler(context, *handler->script, handler->handler, extraArgs, receiver);
+        }
+    }
+
+    const auto handler = context.findHandler("new");
+    if (!handler) {
+        return Datum::voidValue();
     }
     return safeExecuteHandler(context, *handler->script, handler->handler, extraArgs, receiver);
 }

@@ -5007,6 +5007,31 @@ void testBuiltinRegistryFoundation() {
     assert(directNewScript.scriptInstanceValue().scriptRef()->memberNum() == 9);
     assert(directNewScript.scriptInstanceValue().getProperty("pDeclared").isVoid());
     assert(directNewScript.scriptInstanceValue().getProperty("pOther").isVoid());
+
+    int builtinScriptNewHandlerCalls = 0;
+    context.callTargetHandler = [&builtinScriptNewHandlerCalls](const Datum& target,
+                                                                const std::string& handlerName,
+                                                                const std::vector<Datum>& args) {
+        ++builtinScriptNewHandlerCalls;
+        assert(handlerName == "new");
+        assert(args.size() == 1);
+        assert(args.front().intValue() == 456);
+        assert(target.type() == DatumType::ScriptInstanceRef);
+        auto result = target;
+        assert(result.scriptInstanceValue().scriptRef()->castLib == 5);
+        assert(result.scriptInstanceValue().scriptRef()->memberNum() == 9);
+        assert(result.scriptInstanceValue().getProperty("pDeclared").isVoid());
+        result.scriptInstanceValue().setProperty("pInitialized", Datum::of(77));
+        return result;
+    };
+    const auto handledNewScript = registry.invoke("new",
+                                                  context,
+                                                  {Datum::scriptRef(Datum::CastMemberRef{5, 9}), Datum::of(456)});
+    assert(builtinScriptNewHandlerCalls == 1);
+    assert(handledNewScript.scriptInstanceValue().scriptRef()->castLib == 5);
+    assert(handledNewScript.scriptInstanceValue().scriptRef()->memberNum() == 9);
+    assert(handledNewScript.scriptInstanceValue().getProperty("pInitialized").intValue() == 77);
+    context.callTargetHandler = {};
     context.scriptPropertyNamesResolver = {};
 
     assert(registry.contains("objectp"));
@@ -6466,13 +6491,16 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         return std::vector<std::string>{"pDirect"};
     };
     int directScriptRefNewHandlerCalls = 0;
-    ExecutionContext::Callbacks directScriptRefNewObjCallbacks = callbacks;
-    directScriptRefNewObjCallbacks.handlerFinder = [&script, &otherHandler](std::string_view name) -> std::optional<HandlerRef> {
-        if (name == "new") {
-            return HandlerRef{&script, otherHandler};
+    builtinContext.scriptHandlerFinder = [&script, otherHandler](int castLib,
+                                                                 int memberNum,
+                                                                 const std::string& handlerName)
+        -> std::optional<BuiltinContext::ScriptHandlerLocation> {
+        if (castLib == 4 && memberNum == 8 && handlerName == "new") {
+            return BuiltinContext::ScriptHandlerLocation{&script, otherHandler};
         }
         return std::nullopt;
     };
+    ExecutionContext::Callbacks directScriptRefNewObjCallbacks = callbacks;
     directScriptRefNewObjCallbacks.handlerExecutor = [&directScriptRefNewHandlerCalls](const ScriptChunk& calledScript,
                                                                                        const ScriptChunk::Handler&,
                                                                                        const std::vector<Datum>& args,
@@ -6499,6 +6527,7 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(directScriptRefNewInstance.scriptInstanceValue().scriptRef()->castLib == 4);
     assert(directScriptRefNewInstance.scriptInstanceValue().scriptRef()->memberNum() == 8);
     assert(directScriptRefNewInstance.scriptInstanceValue().getProperty("pDirect").isVoid());
+    builtinContext.scriptHandlerFinder = {};
     builtinContext.scriptPropertyNamesResolver = {};
 
     builtinContext.scriptResolver = [](const Datum& identifier, const std::optional<Datum>& scope) {
@@ -6515,13 +6544,16 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         return std::vector<std::string>{"pDeclared", "pOther"};
     };
     int fallbackNewHandlerCalls = 0;
-    ExecutionContext::Callbacks resolvedNewObjCallbacks = callbacks;
-    resolvedNewObjCallbacks.handlerFinder = [&script, &otherHandler](std::string_view name) -> std::optional<HandlerRef> {
-        if (name == "new") {
-            return HandlerRef{&script, otherHandler};
+    builtinContext.scriptHandlerFinder = [&script, otherHandler](int castLib,
+                                                                 int memberNum,
+                                                                 const std::string& handlerName)
+        -> std::optional<BuiltinContext::ScriptHandlerLocation> {
+        if (castLib == 6 && memberNum == 7 && handlerName == "new") {
+            return BuiltinContext::ScriptHandlerLocation{&script, otherHandler};
         }
         return std::nullopt;
     };
+    ExecutionContext::Callbacks resolvedNewObjCallbacks = callbacks;
     resolvedNewObjCallbacks.handlerExecutor = [&fallbackNewHandlerCalls](const ScriptChunk& calledScript,
                                                                          const ScriptChunk::Handler&,
                                                                          const std::vector<Datum>& args,
@@ -6551,6 +6583,7 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(resolvedNewInstance.scriptInstanceValue().getProperty("pDeclared").isVoid());
     assert(resolvedNewInstance.scriptInstanceValue().getProperty("pOther").isVoid());
     builtinContext.scriptResolver = {};
+    builtinContext.scriptHandlerFinder = {};
     builtinContext.scriptPropertyNamesResolver = {};
 
     Scope variableScope(&script, handler, {Datum::of(11), Datum::of(22)});
