@@ -59,6 +59,7 @@ add_library(libreshockwave
     src/player/PlayerState.cpp
     src/player/BitmapResolver.cpp
     src/player/CursorManager.cpp
+    src/player/InputHandler.cpp
     src/player/MovieProperties.cpp
     src/player/SpriteProperties.cpp
     src/player/audio/SoundManager.cpp

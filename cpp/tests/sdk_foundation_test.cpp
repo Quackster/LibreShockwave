@@ -82,6 +82,7 @@
 #include "libreshockwave/player/PlayerEventInfo.hpp"
 #include "libreshockwave/player/PlayerState.hpp"
 #include "libreshockwave/player/CursorManager.hpp"
+#include "libreshockwave/player/InputHandler.hpp"
 #include "libreshockwave/player/MovieProperties.hpp"
 #include "libreshockwave/player/SpriteProperties.hpp"
 #include "libreshockwave/player/audio/AudioBackend.hpp"
@@ -205,6 +206,7 @@ using libreshockwave::lookup::ScriptLookup;
 using libreshockwave::player::BitmapResolver;
 using libreshockwave::player::ExternalCastLoadEvent;
 using libreshockwave::player::CursorManager;
+using libreshockwave::player::InputHandler;
 using libreshockwave::player::MovieProperties;
 using libreshockwave::player::PlayerEvent;
 using libreshockwave::player::PlayerEventInfo;
@@ -1068,6 +1070,107 @@ void testPlayerInputFoundation() {
     assert(state.pollEvent() == InputEvent::keyDown(36, "x"));
     assert(!state.hasEvents());
     assert(!state.pollEvent().has_value());
+
+    InputState handlerState;
+    StageRenderer stageRenderer;
+    EventDispatcher dispatcher;
+    dispatcher.setSpriteRegistry(&stageRenderer.spriteRegistry());
+    auto interactiveSprite = stageRenderer.spriteRegistry().getOrCreateDynamic(2);
+    interactiveSprite->setScriptInstanceList({Datum::scriptInstance("interactive")});
+    auto focusedSprite = stageRenderer.spriteRegistry().getOrCreateDynamic(3);
+    focusedSprite->setScriptInstanceList({Datum::scriptInstance("focused")});
+    stageRenderer.setLastBakedSprites({
+        RenderSprite(1, 0, 0, 20, 20, 1, true, SpriteType::Shape, nullptr, nullptr, 0, 0, false, false, 0, 100, false, false, nullptr, false),
+        RenderSprite(2, 0, 0, 20, 20, 2, true, SpriteType::Shape, nullptr, nullptr, 0, 0, false, false, 0, 100, false, false, nullptr, true),
+    });
+
+    const std::set<std::string> mouseAndKeyHandlers{
+        "mouseDown",
+        "mouseUp",
+        "mouseEnter",
+        "mouseLeave",
+        "mouseWithin",
+        "mouseUpOutSide",
+        "keyDown",
+        "keyUp",
+    };
+    dispatcher.setRespondsPredicate([mouseAndKeyHandlers](const EventTarget& target, std::string_view handler) {
+        return target.kind == EventTargetKind::ScriptInstance &&
+               mouseAndKeyHandlers.contains(std::string(handler));
+    });
+    std::vector<std::string> inputCalls;
+    dispatcher.setHandlerInvoker([&inputCalls](const EventTarget& target,
+                                                std::string_view handler,
+                                                const std::vector<Datum>& args) {
+        assert(args.empty());
+        inputCalls.push_back(std::to_string(target.channel) + ":" + std::string(handler));
+        return HandlerResult{true, true};
+    });
+
+    InputHandler inputHandler(&handlerState, &stageRenderer, &dispatcher);
+    assert(inputHandler.hitTestExact(5, 5) == 2);
+    inputHandler.onMouseMove(5, 5);
+    assert(handlerState.mouseH() == 5);
+    assert(handlerState.mouseV() == 5);
+    assert(handlerState.rolloverSprite() == 2);
+    const int revisionBeforeRollover = stageRenderer.spriteRegistry().revision();
+    assert(!inputHandler.processInputEvents());
+    assert(inputHandler.previousRolloverSprite() == 2);
+    assert((inputCalls == std::vector<std::string>{"2:mouseEnter", "2:mouseWithin"}));
+    assert(stageRenderer.spriteRegistry().revision() == revisionBeforeRollover);
+
+    inputCalls.clear();
+    const int revisionBeforeMouseDown = stageRenderer.spriteRegistry().revision();
+    inputHandler.onMouseDown(5, 5);
+    assert(handlerState.isMouseDown());
+    assert(handlerState.clickOnSprite() == 2);
+    assert(handlerState.clickLocH() == 5);
+    assert(handlerState.clickLocV() == 5);
+    assert(inputHandler.processInputEvents());
+    assert(std::find(inputCalls.begin(), inputCalls.end(), "2:mouseDown") != inputCalls.end());
+    assert(std::find(inputCalls.begin(), inputCalls.end(), "2:mouseWithin") != inputCalls.end());
+    assert(stageRenderer.spriteRegistry().revision() == revisionBeforeMouseDown + 1);
+
+    inputCalls.clear();
+    inputHandler.onMouseUp(50, 50);
+    assert(!handlerState.isMouseDown());
+    assert(inputHandler.processInputEvents());
+    assert(std::find(inputCalls.begin(), inputCalls.end(), "2:mouseUpOutSide") != inputCalls.end());
+    assert(handlerState.clickOnSprite() == 0);
+
+    inputCalls.clear();
+    handlerState.setKeyboardFocusSprite(3);
+    inputHandler.onKeyDown(36, "a", true, false, true);
+    assert(handlerState.lastKey() == "a");
+    assert(handlerState.lastKeyCode() == 36);
+    assert(handlerState.isShiftDown());
+    assert(!handlerState.isControlDown());
+    assert(handlerState.isAltDown());
+    inputHandler.onKeyUp(36, "a", false, false, false);
+    assert(inputHandler.processInputEvents());
+    assert(std::find(inputCalls.begin(), inputCalls.end(), "3:keyDown") != inputCalls.end());
+    assert(std::find(inputCalls.begin(), inputCalls.end(), "3:keyUp") != inputCalls.end());
+    assert(!handlerState.isShiftDown());
+    assert(!handlerState.isControlDown());
+    assert(!handlerState.isAltDown());
+
+    inputCalls.clear();
+    inputHandler.onMouseDown(5, 5, true);
+    inputHandler.onBlur();
+    assert(!handlerState.isRightMouseDown());
+    assert(handlerState.rolloverSprite() == 0);
+    assert(inputHandler.processInputEvents());
+    assert(inputHandler.previousRolloverSprite() == 0);
+    assert(std::find(inputCalls.begin(), inputCalls.end(), "2:mouseLeave") != inputCalls.end());
+
+    InputHandler supplierHandler(&handlerState, &stageRenderer);
+    supplierHandler.setEventDispatcherSupplier([&dispatcher]() {
+        return &dispatcher;
+    });
+    supplierHandler.setHitSpritesSupplier([&stageRenderer]() {
+        return stageRenderer.lastBakedSprites();
+    });
+    assert(supplierHandler.hitTestExact(5, 5) == 2);
 }
 
 void testMoviePropertiesFoundation() {

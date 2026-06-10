@@ -238,6 +238,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `input::DirectorKeyCodes` ports Java/browser key-code conversion to Director Macintosh virtual key codes.
 - `input::InputState` ports mouse, keyboard, selection, caret blink, double-click, rollover, and event-queue state tracking.
 
+### Player Input Handler Foundation
+
+- `player::InputHandler` ports host mouse/key entry points, queued input processing, rollover `mouseEnter`/`mouseLeave`/`mouseWithin` dispatch, mouse-down/up sprite targeting, `mouseUpOutSide` fallback routing, right-mouse and key event routing, and sprite-registry revision bumps after queued input.
+- Hit selection uses baked or supplied `RenderSprite` vectors plus `EventDispatcher::isSpriteMouseInteractive`, matching the Java interactive-hit filter without requiring the full C++ `Player` object yet.
+- Built-in editable text field focus, text mutation, caret geometry, selection rectangles, clipboard operations, and StageRenderer-owning overloads remain deferred until the C++ runtime cast-member text mutation path is ported.
+
 ### Hit Testing Foundation
 
 - `input::HitTester` ports front-to-back visible sprite hit selection over baked `RenderSprite` lists, hit type lookup, and all-hit collection with channel filter/forced bounding-box support.
@@ -617,6 +623,7 @@ Result:
 - CastLib and CastLibManager lazy MCsL/CAS* initialization, member count/name lookup, source-prefixed lookup fallback, member metadata properties, registry filtering, builtin callback installation, external-cache keys, and pending external-load bookkeeping passed through the same CTest executable.
 - PlayerEvent handler names, event payload records, RenderType, and RenderConfig tests passed through the same CTest executable.
 - PlayerState, InputEvent factories, DirectorKeyCodes, and InputState mutation/queue tests passed through the same CTest executable.
+- InputHandler mouse/key queueing, interactive hit filtering, rollover dispatch, mouse-up-outside fallback, focused key dispatch, blur synthesis, dispatcher/sprite supplier hooks, and sprite-registry revision bumps passed through the same CTest executable.
 - ScoreBehaviorRef, SpriteSpan, ScoreNavigator labels, marker resolution, active sprites/channels, parsed behavior parameters, and frame-count tests passed through the same CTest executable.
 - Breakpoint, BreakpointManager, WatchExpression, and DebugSnapshot tests passed through the same CTest executable.
 - RenderPipelineTrace, RenderSprite, transform mirror, baked bitmap helpers, and FrameSnapshot tests passed through the same CTest executable.
@@ -821,4 +828,5 @@ Result:
 - `dc9a7820 Integrate C++ PFR TTF registry cache`
 - `cee0bb98 Port C++ cast library manager foundation`
 - `4326a2c7 Port C++ frame context foundation`
-- Current checkpoint commit message: `Port C++ bitmap resolver foundation`
+- `0b0c2afa Port C++ bitmap resolver foundation`
+- Current checkpoint commit message: `Port C++ input handler foundation`
