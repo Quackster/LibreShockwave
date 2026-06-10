@@ -451,10 +451,12 @@ void testPfr1FontParserAndRegistry() {
     phys.push_back(0);
     phys.push_back(0x01);               // next char delta u8, same width, gps size u8
     phys.push_back(1);
-    phys.push_back(2);
+    phys.push_back(4);
     std::copy(phys.begin(), phys.end(), data.begin() + 80);
-    data[140] = 0x00;
-    data[141] = 0x00;
+    data[140] = 0x00;                  // simple glyph flags, no control points
+    data[141] = 0x05;                  // implicit moveTo(0,0), then lineTo encoded coords
+    data[142] = 0x5B;                  // x/y nibble deltas, x = 3
+    data[143] = 0xA0;                  // y = 2
 
     auto font = Pfr1Font::parse(data);
     assert(font != nullptr);
@@ -481,8 +483,21 @@ void testPfr1FontParserAndRegistry() {
     assert(font->charRecords[0].gpsSize == 0);
     assert(font->charRecords[1].charCode == 'C');
     assert(font->charRecords[1].setWidth == 9);
-    assert(font->charRecords[1].gpsSize == 2);
+    assert(font->charRecords[1].gpsSize == 4);
     assert(font->glyphs.at('A').setWidth == 9.0F);
+    const auto& cGlyph = font->glyphs.at('C');
+    assert(cGlyph.contours.size() == 1);
+    assert(cGlyph.contours[0].commands.size() == 2);
+    assert(cGlyph.contours[0].commands[0].type == 0);
+    assert(cGlyph.contours[0].commands[0].x == 0.0F);
+    assert(cGlyph.contours[0].commands[0].y == 0.0F);
+    assert(cGlyph.contours[0].commands[1].type == 1);
+    assert(cGlyph.contours[0].commands[1].x == 3.0F);
+    assert(cGlyph.contours[0].commands[1].y == 2.0F);
+    const auto& lowercaseFallback = font->glyphs.at('c');
+    assert(lowercaseFallback.charCode == 'c');
+    assert(lowercaseFallback.contours.size() == 1);
+    assert(lowercaseFallback.contours[0].commands[1].x == 3.0F);
 
     assert(Pfr1Font::parse({}) == nullptr);
     auto partial = data;
