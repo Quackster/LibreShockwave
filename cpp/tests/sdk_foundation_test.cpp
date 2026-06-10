@@ -2082,6 +2082,29 @@ void testPlayerFacadeFoundation() {
     player.stepFrame();
     assert(player.state() == PlayerState::Paused);
     assert(player.currentFrame() == 2);
+
+    Player stageImagePlayer;
+    assert(stageImagePlayer.movieProperties().setStageProp("bgcolor", Datum::colorRef(0x12, 0x34, 0x56)));
+    const auto stageImageDatum = stageImagePlayer.movieProperties().getStageProp("image");
+    const auto* stageImageRef = stageImageDatum.asImageRef();
+    assert(stageImageRef != nullptr);
+    assert(stageImageRef->bitmap != nullptr);
+    assert(stageImageRef->bitmap->width() == 640);
+    assert(stageImageRef->bitmap->height() == 480);
+    assert(!stageImageRef->bitmap->isScriptModified());
+    assert(stageImagePlayer.stageRenderer().renderableStageImage() == nullptr);
+    const int revisionBeforeStageImageMutation = stageImagePlayer.stageRenderer().spriteRegistry().revision();
+    assert(ImageMethodDispatcher::dispatch(*stageImageRef,
+                                           "fill",
+                                           {Datum::intRect(0, 0, 1, 1),
+                                            Datum::colorRef(7, 8, 9)}).isVoid());
+    assert(stageImageRef->bitmap->isScriptModified());
+    assert(stageImageRef->bitmap->getPixel(0, 0) == 0xFF070809U);
+    assert(stageImagePlayer.stageRenderer().renderableStageImage().get() == stageImageRef->bitmap.get());
+    assert(stageImagePlayer.stageRenderer().spriteRegistry().revision() == revisionBeforeStageImageMutation + 1);
+    const auto stageImageSnapshot = stageImagePlayer.frameSnapshot();
+    assert(stageImageSnapshot.stageImage.get() == stageImageRef->bitmap.get());
+    assert(stageImageSnapshot.renderFrame().getPixel(0, 0) == 0xFF070809U);
 }
 
 void testPlayerVmEventDispatchFoundation() {

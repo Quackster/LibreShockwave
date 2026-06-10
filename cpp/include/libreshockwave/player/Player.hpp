@@ -49,6 +49,7 @@ class ExternalCastLoadHandler;
 class Player {
 public:
     explicit Player(std::shared_ptr<DirectorFile> file = nullptr);
+    ~Player();
 
     Player(const Player&) = delete;
     Player& operator=(const Player&) = delete;

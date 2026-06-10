@@ -35,6 +35,7 @@ namespace libreshockwave::lingo::vm {
 namespace {
 
 std::function<void()> imageMutationCallback;
+void* imageMutationCallbackOwner = nullptr;
 
 Datum literalToDatum(const chunks::ScriptChunk::LiteralEntry& literal) {
     switch (literal.type) {
@@ -5672,7 +5673,20 @@ bool objCall(ExecutionContext& context) {
 namespace dispatch {
 
 void ImageMethodDispatcher::setImageMutationCallback(std::function<void()> callback) {
+    imageMutationCallbackOwner = nullptr;
     imageMutationCallback = std::move(callback);
+}
+
+void ImageMethodDispatcher::setImageMutationCallback(void* owner, std::function<void()> callback) {
+    imageMutationCallbackOwner = owner;
+    imageMutationCallback = std::move(callback);
+}
+
+void ImageMethodDispatcher::clearImageMutationCallback(void* owner) {
+    if (imageMutationCallbackOwner == owner) {
+        imageMutationCallbackOwner = nullptr;
+        imageMutationCallback = {};
+    }
 }
 
 Datum ScriptInstanceMethodDispatcher::dispatch(ExecutionContext& context,

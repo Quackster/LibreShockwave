@@ -276,6 +276,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `player::Player` now owns and wires the C++ frame context, stage renderer, cast library manager, movie/sprite properties, bitmap resolver, cursor manager, input handler, network manager, timeout manager, sound manager, Xtra manager, sprite baker, bitmap cache, and frame render pipeline.
 - Playback control ports the Java state transitions for play, pause, resume, stop, manual step, tick, direct frame/label navigation, event-listener forwarding, base/puppet/score tempo lookup, debug flag propagation, and render snapshot creation with player-state debug metadata.
 - External-cast cached-load completion now ports Player-owned synchronous load handling, bitmap-cache and VM handler-cache invalidation, sprite-registry revision bumping, loaded-cast behavior rebinding, typed `ExternalCastLoadEvent` listeners, compatibility cast-loaded callbacks, and `ExternalCastLoadHandler` fanout.
+- Player-owned image method mutations now bump the sprite-registry revision through an owner-scoped image mutation callback, so `(the stage).image` and other script image edits invalidate rendered output like Java while avoiding dangling global callback state after player destruction.
 - Full VM provider setup, asynchronous playback, non-bitmap imported-media mutation, and platform external-cast fetching remain deferred to later player runtime slices.
 
 ### Player Builtin Context Foundation
@@ -940,7 +941,7 @@ Result:
 - Lingo VM deferred script-instance call ordering, automatic outer-handler flush, deferred task explicit flushing, flush-state guards, Player call-target provider wiring, and numeric `closeThread` task deferral passed through the same CTest executable.
 - Lingo VM AlertHookHandler skip/depth diagnostics, guarded hook invocation, alertHook manual firing, `alert()` suppression, script-error suppression/rethrow behavior, and Player no-hook fallback passed through the same CTest executable.
 - Lingo Datum deep-copy behavior, DatumFormatter scalar/brief/expanded/detailed/recursive output, AncestorChainWalker property/depth traversal, `call(...)` message-struct argument snapshots, non-message prop-list forwarding, and per-target call snapshot freshness passed through the same CTest executable.
-- Player-owned LingoVM builtin delegation, file-backed dispatcher movie-script discovery/bytecode invocation, direct and sprite `call(...)` target return propagation, startup movie-script frame lifecycle and timeout-target dispatch, actorList frame-event dispatch, elapsed timeout target/global dispatch, `stopMovie` timeout/movie dispatch, and VM preference storage passed through the same CTest executable.
+- Player-owned LingoVM builtin delegation, file-backed dispatcher movie-script discovery/bytecode invocation, direct and sprite `call(...)` target return propagation, startup movie-script frame lifecycle and timeout-target dispatch, actorList frame-event dispatch, elapsed timeout target/global dispatch, `stopMovie` timeout/movie dispatch, VM preference storage, and Player-wired stage-image mutation invalidation passed through the same CTest executable.
 - OpcodeRegistry stack/control handler registration, custom handler registration, literal/symbol pushes, stack manipulation, return/factory return, and jump opcodes passed through the same CTest executable.
 - OpcodeRegistry arithmetic, comparison, and logical handlers passed through the same CTest executable.
 - OpcodeRegistry variable, arg-list, linear-list, and property-list handlers passed through the same CTest executable.
@@ -1197,4 +1198,5 @@ Result:
 - `ecf0efd8 Cover C++ paletted image index parity`
 - `d63fdfe6 Cover C++ chat bubble matte bake parity`
 - `4a0c7ff2 Port C++ image mutation callback`
-- Current checkpoint commit message: `Port C++ live image anchor sync`
+- `800cc9b5 Port C++ live image anchor sync`
+- Current checkpoint commit message: `Port C++ player image mutation invalidation`

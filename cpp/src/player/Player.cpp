@@ -10,6 +10,7 @@
 #include "libreshockwave/cast/CastMember.hpp"
 #include "libreshockwave/chunks/CastMemberChunk.hpp"
 #include "libreshockwave/lingo/Datum.hpp"
+#include "libreshockwave/lingo/vm/dispatch/ImageMethodDispatcher.hpp"
 #include "libreshockwave/lingo/xtra/MultiuserXtra.hpp"
 #include "libreshockwave/lingo/xtra/XmlParserXtra.hpp"
 #include "libreshockwave/player/ExternalCastLoadHandler.hpp"
@@ -77,6 +78,10 @@ Player::Player(std::shared_ptr<DirectorFile> file)
     socketMultiuserBridge_ = std::make_unique<xtra::SocketMultiuserBridge>();
     registerMultiuserXtra(*socketMultiuserBridge_);
     wireComponents();
+}
+
+Player::~Player() {
+    lingo::vm::dispatch::ImageMethodDispatcher::clearImageMutationCallback(this);
 }
 
 std::shared_ptr<DirectorFile> Player::file() const { return file_; }
@@ -340,6 +345,9 @@ void Player::wireComponents() {
     });
     castLibManager_.setMemberSlotRetiredCallback([this](int castLib, int memberNum) {
         (void)stageRenderer_.spriteRegistry().clearDynamicMemberBindings(castLib, memberNum);
+    });
+    lingo::vm::dispatch::ImageMethodDispatcher::setImageMutationCallback(this, [this] {
+        stageRenderer_.spriteRegistry().bumpRevision();
     });
 
     if (file_ != nullptr && !file_->basePath().empty()) {

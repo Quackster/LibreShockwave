@@ -15,6 +15,8 @@ namespace libreshockwave::lingo::vm::dispatch {
 class ImageMethodDispatcher {
 public:
     static void setImageMutationCallback(std::function<void()> callback);
+    static void setImageMutationCallback(void* owner, std::function<void()> callback);
+    static void clearImageMutationCallback(void* owner);
     [[nodiscard]] static Datum dispatch(const Datum::ImageRef& imageRef,
                                         std::string_view methodName,
                                         const std::vector<Datum>& args);
