@@ -5733,11 +5733,13 @@ void testLingoVmScopeAndExecutionContextFoundation() {
 
     auto handler = makeHandler(10, 2, {0, 5, 10});
     auto otherHandler = makeHandler(99, 0, {0});
+    auto directProviderHandler = makeHandler(133, 0, {0});
+    auto ancestorProviderHandler = makeHandler(134, 0, {0});
     ScriptChunk script(nullptr,
                        ChunkId(700),
                        ScriptChunkType::MovieScript,
                        0,
-                       {handler, otherHandler},
+                       {handler, otherHandler, directProviderHandler, ancestorProviderHandler},
                        {ScriptChunk::LiteralEntry{1, 0, std::string("hello"), 0.0},
                         ScriptChunk::LiteralEntry{4, 0, 42, 0.0},
                         ScriptChunk::LiteralEntry{9, 0, std::string("1.5"), 1.5}},
@@ -6176,6 +6178,12 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         }
         if (nameId == 132) {
             return std::string("1");
+        }
+        if (nameId == 133) {
+            return std::string("directProvider");
+        }
+        if (nameId == 134) {
+            return std::string("ancestorProvider");
         }
         return "#" + std::to_string(nameId);
     };
@@ -7663,6 +7671,30 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runObjCall(70, {scriptInstance, Datum::symbol("nestedProps")}).intValue() == 2);
     assert(runObjCall(56, {scriptInstance}).asSymbol()->name == "instance");
     assert(runObjCall(117, {scriptInstance, Datum::symbol("known")}).boolValue());
+
+    builtinContext.scriptHandlerFinder = [&script, directProviderHandler, ancestorProviderHandler](
+                                             int castLib,
+                                             int memberNum,
+                                             const std::string& methodName)
+        -> std::optional<BuiltinContext::ScriptHandlerLocation> {
+        if (castLib == 4 && memberNum == 12 && methodName == "directProvider") {
+            return BuiltinContext::ScriptHandlerLocation{&script, directProviderHandler};
+        }
+        if (castLib == 5 && memberNum == 13 && methodName == "ancestorProvider") {
+            return BuiltinContext::ScriptHandlerLocation{&script, ancestorProviderHandler};
+        }
+        return std::nullopt;
+    };
+    auto providerAncestor = Datum::scriptInstance("providerAncestor", Datum::CastMemberRef{5, 13});
+    auto providerChild = Datum::scriptInstance("providerChild", Datum::CastMemberRef{4, 12});
+    providerChild.scriptInstanceValue().setProperty("ancestor", providerAncestor);
+    assert(runObjCall(133, {providerChild, Datum::of(7)}).stringValue() == "receiver-exec:133:1");
+    assert(runObjCall(134, {providerChild, Datum::of(8), Datum::of(9)}).stringValue() == "receiver-exec:134:2");
+    assert(runObjCall(117, {providerChild, Datum::symbol("directProvider")}).boolValue());
+    assert(runObjCall(117, {providerChild, Datum::symbol("ancestorProvider")}).boolValue());
+    assert(!runObjCall(117, {providerChild, Datum::symbol("missingProvider")}).boolValue());
+    builtinContext.scriptHandlerFinder = {};
+
     assert(runObjCall(116, {scriptInstance, Datum::symbol("newLocal")}).isVoid());
     assert(scriptInstance.scriptInstanceValue().getProperty("newLocal").isVoid());
     auto memberRegistry = Datum::propList();

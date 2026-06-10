@@ -2011,6 +2011,32 @@ bool shouldDeferNumericCloseThread(ExecutionContext& context,
            builtinContext->scriptInstanceMethodDeferrer(receiver, std::string(methodName), args);
 }
 
+std::optional<builtin::BuiltinContext::ScriptHandlerLocation> findScriptInstanceScriptHandler(
+    ExecutionContext& context,
+    Datum::ScriptInstanceRef& instance,
+    std::string_view methodName) {
+    auto* builtinContext = context.builtinContext();
+    if (builtinContext == nullptr || !builtinContext->scriptHandlerFinder) {
+        return std::nullopt;
+    }
+
+    auto* current = &instance;
+    for (int depth = 0; current != nullptr && depth < util::MAX_ANCESTOR_DEPTH; ++depth) {
+        if (const auto& scriptRef = current->scriptRef(); scriptRef.has_value()) {
+            const int castLib = scriptRef->castLib > 0 ? scriptRef->castLib : 1;
+            const int memberNum = scriptRef->memberNum();
+            if (auto handler = builtinContext->scriptHandlerFinder(castLib, memberNum, std::string(methodName));
+                handler.has_value() && handler->script != nullptr) {
+                return handler;
+            }
+        }
+
+        auto ancestor = current->ancestor();
+        current = ancestor ? ancestor.get() : nullptr;
+    }
+    return std::nullopt;
+}
+
 Datum scriptInstanceObjectMethod(ExecutionContext& context,
                                  Datum& receiver,
                                  std::string_view methodName,
@@ -2085,10 +2111,17 @@ Datum scriptInstanceObjectMethod(ExecutionContext& context,
     }
     if (equalsIgnoreCase(methodName, "handler")) {
         if (args.empty()) return Datum::FALSE;
-        return context.findHandler(keyNameLikeJava(args[0])).has_value() ? Datum::TRUE : Datum::FALSE;
+        const std::string handlerName = keyNameLikeJava(args[0]);
+        if (findScriptInstanceScriptHandler(context, instance, handlerName).has_value()) {
+            return Datum::TRUE;
+        }
+        return context.findHandler(handlerName).has_value() ? Datum::TRUE : Datum::FALSE;
     }
     auto* builtinContext = context.builtinContext();
     (void)dispatch::MemberRegistryMethodDispatcher::prefill(instance, methodName, args, builtinContext);
+    if (const auto handler = findScriptInstanceScriptHandler(context, instance, methodName)) {
+        return safeExecuteHandler(context, *handler->script, handler->handler, args, receiver);
+    }
     if (const auto handler = context.findHandler(methodName)) {
         return safeExecuteHandler(context, *handler->script, handler->handler, args, receiver);
     }

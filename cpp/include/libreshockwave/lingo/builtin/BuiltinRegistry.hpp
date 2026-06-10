@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "libreshockwave/chunks/ScriptChunk.hpp"
 #include "libreshockwave/lingo/Datum.hpp"
 #include "libreshockwave/player/MovieProperties.hpp"
 #include "libreshockwave/player/audio/SoundManager.hpp"
@@ -26,6 +27,11 @@ struct BuiltinContext {
         std::shared_ptr<const bitmap::Palette> palette;
         std::optional<Datum::CastMemberRef> memberRef;
         std::optional<std::string> systemName;
+    };
+
+    struct ScriptHandlerLocation {
+        const chunks::ScriptChunk* script{nullptr};
+        chunks::ScriptChunk::Handler handler{};
     };
 
     using PuppetPaletteHandler = std::function<void(std::optional<Datum> paletteRef)>;
@@ -75,6 +81,10 @@ struct BuiltinContext {
     using NewInstanceHandler = std::function<Datum(const Datum& target, const std::vector<Datum>& args)>;
     using ValueEvaluator = std::function<Datum(const Datum& value)>;
     using ScriptResolver = std::function<Datum(const Datum& identifier, const std::optional<Datum>& scope)>;
+    using ScriptHandlerFinder = std::function<std::optional<ScriptHandlerLocation>(
+        int castLib,
+        int memberNum,
+        const std::string& handlerName)>;
     using ScriptPropertyNamesResolver = std::function<std::vector<std::string>(int castLib, int memberNum)>;
     using AncestorCallHandler = std::function<Datum(const std::vector<Datum>& args)>;
     using RandomIntHandler = std::function<int(int max)>;
@@ -131,6 +141,7 @@ struct BuiltinContext {
     NewInstanceHandler newInstanceHandler;
     ValueEvaluator valueEvaluator;
     ScriptResolver scriptResolver;
+    ScriptHandlerFinder scriptHandlerFinder;
     ScriptPropertyNamesResolver scriptPropertyNamesResolver;
     AncestorCallHandler ancestorCallHandler;
     RandomIntHandler randomIntHandler;

@@ -611,6 +611,23 @@ void Player::wireComponents() {
         return std::nullopt;
     };
 
+    context.scriptHandlerFinder = [findEventHandler](
+        int castLib,
+        int memberNum,
+        const std::string& handlerName)
+        -> std::optional<lingo::builtin::BuiltinContext::ScriptHandlerLocation> {
+        event::EventTarget target;
+        target.kind = event::EventTargetKind::ScriptInstance;
+        target.scriptInstance = lingo::Datum::scriptInstance(
+            "script",
+            lingo::Datum::CastMemberRef{castLib, memberNum});
+        const auto handler = findEventHandler(target, handlerName);
+        if (!handler || handler->script == nullptr) {
+            return std::nullopt;
+        }
+        return lingo::builtin::BuiltinContext::ScriptHandlerLocation{handler->script, handler->handler};
+    };
+
     auto executeTarget = [this, findEventHandler](const event::EventTarget& target,
                                                   std::string_view handlerName,
                                                   const std::vector<lingo::Datum>& args)

@@ -704,7 +704,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Player-backed `call(...)` target dispatch now returns direct script-instance handler results and the last sprite `scriptInstanceList` handler result instead of discarding them.
 - Script-instance object calls now port Java's numeric `closeThread` defer path, queuing the call through the VM task boundary only while a handler is active and no deferred flush is already in progress.
 - `call(...)` now snapshots Java message-struct prop-list arguments per target dispatch, deep-copying nested content while preserving connection script-instance references and leaving non-message prop lists forwarded by reference.
-- Additional provider-specific script-instance method dispatch quirks remain deferred to later focused VM/player slices.
+- Script-instance object calls now resolve provider-owned direct and ancestor script-ref handlers through the player script-member resolver before registry/property fallback, including `handler(#name)` checks; broader cast/VM runtime integration still remains deferred to later slices.
 
 ### Lingo VM AlertHook Foundation
 
@@ -976,7 +976,7 @@ Result:
 - OpcodeRegistry movie-property provider reads/writes and provider-backed `the` lookups passed through the same CTest executable.
 - OpcodeRegistry provider-backed object property gets/sets for movie, player, stage, sprite, integer-as-sprite refs, cast-library properties, cast-member metadata/provider properties, timeout refs, sound channels, and ImageMethodDispatcher-backed image `useAlpha`/`paletteRef` setters passed through the same CTest executable.
 - OpcodeRegistry local/external call handlers, builtin dispatch, no-return calls, constant fallback, and error-state handling passed through the same CTest executable.
-- OpcodeRegistry object method calls and receiver-style external method calls for ImageMethodDispatcher-backed images, ListMethodDispatcher-backed lists, MemberRegistryMethodDispatcher-backed script-instance registry prefill/fallbacks, PropListMethodDispatcher-backed property-list typed symbol/string namespaces and nested list/proplist deep-copy `duplicate`, ScriptInstanceMethodDispatcher-backed script-instance receivers and SpriteRef scriptInstanceList dispatch before provider fallback, StringMethodDispatcher-backed string receiver methods, SoundChannelMethodDispatcher-backed sound channels, VarRef inverted char ranges, mutable ChunkRef inverted delete ranges plus word/item/line deletion, points, rectangles, script-instance ancestor assignment guards/bounded cyclic ancestor traversal/registry bootstrap/prefill/alias import/stale cleanup/persistent alias refresh, cast library member lookups/accessors, timeouts, and Xtra instances passed through the same CTest executable.
+- OpcodeRegistry object method calls and receiver-style external method calls for ImageMethodDispatcher-backed images, ListMethodDispatcher-backed lists, MemberRegistryMethodDispatcher-backed script-instance registry prefill/fallbacks, PropListMethodDispatcher-backed property-list typed symbol/string namespaces and nested list/proplist deep-copy `duplicate`, ScriptInstanceMethodDispatcher-backed script-instance receivers, provider-owned direct/ancestor script-ref method dispatch, and SpriteRef scriptInstanceList dispatch before provider fallback, StringMethodDispatcher-backed string receiver methods, SoundChannelMethodDispatcher-backed sound channels, VarRef inverted char ranges, mutable ChunkRef inverted delete ranges plus word/item/line deletion, points, rectangles, script-instance ancestor assignment guards/bounded cyclic ancestor traversal/registry bootstrap/prefill/alias import/stale cleanup/persistent alias refresh, cast library member lookups/accessors, timeouts, and Xtra instances passed through the same CTest executable.
 - OpcodeRegistry `NEW_OBJ` script construction delegation, provider-resolved fallback construction, declared property preinitialization, automatic `new` handler invocation, and non-script rejection passed through the same CTest executable.
 
 ## Remaining Major Work
@@ -1231,4 +1231,4 @@ Result:
 - `5df5e6fd Port C++ decompiler fallback mapping`
 - `2d9420b0 Port C++ decompiler linear bytecode`
 - `1e40b253 Port C++ decompiler chunk opcodes`
-- Current checkpoint commit message: `Port C++ Startup Flags pWait quirk`
+- Current checkpoint commit message: `Port C++ provider script instance dispatch`
