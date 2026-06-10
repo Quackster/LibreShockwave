@@ -118,6 +118,7 @@ public:
     void stepFrame();
     [[nodiscard]] bool tick();
     [[nodiscard]] bool fireTestError(std::string_view errorMessage);
+    void onNetFetchComplete(std::string_view url, const std::vector<std::uint8_t>& data);
     [[nodiscard]] int preloadAllCasts();
     void onSynchronousExternalCastLoad(int castLibNumber);
     [[nodiscard]] bool loadExternalCastFromCachedData(int castLibNumber,

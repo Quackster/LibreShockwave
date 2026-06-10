@@ -19085,6 +19085,46 @@ void testCastLibManagerFoundation() {
     }));
     assert(fetchCompatibilityNotifications == 1);
 
+    Player providerFetchPlayer(file);
+    RecordingExternalCastLoadHandler providerLoadHandler;
+    std::vector<ExternalCastLoadEvent> providerLoadEvents;
+    int providerCompatibilityNotifications = 0;
+    providerFetchPlayer.addExternalCastLoadHandler(&providerLoadHandler);
+    providerFetchPlayer.setExternalCastLoadListener([&providerLoadEvents](const ExternalCastLoadEvent& event) {
+        providerLoadEvents.push_back(event);
+    });
+    providerFetchPlayer.setCastLoadedListener([&providerCompatibilityNotifications] {
+        ++providerCompatibilityNotifications;
+    });
+    const std::vector<std::uint8_t> downloadedImageData{'P', 'N', 'G'};
+    providerFetchPlayer.onNetFetchComplete("assets/picture.png?cache=1", downloadedImageData);
+    assert(providerFetchPlayer.castLibManager().getCachedDownloadedData("picture.png").value() ==
+           downloadedImageData);
+    auto providerExternalCast = providerFetchPlayer.castLibManager().castLibs().find(2);
+    assert(providerExternalCast != providerFetchPlayer.castLibManager().castLibs().end());
+    assert(providerExternalCast->second != nullptr);
+    assert(!providerExternalCast->second->isLoaded());
+    assert(providerLoadHandler.player == nullptr);
+    assert(providerLoadEvents.empty());
+    assert(providerCompatibilityNotifications == 0);
+
+    const int providerRevisionBeforeExternalLoad = providerFetchPlayer.stageRenderer().spriteRegistry().revision();
+    providerFetchPlayer.onNetFetchComplete("https://cdn.example/casts/EXT.CST?cache=1", externalCastData);
+    providerExternalCast = providerFetchPlayer.castLibManager().castLibs().find(2);
+    assert(providerExternalCast != providerFetchPlayer.castLibManager().castLibs().end());
+    assert(providerExternalCast->second != nullptr);
+    assert(providerExternalCast->second->isLoaded());
+    assert(providerFetchPlayer.castLibManager().getCachedExternalData("ext").value() == externalCastData);
+    assert(providerFetchPlayer.stageRenderer().spriteRegistry().revision() ==
+           providerRevisionBeforeExternalLoad + 1);
+    assert(providerLoadHandler.player == &providerFetchPlayer);
+    assert(providerLoadHandler.castLibNumber == 2);
+    assert(providerLoadHandler.fileName == "casts/ext.cct");
+    assert((providerLoadEvents == std::vector<ExternalCastLoadEvent>{
+        ExternalCastLoadEvent{2, "casts/ext.cct"}
+    }));
+    assert(providerCompatibilityNotifications == 1);
+
     Player cachedFileNamePlayer(file);
     RecordingExternalCastLoadHandler cachedFileNameHandler;
     int cachedFileNameNotifications = 0;

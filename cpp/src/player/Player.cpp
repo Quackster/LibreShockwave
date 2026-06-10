@@ -1,6 +1,7 @@
 #include "libreshockwave/player/Player.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <memory>
 #include <optional>
 #include <string>
@@ -326,6 +327,29 @@ bool Player::fireTestError(std::string_view errorMessage) {
         vm_.flushDeferredTasks();
         throw;
     }
+}
+
+void Player::onNetFetchComplete(std::string_view url, const std::vector<std::uint8_t>& data) {
+    if (url.empty()) {
+        return;
+    }
+
+    const std::string urlValue(url);
+    castLibManager_.cacheExternalData(urlValue, data);
+
+    std::string lowerUrl(urlValue);
+    std::transform(lowerUrl.begin(), lowerUrl.end(), lowerUrl.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    const auto queryIndex = lowerUrl.find('?');
+    if (queryIndex != std::string::npos && queryIndex > 0) {
+        lowerUrl = lowerUrl.substr(0, queryIndex);
+    }
+    if (!lowerUrl.ends_with(".cct") && !lowerUrl.ends_with(".cst")) {
+        return;
+    }
+
+    handleExternalCastFetch(urlValue, data);
 }
 
 int Player::preloadAllCasts() {

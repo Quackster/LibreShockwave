@@ -304,6 +304,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Player now ports Java's `preloadAllCasts` facade and startup call, scanning unloaded external casts, normalizing authored paths to filenames, marking casts as fetching, queuing `NetManager` preloads, and skipping already fetching/loaded casts.
 - Player now ports Java's external-cast fetch completion bridge: network completion caches downloaded cast bytes, hydrates requested and authored matching cast slots, emits Player-owned external-cast load notifications, and reloads `castLib.fileName` assignments from the network/cast data caches.
 - Player now ports Java's Player-level frame-label and test-error utility facades, delegating `getFrameForLabel`/`getFrameLabels` through `ScoreNavigator` and exposing `fireTestError` through the VM alertHook path with deferred-task flushing.
+- Player now ports Java's public `onNetFetchComplete` provider handoff, caching arbitrary downloaded payloads and hydrating external cast slots only for fetched `.cct`/`.cst` URLs.
 - Full VM provider setup, asynchronous playback, non-bitmap imported-media mutation, and platform-specific async external-cast fetch backends remain deferred to later player runtime slices.
 
 ### Player Builtin Context Foundation
@@ -886,7 +887,7 @@ Result:
 - BitmapFont glyph drawing, overflow metrics, BDF parsing, direct PFR outline/bitmap/curve glyph rasterization, PFR1 metadata/character-record/simple/compound/curve-outline parsing, PFR-to-TTF table generation/cache registration, pure TTF bitmap rasterization with the bundled Verdana fixture, FontRegistry prebuilt-cache/PFR-registration/rasterization/size-aware embedded-TTF/alias behavior, and SimpleTextRenderer bitmap-font/built-in-fallback/wrapping/underline/caret/XMED per-span/styled-underline rendering behavior passed through the same CTest executable.
 - SoundConverter WAV layout, SoundChunk header stripping, signed/endianness conversion, MP3 extraction, IMA ADPCM, and duration tests passed through the same CTest executable.
 - CastMember bitmap, script, shape, dimension, type-check, raw chunk, and display string tests passed through the same CTest executable.
-- CastLib and CastLibManager lazy MCsL/CAS* initialization, member count/name lookup, source-prefixed lookup fallback, member metadata properties, registry filtering, builtin callback installation, external-cache keys, pending external-load bookkeeping, Player external-cast preload queuing, fetch-completion hydration, cached fileName reloads, and Player external-cast cached-load callbacks passed through the same CTest executable.
+- CastLib and CastLibManager lazy MCsL/CAS* initialization, member count/name lookup, source-prefixed lookup fallback, member metadata properties, registry filtering, builtin callback installation, external-cache keys, pending external-load bookkeeping, Player external-cast preload queuing, public provider fetch handoff, fetch-completion hydration, cached fileName reloads, and Player external-cast cached-load callbacks passed through the same CTest executable.
 - PlayerEvent handler names, event payload records, ExternalCastLoadHandler callback fanout, RenderType, and RenderConfig tests passed through the same CTest executable.
 - PlayerState, Player frame-label/test-error facades, InputEvent factories, DirectorKeyCodes, and InputState mutation/queue tests passed through the same CTest executable.
 - InputHandler mouse/key queueing, interactive hit filtering, rollover dispatch, mouse-up-outside fallback, focused key dispatch, blur synthesis, dispatcher/sprite supplier hooks, and sprite-registry revision bumps passed through the same CTest executable.
@@ -1237,4 +1238,4 @@ Result:
 - `5df5e6fd Port C++ decompiler fallback mapping`
 - `2d9420b0 Port C++ decompiler linear bytecode`
 - `1e40b253 Port C++ decompiler chunk opcodes`
-- Current checkpoint commit message: `Port C++ player utility facades`
+- Current checkpoint commit message: `Port C++ player net fetch handoff`
