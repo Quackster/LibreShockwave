@@ -2,6 +2,7 @@
 
 #include "libreshockwave/bitmap/Bitmap.hpp"
 #include "libreshockwave/bitmap/Palette.hpp"
+#include "libreshockwave/lingo/vm/dispatch/ImageMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/ListMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/PropListMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/SoundChannelMethodDispatcher.hpp"
@@ -642,7 +643,7 @@ bool applyImagePaletteProperty(bitmap::Bitmap& bmp, const Datum& value, builtin:
     return resolved;
 }
 
-void setImageProp(ExecutionContext& context, const Datum::ImageRef& image, std::string_view propName, const Datum& value) {
+void setImageProp(builtin::BuiltinContext* builtinContext, const Datum::ImageRef& image, std::string_view propName, const Datum& value) {
     if (image.bitmap == nullptr) {
         return;
     }
@@ -653,7 +654,7 @@ void setImageProp(ExecutionContext& context, const Datum::ImageRef& image, std::
         return;
     }
     if (equalsIgnoreCase(propName, "paletteref")) {
-        (void)applyImagePaletteProperty(bitmap, value, context.builtinContext());
+        (void)applyImagePaletteProperty(bitmap, value, builtinContext);
     }
 }
 
@@ -775,7 +776,7 @@ Datum getObjectProperty(ExecutionContext& context, const Datum& object, std::str
         return getColorProp(*color, propName);
     }
     if (const auto* image = object.asImageRef()) {
-        return getImageProp(*image, propName);
+        return dispatch::ImageMethodDispatcher::getProperty(*image, propName);
     }
     if (const auto* member = object.asCastMemberRef()) {
         return getCastMemberProp(context, *member, propName);
@@ -845,7 +846,8 @@ void setObjectProperty(ExecutionContext& context, Datum& object, std::string_vie
         return;
     }
     if (const auto* image = object.asImageRef()) {
-        setImageProp(context, *image, propName, value);
+        dispatch::ImageMethodDispatcher::setProperty(context.builtinContext(), *image, propName, value);
+        return;
     }
 }
 
@@ -3476,7 +3478,7 @@ Datum dispatchObjectMethod(ExecutionContext& context, Datum target, std::string_
         return rectObjectMethod(*rect, methodName, args);
     }
     if (const auto* image = target.asImageRef()) {
-        return imageObjectMethod(*image, methodName, args);
+        return dispatch::ImageMethodDispatcher::dispatch(*image, methodName, args);
     }
     if (const auto* member = target.asCastMemberRef()) {
         return castMemberObjectMethod(context, *member, methodName, args);
@@ -4753,6 +4755,27 @@ bool objCall(ExecutionContext& context) {
 }
 
 } // namespace
+
+namespace dispatch {
+
+Datum ImageMethodDispatcher::dispatch(const Datum::ImageRef& imageRef,
+                                      std::string_view methodName,
+                                      const std::vector<Datum>& args) {
+    return imageObjectMethod(imageRef, methodName, args);
+}
+
+Datum ImageMethodDispatcher::getProperty(const Datum::ImageRef& imageRef, std::string_view propName) {
+    return getImageProp(imageRef, propName);
+}
+
+void ImageMethodDispatcher::setProperty(builtin::BuiltinContext* context,
+                                        const Datum::ImageRef& imageRef,
+                                        std::string_view propName,
+                                        const Datum& value) {
+    setImageProp(context, imageRef, propName, value);
+}
+
+} // namespace dispatch
 
 OpcodeRegistry::OpcodeRegistry() {
     StackOpcodes::registerHandlers(*this);

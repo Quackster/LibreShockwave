@@ -95,6 +95,7 @@
 #include "libreshockwave/lingo/vm/OpcodeRegistry.hpp"
 #include "libreshockwave/lingo/vm/PropertyIdMappings.hpp"
 #include "libreshockwave/lingo/vm/Scope.hpp"
+#include "libreshockwave/lingo/vm/dispatch/ImageMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/ListMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/PropListMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/SoundChannelMethodDispatcher.hpp"
@@ -247,6 +248,7 @@ using libreshockwave::lingo::vm::OpcodeRegistry;
 using libreshockwave::lingo::vm::PropertyIdMappings;
 using libreshockwave::lingo::vm::Scope;
 using libreshockwave::lingo::vm::TraceListener;
+using libreshockwave::lingo::vm::dispatch::ImageMethodDispatcher;
 using libreshockwave::lingo::vm::dispatch::ListMethodDispatcher;
 using libreshockwave::lingo::vm::dispatch::PropListMethodDispatcher;
 using libreshockwave::lingo::vm::dispatch::SoundChannelMethodDispatcher;
@@ -6324,6 +6326,18 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     auto imageMethodBitmap = std::make_shared<Bitmap>(2, 2, 32);
     imageMethodBitmap->fill(0xFFFFFFFFU);
     const Datum imageMethodRef = Datum::imageRef(imageMethodBitmap);
+    const auto* imageMethodImageRef = imageMethodRef.asImageRef();
+    assert(imageMethodImageRef != nullptr);
+    assert(ImageMethodDispatcher::getProperty(*imageMethodImageRef, "width").intValue() == 2);
+    assert(ImageMethodDispatcher::dispatch(*imageMethodImageRef, "getAt", {Datum::of(2)}).intValue() == 2);
+    ImageMethodDispatcher::setProperty(&builtinContext, *imageMethodImageRef, "useAlpha", Datum::TRUE);
+    assert(imageMethodBitmap->isNativeAlpha());
+    const Datum nullImageRef = Datum::imageRef(std::shared_ptr<Bitmap>{});
+    const auto* nullImage = nullImageRef.asImageRef();
+    assert(nullImage != nullptr);
+    assert(ImageMethodDispatcher::getProperty(*nullImage, "height").intValue() == 0);
+    assert(ImageMethodDispatcher::dispatch(*nullImage, "getAt", {Datum::of(1)}).intValue() == 0);
+    assert(ImageMethodDispatcher::dispatch(*nullImage, "duplicate", {}).asImageRef()->bitmap == nullptr);
     assert(runObjCall(64, {imageMethodRef, Datum::of(1)}).intValue() == 2);
     assert(runObjCall(64, {imageMethodRef, Datum::of(2)}).intValue() == 2);
     assert(runObjCall(101, {imageMethodRef, Datum::of(1), Datum::of(0), Datum::colorRef(10, 20, 30)}).isVoid());
