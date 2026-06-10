@@ -172,6 +172,46 @@ void CastMember::setPaletteData(std::shared_ptr<const bitmap::Palette> palette) 
     dynamicPalette_ = std::move(palette);
 }
 
+std::shared_ptr<const bitmap::Palette> CastMember::runtimePaletteOverride() const {
+    return runtimePaletteOverride_;
+}
+
+int CastMember::paletteRefCastLib() const { return paletteRefCastLib_; }
+int CastMember::paletteRefMemberNum() const { return paletteRefMemberNum_; }
+
+const std::optional<std::string>& CastMember::paletteRefSystemName() const {
+    return paletteRefSystemName_;
+}
+
+void CastMember::setRuntimePaletteOverride(std::shared_ptr<const bitmap::Palette> palette,
+                                           int paletteRefCastLib,
+                                           int paletteRefMemberNum,
+                                           std::optional<std::string> paletteRefSystemName,
+                                           bool remapDeepBitmapRgb) {
+    runtimePaletteOverride_ = std::move(palette);
+    paletteRefCastLib_ = paletteRefCastLib;
+    paletteRefMemberNum_ = paletteRefMemberNum;
+    paletteRefSystemName_ = std::move(paletteRefSystemName);
+
+    if (!runtimeBitmap_ || !runtimePaletteOverride_) {
+        return;
+    }
+
+    if (runtimeBitmap_->bitDepth() <= 8 || remapDeepBitmapRgb) {
+        (void)runtimeBitmap_->remapImagePalette(runtimePaletteOverride_);
+    } else {
+        runtimeBitmap_->setImagePalette(runtimePaletteOverride_);
+    }
+    if (paletteRefCastLib_ >= 1 && paletteRefMemberNum_ >= 1) {
+        runtimeBitmap_->setPaletteRefCastMember(paletteRefCastLib_, paletteRefMemberNum_);
+    } else if (paletteRefSystemName_.has_value()) {
+        runtimeBitmap_->setPaletteRefSystemName(*paletteRefSystemName_);
+    } else {
+        runtimeBitmap_->clearPaletteRefMetadata();
+    }
+    runtimeBitmap_->markScriptModified();
+}
+
 void CastMember::setRuntimeBitmap(const bitmap::Bitmap& bitmap, bool markScriptModified) {
     const int currentRegX = regX();
     const int currentRegY = regY();
@@ -262,6 +302,10 @@ void CastMember::resetRuntimePayload() {
     scriptType_.reset();
     shockwave3DInfo_.reset();
     runtimeBitmap_.reset();
+    runtimePaletteOverride_.reset();
+    paletteRefCastLib_ = -1;
+    paletteRefMemberNum_ = -1;
+    paletteRefSystemName_.reset();
     runtimeRegX_.reset();
     runtimeRegY_.reset();
     dynamicPalette_.reset();

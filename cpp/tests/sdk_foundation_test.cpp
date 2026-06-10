@@ -12466,6 +12466,9 @@ void testCastLibManagerFoundation() {
     assert(heroPaletteRef->castLib == 1);
     assert(heroPaletteRef->memberNum() == 1);
     assert(manager.getMemberProp(1, 2, "palette").asCastMemberRef()->memberNum() == 1);
+    assert(manager.setMemberProp(1, 2, "paletteRef", Datum::symbol("systemMac")));
+    assert(manager.getMemberProp(1, 2, "paletteRef").asSymbol()->name == "systemMac");
+    assert(manager.resolveMember(1, 2)->runtimeBitmap() == nullptr);
     assert(manager.getMemberProp(1, 99, "type").asSymbol()->name == "empty");
     assert(!manager.setMemberProp(1, 2, "name", Datum::of("Other")));
 
@@ -12516,6 +12519,11 @@ void testCastLibManagerFoundation() {
     assert(manager.getMemberProp(1, 2, "width").intValue() == 3);
     assert(manager.getMemberProp(1, 2, "height").intValue() == 1);
     assert(manager.getMemberProp(1, 2, "depth").intValue() == 32);
+    assert(manager.setMemberProp(1, 2, "paletteRef", Datum::symbol("systemWin")));
+    assert(manager.getMemberProp(1, 2, "paletteRef").asSymbol()->name == "systemWin");
+    assert(assignedRuntime->imagePalette().get() == &Palette::systemWinPalette());
+    assert(assignedRuntime->paletteRefSystemName().has_value());
+    assert(assignedRuntime->paletteRefSystemName().value() == "systemWin");
     assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->x == 8);
     assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->y == 7);
     assert(assignedRuntime->hasAnchorPoint());
@@ -12799,6 +12807,18 @@ void testCastLibManagerFoundation() {
     reusableRuntime->setPaletteData(sourceRuntimePalette);
     assert(manager.resolvePaletteByMember(1, 10000) == sourceRuntimePalette);
     assert(manager.resolvePaletteByName("Runtime Palette") == sourceRuntimePalette);
+    assert(manager.setMemberProp(1, 2, "paletteRef", Datum::castMemberRef(CastLibId(1), MemberId(10000))));
+    const auto* runtimeMemberPaletteRef = manager.getMemberProp(1, 2, "paletteRef").asCastMemberRef();
+    assert(runtimeMemberPaletteRef != nullptr);
+    assert(runtimeMemberPaletteRef->castLib == 1);
+    assert(runtimeMemberPaletteRef->memberNum() == 10000);
+    auto runtimeMemberPaletteBitmap = manager.resolveMember(1, 2)->runtimeBitmap();
+    assert(runtimeMemberPaletteBitmap != nullptr);
+    assert(runtimeMemberPaletteBitmap->imagePalette() == sourceRuntimePalette);
+    assert(runtimeMemberPaletteBitmap->paletteRefCastLib() == 1);
+    assert(runtimeMemberPaletteBitmap->paletteRefMemberNum() == 10000);
+    assert(manager.setMemberProp(1, 2, "palette", Datum::of(std::string("Runtime Palette"))));
+    assert(manager.getMemberProp(1, 2, "paletteRef").asCastMemberRef()->memberNum() == 10000);
     const auto paletteColors = manager.getMemberProp(1, 10000, "color");
     assert(paletteColors.isList());
     assert(paletteColors.listValue().count() == 3);

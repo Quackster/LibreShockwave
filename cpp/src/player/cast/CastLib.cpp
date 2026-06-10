@@ -89,6 +89,14 @@ lingo::Datum bitmapPaletteRefDatum(const std::shared_ptr<libreshockwave::cast::C
         return lingo::Datum::voidValue();
     }
 
+    if (member->paletteRefCastLib() >= 1 && member->paletteRefMemberNum() >= 1) {
+        return lingo::Datum::castMemberRef(id::CastLibId(member->paletteRefCastLib()),
+                                           id::MemberId(member->paletteRefMemberNum()));
+    }
+    if (const auto& systemName = member->paletteRefSystemName(); systemName.has_value()) {
+        return lingo::Datum::symbol(*systemName);
+    }
+
     const auto runtime = member->runtimeBitmap();
     if (runtime) {
         if (runtime->paletteRefCastLib() >= 1 && runtime->paletteRefMemberNum() >= 1) {

@@ -98,6 +98,15 @@ public:
     void setEditable(bool editable);
     [[nodiscard]] std::shared_ptr<const bitmap::Palette> paletteData() const;
     void setPaletteData(std::shared_ptr<const bitmap::Palette> palette);
+    [[nodiscard]] std::shared_ptr<const bitmap::Palette> runtimePaletteOverride() const;
+    [[nodiscard]] int paletteRefCastLib() const;
+    [[nodiscard]] int paletteRefMemberNum() const;
+    [[nodiscard]] const std::optional<std::string>& paletteRefSystemName() const;
+    void setRuntimePaletteOverride(std::shared_ptr<const bitmap::Palette> palette,
+                                   int paletteRefCastLib,
+                                   int paletteRefMemberNum,
+                                   std::optional<std::string> paletteRefSystemName,
+                                   bool remapDeepBitmapRgb);
     [[nodiscard]] std::shared_ptr<bitmap::Bitmap> runtimeBitmap() const;
     void setRuntimeBitmap(const bitmap::Bitmap& bitmap, bool markScriptModified = true);
     void erase();
@@ -124,6 +133,10 @@ private:
     std::optional<ScriptType> scriptType_;
     std::optional<Shockwave3DInfo> shockwave3DInfo_;
     std::shared_ptr<bitmap::Bitmap> runtimeBitmap_;
+    std::shared_ptr<const bitmap::Palette> runtimePaletteOverride_;
+    int paletteRefCastLib_ = -1;
+    int paletteRefMemberNum_ = -1;
+    std::optional<std::string> paletteRefSystemName_;
     std::optional<int> runtimeRegX_;
     std::optional<int> runtimeRegY_;
     std::shared_ptr<const bitmap::Palette> dynamicPalette_;

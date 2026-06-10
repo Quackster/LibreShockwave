@@ -43,6 +43,62 @@ std::string keyNameLikeJava(const lingo::Datum& value) {
     return value.stringValue();
 }
 
+std::shared_ptr<const bitmap::Palette> borrowedPalette(const bitmap::Palette* palette) {
+    if (palette == nullptr) {
+        return nullptr;
+    }
+    return std::shared_ptr<const bitmap::Palette>(palette, [](const bitmap::Palette*) {});
+}
+
+struct ResolvedPaletteOverride {
+    std::shared_ptr<const bitmap::Palette> palette;
+    std::optional<lingo::Datum::CastMemberRef> memberRef;
+    std::optional<std::string> systemName;
+};
+
+std::optional<ResolvedPaletteOverride> resolvePaletteOverrideDatum(CastLibManager& manager,
+                                                                   const lingo::Datum& value,
+                                                                   int defaultCastLib) {
+    if (const auto* ref = value.asCastMemberRef()) {
+        const int castLib = ref->castLib > 0 ? ref->castLib : defaultCastLib;
+        if (auto palette = manager.resolvePaletteByMember(castLib, ref->memberNum())) {
+            return ResolvedPaletteOverride{
+                palette,
+                lingo::Datum::CastMemberRef::of(id::CastLibId(castLib), id::MemberId(ref->memberNum())),
+                std::nullopt
+            };
+        }
+    }
+
+    if (value.isString() || value.isSymbol()) {
+        const std::string name = keyNameLikeJava(value);
+        if (const auto* builtIn = bitmap::Palette::builtInBySymbolName(name)) {
+            const auto normalized = bitmap::Palette::normalizeBuiltInSymbolName(name);
+            return ResolvedPaletteOverride{borrowedPalette(builtIn), std::nullopt, normalized};
+        }
+
+        if (const auto* namedRef = manager.getMemberByName(0, name).asCastMemberRef()) {
+            const int castLib = namedRef->castLib > 0 ? namedRef->castLib : defaultCastLib;
+            auto member = manager.resolveMember(castLib, namedRef->memberNum());
+            if (member && member->isPalette()) {
+                if (auto palette = manager.resolvePaletteByMember(castLib, namedRef->memberNum())) {
+                    return ResolvedPaletteOverride{
+                        palette,
+                        lingo::Datum::CastMemberRef::of(id::CastLibId(castLib), id::MemberId(namedRef->memberNum())),
+                        std::nullopt
+                    };
+                }
+            }
+        }
+
+        if (auto palette = manager.resolvePaletteByName(name)) {
+            return ResolvedPaletteOverride{palette, std::nullopt, std::nullopt};
+        }
+    }
+
+    return std::nullopt;
+}
+
 int countMethodWords(std::string_view text) {
     int count = 0;
     bool inWord = false;
@@ -487,6 +543,29 @@ bool CastLibManager::setMemberProp(int castLibNumber,
                                    int memberNumber,
                                    const std::string& propName,
                                    const lingo::Datum& value) {
+    if (equalsIgnoreCase(propName, "paletteRef") || equalsIgnoreCase(propName, "palette")) {
+        auto member = resolveMember(castLibNumber, memberNumber);
+        if (!member || !member->isBitmap()) {
+            return false;
+        }
+        auto resolved = resolvePaletteOverrideDatum(*this, value, castLibNumber);
+        if (!resolved.has_value() || !resolved->palette) {
+            return false;
+        }
+
+        int paletteRefCastLib = -1;
+        int paletteRefMemberNum = -1;
+        if (resolved->memberRef.has_value()) {
+            paletteRefCastLib = resolved->memberRef->castLib;
+            paletteRefMemberNum = resolved->memberRef->memberNum();
+        }
+        member->setRuntimePaletteOverride(resolved->palette,
+                                          paletteRefCastLib,
+                                          paletteRefMemberNum,
+                                          resolved->systemName,
+                                          equalsIgnoreCase(propName, "palette"));
+        return true;
+    }
     if (equalsIgnoreCase(propName, "media")) {
         if (const auto* sourceRef = value.asCastMemberRef()) {
             return copyMemberMedia(castLibNumber, memberNumber, *sourceRef);
