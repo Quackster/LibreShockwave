@@ -198,6 +198,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Raw indexed-data colorization handles 1-bit, 2-bit, 4-bit, and 8-bit packed palette indices before bitmap decode.
 - Ink-mode helper predicates for colorization and backColor usage are available in C++.
 
+### Bitmap Drawing Helpers
+
+- `bitmap::Drawing` ports Java's primitive bitmap drawing helpers for filled rectangles, rectangle outlines, Bresenham lines, filled ellipses, and ellipse outlines.
+- VM image `draw` methods now share these bitmap drawing primitives instead of carrying duplicate local implementations.
+- Java `Drawing.copyPixels`, matte/mask extraction, and ink-mode blending remain implemented through the current C++ VM/render paths and still need extraction into the reusable bitmap drawing module.
+
 ### PFR Font Bit Reader
 
 - `font::PfrBitReader` ports byte-aligned big-endian reads and MSB-first bit reads used by the Java PFR1 font parser.

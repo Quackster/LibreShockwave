@@ -6,6 +6,7 @@ add_library(libreshockwave
     src/bitmap/BitmapColorizer.cpp
     src/bitmap/BitmapDecoder.cpp
     src/bitmap/ColorRef.cpp
+    src/bitmap/Drawing.cpp
     src/bitmap/Palette.cpp
     src/cast/BitmapInfo.cpp
     src/cast/CastMember.cpp

@@ -41,6 +41,7 @@
 #include "libreshockwave/bitmap/BitmapColorizer.hpp"
 #include "libreshockwave/bitmap/BitmapDecoder.hpp"
 #include "libreshockwave/bitmap/ColorRef.hpp"
+#include "libreshockwave/bitmap/Drawing.hpp"
 #include "libreshockwave/bitmap/Palette.hpp"
 #include "libreshockwave/cast/BitmapInfo.hpp"
 #include "libreshockwave/cast/CastMember.hpp"
@@ -7839,6 +7840,29 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(!runObjCall(106, {Datum::imageRef(invalidAlphaTarget), Datum::of(128)}).boolValue());
     assert(invalidAlphaTarget->isScriptModified());
     assert(invalidAlphaTarget->getPixel(0, 0) == 0xFFFFFFFFU);
+
+    Bitmap primitiveDrawBitmap(7, 7, 32);
+    primitiveDrawBitmap.fill(0xFFFFFFFFU);
+    libreshockwave::bitmap::Drawing::fillRect(primitiveDrawBitmap, 1, 1, 2, 2, 0xFF101010U);
+    assert(primitiveDrawBitmap.getPixel(1, 1) == 0xFF101010U);
+    assert(primitiveDrawBitmap.getPixel(2, 2) == 0xFF101010U);
+    libreshockwave::bitmap::Drawing::drawRect(primitiveDrawBitmap, 0, 0, 4, 3, 0xFF202020U);
+    assert(primitiveDrawBitmap.getPixel(0, 0) == 0xFF202020U);
+    assert(primitiveDrawBitmap.getPixel(3, 2) == 0xFF202020U);
+    assert(primitiveDrawBitmap.getPixel(2, 1) == 0xFF101010U);
+    libreshockwave::bitmap::Drawing::drawLine(primitiveDrawBitmap, 6, 0, 4, 2, 0xFF303030U);
+    assert(primitiveDrawBitmap.getPixel(6, 0) == 0xFF303030U);
+    assert(primitiveDrawBitmap.getPixel(5, 1) == 0xFF303030U);
+    assert(primitiveDrawBitmap.getPixel(4, 2) == 0xFF303030U);
+    libreshockwave::bitmap::Drawing::fillEllipse(primitiveDrawBitmap, 3, 3, 1, 2, 0xFF404040U);
+    assert(primitiveDrawBitmap.getPixel(3, 1) == 0xFF404040U);
+    assert(primitiveDrawBitmap.getPixel(2, 3) == 0xFF404040U);
+    assert(primitiveDrawBitmap.getPixel(4, 3) == 0xFF404040U);
+    libreshockwave::bitmap::Drawing::drawEllipse(primitiveDrawBitmap, 3, 3, 2, 2, 0xFF505050U);
+    assert(primitiveDrawBitmap.getPixel(3, 1) == 0xFF505050U);
+    assert(primitiveDrawBitmap.getPixel(1, 3) == 0xFF505050U);
+    assert(primitiveDrawBitmap.getPixel(5, 3) == 0xFF505050U);
+
     auto drawBitmap = std::make_shared<Bitmap>(3, 3, 32);
     drawBitmap->setImagePalette(std::make_shared<Palette>(
         std::vector<std::uint32_t>{0xFFFFFFU, 0xA6A6A6U}, "ui"));

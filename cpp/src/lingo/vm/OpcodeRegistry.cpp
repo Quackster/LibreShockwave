@@ -1,6 +1,7 @@
 #include "libreshockwave/lingo/vm/OpcodeRegistry.hpp"
 
 #include "libreshockwave/bitmap/Bitmap.hpp"
+#include "libreshockwave/bitmap/Drawing.hpp"
 #include "libreshockwave/bitmap/Palette.hpp"
 #include "libreshockwave/lingo/vm/dispatch/ImageMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/ListMethodDispatcher.hpp"
@@ -2035,80 +2036,6 @@ bool imageFill(bitmap::Bitmap& bmp, const std::vector<Datum>& args) {
     return true;
 }
 
-void imageDrawRect(bitmap::Bitmap& bmp, int x, int y, int width, int height, std::uint32_t argb) {
-    for (int px = x; px < x + width; ++px) {
-        bmp.setPixel(px, y, argb);
-        bmp.setPixel(px, y + height - 1, argb);
-    }
-    for (int py = y; py < y + height; ++py) {
-        bmp.setPixel(x, py, argb);
-        bmp.setPixel(x + width - 1, py, argb);
-    }
-}
-
-void imageDrawLine(bitmap::Bitmap& bmp, int x0, int y0, int x1, int y1, std::uint32_t argb) {
-    const int dx = std::abs(x1 - x0);
-    const int dy = std::abs(y1 - y0);
-    const int sx = x0 < x1 ? 1 : -1;
-    const int sy = y0 < y1 ? 1 : -1;
-    int err = dx - dy;
-
-    while (true) {
-        bmp.setPixel(x0, y0, argb);
-        if (x0 == x1 && y0 == y1) {
-            break;
-        }
-        const int e2 = 2 * err;
-        if (e2 > -dy) {
-            err -= dy;
-            x0 += sx;
-        }
-        if (e2 < dx) {
-            err += dx;
-            y0 += sy;
-        }
-    }
-}
-
-void imageDrawEllipse(bitmap::Bitmap& bmp, int cx, int cy, int rx, int ry, std::uint32_t argb) {
-    int x = 0;
-    int y = ry;
-    const int rxSq = rx * rx;
-    const int rySq = ry * ry;
-    int p = static_cast<int>(rySq - rxSq * ry + 0.25 * rxSq);
-
-    while (rySq * x < rxSq * y) {
-        bmp.setPixel(cx + x, cy + y, argb);
-        bmp.setPixel(cx - x, cy + y, argb);
-        bmp.setPixel(cx + x, cy - y, argb);
-        bmp.setPixel(cx - x, cy - y, argb);
-        if (p < 0) {
-            ++x;
-            p += 2 * rySq * x + rySq;
-        } else {
-            ++x;
-            --y;
-            p += 2 * rySq * x - 2 * rxSq * y + rySq;
-        }
-    }
-
-    p = static_cast<int>(rySq * (x + 0.5) * (x + 0.5) + rxSq * (y - 1) * (y - 1) - rxSq * rySq);
-    while (y >= 0) {
-        bmp.setPixel(cx + x, cy + y, argb);
-        bmp.setPixel(cx - x, cy + y, argb);
-        bmp.setPixel(cx + x, cy - y, argb);
-        bmp.setPixel(cx - x, cy - y, argb);
-        if (p > 0) {
-            --y;
-            p -= 2 * rxSq * y + rxSq;
-        } else {
-            --y;
-            ++x;
-            p += 2 * rySq * x - 2 * rxSq * y + rxSq;
-        }
-    }
-}
-
 Datum imageDraw(bitmap::Bitmap& bmp, const std::vector<Datum>& args) {
     if (args.size() < 2) return Datum::voidValue();
 
@@ -2156,11 +2083,11 @@ Datum imageDraw(bitmap::Bitmap& bmp, const std::vector<Datum>& args) {
     }
 
     if (equalsIgnoreCase(shapeType, "oval") || equalsIgnoreCase(shapeType, "ellipse")) {
-        imageDrawEllipse(bmp, left + width / 2, top + height / 2, width / 2, height / 2, colorArgb);
+        bitmap::Drawing::drawEllipse(bmp, left + width / 2, top + height / 2, width / 2, height / 2, colorArgb);
     } else if (equalsIgnoreCase(shapeType, "line")) {
-        imageDrawLine(bmp, left, top, right, bottom, colorArgb);
+        bitmap::Drawing::drawLine(bmp, left, top, right, bottom, colorArgb);
     } else {
-        imageDrawRect(bmp, left, top, width, height, colorArgb);
+        bitmap::Drawing::drawRect(bmp, left, top, width, height, colorArgb);
     }
     return Datum::voidValue();
 }
