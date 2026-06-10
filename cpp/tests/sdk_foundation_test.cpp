@@ -6124,6 +6124,12 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 129) {
             return std::string("movieArgsOnly");
         }
+        if (nameId == 130) {
+            return std::string("left");
+        }
+        if (nameId == 131) {
+            return std::string("bottom");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.variableSetListener = [&variableTraces](std::string_view type,
@@ -7050,6 +7056,31 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(setCastMemberPropertyValue.stringValue() == "table");
     builtinContext.castMemberPropertyGetter = {};
     builtinContext.castMemberPropertySetter = {};
+
+    Datum objectPropertyPoint = Datum::intPoint(9, 8);
+    setObjectContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_OBJ_PROP, libreshockwave::lingo::code(Opcode::SET_OBJ_PROP), 52});
+    setObjectContext.push(objectPropertyPoint);
+    setObjectContext.push(Datum::of(14));
+    assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
+    assert(objectPropertyPoint.asIntPoint()->x == 14);
+    assert(objectPropertyPoint.asIntPoint()->y == 8);
+    setObjectContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_OBJ_PROP, libreshockwave::lingo::code(Opcode::SET_OBJ_PROP), 84});
+    setObjectContext.push(objectPropertyPoint);
+    setObjectContext.push(Datum::of(std::string("15")));
+    assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
+    assert(objectPropertyPoint.asIntPoint()->y == 15);
+
+    Datum objectPropertyRect = Datum::intRect(1, 2, 3, 4);
+    setObjectContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_OBJ_PROP, libreshockwave::lingo::code(Opcode::SET_OBJ_PROP), 130});
+    setObjectContext.push(objectPropertyRect);
+    setObjectContext.push(Datum::of(7.9F));
+    assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
+    assert(objectPropertyRect.asIntRect()->left == 7);
+    setObjectContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_OBJ_PROP, libreshockwave::lingo::code(Opcode::SET_OBJ_PROP), 131});
+    setObjectContext.push(objectPropertyRect);
+    setObjectContext.push(Datum::castLibRef(CastLibId(10)));
+    assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
+    assert(objectPropertyRect.asIntRect()->bottom == 10);
 
     TimeoutManager objectPropertyTimeouts;
     const Datum objectPropertyTimer = objectPropertyTimeouts.createTimeout("propTimer", 500, "tick", Datum::voidValue());
@@ -9025,6 +9056,14 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runObjCall(71, {Datum::intPoint(5, 6), Datum::intRect(0, 0, 10, 10)}).boolValue());
     assert(runObjCall(64, {Datum::intPoint(5, 6), Datum::of(2)}).intValue() == 6);
     assert(runObjCall(64, {Datum::intRect(1, 2, 3, 4), Datum::of(3)}).intValue() == 3);
+    Datum methodPoint = Datum::intPoint(5, 6);
+    assert(runObjCall(65, {methodPoint, Datum::of(1), Datum::of(std::string("12"))}).isVoid());
+    assert(methodPoint.asIntPoint()->x == 12);
+    assert(methodPoint.asIntPoint()->y == 6);
+    Datum methodRect = Datum::intRect(1, 2, 3, 4);
+    assert(runObjCall(65, {methodRect, Datum::of(4), Datum::of(20.6F)}).isVoid());
+    assert(methodRect.asIntRect()->left == 1);
+    assert(methodRect.asIntRect()->bottom == 20);
     assert(runObjCall(72, {Datum::intRect(1, 2, 3, 4)}) == Datum::intRect(1, 2, 3, 4));
 
     TimeoutManager objectCallTimeouts;

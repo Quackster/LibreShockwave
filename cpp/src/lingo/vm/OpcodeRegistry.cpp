@@ -598,6 +598,15 @@ Datum getPointProp(const Datum::IntPoint& point, std::string_view propName) {
     return Datum::voidValue();
 }
 
+void setPointProp(Datum::IntPoint& point, std::string_view propName, const Datum& value) {
+    const int newValue = toIntLikeJava(value);
+    if (equalsIgnoreCase(propName, "loch") || equalsIgnoreCase(propName, "x")) {
+        point.x = newValue;
+    } else if (equalsIgnoreCase(propName, "locv") || equalsIgnoreCase(propName, "y")) {
+        point.y = newValue;
+    }
+}
+
 Datum getRectProp(const Datum::IntRect& rect, std::string_view propName) {
     if (equalsIgnoreCase(propName, "left")) return Datum::of(rect.left);
     if (equalsIgnoreCase(propName, "top")) return Datum::of(rect.top);
@@ -607,6 +616,19 @@ Datum getRectProp(const Datum::IntRect& rect, std::string_view propName) {
     if (equalsIgnoreCase(propName, "height")) return Datum::of(rect.height());
     if (equalsIgnoreCase(propName, "ilk")) return Datum::symbol("rect");
     return Datum::voidValue();
+}
+
+void setRectProp(Datum::IntRect& rect, std::string_view propName, const Datum& value) {
+    const int newValue = toIntLikeJava(value);
+    if (equalsIgnoreCase(propName, "left")) {
+        rect.left = newValue;
+    } else if (equalsIgnoreCase(propName, "top")) {
+        rect.top = newValue;
+    } else if (equalsIgnoreCase(propName, "right")) {
+        rect.right = newValue;
+    } else if (equalsIgnoreCase(propName, "bottom")) {
+        rect.bottom = newValue;
+    }
 }
 
 Datum getColorProp(const Datum::ColorRef& color, std::string_view propName) {
@@ -897,6 +919,14 @@ void setObjectProperty(ExecutionContext& context, Datum& object, std::string_vie
     }
     if (object.isPropList()) {
         putPropListProp(object.propListValue(), propName, std::move(value));
+        return;
+    }
+    if (auto* point = object.asIntPoint()) {
+        setPointProp(*point, propName, value);
+        return;
+    }
+    if (auto* rect = object.asIntRect()) {
+        setRectProp(*rect, propName, value);
         return;
     }
     if (const auto* image = object.asImageRef()) {
@@ -1289,7 +1319,7 @@ ChunkSpec chooseSingleChunkSpec(int firstChar,
     return {StringChunkType::Char, 1, 1};
 }
 
-Datum pointObjectMethod(const Datum::IntPoint& point, std::string_view methodName, const std::vector<Datum>& args) {
+Datum pointObjectMethod(Datum::IntPoint& point, std::string_view methodName, const std::vector<Datum>& args) {
     if (equalsIgnoreCase(methodName, "getAt")) {
         if (args.empty()) return Datum::voidValue();
         const int index = toIntLikeJava(args[0]);
@@ -1299,6 +1329,17 @@ Datum pointObjectMethod(const Datum::IntPoint& point, std::string_view methodNam
     }
     if (equalsIgnoreCase(methodName, "duplicate")) {
         return Datum::intPoint(point.x, point.y);
+    }
+    if (equalsIgnoreCase(methodName, "setAt")) {
+        if (args.size() < 2) return Datum::voidValue();
+        const int component = toIntLikeJava(args[0]);
+        const int newValue = toIntLikeJava(args[1]);
+        if (component == 1) {
+            point.x = newValue;
+        } else if (component == 2) {
+            point.y = newValue;
+        }
+        return Datum::voidValue();
     }
     if (equalsIgnoreCase(methodName, "inside")) {
         if (!args.empty()) {
@@ -1313,7 +1354,7 @@ Datum pointObjectMethod(const Datum::IntPoint& point, std::string_view methodNam
     return Datum::voidValue();
 }
 
-Datum rectObjectMethod(const Datum::IntRect& rect, std::string_view methodName, const std::vector<Datum>& args) {
+Datum rectObjectMethod(Datum::IntRect& rect, std::string_view methodName, const std::vector<Datum>& args) {
     if (equalsIgnoreCase(methodName, "getAt")) {
         if (args.empty()) return Datum::voidValue();
         switch (toIntLikeJava(args[0])) {
@@ -1326,6 +1367,19 @@ Datum rectObjectMethod(const Datum::IntRect& rect, std::string_view methodName, 
     }
     if (equalsIgnoreCase(methodName, "duplicate")) {
         return Datum::intRect(rect.left, rect.top, rect.right, rect.bottom);
+    }
+    if (equalsIgnoreCase(methodName, "setAt")) {
+        if (args.size() < 2) return Datum::voidValue();
+        const int component = toIntLikeJava(args[0]);
+        const int newValue = toIntLikeJava(args[1]);
+        switch (component) {
+            case 1: rect.left = newValue; break;
+            case 2: rect.top = newValue; break;
+            case 3: rect.right = newValue; break;
+            case 4: rect.bottom = newValue; break;
+            default: break;
+        }
+        return Datum::voidValue();
     }
     return Datum::voidValue();
 }
@@ -3778,10 +3832,10 @@ Datum varRefObjectMethod(ExecutionContext& context,
                                                           args,
                                                           currentItemDelimiter(context));
     }
-    if (const auto* point = value.asIntPoint()) {
+    if (auto* point = value.asIntPoint()) {
         return pointObjectMethod(*point, methodName, args);
     }
-    if (const auto* rect = value.asIntRect()) {
+    if (auto* rect = value.asIntRect()) {
         return rectObjectMethod(*rect, methodName, args);
     }
     if (value.type() == DatumType::ScriptInstanceRef) {
@@ -3833,10 +3887,10 @@ Datum dispatchObjectMethod(ExecutionContext& context, Datum target, std::string_
                                                           args,
                                                           currentItemDelimiter(context));
     }
-    if (const auto* point = target.asIntPoint()) {
+    if (auto* point = target.asIntPoint()) {
         return pointObjectMethod(*point, methodName, args);
     }
-    if (const auto* rect = target.asIntRect()) {
+    if (auto* rect = target.asIntRect()) {
         return rectObjectMethod(*rect, methodName, args);
     }
     if (const auto* image = target.asImageRef()) {
