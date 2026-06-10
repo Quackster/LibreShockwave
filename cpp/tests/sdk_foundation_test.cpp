@@ -7109,6 +7109,34 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(quadPaletteDest->paletteIndex(0, 1).value() == 5);
     assert(quadPaletteDest->paletteIndex(1, 1).value() == 3);
     assert(quadPaletteDest->paletteIndex(2, 1).value() == 1);
+    auto windowQuadPalette = std::make_shared<Palette>(
+        std::vector<std::uint32_t>{0xFFFFFFU, 0x6794A7U, 0xD4DDE1U}, "ui-test");
+    auto windowQuadSource = std::make_shared<Bitmap>(2, 2, 8, std::vector<std::uint32_t>{
+        0xFFFFFFFFU, 0xFF6794A7U,
+        0xFF6794A7U, 0xFF6794A7U
+    });
+    windowQuadSource->setImagePalette(windowQuadPalette);
+    windowQuadSource->setPaletteIndices({0, 1, 1, 1});
+    auto windowQuadDest = std::make_shared<Bitmap>(2, 2, 8);
+    windowQuadDest->fill(0xFFD4DDE1U);
+    const Datum identityQuad = Datum::list({
+        Datum::intPoint(0, 0),
+        Datum::intPoint(2, 0),
+        Datum::intPoint(2, 2),
+        Datum::intPoint(0, 2),
+    });
+    auto windowQuadProps = Datum::propList();
+    windowQuadProps.propListValue().put(Datum::symbol("ink"), Datum::of(36));
+    assert(runObjCall(110, {Datum::imageRef(windowQuadDest),
+                            Datum::imageRef(windowQuadSource),
+                            identityQuad,
+                            Datum::intRect(0, 0, 2, 2),
+                            windowQuadProps}).isVoid());
+    assert(windowQuadDest->imagePalette() == windowQuadPalette);
+    assert(windowQuadDest->getPixel(0, 0) == 0xFFD4DDE1U);
+    assert(windowQuadDest->paletteIndex(0, 0).value() == 2);
+    assert(windowQuadDest->getPixel(1, 0) == 0xFF6794A7U);
+    assert(windowQuadDest->paletteIndex(1, 0).value() == 1);
     auto invalidCopyDest = std::make_shared<Bitmap>(1, 1, 32);
     invalidCopyDest->fill(0xFFFFFFFFU);
     assert(runObjCall(110, {Datum::imageRef(invalidCopyDest),

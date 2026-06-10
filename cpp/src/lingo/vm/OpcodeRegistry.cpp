@@ -3517,6 +3517,10 @@ Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
         src, *srcRect, effectiveInk, blend, mask, colorRemap, bgColorRemap);
     const bool preservePaletteIndices = imageCanPreservePaletteIndices(
         dest, src, srcPaletteIndices, effectiveInk, blend, mask, colorRemap, bgColorRemap);
+    const bool refreshPreservedBackgroundTransparentIndices =
+        preservePaletteIndices &&
+        effectiveInk == id::InkMode::BACKGROUND_TRANSPARENT &&
+        imageCanRefreshDestinationPaletteIndices(dest);
     const bool refreshDestPaletteIndices =
         !preservePaletteIndices && imageCanRefreshDestinationPaletteIndices(dest);
     std::optional<std::vector<std::uint8_t>> destPaletteIndices;
@@ -3578,6 +3582,21 @@ Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
                     const auto srcOffset = static_cast<std::size_t>(sy * src.width() + sx);
                     if (srcOffset < srcPaletteIndices->size() && destOffset < destPaletteIndices->size()) {
                         (*destPaletteIndices)[destOffset] = (*srcPaletteIndices)[srcOffset];
+                    }
+                }
+                if (refreshPreservedBackgroundTransparentIndices && destOffset < destPaletteIndices->size()) {
+                    const auto alpha = (destPixel >> 24) & 0xFFU;
+                    const auto palette = dest.imagePalette();
+                    if (alpha != 0 && palette != nullptr) {
+                        const int previousIndex = static_cast<int>((*destPaletteIndices)[destOffset]);
+                        const int paletteIndex = imageCopiedWhiteCanKeepMatteIndex(*palette, destPixel, previousIndex)
+                            ? previousIndex
+                            : imageNearestCopiedRgbPaletteIndex(*palette, destPixel);
+                        (*destPaletteIndices)[destOffset] = static_cast<std::uint8_t>(paletteIndex & 0xFF);
+                        dest.setPixelPreservePaletteIndex(
+                            px,
+                            py,
+                            (destPixel & 0xFF000000U) | (palette->getColor(paletteIndex) & 0x00FFFFFFU));
                     }
                 }
             } else if (refreshDestPaletteIndices && destPaletteIndices.has_value() &&
