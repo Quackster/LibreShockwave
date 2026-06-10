@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <exception>
+#include <limits>
 #include <string>
 #include <utility>
 
@@ -108,6 +109,19 @@ struct CoordPairRead {
     int y = 0;
     int pos = 0;
     bool nibbleHigh = false;
+};
+
+struct TransformRead {
+    int scale = 4096;
+    int offset = 0;
+    int pos = 0;
+};
+
+struct GlyphOffsetRead {
+    int offset = 0;
+    int size = 0;
+    int pos = 0;
+    int accumulator = 0;
 };
 
 ByteRead readByteAligned(const std::vector<std::uint8_t>& data, int pos, bool nibbleHigh) {
@@ -591,6 +605,288 @@ void parseNibbleCommands(const std::vector<std::uint8_t>& data,
 Pfr1Font::OutlineGlyph parseSimpleOutlineGlyph(const std::vector<std::uint8_t>& data,
                                                int start,
                                                int size,
+                                               const Pfr1Font::CharacterRecord& record);
+
+Pfr1Font::OutlineGlyph parseOutlineGlyph(const Pfr1Font& font,
+                                         const std::vector<std::uint8_t>& data,
+                                         int start,
+                                         int size,
+                                         const Pfr1Font::CharacterRecord& record,
+                                         const std::vector<int>& knownOffsets,
+                                         int depth);
+
+TransformRead parseTransformModulo6(const std::vector<std::uint8_t>& data, int pos, int format) {
+    TransformRead result{4096, 0, pos};
+
+    if (format <= 2) {
+        result.scale = 4096;
+    } else if (format == 5) {
+        result.scale = 0;
+    } else if (pos + 2 <= static_cast<int>(data.size())) {
+        result.scale = ((data[static_cast<std::size_t>(pos)] & 0xFF) << 8) |
+                       (data[static_cast<std::size_t>(pos + 1)] & 0xFF);
+        pos += 2;
+    }
+
+    if (format == 0 || format == 5) {
+        result.offset = 0;
+    } else if (format == 1 || format == 3) {
+        if (pos < static_cast<int>(data.size())) {
+            result.offset = sign8(data[static_cast<std::size_t>(pos)]);
+            ++pos;
+        }
+    } else if (pos + 2 <= static_cast<int>(data.size())) {
+        result.offset = sign16(((data[static_cast<std::size_t>(pos)] & 0xFF) << 8) |
+                               (data[static_cast<std::size_t>(pos + 1)] & 0xFF));
+        pos += 2;
+    }
+
+    result.pos = pos;
+    return result;
+}
+
+GlyphOffsetRead parseGlyphOffsetModulo6(const std::vector<std::uint8_t>& data,
+                                        int pos,
+                                        int format,
+                                        int accumulator) {
+    GlyphOffsetRead result{0, 0, pos, accumulator};
+
+    switch (format) {
+        case 0:
+            if (pos < static_cast<int>(data.size())) {
+                const int delta = data[static_cast<std::size_t>(pos++)] & 0xFF;
+                result.size = delta;
+                accumulator -= delta;
+                result.offset = accumulator;
+            }
+            break;
+        case 1:
+            if (pos < static_cast<int>(data.size())) {
+                const int delta = (data[static_cast<std::size_t>(pos++)] & 0xFF) + 256;
+                result.size = delta;
+                accumulator -= delta;
+                result.offset = accumulator;
+            }
+            break;
+        case 2:
+            if (pos + 2 <= static_cast<int>(data.size())) {
+                const int delta = ((data[static_cast<std::size_t>(pos)] & 0xFF) << 8) |
+                                  (data[static_cast<std::size_t>(pos + 1)] & 0xFF);
+                pos += 2;
+                result.size = delta;
+                accumulator -= delta;
+                result.offset = accumulator;
+            }
+            break;
+        case 3:
+            if (pos + 3 <= static_cast<int>(data.size())) {
+                const int combined = ((data[static_cast<std::size_t>(pos)] & 0xFF) << 16) |
+                                     ((data[static_cast<std::size_t>(pos + 1)] & 0xFF) << 8) |
+                                     (data[static_cast<std::size_t>(pos + 2)] & 0xFF);
+                pos += 3;
+                result.size = combined >> 15;
+                const int delta = combined & 0x7FFF;
+                result.offset = accumulator - delta;
+            }
+            break;
+        case 4:
+            if (pos + 3 <= static_cast<int>(data.size())) {
+                const int combined = ((data[static_cast<std::size_t>(pos)] & 0xFF) << 16) |
+                                     ((data[static_cast<std::size_t>(pos + 1)] & 0xFF) << 8) |
+                                     (data[static_cast<std::size_t>(pos + 2)] & 0xFF);
+                pos += 3;
+                result.size = combined >> 15;
+                result.offset = combined & 0x7FFF;
+            }
+            break;
+        case 5:
+            if (pos + 4 <= static_cast<int>(data.size())) {
+                const auto combined =
+                    (static_cast<std::uint32_t>(data[static_cast<std::size_t>(pos)] & 0xFF) << 24U) |
+                    (static_cast<std::uint32_t>(data[static_cast<std::size_t>(pos + 1)] & 0xFF) << 16U) |
+                    (static_cast<std::uint32_t>(data[static_cast<std::size_t>(pos + 2)] & 0xFF) << 8U) |
+                    static_cast<std::uint32_t>(data[static_cast<std::size_t>(pos + 3)] & 0xFF);
+                pos += 4;
+                result.size = static_cast<int>((combined >> 23U) & 0x1FFU);
+                result.offset = static_cast<int>(combined & 0x7FFFFFU);
+            }
+            break;
+        default:
+            if (pos + 5 <= static_cast<int>(data.size())) {
+                result.size = ((data[static_cast<std::size_t>(pos)] & 0xFF) << 8) |
+                              (data[static_cast<std::size_t>(pos + 1)] & 0xFF);
+                pos += 2;
+                result.offset = ((data[static_cast<std::size_t>(pos)] & 0xFF) << 16) |
+                                ((data[static_cast<std::size_t>(pos + 1)] & 0xFF) << 8) |
+                                (data[static_cast<std::size_t>(pos + 2)] & 0xFF);
+                pos += 3;
+            }
+            break;
+    }
+
+    result.pos = pos;
+    result.accumulator = accumulator;
+    return result;
+}
+
+int findNextOffset(const std::vector<int>& sortedOffsets, int currentOffset) {
+    const auto it = std::upper_bound(sortedOffsets.begin(), sortedOffsets.end(), currentOffset);
+    if (it == sortedOffsets.end()) {
+        return std::numeric_limits<int>::max();
+    }
+    return *it;
+}
+
+void appendTransformedContours(Pfr1Font::OutlineGlyph& glyph,
+                               const Pfr1Font::OutlineGlyph& subGlyph,
+                               int xScale,
+                               int yScale,
+                               int xOffset,
+                               int yOffset) {
+    const float xScaleF = static_cast<float>(xScale) / 4096.0F;
+    const float yScaleF = static_cast<float>(yScale) / 4096.0F;
+    const float xOffsetF = static_cast<float>(xOffset);
+    const float yOffsetF = static_cast<float>(yOffset);
+
+    for (const auto& sourceContour : subGlyph.contours) {
+        Pfr1Font::Contour transformed;
+        for (const auto& command : sourceContour.commands) {
+            const float x = command.x * xScaleF + xOffsetF;
+            const float y = command.y * yScaleF + yOffsetF;
+            if (command.type == 0) {
+                transformed.moveTo(x, y);
+            } else if (command.type == 1) {
+                transformed.lineTo(x, y);
+            } else if (command.type == 2) {
+                transformed.curveTo(command.x1 * xScaleF + xOffsetF,
+                                    command.y1 * yScaleF + yOffsetF,
+                                    command.x2 * xScaleF + xOffsetF,
+                                    command.y2 * yScaleF + yOffsetF,
+                                    x,
+                                    y);
+            }
+        }
+        if (!transformed.commands.empty()) {
+            glyph.contours.push_back(std::move(transformed));
+        }
+    }
+}
+
+void parseCompoundGlyph(const Pfr1Font& font,
+                        const std::vector<std::uint8_t>& data,
+                        int start,
+                        int size,
+                        Pfr1Font::OutlineGlyph& glyph,
+                        const std::vector<int>& knownOffsets,
+                        int depth) {
+    if (depth >= 8) {
+        return;
+    }
+
+    const int componentCount = data[static_cast<std::size_t>(start)] & 0x3F;
+    int pos = start + 1;
+
+    if ((data[static_cast<std::size_t>(start)] & 0x40) != 0 && pos + 2 <= start + size) {
+        const int extraCount = (data[static_cast<std::size_t>(pos)] & 0xFF) |
+                               ((data[static_cast<std::size_t>(pos + 1)] & 0xFF) << 8);
+        pos += 2;
+        for (int i = 0; i < extraCount; ++i) {
+            if (pos >= start + size) {
+                break;
+            }
+            const int length = data[static_cast<std::size_t>(pos)] & 0xFF;
+            pos += length + 2;
+        }
+    }
+
+    const int glyphGpsOffset = start - font.gpsOffset;
+    int offsetAccumulator = glyphGpsOffset;
+
+    for (int component = 0; component < componentCount; ++component) {
+        if (pos >= start + size) {
+            break;
+        }
+
+        const int formatByte = data[static_cast<std::size_t>(pos++)] & 0xFF;
+        const int xFormat = formatByte % 6;
+        const int yFormat = (formatByte / 6) % 6;
+        const int offsetFormat = formatByte / 36;
+
+        const auto xTransform = parseTransformModulo6(data, pos, xFormat);
+        pos = xTransform.pos;
+        const auto yTransform = parseTransformModulo6(data, pos, yFormat);
+        pos = yTransform.pos;
+
+        const auto glyphOffset = parseGlyphOffsetModulo6(data, pos, offsetFormat, offsetAccumulator);
+        pos = glyphOffset.pos;
+        offsetAccumulator = glyphOffset.accumulator;
+
+        const int absolutePosition = font.gpsOffset + glyphOffset.offset;
+        if (absolutePosition < 0 || absolutePosition >= static_cast<int>(data.size())) {
+            continue;
+        }
+
+        int maxSize = static_cast<int>(data.size()) - absolutePosition;
+        if (font.gpsSize > 0 && glyphOffset.offset < font.gpsSize) {
+            maxSize = std::min(maxSize, font.gpsSize - glyphOffset.offset);
+        }
+        const int nextOffset = findNextOffset(knownOffsets, glyphOffset.offset);
+        if (nextOffset > glyphOffset.offset) {
+            maxSize = std::min(maxSize, nextOffset - glyphOffset.offset);
+        }
+
+        const int effectiveSize = glyphOffset.size > 0 ? std::min(glyphOffset.size, maxSize) : std::min(64, maxSize);
+        if (effectiveSize <= 0) {
+            continue;
+        }
+
+        Pfr1Font::CharacterRecord subRecord;
+        subRecord.charCode = glyph.charCode;
+        subRecord.setWidth = static_cast<int>(glyph.setWidth);
+        const auto subGlyph = parseOutlineGlyph(font,
+                                                data,
+                                                absolutePosition,
+                                                effectiveSize,
+                                                subRecord,
+                                                knownOffsets,
+                                                depth + 1);
+        if (!subGlyph.contours.empty()) {
+            appendTransformedContours(glyph,
+                                      subGlyph,
+                                      xTransform.scale,
+                                      yTransform.scale,
+                                      xTransform.offset,
+                                      yTransform.offset);
+        }
+    }
+}
+
+Pfr1Font::OutlineGlyph parseOutlineGlyph(const Pfr1Font& font,
+                                         const std::vector<std::uint8_t>& data,
+                                         int start,
+                                         int size,
+                                         const Pfr1Font::CharacterRecord& record,
+                                         const std::vector<int>& knownOffsets,
+                                         int depth) {
+    Pfr1Font::OutlineGlyph glyph{record.charCode, static_cast<float>(record.setWidth), {}};
+    if (size <= 0 || start < 0 || start + size > static_cast<int>(data.size())) {
+        return glyph;
+    }
+
+    const int flags = data[static_cast<std::size_t>(start)] & 0xFF;
+    const int outlineFormat = (flags >> 6) & 0x03;
+    const bool compoundGlyph = outlineFormat >= 2 && (flags & 0x3F) > 0;
+    if (compoundGlyph) {
+        parseCompoundGlyph(font, data, start, size, glyph, knownOffsets, depth);
+        return glyph;
+    }
+
+    return parseSimpleOutlineGlyph(data, start, size, record);
+}
+
+Pfr1Font::OutlineGlyph parseSimpleOutlineGlyph(const std::vector<std::uint8_t>& data,
+                                               int start,
+                                               int size,
                                                const Pfr1Font::CharacterRecord& record) {
     Pfr1Font::OutlineGlyph glyph{record.charCode, static_cast<float>(record.setWidth), {}};
     if (size <= 0 || start < 0 || start + size > static_cast<int>(data.size())) {
@@ -956,6 +1252,13 @@ void Pfr1Font::parseGlyphStubsAndBitmaps(const std::vector<std::uint8_t>& data) 
         return;
     }
 
+    std::vector<int> knownOffsets;
+    knownOffsets.reserve(charRecords.size());
+    for (const auto& record : charRecords) {
+        knownOffsets.push_back(record.gpsOffset);
+    }
+    std::sort(knownOffsets.begin(), knownOffsets.end());
+
     for (const auto& record : charRecords) {
         if (record.gpsSize <= 1) {
             glyphs[record.charCode] = OutlineGlyph{record.charCode, static_cast<float>(record.setWidth), {}};
@@ -982,13 +1285,9 @@ void Pfr1Font::parseGlyphStubsAndBitmaps(const std::vector<std::uint8_t>& data) 
             }
         }
 
-        const int flags = data[static_cast<std::size_t>(start)] & 0xFF;
-        const int outlineFormat = (flags >> 6) & 0x03;
-        const bool compoundGlyph = outlineFormat >= 2 && (flags & 0x3F) > 0;
-        if (compoundGlyph) {
-            glyphs[record.charCode] = OutlineGlyph{record.charCode, static_cast<float>(record.setWidth), {}};
-        } else {
-            glyphs[record.charCode] = parseSimpleOutlineGlyph(data, start, size, record);
+        try {
+            glyphs[record.charCode] = parseOutlineGlyph(*this, data, start, size, record, knownOffsets, 0);
+        } catch (const std::exception&) {
         }
     }
 

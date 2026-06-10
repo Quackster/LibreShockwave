@@ -384,7 +384,7 @@ void testPfr1FontParserAndRegistry() {
         data.push_back(static_cast<std::uint8_t>(value & 0xFF));
     };
 
-    std::vector<std::uint8_t> data(144, 0);
+    std::vector<std::uint8_t> data(147, 0);
     data[0] = 'P';
     data[1] = 'F';
     data[2] = 'R';
@@ -400,10 +400,10 @@ void testPfr1FontParserAndRegistry() {
     putU24(data, pos, 0); pos += 3;     // logical font section size
     putU24(data, pos, 0); pos += 3;     // logical font section offset
     putU16(data, pos, 0); pos += 2;     // physical font max size
-    putU24(data, pos, 52); pos += 3;    // physical font section size
+    putU24(data, pos, 54); pos += 3;    // physical font section size
     putU24(data, pos, 80); pos += 3;    // physical font section offset
     putU16(data, pos, 0); pos += 2;     // GPS max size
-    putU24(data, pos, 4); pos += 3;     // GPS size
+    putU24(data, pos, 7); pos += 3;     // GPS size
     putU24(data, pos, 140); pos += 3;   // GPS offset
     data[static_cast<std::size_t>(pos++)] = 0; // maxBlueValues
     data[static_cast<std::size_t>(pos++)] = 0; // maxXOrus
@@ -416,7 +416,7 @@ void testPfr1FontParserAndRegistry() {
     putU16(data, pos, 1); pos += 2;     // n physical fonts
     data[static_cast<std::size_t>(pos++)] = 0;
     data[static_cast<std::size_t>(pos++)] = 0;
-    putU16(data, pos, 2);               // max chars
+    putU16(data, pos, 3);               // max chars
 
     putU16(data, 60, 1);
     putU24(data, 62, 256);
@@ -444,7 +444,7 @@ void testPfr1FontParserAndRegistry() {
     phys.push_back(0);                  // blue scale
     appendU16(phys, 3);                 // stdVW
     appendU16(phys, 4);                 // stdHW
-    appendU16(phys, 2);                 // n characters
+    appendU16(phys, 3);                 // n characters
     phys.push_back(0x0D);               // char delta u8, absolute set width, gps size u8, sequential offset
     phys.push_back(65);
     appendU16(phys, 9);
@@ -452,11 +452,16 @@ void testPfr1FontParserAndRegistry() {
     phys.push_back(0x01);               // next char delta u8, same width, gps size u8
     phys.push_back(1);
     phys.push_back(4);
+    phys.push_back(0x00);               // next char D, same width, gps size u8, sequential offset
+    phys.push_back(3);
     std::copy(phys.begin(), phys.end(), data.begin() + 80);
     data[140] = 0x00;                  // simple glyph flags, no control points
     data[141] = 0x05;                  // implicit moveTo(0,0), then lineTo encoded coords
     data[142] = 0x5B;                  // x/y nibble deltas, x = 3
     data[143] = 0xA0;                  // y = 2
+    data[144] = 0x81;                  // compound glyph, one component
+    data[145] = 0x00;                  // identity transforms, relative subglyph offset format
+    data[146] = 0x04;                  // reference previous 4-byte simple glyph
 
     auto font = Pfr1Font::parse(data);
     assert(font != nullptr);
@@ -476,14 +481,18 @@ void testPfr1FontParserAndRegistry() {
     assert(font->fontMatrix[0] == 256);
     assert(font->fontMatrix[3] == -256);
     assert(font->gpsOffset == 140);
-    assert(font->gpsSize == 4);
-    assert(font->charRecords.size() == 2);
+    assert(font->gpsSize == 7);
+    assert(font->charRecords.size() == 3);
     assert(font->charRecords[0].charCode == 'A');
     assert(font->charRecords[0].setWidth == 9);
     assert(font->charRecords[0].gpsSize == 0);
     assert(font->charRecords[1].charCode == 'C');
     assert(font->charRecords[1].setWidth == 9);
     assert(font->charRecords[1].gpsSize == 4);
+    assert(font->charRecords[2].charCode == 'D');
+    assert(font->charRecords[2].setWidth == 9);
+    assert(font->charRecords[2].gpsSize == 3);
+    assert(font->charRecords[2].gpsOffset == 4);
     assert(font->glyphs.at('A').setWidth == 9.0F);
     const auto& cGlyph = font->glyphs.at('C');
     assert(cGlyph.contours.size() == 1);
@@ -498,6 +507,13 @@ void testPfr1FontParserAndRegistry() {
     assert(lowercaseFallback.charCode == 'c');
     assert(lowercaseFallback.contours.size() == 1);
     assert(lowercaseFallback.contours[0].commands[1].x == 3.0F);
+    const auto& dGlyph = font->glyphs.at('D');
+    assert(dGlyph.contours.size() == 1);
+    assert(dGlyph.contours[0].commands.size() == 2);
+    assert(dGlyph.contours[0].commands[0].type == 0);
+    assert(dGlyph.contours[0].commands[1].type == 1);
+    assert(dGlyph.contours[0].commands[1].x == 3.0F);
+    assert(dGlyph.contours[0].commands[1].y == 2.0F);
 
     assert(Pfr1Font::parse({}) == nullptr);
     auto partial = data;
