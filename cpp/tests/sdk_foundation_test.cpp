@@ -19,6 +19,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <unordered_map>
 #include <variant>
@@ -101,6 +102,7 @@
 #include "libreshockwave/lookup/ScriptLookup.hpp"
 #include "libreshockwave/player/BitmapResolver.hpp"
 #include "libreshockwave/player/ExternalCastLoadEvent.hpp"
+#include "libreshockwave/player/ExternalCastLoadHandler.hpp"
 #include "libreshockwave/player/Player.hpp"
 #include "libreshockwave/player/PlayerEvent.hpp"
 #include "libreshockwave/player/PlayerEventInfo.hpp"
@@ -244,6 +246,7 @@ using libreshockwave::lookup::PaletteResolver;
 using libreshockwave::lookup::ScriptLookup;
 using libreshockwave::player::BitmapResolver;
 using libreshockwave::player::ExternalCastLoadEvent;
+using libreshockwave::player::ExternalCastLoadHandler;
 using libreshockwave::player::CursorManager;
 using libreshockwave::player::InputHandler;
 using libreshockwave::player::MovieProperties;
@@ -15528,6 +15531,62 @@ void testCastLibManagerFoundation() {
     assert(requestedSlots[0] == 2);
     manager.clearPendingExternalLoad(2);
     assert(manager.getRequestedExternalCastSlots("newCast.cst").empty());
+
+    struct RecordingExternalCastLoadHandler final : ExternalCastLoadHandler {
+        Player* player = nullptr;
+        int castLibNumber = 0;
+        std::string fileName;
+
+        void onExternalCastLoaded(Player& playerValue,
+                                  int castLibNumberValue,
+                                  std::string_view fileNameValue) override {
+            player = &playerValue;
+            castLibNumber = castLibNumberValue;
+            fileName = std::string(fileNameValue);
+        }
+    };
+
+    const auto externalCastData = buildRifx({
+        {"DRCF", configData},
+        {"MCsL", castListData},
+        {"CAS*", castData},
+        {"CASt", heroMemberData},
+        {"CASt", sourceDoorMemberData},
+        {"KEY*", keyData},
+        {"BITD", bitdData},
+    });
+    Player externalPlayer(file);
+    RecordingExternalCastLoadHandler externalLoadHandler;
+    std::vector<ExternalCastLoadEvent> externalLoadEvents;
+    int compatibilityCastLoadNotifications = 0;
+    int afterExternalLoadCalls = 0;
+    externalPlayer.addExternalCastLoadHandler(nullptr);
+    externalPlayer.addExternalCastLoadHandler(&externalLoadHandler);
+    externalPlayer.setExternalCastLoadListener([&externalLoadEvents](const ExternalCastLoadEvent& event) {
+        externalLoadEvents.push_back(event);
+    });
+    externalPlayer.setCastLoadedListener([&compatibilityCastLoadNotifications] {
+        ++compatibilityCastLoadNotifications;
+    });
+    assert(!externalPlayer.loadExternalCastFromCachedData(0, externalCastData));
+    assert(!externalPlayer.loadExternalCastFromCachedData(2, {}));
+    assert(externalLoadHandler.player == nullptr);
+    assert(externalLoadEvents.empty());
+    assert(compatibilityCastLoadNotifications == 0);
+    const int spriteRevisionBeforeExternalLoad = externalPlayer.stageRenderer().spriteRegistry().revision();
+    assert(externalPlayer.loadExternalCastFromCachedData(2, externalCastData, [&afterExternalLoadCalls] {
+        ++afterExternalLoadCalls;
+    }));
+    assert(afterExternalLoadCalls == 1);
+    assert(externalPlayer.stageRenderer().spriteRegistry().revision() ==
+           spriteRevisionBeforeExternalLoad + 1);
+    assert(externalLoadHandler.player == &externalPlayer);
+    assert(externalLoadHandler.castLibNumber == 2);
+    assert(externalLoadHandler.fileName == "casts/ext.cct");
+    assert((externalLoadEvents == std::vector<ExternalCastLoadEvent>{
+        ExternalCastLoadEvent{2, "casts/ext.cct"}
+    }));
+    assert(compatibilityCastLoadNotifications == 1);
 
     CastLib typeSurfaceCast(4, nullptr, nullptr);
     auto buttonMember = typeSurfaceCast.createDynamicMember("button");

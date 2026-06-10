@@ -12,7 +12,9 @@
 #include "libreshockwave/lingo/Datum.hpp"
 #include "libreshockwave/lingo/xtra/MultiuserXtra.hpp"
 #include "libreshockwave/lingo/xtra/XmlParserXtra.hpp"
+#include "libreshockwave/player/ExternalCastLoadHandler.hpp"
 #include "libreshockwave/player/PlayerEvent.hpp"
+#include "libreshockwave/player/debug/LifecycleDiagnostics.hpp"
 #include "libreshockwave/player/event/EventDispatcher.hpp"
 #include "libreshockwave/player/score/ScoreNavigator.hpp"
 
@@ -131,6 +133,20 @@ void Player::setEventListener(std::function<void(const PlayerEventInfo&)> listen
     eventListener_ = std::move(listener);
 }
 
+void Player::setCastLoadedListener(std::function<void()> listener) {
+    castLoadedListener_ = std::move(listener);
+}
+
+void Player::setExternalCastLoadListener(std::function<void(const ExternalCastLoadEvent&)> listener) {
+    externalCastLoadListener_ = std::move(listener);
+}
+
+void Player::addExternalCastLoadHandler(ExternalCastLoadHandler* handler) {
+    if (handler != nullptr) {
+        externalCastLoadHandlers_.push_back(handler);
+    }
+}
+
 void Player::setDebugEnabled(bool enabled) {
     debugEnabled_ = enabled;
     vm_.builtinContext().debugPlaybackEnabled = enabled;
@@ -239,6 +255,66 @@ bool Player::tick() {
     vm_.flushDeferredTasks();
     (void)frameContext_.advanceFrame();
     return true;
+}
+
+void Player::onSynchronousExternalCastLoad(int castLibNumber) {
+    if (castLibNumber <= 0) {
+        return;
+    }
+
+    bitmapCache_.clear();
+    vm_.invalidateHandlerCache();
+    stageRenderer_.spriteRegistry().bumpRevision();
+    frameContext_.rebindBehaviorsForLoadedCast(castLibNumber);
+    notifyExternalCastLoaded(castLibNumber);
+}
+
+bool Player::loadExternalCastFromCachedData(int castLibNumber, const std::vector<std::uint8_t>& data) {
+    return loadExternalCastFromCachedData(castLibNumber, data, {});
+}
+
+bool Player::loadExternalCastFromCachedData(int castLibNumber,
+                                            const std::vector<std::uint8_t>& data,
+                                            std::function<void()> afterLoad) {
+    if (castLibNumber <= 0 || data.empty()) {
+        return false;
+    }
+    return applyExternalCastDataNow(castLibNumber, data, std::move(afterLoad));
+}
+
+bool Player::applyExternalCastDataNow(int castLibNumber,
+                                      const std::vector<std::uint8_t>& data,
+                                      std::function<void()> afterLoad) {
+    if (!castLibManager_.setExternalCastData(castLibNumber, data)) {
+        return false;
+    }
+    onSynchronousExternalCastLoad(castLibNumber);
+    if (afterLoad) {
+        afterLoad();
+    }
+    return true;
+}
+
+void Player::notifyExternalCastLoaded(int castLibNumber) {
+    auto castLib = castLibManager_.getCastLib(castLibNumber);
+    if (!castLib) {
+        return;
+    }
+
+    const std::string fileName = castLib->fileName();
+    debug::LifecycleDiagnostics::logExternalCastLoaded(castLibNumber, fileName);
+    ExternalCastLoadEvent event{castLibNumber, fileName};
+    for (auto* handler : externalCastLoadHandlers_) {
+        if (handler != nullptr) {
+            handler->onExternalCastLoaded(*this, castLibNumber, fileName);
+        }
+    }
+    if (externalCastLoadListener_) {
+        externalCastLoadListener_(event);
+    }
+    if (castLoadedListener_) {
+        castLoadedListener_();
+    }
 }
 
 render::pipeline::FrameSnapshot Player::frameSnapshot() {

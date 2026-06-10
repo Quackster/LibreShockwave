@@ -269,7 +269,8 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `player::Player` now owns and wires the C++ frame context, stage renderer, cast library manager, movie/sprite properties, bitmap resolver, cursor manager, input handler, network manager, timeout manager, sound manager, Xtra manager, sprite baker, bitmap cache, and frame render pipeline.
 - Playback control ports the Java state transitions for play, pause, resume, stop, manual step, tick, direct frame/label navigation, event-listener forwarding, base/puppet/score tempo lookup, debug flag propagation, and render snapshot creation with player-state debug metadata.
-- Full VM provider setup, asynchronous playback, non-bitmap imported-media mutation, and external-cast fetch completion remain deferred to later player runtime slices.
+- External-cast cached-load completion now ports Player-owned synchronous load handling, bitmap-cache and VM handler-cache invalidation, sprite-registry revision bumping, loaded-cast behavior rebinding, typed `ExternalCastLoadEvent` listeners, compatibility cast-loaded callbacks, and `ExternalCastLoadHandler` fanout.
+- Full VM provider setup, asynchronous playback, non-bitmap imported-media mutation, and platform external-cast fetching remain deferred to later player runtime slices.
 
 ### Player Builtin Context Foundation
 
@@ -832,8 +833,8 @@ Result:
 - BitmapFont glyph drawing, overflow metrics, BDF parsing, direct PFR outline/bitmap/curve glyph rasterization, PFR1 metadata/character-record/simple/compound/curve-outline parsing, PFR-to-TTF table generation/cache registration, pure TTF bitmap rasterization with the bundled Verdana fixture, and FontRegistry prebuilt-cache/PFR-registration/rasterization/alias behavior passed through the same CTest executable.
 - SoundConverter WAV layout, SoundChunk header stripping, signed/endianness conversion, MP3 extraction, IMA ADPCM, and duration tests passed through the same CTest executable.
 - CastMember bitmap, script, shape, dimension, type-check, raw chunk, and display string tests passed through the same CTest executable.
-- CastLib and CastLibManager lazy MCsL/CAS* initialization, member count/name lookup, source-prefixed lookup fallback, member metadata properties, registry filtering, builtin callback installation, external-cache keys, and pending external-load bookkeeping passed through the same CTest executable.
-- PlayerEvent handler names, event payload records, RenderType, and RenderConfig tests passed through the same CTest executable.
+- CastLib and CastLibManager lazy MCsL/CAS* initialization, member count/name lookup, source-prefixed lookup fallback, member metadata properties, registry filtering, builtin callback installation, external-cache keys, pending external-load bookkeeping, and Player external-cast cached-load callbacks passed through the same CTest executable.
+- PlayerEvent handler names, event payload records, ExternalCastLoadHandler callback fanout, RenderType, and RenderConfig tests passed through the same CTest executable.
 - PlayerState, InputEvent factories, DirectorKeyCodes, and InputState mutation/queue tests passed through the same CTest executable.
 - InputHandler mouse/key queueing, interactive hit filtering, rollover dispatch, mouse-up-outside fallback, focused key dispatch, blur synthesis, dispatcher/sprite supplier hooks, and sprite-registry revision bumps passed through the same CTest executable.
 - ScoreBehaviorRef, SpriteSpan, ScoreNavigator labels, marker resolution, active sprites/channels, parsed behavior parameters, and frame-count tests passed through the same CTest executable.
@@ -1149,4 +1150,4 @@ Result:
 - `3b15a1e5 Port C++ random seed trace parity`
 - `7c27afaf Port C++ VM value identifier fallback`
 - `1aafff66 Port C++ nested value identifier fallback`
-- Current checkpoint commit message: `Port C++ tracing helper`
+- Current checkpoint commit message: `Port C++ external cast load callbacks`

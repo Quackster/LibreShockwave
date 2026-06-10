@@ -1,14 +1,17 @@
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string_view>
+#include <vector>
 
 #include "libreshockwave/DirectorFile.hpp"
 #include "libreshockwave/lingo/vm/LingoVM.hpp"
 #include "libreshockwave/lingo/xtra/XtraManager.hpp"
 #include "libreshockwave/player/BitmapResolver.hpp"
 #include "libreshockwave/player/CursorManager.hpp"
+#include "libreshockwave/player/ExternalCastLoadEvent.hpp"
 #include "libreshockwave/player/InputHandler.hpp"
 #include "libreshockwave/player/MovieProperties.hpp"
 #include "libreshockwave/player/PlayerEventInfo.hpp"
@@ -40,6 +43,8 @@ class ScoreNavigator;
 }
 
 namespace libreshockwave::player {
+
+class ExternalCastLoadHandler;
 
 class Player {
 public:
@@ -83,6 +88,9 @@ public:
     void setTempo(int tempo);
 
     void setEventListener(std::function<void(const PlayerEventInfo&)> listener);
+    void setCastLoadedListener(std::function<void()> listener);
+    void setExternalCastLoadListener(std::function<void(const ExternalCastLoadEvent&)> listener);
+    void addExternalCastLoadHandler(ExternalCastLoadHandler* handler);
     void setDebugEnabled(bool enabled);
     void setTextRenderer(render::output::TextRenderer* renderer);
     void registerMultiuserXtra(lingo::xtra::MultiuserNetBridge& bridge);
@@ -96,11 +104,21 @@ public:
     void goToLabel(std::string_view label);
     void stepFrame();
     [[nodiscard]] bool tick();
+    void onSynchronousExternalCastLoad(int castLibNumber);
+    [[nodiscard]] bool loadExternalCastFromCachedData(int castLibNumber,
+                                                      const std::vector<std::uint8_t>& data);
+    [[nodiscard]] bool loadExternalCastFromCachedData(int castLibNumber,
+                                                      const std::vector<std::uint8_t>& data,
+                                                      std::function<void()> afterLoad);
     [[nodiscard]] render::pipeline::FrameSnapshot frameSnapshot();
 
 private:
     void wireComponents();
     void prepareMovieFoundation();
+    [[nodiscard]] bool applyExternalCastDataNow(int castLibNumber,
+                                                const std::vector<std::uint8_t>& data,
+                                                std::function<void()> afterLoad);
+    void notifyExternalCastLoaded(int castLibNumber);
 
     std::shared_ptr<DirectorFile> file_;
     frame::FrameContext frameContext_;
@@ -125,6 +143,9 @@ private:
     int tempo_{15};
     bool debugEnabled_{false};
     std::function<void(const PlayerEventInfo&)> eventListener_;
+    std::function<void()> castLoadedListener_;
+    std::function<void(const ExternalCastLoadEvent&)> externalCastLoadListener_;
+    std::vector<ExternalCastLoadHandler*> externalCastLoadHandlers_;
     std::function<void()> timeoutProcessor_;
     std::function<void(std::string_view handlerName)> timeoutSystemEventDispatcher_;
 };
