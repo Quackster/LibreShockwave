@@ -223,6 +223,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `player::cast::CastLib` ports lazy cast-library metadata, authored/external file binding state, stable registry binding checks, member chunk maps, script maps, source-prefixed member-name fallback, font-alias/PFR XMED scanning, and Java-compatible cast/member property fallbacks.
 - Common cast-member properties now distinguish encoded `number` from raw `memberNum`, expose `castLib` as a cast-lib ref, and provide Java-compatible `script`, `scriptText`, and `mediaReady` defaults.
 - Common cast-member `type` now reports Director's public `#field` symbol for text, button, and text-Xtra members while preserving internal enum names for non-text member types.
+- Bitmap cast-member `paletteRef`/`palette` getters now expose runtime palette metadata first, then fall back to embedded BitmapInfo palette references and built-in palette symbols.
 - `player::cast::CastLibManager` ports DirectorFile-backed cast-library initialization from MCsL/CAS* chunks, castLib/member number and name lookup, registry-visible member filtering, external-cast cache keys, pending external load tracking, preload-mode loading, and builtin callback installation.
 - Runtime bitmap member image mutation, direct raw-media bitmap assignment, cached imported-image assignment, Director BITD imported-media assignment, dynamic member creation/reuse, dynamic member `erase`, dynamic field text mutation, dynamic palette storage and media copy, field provider lookup/setter callbacks, text-like member media copy, mutable and pinned registration-point properties, dynamic bitmap member sprite rendering, dynamic text sprite baking, common text styling property mutation, editable field input mutation, and editable field overlay/clipboard helper state are available for existing cast libraries; non-bitmap imported media payload decoding, platform overlay drawing, and remaining CastLibProvider edge cases remain deferred to later player runtime slices.
 
@@ -830,7 +831,7 @@ Result:
 - ImageBuiltins image creation, invalid-dimension handling, white fill defaults, built-in/system palette metadata, provider-resolved member palette metadata, string/ilk behavior, and `importFileInto` callback delegation passed through the same CTest executable.
 - Runtime member image assignment, direct raw-media `LSWI`/Director `DTIB`/BITD bitmap assignment, cached `LSWI` and Director `DTIB`/BITD `importFileInto` assignment, imported-image alpha preservation, imported anchor-point propagation, indexed imported-media palette metadata, runtime member property reflection, and Player SpriteBaker live runtime bitmap rendering passed through the same CTest executable.
 - Runtime dynamic member creation, named encoded slot creation, `new(#type, castLib)` callback creation, stable authored member counts, and dynamic member name/type lookup passed through the same CTest executable.
-- Common cast-member `number`, `memberNum`, `castLibNum`, `castLib`, `script`, `scriptText`, `mediaReady`, and Director-facing `type` properties passed through the same CTest executable.
+- Common cast-member `number`, `memberNum`, `castLibNum`, `castLib`, `script`, `scriptText`, `mediaReady`, Director-facing `type`, and bitmap `paletteRef`/`palette` properties passed through the same CTest executable.
 - Runtime-created bitmap member render sprites, runtime registration-point placement, Player StageRenderer-to-CastLibManager resolver wiring, SpriteBaker live dynamic bitmap baking, and rendered frame pixels for dynamic bitmap sprites passed through the same CTest executable.
 - Dynamic member `erase`, `#empty` type reflection, first erased-slot reuse, cast-member method callback routing, and Player sprite binding cleanup on slot retirement passed through the same CTest executable.
 - Runtime field text storage, `member.text`/`member.html`/text-like `member.media` mutation, field lookup by name/number/encoded reference, builtin `field`, and field setter callback routing passed through the same CTest executable.
@@ -1048,4 +1049,5 @@ Result:
 - `6fe96d81 Port C++ palette member media copy`
 - `b4cc0925 Port C++ palette member duplicate`
 - `8a18de57 Port C++ member common properties`
-- Current checkpoint commit message: `Port C++ member type surface`
+- `37b19cb3 Port C++ member type surface`
+- Current checkpoint commit message: `Port C++ bitmap member palette refs`

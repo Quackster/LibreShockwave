@@ -12461,6 +12461,11 @@ void testCastLibManagerFoundation() {
     assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->x == 8);
     assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->y == 7);
     assert(manager.getMemberProp(1, 2, "depth").intValue() == 8);
+    const auto* heroPaletteRef = manager.getMemberProp(1, 2, "paletteRef").asCastMemberRef();
+    assert(heroPaletteRef != nullptr);
+    assert(heroPaletteRef->castLib == 1);
+    assert(heroPaletteRef->memberNum() == 1);
+    assert(manager.getMemberProp(1, 2, "palette").asCastMemberRef()->memberNum() == 1);
     assert(manager.getMemberProp(1, 99, "type").asSymbol()->name == "empty");
     assert(!manager.setMemberProp(1, 2, "name", Datum::of("Other")));
 
@@ -13122,6 +13127,24 @@ void testCastLibManagerFoundation() {
     auto buttonMember = typeSurfaceCast.createDynamicMember("button");
     assert(buttonMember != nullptr);
     assert(typeSurfaceCast.getMemberProp(buttonMember->memberNum(), "type").asSymbol()->name == "field");
+
+    CastLib paletteRefCast(5, nullptr, nullptr);
+    auto runtimeBitmapMember = paletteRefCast.createDynamicMember("bitmap");
+    assert(runtimeBitmapMember != nullptr);
+    Bitmap systemPaletteBitmap(1, 1, 32);
+    systemPaletteBitmap.setPaletteRefSystemName("systemWin");
+    runtimeBitmapMember->setRuntimeBitmap(systemPaletteBitmap);
+    assert(paletteRefCast.getMemberProp(runtimeBitmapMember->memberNum(), "paletteRef").asSymbol()->name ==
+           "systemWin");
+    Bitmap memberPaletteBitmap(1, 1, 8);
+    memberPaletteBitmap.setPaletteRefCastMember(3, 44);
+    runtimeBitmapMember->setRuntimeBitmap(memberPaletteBitmap);
+    const auto* runtimePaletteRef = paletteRefCast
+        .getMemberProp(runtimeBitmapMember->memberNum(), "palette")
+        .asCastMemberRef();
+    assert(runtimePaletteRef != nullptr);
+    assert(runtimePaletteRef->castLib == 3);
+    assert(runtimePaletteRef->memberNum() == 44);
 }
 
 void testBitmapResolverFoundation() {

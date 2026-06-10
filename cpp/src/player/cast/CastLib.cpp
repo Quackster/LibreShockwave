@@ -83,6 +83,39 @@ std::string directorMemberTypeName(const std::shared_ptr<libreshockwave::cast::C
     return std::string(libreshockwave::cast::name(type));
 }
 
+lingo::Datum bitmapPaletteRefDatum(const std::shared_ptr<libreshockwave::cast::CastMember>& member,
+                                   id::CastLibId castLibId) {
+    if (!member || !member->isBitmap()) {
+        return lingo::Datum::voidValue();
+    }
+
+    const auto runtime = member->runtimeBitmap();
+    if (runtime) {
+        if (runtime->paletteRefCastLib() >= 1 && runtime->paletteRefMemberNum() >= 1) {
+            return lingo::Datum::castMemberRef(id::CastLibId(runtime->paletteRefCastLib()),
+                                               id::MemberId(runtime->paletteRefMemberNum()));
+        }
+        const auto& systemName = runtime->paletteRefSystemName();
+        if (systemName.has_value()) {
+            return lingo::Datum::symbol(*systemName);
+        }
+    }
+
+    const auto& info = member->bitmapInfo();
+    if (info.has_value()) {
+        const auto builtInSymbol = bitmap::Palette::builtInSymbolName(info->paletteId);
+        if (builtInSymbol.has_value() && info->paletteId != bitmap::Palette::SYSTEM_MAC) {
+            return lingo::Datum::symbol(*builtInSymbol);
+        }
+        const int paletteMemberNumber = info->paletteId + 1;
+        if (paletteMemberNumber >= 1) {
+            return lingo::Datum::castMemberRef(castLibId, id::MemberId(paletteMemberNumber));
+        }
+    }
+
+    return lingo::Datum::voidValue();
+}
+
 std::string normalizeTextLineEndings(std::string value) {
     std::string result;
     result.reserve(value.size());
@@ -628,6 +661,9 @@ lingo::Datum CastLib::getMemberProp(int memberNumber, const std::string& propNam
             palette = sourceFile_->resolvePaletteByMemberNumber(memberNumber);
         }
         return palette ? paletteColorListDatum(*palette) : lingo::Datum::voidValue();
+    }
+    if (member->isBitmap() && (prop == "paletteref" || prop == "palette")) {
+        return bitmapPaletteRefDatum(member, castLibId_);
     }
     if (prop == "width") return lingo::Datum::of(member->width());
     if (prop == "height") return lingo::Datum::of(member->height());
