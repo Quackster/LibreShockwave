@@ -621,7 +621,7 @@ bitmap::Bitmap applyInkInternal(const bitmap::Bitmap& src,
 
     if (ink == id::InkMode::DARKEN || ink == id::InkMode::LIGHTEN) {
         bitmap::Bitmap masked = input.copy();
-        if (!(input.bitDepth() == 32 && !useAlpha)) {
+        if (!(input.bitDepth() == 32 && !useAlpha) && !input.isRectangularMedia()) {
             const int matteColor = InkProcessor::resolveBackColor(input, ink, backColor, useAlpha, palette);
             if (matteColor >= 0) {
                 masked = input.bitDepth() >= 16

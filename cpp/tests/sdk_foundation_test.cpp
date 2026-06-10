@@ -9068,6 +9068,17 @@ void testBitmapCacheAndInkProcessorFoundation() {
     assert(indexedBackgroundTransparent.getPixel(1, 0) == 0xFF123456U);
     assert(indexedBackgroundTransparent.getPixel(2, 0) == 0x00000000U);
 
+    Bitmap nativeAlphaBackgroundBorder(3, 2, 32, {
+        0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU,
+        0x00000000U, 0xFF336699U, 0x00000000U
+    });
+    nativeAlphaBackgroundBorder.setNativeAlpha(true);
+    Bitmap keyedNativeAlphaBorder = InkProcessor::applyInk(
+        nativeAlphaBackgroundBorder, InkMode::BACKGROUND_TRANSPARENT, 0xFFFFFF, true, nullptr);
+    assert(keyedNativeAlphaBorder.getPixel(0, 0) == 0x00000000U);
+    assert(keyedNativeAlphaBorder.getPixel(1, 1) == 0xFF336699U);
+    assert(keyedNativeAlphaBorder.isNativeAlpha());
+
     Bitmap maskSource(3, 1, 32, {0xFFFF0000U, 0xFF00FF00U, 0xFF0000FFU});
     Bitmap mask = InkProcessor::applyMask(maskSource);
     assert(mask.getPixel(0, 0) == 0x4DFF0000U);
@@ -9141,6 +9152,26 @@ void testBitmapCacheAndInkProcessorFoundation() {
     Bitmap darkenTint = InkProcessor::applyInk(darkenTintSource, InkMode::DARKEN, 0x804020, false, nullptr);
     assert(darkenTint.getPixel(0, 0) == 0xFF804020U);
     assert(darkenTint.getPixel(1, 0) == 0xFF402010U);
+
+    Bitmap rectangularMediaDarken(3, 3, 8, {
+        0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU,
+        0xFFFFFFFFU, 0xFF336699U, 0xFFFFFFFFU,
+        0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU
+    });
+    rectangularMediaDarken.setPaletteIndices({
+        0, 0, 0,
+        0, 7, 0,
+        0, 0, 0
+    });
+    rectangularMediaDarken.setRectangularMedia(true);
+    Bitmap rectangularDarken = InkProcessor::applyInk(rectangularMediaDarken, InkMode::DARKEN, 0, false, nullptr);
+    assert(rectangularDarken.getPixel(0, 0) == 0xFFFFFFFFU);
+    assert(rectangularDarken.getPixel(1, 1) == 0xFF336699U);
+    assert(rectangularDarken.getPixel(2, 2) == 0xFFFFFFFFU);
+    Bitmap rectangularLighten = InkProcessor::applyInk(rectangularMediaDarken, InkMode::LIGHTEN, 0, false, nullptr);
+    assert(rectangularLighten.getPixel(0, 0) == 0xFFFFFFFFU);
+    assert(rectangularLighten.getPixel(1, 1) == 0xFF336699U);
+    assert(rectangularLighten.getPixel(2, 2) == 0xFFFFFFFFU);
 
     Bitmap nativeTransparent(1, 1, 32, {0x00FFFFFFU});
     nativeTransparent.setNativeAlpha(true);
