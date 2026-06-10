@@ -385,6 +385,11 @@ bool CastLibManager::setMemberProp(int castLibNumber,
                                    int memberNumber,
                                    const std::string& propName,
                                    const lingo::Datum& value) {
+    if (equalsIgnoreCase(propName, "media")) {
+        if (const auto* sourceRef = value.asCastMemberRef()) {
+            return copyMemberMedia(castLibNumber, memberNumber, *sourceRef);
+        }
+    }
     auto castLib = getCastLib(castLibNumber);
     return castLib && castLib->setMemberProp(memberNumber, propName, value);
 }
@@ -802,6 +807,47 @@ std::vector<std::string> CastLibManager::downloadCacheKeys(const std::string& ur
         }
     }
     return keys;
+}
+
+bool CastLibManager::copyMemberMedia(int targetCastLibNumber,
+                                     int targetMemberNumber,
+                                     const lingo::Datum::CastMemberRef& sourceRef) {
+    auto target = resolveMember(targetCastLibNumber, targetMemberNumber);
+    const int sourceCastLib = sourceRef.castLib > 0 ? sourceRef.castLib : targetCastLibNumber;
+    auto source = resolveMember(sourceCastLib, sourceRef.memberNum());
+    if (!target || !source) {
+        return false;
+    }
+
+    if (target->isTextLike() && source->isTextLike()) {
+        const auto sourceText = getMemberProp(source->castLib(), source->memberNum(), "text").stringValue();
+        target->setDynamicText(sourceText);
+        target->setTextFont(source->textFont());
+        target->setTextFontSize(source->textFontSize());
+        target->setTextFontStyle(source->textFontStyle());
+        target->setTextAlignment(source->textAlignment());
+        target->setTextColor(source->textColor());
+        target->setTextBgColor(source->textBgColor());
+        target->setTextWordWrap(source->textWordWrap());
+        target->setTextAntialias(source->textAntialias());
+        target->setTextBoxType(source->textBoxType());
+        target->setTextRect(source->textRectLeft(),
+                            source->textRectTop(),
+                            source->textRectRight(),
+                            source->textRectBottom());
+        target->setTextFixedLineSpace(source->textFixedLineSpace());
+        target->setTextTopSpacing(source->textTopSpacing());
+        target->setEditable(source->editable());
+        return true;
+    }
+
+    if (target->isBitmap() && source->isBitmap()) {
+        if (auto bitmap = source->runtimeBitmap()) {
+            target->setRuntimeBitmap(*bitmap);
+            return true;
+        }
+    }
+    return false;
 }
 
 lingo::Datum CastLibManager::getMemberByNameInCast(const std::shared_ptr<CastLib>& castLib,

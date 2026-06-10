@@ -103,6 +103,9 @@ private:
     void markPendingExternalLoad(int castLibNumber, const std::string& fileName);
     [[nodiscard]] std::vector<std::shared_ptr<CastLib>> findCastLibsByUrl(const std::string& url);
     [[nodiscard]] static std::vector<std::string> downloadCacheKeys(const std::string& url);
+    bool copyMemberMedia(int targetCastLibNumber,
+                         int targetMemberNumber,
+                         const lingo::Datum::CastMemberRef& sourceRef);
     [[nodiscard]] static lingo::Datum getMemberByNameInCast(const std::shared_ptr<CastLib>& castLib,
                                                             const std::string& memberName);
     [[nodiscard]] static bool isRegistryFallbackEligibleCast(const std::shared_ptr<CastLib>& castLib);

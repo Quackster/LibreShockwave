@@ -12331,6 +12331,23 @@ void testCastLibManagerFoundation() {
     assert(newRuntime.asCastMemberRef()->memberNum() == 10003);
     assert(manager.getMemberProp(1, 10003, "type").asSymbol()->name == "shape");
 
+    const auto copiedRuntimeField = manager.createMember(1, "text");
+    const auto* copiedRuntimeFieldRef = copiedRuntimeField.asCastMemberRef();
+    assert(copiedRuntimeFieldRef != nullptr);
+    assert(copiedRuntimeFieldRef->memberNum() == 10004);
+    assert(context.castMemberPropertySetter(1,
+                                            10004,
+                                            "media",
+                                            Datum::castMemberRef(CastLibId(1), MemberId(10001))));
+    assert(manager.getMemberProp(1, 10004, "text").stringValue() == "Symbolic");
+    assert(manager.getMemberProp(1, 10004, "font").stringValue() == "Courier");
+    assert(manager.getMemberProp(1, 10004, "fontSize").intValue() == 18);
+    assert(manager.getMemberProp(1, 10004, "fontStyle").stringValue() == "bold,italic");
+    assert(manager.getMemberProp(1, 10004, "alignment").asSymbol()->name == "right");
+    assert(manager.getMemberProp(1, 10004, "bgColor").asColorRef()->b == 0xEF);
+    assert(manager.getMemberProp(1, 10004, "rect").asIntRect()->right == 52);
+    assert(manager.getMemberProp(1, 10004, "editable").intValue() == 1);
+
     auto reusableRuntime = manager.resolveMember(1, 10000);
     assert(reusableRuntime != nullptr);
     assert(manager.setMemberProp(1, 10000, "name", Datum::of(std::string("Reusable Bitmap"))));

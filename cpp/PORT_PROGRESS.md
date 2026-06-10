@@ -221,7 +221,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `player::cast::CastLib` ports lazy cast-library metadata, authored/external file binding state, stable registry binding checks, member chunk maps, script maps, source-prefixed member-name fallback, font-alias/PFR XMED scanning, and Java-compatible cast/member property fallbacks.
 - `player::cast::CastLibManager` ports DirectorFile-backed cast-library initialization from MCsL/CAS* chunks, castLib/member number and name lookup, registry-visible member filtering, external-cast cache keys, pending external load tracking, preload-mode loading, and builtin callback installation.
-- Runtime bitmap member image mutation, cached imported-image assignment, Director BITD imported-media assignment, dynamic member creation/reuse, dynamic member `erase`, dynamic field text mutation, field provider lookup/setter callbacks, dynamic bitmap member sprite rendering, dynamic text sprite baking, and common text styling property mutation are available for existing cast libraries; non-bitmap imported media, ediM/JPEG/ALFA sidecars, editable field UI, and remaining CastLibProvider edge cases remain deferred to later player runtime slices.
+- Runtime bitmap member image mutation, cached imported-image assignment, Director BITD imported-media assignment, dynamic member creation/reuse, dynamic member `erase`, dynamic field text mutation, field provider lookup/setter callbacks, text-like member media copy, dynamic bitmap member sprite rendering, dynamic text sprite baking, and common text styling property mutation are available for existing cast libraries; non-bitmap imported media payload decoding, ediM/JPEG/ALFA sidecars, editable field UI, and remaining CastLibProvider edge cases remain deferred to later player runtime slices.
 
 ### Bitmap Resolver Foundation
 
@@ -540,6 +540,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Dynamic text baking now consumes the runtime text style state while retaining sprite-driven transparent/background color handling.
 - Character-position helpers, parsed field datum identity, and editable selection/caret rendering remain deferred.
 
+### Runtime Text Media Copy Foundation
+
+- `CastLibManager::setMemberProp("media", castMemberRef)` now resolves source and target members and copies text content plus runtime text style state when both members are text-like.
+- Runtime bitmap-to-bitmap media copy now handles live runtime bitmaps through the same manager-owned member-resolution path.
+- File-backed bitmap media copy and imported non-bitmap media payload decoding remain deferred.
+
 ### Lingo VM Scope and Execution Context Foundation
 
 - `lingo::vm::Scope` ports handler stack-frame state, including bytecode position, stack operations, local variables, mutable parameters, receiver-aware display arguments, return state, and loop-return tracking.
@@ -791,6 +797,7 @@ Result:
 - Runtime field text storage, `member.text`/`member.html`/text-like `member.media` mutation, field lookup by name/number/encoded reference, builtin `field`, and field setter callback routing passed through the same CTest executable.
 - Runtime dynamic text member baking, default renderer arguments, transparent-text native-alpha marking, and dynamic text sprite sizing passed through the same CTest executable.
 - Runtime text member style property get/set, Director-style text color coercion, rect/width/height geometry mutation, and SpriteBaker dynamic text style propagation passed through the same CTest executable.
+- Runtime text-like `media` assignment from another cast member, including copied text content and style state through the cast-member property callback, passed through the same CTest executable.
 - SoundBuiltins channel creation, availability, sound-channel method dispatch, VM object-property defaults/mutation, and SoundManager playback delegation passed through the same CTest executable.
 - ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration and callback hooks passed through the same CTest executable.
 - TypeBuiltins object/void/type predicates, `value` literal parsing/provider fallback, `script`/`callAncestor` callback hooks, symbol conversion, and `ilk` alias checks passed through the same CTest executable.
@@ -979,4 +986,5 @@ Result:
 - `a113570a Port C++ dynamic member lifecycle`
 - `d9297b79 Port C++ runtime field text`
 - `ec988333 Port C++ dynamic text rendering`
-- Current checkpoint commit message: `Port C++ runtime text styling`
+- `1e761636 Port C++ runtime text styling`
+- Current checkpoint commit message: `Port C++ text media copy`
