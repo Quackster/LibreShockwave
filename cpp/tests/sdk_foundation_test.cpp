@@ -115,6 +115,7 @@
 #include "libreshockwave/player/debug/Breakpoint.hpp"
 #include "libreshockwave/player/debug/BreakpointManager.hpp"
 #include "libreshockwave/player/debug/DebugSnapshot.hpp"
+#include "libreshockwave/player/debug/ExpressionEvaluator.hpp"
 #include "libreshockwave/player/debug/WatchExpression.hpp"
 #include "libreshockwave/player/event/EventDispatcher.hpp"
 #include "libreshockwave/player/frame/FrameContext.hpp"
@@ -258,6 +259,7 @@ using libreshockwave::player::cast::CastLib;
 using libreshockwave::player::cast::CastLibManager;
 using libreshockwave::player::cast::FontRegistry;
 using libreshockwave::player::debug::DebugSnapshot;
+using libreshockwave::player::debug::ExpressionEvaluator;
 using libreshockwave::player::debug::InstructionDisplay;
 using libreshockwave::player::debug::WatchExpression;
 using libreshockwave::player::event::EventDispatcher;
@@ -8807,6 +8809,38 @@ void testDebugFoundation() {
     assert(watchWithError.getTypeName() == "Error");
     assert(watch.withExpression("the mouseV").expression == "the mouseV");
     assert(!WatchExpression::create("random expression").id.empty());
+
+    ExpressionEvaluator evaluator;
+    auto evalContext = ExpressionEvaluator::EvaluationContext::empty();
+    evalContext.locals["i"] = Datum::of(5);
+    evalContext.params["name"] = Datum::of(std::string("Door"));
+    evalContext.globals["count"] = Datum::of(3);
+    Datum props = Datum::propList();
+    props.propListValue().put(Datum::symbol("score"), Datum::of(9));
+    props.propListValue().put(Datum::of(std::string("bgColor")), Datum::of(12));
+    evalContext.locals["obj"] = props;
+    Datum instance = Datum::scriptInstance("Thing");
+    instance.scriptInstanceValue().setProperty("foo", Datum::of(6));
+    evalContext.receiver = instance;
+
+    const auto arithmeticEval = evaluator.evaluate("i + count * 2", evalContext);
+    assert(arithmeticEval.succeeded());
+    assert(arithmeticEval.value->intValue() == 11);
+    assert(evaluator.evaluate("(i + count) * 2", evalContext).value->intValue() == 16);
+    assert(evaluator.evaluate("\"Hello \" + name", evalContext).value->stringValue() == "Hello Door");
+    assert(evaluator.evaluate("#door = \"DOOR\"", evalContext).value->boolValue());
+    assert(evaluator.evaluate("obj.score >= 9 and me.foo = 6", evalContext).value->boolValue());
+    assert(evaluator.evaluate("obj.txtBgColor = 12", evalContext).value->boolValue());
+    assert(evaluator.evaluate("obj.missing", evalContext).value->isVoid());
+    assert(evaluator.evaluate("not false", evalContext).value->boolValue());
+    assert(!evaluator.evaluate("false and (1 / 0)", evalContext).value->boolValue());
+    assert(evaluator.evaluateCondition("i > 4 and count = 3", evalContext));
+    assert(!evaluator.evaluateCondition("1 / 0", evalContext));
+    const auto emptyEval = evaluator.evaluate("  ", evalContext);
+    assert(!emptyEval.succeeded());
+    assert(emptyEval.error == "Empty expression");
+    assert(evaluator.interpolateLogMessage("i={i}, name={name}, bad={1 / 0}", evalContext) ==
+           "i=5, name=Door, bad=<Division by zero>");
 
     DebugSnapshot snapshot{
         4,
