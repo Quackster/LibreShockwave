@@ -76,6 +76,7 @@
 #include "libreshockwave/lookup/CastMemberLookup.hpp"
 #include "libreshockwave/lookup/PaletteResolver.hpp"
 #include "libreshockwave/lookup/ScriptLookup.hpp"
+#include "libreshockwave/player/BitmapResolver.hpp"
 #include "libreshockwave/player/ExternalCastLoadEvent.hpp"
 #include "libreshockwave/player/PlayerEvent.hpp"
 #include "libreshockwave/player/PlayerEventInfo.hpp"
@@ -201,6 +202,7 @@ using libreshockwave::lingo::vm::Scope;
 using libreshockwave::lookup::CastMemberLookup;
 using libreshockwave::lookup::PaletteResolver;
 using libreshockwave::lookup::ScriptLookup;
+using libreshockwave::player::BitmapResolver;
 using libreshockwave::player::ExternalCastLoadEvent;
 using libreshockwave::player::CursorManager;
 using libreshockwave::player::MovieProperties;
@@ -11063,6 +11065,160 @@ void testCastLibManagerFoundation() {
     assert(manager.getRequestedExternalCastSlots("newCast.cst").empty());
 }
 
+void testBitmapResolverFoundation() {
+    auto appendFourCC = [](std::vector<std::uint8_t>& data, const std::string& value) {
+        data.insert(data.end(), value.begin(), value.end());
+    };
+    auto appendI16 = [](std::vector<std::uint8_t>& data, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data.push_back(static_cast<std::uint8_t>((raw >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(raw & 0xFF));
+    };
+    auto appendI32 = [](std::vector<std::uint8_t>& data, std::uint32_t value) {
+        data.push_back(static_cast<std::uint8_t>((value >> 24) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 16) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(value & 0xFF));
+    };
+    auto putI16At = [](std::vector<std::uint8_t>& data, int offset, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((raw >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>(raw & 0xFF);
+    };
+    auto putI32At = [](std::vector<std::uint8_t>& data, int offset, std::uint32_t value) {
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((value >> 24) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>((value >> 16) & 0xFF);
+        data[static_cast<std::size_t>(offset + 2)] = static_cast<std::uint8_t>((value >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 3)] = static_cast<std::uint8_t>(value & 0xFF);
+    };
+
+    std::vector<std::uint8_t> configData(80, 0);
+    putI16At(configData, 2, 0x0207);
+    putI16At(configData, 8, 1);
+    putI16At(configData, 10, 2);
+    putI16At(configData, 36, 0x0207);
+    putI16At(configData, 54, 15);
+    putI16At(configData, 78, Palette::RAINBOW);
+
+    std::vector<std::uint8_t> keyData;
+    appendI16(keyData, 12);
+    appendI16(keyData, 12);
+    appendI32(keyData, 1);
+    appendI32(keyData, 1);
+    appendI32(keyData, 2);
+    appendI32(keyData, 9);
+    appendI32(keyData, BinaryReader::fourCC("BITD"));
+
+    const std::vector<std::uint8_t> bitdData{0, 1};
+    auto buildRifx = [&](const std::vector<std::pair<std::string, std::vector<std::uint8_t>>>& chunks) {
+        constexpr int mmapOffset = 32;
+        const int mmapPayloadLength = 24 + static_cast<int>(chunks.size()) * 20;
+        int payloadStart = mmapOffset + 8 + mmapPayloadLength;
+
+        std::vector<int> offsets;
+        offsets.reserve(chunks.size());
+        for (const auto& chunk : chunks) {
+            offsets.push_back(payloadStart - 8);
+            payloadStart += static_cast<int>(chunk.second.size());
+        }
+
+        std::vector<std::uint8_t> data;
+        appendFourCC(data, "RIFX");
+        appendI32(data, 0);
+        appendFourCC(data, "MV93");
+        appendFourCC(data, "imap");
+        appendI32(data, 12);
+        appendI32(data, 1);
+        appendI32(data, mmapOffset);
+        appendI32(data, 0x0207);
+        appendFourCC(data, "mmap");
+        appendI32(data, static_cast<std::uint32_t>(mmapPayloadLength));
+        appendI16(data, 24);
+        appendI16(data, 20);
+        appendI32(data, static_cast<std::uint32_t>(chunks.size()));
+        appendI32(data, static_cast<std::uint32_t>(chunks.size()));
+        appendI32(data, 0);
+        appendI32(data, 0);
+        appendI32(data, 0);
+        for (int index = 0; index < static_cast<int>(chunks.size()); ++index) {
+            appendI32(data, BinaryReader::fourCC(chunks[static_cast<std::size_t>(index)].first));
+            appendI32(data, static_cast<std::uint32_t>(chunks[static_cast<std::size_t>(index)].second.size()));
+            appendI32(data, static_cast<std::uint32_t>(offsets[static_cast<std::size_t>(index)]));
+            appendI16(data, 0);
+            appendI16(data, 0);
+            appendI32(data, 0);
+        }
+        for (const auto& chunk : chunks) {
+            data.insert(data.end(), chunk.second.begin(), chunk.second.end());
+        }
+        putI32At(data, 4, static_cast<std::uint32_t>(data.size() - 8));
+        return data;
+    };
+
+    auto file = DirectorFile::load(buildRifx({
+        {"DRCF", configData},
+        {"KEY*", keyData},
+        {"BITD", bitdData},
+    }));
+    CastLibManager manager(file);
+    FrameContext frameContext(file.get());
+    BitmapResolver resolver(file, &manager, &frameContext);
+
+    assert(resolver.file() == file);
+    assert(resolver.getMoviePalette().get() == &Palette::rainbowPalette());
+    assert(resolver.resolvePaletteByMember(1, 42).get() == &Palette::systemMacPalette());
+    assert(manager.resolvePaletteByMember(1, 42).get() == &Palette::systemMacPalette());
+
+    std::vector<std::uint8_t> bitmapSpecific;
+    appendI16(bitmapSpecific, 2);
+    appendI16(bitmapSpecific, 0);
+    appendI16(bitmapSpecific, 0);
+    appendI16(bitmapSpecific, 1);
+    appendI16(bitmapSpecific, 2);
+    bitmapSpecific.insert(bitmapSpecific.end(), 8, 0);
+    appendI16(bitmapSpecific, 0);
+    appendI16(bitmapSpecific, 0);
+    bitmapSpecific.push_back(0);
+    bitmapSpecific.push_back(8);
+    appendI16(bitmapSpecific, 1);
+    auto bitmapMember = std::make_shared<CastMemberChunk>(file.get(),
+                                                          ChunkId(9),
+                                                          MemberType::Bitmap,
+                                                          0,
+                                                          static_cast<int>(bitmapSpecific.size()),
+                                                          std::vector<std::uint8_t>{},
+                                                          bitmapSpecific,
+                                                          "Bitmap",
+                                                          0,
+                                                          0,
+                                                          0);
+
+    auto decoded = resolver.decodeBitmap(bitmapMember);
+    assert(decoded.has_value());
+    assert(decoded->width() == 2);
+    assert(decoded->height() == 1);
+    assert(decoded->bitDepth() == 8);
+    assert(decoded->getPixel(0, 0) == 0xFFFFFFFFU);
+    assert(decoded->getPixel(1, 0) == 0xFFFFFFCCU);
+    assert(decoded->paletteIndex(1, 0).value() == 1);
+    assert(decoded->imagePalette().get() == &Palette::systemMacPalette());
+
+    Palette overridePalette({0x010203U, 0x040506U}, "override");
+    auto overridden = resolver.decodeBitmap(bitmapMember, &overridePalette);
+    assert(overridden.has_value());
+    assert(overridden->getPixel(0, 0) == 0xFF010203U);
+    assert(overridden->getPixel(1, 0) == 0xFF040506U);
+    assert(overridden->imagePalette().get() == &overridePalette);
+
+    auto providerBitmap = resolver.decodeBitmapForProvider(*bitmapMember, &overridePalette);
+    assert(providerBitmap != nullptr);
+    assert(providerBitmap->getPixel(1, 0) == 0xFF040506U);
+
+    BitmapResolver emptyResolver;
+    assert(!emptyResolver.getMoviePalette());
+    assert(!emptyResolver.decodeBitmap(nullptr).has_value());
+}
+
 void testLookupHelpers() {
     auto cast = std::make_shared<CastChunk>(nullptr, ChunkId(80), std::vector<int>{41, 42});
     auto member5 = std::make_shared<CastMemberChunk>(nullptr,
@@ -11289,6 +11445,7 @@ int main() {
     testDirectorFileAfterburnerLoader();
     testDirectorFileRiffLoader();
     testCastLibManagerFoundation();
+    testBitmapResolverFoundation();
     testLookupHelpers();
 
     std::cout << "LibreShockwave C++ SDK foundation tests passed\n";

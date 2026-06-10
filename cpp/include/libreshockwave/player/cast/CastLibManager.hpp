@@ -21,6 +21,10 @@ namespace libreshockwave::cast {
 class CastMember;
 }
 
+namespace libreshockwave::bitmap {
+class Palette;
+}
+
 namespace libreshockwave::chunks {
 class CastMemberChunk;
 }
@@ -65,6 +69,7 @@ public:
     [[nodiscard]] std::shared_ptr<libreshockwave::cast::CastMember> findCastMemberByName(const std::string& memberName);
     [[nodiscard]] std::shared_ptr<libreshockwave::cast::CastMember> findRuntimeMember(
         const std::shared_ptr<chunks::CastMemberChunk>& target);
+    [[nodiscard]] std::shared_ptr<const bitmap::Palette> resolvePaletteByMember(int castLibNumber, int memberNumber);
 
     void cacheExternalData(const std::string& url, const std::vector<std::uint8_t>& data);
     [[nodiscard]] std::optional<std::vector<std::uint8_t>> getCachedExternalData(const std::string& baseName) const;

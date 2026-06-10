@@ -219,6 +219,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `player::cast::CastLibManager` ports DirectorFile-backed cast-library initialization from MCsL/CAS* chunks, castLib/member number and name lookup, registry-visible member filtering, external-cast cache keys, pending external load tracking, preload-mode loading, and builtin callback installation.
 - Dynamic runtime member media mutation, imported-media assignment, and full CastLibProvider palette/field integration remain deferred to later player runtime slices.
 
+### Bitmap Resolver Foundation
+
+- `player::BitmapResolver` ports Player-owned bitmap cast-member decoding across the main movie and loaded external cast sources, including palette override dispatch and a SpriteBaker-compatible decode-provider adapter.
+- Movie palette lookup now follows score palette channel, built-in palette, config default palette, cast-library palette member, and DirectorFile fallback paths with frame-based caching.
+- `CastLibManager::resolvePaletteByMember` exposes cast-aware palette member resolution for player/runtime callers; runtime bitmap mutation and imported media assignment remain deferred to later Player integration slices.
+
 ### Player Event and Render Configuration Foundation
 
 - `player::PlayerEvent` ports the Java player event enum and handler-name mapping used by script dispatch.
@@ -633,6 +639,7 @@ Result:
 - BehaviorInstance and BehaviorManager ID/property state, behavior-ref parameters, frame-script caching, channel lookup/removal, sprite-instance ordering, and clear tests passed through the same CTest executable.
 - EventDispatcher global, frame/movie, sprite/movie, sprite-only, behavior-only, and movie-only dispatch ordering, pass propagation, dynamic script-instance dispatch, sprite handler lookup, mouse interactivity, mouse-handler recognition, debug flag, and stopEvent state tests passed through the same CTest executable.
 - FrameContext first-frame setup, pending frame navigation, begin/end sprite dispatch, frame events, actor/timeout hooks, puppeted sprite persistence, force navigation, reset, and BehaviorManager script-resolver hooks passed through the same CTest executable.
+- BitmapResolver RIFX-backed bitmap decode, palette override decode, SpriteBaker provider adapter, movie palette config fallback, null fallback behavior, and CastLibManager palette-member lookup passed through the same CTest executable.
 - SpriteProperties missing defaults, property get/set, revision bumps, cast member assignment, autosizing, registration-aware bounds, cursor lists, script-instance sprite numbers, release cleanup, color refs, and image callbacks passed through the same CTest executable.
 - Lingo `GET_CHUNK` char/word/item/line extraction, range, negative last-index, sequential narrowing, and provider-backed item delimiters passed through the same CTest executable.
 - Lingo `PUSH_CHUNK_VAR_REF` typed raw-index varref creation tests passed through the same CTest executable.
@@ -813,4 +820,5 @@ Result:
 - `3410a54f Port C++ value builtin parser`
 - `dc9a7820 Integrate C++ PFR TTF registry cache`
 - `cee0bb98 Port C++ cast library manager foundation`
-- Current checkpoint commit message: `Port C++ frame context foundation`
+- `4326a2c7 Port C++ frame context foundation`
+- Current checkpoint commit message: `Port C++ bitmap resolver foundation`

@@ -290,6 +290,19 @@ std::shared_ptr<libreshockwave::cast::CastMember> CastLibManager::findRuntimeMem
     return nullptr;
 }
 
+std::shared_ptr<const bitmap::Palette> CastLibManager::resolvePaletteByMember(int castLibNumber, int memberNumber) {
+    if (memberNumber < 0) {
+        return nullptr;
+    }
+
+    auto castLib = getCastLib(castLibNumber);
+    if (castLib != nullptr && castLib->sourceFile() != nullptr) {
+        return castLib->sourceFile()->resolvePaletteByMemberNumber(memberNumber);
+    }
+
+    return file_ != nullptr ? file_->resolvePaletteByMemberNumber(memberNumber) : nullptr;
+}
+
 void CastLibManager::cacheExternalData(const std::string& url, const std::vector<std::uint8_t>& data) {
     for (const auto& key : downloadCacheKeys(url)) {
         castDataCache_[key] = data;
