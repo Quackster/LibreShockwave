@@ -71,6 +71,7 @@
 #include "libreshockwave/lingo/Opcode.hpp"
 #include "libreshockwave/lingo/builtin/BuiltinRegistry.hpp"
 #include "libreshockwave/lingo/vm/ExecutionContext.hpp"
+#include "libreshockwave/lingo/vm/LingoVM.hpp"
 #include "libreshockwave/lingo/vm/OpcodeRegistry.hpp"
 #include "libreshockwave/lingo/vm/Scope.hpp"
 #include "libreshockwave/lookup/CastMemberLookup.hpp"
@@ -199,6 +200,7 @@ using libreshockwave::lingo::builtin::BuiltinContext;
 using libreshockwave::lingo::builtin::BuiltinRegistry;
 using libreshockwave::lingo::vm::ExecutionContext;
 using libreshockwave::lingo::vm::HandlerRef;
+using libreshockwave::lingo::vm::LingoVM;
 using libreshockwave::lingo::vm::OpcodeRegistry;
 using libreshockwave::lingo::vm::Scope;
 using libreshockwave::lookup::CastMemberLookup;
@@ -5051,6 +5053,148 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opcodeRegistry.hasHandler(Opcode::INVALID));
     assert(opcodeRegistry.execute(Opcode::INVALID, opContext));
     assert(opContext.pop().intValue() == 99);
+}
+
+void testLingoVmRuntimeFoundation() {
+    auto makeHandler = [](int nameId,
+                          std::vector<std::pair<Opcode, int>> ops,
+                          int localCount = 0,
+                          std::vector<int> argNameIds = {}) {
+        std::vector<ScriptChunk::Instruction> instructions;
+        std::unordered_map<int, int> indexMap;
+        instructions.reserve(ops.size());
+        for (std::size_t index = 0; index < ops.size(); ++index) {
+            const int offset = static_cast<int>(index);
+            const auto [opcode, argument] = ops[index];
+            indexMap[offset] = static_cast<int>(index);
+            instructions.push_back(ScriptChunk::Instruction{
+                offset,
+                opcode,
+                static_cast<int>(opcode),
+                argument
+            });
+        }
+        return ScriptChunk::Handler{
+            nameId,
+            0,
+            static_cast<int>(instructions.size()),
+            0,
+            static_cast<int>(argNameIds.size()),
+            localCount,
+            0,
+            0,
+            std::move(argNameIds),
+            {},
+            std::move(instructions),
+            std::move(indexMap)
+        };
+    };
+
+    auto returnHandler = makeHandler(1, {{Opcode::PUSH_INT8, 42}, {Opcode::RET, 0}});
+    auto globalHandler = makeHandler(2, {
+        {Opcode::PUSH_INT8, 7},
+        {Opcode::SET_GLOBAL, 3},
+        {Opcode::GET_GLOBAL, 3},
+        {Opcode::RET, 0}
+    });
+    auto paramHandler = makeHandler(3, {{Opcode::GET_PARAM, 0}, {Opcode::RET, 0}}, 0, {4});
+    auto stackHandler = makeHandler(4, {{Opcode::PUSH_ZERO, 0}, {Opcode::RET, 0}});
+    auto stepLimitHandler = makeHandler(5, {
+        {Opcode::PUSH_INT8, 1},
+        {Opcode::PUSH_INT8, 2},
+        {Opcode::ADD, 0},
+        {Opcode::RET, 0}
+    });
+
+    ScriptChunk script(nullptr,
+                       ChunkId(960),
+                       ScriptChunkType::MovieScript,
+                       0,
+                       {returnHandler, globalHandler, paramHandler, stackHandler, stepLimitHandler},
+                       {},
+                       {},
+                       {},
+                       {});
+
+    LingoVM vm;
+    assert(vm.file() == nullptr);
+    assert(vm.callStackDepth() == 0);
+    assert(vm.currentScope() == nullptr);
+    assert(vm.formatCallStack() == "Lingo call stack: (empty)");
+    assert(LingoVM::isGlobalHandlerScriptType(ScriptChunkType::MovieScript));
+    assert(!LingoVM::isGlobalHandlerScriptType(ScriptChunkType::Behavior));
+
+    assert(vm.findHandler(script, "handler#1").has_value());
+    assert(vm.findHandler(script, "#1").has_value());
+    assert(!vm.findHandler(script, "missing").has_value());
+    assert(vm.executeHandler(script, returnHandler).intValue() == 42);
+    assert(vm.callStackDepth() == 0);
+
+    assert(vm.executeHandler(script, globalHandler).intValue() == 7);
+    assert(vm.getGlobal("#3").intValue() == 7);
+    vm.setGlobal("custom", Datum::of(99));
+    assert(vm.getGlobal("custom").intValue() == 99);
+    assert(vm.globals().size() == 2);
+    vm.clearGlobals();
+    assert(vm.globals().empty());
+    assert(vm.getGlobal("custom").isVoid());
+
+    assert(vm.executeHandler(script, paramHandler, {Datum::of(123)}).intValue() == 123);
+    assert(vm.callHandler("abs", {Datum::of(-11)}).intValue() == 11);
+    assert(vm.callBuiltin("abs", {Datum::of(-12)}).intValue() == 12);
+    assert(vm.callBuiltin("missingBuiltin").isVoid());
+
+    assert(vm.callBuiltin("setPref", {Datum::of(std::string("Volume")), Datum::of(12)}).stringValue() == "12");
+    assert(vm.callBuiltin("getPref", {Datum::of(std::string("volume"))}).stringValue() == "12");
+    assert(vm.getPref("VOLUME").stringValue() == "12");
+    assert(vm.prefs().contains("volume"));
+
+    vm.setRandomSeed(1234);
+    const int directRandom = vm.randomInt(10);
+    vm.setRandomSeed(1234);
+    assert(vm.callBuiltin("random", {Datum::of(10)}).intValue() == directRandom);
+    assert(directRandom >= 1 && directRandom <= 10);
+
+    bool passed = false;
+    vm.setPassCallback([&passed] {
+        passed = true;
+    });
+    assert(vm.callBuiltin("pass").isVoid());
+    assert(passed);
+    vm.clearPassCallback();
+    assert(!vm.eventStopped());
+    assert(vm.callBuiltin("stopEvent").isVoid());
+    assert(vm.eventStopped());
+    vm.resetEventStopped();
+    assert(!vm.eventStopped());
+
+    vm.opcodeRegistry().registerHandler(Opcode::PUSH_ZERO, [&vm](ExecutionContext& context) {
+        assert(vm.callStackDepth() == 1);
+        assert(vm.currentScope() != nullptr);
+        assert(vm.callStack().size() == 1);
+        assert(vm.callStack().front().handlerName == "handler#4");
+        assert(vm.formatCallStack().find("handler#4") != std::string::npos);
+        context.push(Datum::of(88));
+        return true;
+    });
+    assert(vm.executeHandler(script, stackHandler).intValue() == 88);
+
+    vm.setStepLimit(1);
+    bool threw = false;
+    try {
+        (void)vm.executeHandler(script, stepLimitHandler);
+    } catch (const LingoException&) {
+        threw = true;
+    }
+    assert(threw);
+    assert(vm.callStackDepth() == 0);
+    vm.setStepLimit(0);
+    assert(vm.stepLimit() == 0);
+
+    vm.setErrorState(true);
+    assert(vm.executeHandler(script, returnHandler).isVoid());
+    vm.resetErrorState();
+    assert(!vm.isInErrorState());
 }
 
 std::shared_ptr<Bitmap> makeSolidHitBitmap(std::uint32_t argb) {
@@ -11641,6 +11785,7 @@ int main() {
     testMoviePropertiesFoundation();
     testBuiltinRegistryFoundation();
     testLingoVmScopeAndExecutionContextFoundation();
+    testLingoVmRuntimeFoundation();
     testHitTesterFoundation();
     testCursorManagerFoundation();
     testScoreNavigationFoundation();

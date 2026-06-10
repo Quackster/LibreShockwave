@@ -485,13 +485,19 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `lingo::vm::Scope` ports handler stack-frame state, including bytecode position, stack operations, local variables, mutable parameters, receiver-aware display arguments, return state, and loop-return tracking.
 - `lingo::vm::ExecutionContext` ports the opcode-facing context layer for stack/local/param/global access, return/error state callbacks, jump-target lookup, local/global handler callback plumbing, builtin invocation, and argument popping.
-- Full opcode-handler registration and bytecode execution remain deferred to the next VM runtime slices.
+- Full player-owned script dispatch, trace listener integration, alertHook handling, deferred script-instance calls, and long-handler safepoints remain deferred to later VM/player integration slices.
 
 ### Lingo VM Name Resolution Foundation
 
 - `ExecutionContext` now accepts a VM-owned name resolver callback for bytecode name IDs.
 - Opcode-facing name resolution falls back to script-local `#id` placeholders when no resolver is installed.
 - Variable/global opcode tests now exercise resolved names through the same `ExecutionContext::resolveName` path needed by property and call opcodes.
+
+### Lingo VM Runtime Foundation
+
+- `lingo::vm::LingoVM` now owns globals, prefs, a builtin registry/context, an opcode registry, call-stack state, pass/stopEvent runtime builtins, Java-compatible seeded random numbers, step limits, error state, and handler cache invalidation.
+- The VM can execute `ScriptChunk::Handler` bytecode end to end through reusable `Scope` and `ExecutionContext` callbacks, including global get/set opcodes, parameter reads, return values, direct builtin calls, builtin fallback from `callHandler`, and formatted call-stack frames.
+- Tests cover direct handler execution, VM-backed globals/prefs/random, pass and stopEvent callbacks, step-limit cleanup, and visible call-stack state during opcode execution.
 
 ### Lingo Opcode Registry and Stack/Control Foundation
 
@@ -843,4 +849,5 @@ Result:
 - `0b0c2afa Port C++ bitmap resolver foundation`
 - `eb545ccc Port C++ input handler foundation`
 - `6f78a995 Port C++ player foundation`
-- Current checkpoint commit message: `Port C++ player builtin context`
+- `fd62f0e1 Port C++ player builtin context`
+- Current checkpoint commit message: `Port C++ Lingo VM runtime foundation`
