@@ -6804,6 +6804,36 @@ void testLingoVmScopeAndExecutionContextFoundation() {
                             nativeAlphaBackgroundInkProps}).isVoid());
     assert(nativeAlphaBackgroundInkDest->getPixel(0, 0) == 0xFFC0C0C0U);
     assert(nativeAlphaBackgroundInkDest->getPixel(1, 1) == 0xFF000000U);
+    auto inverseAlphaMaskSource = std::make_shared<Bitmap>(
+        3, 1, 32, std::vector<std::uint32_t>{0xFFFFFFFFU, 0x00FFFFFFU, 0xFFFFFFFFU});
+    inverseAlphaMaskSource->setNativeAlpha(true);
+    auto explicitInverseMaskDest = std::make_shared<Bitmap>(3, 1, 32);
+    explicitInverseMaskDest->fill(0xFFC0C0C0U);
+    auto explicitInverseMaskProps = Datum::propList();
+    explicitInverseMaskProps.propListValue().put(Datum::symbol("ink"), Datum::of(36));
+    explicitInverseMaskProps.propListValue().put(Datum::symbol("bgColor"), Datum::colorRef(221, 221, 221));
+    assert(runObjCall(110, {Datum::imageRef(explicitInverseMaskDest),
+                            Datum::imageRef(inverseAlphaMaskSource),
+                            Datum::intRect(0, 0, 3, 1),
+                            Datum::intRect(0, 0, 3, 1),
+                            explicitInverseMaskProps}).isVoid());
+    assert(explicitInverseMaskDest->getPixel(0, 0) == 0xFFC0C0C0U);
+    assert(explicitInverseMaskDest->getPixel(1, 0) == 0xFF000000U);
+    assert(explicitInverseMaskDest->getPixel(2, 0) == 0xFFC0C0C0U);
+    auto defaultInverseMaskDest = std::make_shared<Bitmap>(5, 1, 32);
+    defaultInverseMaskDest->fill(0xFFC0C0C0U);
+    auto defaultInverseMaskProps = Datum::propList();
+    defaultInverseMaskProps.propListValue().put(Datum::symbol("ink"), Datum::of(36));
+    assert(runObjCall(110, {Datum::imageRef(defaultInverseMaskDest),
+                            Datum::imageRef(inverseAlphaMaskSource),
+                            Datum::intRect(0, 0, 5, 1),
+                            Datum::intRect(0, 0, 5, 1),
+                            defaultInverseMaskProps}).isVoid());
+    assert(defaultInverseMaskDest->getPixel(0, 0) == 0xFFC0C0C0U);
+    assert(defaultInverseMaskDest->getPixel(1, 0) == 0xFF7B9498U);
+    assert(defaultInverseMaskDest->getPixel(2, 0) == 0xFFC0C0C0U);
+    assert(defaultInverseMaskDest->getPixel(3, 0) == 0xFFC0C0C0U);
+    assert(defaultInverseMaskDest->getPixel(4, 0) == 0xFFC0C0C0U);
     auto runDarkenBgTint = [&](std::shared_ptr<Bitmap> source, Datum bgColor) {
         auto darkenDest = std::make_shared<Bitmap>(1, 1, 32, std::vector<std::uint32_t>{0xFFFFFFFFU});
         auto darkenProps = Datum::propList();

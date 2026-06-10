@@ -2890,6 +2890,84 @@ bool imageHasOpaqueBackgroundKeyBorder(const bitmap::Bitmap& src, const Datum::I
     return false;
 }
 
+bool imageIsInverseWhiteAlphaMask(const bitmap::Bitmap& src, const Datum::IntRect& rect) {
+    bool hasOpaqueWhite = false;
+    bool hasTransparentInk = false;
+    const int width = rect.right - rect.left;
+    const int height = rect.bottom - rect.top;
+    if (width <= 0 || height <= 0) {
+        return false;
+    }
+
+    for (int y = 0; y < height; ++y) {
+        const int py = rect.top + y;
+        if (py < 0 || py >= src.height()) {
+            continue;
+        }
+        for (int x = 0; x < width; ++x) {
+            const int px = rect.left + x;
+            if (px < 0 || px >= src.width()) {
+                continue;
+            }
+            const auto pixel = src.getPixel(px, py);
+            const int alpha = static_cast<int>((pixel >> 24) & 0xFFU);
+            if (alpha == 0) {
+                hasTransparentInk = true;
+                continue;
+            }
+            if ((pixel & 0x00FFFFFFU) != 0x00FFFFFFU) {
+                return false;
+            }
+            hasOpaqueWhite = true;
+        }
+    }
+    return hasOpaqueWhite && hasTransparentInk;
+}
+
+int imageInverseWhiteAlphaMaskInkRgb(std::optional<int> bgColorRemap) {
+    return bgColorRemap.has_value() ? 0x000000 : 0x7B9498;
+}
+
+bool imageInvertedWhiteAlphaMaskHasOpaqueKeyBorder(const bitmap::Bitmap& src,
+                                                   const Datum::IntRect& rect,
+                                                   int keyRgb,
+                                                   int inkRgb) {
+    if ((inkRgb & 0x00FFFFFF) != (keyRgb & 0x00FFFFFF)) {
+        return false;
+    }
+    const int width = rect.right - rect.left;
+    const int height = rect.bottom - rect.top;
+    if (src.width() <= 0 || src.height() <= 0 || width <= 0 || height <= 0) {
+        return false;
+    }
+
+    const int left = std::clamp(rect.left, 0, src.width() - 1);
+    const int top = std::clamp(rect.top, 0, src.height() - 1);
+    const int right = std::clamp(rect.right - 1, 0, src.width() - 1);
+    const int bottom = std::clamp(rect.bottom - 1, 0, src.height() - 1);
+    const auto transparentHole = [&src](int x, int y) {
+        return ((src.getPixel(x, y) >> 24) & 0xFFU) == 0;
+    };
+
+    for (int x = left; x <= right; ++x) {
+        if (transparentHole(x, top) || transparentHole(x, bottom)) {
+            return true;
+        }
+    }
+    for (int y = top + 1; y < bottom; ++y) {
+        if (transparentHole(left, y) || transparentHole(right, y)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::uint32_t imageInvertWhiteAlphaMaskPixel(std::uint32_t pixel, int inkRgb) {
+    return ((pixel >> 24) & 0xFFU) == 0
+        ? (0xFF000000U | static_cast<std::uint32_t>(inkRgb & 0x00FFFFFF))
+        : 0x00000000U;
+}
+
 bool imageRegionIsMostlyGrayscale(const bitmap::Bitmap& src, const Datum::IntRect& rect) {
     const int width = rect.right - rect.left;
     const int height = rect.bottom - rect.top;
@@ -3287,8 +3365,18 @@ Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
     const bool darkenBgTint =
         ink == id::InkMode::DARKEN && bgColorRemap.has_value() && !colorRemap.has_value();
     const bool indexedShadeForDarken = imageUsesIndexedShadeForDarken(src);
+    const bool inverseWhiteAlphaMask =
+        ink == id::InkMode::BACKGROUND_TRANSPARENT &&
+        src.hasNativeMatteAlpha() &&
+        imageIsInverseWhiteAlphaMask(src, *srcRect);
+    const int inverseWhiteAlphaMaskInkRgb = imageInverseWhiteAlphaMaskInkRgb(bgColorRemap);
     id::InkMode effectiveInk = ink;
-    if (effectiveInk == id::InkMode::BACKGROUND_TRANSPARENT &&
+    if (inverseWhiteAlphaMask) {
+        if (!imageInvertedWhiteAlphaMaskHasOpaqueKeyBorder(
+                src, *srcRect, backgroundKeyRgb, inverseWhiteAlphaMaskInkRgb)) {
+            effectiveInk = id::InkMode::COPY;
+        }
+    } else if (effectiveInk == id::InkMode::BACKGROUND_TRANSPARENT &&
         src.hasNativeMatteAlpha() &&
         !imageHasOpaqueBackgroundKeyBorder(src, *srcRect, backgroundKeyRgb)) {
         effectiveInk = id::InkMode::COPY;
@@ -3314,7 +3402,9 @@ Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
             }
             const auto rawSourcePixel = src.getPixel(sx, sy);
             std::uint32_t sourcePixel = rawSourcePixel;
-            if (applyGrayscaleRemap) {
+            if (inverseWhiteAlphaMask) {
+                sourcePixel = imageInvertWhiteAlphaMaskPixel(rawSourcePixel, inverseWhiteAlphaMaskInkRgb);
+            } else if (applyGrayscaleRemap) {
                 if (darkenBgTint) {
                     std::optional<int> indexedShade;
                     if (indexedShadeForDarken) {
