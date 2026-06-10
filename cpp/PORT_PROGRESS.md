@@ -216,18 +216,19 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Runtime-created cast members can now be constructed without a raw chunk, carry mutable names, and expose their runtime type through the same property surface.
 - Runtime-created cast members can now erase their runtime payload, expose `#empty`, and be reused in place as a new dynamic member type.
 - Runtime text content can now be stored on cast-member wrappers and survives through the text/field property surface until the runtime payload is erased or reused.
+- Runtime palette data can now be stored on cast-member wrappers and clears with the rest of the runtime payload on erase/reuse.
 
 ### Cast Library Manager Foundation
 
 - `player::cast::CastLib` ports lazy cast-library metadata, authored/external file binding state, stable registry binding checks, member chunk maps, script maps, source-prefixed member-name fallback, font-alias/PFR XMED scanning, and Java-compatible cast/member property fallbacks.
 - `player::cast::CastLibManager` ports DirectorFile-backed cast-library initialization from MCsL/CAS* chunks, castLib/member number and name lookup, registry-visible member filtering, external-cast cache keys, pending external load tracking, preload-mode loading, and builtin callback installation.
-- Runtime bitmap member image mutation, direct raw-media bitmap assignment, cached imported-image assignment, Director BITD imported-media assignment, dynamic member creation/reuse, dynamic member `erase`, dynamic field text mutation, field provider lookup/setter callbacks, text-like member media copy, mutable and pinned registration-point properties, dynamic bitmap member sprite rendering, dynamic text sprite baking, common text styling property mutation, editable field input mutation, and editable field overlay/clipboard helper state are available for existing cast libraries; non-bitmap imported media payload decoding, platform overlay drawing, and remaining CastLibProvider edge cases remain deferred to later player runtime slices.
+- Runtime bitmap member image mutation, direct raw-media bitmap assignment, cached imported-image assignment, Director BITD imported-media assignment, dynamic member creation/reuse, dynamic member `erase`, dynamic field text mutation, dynamic palette storage and media copy, field provider lookup/setter callbacks, text-like member media copy, mutable and pinned registration-point properties, dynamic bitmap member sprite rendering, dynamic text sprite baking, common text styling property mutation, editable field input mutation, and editable field overlay/clipboard helper state are available for existing cast libraries; non-bitmap imported media payload decoding, platform overlay drawing, and remaining CastLibProvider edge cases remain deferred to later player runtime slices.
 
 ### Bitmap Resolver Foundation
 
 - `player::BitmapResolver` ports Player-owned bitmap cast-member decoding across the main movie and loaded external cast sources, including palette override dispatch and a SpriteBaker-compatible decode-provider adapter.
 - Movie palette lookup now follows score palette channel, built-in palette, config default palette, cast-library palette member, and DirectorFile fallback paths with frame-based caching.
-- `CastLibManager::resolvePaletteByMember` exposes cast-aware palette member resolution for player/runtime callers; broader dynamic member resolver coverage remains deferred to later Player integration slices.
+- `CastLibManager::resolvePaletteByMember` exposes cast-aware authored and dynamic palette member resolution for player/runtime callers, and `resolvePaletteByName` resolves named runtime palette members; broader dynamic member resolver coverage remains deferred to later Player integration slices.
 
 ### Player Event and Render Configuration Foundation
 
@@ -550,6 +551,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Raw bitmap media byte assignment now handles Java-compatible `LSWI` imported images and Director `DTIB`/BITD payloads directly on bitmap members while rejecting invalid bytes and non-bitmap targets.
 - Imported non-bitmap media payload decoding remains deferred.
 
+### Runtime Palette Media Copy Foundation
+
+- `CastMember` now stores runtime palette payloads for dynamic palette members.
+- `CastLib::getMemberProp("color")` exposes palette entries as color datums for runtime and file-backed palette members.
+- `CastLibManager::setMemberProp("media", castMemberRef)` now clones palette member colors into palette targets, while palette resolution by member/name prefers runtime payloads before file-backed CLUT fallback.
+
 ### Runtime Cast Member RegPoint Foundation
 
 - `cast::CastMember` now tracks Java-style pinned registration-point state: authored members preserve their member regPoint across image/media assignments, dynamic/reused members adopt assigned bitmap anchors until explicitly pinned, and copied bitmap media inherits the source member's pin state.
@@ -827,6 +834,7 @@ Result:
 - Runtime text member style property get/set, Director-style text color coercion, rect/width/height geometry mutation, and SpriteBaker dynamic text style propagation passed through the same CTest executable.
 - Runtime text-like `media` assignment from another cast member, including copied text content and style state through the cast-member property callback, passed through the same CTest executable.
 - Runtime and file-backed bitmap `media` assignment from another cast member, including decoded BITD pixels, script-modified runtime copies, and registration-point propagation, passed through the same CTest executable.
+- Runtime palette payload storage, `member.color` list exposure, palette member lookup by member/name, and palette-to-palette `media` copying passed through the same CTest executable.
 - Runtime cast-member `regPoint` property mutation, non-point rejection, member-method sub-property reads, live runtime-bitmap anchor synchronization, authored-member pinned image/import assignment, copied-media pin inheritance, and dynamic-member unpinned image assignment passed through the same CTest executable.
 - Runtime text-like member `charPosToLoc`/`locToCharPos` method dispatch, no-renderer fallbacks, builtin callback routing, and Player text-renderer wiring passed through the same CTest executable.
 - Runtime text `lineCount`/`line` properties plus cast-member `getProp` and `count(#char/#word/#line/#item)` method helpers passed through the same CTest executable.
@@ -1032,4 +1040,5 @@ Result:
 - `f4d38f93 Port C++ file-backed bitmap media copy`
 - `f840eaf4 Port C++ cast member regPoint mutation`
 - `4aa8cd03 Port C++ pinned regPoint image assignment`
-- Current checkpoint commit message: `Port C++ bitmap media datum assignment`
+- `81e330b3 Port C++ bitmap media datum assignment`
+- Current checkpoint commit message: `Port C++ palette member media copy`

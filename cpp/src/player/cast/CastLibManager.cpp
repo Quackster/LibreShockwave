@@ -10,6 +10,7 @@
 #include "libreshockwave/DirectorFile.hpp"
 #include "libreshockwave/bitmap/Bitmap.hpp"
 #include "libreshockwave/bitmap/BitmapDecoder.hpp"
+#include "libreshockwave/bitmap/Palette.hpp"
 #include "libreshockwave/cast/BitmapInfo.hpp"
 #include "libreshockwave/cast/CastMember.hpp"
 #include "libreshockwave/chunks/CastChunk.hpp"
@@ -240,6 +241,30 @@ std::optional<bitmap::Bitmap> decodeBitmapMedia(const std::vector<std::uint8_t>&
         bitmap = decodeDirectorBitmapMedia(data, defaultCastLib, manager);
     }
     return bitmap;
+}
+
+std::shared_ptr<const bitmap::Palette> clonePalette(const bitmap::Palette& palette) {
+    return std::make_shared<bitmap::Palette>(palette.colors(), palette.name());
+}
+
+std::shared_ptr<const bitmap::Palette> paletteFromCastMember(const std::shared_ptr<CastLib>& castLib,
+                                                             int memberNumber) {
+    if (!castLib) {
+        return nullptr;
+    }
+    if (!castLib->isLoaded()) {
+        castLib->load();
+    }
+    auto member = castLib->getMember(memberNumber);
+    if (member && member->isPalette()) {
+        if (auto palette = member->paletteData()) {
+            return palette;
+        }
+    }
+    if (castLib->sourceFile() != nullptr) {
+        return castLib->sourceFile()->resolvePaletteByMemberNumber(memberNumber);
+    }
+    return nullptr;
 }
 
 } // namespace
@@ -625,12 +650,46 @@ std::shared_ptr<const bitmap::Palette> CastLibManager::resolvePaletteByMember(in
         return nullptr;
     }
 
-    auto castLib = getCastLib(castLibNumber);
-    if (castLib != nullptr && castLib->sourceFile() != nullptr) {
-        return castLib->sourceFile()->resolvePaletteByMemberNumber(memberNumber);
+    if (auto castLib = getCastLib(castLibNumber)) {
+        if (auto palette = paletteFromCastMember(castLib, memberNumber)) {
+            return palette;
+        }
+    }
+
+    ensureInitialized();
+    for (const auto& [number, castLib] : castLibs_) {
+        if (number == castLibNumber) {
+            continue;
+        }
+        if (auto palette = paletteFromCastMember(castLib, memberNumber)) {
+            return palette;
+        }
     }
 
     return file_ != nullptr ? file_->resolvePaletteByMemberNumber(memberNumber) : nullptr;
+}
+
+std::shared_ptr<const bitmap::Palette> CastLibManager::resolvePaletteByName(const std::string& name) {
+    if (name.empty()) {
+        return nullptr;
+    }
+    ensureInitialized();
+    for (const auto& [_, castLib] : castLibs_) {
+        if (!castLib) {
+            continue;
+        }
+        if (!castLib->isLoaded()) {
+            castLib->load();
+        }
+        auto member = castLib->getMemberByName(name);
+        if (!member || !member->isPalette()) {
+            continue;
+        }
+        if (auto palette = resolvePaletteByMember(castLib->number(), member->memberNum())) {
+            return palette;
+        }
+    }
+    return nullptr;
 }
 
 lingo::Datum CastLibManager::createMember(int castLibNumber, const std::string& memberType) {
@@ -1081,6 +1140,14 @@ bool CastLibManager::copyMemberMedia(int targetCastLibNumber,
                 return true;
             }
         }
+    }
+    if (target->isPalette() && source->isPalette()) {
+        auto palette = resolvePaletteByMember(sourceCastLib, source->memberNum());
+        if (!palette) {
+            return false;
+        }
+        target->setPaletteData(clonePalette(*palette));
+        return true;
     }
     return false;
 }

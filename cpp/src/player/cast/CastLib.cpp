@@ -10,6 +10,7 @@
 
 #include "libreshockwave/DirectorFile.hpp"
 #include "libreshockwave/bitmap/Bitmap.hpp"
+#include "libreshockwave/bitmap/Palette.hpp"
 #include "libreshockwave/cast/CastMember.hpp"
 #include "libreshockwave/cast/MemberType.hpp"
 #include "libreshockwave/chunks/CastChunk.hpp"
@@ -181,6 +182,15 @@ int textColorToArgb(const lingo::Datum& value) {
 
 lingo::Datum colorDatumFromArgb(int argb) {
     return lingo::Datum::colorRef((argb >> 16) & 0xFF, (argb >> 8) & 0xFF, argb & 0xFF);
+}
+
+lingo::Datum paletteColorListDatum(const bitmap::Palette& palette) {
+    std::vector<lingo::Datum> colors;
+    colors.reserve(static_cast<std::size_t>(palette.size()));
+    for (int index = 0; index < palette.size(); ++index) {
+        colors.push_back(colorDatumFromArgb(static_cast<int>(palette.getColor(index))));
+    }
+    return lingo::Datum::list(std::move(colors));
 }
 
 std::string fontStyleFromDatum(const lingo::Datum& value) {
@@ -592,6 +602,13 @@ lingo::Datum CastLib::getMemberProp(int memberNumber, const std::string& propNam
         if (prop == "fixedlinespace") return lingo::Datum::of(member->textFixedLineSpace());
         if (prop == "topspacing") return lingo::Datum::of(member->textTopSpacing());
         if (prop == "editable") return lingo::Datum::of(member->editable() ? 1 : 0);
+    }
+    if (member->isPalette() && prop == "color") {
+        auto palette = member->paletteData();
+        if (!palette && sourceFile_) {
+            palette = sourceFile_->resolvePaletteByMemberNumber(memberNumber);
+        }
+        return palette ? paletteColorListDatum(*palette) : lingo::Datum::voidValue();
     }
     if (prop == "width") return lingo::Datum::of(member->width());
     if (prop == "height") return lingo::Datum::of(member->height());

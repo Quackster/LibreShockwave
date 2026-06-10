@@ -4,6 +4,7 @@
 #include <utility>
 
 #include "libreshockwave/bitmap/Bitmap.hpp"
+#include "libreshockwave/bitmap/Palette.hpp"
 #include "libreshockwave/chunks/CastMemberChunk.hpp"
 
 namespace libreshockwave::cast {
@@ -163,6 +164,14 @@ void CastMember::setTextTopSpacing(int spacing) { textTopSpacing_ = spacing; }
 bool CastMember::editable() const { return editable_; }
 void CastMember::setEditable(bool editable) { editable_ = editable; }
 
+std::shared_ptr<const bitmap::Palette> CastMember::paletteData() const {
+    return dynamicPalette_;
+}
+
+void CastMember::setPaletteData(std::shared_ptr<const bitmap::Palette> palette) {
+    dynamicPalette_ = std::move(palette);
+}
+
 void CastMember::setRuntimeBitmap(const bitmap::Bitmap& bitmap, bool markScriptModified) {
     const int currentRegX = regX();
     const int currentRegY = regY();
@@ -255,6 +264,7 @@ void CastMember::resetRuntimePayload() {
     runtimeBitmap_.reset();
     runtimeRegX_.reset();
     runtimeRegY_.reset();
+    dynamicPalette_.reset();
     regPointPinnedToMember_ = false;
     dynamicText_.reset();
     resetTextProperties();

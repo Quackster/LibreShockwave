@@ -12780,6 +12780,39 @@ void testCastLibManagerFoundation() {
     assert(reusedRuntime.asCastMemberRef()->memberNum() == 10000);
     assert(manager.resolveMember(1, 10000) == reusableRuntime);
     assert(manager.getMemberProp(1, 10000, "type").asSymbol()->name == "palette");
+    assert(manager.setMemberProp(1, 10000, "name", Datum::of(std::string("Runtime Palette"))));
+    const auto sourceRuntimePalette = std::make_shared<Palette>(
+        std::vector<std::uint32_t>{0x112233U, 0x445566U, 0x778899U},
+        "Runtime Palette Data");
+    reusableRuntime->setPaletteData(sourceRuntimePalette);
+    assert(manager.resolvePaletteByMember(1, 10000) == sourceRuntimePalette);
+    assert(manager.resolvePaletteByName("Runtime Palette") == sourceRuntimePalette);
+    const auto paletteColors = manager.getMemberProp(1, 10000, "color");
+    assert(paletteColors.isList());
+    assert(paletteColors.listValue().count() == 3);
+    assert(paletteColors.listValue().getAt(1).asColorRef()->r == 0x11);
+    assert(paletteColors.listValue().getAt(1).asColorRef()->g == 0x22);
+    assert(paletteColors.listValue().getAt(1).asColorRef()->b == 0x33);
+
+    const auto copiedPaletteMember = manager.createMember(1, "palette");
+    const auto* copiedPaletteRef = copiedPaletteMember.asCastMemberRef();
+    assert(copiedPaletteRef != nullptr);
+    assert(manager.setMemberProp(1,
+                                 copiedPaletteRef->memberNum(),
+                                 "media",
+                                 Datum::castMemberRef(CastLibId(1), MemberId(10000))));
+    const auto copiedRuntimePalette = manager.resolvePaletteByMember(1, copiedPaletteRef->memberNum());
+    assert(copiedRuntimePalette != nullptr);
+    assert(copiedRuntimePalette != sourceRuntimePalette);
+    assert(copiedRuntimePalette->name() == "Runtime Palette Data");
+    assert(copiedRuntimePalette->getColor(0) == 0x112233U);
+    assert(copiedRuntimePalette->getColor(2) == 0x778899U);
+    const auto copiedPaletteColors = manager.getMemberProp(1, copiedPaletteRef->memberNum(), "color");
+    assert(copiedPaletteColors.listValue().getAt(2).asColorRef()->r == 0x44);
+    assert(!manager.setMemberProp(1,
+                                  2,
+                                  "media",
+                                  Datum::castMemberRef(CastLibId(1), MemberId(10000))));
 
     std::vector<std::uint8_t> importedImage{
         'L', 'S', 'W', 'I',

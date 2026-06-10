@@ -17,6 +17,7 @@ class CastMemberChunk;
 
 namespace libreshockwave::bitmap {
 class Bitmap;
+class Palette;
 }
 
 namespace libreshockwave::cast {
@@ -95,6 +96,8 @@ public:
     void setTextTopSpacing(int spacing);
     [[nodiscard]] bool editable() const;
     void setEditable(bool editable);
+    [[nodiscard]] std::shared_ptr<const bitmap::Palette> paletteData() const;
+    void setPaletteData(std::shared_ptr<const bitmap::Palette> palette);
     [[nodiscard]] std::shared_ptr<bitmap::Bitmap> runtimeBitmap() const;
     void setRuntimeBitmap(const bitmap::Bitmap& bitmap, bool markScriptModified = true);
     void erase();
@@ -123,6 +126,7 @@ private:
     std::shared_ptr<bitmap::Bitmap> runtimeBitmap_;
     std::optional<int> runtimeRegX_;
     std::optional<int> runtimeRegY_;
+    std::shared_ptr<const bitmap::Palette> dynamicPalette_;
     bool regPointPinnedToMember_ = true;
     std::optional<std::string> dynamicText_;
     std::string textFont_ = "Arial";
