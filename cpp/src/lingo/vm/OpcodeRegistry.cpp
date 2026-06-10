@@ -21,6 +21,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <functional>
+#include <limits>
 #include <optional>
 #include <queue>
 #include <sstream>
@@ -3028,6 +3029,83 @@ std::uint32_t imageMakeWhiteTextBackgroundTransparentPixel(std::uint32_t pixel) 
     return (pixel & 0x00FFFFFFU) == 0x00FFFFFFU ? (pixel & 0x00FFFFFFU) : pixel;
 }
 
+bool imagePalettesCompatibleForIndexPreserve(const bitmap::Bitmap& dest, const bitmap::Bitmap& src) {
+    const auto destPalette = dest.imagePalette();
+    const auto srcPalette = src.imagePalette();
+    return destPalette == nullptr || srcPalette == nullptr || destPalette.get() == srcPalette.get();
+}
+
+bool imageCanPreservePaletteIndices(const bitmap::Bitmap& dest,
+                                    const bitmap::Bitmap& src,
+                                    const std::optional<std::vector<std::uint8_t>>& srcPaletteIndices,
+                                    id::InkMode ink,
+                                    int blend,
+                                    const std::shared_ptr<bitmap::Bitmap>& mask,
+                                    std::optional<int> colorRemap,
+                                    std::optional<int> bgColorRemap) {
+    return srcPaletteIndices.has_value() &&
+           srcPaletteIndices->size() == src.pixels().size() &&
+           src.bitDepth() <= 8 &&
+           dest.bitDepth() >= src.bitDepth() &&
+           imagePalettesCompatibleForIndexPreserve(dest, src) &&
+           (ink == id::InkMode::COPY ||
+            ink == id::InkMode::MATTE ||
+            ink == id::InkMode::BACKGROUND_TRANSPARENT) &&
+           blend >= 255 &&
+           mask == nullptr &&
+           !colorRemap.has_value() &&
+           !bgColorRemap.has_value();
+}
+
+bool imageCanRefreshDestinationPaletteIndices(const bitmap::Bitmap& dest) {
+    return dest.bitDepth() <= 8 &&
+           dest.imagePalette() != nullptr &&
+           dest.paletteIndices().has_value();
+}
+
+bool imageShouldSkipPaletteIndexPreserve(std::uint32_t sourcePixel, id::InkMode ink, int backgroundKeyRgb) {
+    if (((sourcePixel >> 24) & 0xFFU) == 0) {
+        return true;
+    }
+    if (ink == id::InkMode::BACKGROUND_TRANSPARENT) {
+        return static_cast<int>(sourcePixel & 0x00FFFFFFU) == (backgroundKeyRgb & 0x00FFFFFF);
+    }
+    return false;
+}
+
+bool imageCopiedWhiteCanKeepMatteIndex(const bitmap::Palette& palette, std::uint32_t pixel, int previousIndex) {
+    return previousIndex == 0 &&
+           palette.size() > 0 &&
+           (palette.getColor(0) & 0x00FFFFFFU) == 0x00FFFFFFU &&
+           (pixel & 0x00FFFFFFU) == 0x00FFFFFFU;
+}
+
+int imageNearestCopiedRgbPaletteIndex(const bitmap::Palette& palette, std::uint32_t pixel) {
+    const auto rgb = pixel & 0x00FFFFFFU;
+    if (rgb != 0x00FFFFFFU || palette.size() <= 1 ||
+        (palette.getColor(0) & 0x00FFFFFFU) != 0x00FFFFFFU) {
+        return palette.nearestIndex(pixel);
+    }
+
+    int bestIndex = 1;
+    int bestDistance = std::numeric_limits<int>::max();
+    for (int index = 1; index < palette.size(); ++index) {
+        const auto color = palette.getColor(index) & 0x00FFFFFFU;
+        const int dr = 0xFF - static_cast<int>((color >> 16) & 0xFFU);
+        const int dg = 0xFF - static_cast<int>((color >> 8) & 0xFFU);
+        const int db = 0xFF - static_cast<int>(color & 0xFFU);
+        const int distance = (dr * dr) + (dg * dg) + (db * db);
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            bestIndex = index;
+            if (distance == 0) {
+                break;
+            }
+        }
+    }
+    return bestIndex;
+}
+
 bool imageRegionIsMostlyGrayscale(const bitmap::Bitmap& src, const Datum::IntRect& rect) {
     const int width = rect.right - rect.left;
     const int height = rect.bottom - rect.top;
@@ -3408,15 +3486,6 @@ Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
     }
 
     const auto srcPaletteIndices = src.paletteIndices();
-    const bool preservePaletteIndices =
-        srcPaletteIndices.has_value() && srcPaletteIndices->size() == src.pixels().size();
-    std::optional<std::vector<std::uint8_t>> destPaletteIndices;
-    if (preservePaletteIndices) {
-        destPaletteIndices = dest.paletteIndices().value_or(
-            std::vector<std::uint8_t>(dest.pixels().size(), 0));
-    } else {
-        dest.clearPaletteIndices();
-    }
 
     const bool applyGrayscaleRemap =
         (colorRemap.has_value() || bgColorRemap.has_value()) &&
@@ -3446,6 +3515,17 @@ Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
     }
     const bool whiteTextBackgroundTransparent = imageShouldTreatWhiteTextBackgroundAsTransparent(
         src, *srcRect, effectiveInk, blend, mask, colorRemap, bgColorRemap);
+    const bool preservePaletteIndices = imageCanPreservePaletteIndices(
+        dest, src, srcPaletteIndices, effectiveInk, blend, mask, colorRemap, bgColorRemap);
+    const bool refreshDestPaletteIndices =
+        !preservePaletteIndices && imageCanRefreshDestinationPaletteIndices(dest);
+    std::optional<std::vector<std::uint8_t>> destPaletteIndices;
+    if (preservePaletteIndices || refreshDestPaletteIndices) {
+        destPaletteIndices = dest.paletteIndices().value_or(
+            std::vector<std::uint8_t>(dest.pixels().size(), 0));
+    } else {
+        dest.clearPaletteIndices();
+    }
 
     for (int dy = 0; dy < destHeight; ++dy) {
         const int sy = srcRect->top + (dy * srcHeight / destHeight);
@@ -3489,15 +3569,31 @@ Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
                     sy,
                     indexedShadeForDarken);
             }
-            dest.setPixelPreservePaletteIndex(
-                px,
-                py,
-                imageApplyCopyPixelsInk(sourcePixel, dest.getPixel(px, py), effectiveInk, blend, backgroundKeyRgb));
-            if (destPaletteIndices.has_value() && srcPaletteIndices.has_value()) {
-                const auto srcOffset = static_cast<std::size_t>(sy * src.width() + sx);
-                const auto destOffset = static_cast<std::size_t>(py * dest.width() + px);
-                if (srcOffset < srcPaletteIndices->size() && destOffset < destPaletteIndices->size()) {
-                    (*destPaletteIndices)[destOffset] = (*srcPaletteIndices)[srcOffset];
+            const auto destPixel = imageApplyCopyPixelsInk(
+                sourcePixel, dest.getPixel(px, py), effectiveInk, blend, backgroundKeyRgb);
+            dest.setPixelPreservePaletteIndex(px, py, destPixel);
+            const auto destOffset = static_cast<std::size_t>(py * dest.width() + px);
+            if (preservePaletteIndices && destPaletteIndices.has_value() && srcPaletteIndices.has_value()) {
+                if (!imageShouldSkipPaletteIndexPreserve(sourcePixel, effectiveInk, backgroundKeyRgb)) {
+                    const auto srcOffset = static_cast<std::size_t>(sy * src.width() + sx);
+                    if (srcOffset < srcPaletteIndices->size() && destOffset < destPaletteIndices->size()) {
+                        (*destPaletteIndices)[destOffset] = (*srcPaletteIndices)[srcOffset];
+                    }
+                }
+            } else if (refreshDestPaletteIndices && destPaletteIndices.has_value() &&
+                       destOffset < destPaletteIndices->size()) {
+                const auto alpha = (destPixel >> 24) & 0xFFU;
+                const auto palette = dest.imagePalette();
+                if (alpha != 0 && palette != nullptr) {
+                    const int previousIndex = static_cast<int>((*destPaletteIndices)[destOffset]);
+                    const int paletteIndex = imageCopiedWhiteCanKeepMatteIndex(*palette, destPixel, previousIndex)
+                        ? previousIndex
+                        : imageNearestCopiedRgbPaletteIndex(*palette, destPixel);
+                    (*destPaletteIndices)[destOffset] = static_cast<std::uint8_t>(paletteIndex & 0xFF);
+                    dest.setPixelPreservePaletteIndex(
+                        px,
+                        py,
+                        (destPixel & 0xFF000000U) | (palette->getColor(paletteIndex) & 0x00FFFFFFU));
                 }
             }
         }

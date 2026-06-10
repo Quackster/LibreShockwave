@@ -6861,6 +6861,54 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(coloredWhiteBackedDest->getPixel(0, 0) == 0xFFFFFFFFU);
     assert(coloredWhiteBackedDest->getPixel(1, 0) == 0xFFEECCAAU);
     assert(coloredWhiteBackedDest->getPixel(2, 0) == 0xFFFFFFFFU);
+    auto indexedTextPalette = std::make_shared<Palette>(
+        std::vector<std::uint32_t>{0xFFFFFFU, 0xEFEFEFU, 0x000000U}, "window-ui");
+    auto indexedTextDest = std::make_shared<Bitmap>(3, 1, 8);
+    indexedTextDest->setImagePalette(indexedTextPalette);
+    indexedTextDest->fillRectPaletteIndex(0, 0, 3, 1, 1, 0xFFEFEFEFU);
+    auto indexedTextSource = std::make_shared<Bitmap>(
+        3, 1, 32, std::vector<std::uint32_t>{0xFFFFFFFFU, 0xFF000000U, 0xFFFFFFFFU});
+    assert(runObjCall(110, {Datum::imageRef(indexedTextDest),
+                            Datum::imageRef(indexedTextSource),
+                            Datum::intRect(0, 0, 3, 1),
+                            Datum::intRect(0, 0, 3, 1)}).isVoid());
+    assert(indexedTextDest->paletteIndices().value() == (std::vector<std::uint8_t>{1, 2, 1}));
+    assert(indexedTextDest->getPixel(0, 0) == 0xFFEFEFEFU);
+    assert(indexedTextDest->getPixel(1, 0) == 0xFF000000U);
+    assert(indexedTextDest->getPixel(2, 0) == 0xFFEFEFEFU);
+    auto indexedButtonPalette = std::make_shared<Palette>(
+        std::vector<std::uint32_t>{0xFFFFFFU, 0xEFEFEFU, 0x555555U, 0x000000U}, "button-ui");
+    auto indexedButtonDest = std::make_shared<Bitmap>(5, 1, 8);
+    indexedButtonDest->setImagePalette(indexedButtonPalette);
+    indexedButtonDest->fillRectPaletteIndex(0, 0, 5, 1, 1, 0xFFEFEFEFU);
+    indexedButtonDest->fillRectPaletteIndex(4, 0, 1, 1, 2, 0xFF555555U);
+    auto indexedButtonSource = std::make_shared<Bitmap>(
+        5, 1, 32, std::vector<std::uint32_t>{
+            0xFFFFFFFFU, 0xFF000000U, 0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU});
+    assert(runObjCall(110, {Datum::imageRef(indexedButtonDest),
+                            Datum::imageRef(indexedButtonSource),
+                            Datum::intRect(0, 0, 5, 1),
+                            Datum::intRect(0, 0, 5, 1)}).isVoid());
+    assert(indexedButtonDest->paletteIndices().value() == (std::vector<std::uint8_t>{1, 3, 1, 1, 2}));
+    assert(indexedButtonDest->getPixel(0, 0) == 0xFFEFEFEFU);
+    assert(indexedButtonDest->getPixel(1, 0) == 0xFF000000U);
+    assert(indexedButtonDest->getPixel(4, 0) == 0xFF555555U);
+    auto incompatiblePaletteSourcePalette = std::make_shared<Palette>(
+        std::vector<std::uint32_t>{0xFFFFFFU, 0xBEBEBEU}, "source-palette");
+    auto incompatiblePaletteDestPalette = std::make_shared<Palette>(
+        std::vector<std::uint32_t>{0xFFFFFFU, 0x000000U}, "dest-palette");
+    auto incompatiblePaletteSource = std::make_shared<Bitmap>(1, 1, 8);
+    incompatiblePaletteSource->setImagePalette(incompatiblePaletteSourcePalette);
+    incompatiblePaletteSource->fillRectPaletteIndex(0, 0, 1, 1, 1, 0xFFBEBEBEU);
+    auto incompatiblePaletteDest = std::make_shared<Bitmap>(1, 1, 32);
+    incompatiblePaletteDest->setImagePalette(incompatiblePaletteDestPalette);
+    incompatiblePaletteDest->fill(0xFFFFFFFFU);
+    assert(runObjCall(110, {Datum::imageRef(incompatiblePaletteDest),
+                            Datum::imageRef(incompatiblePaletteSource),
+                            Datum::intRect(0, 0, 1, 1),
+                            Datum::intRect(0, 0, 1, 1)}).isVoid());
+    assert(incompatiblePaletteDest->getPixel(0, 0) == 0xFFBEBEBEU);
+    assert(!incompatiblePaletteDest->paletteIndices().has_value());
     auto runDarkenBgTint = [&](std::shared_ptr<Bitmap> source, Datum bgColor) {
         auto darkenDest = std::make_shared<Bitmap>(1, 1, 32, std::vector<std::uint32_t>{0xFFFFFFFFU});
         auto darkenProps = Datum::propList();
