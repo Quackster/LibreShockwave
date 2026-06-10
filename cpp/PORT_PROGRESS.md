@@ -525,7 +525,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `CastMember` now tracks Java-style dynamic text separately from file-backed text content and clears it as part of dynamic payload erase/reuse.
 - `CastLib::getMemberProp("text")` resolves dynamic text first, then associated STXT text with Director-style carriage-return line endings; `setMemberProp("text")`, `setMemberProp("html")`, and text-like string/symbol `media` assignment update runtime text.
 - `CastLibManager` now wires `BuiltinContext::fieldResolver` and `fieldSetter` to cast-member text lookup and mutation for member names, scoped member numbers, and encoded cast/member identifiers.
-- Field datum identity, parsed field values, and editable field UI remain deferred.
+- Editable field UI remains deferred.
 
 ### Runtime Dynamic Text Render Foundation
 
@@ -538,7 +538,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `CastMember` now stores Java-compatible runtime text defaults for font, font size, font style, alignment, text color, background color, word wrap, antialias, box type, text rect, fixed line space, top spacing, and editable state.
 - `CastLib::getMemberProp` and `setMemberProp` now expose those text-like member properties, including list-valued `fontStyle`, symbol/string `alignment`, Director-style color coercion, and rect/width/height text geometry mutation.
 - Dynamic text baking now consumes the runtime text style state while retaining sprite-driven transparent/background color handling.
-- Parsed field datum identity and editable selection/caret rendering remain deferred.
+- Editable selection/caret rendering remains deferred.
 
 ### Runtime Text Media Copy Foundation
 
@@ -550,13 +550,19 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `CastLibManager::callMemberMethod` now dispatches text-like `charPosToLoc` and `locToCharPos` through an injected `TextRenderer`, using runtime text content, font, style, alignment, fixed-line-space, and rect width with Java-compatible empty/no-renderer fallbacks.
 - `Player::setTextRenderer` now installs a platform text renderer into both `SpriteBaker` and `CastLibManager`, keeping dynamic text sprite baking and Director member-method measurement on the same renderer surface.
-- Parsed field datum identity and editable selection/caret rendering remain deferred.
+- Editable selection/caret rendering remains deferred.
 
 ### Cast Member Utility Method Foundation
 
 - `CastLib` now exposes Java-compatible text `lineCount` and `line` member properties over runtime/file-backed text content.
 - `CastLibManager::callMemberMethod` now ports Java's simple member `getProp` and text `count(#char/#word/#line/#item)` helper methods, including point/rect/list sub-property extraction through the same builtin callback surface used by VM object calls.
-- Parsed field datum identity and editable selection/caret rendering remain deferred.
+- Editable selection/caret rendering remains deferred.
+
+### Runtime Field Datum Foundation
+
+- `lingo::Datum` now exposes Java-compatible string-like `FieldText` values that preserve source cast/member identity while retaining normal string, truthiness, and numeric coercion behavior.
+- `CastLibManager` now returns member-backed `FieldText` datums from the `field(...)` builtin path and provides cached parsed field values for `value(field(...))` through a `BuiltinContext` parsed-field callback.
+- Editable field UI remains deferred.
 
 ### Lingo VM Scope and Execution Context Foundation
 
@@ -812,6 +818,7 @@ Result:
 - Runtime text-like `media` assignment from another cast member, including copied text content and style state through the cast-member property callback, passed through the same CTest executable.
 - Runtime text-like member `charPosToLoc`/`locToCharPos` method dispatch, no-renderer fallbacks, builtin callback routing, and Player text-renderer wiring passed through the same CTest executable.
 - Runtime text `lineCount`/`line` properties plus cast-member `getProp` and `count(#char/#word/#line/#item)` method helpers passed through the same CTest executable.
+- FieldText datum identity, field builtin member identity preservation, and `value(field(...))` parsed-field callback behavior passed through the same CTest executable.
 - SoundBuiltins channel creation, availability, sound-channel method dispatch, VM object-property defaults/mutation, and SoundManager playback delegation passed through the same CTest executable.
 - ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration and callback hooks passed through the same CTest executable.
 - TypeBuiltins object/void/type predicates, `value` literal parsing/provider fallback, `script`/`callAncestor` callback hooks, symbol conversion, and `ilk` alias checks passed through the same CTest executable.
@@ -1003,4 +1010,5 @@ Result:
 - `1e761636 Port C++ runtime text styling`
 - `f686fc32 Port C++ text media copy`
 - `942d700f Port C++ text member methods`
-- Current checkpoint commit message: `Port C++ cast member utility methods`
+- `360ac5a7 Port C++ cast member utility methods`
+- Current checkpoint commit message: `Port C++ field datum identity`

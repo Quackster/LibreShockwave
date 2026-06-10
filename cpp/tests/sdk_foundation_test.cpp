@@ -894,6 +894,17 @@ void testLingoDatumTypes() {
     assert(chunk.isString());
     assert(chunk.stringValue() == "e");
 
+    const auto fieldText = Datum::fieldText("42", 3, 9);
+    assert(fieldText.type() == DatumType::FieldText);
+    assert(fieldText.typeString() == "string");
+    assert(fieldText.isString());
+    assert(fieldText.asFieldText()->castLib == 3);
+    assert(fieldText.asFieldText()->memberNum == 9);
+    assert(fieldText.stringValue() == "42");
+    assert(fieldText.intValue() == 42);
+    assert(fieldText.boolValue());
+    assert(!Datum::fieldText("", 3, 9).boolValue());
+
     const auto script = Datum::scriptRef(Datum::CastMemberRef{4, 8});
     assert(script.asScriptRef()->memberRef.castLib == 4);
     const auto sprite = Datum::spriteRef(ChannelId(6));
@@ -2708,6 +2719,21 @@ void testBuiltinRegistryFoundation() {
     assert(registry.invoke("value", context, {Datum::of(std::string("3"))}).intValue() == 3);
     assert(registry.invoke("value", context, {Datum::of(std::string("3 5"))}).intValue() == 3);
     assert(registry.invoke("value", context, {Datum::of(std::string("penny"))}).isVoid());
+    const Datum fallbackFieldText = Datum::fieldText("[#fallback: 7]", 12, 34);
+    assert(registry.invoke("value", context, {fallbackFieldText}).propListValue().get(Datum::symbol("fallback")).intValue() == 7);
+    int parsedFieldCast = 0;
+    int parsedFieldMember = 0;
+    context.fieldParsedValueResolver = [&parsedFieldCast, &parsedFieldMember](int castLib, int memberNum) {
+        parsedFieldCast = castLib;
+        parsedFieldMember = memberNum;
+        return Datum::list({Datum::of(8), Datum::of(9)});
+    };
+    const Datum providerFieldValue = registry.invoke("value", context, {Datum::fieldText("ignored", 5, 6)});
+    assert(providerFieldValue.listValue().count() == 2);
+    assert(providerFieldValue.listValue().getAt(2).intValue() == 9);
+    assert(parsedFieldCast == 5);
+    assert(parsedFieldMember == 6);
+    context.fieldParsedValueResolver = {};
     const Datum valueList = registry.invoke("value", context, {Datum::of(std::string("[\"cat\", \"dog\"]"))});
     assert(valueList.listValue().count() == 2);
     assert(valueList.listValue().getAt(2).stringValue() == "dog");
@@ -12275,6 +12301,18 @@ void testCastLibManagerFoundation() {
     assert(manager.getFieldValue(Datum::of(10001), 1).stringValue() == "Updated Field");
     context.fieldSetter(Datum::of((1 << 16) | 10001), 0, "Encoded Field");
     assert(registry.invoke("field", context, {Datum::of(10001), Datum::castLibRef(CastLibId(1))}).stringValue() == "Encoded Field");
+    const auto encodedFieldDatum = registry.invoke("field", context, {Datum::of(10001), Datum::castLibRef(CastLibId(1))});
+    assert(encodedFieldDatum.asFieldText() != nullptr);
+    assert(encodedFieldDatum.asFieldText()->castLib == 1);
+    assert(encodedFieldDatum.asFieldText()->memberNum == 10001);
+    assert(encodedFieldDatum.stringValue() == "Encoded Field");
+    context.fieldSetter(Datum::of(10001), 1, "[#answer: 42]");
+    const auto parsedField = registry.invoke("value",
+                                             context,
+                                             {registry.invoke("field", context, {Datum::of(10001),
+                                                                                 Datum::castLibRef(CastLibId(1))})});
+    assert(parsedField.propListValue().get(Datum::symbol("answer")).intValue() == 42);
+    assert(manager.getParsedFieldValue(1, 10001).propListValue().get(Datum::symbol("answer")).intValue() == 42);
     assert(manager.setMemberProp(1, 10001, "html", Datum::of(std::string("<b>Plain</b> <i>Text</i>"))));
     assert(manager.getMemberProp(1, 10001, "text").stringValue() == "Plain Text");
     assert(manager.setMemberProp(1, 10001, "media", Datum::symbol("Symbolic")));

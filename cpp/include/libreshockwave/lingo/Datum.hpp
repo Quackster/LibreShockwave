@@ -34,6 +34,7 @@ enum class DatumType {
     Int,
     Float,
     String,
+    FieldText,
     StringChunk,
     Symbol,
     VarRef,
@@ -113,6 +114,13 @@ public:
     struct Str {
         std::string value;
         friend bool operator==(const Str&, const Str&) = default;
+    };
+
+    struct FieldText {
+        std::string value;
+        int castLib;
+        int memberNum;
+        friend bool operator==(const FieldText&, const FieldText&) = default;
     };
 
     struct Symbol {
@@ -314,6 +322,7 @@ public:
     [[nodiscard]] static Datum of(float value);
     [[nodiscard]] static Datum of(double value);
     [[nodiscard]] static Datum of(std::string value);
+    [[nodiscard]] static Datum fieldText(std::string value, int castLib, int memberNum);
     [[nodiscard]] static Datum symbol(std::string name);
     [[nodiscard]] static Datum list(std::vector<Datum> items = {}, bool sorted = false);
     [[nodiscard]] static Datum propList(bool sorted = false);
@@ -363,6 +372,7 @@ public:
     [[nodiscard]] const Int* asInt() const;
     [[nodiscard]] const DFloat* asFloat() const;
     [[nodiscard]] const Str* asString() const;
+    [[nodiscard]] const FieldText* asFieldText() const;
     [[nodiscard]] const Symbol* asSymbol() const;
     [[nodiscard]] const CastLibRef* asCastLibRef() const;
     [[nodiscard]] const CastLibMemberAccessor* asCastLibMemberAccessor() const;
@@ -407,6 +417,7 @@ private:
         Int,
         DFloat,
         Str,
+        FieldText,
         Symbol,
         ListPtr,
         PropListPtr,

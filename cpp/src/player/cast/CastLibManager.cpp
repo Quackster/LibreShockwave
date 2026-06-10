@@ -16,6 +16,7 @@
 #include "libreshockwave/chunks/CastListChunk.hpp"
 #include "libreshockwave/chunks/CastMemberChunk.hpp"
 #include "libreshockwave/id/Ids.hpp"
+#include "libreshockwave/lingo/LingoValueParser.hpp"
 #include "libreshockwave/player/render/output/TextRenderer.hpp"
 #include "libreshockwave/util/FileUtil.hpp"
 
@@ -453,6 +454,33 @@ lingo::Datum CastLibManager::getFieldValue(const lingo::Datum& identifier, int c
     return text.isVoid() ? lingo::Datum::of(std::string()) : text;
 }
 
+lingo::Datum CastLibManager::getFieldDatum(const lingo::Datum& identifier, int castLibNumber) {
+    auto member = resolveFieldMember(identifier, castLibNumber);
+    if (!member) {
+        return lingo::Datum::of(std::string());
+    }
+    lingo::Datum text = getFieldValue(identifier, castLibNumber);
+    return lingo::Datum::fieldText(text.stringValue(), member->castLib(), member->memberNum());
+}
+
+lingo::Datum CastLibManager::getParsedFieldValue(int castLibNumber, int memberNumber) {
+    auto member = resolveMember(castLibNumber, memberNumber);
+    if (!member || !member->isTextLike()) {
+        return lingo::Datum::voidValue();
+    }
+
+    const std::string text = getMemberProp(member->castLib(), member->memberNum(), "text").stringValue();
+    const auto key = std::make_pair(member->castLib(), member->memberNum());
+    if (const auto found = parsedFieldCache_.find(key);
+        found != parsedFieldCache_.end() && found->second.first == text) {
+        return found->second.second;
+    }
+
+    lingo::Datum parsed = lingo::LingoValueParser::parseWithPartial(text);
+    parsedFieldCache_[key] = std::make_pair(text, parsed);
+    return parsed;
+}
+
 void CastLibManager::setFieldValue(const lingo::Datum& identifier, int castLibNumber, const std::string& value) {
     auto member = resolveFieldMember(identifier, castLibNumber);
     if (member) {
@@ -842,7 +870,10 @@ void CastLibManager::installBuiltinCallbacks(lingo::builtin::BuiltinContext& con
         return setMemberProp(castLib, memberNum, propertyName, value);
     };
     context.fieldResolver = [this](const lingo::Datum& identifier, int castLib) {
-        return getFieldValue(identifier, castLib);
+        return getFieldDatum(identifier, castLib);
+    };
+    context.fieldParsedValueResolver = [this](int castLib, int memberNum) {
+        return getParsedFieldValue(castLib, memberNum);
     };
     context.fieldSetter = [this](const lingo::Datum& identifier, int castLib, const std::string& value) {
         setFieldValue(identifier, castLib, value);

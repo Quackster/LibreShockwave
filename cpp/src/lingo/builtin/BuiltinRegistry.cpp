@@ -2082,6 +2082,15 @@ Datum TypeBuiltins::value(BuiltinContext& context, const std::vector<Datum>& arg
     if (args.empty()) {
         return Datum::voidValue();
     }
+    if (const auto* fieldText = args[0].asFieldText()) {
+        if (context.fieldParsedValueResolver) {
+            Datum parsed = context.fieldParsedValueResolver(fieldText->castLib, fieldText->memberNum);
+            if (!parsed.isVoid()) {
+                return parsed;
+            }
+        }
+        return LingoValueParser::parseWithPartial(fieldText->value);
+    }
     if (!args[0].isString()) {
         return args[0];
     }

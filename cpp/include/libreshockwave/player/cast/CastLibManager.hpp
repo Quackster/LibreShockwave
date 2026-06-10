@@ -69,6 +69,8 @@ public:
     [[nodiscard]] lingo::Datum getMemberProp(int castLibNumber, int memberNumber, const std::string& propName);
     bool setMemberProp(int castLibNumber, int memberNumber, const std::string& propName, const lingo::Datum& value);
     [[nodiscard]] lingo::Datum getFieldValue(const lingo::Datum& identifier, int castLibNumber);
+    [[nodiscard]] lingo::Datum getFieldDatum(const lingo::Datum& identifier, int castLibNumber);
+    [[nodiscard]] lingo::Datum getParsedFieldValue(int castLibNumber, int memberNumber);
     void setFieldValue(const lingo::Datum& identifier, int castLibNumber, const std::string& value);
     [[nodiscard]] std::shared_ptr<chunks::CastMemberChunk> getCastMember(int castLibNumber, int memberNumber);
     [[nodiscard]] std::shared_ptr<chunks::CastMemberChunk> getCastMemberByName(const std::string& memberName);
@@ -125,6 +127,7 @@ private:
     CastDataRequestCallback castDataRequestCallback_;
     MemberSlotRetiredCallback memberSlotRetiredCallback_;
     render::output::TextRenderer* textRenderer_{nullptr};
+    std::map<std::pair<int, int>, std::pair<std::string, lingo::Datum>> parsedFieldCache_;
     bool initialized_ = false;
 };
 

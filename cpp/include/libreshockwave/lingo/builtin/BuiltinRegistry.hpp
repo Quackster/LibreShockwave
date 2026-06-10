@@ -50,6 +50,7 @@ struct BuiltinContext {
                                                     const std::string& methodName,
                                                     const std::vector<Datum>& args)>;
     using FieldResolver = std::function<Datum(const Datum& identifier, int castLib)>;
+    using FieldParsedValueResolver = std::function<Datum(int castLib, int memberNum)>;
     using FieldSetter = std::function<void(const Datum& identifier, int castLib, const std::string& value)>;
     using XtraRegisteredResolver = std::function<bool(const std::string& xtraName)>;
     using XtraInstanceCreator = std::function<Datum(const std::string& xtraName, const std::vector<Datum>& args)>;
@@ -108,6 +109,7 @@ struct BuiltinContext {
     CastMemberPropertySetter castMemberPropertySetter;
     SpriteMethodHandler spriteMethodHandler;
     FieldResolver fieldResolver;
+    FieldParsedValueResolver fieldParsedValueResolver;
     FieldSetter fieldSetter;
     XtraRegisteredResolver xtraRegisteredResolver;
     XtraInstanceCreator xtraInstanceCreator;

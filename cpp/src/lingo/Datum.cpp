@@ -105,6 +105,7 @@ std::string_view typeName(DatumType type) {
         case DatumType::Int: return "int";
         case DatumType::Float: return "float";
         case DatumType::String: return "string";
+        case DatumType::FieldText: return "string";
         case DatumType::StringChunk: return "string_chunk";
         case DatumType::Symbol: return "symbol";
         case DatumType::VarRef: return "var_ref";
@@ -278,6 +279,10 @@ Datum Datum::of(std::string value) {
     return Datum(Str{std::move(value)});
 }
 
+Datum Datum::fieldText(std::string value, int castLib, int memberNum) {
+    return Datum(FieldText{std::move(value), castLib, memberNum});
+}
+
 Datum Datum::symbol(std::string name) {
     return Datum(Symbol{std::move(name)});
 }
@@ -392,6 +397,7 @@ DatumType Datum::type() const {
     if (std::holds_alternative<Int>(value_)) return DatumType::Int;
     if (std::holds_alternative<DFloat>(value_)) return DatumType::Float;
     if (std::holds_alternative<Str>(value_)) return DatumType::String;
+    if (std::holds_alternative<FieldText>(value_)) return DatumType::FieldText;
     if (std::holds_alternative<Symbol>(value_)) return DatumType::Symbol;
     if (std::holds_alternative<ListPtr>(value_)) return DatumType::List;
     if (std::holds_alternative<PropListPtr>(value_)) return DatumType::PropList;
@@ -438,7 +444,11 @@ bool Datum::isVoid() const { return std::holds_alternative<Void>(value_); }
 bool Datum::isInt() const { return std::holds_alternative<Int>(value_); }
 bool Datum::isFloat() const { return std::holds_alternative<DFloat>(value_); }
 bool Datum::isNumber() const { return isInt() || isFloat(); }
-bool Datum::isString() const { return std::holds_alternative<Str>(value_) || std::holds_alternative<StringChunk>(value_); }
+bool Datum::isString() const {
+    return std::holds_alternative<Str>(value_) ||
+           std::holds_alternative<FieldText>(value_) ||
+           std::holds_alternative<StringChunk>(value_);
+}
 bool Datum::isSymbol() const { return std::holds_alternative<Symbol>(value_); }
 bool Datum::isList() const { return std::holds_alternative<ListPtr>(value_); }
 bool Datum::isPropList() const { return std::holds_alternative<PropListPtr>(value_); }
@@ -447,6 +457,7 @@ int Datum::intValue() const {
     if (const auto* value = std::get_if<Int>(&value_)) return value->value;
     if (const auto* value = std::get_if<DFloat>(&value_)) return static_cast<int>(value->value);
     if (const auto* value = std::get_if<Str>(&value_)) return parseIntSafe(value->value);
+    if (const auto* value = std::get_if<FieldText>(&value_)) return parseIntSafe(value->value);
     if (std::holds_alternative<Void>(value_)) return 0;
     throw LingoException("Cannot convert " + typeString() + " to int");
 }
@@ -455,12 +466,14 @@ float Datum::floatValue() const {
     if (const auto* value = std::get_if<DFloat>(&value_)) return value->value;
     if (const auto* value = std::get_if<Int>(&value_)) return static_cast<float>(value->value);
     if (const auto* value = std::get_if<Str>(&value_)) return parseFloatSafe(value->value);
+    if (const auto* value = std::get_if<FieldText>(&value_)) return parseFloatSafe(value->value);
     if (std::holds_alternative<Void>(value_)) return 0.0F;
     throw LingoException("Cannot convert " + typeString() + " to float");
 }
 
 std::string Datum::stringValue() const {
     if (const auto* value = std::get_if<Str>(&value_)) return value->value;
+    if (const auto* value = std::get_if<FieldText>(&value_)) return value->value;
     if (const auto* value = std::get_if<StringChunk>(&value_)) return value->value;
     if (const auto* value = std::get_if<Int>(&value_)) return std::to_string(value->value);
     if (const auto* value = std::get_if<DFloat>(&value_)) return floatToString(value->value);
@@ -492,6 +505,7 @@ bool Datum::boolValue() const {
     if (const auto* value = std::get_if<Int>(&value_)) return value->value != 0;
     if (const auto* value = std::get_if<DFloat>(&value_)) return value->value != 0.0F;
     if (const auto* value = std::get_if<Str>(&value_)) return !value->value.empty();
+    if (const auto* value = std::get_if<FieldText>(&value_)) return !value->value.empty();
     if (std::holds_alternative<Symbol>(value_)) return true;
     if (std::holds_alternative<Void>(value_) || std::holds_alternative<Null>(value_)) return false;
     throw LingoException("Cannot convert " + typeString() + " to bool");
@@ -500,6 +514,7 @@ bool Datum::boolValue() const {
 const Datum::Int* Datum::asInt() const { return std::get_if<Int>(&value_); }
 const Datum::DFloat* Datum::asFloat() const { return std::get_if<DFloat>(&value_); }
 const Datum::Str* Datum::asString() const { return std::get_if<Str>(&value_); }
+const Datum::FieldText* Datum::asFieldText() const { return std::get_if<FieldText>(&value_); }
 const Datum::Symbol* Datum::asSymbol() const { return std::get_if<Symbol>(&value_); }
 const Datum::CastLibRef* Datum::asCastLibRef() const { return std::get_if<CastLibRef>(&value_); }
 const Datum::CastLibMemberAccessor* Datum::asCastLibMemberAccessor() const {
@@ -781,6 +796,7 @@ bool operator==(const Datum& lhs, const Datum& rhs) {
     if (auto value = std::get_if<Datum::Int>(&lhs.value_)) return *value == std::get<Datum::Int>(rhs.value_);
     if (auto value = std::get_if<Datum::DFloat>(&lhs.value_)) return *value == std::get<Datum::DFloat>(rhs.value_);
     if (auto value = std::get_if<Datum::Str>(&lhs.value_)) return *value == std::get<Datum::Str>(rhs.value_);
+    if (auto value = std::get_if<Datum::FieldText>(&lhs.value_)) return *value == std::get<Datum::FieldText>(rhs.value_);
     if (auto value = std::get_if<Datum::Symbol>(&lhs.value_)) return *value == std::get<Datum::Symbol>(rhs.value_);
     if (auto value = std::get_if<Datum::ListPtr>(&lhs.value_)) return **value == **std::get_if<Datum::ListPtr>(&rhs.value_);
     if (auto value = std::get_if<Datum::PropListPtr>(&lhs.value_)) return **value == **std::get_if<Datum::PropListPtr>(&rhs.value_);
