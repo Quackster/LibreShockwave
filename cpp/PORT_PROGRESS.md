@@ -861,7 +861,7 @@ Result:
 - Breakpoint, BreakpointManager, WatchExpression, ExpressionEvaluator, LifecycleDiagnostics, and DebugSnapshot tests passed through the same CTest executable.
 - RenderPipelineTrace, RenderSprite, transform mirror, baked bitmap helpers, and FrameSnapshot tests passed through the same CTest executable.
 - StageRenderer stage-image lifecycle, dynamic/puppeted sprite collection, locZ/channel sorting, last-baked sprite storage, sprite-end cleanup, reset behavior, and RGB555 expansion tests passed through the same CTest executable.
-- SpriteBaker tick counting, default/custom bake-step dispatch, bitmap decode-provider caching, palette-version cache invalidation, provider-backed live script-modified bitmap priority, live COPY exact-white backColor remapping, live DARKEN white-canvas neutralization, live indexed DARKEN foreColor/backColor ramping, 1-bit Copy-ink color remap, shared bitmap ink processing, text baked-size replacement, file-backed STXT renderer dispatch, file-backed XMED parser/renderer dispatch, provider-backed film-loop parent ink processing, file-backed film-loop sub-score compositing, shape baking, transparency-key shape ink, unsupported pass-through, and external BitmapCache ownership tests passed through the same CTest executable.
+- SpriteBaker tick counting, default/custom bake-step dispatch, bitmap decode-provider caching, palette-version cache invalidation, provider-backed live script-modified bitmap priority, live COPY exact-white backColor remapping, live DARKEN white-canvas neutralization, chat-background MATTE outlined-white preservation, live indexed DARKEN foreColor/backColor ramping, 1-bit Copy-ink color remap, shared bitmap ink processing, text baked-size replacement, file-backed STXT renderer dispatch, file-backed XMED parser/renderer dispatch, provider-backed film-loop parent ink processing, file-backed film-loop sub-score compositing, shape baking, transparency-key shape ink, unsupported pass-through, and external BitmapCache ownership tests passed through the same CTest executable.
 - FrameRenderPipeline default StageRenderer/SpriteBaker path, default step names/order, score/dynamic trace summaries, bake tick propagation, baked-sprite publication, snapshot generation, and software-rendered default output tests passed through the same CTest executable.
 - SoftwareFrameRenderer background, stage-image, alpha, blend, scaling, flip, Director mirror, and special-ink tests passed through the same CTest executable.
 - FrameRenderPipelineContext mutation, trace building, snapshot storage, and FrameRenderPipelineStep tests passed through the same CTest executable.
@@ -1193,4 +1193,5 @@ Result:
 - `8d440f40 Port C++ copyPixels matte flood fill`
 - `1b529579 Port C++ copyPixels matte mask destinations`
 - `3c00a226 Port C++ copyPixels color remap preservation`
-- Current checkpoint commit message: `Cover C++ paletted image index parity`
+- `ecf0efd8 Cover C++ paletted image index parity`
+- Current checkpoint commit message: `Cover C++ chat bubble matte bake parity`

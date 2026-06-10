@@ -10630,6 +10630,74 @@ void testSpriteBakerFoundation() {
     assert(bakedLiveDarken.bakedBitmap()->getPixel(1, 0) == 0xFF503810U);
     assert(bakedLiveDarken.bakedBitmap()->getPixel(2, 0) == 0x00000000U);
 
+    auto makeScriptBubbleBitmap = [] {
+        auto bubble = std::make_shared<Bitmap>(20, 10, 32);
+        bubble->fill(0xFFFFFFFFU);
+        for (int x = 4; x <= 15; ++x) {
+            bubble->setPixel(x, 0, 0xFF000000U);
+        }
+        for (int y = 1; y <= 7; ++y) {
+            bubble->setPixel(0, y, 0xFF000000U);
+            bubble->setPixel(19, y, 0xFF000000U);
+        }
+        for (int x = 0; x <= 7; ++x) {
+            bubble->setPixel(x, 7, 0xFF000000U);
+        }
+        for (int x = 12; x <= 19; ++x) {
+            bubble->setPixel(x, 7, 0xFF000000U);
+        }
+        bubble->setPixel(9, 8, 0xFF000000U);
+        bubble->setPixel(10, 8, 0xFF000000U);
+        bubble->setPixel(9, 9, 0xFF000000U);
+        bubble->setPixel(10, 9, 0xFF000000U);
+        bubble->setPixel(2, 2, 0xFF3A8ABFU);
+        for (int x = 6; x <= 9; ++x) {
+            bubble->setPixel(x, 4, 0xFF000000U);
+        }
+        bubble->setPixel(6, 5, 0xFF000000U);
+        bubble->setPixel(9, 5, 0xFF000000U);
+        bubble->markScriptModified();
+        return bubble;
+    };
+    auto bakeScriptBubble = [&](const std::string& memberName) {
+        auto bubbleMember = std::make_shared<CastMember>(1, 10006, MemberType::Bitmap);
+        bubbleMember->setName(memberName);
+        SpriteBaker bubbleBaker;
+        bubbleBaker.setLiveBitmapProvider([bubble = makeScriptBubbleBitmap()](const RenderSprite&)
+            -> std::shared_ptr<const Bitmap> {
+            return bubble;
+        });
+        RenderSprite bubbleSprite(46,
+                                  0,
+                                  0,
+                                  20,
+                                  10,
+                                  0,
+                                  true,
+                                  SpriteType::Bitmap,
+                                  nullptr,
+                                  bubbleMember,
+                                  0,
+                                  0,
+                                  false,
+                                  false,
+                                  libreshockwave::id::code(InkMode::MATTE),
+                                  100,
+                                  false,
+                                  false,
+                                  nullptr,
+                                  false);
+        return bubbleBaker.bake(bubbleSprite).bakedBitmap();
+    };
+    const auto chatBubble = bakeScriptBubble("chat_item_background_10006");
+    assert(chatBubble != nullptr);
+    assert(chatBubble->getPixel(10, 4) == 0xFFFFFFFFU);
+    assert(chatBubble->getPixel(6, 4) == 0xFF000000U);
+    const auto genericBubble = bakeScriptBubble("navigator_window_background_10007");
+    assert(genericBubble != nullptr);
+    assert(genericBubble->getPixel(10, 4) == 0x00000000U);
+    assert(genericBubble->getPixel(6, 4) == 0xFF000000U);
+
     auto indexedDarkenLiveBitmap = std::make_shared<Bitmap>(3, 1, 8, std::vector<std::uint32_t>{
         0xFF383838U,
         0xFF282828U,
