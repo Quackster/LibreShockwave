@@ -332,6 +332,17 @@ std::optional<int> imageFillPaletteIndex(const Datum& colorDatum, const bitmap::
     return std::nullopt;
 }
 
+std::uint32_t imageCopyPixelsRemapColorArgb(const Datum& datum,
+                                            const bitmap::Bitmap& src,
+                                            const bitmap::Bitmap& dest) {
+    const auto* target = &dest;
+    if (const auto* color = datum.asColorRef();
+        color != nullptr && color->paletteIndex.has_value() && src.imagePalette() != nullptr) {
+        target = &src;
+    }
+    return imageColorArgb(datum, target);
+}
+
 int toIntLikeJava(const Datum& datum) {
     if (const auto* value = datum.asInt()) {
         return value->value;
@@ -3117,12 +3128,12 @@ Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
         }
         const Datum bgColorDatum = getPropListKey(args[3].propListValue(), "bgColor");
         if (!bgColorDatum.isVoid()) {
-            bgColorRemap = static_cast<int>(imageColorArgb(bgColorDatum, &dest) & 0x00FFFFFFU);
+            bgColorRemap = static_cast<int>(imageCopyPixelsRemapColorArgb(bgColorDatum, src, dest) & 0x00FFFFFFU);
             backgroundKeyRgb = *bgColorRemap;
         }
         const Datum colorDatum = getPropListKey(args[3].propListValue(), "color");
         if (!colorDatum.isVoid()) {
-            colorRemap = static_cast<int>(imageColorArgb(colorDatum, &dest) & 0x00FFFFFFU);
+            colorRemap = static_cast<int>(imageCopyPixelsRemapColorArgb(colorDatum, src, dest) & 0x00FFFFFFU);
         }
         const Datum maskDatum = getPropListKey(args[3].propListValue(), "maskImage");
         if (const auto* maskRef = maskDatum.asImageRef()) {

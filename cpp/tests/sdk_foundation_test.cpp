@@ -6821,6 +6821,24 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(remapDest->getPixel(0, 0) == 0xFFFF0000U);
     assert(remapDest->getPixel(1, 0) == 0xFF7F0080U);
     assert(remapDest->getPixel(2, 0) == 0xFF0000FFU);
+    auto paletteRemapSource = std::make_shared<Bitmap>(
+        2, 1, 8, std::vector<std::uint32_t>{0xFF000000U, 0xFFFFFFFFU});
+    paletteRemapSource->setImagePalette(std::make_shared<Palette>(
+        std::vector<std::uint32_t>{0x000000U, 0x123456U, 0xABCDEFU}, "source-remap"));
+    auto paletteRemapDest = std::make_shared<Bitmap>(2, 1, 32);
+    paletteRemapDest->setImagePalette(std::make_shared<Palette>(
+        std::vector<std::uint32_t>{0x000000U, 0x00FF00U, 0x0000FFU}, "dest-remap"));
+    paletteRemapDest->fill(0xFF000000U);
+    auto paletteRemapProps = Datum::propList();
+    paletteRemapProps.propListValue().put(Datum::symbol("color"), Datum::paletteIndexColor(1));
+    paletteRemapProps.propListValue().put(Datum::symbol("bgColor"), Datum::paletteIndexColor(2));
+    assert(runObjCall(110, {Datum::imageRef(paletteRemapDest),
+                            Datum::imageRef(paletteRemapSource),
+                            Datum::intRect(0, 0, 2, 1),
+                            Datum::intRect(0, 0, 2, 1),
+                            paletteRemapProps}).isVoid());
+    assert(paletteRemapDest->getPixel(0, 0) == 0xFF123456U);
+    assert(paletteRemapDest->getPixel(1, 0) == 0xFFABCDEFU);
     auto transparentRemapDest = std::make_shared<Bitmap>(3, 1, 32);
     transparentRemapDest->fill(0xFF00FF00U);
     auto transparentRemapProps = Datum::propList();
