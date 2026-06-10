@@ -2,6 +2,7 @@
 
 #include "libreshockwave/bitmap/Bitmap.hpp"
 #include "libreshockwave/bitmap/Palette.hpp"
+#include "libreshockwave/lingo/vm/util/StringChunkUtils.hpp"
 
 #include <algorithm>
 #include <array>
@@ -1184,125 +1185,31 @@ Datum propListObjectMethod(Datum::PropList& propList, std::string_view methodNam
 }
 
 std::vector<std::string> splitWords(std::string_view value) {
-    std::vector<std::string> words;
-    std::string current;
-    for (const char ch : value) {
-        if (static_cast<unsigned char>(ch) <= static_cast<unsigned char>(' ')) {
-            if (!current.empty()) {
-                words.push_back(current);
-                current.clear();
-            }
-        } else {
-            current.push_back(ch);
-        }
-    }
-    if (!current.empty()) {
-        words.push_back(std::move(current));
-    }
-    return words;
+    return util::splitIntoChunks(value, StringChunkType::Word);
 }
 
 std::string pickLineDelimiter(std::string_view value) {
-    if (value.find("\r\n") != std::string_view::npos) {
-        return "\r\n";
-    }
-    if (value.find('\n') != std::string_view::npos) {
-        return "\n";
-    }
-    if (value.find('\r') != std::string_view::npos) {
-        return "\r";
-    }
-    return "\r\n";
+    return util::pickLineDelimiter(value);
 }
 
 std::vector<std::string> splitLines(std::string_view value) {
-    if (value.empty()) {
-        return {};
-    }
-
-    const std::string delimiter = pickLineDelimiter(value);
-    std::vector<std::string> lines;
-    std::size_t start = 0;
-    while (true) {
-        const std::size_t found = value.find(delimiter, start);
-        if (found == std::string_view::npos) {
-            lines.emplace_back(value.substr(start));
-            break;
-        }
-        lines.emplace_back(value.substr(start, found - start));
-        start = found + delimiter.size();
-    }
-    return lines;
-}
-
-std::vector<std::string> splitItems(std::string_view value, char delimiter = ',') {
-    if (value.empty()) {
-        return {};
-    }
-
-    std::vector<std::string> items;
-    std::string current;
-    for (const char ch : value) {
-        if (ch == delimiter) {
-            items.push_back(current);
-            current.clear();
-        } else {
-            current.push_back(ch);
-        }
-    }
-    items.push_back(std::move(current));
-    return items;
-}
-
-std::vector<std::string> splitChars(std::string_view value) {
-    std::vector<std::string> chars;
-    chars.reserve(value.size());
-    for (const char ch : value) {
-        chars.emplace_back(1, ch);
-    }
-    return chars;
+    return util::splitIntoChunks(value, StringChunkType::Line);
 }
 
 int countLines(std::string_view value) {
-    if (value.empty()) {
-        return 1;
-    }
-    return static_cast<int>(splitLines(value).size());
+    return util::countChunks(value, StringChunkType::Line);
 }
 
 int countItems(std::string_view value, char delimiter = ',') {
-    if (value.empty()) {
-        return 1;
-    }
-    return static_cast<int>(std::count(value.begin(), value.end(), delimiter)) + 1;
+    return util::countChunks(value, StringChunkType::Item, delimiter);
 }
 
 std::vector<std::string> splitChunks(std::string_view value, StringChunkType type, char itemDelimiter = ',') {
-    switch (type) {
-        case StringChunkType::Char:
-            return splitChars(value);
-        case StringChunkType::Word:
-            return splitWords(value);
-        case StringChunkType::Item:
-            return splitItems(value, itemDelimiter);
-        case StringChunkType::Line:
-            return splitLines(value);
-    }
-    return {};
+    return util::splitIntoChunks(value, type, itemDelimiter);
 }
 
 std::string chunkDelimiter(StringChunkType type, char itemDelimiter = ',') {
-    switch (type) {
-        case StringChunkType::Char:
-            return "";
-        case StringChunkType::Word:
-            return " ";
-        case StringChunkType::Item:
-            return std::string(1, itemDelimiter);
-        case StringChunkType::Line:
-            return "\r\n";
-    }
-    return "";
+    return util::chunkDelimiter(type, itemDelimiter);
 }
 
 std::string sourceChunkDelimiter(std::string_view value, StringChunkType type, char itemDelimiter = ',') {
@@ -1310,57 +1217,11 @@ std::string sourceChunkDelimiter(std::string_view value, StringChunkType type, c
 }
 
 int countChunks(std::string_view value, StringChunkType type, char itemDelimiter = ',') {
-    if (value.empty()) {
-        return type == StringChunkType::Item || type == StringChunkType::Line ? 1 : 0;
-    }
-    if (type == StringChunkType::Char) {
-        return static_cast<int>(value.size());
-    }
-    if (type == StringChunkType::Item) {
-        return countItems(value, itemDelimiter);
-    }
-    return static_cast<int>(splitChunks(value, type, itemDelimiter).size());
-}
-
-std::string joinChunkRange(const std::vector<std::string>& chunks,
-                           int start,
-                           int end,
-                           const std::string& delimiter) {
-    if (chunks.empty() || start < 1 || start > static_cast<int>(chunks.size())) {
-        return "";
-    }
-
-    const int actualEnd = std::min(end, static_cast<int>(chunks.size()));
-    if (actualEnd < start) {
-        return "";
-    }
-
-    std::string result;
-    for (int index = start; index <= actualEnd; ++index) {
-        if (index > start) {
-            result += delimiter;
-        }
-        result += chunks[static_cast<std::size_t>(index - 1)];
-    }
-    return result;
+    return util::countChunks(value, type, itemDelimiter);
 }
 
 std::string getChunkValue(std::string_view value, StringChunkType type, int index, char itemDelimiter = ',') {
-    if (value.empty() || index < 1) {
-        return "";
-    }
-    if (type == StringChunkType::Char) {
-        if (index > static_cast<int>(value.size())) {
-            return "";
-        }
-        return std::string(1, value[static_cast<std::size_t>(index - 1)]);
-    }
-
-    const auto chunks = splitChunks(value, type, itemDelimiter);
-    if (index > static_cast<int>(chunks.size())) {
-        return "";
-    }
-    return chunks[static_cast<std::size_t>(index - 1)];
+    return util::getChunk(value, type, index, itemDelimiter);
 }
 
 std::string getChunkRangeValue(std::string_view value,
@@ -1368,23 +1229,7 @@ std::string getChunkRangeValue(std::string_view value,
                                int start,
                                int end,
                                char itemDelimiter = ',') {
-    if (value.empty() || start < 1) {
-        return "";
-    }
-    if (type == StringChunkType::Char) {
-        if (start > static_cast<int>(value.size())) {
-            return "";
-        }
-        const int actualEnd = std::min(end, static_cast<int>(value.size()));
-        if (actualEnd < start) {
-            return "";
-        }
-        return std::string(value.substr(static_cast<std::size_t>(start - 1),
-                                        static_cast<std::size_t>(actualEnd - start + 1)));
-    }
-
-    const auto chunks = splitChunks(value, type, itemDelimiter);
-    return joinChunkRange(chunks, start, end, chunkDelimiter(type, itemDelimiter));
+    return util::getChunkRange(value, type, start, end, itemDelimiter);
 }
 
 std::string resolveChunkRange(std::string_view value,
@@ -1406,10 +1251,9 @@ std::string resolveChunkRange(std::string_view value,
     }
 
     const int effectiveLast = last == 0 ? first : last;
-    if (first == effectiveLast) {
-        return getChunkValue(value, type, first, itemDelimiter);
-    }
-    return getChunkRangeValue(value, type, first, effectiveLast, itemDelimiter);
+    return first == effectiveLast
+        ? util::getChunk(value, type, first, itemDelimiter)
+        : util::getChunkRange(value, type, first, effectiveLast, itemDelimiter);
 }
 
 std::optional<StringChunkType> stringChunkTypeByCode(int value) {
@@ -1570,11 +1414,7 @@ char currentItemDelimiter(ExecutionContext& context) {
 }
 
 std::string getLastChunkValue(std::string_view value, StringChunkType type, char itemDelimiter = ',') {
-    if (value.empty()) {
-        return "";
-    }
-    const int count = countChunks(value, type, itemDelimiter);
-    return count == 0 ? std::string() : getChunkValue(value, type, count, itemDelimiter);
+    return util::getLastChunk(value, type, itemDelimiter);
 }
 
 std::optional<std::pair<int, int>> itemByteRange(std::string_view value, int first, int last, char delimiter) {

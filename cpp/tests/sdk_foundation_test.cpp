@@ -95,6 +95,7 @@
 #include "libreshockwave/lingo/vm/trace/ConsoleTracePrinter.hpp"
 #include "libreshockwave/lingo/vm/trace/InstructionAnnotator.hpp"
 #include "libreshockwave/lingo/vm/trace/TracingHelper.hpp"
+#include "libreshockwave/lingo/vm/util/StringChunkUtils.hpp"
 #include "libreshockwave/lingo/xtra/MultiuserXtra.hpp"
 #include "libreshockwave/lingo/xtra/XmlParserXtra.hpp"
 #include "libreshockwave/lookup/CastMemberLookup.hpp"
@@ -1058,6 +1059,35 @@ void testLingoDatumTypes() {
     assert(libreshockwave::lingo::typeName(DatumType::String) == "string");
     assert(libreshockwave::lingo::code(StringChunkType::Line) == 4);
     assert(libreshockwave::lingo::stringChunkTypeFromName("WORD") == StringChunkType::Word);
+    assert(libreshockwave::lingo::vm::util::countChunks("a,b,,c", StringChunkType::Item, ',') == 4);
+    assert(libreshockwave::lingo::vm::util::countChunks("", StringChunkType::Line, ',') == 1);
+    assert(libreshockwave::lingo::vm::util::countChunks("", StringChunkType::Word, ',') == 0);
+    assert(libreshockwave::lingo::vm::util::getChunk("alpha\tbeta  gamma",
+                                                     StringChunkType::Word,
+                                                     2,
+                                                     ',') == "beta");
+    assert(libreshockwave::lingo::vm::util::getLastChunk("a|b|", StringChunkType::Item, '|').empty());
+    assert(libreshockwave::lingo::vm::util::getChunkRange("a|b|c|d",
+                                                          StringChunkType::Item,
+                                                          2,
+                                                          3,
+                                                          '|') == "b|c");
+    assert(libreshockwave::lingo::vm::util::getChunkRange("abcdef",
+                                                          StringChunkType::Char,
+                                                          2,
+                                                          4,
+                                                          ',') == "bcd");
+    assert(libreshockwave::lingo::vm::util::getWordRangeDirect("a\002b  c",
+                                                               1,
+                                                               3) == "a b c");
+    assert(libreshockwave::lingo::vm::util::pickLineDelimiter("a\nb\rc") == "\n");
+    assert(libreshockwave::lingo::vm::util::getChunkRange("a\nb\nc",
+                                                          StringChunkType::Line,
+                                                          1,
+                                                          2,
+                                                          ',') == "a\nb");
+    assert((libreshockwave::lingo::vm::util::splitIntoChunks("xy", StringChunkType::Char) ==
+            std::vector<std::string>{"x", "y"}));
 
     assert(Datum::of(42).isInt());
     assert(Datum::of(42).intValue() == 42);

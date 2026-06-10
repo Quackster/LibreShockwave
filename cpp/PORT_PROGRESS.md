@@ -180,6 +180,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `util::getFileName`, `getFileNameWithoutExtension`, and `getUrlsWithFallbacks` port the Java path/URL fallback helper behavior for movie and cast files.
 - `util::StringUtils` ports Java display-string truncation, escaped control-character display, and HTML text escaping helpers.
+- `lingo::vm::util::StringChunkUtils` ports Java string chunk counting, last/specific/ranged chunk extraction, direct item/word/line range scanning, char splitting, whitespace-word detection, item delimiters, and Director line-delimiter selection.
 - `format::ScriptFormatUtils` ports literal type names, literal formatting, script type display names, name/handler fallback resolution, shared truncation, and line-ending normalization.
 
 ### Bitmap Colorizer
@@ -704,6 +705,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - Simple string opcode handlers now cover concatenation, padded concatenation, case-insensitive contains, and case-insensitive starts-with checks.
 - String coercion follows the Java datum `toStr` path for void, strings/string chunks, symbols, references, lists, and property lists.
+- String chunk reads and counts now route through the shared C++ `StringChunkUtils` port while mutation helpers retain byte-range updates for chunk refs.
 - String chunk mutation is covered by the focused `PUT_CHUNK`/`DELETE_CHUNK` opcode slices.
 
 ### Lingo Opcode Basic Property Foundation
@@ -828,7 +830,7 @@ Result:
 - XMED text parsing for multi-span style runs, underline ranges, referenced style-run font-size selection, per-span font records, paragraph alignment codes, and paragraph record counts passed through the same CTest executable.
 - W3D entry, typed resource, transform, texture format, and lookup tests passed through the same CTest executable.
 - Generated font Base64/zlib decode, wrong-length, and invalid-deflate tests passed through the same CTest executable.
-- File/path fallback utilities, shared string display/HTML escaping helpers, and script formatting utilities passed through the same CTest executable.
+- File/path fallback utilities, shared string display/HTML escaping helpers, string chunk counting/extraction helpers, and script formatting utilities passed through the same CTest executable.
 - BitmapColorizer 32-bit, indexed, foreground-only, packed-index, and ink predicate tests passed through the same CTest executable.
 - PfrBitReader byte, signed, skip, alignment, bit-buffer, and partial-EOF tests passed through the same CTest executable.
 - BitmapFont glyph drawing, overflow metrics, BDF parsing, direct PFR outline/bitmap/curve glyph rasterization, PFR1 metadata/character-record/simple/compound/curve-outline parsing, PFR-to-TTF table generation/cache registration, pure TTF bitmap rasterization with the bundled Verdana fixture, and FontRegistry prebuilt-cache/PFR-registration/rasterization/alias behavior passed through the same CTest executable.
@@ -924,7 +926,7 @@ Result:
 - OpcodeRegistry stack/control handler registration, custom handler registration, literal/symbol pushes, stack manipulation, return/factory return, and jump opcodes passed through the same CTest executable.
 - OpcodeRegistry arithmetic, comparison, and logical handlers passed through the same CTest executable.
 - OpcodeRegistry variable, arg-list, linear-list, and property-list handlers passed through the same CTest executable.
-- OpcodeRegistry simple string concatenation and containment handlers passed through the same CTest executable.
+- OpcodeRegistry simple string concatenation, containment, and shared string-chunk helper routing passed through the same CTest executable.
 - OpcodeRegistry basic property handlers, object property reads/writes, string/FieldText `lineCount`/`line` properties, legacy cast-member count property IDs, built-in constants, and simple `the` lookups passed through the same CTest executable.
 - OpcodeRegistry movie-property provider reads/writes and provider-backed `the` lookups passed through the same CTest executable.
 - OpcodeRegistry provider-backed object property gets/sets for movie, player, stage, sprite, integer-as-sprite refs, cast-member metadata/provider properties, timeout refs, sound channels, and image `useAlpha`/`paletteRef` setters passed through the same CTest executable.
@@ -1151,4 +1153,4 @@ Result:
 - `3b15a1e5 Port C++ random seed trace parity`
 - `7c27afaf Port C++ VM value identifier fallback`
 - `1aafff66 Port C++ nested value identifier fallback`
-- Current checkpoint commit message: `Port C++ string display utilities`
+- Current checkpoint commit message: `Port C++ string chunk utilities`
