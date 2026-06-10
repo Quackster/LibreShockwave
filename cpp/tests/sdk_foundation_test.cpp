@@ -91,6 +91,7 @@
 #include "libreshockwave/lingo/vm/LingoVM.hpp"
 #include "libreshockwave/lingo/vm/OpcodeRegistry.hpp"
 #include "libreshockwave/lingo/vm/Scope.hpp"
+#include "libreshockwave/lingo/vm/trace/ConsoleTracePrinter.hpp"
 #include "libreshockwave/lingo/xtra/MultiuserXtra.hpp"
 #include "libreshockwave/lingo/xtra/XmlParserXtra.hpp"
 #include "libreshockwave/lookup/CastMemberLookup.hpp"
@@ -228,6 +229,7 @@ using libreshockwave::lingo::vm::LingoVM;
 using libreshockwave::lingo::vm::OpcodeRegistry;
 using libreshockwave::lingo::vm::Scope;
 using libreshockwave::lingo::vm::TraceListener;
+using libreshockwave::lingo::vm::trace::ConsoleTracePrinter;
 using libreshockwave::lingo::xtra::MultiuserNetBridge;
 using libreshockwave::lingo::xtra::MultiuserXtra;
 using libreshockwave::lingo::xtra::XmlParserXtra;
@@ -7129,6 +7131,69 @@ void testLingoVmRuntimeFoundation() {
     assert(traceLines[2].find("ret") != std::string::npos);
     assert(traceLines[3] == "== handler#1 returned 42");
     vm.setTraceOutputHandler(nullptr);
+
+    TraceListener::HandlerInfo consoleInfo{
+        "handler#9",
+        900,
+        "Trace Script",
+        {},
+        Datum::voidValue(),
+        {},
+        {},
+        0,
+        0,
+    };
+    TraceListener::InstructionInfo consoleInstruction{
+        0,
+        12,
+        "pushInt8",
+        7,
+        "<7>",
+        0,
+        {},
+        {},
+        {},
+    };
+    assert(ConsoleTracePrinter::formatHandlerEnter(consoleInfo) == "== Script: Trace Script Handler: handler#9");
+    assert(!ConsoleTracePrinter::formatHandlerExit(consoleInfo, Datum::voidValue()).has_value());
+    assert(ConsoleTracePrinter::formatHandlerExit(consoleInfo, Datum::of(12)).value() ==
+           "== handler#9 returned 12");
+    assert(ConsoleTracePrinter::formatInstruction(consoleInstruction) ==
+           "--> [ 12] pushInt8         7.......... <7>");
+    consoleInstruction.argument = 0;
+    consoleInstruction.annotation.clear();
+    consoleInstruction.opcode = "ret";
+    consoleInstruction.offset = 5;
+    assert(ConsoleTracePrinter::formatInstruction(consoleInstruction) == "--> [  5] ret             ............");
+
+    std::vector<std::string> consolePrinterLines;
+    ConsoleTracePrinter consolePrinter([&consolePrinterLines](std::string_view line) {
+        consolePrinterLines.emplace_back(line);
+    });
+    consoleInstruction.offset = 12;
+    consoleInstruction.opcode = "pushInt8";
+    consoleInstruction.argument = 7;
+    consoleInstruction.annotation = "<7>";
+    consolePrinter.onHandlerEnter(consoleInfo);
+    consolePrinter.onInstruction(consoleInstruction);
+    consolePrinter.onInstruction(consoleInstruction);
+    consolePrinter.onInstruction(consoleInstruction);
+    consoleInstruction.offset = 13;
+    consolePrinter.onInstruction(consoleInstruction);
+    consolePrinter.onHandlerExit(consoleInfo, Datum::of(12));
+    assert((consolePrinterLines == std::vector<std::string>{
+        "== Script: Trace Script Handler: handler#9",
+        "--> [ 12] pushInt8         7.......... <7>",
+        "    ... [loop iterations suppressed] ...",
+        "--> [ 13] pushInt8         7.......... <7>",
+        "== handler#9 returned 12",
+    }));
+    consoleInfo.scriptId = 901;
+    consolePrinter.onHandlerEnter(consoleInfo);
+    consoleInstruction.offset = 12;
+    consolePrinter.onInstruction(consoleInstruction);
+    assert(consolePrinterLines[5] == "== Script: Trace Script Handler: handler#9");
+    assert(consolePrinterLines[6] == "--> [ 12] pushInt8         7.......... <7>");
 
     std::vector<std::pair<Opcode, int>> longOps;
     longOps.reserve(65537);

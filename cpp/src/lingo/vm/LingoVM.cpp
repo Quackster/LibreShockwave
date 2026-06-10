@@ -5,7 +5,6 @@
 #include <chrono>
 #include <cctype>
 #include <cstdlib>
-#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <optional>
@@ -17,6 +16,7 @@
 #include "libreshockwave/chunks/ScriptNamesChunk.hpp"
 #include "libreshockwave/lingo/Opcode.hpp"
 #include "libreshockwave/lingo/vm/DebugConfig.hpp"
+#include "libreshockwave/lingo/vm/trace/ConsoleTracePrinter.hpp"
 
 namespace libreshockwave::lingo::vm {
 namespace {
@@ -954,12 +954,12 @@ void LingoVM::traceOutput(const std::string& line) const {
 
 void LingoVM::emitConsoleHandlerEnter(const TraceListener::HandlerInfo& info) {
     resetConsoleTraceForHandler(info.scriptId);
-    traceOutput("== Script: " + info.scriptDisplayName + " Handler: " + info.handlerName);
+    traceOutput(trace::ConsoleTracePrinter::formatHandlerEnter(info));
 }
 
 void LingoVM::emitConsoleHandlerExit(const TraceListener::HandlerInfo& info, const Datum& returnValue) {
-    if (!returnValue.isVoid()) {
-        traceOutput("== " + info.handlerName + " returned " + returnValue.stringValue());
+    if (auto line = trace::ConsoleTracePrinter::formatHandlerExit(info, returnValue)) {
+        traceOutput(*line);
     }
 }
 
@@ -967,22 +967,7 @@ void LingoVM::emitConsoleInstruction(const TraceListener::InstructionInfo& info)
     if (shouldSuppressConsoleInstruction(info.offset)) {
         return;
     }
-
-    std::ostringstream out;
-    out << "--> [" << std::setw(3) << info.offset << "] "
-        << std::left << std::setw(16) << info.opcode;
-    if (info.argument != 0) {
-        out << ' ' << info.argument;
-    }
-    std::string line = out.str();
-    while (line.size() < 38) {
-        line.push_back('.');
-    }
-    if (!info.annotation.empty()) {
-        line.push_back(' ');
-        line += info.annotation;
-    }
-    traceOutput(line);
+    traceOutput(trace::ConsoleTracePrinter::formatInstruction(info));
 }
 
 void LingoVM::resetConsoleTraceForHandler(int scriptId) {

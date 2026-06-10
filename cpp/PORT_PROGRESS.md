@@ -657,6 +657,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `lingo::vm::LingoVM` now ports Java's console trace controls, including targeted `addTraceHandler`/`removeTraceHandler`/`clearTraceHandlers`, random-call tracing, and full `setTraceEnabled` handler/instruction/return output.
 - Console trace output defaults to stdout and can be redirected through an injectable trace-output handler for tests and future embedding surfaces.
 - Instruction trace output mirrors Java's loop-suppression behavior for repeated bytecode offsets within the same script trace context.
+- `lingo::vm::trace::ConsoleTracePrinter` ports Java's reusable console trace listener, handler/instruction formatting helpers, non-void return formatting, output redirection, and per-handler loop suppression state.
 - Higher-level debug UI/export wiring remains deferred to later VM/player integration slices.
 
 ### Lingo VM Deferred Dispatch Foundation
@@ -906,7 +907,7 @@ Result:
 - Lingo VM Scope and ExecutionContext stack, param, local, return, loop, jump, global callback, handler callback, builtin invocation, global debug-config propagation, and call-stack formatting behavior passed through the same CTest executable.
 - Lingo VM ExecutionContext name resolver callback and resolver-backed global opcode behavior passed through the same CTest executable.
 - Lingo VM long-handler safepoint callback, tick deadline, handler timeout, and cleanup behavior passed through the same CTest executable.
-- Lingo VM console trace controls, targeted handler trace output, random-call trace seed output, trace-enabled handler/instruction/return output, and output redirection passed through the same CTest executable.
+- Lingo VM console trace controls, targeted handler trace output, random-call trace seed output, trace-enabled handler/instruction/return output, reusable ConsoleTracePrinter formatting/loop suppression, and output redirection passed through the same CTest executable.
 - Lingo VM startup random seed override, invalid seed fallback, and Java-compatible seed-4096 random sequence passed through the same CTest executable.
 - Lingo VM-backed `value(...)` global lookup, partial identifier lookup, and zero-argument movie-handler fallback passed through the same CTest executable.
 - Lingo VM-backed nested `value(...)` list/proplist global identifier resolution passed through the same CTest executable.
@@ -1145,4 +1146,4 @@ Result:
 - `3b15a1e5 Port C++ random seed trace parity`
 - `7c27afaf Port C++ VM value identifier fallback`
 - `1aafff66 Port C++ nested value identifier fallback`
-- Current checkpoint commit message: `Port C++ debug expression evaluator`
+- Current checkpoint commit message: `Port C++ console trace printer`
