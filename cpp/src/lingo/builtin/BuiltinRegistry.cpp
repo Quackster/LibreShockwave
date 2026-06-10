@@ -112,6 +112,33 @@ int toIntLikeJava(const Datum& datum) {
     return 0;
 }
 
+int resolveCastLibScope(BuiltinContext& context, const std::optional<Datum>& scope) {
+    if (!scope.has_value() || scope->isVoid()) {
+        return 0;
+    }
+    if (const auto* castLib = scope->asCastLibRef()) {
+        return castLib->castLib;
+    }
+    if (scope->isInt() || scope->isFloat()) {
+        return toIntLikeJava(*scope);
+    }
+    if (!context.castLibNameResolver) {
+        return 0;
+    }
+    const std::string name = trimCopy(scope->stringValue());
+    if (name.empty()) {
+        return 0;
+    }
+    return std::max(context.castLibNameResolver(name), 0);
+}
+
+Datum scriptRefFromCastMemberDatum(const Datum& memberRef) {
+    if (const auto* castMember = memberRef.asCastMemberRef()) {
+        return Datum::scriptRef(*castMember);
+    }
+    return Datum::voidValue();
+}
+
 double toDoubleLikeJava(const Datum& datum) {
     if (const auto* value = datum.asInt()) {
         return static_cast<double>(value->value);
@@ -2129,9 +2156,33 @@ Datum TypeBuiltins::script(BuiltinContext& context, const std::vector<Datum>& ar
     if (args.size() >= 2) {
         scope = args[1];
     }
+    const int scopedCastLib = resolveCastLibScope(context, scope);
 
     if (const auto* member = identifier.asCastMemberRef()) {
         return Datum::scriptRef(*member);
+    }
+    if (identifier.isString() || identifier.isSymbol()) {
+        if (context.castMemberNameResolver) {
+            const Datum memberRef = context.castMemberNameResolver(scopedCastLib, keyName(identifier));
+            const Datum resolved = scriptRefFromCastMemberDatum(memberRef);
+            if (!resolved.isVoid()) {
+                return resolved;
+            }
+        }
+    }
+    if (identifier.isInt() || identifier.isFloat()) {
+        const int value = toIntLikeJava(identifier);
+        if (value <= 0) {
+            return Datum::voidValue();
+        }
+        if (value > 65535) {
+            const id::SlotId slotId(value);
+            if (slotId.castLib() >= 1 && slotId.member() >= 1) {
+                return Datum::scriptRef(Datum::CastMemberRef{slotId.castLib(), slotId.member()});
+            }
+            return Datum::voidValue();
+        }
+        return Datum::scriptRef(Datum::CastMemberRef{1, value});
     }
 
     if (identifier.isList()) {

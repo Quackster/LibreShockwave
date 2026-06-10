@@ -2967,6 +2967,47 @@ void testBuiltinRegistryFoundation() {
                                               {Datum::castMemberRef(CastLibId(2), MemberId(7))});
     assert(directScript.asScriptRef()->memberRef.castLib == 2);
     assert(directScript.asScriptRef()->memberRef.castMember == 7);
+    std::vector<std::string> directScriptLookups;
+    context.castMemberNameResolver = [&directScriptLookups](int castLib, const std::string& memberName) {
+        directScriptLookups.push_back(std::to_string(castLib) + ":" + memberName);
+        if (castLib == 0 && memberName == "Global Parent") {
+            return Datum::castMemberRef(CastLibId(3), MemberId(8));
+        }
+        if (castLib == 4 && memberName == "Scoped Parent") {
+            return Datum::castMemberRef(CastLibId(4), MemberId(9));
+        }
+        if (castLib == 6 && memberName == "Named Scope Parent") {
+            return Datum::castMemberRef(CastLibId(6), MemberId(10));
+        }
+        return Datum::voidValue();
+    };
+    context.castLibNameResolver = [](const std::string& name) {
+        return name == "external" ? 6 : 0;
+    };
+    const auto globalScript = registry.invoke("script", context, {Datum::of(std::string("Global Parent"))});
+    assert(globalScript.asScriptRef()->memberRef.castLib == 3);
+    assert(globalScript.asScriptRef()->memberRef.castMember == 8);
+    const auto scopedScript =
+        registry.invoke("script", context, {Datum::symbol("Scoped Parent"), Datum::castLibRef(CastLibId(4))});
+    assert(scopedScript.asScriptRef()->memberRef.castLib == 4);
+    assert(scopedScript.asScriptRef()->memberRef.castMember == 9);
+    const auto namedScopeScript =
+        registry.invoke("script", context, {Datum::of(std::string("Named Scope Parent")), Datum::of(std::string("external"))});
+    assert(namedScopeScript.asScriptRef()->memberRef.castLib == 6);
+    assert(namedScopeScript.asScriptRef()->memberRef.castMember == 10);
+    assert(registry.invoke("script", context, {Datum::of(0)}).isVoid());
+    const auto rawNumberScript = registry.invoke("script", context, {Datum::of(12)});
+    assert(rawNumberScript.asScriptRef()->memberRef.castLib == 1);
+    assert(rawNumberScript.asScriptRef()->memberRef.castMember == 12);
+    const auto encodedNumberScript = registry.invoke("script", context, {Datum::of(SlotId::of(5, 13).value())});
+    assert(encodedNumberScript.asScriptRef()->memberRef.castLib == 5);
+    assert(encodedNumberScript.asScriptRef()->memberRef.castMember == 13);
+    assert(directScriptLookups.size() == 3);
+    assert(directScriptLookups[0] == "0:Global Parent");
+    assert(directScriptLookups[1] == "4:Scoped Parent");
+    assert(directScriptLookups[2] == "6:Named Scope Parent");
+    context.castMemberNameResolver = {};
+    context.castLibNameResolver = {};
     int scriptResolveCalls = 0;
     context.scriptResolver = [&scriptResolveCalls](const Datum& identifier, const std::optional<Datum>& scope) {
         ++scriptResolveCalls;
