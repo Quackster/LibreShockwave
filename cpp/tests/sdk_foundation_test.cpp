@@ -156,6 +156,7 @@
 #include "libreshockwave/player/xtra/SocketMultiuserBridge.hpp"
 #include "libreshockwave/util/AudioCodecUtils.hpp"
 #include "libreshockwave/util/FileUtil.hpp"
+#include "libreshockwave/util/StringUtils.hpp"
 
 using libreshockwave::format::ChunkInfo;
 using libreshockwave::format::AfterburnerReader;
@@ -1024,6 +1025,12 @@ void testUtilityFormatting() {
     assert((extensionlessUrls == std::vector<std::string>{"hosts.cct", "hosts.cst"}));
     const auto unknownUrls = libreshockwave::util::getUrlsWithFallbacks("image.png");
     assert((unknownUrls == std::vector<std::string>{"image.png"}));
+
+    assert(libreshockwave::util::truncate("abcdef", 6) == "abcdef");
+    assert(libreshockwave::util::truncate("abcdef", 5) == "ab...");
+    assert(libreshockwave::util::truncate("abcdef", 3) == "...");
+    assert(libreshockwave::util::escapeForDisplay("a\\b\nc\rd\te") == "a\\\\b\\nc\\rd\\te");
+    assert(libreshockwave::util::escapeHtml("A&B<C>D") == "A&amp;B&lt;C&gt;D");
 
     using LiteralEntry = ScriptChunk::LiteralEntry;
     using LiteralValue = ScriptChunk::LiteralValue;

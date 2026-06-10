@@ -179,7 +179,8 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 ### Utility Formatting Helpers
 
 - `util::getFileName`, `getFileNameWithoutExtension`, and `getUrlsWithFallbacks` port the Java path/URL fallback helper behavior for movie and cast files.
-- `format::ScriptFormatUtils` ports literal type names, literal formatting, script type display names, name/handler fallback resolution, truncation, and line-ending normalization.
+- `util::StringUtils` ports Java display-string truncation, escaped control-character display, and HTML text escaping helpers.
+- `format::ScriptFormatUtils` ports literal type names, literal formatting, script type display names, name/handler fallback resolution, shared truncation, and line-ending normalization.
 
 ### Bitmap Colorizer
 
@@ -827,7 +828,7 @@ Result:
 - XMED text parsing for multi-span style runs, underline ranges, referenced style-run font-size selection, per-span font records, paragraph alignment codes, and paragraph record counts passed through the same CTest executable.
 - W3D entry, typed resource, transform, texture format, and lookup tests passed through the same CTest executable.
 - Generated font Base64/zlib decode, wrong-length, and invalid-deflate tests passed through the same CTest executable.
-- File/path fallback utilities and script formatting utilities passed through the same CTest executable.
+- File/path fallback utilities, shared string display/HTML escaping helpers, and script formatting utilities passed through the same CTest executable.
 - BitmapColorizer 32-bit, indexed, foreground-only, packed-index, and ink predicate tests passed through the same CTest executable.
 - PfrBitReader byte, signed, skip, alignment, bit-buffer, and partial-EOF tests passed through the same CTest executable.
 - BitmapFont glyph drawing, overflow metrics, BDF parsing, direct PFR outline/bitmap/curve glyph rasterization, PFR1 metadata/character-record/simple/compound/curve-outline parsing, PFR-to-TTF table generation/cache registration, pure TTF bitmap rasterization with the bundled Verdana fixture, and FontRegistry prebuilt-cache/PFR-registration/rasterization/alias behavior passed through the same CTest executable.
@@ -1150,4 +1151,4 @@ Result:
 - `3b15a1e5 Port C++ random seed trace parity`
 - `7c27afaf Port C++ VM value identifier fallback`
 - `1aafff66 Port C++ nested value identifier fallback`
-- Current checkpoint commit message: `Port C++ external cast load callbacks`
+- Current checkpoint commit message: `Port C++ string display utilities`

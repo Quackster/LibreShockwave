@@ -1,6 +1,7 @@
 #include "libreshockwave/format/ScriptFormatUtils.hpp"
 
 #include "libreshockwave/chunks/ScriptNamesChunk.hpp"
+#include "libreshockwave/util/StringUtils.hpp"
 
 namespace libreshockwave::format {
 namespace {
@@ -93,13 +94,7 @@ std::string resolveHandlerName(const chunks::ScriptNamesChunk* names, int nameId
 }
 
 std::string truncate(std::string_view value, int maxLength) {
-    if (maxLength >= 0 && value.size() <= static_cast<std::size_t>(maxLength)) {
-        return std::string(value);
-    }
-    if (maxLength <= 3) {
-        return "...";
-    }
-    return std::string(value.substr(0, static_cast<std::size_t>(maxLength - 3))) + "...";
+    return util::truncate(value, maxLength);
 }
 
 std::string normalizeLineEndings(std::string_view value) {

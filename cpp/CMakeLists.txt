@@ -113,6 +113,7 @@ add_library(libreshockwave
     src/player/xtra/SocketMultiuserBridge.cpp
     src/util/AudioCodecUtils.cpp
     src/util/FileUtil.cpp
+    src/util/StringUtils.cpp
     src/w3d/W3DEntry.cpp
     src/w3d/W3DEntryType.cpp
     src/w3d/W3DMaterial.cpp
