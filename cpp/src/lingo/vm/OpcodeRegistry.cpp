@@ -4,6 +4,7 @@
 #include "libreshockwave/bitmap/Palette.hpp"
 #include "libreshockwave/lingo/vm/dispatch/ImageMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/ListMethodDispatcher.hpp"
+#include "libreshockwave/lingo/vm/dispatch/MemberRegistryMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/PropListMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/SoundChannelMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/StringMethodDispatcher.hpp"
@@ -1918,18 +1919,14 @@ Datum scriptInstanceObjectMethod(ExecutionContext& context,
         return context.findHandler(keyNameLikeJava(args[0])).has_value() ? Datum::TRUE : Datum::FALSE;
     }
     auto* builtinContext = context.builtinContext();
-    if (isScriptInstanceMemberRegistryMethod(methodName)) {
-        if (equalsIgnoreCase(methodName, "readaliasindexesfromfield")) {
-            (void)scriptInstanceMemberRegistryMethod(instance, methodName, args, builtinContext);
-        } else {
-            (void)scriptInstanceRegisteredMemberSlot(instance, args, builtinContext, true);
-        }
-    }
+    (void)dispatch::MemberRegistryMethodDispatcher::prefill(instance, methodName, args, builtinContext);
     if (const auto handler = context.findHandler(methodName)) {
         return safeExecuteHandler(context, *handler->script, handler->handler, args, receiver);
     }
-    if (const auto registryResult = scriptInstanceMemberRegistryMethod(instance, methodName, args, builtinContext)) {
-        return *registryResult;
+    const auto registryResult =
+        dispatch::MemberRegistryMethodDispatcher::dispatch(instance, methodName, args, builtinContext);
+    if (registryResult.handled) {
+        return registryResult.value;
     }
 
     const Datum property = util::getProperty(instance, methodName);
@@ -4757,6 +4754,49 @@ bool objCall(ExecutionContext& context) {
 } // namespace
 
 namespace dispatch {
+
+bool MemberRegistryMethodDispatcher::isMethod(std::string_view methodName) {
+    return isScriptInstanceMemberRegistryMethod(methodName);
+}
+
+MemberRegistryMethodDispatcher::DispatchResult MemberRegistryMethodDispatcher::prefill(
+    Datum::ScriptInstanceRef& instance,
+    std::string_view methodName,
+    const std::vector<Datum>& args,
+    const builtin::BuiltinContext* context) {
+    if (!isScriptInstanceMemberRegistryMethod(methodName)) {
+        return {};
+    }
+    if (equalsIgnoreCase(methodName, "readaliasindexesfromfield")) {
+        const auto result = scriptInstanceMemberRegistryMethod(instance, methodName, args, context);
+        return result.has_value() ? DispatchResult{true, *result} : DispatchResult{};
+    }
+
+    const auto slot = scriptInstanceRegisteredMemberSlot(instance, args, context, true);
+    if (!slot.has_value()) {
+        return {};
+    }
+    if (equalsIgnoreCase(methodName, "getmemnum")) {
+        return {true, Datum::of(*slot)};
+    }
+    if (equalsIgnoreCase(methodName, "exists") || equalsIgnoreCase(methodName, "memberexists")) {
+        return {true, std::abs(*slot) > 0 ? Datum::TRUE : Datum::FALSE};
+    }
+    if (equalsIgnoreCase(methodName, "getmember")) {
+        const auto result = scriptInstanceMemberRegistryMethod(instance, methodName, args, context);
+        return result.has_value() ? DispatchResult{true, *result} : DispatchResult{};
+    }
+    return {};
+}
+
+MemberRegistryMethodDispatcher::DispatchResult MemberRegistryMethodDispatcher::dispatch(
+    Datum::ScriptInstanceRef& instance,
+    std::string_view methodName,
+    const std::vector<Datum>& args,
+    const builtin::BuiltinContext* context) {
+    const auto result = scriptInstanceMemberRegistryMethod(instance, methodName, args, context);
+    return result.has_value() ? DispatchResult{true, *result} : DispatchResult{};
+}
 
 Datum ImageMethodDispatcher::dispatch(const Datum::ImageRef& imageRef,
                                       std::string_view methodName,

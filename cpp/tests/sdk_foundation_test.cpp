@@ -97,6 +97,7 @@
 #include "libreshockwave/lingo/vm/Scope.hpp"
 #include "libreshockwave/lingo/vm/dispatch/ImageMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/ListMethodDispatcher.hpp"
+#include "libreshockwave/lingo/vm/dispatch/MemberRegistryMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/PropListMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/SoundChannelMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/StringMethodDispatcher.hpp"
@@ -250,6 +251,7 @@ using libreshockwave::lingo::vm::Scope;
 using libreshockwave::lingo::vm::TraceListener;
 using libreshockwave::lingo::vm::dispatch::ImageMethodDispatcher;
 using libreshockwave::lingo::vm::dispatch::ListMethodDispatcher;
+using libreshockwave::lingo::vm::dispatch::MemberRegistryMethodDispatcher;
 using libreshockwave::lingo::vm::dispatch::PropListMethodDispatcher;
 using libreshockwave::lingo::vm::dispatch::SoundChannelMethodDispatcher;
 using libreshockwave::lingo::vm::dispatch::StringMethodDispatcher;
@@ -6105,6 +6107,22 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     memberRegistry.propListValue().put(Datum::symbol("mirror"), Datum::of(mirrorSlot));
     auto registryInstance = Datum::scriptInstance("resourceRegistry");
     registryInstance.scriptInstanceValue().setProperty("pAllMemNumList", memberRegistry);
+    assert(MemberRegistryMethodDispatcher::isMethod("getMemNum"));
+    assert(!MemberRegistryMethodDispatcher::isMethod("unknown"));
+    auto directRegistryResult = MemberRegistryMethodDispatcher::dispatch(
+        registryInstance.scriptInstanceValue(),
+        "getMemNum",
+        {Datum::of(std::string("chair"))},
+        &builtinContext);
+    assert(directRegistryResult.handled);
+    assert(directRegistryResult.value.intValue() == chairSlot);
+    auto noRegistryInstance = Datum::scriptInstance("noResourceRegistry");
+    assert(!MemberRegistryMethodDispatcher::dispatch(
+                noRegistryInstance.scriptInstanceValue(),
+                "getMemNum",
+                {Datum::of(std::string("chair"))},
+                &builtinContext)
+                .handled);
     assert(runObjCall(118, {registryInstance, Datum::of(std::string("chair"))}).intValue() == chairSlot);
     assert(runObjCall(118, {registryInstance, Datum::of(SlotId::of(5, 6).value())}).intValue() ==
            SlotId::of(5, 6).value());
@@ -6239,6 +6257,28 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         }
         return Datum::voidValue();
     };
+    auto directPrefillRegistryInstance = Datum::scriptInstance("directPrefillRegistry");
+    directPrefillRegistryInstance.scriptInstanceValue().setProperty("pAllMemNumList", Datum::propList());
+    auto prefillResult = MemberRegistryMethodDispatcher::prefill(
+        directPrefillRegistryInstance.scriptInstanceValue(),
+        "getMemNum",
+        {Datum::of(std::string("Object Base Class"))},
+        &builtinContext);
+    assert(prefillResult.handled);
+    assert(prefillResult.value.intValue() == SlotId::of(2, 74).value());
+    assert(directPrefillRegistryInstance.scriptInstanceValue()
+               .getProperty("pAllMemNumList")
+               .propListValue()
+               .get(Datum::of(std::string("Object Base Class")))
+               .intValue() == SlotId::of(2, 74).value());
+    auto directGetMemberResult = MemberRegistryMethodDispatcher::dispatch(
+        directPrefillRegistryInstance.scriptInstanceValue(),
+        "getMember",
+        {Datum::of(std::string("Object Base Class"))},
+        &builtinContext);
+    assert(directGetMemberResult.handled);
+    assert(directGetMemberResult.value.asCastMemberRef()->castLib == 2);
+    assert(directGetMemberResult.value.asCastMemberRef()->memberNum() == 74);
     assert(runObjCall(118, {lazyRegistryInstance, Datum::of(std::string("Object Base Class"))}).intValue() ==
            SlotId::of(2, 74).value());
     assert(lazyRegistryInstance.scriptInstanceValue()
