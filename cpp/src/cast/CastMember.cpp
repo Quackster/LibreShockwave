@@ -218,6 +218,10 @@ void CastMember::setRuntimePaletteOverride(std::shared_ptr<const bitmap::Palette
         return;
     }
 
+    if (runtimeBitmapAuthoredSource_ && !runtimeBitmap_->isScriptModified()) {
+        return;
+    }
+
     if (runtimeBitmap_->bitDepth() <= 8 || remapDeepBitmapRgb) {
         (void)runtimeBitmap_->remapImagePalette(runtimePaletteOverride_);
     } else {
@@ -234,6 +238,23 @@ void CastMember::setRuntimePaletteOverride(std::shared_ptr<const bitmap::Palette
 }
 
 void CastMember::setRuntimeBitmap(const bitmap::Bitmap& bitmap, bool markScriptModified) {
+    setRuntimeBitmapInternal(bitmap, markScriptModified, false);
+}
+
+bool CastMember::shouldRedecodeAuthoredRuntimeBitmap() const {
+    return runtimeBitmap_ &&
+           runtimeBitmapAuthoredSource_ &&
+           !runtimeBitmap_->isScriptModified() &&
+           paletteVersion_ > runtimeBitmapPaletteVersion_;
+}
+
+void CastMember::setRuntimeBitmapFromAuthoredSource(const bitmap::Bitmap& bitmap) {
+    setRuntimeBitmapInternal(bitmap, false, true);
+}
+
+void CastMember::setRuntimeBitmapInternal(const bitmap::Bitmap& bitmap,
+                                          bool markScriptModified,
+                                          bool authoredSource) {
     const int currentRegX = regX();
     const int currentRegY = regY();
     auto copy = bitmap.copy();
@@ -255,6 +276,8 @@ void CastMember::setRuntimeBitmap(const bitmap::Bitmap& bitmap, bool markScriptM
     } else {
         runtimeBitmap_ = std::make_shared<bitmap::Bitmap>(std::move(copy));
     }
+    runtimeBitmapAuthoredSource_ = authoredSource;
+    runtimeBitmapPaletteVersion_ = authoredSource ? paletteVersion_ : 0;
     syncRuntimeBitmapAnchorState();
 }
 
@@ -329,6 +352,8 @@ void CastMember::resetRuntimePayload() {
     shockwave3DInfo_.reset();
     runtimeScript_.reset();
     runtimeBitmap_.reset();
+    runtimeBitmapAuthoredSource_ = false;
+    runtimeBitmapPaletteVersion_ = 0;
     runtimePaletteOverride_.reset();
     paletteRefCastLib_ = -1;
     paletteRefMemberNum_ = -1;

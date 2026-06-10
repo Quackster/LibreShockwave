@@ -114,7 +114,9 @@ public:
                                    std::optional<std::string> paletteRefSystemName,
                                    bool remapDeepBitmapRgb);
     [[nodiscard]] std::shared_ptr<bitmap::Bitmap> runtimeBitmap() const;
+    [[nodiscard]] bool shouldRedecodeAuthoredRuntimeBitmap() const;
     void setRuntimeBitmap(const bitmap::Bitmap& bitmap, bool markScriptModified = true);
+    void setRuntimeBitmapFromAuthoredSource(const bitmap::Bitmap& bitmap);
     void erase();
     void reuseAs(MemberType memberType);
     [[nodiscard]] std::string toString() const;
@@ -123,6 +125,7 @@ private:
     void parseSpecificData();
     void resetRuntimePayload();
     void resetTextProperties();
+    void setRuntimeBitmapInternal(const bitmap::Bitmap& bitmap, bool markScriptModified, bool authoredSource);
     void syncRuntimeBitmapAnchorState();
 
     int id_;
@@ -140,6 +143,8 @@ private:
     std::optional<Shockwave3DInfo> shockwave3DInfo_;
     std::shared_ptr<chunks::ScriptChunk> runtimeScript_;
     std::shared_ptr<bitmap::Bitmap> runtimeBitmap_;
+    bool runtimeBitmapAuthoredSource_ = false;
+    int runtimeBitmapPaletteVersion_ = 0;
     std::shared_ptr<const bitmap::Palette> runtimePaletteOverride_;
     int paletteRefCastLib_ = -1;
     int paletteRefMemberNum_ = -1;

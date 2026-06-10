@@ -723,21 +723,26 @@ lingo::Datum CastLib::getMemberProp(int memberNumber, const std::string& propNam
     if (prop == "rect") return lingo::Datum::intRect(0, 0, member->width(), member->height());
     if (prop == "image") {
         auto bitmap = member->runtimeBitmap();
-        if (!bitmap && member->isBitmap() && member->rawChunk() && sourceFile_) {
+        if ((!bitmap || member->shouldRedecodeAuthoredRuntimeBitmap()) &&
+            member->isBitmap() &&
+            member->rawChunk() &&
+            sourceFile_) {
+            const bool hadRuntimeBitmap = bitmap != nullptr;
             const auto paletteOverride = member->runtimePaletteOverride();
             auto decoded = sourceFile_->decodeBitmap(member->rawChunk(), paletteOverride.get());
             if (decoded.has_value()) {
                 applyRuntimePaletteMetadata(*decoded, member);
-                member->setRuntimeBitmap(*decoded, false);
+                member->setRuntimeBitmapFromAuthoredSource(*decoded);
                 bitmap = member->runtimeBitmap();
-            } else if (member->bitmapInfo().has_value() &&
+            } else if (!hadRuntimeBitmap &&
+                       member->bitmapInfo().has_value() &&
                        member->bitmapInfo()->width > 0 &&
                        member->bitmapInfo()->height > 0) {
                 bitmap::Bitmap placeholder(member->bitmapInfo()->width,
                                            member->bitmapInfo()->height,
                                            std::max(member->bitmapInfo()->bitDepth, 32));
                 placeholder.setNativeAlpha(true);
-                member->setRuntimeBitmap(placeholder, false);
+                member->setRuntimeBitmapFromAuthoredSource(placeholder);
                 bitmap = member->runtimeBitmap();
             }
         }

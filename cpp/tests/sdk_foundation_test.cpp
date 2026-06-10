@@ -12505,6 +12505,17 @@ void testCastLibManagerFoundation() {
     assert(authoredImage->bitmap->paletteRefSystemName().value() == "systemMac");
     assert(authoredImage->bitmap->anchorX() == 8);
     assert(authoredImage->bitmap->anchorY() == 7);
+    assert(manager.setMemberProp(1, 2, "paletteRef", Datum::symbol("systemWin")));
+    assert(!authoredImage->bitmap->isScriptModified());
+    const auto authoredImageWithSystemPalette = manager.getMemberProp(1, 2, "image").asImageRef();
+    assert(authoredImageWithSystemPalette != nullptr);
+    assert(authoredImageWithSystemPalette->bitmap == authoredImage->bitmap);
+    assert(!authoredImageWithSystemPalette->bitmap->isScriptModified());
+    assert(authoredImageWithSystemPalette->bitmap->imagePalette().get() == &Palette::systemWinPalette());
+    assert(authoredImageWithSystemPalette->bitmap->paletteRefSystemName().has_value());
+    assert(authoredImageWithSystemPalette->bitmap->paletteRefSystemName().value() == "systemWin");
+    assert(authoredImageWithSystemPalette->bitmap->getPixel(1, 0) ==
+           (0xFF000000U | (Palette::systemWinPalette().getColor(1) & 0x00FFFFFFU)));
     assert(manager.getMemberProp(1, 99, "type").asSymbol()->name == "empty");
     assert(manager.setMemberProp(1, 2, "name", Datum::of("Renamed Hero")));
     assert(manager.getMemberProp(1, 2, "name").stringValue() == "Renamed Hero");
