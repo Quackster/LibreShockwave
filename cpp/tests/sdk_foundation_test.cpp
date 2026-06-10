@@ -12539,10 +12539,17 @@ void testCastLibManagerFoundation() {
     assert(copiedFileBitmap->height() == 16);
     assert(copiedFileBitmap->bitDepth() == 8);
     assert(copiedFileBitmap->paletteIndex(1, 0).value() == 1);
+    const auto* copiedFilePaletteRef = manager.getMemberProp(1, fileBackedCopyRef->memberNum(), "paletteRef").asSymbol();
+    assert(copiedFilePaletteRef != nullptr);
+    assert(copiedFilePaletteRef->name == "systemWin");
     assert(manager.getMemberProp(1, fileBackedCopyRef->memberNum(), "alphaThreshold").intValue() == 77);
     assert(manager.setMemberProp(1, 2, "alphaThreshold", Datum::of(0)));
     assert(manager.getMemberProp(1, fileBackedCopyRef->memberNum(), "regPoint").asIntPoint()->x == 8);
     assert(manager.getMemberProp(1, fileBackedCopyRef->memberNum(), "regPoint").asIntPoint()->y == 7);
+    assert(manager.setMemberProp(1, fileBackedCopyRef->memberNum(), "width", Datum::of(17)));
+    const auto* resizedCopyPaletteRef = manager.getMemberProp(1, fileBackedCopyRef->memberNum(), "paletteRef").asSymbol();
+    assert(resizedCopyPaletteRef != nullptr);
+    assert(resizedCopyPaletteRef->name == "systemWin");
     auto copiedReplacement = std::make_shared<Bitmap>(1, 1, 32);
     copiedReplacement->setPixel(0, 0, 0xFFAABBCCU);
     copiedReplacement->setAnchorPoint(1, 0);

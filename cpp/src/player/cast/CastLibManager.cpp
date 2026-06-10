@@ -1341,6 +1341,11 @@ bool CastLibManager::copyMemberMedia(int targetCastLibNumber,
             target->setRegPointState(source->regX(), source->regY(), source->regPointPinnedToMember());
             target->setBitmapAlphaThreshold(source->bitmapAlphaThreshold());
             target->setRuntimeBitmap(*bitmap);
+            target->setRuntimePaletteOverride(source->runtimePaletteOverride(),
+                                              source->paletteRefCastLib(),
+                                              source->paletteRefMemberNum(),
+                                              source->paletteRefSystemName(),
+                                              false);
             return true;
         }
         if (source->rawChunk()) {
@@ -1350,6 +1355,11 @@ bool CastLibManager::copyMemberMedia(int targetCastLibNumber,
                 target->setRegPointState(source->regX(), source->regY(), source->regPointPinnedToMember());
                 target->setBitmapAlphaThreshold(source->bitmapAlphaThreshold());
                 target->setRuntimeBitmap(*bitmap);
+                target->setRuntimePaletteOverride(source->runtimePaletteOverride(),
+                                                  source->paletteRefCastLib(),
+                                                  source->paletteRefMemberNum(),
+                                                  source->paletteRefSystemName(),
+                                                  false);
                 return true;
             }
         }

@@ -560,7 +560,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 ### Runtime Text Media Copy Foundation
 
 - `CastLibManager::setMemberProp("media", castMemberRef)` now resolves source and target members and copies text content plus runtime text style state when both members are text-like.
-- Bitmap-to-bitmap media copy now handles live runtime bitmaps and file-backed authored bitmap sources through the same manager-owned member-resolution path.
+- Bitmap-to-bitmap media copy now handles live runtime bitmaps and file-backed authored bitmap sources through the same manager-owned member-resolution path, including source runtime palette override metadata so later target bitmap mutations retain `paletteRef` parity.
 - Raw bitmap media byte assignment now handles Java-compatible `LSWI` imported images and Director `DTIB`/BITD payloads directly on bitmap members while rejecting invalid bytes and non-bitmap targets.
 - Imported non-bitmap media payload decoding remains deferred.
 
@@ -854,7 +854,7 @@ Result:
 - Runtime dynamic text member baking, default renderer arguments, transparent-text native-alpha marking, and dynamic text sprite sizing passed through the same CTest executable.
 - Runtime text member style property get/set, Director-style text color coercion, rect/width/height geometry mutation, renderer-backed text `image` reads, boxType-adjusted text height/rect reads, and SpriteBaker dynamic text style propagation passed through the same CTest executable.
 - Runtime text-like `media` assignment from another cast member, including copied text content and style state through the cast-member property callback, passed through the same CTest executable.
-- Runtime and file-backed bitmap `media` assignment from another cast member, including decoded BITD pixels, script-modified runtime copies, alpha-threshold propagation, and registration-point propagation, passed through the same CTest executable.
+- Runtime and file-backed bitmap `media` assignment from another cast member, including decoded BITD pixels, script-modified runtime copies, alpha-threshold propagation, registration-point propagation, and copied runtime palette override metadata, passed through the same CTest executable.
 - Runtime palette payload storage, `member.color` list exposure, palette member lookup by member/name, palette-to-palette `media` copying, and palette-member `duplicate` target handling passed through the same CTest executable.
 - Runtime script payload storage plus script-to-script `media` copying and incompatible target rejection passed through the same CTest executable.
 - Runtime cast-member `regPoint` property mutation, non-point rejection, member-method sub-property reads, live runtime-bitmap anchor synchronization, authored-member pinned image/import assignment, copied-media pin inheritance, and dynamic-member unpinned image assignment passed through the same CTest executable.
@@ -1079,4 +1079,5 @@ Result:
 - `bb8903ba Port C++ dynamic bitmap default image`
 - `7352d9b3 Port C++ authored bitmap image reads`
 - `034fea56 Port C++ authored bitmap palette redecode`
-- Current checkpoint commit message: `Port C++ text member auto image props`
+- `f0ebc6ee Port C++ text member auto image props`
+- Current checkpoint commit message: `Port C++ copied bitmap palette refs`
