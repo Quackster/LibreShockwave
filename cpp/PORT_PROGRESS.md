@@ -224,6 +224,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Runtime bitmap replacements now preserve existing `member.image` references by updating the live runtime bitmap object in place when one already exists, matching Java's live image-ref behavior across image/media/dimension mutation.
 - Runtime-created bitmap members now lazily create a 1x1 white, unmodified image on first `member.image` access, matching Java's default dynamic bitmap behavior while preserving live image refs for later replacement.
 - Authored bitmap members now decode or synthesize an unmodified live bitmap on `member.image` reads, including runtime palette-override metadata, palette-version re-decode after `paletteRef` changes, and registration-point synchronization.
+- Live bitmap `member.image` references now synchronize member registration points after in-place image API mutations that transfer anchor metadata, while pinned member registration points keep their authored/runtime anchors.
 - Bitmap member alpha-threshold state now initializes from parsed metadata, clamps runtime mutation like Java, and resets with erased/reused dynamic payloads.
 - Bitmap member `width`/`height` setters now create white script-modified replacement bitmaps, preserve depth and runtime registration metadata, and no-op successfully for non-positive dimensions.
 - Runtime-created cast members can now be constructed without a raw chunk, carry mutable names, and expose their runtime type through the same property surface.
@@ -918,7 +919,7 @@ Result:
 - Runtime and file-backed bitmap `media` assignment from another cast member, including decoded BITD pixels, script-modified runtime copies, alpha-threshold propagation, registration-point propagation, and copied runtime palette override metadata, passed through the same CTest executable.
 - Runtime palette payload storage, `member.color` list exposure, palette member lookup by member/name, palette-to-palette `media` copying, and palette-member `duplicate` target handling passed through the same CTest executable.
 - Runtime script payload storage plus script-to-script `media` copying and incompatible target rejection passed through the same CTest executable.
-- Runtime cast-member `regPoint` property mutation, non-point rejection, member-method sub-property reads, live runtime-bitmap anchor synchronization, authored-member pinned image/import assignment, copied-media pin inheritance, and dynamic-member unpinned image assignment passed through the same CTest executable.
+- Runtime cast-member `regPoint` property mutation, non-point rejection, member-method sub-property reads, live runtime-bitmap anchor synchronization including in-place `member.image.copyPixels`, authored-member pinned image/import assignment, copied-media pin inheritance, and dynamic-member unpinned image assignment passed through the same CTest executable.
 - Runtime text-like member `charPosToLoc`/`locToCharPos` method dispatch, no-renderer fallbacks, builtin callback routing, and Player text-renderer wiring passed through the same CTest executable.
 - Runtime text `lineCount`/`line` properties plus cast-member `getProp` and `count(#char/#word/#line/#item)` method helpers passed through the same CTest executable.
 - FieldText datum identity, field builtin member identity preservation, and `value(field(...))` parsed-field callback behavior passed through the same CTest executable.
@@ -1195,4 +1196,5 @@ Result:
 - `3c00a226 Port C++ copyPixels color remap preservation`
 - `ecf0efd8 Cover C++ paletted image index parity`
 - `d63fdfe6 Cover C++ chat bubble matte bake parity`
-- Current checkpoint commit message: `Port C++ image mutation callback`
+- `4a0c7ff2 Port C++ image mutation callback`
+- Current checkpoint commit message: `Port C++ live image anchor sync`

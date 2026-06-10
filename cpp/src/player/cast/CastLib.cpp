@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <exception>
+#include <memory>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
@@ -752,7 +753,17 @@ lingo::Datum CastLib::getMemberProp(int memberNumber, const std::string& propNam
             member->setRuntimeBitmap(defaultBitmap, false);
             bitmap = member->runtimeBitmap();
         }
-        return bitmap ? lingo::Datum::imageRef(std::move(bitmap)) : lingo::Datum::voidValue();
+        if (!bitmap) {
+            return lingo::Datum::voidValue();
+        }
+        std::weak_ptr<libreshockwave::cast::CastMember> weakMember(member);
+        return lingo::Datum::imageRef(
+            std::move(bitmap),
+            [weakMember](bitmap::Bitmap&) {
+                if (auto locked = weakMember.lock()) {
+                    locked->syncRuntimeBitmapAnchorState();
+                }
+            });
     }
     return lingo::Datum::voidValue();
 }

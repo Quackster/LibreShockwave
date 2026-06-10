@@ -370,7 +370,12 @@ Datum Datum::media(std::vector<std::uint8_t> bytes) {
 }
 
 Datum Datum::imageRef(std::shared_ptr<bitmap::Bitmap> bitmap) {
-    return Datum(ImageRef{std::move(bitmap)});
+    return Datum(ImageRef{std::move(bitmap), {}});
+}
+
+Datum Datum::imageRef(std::shared_ptr<bitmap::Bitmap> bitmap,
+                      std::function<void(bitmap::Bitmap&)> mutationCallback) {
+    return Datum(ImageRef{std::move(bitmap), std::move(mutationCallback)});
 }
 
 Datum Datum::soundChannel(int channel) {

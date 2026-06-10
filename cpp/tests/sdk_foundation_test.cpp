@@ -15617,7 +15617,8 @@ void testCastLibManagerFoundation() {
     assert(manager.setMemberProp(1, 2, "paletteRef", Datum::symbol("systemMac")));
     assert(manager.getMemberProp(1, 2, "paletteRef").asSymbol()->name == "systemMac");
     assert(manager.resolveMember(1, 2)->runtimeBitmap() == nullptr);
-    const auto authoredImage = manager.getMemberProp(1, 2, "image").asImageRef();
+    const auto authoredImageDatum = manager.getMemberProp(1, 2, "image");
+    const auto* authoredImage = authoredImageDatum.asImageRef();
     assert(authoredImage != nullptr);
     assert(authoredImage->bitmap != nullptr);
     assert(manager.resolveMember(1, 2)->runtimeBitmap() == authoredImage->bitmap);
@@ -15633,7 +15634,8 @@ void testCastLibManagerFoundation() {
     assert(authoredImage->bitmap->anchorY() == 7);
     assert(manager.setMemberProp(1, 2, "paletteRef", Datum::symbol("systemWin")));
     assert(!authoredImage->bitmap->isScriptModified());
-    const auto authoredImageWithSystemPalette = manager.getMemberProp(1, 2, "image").asImageRef();
+    const auto authoredImageWithSystemPaletteDatum = manager.getMemberProp(1, 2, "image");
+    const auto* authoredImageWithSystemPalette = authoredImageWithSystemPaletteDatum.asImageRef();
     assert(authoredImageWithSystemPalette != nullptr);
     assert(authoredImageWithSystemPalette->bitmap == authoredImage->bitmap);
     assert(!authoredImageWithSystemPalette->bitmap->isScriptModified());
@@ -15723,9 +15725,46 @@ void testCastLibManagerFoundation() {
     assert(assignedRuntime->anchorX() == 9);
     assert(assignedRuntime->anchorY() == 11);
     assert(!manager.setMemberProp(1, 2, "regPoint", Datum::of(42)));
-    const auto memberImage = manager.getMemberProp(1, 2, "image").asImageRef();
+    const auto memberImageDatum = manager.getMemberProp(1, 2, "image");
+    const auto* memberImage = memberImageDatum.asImageRef();
     assert(memberImage != nullptr);
     assert(memberImage->bitmap == assignedRuntime);
+    CastLib liveAnchorCast(7, nullptr, nullptr);
+    auto dynamicLiveAnchor = liveAnchorCast.createDynamicMember("bitmap");
+    Bitmap dynamicInitial(8, 8, 32);
+    dynamicLiveAnchor->setRuntimeBitmap(dynamicInitial);
+    const auto dynamicLiveImageDatum = liveAnchorCast.getMemberProp(dynamicLiveAnchor->memberNum(), "image");
+    const auto* dynamicLiveImage = dynamicLiveImageDatum.asImageRef();
+    assert(dynamicLiveImage != nullptr);
+    Bitmap anchorSource(4, 4, 32);
+    anchorSource.setAnchorPoint(2, 3);
+    anchorSource.fill(0xFF00FF00U);
+    assert(ImageMethodDispatcher::dispatch(*dynamicLiveImage,
+                                           "copyPixels",
+                                           {Datum::imageRef(std::make_shared<Bitmap>(anchorSource)),
+                                            Datum::intRect(1, 2, 5, 6),
+                                            Datum::intRect(0, 0, 4, 4)}).isVoid());
+    assert(dynamicLiveAnchor->runtimeBitmap()->hasAnchorPoint());
+    assert(dynamicLiveAnchor->runtimeBitmap()->anchorX() == 3);
+    assert(dynamicLiveAnchor->runtimeBitmap()->anchorY() == 5);
+    assert(dynamicLiveAnchor->regX() == 3);
+    assert(dynamicLiveAnchor->regY() == 5);
+    auto pinnedLiveAnchor = liveAnchorCast.createDynamicMember("bitmap");
+    pinnedLiveAnchor->setRuntimeBitmap(dynamicInitial);
+    pinnedLiveAnchor->setRegPoint(9, 11);
+    const auto pinnedLiveImageDatum = liveAnchorCast.getMemberProp(pinnedLiveAnchor->memberNum(), "image");
+    const auto* pinnedLiveImage = pinnedLiveImageDatum.asImageRef();
+    assert(pinnedLiveImage != nullptr);
+    assert(ImageMethodDispatcher::dispatch(*pinnedLiveImage,
+                                           "copyPixels",
+                                           {Datum::imageRef(std::make_shared<Bitmap>(anchorSource)),
+                                            Datum::intRect(1, 2, 5, 6),
+                                            Datum::intRect(0, 0, 4, 4)}).isVoid());
+    assert(pinnedLiveAnchor->runtimeBitmap()->hasAnchorPoint());
+    assert(pinnedLiveAnchor->runtimeBitmap()->anchorX() == 9);
+    assert(pinnedLiveAnchor->runtimeBitmap()->anchorY() == 11);
+    assert(pinnedLiveAnchor->regX() == 9);
+    assert(pinnedLiveAnchor->regY() == 11);
     auto mediaImage = std::make_shared<Bitmap>(2, 2, 32);
     mediaImage->setPixel(0, 0, 0xFF010203U);
     mediaImage->setPixel(1, 1, 0xFF0A0B0CU);
@@ -15768,7 +15807,8 @@ void testCastLibManagerFoundation() {
     assert(manager.getMemberProp(1, 10000, "type").asSymbol()->name == "bitmap");
     assert(manager.getMemberProp(1, 10000, "name").stringValue().empty());
     assert(manager.getMemberProp(1, 10000, "width").intValue() == 0);
-    const auto createdRuntimeImage = manager.getMemberProp(1, 10000, "image").asImageRef();
+    const auto createdRuntimeImageDatum = manager.getMemberProp(1, 10000, "image");
+    const auto* createdRuntimeImage = createdRuntimeImageDatum.asImageRef();
     assert(createdRuntimeImage != nullptr);
     assert(createdRuntimeImage->bitmap != nullptr);
     assert(!createdRuntimeImage->bitmap->isScriptModified());
@@ -16003,7 +16043,8 @@ void testCastLibManagerFoundation() {
     assert(autoTextRect->left == 2);
     assert(autoTextRect->right == 32);
     assert(autoTextRect->bottom == 47);
-    const auto autoTextImage = manager.getMemberProp(1, 10001, "image").asImageRef();
+    const auto autoTextImageDatum = manager.getMemberProp(1, 10001, "image");
+    const auto* autoTextImage = autoTextImageDatum.asImageRef();
     assert(autoTextImage != nullptr);
     assert(autoTextImage->bitmap != nullptr);
     assert(autoTextImage->bitmap->width() == 125);
@@ -16266,7 +16307,8 @@ void testCastLibManagerFoundation() {
     assert(manager.getMemberProp(1, directMediaRef->memberNum(), "regPoint").asIntPoint()->y == 4);
     assert(directDirectorRuntime->anchorX() == 3);
     assert(directDirectorRuntime->anchorY() == 4);
-    const auto directLiveImage = manager.getMemberProp(1, directMediaRef->memberNum(), "image").asImageRef();
+    const auto directLiveImageDatum = manager.getMemberProp(1, directMediaRef->memberNum(), "image");
+    const auto* directLiveImage = directLiveImageDatum.asImageRef();
     assert(directLiveImage != nullptr);
     assert(directLiveImage->bitmap == directDirectorRuntime);
     assert(manager.setMemberProp(1, directMediaRef->memberNum(), "width", Datum::of(4)));

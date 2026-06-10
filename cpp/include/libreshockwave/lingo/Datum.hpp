@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -238,7 +239,10 @@ public:
 
     struct ImageRef {
         std::shared_ptr<bitmap::Bitmap> bitmap;
-        friend bool operator==(const ImageRef&, const ImageRef&) = default;
+        std::function<void(bitmap::Bitmap&)> mutationCallback;
+        friend bool operator==(const ImageRef& lhs, const ImageRef& rhs) {
+            return lhs.bitmap == rhs.bitmap;
+        }
     };
 
     struct Media {
@@ -350,6 +354,8 @@ public:
     [[nodiscard]] static Datum paletteIndexColor(int index);
     [[nodiscard]] static Datum media(std::vector<std::uint8_t> bytes);
     [[nodiscard]] static Datum imageRef(std::shared_ptr<bitmap::Bitmap> bitmap);
+    [[nodiscard]] static Datum imageRef(std::shared_ptr<bitmap::Bitmap> bitmap,
+                                        std::function<void(bitmap::Bitmap&)> mutationCallback);
     [[nodiscard]] static Datum soundChannel(int channel);
     [[nodiscard]] static Datum xtra(std::string name);
     [[nodiscard]] static Datum xtraInstance(std::string xtraName, int instanceId);

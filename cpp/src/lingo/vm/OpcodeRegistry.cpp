@@ -644,6 +644,16 @@ void notifyImageMutation(bitmap::Bitmap& bmp) {
     }
 }
 
+void notifyImageMutation(const Datum::ImageRef& image) {
+    if (image.bitmap == nullptr) {
+        return;
+    }
+    notifyImageMutation(*image.bitmap);
+    if (image.mutationCallback) {
+        image.mutationCallback(*image.bitmap);
+    }
+}
+
 bool applyImagePaletteProperty(bitmap::Bitmap& bmp, const Datum& value, builtin::BuiltinContext* builtinContext) {
     bool resolved = false;
     if (value.isString() || value.isSymbol()) {
@@ -680,9 +690,6 @@ bool applyImagePaletteProperty(bitmap::Bitmap& bmp, const Datum& value, builtin:
         }
     }
 
-    if (resolved) {
-        notifyImageMutation(bmp);
-    }
     return resolved;
 }
 
@@ -693,11 +700,13 @@ void setImageProp(builtin::BuiltinContext* builtinContext, const Datum::ImageRef
     auto& bitmap = *image.bitmap;
     if (equalsIgnoreCase(propName, "usealpha")) {
         bitmap.setNativeAlpha(truthy(value));
-        notifyImageMutation(bitmap);
+        notifyImageMutation(image);
         return;
     }
     if (equalsIgnoreCase(propName, "paletteref")) {
-        (void)applyImagePaletteProperty(bitmap, value, builtinContext);
+        if (applyImagePaletteProperty(bitmap, value, builtinContext)) {
+            notifyImageMutation(image);
+        }
     }
 }
 
@@ -4062,16 +4071,16 @@ Datum imageObjectMethod(const Datum::ImageRef& image, std::string_view methodNam
     auto& bmp = *image.bitmap;
     if (equalsIgnoreCase(methodName, "fill")) {
         if (imageFill(bmp, args)) {
-            notifyImageMutation(bmp);
+            notifyImageMutation(image);
         }
         return Datum::voidValue();
     }
     if (equalsIgnoreCase(methodName, "setAlpha")) {
-        notifyImageMutation(bmp);
+        notifyImageMutation(image);
         return imageSetAlpha(bmp, args);
     }
     if (equalsIgnoreCase(methodName, "draw")) {
-        notifyImageMutation(bmp);
+        notifyImageMutation(image);
         return imageDraw(bmp, args);
     }
     if (equalsIgnoreCase(methodName, "createMatte")) {
@@ -4084,7 +4093,11 @@ Datum imageObjectMethod(const Datum::ImageRef& image, std::string_view methodNam
     }
     if (equalsIgnoreCase(methodName, "copyPixels")) {
         notifyImageMutation(bmp);
-        return imageCopyPixels(bmp, args);
+        auto result = imageCopyPixels(bmp, args);
+        if (image.mutationCallback) {
+            image.mutationCallback(bmp);
+        }
+        return result;
     }
     if (equalsIgnoreCase(methodName, "duplicate")) {
         return Datum::imageRef(std::make_shared<bitmap::Bitmap>(bmp.copy()));
@@ -4136,7 +4149,7 @@ Datum imageObjectMethod(const Datum::ImageRef& image, std::string_view methodNam
             const int y = toIntLikeJava(args[1]);
             if (x >= 0 && x < bmp.width() && y >= 0 && y < bmp.height()) {
                 bmp.setPixel(x, y, imageColorArgb(args[2]));
-                notifyImageMutation(bmp);
+                notifyImageMutation(image);
             }
         }
         return Datum::voidValue();

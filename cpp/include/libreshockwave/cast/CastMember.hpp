@@ -117,6 +117,7 @@ public:
     [[nodiscard]] bool shouldRedecodeAuthoredRuntimeBitmap() const;
     void setRuntimeBitmap(const bitmap::Bitmap& bitmap, bool markScriptModified = true);
     void setRuntimeBitmapFromAuthoredSource(const bitmap::Bitmap& bitmap);
+    void syncRuntimeBitmapAnchorState();
     void erase();
     void reuseAs(MemberType memberType);
     [[nodiscard]] std::string toString() const;
@@ -126,7 +127,6 @@ private:
     void resetRuntimePayload();
     void resetTextProperties();
     void setRuntimeBitmapInternal(const bitmap::Bitmap& bitmap, bool markScriptModified, bool authoredSource);
-    void syncRuntimeBitmapAnchorState();
 
     int id_;
     int castLib_;
