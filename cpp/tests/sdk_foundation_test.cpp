@@ -61,6 +61,7 @@
 #include "libreshockwave/font/BdfParser.hpp"
 #include "libreshockwave/font/BitmapFont.hpp"
 #include "libreshockwave/font/PfrBitReader.hpp"
+#include "libreshockwave/font/Pfr1Font.hpp"
 #include "libreshockwave/fonts/FontDataDecoder.hpp"
 #include "libreshockwave/id/Ids.hpp"
 #include "libreshockwave/io/BinaryReader.hpp"
@@ -128,6 +129,7 @@ using libreshockwave::format::MoaID;
 using libreshockwave::font::BdfParser;
 using libreshockwave::font::BitmapFont;
 using libreshockwave::font::PfrBitReader;
+using libreshockwave::font::Pfr1Font;
 using libreshockwave::fonts::FontDataDecoder;
 using libreshockwave::DirectorFile;
 using libreshockwave::W3DFile;
@@ -360,6 +362,144 @@ void testPfrBitReader() {
 
     PfrBitReader partial({0b11000000});
     assert(partial.readBits(10) == 0b11000000);
+}
+
+void testPfr1FontParserAndRegistry() {
+    auto putU16 = [](std::vector<std::uint8_t>& data, int offset, int value) {
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((value >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>(value & 0xFF);
+    };
+    auto putU24 = [](std::vector<std::uint8_t>& data, int offset, int value) {
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((value >> 16) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>((value >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 2)] = static_cast<std::uint8_t>(value & 0xFF);
+    };
+    auto appendU16 = [](std::vector<std::uint8_t>& data, int value) {
+        data.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(value & 0xFF));
+    };
+    auto appendU24 = [](std::vector<std::uint8_t>& data, int value) {
+        data.push_back(static_cast<std::uint8_t>((value >> 16) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(value & 0xFF));
+    };
+
+    std::vector<std::uint8_t> data(144, 0);
+    data[0] = 'P';
+    data[1] = 'F';
+    data[2] = 'R';
+    data[3] = '1';
+
+    int pos = 4;
+    putU16(data, pos, 1); pos += 2;     // signature
+    putU16(data, pos, 2); pos += 2;     // secondary signature
+    putU16(data, pos, 54); pos += 2;    // header size
+    putU16(data, pos, 14); pos += 2;    // logical font directory size
+    putU16(data, pos, 60); pos += 2;    // logical font directory offset
+    putU16(data, pos, 0); pos += 2;     // logical font max size
+    putU24(data, pos, 0); pos += 3;     // logical font section size
+    putU24(data, pos, 0); pos += 3;     // logical font section offset
+    putU16(data, pos, 0); pos += 2;     // physical font max size
+    putU24(data, pos, 52); pos += 3;    // physical font section size
+    putU24(data, pos, 80); pos += 3;    // physical font section offset
+    putU16(data, pos, 0); pos += 2;     // GPS max size
+    putU24(data, pos, 4); pos += 3;     // GPS size
+    putU24(data, pos, 140); pos += 3;   // GPS offset
+    data[static_cast<std::size_t>(pos++)] = 0; // maxBlueValues
+    data[static_cast<std::size_t>(pos++)] = 0; // maxXOrus
+    data[static_cast<std::size_t>(pos++)] = 0; // maxYOrus
+    data[static_cast<std::size_t>(pos++)] = 0; // physFontMaxSizeHigh
+    data[static_cast<std::size_t>(pos++)] = 1; // black-pixel flag
+    putU24(data, pos, 0); pos += 3;
+    putU24(data, pos, 0); pos += 3;
+    putU24(data, pos, 0); pos += 3;
+    putU16(data, pos, 1); pos += 2;     // n physical fonts
+    data[static_cast<std::size_t>(pos++)] = 0;
+    data[static_cast<std::size_t>(pos++)] = 0;
+    putU16(data, pos, 2);               // max chars
+
+    putU16(data, 60, 1);
+    putU24(data, 62, 256);
+    putU24(data, 65, 0);
+    putU24(data, 68, 0);
+    putU24(data, 71, 0xFFFF00);         // -256 signed 24-bit
+
+    std::vector<std::uint8_t> phys;
+    appendU16(phys, 1);                 // font ref
+    appendU16(phys, 1024);              // outline resolution
+    appendU16(phys, 512);               // metrics resolution
+    appendU16(phys, 0xFFF6);            // xMin -10
+    appendU16(phys, 0xFFEC);            // yMin -20
+    appendU16(phys, 100);               // xMax
+    appendU16(phys, 200);               // yMax
+    phys.push_back(0x80);               // extra items, non-proportional
+    appendU16(phys, 7);                 // standard set width
+    phys.push_back(1);                  // one extra item
+    phys.push_back(7);                  // item size
+    phys.push_back(2);                  // FontID
+    phys.insert(phys.end(), {'T', 'i', 'n', 'y', 'P', 'F', 'R'});
+    appendU24(phys, 0);                 // no aux bytes
+    phys.push_back(0);                  // no blue values
+    phys.push_back(0);                  // blue fuzz
+    phys.push_back(0);                  // blue scale
+    appendU16(phys, 3);                 // stdVW
+    appendU16(phys, 4);                 // stdHW
+    appendU16(phys, 2);                 // n characters
+    phys.push_back(0x0D);               // char delta u8, absolute set width, gps size u8, sequential offset
+    phys.push_back(65);
+    appendU16(phys, 9);
+    phys.push_back(0);
+    phys.push_back(0x01);               // next char delta u8, same width, gps size u8
+    phys.push_back(1);
+    phys.push_back(2);
+    std::copy(phys.begin(), phys.end(), data.begin() + 80);
+    data[140] = 0x00;
+    data[141] = 0x00;
+
+    auto font = Pfr1Font::parse(data);
+    assert(font != nullptr);
+    assert(font->pfrBlackPixel);
+    assert(font->fontName == "TinyPFR");
+    assert(font->metrics.fontId == "TinyPFR");
+    assert(font->metrics.outlineResolution == 1024);
+    assert(font->metrics.metricsResolution == 512);
+    assert(font->metrics.xMin == -10);
+    assert(font->metrics.yMin == -20);
+    assert(font->metrics.xMax == 100);
+    assert(font->metrics.yMax == 200);
+    assert(font->metrics.ascender == 200);
+    assert(font->metrics.descender == -20);
+    assert(font->metrics.stdVW == 3);
+    assert(font->metrics.stdHW == 4);
+    assert(font->fontMatrix[0] == 256);
+    assert(font->fontMatrix[3] == -256);
+    assert(font->gpsOffset == 140);
+    assert(font->gpsSize == 4);
+    assert(font->charRecords.size() == 2);
+    assert(font->charRecords[0].charCode == 'A');
+    assert(font->charRecords[0].setWidth == 9);
+    assert(font->charRecords[0].gpsSize == 0);
+    assert(font->charRecords[1].charCode == 'C');
+    assert(font->charRecords[1].setWidth == 9);
+    assert(font->charRecords[1].gpsSize == 2);
+    assert(font->glyphs.at('A').setWidth == 9.0F);
+
+    assert(Pfr1Font::parse({}) == nullptr);
+    auto partial = data;
+    partial.resize(90);
+    assert(Pfr1Font::parse(partial) != nullptr);
+
+    FontRegistry::clear();
+    FontRegistry::registerPfr1Font("Tiny Member", data);
+    assert(FontRegistry::hasPfrFont("tiny member"));
+    assert(FontRegistry::hasPfrFont("TinyPFR"));
+    assert(FontRegistry::getPfr1Font("tinypfr") != nullptr);
+    assert(FontRegistry::getPfr1Font("Tiny_400_0") == nullptr);
+    assert(FontRegistry::resolveFont("TinyPFR").value() == "tinypfr");
+    assert(FontRegistry::resolveFont("Tiny Member").value() == "tiny member");
+    assert(FontRegistry::getFirstRegisteredFont().value() == "tiny member");
+    assert(FontRegistry::getPreferredDirectorPixelFont().value() == "tiny member");
+    FontRegistry::clear();
 }
 
 void testBitmapFontAndFontRegistry() {
@@ -10538,6 +10678,7 @@ int main() {
     testBinaryReaderZlib();
     testFontDataDecoder();
     testPfrBitReader();
+    testPfr1FontParserAndRegistry();
     testBitmapFontAndFontRegistry();
     testIdsAndEnums();
     testFormatTypes();

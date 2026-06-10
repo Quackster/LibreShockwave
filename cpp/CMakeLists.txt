@@ -41,6 +41,7 @@ add_library(libreshockwave
     src/font/BdfParser.cpp
     src/font/BitmapFont.cpp
     src/font/PfrBitReader.cpp
+    src/font/Pfr1Font.cpp
     src/fonts/FontDataDecoder.cpp
     src/io/BinaryReader.cpp
     src/lingo/Datum.cpp

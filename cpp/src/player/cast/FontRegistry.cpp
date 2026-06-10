@@ -11,6 +11,7 @@ namespace libreshockwave::player::cast {
 namespace {
 
 struct RegistryState {
+    std::unordered_map<std::string, std::shared_ptr<font::Pfr1Font>> parsedFonts;
     std::unordered_map<std::string, std::shared_ptr<font::BitmapFont>> rasterizedCache;
     std::unordered_map<std::string, std::string> canonicalIndex;
     std::unordered_map<std::string, FontRegistry::FontAlias> aliases;
@@ -95,6 +96,51 @@ void FontRegistry::registerBitmapFont(const std::string& fontName,
     registry.rasterizedCache[fontCacheKey(fontName, fontSize, false, false)] = std::move(font);
 }
 
+void FontRegistry::registerPfr1Font(const std::string& memberName,
+                                    const std::vector<std::uint8_t>& pfrData) {
+    if (memberName.empty() || pfrData.empty()) {
+        return;
+    }
+    auto parsed = font::Pfr1Font::parse(pfrData);
+    if (parsed == nullptr) {
+        return;
+    }
+
+    auto& registry = state();
+    std::lock_guard lock(registry.mutex);
+    const auto key = lowerAscii(memberName);
+    registry.parsedFonts[key] = parsed;
+    if (!registry.firstRegisteredFont.has_value()) {
+        registry.firstRegisteredFont = key;
+    }
+    registry.canonicalIndex[canonicalFontName(memberName)] = key;
+
+    if (!parsed->fontName.empty()) {
+        const auto internalKey = lowerAscii(parsed->fontName);
+        registry.parsedFonts[internalKey] = parsed;
+        registry.canonicalIndex[canonicalFontName(parsed->fontName)] = key;
+    }
+}
+
+std::shared_ptr<font::Pfr1Font> FontRegistry::getPfr1Font(const std::string& fontName) {
+    if (fontName.empty()) {
+        return nullptr;
+    }
+    auto& registry = state();
+    std::lock_guard lock(registry.mutex);
+    const auto key = lowerAscii(fontName);
+    if (const auto it = registry.parsedFonts.find(key); it != registry.parsedFonts.end()) {
+        return it->second;
+    }
+    if (const auto mapped = registry.canonicalIndex.find(canonicalFontName(fontName));
+        mapped != registry.canonicalIndex.end()) {
+        if (const auto it = registry.parsedFonts.find(mapped->second); it != registry.parsedFonts.end()) {
+            return it->second;
+        }
+    }
+    return nullptr;
+}
+
 std::shared_ptr<font::BitmapFont> FontRegistry::getBitmapFont(const std::string& fontName, int fontSize) {
     return getBitmapFont(fontName, fontSize, false, false);
 }
@@ -159,7 +205,7 @@ std::optional<std::string> FontRegistry::resolveFont(const std::string& fontName
     std::lock_guard lock(registry.mutex);
     const auto key = lowerAscii(fontName);
 
-    if (registry.firstRegisteredFont.has_value() && key == *registry.firstRegisteredFont) {
+    if (registry.parsedFonts.contains(key)) {
         return key;
     }
 
@@ -168,9 +214,12 @@ std::optional<std::string> FontRegistry::resolveFont(const std::string& fontName
         return mapped->second;
     }
 
-    if (key.size() <= 3 && registry.firstRegisteredFont.has_value() &&
-        registry.firstRegisteredFont->starts_with(key)) {
-        return registry.firstRegisteredFont;
+    if (key.size() <= 3) {
+        for (const auto& [fontKey, _] : registry.parsedFonts) {
+            if (fontKey.starts_with(key)) {
+                return fontKey;
+            }
+        }
     }
 
     return std::nullopt;
@@ -183,7 +232,7 @@ bool FontRegistry::hasPfrFont(const std::string& fontName) {
     auto& registry = state();
     std::lock_guard lock(registry.mutex);
     const auto key = lowerAscii(fontName);
-    return registry.firstRegisteredFont.has_value() && key == *registry.firstRegisteredFont;
+    return registry.parsedFonts.contains(key);
 }
 
 std::optional<std::string> FontRegistry::getFirstRegisteredFont() {
@@ -204,6 +253,7 @@ std::optional<std::string> FontRegistry::getPreferredDirectorPixelFont() {
 void FontRegistry::clear() {
     auto& registry = state();
     std::lock_guard lock(registry.mutex);
+    registry.parsedFonts.clear();
     registry.rasterizedCache.clear();
     registry.canonicalIndex.clear();
     registry.aliases.clear();

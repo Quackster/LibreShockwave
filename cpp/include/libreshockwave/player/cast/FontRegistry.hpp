@@ -3,8 +3,10 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "libreshockwave/font/BitmapFont.hpp"
+#include "libreshockwave/font/Pfr1Font.hpp"
 
 namespace libreshockwave::player::cast {
 
@@ -18,6 +20,9 @@ public:
     static void registerBitmapFont(const std::string& fontName,
                                    int fontSize,
                                    std::shared_ptr<font::BitmapFont> font);
+    static void registerPfr1Font(const std::string& memberName,
+                                 const std::vector<std::uint8_t>& pfrData);
+    [[nodiscard]] static std::shared_ptr<font::Pfr1Font> getPfr1Font(const std::string& fontName);
     [[nodiscard]] static std::shared_ptr<font::BitmapFont> getBitmapFont(const std::string& fontName,
                                                                          int fontSize);
     [[nodiscard]] static std::shared_ptr<font::BitmapFont> getBitmapFont(const std::string& fontName,
