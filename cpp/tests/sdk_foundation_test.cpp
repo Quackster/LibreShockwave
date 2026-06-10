@@ -3494,8 +3494,12 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     callbacks.callStackFormatter = []() {
         return std::string("stack");
     };
-    callbacks.handlerFinder = [&script, &otherHandler](std::string_view name) -> std::optional<HandlerRef> {
+    bool exposeGetMemNumHandler = false;
+    callbacks.handlerFinder = [&script, &otherHandler, &exposeGetMemNumHandler](std::string_view name) -> std::optional<HandlerRef> {
         if (name == "known") {
+            return HandlerRef{&script, otherHandler};
+        }
+        if (exposeGetMemNumHandler && name == "getmemnum") {
             return HandlerRef{&script, otherHandler};
         }
         return std::nullopt;
@@ -4727,6 +4731,71 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(!runObjCall(119, {registryInstance, Datum::of(std::string("missing"))}).boolValue());
     assert(runObjCall(120, {registryInstance, Datum::of(std::string("missing"))}).isVoid());
     assert(runObjCall(121, {registryInstance, Datum::of(std::string("memberalias.index")), Datum::of(11)}).intValue() == 0);
+    auto lazyRegistryInstance = Datum::scriptInstance("lazyResourceRegistry");
+    lazyRegistryInstance.scriptInstanceValue().setProperty("pAllMemNumList", Datum::propList());
+    builtinContext.registryCastMemberNameResolver = [](int castLib, const std::string& memberName) {
+        assert(castLib == 0);
+        if (memberName == "Object Base Class") {
+            return Datum::castMemberRef(CastLibId(2), MemberId(74));
+        }
+        return Datum::voidValue();
+    };
+    assert(runObjCall(118, {lazyRegistryInstance, Datum::of(std::string("Object Base Class"))}).intValue() ==
+           SlotId::of(2, 74).value());
+    assert(lazyRegistryInstance.scriptInstanceValue()
+               .getProperty("pAllMemNumList")
+               .propListValue()
+               .get(Datum::of(std::string("Object Base Class")))
+               .intValue() == SlotId::of(2, 74).value());
+    builtinContext.registryCastMemberNameResolver = {};
+
+    builtinContext.castMemberNameResolver = [](int castLib, const std::string& memberName) {
+        assert(castLib == 0);
+        if (memberName == "Hidden Bitmap") {
+            return Datum::castMemberRef(CastLibId(11), MemberId(7));
+        }
+        if (memberName == "Bootstrap Script") {
+            return Datum::castMemberRef(CastLibId(2), MemberId(74));
+        }
+        return Datum::voidValue();
+    };
+    builtinContext.registryVisibleMemberResolver = [](int castLib, int memberNum) {
+        return castLib == 11 && memberNum == 8;
+    };
+    assert(runObjCall(118, {lazyRegistryInstance, Datum::of(std::string("Hidden Bitmap"))}).intValue() == 0);
+    assert(lazyRegistryInstance.scriptInstanceValue()
+               .getProperty("pAllMemNumList")
+               .propListValue()
+               .get(Datum::of(std::string("Hidden Bitmap")))
+               .isVoid());
+    builtinContext.castMemberPropertyGetter = [](int castLib, int memberNum, const std::string& propertyName) {
+        if (castLib == 2 && memberNum == 74 && propertyName == "type") {
+            return Datum::symbol("script");
+        }
+        return Datum::voidValue();
+    };
+    assert(runObjCall(118, {lazyRegistryInstance, Datum::of(std::string("Bootstrap Script"))}).intValue() ==
+           SlotId::of(2, 74).value());
+    assert(lazyRegistryInstance.scriptInstanceValue()
+               .getProperty("pAllMemNumList")
+               .propListValue()
+               .get(Datum::of(std::string("Bootstrap Script")))
+               .intValue() == SlotId::of(2, 74).value());
+
+    auto authoredRegistryInstance = Datum::scriptInstance("authoredResourceRegistry");
+    authoredRegistryInstance.scriptInstanceValue().setProperty("pAllMemNumList", Datum::propList());
+    exposeGetMemNumHandler = true;
+    assert(runObjCall(118, {authoredRegistryInstance, Datum::of(std::string("Bootstrap Script"))}).stringValue() ==
+           "receiver-exec:99:1");
+    assert(authoredRegistryInstance.scriptInstanceValue()
+               .getProperty("pAllMemNumList")
+               .propListValue()
+               .get(Datum::of(std::string("Bootstrap Script")))
+               .intValue() == SlotId::of(2, 74).value());
+    exposeGetMemNumHandler = false;
+    builtinContext.castMemberNameResolver = {};
+    builtinContext.registryVisibleMemberResolver = {};
+    builtinContext.castMemberPropertyGetter = {};
     assert(runObjCall(61, {scriptInstance, Datum::of(123)}).stringValue() == "receiver-exec:99:1");
     int closeThreadDeferrals = 0;
     builtinContext.scriptInstanceMethodDeferrer = [&closeThreadDeferrals](

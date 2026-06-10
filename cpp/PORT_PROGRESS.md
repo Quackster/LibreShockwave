@@ -704,6 +704,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Mutable ChunkRef creation and char-range deletion now use a dedicated C++ datum; broader mutable chunk-ref operations remain deferred.
 - ScriptRef receiver dispatch now supports Java-compatible `new` method calls through the registered constructor builtin.
 - ScriptInstance receiver dispatch now supports Java-compatible property/list-like `getAt`, `setAt`, `getAProp`, `setAProp`, `getProp`, `getPropRef`, `setProp`, `addProp`, `deleteProp`, `count`, `ilk`, `addAt`, handler-existence/dispatch methods, and prefilled `pAllMemNumList` member-registry lookups over C++ script-instance datums.
+- ScriptInstance member-registry dispatch now lazily seeds stable provider-backed member names, rejects hidden broad member lookups, allows script-member bootstrap lookup, and pre-fills registry entries before authored handlers run.
 - CastMemberRef receiver dispatch now delegates methods through a provider-backed C++ builtin context hook, matching Java's cast-member method provider path.
 - CastLib member-accessor receiver dispatch now supports Java-compatible `castLib(n).member.getAt(key)` member lookup by number or name.
 - SpriteRef receiver dispatch now delegates methods through a provider-backed C++ builtin context hook for behavior/broker integration.
@@ -887,7 +888,7 @@ Result:
 - OpcodeRegistry movie-property provider reads/writes and provider-backed `the` lookups passed through the same CTest executable.
 - OpcodeRegistry provider-backed object property gets/sets for movie, player, stage, sprite, integer-as-sprite refs, cast-member metadata/provider properties, timeout refs, sound channels, and image `useAlpha`/`paletteRef` setters passed through the same CTest executable.
 - OpcodeRegistry local/external call handlers, builtin dispatch, no-return calls, constant fallback, and error-state handling passed through the same CTest executable.
-- OpcodeRegistry object method calls and receiver-style external method calls for lists, property lists, strings, points, rectangles, cast library member lookups/accessors, timeouts, sound channels, and Xtra instances passed through the same CTest executable.
+- OpcodeRegistry object method calls and receiver-style external method calls for lists, property lists, strings, points, rectangles, script-instance registry bootstrap/prefill, cast library member lookups/accessors, timeouts, sound channels, and Xtra instances passed through the same CTest executable.
 - OpcodeRegistry `NEW_OBJ` script construction delegation, provider-resolved fallback construction, declared property preinitialization, automatic `new` handler invocation, and non-script rejection passed through the same CTest executable.
 
 ## Remaining Major Work
@@ -1092,4 +1093,5 @@ Result:
 - `3c96a286 Port C++ ink rectangular media matte skip`
 - `9342375e Port C++ ink Java parity regressions`
 - `b1982eb9 Port C++ live indexed darken bake`
-- Current checkpoint commit message: `Fix Java verification parity`
+- `04735e69 Fix Java verification parity`
+- Current checkpoint commit message: `Port C++ script registry prefill`

@@ -1947,12 +1947,79 @@ void scriptInstanceDeleteLocalProperty(Datum::ScriptInstanceRef& instance, std::
         properties.end());
 }
 
+bool isScriptInstanceMemberRegistryMethod(std::string_view methodName) {
+    return equalsIgnoreCase(methodName, "getmemnum") ||
+           equalsIgnoreCase(methodName, "exists") ||
+           equalsIgnoreCase(methodName, "memberexists") ||
+           equalsIgnoreCase(methodName, "getmember") ||
+           equalsIgnoreCase(methodName, "readaliasindexesfromfield");
+}
+
+std::optional<int> slotValueFromCastMemberRef(const Datum& datum) {
+    const auto* ref = datum.asCastMemberRef();
+    if (ref == nullptr || ref->castLib < 1 || ref->memberNum() < 1) {
+        return std::nullopt;
+    }
+    return id::SlotId::of(id::CastLibId(ref->castLib), id::MemberId(ref->memberNum())).value();
+}
+
+bool isRegistryVisibleMember(const builtin::BuiltinContext* builtinContext, int castLib, int memberNum) {
+    if (castLib < 1 || memberNum < 1 || builtinContext == nullptr) {
+        return false;
+    }
+    if (builtinContext->registryVisibleMemberResolver) {
+        return builtinContext->registryVisibleMemberResolver(castLib, memberNum);
+    }
+    return builtinContext->castMemberExistsResolver && builtinContext->castMemberExistsResolver(castLib, memberNum);
+}
+
+bool isBootstrapScriptMember(const builtin::BuiltinContext* builtinContext, int castLib, int memberNum) {
+    if (castLib < 1 || memberNum < 1 || builtinContext == nullptr || !builtinContext->castMemberPropertyGetter) {
+        return false;
+    }
+    const Datum memberType = builtinContext->castMemberPropertyGetter(castLib, memberNum, "type");
+    return (memberType.isString() || memberType.isSymbol()) && equalsIgnoreCase(memberType.stringValue(), "script");
+}
+
+int resolveScriptInstanceMemberSlotByName(const builtin::BuiltinContext* builtinContext,
+                                          std::string_view memberName,
+                                          bool allowDefinitionBootstrapLookup) {
+    if (builtinContext == nullptr || memberName.empty()) {
+        return 0;
+    }
+
+    const std::string name(memberName);
+    if (builtinContext->registryCastMemberNameResolver) {
+        if (const auto slot = slotValueFromCastMemberRef(builtinContext->registryCastMemberNameResolver(0, name))) {
+            return *slot;
+        }
+    }
+
+    if (!allowDefinitionBootstrapLookup || !builtinContext->castMemberNameResolver) {
+        return 0;
+    }
+
+    const Datum bootstrapRef = builtinContext->castMemberNameResolver(0, name);
+    const auto* ref = bootstrapRef.asCastMemberRef();
+    const auto slot = slotValueFromCastMemberRef(bootstrapRef);
+    if (!slot.has_value() || ref == nullptr) {
+        return 0;
+    }
+    if (!isRegistryVisibleMember(builtinContext, ref->castLib, ref->memberNum()) &&
+        !isBootstrapScriptMember(builtinContext, ref->castLib, ref->memberNum())) {
+        return 0;
+    }
+    return *slot;
+}
+
 std::optional<int> scriptInstanceRegisteredMemberSlot(Datum::ScriptInstanceRef& instance,
-                                                      const std::vector<Datum>& args) {
+                                                      const std::vector<Datum>& args,
+                                                      const builtin::BuiltinContext* builtinContext,
+                                                      bool allowDefinitionBootstrapLookup) {
     if (args.empty()) {
         return 0;
     }
-    const Datum registry = instance.getProperty("pAllMemNumList");
+    Datum registry = instance.getProperty("pAllMemNumList");
     if (!registry.isPropList()) {
         return std::nullopt;
     }
@@ -1965,17 +2032,25 @@ std::optional<int> scriptInstanceRegisteredMemberSlot(Datum::ScriptInstanceRef& 
         return 0;
     }
     const Datum registered = getPropListKey(registry.propListValue(), memberName);
-    return registered.isVoid() ? 0 : toIntLikeJava(registered);
+    if (!registered.isVoid()) {
+        return toIntLikeJava(registered);
+    }
+
+    const int resolvedSlot = resolveScriptInstanceMemberSlotByName(
+        builtinContext,
+        memberName,
+        allowDefinitionBootstrapLookup);
+    if (resolvedSlot > 0) {
+        registry.propListValue().put(Datum::of(memberName), Datum::of(resolvedSlot));
+    }
+    return resolvedSlot;
 }
 
 std::optional<Datum> scriptInstanceMemberRegistryMethod(Datum::ScriptInstanceRef& instance,
                                                         std::string_view methodName,
-                                                        const std::vector<Datum>& args) {
-    if (!equalsIgnoreCase(methodName, "getmemnum") &&
-        !equalsIgnoreCase(methodName, "exists") &&
-        !equalsIgnoreCase(methodName, "memberexists") &&
-        !equalsIgnoreCase(methodName, "getmember") &&
-        !equalsIgnoreCase(methodName, "readaliasindexesfromfield")) {
+                                                        const std::vector<Datum>& args,
+                                                        const builtin::BuiltinContext* builtinContext) {
+    if (!isScriptInstanceMemberRegistryMethod(methodName)) {
         return std::nullopt;
     }
 
@@ -1983,7 +2058,7 @@ std::optional<Datum> scriptInstanceMemberRegistryMethod(Datum::ScriptInstanceRef
         return instance.getProperty("pAllMemNumList").isPropList() ? std::optional<Datum>{Datum::of(0)} : std::nullopt;
     }
 
-    const auto slot = scriptInstanceRegisteredMemberSlot(instance, args);
+    const auto slot = scriptInstanceRegisteredMemberSlot(instance, args, builtinContext, true);
     if (!slot.has_value()) {
         return std::nullopt;
     }
@@ -2092,10 +2167,14 @@ Datum scriptInstanceObjectMethod(ExecutionContext& context,
         if (args.empty()) return Datum::FALSE;
         return context.findHandler(keyNameLikeJava(args[0])).has_value() ? Datum::TRUE : Datum::FALSE;
     }
+    auto* builtinContext = context.builtinContext();
+    if (isScriptInstanceMemberRegistryMethod(methodName) && !equalsIgnoreCase(methodName, "readaliasindexesfromfield")) {
+        (void)scriptInstanceRegisteredMemberSlot(instance, args, builtinContext, true);
+    }
     if (const auto handler = context.findHandler(methodName)) {
         return safeExecuteHandler(context, *handler->script, handler->handler, args, receiver);
     }
-    if (const auto registryResult = scriptInstanceMemberRegistryMethod(instance, methodName, args)) {
+    if (const auto registryResult = scriptInstanceMemberRegistryMethod(instance, methodName, args, builtinContext)) {
         return *registryResult;
     }
 

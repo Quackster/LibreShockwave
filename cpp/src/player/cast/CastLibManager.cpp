@@ -1183,8 +1183,14 @@ void CastLibManager::installBuiltinCallbacks(lingo::builtin::BuiltinContext& con
     context.castMemberNameResolver = [this](int castLib, const std::string& memberName) {
         return getMemberByName(castLib, memberName);
     };
+    context.registryCastMemberNameResolver = [this](int castLib, const std::string& memberName) {
+        return getRegistryMemberByName(castLib, memberName);
+    };
     context.castMemberExistsResolver = [this](int castLib, int memberNum) {
         return memberExists(castLib, memberNum);
+    };
+    context.registryVisibleMemberResolver = [this](int castLib, int memberNum) {
+        return isRegistryVisibleMember(castLib, memberNum);
     };
     context.castMemberMethodHandler = [this](int castLib,
                                              int memberNum,
