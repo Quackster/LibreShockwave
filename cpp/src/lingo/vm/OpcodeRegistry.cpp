@@ -774,6 +774,60 @@ Datum getCastLibMemberAccessorValue(ExecutionContext& context,
                : Datum::voidValue();
 }
 
+Datum getObjectProperty(ExecutionContext& context, const Datum& object, std::string_view propName);
+
+Datum getChainedObjectProperty(ExecutionContext& context, const Datum& object, std::string_view propName) {
+    auto* builtinContext = context.builtinContext();
+    const auto numericIndex = parseIntStrict(propName);
+    if (object.type() == DatumType::ScriptInstanceRef) {
+        return numericIndex.has_value() ? Datum::voidValue() : util::getProperty(object.scriptInstanceValue(), propName);
+    }
+    if (object.isList()) {
+        if (numericIndex.has_value() && *numericIndex >= 1 && *numericIndex <= object.listValue().count()) {
+            return object.listValue().getAt(*numericIndex);
+        }
+        return Datum::voidValue();
+    }
+    if (object.isPropList()) {
+        return getPropListKey(object.propListValue(), propName);
+    }
+    if (const auto* str = object.asString()) {
+        return propName == "length" ? Datum::of(static_cast<int>(str->value.size())) : Datum::voidValue();
+    }
+    if (object.asFieldText() != nullptr) {
+        return Datum::voidValue();
+    }
+    if (const auto* point = object.asIntPoint()) {
+        return equalsIgnoreCase(propName, "ilk") ? Datum::voidValue() : getPointProp(*point, propName);
+    }
+    if (const auto* rect = object.asIntRect()) {
+        return equalsIgnoreCase(propName, "ilk") ? Datum::voidValue() : getRectProp(*rect, propName);
+    }
+    if (const auto* color = object.asColorRef()) {
+        if (color->paletteIndex.has_value()) {
+            return Datum::voidValue();
+        }
+        return equalsIgnoreCase(propName, "ilk") ? Datum::voidValue() : getColorProp(*color, propName);
+    }
+    if (const auto* accessor = object.asCastLibMemberAccessor()) {
+        return numericIndex.has_value()
+                   ? getCastLibMemberAccessorValue(context, *accessor, Datum::of(*numericIndex))
+                   : getCastLibMemberAccessorValue(context, *accessor, Datum::of(std::string(propName)));
+    }
+    if (const auto* sprite = object.asSpriteRef()) {
+        return builtinContext != nullptr && builtinContext->spriteProperties != nullptr
+                   ? builtinContext->spriteProperties->getSpriteProp(sprite->channel, propName)
+                   : Datum::voidValue();
+    }
+    if (const auto* value = object.asInt(); value != nullptr) {
+        if (!equalsIgnoreCase(propName, "ilk") && builtinContext != nullptr && builtinContext->spriteProperties != nullptr) {
+            return builtinContext->spriteProperties->getSpriteProp(value->value, propName);
+        }
+        return equalsIgnoreCase(propName, "ilk") ? Datum::symbol(ilkTypeName(object)) : Datum::voidValue();
+    }
+    return getObjectProperty(context, object, propName);
+}
+
 Datum getObjectProperty(ExecutionContext& context, const Datum& object, std::string_view propName) {
     if (object.isVoid()) {
         return Datum::voidValue();
@@ -4911,11 +4965,7 @@ bool getObjProp(ExecutionContext& context) {
 bool getChainedProp(ExecutionContext& context) {
     const std::string propName = context.resolveName(context.argument());
     const Datum object = context.pop();
-    if (object.type() == DatumType::ScriptInstanceRef && parseIntStrict(propName).has_value()) {
-        context.push(Datum::voidValue());
-        return true;
-    }
-    context.push(getObjectProperty(context, object, propName));
+    context.push(getChainedObjectProperty(context, object, propName));
     return true;
 }
 
