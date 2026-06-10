@@ -12607,6 +12607,24 @@ void testCastLibManagerFoundation() {
     assert(manager.getMemberCount(1) == 3);
     assert(manager.getMemberProp(1, 10000, "type").asSymbol()->name == "bitmap");
     assert(manager.getMemberProp(1, 10000, "name").stringValue().empty());
+    assert(manager.getMemberProp(1, 10000, "width").intValue() == 0);
+    const auto createdRuntimeImage = manager.getMemberProp(1, 10000, "image").asImageRef();
+    assert(createdRuntimeImage != nullptr);
+    assert(createdRuntimeImage->bitmap != nullptr);
+    assert(!createdRuntimeImage->bitmap->isScriptModified());
+    assert(createdRuntimeImage->bitmap->width() == 1);
+    assert(createdRuntimeImage->bitmap->height() == 1);
+    assert(createdRuntimeImage->bitmap->bitDepth() == 32);
+    assert(createdRuntimeImage->bitmap->getPixel(0, 0) == 0xFFFFFFFFU);
+    assert(manager.getMemberProp(1, 10000, "width").intValue() == 1);
+    assert(manager.getMemberProp(1, 10000, "depth").intValue() == 32);
+    auto runtimeDefaultReplacement = std::make_shared<Bitmap>(2, 1, 32);
+    runtimeDefaultReplacement->setPixel(1, 0, 0xFF123456U);
+    assert(manager.setMemberProp(1, 10000, "image", Datum::imageRef(runtimeDefaultReplacement)));
+    assert(manager.resolveMember(1, 10000)->runtimeBitmap() == createdRuntimeImage->bitmap);
+    assert(createdRuntimeImage->bitmap->isScriptModified());
+    assert(createdRuntimeImage->bitmap->width() == 2);
+    assert(createdRuntimeImage->bitmap->getPixel(1, 0) == 0xFF123456U);
 
     const auto namedRuntime = manager.createMember("Runtime Field", "field");
     assert(namedRuntime.intValue() == ((1 << 16) | 10001));

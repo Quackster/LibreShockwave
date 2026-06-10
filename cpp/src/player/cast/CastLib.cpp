@@ -710,6 +710,12 @@ lingo::Datum CastLib::getMemberProp(int memberNumber, const std::string& propNam
     if (prop == "rect") return lingo::Datum::intRect(0, 0, member->width(), member->height());
     if (prop == "image") {
         auto bitmap = member->runtimeBitmap();
+        if (!bitmap && member->isBitmap() && member->isRuntimeDynamic()) {
+            bitmap::Bitmap defaultBitmap(1, 1, 32);
+            defaultBitmap.fill(0xFFFFFFFFU);
+            member->setRuntimeBitmap(defaultBitmap, false);
+            bitmap = member->runtimeBitmap();
+        }
         return bitmap ? lingo::Datum::imageRef(std::move(bitmap)) : lingo::Datum::voidValue();
     }
     return lingo::Datum::voidValue();
