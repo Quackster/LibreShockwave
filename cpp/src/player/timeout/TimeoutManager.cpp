@@ -114,6 +114,42 @@ int TimeoutManager::getTimeoutCount() const {
     return static_cast<int>(timeouts_.size());
 }
 
+void TimeoutManager::processTimeouts(const TimeoutInvoker& invoker) {
+    processTimeouts(currentTimeMillis(), invoker);
+}
+
+void TimeoutManager::processTimeouts(long long currentTimeMs, const TimeoutInvoker& invoker) {
+    if (!invoker || timeouts_.empty()) {
+        return;
+    }
+
+    std::vector<std::string> keys;
+    keys.reserve(timeouts_.size());
+    for (const auto& [name, entry] : timeouts_) {
+        (void)entry;
+        keys.push_back(name);
+    }
+
+    for (const auto& key : keys) {
+        auto it = timeouts_.find(key);
+        if (it == timeouts_.end()) {
+            continue;
+        }
+
+        auto& entry = it->second;
+        if (currentTimeMs - entry.lastFiredMs < entry.periodMs) {
+            continue;
+        }
+
+        entry.lastFiredMs = currentTimeMs;
+        TimeoutEntry fired = entry;
+        if (entry.oneShot) {
+            timeouts_.erase(it);
+        }
+        invoker(fired);
+    }
+}
+
 void TimeoutManager::dispatchSystemEvent(std::string_view handlerName, const SystemEventInvoker& invoker) const {
     if (!invoker || timeouts_.empty()) {
         return;

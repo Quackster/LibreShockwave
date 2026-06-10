@@ -264,7 +264,8 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Script-instance event targets can resolve bytecode from their cast-member script references, enabling timeout targets and sprite-attached script instances to use the same VM invoker as score behaviors.
 - `Player::prepareMovieFoundation` now dispatches timeout-backed `prepareMovie`, movie-script `prepareMovie`, preload-mode-1 casts, first-frame sprite initialization, movie-script `startMovie`, and timeout-backed `startMovie`; `stop()` dispatches timeout-backed `stopMovie` before movie scripts.
 - Player now snapshots `_movie.actorList` script instances during frame cycles and dispatches `stepFrame`, `prepareFrame`, `enterFrame`, and `exitFrame` through the VM with the actor instance argument.
-- Tests cover file-backed Player dispatcher movie-script discovery, explicit movie-script bytecode dispatch, startup `prepareMovie`/`startMovie` movie-script and timeout-target bytecode dispatch, actorList frame-event dispatch, `stopMovie` timeout/movie dispatch, plus VM-backed Player builtin and preference storage access.
+- Elapsed timeout processing now runs after `executeFrame()` and before `advanceFrame()` for `tick()` and `stepFrame()`, invoking script-instance timeout targets through the VM and falling back to global movie handlers for non-instance targets.
+- Tests cover file-backed Player dispatcher movie-script discovery, explicit movie-script bytecode dispatch, startup `prepareMovie`/`startMovie` movie-script and timeout-target bytecode dispatch, actorList frame-event dispatch, elapsed timeout dispatch, `stopMovie` timeout/movie dispatch, plus VM-backed Player builtin and preference storage access.
 
 ### Hit Testing Foundation
 
@@ -306,7 +307,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `player::frame::FrameContext` ports frame navigation state, pending go-to-frame behavior, first-frame initialization, active/entered channel tracking, beginSprite/endSprite lifecycle dispatch, frame script setup, actor/timeout callback hooks, event listener notifications, and reset behavior.
 - Frame transitions coordinate `ScoreNavigator`, `BehaviorManager`, `EventDispatcher`, and `SpriteRegistry`, including puppeted sprite persistence across score-span exits and external-cast behavior rebinding hooks.
-- Full actorList VM dispatch, timeout VM dispatch, startup Flags behavior quirk, and full Player render-loop integration remain deferred to later C++ VM/player slices.
+- Startup Flags behavior quirks and full Player render-loop integration remain deferred to later C++ VM/player slices.
 
 ### Sprite Properties Foundation
 
@@ -476,8 +477,8 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 ### Timeout Manager State Foundation
 
 - `lingo::Datum` now exposes timeout reference construction and inspection helpers for runtime timeout APIs.
-- `timeout::TimeoutManager` ports timeout creation, one-shot flag storage, forgetting, existence checks, property get/set behavior, timeout names/count, system-event target snapshot dispatch for script-instance targets, and clear state management.
-- Periodic VM timeout firing remains deferred until the C++ Lingo VM dispatch layer grows elapsed-time processing.
+- `timeout::TimeoutManager` ports timeout creation, one-shot flag storage, forgetting, existence checks, property get/set behavior, timeout names/count, elapsed-time processing with one-shot removal-before-fire behavior, system-event target snapshot dispatch for script-instance targets, and clear state management.
+- String/symbol timeout-target `getObject` resolution is handled at the Player VM dispatch layer; richer timeout trace/error reporting remains deferred.
 
 ### Bitmap Cache and Ink Helper Foundation
 
@@ -665,7 +666,7 @@ Result:
 - NetTask GET/POST construction, state transitions, result/error storage, stream status, and display formatting tests passed through the same CTest executable.
 - NetManager URL resolution, cache fallback, GET/POST registration, handler-backed completion/failure, latest-task lookup, stream-status prop lists, raw byte/text results, callbacks, shutdown, and clear tests passed through the same CTest executable.
 - SoundManager channel validation, volume clamping, backend delegation, Lingo play argument parsing, resolver lookup, format detection, KEY-owned member lookup, and SoundChunk playable conversion tests passed through the same CTest executable.
-- TimeoutManager creation, property access/mutation, one-shot/persistent flags, timeout references, names/count, system-event script-instance target filtering, forget, and clear tests passed through the same CTest executable.
+- TimeoutManager creation, property access/mutation, one-shot/persistent flags, timeout references, names/count, elapsed-time processing, one-shot removal-before-fire recreation, system-event script-instance target filtering, forget, and clear tests passed through the same CTest executable.
 - BitmapCache cache-keying, palette invalidation, non-native alpha coercion, indexed matte remap selection/application, and InkProcessor color remap/applyInk helpers, MATTE palette fallback, duplicate-RGB explicit indexed MATTE selection, black/white default indexed MATTE fallback, ADD/ADD_PIN flood-fill isolation, and outlined-white body matte preservation passed through the same CTest executable.
 - SpriteState score construction, Director blend-byte mapping, explicit override preservation, dynamic defaults, cursor state, script-instance rebinding, and release resets passed through the same CTest executable.
 - SpriteRegistry score/dynamic creation, lookup, score-behavior channel tracking, score updates, identity rebinding, dynamic-member cleanup, revision tracking, removal, and clear tests passed through the same CTest executable.
@@ -706,7 +707,7 @@ Result:
 - TypeBuiltins object/void/type predicates, `value` literal parsing/provider fallback, `script`/`callAncestor` callback hooks, symbol conversion, and `ilk` alias checks passed through the same CTest executable.
 - Lingo VM Scope and ExecutionContext stack, param, local, return, loop, jump, global callback, handler callback, builtin invocation, and call-stack formatting behavior passed through the same CTest executable.
 - Lingo VM ExecutionContext name resolver callback and resolver-backed global opcode behavior passed through the same CTest executable.
-- Player-owned LingoVM builtin delegation, file-backed dispatcher movie-script discovery/bytecode invocation, startup movie-script and timeout-target dispatch, actorList frame-event dispatch, `stopMovie` timeout/movie dispatch, and VM preference storage passed through the same CTest executable.
+- Player-owned LingoVM builtin delegation, file-backed dispatcher movie-script discovery/bytecode invocation, startup movie-script and timeout-target dispatch, actorList frame-event dispatch, elapsed timeout target/global dispatch, `stopMovie` timeout/movie dispatch, and VM preference storage passed through the same CTest executable.
 - OpcodeRegistry stack/control handler registration, custom handler registration, literal/symbol pushes, stack manipulation, return/factory return, and jump opcodes passed through the same CTest executable.
 - OpcodeRegistry arithmetic, comparison, and logical handlers passed through the same CTest executable.
 - OpcodeRegistry variable, arg-list, linear-list, and property-list handlers passed through the same CTest executable.
@@ -866,4 +867,5 @@ Result:
 - `c1bb9eba Port C++ movie script source dispatch`
 - `26cbcfe0 Port C++ player startup movie scripts`
 - `1fd8f7e3 Port C++ timeout system events`
-- Current checkpoint commit message: `Port C++ actorList VM dispatch`
+- `cbdaab71 Port C++ actorList VM dispatch`
+- Current checkpoint commit message: `Port C++ periodic timeout VM dispatch`

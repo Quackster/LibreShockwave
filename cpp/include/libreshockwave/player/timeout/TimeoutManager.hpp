@@ -25,6 +25,7 @@ struct TimeoutEntry {
 class TimeoutManager {
 public:
     using SystemEventInvoker = std::function<void(const lingo::Datum& target, std::string_view handlerName)>;
+    using TimeoutInvoker = std::function<void(const TimeoutEntry& entry)>;
 
     [[nodiscard]] lingo::Datum createTimeout(std::string name,
                                              int periodMs,
@@ -41,6 +42,8 @@ public:
     bool setTimeoutProp(const std::string& name, const std::string& prop, lingo::Datum value);
     [[nodiscard]] std::vector<std::string> getTimeoutNames() const;
     [[nodiscard]] int getTimeoutCount() const;
+    void processTimeouts(const TimeoutInvoker& invoker);
+    void processTimeouts(long long currentTimeMs, const TimeoutInvoker& invoker);
     void dispatchSystemEvent(std::string_view handlerName, const SystemEventInvoker& invoker) const;
     void clear();
 

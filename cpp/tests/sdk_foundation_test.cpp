@@ -1383,7 +1383,7 @@ void testPlayerVmEventDispatchFoundation() {
 
     std::vector<std::uint8_t> namesData(20, 0);
     putI16(namesData, 16, 20);
-    putI16(namesData, 18, 20);
+    putI16(namesData, 18, 24);
     auto appendName = [&namesData](const std::string& value) {
         namesData.push_back(static_cast<std::uint8_t>(value.size()));
         namesData.insert(namesData.end(), value.begin(), value.end());
@@ -1408,6 +1408,10 @@ void testPlayerVmEventDispatchFoundation() {
     appendName("actorEnter");
     appendName("exitFrame");
     appendName("actorExit");
+    appendName("onTimeout");
+    appendName("timeoutFired");
+    appendName("globalTimer");
+    appendName("globalTimeout");
 
     auto putHandlerRecord = [&](std::vector<std::uint8_t>& data, int offset, int nameId, int bytecodeOffset) {
         putI16(data, offset, nameId);
@@ -1427,18 +1431,20 @@ void testPlayerVmEventDispatchFoundation() {
     };
 
     std::vector<std::uint8_t> scriptData(350, 0);
-    putI16(scriptData, 18, 4);
+    putI16(scriptData, 18, 5);
     putI32(scriptData, 38, 0x00000003);
-    putI16(scriptData, 72, 4);
+    putI16(scriptData, 72, 5);
     putI32(scriptData, 74, 110);
     putHandlerRecord(scriptData, 110, 1, 320);
     putHandlerRecord(scriptData, 152, 3, 325);
     putHandlerRecord(scriptData, 194, 5, 330);
     putHandlerRecord(scriptData, 236, 9, 335);
+    putHandlerRecord(scriptData, 278, 22, 340);
     putSetGlobalHandlerBytecode(scriptData, 320, 44, 2);
     putSetGlobalHandlerBytecode(scriptData, 325, 55, 4);
     putSetGlobalHandlerBytecode(scriptData, 330, 66, 6);
     putSetGlobalHandlerBytecode(scriptData, 335, 70, 10);
+    putSetGlobalHandlerBytecode(scriptData, 340, 42, 23);
 
     std::vector<std::uint8_t> castData;
     appendI32(castData, 3);
@@ -1453,9 +1459,9 @@ void testPlayerVmEventDispatchFoundation() {
     appendI16(scriptMemberData, 2);
 
     std::vector<std::uint8_t> timeoutScriptData(500, 0);
-    putI16(timeoutScriptData, 18, 7);
+    putI16(timeoutScriptData, 18, 8);
     putI32(timeoutScriptData, 38, 0x00000002);
-    putI16(timeoutScriptData, 72, 7);
+    putI16(timeoutScriptData, 72, 8);
     putI32(timeoutScriptData, 74, 110);
     putHandlerRecord(timeoutScriptData, 110, 3, 450);
     putHandlerRecord(timeoutScriptData, 152, 5, 455);
@@ -1464,6 +1470,7 @@ void testPlayerVmEventDispatchFoundation() {
     putHandlerRecord(timeoutScriptData, 278, 14, 470);
     putHandlerRecord(timeoutScriptData, 320, 16, 475);
     putHandlerRecord(timeoutScriptData, 362, 18, 480);
+    putHandlerRecord(timeoutScriptData, 404, 20, 485);
     putSetGlobalHandlerBytecode(timeoutScriptData, 450, 77, 7);
     putSetGlobalHandlerBytecode(timeoutScriptData, 455, 88, 8);
     putSetGlobalHandlerBytecode(timeoutScriptData, 460, 99, 11);
@@ -1471,6 +1478,7 @@ void testPlayerVmEventDispatchFoundation() {
     putSetGlobalHandlerBytecode(timeoutScriptData, 470, 34, 15);
     putSetGlobalHandlerBytecode(timeoutScriptData, 475, 35, 17);
     putSetGlobalHandlerBytecode(timeoutScriptData, 480, 36, 19);
+    putSetGlobalHandlerBytecode(timeoutScriptData, 485, 41, 21);
 
     auto file = DirectorFile::load(buildRifx({
         {"Lnam", namesData},
@@ -1506,6 +1514,13 @@ void testPlayerVmEventDispatchFoundation() {
     assert(player.vm().getGlobal("actorEnter").intValue() == 35);
     assert(player.vm().getGlobal("actorExit").intValue() == 36);
 
+    (void)player.timeoutManager().createTimeout("global", 0, "globalTimer", Datum::voidValue());
+    (void)player.timeoutManager().createTimeout("periodic", 0, "onTimeout", timeoutTarget);
+    assert(player.tick());
+    assert(player.vm().getGlobal("timeoutFired").intValue() == 41);
+    assert(player.vm().getGlobal("globalTimeout").intValue() == 42);
+
+    player.timeoutManager().clear();
     (void)player.timeoutManager().createTimeout("stop", 0, "unused", timeoutTarget);
     player.stop();
     assert(player.state() == PlayerState::Stopped);
@@ -8987,6 +9002,23 @@ void testTimeoutManagerFoundation() {
     manager.forgetTimeout("timer");
     assert(!manager.timeoutExists("timer"));
     assert(manager.timeoutExists("once"));
+    manager.clear();
+
+    auto processTarget = Datum::scriptInstance("process-target");
+    (void)manager.createTimeout("instant", 1, "tick", processTarget, true);
+    std::vector<std::string> firedTimeouts;
+    manager.processTimeouts(9999999999999LL, [&manager, &firedTimeouts](const auto& entry) {
+        firedTimeouts.push_back(entry.name + ":" + entry.handler + ":" + entry.target.scriptInstanceValue().scriptName());
+        assert(!manager.timeoutExists(entry.name));
+        (void)manager.createTimeout(entry.name, 100, "recreated", entry.target);
+    });
+    assert((firedTimeouts == std::vector<std::string>{"instant:tick:process-target"}));
+    assert(manager.timeoutExists("instant"));
+    assert(manager.getEntry("instant")->handler == "recreated");
+    manager.processTimeouts(0, [&firedTimeouts](const auto&) {
+        firedTimeouts.push_back("too-early");
+    });
+    assert((firedTimeouts == std::vector<std::string>{"instant:tick:process-target"}));
     manager.clear();
     assert(manager.getTimeoutCount() == 0);
 }

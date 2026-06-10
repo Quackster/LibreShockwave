@@ -167,6 +167,9 @@ void Player::stepFrame() {
 
     (void)inputHandler_.processInputEvents();
     (void)frameContext_.executeFrame();
+    if (timeoutProcessor_) {
+        timeoutProcessor_();
+    }
     (void)frameContext_.advanceFrame();
 }
 
@@ -177,6 +180,9 @@ bool Player::tick() {
 
     (void)inputHandler_.processInputEvents();
     (void)frameContext_.executeFrame();
+    if (timeoutProcessor_) {
+        timeoutProcessor_();
+    }
     (void)frameContext_.advanceFrame();
     return true;
 }
@@ -493,6 +499,32 @@ void Player::wireComponents() {
             eventTarget.kind = event::EventTargetKind::ScriptInstance;
             eventTarget.scriptInstance = target;
             (void)invokeTarget(eventTarget, systemHandler, {});
+        });
+    };
+    timeoutProcessor_ = [this, invokeTarget] {
+        timeoutManager_.processTimeouts([this, invokeTarget](const timeout::TimeoutEntry& entry) {
+            vm_.resetErrorState();
+            lingo::Datum resolvedTarget = entry.target;
+            if (resolvedTarget.type() != lingo::DatumType::ScriptInstanceRef && !resolvedTarget.isVoid()) {
+                const auto resolved = vm_.callHandler("getobject", {resolvedTarget});
+                if (resolved.type() == lingo::DatumType::ScriptInstanceRef) {
+                    resolvedTarget = resolved;
+                }
+                vm_.resetErrorState();
+            }
+
+            const std::vector<lingo::Datum> args{lingo::Datum::timeoutRef(entry.name)};
+            if (resolvedTarget.type() == lingo::DatumType::ScriptInstanceRef) {
+                event::EventTarget target;
+                target.kind = event::EventTargetKind::ScriptInstance;
+                target.scriptInstance = resolvedTarget;
+                const auto result = invokeTarget(target, entry.handler, args);
+                if (result.handled) {
+                    return;
+                }
+            }
+
+            (void)vm_.callHandler(entry.handler, args);
         });
     };
     frameContext_.setTimeoutEventDispatcher(timeoutSystemEventDispatcher_);
