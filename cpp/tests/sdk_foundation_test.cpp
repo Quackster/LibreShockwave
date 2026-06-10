@@ -4772,7 +4772,13 @@ void testLingoVmScopeAndExecutionContextFoundation() {
             11,
             2);
     };
+    builtinContext.castLibCountSupplier = []() {
+        return 11;
+    };
     builtinContext.castMemberNameResolver = [](int castLib, const std::string& memberName) {
+        if (castLib == 11 && memberName == "memberalias.index") {
+            return Datum::castMemberRef(CastLibId(11), MemberId(2));
+        }
         if (castLib == 11 && memberName == "chair_target") {
             return Datum::castMemberRef(CastLibId(11), MemberId(7));
         }
@@ -4801,6 +4807,29 @@ void testLingoVmScopeAndExecutionContextFoundation() {
                .propListValue()
                .get(Datum::of(std::string("chair_target")))
                .isVoid());
+    aliasRegistryInstance.scriptInstanceValue().setProperty("pAllMemNumList", Datum::propList());
+    assert(runObjCall(118, {aliasRegistryInstance, Datum::of(std::string("chair_mirror"))}).intValue() ==
+           -SlotId::of(11, 7).value());
+    assert(aliasRegistryInstance.scriptInstanceValue()
+               .getProperty("pAllMemNumList")
+               .propListValue()
+               .get(Datum::of(std::string("chair_mirror")))
+               .intValue() == -SlotId::of(11, 7).value());
+    assert(aliasRegistryInstance.scriptInstanceValue()
+               .getProperty("pAllMemNumList")
+               .propListValue()
+               .get(Datum::of(std::string("chair_target")))
+               .isVoid());
+
+    auto refreshedAliasRegistryInstance = Datum::scriptInstance("refreshedAliasRegistry");
+    refreshedAliasRegistryInstance.scriptInstanceValue().setProperty("pAllMemNumList", Datum::propList());
+    assert(runObjCall(118, {refreshedAliasRegistryInstance, Datum::of(std::string("chair_alias"))}).intValue() ==
+           SlotId::of(11, 7).value());
+    assert(refreshedAliasRegistryInstance.scriptInstanceValue()
+               .getProperty("pAllMemNumList")
+               .propListValue()
+               .get(Datum::of(std::string("chair_alias")))
+               .intValue() == SlotId::of(11, 7).value());
 
     auto authoredAliasRegistryInstance = Datum::scriptInstance("authoredAliasRegistry");
     authoredAliasRegistryInstance.scriptInstanceValue().setProperty("pAllMemNumList", Datum::propList());
@@ -4816,6 +4845,7 @@ void testLingoVmScopeAndExecutionContextFoundation() {
                .intValue() == SlotId::of(11, 7).value());
     exposeReadAliasHandler = false;
     builtinContext.fieldResolver = {};
+    builtinContext.castLibCountSupplier = {};
     builtinContext.castMemberNameResolver = {};
     builtinContext.castMemberExistsResolver = {};
     builtinContext.registryVisibleMemberResolver = {};

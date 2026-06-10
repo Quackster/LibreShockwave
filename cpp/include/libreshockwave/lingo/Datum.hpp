@@ -512,6 +512,7 @@ public:
 
     [[nodiscard]] const std::string& scriptName() const;
     [[nodiscard]] const std::optional<CastMemberRef>& scriptRef() const;
+    [[nodiscard]] std::uint64_t identityId() const;
     [[nodiscard]] std::shared_ptr<ScriptInstanceRef> ancestor() const;
     void setAncestor(std::shared_ptr<ScriptInstanceRef> ancestor);
 
@@ -524,6 +525,7 @@ public:
 private:
     std::string scriptName_;
     std::optional<CastMemberRef> scriptRef_;
+    std::uint64_t identityId_;
     std::vector<std::pair<std::string, Datum>> properties_;
     std::shared_ptr<ScriptInstanceRef> ancestor_;
 };

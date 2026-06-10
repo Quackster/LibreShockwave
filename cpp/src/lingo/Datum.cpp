@@ -3,6 +3,7 @@
 #include "libreshockwave/bitmap/Bitmap.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <charconv>
 #include <cctype>
 #include <cmath>
@@ -78,6 +79,11 @@ bool equalsIgnoreCase(const std::string& lhs, const std::string& rhs) {
         }
     }
     return true;
+}
+
+std::uint64_t nextScriptInstanceIdentityId() {
+    static std::atomic<std::uint64_t> nextId{1};
+    return nextId.fetch_add(1, std::memory_order_relaxed);
 }
 
 } // namespace
@@ -697,7 +703,7 @@ bool operator==(const Datum::PropList& lhs, const Datum::PropList& rhs) {
 }
 
 Datum::ScriptInstanceRef::ScriptInstanceRef(std::string scriptName, std::optional<CastMemberRef> scriptRef)
-    : scriptName_(std::move(scriptName)), scriptRef_(scriptRef) {}
+    : scriptName_(std::move(scriptName)), scriptRef_(scriptRef), identityId_(nextScriptInstanceIdentityId()) {}
 
 const std::string& Datum::ScriptInstanceRef::scriptName() const {
     return scriptName_;
@@ -705,6 +711,10 @@ const std::string& Datum::ScriptInstanceRef::scriptName() const {
 
 const std::optional<Datum::CastMemberRef>& Datum::ScriptInstanceRef::scriptRef() const {
     return scriptRef_;
+}
+
+std::uint64_t Datum::ScriptInstanceRef::identityId() const {
+    return identityId_;
 }
 
 std::shared_ptr<Datum::ScriptInstanceRef> Datum::ScriptInstanceRef::ancestor() const {

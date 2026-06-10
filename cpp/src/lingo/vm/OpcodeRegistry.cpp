@@ -1956,6 +1956,17 @@ bool isScriptInstanceMemberRegistryMethod(std::string_view methodName) {
            equalsIgnoreCase(methodName, "readaliasindexesfromfield");
 }
 
+constexpr std::string_view memberAliasIndexName() {
+    return "memberalias.index";
+}
+
+using AliasTextList = std::vector<std::pair<int, std::string>>;
+
+std::unordered_map<std::uint64_t, AliasTextList>& persistentAliasTextByRegistry() {
+    static std::unordered_map<std::uint64_t, AliasTextList> aliases;
+    return aliases;
+}
+
 std::optional<int> slotValueFromCastMemberRef(const Datum& datum) {
     const auto* ref = datum.asCastMemberRef();
     if (ref == nullptr || ref->castLib < 1 || ref->memberNum() < 1) {
@@ -2170,6 +2181,133 @@ int applyAliasMappings(Datum::PropList& registry,
     return imported;
 }
 
+int resolveAliasSlot(std::string_view aliasText,
+                     std::string_view requestedAlias,
+                     const std::function<int(const std::string&)>& resolver) {
+    if (aliasText.empty() || requestedAlias.empty() || !resolver) {
+        return 0;
+    }
+
+    std::size_t lineStart = 0;
+    for (std::size_t index = 0; index <= aliasText.size(); ++index) {
+        const bool atEnd = index == aliasText.size();
+        const bool atLineBreak = !atEnd && (aliasText[index] == '\r' || aliasText[index] == '\n');
+        if (!atEnd && !atLineBreak) {
+            continue;
+        }
+
+        const auto parsed = parseAliasLine(aliasText.substr(lineStart, index - lineStart));
+        if (parsed.has_value() && equalsIgnoreCase(parsed->aliasName, requestedAlias)) {
+            const int resolvedNumber = resolver(parsed->targetName);
+            if (resolvedNumber <= 0) {
+                return 0;
+            }
+            return parsed->mirrored ? -resolvedNumber : resolvedNumber;
+        }
+
+        if (!atEnd && aliasText[index] == '\r' && index + 1 < aliasText.size() && aliasText[index + 1] == '\n') {
+            ++index;
+        }
+        lineStart = index + 1;
+    }
+    return 0;
+}
+
+void rememberAliasText(Datum::ScriptInstanceRef& instance, int castLibNumber, std::string_view aliasText) {
+    if (castLibNumber <= 0 || aliasText.empty()) {
+        return;
+    }
+
+    auto& aliasTexts = persistentAliasTextByRegistry()[instance.identityId()];
+    for (auto& entry : aliasTexts) {
+        if (entry.first == castLibNumber) {
+            entry.second = std::string(aliasText);
+            return;
+        }
+    }
+    aliasTexts.emplace_back(castLibNumber, std::string(aliasText));
+}
+
+void forgetAliasText(Datum::ScriptInstanceRef& instance, int castLibNumber) {
+    auto& aliases = persistentAliasTextByRegistry();
+    const auto found = aliases.find(instance.identityId());
+    if (found == aliases.end()) {
+        return;
+    }
+
+    auto& aliasTexts = found->second;
+    aliasTexts.erase(
+        std::remove_if(aliasTexts.begin(), aliasTexts.end(), [castLibNumber](const auto& entry) {
+            return entry.first == castLibNumber;
+        }),
+        aliasTexts.end());
+    if (aliasTexts.empty()) {
+        aliases.erase(found);
+    }
+}
+
+void refreshAvailableAliasTexts(Datum::ScriptInstanceRef& instance, const builtin::BuiltinContext* builtinContext) {
+    if (builtinContext == nullptr || !builtinContext->castLibCountSupplier || !builtinContext->castMemberNameResolver) {
+        return;
+    }
+
+    const int castLibCount = builtinContext->castLibCountSupplier();
+    for (int castLibNumber = 1; castLibNumber <= castLibCount; ++castLibNumber) {
+        const Datum aliasMember = builtinContext->castMemberNameResolver(castLibNumber, std::string(memberAliasIndexName()));
+        if (aliasMember.asCastMemberRef() == nullptr) {
+            forgetAliasText(instance, castLibNumber);
+            continue;
+        }
+
+        if (!builtinContext->fieldResolver) {
+            forgetAliasText(instance, castLibNumber);
+            continue;
+        }
+
+        const Datum aliasField = builtinContext->fieldResolver(Datum::of(std::string(memberAliasIndexName())), castLibNumber);
+        if (aliasField.isVoid()) {
+            forgetAliasText(instance, castLibNumber);
+            continue;
+        }
+
+        const std::string aliasText = aliasField.stringValue();
+        if (aliasText.empty()) {
+            forgetAliasText(instance, castLibNumber);
+            continue;
+        }
+        rememberAliasText(instance, castLibNumber, aliasText);
+    }
+}
+
+int resolveRememberedAliasSlot(Datum::ScriptInstanceRef& instance,
+                               Datum::PropList& registry,
+                               std::string_view memberName,
+                               const builtin::BuiltinContext* builtinContext) {
+    if (memberName.empty()) {
+        return 0;
+    }
+
+    const auto found = persistentAliasTextByRegistry().find(instance.identityId());
+    if (found == persistentAliasTextByRegistry().end()) {
+        return 0;
+    }
+
+    for (const auto& entry : found->second) {
+        const int castLibNumber = entry.first;
+        const std::string& aliasText = entry.second;
+        const int resolved = resolveAliasSlot(
+            aliasText,
+            memberName,
+            [&](const std::string& targetName) {
+                return resolveAliasTargetMemberNumber(registry, builtinContext, castLibNumber, targetName);
+            });
+        if (resolved != 0) {
+            return resolved;
+        }
+    }
+    return 0;
+}
+
 std::optional<Datum> dispatchReadAliasIndexesFromField(Datum::ScriptInstanceRef& instance,
                                                        const std::vector<Datum>& args,
                                                        const builtin::BuiltinContext* builtinContext) {
@@ -2191,6 +2329,7 @@ std::optional<Datum> dispatchReadAliasIndexesFromField(Datum::ScriptInstanceRef&
     }
 
     const std::string aliasText = fieldDatum.stringValue();
+    rememberAliasText(instance, castLibNumber, aliasText);
     const int imported = applyAliasMappings(
         registry.propListValue(),
         aliasText,
@@ -2226,6 +2365,14 @@ std::optional<int> scriptInstanceRegisteredMemberSlot(Datum::ScriptInstanceRef& 
             return registeredSlot;
         }
         removePropListKey(registry.propListValue(), memberName);
+    }
+
+    refreshAvailableAliasTexts(instance, builtinContext);
+    const int rememberedAliasSlot =
+        resolveRememberedAliasSlot(instance, registry.propListValue(), memberName, builtinContext);
+    if (rememberedAliasSlot != 0) {
+        registry.propListValue().put(Datum::of(memberName), Datum::of(rememberedAliasSlot));
+        return rememberedAliasSlot;
     }
 
     const int resolvedSlot = resolveScriptInstanceMemberSlotByName(

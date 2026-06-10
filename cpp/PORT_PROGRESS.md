@@ -707,6 +707,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - ScriptInstance member-registry dispatch now lazily seeds stable provider-backed member names, rejects hidden broad member lookups, allows script-member bootstrap lookup, and pre-fills registry entries before authored handlers run.
 - ScriptInstance `readAliasIndexesFromField` now imports Java-compatible `memberalias.index` mappings into `pAllMemNumList`, including mirrored negative aliases and transient source-cast aliases that avoid publishing hidden raw targets.
 - ScriptInstance member-registry lookups now validate pre-indexed registry slots against provider visibility and remove stale hidden positive or mirrored entries before falling back to lazy resolution.
+- ScriptInstance member-alias text is now remembered per registry owner and refreshed from available `memberalias.index` fields during lookup so aliases can be lazily restored after `pAllMemNumList` entries are cleared.
 - CastMemberRef receiver dispatch now delegates methods through a provider-backed C++ builtin context hook, matching Java's cast-member method provider path.
 - CastLib member-accessor receiver dispatch now supports Java-compatible `castLib(n).member.getAt(key)` member lookup by number or name.
 - SpriteRef receiver dispatch now delegates methods through a provider-backed C++ builtin context hook for behavior/broker integration.
@@ -890,7 +891,7 @@ Result:
 - OpcodeRegistry movie-property provider reads/writes and provider-backed `the` lookups passed through the same CTest executable.
 - OpcodeRegistry provider-backed object property gets/sets for movie, player, stage, sprite, integer-as-sprite refs, cast-member metadata/provider properties, timeout refs, sound channels, and image `useAlpha`/`paletteRef` setters passed through the same CTest executable.
 - OpcodeRegistry local/external call handlers, builtin dispatch, no-return calls, constant fallback, and error-state handling passed through the same CTest executable.
-- OpcodeRegistry object method calls and receiver-style external method calls for lists, property lists, strings, points, rectangles, script-instance registry bootstrap/prefill/alias import/stale cleanup, cast library member lookups/accessors, timeouts, sound channels, and Xtra instances passed through the same CTest executable.
+- OpcodeRegistry object method calls and receiver-style external method calls for lists, property lists, strings, points, rectangles, script-instance registry bootstrap/prefill/alias import/stale cleanup/persistent alias refresh, cast library member lookups/accessors, timeouts, sound channels, and Xtra instances passed through the same CTest executable.
 - OpcodeRegistry `NEW_OBJ` script construction delegation, provider-resolved fallback construction, declared property preinitialization, automatic `new` handler invocation, and non-script rejection passed through the same CTest executable.
 
 ## Remaining Major Work
@@ -1098,4 +1099,5 @@ Result:
 - `04735e69 Fix Java verification parity`
 - `54333609 Port C++ script registry prefill`
 - `43831aa9 Port C++ member alias registry import`
-- Current checkpoint commit message: `Port C++ registry stale slot cleanup`
+- `07a1b311 Port C++ registry stale slot cleanup`
+- Current checkpoint commit message: `Port C++ persistent member aliases`
