@@ -1659,7 +1659,8 @@ void testLingoDecompilerNodeFoundation() {
                                   "caseValue",
                                   "caseOps",
                                   "caseOtherwiseOps",
-                                  "caseOrOps"});
+                                  "caseOrOps",
+                                  "caseExpressionOps"});
     ScriptChunk::Handler bytecodeHandler{
         0,
         0,
@@ -2518,6 +2519,68 @@ void testLingoDecompilerNodeFoundation() {
     assert(caseOrMapping.lines[3].bytecodeOffset == 18);
     assert(caseOrMapping.lines[4].bytecodeOffset == -1);
     assert(caseOrMapping.lines[5].bytecodeOffset == -1);
+
+    ScriptChunk::Handler caseExpressionHandler{
+        scriptNames.findName("caseExpressionOps"),
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        {},
+        {4},
+        {
+            ScriptChunk::Instruction{0, Opcode::GET_GLOBAL, 0x49, 32},
+            ScriptChunk::Instruction{2, Opcode::PEEK, 0x64, 0},
+            ScriptChunk::Instruction{4, Opcode::GET_LOCAL, 0x4C, 0},
+            ScriptChunk::Instruction{6, Opcode::PUSH_INT8, 0x41, 1},
+            ScriptChunk::Instruction{8, Opcode::ADD, 0x05, 0},
+            ScriptChunk::Instruction{9, Opcode::EQ, 0x0F, 0},
+            ScriptChunk::Instruction{10, Opcode::JMP_IF_Z, 0x55, 7},
+            ScriptChunk::Instruction{12, Opcode::PUSH_INT8, 0x41, 42},
+            ScriptChunk::Instruction{14, Opcode::SET_LOCAL, 0x52, 0},
+            ScriptChunk::Instruction{16, Opcode::JMP, 0x53, 3},
+            ScriptChunk::Instruction{17, Opcode::POP, 0x65, 1},
+            ScriptChunk::Instruction{19, Opcode::RET, 0x01, 0}
+        },
+        {}
+    };
+    ScriptChunk caseExpressionScript(nullptr,
+                                     ChunkId(516),
+                                     ScriptChunkType::MovieScript,
+                                     0,
+                                     {caseExpressionHandler},
+                                     {},
+                                     {},
+                                     {},
+                                     {});
+    assert(decompiler.decompileHandler(caseExpressionScript.handlers().front(), caseExpressionScript, &scriptNames) ==
+           "on caseExpressionOps\n"
+           "  case caseValue of\n"
+           "    localOne + 1:\n"
+           "      localOne = 42\n\n"
+           "\n"
+           "  end case\n\n"
+           "end");
+    const auto caseExpressionMapping = decompiler.decompileHandlerWithMapping(caseExpressionScript.handlers().front(),
+                                                                              caseExpressionScript,
+                                                                              &scriptNames);
+    assert(caseExpressionMapping.toText() ==
+           "on caseExpressionOps\n"
+           "  case caseValue of\n"
+           "    localOne + 1:\n"
+           "      localOne = 42\n"
+           "  end case\n"
+           "end\n");
+    assert(caseExpressionMapping.lines.size() == 6);
+    assert(caseExpressionMapping.lines[0].bytecodeOffset == -1);
+    assert(caseExpressionMapping.lines[1].bytecodeOffset == 2);
+    assert(caseExpressionMapping.lines[2].bytecodeOffset == 2);
+    assert(caseExpressionMapping.lines[3].bytecodeOffset == 14);
+    assert(caseExpressionMapping.lines[4].bytecodeOffset == -1);
+    assert(caseExpressionMapping.lines[5].bytecodeOffset == -1);
 
     ScriptChunk::Handler nextLoopHandler{
         23,

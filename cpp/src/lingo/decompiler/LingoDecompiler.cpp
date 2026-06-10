@@ -1050,55 +1050,27 @@ void LingoDecompiler::translatePeek(const chunks::ScriptChunk::Instruction& inst
         peekedValue = popNode();
     }
 
+    const auto originalStackSize = stack_.size();
     std::size_t currentIndex = index + 1;
     while (currentIndex < instructions.size() && instructions[currentIndex].opcode == Opcode::PEEK) {
         ++currentIndex;
     }
+    while (currentIndex < instructions.size()) {
+        translateInstruction(instructions[currentIndex], currentIndex, block);
+        ++currentIndex;
+        if (currentIndex < instructions.size() &&
+            stack_.size() == originalStackSize + 1 &&
+            (instructions[currentIndex].opcode == Opcode::EQ ||
+             instructions[currentIndex].opcode == Opcode::NT_EQ)) {
+            break;
+        }
+    }
     if (currentIndex >= instructions.size()) {
-        addError("ERROR: Expected case value", currentIndex - index);
+        addError("ERROR: Expected eq or nteq", currentIndex - index + 1);
         return;
     }
 
-    const auto& valueInstruction = instructions[currentIndex];
-    NodePtr caseValue;
-    switch (valueInstruction.opcode) {
-        case Opcode::PUSH_ZERO:
-            caseValue = std::make_unique<LiteralNode>(0);
-            break;
-        case Opcode::PUSH_INT8:
-        case Opcode::PUSH_INT16:
-        case Opcode::PUSH_INT32:
-            caseValue = std::make_unique<LiteralNode>(valueInstruction.argument);
-            break;
-        case Opcode::PUSH_SYMB:
-            caseValue = std::make_unique<LiteralNode>(ValueType::Symbol, resolveName(valueInstruction.argument));
-            break;
-        case Opcode::PUSH_CONS: {
-            const int literalId = valueInstruction.argument / variableMultiplier();
-            if (script_ != nullptr && literalId >= 0 && literalId < static_cast<int>(script_->literals().size())) {
-                caseValue = literalToNode(script_->literals()[static_cast<std::size_t>(literalId)]);
-            } else {
-                caseValue = std::make_unique<ErrorNode>();
-            }
-            break;
-        }
-        case Opcode::GET_GLOBAL:
-        case Opcode::GET_GLOBAL2:
-        case Opcode::GET_PROP:
-        case Opcode::GET_TOP_LEVEL_PROP:
-            caseValue = std::make_unique<VarNode>(resolveName(valueInstruction.argument));
-            break;
-        case Opcode::GET_PARAM:
-            caseValue = std::make_unique<VarNode>(getArgumentName(valueInstruction.argument));
-            break;
-        case Opcode::GET_LOCAL:
-            caseValue = std::make_unique<VarNode>(getLocalName(valueInstruction.argument));
-            break;
-        default:
-            addError("ERROR: Unsupported case value", currentIndex - index + 1);
-            return;
-    }
-    ++currentIndex;
+    auto caseValue = popNode();
 
     if (currentIndex >= instructions.size() ||
         (instructions[currentIndex].opcode != Opcode::EQ && instructions[currentIndex].opcode != Opcode::NT_EQ)) {
