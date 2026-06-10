@@ -198,7 +198,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `font::BdfParser` ports BDF bitmap-font parsing into `BitmapFont` instances, including font metrics, glyph bounding boxes, BDF row bit placement, default widths, and extended overflow glyphs.
 - `font::Pfr1Font` ports PFR1 magic/header validation, logical font matrix parsing, physical-font metrics, FontID extra-item extraction, delta-encoded character records, simple outline nibble-command parsing, compound glyph component expansion, bitmap glyph payload extraction, uppercase-to-lowercase outline fallback, and lenient partial-parse behavior.
 - `font::Pfr1TtfConverter` ports the Java minimal TrueType table writer for parsed PFR1 outlines, including `cmap`, `glyf`, `head`, `hhea`, `hmtx`, `loca`, `maxp`, `name`, `OS/2`, and `post` table construction.
-- `player::cast::FontRegistry` ports prebuilt bitmap-font cache lookup, PFR1 font registration, Director font aliases, canonical font-name normalization, and basic alias resolution for the future C++ simple text renderer path.
+- `player::cast::FontRegistry` ports prebuilt bitmap-font cache lookup, PFR1 font registration, converted PFR-to-TTF byte caching, Director font aliases, canonical font-name normalization, and basic alias resolution for the future C++ simple text renderer path.
 - PFR1 curve-command fidelity/rasterization, TTF rasterization, and bundled platform font families remain deferred to later font-rendering slices.
 
 ### Sound Converter
@@ -593,7 +593,7 @@ Result:
 - File/path fallback utilities and script formatting utilities passed through the same CTest executable.
 - BitmapColorizer 32-bit, indexed, foreground-only, packed-index, and ink predicate tests passed through the same CTest executable.
 - PfrBitReader byte, signed, skip, alignment, bit-buffer, and partial-EOF tests passed through the same CTest executable.
-- BitmapFont glyph drawing, overflow metrics, BDF parsing, PFR1 metadata/character-record/simple/compound-outline parsing, PFR-to-TTF table generation, and FontRegistry prebuilt-cache/PFR-registration/alias behavior passed through the same CTest executable.
+- BitmapFont glyph drawing, overflow metrics, BDF parsing, PFR1 metadata/character-record/simple/compound-outline parsing, PFR-to-TTF table generation/cache registration, and FontRegistry prebuilt-cache/PFR-registration/alias behavior passed through the same CTest executable.
 - SoundConverter WAV layout, SoundChunk header stripping, signed/endianness conversion, MP3 extraction, IMA ADPCM, and duration tests passed through the same CTest executable.
 - CastMember bitmap, script, shape, dimension, type-check, raw chunk, and display string tests passed through the same CTest executable.
 - PlayerEvent handler names, event payload records, RenderType, and RenderConfig tests passed through the same CTest executable.
@@ -797,4 +797,4 @@ Result:
 - `c879164f Port C++ sound object property dispatch`
 - `938442ce Port C++ behavior parameter value parser`
 - `3410a54f Port C++ value builtin parser`
-- Current checkpoint commit message: `Port C++ PFR1 TTF conversion`
+- Current checkpoint commit message: `Integrate C++ PFR TTF registry cache`

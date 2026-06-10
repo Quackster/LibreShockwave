@@ -2,16 +2,20 @@
 
 #include <algorithm>
 #include <cctype>
+#include <exception>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <unordered_map>
+
+#include "libreshockwave/font/Pfr1TtfConverter.hpp"
 
 namespace libreshockwave::player::cast {
 namespace {
 
 struct RegistryState {
     std::unordered_map<std::string, std::shared_ptr<font::Pfr1Font>> parsedFonts;
+    std::unordered_map<std::string, std::vector<std::uint8_t>> ttfCache;
     std::unordered_map<std::string, std::shared_ptr<font::BitmapFont>> rasterizedCache;
     std::unordered_map<std::string, std::string> canonicalIndex;
     std::unordered_map<std::string, FontRegistry::FontAlias> aliases;
@@ -106,10 +110,21 @@ void FontRegistry::registerPfr1Font(const std::string& memberName,
         return;
     }
 
+    std::vector<std::uint8_t> ttfBytes;
+    try {
+        const auto& ttfName = parsed->fontName.empty() ? memberName : parsed->fontName;
+        ttfBytes = font::Pfr1TtfConverter::convert(*parsed, ttfName);
+    } catch (const std::exception&) {
+        ttfBytes.clear();
+    }
+
     auto& registry = state();
     std::lock_guard lock(registry.mutex);
     const auto key = lowerAscii(memberName);
     registry.parsedFonts[key] = parsed;
+    if (!ttfBytes.empty()) {
+        registry.ttfCache[key] = ttfBytes;
+    }
     if (!registry.firstRegisteredFont.has_value()) {
         registry.firstRegisteredFont = key;
     }
@@ -118,6 +133,9 @@ void FontRegistry::registerPfr1Font(const std::string& memberName,
     if (!parsed->fontName.empty()) {
         const auto internalKey = lowerAscii(parsed->fontName);
         registry.parsedFonts[internalKey] = parsed;
+        if (!ttfBytes.empty()) {
+            registry.ttfCache[internalKey] = ttfBytes;
+        }
         registry.canonicalIndex[canonicalFontName(parsed->fontName)] = key;
     }
 }
@@ -139,6 +157,18 @@ std::shared_ptr<font::Pfr1Font> FontRegistry::getPfr1Font(const std::string& fon
         }
     }
     return nullptr;
+}
+
+std::optional<std::vector<std::uint8_t>> FontRegistry::getTtfBytes(const std::string& fontName) {
+    if (fontName.empty()) {
+        return std::nullopt;
+    }
+    auto& registry = state();
+    std::lock_guard lock(registry.mutex);
+    if (const auto it = registry.ttfCache.find(lowerAscii(fontName)); it != registry.ttfCache.end()) {
+        return it->second;
+    }
+    return std::nullopt;
 }
 
 std::shared_ptr<font::BitmapFont> FontRegistry::getBitmapFont(const std::string& fontName, int fontSize) {
@@ -254,6 +284,7 @@ void FontRegistry::clear() {
     auto& registry = state();
     std::lock_guard lock(registry.mutex);
     registry.parsedFonts.clear();
+    registry.ttfCache.clear();
     registry.rasterizedCache.clear();
     registry.canonicalIndex.clear();
     registry.aliases.clear();

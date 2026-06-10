@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -23,6 +24,7 @@ public:
     static void registerPfr1Font(const std::string& memberName,
                                  const std::vector<std::uint8_t>& pfrData);
     [[nodiscard]] static std::shared_ptr<font::Pfr1Font> getPfr1Font(const std::string& fontName);
+    [[nodiscard]] static std::optional<std::vector<std::uint8_t>> getTtfBytes(const std::string& fontName);
     [[nodiscard]] static std::shared_ptr<font::BitmapFont> getBitmapFont(const std::string& fontName,
                                                                          int fontSize);
     [[nodiscard]] static std::shared_ptr<font::BitmapFont> getBitmapFont(const std::string& fontName,

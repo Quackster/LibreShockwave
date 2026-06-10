@@ -599,11 +599,20 @@ void testPfr1FontParserAndRegistry() {
     assert(FontRegistry::hasPfrFont("TinyPFR"));
     assert(FontRegistry::getPfr1Font("tinypfr") != nullptr);
     assert(FontRegistry::getPfr1Font("Tiny_400_0") == nullptr);
+    const auto memberTtf = FontRegistry::getTtfBytes("tiny member");
+    const auto internalTtf = FontRegistry::getTtfBytes("TinyPFR");
+    assert(memberTtf.has_value());
+    assert(internalTtf.has_value());
+    assert(memberTtf->size() == internalTtf->size());
+    assert(readU32At(*memberTtf, 0) == 0x00010000U);
+    assert(readU16At(*memberTtf, 4) == 10);
+    assert(!FontRegistry::getTtfBytes("Tiny_400_0").has_value());
     assert(FontRegistry::resolveFont("TinyPFR").value() == "tinypfr");
     assert(FontRegistry::resolveFont("Tiny Member").value() == "tiny member");
     assert(FontRegistry::getFirstRegisteredFont().value() == "tiny member");
     assert(FontRegistry::getPreferredDirectorPixelFont().value() == "tiny member");
     FontRegistry::clear();
+    assert(!FontRegistry::getTtfBytes("tiny member").has_value());
 }
 
 void testBitmapFontAndFontRegistry() {
