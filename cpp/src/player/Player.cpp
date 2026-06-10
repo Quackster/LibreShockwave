@@ -18,6 +18,7 @@
 #include "libreshockwave/player/debug/LifecycleDiagnostics.hpp"
 #include "libreshockwave/player/event/EventDispatcher.hpp"
 #include "libreshockwave/player/score/ScoreNavigator.hpp"
+#include "libreshockwave/util/FileUtil.hpp"
 
 namespace libreshockwave::player {
 namespace {
@@ -304,6 +305,23 @@ bool Player::tick() {
     vm_.flushDeferredTasks();
     (void)frameContext_.advanceFrame();
     return true;
+}
+
+int Player::preloadAllCasts() {
+    int count = 0;
+    for (const auto& [_, castLib] : castLibManager_.castLibs()) {
+        if (!castLib || !castLib->isExternal() || castLib->isLoaded() || castLib->isFetching()) {
+            continue;
+        }
+        const std::string fileName = util::getFileName(castLib->fileName());
+        if (fileName.empty()) {
+            continue;
+        }
+        castLib->markFetching();
+        (void)netManager_.preloadNetThing(fileName);
+        ++count;
+    }
+    return count;
 }
 
 void Player::onSynchronousExternalCastLoad(int castLibNumber) {
@@ -888,6 +906,7 @@ void Player::wireComponents() {
 
 void Player::prepareMovieFoundation() {
     applyInitialBuiltinVariables();
+    (void)preloadAllCasts();
     castLibManager_.preloadCasts(2);
     if (timeoutSystemEventDispatcher_) {
         timeoutSystemEventDispatcher_("prepareMovie");

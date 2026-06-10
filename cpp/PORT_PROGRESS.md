@@ -301,6 +301,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Player now ports Java's UpdateProvider-style per-frame update target registration, deduplication, removal, tick-time snapshot dispatch, and script-instance-only `update` callback routing through the VM target handler.
 - Player now exposes ordered Shockwave external PARAM storage through `setExternalParams`/`externalParams` and keeps VM-owned `externalParamValue`/`externalParamName`/`externalParamCount` builtins synchronized with the facade state.
 - Player now ports Java's initial builtin variable facade, storing deep-copied startup defaults, replacing configured defaults by name, ignoring empty names, and applying missing globals before movie startup dispatch without overwriting existing VM globals.
+- Player now ports Java's `preloadAllCasts` facade and startup call, scanning unloaded external casts, normalizing authored paths to filenames, marking casts as fetching, queuing `NetManager` preloads, and skipping already fetching/loaded casts.
 - Full VM provider setup, asynchronous playback, non-bitmap imported-media mutation, and platform external-cast fetching remain deferred to later player runtime slices.
 
 ### Player Builtin Context Foundation
@@ -883,7 +884,7 @@ Result:
 - BitmapFont glyph drawing, overflow metrics, BDF parsing, direct PFR outline/bitmap/curve glyph rasterization, PFR1 metadata/character-record/simple/compound/curve-outline parsing, PFR-to-TTF table generation/cache registration, pure TTF bitmap rasterization with the bundled Verdana fixture, FontRegistry prebuilt-cache/PFR-registration/rasterization/size-aware embedded-TTF/alias behavior, and SimpleTextRenderer bitmap-font/built-in-fallback/wrapping/underline/caret/XMED per-span/styled-underline rendering behavior passed through the same CTest executable.
 - SoundConverter WAV layout, SoundChunk header stripping, signed/endianness conversion, MP3 extraction, IMA ADPCM, and duration tests passed through the same CTest executable.
 - CastMember bitmap, script, shape, dimension, type-check, raw chunk, and display string tests passed through the same CTest executable.
-- CastLib and CastLibManager lazy MCsL/CAS* initialization, member count/name lookup, source-prefixed lookup fallback, member metadata properties, registry filtering, builtin callback installation, external-cache keys, pending external-load bookkeeping, and Player external-cast cached-load callbacks passed through the same CTest executable.
+- CastLib and CastLibManager lazy MCsL/CAS* initialization, member count/name lookup, source-prefixed lookup fallback, member metadata properties, registry filtering, builtin callback installation, external-cache keys, pending external-load bookkeeping, Player external-cast preload queuing, and Player external-cast cached-load callbacks passed through the same CTest executable.
 - PlayerEvent handler names, event payload records, ExternalCastLoadHandler callback fanout, RenderType, and RenderConfig tests passed through the same CTest executable.
 - PlayerState, InputEvent factories, DirectorKeyCodes, and InputState mutation/queue tests passed through the same CTest executable.
 - InputHandler mouse/key queueing, interactive hit filtering, rollover dispatch, mouse-up-outside fallback, focused key dispatch, blur synthesis, dispatcher/sprite supplier hooks, and sprite-registry revision bumps passed through the same CTest executable.
@@ -1234,4 +1235,4 @@ Result:
 - `5df5e6fd Port C++ decompiler fallback mapping`
 - `2d9420b0 Port C++ decompiler linear bytecode`
 - `1e40b253 Port C++ decompiler chunk opcodes`
-- Current checkpoint commit message: `Port C++ player initial builtins`
+- Current checkpoint commit message: `Port C++ player external cast preload`

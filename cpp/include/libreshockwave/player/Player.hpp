@@ -114,6 +114,7 @@ public:
     void goToLabel(std::string_view label);
     void stepFrame();
     [[nodiscard]] bool tick();
+    [[nodiscard]] int preloadAllCasts();
     void onSynchronousExternalCastLoad(int castLibNumber);
     [[nodiscard]] bool loadExternalCastFromCachedData(int castLibNumber,
                                                       const std::vector<std::uint8_t>& data);

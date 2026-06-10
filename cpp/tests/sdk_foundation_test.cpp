@@ -18917,6 +18917,14 @@ void testCastLibManagerFoundation() {
     externalPlayer.setCastLoadedListener([&compatibilityCastLoadNotifications] {
         ++compatibilityCastLoadNotifications;
     });
+    assert(externalPlayer.preloadAllCasts() == 1);
+    auto preloadedExternalCast = externalPlayer.castLibManager().castLibs().find(2);
+    assert(preloadedExternalCast != externalPlayer.castLibManager().castLibs().end());
+    assert(preloadedExternalCast->second != nullptr);
+    assert(preloadedExternalCast->second->isFetching());
+    assert(externalPlayer.netManager().tasks().size() == 1);
+    assert(externalPlayer.netManager().getTask(1)->originalUrl() == "ext.cct");
+    assert(externalPlayer.preloadAllCasts() == 0);
     assert(!externalPlayer.loadExternalCastFromCachedData(0, externalCastData));
     assert(!externalPlayer.loadExternalCastFromCachedData(2, {}));
     assert(externalLoadHandler.player == nullptr);
