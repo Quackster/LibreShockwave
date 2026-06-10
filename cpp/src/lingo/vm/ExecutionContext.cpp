@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <string>
 #include <utility>
 
 namespace libreshockwave::lingo::vm {
@@ -94,7 +95,11 @@ Datum ExecutionContext::getLocal(int index) const {
 }
 
 void ExecutionContext::setLocal(int index, Datum value) {
+    const Datum tracedValue = value;
     scope_->setLocal(index, std::move(value));
+    if (callbacks_.variableSetListener) {
+        callbacks_.variableSetListener("local", "local" + std::to_string(index), tracedValue);
+    }
 }
 
 Datum ExecutionContext::getParam(int index) const {
@@ -102,7 +107,11 @@ Datum ExecutionContext::getParam(int index) const {
 }
 
 void ExecutionContext::setParam(int index, Datum value) {
+    const Datum tracedValue = value;
     scope_->setParam(index, std::move(value));
+    if (callbacks_.variableSetListener) {
+        callbacks_.variableSetListener("param", "param" + std::to_string(index), tracedValue);
+    }
 }
 
 Datum ExecutionContext::getGlobal(std::string_view name) const {
@@ -113,8 +122,12 @@ Datum ExecutionContext::getGlobal(std::string_view name) const {
 }
 
 void ExecutionContext::setGlobal(std::string_view name, Datum value) {
+    const Datum tracedValue = value;
     if (callbacks_.globalSetter) {
         callbacks_.globalSetter(name, value);
+    }
+    if (callbacks_.variableSetListener) {
+        callbacks_.variableSetListener("global", name, tracedValue);
     }
 }
 

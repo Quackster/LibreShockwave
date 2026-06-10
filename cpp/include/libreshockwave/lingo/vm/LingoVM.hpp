@@ -18,6 +18,7 @@
 #include "libreshockwave/lingo/vm/ExecutionContext.hpp"
 #include "libreshockwave/lingo/vm/OpcodeRegistry.hpp"
 #include "libreshockwave/lingo/vm/Scope.hpp"
+#include "libreshockwave/lingo/vm/TraceListener.hpp"
 
 namespace libreshockwave {
 class DirectorFile;
@@ -75,6 +76,10 @@ public:
     [[nodiscard]] bool isInErrorState() const;
     void resetErrorState();
 
+    void setTraceListener(std::shared_ptr<TraceListener> listener);
+    [[nodiscard]] std::shared_ptr<TraceListener> traceListener() const;
+    void fireTraceError(std::string_view message, std::string_view error);
+
     [[nodiscard]] int callStackDepth() const;
     [[nodiscard]] bool hasActiveCallStack() const;
     [[nodiscard]] Scope* currentScope();
@@ -106,6 +111,7 @@ public:
                                        const Datum& receiver = Datum::voidValue());
 
     [[nodiscard]] static std::string normalizeLookupName(std::string_view name);
+    [[nodiscard]] static std::string formatTraceArgument(const Datum& value);
     [[nodiscard]] static bool isGlobalHandlerScriptType(chunks::ScriptChunkType scriptType);
 
 private:
@@ -115,6 +121,16 @@ private:
     [[nodiscard]] std::string resolveName(const chunks::ScriptChunk& script, int nameId) const;
     [[nodiscard]] std::string handlerName(const chunks::ScriptChunk& script,
                                           const chunks::ScriptChunk::Handler& handler) const;
+    [[nodiscard]] std::string scriptDisplayName(const chunks::ScriptChunk& script) const;
+    [[nodiscard]] TraceListener::HandlerInfo buildHandlerInfo(
+        const chunks::ScriptChunk& script,
+        const chunks::ScriptChunk::Handler& handler,
+        const std::vector<Datum>& args,
+        const Datum& receiver) const;
+    [[nodiscard]] TraceListener::InstructionInfo buildInstructionInfo(
+        const Scope& scope,
+        const chunks::ScriptChunk::Instruction& instruction) const;
+    [[nodiscard]] std::unordered_map<std::string, Datum> captureLocals(const Scope& scope) const;
     [[nodiscard]] bool handlerDeclaresMeAsFirstParam(const chunks::ScriptChunk& script,
                                                      const chunks::ScriptChunk::Handler& handler) const;
     void executeInstruction(Scope& scope, ExecutionContext& context);
@@ -137,6 +153,7 @@ private:
     builtin::BuiltinRegistry builtinRegistry_;
     builtin::BuiltinContext builtinContext_;
     OpcodeRegistry opcodeRegistry_;
+    std::shared_ptr<TraceListener> traceListener_;
     std::unordered_map<std::string, HandlerRef> handlerCache_;
     std::unordered_set<std::string> missingHandlerCache_;
     std::function<void()> passCallback_;

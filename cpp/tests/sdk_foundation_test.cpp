@@ -203,6 +203,7 @@ using libreshockwave::lingo::vm::HandlerRef;
 using libreshockwave::lingo::vm::LingoVM;
 using libreshockwave::lingo::vm::OpcodeRegistry;
 using libreshockwave::lingo::vm::Scope;
+using libreshockwave::lingo::vm::TraceListener;
 using libreshockwave::lookup::CastMemberLookup;
 using libreshockwave::lookup::PaletteResolver;
 using libreshockwave::lookup::ScriptLookup;
@@ -5418,6 +5419,112 @@ void testLingoVmRuntimeFoundation() {
     vm.clearGlobals();
     assert(vm.globals().empty());
     assert(vm.getGlobal("custom").isVoid());
+
+    class RecordingTraceListener final : public TraceListener {
+    public:
+        struct VariableSet {
+            std::string type;
+            std::string name;
+            Datum value;
+        };
+
+        explicit RecordingTraceListener(bool instructions = true)
+            : instructions_(instructions) {}
+
+        void onHandlerEnter(const HandlerInfo& info) override {
+            events.push_back("enter:" + info.handlerName);
+            handlerEntries.push_back(info);
+        }
+
+        void onHandlerExit(const HandlerInfo& info, const Datum& returnValue) override {
+            events.push_back("exit:" + info.handlerName);
+            handlerExits.push_back(info);
+            returnValues.push_back(returnValue);
+        }
+
+        void onInstruction(const InstructionInfo& info) override {
+            instructions.push_back(info);
+        }
+
+        bool needsInstructionTrace() const override {
+            return instructions_;
+        }
+
+        void onVariableSet(std::string_view type, std::string_view name, const Datum& value) override {
+            variableSets.push_back(VariableSet{std::string(type), std::string(name), value});
+        }
+
+        void onError(std::string_view message, std::string_view error) override {
+            errors.emplace_back(std::string(message), std::string(error));
+        }
+
+        bool instructions_;
+        std::vector<std::string> events;
+        std::vector<HandlerInfo> handlerEntries;
+        std::vector<HandlerInfo> handlerExits;
+        std::vector<InstructionInfo> instructions;
+        std::vector<VariableSet> variableSets;
+        std::vector<Datum> returnValues;
+        std::vector<std::pair<std::string, std::string>> errors;
+    };
+
+    assert(LingoVM::formatTraceArgument(Datum::voidValue()) == "<VOID>");
+    assert(LingoVM::formatTraceArgument(Datum::symbol("mouseUp")) == "#mouseUp");
+    assert(LingoVM::formatTraceArgument(Datum::of(std::string("login_a"))) == "\"login_a\"");
+
+    auto traceListener = std::make_shared<RecordingTraceListener>();
+    vm.setTraceListener(traceListener);
+    assert(vm.traceListener() == traceListener);
+    assert(vm.executeHandler(script, globalHandler).intValue() == 7);
+    assert((traceListener->events == std::vector<std::string>{"enter:handler#2", "exit:handler#2"}));
+    assert(traceListener->handlerEntries.size() == 1);
+    assert(traceListener->handlerEntries[0].handlerName == "handler#2");
+    assert(traceListener->handlerEntries[0].scriptId == 960);
+    assert(traceListener->handlerEntries[0].scriptDisplayName == "script#960");
+    assert(traceListener->handlerEntries[0].arguments.empty());
+    assert(traceListener->handlerEntries[0].receiver.isVoid());
+    assert(traceListener->handlerEntries[0].localCount == 0);
+    assert(traceListener->handlerEntries[0].argCount == 0);
+    assert(traceListener->handlerExits.size() == 1);
+    assert(traceListener->returnValues[0].intValue() == 7);
+    assert(traceListener->instructions.size() == 4);
+    assert(traceListener->instructions[0].bytecodeIndex == 0);
+    assert(traceListener->instructions[0].offset == 0);
+    assert(traceListener->instructions[0].opcode == "pushInt8");
+    assert(traceListener->instructions[0].argument == 7);
+    assert(traceListener->instructions[0].stackSize == 0);
+    assert(traceListener->instructions[1].opcode == "setGlobal");
+    assert(traceListener->instructions[1].stackSize == 1);
+    assert(traceListener->instructions[1].stackSnapshot[0].intValue() == 7);
+    assert(traceListener->instructions[1].annotation.find("setGlobal") != std::string::npos);
+    assert(traceListener->instructions[2].globalsSnapshot.at("#3").intValue() == 7);
+    assert(traceListener->variableSets.size() == 1);
+    assert(traceListener->variableSets[0].type == "global");
+    assert(traceListener->variableSets[0].name == "#3");
+    assert(traceListener->variableSets[0].value.intValue() == 7);
+    assert(traceListener->errors.empty());
+    vm.clearGlobals();
+
+    auto handlerOnlyTraceListener = std::make_shared<RecordingTraceListener>(false);
+    vm.setTraceListener(handlerOnlyTraceListener);
+    vm.setStepLimit(1);
+    bool traceRethrew = false;
+    try {
+        (void)vm.executeHandler(script, stepLimitHandler);
+    } catch (const LingoException&) {
+        traceRethrew = true;
+    }
+    assert(traceRethrew);
+    assert(handlerOnlyTraceListener->instructions.empty());
+    assert((handlerOnlyTraceListener->events == std::vector<std::string>{"enter:handler#5", "exit:handler#5"}));
+    assert(handlerOnlyTraceListener->errors.size() == 1);
+    assert(handlerOnlyTraceListener->errors[0].first == "Error in handler#5");
+    assert(handlerOnlyTraceListener->errors[0].second.find("Step limit exceeded") != std::string::npos);
+    assert(handlerOnlyTraceListener->returnValues[0].isVoid());
+    assert(vm.callStackDepth() == 0);
+    vm.setStepLimit(0);
+    vm.setTraceListener(nullptr);
+    assert(vm.traceListener() == nullptr);
 
     assert(vm.executeHandler(script, paramHandler, {Datum::of(123)}).intValue() == 123);
     assert(vm.callHandler("abs", {Datum::of(-11)}).intValue() == 11);

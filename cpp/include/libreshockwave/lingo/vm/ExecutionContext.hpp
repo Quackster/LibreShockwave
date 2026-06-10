@@ -31,6 +31,9 @@ public:
     using BuiltinInvoker = std::function<Datum(std::string_view name, const std::vector<Datum>& args)>;
     using ErrorStateSetter = std::function<void(bool errorState)>;
     using CallStackFormatter = std::function<std::string()>;
+    using VariableSetListener = std::function<void(std::string_view type,
+                                                   std::string_view name,
+                                                   const Datum& value)>;
 
     struct Callbacks {
         HandlerExecutor handlerExecutor;
@@ -41,6 +44,7 @@ public:
         BuiltinInvoker builtinInvoker;
         ErrorStateSetter errorStateSetter;
         CallStackFormatter callStackFormatter;
+        VariableSetListener variableSetListener;
     };
 
     ExecutionContext(Scope& scope,

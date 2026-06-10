@@ -8,6 +8,7 @@
 
 #include "libreshockwave/DirectorFile.hpp"
 #include "libreshockwave/chunks/ScriptNamesChunk.hpp"
+#include "libreshockwave/lingo/Opcode.hpp"
 
 namespace libreshockwave::lingo::vm {
 namespace {
@@ -36,19 +37,6 @@ std::string lower(std::string_view value) {
         return static_cast<char>(std::tolower(ch));
     });
     return result;
-}
-
-std::string datumDisplay(const Datum& value) {
-    if (value.isVoid()) {
-        return "<VOID>";
-    }
-    if (const auto* symbol = value.asSymbol()) {
-        return "#" + symbol->name;
-    }
-    if (const auto* string = value.asString()) {
-        return "\"" + string->value + "\"";
-    }
-    return value.stringValue();
 }
 
 } // namespace
@@ -198,6 +186,20 @@ bool LingoVM::isInErrorState() const {
 
 void LingoVM::resetErrorState() {
     inErrorState_ = false;
+}
+
+void LingoVM::setTraceListener(std::shared_ptr<TraceListener> listener) {
+    traceListener_ = std::move(listener);
+}
+
+std::shared_ptr<TraceListener> LingoVM::traceListener() const {
+    return traceListener_;
+}
+
+void LingoVM::fireTraceError(std::string_view message, std::string_view error) {
+    if (traceListener_) {
+        traceListener_->onError(message, error);
+    }
 }
 
 int LingoVM::callStackDepth() const {
@@ -409,12 +411,16 @@ Datum LingoVM::executeHandler(const chunks::ScriptChunk& script,
     callStack_.emplace_back(&script, handler, std::move(effectiveArgs), receiver, firstParamDeclaredMe);
     Scope& scope = callStack_.back();
     Datum result = Datum::voidValue();
+    std::optional<TraceListener::HandlerInfo> handlerInfo;
     bool alertHookDepthIncremented = false;
     if (isAlertHookHandler) {
         ++alertHookDepth_;
         alertHookDepthIncremented = true;
     }
     auto leaveHandler = [&] {
+        if (traceListener_ && handlerInfo.has_value()) {
+            traceListener_->onHandlerExit(*handlerInfo, result);
+        }
         if (alertHookDepthIncremented) {
             --alertHookDepth_;
             alertHookDepthIncremented = false;
@@ -423,6 +429,10 @@ Datum LingoVM::executeHandler(const chunks::ScriptChunk& script,
         flushDeferredScriptInstanceCalls();
     };
     try {
+        if (traceListener_) {
+            handlerInfo = buildHandlerInfo(script, handler, args, receiver);
+            traceListener_->onHandlerEnter(*handlerInfo);
+        }
         if (const auto* first = scope.currentInstruction()) {
             auto callbacks = callbacksFor(script);
             ExecutionContext context(scope, *first, &builtinRegistry_, &builtinContext_, std::move(callbacks));
@@ -438,14 +448,18 @@ Datum LingoVM::executeHandler(const chunks::ScriptChunk& script,
         }
         result = scope.returnValue();
     } catch (const std::exception& error) {
+        fireTraceError("Error in " + currentHandlerName, error.what());
         if (!isAlertHookHandler && fireAlertHook("Script Error", error.what())) {
+            result = Datum::voidValue();
             leaveHandler();
             return Datum::voidValue();
         }
         leaveHandler();
         throw;
     } catch (...) {
+        fireTraceError("Error in " + currentHandlerName, "Unknown script error");
         if (!isAlertHookHandler && fireAlertHook("Script Error", "Unknown script error")) {
+            result = Datum::voidValue();
             leaveHandler();
             return Datum::voidValue();
         }
@@ -458,6 +472,19 @@ Datum LingoVM::executeHandler(const chunks::ScriptChunk& script,
 
 std::string LingoVM::normalizeLookupName(std::string_view name) {
     return lower(name);
+}
+
+std::string LingoVM::formatTraceArgument(const Datum& value) {
+    if (value.isVoid()) {
+        return "<VOID>";
+    }
+    if (const auto* symbol = value.asSymbol()) {
+        return "#" + symbol->name;
+    }
+    if (const auto* string = value.asString()) {
+        return "\"" + string->value + "\"";
+    }
+    return value.stringValue();
 }
 
 bool LingoVM::isGlobalHandlerScriptType(chunks::ScriptChunkType scriptType) {
@@ -493,6 +520,11 @@ ExecutionContext::Callbacks LingoVM::callbacksFor(const chunks::ScriptChunk& scr
     callbacks.callStackFormatter = [this] {
         return formatCallStack();
     };
+    callbacks.variableSetListener = [this](std::string_view type, std::string_view name, const Datum& value) {
+        if (traceListener_) {
+            traceListener_->onVariableSet(type, name, value);
+        }
+    };
     return callbacks;
 }
 
@@ -519,6 +551,79 @@ std::string LingoVM::handlerName(const chunks::ScriptChunk& script,
     return script.getHandlerName(handler, names.get());
 }
 
+std::string LingoVM::scriptDisplayName(const chunks::ScriptChunk& script) const {
+    if (file_ != nullptr) {
+        for (const auto& candidate : file_->scripts()) {
+            if (candidate.get() == &script) {
+                const std::string name = file_->getScriptName(candidate);
+                if (!name.empty()) {
+                    return name;
+                }
+                break;
+            }
+        }
+    }
+    return "script#" + std::to_string(script.id().value());
+}
+
+TraceListener::HandlerInfo LingoVM::buildHandlerInfo(
+    const chunks::ScriptChunk& script,
+    const chunks::ScriptChunk::Handler& handler,
+    const std::vector<Datum>& args,
+    const Datum& receiver) const {
+    return TraceListener::HandlerInfo{
+        handlerName(script, handler),
+        script.id().value(),
+        scriptDisplayName(script),
+        args,
+        receiver,
+        globals_,
+        script.literals(),
+        handler.localCount,
+        handler.argCount
+    };
+}
+
+TraceListener::InstructionInfo LingoVM::buildInstructionInfo(
+    const Scope& scope,
+    const chunks::ScriptChunk::Instruction& instruction) const {
+    std::vector<Datum> stackSnapshot;
+    const int snapshotCount = std::min(10, scope.stackSize());
+    stackSnapshot.reserve(static_cast<std::size_t>(snapshotCount));
+    for (int index = 0; index < snapshotCount; ++index) {
+        stackSnapshot.push_back(scope.peek(index));
+    }
+
+    return TraceListener::InstructionInfo{
+        scope.bytecodeIndex(),
+        instruction.offset,
+        std::string(mnemonic(instruction.opcode)),
+        instruction.argument,
+        instruction.toString(),
+        scope.stackSize(),
+        std::move(stackSnapshot),
+        captureLocals(scope),
+        globals_
+    };
+}
+
+std::unordered_map<std::string, Datum> LingoVM::captureLocals(const Scope& scope) const {
+    std::unordered_map<std::string, Datum> locals;
+    const auto* script = scope.script();
+    if (script == nullptr) {
+        return locals;
+    }
+
+    const auto& handler = scope.handler();
+    for (int index = 0; index < static_cast<int>(handler.argNameIds.size()); ++index) {
+        locals[resolveName(*script, handler.argNameIds[static_cast<std::size_t>(index)])] = scope.getParam(index);
+    }
+    for (int index = 0; index < static_cast<int>(handler.localNameIds.size()); ++index) {
+        locals[resolveName(*script, handler.localNameIds[static_cast<std::size_t>(index)])] = scope.getLocal(index);
+    }
+    return locals;
+}
+
 bool LingoVM::handlerDeclaresMeAsFirstParam(const chunks::ScriptChunk& script,
                                             const chunks::ScriptChunk::Handler& handler) const {
     if (handler.argNameIds.empty()) {
@@ -532,6 +637,10 @@ void LingoVM::executeInstruction(Scope& scope, ExecutionContext& context) {
     if (instruction == nullptr) {
         scope.setReturned(true);
         return;
+    }
+
+    if (traceListener_ && traceListener_->needsInstructionTrace()) {
+        traceListener_->onInstruction(buildInstructionInfo(scope, *instruction));
     }
 
     const auto* handler = opcodeRegistry_.get(instruction->opcode);
@@ -552,7 +661,7 @@ LingoVM::CallStackFrame LingoVM::toCallStackFrame(const Scope& scope) const {
     const auto displayArgs = scope.displayArguments();
     args.reserve(displayArgs.size());
     for (const auto& arg : displayArgs) {
-        args.push_back(datumDisplay(arg));
+        args.push_back(formatTraceArgument(arg));
     }
 
     return CallStackFrame{

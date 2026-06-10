@@ -495,7 +495,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `lingo::vm::Scope` ports handler stack-frame state, including bytecode position, stack operations, local variables, mutable parameters, receiver-aware display arguments, return state, and loop-return tracking.
 - `lingo::vm::ExecutionContext` ports the opcode-facing context layer for stack/local/param/global access, return/error state callbacks, jump-target lookup, local/global handler callback plumbing, builtin invocation, and argument popping.
-- Full trace listener integration and long-handler safepoints remain deferred to later VM/player integration slices.
+- Console trace hooks, property-set trace polish, and long-handler safepoints remain deferred to later VM/player integration slices.
 
 ### Lingo VM Name Resolution Foundation
 
@@ -508,6 +508,13 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `lingo::vm::LingoVM` now owns globals, prefs, a builtin registry/context, an opcode registry, call-stack state, pass/stopEvent runtime builtins, Java-compatible seeded random numbers, step limits, error state, and handler cache invalidation.
 - The VM can execute `ScriptChunk::Handler` bytecode end to end through reusable `Scope` and `ExecutionContext` callbacks, including global get/set opcodes, parameter reads, return values, direct builtin calls, builtin fallback from `callHandler`, and formatted call-stack frames.
 - Tests cover direct handler execution, VM-backed globals/prefs/random, pass and stopEvent callbacks, step-limit cleanup, and visible call-stack state during opcode execution.
+
+### Lingo VM Trace Listener Foundation
+
+- `lingo::vm::TraceListener` ports Java's handler, instruction, variable-set, error, debug-message, and instruction-trace opt-out callback surface.
+- `lingo::vm::LingoVM` now exposes trace-listener setters/getters, Java-compatible trace argument formatting, handler enter/exit notifications, instruction snapshots with stack/local/global state, and error notifications before alertHook suppression.
+- `lingo::vm::ExecutionContext` now emits local, parameter, and global variable-set trace callbacks from the normal bytecode mutation path.
+- Console trace hooks, property-set trace polish, and long-handler safepoints remain deferred to later VM/player integration slices.
 
 ### Lingo VM Deferred Dispatch Foundation
 
@@ -522,7 +529,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `lingo::BuiltinContext` now exposes an alertHook callback used by `alert()` before fallback alert/output handling.
 - `lingo::vm::LingoVM` now exposes `fireAlertHook`, guards recursive alertHook execution, and suppresses script errors when the hook returns truthy while preserving call-stack unwind and deferred-call flushing.
 - `player::Player` now wires the movie `alertHook` script-instance property through the existing VM event dispatch path and uses the handler return value to decide whether the alert/error was handled.
-- Full trace listener integration and long-handler safepoints remain deferred to later VM/player integration slices.
+- Console trace hooks, property-set trace polish, and long-handler safepoints remain deferred to later VM/player integration slices.
 
 ### Lingo Opcode Registry and Stack/Control Foundation
 
@@ -721,6 +728,7 @@ Result:
 - TypeBuiltins object/void/type predicates, `value` literal parsing/provider fallback, `script`/`callAncestor` callback hooks, symbol conversion, and `ilk` alias checks passed through the same CTest executable.
 - Lingo VM Scope and ExecutionContext stack, param, local, return, loop, jump, global callback, handler callback, builtin invocation, and call-stack formatting behavior passed through the same CTest executable.
 - Lingo VM ExecutionContext name resolver callback and resolver-backed global opcode behavior passed through the same CTest executable.
+- Lingo VM trace listener handler enter/exit, optional instruction tracing, stack/global snapshots, variable-set callbacks, error callbacks, and trace argument formatting passed through the same CTest executable.
 - Lingo VM deferred script-instance call ordering, automatic outer-handler flush, deferred task explicit flushing, flush-state guards, Player call-target provider wiring, and numeric `closeThread` task deferral passed through the same CTest executable.
 - Lingo VM alertHook manual firing, `alert()` suppression, script-error suppression/rethrow behavior, and Player no-hook fallback passed through the same CTest executable.
 - Player-owned LingoVM builtin delegation, file-backed dispatcher movie-script discovery/bytecode invocation, startup movie-script frame lifecycle and timeout-target dispatch, actorList frame-event dispatch, elapsed timeout target/global dispatch, `stopMovie` timeout/movie dispatch, and VM preference storage passed through the same CTest executable.
@@ -889,4 +897,5 @@ Result:
 - `8470c98b Port C++ HitTester StageRenderer overloads`
 - `18ab849e Port C++ VM deferred dispatch`
 - `2e946940 Port C++ closeThread deferral`
-- Current checkpoint commit message: `Port C++ alertHook handling`
+- `4ca9f827 Port C++ alertHook handling`
+- Current checkpoint commit message: `Port C++ trace listener callbacks`
