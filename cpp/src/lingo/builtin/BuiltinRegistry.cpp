@@ -2188,11 +2188,7 @@ Datum TypeBuiltins::script(BuiltinContext& context, const std::vector<Datum>& ar
 
     if (identifier.isList()) {
         for (const auto& item : identifier.listValue().items()) {
-            std::vector<Datum> nestedArgs{item};
-            if (scope) {
-                nestedArgs.push_back(*scope);
-            }
-            Datum result = script(context, nestedArgs);
+            Datum result = script(context, {item});
             if (!result.isVoid()) {
                 return result;
             }

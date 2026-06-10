@@ -416,6 +416,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Java-compatible type predicates, symbol conversion, `ilk` type names including field-text-as-string, and Director alias checks such as `#list`, `#linearList`, `#number`, and `#object` are covered in C++.
 - `value` now evaluates string literals through the C++ `LingoValueParser`, keeps the VM callback hook for provider-owned evaluation, and preserves resolver-confirmed multi-word member names for downstream script construction.
 - `script` now resolves direct cast-member refs, strings, symbols, raw member numbers, encoded slot numbers, and cast-library scoped lookups through C++ provider hooks before falling back to the generic script resolver.
+- `script` list-candidate lookup now mirrors Java by evaluating each candidate as an unscoped standalone identifier even when the outer call has a cast-library scope argument.
 - `callAncestor` now rejects non-instance `me` arguments and fans out over list targets, invoking the ancestor callback only for script-instance entries and returning the last result like Java.
 - VM/provider-dependent script resolution and provider-owned `callAncestor` handler lookup remain exposed through callback hooks until the C++ Lingo VM runtime is ported.
 
@@ -876,7 +877,7 @@ Result:
 - Editable text field caret geometry, single-line and multi-line selection rectangles, paste replacement, selected-text extraction, cut mutation, select-all, no-focus fallbacks, and sprite-registry revision bumps passed through the same CTest executable.
 - SoundBuiltins channel creation, availability, sound-channel method dispatch, VM object-property defaults/mutation, and SoundManager playback delegation passed through the same CTest executable.
 - ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration and callback hooks passed through the same CTest executable.
-- TypeBuiltins object/void/type predicates, `value` literal parsing/provider fallback, direct `script` lookup/scoping, `script`/`callAncestor` callback hooks and list fanout, symbol conversion, and `ilk` alias/field-text checks passed through the same CTest executable.
+- TypeBuiltins object/void/type predicates, `value` literal parsing/provider fallback, direct `script` lookup/scoping/unscoped list fallback, `script`/`callAncestor` callback hooks and list fanout, symbol conversion, and `ilk` alias/field-text checks passed through the same CTest executable.
 - Lingo VM Scope and ExecutionContext stack, param, local, return, loop, jump, global callback, handler callback, builtin invocation, and call-stack formatting behavior passed through the same CTest executable.
 - Lingo VM ExecutionContext name resolver callback and resolver-backed global opcode behavior passed through the same CTest executable.
 - Lingo VM long-handler safepoint callback, tick deadline, handler timeout, and cleanup behavior passed through the same CTest executable.
@@ -1105,4 +1106,5 @@ Result:
 - `4183cf59 Port C++ persistent member aliases`
 - `53949afa Port C++ callAncestor list fanout`
 - `8fc7526c Port C++ direct script lookup`
-- Current checkpoint commit message: `Port C++ FieldText ilk parity`
+- `288d5c4d Port C++ FieldText ilk parity`
+- Current checkpoint commit message: `Port C++ script list scope parity`

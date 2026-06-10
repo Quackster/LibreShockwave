@@ -3009,13 +3009,17 @@ void testBuiltinRegistryFoundation() {
     context.castMemberNameResolver = {};
     context.castLibNameResolver = {};
     int scriptResolveCalls = 0;
-    context.scriptResolver = [&scriptResolveCalls](const Datum& identifier, const std::optional<Datum>& scope) {
+    std::vector<std::string> scriptResolveScopes;
+    context.scriptResolver = [&scriptResolveCalls, &scriptResolveScopes](const Datum& identifier, const std::optional<Datum>& scope) {
         ++scriptResolveCalls;
+        const std::string name = identifier.asSymbol() != nullptr ? identifier.asSymbol()->name : identifier.stringValue();
         if (scope.has_value()) {
             assert(scope->asCastLibRef() != nullptr);
             assert(scope->asCastLibRef()->castLib == 4);
+            scriptResolveScopes.push_back("4:" + name);
+        } else {
+            scriptResolveScopes.push_back("0:" + name);
         }
-        const std::string name = identifier.asSymbol() != nullptr ? identifier.asSymbol()->name : identifier.stringValue();
         if (name == "Parent") {
             return Datum::scriptRef(Datum::CastMemberRef{4, 9});
         }
@@ -3030,6 +3034,10 @@ void testBuiltinRegistryFoundation() {
     const auto resolvedFromList = registry.invoke("script", context, {scriptCandidates, Datum::castLibRef(CastLibId(4))});
     assert(resolvedFromList.asScriptRef()->memberRef.castMember == 9);
     assert(scriptResolveCalls == 4);
+    assert(scriptResolveScopes[0] == "4:Missing");
+    assert(scriptResolveScopes[1] == "4:Parent");
+    assert(scriptResolveScopes[2] == "0:Missing");
+    assert(scriptResolveScopes[3] == "0:Parent");
 
     assert(registry.invoke("ilk", context).asSymbol()->name == "void");
     assert(registry.invoke("ilk", context, {Datum::of(1)}).asSymbol()->name == "integer");
