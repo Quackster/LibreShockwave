@@ -7,8 +7,13 @@
 #include <string>
 #include <utility>
 
+#include "libreshockwave/DirectorFile.hpp"
+#include "libreshockwave/cast/BitmapInfo.hpp"
 #include "libreshockwave/cast/CastMember.hpp"
+#include "libreshockwave/cast/FilmLoopInfo.hpp"
 #include "libreshockwave/cast/ShapeInfo.hpp"
+#include "libreshockwave/chunks/ConfigChunk.hpp"
+#include "libreshockwave/chunks/ScoreChunk.hpp"
 #include "libreshockwave/id/Ids.hpp"
 #include "libreshockwave/player/render/pipeline/InkProcessor.hpp"
 
@@ -46,6 +51,80 @@ bool shouldPreserveOutlinedWhiteBodyForScriptCanvas(const RenderSprite& sprite, 
     return memberName.has_value() &&
            (memberName->starts_with("chat_item_background_") ||
             memberName->starts_with("chat_item_sing_background_"));
+}
+
+int channel(std::uint32_t argb, int shift) {
+    return static_cast<int>((argb >> shift) & 0xFFU);
+}
+
+std::uint32_t alphaComposite(std::uint32_t dst, std::uint32_t src) {
+    const int srcA = channel(src, 24);
+    if (srcA <= 0) {
+        return dst;
+    }
+    if (srcA >= 255) {
+        return src | 0xFF000000U;
+    }
+
+    const int dstA = channel(dst, 24);
+    const int invA = 255 - srcA;
+    const int outA = srcA + (dstA * invA / 255);
+    if (outA <= 0) {
+        return 0;
+    }
+
+    const int outR = (channel(src, 16) * srcA + channel(dst, 16) * dstA * invA / 255) / outA;
+    const int outG = (channel(src, 8) * srcA + channel(dst, 8) * dstA * invA / 255) / outA;
+    const int outB = (channel(src, 0) * srcA + channel(dst, 0) * dstA * invA / 255) / outA;
+    return (static_cast<std::uint32_t>(outA & 0xFF) << 24) |
+           (static_cast<std::uint32_t>(outR & 0xFF) << 16) |
+           (static_cast<std::uint32_t>(outG & 0xFF) << 8) |
+           static_cast<std::uint32_t>(outB & 0xFF);
+}
+
+void blitOnto(bitmap::Bitmap& dst, const bitmap::Bitmap& src, int offsetX, int offsetY) {
+    for (int y = 0; y < src.height(); ++y) {
+        const int dy = offsetY + y;
+        if (dy < 0 || dy >= dst.height()) {
+            continue;
+        }
+        for (int x = 0; x < src.width(); ++x) {
+            const int dx = offsetX + x;
+            if (dx < 0 || dx >= dst.width()) {
+                continue;
+            }
+            const auto srcPixel = src.getPixel(x, y);
+            if (channel(srcPixel, 24) == 0) {
+                continue;
+            }
+            dst.setPixel(dx, dy, alphaComposite(dst.getPixel(dx, dy), srcPixel));
+        }
+    }
+}
+
+DirectorFile* mutableFileFor(const std::shared_ptr<const chunks::CastMemberChunk>& member) {
+    if (member == nullptr || member->file() == nullptr) {
+        return nullptr;
+    }
+    return const_cast<DirectorFile*>(member->file());
+}
+
+std::shared_ptr<chunks::CastMemberChunk> resolveFilmLoopMember(DirectorFile& file, int castLib, int memberNumber) {
+    auto member = file.getCastMemberByNumber(castLib, memberNumber);
+    if (member == nullptr && (castLib == 0xFFFF || castLib == 0)) {
+        member = file.getCastMemberByNumber(1, memberNumber);
+    }
+    if (member == nullptr) {
+        member = file.getCastMemberByIndex(castLib, memberNumber);
+        if (member == nullptr && (castLib == 0xFFFF || castLib == 0)) {
+            member = file.getCastMemberByIndex(1, memberNumber);
+        }
+    }
+    return member;
+}
+
+int directorVersionFor(const DirectorFile& file) {
+    return file.config() != nullptr ? file.config()->directorVersion() : 1200;
 }
 
 } // namespace
@@ -198,6 +277,10 @@ std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeShape(const RenderSprite&
 }
 
 std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeFilmLoop(const RenderSprite& sprite) {
+    if (auto fileBacked = bakeFileBackedFilmLoop(sprite)) {
+        return fileBacked;
+    }
+
     if (!filmLoopBakeProvider_) {
         return nullptr;
     }
@@ -209,6 +292,124 @@ std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeFilmLoop(const RenderSpri
 
     return std::make_shared<bitmap::Bitmap>(
         InkProcessor::applyInk(*loop, sprite.inkMode(), sprite.backColor(), false, loop->imagePalette().get()));
+}
+
+std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeFileBackedFilmLoop(const RenderSprite& sprite) {
+    const auto member = sprite.castMember();
+    auto* file = mutableFileFor(member);
+    if (member == nullptr || file == nullptr) {
+        return nullptr;
+    }
+
+    auto score = file->getScoreForMember(std::const_pointer_cast<chunks::CastMemberChunk>(member));
+    if (score == nullptr || score->frameData().frameChannelData.empty()) {
+        return nullptr;
+    }
+
+    const auto info = cast::FilmLoopInfo::parse(member->specificData());
+    const int loopWidth = info.width() > 0 ? info.width() : sprite.width();
+    const int loopHeight = info.height() > 0 ? info.height() : sprite.height();
+    if (loopWidth <= 0 || loopHeight <= 0) {
+        return nullptr;
+    }
+
+    const int frameCount = score->frameData().header.frameCount;
+    const int targetFrame = frameCount > 0 ? tickCounter_ % frameCount : 0;
+    bitmap::Bitmap composite(loopWidth, loopHeight, 32);
+
+    std::vector<chunks::ScoreChunk::FrameChannelEntry> subSprites;
+    for (const auto& entry : score->frameData().frameChannelData) {
+        if (entry.frameIndex.value() == targetFrame && !entry.data.isEmpty()) {
+            subSprites.push_back(entry);
+        }
+    }
+    std::sort(subSprites.begin(), subSprites.end(), [](const auto& left, const auto& right) {
+        return left.channelIndex.value() < right.channelIndex.value();
+    });
+
+    for (const auto& entry : subSprites) {
+        const auto& data = entry.data;
+        if (data.spriteType == 0 || data.castMember <= 0) {
+            continue;
+        }
+
+        auto subMember = resolveFilmLoopMember(*file, data.castLib, data.castMember);
+        if (subMember == nullptr) {
+            continue;
+        }
+
+        auto subBitmap = bakeFilmLoopMemberBitmap(subMember, data);
+        if (subBitmap == nullptr || subBitmap->width() <= 0 || subBitmap->height() <= 0) {
+            continue;
+        }
+
+        int x = data.posX;
+        int y = data.posY;
+        if (subMember->isBitmap() && subMember->specificData().size() >= 10) {
+            const auto bitmapInfo = cast::BitmapInfo::parse(subMember->specificData(), directorVersionFor(*file));
+            x -= bitmapInfo.regXLocal();
+            y -= bitmapInfo.regYLocal();
+        } else {
+            x -= subMember->regPointX();
+            y -= subMember->regPointY();
+        }
+
+        blitOnto(composite, *subBitmap, x - info.rectLeft, y - info.rectTop);
+    }
+
+    if (InkProcessor::shouldProcessInk(sprite.inkMode())) {
+        composite = InkProcessor::applyInk(composite,
+                                           sprite.inkMode(),
+                                           sprite.backColor(),
+                                           false,
+                                           composite.imagePalette().get());
+    }
+    return std::make_shared<bitmap::Bitmap>(std::move(composite));
+}
+
+std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeFilmLoopMemberBitmap(
+    const std::shared_ptr<chunks::CastMemberChunk>& member,
+    const chunks::ScoreChunk::ChannelData& data) {
+    if (member == nullptr) {
+        return nullptr;
+    }
+
+    RenderSprite subSprite(0,
+                           0,
+                           0,
+                           data.width,
+                           data.height,
+                           0,
+                           true,
+                           SpriteType::Bitmap,
+                           member,
+                           nullptr,
+                           0,
+                           data.resolvedBackColor(),
+                           false,
+                           false,
+                           data.ink,
+                           100,
+                           data.isFlipH(),
+                           data.isFlipV(),
+                           nullptr,
+                           false);
+    if (auto cached = cachedBitmap(subSprite)) {
+        return cached;
+    }
+    if (!bitmapDecodeProvider_) {
+        return nullptr;
+    }
+
+    auto raw = bitmapDecodeProvider_(*member, nullptr);
+    if (raw == nullptr) {
+        bitmapCache_->markDecodeFailed(*member);
+        return nullptr;
+    }
+
+    auto processed = std::make_shared<bitmap::Bitmap>(processDecodedBitmap(*raw, subSprite));
+    cacheBitmap(subSprite, processed);
+    return processed;
 }
 
 bitmap::Bitmap SpriteBaker::processDecodedBitmap(const bitmap::Bitmap& raw, const RenderSprite& sprite) const {

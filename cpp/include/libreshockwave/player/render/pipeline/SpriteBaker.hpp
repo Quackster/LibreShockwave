@@ -8,6 +8,7 @@
 #include "libreshockwave/bitmap/Bitmap.hpp"
 #include "libreshockwave/bitmap/Palette.hpp"
 #include "libreshockwave/chunks/CastMemberChunk.hpp"
+#include "libreshockwave/chunks/ScoreChunk.hpp"
 #include "libreshockwave/player/render/pipeline/BitmapCache.hpp"
 #include "libreshockwave/player/render/pipeline/RenderSprite.hpp"
 
@@ -64,6 +65,10 @@ private:
 
     [[nodiscard]] bitmap::Bitmap processDecodedBitmap(const bitmap::Bitmap& raw, const RenderSprite& sprite) const;
     [[nodiscard]] bitmap::Bitmap processLiveBitmap(const bitmap::Bitmap& live, const RenderSprite& sprite) const;
+    [[nodiscard]] std::shared_ptr<const bitmap::Bitmap> bakeFileBackedFilmLoop(const RenderSprite& sprite);
+    [[nodiscard]] std::shared_ptr<const bitmap::Bitmap> bakeFilmLoopMemberBitmap(
+        const std::shared_ptr<chunks::CastMemberChunk>& member,
+        const chunks::ScoreChunk::ChannelData& data);
     [[nodiscard]] std::shared_ptr<const bitmap::Bitmap> cachedBitmap(const RenderSprite& sprite) const;
     void cacheBitmap(const RenderSprite& sprite, std::shared_ptr<const bitmap::Bitmap> bitmap);
 

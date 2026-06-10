@@ -6300,6 +6300,236 @@ void testSpriteBakerFoundation() {
     assert(bakedFilmLoopSprites[0].bakedBitmap()->getPixel(0, 0) == 0x00000000U);
     assert(bakedFilmLoopSprites[0].bakedBitmap()->getPixel(1, 0) == 0xFF551100U);
 
+    auto appendFourCC = [](std::vector<std::uint8_t>& data, const std::string& value) {
+        data.insert(data.end(), value.begin(), value.end());
+    };
+    auto appendI16 = [](std::vector<std::uint8_t>& data, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data.push_back(static_cast<std::uint8_t>((raw >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(raw & 0xFF));
+    };
+    auto appendI32 = [](std::vector<std::uint8_t>& data, std::uint32_t value) {
+        data.push_back(static_cast<std::uint8_t>((value >> 24) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 16) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(value & 0xFF));
+    };
+    auto putI16At = [](std::vector<std::uint8_t>& data, int offset, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((raw >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>(raw & 0xFF);
+    };
+    auto putI32At = [](std::vector<std::uint8_t>& data, int offset, std::uint32_t value) {
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((value >> 24) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>((value >> 16) & 0xFF);
+        data[static_cast<std::size_t>(offset + 2)] = static_cast<std::uint8_t>((value >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 3)] = static_cast<std::uint8_t>(value & 0xFF);
+    };
+    auto makeCastMemberData = [&](MemberType type, const std::vector<std::uint8_t>& specificData) {
+        std::vector<std::uint8_t> data;
+        appendI32(data, static_cast<std::uint32_t>(libreshockwave::cast::code(type)));
+        appendI32(data, 0);
+        appendI32(data, static_cast<std::uint32_t>(specificData.size()));
+        data.insert(data.end(), specificData.begin(), specificData.end());
+        return data;
+    };
+    auto makeScoreChannel = [&](int channelCastLib, int channelMember, int posX, int posY, int width, int height) {
+        std::vector<std::uint8_t> data;
+        data.push_back(1);
+        data.push_back(0);
+        data.push_back(0);
+        data.push_back(0xFF);
+        appendI16(data, channelCastLib);
+        appendI16(data, channelMember);
+        appendI16(data, 0);
+        appendI16(data, 0);
+        appendI16(data, posY);
+        appendI16(data, posX);
+        appendI16(data, height);
+        appendI16(data, width);
+        data.push_back(0);
+        data.push_back(0xFF);
+        data.push_back(0);
+        data.push_back(0);
+        data.push_back(0);
+        data.push_back(0);
+        data.push_back(0);
+        data.push_back(0);
+        return data;
+    };
+
+    std::vector<std::uint8_t> loopSpecificData;
+    appendI16(loopSpecificData, 10);
+    appendI16(loopSpecificData, 20);
+    appendI16(loopSpecificData, 12);
+    appendI16(loopSpecificData, 24);
+    loopSpecificData.insert(loopSpecificData.end(), {0, 0, 0, 0});
+
+    std::vector<std::uint8_t> configData(80, 0);
+    putI16At(configData, 2, 0x04B1);
+    putI16At(configData, 8, 100);
+    putI16At(configData, 10, 100);
+    putI16At(configData, 12, 1);
+    putI16At(configData, 14, 3);
+    putI16At(configData, 36, 0x04B1);
+    putI16At(configData, 54, 30);
+
+    std::vector<std::uint8_t> castData;
+    appendI32(castData, 3);
+    appendI32(castData, 4);
+    appendI32(castData, 5);
+
+    std::vector<std::uint8_t> keyData;
+    appendI16(keyData, 12);
+    appendI16(keyData, 12);
+    appendI32(keyData, 1);
+    appendI32(keyData, 1);
+    appendI32(keyData, 6);
+    appendI32(keyData, 3);
+    appendI32(keyData, BinaryReader::fourCC("VWSC"));
+
+    const auto filmCastData = makeCastMemberData(MemberType::FilmLoop, loopSpecificData);
+    const auto firstBitmapCastData = makeCastMemberData(MemberType::Bitmap, {});
+    const auto secondBitmapCastData = makeCastMemberData(MemberType::Bitmap, {});
+
+    const auto firstChannel = makeScoreChannel(1, 2, 20, 10, 2, 1);
+    const auto secondChannel = makeScoreChannel(1, 3, 21, 10, 1, 1);
+    std::vector<std::uint8_t> frameDelta;
+    appendI16(frameDelta, 28);
+    appendI16(frameDelta, 2 * 28);
+    frameDelta.insert(frameDelta.end(), firstChannel.begin(), firstChannel.end());
+    appendI16(frameDelta, 28);
+    appendI16(frameDelta, 3 * 28);
+    frameDelta.insert(frameDelta.end(), secondChannel.begin(), secondChannel.end());
+
+    std::vector<std::uint8_t> frameEntry;
+    appendI32(frameEntry, 0);
+    appendI32(frameEntry, 0);
+    appendI32(frameEntry, 2);
+    appendI16(frameEntry, 8);
+    appendI16(frameEntry, 28);
+    appendI16(frameEntry, 6);
+    appendI16(frameEntry, 0);
+    appendI16(frameEntry, static_cast<int>(frameDelta.size()) + 2);
+    frameEntry.insert(frameEntry.end(), frameDelta.begin(), frameDelta.end());
+    appendI16(frameEntry, 2);
+
+    std::vector<std::uint8_t> scoreData;
+    appendI32(scoreData, static_cast<std::uint32_t>(frameEntry.size()));
+    appendI32(scoreData, 0);
+    appendI32(scoreData, 0);
+    appendI32(scoreData, 1);
+    appendI32(scoreData, 0);
+    appendI32(scoreData, static_cast<std::uint32_t>(frameEntry.size()));
+    appendI32(scoreData, 0);
+    appendI32(scoreData, static_cast<std::uint32_t>(frameEntry.size()));
+    scoreData.insert(scoreData.end(), frameEntry.begin(), frameEntry.end());
+
+    const std::vector<std::pair<std::string, std::vector<std::uint8_t>>> chunks{
+        {"DRCF", configData},
+        {"CAS*", castData},
+        {"KEY*", keyData},
+        {"CASt", filmCastData},
+        {"CASt", firstBitmapCastData},
+        {"CASt", secondBitmapCastData},
+        {"VWSC", scoreData}
+    };
+
+    constexpr int mmapOffset = 32;
+    const int mmapLen = 24 + static_cast<int>(chunks.size()) * 20;
+    int dataStart = mmapOffset + 8 + mmapLen;
+    std::vector<int> chunkDataStarts;
+    chunkDataStarts.reserve(chunks.size());
+    for (const auto& chunk : chunks) {
+        chunkDataStarts.push_back(dataStart);
+        dataStart += static_cast<int>(chunk.second.size());
+    }
+
+    std::vector<std::uint8_t> fileData;
+    appendFourCC(fileData, "RIFX");
+    appendI32(fileData, 0);
+    appendFourCC(fileData, "MV93");
+    appendFourCC(fileData, "imap");
+    appendI32(fileData, 12);
+    appendI32(fileData, 1);
+    appendI32(fileData, mmapOffset);
+    appendI32(fileData, 0x04B1);
+    appendFourCC(fileData, "mmap");
+    appendI32(fileData, static_cast<std::uint32_t>(mmapLen));
+    appendI16(fileData, 24);
+    appendI16(fileData, 20);
+    appendI32(fileData, static_cast<std::uint32_t>(chunks.size()));
+    appendI32(fileData, static_cast<std::uint32_t>(chunks.size()));
+    appendI32(fileData, 0);
+    appendI32(fileData, 0);
+    appendI32(fileData, 0);
+    for (std::size_t index = 0; index < chunks.size(); ++index) {
+        appendI32(fileData, BinaryReader::fourCC(chunks[index].first));
+        appendI32(fileData, static_cast<std::uint32_t>(chunks[index].second.size()));
+        appendI32(fileData, static_cast<std::uint32_t>(chunkDataStarts[index] - 8));
+        appendI16(fileData, 0);
+        appendI16(fileData, 0);
+        appendI32(fileData, 0);
+    }
+    for (const auto& chunk : chunks) {
+        fileData.insert(fileData.end(), chunk.second.begin(), chunk.second.end());
+    }
+    putI32At(fileData, 4, static_cast<std::uint32_t>(fileData.size() - 8));
+
+    auto filmFile = DirectorFile::load(fileData);
+    auto fileBackedFilmMember = filmFile->getCastMemberByNumber(1, 1);
+    assert(fileBackedFilmMember != nullptr);
+    assert(filmFile->getScoreForMember(fileBackedFilmMember) != nullptr);
+
+    SpriteBaker fileFilmBaker;
+    int fileFilmDecodeCalls = 0;
+    fileFilmBaker.setBitmapDecodeProvider([&](const CastMemberChunk& member, const Palette*) -> std::shared_ptr<const Bitmap> {
+        ++fileFilmDecodeCalls;
+        if (member.id().value() == 4) {
+            return std::make_shared<Bitmap>(2, 1, 32, std::vector<std::uint32_t>{
+                0xFFFF0000U,
+                0xFF00FF00U
+            });
+        }
+        if (member.id().value() == 5) {
+            return std::make_shared<Bitmap>(1, 1, 32, std::vector<std::uint32_t>{0xFF0000FFU});
+        }
+        return nullptr;
+    });
+    RenderSprite fileBackedFilmSprite(12,
+                                      0,
+                                      0,
+                                      4,
+                                      2,
+                                      0,
+                                      true,
+                                      SpriteType::FilmLoop,
+                                      fileBackedFilmMember,
+                                      nullptr,
+                                      0,
+                                      0,
+                                      false,
+                                      false,
+                                      0,
+                                      100,
+                                      false,
+                                      false,
+                                      nullptr,
+                                      false);
+    auto fileBackedFilmSprites = fileFilmBaker.bakeSprites({fileBackedFilmSprite});
+    assert(fileFilmDecodeCalls == 2);
+    auto fileBackedFilmBitmap = fileBackedFilmSprites[0].bakedBitmap();
+    assert(fileBackedFilmBitmap != nullptr);
+    assert(fileBackedFilmBitmap->width() == 4);
+    assert(fileBackedFilmBitmap->height() == 2);
+    assert(fileBackedFilmBitmap->getPixel(0, 0) == 0xFFFF0000U);
+    assert(fileBackedFilmBitmap->getPixel(1, 0) == 0xFF0000FFU);
+    assert(fileBackedFilmBitmap->getPixel(2, 0) == 0x00000000U);
+    assert(fileBackedFilmBitmap->getPixel(0, 1) == 0x00000000U);
+    auto fileBackedFilmAgain = fileFilmBaker.bake(fileBackedFilmSprite);
+    assert(fileFilmDecodeCalls == 2);
+    assert(fileBackedFilmAgain.bakedBitmap()->getPixel(1, 0) == 0xFF0000FFU);
+
     RenderSprite solidShape(3,
                             0,
                             0,
