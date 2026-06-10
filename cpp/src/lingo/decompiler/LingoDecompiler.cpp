@@ -41,6 +41,19 @@ std::string joinStrings(const std::vector<std::string>& values, std::string_view
     return result;
 }
 
+std::string rawLiteralString(const chunks::ScriptChunk::LiteralValue& value) {
+    if (const auto* text = std::get_if<std::string>(&value); text != nullptr) {
+        return *text;
+    }
+    if (const auto* integer = std::get_if<int>(&value); integer != nullptr) {
+        return std::to_string(*integer);
+    }
+    if (const auto* bytes = std::get_if<std::vector<std::uint8_t>>(&value); bytes != nullptr) {
+        return "[bytes:" + std::to_string(bytes->size()) + "]";
+    }
+    return "null";
+}
+
 void emitBlock(const BlockNode& block,
                std::vector<LingoDecompiler::DecompiledLine>& lines,
                int indentLevel,
@@ -1435,10 +1448,7 @@ std::string LingoDecompiler::getLocalName(int rawIndex) const {
 NodePtr LingoDecompiler::literalToNode(const chunks::ScriptChunk::LiteralEntry& literal) const {
     switch (literal.type) {
         case 1:
-            if (std::holds_alternative<std::string>(literal.value)) {
-                return std::make_unique<LiteralNode>(ValueType::String, std::get<std::string>(literal.value));
-            }
-            return std::make_unique<LiteralNode>(ValueType::String, "");
+            return std::make_unique<LiteralNode>(ValueType::String, rawLiteralString(literal.value));
         case 4:
             if (std::holds_alternative<int>(literal.value)) {
                 return std::make_unique<LiteralNode>(std::get<int>(literal.value));
@@ -1447,10 +1457,7 @@ NodePtr LingoDecompiler::literalToNode(const chunks::ScriptChunk::LiteralEntry& 
         case 9:
             return std::make_unique<LiteralNode>(literal.numericValue);
         default:
-            if (std::holds_alternative<std::string>(literal.value)) {
-                return std::make_unique<LiteralNode>(ValueType::String, std::get<std::string>(literal.value));
-            }
-            return std::make_unique<LiteralNode>(ValueType::String, "");
+            return std::make_unique<LiteralNode>(ValueType::String, rawLiteralString(literal.value));
     }
 }
 

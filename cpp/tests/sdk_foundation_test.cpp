@@ -1698,7 +1698,8 @@ void testLingoDecompilerNodeFoundation() {
                                   "caseOtherwiseOps",
                                   "caseOrOps",
                                   "caseExpressionOps",
-                                  "jsOps"});
+                                  "jsOps",
+                                  "literalOps"});
     ScriptChunk::Handler bytecodeHandler{
         0,
         0,
@@ -1777,6 +1778,38 @@ void testLingoDecompilerNodeFoundation() {
     assert(bytecodeMapping.lines[2].bytecodeOffset == 9);
     assert(bytecodeMapping.lines[3].bytecodeOffset == 15);
     assert(bytecodeMapping.lines[4].bytecodeOffset == -1);
+
+    ScriptChunk::Handler unknownLiteralHandler{
+        scriptNames.findName("literalOps"),
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        {},
+        {4},
+        {
+            ScriptChunk::Instruction{0, Opcode::PUSH_CONS, 0x44, 0},
+            ScriptChunk::Instruction{2, Opcode::SET_LOCAL, 0x52, 0},
+            ScriptChunk::Instruction{4, Opcode::RET, 0x01, 0}
+        },
+        {{0, 0}, {2, 1}, {4, 2}}
+    };
+    ScriptChunk unknownLiteralScript(nullptr,
+                                     ChunkId(520),
+                                     ScriptChunkType::MovieScript,
+                                     0,
+                                     {unknownLiteralHandler},
+                                     {ScriptChunk::LiteralEntry{12, 0, std::vector<std::uint8_t>{1, 2, 3}, 0.0}},
+                                     {},
+                                     {},
+                                     {});
+    assert(decompiler.decompileHandler(unknownLiteralScript.handlers().front(), unknownLiteralScript, &scriptNames) ==
+           "on literalOps\n"
+           "  localOne = \"[bytes:3]\"\n\n"
+           "end");
 
     ScriptChunk::Handler jsHandler{
         scriptNames.findName("jsOps"),
