@@ -1,5 +1,6 @@
 #include "libreshockwave/cast/CastMember.hpp"
 
+#include <algorithm>
 #include <sstream>
 #include <utility>
 
@@ -98,6 +99,14 @@ int CastMember::regY() const {
     if (shapeInfo_) return shapeInfo_->regY;
     if (filmLoopInfo_) return filmLoopInfo_->regY();
     return 0;
+}
+
+int CastMember::bitmapAlphaThreshold() const {
+    return bitmapAlphaThreshold_;
+}
+
+void CastMember::setBitmapAlphaThreshold(int alphaThreshold) {
+    bitmapAlphaThreshold_ = std::clamp(alphaThreshold, 0, 255);
 }
 
 void CastMember::setRegPoint(int x, int y) {
@@ -283,6 +292,7 @@ void CastMember::parseSpecificData() {
     switch (memberType_) {
         case MemberType::Bitmap:
             bitmapInfo_ = BitmapInfo::parse(specificData);
+            bitmapAlphaThreshold_ = bitmapInfo_->alphaThreshold;
             break;
         case MemberType::Shape:
             shapeInfo_ = ShapeInfo::parse(specificData);
@@ -322,6 +332,7 @@ void CastMember::resetRuntimePayload() {
     runtimeRegX_.reset();
     runtimeRegY_.reset();
     dynamicPalette_.reset();
+    bitmapAlphaThreshold_ = 0;
     regPointPinnedToMember_ = false;
     dynamicText_.reset();
     resetTextProperties();

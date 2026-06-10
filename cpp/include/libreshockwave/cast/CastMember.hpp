@@ -62,6 +62,8 @@ public:
     [[nodiscard]] int height() const;
     [[nodiscard]] int regX() const;
     [[nodiscard]] int regY() const;
+    [[nodiscard]] int bitmapAlphaThreshold() const;
+    void setBitmapAlphaThreshold(int alphaThreshold);
     [[nodiscard]] bool regPointPinnedToMember() const;
     void setRegPoint(int x, int y);
     void setRegPointState(int x, int y, bool pinnedToMember);
@@ -146,6 +148,7 @@ private:
     std::optional<int> runtimeRegX_;
     std::optional<int> runtimeRegY_;
     std::shared_ptr<const bitmap::Palette> dynamicPalette_;
+    int bitmapAlphaThreshold_ = 0;
     bool regPointPinnedToMember_ = true;
     std::optional<std::string> dynamicText_;
     std::string textFont_ = "Arial";

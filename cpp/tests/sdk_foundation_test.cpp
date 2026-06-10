@@ -12476,6 +12476,13 @@ void testCastLibManagerFoundation() {
     assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->x == 8);
     assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->y == 7);
     assert(manager.getMemberProp(1, 2, "depth").intValue() == 8);
+    assert(manager.getMemberProp(1, 2, "alphaThreshold").intValue() == 0);
+    assert(manager.setMemberProp(1, 2, "alphaThreshold", Datum::of(300)));
+    assert(manager.getMemberProp(1, 2, "alphaThreshold").intValue() == 255);
+    assert(manager.setMemberProp(1, 2, "alphaThreshold", Datum::of(-8)));
+    assert(manager.getMemberProp(1, 2, "alphaThreshold").intValue() == 0);
+    assert(manager.setMemberProp(1, 2, "alphaThreshold", Datum::of(77)));
+    assert(manager.getMemberProp(1, 2, "alphaThreshold").intValue() == 77);
     const auto* heroPaletteRef = manager.getMemberProp(1, 2, "paletteRef").asCastMemberRef();
     assert(heroPaletteRef != nullptr);
     assert(heroPaletteRef->castLib == 1);
@@ -12507,6 +12514,8 @@ void testCastLibManagerFoundation() {
     assert(copiedFileBitmap->height() == 16);
     assert(copiedFileBitmap->bitDepth() == 8);
     assert(copiedFileBitmap->paletteIndex(1, 0).value() == 1);
+    assert(manager.getMemberProp(1, fileBackedCopyRef->memberNum(), "alphaThreshold").intValue() == 77);
+    assert(manager.setMemberProp(1, 2, "alphaThreshold", Datum::of(0)));
     assert(manager.getMemberProp(1, fileBackedCopyRef->memberNum(), "regPoint").asIntPoint()->x == 8);
     assert(manager.getMemberProp(1, fileBackedCopyRef->memberNum(), "regPoint").asIntPoint()->y == 7);
     auto copiedReplacement = std::make_shared<Bitmap>(1, 1, 32);

@@ -703,6 +703,9 @@ lingo::Datum CastLib::getMemberProp(int memberNumber, const std::string& propNam
         }
         return lingo::Datum::of(member->bitmapInfo().has_value() ? member->bitmapInfo()->bitDepth : 0);
     }
+    if (member->isBitmap() && prop == "alphathreshold") {
+        return lingo::Datum::of(member->bitmapAlphaThreshold());
+    }
     if (prop == "regpoint") return lingo::Datum::intPoint(member->regX(), member->regY());
     if (prop == "rect") return lingo::Datum::intRect(0, 0, member->width(), member->height());
     if (prop == "image") {
@@ -812,6 +815,10 @@ bool CastLib::setMemberProp(int memberNumber, const std::string& propName, const
             member->setEditable(value.intValue() != 0);
             return true;
         }
+    }
+    if (member->isBitmap() && prop == "alphathreshold") {
+        member->setBitmapAlphaThreshold(value.intValue());
+        return true;
     }
     if (prop == "image") {
         const auto* image = value.asImageRef();
