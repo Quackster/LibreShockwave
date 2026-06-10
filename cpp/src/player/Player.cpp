@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <memory>
 #include <optional>
 #include <string>
@@ -54,7 +55,38 @@ int configuredTempo(const std::shared_ptr<DirectorFile>& file) {
     return tempo > 0 ? tempo : DEFAULT_TEMPO;
 }
 
+std::int64_t currentTimeMillis() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
 } // namespace
+
+class Player::PlayerTraceListener final : public lingo::vm::TraceListener {
+public:
+    explicit PlayerTraceListener(Player& player)
+        : player_(player) {}
+
+    void onHandlerEnter(const HandlerInfo& info) override {
+        debug::LifecycleDiagnostics::logHandlerEnter(info);
+    }
+
+    void onHandlerExit(const HandlerInfo& info, const lingo::Datum& returnValue) override {
+        debug::LifecycleDiagnostics::logHandlerExit(info, returnValue);
+    }
+
+    [[nodiscard]] bool needsInstructionTrace() const override {
+        return false;
+    }
+
+    void onError(std::string_view message, std::string_view error) override {
+        debug::LifecycleDiagnostics::logError(message, error);
+        player_.handleTraceError(message, error);
+    }
+
+private:
+    Player& player_;
+};
 
 Player::Player(std::shared_ptr<DirectorFile> file)
     : file_(std::move(file)),
@@ -81,10 +113,13 @@ Player::Player(std::shared_ptr<DirectorFile> file)
     xtraManager_.registerXtra(std::make_unique<lingo::xtra::XmlParserXtra>());
     socketMultiuserBridge_ = std::make_unique<xtra::SocketMultiuserBridge>();
     registerMultiuserXtra(*socketMultiuserBridge_);
+    playerTraceListener_ = std::make_shared<PlayerTraceListener>(*this);
+    vm_.setTraceListener(playerTraceListener_);
     wireComponents();
 }
 
 Player::~Player() {
+    vm_.setTraceListener(nullptr);
     lingo::vm::dispatch::ImageMethodDispatcher::clearImageMutationCallback(this);
 }
 
@@ -172,6 +207,10 @@ void Player::setExternalCastLoadListener(std::function<void(const ExternalCastLo
     externalCastLoadListener_ = std::move(listener);
 }
 
+void Player::setErrorListener(ErrorListener listener) {
+    errorListener_ = std::move(listener);
+}
+
 void Player::addExternalCastLoadHandler(ExternalCastLoadHandler* handler) {
     if (handler != nullptr) {
         externalCastLoadHandlers_.push_back(handler);
@@ -242,6 +281,22 @@ void Player::setInitialBuiltinVariables(std::vector<std::pair<std::string, lingo
 }
 
 bool Player::debugEnabled() const { return debugEnabled_; }
+
+std::vector<lingo::vm::LingoVM::CallStackFrame> Player::getLingoCallStack() const {
+    return vm_.callStack();
+}
+
+std::string Player::formatLingoCallStack() const {
+    return vm_.formatCallStack();
+}
+
+std::string Player::getRecentScriptErrorMessage(std::int64_t maxAgeMs) const {
+    return recentScriptErrorIsFresh(maxAgeMs) ? lastScriptErrorMessage_ : std::string();
+}
+
+std::string Player::getRecentScriptErrorStack(std::int64_t maxAgeMs) const {
+    return recentScriptErrorIsFresh(maxAgeMs) ? lastScriptErrorStack_ : std::string();
+}
 
 void Player::play() {
     const bool wasStopped = state_ == PlayerState::Stopped;
@@ -437,6 +492,25 @@ void Player::notifyExternalCastLoaded(int castLibNumber) {
     if (castLoadedListener_) {
         castLoadedListener_();
     }
+}
+
+void Player::handleTraceError(std::string_view message, std::string_view errorDetail) {
+    lastScriptErrorTimeMs_ = currentTimeMillis();
+    lastScriptErrorMessage_ = std::string(message);
+    lastScriptErrorStack_ = vm_.hasActiveCallStack() ? vm_.formatCallStack() : std::string();
+    if (errorListener_) {
+        errorListener_(lastScriptErrorMessage_, errorDetail);
+    }
+}
+
+bool Player::recentScriptErrorIsFresh(std::int64_t maxAgeMs) const {
+    if (maxAgeMs < 0) {
+        maxAgeMs = 0;
+    }
+    if (lastScriptErrorTimeMs_ <= 0) {
+        return false;
+    }
+    return currentTimeMillis() - lastScriptErrorTimeMs_ <= maxAgeMs;
 }
 
 render::pipeline::FrameSnapshot Player::frameSnapshot() {

@@ -3478,6 +3478,27 @@ void testPlayerFacadeFoundation() {
     player.setAudioBackend(nullptr);
     assert(player.soundManager().backend() == nullptr);
 
+    assert(player.vm().traceListener() != nullptr);
+    assert(!player.vm().traceListener()->needsInstructionTrace());
+    assert(player.getLingoCallStack().empty());
+    assert(player.formatLingoCallStack() == "Lingo call stack: (empty)");
+    assert(player.getRecentScriptErrorMessage(1000).empty());
+    assert(player.getRecentScriptErrorStack(1000).empty());
+    std::vector<std::pair<std::string, std::string>> playerErrors;
+    player.setErrorListener([&playerErrors](std::string_view message, std::string_view errorDetail) {
+        playerErrors.emplace_back(message, errorDetail);
+    });
+    player.vm().fireTraceError("Error in facade", "synthetic script error");
+    assert(playerErrors.size() == 1);
+    assert(playerErrors[0].first == "Error in facade");
+    assert(playerErrors[0].second == "synthetic script error");
+    assert(player.getRecentScriptErrorMessage(1000) == "Error in facade");
+    assert(player.getRecentScriptErrorStack(1000).empty());
+    player.setErrorListener({});
+    player.vm().fireTraceError("Second facade error", "listener cleared");
+    assert(playerErrors.size() == 1);
+    assert(player.getRecentScriptErrorMessage(1000) == "Second facade error");
+
     player.setTempo(24);
     assert(player.baseTempo() == 24);
     assert(player.tempo() == 24);

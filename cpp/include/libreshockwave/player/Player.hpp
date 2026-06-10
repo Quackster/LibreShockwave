@@ -51,6 +51,8 @@ class ExternalCastLoadHandler;
 
 class Player {
 public:
+    using ErrorListener = std::function<void(std::string_view message, std::string_view errorDetail)>;
+
     explicit Player(std::shared_ptr<DirectorFile> file = nullptr);
     ~Player();
 
@@ -99,6 +101,7 @@ public:
     void setEventListener(std::function<void(const PlayerEventInfo&)> listener);
     void setCastLoadedListener(std::function<void()> listener);
     void setExternalCastLoadListener(std::function<void(const ExternalCastLoadEvent&)> listener);
+    void setErrorListener(ErrorListener listener);
     void addExternalCastLoadHandler(ExternalCastLoadHandler* handler);
     void setDebugEnabled(bool enabled);
     void setAudioBackend(audio::AudioBackend* backend);
@@ -109,6 +112,10 @@ public:
     void setInitialBuiltinVariable(std::string variableName, lingo::Datum defaultValue);
     void setInitialBuiltinVariables(std::vector<std::pair<std::string, lingo::Datum>> values);
     [[nodiscard]] bool debugEnabled() const;
+    [[nodiscard]] std::vector<lingo::vm::LingoVM::CallStackFrame> getLingoCallStack() const;
+    [[nodiscard]] std::string formatLingoCallStack() const;
+    [[nodiscard]] std::string getRecentScriptErrorMessage(std::int64_t maxAgeMs) const;
+    [[nodiscard]] std::string getRecentScriptErrorStack(std::int64_t maxAgeMs) const;
 
     void play();
     void pause();
@@ -131,10 +138,14 @@ public:
     [[nodiscard]] render::pipeline::FrameSnapshot frameSnapshot();
 
 private:
+    class PlayerTraceListener;
+
     void wireComponents();
     void prepareMovieFoundation();
     void applyInitialBuiltinVariables();
     void processUpdatingObjects();
+    void handleTraceError(std::string_view message, std::string_view errorDetail);
+    [[nodiscard]] bool recentScriptErrorIsFresh(std::int64_t maxAgeMs) const;
     void loadCastFromNetCache(int castLibNumber, const std::string& fileName);
     void handleExternalCastFetch(const std::string& url, const std::vector<std::uint8_t>& data);
     [[nodiscard]] bool applyExternalCastDataNow(int castLibNumber,
@@ -161,16 +172,21 @@ private:
     CursorManager cursorManager_;
     InputHandler inputHandler_;
     lingo::vm::LingoVM vm_;
+    std::shared_ptr<lingo::vm::TraceListener> playerTraceListener_;
     PlayerState state_{PlayerState::Stopped};
     int tempo_{15};
     bool debugEnabled_{false};
     std::function<void(const PlayerEventInfo&)> eventListener_;
     std::function<void()> castLoadedListener_;
     std::function<void(const ExternalCastLoadEvent&)> externalCastLoadListener_;
+    ErrorListener errorListener_;
     std::vector<ExternalCastLoadHandler*> externalCastLoadHandlers_;
     std::vector<std::pair<std::string, std::string>> externalParams_;
     std::vector<std::pair<std::string, lingo::Datum>> initialBuiltinVariables_;
     std::vector<lingo::Datum> updatingObjects_;
+    std::string lastScriptErrorMessage_;
+    std::string lastScriptErrorStack_;
+    std::int64_t lastScriptErrorTimeMs_{0};
     std::function<void()> timeoutProcessor_;
     std::function<void(std::string_view handlerName)> timeoutSystemEventDispatcher_;
 };
