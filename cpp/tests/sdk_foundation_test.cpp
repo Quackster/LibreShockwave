@@ -1740,6 +1740,13 @@ void testPlayerVmEventDispatchFoundation() {
     Player player(file);
     assert(&player.vm().builtinRegistry() == &player.builtinRegistry());
     assert(&player.vm().builtinContext() == &player.builtinContext());
+    player.vm().setGlobal("valueGlobal", Datum::of(123));
+    assert(player.vm().callBuiltin("value", {Datum::of(std::string("valueGlobal"))}).intValue() == 123);
+    assert(player.vm().callBuiltin("value", {Datum::of(std::string("valueGlobal trailing"))}).intValue() == 123);
+    assert(player.vm().callBuiltin("value", {Datum::of(std::string("3 valueGlobal"))}).intValue() == 3);
+    assert(player.vm().callBuiltin("value", {Datum::of(std::string("prepareMovie"))}).isVoid());
+    assert(player.vm().getGlobal("prepared").intValue() == 55);
+    player.vm().clearGlobals();
 
     player.eventDispatcher().dispatchToMovieScripts(PlayerEvent::MouseUp);
     assert(player.vm().getGlobal("clicked").intValue() == 44);

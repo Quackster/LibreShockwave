@@ -49,6 +49,47 @@ std::string lower(std::string_view value) {
     return result;
 }
 
+std::string_view trimView(std::string_view value) {
+    while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front()))) {
+        value.remove_prefix(1);
+    }
+    while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back()))) {
+        value.remove_suffix(1);
+    }
+    return value;
+}
+
+std::optional<std::string> leadingValueIdentifier(std::string_view value) {
+    const std::string_view text = trimView(value);
+    if (text.empty()) {
+        return std::nullopt;
+    }
+    const auto first = static_cast<unsigned char>(text.front());
+    if (!std::isalpha(first) && text.front() != '_') {
+        return std::nullopt;
+    }
+
+    std::size_t end = 1;
+    while (end < text.size()) {
+        const auto ch = static_cast<unsigned char>(text[end]);
+        if (!std::isalnum(ch) && text[end] != '_') {
+            break;
+        }
+        ++end;
+    }
+    if (end < text.size() && text[end] == '(') {
+        return std::nullopt;
+    }
+    return std::string(text.substr(0, end));
+}
+
+bool isValueLiteralKeyword(std::string_view identifier) {
+    return equalsIgnoreCase(identifier, "TRUE") ||
+           equalsIgnoreCase(identifier, "FALSE") ||
+           equalsIgnoreCase(identifier, "VOID") ||
+           equalsIgnoreCase(identifier, "EMPTY");
+}
+
 std::optional<int> parseInitialRandomSeed(const char* rawValue) {
     if (rawValue == nullptr) {
         return std::nullopt;
@@ -86,6 +127,24 @@ LingoVM::LingoVM(DirectorFile* file)
     if (const auto initialRandomSeed = parseInitialRandomSeed(std::getenv("LS_INITIAL_RANDOM_SEED"))) {
         setRandomSeed(*initialRandomSeed);
     }
+    builtinContext_.valueEvaluator = [this](const Datum& value) {
+        if (!value.isString()) {
+            return Datum::voidValue();
+        }
+        const auto identifier = leadingValueIdentifier(value.stringValue());
+        if (!identifier.has_value() || isValueLiteralKeyword(*identifier)) {
+            return Datum::voidValue();
+        }
+
+        Datum globalValue = getGlobal(*identifier);
+        if (!globalValue.isVoid()) {
+            return globalValue;
+        }
+        if (auto handler = findHandler(*identifier)) {
+            return executeHandler(*handler->script, handler->handler);
+        }
+        return Datum::voidValue();
+    };
     builtinContext_.randomIntHandler = [this](int max) {
         return randomInt(max);
     };

@@ -624,6 +624,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `lingo::vm::LingoVM` now owns globals, prefs, a builtin registry/context, an opcode registry, call-stack state, pass/stopEvent runtime builtins, Java-compatible seeded random numbers, step limits, error state, and handler cache invalidation.
 - The VM can execute `ScriptChunk::Handler` bytecode end to end through reusable `Scope` and `ExecutionContext` callbacks, including global get/set opcodes, parameter reads, return values, direct builtin calls, builtin fallback from `callHandler`, and formatted call-stack frames.
+- VM-backed `value(...)` evaluation now mirrors Java's identifier fallback by resolving active globals and zero-argument global handlers through the C++ VM before returning void for unresolved identifiers.
 - Tests cover direct handler execution, VM-backed globals/prefs/random, pass and stopEvent callbacks, step-limit cleanup, and visible call-stack state during opcode execution.
 
 ### Lingo VM Safepoint Foundation
@@ -889,6 +890,7 @@ Result:
 - Lingo VM long-handler safepoint callback, tick deadline, handler timeout, and cleanup behavior passed through the same CTest executable.
 - Lingo VM console trace controls, targeted handler trace output, random-call trace seed output, trace-enabled handler/instruction/return output, and output redirection passed through the same CTest executable.
 - Lingo VM startup random seed override, invalid seed fallback, and Java-compatible seed-4096 random sequence passed through the same CTest executable.
+- Lingo VM-backed `value(...)` global lookup, partial identifier lookup, and zero-argument movie-handler fallback passed through the same CTest executable.
 - Lingo VM trace listener handler enter/exit, optional instruction tracing, stack/global snapshots, local/param/global/script-instance-property variable-set callbacks, error callbacks, and trace argument formatting passed through the same CTest executable.
 - Lingo VM deferred script-instance call ordering, automatic outer-handler flush, deferred task explicit flushing, flush-state guards, Player call-target provider wiring, and numeric `closeThread` task deferral passed through the same CTest executable.
 - Lingo VM alertHook manual firing, `alert()` suppression, script-error suppression/rethrow behavior, and Player no-hook fallback passed through the same CTest executable.
@@ -1120,4 +1122,5 @@ Result:
 - `97288df5 Port C++ mutable point rect setAt`
 - `58b08250 Port C++ ancestor assignment guard`
 - `72fc2f3a Port C++ bounded ancestor traversal`
-- Current checkpoint commit message: `Port C++ random seed trace parity`
+- `3b15a1e5 Port C++ random seed trace parity`
+- Current checkpoint commit message: `Port C++ VM value identifier fallback`
