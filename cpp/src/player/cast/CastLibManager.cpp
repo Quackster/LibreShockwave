@@ -8,6 +8,8 @@
 
 #include "libreshockwave/DirectorFile.hpp"
 #include "libreshockwave/bitmap/Bitmap.hpp"
+#include "libreshockwave/bitmap/BitmapDecoder.hpp"
+#include "libreshockwave/cast/BitmapInfo.hpp"
 #include "libreshockwave/cast/CastMember.hpp"
 #include "libreshockwave/chunks/CastChunk.hpp"
 #include "libreshockwave/chunks/CastListChunk.hpp"
@@ -34,6 +36,28 @@ std::uint32_t readU32BE(const std::vector<std::uint8_t>& data, std::size_t offse
            (static_cast<std::uint32_t>(data[offset + 1]) << 16U) |
            (static_cast<std::uint32_t>(data[offset + 2]) << 8U) |
            static_cast<std::uint32_t>(data[offset + 3]);
+}
+
+std::uint32_t readU32LE(const std::vector<std::uint8_t>& data, std::size_t offset) {
+    return static_cast<std::uint32_t>(data[offset]) |
+           (static_cast<std::uint32_t>(data[offset + 1]) << 8U) |
+           (static_cast<std::uint32_t>(data[offset + 2]) << 16U) |
+           (static_cast<std::uint32_t>(data[offset + 3]) << 24U);
+}
+
+std::optional<std::size_t> findBitdMarker(const std::vector<std::uint8_t>& data) {
+    if (data.size() < 40) {
+        return std::nullopt;
+    }
+    for (std::size_t index = 32; index + 8 <= data.size(); ++index) {
+        if (data[index] == static_cast<std::uint8_t>('D') &&
+            data[index + 1] == static_cast<std::uint8_t>('T') &&
+            data[index + 2] == static_cast<std::uint8_t>('I') &&
+            data[index + 3] == static_cast<std::uint8_t>('B')) {
+            return index;
+        }
+    }
+    return std::nullopt;
 }
 
 std::optional<bitmap::Bitmap> decodeImportedImage(const std::vector<std::uint8_t>& data) {
@@ -89,6 +113,76 @@ std::optional<bitmap::Bitmap> decodeImportedImage(const std::vector<std::uint8_t
     if (hasAlpha) {
         bitmap.setNativeAlpha(true);
     }
+    return bitmap;
+}
+
+std::shared_ptr<const bitmap::Palette> resolveMediaPalette(const ::libreshockwave::cast::BitmapInfo& info,
+                                                           int defaultCastLib,
+                                                           CastLibManager* manager) {
+    if (info.paletteId < 0) {
+        return std::shared_ptr<const bitmap::Palette>(
+            &bitmap::Palette::builtIn(info.paletteId),
+            [](const bitmap::Palette*) {});
+    }
+
+    const int memberNumber = info.paletteId + 1;
+    if (manager != nullptr) {
+        if (info.paletteCastLib > 0) {
+            if (auto palette = manager->resolvePaletteByMember(info.paletteCastLib, memberNumber)) {
+                return palette;
+            }
+        }
+        if (defaultCastLib > 0) {
+            if (auto palette = manager->resolvePaletteByMember(defaultCastLib, memberNumber)) {
+                return palette;
+            }
+        }
+    }
+    return std::shared_ptr<const bitmap::Palette>(
+        &bitmap::Palette::systemMacPalette(),
+        [](const bitmap::Palette*) {});
+}
+
+std::optional<bitmap::Bitmap> decodeDirectorBitmapMedia(const std::vector<std::uint8_t>& data,
+                                                        int defaultCastLib,
+                                                        CastLibManager* manager) {
+    const auto marker = findBitdMarker(data);
+    if (!marker.has_value() || *marker < 32 || *marker + 8 > data.size()) {
+        return std::nullopt;
+    }
+
+    const auto bitdLen = readU32LE(data, *marker + 4);
+    const std::size_t bitdStart = *marker + 8;
+    if (bitdLen == 0 || bitdLen > data.size() - bitdStart) {
+        return std::nullopt;
+    }
+
+    const std::vector<std::uint8_t> infoData(data.begin() + static_cast<std::ptrdiff_t>(*marker - 32),
+                                             data.begin() + static_cast<std::ptrdiff_t>(*marker));
+    const auto info = ::libreshockwave::cast::BitmapInfo::parse(infoData, 1200);
+    if (info.width <= 0 || info.height <= 0) {
+        return std::nullopt;
+    }
+
+    const std::vector<std::uint8_t> bitd(data.begin() + static_cast<std::ptrdiff_t>(bitdStart),
+                                         data.begin() + static_cast<std::ptrdiff_t>(bitdStart + bitdLen));
+    std::shared_ptr<const bitmap::Palette> palette;
+    if (info.bitDepth <= 8) {
+        palette = resolveMediaPalette(info, defaultCastLib, manager);
+    }
+
+    auto bitmap = bitmap::BitmapDecoder::decode(bitd,
+                                                info.width,
+                                                info.height,
+                                                info.bitDepth,
+                                                palette.get(),
+                                                true,
+                                                1200,
+                                                info.pitch);
+    if (palette) {
+        bitmap.setImagePalette(palette);
+    }
+    bitmap.setAnchorPoint(info.regXLocal(), info.regYLocal());
     return bitmap;
 }
 
@@ -385,6 +479,9 @@ bool CastLibManager::importFileIntoMember(int castLibNumber,
     }
 
     auto bitmap = decodeImportedImage(*data);
+    if (!bitmap.has_value()) {
+        bitmap = decodeDirectorBitmapMedia(*data, castLibNumber, this);
+    }
     if (!bitmap.has_value()) {
         return false;
     }

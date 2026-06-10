@@ -218,7 +218,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `player::cast::CastLib` ports lazy cast-library metadata, authored/external file binding state, stable registry binding checks, member chunk maps, script maps, source-prefixed member-name fallback, font-alias/PFR XMED scanning, and Java-compatible cast/member property fallbacks.
 - `player::cast::CastLibManager` ports DirectorFile-backed cast-library initialization from MCsL/CAS* chunks, castLib/member number and name lookup, registry-visible member filtering, external-cast cache keys, pending external load tracking, preload-mode loading, and builtin callback installation.
-- Runtime bitmap member image mutation and cached imported-image assignment are available for existing members; dynamic member creation, non-bitmap media mutation, Director BITD media import, and full CastLibProvider palette/field integration remain deferred to later player runtime slices.
+- Runtime bitmap member image mutation and cached imported-image assignment are available for existing members; dynamic member creation, non-bitmap media mutation, ediM/JPEG/ALFA sidecars, and full CastLibProvider palette/field integration remain deferred to later player runtime slices.
 
 ### Bitmap Resolver Foundation
 
@@ -249,7 +249,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `player::Player` now owns and wires the C++ frame context, stage renderer, cast library manager, movie/sprite properties, bitmap resolver, cursor manager, input handler, network manager, timeout manager, sound manager, sprite baker, bitmap cache, and frame render pipeline.
 - Playback control ports the Java state transitions for play, pause, resume, stop, manual step, tick, direct frame/label navigation, event-listener forwarding, base/puppet/score tempo lookup, debug flag propagation, and render snapshot creation with player-state debug metadata.
-- Full VM provider setup, Xtra ticking, asynchronous playback, imported-media mutation, and external-cast fetch completion remain deferred to later player runtime slices.
+- Full VM provider setup, Xtra ticking, asynchronous playback, non-bitmap imported-media mutation, and external-cast fetch completion remain deferred to later player runtime slices.
 
 ### Player Builtin Context Foundation
 
@@ -496,8 +496,9 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `CastLib::setMemberProp("image", imageRef)` now copies the source bitmap into the runtime member, marks it script-modified, preserves anchor-based registration points, and exposes updated image/width/height/depth/rect/regPoint properties.
 - `CastLibManager::importFileIntoMember` now resolves cached external payloads, decodes the Java-compatible `LSWI` imported-image format, assigns it through the member image path, and wires `BuiltinContext::importFileIntoHandler` during callback installation.
+- Director `DTIB`/BITD imported bitmap media now falls back through `BitmapInfo` metadata parsing, little-endian BITD payload length handling, `BitmapDecoder` dispatch, cast-aware palette lookup for indexed media, and anchor-point propagation.
 - `player::Player` now wires `SpriteBaker::setLiveBitmapProvider` to runtime cast-member lookup so authored bitmap members whose `image` was mutated render from the live script-modified bitmap before stale decode/cache fallback.
-- Director BITD imported-media payload decoding, ediM/JPEG/ALFA sidecars, and dynamic runtime member creation remain deferred.
+- ediM/JPEG/ALFA sidecars and dynamic runtime member creation remain deferred.
 
 ### Lingo VM Scope and Execution Context Foundation
 
@@ -743,7 +744,7 @@ Result:
 - TimeoutBuiltins `timeout` creation, factory-mode `.new`, named `.new`, `.forget`, property get/set helpers, VM object-property get/set dispatch, and missing-provider behavior passed through the same CTest executable.
 - NetBuiltins preload/get/post aliases, task result/error/status lookups, stream-status toggling, navigation callbacks, and ExternalParamBuiltins ordered parameter lookup passed through the same CTest executable.
 - ImageBuiltins image creation, invalid-dimension handling, white fill defaults, built-in/system palette metadata, provider-resolved member palette metadata, string/ilk behavior, and `importFileInto` callback delegation passed through the same CTest executable.
-- Runtime member image assignment, cached `LSWI` `importFileInto` assignment, imported-image alpha preservation, runtime member property reflection, and Player SpriteBaker live runtime bitmap rendering passed through the same CTest executable.
+- Runtime member image assignment, cached `LSWI` and Director `DTIB`/BITD `importFileInto` assignment, imported-image alpha preservation, imported anchor-point propagation, indexed imported-media palette metadata, runtime member property reflection, and Player SpriteBaker live runtime bitmap rendering passed through the same CTest executable.
 - SoundBuiltins channel creation, availability, sound-channel method dispatch, VM object-property defaults/mutation, and SoundManager playback delegation passed through the same CTest executable.
 - ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration and callback hooks passed through the same CTest executable.
 - TypeBuiltins object/void/type predicates, `value` literal parsing/provider fallback, `script`/`callAncestor` callback hooks, symbol conversion, and `ilk` alias checks passed through the same CTest executable.
@@ -925,4 +926,5 @@ Result:
 - `824d7a49 Port C++ property trace callbacks`
 - `f77adf3f Port C++ VM safepoints`
 - `90b02a58 Port C++ console trace hooks`
-- Current checkpoint commit message: `Port C++ runtime member image import`
+- `3d7a59cf Port C++ runtime member image import`
+- Current checkpoint commit message: `Port C++ Director BITD media import`

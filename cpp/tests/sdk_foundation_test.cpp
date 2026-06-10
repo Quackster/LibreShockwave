@@ -11895,6 +11895,12 @@ void testCastLibManagerFoundation() {
         data.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
         data.push_back(static_cast<std::uint8_t>(value & 0xFF));
     };
+    auto appendI32LE = [](std::vector<std::uint8_t>& data, std::uint32_t value) {
+        data.push_back(static_cast<std::uint8_t>(value & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 16) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 24) & 0xFF));
+    };
     auto putI16At = [](std::vector<std::uint8_t>& data, int offset, int value) {
         const auto raw = static_cast<std::uint16_t>(value);
         data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((raw >> 8) & 0xFF);
@@ -12180,6 +12186,67 @@ void testCastLibManagerFoundation() {
     assert(importedRuntime->getPixel(0, 0) == 0xFF102030U);
     assert(importedRuntime->getPixel(1, 0) == 0x80405060U);
     assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->x == 0);
+
+    std::vector<std::uint8_t> directorInfo(32, 0);
+    putI16At(directorInfo, 0, 0x8008);
+    putI16At(directorInfo, 2, 0);
+    putI16At(directorInfo, 4, 0);
+    putI16At(directorInfo, 6, 1);
+    putI16At(directorInfo, 8, 2);
+    putI16At(directorInfo, 18, 4);
+    putI16At(directorInfo, 20, 3);
+    directorInfo[22] = 0x10;
+    directorInfo[23] = 32;
+    putI16At(directorInfo, 24, 0);
+    putI16At(directorInfo, 26, 1);
+    std::vector<std::uint8_t> directorMedia = directorInfo;
+    directorMedia.insert(directorMedia.end(), {'D', 'T', 'I', 'B'});
+    appendI32LE(directorMedia, 8);
+    directorMedia.insert(directorMedia.end(), {
+        0xFF, 0x80,
+        0x11, 0x44,
+        0x22, 0x55,
+        0x33, 0x66
+    });
+    manager.cacheExternalData("media/director-bitd.bin", directorMedia);
+    assert(registry.invoke("importFileInto",
+                           context,
+                           {Datum::castMemberRef(CastLibId(1), MemberId(2)),
+                            Datum::of(std::string("media/director-bitd.bin"))}).boolValue());
+    auto directorRuntime = manager.resolveMember(1, 2)->runtimeBitmap();
+    assert(directorRuntime != nullptr);
+    assert(directorRuntime->isScriptModified());
+    assert(directorRuntime->width() == 2);
+    assert(directorRuntime->height() == 1);
+    assert(directorRuntime->getPixel(0, 0) == 0xFF112233U);
+    assert(directorRuntime->getPixel(1, 0) == 0x80445566U);
+    assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->x == 3);
+    assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->y == 4);
+
+    std::vector<std::uint8_t> indexedInfo(32, 0);
+    putI16At(indexedInfo, 0, 0x8002);
+    putI16At(indexedInfo, 2, 0);
+    putI16At(indexedInfo, 4, 0);
+    putI16At(indexedInfo, 6, 1);
+    putI16At(indexedInfo, 8, 2);
+    indexedInfo[23] = 8;
+    putI16At(indexedInfo, 24, 0);
+    putI16At(indexedInfo, 26, Palette::RAINBOW + 1);
+    std::vector<std::uint8_t> indexedMedia = indexedInfo;
+    indexedMedia.insert(indexedMedia.end(), {'D', 'T', 'I', 'B'});
+    appendI32LE(indexedMedia, 2);
+    indexedMedia.insert(indexedMedia.end(), {1, 2});
+    manager.cacheExternalData("media/indexed-bitd.bin", indexedMedia);
+    assert(registry.invoke("importFileInto",
+                           context,
+                           {Datum::castMemberRef(CastLibId(1), MemberId(2)),
+                            Datum::of(std::string("media/indexed-bitd.bin"))}).boolValue());
+    auto indexedRuntime = manager.resolveMember(1, 2)->runtimeBitmap();
+    assert(indexedRuntime != nullptr);
+    assert(indexedRuntime->bitDepth() == 8);
+    assert(indexedRuntime->imagePalette().get() == &Palette::rainbowPalette());
+    assert(indexedRuntime->paletteIndex(0, 0).value() == 1);
+    assert(indexedRuntime->paletteIndex(1, 0).value() == 2);
     assert(!registry.invoke("importFileInto",
                             context,
                             {Datum::castMemberRef(CastLibId(1), MemberId(2)),
