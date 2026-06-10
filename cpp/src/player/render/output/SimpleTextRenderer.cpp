@@ -622,6 +622,102 @@ std::shared_ptr<Bitmap> renderWithBitmapFont(const std::shared_ptr<BitmapFont>& 
     return bitmap;
 }
 
+void underlineStyledSpans(const std::shared_ptr<Bitmap>& bitmap,
+                          const std::shared_ptr<BitmapFont>& font,
+                          const XmedStyledText& styledText,
+                          int topSpacing,
+                          std::uint32_t textColor) {
+    if (bitmap == nullptr || font == nullptr || styledText.styledSpans.empty()) {
+        return;
+    }
+
+    bool hasUnderline = false;
+    for (const auto& span : styledText.styledSpans) {
+        if (span.underline) {
+            hasUnderline = true;
+            break;
+        }
+    }
+    if (!hasUnderline || styledText.text.empty()) {
+        return;
+    }
+
+    auto& pixels = bitmap->pixels();
+    const int width = bitmap->width();
+    const int height = bitmap->height();
+    const int lineHeight = styledText.fixedLineSpace > 0 ? styledText.fixedLineSpace : font->getLineHeight();
+
+    int y = topSpacing;
+    int lineStart = 0;
+    while (lineStart <= static_cast<int>(styledText.text.size()) && y < height) {
+        int lineEnd = lineStart;
+        while (lineEnd < static_cast<int>(styledText.text.size()) &&
+               !isLineBreak(styledText.text[static_cast<std::size_t>(lineEnd)])) {
+            ++lineEnd;
+        }
+
+        const auto line = std::string_view(styledText.text).substr(
+            static_cast<std::size_t>(lineStart),
+            static_cast<std::size_t>(lineEnd - lineStart));
+        const int lineWidth = font->getStringWidth(line);
+        const int lineX = renderAlignmentX(styledText.alignment, width, lineWidth);
+        const int glyphY = y;
+
+        for (const auto& span : styledText.styledSpans) {
+            if (!span.underline) {
+                continue;
+            }
+            const int start = std::max(lineStart, span.startOffset);
+            const int end = std::min(lineEnd, span.endOffset);
+            if (start >= end) {
+                continue;
+            }
+            const auto prefixToStart = std::string_view(styledText.text).substr(
+                static_cast<std::size_t>(lineStart),
+                static_cast<std::size_t>(start - lineStart));
+            const auto prefixToEnd = std::string_view(styledText.text).substr(
+                static_cast<std::size_t>(lineStart),
+                static_cast<std::size_t>(end - lineStart));
+            const int startX = lineX + font->getStringWidth(prefixToStart);
+            const int endX = lineX + font->getStringWidth(prefixToEnd);
+            const int bottom = findInkBottom(pixels,
+                                             width,
+                                             height,
+                                             startX,
+                                             endX,
+                                             glyphY,
+                                             std::min(height - 1, glyphY + font->getLineHeight() - 1));
+            const auto bounds = findHorizontalInkBounds(pixels,
+                                                        width,
+                                                        height,
+                                                        startX,
+                                                        endX,
+                                                        glyphY,
+                                                        std::min(height - 1, glyphY + font->getLineHeight() - 1));
+            const int underlineY = std::min(height - 1, std::max(glyphY, bottom + 1));
+            drawUnderline(pixels,
+                          width,
+                          height,
+                          underlineY,
+                          bounds[0],
+                          extendUnderlineRightEdge(bounds[1], endX, width),
+                          textColor);
+        }
+
+        if (lineEnd >= static_cast<int>(styledText.text.size())) {
+            break;
+        }
+        if (styledText.text[static_cast<std::size_t>(lineEnd)] == '\r' &&
+            lineEnd + 1 < static_cast<int>(styledText.text.size()) &&
+            styledText.text[static_cast<std::size_t>(lineEnd + 1)] == '\n') {
+            lineStart = lineEnd + 2;
+        } else {
+            lineStart = lineEnd + 1;
+        }
+        y += lineHeight;
+    }
+}
+
 std::shared_ptr<Bitmap> renderWithBuiltinFont(const std::string& text,
                                               int width,
                                               int height,
@@ -1094,6 +1190,11 @@ std::shared_ptr<Bitmap> SimpleTextRenderer::renderXmedText(
                                           0,
                                           wantsBold && !usedRealBold,
                                           underline);
+            underlineStyledSpans(bitmap,
+                                 font,
+                                 *styledText,
+                                 0,
+                                 static_cast<std::uint32_t>(textColor));
         }
         return bitmap;
     }

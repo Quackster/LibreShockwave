@@ -14256,6 +14256,25 @@ void testSimpleTextRendererFoundation() {
         assert(xmedUnderlineRow >= 0);
         assert(xmedRendered->getPixel(3, xmedUnderlineRow) == 0xFF445566U);
 
+        XmedStyledText homogeneousUnderline{};
+        homogeneousUnderline.text = "AB";
+        homogeneousUnderline.styledSpans = {
+            StyledSpan{0, 2, "TinyRenderFont", 9, false, false, true, 0, 0, 0},
+        };
+        homogeneousUnderline.alignment = "left";
+        homogeneousUnderline.wordWrap = false;
+        homogeneousUnderline.fixedLineSpace = 10;
+        homogeneousUnderline.width = 24;
+        homogeneousUnderline.height = 12;
+        homogeneousUnderline.fontName = "TinyRenderFont";
+        homogeneousUnderline.fontSize = 9;
+        auto homogeneousRendered = renderer.renderXmedText(&homogeneousUnderline, 24, 12, 0xFF102030, 0x00FFFFFF);
+        assert(homogeneousRendered != nullptr);
+        const int homogeneousUnderlineRow = findLastOpaqueRow(*homogeneousRendered);
+        assert(homogeneousUnderlineRow >= 0);
+        assert(countOpaqueOnRow(*homogeneousRendered, homogeneousUnderlineRow) >= tinyFont->getStringWidth("AB"));
+        assert(countPixels(*homogeneousRendered, 0xFF102030U) > 0);
+
         XmedStyledText candidateXmed = xmed;
         candidateXmed.text = "A";
         candidateXmed.styledSpans = {StyledSpan{0, 1, "MissingPrimary", 9, false, false, false, 0x10, 0x20, 0x30}};
