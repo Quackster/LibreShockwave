@@ -648,15 +648,15 @@ void Player::wireComponents() {
         return event::HandlerResult{true, result->second};
     };
 
-    context.callTargetHandler = [this, invokeTarget](const lingo::Datum& target,
-                                                     const std::string& handlerName,
-                                                     const std::vector<lingo::Datum>& args) {
+    context.callTargetHandler = [this, executeTarget](const lingo::Datum& target,
+                                                      const std::string& handlerName,
+                                                      const std::vector<lingo::Datum>& args) {
         if (target.type() == lingo::DatumType::ScriptInstanceRef) {
             event::EventTarget eventTarget;
             eventTarget.kind = event::EventTargetKind::ScriptInstance;
             eventTarget.scriptInstance = target;
-            (void)invokeTarget(eventTarget, handlerName, args);
-            return lingo::Datum::voidValue();
+            const auto result = executeTarget(eventTarget, handlerName, args);
+            return result.has_value() ? result->first : lingo::Datum::voidValue();
         }
 
         int channel = 0;
@@ -674,6 +674,7 @@ void Player::wireComponents() {
             return spriteProperties_.callSpriteMethod(channel, handlerName, args);
         }
 
+        lingo::Datum lastResult = lingo::Datum::voidValue();
         for (const auto& scriptInstance : *scriptInstances) {
             if (scriptInstance.type() != lingo::DatumType::ScriptInstanceRef) {
                 continue;
@@ -682,9 +683,12 @@ void Player::wireComponents() {
             eventTarget.kind = event::EventTargetKind::ScriptInstance;
             eventTarget.channel = channel;
             eventTarget.scriptInstance = scriptInstance;
-            (void)invokeTarget(eventTarget, handlerName, args);
+            const auto result = executeTarget(eventTarget, handlerName, args);
+            if (result.has_value()) {
+                lastResult = result->first;
+            }
         }
-        return lingo::Datum::voidValue();
+        return lastResult;
     };
     context.alertHookHandler = [this, executeTarget](const std::string& alertType, const std::string& text) {
         const auto& hook = movieProperties_.alertHook();

@@ -676,6 +676,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `lingo::vm::LingoVM` ports Java-compatible deferred script-instance call queuing, active-call-stack checks, flush-state guards, invalid-target filtering, queued-call ordering, and automatic flushing when the outermost handler exits.
 - Deferred VM tasks can now be queued and explicitly flushed at safe call-stack-empty boundaries, including tasks queued by tasks during a flush.
 - `player::Player` now wires the builtin `callTargetHandler` provider to Player event dispatch for direct script-instance targets and sprite-channel `scriptInstanceList` targets, and flushes VM deferred tasks after frame/timeout execution in `tick()` and `stepFrame()`.
+- Player-backed `call(...)` target dispatch now returns direct script-instance handler results and the last sprite `scriptInstanceList` handler result instead of discarding them.
 - Script-instance object calls now port Java's numeric `closeThread` defer path, queuing the call through the VM task boundary only while a handler is active and no deferred flush is already in progress.
 - `call(...)` now snapshots Java message-struct prop-list arguments per target dispatch, deep-copying nested content while preserving connection script-instance references and leaving non-message prop lists forwarded by reference.
 - Additional provider-specific script-instance method dispatch quirks remain deferred to later focused VM/player slices.
@@ -937,7 +938,7 @@ Result:
 - Lingo VM deferred script-instance call ordering, automatic outer-handler flush, deferred task explicit flushing, flush-state guards, Player call-target provider wiring, and numeric `closeThread` task deferral passed through the same CTest executable.
 - Lingo VM AlertHookHandler skip/depth diagnostics, guarded hook invocation, alertHook manual firing, `alert()` suppression, script-error suppression/rethrow behavior, and Player no-hook fallback passed through the same CTest executable.
 - Lingo Datum deep-copy behavior, DatumFormatter scalar/brief/expanded/detailed/recursive output, AncestorChainWalker property/depth traversal, `call(...)` message-struct argument snapshots, non-message prop-list forwarding, and per-target call snapshot freshness passed through the same CTest executable.
-- Player-owned LingoVM builtin delegation, file-backed dispatcher movie-script discovery/bytecode invocation, startup movie-script frame lifecycle and timeout-target dispatch, actorList frame-event dispatch, elapsed timeout target/global dispatch, `stopMovie` timeout/movie dispatch, and VM preference storage passed through the same CTest executable.
+- Player-owned LingoVM builtin delegation, file-backed dispatcher movie-script discovery/bytecode invocation, direct and sprite `call(...)` target return propagation, startup movie-script frame lifecycle and timeout-target dispatch, actorList frame-event dispatch, elapsed timeout target/global dispatch, `stopMovie` timeout/movie dispatch, and VM preference storage passed through the same CTest executable.
 - OpcodeRegistry stack/control handler registration, custom handler registration, literal/symbol pushes, stack manipulation, return/factory return, and jump opcodes passed through the same CTest executable.
 - OpcodeRegistry arithmetic, comparison, and logical handlers passed through the same CTest executable.
 - OpcodeRegistry variable, arg-list, linear-list, and property-list handlers passed through the same CTest executable.
@@ -1177,4 +1178,5 @@ Result:
 - `4933fc03 Port C++ image method dispatcher`
 - `b6bfe6bc Port C++ member registry method dispatcher`
 - `1eaf5cfd Port C++ script instance method dispatcher`
-- Current checkpoint commit message: `Port C++ sprite object script dispatch`
+- `b8da51ba Port C++ sprite object script dispatch`
+- Current checkpoint commit message: `Port C++ call target return values`

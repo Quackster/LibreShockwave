@@ -2156,7 +2156,7 @@ void testPlayerVmEventDispatchFoundation() {
 
     std::vector<std::uint8_t> namesData(20, 0);
     putI16(namesData, 16, 20);
-    putI16(namesData, 18, 27);
+    putI16(namesData, 18, 28);
     auto appendName = [&namesData](const std::string& value) {
         namesData.push_back(static_cast<std::uint8_t>(value.size()));
         namesData.insert(namesData.end(), value.begin(), value.end());
@@ -2188,6 +2188,7 @@ void testPlayerVmEventDispatchFoundation() {
     appendName("moviePrepareFrame");
     appendName("movieEnterFrame");
     appendName("movieExitFrame");
+    appendName("directResult");
 
     auto putHandlerRecord = [&](std::vector<std::uint8_t>& data, int offset, int nameId, int bytecodeOffset) {
         putI16(data, offset, nameId);
@@ -2203,6 +2204,13 @@ void testPlayerVmEventDispatchFoundation() {
             static_cast<std::uint8_t>(libreshockwave::lingo::code(Opcode::SET_GLOBAL));
         data[static_cast<std::size_t>(offset + 3)] = static_cast<std::uint8_t>(globalNameId);
         data[static_cast<std::size_t>(offset + 4)] =
+            static_cast<std::uint8_t>(libreshockwave::lingo::code(Opcode::RET));
+    };
+    auto putReturnIntHandlerBytecode = [&](std::vector<std::uint8_t>& data, int offset, int value) {
+        data[static_cast<std::size_t>(offset)] =
+            static_cast<std::uint8_t>(libreshockwave::lingo::code(Opcode::PUSH_INT8));
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>(value);
+        data[static_cast<std::size_t>(offset + 2)] =
             static_cast<std::uint8_t>(libreshockwave::lingo::code(Opcode::RET));
     };
 
@@ -2240,27 +2248,29 @@ void testPlayerVmEventDispatchFoundation() {
     scriptMemberData.insert(scriptMemberData.end(), scriptMemberInfo.begin(), scriptMemberInfo.end());
     appendI16(scriptMemberData, 2);
 
-    std::vector<std::uint8_t> timeoutScriptData(500, 0);
-    putI16(timeoutScriptData, 18, 8);
+    std::vector<std::uint8_t> timeoutScriptData(580, 0);
+    putI16(timeoutScriptData, 18, 9);
     putI32(timeoutScriptData, 38, 0x00000002);
-    putI16(timeoutScriptData, 72, 8);
+    putI16(timeoutScriptData, 72, 9);
     putI32(timeoutScriptData, 74, 110);
-    putHandlerRecord(timeoutScriptData, 110, 3, 450);
-    putHandlerRecord(timeoutScriptData, 152, 5, 455);
-    putHandlerRecord(timeoutScriptData, 194, 9, 460);
-    putHandlerRecord(timeoutScriptData, 236, 12, 465);
-    putHandlerRecord(timeoutScriptData, 278, 14, 470);
-    putHandlerRecord(timeoutScriptData, 320, 16, 475);
-    putHandlerRecord(timeoutScriptData, 362, 18, 480);
-    putHandlerRecord(timeoutScriptData, 404, 20, 485);
-    putSetGlobalHandlerBytecode(timeoutScriptData, 450, 77, 7);
-    putSetGlobalHandlerBytecode(timeoutScriptData, 455, 88, 8);
-    putSetGlobalHandlerBytecode(timeoutScriptData, 460, 99, 11);
-    putSetGlobalHandlerBytecode(timeoutScriptData, 465, 33, 13);
-    putSetGlobalHandlerBytecode(timeoutScriptData, 470, 34, 15);
-    putSetGlobalHandlerBytecode(timeoutScriptData, 475, 35, 17);
-    putSetGlobalHandlerBytecode(timeoutScriptData, 480, 36, 19);
-    putSetGlobalHandlerBytecode(timeoutScriptData, 485, 41, 21);
+    putHandlerRecord(timeoutScriptData, 110, 3, 520);
+    putHandlerRecord(timeoutScriptData, 152, 5, 525);
+    putHandlerRecord(timeoutScriptData, 194, 9, 530);
+    putHandlerRecord(timeoutScriptData, 236, 12, 535);
+    putHandlerRecord(timeoutScriptData, 278, 14, 540);
+    putHandlerRecord(timeoutScriptData, 320, 16, 545);
+    putHandlerRecord(timeoutScriptData, 362, 18, 550);
+    putHandlerRecord(timeoutScriptData, 404, 20, 555);
+    putHandlerRecord(timeoutScriptData, 446, 27, 560);
+    putSetGlobalHandlerBytecode(timeoutScriptData, 520, 77, 7);
+    putSetGlobalHandlerBytecode(timeoutScriptData, 525, 88, 8);
+    putSetGlobalHandlerBytecode(timeoutScriptData, 530, 99, 11);
+    putSetGlobalHandlerBytecode(timeoutScriptData, 535, 33, 13);
+    putSetGlobalHandlerBytecode(timeoutScriptData, 540, 34, 15);
+    putSetGlobalHandlerBytecode(timeoutScriptData, 545, 35, 17);
+    putSetGlobalHandlerBytecode(timeoutScriptData, 550, 36, 19);
+    putSetGlobalHandlerBytecode(timeoutScriptData, 555, 41, 21);
+    putReturnIntHandlerBytecode(timeoutScriptData, 560, 73);
 
     auto file = DirectorFile::load(buildRifx({
         {"Lnam", namesData},
@@ -2287,6 +2297,11 @@ void testPlayerVmEventDispatchFoundation() {
     assert(player.vm().callBuiltin("value", {Datum::of(std::string("prepareMovie"))}).isVoid());
     assert(player.vm().getGlobal("prepared").intValue() == 55);
     player.vm().clearGlobals();
+
+    const auto directCallTarget = Datum::scriptInstance("direct-call-target", Datum::CastMemberRef{1, 1});
+    assert(player.vm().callBuiltin("call", {Datum::symbol("directResult"), directCallTarget}).intValue() == 73);
+    assert(player.spriteProperties().setSpriteProp(14, "scriptInstanceList", Datum::list({directCallTarget})));
+    assert(player.vm().callBuiltin("call", {Datum::symbol("directResult"), Datum::spriteRef(ChannelId(14))}).intValue() == 73);
 
     player.eventDispatcher().dispatchToMovieScripts(PlayerEvent::MouseUp);
     assert(player.vm().getGlobal("clicked").intValue() == 44);
