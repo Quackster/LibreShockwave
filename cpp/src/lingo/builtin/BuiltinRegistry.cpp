@@ -1955,8 +1955,8 @@ void ConstructorBuiltins::registerBuiltins(BuiltinRegistry& registry) {
 }
 
 Datum ConstructorBuiltins::point(BuiltinContext&, const std::vector<Datum>& args) {
-    const int x = args.empty() ? 0 : args[0].intValue();
-    const int y = args.size() < 2 ? 0 : args[1].intValue();
+    const int x = args.empty() ? 0 : toIntLikeJava(args[0]);
+    const int y = args.size() < 2 ? 0 : toIntLikeJava(args[1]);
     return Datum::intPoint(x, y);
 }
 
@@ -1966,10 +1966,10 @@ Datum ConstructorBuiltins::rect(BuiltinContext&, const std::vector<Datum>& args)
         const auto* second = args[1].asIntPoint();
         return Datum::intRect(first->x, first->y, second->x, second->y);
     }
-    const int left = args.empty() ? 0 : args[0].intValue();
-    const int top = args.size() < 2 ? 0 : args[1].intValue();
-    const int right = args.size() < 3 ? 0 : args[2].intValue();
-    const int bottom = args.size() < 4 ? 0 : args[3].intValue();
+    const int left = args.empty() ? 0 : toIntLikeJava(args[0]);
+    const int top = args.size() < 2 ? 0 : toIntLikeJava(args[1]);
+    const int right = args.size() < 3 ? 0 : toIntLikeJava(args[2]);
+    const int bottom = args.size() < 4 ? 0 : toIntLikeJava(args[3]);
     return Datum::intRect(left, top, right, bottom);
 }
 
@@ -2019,9 +2019,9 @@ Datum ConstructorBuiltins::intersect(BuiltinContext&, const std::vector<Datum>& 
 }
 
 Datum ConstructorBuiltins::color(BuiltinContext&, const std::vector<Datum>& args) {
-    const int r = args.empty() ? 0 : args[0].intValue();
-    const int g = args.size() < 2 ? 0 : args[1].intValue();
-    const int b = args.size() < 3 ? 0 : args[2].intValue();
+    const int r = args.empty() ? 0 : toIntLikeJava(args[0]);
+    const int g = args.size() < 2 ? 0 : toIntLikeJava(args[1]);
+    const int b = args.size() < 3 ? 0 : toIntLikeJava(args[2]);
     return Datum::colorRef(r, g, b);
 }
 
@@ -2049,14 +2049,14 @@ Datum ConstructorBuiltins::rgb(BuiltinContext&, const std::vector<Datum>& args) 
         }
     }
     if (args.size() >= 3) {
-        return Datum::colorRef(args[0].intValue(), args[1].intValue(), args[2].intValue());
+        return Datum::colorRef(toIntLikeJava(args[0]), toIntLikeJava(args[1]), toIntLikeJava(args[2]));
     }
-    const int value = args[0].intValue();
+    const int value = toIntLikeJava(args[0]);
     return Datum::colorRef((value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF);
 }
 
 Datum ConstructorBuiltins::paletteIndex(BuiltinContext&, const std::vector<Datum>& args) {
-    const int index = args.empty() ? 0 : args[0].intValue() & 0xFF;
+    const int index = args.empty() ? 0 : toIntLikeJava(args[0]) & 0xFF;
     return Datum::colorRef(index, index, index);
 }
 
@@ -2064,7 +2064,7 @@ Datum ConstructorBuiltins::sprite(BuiltinContext&, const std::vector<Datum>& arg
     if (args.empty()) {
         return Datum::voidValue();
     }
-    const int channel = args[0].intValue();
+    const int channel = toIntLikeJava(args[0]);
     if (channel < 0) {
         return Datum::voidValue();
     }

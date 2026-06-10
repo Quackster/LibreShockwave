@@ -2834,8 +2834,18 @@ void testBuiltinRegistryFoundation() {
 
     assert(registry.invoke("point", context) == Datum::intPoint(0, 0));
     assert(registry.invoke("point", context, {Datum::of(3), Datum::of(4)}) == Datum::intPoint(3, 4));
+    assert(registry.invoke("point",
+                           context,
+                           {Datum::castLibRef(CastLibId(3)), Datum::spriteRef(ChannelId(4))}) ==
+           Datum::intPoint(3, 4));
     assert(registry.invoke("rect", context, {Datum::of(1), Datum::of(2), Datum::of(3), Datum::of(4)}) ==
            Datum::intRect(1, 2, 3, 4));
+    assert(registry.invoke("rect",
+                           context,
+                           {Datum::of(std::string("1")),
+                            Datum::of(2.9F),
+                            Datum::castLibRef(CastLibId(3)),
+                            Datum::spriteRef(ChannelId(4))}) == Datum::intRect(1, 2, 3, 4));
     assert(registry.invoke("rect", context, {Datum::intPoint(1, 2), Datum::intPoint(9, 10)}) ==
            Datum::intRect(1, 2, 9, 10));
     assert(registry.invoke("union", context).isVoid());
@@ -2854,18 +2864,31 @@ void testBuiltinRegistryFoundation() {
            Datum::intRect(3, 4, 8, 6));
     assertColor(registry.invoke("color", context), 0, 0, 0);
     assertColor(registry.invoke("color", context, {Datum::of(11), Datum::of(22), Datum::of(33)}), 11, 22, 33);
+    assertColor(registry.invoke("color",
+                                context,
+                                {Datum::castLibRef(CastLibId(1)),
+                                 Datum::spriteRef(ChannelId(2)),
+                                 Datum::fieldText("3", 5, 6)}), 1, 2, 3);
     const auto rgbPassThrough = Datum::colorRef(7, 8, 9);
     assert(registry.invoke("rgb", context, {rgbPassThrough}) == rgbPassThrough);
     assertColor(registry.invoke("rgb", context), 0, 0, 0);
     assertColor(registry.invoke("rgb", context, {Datum::of(std::string(" #112233 "))}), 0x11, 0x22, 0x33);
     assertColor(registry.invoke("rgb", context, {Datum::of(std::string("not-hex"))}), 0, 0, 0);
     assertColor(registry.invoke("rgb", context, {Datum::of(1), Datum::of(2), Datum::of(3)}), 1, 2, 3);
+    assertColor(registry.invoke("rgb",
+                                context,
+                                {Datum::castLibRef(CastLibId(1)),
+                                 Datum::spriteRef(ChannelId(2)),
+                                 Datum::fieldText("3", 5, 6)}), 1, 2, 3);
     assertColor(registry.invoke("rgb", context, {Datum::of(0x445566)}), 0x44, 0x55, 0x66);
+    assertColor(registry.invoke("rgb", context, {Datum::spriteRef(ChannelId(0x66))}), 0, 0, 0x66);
     assertColor(registry.invoke("paletteIndex", context), 0, 0, 0);
     assertColor(registry.invoke("paletteIndex", context, {Datum::of(300)}), 44, 44, 44);
+    assertColor(registry.invoke("paletteIndex", context, {Datum::colorRef(1, 2, 44)}), 44, 44, 44);
     assert(registry.invoke("sprite", context).isVoid());
     assert(registry.invoke("sprite", context, {Datum::of(-1)}).isVoid());
     assert(registry.invoke("sprite", context, {Datum::of(6)}).asSpriteRef()->spriteNum() == 6);
+    assert(registry.invoke("sprite", context, {Datum::castLibRef(CastLibId(7))}).asSpriteRef()->spriteNum() == 7);
     assert(registry.invoke("new", context).isVoid());
 
     int createdCastLib = 0;
