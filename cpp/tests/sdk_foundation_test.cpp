@@ -1644,7 +1644,10 @@ void testLingoDecompilerNodeFoundation() {
                                   "propName",
                                   "ifOps",
                                   "elseOps",
-                                  "readyFlag"});
+                                  "readyFlag",
+                                  "loopOps",
+                                  "nextLoopOps",
+                                  "exitLoopOps"});
     ScriptChunk::Handler bytecodeHandler{
         0,
         0,
@@ -2038,6 +2041,135 @@ void testLingoDecompilerNodeFoundation() {
     assert(elseMapping.lines[5].bytecodeOffset == -1);
     assert(elseMapping.lines[6].bytecodeOffset == 16);
     assert(elseMapping.lines[7].bytecodeOffset == -1);
+
+    ScriptChunk::Handler repeatWhileHandler{
+        22,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        {},
+        {4},
+        {
+            ScriptChunk::Instruction{0, Opcode::GET_GLOBAL, 0x49, 21},
+            ScriptChunk::Instruction{2, Opcode::JMP_IF_Z, 0x55, 12},
+            ScriptChunk::Instruction{4, Opcode::PUSH_INT8, 0x41, 1},
+            ScriptChunk::Instruction{6, Opcode::SET_LOCAL, 0x52, 0},
+            ScriptChunk::Instruction{8, Opcode::END_REPEAT, 0x54, 8},
+            ScriptChunk::Instruction{14, Opcode::PUSH_INT8, 0x41, 2},
+            ScriptChunk::Instruction{16, Opcode::SET_LOCAL, 0x52, 0},
+            ScriptChunk::Instruction{18, Opcode::RET, 0x01, 0}
+        },
+        {}
+    };
+    ScriptChunk repeatWhileScript(nullptr,
+                                  ChunkId(506),
+                                  ScriptChunkType::MovieScript,
+                                  0,
+                                  {repeatWhileHandler},
+                                  {},
+                                  {},
+                                  {},
+                                  {});
+    assert(decompiler.decompileHandler(repeatWhileScript.handlers().front(), repeatWhileScript, &scriptNames) ==
+           "on loopOps\n"
+           "  repeat while readyFlag\n"
+           "    localOne = 1\n\n"
+           "  end repeat\n\n"
+           "  localOne = 2\n\n"
+           "end");
+    const auto repeatWhileMapping = decompiler.decompileHandlerWithMapping(repeatWhileScript.handlers().front(),
+                                                                           repeatWhileScript,
+                                                                           &scriptNames);
+    assert(repeatWhileMapping.toText() ==
+           "on loopOps\n"
+           "  repeat while readyFlag\n"
+           "    localOne = 1\n"
+           "  end repeat\n"
+           "  localOne = 2\n"
+           "end\n");
+    assert(repeatWhileMapping.lines.size() == 6);
+    assert(repeatWhileMapping.lines[0].bytecodeOffset == -1);
+    assert(repeatWhileMapping.lines[1].bytecodeOffset == 2);
+    assert(repeatWhileMapping.lines[2].bytecodeOffset == 6);
+    assert(repeatWhileMapping.lines[3].bytecodeOffset == -1);
+    assert(repeatWhileMapping.lines[4].bytecodeOffset == 16);
+    assert(repeatWhileMapping.lines[5].bytecodeOffset == -1);
+
+    ScriptChunk::Handler nextLoopHandler{
+        23,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        {},
+        {},
+        {
+            ScriptChunk::Instruction{0, Opcode::GET_GLOBAL, 0x49, 21},
+            ScriptChunk::Instruction{2, Opcode::JMP_IF_Z, 0x55, 12},
+            ScriptChunk::Instruction{4, Opcode::JMP, 0x53, 4},
+            ScriptChunk::Instruction{8, Opcode::END_REPEAT, 0x54, 8},
+            ScriptChunk::Instruction{14, Opcode::RET, 0x01, 0}
+        },
+        {}
+    };
+    ScriptChunk nextLoopScript(nullptr,
+                               ChunkId(507),
+                               ScriptChunkType::MovieScript,
+                               0,
+                               {nextLoopHandler},
+                               {},
+                               {},
+                               {},
+                               {});
+    assert(decompiler.decompileHandler(nextLoopScript.handlers().front(), nextLoopScript, &scriptNames) ==
+           "on nextLoopOps\n"
+           "  repeat while readyFlag\n"
+           "    next repeat\n\n"
+           "  end repeat\n\n"
+           "end");
+
+    ScriptChunk::Handler exitLoopHandler{
+        24,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        {},
+        {},
+        {
+            ScriptChunk::Instruction{0, Opcode::GET_GLOBAL, 0x49, 21},
+            ScriptChunk::Instruction{2, Opcode::JMP_IF_Z, 0x55, 12},
+            ScriptChunk::Instruction{4, Opcode::JMP, 0x53, 10},
+            ScriptChunk::Instruction{8, Opcode::END_REPEAT, 0x54, 8},
+            ScriptChunk::Instruction{14, Opcode::RET, 0x01, 0}
+        },
+        {}
+    };
+    ScriptChunk exitLoopScript(nullptr,
+                               ChunkId(508),
+                               ScriptChunkType::MovieScript,
+                               0,
+                               {exitLoopHandler},
+                               {},
+                               {},
+                               {},
+                               {});
+    assert(decompiler.decompileHandler(exitLoopScript.handlers().front(), exitLoopScript, &scriptNames) ==
+           "on exitLoopOps\n"
+           "  repeat while readyFlag\n"
+           "    exit repeat\n\n"
+           "  end repeat\n\n"
+           "end");
 
     HandlerNode mappedHandler("mapped", {"me"}, {"gFlag"});
     auto ifNode = std::make_unique<IfStmtNode>(std::make_unique<VarNode>("ready"));

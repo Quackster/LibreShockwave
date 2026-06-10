@@ -4,6 +4,7 @@
 #include <bit>
 #include <cstdint>
 #include <iomanip>
+#include <iterator>
 #include <sstream>
 #include <string_view>
 #include <variant>
@@ -16,6 +17,11 @@
 
 namespace libreshockwave::lingo::decompiler {
 namespace {
+
+constexpr int tagNone = 0;
+constexpr int tagSkip = 1;
+constexpr int tagRepeatWhile = 2;
+constexpr int tagNextRepeatTarget = 6;
 
 std::string indent(int level) {
     return std::string(static_cast<std::size_t>(level) * 2U, ' ');
@@ -162,6 +168,28 @@ void emitBlock(const BlockNode& block,
     }
 }
 
+bool setOpcodeToGetOpcode(Opcode setOp, Opcode& getOp) {
+    switch (setOp) {
+        case Opcode::SET_GLOBAL:
+            getOp = Opcode::GET_GLOBAL;
+            return true;
+        case Opcode::SET_GLOBAL2:
+            getOp = Opcode::GET_GLOBAL2;
+            return true;
+        case Opcode::SET_PROP:
+            getOp = Opcode::GET_PROP;
+            return true;
+        case Opcode::SET_PARAM:
+            getOp = Opcode::GET_PARAM;
+            return true;
+        case Opcode::SET_LOCAL:
+            getOp = Opcode::GET_LOCAL;
+            return true;
+        default:
+            return false;
+    }
+}
+
 } // namespace
 
 std::string LingoDecompiler::DecompiledHandler::toText() const {
@@ -284,8 +312,146 @@ void LingoDecompiler::initFileInfo(const chunks::ScriptChunk& script) {
     dotSyntax_ = version_ >= 700;
 }
 
+void LingoDecompiler::tagLoops() {
+    tags_.assign(currentHandler_ != nullptr ? currentHandler_->instructions.size() : 0, tagNone);
+    ownerLoops_.assign(tags_.size(), -1);
+    if (currentHandler_ == nullptr) {
+        return;
+    }
+
+    const auto& instructions = currentHandler_->instructions;
+    for (std::size_t startIndex = 0; startIndex < instructions.size(); ++startIndex) {
+        const auto& jmpIfZero = instructions[startIndex];
+        if (jmpIfZero.opcode != Opcode::JMP_IF_Z) {
+            continue;
+        }
+
+        const int endPos = jmpIfZero.offset + jmpIfZero.argument;
+        const int endIndex = instructionIndexForOffset(endPos);
+        if (endIndex < 1 || endIndex > static_cast<int>(instructions.size())) {
+            continue;
+        }
+
+        const auto& endRepeat = instructions[static_cast<std::size_t>(endIndex - 1)];
+        if (endRepeat.opcode != Opcode::END_REPEAT) {
+            continue;
+        }
+        if ((endRepeat.offset - endRepeat.argument) > jmpIfZero.offset) {
+            continue;
+        }
+        if (isRepeatWithInLoop(startIndex, endIndex) || isRepeatWithToLoop(startIndex, endIndex)) {
+            continue;
+        }
+
+        tags_[startIndex] = tagRepeatWhile;
+        tags_[static_cast<std::size_t>(endIndex - 1)] = tagNextRepeatTarget;
+        ownerLoops_[static_cast<std::size_t>(endIndex - 1)] = static_cast<int>(startIndex);
+    }
+}
+
+bool LingoDecompiler::isRepeatWithInLoop(std::size_t startIndex, int endIndex) const {
+    if (currentHandler_ == nullptr) {
+        return false;
+    }
+
+    const auto& instructions = currentHandler_->instructions;
+    if (startIndex < 7 || startIndex + 5 >= instructions.size() || endIndex < 3 ||
+        endIndex >= static_cast<int>(instructions.size())) {
+        return false;
+    }
+
+    const auto at = [&instructions](std::size_t index) -> const chunks::ScriptChunk::Instruction& {
+        return instructions[index];
+    };
+
+    return at(startIndex - 7).opcode == Opcode::PEEK &&
+           at(startIndex - 7).argument == 0 &&
+           at(startIndex - 6).opcode == Opcode::PUSH_ARG_LIST &&
+           at(startIndex - 6).argument == 1 &&
+           at(startIndex - 5).opcode == Opcode::EXT_CALL &&
+           resolveName(at(startIndex - 5).argument) == "count" &&
+           at(startIndex - 4).opcode == Opcode::PUSH_INT8 &&
+           at(startIndex - 4).argument == 1 &&
+           at(startIndex - 3).opcode == Opcode::PEEK &&
+           at(startIndex - 3).argument == 0 &&
+           at(startIndex - 2).opcode == Opcode::PEEK &&
+           at(startIndex - 2).argument == 2 &&
+           at(startIndex - 1).opcode == Opcode::LT_EQ &&
+           at(startIndex + 1).opcode == Opcode::PEEK &&
+           at(startIndex + 1).argument == 2 &&
+           at(startIndex + 2).opcode == Opcode::PEEK &&
+           at(startIndex + 2).argument == 1 &&
+           at(startIndex + 3).opcode == Opcode::PUSH_ARG_LIST &&
+           at(startIndex + 3).argument == 2 &&
+           at(startIndex + 4).opcode == Opcode::EXT_CALL &&
+           resolveName(at(startIndex + 4).argument) == "getAt" &&
+           (at(startIndex + 5).opcode == Opcode::SET_GLOBAL ||
+            at(startIndex + 5).opcode == Opcode::SET_PROP ||
+            at(startIndex + 5).opcode == Opcode::SET_PARAM ||
+            at(startIndex + 5).opcode == Opcode::SET_LOCAL) &&
+           at(static_cast<std::size_t>(endIndex - 3)).opcode == Opcode::PUSH_INT8 &&
+           at(static_cast<std::size_t>(endIndex - 3)).argument == 1 &&
+           at(static_cast<std::size_t>(endIndex - 2)).opcode == Opcode::ADD &&
+           at(static_cast<std::size_t>(endIndex)).opcode == Opcode::POP &&
+           at(static_cast<std::size_t>(endIndex)).argument == 3;
+}
+
+bool LingoDecompiler::isRepeatWithToLoop(std::size_t startIndex, int endIndex) const {
+    if (currentHandler_ == nullptr || startIndex < 1 || endIndex < 5) {
+        return false;
+    }
+
+    const auto& instructions = currentHandler_->instructions;
+    const auto comparisonOp = instructions[startIndex - 1].opcode;
+    if (comparisonOp != Opcode::LT_EQ && comparisonOp != Opcode::GT_EQ) {
+        return false;
+    }
+
+    const auto& endRepeat = instructions[static_cast<std::size_t>(endIndex - 1)];
+    const int condStart = instructionIndexForOffset(endRepeat.offset - endRepeat.argument);
+    if (condStart < 1 || condStart >= static_cast<int>(instructions.size())) {
+        return false;
+    }
+
+    const auto setOp = instructions[static_cast<std::size_t>(condStart - 1)].opcode;
+    Opcode getOp = Opcode::PUSH_ZERO;
+    if (!setOpcodeToGetOpcode(setOp, getOp)) {
+        return false;
+    }
+
+    const int varId = instructions[static_cast<std::size_t>(condStart - 1)].argument;
+    const int expectedIncrement = comparisonOp == Opcode::LT_EQ ? 1 : -1;
+    return instructions[static_cast<std::size_t>(condStart)].opcode == getOp &&
+           instructions[static_cast<std::size_t>(condStart)].argument == varId &&
+           instructions[static_cast<std::size_t>(endIndex - 5)].opcode == Opcode::PUSH_INT8 &&
+           instructions[static_cast<std::size_t>(endIndex - 5)].argument == expectedIncrement &&
+           instructions[static_cast<std::size_t>(endIndex - 4)].opcode == getOp &&
+           instructions[static_cast<std::size_t>(endIndex - 4)].argument == varId &&
+           instructions[static_cast<std::size_t>(endIndex - 3)].opcode == Opcode::ADD &&
+           instructions[static_cast<std::size_t>(endIndex - 2)].opcode == setOp &&
+           instructions[static_cast<std::size_t>(endIndex - 2)].argument == varId;
+}
+
+int LingoDecompiler::instructionIndexForOffset(int offset) const {
+    if (currentHandler_ == nullptr) {
+        return -1;
+    }
+    if (const int mappedIndex = currentHandler_->getInstructionIndex(offset); mappedIndex >= 0) {
+        return mappedIndex;
+    }
+    const auto& instructions = currentHandler_->instructions;
+    const auto found = std::find_if(instructions.begin(), instructions.end(), [offset](const auto& instruction) {
+        return instruction.offset == offset;
+    });
+    if (found == instructions.end()) {
+        return -1;
+    }
+    return static_cast<int>(std::distance(instructions.begin(), found));
+}
+
 std::unique_ptr<HandlerNode> LingoDecompiler::translateHandler(const chunks::ScriptChunk::Handler& handler) {
     currentHandler_ = &handler;
+    tagLoops();
     stack_.clear();
     currentBlock_ = nullptr;
 
@@ -320,6 +486,10 @@ std::unique_ptr<HandlerNode> LingoDecompiler::translateHandler(const chunks::Scr
 void LingoDecompiler::translateInstruction(const chunks::ScriptChunk::Instruction& instruction,
                                            std::size_t index,
                                            BlockNode& block) {
+    if (index < tags_.size() && (tags_[index] == tagSkip || tags_[index] == tagNextRepeatTarget)) {
+        return;
+    }
+
     NodePtr translation;
 
     switch (instruction.opcode) {
@@ -611,16 +781,35 @@ void LingoDecompiler::translateInstruction(const chunks::ScriptChunk::Instructio
 
         case Opcode::JMP: {
             const int targetOffset = instruction.offset + instruction.argument;
-            if (currentBlock_ != nullptr &&
-                currentHandler_ != nullptr &&
-                index + 1 < currentHandler_->instructions.size() &&
-                currentHandler_->instructions[index + 1].offset == currentBlock_->endPos) {
-                auto* ancestorStatement = currentBlock_->ancestorStatement();
-                if (auto* ifStmt = dynamic_cast<IfStmtNode*>(ancestorStatement);
-                    ifStmt != nullptr && currentBlock_ == &ifStmt->trueBlock()) {
-                    ifStmt->setHasElse(true);
-                    ifStmt->falseBlock().endPos = targetOffset;
-                    return;
+            const int targetIndex = currentHandler_ != nullptr
+                ? instructionIndexForOffset(targetOffset)
+                : -1;
+            if (targetIndex >= 0 && currentBlock_ != nullptr && currentHandler_ != nullptr) {
+                if (auto* ancestorLoop = currentBlock_->ancestorLoop(); ancestorLoop != nullptr) {
+                    if (targetIndex >= 1 &&
+                        currentHandler_->instructions[static_cast<std::size_t>(targetIndex - 1)].opcode == Opcode::END_REPEAT &&
+                        static_cast<std::size_t>(targetIndex - 1) < ownerLoops_.size() &&
+                        ownerLoops_[static_cast<std::size_t>(targetIndex - 1)] == ancestorLoop->startIndex()) {
+                        translation = std::make_unique<ExitRepeatStmtNode>();
+                        break;
+                    }
+                    if (static_cast<std::size_t>(targetIndex) < tags_.size() &&
+                        tags_[static_cast<std::size_t>(targetIndex)] == tagNextRepeatTarget &&
+                        ownerLoops_[static_cast<std::size_t>(targetIndex)] == ancestorLoop->startIndex()) {
+                        translation = std::make_unique<NextRepeatStmtNode>();
+                        break;
+                    }
+                }
+
+                if (index + 1 < currentHandler_->instructions.size() &&
+                    currentHandler_->instructions[index + 1].offset == currentBlock_->endPos) {
+                    auto* ancestorStatement = currentBlock_->ancestorStatement();
+                    if (auto* ifStmt = dynamic_cast<IfStmtNode*>(ancestorStatement);
+                        ifStmt != nullptr && currentBlock_ == &ifStmt->trueBlock()) {
+                        ifStmt->setHasElse(true);
+                        ifStmt->falseBlock().endPos = targetOffset;
+                        return;
+                    }
                 }
             }
             translation = std::make_unique<CommentNode>("ERROR: Could not identify jmp");
@@ -628,9 +817,20 @@ void LingoDecompiler::translateInstruction(const chunks::ScriptChunk::Instructio
         }
 
         case Opcode::JMP_IF_Z: {
+            const int endPos = instruction.offset + instruction.argument;
+            if (index < tags_.size() && tags_[index] == tagRepeatWhile) {
+                auto loop = std::make_unique<RepeatWhileStmtNode>(static_cast<int>(index), popNode());
+                loop->setBytecodeOffset(instruction.offset);
+                loop->block().endPos = endPos;
+                auto* nextBlock = &loop->block();
+                block.addChild(std::move(loop));
+                enterBlock(*nextBlock);
+                return;
+            }
+
             auto ifStmt = std::make_unique<IfStmtNode>(popNode());
             ifStmt->setBytecodeOffset(instruction.offset);
-            ifStmt->trueBlock().endPos = instruction.offset + instruction.argument;
+            ifStmt->trueBlock().endPos = endPos;
             auto* nextBlock = &ifStmt->trueBlock();
             block.addChild(std::move(ifStmt));
             enterBlock(*nextBlock);

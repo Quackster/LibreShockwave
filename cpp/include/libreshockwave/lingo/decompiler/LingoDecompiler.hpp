@@ -46,9 +46,15 @@ private:
     bool capitalX_ = false;
     bool dotSyntax_ = false;
     BlockNode* currentBlock_ = nullptr;
+    std::vector<int> tags_;
+    std::vector<int> ownerLoops_;
     std::vector<NodePtr> stack_;
 
     void initFileInfo(const chunks::ScriptChunk& script);
+    void tagLoops();
+    [[nodiscard]] bool isRepeatWithInLoop(std::size_t startIndex, int endIndex) const;
+    [[nodiscard]] bool isRepeatWithToLoop(std::size_t startIndex, int endIndex) const;
+    [[nodiscard]] int instructionIndexForOffset(int offset) const;
     [[nodiscard]] std::unique_ptr<HandlerNode> translateHandler(const chunks::ScriptChunk::Handler& handler);
     void translateInstruction(const chunks::ScriptChunk::Instruction& instruction,
                               std::size_t index,
