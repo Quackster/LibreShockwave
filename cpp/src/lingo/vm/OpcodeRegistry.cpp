@@ -10,6 +10,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
+#include <functional>
 #include <optional>
 #include <queue>
 #include <sstream>
@@ -1973,6 +1974,42 @@ bool isRegistryVisibleMember(const builtin::BuiltinContext* builtinContext, int 
     return builtinContext->castMemberExistsResolver && builtinContext->castMemberExistsResolver(castLib, memberNum);
 }
 
+bool isMemberLive(const builtin::BuiltinContext* builtinContext, int castLib, int memberNum) {
+    if (castLib < 1 || memberNum < 1) {
+        return false;
+    }
+    if (builtinContext == nullptr || !builtinContext->castMemberExistsResolver) {
+        return true;
+    }
+    return builtinContext->castMemberExistsResolver(castLib, memberNum);
+}
+
+bool isRegisteredRegistrySlotLive(const builtin::BuiltinContext* builtinContext, int slotValue) {
+    if (slotValue == 0) {
+        return false;
+    }
+    if (builtinContext == nullptr ||
+        (!builtinContext->registryVisibleMemberResolver && !builtinContext->castMemberExistsResolver)) {
+        return true;
+    }
+
+    const int normalizedSlot = std::abs(slotValue);
+    const id::SlotId slotId(normalizedSlot);
+    if (slotId.castLib() >= 1 && slotId.member() >= 1) {
+        return isRegistryVisibleMember(builtinContext, slotId.castLib(), slotId.member());
+    }
+
+    if (normalizedSlot >= 1 && builtinContext->castLibCountSupplier) {
+        const int castLibCount = builtinContext->castLibCountSupplier();
+        for (int castLib = 1; castLib <= castLibCount; ++castLib) {
+            if (isRegistryVisibleMember(builtinContext, castLib, normalizedSlot)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 bool isBootstrapScriptMember(const builtin::BuiltinContext* builtinContext, int castLib, int memberNum) {
     if (castLib < 1 || memberNum < 1 || builtinContext == nullptr || !builtinContext->castMemberPropertyGetter) {
         return false;
@@ -2010,6 +2047,157 @@ int resolveScriptInstanceMemberSlotByName(const builtin::BuiltinContext* builtin
         return 0;
     }
     return *slot;
+}
+
+void removePropListKey(Datum::PropList& propList, std::string_view keyName) {
+    auto& properties = propList.properties();
+    properties.erase(
+        std::remove_if(properties.begin(), properties.end(), [&](const auto& entry) {
+            return equalsIgnoreCase(keyNameLikeJava(entry.first), keyName);
+        }),
+        properties.end());
+}
+
+int resolveAliasTargetMemberNumber(Datum::PropList& registry,
+                                   const builtin::BuiltinContext* builtinContext,
+                                   int aliasCastLibNumber,
+                                   const std::string& targetName) {
+    const Datum existing = getPropListKey(registry, targetName);
+    if (!existing.isVoid()) {
+        const int slotValue = std::abs(toIntLikeJava(existing));
+        if (isRegisteredRegistrySlotLive(builtinContext, slotValue)) {
+            return slotValue;
+        }
+        removePropListKey(registry, targetName);
+    }
+
+    if (builtinContext == nullptr) {
+        return 0;
+    }
+
+    if (aliasCastLibNumber > 0 && builtinContext->castMemberNameResolver) {
+        const Datum sourceCastRef = builtinContext->castMemberNameResolver(aliasCastLibNumber, targetName);
+        const auto* ref = sourceCastRef.asCastMemberRef();
+        const auto slot = slotValueFromCastMemberRef(sourceCastRef);
+        if (slot.has_value() && ref != nullptr && isMemberLive(builtinContext, ref->castLib, ref->memberNum())) {
+            if (isRegistryVisibleMember(builtinContext, ref->castLib, ref->memberNum())) {
+                registry.put(Datum::of(targetName), Datum::of(*slot));
+            }
+            return *slot;
+        }
+    }
+
+    if (!builtinContext->registryCastMemberNameResolver) {
+        return 0;
+    }
+
+    const Datum registryRef = builtinContext->registryCastMemberNameResolver(0, targetName);
+    const auto slot = slotValueFromCastMemberRef(registryRef);
+    if (!slot.has_value() || !isRegisteredRegistrySlotLive(builtinContext, *slot)) {
+        return 0;
+    }
+
+    registry.put(Datum::of(targetName), Datum::of(*slot));
+    return *slot;
+}
+
+struct AliasLine {
+    std::string aliasName;
+    std::string targetName;
+    bool mirrored{false};
+};
+
+std::optional<AliasLine> parseAliasLine(std::string_view rawLine) {
+    if (rawLine.size() <= 2) {
+        return std::nullopt;
+    }
+
+    const auto delimiter = rawLine.find('=');
+    if (delimiter == std::string_view::npos || delimiter == 0 || delimiter >= rawLine.size() - 1) {
+        return std::nullopt;
+    }
+
+    AliasLine line{
+        std::string(rawLine.substr(0, delimiter)),
+        std::string(rawLine.substr(delimiter + 1)),
+        false,
+    };
+    if (line.aliasName.empty() || line.targetName.empty()) {
+        return std::nullopt;
+    }
+    if (line.targetName.back() == '*') {
+        line.mirrored = true;
+        line.targetName.pop_back();
+    }
+    if (line.targetName.empty()) {
+        return std::nullopt;
+    }
+    return line;
+}
+
+int applyAliasMappings(Datum::PropList& registry,
+                       std::string_view aliasText,
+                       const std::function<int(const std::string&)>& resolver) {
+    if (aliasText.empty() || !resolver) {
+        return 0;
+    }
+
+    int imported = 0;
+    std::size_t lineStart = 0;
+    for (std::size_t index = 0; index <= aliasText.size(); ++index) {
+        const bool atEnd = index == aliasText.size();
+        const bool atLineBreak = !atEnd && (aliasText[index] == '\r' || aliasText[index] == '\n');
+        if (!atEnd && !atLineBreak) {
+            continue;
+        }
+
+        const auto parsed = parseAliasLine(aliasText.substr(lineStart, index - lineStart));
+        if (parsed.has_value()) {
+            const int resolvedNumber = resolver(parsed->targetName);
+            if (resolvedNumber > 0) {
+                registry.put(
+                    Datum::of(parsed->aliasName),
+                    Datum::of(parsed->mirrored ? -resolvedNumber : resolvedNumber));
+                ++imported;
+            }
+        }
+
+        if (!atEnd && aliasText[index] == '\r' && index + 1 < aliasText.size() && aliasText[index + 1] == '\n') {
+            ++index;
+        }
+        lineStart = index + 1;
+    }
+    return imported;
+}
+
+std::optional<Datum> dispatchReadAliasIndexesFromField(Datum::ScriptInstanceRef& instance,
+                                                       const std::vector<Datum>& args,
+                                                       const builtin::BuiltinContext* builtinContext) {
+    Datum registry = instance.getProperty("pAllMemNumList");
+    if (!registry.isPropList()) {
+        return std::nullopt;
+    }
+    if (builtinContext == nullptr || !builtinContext->fieldResolver || args.size() < 2) {
+        return Datum::of(0);
+    }
+
+    const Datum fieldIdentifier = args[0].isInt() || args[0].isFloat()
+        ? args[0]
+        : Datum::of(args[0].stringValue());
+    const int castLibNumber = toIntLikeJava(args[1]);
+    const Datum fieldDatum = builtinContext->fieldResolver(fieldIdentifier, castLibNumber);
+    if (fieldDatum.isVoid()) {
+        return Datum::of(0);
+    }
+
+    const std::string aliasText = fieldDatum.stringValue();
+    const int imported = applyAliasMappings(
+        registry.propListValue(),
+        aliasText,
+        [&](const std::string& targetName) {
+            return resolveAliasTargetMemberNumber(registry.propListValue(), builtinContext, castLibNumber, targetName);
+        });
+    return Datum::of(imported);
 }
 
 std::optional<int> scriptInstanceRegisteredMemberSlot(Datum::ScriptInstanceRef& instance,
@@ -2055,7 +2243,7 @@ std::optional<Datum> scriptInstanceMemberRegistryMethod(Datum::ScriptInstanceRef
     }
 
     if (equalsIgnoreCase(methodName, "readaliasindexesfromfield")) {
-        return instance.getProperty("pAllMemNumList").isPropList() ? std::optional<Datum>{Datum::of(0)} : std::nullopt;
+        return dispatchReadAliasIndexesFromField(instance, args, builtinContext);
     }
 
     const auto slot = scriptInstanceRegisteredMemberSlot(instance, args, builtinContext, true);
@@ -2168,8 +2356,12 @@ Datum scriptInstanceObjectMethod(ExecutionContext& context,
         return context.findHandler(keyNameLikeJava(args[0])).has_value() ? Datum::TRUE : Datum::FALSE;
     }
     auto* builtinContext = context.builtinContext();
-    if (isScriptInstanceMemberRegistryMethod(methodName) && !equalsIgnoreCase(methodName, "readaliasindexesfromfield")) {
-        (void)scriptInstanceRegisteredMemberSlot(instance, args, builtinContext, true);
+    if (isScriptInstanceMemberRegistryMethod(methodName)) {
+        if (equalsIgnoreCase(methodName, "readaliasindexesfromfield")) {
+            (void)scriptInstanceMemberRegistryMethod(instance, methodName, args, builtinContext);
+        } else {
+            (void)scriptInstanceRegisteredMemberSlot(instance, args, builtinContext, true);
+        }
     }
     if (const auto handler = context.findHandler(methodName)) {
         return safeExecuteHandler(context, *handler->script, handler->handler, args, receiver);
