@@ -6761,6 +6761,39 @@ void testLingoVmScopeAndExecutionContextFoundation() {
                             alphaMaskCopyProps}).isVoid());
     assert(alphaMaskCopyDest->getPixel(0, 0) == 0xFFFFFFFFU);
     assert(alphaMaskCopyDest->getPixel(1, 0) == 0xFF0000FFU);
+    auto matteCopyDest = std::make_shared<Bitmap>(
+        3, 3, 32, std::vector<std::uint32_t>{
+            0xFF112233U, 0xFF112233U, 0xFF112233U,
+            0xFF112233U, 0xFF112233U, 0xFF112233U,
+            0xFF112233U, 0xFF112233U, 0xFF112233U,
+        });
+    auto matteCopySource = std::make_shared<Bitmap>(
+        3, 3, 32, std::vector<std::uint32_t>{
+            0xFF2A6883U, 0xFF2A6883U, 0xFF2A6883U,
+            0xFF2A6883U, 0xFFFFFFFFU, 0xFF2A6883U,
+            0xFF2A6883U, 0xFF2A6883U, 0xFF2A6883U,
+        });
+    auto matteCopyProps = Datum::propList();
+    matteCopyProps.propListValue().put(Datum::symbol("ink"), Datum::symbol("matte"));
+    assert(runObjCall(110, {Datum::imageRef(matteCopyDest),
+                            Datum::imageRef(matteCopySource),
+                            Datum::intRect(0, 0, 3, 3),
+                            Datum::intRect(0, 0, 3, 3),
+                            matteCopyProps}).isVoid());
+    assert(matteCopyDest->getPixel(0, 0) == 0xFF112233U);
+    assert(matteCopyDest->getPixel(1, 1) == 0xFFFFFFFFU);
+    assert(matteCopyDest->getPixel(2, 2) == 0xFF112233U);
+    auto nativeAlphaMatteCopyDest = std::make_shared<Bitmap>(1, 1, 32);
+    nativeAlphaMatteCopyDest->fill(0xFF000000U);
+    auto nativeAlphaMatteCopySource =
+        std::make_shared<Bitmap>(1, 1, 32, std::vector<std::uint32_t>{0xFFFFFFFFU});
+    nativeAlphaMatteCopySource->setNativeAlpha(true);
+    assert(runObjCall(110, {Datum::imageRef(nativeAlphaMatteCopyDest),
+                            Datum::imageRef(nativeAlphaMatteCopySource),
+                            Datum::intRect(0, 0, 1, 1),
+                            Datum::intRect(0, 0, 1, 1),
+                            matteCopyProps}).isVoid());
+    assert(nativeAlphaMatteCopyDest->getPixel(0, 0) == 0xFFFFFFFFU);
     auto transparentInkSource = std::make_shared<Bitmap>(
         2, 1, 32, std::vector<std::uint32_t>{0xFFFFFFFFU, 0xFFFF0000U});
     auto transparentInkDest = std::make_shared<Bitmap>(

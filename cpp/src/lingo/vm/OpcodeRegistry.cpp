@@ -2739,6 +2739,34 @@ std::shared_ptr<bitmap::Bitmap> imageCreateFloodFillMatte(const bitmap::Bitmap& 
     return matteBitmap;
 }
 
+std::shared_ptr<bitmap::Bitmap> imageApplyMatteToSource(const bitmap::Bitmap& src) {
+    auto result = std::make_shared<bitmap::Bitmap>(src.copy());
+    if (src.width() <= 0 || src.height() <= 0) {
+        return result;
+    }
+    if (src.hasNativeMatteAlpha()) {
+        result->setNativeAlpha(true);
+        return result;
+    }
+
+    const auto pixels = src.pixels();
+    const auto paletteIndices = src.paletteIndices();
+    const auto matte = imageResolveFloodFillMatte(pixels, paletteIndices, src.width(), src.height());
+    if (!matte.has_value()) {
+        return result;
+    }
+
+    const auto transparent =
+        imageComputeFloodFillTransparency(pixels, paletteIndices, src.width(), src.height(), *matte);
+    auto& resultPixels = result->pixels();
+    for (std::size_t index = 0; index < resultPixels.size() && index < transparent.size(); ++index) {
+        if (transparent[index]) {
+            resultPixels[index] &= 0x00FFFFFFU;
+        }
+    }
+    return result;
+}
+
 bool imageIsGrayscaleMaskSource(const std::vector<std::uint32_t>& pixels, const std::vector<bool>& transparent) {
     int opaquePixels = 0;
     for (std::size_t index = 0; index < pixels.size(); ++index) {
@@ -3712,9 +3740,13 @@ Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
                             destRect->top + src.anchorY() - srcRect->top);
     }
 
+    std::shared_ptr<bitmap::Bitmap> matteSource;
     std::shared_ptr<bitmap::Bitmap> backgroundTransparentSource;
     const bitmap::Bitmap* effectiveSource = &src;
-    if (ink == id::InkMode::BACKGROUND_TRANSPARENT) {
+    if (ink == id::InkMode::MATTE) {
+        matteSource = imageApplyMatteToSource(src);
+        effectiveSource = matteSource.get();
+    } else if (ink == id::InkMode::BACKGROUND_TRANSPARENT) {
         backgroundTransparentSource = imageApplyBackgroundTransparentToRegion(src, backgroundKeyRgb);
         if (backgroundTransparentSource != nullptr) {
             effectiveSource = backgroundTransparentSource.get();
