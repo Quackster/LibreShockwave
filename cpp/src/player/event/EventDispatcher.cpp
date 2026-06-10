@@ -67,6 +67,10 @@ void EventDispatcher::setMovieScripts(std::vector<MovieScriptTarget> scripts) {
     movieScripts_ = std::move(scripts);
 }
 
+void EventDispatcher::setMovieScriptSupplier(MovieScriptSupplier supplier) {
+    movieScriptSupplier_ = std::move(supplier);
+}
+
 void EventDispatcher::addMovieScript(MovieScriptTarget script) {
     movieScripts_.push_back(std::move(script));
 }
@@ -204,7 +208,13 @@ void EventDispatcher::dispatchToMovieScripts(PlayerEvent event, const std::vecto
 }
 
 void EventDispatcher::dispatchToMovieScripts(std::string_view handlerName, const std::vector<lingo::Datum>& args) {
-    for (const auto& movie : movieScripts_) {
+    std::vector<MovieScriptTarget> scripts = movieScripts_;
+    if (movieScriptSupplier_) {
+        auto supplied = movieScriptSupplier_();
+        scripts.insert(scripts.end(), supplied.begin(), supplied.end());
+    }
+
+    for (const auto& movie : scripts) {
         if (!movie.script || movie.script->scriptType() != chunks::ScriptChunkType::MovieScript) {
             continue;
         }

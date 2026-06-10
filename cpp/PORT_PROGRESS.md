@@ -260,7 +260,8 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `player::Player` now wires its `EventDispatcher` to VM-backed script handler lookup and execution for behavior and movie-script targets.
 - Event dispatch resolves `ScriptChunk` handler names through target-provided `ScriptNamesChunk` metadata or VM fallback lookup, passes behavior receivers as script-instance `me`, and maps VM `pass`/`stopEvent` runtime builtins back to dispatcher propagation state.
-- Tests cover Player dispatcher movie-script invocation executing Lingo bytecode through the Player-owned VM, plus VM-backed Player builtin and preference storage access.
+- `EventDispatcher` can now merge manually registered movie-script targets with a dynamic movie-script supplier; Player supplies main-movie scripts from `DirectorFile` and already loaded external-cast movie scripts without forcing external cast loads.
+- Tests cover file-backed Player dispatcher movie-script discovery and Lingo bytecode execution through the Player-owned VM, plus VM-backed Player builtin and preference storage access.
 
 ### Hit Testing Foundation
 
@@ -702,7 +703,7 @@ Result:
 - TypeBuiltins object/void/type predicates, `value` literal parsing/provider fallback, `script`/`callAncestor` callback hooks, symbol conversion, and `ilk` alias checks passed through the same CTest executable.
 - Lingo VM Scope and ExecutionContext stack, param, local, return, loop, jump, global callback, handler callback, builtin invocation, and call-stack formatting behavior passed through the same CTest executable.
 - Lingo VM ExecutionContext name resolver callback and resolver-backed global opcode behavior passed through the same CTest executable.
-- Player-owned LingoVM builtin delegation, dispatcher movie-script bytecode invocation, and VM preference storage passed through the same CTest executable.
+- Player-owned LingoVM builtin delegation, file-backed dispatcher movie-script discovery/bytecode invocation, and VM preference storage passed through the same CTest executable.
 - OpcodeRegistry stack/control handler registration, custom handler registration, literal/symbol pushes, stack manipulation, return/factory return, and jump opcodes passed through the same CTest executable.
 - OpcodeRegistry arithmetic, comparison, and logical handlers passed through the same CTest executable.
 - OpcodeRegistry variable, arg-list, linear-list, and property-list handlers passed through the same CTest executable.
@@ -858,4 +859,5 @@ Result:
 - `6f78a995 Port C++ player foundation`
 - `fd62f0e1 Port C++ player builtin context`
 - `c4370a8e Port C++ Lingo VM runtime foundation`
-- Current checkpoint commit message: `Port C++ player VM event dispatch`
+- `1d0b61d1 Port C++ player VM event dispatch`
+- Current checkpoint commit message: `Port C++ movie script source dispatch`

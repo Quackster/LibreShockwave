@@ -360,6 +360,39 @@ void Player::wireComponents() {
     eventDispatcher().setScriptNamesResolver([this](const std::shared_ptr<chunks::ScriptChunk>& script) {
         return file_ != nullptr ? file_->getScriptNamesForScript(script) : nullptr;
     });
+    eventDispatcher().setMovieScriptSupplier([this] {
+        std::vector<event::EventDispatcher::MovieScriptTarget> targets;
+        if (file_ != nullptr) {
+            targets.reserve(file_->scripts().size());
+            for (const auto& script : file_->scripts()) {
+                if (!script || script->scriptType() != chunks::ScriptChunkType::MovieScript) {
+                    continue;
+                }
+                targets.push_back(event::EventDispatcher::MovieScriptTarget{
+                    script,
+                    file_->getScriptNamesForScript(script)
+                });
+            }
+        }
+
+        for (const auto& [_, castLib] : castLibManager_.castLibs()) {
+            if (!castLib || !castLib->isExternal() || !castLib->isLoaded()) {
+                continue;
+            }
+            const auto source = castLib->sourceFile();
+            const auto defaultNames = castLib->scriptNames();
+            for (const auto& script : castLib->allScripts()) {
+                if (!script || script->scriptType() != chunks::ScriptChunkType::MovieScript) {
+                    continue;
+                }
+                targets.push_back(event::EventDispatcher::MovieScriptTarget{
+                    script,
+                    source ? source->getScriptNamesForScript(script) : defaultNames
+                });
+            }
+        }
+        return targets;
+    });
     eventDispatcher().setRespondsPredicate([findEventHandler](const event::EventTarget& target,
                                                               std::string_view handlerName) {
         return findEventHandler(target, handlerName).has_value();

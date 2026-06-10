@@ -51,6 +51,7 @@ public:
         std::shared_ptr<chunks::ScriptChunk> script;
         std::shared_ptr<const chunks::ScriptNamesChunk> scriptNames;
     };
+    using MovieScriptSupplier = std::function<std::vector<MovieScriptTarget>()>;
 
     explicit EventDispatcher(behavior::BehaviorManager* behaviorManager = nullptr);
 
@@ -63,6 +64,7 @@ public:
     void setRespondsPredicate(RespondsPredicate predicate);
     void setScriptNamesResolver(ScriptNamesResolver resolver);
     void setMovieScripts(std::vector<MovieScriptTarget> scripts);
+    void setMovieScriptSupplier(MovieScriptSupplier supplier);
     void addMovieScript(MovieScriptTarget script);
     [[nodiscard]] const std::vector<MovieScriptTarget>& movieScripts() const;
 
@@ -109,6 +111,7 @@ private:
     RespondsPredicate respondsPredicate_;
     ScriptNamesResolver scriptNamesResolver_;
     std::vector<MovieScriptTarget> movieScripts_;
+    MovieScriptSupplier movieScriptSupplier_;
     bool debugEnabled_{false};
     bool stopPropagation_{false};
     bool eventStopped_{false};

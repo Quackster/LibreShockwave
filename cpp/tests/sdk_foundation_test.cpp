@@ -1311,63 +1311,113 @@ void testPlayerFacadeFoundation() {
 }
 
 void testPlayerVmEventDispatchFoundation() {
-    auto makeHandler = [](int nameId, std::vector<std::pair<Opcode, int>> ops) {
-        std::vector<ScriptChunk::Instruction> instructions;
-        std::unordered_map<int, int> indexMap;
-        instructions.reserve(ops.size());
-        for (std::size_t index = 0; index < ops.size(); ++index) {
-            const int offset = static_cast<int>(index);
-            const auto [opcode, argument] = ops[index];
-            indexMap[offset] = static_cast<int>(index);
-            instructions.push_back(ScriptChunk::Instruction{
-                offset,
-                opcode,
-                libreshockwave::lingo::code(opcode),
-                argument
-            });
+    auto appendFourCC = [](std::vector<std::uint8_t>& data, const std::string& value) {
+        data.insert(data.end(), value.begin(), value.end());
+    };
+    auto appendI16 = [](std::vector<std::uint8_t>& data, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data.push_back(static_cast<std::uint8_t>((raw >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(raw & 0xFF));
+    };
+    auto appendI32 = [](std::vector<std::uint8_t>& data, std::uint32_t value) {
+        data.push_back(static_cast<std::uint8_t>((value >> 24) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 16) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(value & 0xFF));
+    };
+    auto putI16 = [](std::vector<std::uint8_t>& data, int offset, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((raw >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>(raw & 0xFF);
+    };
+    auto putI32 = [](std::vector<std::uint8_t>& data, int offset, std::uint32_t value) {
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((value >> 24) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>((value >> 16) & 0xFF);
+        data[static_cast<std::size_t>(offset + 2)] = static_cast<std::uint8_t>((value >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 3)] = static_cast<std::uint8_t>(value & 0xFF);
+    };
+    auto buildRifx = [&](const std::vector<std::pair<std::string, std::vector<std::uint8_t>>>& chunks) {
+        constexpr int mmapOffset = 32;
+        const int mmapPayloadLength = 24 + static_cast<int>(chunks.size()) * 20;
+        int payloadStart = mmapOffset + 8 + mmapPayloadLength;
+
+        std::vector<int> offsets;
+        offsets.reserve(chunks.size());
+        for (const auto& chunk : chunks) {
+            offsets.push_back(payloadStart - 8);
+            payloadStart += static_cast<int>(chunk.second.size());
         }
-        return ScriptChunk::Handler{
-            nameId,
-            0,
-            static_cast<int>(instructions.size()),
-            0,
-            0,
-            0,
-            0,
-            0,
-            {},
-            {},
-            std::move(instructions),
-            std::move(indexMap)
-        };
+
+        std::vector<std::uint8_t> data;
+        appendFourCC(data, "RIFX");
+        appendI32(data, 0);
+        appendFourCC(data, "MV93");
+        appendFourCC(data, "imap");
+        appendI32(data, 12);
+        appendI32(data, 1);
+        appendI32(data, mmapOffset);
+        appendI32(data, 0x04B1);
+        appendFourCC(data, "mmap");
+        appendI32(data, static_cast<std::uint32_t>(mmapPayloadLength));
+        appendI16(data, 24);
+        appendI16(data, 20);
+        appendI32(data, static_cast<std::uint32_t>(chunks.size()));
+        appendI32(data, static_cast<std::uint32_t>(chunks.size()));
+        appendI32(data, 0);
+        appendI32(data, 0);
+        appendI32(data, 0);
+        for (int index = 0; index < static_cast<int>(chunks.size()); ++index) {
+            appendI32(data, BinaryReader::fourCC(chunks[static_cast<std::size_t>(index)].first));
+            appendI32(data, static_cast<std::uint32_t>(chunks[static_cast<std::size_t>(index)].second.size()));
+            appendI32(data, static_cast<std::uint32_t>(offsets[static_cast<std::size_t>(index)]));
+            appendI16(data, 0);
+            appendI16(data, 0);
+            appendI32(data, 0);
+        }
+        for (const auto& chunk : chunks) {
+            data.insert(data.end(), chunk.second.begin(), chunk.second.end());
+        }
+        putI32(data, 4, static_cast<std::uint32_t>(data.size() - 8));
+        return data;
     };
 
-    auto names = std::make_shared<ScriptNamesChunk>(
-        nullptr,
-        ChunkId(930),
-        std::vector<std::string>{"", "mouseUp", "clicked"});
-    auto mouseUp = makeHandler(1, {
-        {Opcode::PUSH_INT8, 33},
-        {Opcode::SET_GLOBAL, 2},
-        {Opcode::RET, 0}
-    });
-    auto script = std::make_shared<ScriptChunk>(nullptr,
-                                                ChunkId(931),
-                                                ScriptChunkType::MovieScript,
-                                                0,
-                                                std::vector<ScriptChunk::Handler>{mouseUp},
-                                                std::vector<ScriptChunk::LiteralEntry>{},
-                                                std::vector<ScriptChunk::PropertyEntry>{},
-                                                std::vector<ScriptChunk::GlobalEntry>{},
-                                                std::vector<std::uint8_t>{});
+    std::vector<std::uint8_t> namesData(20, 0);
+    putI16(namesData, 16, 20);
+    putI16(namesData, 18, 3);
+    namesData.push_back(0);
+    namesData.push_back(7);
+    namesData.insert(namesData.end(), {'m', 'o', 'u', 's', 'e', 'U', 'p'});
+    namesData.push_back(7);
+    namesData.insert(namesData.end(), {'c', 'l', 'i', 'c', 'k', 'e', 'd'});
 
-    Player player;
+    std::vector<std::uint8_t> scriptData(240, 0);
+    putI16(scriptData, 18, 3);
+    putI32(scriptData, 38, 0x00000003);
+    putI16(scriptData, 72, 1);
+    putI32(scriptData, 74, 110);
+    putI16(scriptData, 110, 1);
+    putI16(scriptData, 112, 0);
+    putI32(scriptData, 114, 5);
+    putI32(scriptData, 118, 230);
+    scriptData[230] = static_cast<std::uint8_t>(libreshockwave::lingo::code(Opcode::PUSH_INT8));
+    scriptData[231] = 44;
+    scriptData[232] = static_cast<std::uint8_t>(libreshockwave::lingo::code(Opcode::SET_GLOBAL));
+    scriptData[233] = 2;
+    scriptData[234] = static_cast<std::uint8_t>(libreshockwave::lingo::code(Opcode::RET));
+
+    auto file = DirectorFile::load(buildRifx({
+        {"Lnam", namesData},
+        {"Lscr", scriptData},
+    }));
+    assert(file != nullptr);
+    assert(file->scripts().size() == 1);
+
+    Player player(file);
     assert(&player.vm().builtinRegistry() == &player.builtinRegistry());
     assert(&player.vm().builtinContext() == &player.builtinContext());
 
-    player.eventDispatcher().addMovieScript(EventDispatcher::MovieScriptTarget{script, names});
     player.eventDispatcher().dispatchToMovieScripts(PlayerEvent::MouseUp);
-    assert(player.vm().getGlobal("#2").intValue() == 33);
+    assert(player.vm().getGlobal("clicked").intValue() == 44);
 
     assert(player.vm().callBuiltin("puppetTempo", {Datum::of(21)}).isVoid());
     assert(player.tempo() == 21);
