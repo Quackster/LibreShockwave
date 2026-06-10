@@ -3341,6 +3341,15 @@ void testPlayerFacadeFoundation() {
     assert(player.builtinContext().soundManager == &player.soundManager());
     assert(player.builtinContext().spriteProperties == &player.spriteProperties());
     assert(player.builtinContext().timeoutManager == &player.timeoutManager());
+    Player noFilePlayer;
+    std::ostringstream noFileScriptDump;
+    noFilePlayer.dumpScriptInfo(noFileScriptDump);
+    assert(noFileScriptDump.str() == "[Player] No file loaded\n");
+    std::ostringstream emptyScriptDump;
+    player.dumpScriptInfo(emptyScriptDump);
+    assert(emptyScriptDump.str().find("[Player] Total scripts: 0") != std::string::npos);
+    assert(emptyScriptDump.str().find("[Player] Movie scripts: 0") != std::string::npos);
+    assert(emptyScriptDump.str().find("[Player] Unknown type: 0") != std::string::npos);
     assert(player.builtinContext().alertHookHandler);
     assert(!player.builtinContext().alertHookHandler("Alert", "no hook"));
     auto playerAlertHookHandler = player.builtinContext().alertHookHandler;
@@ -3909,6 +3918,17 @@ void testPlayerVmEventDispatchFoundation() {
     assert(file->scripts().size() == 2);
 
     Player player(file);
+    std::ostringstream scriptDump;
+    player.dumpScriptInfo(scriptDump);
+    const std::string scriptDumpText = scriptDump.str();
+    assert(scriptDumpText.find("[Player] Total scripts: 2") != std::string::npos);
+    assert(scriptDumpText.find("[Player] Movie script #") != std::string::npos);
+    assert(scriptDumpText.find("[Player]   - mouseUp") != std::string::npos);
+    assert(scriptDumpText.find("[Player]   - enterFrame") != std::string::npos);
+    assert(scriptDumpText.find("[Player] Movie scripts: 1") != std::string::npos);
+    assert(scriptDumpText.find("[Player] Behaviors: 1") != std::string::npos);
+    assert(scriptDumpText.find("[Player] Parent scripts: 0") != std::string::npos);
+    assert(scriptDumpText.find("[Player] Unknown type: 0") != std::string::npos);
     assert(&player.vm().builtinRegistry() == &player.builtinRegistry());
     assert(&player.vm().builtinContext() == &player.builtinContext());
     player.vm().setGlobal("valueGlobal", Datum::of(123));

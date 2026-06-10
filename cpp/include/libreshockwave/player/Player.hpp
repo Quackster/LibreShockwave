@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <iosfwd>
 #include <memory>
 #include <set>
 #include <string>
@@ -112,6 +113,8 @@ public:
     void setInitialBuiltinVariable(std::string variableName, lingo::Datum defaultValue);
     void setInitialBuiltinVariables(std::vector<std::pair<std::string, lingo::Datum>> values);
     [[nodiscard]] bool debugEnabled() const;
+    void dumpScriptInfo() const;
+    void dumpScriptInfo(std::ostream& out) const;
     [[nodiscard]] std::vector<lingo::vm::LingoVM::CallStackFrame> getLingoCallStack() const;
     [[nodiscard]] std::string formatLingoCallStack() const;
     [[nodiscard]] std::string getRecentScriptErrorMessage(std::int64_t maxAgeMs) const;

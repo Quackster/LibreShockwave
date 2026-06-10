@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <iostream>
 #include <memory>
 #include <optional>
 #include <string>
@@ -11,6 +12,8 @@
 #include "libreshockwave/bitmap/Bitmap.hpp"
 #include "libreshockwave/cast/CastMember.hpp"
 #include "libreshockwave/chunks/CastMemberChunk.hpp"
+#include "libreshockwave/chunks/ScriptChunk.hpp"
+#include "libreshockwave/chunks/ScriptNamesChunk.hpp"
 #include "libreshockwave/lingo/Datum.hpp"
 #include "libreshockwave/lingo/vm/dispatch/ImageMethodDispatcher.hpp"
 #include "libreshockwave/lingo/xtra/MultiuserXtra.hpp"
@@ -221,6 +224,9 @@ void Player::setDebugEnabled(bool enabled) {
     debugEnabled_ = enabled;
     vm_.builtinContext().debugPlaybackEnabled = enabled;
     frameContext_.setDebugEnabled(enabled);
+    if (enabled) {
+        dumpScriptInfo();
+    }
 }
 
 void Player::setAudioBackend(audio::AudioBackend* backend) {
@@ -281,6 +287,62 @@ void Player::setInitialBuiltinVariables(std::vector<std::pair<std::string, lingo
 }
 
 bool Player::debugEnabled() const { return debugEnabled_; }
+
+void Player::dumpScriptInfo() const {
+    dumpScriptInfo(std::cout);
+}
+
+void Player::dumpScriptInfo(std::ostream& out) const {
+    if (file_ == nullptr) {
+        out << "[Player] No file loaded\n";
+        return;
+    }
+
+    out << "[Player] === Script Summary ===\n";
+    out << "[Player] Total scripts: " << file_->scripts().size() << '\n';
+
+    int movieScripts = 0;
+    int behaviors = 0;
+    int parents = 0;
+    int unknown = 0;
+
+    for (const auto& script : file_->scripts()) {
+        if (!script) {
+            ++unknown;
+            continue;
+        }
+
+        switch (script->scriptType()) {
+            case chunks::ScriptChunkType::MovieScript:
+                ++movieScripts;
+                break;
+            case chunks::ScriptChunkType::Behavior:
+                ++behaviors;
+                break;
+            case chunks::ScriptChunkType::Parent:
+                ++parents;
+                break;
+            case chunks::ScriptChunkType::Score:
+            case chunks::ScriptChunkType::Unknown:
+                ++unknown;
+                break;
+        }
+
+        if (script->scriptType() == chunks::ScriptChunkType::MovieScript) {
+            auto names = file_->getScriptNamesForScript(script);
+            out << "[Player] Movie script #" << script->id().value() << " handlers:\n";
+            for (const auto& handler : script->handlers()) {
+                out << "[Player]   - " << script->getHandlerName(handler, names.get()) << '\n';
+            }
+        }
+    }
+
+    out << "[Player] Movie scripts: " << movieScripts << '\n';
+    out << "[Player] Behaviors: " << behaviors << '\n';
+    out << "[Player] Parent scripts: " << parents << '\n';
+    out << "[Player] Unknown type: " << unknown << '\n';
+    out << "[Player] ======================\n";
+}
 
 std::vector<lingo::vm::LingoVM::CallStackFrame> Player::getLingoCallStack() const {
     return vm_.callStack();
