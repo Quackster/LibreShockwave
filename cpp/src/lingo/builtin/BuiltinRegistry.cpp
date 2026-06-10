@@ -520,6 +520,7 @@ std::string ilkType(const Datum& datum) {
         case DatumType::Int: return "integer";
         case DatumType::Float: return "float";
         case DatumType::String:
+        case DatumType::FieldText:
         case DatumType::StringChunk: return "string";
         case DatumType::Symbol: return "symbol";
         case DatumType::List: return "list";

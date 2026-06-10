@@ -3035,6 +3035,7 @@ void testBuiltinRegistryFoundation() {
     assert(registry.invoke("ilk", context, {Datum::of(1)}).asSymbol()->name == "integer");
     assert(registry.invoke("ilk", context, {Datum::of(1.5F)}).asSymbol()->name == "float");
     assert(registry.invoke("ilk", context, {Datum::of(std::string("x"))}).asSymbol()->name == "string");
+    assert(registry.invoke("ilk", context, {Datum::fieldText("field text", 2, 3)}).asSymbol()->name == "string");
     assert(registry.invoke("ilk", context, {Datum::symbol("x")}).asSymbol()->name == "symbol");
     assert(registry.invoke("ilk", context, {Datum::propList()}).asSymbol()->name == "propList");
     assert(registry.invoke("ilk", context, {Datum::colorRef(1, 2, 3)}).asSymbol()->name == "color");
