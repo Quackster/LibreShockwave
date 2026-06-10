@@ -236,9 +236,9 @@ void CastMember::setRuntimePaletteOverride(std::shared_ptr<const bitmap::Palette
 void CastMember::setRuntimeBitmap(const bitmap::Bitmap& bitmap, bool markScriptModified) {
     const int currentRegX = regX();
     const int currentRegY = regY();
-    auto copy = std::make_shared<bitmap::Bitmap>(bitmap.copy());
+    auto copy = bitmap.copy();
     if (markScriptModified) {
-        copy->markScriptModified();
+        copy.markScriptModified();
     }
     if (regPointPinnedToMember_) {
         runtimeRegX_ = currentRegX;
@@ -250,7 +250,11 @@ void CastMember::setRuntimeBitmap(const bitmap::Bitmap& bitmap, bool markScriptM
         runtimeRegX_ = 0;
         runtimeRegY_ = 0;
     }
-    runtimeBitmap_ = std::move(copy);
+    if (runtimeBitmap_) {
+        *runtimeBitmap_ = std::move(copy);
+    } else {
+        runtimeBitmap_ = std::make_shared<bitmap::Bitmap>(std::move(copy));
+    }
     syncRuntimeBitmapAnchorState();
 }
 
