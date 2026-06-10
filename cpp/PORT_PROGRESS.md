@@ -269,9 +269,8 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 ### Hit Testing Foundation
 
-- `input::HitTester` ports front-to-back visible sprite hit selection over baked `RenderSprite` lists, hit type lookup, and all-hit collection with channel filter/forced bounding-box support.
-- Bounds fallback, scaled bitmap sampling, flip/mirror coordinate adjustment, static native-alpha bitmap thresholds, and dynamic transparency-ink alpha checks are available in C++.
-- Direct `StageRenderer` overloads remain deferred until hit testing is wired to the C++ stage renderer object.
+- `input::HitTester` ports front-to-back visible sprite hit selection over baked `RenderSprite` lists or direct `StageRenderer` frame lookup, hit type lookup, and all-hit collection with channel filter/forced bounding-box support.
+- Bounds fallback, scaled bitmap sampling, flip/mirror coordinate adjustment, static native-alpha bitmap thresholds, dynamic transparency-ink alpha checks, last-baked-sprite preference, and `StageRenderer::getSpritesForFrame` fallback are available in C++.
 
 ### Cursor Manager Foundation
 
@@ -670,7 +669,7 @@ Result:
 - BitmapCache cache-keying, palette invalidation, non-native alpha coercion, indexed matte remap selection/application, and InkProcessor color remap/applyInk helpers, MATTE palette fallback, duplicate-RGB explicit indexed MATTE selection, black/white default indexed MATTE fallback, ADD/ADD_PIN flood-fill isolation, and outlined-white body matte preservation passed through the same CTest executable.
 - SpriteState score construction, Director blend-byte mapping, explicit override preservation, dynamic defaults, cursor state, script-instance rebinding, and release resets passed through the same CTest executable.
 - SpriteRegistry score/dynamic creation, lookup, score-behavior channel tracking, score updates, identity rebinding, dynamic-member cleanup, revision tracking, removal, and clear tests passed through the same CTest executable.
-- HitTester front-to-back bounds hits, static native-alpha thresholds, dynamic transparency-ink alpha hits, forced bounding-box hits, all-hit ordering, type lookup, and flip/scale source sampling passed through the same CTest executable.
+- HitTester front-to-back bounds hits, static native-alpha thresholds, dynamic transparency-ink alpha hits, forced bounding-box hits, all-hit ordering, type lookup, flip/scale source sampling, direct StageRenderer last-baked lookup, and StageRenderer frame fallback passed through the same CTest executable.
 - CursorManager editable text, button, explicit sprite cursor, interactive fallback, custom bitmap cursor, global cursor, mask application, hotspot, cursor member encoding, near-white, and navigator-whitespace suppression tests passed through the same CTest executable.
 - BehaviorInstance and BehaviorManager ID/property state, behavior-ref parameters, frame-script caching, channel lookup/removal, sprite-instance ordering, and clear tests passed through the same CTest executable.
 - EventDispatcher global, frame/movie, sprite/movie, sprite-only, behavior-only, and movie-only dispatch ordering, pass propagation, dynamic script-instance dispatch, sprite handler lookup, mouse interactivity, mouse-handler recognition, debug flag, and stopEvent state tests passed through the same CTest executable.
@@ -869,4 +868,5 @@ Result:
 - `1fd8f7e3 Port C++ timeout system events`
 - `cbdaab71 Port C++ actorList VM dispatch`
 - `b9ed9848 Port C++ periodic timeout VM dispatch`
-- Current checkpoint commit message: `Port C++ startup frame VM dispatch`
+- `4b5c70b2 Port C++ startup frame VM dispatch`
+- Current checkpoint commit message: `Port C++ HitTester StageRenderer overloads`

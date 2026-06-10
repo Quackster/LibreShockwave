@@ -5588,6 +5588,36 @@ void testHitTesterFoundation() {
                           hidden.bakedBitmap(),
                           false);
     assert(HitTester::hitTest({hidden, lower}, 11, 11) == 40);
+
+    StageRenderer bakedRenderer;
+    bakedRenderer.setLastBakedSprites({lower, dynamicMatte});
+    assert(HitTester::hitTest(bakedRenderer, 1, 11, 11) == 40);
+    assert(HitTester::hitTest(bakedRenderer, 1, 11, 11, [](int channel) { return channel == 44; }) == 44);
+    assert(HitTester::hitTestType(bakedRenderer, 1, 10, 10).value() == SpriteType::Bitmap);
+    assert((HitTester::hitTestAll(bakedRenderer, 1, 11, 11, [](int channel) { return channel == 44; }) ==
+            std::vector<int>{44, 40}));
+
+    StageRenderer fallbackRenderer;
+    auto& fallbackRegistry = fallbackRenderer.spriteRegistry();
+    auto back = fallbackRegistry.getOrCreateDynamic(60);
+    back->setLocH(10);
+    back->setLocV(10);
+    back->setLocZ(1);
+    back->setWidth(4);
+    back->setHeight(4);
+    back->setBackColor(0x00FF00);
+    auto front = fallbackRegistry.getOrCreateDynamic(61);
+    front->setLocH(10);
+    front->setLocV(10);
+    front->setLocZ(2);
+    front->setWidth(4);
+    front->setHeight(4);
+    front->setBackColor(0xFF0000);
+    assert(fallbackRenderer.lastBakedSprites().empty());
+    assert(HitTester::hitTest(fallbackRenderer, 7, 11, 11) == 61);
+    assert(HitTester::hitTestType(fallbackRenderer, 7, 11, 11).value() == SpriteType::Shape);
+    assert((HitTester::hitTestAll(fallbackRenderer, 7, 11, 11, [](int) { return false; }) ==
+            std::vector<int>{61, 60}));
 }
 
 void testCursorManagerFoundation() {

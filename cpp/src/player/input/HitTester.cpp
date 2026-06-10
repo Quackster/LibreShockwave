@@ -3,6 +3,7 @@
 #include "libreshockwave/bitmap/Bitmap.hpp"
 #include "libreshockwave/cast/BitmapInfo.hpp"
 #include "libreshockwave/chunks/CastMemberChunk.hpp"
+#include "libreshockwave/player/render/pipeline/StageRenderer.hpp"
 
 namespace libreshockwave::player::input {
 namespace {
@@ -25,6 +26,10 @@ int HitTester::hitTest(const std::vector<render::pipeline::RenderSprite>& sprite
     return hitTest(sprites, stageX, stageY, never);
 }
 
+int HitTester::hitTest(render::pipeline::StageRenderer& renderer, int frame, int stageX, int stageY) {
+    return hitTest(renderer, frame, stageX, stageY, never);
+}
+
 int HitTester::hitTest(const std::vector<render::pipeline::RenderSprite>& sprites,
                        int stageX,
                        int stageY,
@@ -33,11 +38,32 @@ int HitTester::hitTest(const std::vector<render::pipeline::RenderSprite>& sprite
     return sprite != nullptr ? sprite->channel() : 0;
 }
 
+int HitTester::hitTest(render::pipeline::StageRenderer& renderer,
+                       int frame,
+                       int stageX,
+                       int stageY,
+                       const ChannelPredicate& forceBoundingBox) {
+    const auto& baked = renderer.lastBakedSprites();
+    if (!baked.empty()) {
+        return hitTest(baked, stageX, stageY, forceBoundingBox);
+    }
+    auto sprites = renderer.getSpritesForFrame(frame);
+    return hitTest(sprites, stageX, stageY, forceBoundingBox);
+}
+
 std::optional<render::pipeline::SpriteType> HitTester::hitTestType(
     const std::vector<render::pipeline::RenderSprite>& sprites,
     int stageX,
     int stageY) {
     return hitTestType(sprites, stageX, stageY, never);
+}
+
+std::optional<render::pipeline::SpriteType> HitTester::hitTestType(
+    render::pipeline::StageRenderer& renderer,
+    int frame,
+    int stageX,
+    int stageY) {
+    return hitTestType(renderer, frame, stageX, stageY, never);
 }
 
 std::optional<render::pipeline::SpriteType> HitTester::hitTestType(
@@ -50,6 +76,20 @@ std::optional<render::pipeline::SpriteType> HitTester::hitTestType(
         return std::nullopt;
     }
     return sprite->type();
+}
+
+std::optional<render::pipeline::SpriteType> HitTester::hitTestType(
+    render::pipeline::StageRenderer& renderer,
+    int frame,
+    int stageX,
+    int stageY,
+    const ChannelPredicate& forceBoundingBox) {
+    const auto& baked = renderer.lastBakedSprites();
+    if (!baked.empty()) {
+        return hitTestType(baked, stageX, stageY, forceBoundingBox);
+    }
+    auto sprites = renderer.getSpritesForFrame(frame);
+    return hitTestType(sprites, stageX, stageY, forceBoundingBox);
 }
 
 std::vector<int> HitTester::hitTestAll(const std::vector<render::pipeline::RenderSprite>& sprites,
@@ -67,6 +107,19 @@ std::vector<int> HitTester::hitTestAll(const std::vector<render::pipeline::Rende
         }
     }
     return result;
+}
+
+std::vector<int> HitTester::hitTestAll(render::pipeline::StageRenderer& renderer,
+                                       int frame,
+                                       int stageX,
+                                       int stageY,
+                                       const ChannelPredicate& filter) {
+    const auto& baked = renderer.lastBakedSprites();
+    if (!baked.empty()) {
+        return hitTestAll(baked, stageX, stageY, filter);
+    }
+    auto sprites = renderer.getSpritesForFrame(frame);
+    return hitTestAll(sprites, stageX, stageY, filter);
 }
 
 bool HitTester::hitTestSpritePixel(const render::pipeline::RenderSprite& sprite, int stageX, int stageY) {
