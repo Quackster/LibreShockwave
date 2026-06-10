@@ -33,6 +33,16 @@
 namespace libreshockwave {
 namespace {
 
+DirectorFile::JpegDecoder& jpegDecoder() {
+    static DirectorFile::JpegDecoder decoder;
+    return decoder;
+}
+
+bool& jpegDecodePending() {
+    static bool pending = false;
+    return pending;
+}
+
 std::optional<chunks::ScriptChunkType> scriptChunkTypeForCastMemberScriptType(chunks::CastMemberScriptType type) {
     switch (type) {
         case chunks::CastMemberScriptType::Score: return chunks::ScriptChunkType::Score;
@@ -62,6 +72,24 @@ DirectorFile::DirectorFile(io::ByteOrder endian, bool afterburner, int version, 
     : endian_(endian), afterburner_(afterburner), version_(version), movieType_(movieType) {}
 
 DirectorFile::~DirectorFile() = default;
+
+void DirectorFile::setJpegDecoder(JpegDecoder decoder) {
+    jpegDecoder() = std::move(decoder);
+}
+
+void DirectorFile::markJpegDecodePending() {
+    jpegDecodePending() = true;
+}
+
+void DirectorFile::clearJpegDecodePending() {
+    jpegDecodePending() = false;
+}
+
+bool DirectorFile::consumeJpegDecodePending() {
+    const bool pending = jpegDecodePending();
+    jpegDecodePending() = false;
+    return pending;
+}
 
 io::ByteOrder DirectorFile::endian() const { return endian_; }
 bool DirectorFile::isAfterburner() const { return afterburner_; }
@@ -502,16 +530,28 @@ std::optional<bitmap::Bitmap> DirectorFile::decodeBitmap(const std::shared_ptr<c
         const auto info = cast::BitmapInfo::parse(member->specificData(), directorVersion);
 
         std::shared_ptr<chunks::BitmapChunk> bitmapChunk;
+        const std::vector<std::uint8_t>* ediMData = nullptr;
+        const std::vector<std::uint8_t>* alfaData = nullptr;
         for (const auto& entry : keyTable_->getEntriesForOwner(member->id())) {
-            if (entry.fourcc != format::fourCC(format::ChunkType::BITD)) {
-                continue;
-            }
-            bitmapChunk = std::dynamic_pointer_cast<chunks::BitmapChunk>(getChunk(entry.sectionId));
-            if (bitmapChunk) {
-                break;
+            if (entry.fourcc == format::fourCC(format::ChunkType::BITD)) {
+                bitmapChunk = std::dynamic_pointer_cast<chunks::BitmapChunk>(getChunk(entry.sectionId));
+            } else if (entry.fourcc == format::fourCC(format::ChunkType::ediM)) {
+                auto chunk = getChunk(entry.sectionId);
+                if (auto media = std::dynamic_pointer_cast<chunks::MediaChunk>(chunk)) {
+                    ediMData = &media->audioData();
+                } else if (auto raw = std::dynamic_pointer_cast<chunks::RawChunk>(chunk)) {
+                    ediMData = &raw->data();
+                }
+            } else if (entry.fourcc == format::fourCC(format::ChunkType::ALFA)) {
+                if (auto raw = std::dynamic_pointer_cast<chunks::RawChunk>(getChunk(entry.sectionId))) {
+                    alfaData = &raw->data();
+                }
             }
         }
         if (!bitmapChunk) {
+            if (ediMData != nullptr && info.bitDepth == 32) {
+                return decodeEdiMBitmap(info, *ediMData, alfaData);
+            }
             return std::nullopt;
         }
 
@@ -534,6 +574,65 @@ std::optional<bitmap::Bitmap> DirectorFile::decodeBitmap(const std::shared_ptr<c
         if (palette) {
             bitmap.setImagePalette(palette);
         }
+        return bitmap;
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
+}
+
+std::optional<bitmap::Bitmap> DirectorFile::decodeEdiMBitmap(const cast::BitmapInfo& info,
+                                                             const std::vector<std::uint8_t>& jpegData,
+                                                             const std::vector<std::uint8_t>* alfaData) {
+    try {
+        auto& decoder = jpegDecoder();
+        if (!decoder) {
+            return std::nullopt;
+        }
+
+        auto jpegBitmap = decoder(jpegData);
+        if (!jpegBitmap.has_value()) {
+            return std::nullopt;
+        }
+
+        bitmap::Bitmap bitmap(info.width, info.height, 32);
+        const int copyHeight = std::min(info.height, jpegBitmap->height());
+        const int copyWidth = std::min(info.width, jpegBitmap->width());
+        for (int y = 0; y < copyHeight; ++y) {
+            for (int x = 0; x < copyWidth; ++x) {
+                const auto rgb = jpegBitmap->getPixel(x, y);
+                bitmap.setPixelRGB(x,
+                                   y,
+                                   static_cast<int>((rgb >> 16U) & 0xFFU),
+                                   static_cast<int>((rgb >> 8U) & 0xFFU),
+                                   static_cast<int>(rgb & 0xFFU));
+            }
+        }
+
+        if (alfaData != nullptr && !alfaData->empty()) {
+            const int scanWidth = bitmap::BitmapDecoder::calculateScanWidth(info.width, 8);
+            const int expectedSize = scanWidth * info.height;
+            const auto alphaChannel = bitmap::BitmapDecoder::decompressRLE(*alfaData, expectedSize);
+            for (int y = 0; y < info.height; ++y) {
+                const int rowOffset = y * scanWidth;
+                for (int x = 0; x < info.width; ++x) {
+                    const int byteIndex = rowOffset + x;
+                    if (byteIndex < static_cast<int>(alphaChannel.size())) {
+                        const auto alpha = static_cast<std::uint32_t>(alphaChannel[static_cast<std::size_t>(byteIndex)]);
+                        const auto pixel = bitmap.getPixel(x, y);
+                        bitmap.setPixel(x, y, (alpha << 24U) | (pixel & 0x00FFFFFFU));
+                    }
+                }
+            }
+        } else {
+            for (int y = 0; y < info.height; ++y) {
+                for (int x = 0; x < info.width; ++x) {
+                    const auto pixel = bitmap.getPixel(x, y);
+                    bitmap.setPixel(x, y, 0xFF000000U | (pixel & 0x00FFFFFFU));
+                }
+            }
+        }
+
+        bitmap.setNativeAlpha(info.useAlpha || (alfaData != nullptr && !alfaData->empty()));
         return bitmap;
     } catch (const std::exception&) {
         return std::nullopt;

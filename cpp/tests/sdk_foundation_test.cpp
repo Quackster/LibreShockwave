@@ -7,6 +7,7 @@
 #include <iostream>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -13069,6 +13070,79 @@ void testBitmapResolverFoundation() {
     auto providerBitmap = resolver.decodeBitmapForProvider(*bitmapMember, &overridePalette);
     assert(providerBitmap != nullptr);
     assert(providerBitmap->getPixel(1, 0) == 0xFF040506U);
+
+    std::vector<std::uint8_t> sidecarKeyData;
+    appendI16(sidecarKeyData, 12);
+    appendI16(sidecarKeyData, 12);
+    appendI32(sidecarKeyData, 2);
+    appendI32(sidecarKeyData, 2);
+    appendI32(sidecarKeyData, 2);
+    appendI32(sidecarKeyData, 10);
+    appendI32(sidecarKeyData, BinaryReader::fourCC("ediM"));
+    appendI32(sidecarKeyData, 3);
+    appendI32(sidecarKeyData, 10);
+    appendI32(sidecarKeyData, BinaryReader::fourCC("ALFA"));
+
+    const std::vector<std::uint8_t> jpegData{0xFF, 0xD8, 0xFF, 0xD9};
+    const std::vector<std::uint8_t> alfaData{0x01, 0x40, 0x80};
+    auto sidecarFile = DirectorFile::load(buildRifx({
+        {"DRCF", configData},
+        {"KEY*", sidecarKeyData},
+        {"ediM", jpegData},
+        {"ALFA", alfaData},
+    }));
+
+    std::vector<std::uint8_t> sidecarSpecific;
+    appendI16(sidecarSpecific, 8);
+    appendI16(sidecarSpecific, 0);
+    appendI16(sidecarSpecific, 0);
+    appendI16(sidecarSpecific, 1);
+    appendI16(sidecarSpecific, 2);
+    sidecarSpecific.insert(sidecarSpecific.end(), 8, 0);
+    appendI16(sidecarSpecific, 0);
+    appendI16(sidecarSpecific, 0);
+    sidecarSpecific.push_back(0);
+    sidecarSpecific.push_back(32);
+    appendI16(sidecarSpecific, 1);
+    auto sidecarMember = std::make_shared<CastMemberChunk>(sidecarFile.get(),
+                                                           ChunkId(10),
+                                                           MemberType::Bitmap,
+                                                           0,
+                                                           static_cast<int>(sidecarSpecific.size()),
+                                                           std::vector<std::uint8_t>{},
+                                                           sidecarSpecific,
+                                                           "ediM Bitmap",
+                                                           0,
+                                                           0,
+                                                           0);
+
+    DirectorFile::setJpegDecoder(DirectorFile::JpegDecoder{});
+    assert(!sidecarFile->decodeBitmap(sidecarMember).has_value());
+    DirectorFile::clearJpegDecodePending();
+    assert(!DirectorFile::consumeJpegDecodePending());
+    DirectorFile::markJpegDecodePending();
+    assert(DirectorFile::consumeJpegDecodePending());
+    assert(!DirectorFile::consumeJpegDecodePending());
+
+    int jpegDecoderCalls = 0;
+    std::vector<std::uint8_t> capturedJpegData;
+    DirectorFile::setJpegDecoder([&](const std::vector<std::uint8_t>& data) -> std::optional<Bitmap> {
+        ++jpegDecoderCalls;
+        capturedJpegData = data;
+        return Bitmap(2, 1, 32, {0xFF102030U, 0xFF405060U});
+    });
+
+    auto sidecarDecoded = sidecarFile->decodeBitmap(sidecarMember);
+    assert(sidecarDecoded.has_value());
+    assert(jpegDecoderCalls == 1);
+    assert(capturedJpegData == jpegData);
+    assert(sidecarDecoded->width() == 2);
+    assert(sidecarDecoded->height() == 1);
+    assert(sidecarDecoded->bitDepth() == 32);
+    assert(sidecarDecoded->isNativeAlpha());
+    assert(sidecarDecoded->getPixel(0, 0) == 0x40102030U);
+    assert(sidecarDecoded->getPixel(1, 0) == 0x80405060U);
+    DirectorFile::setJpegDecoder(DirectorFile::JpegDecoder{});
 
     BitmapResolver emptyResolver;
     assert(!emptyResolver.getMoviePalette());

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -42,6 +43,10 @@ namespace libreshockwave::bitmap {
 class Palette;
 }
 
+namespace libreshockwave::cast {
+struct BitmapInfo;
+}
+
 namespace libreshockwave::lookup {
 class CastMemberLookup;
 class PaletteResolver;
@@ -76,8 +81,15 @@ struct ScriptInfo {
 
 class DirectorFile {
 public:
+    using JpegDecoder = std::function<std::optional<bitmap::Bitmap>(const std::vector<std::uint8_t>&)>;
+
     DirectorFile(io::ByteOrder endian, bool afterburner, int version, format::ChunkType movieType);
     ~DirectorFile();
+
+    static void setJpegDecoder(JpegDecoder decoder);
+    static void markJpegDecodePending();
+    static void clearJpegDecodePending();
+    [[nodiscard]] static bool consumeJpegDecodePending();
 
     [[nodiscard]] io::ByteOrder endian() const;
     [[nodiscard]] bool isAfterburner() const;
@@ -167,6 +179,9 @@ private:
     [[nodiscard]] lookup::CastMemberLookup& castMemberLookup();
     [[nodiscard]] lookup::PaletteResolver& paletteResolver();
     [[nodiscard]] lookup::ScriptLookup& scriptLookup();
+    [[nodiscard]] std::optional<bitmap::Bitmap> decodeEdiMBitmap(const cast::BitmapInfo& info,
+                                                                  const std::vector<std::uint8_t>& jpegData,
+                                                                  const std::vector<std::uint8_t>* alfaData);
     void setVersion(int version);
     void setCapitalX(bool capitalX);
 

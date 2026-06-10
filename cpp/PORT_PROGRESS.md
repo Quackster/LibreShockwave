@@ -160,7 +160,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `DirectorFile::decodeBitmap` resolves BITD chunks through KEY* owner mappings for bitmap cast members.
 - Bitmap member specific data is parsed through `cast::BitmapInfo`, palettes are resolved or overridden, and decoded bitmaps preserve native-alpha and palette metadata.
-- ediM/JPEG and ALFA sidecar decoding remain deferred to the higher-level media integration slice.
+- `DirectorFile` now supports `ediM` JPEG RGB sidecar bitmap decoding through a pluggable JPEG decoder hook, optional `ALFA` RLE alpha-mask application, and Java-compatible JPEG decode pending flags.
 
 ### W3D File Parser Foundation
 
@@ -221,7 +221,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `player::cast::CastLib` ports lazy cast-library metadata, authored/external file binding state, stable registry binding checks, member chunk maps, script maps, source-prefixed member-name fallback, font-alias/PFR XMED scanning, and Java-compatible cast/member property fallbacks.
 - `player::cast::CastLibManager` ports DirectorFile-backed cast-library initialization from MCsL/CAS* chunks, castLib/member number and name lookup, registry-visible member filtering, external-cast cache keys, pending external load tracking, preload-mode loading, and builtin callback installation.
-- Runtime bitmap member image mutation, cached imported-image assignment, Director BITD imported-media assignment, dynamic member creation/reuse, dynamic member `erase`, dynamic field text mutation, field provider lookup/setter callbacks, text-like member media copy, dynamic bitmap member sprite rendering, dynamic text sprite baking, common text styling property mutation, editable field input mutation, and editable field overlay/clipboard helper state are available for existing cast libraries; non-bitmap imported media payload decoding, ediM/JPEG/ALFA sidecars, platform overlay drawing, and remaining CastLibProvider edge cases remain deferred to later player runtime slices.
+- Runtime bitmap member image mutation, cached imported-image assignment, Director BITD imported-media assignment, dynamic member creation/reuse, dynamic member `erase`, dynamic field text mutation, field provider lookup/setter callbacks, text-like member media copy, dynamic bitmap member sprite rendering, dynamic text sprite baking, common text styling property mutation, editable field input mutation, and editable field overlay/clipboard helper state are available for existing cast libraries; non-bitmap imported media payload decoding, platform overlay drawing, and remaining CastLibProvider edge cases remain deferred to later player runtime slices.
 
 ### Bitmap Resolver Foundation
 
@@ -504,7 +504,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `CastLibManager::importFileIntoMember` now resolves cached external payloads, decodes the Java-compatible `LSWI` imported-image format, assigns it through the member image path, and wires `BuiltinContext::importFileIntoHandler` during callback installation.
 - Director `DTIB`/BITD imported bitmap media now falls back through `BitmapInfo` metadata parsing, little-endian BITD payload length handling, `BitmapDecoder` dispatch, cast-aware palette lookup for indexed media, and anchor-point propagation.
 - `player::Player` now wires `SpriteBaker::setLiveBitmapProvider` to runtime cast-member lookup so authored bitmap members whose `image` was mutated render from the live script-modified bitmap before stale decode/cache fallback.
-- ediM/JPEG/ALFA sidecars and non-bitmap imported media remain deferred.
+- DirectorFile-backed `ediM` JPEG/`ALFA` sidecar bitmap decode is available through the pluggable decoder hook; non-bitmap imported media remain deferred.
 
 ### Runtime Dynamic Member Creation Foundation
 
@@ -748,7 +748,7 @@ Result:
 - ScriptChunk name resolution and DirectorFile script-helper empty fallback tests passed through the same CTest executable.
 - DirectorFile base path, score presence, external cast, and font lookup fallback tests passed through the same CTest executable.
 - Bitmap decoder RLE, scan-width, indexed, RGB555, 32-bit channel, and automatic dispatch tests passed through the same CTest executable.
-- DirectorFile BITD bitmap decode integration passed through the RIFX loader fixture in the same CTest executable.
+- DirectorFile BITD bitmap decode integration plus pluggable `ediM` JPEG/`ALFA` sidecar bitmap decode passed through the RIFX loader fixture in the same CTest executable.
 - W3D entry, typed resource, transform, texture format, and lookup tests passed through the same CTest executable.
 - Generated font Base64/zlib decode, wrong-length, and invalid-deflate tests passed through the same CTest executable.
 - File/path fallback utilities and script formatting utilities passed through the same CTest executable.
@@ -783,7 +783,7 @@ Result:
 - BehaviorInstance and BehaviorManager ID/property state, behavior-ref parameters, frame-script caching, channel lookup/removal, sprite-instance ordering, and clear tests passed through the same CTest executable.
 - EventDispatcher global, frame/movie, sprite/movie, sprite-only, behavior-only, and movie-only dispatch ordering, pass propagation, dynamic script-instance dispatch, sprite handler lookup, mouse interactivity, mouse-handler recognition, debug flag, and stopEvent state tests passed through the same CTest executable.
 - FrameContext first-frame setup, pending frame navigation, begin/end sprite dispatch, frame events, actor/timeout hooks, puppeted sprite persistence, force navigation, reset, and BehaviorManager script-resolver hooks passed through the same CTest executable.
-- BitmapResolver RIFX-backed bitmap decode, palette override decode, SpriteBaker provider adapter, movie palette config fallback, null fallback behavior, and CastLibManager palette-member lookup passed through the same CTest executable.
+- BitmapResolver RIFX-backed BITD bitmap decode, `ediM` JPEG/`ALFA` sidecar decode, palette override decode, SpriteBaker provider adapter, movie palette config fallback, null fallback behavior, and CastLibManager palette-member lookup passed through the same CTest executable.
 - SpriteProperties missing defaults, property get/set, revision bumps, cast member assignment, autosizing, registration-aware bounds, cursor lists, script-instance sprite numbers, release cleanup, color refs, and image callbacks passed through the same CTest executable.
 - Lingo `GET_CHUNK` char/word/item/line extraction, range, negative last-index, sequential narrowing, and provider-backed item delimiters passed through the same CTest executable.
 - Lingo `PUSH_CHUNK_VAR_REF` typed raw-index varref creation tests passed through the same CTest executable.
@@ -849,7 +849,7 @@ Result:
 ## Remaining Major Work
 
 - Higher-level media integration.
-- Remaining ediM/ALFA bitmap integration, sound, PFR outline rasterization, full TTF font rasterization, text, score, and script chunk decoders.
+- Remaining sound, PFR outline rasterization, full TTF font rasterization, text, score, and script chunk decoders.
 - Detailed W3D geometry/material decoding and rendering integration.
 - Lingo decompiler, VM runtime values, dispatchers, and builtins.
 - Player core, rendering pipeline, input, networking, audio, cast management, and debugging.
@@ -1017,4 +1017,4 @@ Result:
 - `360ac5a7 Port C++ cast member utility methods`
 - `1434fb05 Port C++ field datum identity`
 - `3759c22a Port C++ editable field input`
-- Current checkpoint commit message: `Port C++ editable field helpers`
+- Current checkpoint commit message: `Port C++ ediM bitmap sidecars`
