@@ -1508,12 +1508,12 @@ void scriptInstanceSetNestedProperty(Datum& container, const Datum& subKey, Datu
 }
 
 void scriptInstancePutLocalProperty(Datum::ScriptInstanceRef& instance, std::string_view propName, Datum value) {
-    if (equalsIgnoreCase(propName, "ancestor")) {
+    if (propName == "ancestor") {
         instance.setProperty(std::string(propName), std::move(value));
         return;
     }
     for (auto& entry : instance.properties()) {
-        if (equalsIgnoreCase(entry.first, propName)) {
+        if (entry.first == propName) {
             entry.second = std::move(value);
             return;
         }
@@ -1522,14 +1522,14 @@ void scriptInstancePutLocalProperty(Datum::ScriptInstanceRef& instance, std::str
 }
 
 void scriptInstanceDeleteLocalProperty(Datum::ScriptInstanceRef& instance, std::string_view propName) {
-    if (equalsIgnoreCase(propName, "ancestor")) {
+    if (propName == "ancestor") {
         instance.setProperty(std::string(propName), Datum::voidValue());
         return;
     }
     auto& properties = instance.properties();
     properties.erase(
         std::remove_if(properties.begin(), properties.end(), [&](const auto& entry) {
-            return equalsIgnoreCase(entry.first, propName);
+            return entry.first == propName;
         }),
         properties.end());
 }

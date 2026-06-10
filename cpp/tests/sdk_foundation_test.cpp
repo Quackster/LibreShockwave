@@ -7697,6 +7697,17 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(scriptInstance.scriptInstanceValue().getProperty("shared").intValue() == 13);
     assert(runObjCall(68, {scriptInstance, Datum::symbol("newLocal"), Datum::of(22)}).isVoid());
     assert(scriptInstance.scriptInstanceValue().getProperty("newLocal").intValue() == 22);
+    auto caseScriptInstance = Datum::scriptInstance("caseChild");
+    caseScriptInstance.scriptInstanceValue().setProperty("local", Datum::of(4));
+    assert(runObjCall(68, {caseScriptInstance, Datum::of(std::string("Local")), Datum::of(22)}).isVoid());
+    assert(runObjCall(64, {caseScriptInstance, Datum::of(std::string("local"))}).intValue() == 4);
+    assert(runObjCall(64, {caseScriptInstance, Datum::of(std::string("Local"))}).intValue() == 22);
+    assert(runObjCall(70, {caseScriptInstance}).intValue() == 2);
+    assert(runObjCall(116, {caseScriptInstance, Datum::of(std::string("LOCAL"))}).isVoid());
+    assert(runObjCall(70, {caseScriptInstance}).intValue() == 2);
+    assert(runObjCall(116, {caseScriptInstance, Datum::of(std::string("Local"))}).isVoid());
+    assert(runObjCall(70, {caseScriptInstance}).intValue() == 1);
+    assert(runObjCall(64, {caseScriptInstance, Datum::of(std::string("Local"))}).intValue() == 4);
     auto nestedList = Datum::list({Datum::of(1)});
     scriptInstance.scriptInstanceValue().setProperty("nestedList", nestedList);
     assert(runObjCall(113, {scriptInstance, Datum::symbol("nestedList"), Datum::of(3), Datum::of(33)}).isVoid());
