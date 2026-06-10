@@ -887,7 +887,8 @@ Result:
 - Lingo VM Scope and ExecutionContext stack, param, local, return, loop, jump, global callback, handler callback, builtin invocation, and call-stack formatting behavior passed through the same CTest executable.
 - Lingo VM ExecutionContext name resolver callback and resolver-backed global opcode behavior passed through the same CTest executable.
 - Lingo VM long-handler safepoint callback, tick deadline, handler timeout, and cleanup behavior passed through the same CTest executable.
-- Lingo VM console trace controls, targeted handler trace output, random-call trace output, trace-enabled handler/instruction/return output, and output redirection passed through the same CTest executable.
+- Lingo VM console trace controls, targeted handler trace output, random-call trace seed output, trace-enabled handler/instruction/return output, and output redirection passed through the same CTest executable.
+- Lingo VM startup random seed override, invalid seed fallback, and Java-compatible seed-4096 random sequence passed through the same CTest executable.
 - Lingo VM trace listener handler enter/exit, optional instruction tracing, stack/global snapshots, local/param/global/script-instance-property variable-set callbacks, error callbacks, and trace argument formatting passed through the same CTest executable.
 - Lingo VM deferred script-instance call ordering, automatic outer-handler flush, deferred task explicit flushing, flush-state guards, Player call-target provider wiring, and numeric `closeThread` task deferral passed through the same CTest executable.
 - Lingo VM alertHook manual firing, `alert()` suppression, script-error suppression/rethrow behavior, and Player no-hook fallback passed through the same CTest executable.
@@ -1118,4 +1119,5 @@ Result:
 - `1c8b39dd Port C++ constructor argument coercion`
 - `97288df5 Port C++ mutable point rect setAt`
 - `58b08250 Port C++ ancestor assignment guard`
-- Current checkpoint commit message: `Port C++ bounded ancestor traversal`
+- `72fc2f3a Port C++ bounded ancestor traversal`
+- Current checkpoint commit message: `Port C++ random seed trace parity`

@@ -1,6 +1,7 @@
 #include <cassert>
 #include <bit>
 #include <cmath>
+#include <cstdlib>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -6209,8 +6210,9 @@ void testLingoVmRuntimeFoundation() {
 
     vm.addTraceHandler("random");
     assert(vm.tracedHandlers().contains("random"));
+    vm.setRandomSeed(0);
     assert(vm.randomInt(0) == 1);
-    assert((traceLines == std::vector<std::string>{"[TRACE] random(0)=1"}));
+    assert((traceLines == std::vector<std::string>{"[TRACE] random(0)=1 seed=0"}));
     vm.clearTraceHandlers();
     assert(vm.tracedHandlers().empty());
 
@@ -6326,6 +6328,30 @@ void testLingoVmRuntimeFoundation() {
     vm.setRandomSeed(1234);
     assert(vm.callBuiltin("random", {Datum::of(10)}).intValue() == directRandom);
     assert(directRandom >= 1 && directRandom <= 10);
+
+    vm.setRandomSeed(4096);
+    assert(vm.callBuiltin("random", {Datum::of(4)}).intValue() == 1);
+    assert(vm.callBuiltin("random", {Datum::of(2)}).intValue() == 2);
+    assert(vm.callBuiltin("random", {Datum::of(150)}).intValue() == 40);
+
+    const char* previousInitialRandomSeed = std::getenv("LS_INITIAL_RANDOM_SEED");
+    const std::optional<std::string> savedInitialRandomSeed =
+        previousInitialRandomSeed == nullptr ? std::nullopt : std::make_optional<std::string>(previousInitialRandomSeed);
+    auto restoreInitialRandomSeed = [&savedInitialRandomSeed] {
+        if (savedInitialRandomSeed.has_value()) {
+            setenv("LS_INITIAL_RANDOM_SEED", savedInitialRandomSeed->c_str(), 1);
+        } else {
+            unsetenv("LS_INITIAL_RANDOM_SEED");
+        }
+    };
+    setenv("LS_INITIAL_RANDOM_SEED", " 4096 ", 1);
+    LingoVM environmentSeedVm;
+    assert(environmentSeedVm.randomSeed() == 4096);
+    assert(environmentSeedVm.callBuiltin("random", {Datum::of(4)}).intValue() == 1);
+    setenv("LS_INITIAL_RANDOM_SEED", "not-an-integer", 1);
+    LingoVM invalidEnvironmentSeedVm;
+    assert(invalidEnvironmentSeedVm.randomSeed() == 0);
+    restoreInitialRandomSeed();
 
     bool passed = false;
     vm.setPassCallback([&passed] {

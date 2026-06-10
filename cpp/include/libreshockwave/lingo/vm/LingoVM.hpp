@@ -192,6 +192,7 @@ private:
     bool flushingDeferredTasks_{false};
     bool traceEnabled_{false};
     bool consoleLoopSuppressed_{false};
+    bool explicitRandomSeed_{false};
     int alertHookDepth_{0};
     int consoleCurrentHandlerId_{-1};
     int stepLimit_{0};

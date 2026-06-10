@@ -1,10 +1,14 @@
 #include "libreshockwave/lingo/vm/LingoVM.hpp"
 
 #include <algorithm>
+#include <cerrno>
 #include <chrono>
 #include <cctype>
+#include <cstdlib>
 #include <iomanip>
 #include <iostream>
+#include <limits>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <utility>
@@ -45,6 +49,33 @@ std::string lower(std::string_view value) {
     return result;
 }
 
+std::optional<int> parseInitialRandomSeed(const char* rawValue) {
+    if (rawValue == nullptr) {
+        return std::nullopt;
+    }
+
+    std::string_view text(rawValue);
+    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.front()))) {
+        text.remove_prefix(1);
+    }
+    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.back()))) {
+        text.remove_suffix(1);
+    }
+    if (text.empty()) {
+        return std::nullopt;
+    }
+
+    const std::string seedText(text);
+    char* end = nullptr;
+    errno = 0;
+    const long parsed = std::strtol(seedText.c_str(), &end, 10);
+    if (errno == ERANGE || end == seedText.c_str() || *end != '\0' ||
+        parsed < std::numeric_limits<int>::min() || parsed > std::numeric_limits<int>::max()) {
+        return std::nullopt;
+    }
+    return static_cast<int>(parsed);
+}
+
 } // namespace
 
 std::function<void()> LingoVM::gcCallback_;
@@ -52,6 +83,9 @@ std::function<void()> LingoVM::gcCallback_;
 LingoVM::LingoVM(DirectorFile* file)
     : file_(file) {
     setRandomSeed(0);
+    if (const auto initialRandomSeed = parseInitialRandomSeed(std::getenv("LS_INITIAL_RANDOM_SEED"))) {
+        setRandomSeed(*initialRandomSeed);
+    }
     builtinContext_.randomIntHandler = [this](int max) {
         return randomInt(max);
     };
@@ -130,6 +164,7 @@ const std::map<std::string, Datum>& LingoVM::prefs() const {
 
 void LingoVM::setRandomSeed(int seed) {
     randomSeed_ = seed;
+    explicitRandomSeed_ = true;
     randomState_ = (static_cast<std::int64_t>(seed) ^ RANDOM_MULTIPLIER) & RANDOM_MASK;
 }
 
@@ -777,6 +812,9 @@ void LingoVM::traceRandomCall(int max, int result) {
 
     std::ostringstream out;
     out << "[TRACE] random(" << max << ")=" << result;
+    if (explicitRandomSeed_) {
+        out << " seed=" << randomSeed_;
+    }
     if (const Scope* scope = currentScope(); scope != nullptr && scope->script() != nullptr) {
         out << " at " << handlerName(*scope->script(), scope->handler())
             << " in \"" << scriptDisplayName(*scope->script()) << "\"";
