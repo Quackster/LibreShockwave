@@ -12450,6 +12450,13 @@ void testCastLibManagerFoundation() {
     assert(manager.getCastLibProp(1, "number of castMembers").intValue() == 3);
     assert(manager.getCastLibProp(1, "loaded").boolValue());
     assert(manager.getMemberProp(1, 2, "name").stringValue() == "Hero");
+    assert(manager.getMemberProp(1, 2, "number").intValue() == SlotId::of(1, 2).value());
+    assert(manager.getMemberProp(1, 2, "memberNum").intValue() == 2);
+    assert(manager.getMemberProp(1, 2, "castLibNum").intValue() == 1);
+    assert(manager.getMemberProp(1, 2, "castLib").asCastLibRef()->castLib == 1);
+    assert(manager.getMemberProp(1, 2, "script").isVoid());
+    assert(manager.getMemberProp(1, 2, "scriptText").stringValue().empty());
+    assert(manager.getMemberProp(1, 2, "mediaReady").intValue() == 1);
     assert(manager.getMemberProp(1, 2, "type").asSymbol()->name == "bitmap");
     assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->x == 8);
     assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->y == 7);

@@ -559,15 +559,24 @@ lingo::Datum CastLib::getMemberProp(int memberNumber, const std::string& propNam
 
     const auto prop = lower(propName);
     if (prop == "name") return stringDatum(member->name());
-    if (prop == "number" || prop == "membernum") return lingo::Datum::of(memberNumber);
+    if (prop == "number") return lingo::Datum::of(id::SlotId::of(castLibId_, id::MemberId(memberNumber)).value());
+    if (prop == "membernum") return lingo::Datum::of(memberNumber);
     if (prop == "type") {
         if (member->memberType() == libreshockwave::cast::MemberType::Null) {
             return lingo::Datum::symbol("empty");
         }
         return lingo::Datum::symbol(std::string(libreshockwave::cast::name(member->memberType())));
     }
-    if (prop == "castlibnum" || prop == "castlib") return lingo::Datum::of(castLibId_.value());
+    if (prop == "castlibnum") return lingo::Datum::of(castLibId_.value());
+    if (prop == "castlib") return lingo::Datum::castLibRef(castLibId_);
+    if (prop == "script") {
+        return getScript(memberNumber)
+            ? lingo::Datum::scriptRef(lingo::Datum::CastMemberRef::of(castLibId_, id::MemberId(memberNumber)))
+            : lingo::Datum::voidValue();
+    }
+    if (prop == "scripttext") return stringDatum("");
     if (prop == "media") return lingo::Datum::castMemberRef(castLibId_, id::MemberId(memberNumber));
+    if (prop == "mediaready") return lingo::Datum::of(1);
     if (member->isTextLike()) {
         if (prop == "text") return stringDatum(resolveMemberText(member));
         if (prop == "linecount") {
