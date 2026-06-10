@@ -27,6 +27,27 @@ void drawEllipse(Bitmap& dest, int cx, int cy, int rx, int ry, std::uint32_t arg
                                      id::InkMode ink,
                                      int blend,
                                      int backgroundKeyRgb = 0xFFFFFF);
+[[nodiscard]] bool maskAllowsPixel(const Bitmap& mask, int x, int y);
+[[nodiscard]] std::shared_ptr<Bitmap> preprocessBackgroundTransparent(const Bitmap& src,
+                                                                      int backgroundKeyRgb = 0xFFFFFF);
+void copyPixels(Bitmap& dest,
+                const Bitmap& src,
+                int destX,
+                int destY,
+                int srcX,
+                int srcY,
+                int width,
+                int height,
+                id::InkMode ink,
+                int blend,
+                const Bitmap* mask = nullptr,
+                int backgroundKeyRgb = 0xFFFFFF);
+void copyPixels(Bitmap& dest,
+                const Bitmap& src,
+                int destX,
+                int destY,
+                id::InkMode ink,
+                int blend);
 
 } // namespace Drawing
 

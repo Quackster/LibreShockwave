@@ -7872,6 +7872,21 @@ void testLingoVmScopeAndExecutionContextFoundation() {
                0xFFFFFFFFU, 0xFF000000U, InkMode::MASK, 255) == 0xFFFFFFFFU);
     assert(libreshockwave::bitmap::Drawing::applyInk(
                0xFF050607U, 0xFF010203U, InkMode::ADD, 255) == 0xFF06080AU);
+    Bitmap directCopySrc(2, 1, 32, {0x80000000U, 0xFFFF0000U});
+    Bitmap directCopyDest(2, 1, 32);
+    directCopyDest.fill(0xFFFFFFFFU);
+    libreshockwave::bitmap::Drawing::copyPixels(directCopyDest, directCopySrc, 0, 0, InkMode::COPY, 255);
+    assert(directCopyDest.getPixel(0, 0) == 0xFF7F7F7FU);
+    assert(directCopyDest.getPixel(1, 0) == 0xFFFF0000U);
+    Bitmap directCopyMask(2, 1, 8, {0xFFFFFFFFU, 0xFF000000U});
+    assert(!libreshockwave::bitmap::Drawing::maskAllowsPixel(directCopyMask, 0, 0));
+    assert(libreshockwave::bitmap::Drawing::maskAllowsPixel(directCopyMask, 1, 0));
+    Bitmap maskedDirectDest(2, 1, 32);
+    maskedDirectDest.fill(0xFFFFFFFFU);
+    libreshockwave::bitmap::Drawing::copyPixels(
+        maskedDirectDest, directCopySrc, 0, 0, 0, 0, 2, 1, InkMode::COPY, 255, &directCopyMask);
+    assert(maskedDirectDest.getPixel(0, 0) == 0xFFFFFFFFU);
+    assert(maskedDirectDest.getPixel(1, 0) == 0xFFFF0000U);
 
     auto drawBitmap = std::make_shared<Bitmap>(3, 3, 32);
     drawBitmap->setImagePalette(std::make_shared<Palette>(
@@ -7949,6 +7964,19 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(directFloodRegion.getPixel(0, 0) == 0x00FFFFFFU);
     assert(directFloodRegion.getPixel(1, 1) == 0xFF224466U);
     assert(directFloodRegion.getPixel(2, 2) == 0x00FFFFFFU);
+    Bitmap directMatteCopyDest(3, 3, 32);
+    directMatteCopyDest.fill(0xFF112233U);
+    libreshockwave::bitmap::Drawing::copyPixels(
+        directMatteCopyDest, *floodMatteSource, 0, 0, 0, 0, 3, 3, InkMode::MATTE, 255);
+    assert(directMatteCopyDest.getPixel(0, 0) == 0xFF112233U);
+    assert(directMatteCopyDest.getPixel(1, 1) == 0xFF224466U);
+    assert(directMatteCopyDest.getPixel(2, 2) == 0xFF112233U);
+    Bitmap directBackgroundCopySrc(2, 1, 32, {0xFFFFFFFFU, 0xFFFF0000U});
+    Bitmap directBackgroundCopyDest(2, 1, 32, {0xFF000000U, 0xFF000000U});
+    libreshockwave::bitmap::Drawing::copyPixels(
+        directBackgroundCopyDest, directBackgroundCopySrc, 0, 0, 0, 0, 2, 1, InkMode::BACKGROUND_TRANSPARENT, 255);
+    assert(directBackgroundCopyDest.getPixel(0, 0) == 0xFF000000U);
+    assert(directBackgroundCopyDest.getPixel(1, 0) == 0xFFFF0000U);
     const Datum floodMatteDatum = runObjCall(108, {Datum::imageRef(floodMatteSource)});
     const auto* floodMatte = floodMatteDatum.asImageRef();
     assert(floodMatte != nullptr);
