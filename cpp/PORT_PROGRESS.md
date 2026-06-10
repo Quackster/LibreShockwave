@@ -556,6 +556,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `CastMember` now stores runtime palette payloads for dynamic palette members.
 - `CastLib::getMemberProp("color")` exposes palette entries as color datums for runtime and file-backed palette members.
 - `CastLibManager::setMemberProp("media", castMemberRef)` now clones palette member colors into palette targets, while palette resolution by member/name prefers runtime payloads before file-backed CLUT fallback.
+- `CastLibManager::callMemberMethod("duplicate")` now shares palette data between palette members, accepts cast-member refs, encoded slot targets, and raw member-number targets, and supports copying an argument palette into an empty receiver.
 
 ### Runtime Cast Member RegPoint Foundation
 
@@ -834,7 +835,7 @@ Result:
 - Runtime text member style property get/set, Director-style text color coercion, rect/width/height geometry mutation, and SpriteBaker dynamic text style propagation passed through the same CTest executable.
 - Runtime text-like `media` assignment from another cast member, including copied text content and style state through the cast-member property callback, passed through the same CTest executable.
 - Runtime and file-backed bitmap `media` assignment from another cast member, including decoded BITD pixels, script-modified runtime copies, and registration-point propagation, passed through the same CTest executable.
-- Runtime palette payload storage, `member.color` list exposure, palette member lookup by member/name, and palette-to-palette `media` copying passed through the same CTest executable.
+- Runtime palette payload storage, `member.color` list exposure, palette member lookup by member/name, palette-to-palette `media` copying, and palette-member `duplicate` target handling passed through the same CTest executable.
 - Runtime cast-member `regPoint` property mutation, non-point rejection, member-method sub-property reads, live runtime-bitmap anchor synchronization, authored-member pinned image/import assignment, copied-media pin inheritance, and dynamic-member unpinned image assignment passed through the same CTest executable.
 - Runtime text-like member `charPosToLoc`/`locToCharPos` method dispatch, no-renderer fallbacks, builtin callback routing, and Player text-renderer wiring passed through the same CTest executable.
 - Runtime text `lineCount`/`line` properties plus cast-member `getProp` and `count(#char/#word/#line/#item)` method helpers passed through the same CTest executable.
@@ -1041,4 +1042,5 @@ Result:
 - `f840eaf4 Port C++ cast member regPoint mutation`
 - `4aa8cd03 Port C++ pinned regPoint image assignment`
 - `81e330b3 Port C++ bitmap media datum assignment`
-- Current checkpoint commit message: `Port C++ palette member media copy`
+- `6fe96d81 Port C++ palette member media copy`
+- Current checkpoint commit message: `Port C++ palette member duplicate`

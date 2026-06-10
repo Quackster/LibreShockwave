@@ -267,6 +267,27 @@ std::shared_ptr<const bitmap::Palette> paletteFromCastMember(const std::shared_p
     return nullptr;
 }
 
+std::optional<lingo::Datum::CastMemberRef> duplicateTargetRefFromArg(const lingo::Datum& targetArg,
+                                                                     int defaultCastLib) {
+    if (const auto* targetRef = targetArg.asCastMemberRef()) {
+        return *targetRef;
+    }
+    if (!targetArg.isNumber()) {
+        return std::nullopt;
+    }
+
+    const int slotValue = targetArg.intValue();
+    const id::SlotId slotId(slotValue);
+    if (slotId.castLib() >= 1 && slotId.member() >= 1) {
+        return lingo::Datum::CastMemberRef::of(id::CastLibId(slotId.castLib()),
+                                               id::MemberId(slotId.member()));
+    }
+    if (defaultCastLib >= 1 && slotValue >= 1) {
+        return lingo::Datum::CastMemberRef::of(id::CastLibId(defaultCastLib), id::MemberId(slotValue));
+    }
+    return std::nullopt;
+}
+
 } // namespace
 
 CastLibManager::CastLibManager(std::shared_ptr<DirectorFile> file,
@@ -740,6 +761,35 @@ lingo::Datum CastLibManager::callMemberMethod(int castLibNumber,
     auto member = resolveMember(castLibNumber, memberNumber);
     if (!member) {
         return lingo::Datum::voidValue();
+    }
+
+    if (equalsIgnoreCase(methodName, "duplicate") && !args.empty()) {
+        const auto targetRef = duplicateTargetRefFromArg(args.front(), castLibNumber);
+        if (targetRef.has_value()) {
+            const int targetCastLibNumber = targetRef->castLib > 0 ? targetRef->castLib : castLibNumber;
+            auto targetMember = resolveMember(targetCastLibNumber, targetRef->memberNum());
+            if (!targetMember) {
+                return lingo::Datum::voidValue();
+            }
+            if (member->isPalette() && targetMember->isPalette()) {
+                auto receiverPalette = member->paletteData();
+                if (!receiverPalette && !member->isRuntimeDynamic()) {
+                    receiverPalette = resolvePaletteByMember(castLibNumber, memberNumber);
+                }
+                if (receiverPalette) {
+                    targetMember->setPaletteData(receiverPalette);
+                    return args.front();
+                }
+                auto argumentPalette = targetMember->paletteData();
+                if (!argumentPalette && !targetMember->isRuntimeDynamic()) {
+                    argumentPalette = resolvePaletteByMember(targetCastLibNumber, targetRef->memberNum());
+                }
+                if (argumentPalette) {
+                    member->setPaletteData(argumentPalette);
+                    return lingo::Datum::castMemberRef(id::CastLibId(castLibNumber), id::MemberId(memberNumber));
+                }
+            }
+        }
     }
 
     if (equalsIgnoreCase(methodName, "getProp")) {

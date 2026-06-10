@@ -12814,6 +12814,44 @@ void testCastLibManagerFoundation() {
                                   "media",
                                   Datum::castMemberRef(CastLibId(1), MemberId(10000))));
 
+    const auto duplicatePaletteMember = manager.createMember(1, "palette");
+    const auto* duplicatePaletteRef = duplicatePaletteMember.asCastMemberRef();
+    assert(duplicatePaletteRef != nullptr);
+    assert(manager.setMemberProp(1,
+                                 duplicatePaletteRef->memberNum(),
+                                 "name",
+                                 Datum::of(std::string("Runtime Palette Duplicate"))));
+    const auto duplicateTargetRef = Datum::castMemberRef(CastLibId(1), MemberId(duplicatePaletteRef->memberNum()));
+    assert(manager.callMemberMethod(1, 10000, "duplicate", {duplicateTargetRef}) == duplicateTargetRef);
+    assert(manager.resolvePaletteByMember(1, duplicatePaletteRef->memberNum()) == sourceRuntimePalette);
+    assert(manager.resolvePaletteByName("Runtime Palette Duplicate") == sourceRuntimePalette);
+
+    const auto encodedDuplicatePaletteMember = manager.createMember(1, "palette");
+    const auto* encodedDuplicatePaletteRef = encodedDuplicatePaletteMember.asCastMemberRef();
+    assert(encodedDuplicatePaletteRef != nullptr);
+    const auto encodedTargetSlot = Datum::of(SlotId::of(1, encodedDuplicatePaletteRef->memberNum()).value());
+    assert(manager.callMemberMethod(1, 10000, "duplicate", {encodedTargetSlot}).intValue() ==
+           encodedTargetSlot.intValue());
+    assert(manager.resolvePaletteByMember(1, encodedDuplicatePaletteRef->memberNum()) == sourceRuntimePalette);
+
+    const auto rawDuplicatePaletteMember = manager.createMember(1, "palette");
+    const auto* rawDuplicatePaletteRef = rawDuplicatePaletteMember.asCastMemberRef();
+    assert(rawDuplicatePaletteRef != nullptr);
+    const auto rawTargetMember = Datum::of(rawDuplicatePaletteRef->memberNum());
+    assert(manager.callMemberMethod(1, 10000, "duplicate", {rawTargetMember}).intValue() ==
+           rawTargetMember.intValue());
+    assert(manager.resolvePaletteByMember(1, rawDuplicatePaletteRef->memberNum()) == sourceRuntimePalette);
+
+    const auto emptyDuplicatePaletteMember = manager.createMember(1, "palette");
+    const auto* emptyDuplicatePaletteRef = emptyDuplicatePaletteMember.asCastMemberRef();
+    assert(emptyDuplicatePaletteRef != nullptr);
+    const auto emptyReceiverRef = Datum::castMemberRef(CastLibId(1), MemberId(emptyDuplicatePaletteRef->memberNum()));
+    assert(manager.callMemberMethod(1,
+                                    emptyDuplicatePaletteRef->memberNum(),
+                                    "duplicate",
+                                    {Datum::castMemberRef(CastLibId(1), MemberId(10000))}) == emptyReceiverRef);
+    assert(manager.resolvePaletteByMember(1, emptyDuplicatePaletteRef->memberNum()) == sourceRuntimePalette);
+
     std::vector<std::uint8_t> importedImage{
         'L', 'S', 'W', 'I',
         0, 0, 0, 2,
