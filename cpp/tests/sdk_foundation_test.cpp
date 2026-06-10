@@ -4738,6 +4738,28 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(!runObjCall(119, {registryInstance, Datum::of(std::string("missing"))}).boolValue());
     assert(runObjCall(120, {registryInstance, Datum::of(std::string("missing"))}).isVoid());
     assert(runObjCall(121, {registryInstance, Datum::of(std::string("memberalias.index")), Datum::of(11)}).intValue() == 0);
+    auto staleRegistry = Datum::propList();
+    staleRegistry.propListValue().put(Datum::of(std::string("scratch")), Datum::of(SlotId::of(11, 7).value()));
+    staleRegistry.propListValue().put(Datum::of(std::string("scratch_mirror")), Datum::of(-SlotId::of(11, 7).value()));
+    auto staleRegistryInstance = Datum::scriptInstance("staleRegistry");
+    staleRegistryInstance.scriptInstanceValue().setProperty("pAllMemNumList", staleRegistry);
+    builtinContext.registryVisibleMemberResolver = [](int, int) {
+        return false;
+    };
+    assert(runObjCall(118, {staleRegistryInstance, Datum::of(std::string("scratch"))}).intValue() == 0);
+    assert(staleRegistryInstance.scriptInstanceValue()
+               .getProperty("pAllMemNumList")
+               .propListValue()
+               .get(Datum::of(std::string("scratch")))
+               .isVoid());
+    assert(!runObjCall(119, {staleRegistryInstance, Datum::of(std::string("scratch_mirror"))}).boolValue());
+    assert(staleRegistryInstance.scriptInstanceValue()
+               .getProperty("pAllMemNumList")
+               .propListValue()
+               .get(Datum::of(std::string("scratch_mirror")))
+               .isVoid());
+    builtinContext.registryVisibleMemberResolver = {};
+
     auto aliasRegistryInstance = Datum::scriptInstance("aliasRegistry");
     aliasRegistryInstance.scriptInstanceValue().setProperty("pAllMemNumList", Datum::propList());
     builtinContext.fieldResolver = [](const Datum& identifier, int castLib) {

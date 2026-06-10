@@ -2221,7 +2221,11 @@ std::optional<int> scriptInstanceRegisteredMemberSlot(Datum::ScriptInstanceRef& 
     }
     const Datum registered = getPropListKey(registry.propListValue(), memberName);
     if (!registered.isVoid()) {
-        return toIntLikeJava(registered);
+        const int registeredSlot = toIntLikeJava(registered);
+        if (isRegisteredRegistrySlotLive(builtinContext, registeredSlot)) {
+            return registeredSlot;
+        }
+        removePropListKey(registry.propListValue(), memberName);
     }
 
     const int resolvedSlot = resolveScriptInstanceMemberSlotByName(
