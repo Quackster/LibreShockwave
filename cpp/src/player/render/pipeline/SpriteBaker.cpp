@@ -411,6 +411,9 @@ std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeText(const RenderSprite& 
             return baked;
         }
     }
+    if (auto dynamic = bakeDynamicText(sprite)) {
+        return dynamic;
+    }
     return bakeFileBackedText(sprite);
 }
 
@@ -445,6 +448,46 @@ std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeFilmLoop(const RenderSpri
 
     return std::make_shared<bitmap::Bitmap>(
         InkProcessor::applyInk(*loop, sprite.inkMode(), sprite.backColor(), false, loop->imagePalette().get()));
+}
+
+std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeDynamicText(const RenderSprite& sprite) {
+    const auto member = sprite.dynamicMember();
+    if (member == nullptr || !member->hasDynamicText() || textRenderer_ == nullptr) {
+        return nullptr;
+    }
+
+    const int width = sprite.width() > 0 ? sprite.width() : 200;
+    const int height = sprite.height() > 0 ? sprite.height() : 20;
+    const int bgColor = isTransparentTextInk(sprite) ? 0 : argbRgb(sprite.backColor());
+
+    auto textImage = textRenderer_->renderText(member->textContent(),
+                                               width,
+                                               height,
+                                               "Arial",
+                                               12,
+                                               "plain",
+                                               "left",
+                                               static_cast<int>(0xFF000000U),
+                                               bgColor,
+                                               false,
+                                               false,
+                                               0,
+                                               0);
+    if (textImage == nullptr) {
+        return nullptr;
+    }
+
+    if (((static_cast<std::uint32_t>(bgColor) >> 24U) & 0xFFU) < 0xFFU || textImage->hasTransparentPixels()) {
+        textImage->setNativeAlpha(true);
+    }
+    if (isTransparentTextInk(sprite)) {
+        return textImage;
+    }
+    if (InkProcessor::shouldProcessInk(sprite.inkMode())) {
+        return std::make_shared<bitmap::Bitmap>(
+            InkProcessor::applyInk(*textImage, sprite.inkMode(), sprite.backColor(), false, nullptr));
+    }
+    return textImage;
 }
 
 std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeFileBackedText(const RenderSprite& sprite) {

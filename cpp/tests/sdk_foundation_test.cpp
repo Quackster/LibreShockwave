@@ -8367,6 +8367,50 @@ void testSpriteBakerFoundation() {
     assert(bakedFileText.height() == 3);
     assert(bakedFileText.bakedBitmap()->getPixel(6, 2) == 0xFFABCDEFU);
 
+    RecordingSpriteBakerTextRenderer dynamicTextRenderer;
+    SpriteBaker dynamicTextBaker;
+    dynamicTextBaker.setTextRenderer(&dynamicTextRenderer);
+    auto dynamicTextMember = std::make_shared<CastMember>(1, 10050, MemberType::Text);
+    dynamicTextMember->setDynamicText("Runtime text");
+    RenderSprite dynamicTextSprite(14,
+                                   0,
+                                   0,
+                                   9,
+                                   4,
+                                   0,
+                                   true,
+                                   SpriteType::Text,
+                                   nullptr,
+                                   dynamicTextMember,
+                                   0x445566,
+                                   0x112233,
+                                   true,
+                                   true,
+                                   libreshockwave::id::code(InkMode::BACKGROUND_TRANSPARENT),
+                                   100,
+                                   false,
+                                   false,
+                                   nullptr,
+                                   false);
+    auto bakedDynamicText = dynamicTextBaker.bake(dynamicTextSprite);
+    assert(dynamicTextRenderer.lastText == "Runtime text");
+    assert(dynamicTextRenderer.lastWidth == 9);
+    assert(dynamicTextRenderer.lastHeight == 4);
+    assert(dynamicTextRenderer.lastFontName == "Arial");
+    assert(dynamicTextRenderer.lastFontSize == 12);
+    assert(dynamicTextRenderer.lastFontStyle == "plain");
+    assert(dynamicTextRenderer.lastAlignment == "left");
+    assert(dynamicTextRenderer.lastTextColor == static_cast<int>(0xFF000000U));
+    assert(dynamicTextRenderer.lastBgColor == 0);
+    assert(!dynamicTextRenderer.lastWordWrap);
+    assert(!dynamicTextRenderer.lastAntialias);
+    assert(dynamicTextRenderer.lastFixedLineSpace == 0);
+    assert(dynamicTextRenderer.lastTopSpacing == 0);
+    assert(bakedDynamicText.width() == 9);
+    assert(bakedDynamicText.height() == 4);
+    assert(bakedDynamicText.bakedBitmap()->isNativeAlpha());
+    assert(bakedDynamicText.bakedBitmap()->getPixel(8, 3) == 0xFFABCDEFU);
+
     std::vector<std::uint8_t> xmedKeyData;
     appendI16(xmedKeyData, 12);
     appendI16(xmedKeyData, 12);
