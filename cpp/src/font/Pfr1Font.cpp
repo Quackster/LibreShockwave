@@ -93,9 +93,33 @@ int sign8(int value) {
     return (value & 0x80) != 0 ? value | ~0xFF : value;
 }
 
+constexpr std::uint32_t CURVE_TABLE_9[16] = {
+    0x0451, 0x0452, 0x0461, 0x0462, 0x0491, 0x0492, 0x04A1, 0x04A2,
+    0x0851, 0x0852, 0x0861, 0x0862, 0x0891, 0x0892, 0x08A1, 0x08A2,
+};
+
+constexpr std::uint32_t CURVE_TABLE_10[16] = {
+    0x0154, 0x0158, 0x0164, 0x0168, 0x0194, 0x0198, 0x01A4, 0x01A8,
+    0x0254, 0x0258, 0x0264, 0x0268, 0x0294, 0x0298, 0x02A4, 0x02A8,
+};
+
+constexpr std::uint32_t CURVE_TABLE_13[16] = {
+    0x0FFF, 0x03AA, 0x0CAA, 0x0AA3, 0x0AAC, 0x0AAA, 0x02AA, 0x08AA,
+    0x0AA2, 0x0AA8, 0x00AA, 0x0555, 0x0155, 0x0455, 0x0551, 0x0554,
+};
+
+constexpr std::uint32_t CURVE_TABLE_14A[8] = {1, 2, 4, 5, 6, 8, 9, 10};
+constexpr std::uint32_t CURVE_TABLE_14B[4] = {5, 6, 9, 10};
+
 struct ByteRead {
     int value = 0;
     int pos = 0;
+};
+
+struct NibbleRead {
+    int value = 0;
+    int pos = 0;
+    bool nibbleHigh = false;
 };
 
 struct CoordRead {
@@ -137,6 +161,20 @@ ByteRead readByteAligned(const std::vector<std::uint8_t>& data, int pos, bool ni
         return {(lo << 4) | hi, pos};
     }
     return {data[static_cast<std::size_t>(pos)] & 0xFF, pos + 1};
+}
+
+NibbleRead readNibble(const std::vector<std::uint8_t>& data, int pos, bool nibbleHigh) {
+    if (pos >= static_cast<int>(data.size())) {
+        return {-1, pos, nibbleHigh};
+    }
+
+    nibbleHigh = !nibbleHigh;
+    if (nibbleHigh) {
+        return {(data[static_cast<std::size_t>(pos)] >> 4) & 0x0F, pos, nibbleHigh};
+    }
+
+    const int value = data[static_cast<std::size_t>(pos)] & 0x0F;
+    return {value, pos + 1, nibbleHigh};
 }
 
 int orusLookup(const std::vector<int>& controlValues, int current, int direction) {
@@ -394,35 +432,46 @@ CoordRead readEncodedCoordValue(const std::vector<std::uint8_t>& data,
     }
 }
 
-CoordPairRead readEncodedCoords(const std::vector<std::uint8_t>& data,
-                                int pos,
-                                int encoding,
-                                int currentX,
-                                int currentY,
-                                bool nibbleHigh,
-                                const std::vector<int>& controlX,
-                                const std::vector<int>& controlY) {
+CoordPairRead readEncodedCoordsInto(const std::vector<std::uint8_t>& data,
+                                    int pos,
+                                    int encoding,
+                                    int& currentX,
+                                    int& currentY,
+                                    int& previousX,
+                                    int& previousY,
+                                    int outX,
+                                    int outY,
+                                    bool nibbleHigh,
+                                    const std::vector<int>& controlX,
+                                    const std::vector<int>& controlY) {
     const int xEncoding = encoding & 3;
     const int yEncoding = (encoding >> 2) & 3;
 
-    int x = currentX;
-    int y = currentY;
     if (xEncoding != 0) {
         const auto read = readEncodedCoordValue(data, pos, xEncoding, nibbleHigh, currentX, controlX);
-        x = read.value;
+        outX = read.value;
         pos = read.pos;
         nibbleHigh = read.nibbleHigh;
     }
+    previousX = currentX;
+    currentX = outX;
 
-    currentX = x;
     if (yEncoding != 0) {
         const auto read = readEncodedCoordValue(data, pos, yEncoding, nibbleHigh, currentY, controlY);
-        y = read.value;
+        outY = read.value;
         pos = read.pos;
         nibbleHigh = read.nibbleHigh;
     }
+    previousY = currentY;
+    currentY = outY;
 
-    return {currentX, y, pos, nibbleHigh};
+    return {outX, outY, pos, nibbleHigh};
+}
+
+std::uint32_t calculateCurveEncoding14(std::uint32_t byte) {
+    const std::uint32_t value =
+        CURVE_TABLE_14B[(byte >> 3U) & 0x03U] + 16U * CURVE_TABLE_14A[(byte >> 5U) & 0x07U];
+    return CURVE_TABLE_14A[byte & 0x07U] + value * 16U;
 }
 
 void parseNibbleCommands(const std::vector<std::uint8_t>& data,
@@ -436,6 +485,8 @@ void parseNibbleCommands(const std::vector<std::uint8_t>& data,
     bool nibbleHigh = false;
     int currentX = 0;
     int currentY = 0;
+    int previousX = 0;
+    int previousY = 0;
     Pfr1Font::Contour currentContour;
     bool firstIteration = true;
 
@@ -466,18 +517,16 @@ void parseNibbleCommands(const std::vector<std::uint8_t>& data,
 
         switch (command) {
             case 0: {
-                nibbleHigh = !nibbleHigh;
-                if (pos >= static_cast<int>(data.size())) {
+                const auto nibbleRead = readNibble(data, pos, nibbleHigh);
+                if (nibbleRead.value < 0) {
                     break;
                 }
-                int nibble = 0;
-                if (nibbleHigh) {
-                    nibble = (data[static_cast<std::size_t>(pos)] >> 4) & 0x0F;
-                } else {
-                    nibble = data[static_cast<std::size_t>(pos)] & 0x0F;
-                    ++pos;
-                }
+                const int nibble = nibbleRead.value;
+                pos = nibbleRead.pos;
+                nibbleHigh = nibbleRead.nibbleHigh;
                 const int direction = (nibble & 4) != 0 ? (nibble & 7) - 8 : (nibble & 7) + 1;
+                previousX = beforeX;
+                previousY = beforeY;
                 if ((nibble & 8) != 0) {
                     currentY = orusLookup(controlY, currentY, direction);
                 } else {
@@ -489,6 +538,8 @@ void parseNibbleCommands(const std::vector<std::uint8_t>& data,
             case 1: {
                 const auto read = readByteAligned(data, pos, nibbleHigh);
                 pos = read.pos;
+                previousX = beforeX;
+                previousY = beforeY;
                 currentX = sign16(currentX + sign8(read.value));
                 currentContour.lineTo(static_cast<float>(currentX), static_cast<float>(currentY));
                 break;
@@ -496,6 +547,8 @@ void parseNibbleCommands(const std::vector<std::uint8_t>& data,
             case 2: {
                 const auto read = readByteAligned(data, pos, nibbleHigh);
                 pos = read.pos;
+                previousX = beforeX;
+                previousY = beforeY;
                 currentY = sign16(currentY + sign8(read.value));
                 currentContour.lineTo(static_cast<float>(currentX), static_cast<float>(currentY));
                 break;
@@ -527,26 +580,31 @@ void parseNibbleCommands(const std::vector<std::uint8_t>& data,
                 } else {
                     currentY += sign16(delta);
                 }
+                previousX = beforeX;
+                previousY = beforeY;
                 currentContour.lineTo(static_cast<float>(currentX), static_cast<float>(currentY));
                 break;
             }
             case 5:
             case 6: {
-                nibbleHigh = !nibbleHigh;
-                if (pos >= static_cast<int>(data.size())) {
+                const auto encodingRead = readNibble(data, pos, nibbleHigh);
+                if (encodingRead.value < 0) {
                     break;
                 }
-                int encoding = 0;
-                if (nibbleHigh) {
-                    encoding = (data[static_cast<std::size_t>(pos)] >> 4) & 0x0F;
-                } else {
-                    encoding = data[static_cast<std::size_t>(pos)] & 0x0F;
-                    ++pos;
-                }
-                const auto read = readEncodedCoords(
-                    data, pos, encoding, currentX, currentY, nibbleHigh, controlX, controlY);
-                currentX = read.x;
-                currentY = read.y;
+                pos = encodingRead.pos;
+                nibbleHigh = encodingRead.nibbleHigh;
+                const auto read = readEncodedCoordsInto(data,
+                                                        pos,
+                                                        encodingRead.value,
+                                                        currentX,
+                                                        currentY,
+                                                        previousX,
+                                                        previousY,
+                                                        currentX,
+                                                        currentY,
+                                                        nibbleHigh,
+                                                        controlX,
+                                                        controlY);
                 pos = read.pos;
                 nibbleHigh = read.nibbleHigh;
 
@@ -563,26 +621,285 @@ void parseNibbleCommands(const std::vector<std::uint8_t>& data,
             }
             default: {
                 if (command >= 7) {
-                    for (int i = 0; i < 3; ++i) {
-                        nibbleHigh = !nibbleHigh;
-                        if (pos >= static_cast<int>(data.size())) {
+                    std::uint32_t encoding = 0;
+                    int path = 0;
+                    switch (command) {
+                        case 7:
+                            encoding = 2210U;
+                            path = 49;
+                            break;
+                        case 8:
+                            encoding = 680U;
+                            path = 54;
+                            break;
+                        case 9: {
+                            const auto nibbleRead = readNibble(data, pos, nibbleHigh);
+                            if (nibbleRead.value < 0) {
+                                break;
+                            }
+                            pos = nibbleRead.pos;
+                            nibbleHigh = nibbleRead.nibbleHigh;
+                            encoding = CURVE_TABLE_9[static_cast<std::size_t>(nibbleRead.value & 0x0F)];
+                            path = 49;
                             break;
                         }
-                        int encoding = 0;
-                        if (nibbleHigh) {
-                            encoding = (data[static_cast<std::size_t>(pos)] >> 4) & 0x0F;
-                        } else {
-                            encoding = data[static_cast<std::size_t>(pos)] & 0x0F;
-                            ++pos;
+                        case 10: {
+                            const auto nibbleRead = readNibble(data, pos, nibbleHigh);
+                            if (nibbleRead.value < 0) {
+                                break;
+                            }
+                            pos = nibbleRead.pos;
+                            nibbleHigh = nibbleRead.nibbleHigh;
+                            encoding = CURVE_TABLE_10[static_cast<std::size_t>(nibbleRead.value & 0x0F)];
+                            path = 54;
+                            break;
                         }
-                        const auto read = readEncodedCoords(
-                            data, pos, encoding, currentX, currentY, nibbleHigh, controlX, controlY);
-                        currentX = read.x;
-                        currentY = read.y;
+                        case 11: {
+                            const auto byteRead = readByteAligned(data, pos, nibbleHigh);
+                            pos = byteRead.pos;
+                            const auto byte = static_cast<std::uint32_t>(byteRead.value);
+                            encoding = (byte & 3U) + 4U * ((byte & 0x3CU) + 4U * (byte & 0xC0U));
+                            path = 49;
+                            break;
+                        }
+                        case 12: {
+                            const auto byteRead = readByteAligned(data, pos, nibbleHigh);
+                            pos = byteRead.pos;
+                            encoding = static_cast<std::uint32_t>(byteRead.value) * 4U;
+                            path = 54;
+                            break;
+                        }
+                        case 13: {
+                            const auto nibbleRead = readNibble(data, pos, nibbleHigh);
+                            if (nibbleRead.value < 0) {
+                                break;
+                            }
+                            pos = nibbleRead.pos;
+                            nibbleHigh = nibbleRead.nibbleHigh;
+                            encoding = CURVE_TABLE_13[static_cast<std::size_t>(nibbleRead.value & 0x0F)];
+                            path = 70;
+                            break;
+                        }
+                        case 14: {
+                            const auto byteRead = readByteAligned(data, pos, nibbleHigh);
+                            pos = byteRead.pos;
+                            encoding = calculateCurveEncoding14(static_cast<std::uint32_t>(byteRead.value));
+                            path = 70;
+                            break;
+                        }
+                        case 15: {
+                            const auto nibbleRead = readNibble(data, pos, nibbleHigh);
+                            if (nibbleRead.value < 0) {
+                                break;
+                            }
+                            pos = nibbleRead.pos;
+                            nibbleHigh = nibbleRead.nibbleHigh;
+                            const auto byteRead = readByteAligned(data, pos, nibbleHigh);
+                            pos = byteRead.pos;
+                            encoding = static_cast<std::uint32_t>(byteRead.value) |
+                                       (static_cast<std::uint32_t>(nibbleRead.value) << 8U);
+                            path = 70;
+                            break;
+                        }
+                        default:
+                            break;
+                    }
+
+                    if (path == 0) {
+                        break;
+                    }
+
+                    const int startX = beforeX;
+                    const int startY = beforeY;
+                    int control1X = currentX;
+                    int control1Y = currentY;
+                    int control2X = 0;
+                    int control2Y = 0;
+                    int endX = 0;
+                    int endY = 0;
+
+                    if (path == 49) {
+                        auto read = readEncodedCoordsInto(data,
+                                                          pos,
+                                                          static_cast<int>(encoding & 0x0FU),
+                                                          currentX,
+                                                          currentY,
+                                                          previousX,
+                                                          previousY,
+                                                          control1X,
+                                                          control1Y,
+                                                          nibbleHigh,
+                                                          controlX,
+                                                          controlY);
+                        control1X = read.x;
+                        control1Y = read.y;
+                        pos = read.pos;
+                        nibbleHigh = read.nibbleHigh;
+
+                        control2X = orusLookup(controlX, currentX, 0);
+                        control2Y = control1Y;
+                        read = readEncodedCoordsInto(data,
+                                                     pos,
+                                                     static_cast<int>((encoding >> 4U) & 0x0FU),
+                                                     currentX,
+                                                     currentY,
+                                                     previousX,
+                                                     previousY,
+                                                     control2X,
+                                                     control2Y,
+                                                     nibbleHigh,
+                                                     controlX,
+                                                     controlY);
+                        control2X = read.x;
+                        control2Y = read.y;
+                        pos = read.pos;
+                        nibbleHigh = read.nibbleHigh;
+
+                        endX = control2X;
+                        endY = orusLookup(controlY, currentY, 0);
+                        read = readEncodedCoordsInto(data,
+                                                     pos,
+                                                     static_cast<int>((encoding >> 8U) & 0x0FU),
+                                                     currentX,
+                                                     currentY,
+                                                     previousX,
+                                                     previousY,
+                                                     endX,
+                                                     endY,
+                                                     nibbleHigh,
+                                                     controlX,
+                                                     controlY);
+                        endX = read.x;
+                        endY = read.y;
+                        pos = read.pos;
+                        nibbleHigh = read.nibbleHigh;
+                    } else if (path == 54) {
+                        auto read = readEncodedCoordsInto(data,
+                                                          pos,
+                                                          static_cast<int>(encoding & 0x0FU),
+                                                          currentX,
+                                                          currentY,
+                                                          previousX,
+                                                          previousY,
+                                                          control1X,
+                                                          control1Y,
+                                                          nibbleHigh,
+                                                          controlX,
+                                                          controlY);
+                        control1X = read.x;
+                        control1Y = read.y;
+                        pos = read.pos;
+                        nibbleHigh = read.nibbleHigh;
+
+                        control2X = control1X;
+                        control2Y = orusLookup(controlY, currentY, 0);
+                        read = readEncodedCoordsInto(data,
+                                                     pos,
+                                                     static_cast<int>((encoding >> 4U) & 0x0FU),
+                                                     currentX,
+                                                     currentY,
+                                                     previousX,
+                                                     previousY,
+                                                     control2X,
+                                                     control2Y,
+                                                     nibbleHigh,
+                                                     controlX,
+                                                     controlY);
+                        control2X = read.x;
+                        control2Y = read.y;
+                        pos = read.pos;
+                        nibbleHigh = read.nibbleHigh;
+
+                        endX = orusLookup(controlX, currentX, 0);
+                        endY = control2Y;
+                        read = readEncodedCoordsInto(data,
+                                                     pos,
+                                                     static_cast<int>((encoding >> 8U) & 0x0FU),
+                                                     currentX,
+                                                     currentY,
+                                                     previousX,
+                                                     previousY,
+                                                     endX,
+                                                     endY,
+                                                     nibbleHigh,
+                                                     controlX,
+                                                     controlY);
+                        endX = read.x;
+                        endY = read.y;
+                        pos = read.pos;
+                        nibbleHigh = read.nibbleHigh;
+                    } else {
+                        control1X = sign16(currentX + (currentX - previousX));
+                        control1Y = sign16(currentY + (currentY - previousY));
+                        auto read = readEncodedCoordsInto(data,
+                                                          pos,
+                                                          static_cast<int>(encoding & 0x0FU),
+                                                          currentX,
+                                                          currentY,
+                                                          previousX,
+                                                          previousY,
+                                                          control1X,
+                                                          control1Y,
+                                                          nibbleHigh,
+                                                          controlX,
+                                                          controlY);
+                        control1X = read.x;
+                        control1Y = read.y;
+                        pos = read.pos;
+                        nibbleHigh = read.nibbleHigh;
+
+                        control2X = control1X;
+                        control2Y = control1Y;
+                        read = readEncodedCoordsInto(data,
+                                                     pos,
+                                                     static_cast<int>((encoding >> 4U) & 0x0FU),
+                                                     currentX,
+                                                     currentY,
+                                                     previousX,
+                                                     previousY,
+                                                     control2X,
+                                                     control2Y,
+                                                     nibbleHigh,
+                                                     controlX,
+                                                     controlY);
+                        control2X = read.x;
+                        control2Y = read.y;
+                        pos = read.pos;
+                        nibbleHigh = read.nibbleHigh;
+
+                        endX = control2X;
+                        endY = control2Y;
+                        read = readEncodedCoordsInto(data,
+                                                     pos,
+                                                     static_cast<int>((encoding >> 8U) & 0x0FU),
+                                                     currentX,
+                                                     currentY,
+                                                     previousX,
+                                                     previousY,
+                                                     endX,
+                                                     endY,
+                                                     nibbleHigh,
+                                                     controlX,
+                                                     controlY);
+                        endX = read.x;
+                        endY = read.y;
                         pos = read.pos;
                         nibbleHigh = read.nibbleHigh;
                     }
-                    currentContour.lineTo(static_cast<float>(currentX), static_cast<float>(currentY));
+
+                    if (currentContour.commands.empty()) {
+                        currentContour.moveTo(static_cast<float>(startX), static_cast<float>(startY));
+                    }
+                    currentContour.curveTo(static_cast<float>(control1X),
+                                           static_cast<float>(control1Y),
+                                           static_cast<float>(control2X),
+                                           static_cast<float>(control2Y),
+                                           static_cast<float>(endX),
+                                           static_cast<float>(endY));
+                    previousX = control2X;
+                    previousY = control2Y;
+                    currentX = endX;
+                    currentY = endY;
                 }
                 break;
             }

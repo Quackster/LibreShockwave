@@ -425,7 +425,7 @@ void testPfr1FontParserAndRegistry() {
         data.push_back(static_cast<std::uint8_t>(value & 0xFF));
     };
 
-    std::vector<std::uint8_t> data(147, 0);
+    std::vector<std::uint8_t> data(153, 0);
     data[0] = 'P';
     data[1] = 'F';
     data[2] = 'R';
@@ -444,7 +444,7 @@ void testPfr1FontParserAndRegistry() {
     putU24(data, pos, 54); pos += 3;    // physical font section size
     putU24(data, pos, 80); pos += 3;    // physical font section offset
     putU16(data, pos, 0); pos += 2;     // GPS max size
-    putU24(data, pos, 7); pos += 3;     // GPS size
+    putU24(data, pos, 13); pos += 3;    // GPS size
     putU24(data, pos, 140); pos += 3;   // GPS offset
     data[static_cast<std::size_t>(pos++)] = 0; // maxBlueValues
     data[static_cast<std::size_t>(pos++)] = 0; // maxXOrus
@@ -457,7 +457,7 @@ void testPfr1FontParserAndRegistry() {
     putU16(data, pos, 1); pos += 2;     // n physical fonts
     data[static_cast<std::size_t>(pos++)] = 0;
     data[static_cast<std::size_t>(pos++)] = 0;
-    putU16(data, pos, 3);               // max chars
+    putU16(data, pos, 4);               // max chars
 
     putU16(data, 60, 1);
     putU24(data, 62, 256);
@@ -485,7 +485,7 @@ void testPfr1FontParserAndRegistry() {
     phys.push_back(0);                  // blue scale
     appendU16(phys, 3);                 // stdVW
     appendU16(phys, 4);                 // stdHW
-    appendU16(phys, 3);                 // n characters
+    appendU16(phys, 4);                 // n characters
     phys.push_back(0x0D);               // char delta u8, absolute set width, gps size u8, sequential offset
     phys.push_back(65);
     appendU16(phys, 9);
@@ -495,6 +495,8 @@ void testPfr1FontParserAndRegistry() {
     phys.push_back(4);
     phys.push_back(0x00);               // next char D, same width, gps size u8, sequential offset
     phys.push_back(3);
+    phys.push_back(0x00);               // next char E, same width, gps size u8, sequential offset
+    phys.push_back(6);
     std::copy(phys.begin(), phys.end(), data.begin() + 80);
     data[140] = 0x00;                  // simple glyph flags, no control points
     data[141] = 0x05;                  // implicit moveTo(0,0), then lineTo encoded coords
@@ -503,6 +505,12 @@ void testPfr1FontParserAndRegistry() {
     data[144] = 0x81;                  // compound glyph, one component
     data[145] = 0x00;                  // identity transforms, relative subglyph offset format
     data[146] = 0x04;                  // reference previous 4-byte simple glyph
+    data[147] = 0x00;                  // simple glyph flags, no control points
+    data[148] = 0x07;                  // implicit moveTo(0,0), then curve opcode 7
+    data[149] = 20;                    // curve control 1 x byte delta
+    data[150] = 20;                    // curve control 2 x byte delta
+    data[151] = 30;                    // curve control 2 y byte delta
+    data[152] = 10;                    // curve endpoint y byte delta
 
     auto font = Pfr1Font::parse(data);
     assert(font != nullptr);
@@ -522,8 +530,8 @@ void testPfr1FontParserAndRegistry() {
     assert(font->fontMatrix[0] == 256);
     assert(font->fontMatrix[3] == -256);
     assert(font->gpsOffset == 140);
-    assert(font->gpsSize == 7);
-    assert(font->charRecords.size() == 3);
+    assert(font->gpsSize == 13);
+    assert(font->charRecords.size() == 4);
     assert(font->charRecords[0].charCode == 'A');
     assert(font->charRecords[0].setWidth == 9);
     assert(font->charRecords[0].gpsSize == 0);
@@ -534,6 +542,10 @@ void testPfr1FontParserAndRegistry() {
     assert(font->charRecords[2].setWidth == 9);
     assert(font->charRecords[2].gpsSize == 3);
     assert(font->charRecords[2].gpsOffset == 4);
+    assert(font->charRecords[3].charCode == 'E');
+    assert(font->charRecords[3].setWidth == 9);
+    assert(font->charRecords[3].gpsSize == 6);
+    assert(font->charRecords[3].gpsOffset == 7);
     assert(font->glyphs.at('A').setWidth == 9.0F);
     const auto& cGlyph = font->glyphs.at('C');
     assert(cGlyph.contours.size() == 1);
@@ -555,6 +567,19 @@ void testPfr1FontParserAndRegistry() {
     assert(dGlyph.contours[0].commands[1].type == 1);
     assert(dGlyph.contours[0].commands[1].x == 3.0F);
     assert(dGlyph.contours[0].commands[1].y == 2.0F);
+    const auto& eGlyph = font->glyphs.at('E');
+    assert(eGlyph.contours.size() == 1);
+    assert(eGlyph.contours[0].commands.size() == 2);
+    assert(eGlyph.contours[0].commands[0].type == 0);
+    assert(eGlyph.contours[0].commands[0].x == 0.0F);
+    assert(eGlyph.contours[0].commands[0].y == 0.0F);
+    assert(eGlyph.contours[0].commands[1].type == 2);
+    assert(eGlyph.contours[0].commands[1].x1 == 20.0F);
+    assert(eGlyph.contours[0].commands[1].y1 == 0.0F);
+    assert(eGlyph.contours[0].commands[1].x2 == 40.0F);
+    assert(eGlyph.contours[0].commands[1].y2 == 30.0F);
+    assert(eGlyph.contours[0].commands[1].x == 40.0F);
+    assert(eGlyph.contours[0].commands[1].y == 40.0F);
 
     auto readU16At = [](const std::vector<std::uint8_t>& bytes, int offset) {
         return ((bytes[static_cast<std::size_t>(offset)] & 0xFF) << 8) |
@@ -604,17 +629,17 @@ void testPfr1FontParserAndRegistry() {
     const auto os2 = findTable(ttf, "OS/2");
     assert(head.length == 54);
     assert(hhea.length == 36);
-    assert(hmtx.length == 16);
+    assert(hmtx.length == 20);
     assert(maxp.length == 32);
-    assert(loca.length == 10);
+    assert(loca.length == 12);
     assert(glyf.length > 0);
     assert(name.length > 0);
     assert(cmap.length > 0);
     assert(post.length == 32);
     assert(os2.length > 0);
     assert(readU16At(ttf, head.offset + 18) == 1024);
-    assert(readU16At(ttf, hhea.offset + 34) == 4);
-    assert(readU16At(ttf, maxp.offset + 4) == 4);
+    assert(readU16At(ttf, hhea.offset + 34) == 5);
+    assert(readU16At(ttf, maxp.offset + 4) == 5);
     assert(readU16At(ttf, name.offset + 2) == 7);
     assert(readU16At(ttf, cmap.offset + 12) == 4);
     assert(readU16At(ttf, cmap.offset + 18) == 6);
@@ -626,6 +651,7 @@ void testPfr1FontParserAndRegistry() {
     assert(readU16At(ttf, loca.offset + 4) == 0);
     assert(readU16At(ttf, loca.offset + 6) > 0);
     assert(readU16At(ttf, loca.offset + 8) > readU16At(ttf, loca.offset + 6));
+    assert(readU16At(ttf, loca.offset + 10) > readU16At(ttf, loca.offset + 8));
 
     assert(Pfr1Font::parse({}) == nullptr);
     auto partial = data;

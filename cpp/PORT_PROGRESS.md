@@ -197,11 +197,11 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `font::BitmapFont` ports the Java bitmap-font grid container, advance widths, draw offsets, overflow glyph storage, ARGB glyph drawing, and Java-compatible alpha blending.
 - `font::BdfParser` ports BDF bitmap-font parsing into `BitmapFont` instances, including font metrics, glyph bounding boxes, BDF row bit placement, default widths, and extended overflow glyphs.
-- `font::Pfr1Font` ports PFR1 magic/header validation, logical font matrix parsing, physical-font metrics, FontID extra-item extraction, delta-encoded character records, simple outline nibble-command parsing, compound glyph component expansion, bitmap glyph payload extraction, uppercase-to-lowercase outline fallback, and lenient partial-parse behavior.
+- `font::Pfr1Font` ports PFR1 magic/header validation, logical font matrix parsing, physical-font metrics, FontID extra-item extraction, delta-encoded character records, simple outline nibble-command parsing including curve opcode control-point decoding, compound glyph component expansion, bitmap glyph payload extraction, uppercase-to-lowercase outline fallback, and lenient partial-parse behavior.
 - `font::BitmapFont::fromPfr1` ports Java's direct PFR bitmap-font rasterization path, including target-size scaling, matrix-aware outline scanline fill, overflow glyph cells, embedded bitmap-glyph copy, lowercase fallback cell copying, and PFR ascent/line-height metrics.
 - `font::Pfr1TtfConverter` ports the Java minimal TrueType table writer for parsed PFR1 outlines, including `cmap`, `glyf`, `head`, `hhea`, `hmtx`, `loca`, `maxp`, `name`, `OS/2`, and `post` table construction.
 - `player::cast::FontRegistry` ports prebuilt bitmap-font cache lookup, PFR1 font registration, converted PFR-to-TTF byte caching, direct PFR bitmap-font rasterization fallback/cache population, Director font aliases, canonical font-name normalization, and basic alias resolution for the future C++ simple text renderer path.
-- PFR1 curve-command fidelity, TTF rasterization, and bundled platform font families remain deferred to later font-rendering slices.
+- Renderer-side PFR curve flattening/anti-alias fidelity, TTF rasterization, and bundled platform font families remain deferred to later font-rendering slices.
 
 ### Sound Converter
 
@@ -821,7 +821,7 @@ Result:
 - File/path fallback utilities and script formatting utilities passed through the same CTest executable.
 - BitmapColorizer 32-bit, indexed, foreground-only, packed-index, and ink predicate tests passed through the same CTest executable.
 - PfrBitReader byte, signed, skip, alignment, bit-buffer, and partial-EOF tests passed through the same CTest executable.
-- BitmapFont glyph drawing, overflow metrics, BDF parsing, direct PFR outline/bitmap glyph rasterization, PFR1 metadata/character-record/simple/compound-outline parsing, PFR-to-TTF table generation/cache registration, and FontRegistry prebuilt-cache/PFR-registration/rasterization/alias behavior passed through the same CTest executable.
+- BitmapFont glyph drawing, overflow metrics, BDF parsing, direct PFR outline/bitmap glyph rasterization, PFR1 metadata/character-record/simple/compound/curve-outline parsing, PFR-to-TTF table generation/cache registration, and FontRegistry prebuilt-cache/PFR-registration/rasterization/alias behavior passed through the same CTest executable.
 - SoundConverter WAV layout, SoundChunk header stripping, signed/endianness conversion, MP3 extraction, IMA ADPCM, and duration tests passed through the same CTest executable.
 - CastMember bitmap, script, shape, dimension, type-check, raw chunk, and display string tests passed through the same CTest executable.
 - CastLib and CastLibManager lazy MCsL/CAS* initialization, member count/name lookup, source-prefixed lookup fallback, member metadata properties, registry filtering, builtin callback installation, external-cache keys, and pending external-load bookkeeping passed through the same CTest executable.
@@ -925,7 +925,7 @@ Result:
 ## Remaining Major Work
 
 - Higher-level media integration.
-- Remaining sound, PFR curve fidelity, full TTF font rasterization, text, score, and script chunk decoders.
+- Remaining sound, renderer-side PFR curve raster fidelity, full TTF font rasterization, text, score, and script chunk decoders.
 - Detailed W3D geometry/material decoding and rendering integration.
 - Lingo decompiler, VM runtime values, dispatchers, and builtins.
 - Player core, rendering pipeline, input, networking, audio, cast management, and debugging.
@@ -1141,4 +1141,4 @@ Result:
 - `3b15a1e5 Port C++ random seed trace parity`
 - `7c27afaf Port C++ VM value identifier fallback`
 - `1aafff66 Port C++ nested value identifier fallback`
-- Current checkpoint commit message: `Port C++ PFR bitmap rasterization`
+- Current checkpoint commit message: `Port C++ PFR curve decoding`
