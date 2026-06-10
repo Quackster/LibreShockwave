@@ -1653,7 +1653,8 @@ void testLingoDecompilerNodeFoundation() {
                                   "downLoopOps",
                                   "itemsList",
                                   "itemVar",
-                                  "inLoopOps"});
+                                  "inLoopOps",
+                                  "tellOps"});
     ScriptChunk::Handler bytecodeHandler{
         0,
         0,
@@ -2276,6 +2277,58 @@ void testLingoDecompilerNodeFoundation() {
     assert(inLoopMapping.lines[2].bytecodeOffset == 29);
     assert(inLoopMapping.lines[3].bytecodeOffset == -1);
     assert(inLoopMapping.lines[4].bytecodeOffset == -1);
+
+    ScriptChunk::Handler tellHandler{
+        31,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        {},
+        {4},
+        {
+            ScriptChunk::Instruction{0, Opcode::GET_GLOBAL, 0x49, 6},
+            ScriptChunk::Instruction{2, Opcode::START_TELL, 0x1C, 0},
+            ScriptChunk::Instruction{3, Opcode::PUSH_INT8, 0x41, 5},
+            ScriptChunk::Instruction{5, Opcode::SET_LOCAL, 0x52, 0},
+            ScriptChunk::Instruction{7, Opcode::END_TELL, 0x1D, 0},
+            ScriptChunk::Instruction{8, Opcode::RET, 0x01, 0}
+        },
+        {}
+    };
+    ScriptChunk tellScript(nullptr,
+                           ChunkId(512),
+                           ScriptChunkType::MovieScript,
+                           0,
+                           {tellHandler},
+                           {},
+                           {},
+                           {},
+                           {});
+    assert(decompiler.decompileHandler(tellScript.handlers().front(), tellScript, &scriptNames) ==
+           "on tellOps\n"
+           "  tell fieldRef\n"
+           "    localOne = 5\n\n"
+           "  end tell\n\n"
+           "end");
+    const auto tellMapping = decompiler.decompileHandlerWithMapping(tellScript.handlers().front(),
+                                                                    tellScript,
+                                                                    &scriptNames);
+    assert(tellMapping.toText() ==
+           "on tellOps\n"
+           "  tell fieldRef\n"
+           "    localOne = 5\n"
+           "  end tell\n"
+           "end\n");
+    assert(tellMapping.lines.size() == 5);
+    assert(tellMapping.lines[0].bytecodeOffset == -1);
+    assert(tellMapping.lines[1].bytecodeOffset == 2);
+    assert(tellMapping.lines[2].bytecodeOffset == 5);
+    assert(tellMapping.lines[3].bytecodeOffset == -1);
+    assert(tellMapping.lines[4].bytecodeOffset == -1);
 
     ScriptChunk::Handler nextLoopHandler{
         23,

@@ -629,6 +629,19 @@ void LingoDecompiler::translateInstruction(const chunks::ScriptChunk::Instructio
             break;
         }
 
+        case Opcode::START_TELL: {
+            auto tell = std::make_unique<TellStmtNode>(popNode());
+            tell->setBytecodeOffset(instruction.offset);
+            auto* nextBlock = &tell->block();
+            block.addChild(std::move(tell));
+            enterBlock(*nextBlock);
+            return;
+        }
+
+        case Opcode::END_TELL:
+            exitBlock();
+            return;
+
         case Opcode::PUSH_INT8:
         case Opcode::PUSH_INT16:
         case Opcode::PUSH_INT32:
