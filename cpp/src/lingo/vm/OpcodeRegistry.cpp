@@ -521,9 +521,22 @@ void putPropListProp(Datum::PropList& propList, std::string_view propName, Datum
     propList.properties().emplace_back(Datum::symbol(std::string(propName)), std::move(value));
 }
 
+std::vector<std::string> splitLines(std::string_view value);
+int countLines(std::string_view value);
+
 Datum getStringProp(std::string_view value, std::string_view propName) {
     if (equalsIgnoreCase(propName, "length")) {
         return Datum::of(static_cast<int>(value.size()));
+    }
+    if (equalsIgnoreCase(propName, "linecount")) {
+        return Datum::of(countLines(value));
+    }
+    if (equalsIgnoreCase(propName, "line")) {
+        std::vector<Datum> lines;
+        for (const auto& line : splitLines(value)) {
+            lines.push_back(Datum::of(line));
+        }
+        return Datum::list(std::move(lines));
     }
     if (equalsIgnoreCase(propName, "ilk")) {
         return Datum::symbol("string");
@@ -1656,6 +1669,18 @@ std::string deleteCharChunkRefValue(std::string_view value, int first, int last)
     }
     return std::string(value.substr(0, static_cast<std::size_t>(start))) +
            std::string(value.substr(static_cast<std::size_t>(end)));
+}
+
+std::string getCharChunkRefValue(std::string_view value, int first, int last) {
+    if (value.empty() || first < 1) {
+        return "";
+    }
+    const int start = std::max(0, first - 1);
+    const int end = std::max(start, std::min(static_cast<int>(value.size()), last));
+    if (start >= static_cast<int>(value.size()) || start >= end) {
+        return "";
+    }
+    return std::string(value.substr(static_cast<std::size_t>(start), static_cast<std::size_t>(end - start)));
 }
 
 int normalizeCharChunkIndex(int index, int length, bool before) {
@@ -3983,6 +4008,9 @@ Datum varRefObjectMethod(ExecutionContext& context,
         }
         const int start = toIntLikeJava(args[1]);
         const int end = args.size() >= 3 ? toIntLikeJava(args[2]) : start;
+        if (chunkType == StringChunkType::Char) {
+            return Datum::of(getCharChunkRefValue(toStringLikeJava(value), start, end));
+        }
         return Datum::of(resolveChunkRange(toStringLikeJava(value), chunkType, start, end, currentItemDelimiter(context)));
     }
     if (equalsIgnoreCase(methodName, "getPropRef")) {

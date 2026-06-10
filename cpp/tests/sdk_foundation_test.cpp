@@ -3648,6 +3648,12 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 126) {
             return std::string("ancestor");
         }
+        if (nameId == 127) {
+            return std::string("lineCount");
+        }
+        if (nameId == 128) {
+            return std::string("line");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.variableSetListener = [&variableTraces](std::string_view type,
@@ -4450,6 +4456,13 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runObjectPropertyGet(objectInstance, 50).intValue() == 21);
     assert(runObjectPropertyGet(Datum::list({Datum::of(4), Datum::of(5)}), 51).intValue() == 2);
     assert(runObjectPropertyGet(Datum::of(std::string("abcd")), 54).intValue() == 4);
+    assert(runObjectPropertyGet(Datum::of(std::string("right=a*\r\nleft=b")), 127).intValue() == 2);
+    const Datum objectFieldLines = runObjectPropertyGet(Datum::fieldText("right=a*\r\nleft=b", 11, 7), 128);
+    assert(objectFieldLines.listValue().count() == 2);
+    assert(objectFieldLines.listValue().getAt(1).stringValue() == "right=a*");
+    assert(objectFieldLines.listValue().getAt(2).stringValue() == "left=b");
+    assert(runObjectPropertyGet(Datum::fieldText("", 11, 7), 127).intValue() == 1);
+    assert(runObjectPropertyGet(Datum::fieldText("", 11, 7), 128).listValue().count() == 0);
     assert(runObjectPropertyGet(Datum::intPoint(9, 8), 52).intValue() == 9);
     assert(runObjectPropertyGet(Datum::intRect(1, 2, 6, 9), 53).intValue() == 5);
     assert(runObjectPropertyGet(Datum::colorRef(200, 20, 10), 55).intValue() == 200);
@@ -5692,6 +5705,8 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     globals["globalName"] = Datum::of(std::string("abcd"));
     Datum globalVarRef = Datum::varRef(VarType::GLOBAL, 42);
     assert(runObjCall(67, {globalVarRef, Datum::symbol("char"), Datum::of(2), Datum::of(3)}).stringValue() == "bc");
+    assert(runObjCall(67, {globalVarRef, Datum::symbol("char"), Datum::of(1), Datum::of(-1)}).stringValue().empty());
+    assert(runObjCall(67, {globalVarRef, Datum::symbol("char"), Datum::of(3), Datum::of(1)}).stringValue().empty());
     assert(runObjCall(69, {globalVarRef, Datum::of(4)}).stringValue() == "d");
     assert(runObjCall(70, {globalVarRef}).intValue() == 4);
     globals["globalName"] = Datum::of(std::string("\\TCODE/client/"));
@@ -5705,6 +5720,11 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(chunkRefValue->end == 6);
     assert(runObjCall(93, {globalChunkRef}).isVoid());
     assert(globals["globalName"].stringValue() == "/client/");
+    globals["globalName"] = Datum::of(std::string("abc"));
+    assert(runObjCall(93, {runObjCall(92, {globalVarRef, Datum::symbol("char"), Datum::of(1), Datum::of(-1)})}).isVoid());
+    assert(globals["globalName"].stringValue() == "abc");
+    assert(runObjCall(93, {runObjCall(92, {globalVarRef, Datum::symbol("char"), Datum::of(3), Datum::of(1)})}).isVoid());
+    assert(globals["globalName"].stringValue() == "abc");
 
     builtinContext.castMemberResolver = [](int castLib, int memberNum) {
         return Datum::castMemberRef(CastLibId(castLib), MemberId(memberNum));
