@@ -481,6 +481,22 @@ lingo::Datum CastLibManager::getParsedFieldValue(int castLibNumber, int memberNu
     return parsed;
 }
 
+std::vector<int> CastLibManager::charPosToLoc(int castLibNumber, int memberNumber, int charIndex, int fieldWidth) {
+    auto member = resolveMember(castLibNumber, memberNumber);
+    if (!member || !member->isTextLike() || !textRenderer_) {
+        return {};
+    }
+    const std::string text = getMemberProp(member->castLib(), member->memberNum(), "text").stringValue();
+    return textRenderer_->charPosToLoc(text,
+                                       charIndex,
+                                       member->textFont(),
+                                       member->textFontSize(),
+                                       member->textFontStyle(),
+                                       member->textFixedLineSpace(),
+                                       member->textAlignment(),
+                                       std::max(1, fieldWidth));
+}
+
 int CastLibManager::locToCharPos(int castLibNumber, int memberNumber, int x, int y, int fieldWidth) {
     auto member = resolveMember(castLibNumber, memberNumber);
     if (!member || !member->isTextLike() || !textRenderer_) {
@@ -499,6 +515,17 @@ int CastLibManager::locToCharPos(int castLibNumber, int memberNumber, int x, int
                                        member->textFixedLineSpace(),
                                        member->textAlignment(),
                                        std::max(1, fieldWidth));
+}
+
+int CastLibManager::textLineHeight(int castLibNumber, int memberNumber) {
+    auto member = resolveMember(castLibNumber, memberNumber);
+    if (!member || !member->isTextLike() || !textRenderer_) {
+        return 0;
+    }
+    return textRenderer_->getLineHeight(member->textFont(),
+                                        member->textFontSize(),
+                                        member->textFontStyle(),
+                                        member->textFixedLineSpace());
 }
 
 void CastLibManager::setFieldValue(const lingo::Datum& identifier, int castLibNumber, const std::string& value) {
@@ -684,14 +711,7 @@ lingo::Datum CastLibManager::callMemberMethod(int castLibNumber,
             return lingo::Datum::intPoint(0, 0);
         }
         const int fieldWidth = std::max(1, member->textRectRight() - member->textRectLeft());
-        const auto loc = textRenderer_->charPosToLoc(text,
-                                                     charIndex,
-                                                     member->textFont(),
-                                                     member->textFontSize(),
-                                                     member->textFontStyle(),
-                                                     member->textFixedLineSpace(),
-                                                     member->textAlignment(),
-                                                     fieldWidth);
+        const auto loc = charPosToLoc(member->castLib(), member->memberNum(), charIndex, fieldWidth);
         if (loc.size() < 2) {
             return lingo::Datum::intPoint(0, 0);
         }

@@ -1228,7 +1228,10 @@ void testPlayerInputFoundation() {
                                       int,
                                       std::string,
                                       int) override {
-            return {charIndex * 10, 0};
+            if (charIndex <= 3) {
+                return {charIndex * 10, 0};
+            }
+            return {(charIndex - 3) * 10, 10};
         }
 
         int locToCharPos(std::string text,
@@ -1280,6 +1283,53 @@ void testPlayerInputFoundation() {
     assert(editableTextRenderer.lastFieldWidth == 80);
     editableInput.onMouseUp(82, 45);
     assert(editableInput.processInputEvents());
+
+    editableField->setDynamicText("abcdef");
+    editableState.setSelStart(2);
+    editableState.setSelEnd(2);
+    editableState.resetCaretBlink();
+    auto caretInfo = editableInput.getCaretInfo();
+    assert(caretInfo.has_value());
+    assert(*caretInfo == (InputHandler::CaretInfo{70, 40, 10}));
+
+    editableState.setSelStart(1);
+    editableState.setSelEnd(2);
+    assert(!editableInput.getCaretInfo().has_value());
+    assert((editableInput.getSelectionInfo() == std::vector<InputHandler::SelectionRect>{
+        InputHandler::SelectionRect{60, 40, 10, 10},
+    }));
+
+    editableState.setSelStart(1);
+    editableState.setSelEnd(5);
+    assert((editableInput.getSelectionInfo() == std::vector<InputHandler::SelectionRect>{
+        InputHandler::SelectionRect{60, 40, 70, 10},
+        InputHandler::SelectionRect{50, 50, 20, 10},
+    }));
+    assert(editableInput.getSelectedText().has_value());
+    assert(*editableInput.getSelectedText() == "bcde");
+
+    const int revisionBeforePaste = editableRenderer.spriteRegistry().revision();
+    editableInput.onPasteText("XY");
+    assert(editableField->textContent() == "aXYf");
+    assert(editableState.selStart() == 3);
+    assert(editableState.selEnd() == 3);
+    assert(editableRenderer.spriteRegistry().revision() == revisionBeforePaste + 1);
+
+    editableInput.selectAll();
+    assert(editableState.selStart() == 0);
+    assert(editableState.selEnd() == 4);
+    assert(editableInput.getSelectedText().has_value());
+    assert(*editableInput.getSelectedText() == "aXYf");
+    const int revisionBeforeCut = editableRenderer.spriteRegistry().revision();
+    auto cutText = editableInput.cutSelectedText();
+    assert(cutText.has_value());
+    assert(*cutText == "aXYf");
+    assert(editableField->textContent().empty());
+    assert(editableState.selStart() == 0);
+    assert(editableState.selEnd() == 0);
+    assert(editableRenderer.spriteRegistry().revision() == revisionBeforeCut + 1);
+
+    editableField->setDynamicText("abc");
     editableState.setSelStart(0);
     editableState.setSelEnd(0);
 
@@ -1327,6 +1377,10 @@ void testPlayerInputFoundation() {
     editableInput.onMouseDown(10, 10);
     assert(editableInput.processInputEvents());
     assert(editableState.keyboardFocusSprite() == 0);
+    assert(!editableInput.getCaretInfo().has_value());
+    assert(editableInput.getSelectionInfo().empty());
+    assert(!editableInput.getSelectedText().has_value());
+    assert(!editableInput.cutSelectedText().has_value());
 }
 
 void testPlayerFacadeFoundation() {

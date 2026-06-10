@@ -170,6 +170,197 @@ void InputHandler::onKeyUp(int directorKeyCode, std::string keyChar, bool shift,
     inputState_->queueEvent(input::InputEvent::keyUp(directorKeyCode, std::move(keyChar)));
 }
 
+std::optional<InputHandler::CaretInfo> InputHandler::getCaretInfo() const {
+    if (inputState_ == nullptr || !inputState_->isCaretVisible() || castLibManager_ == nullptr) {
+        return std::nullopt;
+    }
+    auto focused = focusedEditableField();
+    if (!focused.has_value()) {
+        return std::nullopt;
+    }
+
+    const std::string text = memberText(*focused->member);
+    const auto [selMin, selMax] = clampedSelection(
+        inputState_->selStart(),
+        inputState_->selEnd(),
+        static_cast<int>(text.size()));
+    if (selMin != selMax) {
+        return std::nullopt;
+    }
+
+    const auto loc = castLibManager_->charPosToLoc(
+        focused->member->castLib(),
+        focused->member->memberNum(),
+        selMin,
+        focused->sprite.width());
+    if (loc.size() < 2) {
+        return std::nullopt;
+    }
+
+    const int lineHeight = castLibManager_->textLineHeight(focused->member->castLib(), focused->member->memberNum());
+    if (lineHeight <= 0) {
+        return std::nullopt;
+    }
+
+    return CaretInfo{focused->sprite.x() + loc[0], focused->sprite.y() + loc[1], lineHeight};
+}
+
+std::vector<InputHandler::SelectionRect> InputHandler::getSelectionInfo() const {
+    if (inputState_ == nullptr || castLibManager_ == nullptr) {
+        return {};
+    }
+    auto focused = focusedEditableField();
+    if (!focused.has_value()) {
+        return {};
+    }
+
+    const std::string text = memberText(*focused->member);
+    const auto [selMin, selMax] = clampedSelection(
+        inputState_->selStart(),
+        inputState_->selEnd(),
+        static_cast<int>(text.size()));
+    if (selMin == selMax) {
+        return {};
+    }
+
+    const int lineHeight = castLibManager_->textLineHeight(focused->member->castLib(), focused->member->memberNum());
+    if (lineHeight <= 0) {
+        return {};
+    }
+
+    const auto startPos = castLibManager_->charPosToLoc(
+        focused->member->castLib(),
+        focused->member->memberNum(),
+        selMin,
+        focused->sprite.width());
+    const auto endPos = castLibManager_->charPosToLoc(
+        focused->member->castLib(),
+        focused->member->memberNum(),
+        selMax,
+        focused->sprite.width());
+    if (startPos.size() < 2 || endPos.size() < 2) {
+        return {};
+    }
+
+    const int spriteX = focused->sprite.x();
+    const int spriteY = focused->sprite.y();
+    const int startY = startPos[1];
+    const int endY = endPos[1];
+    if (startY == endY) {
+        return {SelectionRect{spriteX + startPos[0], spriteY + startY, endPos[0] - startPos[0], lineHeight}};
+    }
+
+    std::vector<SelectionRect> rects;
+    rects.push_back(SelectionRect{
+        spriteX + startPos[0],
+        spriteY + startY,
+        focused->sprite.width() - startPos[0],
+        lineHeight
+    });
+    for (int midY = startY + lineHeight; midY < endY; midY += lineHeight) {
+        rects.push_back(SelectionRect{spriteX, spriteY + midY, focused->sprite.width(), lineHeight});
+    }
+    rects.push_back(SelectionRect{spriteX, spriteY + endY, endPos[0], lineHeight});
+    return rects;
+}
+
+void InputHandler::onPasteText(std::string pasteText) {
+    if (inputState_ == nullptr) {
+        return;
+    }
+    auto focused = focusedEditableField();
+    if (!focused.has_value()) {
+        return;
+    }
+
+    std::string text = memberText(*focused->member);
+    const auto [selMin, selMax] = clampedSelection(
+        inputState_->selStart(),
+        inputState_->selEnd(),
+        static_cast<int>(text.size()));
+    text.replace(static_cast<std::size_t>(selMin), static_cast<std::size_t>(selMax - selMin), pasteText);
+    const int newPos = selMin + static_cast<int>(pasteText.size());
+    inputState_->setSelStart(newPos);
+    inputState_->setSelEnd(newPos);
+    inputState_->resetCaretBlink();
+    focused->member->setDynamicText(std::move(text));
+    bumpSpriteRevision();
+}
+
+std::optional<std::string> InputHandler::getSelectedText() const {
+    if (inputState_ == nullptr) {
+        return std::nullopt;
+    }
+    auto focused = focusedEditableField();
+    if (!focused.has_value()) {
+        return std::nullopt;
+    }
+
+    const std::string text = memberText(*focused->member);
+    if (text.empty()) {
+        return std::string();
+    }
+    const auto [selMin, selMax] = clampedSelection(
+        inputState_->selStart(),
+        inputState_->selEnd(),
+        static_cast<int>(text.size()));
+    if (selMin != selMax) {
+        return text.substr(static_cast<std::size_t>(selMin), static_cast<std::size_t>(selMax - selMin));
+    }
+    return text;
+}
+
+std::optional<std::string> InputHandler::cutSelectedText() {
+    if (inputState_ == nullptr) {
+        return std::nullopt;
+    }
+    auto focused = focusedEditableField();
+    if (!focused.has_value()) {
+        return std::nullopt;
+    }
+
+    std::string text = memberText(*focused->member);
+    if (text.empty()) {
+        return std::string();
+    }
+
+    const auto [selMin, selMax] = clampedSelection(
+        inputState_->selStart(),
+        inputState_->selEnd(),
+        static_cast<int>(text.size()));
+    std::string cutText;
+    if (selMin != selMax) {
+        cutText = text.substr(static_cast<std::size_t>(selMin), static_cast<std::size_t>(selMax - selMin));
+        text.erase(static_cast<std::size_t>(selMin), static_cast<std::size_t>(selMax - selMin));
+        inputState_->setSelStart(selMin);
+        inputState_->setSelEnd(selMin);
+    } else {
+        cutText = text;
+        text.clear();
+        inputState_->setSelStart(0);
+        inputState_->setSelEnd(0);
+    }
+    inputState_->resetCaretBlink();
+    focused->member->setDynamicText(std::move(text));
+    bumpSpriteRevision();
+    return cutText;
+}
+
+void InputHandler::selectAll() {
+    if (inputState_ == nullptr) {
+        return;
+    }
+    auto focused = focusedEditableField();
+    if (!focused.has_value()) {
+        return;
+    }
+
+    const std::string text = memberText(*focused->member);
+    inputState_->setSelStart(0);
+    inputState_->setSelEnd(static_cast<int>(text.size()));
+    inputState_->resetCaretBlink();
+}
+
 bool InputHandler::processInputEvents() {
     if (inputState_ == nullptr) {
         return false;
@@ -371,6 +562,44 @@ std::shared_ptr<::libreshockwave::cast::CastMember> InputHandler::resolveSpriteM
         return nullptr;
     }
     return castLibManager_->resolveMember(sprite->effectiveCastLib(), sprite->effectiveCastMember());
+}
+
+std::optional<InputHandler::FocusedField> InputHandler::focusedEditableField() const {
+    if (inputState_ == nullptr) {
+        return std::nullopt;
+    }
+    const int focusChannel = inputState_->keyboardFocusSprite();
+    if (focusChannel <= 0) {
+        return std::nullopt;
+    }
+    auto member = resolveSpriteMember(focusChannel);
+    if (member == nullptr || !member->editable()) {
+        return std::nullopt;
+    }
+    auto sprite = findHitSprite(focusChannel);
+    if (!sprite.has_value()) {
+        return std::nullopt;
+    }
+    return FocusedField{*sprite, std::move(member)};
+}
+
+std::string InputHandler::memberText(const ::libreshockwave::cast::CastMember& member) const {
+    if (castLibManager_ == nullptr) {
+        return member.textContent();
+    }
+    return castLibManager_->getMemberProp(member.castLib(), member.memberNum(), "text").stringValue();
+}
+
+std::pair<int, int> InputHandler::clampedSelection(int selStart, int selEnd, int textLength) {
+    const int start = std::clamp(selStart, 0, textLength);
+    const int end = std::clamp(selEnd, 0, textLength);
+    return {std::min(start, end), std::max(start, end)};
+}
+
+void InputHandler::bumpSpriteRevision() {
+    if (stageRenderer_ != nullptr) {
+        stageRenderer_->spriteRegistry().bumpRevision();
+    }
 }
 
 void InputHandler::autoFocusEditableField(int hitChannel, int stageX, int stageY) {
