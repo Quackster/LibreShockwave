@@ -424,7 +424,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 ### Constructor Builtins Foundation
 
 - Constructor builtins now register `point`, `rect`, `union`, `intersect`, `color`, `rgb`, `paletteIndex`, `sprite`, and `new` in the C++ builtin registry.
-- Point/rect geometry constructors, rectangle union/intersection, RGB and palette-index color construction, color pass-through, and trimmed hex-string RGB parsing match the Java constructor helpers.
+- Point/rect geometry constructors, rectangle union/intersection, RGB and palette-index color construction, palette-index color identity/display, color pass-through, and trimmed hex-string RGB parsing match the Java constructor helpers.
 - Point, rect, color, numeric RGB, palette-index, and sprite constructors now share Java-style integer coercion for strings, field text, floats, cast-library refs, sprite refs, and colors.
 - Direct `new(scriptRef, ...)` now creates C++ script instances with their cast-member reference and preinitializes declared script properties through provider hooks, while `NEW_OBJ` keeps the VM-aware path for authored `new` handler execution.
 - `new(#memberType, castLib)` and generic object construction are exposed through callback hooks until the C++ cast provider, Xtra support, and script-instance VM runtime are ported.
@@ -738,7 +738,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `OBJ_CALL` now dispatches data-owned list, property-list, string, point, rectangle, and script-instance methods through the C++ opcode registry.
 - Receiver-style external calls now fall back to the same data-owned method dispatch path after handler and builtin lookup.
 - List and property-list method dispatch covers Java-compatible mutation and lookup helpers such as `getAt`, `setAt`, `append`, `addProp`, `getProp`, `count`, `sort`, and duplicate-preserving property insertion.
-- `lingo::vm::dispatch::ImageMethodDispatcher` ports Java image receiver method/property dispatch through the existing C++ image helper surface, including null-image fallbacks, `fill`/`draw`/`copyPixels`/`setAlpha` mutation, image duplication/cropping/trimming/matte-mask creation, pixel access, `useAlpha`, and palette-reference property routing.
+- `lingo::vm::dispatch::ImageMethodDispatcher` ports Java image receiver method/property dispatch through the existing C++ image helper surface, including null-image fallbacks, `fill`/`draw`/`copyPixels`/`setAlpha` mutation, image duplication/cropping/trimming/matte-mask creation, indexed palette fill/getPixel color identity, pixel access, `useAlpha`, and palette-reference property routing.
 - `lingo::vm::dispatch::ListMethodDispatcher` ports Java linear-list receiver methods, including padded `setAt`, clamped `addAt`, value search/delete, `join`, case-insensitive sort, deep-copy `duplicate`, and out-of-range `getAt` diagnostics for `OBJ_CALL`.
 - `lingo::vm::dispatch::MemberRegistryMethodDispatcher` ports Java script-instance member-registry receiver prefill/fallback dispatch over the existing C++ alias registry logic, including `getMemNum`, `exists`/`memberExists`, `getMember`, `readAliasIndexesFromField`, stale slot cleanup, bootstrap script-member visibility, and persistent alias lookup.
 - `lingo::vm::dispatch::PropListMethodDispatcher` ports Java property-list receiver methods, including sub-list indexed `getProp`, typed `getAt`/`setAt`, duplicate-preserving `addProp`, `getOne`/`findPos`, positional key reads/deletes, first/last reads, and deep-copy `duplicate`.
@@ -763,7 +763,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - CastLib member-accessor receiver dispatch now supports Java-compatible `castLib(n).member.getAt(key)` member lookup by number or name.
 - SpriteRef receiver dispatch now delegates methods through a provider-backed C++ builtin context hook for behavior/broker integration.
 - Image receiver dispatch now supports Java-compatible `fill`, `draw`, `setAlpha`, `createMatte`, `createMask`, `copyPixels`, `duplicate`, `crop`, `trimWhiteSpace`, `getAt`, `getPixel`, and `setPixel` methods over C++ bitmap refs.
-- Image `fill` and `draw` now resolve small integer colors through the target bitmap palette when one is attached, matching Java's bitmap-aware color conversion.
+- Image `fill` and `draw` now resolve small integer colors and `paletteIndex(...)` colors through the target bitmap palette when one is attached, matching Java's bitmap-aware color conversion.
 - Image `createMatte` and `createMask` cover native-alpha matte extraction, RGB/indexed flood-fill matte extraction, and direct grayscale mask output.
 - Image `copyPixels` covers default rectangular copy, nearest-neighbor scaling, COPY source-alpha/global-blend compositing, maskImage clipping, transparent/background-transparent keying, arithmetic ink modes, grayscale #color/#bgColor remaps, quad destination transforms, transformed maskImage props, palette-index metadata, palette metadata, and anchor propagation.
 
@@ -892,7 +892,7 @@ Result:
 - Lingo direct-string and VarRef object-call string chunk extraction, mutable char chunk-ref deletion, ScriptRef `new`, string method delegation, and provider-backed item counting tests passed through the same CTest executable.
 - Lingo CastMemberRef object-method provider dispatch tests passed through the same CTest executable.
 - Lingo SpriteRef object-method provider dispatch tests passed through the same CTest executable.
-- Lingo image object-method fill, draw, setAlpha, createMatte, createMask, copyPixels, duplicate, crop, trimWhiteSpace, getAt, getPixel, setPixel, and null-image fallback tests passed through the same CTest executable.
+- Lingo image object-method fill, draw, setAlpha, createMatte, createMask, copyPixels, duplicate, crop, trimWhiteSpace, indexed palette fill/getPixel color identity, getAt, getPixel, setPixel, and null-image fallback tests passed through the same CTest executable.
 - MovieProperties movie/stage property reads and writes, file/input-backed values, xtra lists, item delimiters, timers, stage background color, random seed, navigation callbacks, and net navigation callbacks passed through the same CTest executable.
 - BuiltinRegistry case-insensitive lookup, custom registration, movie label/marker builtins, sprite puppet/cursor/spriteBox builtins, puppetPalette hooks, and Java-compatible no-op sprite builtins passed through the same CTest executable.
 - MathBuiltins numeric coercion, integer/float conversion, bit operations, trig, power, min/max, list min/max, and random callback hooks passed through the same CTest executable.
@@ -925,7 +925,7 @@ Result:
 - Editable text field caret geometry, single-line and multi-line selection rectangles, paste replacement, selected-text extraction, cut mutation, select-all, no-focus fallbacks, and sprite-registry revision bumps passed through the same CTest executable.
 - ListBuiltins point/rect positional reads, shared mutable point/rect datum copies, and `setAt` component mutation passed through the same CTest executable.
 - SoundBuiltins channel creation, availability, SoundChannelMethodDispatcher-backed sound-channel method/property dispatch, VM object-property defaults/mutation, and SoundManager playback delegation passed through the same CTest executable.
-- ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration, Java-style constructor argument coercion, callback hooks, direct script-instance fallback, and `NEW_OBJ` script-ref handler dispatch passed through the same CTest executable.
+- ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration, Java-style constructor argument coercion, palette-index color identity/display, callback hooks, direct script-instance fallback, and `NEW_OBJ` script-ref handler dispatch passed through the same CTest executable.
 - TypeBuiltins object/void/type predicates, `value` literal parsing/provider fallback, direct `script` lookup/scoping/unscoped list fallback, `script`/`callAncestor` callback hooks and list fanout, symbol conversion, and `ilk` alias/field-text checks passed through the same CTest executable.
 - Lingo VM Scope and ExecutionContext stack, param, local, return, loop, jump, global callback, handler callback, builtin invocation, global debug-config propagation, and call-stack formatting behavior passed through the same CTest executable.
 - Lingo VM ExecutionContext name resolver callback and resolver-backed global opcode behavior passed through the same CTest executable.
@@ -1179,4 +1179,5 @@ Result:
 - `b6bfe6bc Port C++ member registry method dispatcher`
 - `1eaf5cfd Port C++ script instance method dispatcher`
 - `b8da51ba Port C++ sprite object script dispatch`
-- Current checkpoint commit message: `Port C++ call target return values`
+- `99438bf3 Port C++ call target return values`
+- Current checkpoint commit message: `Port C++ paletteIndex color identity`

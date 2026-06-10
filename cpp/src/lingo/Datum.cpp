@@ -250,11 +250,12 @@ int Datum::IntRect::height() const {
 }
 
 Datum::ColorRef Datum::ColorRef::fromPaletteIndex(int index) {
-    return ColorRef{index, index, index};
+    const int normalized = index & 0xFF;
+    return ColorRef{normalized, normalized, normalized, normalized};
 }
 
 Datum::ColorRef Datum::ColorRef::fromRgb(int r, int g, int b) {
-    return ColorRef{r, g, b};
+    return ColorRef{r, g, b, std::nullopt};
 }
 
 Datum::Datum() : value_(Void{}) {}
@@ -358,6 +359,10 @@ Datum Datum::vector3(float x, float y, float z) {
 
 Datum Datum::colorRef(int r, int g, int b) {
     return Datum(ColorRef::fromRgb(r, g, b));
+}
+
+Datum Datum::paletteIndexColor(int index) {
+    return Datum(ColorRef::fromPaletteIndex(index));
 }
 
 Datum Datum::media(std::vector<std::uint8_t> bytes) {

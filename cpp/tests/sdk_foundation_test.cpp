@@ -1287,6 +1287,7 @@ void testLingoDatumTypes() {
     assert(libreshockwave::lingo::vm::datum::formatBrief(Datum::of(std::string("a\nb"))) == "\"a\\nb\"");
     assert(libreshockwave::lingo::vm::datum::format(Datum::intPoint(5, 6)) == "point(5, 6)");
     assert(libreshockwave::lingo::vm::datum::format(Datum::intRect(1, 2, 3, 4)) == "rect(1, 2, 3, 4)");
+    assert(libreshockwave::lingo::vm::datum::format(Datum::paletteIndexColor(44)) == "paletteIndex(44)");
     assert(libreshockwave::lingo::vm::datum::format(Datum::castMemberRef(CastLibId(2), MemberId(9))) ==
            "member(9, 2)");
     assert(libreshockwave::lingo::vm::datum::getTypeName(Datum::argList({})) == "ArgList");
@@ -2653,6 +2654,7 @@ void testBuiltinRegistryFoundation() {
     assert(registry.invoke("string", context, {Datum::of(42)}).stringValue() == "42");
     assert(registry.invoke("string", context, {Datum::symbol("door")}).stringValue() == "door");
     assert(registry.invoke("string", context, {Datum::colorRef(1, 2, 3)}).stringValue() == "color(1, 2, 3)");
+    assert(registry.invoke("string", context, {Datum::paletteIndexColor(44)}).stringValue() == "paletteIndex(44)");
     assert(registry.invoke("string", context, {Datum::list({Datum::of(1), Datum::of(std::string("cat"))})}).stringValue() ==
            "[1, \"cat\"]");
     auto stringPropList = Datum::propList();
@@ -3517,6 +3519,13 @@ void testBuiltinRegistryFoundation() {
         assert(color->g == g);
         assert(color->b == b);
     };
+    auto assertPaletteIndexColor = [&assertColor](const Datum& datum, int index) {
+        assertColor(datum, index, index, index);
+        const auto* color = datum.asColorRef();
+        assert(color != nullptr);
+        assert(color->paletteIndex.has_value());
+        assert(color->paletteIndex.value() == index);
+    };
 
     assert(registry.contains("point"));
     assert(registry.contains("rect"));
@@ -3567,6 +3576,7 @@ void testBuiltinRegistryFoundation() {
                                  Datum::fieldText("3", 5, 6)}), 1, 2, 3);
     const auto rgbPassThrough = Datum::colorRef(7, 8, 9);
     assert(registry.invoke("rgb", context, {rgbPassThrough}) == rgbPassThrough);
+    assert(!rgbPassThrough.asColorRef()->paletteIndex.has_value());
     assertColor(registry.invoke("rgb", context), 0, 0, 0);
     assertColor(registry.invoke("rgb", context, {Datum::of(std::string(" #112233 "))}), 0x11, 0x22, 0x33);
     assertColor(registry.invoke("rgb", context, {Datum::of(std::string("not-hex"))}), 0, 0, 0);
@@ -3578,9 +3588,9 @@ void testBuiltinRegistryFoundation() {
                                  Datum::fieldText("3", 5, 6)}), 1, 2, 3);
     assertColor(registry.invoke("rgb", context, {Datum::of(0x445566)}), 0x44, 0x55, 0x66);
     assertColor(registry.invoke("rgb", context, {Datum::spriteRef(ChannelId(0x66))}), 0, 0, 0x66);
-    assertColor(registry.invoke("paletteIndex", context), 0, 0, 0);
-    assertColor(registry.invoke("paletteIndex", context, {Datum::of(300)}), 44, 44, 44);
-    assertColor(registry.invoke("paletteIndex", context, {Datum::colorRef(1, 2, 44)}), 44, 44, 44);
+    assertPaletteIndexColor(registry.invoke("paletteIndex", context), 0);
+    assertPaletteIndexColor(registry.invoke("paletteIndex", context, {Datum::of(300)}), 44);
+    assertPaletteIndexColor(registry.invoke("paletteIndex", context, {Datum::colorRef(1, 2, 44)}), 44);
     assert(registry.invoke("sprite", context).isVoid());
     assert(registry.invoke("sprite", context, {Datum::of(-1)}).isVoid());
     assert(registry.invoke("sprite", context, {Datum::of(6)}).asSpriteRef()->spriteNum() == 6);
@@ -6489,6 +6499,17 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runObjCall(103, {paletteFillRef, Datum::intRect(0, 0, 1, 1), Datum::of(1)}).isVoid());
     assert(paletteFillBitmap->getPixel(0, 0) == 0xFFA6A6A6U);
     assert(!paletteFillBitmap->paletteIndices().has_value());
+    auto indexedPaletteFillBitmap = std::make_shared<Bitmap>(2, 2, 8);
+    indexedPaletteFillBitmap->setImagePalette(std::make_shared<Palette>(
+        std::vector<std::uint32_t>{0xFFFFFFU, 0xA6A6A6U}, "ui"));
+    indexedPaletteFillBitmap->fill(0xFFFFFFFFU);
+    const Datum indexedPaletteFillRef = Datum::imageRef(indexedPaletteFillBitmap);
+    assert(runObjCall(103, {indexedPaletteFillRef, Datum::intRect(0, 0, 1, 1), Datum::paletteIndexColor(1)})
+               .isVoid());
+    assert(indexedPaletteFillBitmap->getPixel(0, 0) == 0xFFA6A6A6U);
+    assert(indexedPaletteFillBitmap->paletteIndex(0, 0).value() == 1);
+    const Datum indexedPalettePixel = runObjCall(102, {indexedPaletteFillRef, Datum::of(0), Datum::of(0)});
+    assert(indexedPalettePixel.asColorRef()->paletteIndex.value() == 1);
     auto noOpFillBitmap = std::make_shared<Bitmap>(2, 2, 32);
     noOpFillBitmap->fill(0xFFFFFFFFU);
     const Datum noOpFillRef = Datum::imageRef(noOpFillBitmap);
@@ -6515,6 +6536,8 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(croppedImage->bitmap->getPixel(1, 0) == 0xFF010203U);
     assert(croppedImage->bitmap->paletteIndex(0, 0).value() == 1);
     assert(croppedImage->bitmap->paletteIndex(1, 0).value() == 2);
+    const Datum croppedIndexedPixel = runObjCall(102, {croppedImageDatum, Datum::of(0), Datum::of(0)});
+    assert(croppedIndexedPixel.asColorRef()->paletteIndex.value() == 1);
     assert(croppedImage->bitmap->hasAnchorPoint());
     assert(croppedImage->bitmap->anchorX() == 1);
     assert(croppedImage->bitmap->anchorY() == 1);

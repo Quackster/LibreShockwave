@@ -128,6 +128,9 @@ std::string formatBasic(const Datum& value, int maxStringLength, bool brief) {
         }
         case DatumType::ColorRef: {
             const auto* color = value.asColorRef();
+            if (color->paletteIndex.has_value()) {
+                return "paletteIndex(" + std::to_string(*color->paletteIndex) + ")";
+            }
             return "color(" + std::to_string(color->r) + ", " + std::to_string(color->g) + ", " +
                    std::to_string(color->b) + ")";
         }
@@ -377,6 +380,9 @@ std::string formatDetailedInternal(const Datum& value, int indent, std::unordere
         }
         case DatumType::ColorRef: {
             const auto* color = value.asColorRef();
+            if (color->paletteIndex.has_value()) {
+                return "{ \"paletteIndex\": " + std::to_string(*color->paletteIndex) + " }";
+            }
             return "{ \"r\": " + std::to_string(color->r) + ", \"g\": " + std::to_string(color->g) +
                    ", \"b\": " + std::to_string(color->b) + " }";
         }

@@ -178,6 +178,9 @@ std::string toStringLikeJava(const Datum& datum) {
         return value->name;
     }
     if (const auto* value = datum.asColorRef()) {
+        if (value->paletteIndex.has_value()) {
+            return "paletteIndex(" + std::to_string(*value->paletteIndex) + ")";
+        }
         return "color(" + std::to_string(value->r) + ", " + std::to_string(value->g) + ", " +
                std::to_string(value->b) + ")";
     }
@@ -302,6 +305,10 @@ std::uint32_t imageColorArgb(const Datum& datum) {
 }
 
 std::uint32_t imageColorArgb(const Datum& datum, const bitmap::Bitmap* target) {
+    if (const auto* color = datum.asColorRef();
+        color != nullptr && color->paletteIndex.has_value() && target != nullptr) {
+        return 0xFF000000U | (target->resolvePaletteIndex(*color->paletteIndex, nullptr) & 0x00FFFFFFU);
+    }
     if (const auto* value = datum.asInt(); value != nullptr &&
         target != nullptr &&
         target->imagePalette() != nullptr &&
@@ -310,6 +317,19 @@ std::uint32_t imageColorArgb(const Datum& datum, const bitmap::Bitmap* target) {
         return 0xFF000000U | (target->resolvePaletteIndex(value->value, nullptr) & 0x00FFFFFFU);
     }
     return imageColorArgb(datum);
+}
+
+std::optional<int> imageFillPaletteIndex(const Datum& colorDatum, const bitmap::Bitmap& target) {
+    if (target.bitDepth() > 8 || target.imagePalette() == nullptr) {
+        return std::nullopt;
+    }
+    if (const auto* color = colorDatum.asColorRef(); color != nullptr && color->paletteIndex.has_value()) {
+        return *color->paletteIndex & 0xFF;
+    }
+    if (const auto* value = colorDatum.asInt(); value != nullptr && value->value >= 0 && value->value <= 255) {
+        return value->value;
+    }
+    return std::nullopt;
 }
 
 int toIntLikeJava(const Datum& datum) {
@@ -1975,7 +1995,12 @@ bool imageFill(bitmap::Bitmap& bmp, const std::vector<Datum>& args) {
         return false;
     }
 
-    bmp.fillRect(left, top, width, height, imageColorArgb(colorDatum, &bmp));
+    const auto colorArgb = imageColorArgb(colorDatum, &bmp);
+    if (const auto paletteIndex = imageFillPaletteIndex(colorDatum, bmp)) {
+        bmp.fillRectPaletteIndex(left, top, width, height, *paletteIndex, colorArgb);
+    } else {
+        bmp.fillRect(left, top, width, height, colorArgb);
+    }
     return true;
 }
 
@@ -3244,7 +3269,7 @@ Datum imageObjectMethod(const Datum::ImageRef& image, std::string_view methodNam
             return Datum::voidValue();
         }
         if (const auto index = bmp.paletteIndex(x, y)) {
-            return Datum::colorRef(*index, *index, *index);
+            return Datum::paletteIndexColor(*index);
         }
         const auto pixel = bmp.getPixel(x, y);
         return Datum::colorRef(static_cast<int>((pixel >> 16) & 0xFF),

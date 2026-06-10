@@ -237,6 +237,9 @@ std::string toStringLikeJava(const Datum& datum) {
         return value->name;
     }
     if (const auto* value = datum.asColorRef()) {
+        if (value->paletteIndex.has_value()) {
+            return "paletteIndex(" + std::to_string(*value->paletteIndex) + ")";
+        }
         return "color(" + std::to_string(value->r) + ", " + std::to_string(value->g) + ", " +
                std::to_string(value->b) + ")";
     }
@@ -2119,7 +2122,7 @@ Datum ConstructorBuiltins::rgb(BuiltinContext&, const std::vector<Datum>& args) 
 
 Datum ConstructorBuiltins::paletteIndex(BuiltinContext&, const std::vector<Datum>& args) {
     const int index = args.empty() ? 0 : toIntLikeJava(args[0]) & 0xFF;
-    return Datum::colorRef(index, index, index);
+    return Datum::paletteIndexColor(index);
 }
 
 Datum ConstructorBuiltins::sprite(BuiltinContext&, const std::vector<Datum>& args) {

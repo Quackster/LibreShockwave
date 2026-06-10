@@ -185,6 +185,9 @@ std::string toStringLikeJava(const Datum& datum) {
         return value->name;
     }
     if (const auto* value = datum.asColorRef()) {
+        if (value->paletteIndex.has_value()) {
+            return "paletteIndex(" + std::to_string(*value->paletteIndex) + ")";
+        }
         return "color(" + std::to_string(value->r) + ", " + std::to_string(value->g) + ", " +
                std::to_string(value->b) + ")";
     }

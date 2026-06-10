@@ -228,6 +228,7 @@ public:
         int r;
         int g;
         int b;
+        std::optional<int> paletteIndex;
 
         [[nodiscard]] static ColorRef fromPaletteIndex(int index);
         [[nodiscard]] static ColorRef fromRgb(int r, int g, int b);
@@ -346,6 +347,7 @@ public:
     [[nodiscard]] static Datum intRect(int left, int top, int right, int bottom);
     [[nodiscard]] static Datum vector3(float x, float y, float z);
     [[nodiscard]] static Datum colorRef(int r, int g, int b);
+    [[nodiscard]] static Datum paletteIndexColor(int index);
     [[nodiscard]] static Datum media(std::vector<std::uint8_t> bytes);
     [[nodiscard]] static Datum imageRef(std::shared_ptr<bitmap::Bitmap> bitmap);
     [[nodiscard]] static Datum soundChannel(int channel);
