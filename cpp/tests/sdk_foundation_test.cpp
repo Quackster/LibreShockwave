@@ -95,6 +95,7 @@
 #include "libreshockwave/lingo/vm/OpcodeRegistry.hpp"
 #include "libreshockwave/lingo/vm/PropertyIdMappings.hpp"
 #include "libreshockwave/lingo/vm/Scope.hpp"
+#include "libreshockwave/lingo/vm/dispatch/ListMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/StringMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/trace/ConsoleTracePrinter.hpp"
 #include "libreshockwave/lingo/vm/trace/InstructionAnnotator.hpp"
@@ -244,6 +245,7 @@ using libreshockwave::lingo::vm::OpcodeRegistry;
 using libreshockwave::lingo::vm::PropertyIdMappings;
 using libreshockwave::lingo::vm::Scope;
 using libreshockwave::lingo::vm::TraceListener;
+using libreshockwave::lingo::vm::dispatch::ListMethodDispatcher;
 using libreshockwave::lingo::vm::dispatch::StringMethodDispatcher;
 using libreshockwave::lingo::vm::trace::ConsoleTracePrinter;
 using libreshockwave::lingo::vm::trace::InstructionAnnotator;
@@ -1123,6 +1125,39 @@ void testLingoDatumTypes() {
                .stringValue()
                .empty());
     assert(StringMethodDispatcher::dispatch("alpha", "missing", {}).isVoid());
+    Datum dispatcherListDatum = Datum::list({Datum::of(3), Datum::of(1)});
+    auto& dispatcherList = dispatcherListDatum.listValue();
+    assert(ListMethodDispatcher::dispatch(dispatcherList, "count", {}).intValue() == 2);
+    assert(ListMethodDispatcher::dispatch(dispatcherList, "getAt", {Datum::of(1)}).intValue() == 3);
+    assert(ListMethodDispatcher::dispatch(dispatcherList, "setAt", {Datum::of(4), Datum::of(40)}).isVoid());
+    assert(dispatcherList.count() == 4);
+    assert(dispatcherList.getAt(3).isVoid());
+    assert(dispatcherList.getAt(4).intValue() == 40);
+    assert(ListMethodDispatcher::dispatch(dispatcherList, "addAt", {Datum::of(0), Datum::of(0)}).isVoid());
+    assert(dispatcherList.getAt(1).intValue() == 0);
+    assert(ListMethodDispatcher::dispatch(dispatcherList, "append", {Datum::symbol("tail")}).isVoid());
+    assert(ListMethodDispatcher::dispatch(dispatcherList, "getLast", {}).asSymbol()->name == "tail");
+    assert(ListMethodDispatcher::dispatch(dispatcherList, "getOne", {Datum::of(std::string("TAIL"))}).intValue() == 6);
+    assert(ListMethodDispatcher::dispatch(dispatcherList, "deleteOne", {Datum::of(std::string("tail"))}).boolValue());
+    assert(dispatcherList.count() == 5);
+    Datum joinList = Datum::list({Datum::of(std::string("a")), Datum::symbol("b"), Datum::of(3)});
+    assert(ListMethodDispatcher::dispatch(joinList.listValue(), "join", {Datum::of(std::string("-"))}).stringValue() ==
+           "a-b-3");
+    Datum sortList = Datum::list({Datum::of(std::string("b")), Datum::of(std::string("A"))});
+    assert(ListMethodDispatcher::dispatch(sortList.listValue(), "sort", {}).isVoid());
+    assert(sortList.listValue().getAt(1).stringValue() == "A");
+    Datum nestedListDatum = Datum::list({Datum::list({Datum::of(1)})});
+    Datum nestedListCopy = ListMethodDispatcher::dispatch(nestedListDatum.listValue(), "duplicate", {});
+    nestedListDatum.listValue().getAt(1).listValue().add(Datum::of(2));
+    assert(nestedListCopy.listValue().getAt(1).listValue().count() == 1);
+    bool outOfRangeListCaught = false;
+    try {
+        (void)ListMethodDispatcher::dispatch(dispatcherList, "getAt", {Datum::of(99)});
+    } catch (const LingoException&) {
+        outOfRangeListCaught = true;
+    }
+    assert(outOfRangeListCaught);
+    assert(ListMethodDispatcher::dispatch(dispatcherList, "missing", {}).isVoid());
 
     assert(Datum::of(42).isInt());
     assert(Datum::of(42).intValue() == 42);

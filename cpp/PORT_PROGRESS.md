@@ -737,6 +737,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `OBJ_CALL` now dispatches data-owned list, property-list, string, point, rectangle, and script-instance methods through the C++ opcode registry.
 - Receiver-style external calls now fall back to the same data-owned method dispatch path after handler and builtin lookup.
 - List and property-list method dispatch covers Java-compatible mutation and lookup helpers such as `getAt`, `setAt`, `append`, `addProp`, `getProp`, `count`, `sort`, and duplicate-preserving property insertion.
+- `lingo::vm::dispatch::ListMethodDispatcher` ports Java linear-list receiver methods, including padded `setAt`, clamped `addAt`, value search/delete, `join`, case-insensitive sort, deep-copy `duplicate`, and out-of-range `getAt` diagnostics for `OBJ_CALL`.
 - Property-list object methods now preserve Java's symbol/string key namespace rules for `getAt`, `setAt`, `setProp`, and `deleteProp`, including exact-case cross-type fallback and numeric out-of-range `setAt` string-key insertion.
 - List and property-list `duplicate` object methods now use Java-style deep copies so nested mutable containers are independent of the source value.
 - String receiver dispatch now covers direct `getProp`/`getPropRef` chunk extraction, and VarRef receiver dispatch resolves referenced context variables for string-like `getProp`, `getPropRef`, `char`, and `count` object methods.
@@ -838,7 +839,7 @@ Result:
 - XMED text parsing for multi-span style runs, underline ranges, referenced style-run font-size selection, per-span font records, paragraph alignment codes, and paragraph record counts passed through the same CTest executable.
 - W3D entry, typed resource, transform, texture format, and lookup tests passed through the same CTest executable.
 - Generated font Base64/zlib decode, wrong-length, and invalid-deflate tests passed through the same CTest executable.
-- File/path fallback utilities, shared string display/HTML escaping helpers, string chunk counting/extraction helpers, Java-compatible StringMethodDispatcher receiver methods, and script formatting utilities passed through the same CTest executable.
+- File/path fallback utilities, shared string display/HTML escaping helpers, string chunk counting/extraction helpers, Java-compatible StringMethodDispatcher and ListMethodDispatcher receiver methods, and script formatting utilities passed through the same CTest executable.
 - BitmapColorizer 32-bit, indexed, foreground-only, packed-index, and ink predicate tests passed through the same CTest executable.
 - PfrBitReader byte, signed, skip, alignment, bit-buffer, and partial-EOF tests passed through the same CTest executable.
 - BitmapFont glyph drawing, overflow metrics, BDF parsing, direct PFR outline/bitmap/curve glyph rasterization, PFR1 metadata/character-record/simple/compound/curve-outline parsing, PFR-to-TTF table generation/cache registration, pure TTF bitmap rasterization with the bundled Verdana fixture, and FontRegistry prebuilt-cache/PFR-registration/rasterization/alias behavior passed through the same CTest executable.
@@ -939,7 +940,7 @@ Result:
 - OpcodeRegistry movie-property provider reads/writes and provider-backed `the` lookups passed through the same CTest executable.
 - OpcodeRegistry provider-backed object property gets/sets for movie, player, stage, sprite, integer-as-sprite refs, cast-member metadata/provider properties, timeout refs, sound channels, and image `useAlpha`/`paletteRef` setters passed through the same CTest executable.
 - OpcodeRegistry local/external call handlers, builtin dispatch, no-return calls, constant fallback, and error-state handling passed through the same CTest executable.
-- OpcodeRegistry object method calls and receiver-style external method calls for lists, property-list typed symbol/string namespaces and nested list/proplist deep-copy `duplicate`, StringMethodDispatcher-backed string receiver methods, VarRef inverted char ranges, mutable ChunkRef inverted delete ranges, points, rectangles, script-instance ancestor assignment guards/bounded cyclic ancestor traversal/registry bootstrap/prefill/alias import/stale cleanup/persistent alias refresh, cast library member lookups/accessors, timeouts, sound channels, and Xtra instances passed through the same CTest executable.
+- OpcodeRegistry object method calls and receiver-style external method calls for ListMethodDispatcher-backed lists, property-list typed symbol/string namespaces and nested list/proplist deep-copy `duplicate`, StringMethodDispatcher-backed string receiver methods, VarRef inverted char ranges, mutable ChunkRef inverted delete ranges, points, rectangles, script-instance ancestor assignment guards/bounded cyclic ancestor traversal/registry bootstrap/prefill/alias import/stale cleanup/persistent alias refresh, cast library member lookups/accessors, timeouts, sound channels, and Xtra instances passed through the same CTest executable.
 - OpcodeRegistry `NEW_OBJ` script construction delegation, provider-resolved fallback construction, declared property preinitialization, automatic `new` handler invocation, and non-script rejection passed through the same CTest executable.
 
 ## Remaining Major Work
@@ -1163,4 +1164,5 @@ Result:
 - `1aafff66 Port C++ nested value identifier fallback`
 - `2601667f Port C++ alert hook handler`
 - `53aa113d Port C++ property ID mappings`
-- Current checkpoint commit message: `Port C++ string method dispatcher`
+- `27c22fc3 Port C++ string method dispatcher`
+- Current checkpoint commit message: `Port C++ list method dispatcher`
