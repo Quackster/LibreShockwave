@@ -439,6 +439,9 @@ private:
 class HandlerNode final : public LingoNode {
 public:
     HandlerNode(std::string handlerName, std::vector<std::string> argumentNames, std::vector<std::string> globalNames);
+    [[nodiscard]] const std::string& handlerName() const { return handlerName_; }
+    [[nodiscard]] const std::vector<std::string>& argumentNames() const { return argumentNames_; }
+    [[nodiscard]] const std::vector<std::string>& globalNames() const { return globalNames_; }
     [[nodiscard]] BlockNode& block() { return *block_; }
     [[nodiscard]] const BlockNode& block() const { return *block_; }
     [[nodiscard]] std::string toLingo(bool dot) const override;
@@ -453,9 +456,13 @@ private:
 class IfStmtNode final : public LingoNode {
 public:
     explicit IfStmtNode(NodePtr condition);
+    [[nodiscard]] const LingoNode& condition() const { return *condition_; }
     [[nodiscard]] BlockNode& trueBlock() { return *block1_; }
+    [[nodiscard]] const BlockNode& trueBlock() const { return *block1_; }
     [[nodiscard]] BlockNode& falseBlock() { return *block2_; }
+    [[nodiscard]] const BlockNode& falseBlock() const { return *block2_; }
     void setHasElse(bool hasElse) { hasElse_ = hasElse; }
+    [[nodiscard]] bool hasElse() const { return hasElse_; }
     [[nodiscard]] std::string toLingo(bool dot) const override;
 
 private:
@@ -477,7 +484,9 @@ private:
 class RepeatWhileStmtNode final : public LoopNodeBase {
 public:
     RepeatWhileStmtNode(int startIndex, NodePtr condition);
+    [[nodiscard]] const LingoNode& condition() const { return *condition_; }
     [[nodiscard]] BlockNode& block() { return *block_; }
+    [[nodiscard]] const BlockNode& block() const { return *block_; }
     [[nodiscard]] std::string toLingo(bool dot) const override;
 
 private:
@@ -488,7 +497,10 @@ private:
 class RepeatWithInStmtNode final : public LoopNodeBase {
 public:
     RepeatWithInStmtNode(int startIndex, std::string variableName, NodePtr list);
+    [[nodiscard]] const std::string& variableName() const { return variableName_; }
+    [[nodiscard]] const LingoNode& list() const { return *list_; }
     [[nodiscard]] BlockNode& block() { return *block_; }
+    [[nodiscard]] const BlockNode& block() const { return *block_; }
     [[nodiscard]] std::string toLingo(bool dot) const override;
 
 private:
@@ -500,7 +512,12 @@ private:
 class RepeatWithToStmtNode final : public LoopNodeBase {
 public:
     RepeatWithToStmtNode(int startIndex, std::string variableName, NodePtr start, bool up, NodePtr end);
+    [[nodiscard]] const std::string& variableName() const { return variableName_; }
+    [[nodiscard]] const LingoNode& start() const { return *start_; }
+    [[nodiscard]] bool up() const { return up_; }
+    [[nodiscard]] const LingoNode& end() const { return *end_; }
     [[nodiscard]] BlockNode& block() { return *block_; }
+    [[nodiscard]] const BlockNode& block() const { return *block_; }
     [[nodiscard]] std::string toLingo(bool dot) const override;
 
 private:
@@ -514,7 +531,9 @@ private:
 class TellStmtNode final : public LingoNode {
 public:
     explicit TellStmtNode(NodePtr window);
+    [[nodiscard]] const LingoNode& window() const { return *window_; }
     [[nodiscard]] BlockNode& block() { return *block_; }
+    [[nodiscard]] const BlockNode& block() const { return *block_; }
     [[nodiscard]] std::string toLingo(bool dot) const override;
 
 private:
@@ -534,6 +553,12 @@ public:
     void setNextCase(std::unique_ptr<CaseNode> nextCase);
     void setBlock(std::unique_ptr<BlockNode> block);
     void setOtherwise(std::unique_ptr<BlockNode> otherwise);
+    [[nodiscard]] const LingoNode& value() const { return *value_; }
+    [[nodiscard]] int expect() const { return expect_; }
+    [[nodiscard]] const CaseNode* nextOr() const { return nextOr_.get(); }
+    [[nodiscard]] const CaseNode* nextCase() const { return nextCase_.get(); }
+    [[nodiscard]] const BlockNode* block() const { return block_.get(); }
+    [[nodiscard]] const BlockNode* otherwise() const { return otherwise_.get(); }
     [[nodiscard]] std::string toLingo(bool dot) const override;
 
 private:
@@ -549,6 +574,8 @@ class CasesStmtNode final : public LingoNode {
 public:
     explicit CasesStmtNode(NodePtr value);
     void setFirstCase(std::unique_ptr<CaseNode> firstCase);
+    [[nodiscard]] const LingoNode& value() const { return *value_; }
+    [[nodiscard]] const CaseNode* firstCase() const { return firstCase_.get(); }
     [[nodiscard]] std::string toLingo(bool dot) const override;
 
     int endPos = -1;

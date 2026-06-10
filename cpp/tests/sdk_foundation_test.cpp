@@ -87,6 +87,7 @@
 #include "libreshockwave/lingo/LingoValueParser.hpp"
 #include "libreshockwave/lingo/Opcode.hpp"
 #include "libreshockwave/lingo/builtin/BuiltinRegistry.hpp"
+#include "libreshockwave/lingo/decompiler/LingoDecompiler.hpp"
 #include "libreshockwave/lingo/decompiler/LingoNode.hpp"
 #include "libreshockwave/lingo/decompiler/LingoProperties.hpp"
 #include "libreshockwave/lingo/vm/AlertHookHandler.hpp"
@@ -1444,9 +1445,11 @@ void testLingoDecompilerNodeFoundation() {
     using decomp::ChunkDeleteStmtNode;
     using decomp::ChunkExprNode;
     using decomp::HandlerNode;
+    using decomp::IfStmtNode;
     using decomp::InverseOpNode;
     using decomp::LastStringChunkExprNode;
     using decomp::LiteralNode;
+    using decomp::LingoDecompiler;
     using decomp::MemberExprNode;
     using decomp::NodePtr;
     using decomp::NotOpNode;
@@ -1617,6 +1620,100 @@ void testLingoDecompilerNodeFoundation() {
         std::make_unique<VarNode>("x"),
         std::make_unique<LiteralNode>(1)));
     assert(handler.toLingo(true) == "on demo arg1, arg2\n  global gOne\n  x = 1\n\nend");
+
+    ScriptNamesChunk scriptNames(nullptr, ChunkId(501), {"prepareMovie", "argOne", "pFlag", "gFlag"});
+    ScriptChunk::Handler bytecodeHandler{
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        {1},
+        {},
+        {
+            ScriptChunk::Instruction{0, Opcode::PUSH_INT8, 0x41, 7},
+            ScriptChunk::Instruction{2, Opcode::RET, 0x01, 0}
+        },
+        {{0, 0}, {2, 1}}
+    };
+    ScriptChunk script(nullptr,
+                       ChunkId(500),
+                       ScriptChunkType::MovieScript,
+                       0,
+                       {bytecodeHandler},
+                       {},
+                       {ScriptChunk::PropertyEntry{2}},
+                       {ScriptChunk::GlobalEntry{3}},
+                       {});
+    LingoDecompiler decompiler;
+    const auto handlerBytecode = decompiler.decompileHandler(script.handlers().front(), script, &scriptNames);
+    assert(handlerBytecode ==
+           "on prepareMovie\n"
+           "  [0000] pushInt8         7\n"
+           "  [0002] ret             \n"
+           "end\n");
+    assert(decompiler.decompile(script, &scriptNames) ==
+           "-- Movie Script\n\n"
+           "property pFlag\n\n"
+           "global gFlag\n\n"
+           "on prepareMovie\n"
+           "  [0000] pushInt8         7\n"
+           "  [0002] ret             \n"
+           "end\n\n");
+    const auto bytecodeMapping = decompiler.decompileHandlerWithMapping(script.handlers().front(), script, &scriptNames);
+    assert(bytecodeMapping.toText() ==
+           "on prepareMovie\n"
+           "  [0] pushInt8 7\n"
+           "  [2] ret\n"
+           "end\n");
+    assert(bytecodeMapping.lines.size() == 4);
+    assert(bytecodeMapping.lines[0].bytecodeOffset == -1);
+    assert(bytecodeMapping.lines[1].bytecodeOffset == 0);
+    assert(bytecodeMapping.lines[2].bytecodeOffset == 2);
+    assert(bytecodeMapping.lines[3].bytecodeOffset == -1);
+
+    ScriptChunk::Handler unresolvedHandler = bytecodeHandler;
+    unresolvedHandler.nameId = 99;
+    assert(decompiler.decompileHandler(unresolvedHandler, script, &scriptNames).starts_with("on #99\n"));
+
+    HandlerNode mappedHandler("mapped", {"me"}, {"gFlag"});
+    auto ifNode = std::make_unique<IfStmtNode>(std::make_unique<VarNode>("ready"));
+    ifNode->setBytecodeOffset(12);
+    auto trueAssignment = std::make_unique<AssignmentStmtNode>(
+        std::make_unique<VarNode>("x"),
+        std::make_unique<LiteralNode>(1));
+    trueAssignment->setBytecodeOffset(14);
+    ifNode->trueBlock().addChild(std::move(trueAssignment));
+    ifNode->setHasElse(true);
+    auto falseAssignment = std::make_unique<AssignmentStmtNode>(
+        std::make_unique<VarNode>("x"),
+        std::make_unique<LiteralNode>(0));
+    falseAssignment->setBytecodeOffset(16);
+    ifNode->falseBlock().addChild(std::move(falseAssignment));
+    mappedHandler.block().addChild(std::move(ifNode));
+
+    const auto astMapping = LingoDecompiler::buildLineMapping(mappedHandler, true);
+    assert(astMapping.toText() ==
+           "on mapped me\n"
+           "  global gFlag\n"
+           "  if ready then\n"
+           "    x = 1\n"
+           "  else\n"
+           "    x = 0\n"
+           "  end if\n"
+           "end\n");
+    assert(astMapping.lines.size() == 8);
+    assert(astMapping.lines[0].bytecodeOffset == -1);
+    assert(astMapping.lines[1].bytecodeOffset == -1);
+    assert(astMapping.lines[2].bytecodeOffset == 12);
+    assert(astMapping.lines[3].bytecodeOffset == 14);
+    assert(astMapping.lines[4].bytecodeOffset == -1);
+    assert(astMapping.lines[5].bytecodeOffset == 16);
+    assert(astMapping.lines[6].bytecodeOffset == -1);
+    assert(astMapping.lines[7].bytecodeOffset == -1);
 }
 
 void testPlayerCoreFoundation() {

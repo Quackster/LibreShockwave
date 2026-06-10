@@ -50,6 +50,7 @@ add_library(libreshockwave
     src/lingo/LingoValueParser.cpp
     src/lingo/Opcode.cpp
     src/lingo/builtin/BuiltinRegistry.cpp
+    src/lingo/decompiler/LingoDecompiler.cpp
     src/lingo/decompiler/LingoNode.cpp
     src/lingo/decompiler/LingoProperties.cpp
     src/lingo/vm/AlertHookHandler.cpp
