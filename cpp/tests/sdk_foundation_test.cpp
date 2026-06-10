@@ -1383,27 +1383,46 @@ void testPlayerVmEventDispatchFoundation() {
 
     std::vector<std::uint8_t> namesData(20, 0);
     putI16(namesData, 16, 20);
-    putI16(namesData, 18, 3);
-    namesData.push_back(0);
-    namesData.push_back(7);
-    namesData.insert(namesData.end(), {'m', 'o', 'u', 's', 'e', 'U', 'p'});
-    namesData.push_back(7);
-    namesData.insert(namesData.end(), {'c', 'l', 'i', 'c', 'k', 'e', 'd'});
+    putI16(namesData, 18, 7);
+    auto appendName = [&namesData](const std::string& value) {
+        namesData.push_back(static_cast<std::uint8_t>(value.size()));
+        namesData.insert(namesData.end(), value.begin(), value.end());
+    };
+    appendName("");
+    appendName("mouseUp");
+    appendName("clicked");
+    appendName("prepareMovie");
+    appendName("prepared");
+    appendName("startMovie");
+    appendName("started");
 
-    std::vector<std::uint8_t> scriptData(240, 0);
+    std::vector<std::uint8_t> scriptData(350, 0);
+    auto putHandlerRecord = [&](int offset, int nameId, int bytecodeOffset) {
+        putI16(scriptData, offset, nameId);
+        putI16(scriptData, offset + 2, 0);
+        putI32(scriptData, offset + 4, 5);
+        putI32(scriptData, offset + 8, bytecodeOffset);
+    };
+    auto putSetGlobalHandlerBytecode = [&](int offset, int value, int globalNameId) {
+        scriptData[static_cast<std::size_t>(offset)] =
+            static_cast<std::uint8_t>(libreshockwave::lingo::code(Opcode::PUSH_INT8));
+        scriptData[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>(value);
+        scriptData[static_cast<std::size_t>(offset + 2)] =
+            static_cast<std::uint8_t>(libreshockwave::lingo::code(Opcode::SET_GLOBAL));
+        scriptData[static_cast<std::size_t>(offset + 3)] = static_cast<std::uint8_t>(globalNameId);
+        scriptData[static_cast<std::size_t>(offset + 4)] =
+            static_cast<std::uint8_t>(libreshockwave::lingo::code(Opcode::RET));
+    };
     putI16(scriptData, 18, 3);
     putI32(scriptData, 38, 0x00000003);
-    putI16(scriptData, 72, 1);
+    putI16(scriptData, 72, 3);
     putI32(scriptData, 74, 110);
-    putI16(scriptData, 110, 1);
-    putI16(scriptData, 112, 0);
-    putI32(scriptData, 114, 5);
-    putI32(scriptData, 118, 230);
-    scriptData[230] = static_cast<std::uint8_t>(libreshockwave::lingo::code(Opcode::PUSH_INT8));
-    scriptData[231] = 44;
-    scriptData[232] = static_cast<std::uint8_t>(libreshockwave::lingo::code(Opcode::SET_GLOBAL));
-    scriptData[233] = 2;
-    scriptData[234] = static_cast<std::uint8_t>(libreshockwave::lingo::code(Opcode::RET));
+    putHandlerRecord(110, 1, 320);
+    putHandlerRecord(152, 3, 325);
+    putHandlerRecord(194, 5, 330);
+    putSetGlobalHandlerBytecode(320, 44, 2);
+    putSetGlobalHandlerBytecode(325, 55, 4);
+    putSetGlobalHandlerBytecode(330, 66, 6);
 
     auto file = DirectorFile::load(buildRifx({
         {"Lnam", namesData},
@@ -1418,6 +1437,11 @@ void testPlayerVmEventDispatchFoundation() {
 
     player.eventDispatcher().dispatchToMovieScripts(PlayerEvent::MouseUp);
     assert(player.vm().getGlobal("clicked").intValue() == 44);
+
+    player.play();
+    assert(player.state() == PlayerState::Playing);
+    assert(player.vm().getGlobal("prepared").intValue() == 55);
+    assert(player.vm().getGlobal("started").intValue() == 66);
 
     assert(player.vm().callBuiltin("puppetTempo", {Datum::of(21)}).isVoid());
     assert(player.tempo() == 21);

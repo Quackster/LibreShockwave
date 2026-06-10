@@ -436,9 +436,11 @@ void Player::wireComponents() {
 
 void Player::prepareMovieFoundation() {
     castLibManager_.preloadCasts(2);
+    eventDispatcher().dispatchToMovieScripts(PlayerEvent::PrepareMovie);
+    castLibManager_.preloadCasts(1);
     frameContext_.initializeFirstFrame();
     frameContext_.dispatchBeginSpriteEvents();
-    castLibManager_.preloadCasts(1);
+    eventDispatcher().dispatchToMovieScripts(PlayerEvent::StartMovie);
 }
 
 } // namespace libreshockwave::player
