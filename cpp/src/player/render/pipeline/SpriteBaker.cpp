@@ -463,16 +463,16 @@ std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeDynamicText(const RenderS
     auto textImage = textRenderer_->renderText(member->textContent(),
                                                width,
                                                height,
-                                               "Arial",
-                                               12,
-                                               "plain",
-                                               "left",
-                                               static_cast<int>(0xFF000000U),
+                                               member->textFont(),
+                                               member->textFontSize(),
+                                               member->textFontStyle(),
+                                               member->textAlignment(),
+                                               member->textColor(),
                                                bgColor,
-                                               false,
-                                               false,
-                                               0,
-                                               0);
+                                               member->textWordWrap(),
+                                               member->textAntialias(),
+                                               member->textFixedLineSpace(),
+                                               member->textTopSpacing());
     if (textImage == nullptr) {
         return nullptr;
     }

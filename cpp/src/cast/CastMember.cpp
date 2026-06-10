@@ -43,6 +43,12 @@ const std::optional<Shockwave3DInfo>& CastMember::shockwave3DInfo() const { retu
 
 bool CastMember::isBitmap() const { return memberType_ == MemberType::Bitmap; }
 bool CastMember::isText() const { return memberType_ == MemberType::Text; }
+bool CastMember::isTextLike() const {
+    return memberType_ == MemberType::Text ||
+           memberType_ == MemberType::RichText ||
+           memberType_ == MemberType::Button ||
+           (memberType_ == MemberType::Xtra && rawChunk_ != nullptr && rawChunk_->isTextXtra());
+}
 bool CastMember::isSound() const { return memberType_ == MemberType::Sound; }
 bool CastMember::isScript() const { return memberType_ == MemberType::Script; }
 bool CastMember::isShape() const { return memberType_ == MemberType::Shape; }
@@ -102,6 +108,43 @@ std::string CastMember::textContent() const {
 void CastMember::setDynamicText(std::string text) {
     dynamicText_ = std::move(text);
 }
+
+const std::string& CastMember::textFont() const { return textFont_; }
+void CastMember::setTextFont(std::string font) { textFont_ = std::move(font); }
+int CastMember::textFontSize() const { return textFontSize_; }
+void CastMember::setTextFontSize(int size) { textFontSize_ = size; }
+const std::string& CastMember::textFontStyle() const { return textFontStyle_; }
+void CastMember::setTextFontStyle(std::string style) { textFontStyle_ = std::move(style); }
+const std::string& CastMember::textAlignment() const { return textAlignment_; }
+void CastMember::setTextAlignment(std::string alignment) { textAlignment_ = std::move(alignment); }
+int CastMember::textColor() const { return textColor_; }
+void CastMember::setTextColor(int argb) { textColor_ = argb; }
+int CastMember::textBgColor() const { return textBgColor_; }
+void CastMember::setTextBgColor(int argb) { textBgColor_ = argb; }
+bool CastMember::textWordWrap() const { return textWordWrap_; }
+void CastMember::setTextWordWrap(bool wordWrap) { textWordWrap_ = wordWrap; }
+bool CastMember::textAntialias() const { return textAntialias_; }
+void CastMember::setTextAntialias(bool antialias) { textAntialias_ = antialias; }
+int CastMember::textBoxType() const { return textBoxType_; }
+void CastMember::setTextBoxType(int boxType) { textBoxType_ = boxType; }
+int CastMember::textRectLeft() const { return textRectLeft_; }
+int CastMember::textRectTop() const { return textRectTop_; }
+int CastMember::textRectRight() const { return textRectRight_; }
+int CastMember::textRectBottom() const { return textRectBottom_; }
+void CastMember::setTextRect(int left, int top, int right, int bottom) {
+    textRectLeft_ = left;
+    textRectTop_ = top;
+    textRectRight_ = right;
+    textRectBottom_ = bottom;
+}
+void CastMember::setTextWidth(int width) { textRectRight_ = textRectLeft_ + width; }
+void CastMember::setTextHeight(int height) { textRectBottom_ = textRectTop_ + height; }
+int CastMember::textFixedLineSpace() const { return textFixedLineSpace_; }
+void CastMember::setTextFixedLineSpace(int lineSpace) { textFixedLineSpace_ = lineSpace; }
+int CastMember::textTopSpacing() const { return textTopSpacing_; }
+void CastMember::setTextTopSpacing(int spacing) { textTopSpacing_ = spacing; }
+bool CastMember::editable() const { return editable_; }
+void CastMember::setEditable(bool editable) { editable_ = editable; }
 
 void CastMember::setRuntimeBitmap(const bitmap::Bitmap& bitmap, bool markScriptModified) {
     auto copy = std::make_shared<bitmap::Bitmap>(bitmap.copy());
@@ -185,6 +228,26 @@ void CastMember::resetRuntimePayload() {
     runtimeRegX_.reset();
     runtimeRegY_.reset();
     dynamicText_.reset();
+    resetTextProperties();
+}
+
+void CastMember::resetTextProperties() {
+    textFont_ = "Arial";
+    textFontSize_ = 12;
+    textFontStyle_ = "plain";
+    textAlignment_ = "left";
+    textColor_ = static_cast<int>(0xFF000000U);
+    textBgColor_ = static_cast<int>(0xFFFFFFFFU);
+    textWordWrap_ = false;
+    textAntialias_ = false;
+    textBoxType_ = 0;
+    textRectLeft_ = 0;
+    textRectTop_ = 0;
+    textRectRight_ = 480;
+    textRectBottom_ = 480;
+    textFixedLineSpace_ = 0;
+    textTopSpacing_ = 0;
+    editable_ = false;
 }
 
 } // namespace libreshockwave::cast

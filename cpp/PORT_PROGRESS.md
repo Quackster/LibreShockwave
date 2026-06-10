@@ -221,7 +221,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `player::cast::CastLib` ports lazy cast-library metadata, authored/external file binding state, stable registry binding checks, member chunk maps, script maps, source-prefixed member-name fallback, font-alias/PFR XMED scanning, and Java-compatible cast/member property fallbacks.
 - `player::cast::CastLibManager` ports DirectorFile-backed cast-library initialization from MCsL/CAS* chunks, castLib/member number and name lookup, registry-visible member filtering, external-cast cache keys, pending external load tracking, preload-mode loading, and builtin callback installation.
-- Runtime bitmap member image mutation, cached imported-image assignment, Director BITD imported-media assignment, dynamic member creation/reuse, dynamic member `erase`, dynamic field text mutation, field provider lookup/setter callbacks, dynamic bitmap member sprite rendering, and dynamic text sprite baking are available for existing cast libraries; non-bitmap imported media, ediM/JPEG/ALFA sidecars, text styling properties, editable field UI, and remaining CastLibProvider edge cases remain deferred to later player runtime slices.
+- Runtime bitmap member image mutation, cached imported-image assignment, Director BITD imported-media assignment, dynamic member creation/reuse, dynamic member `erase`, dynamic field text mutation, field provider lookup/setter callbacks, dynamic bitmap member sprite rendering, dynamic text sprite baking, and common text styling property mutation are available for existing cast libraries; non-bitmap imported media, ediM/JPEG/ALFA sidecars, editable field UI, and remaining CastLibProvider edge cases remain deferred to later player runtime slices.
 
 ### Bitmap Resolver Foundation
 
@@ -246,7 +246,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `player::InputHandler` ports host mouse/key entry points, queued input processing, rollover `mouseEnter`/`mouseLeave`/`mouseWithin` dispatch, mouse-down/up sprite targeting, `mouseUpOutSide` fallback routing, right-mouse and key event routing, and sprite-registry revision bumps after queued input.
 - Hit selection uses baked or supplied `RenderSprite` vectors plus `EventDispatcher::isSpriteMouseInteractive`, matching the Java interactive-hit filter without requiring the full C++ `Player` object yet.
-- Built-in editable text field focus, caret geometry, selection rectangles, clipboard operations, text styling properties, and StageRenderer-owning overloads remain deferred; the lower-level C++ runtime cast-member text mutation and sprite baking paths are now available for those input slices.
+- Built-in editable text field focus, caret geometry, selection rectangles, clipboard operations, and StageRenderer-owning overloads remain deferred; the lower-level C++ runtime cast-member text mutation, text styling, and sprite baking paths are now available for those input slices.
 
 ### Player Facade Foundation
 
@@ -525,13 +525,20 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `CastMember` now tracks Java-style dynamic text separately from file-backed text content and clears it as part of dynamic payload erase/reuse.
 - `CastLib::getMemberProp("text")` resolves dynamic text first, then associated STXT text with Director-style carriage-return line endings; `setMemberProp("text")`, `setMemberProp("html")`, and text-like string/symbol `media` assignment update runtime text.
 - `CastLibManager` now wires `BuiltinContext::fieldResolver` and `fieldSetter` to cast-member text lookup and mutation for member names, scoped member numbers, and encoded cast/member identifiers.
-- Field datum identity, parsed field values, editable field UI, and text styling property mutation remain deferred.
+- Field datum identity, parsed field values, and editable field UI remain deferred.
 
 ### Runtime Dynamic Text Render Foundation
 
-- `SpriteBaker` now renders attached dynamic text members before file-backed text fallback, using Java-compatible default text styling when member-specific style properties are not yet ported.
+- `SpriteBaker` now renders attached dynamic text members before file-backed text fallback, using the runtime member's current font, font size, font style, alignment, text color, wrapping, antialias, fixed-line-space, and top-spacing properties.
 - Dynamic text baking follows the existing text transparent-ink behavior and marks transparent-background results as native-alpha media.
-- Text member font/alignment/color property mutation and editable-field caret/selection rendering remain deferred.
+- Editable-field caret/selection rendering remains deferred.
+
+### Runtime Text Style Property Foundation
+
+- `CastMember` now stores Java-compatible runtime text defaults for font, font size, font style, alignment, text color, background color, word wrap, antialias, box type, text rect, fixed line space, top spacing, and editable state.
+- `CastLib::getMemberProp` and `setMemberProp` now expose those text-like member properties, including list-valued `fontStyle`, symbol/string `alignment`, Director-style color coercion, and rect/width/height text geometry mutation.
+- Dynamic text baking now consumes the runtime text style state while retaining sprite-driven transparent/background color handling.
+- Character-position helpers, parsed field datum identity, and editable selection/caret rendering remain deferred.
 
 ### Lingo VM Scope and Execution Context Foundation
 
@@ -783,6 +790,7 @@ Result:
 - Dynamic member `erase`, `#empty` type reflection, first erased-slot reuse, cast-member method callback routing, and Player sprite binding cleanup on slot retirement passed through the same CTest executable.
 - Runtime field text storage, `member.text`/`member.html`/text-like `member.media` mutation, field lookup by name/number/encoded reference, builtin `field`, and field setter callback routing passed through the same CTest executable.
 - Runtime dynamic text member baking, default renderer arguments, transparent-text native-alpha marking, and dynamic text sprite sizing passed through the same CTest executable.
+- Runtime text member style property get/set, Director-style text color coercion, rect/width/height geometry mutation, and SpriteBaker dynamic text style propagation passed through the same CTest executable.
 - SoundBuiltins channel creation, availability, sound-channel method dispatch, VM object-property defaults/mutation, and SoundManager playback delegation passed through the same CTest executable.
 - ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration and callback hooks passed through the same CTest executable.
 - TypeBuiltins object/void/type predicates, `value` literal parsing/provider fallback, `script`/`callAncestor` callback hooks, symbol conversion, and `ilk` alias checks passed through the same CTest executable.
@@ -970,4 +978,5 @@ Result:
 - `ee3200d8 Port C++ dynamic member rendering`
 - `a113570a Port C++ dynamic member lifecycle`
 - `d9297b79 Port C++ runtime field text`
-- Current checkpoint commit message: `Port C++ dynamic text rendering`
+- `ec988333 Port C++ dynamic text rendering`
+- Current checkpoint commit message: `Port C++ runtime text styling`

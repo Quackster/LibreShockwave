@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <exception>
+#include <stdexcept>
 #include <string_view>
 #include <utility>
 
@@ -100,6 +101,64 @@ std::string stripHtmlTags(std::string_view value) {
         if (!inTag) {
             result.push_back(ch);
         }
+    }
+    return result;
+}
+
+int textColorToArgb(const lingo::Datum& value) {
+    if (const auto* color = value.asColorRef()) {
+        return static_cast<int>(0xFF000000U |
+                                ((static_cast<std::uint32_t>(color->r) & 0xFFU) << 16U) |
+                                ((static_cast<std::uint32_t>(color->g) & 0xFFU) << 8U) |
+                                (static_cast<std::uint32_t>(color->b) & 0xFFU));
+    }
+    if (value.isString()) {
+        std::string text = trim(value.stringValue());
+        if (text.size() >= 2) {
+            const char first = text.front();
+            const char last = text.back();
+            if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
+                text = trim(text.substr(1, text.size() - 2));
+            }
+        }
+        if (!text.empty() && text.front() == '#') {
+            text.erase(text.begin());
+        }
+        if (text.size() == 6) {
+            try {
+                const int rgb = std::stoi(text, nullptr, 16);
+                return static_cast<int>(0xFF000000U | (static_cast<std::uint32_t>(rgb) & 0x00FFFFFFU));
+            } catch (const std::exception&) {
+                return static_cast<int>(0xFF000000U);
+            }
+        }
+        return static_cast<int>(0xFF000000U);
+    }
+    const int raw = value.intValue();
+    if (raw > 255) {
+        return static_cast<int>(0xFF000000U | (static_cast<std::uint32_t>(raw) & 0x00FFFFFFU));
+    }
+    const int gray = 255 - std::clamp(raw, 0, 255);
+    return static_cast<int>(0xFF000000U |
+                            (static_cast<std::uint32_t>(gray) << 16U) |
+                            (static_cast<std::uint32_t>(gray) << 8U) |
+                            static_cast<std::uint32_t>(gray));
+}
+
+lingo::Datum colorDatumFromArgb(int argb) {
+    return lingo::Datum::colorRef((argb >> 16) & 0xFF, (argb >> 8) & 0xFF, argb & 0xFF);
+}
+
+std::string fontStyleFromDatum(const lingo::Datum& value) {
+    if (!value.isList()) {
+        return value.stringValue();
+    }
+    std::string result;
+    for (const auto& item : value.listValue().items()) {
+        if (!result.empty()) {
+            result += ',';
+        }
+        result += item.stringValue();
     }
     return result;
 }
@@ -465,7 +524,29 @@ lingo::Datum CastLib::getMemberProp(int memberNumber, const std::string& propNam
     }
     if (prop == "castlibnum" || prop == "castlib") return lingo::Datum::of(castLibId_.value());
     if (prop == "media") return lingo::Datum::castMemberRef(castLibId_, id::MemberId(memberNumber));
-    if (member->isText() && prop == "text") return stringDatum(resolveMemberText(member));
+    if (member->isTextLike()) {
+        if (prop == "text") return stringDatum(resolveMemberText(member));
+        if (prop == "width") return lingo::Datum::of(member->textRectRight() - member->textRectLeft());
+        if (prop == "height") return lingo::Datum::of(member->textRectBottom() - member->textRectTop());
+        if (prop == "rect") {
+            return lingo::Datum::intRect(member->textRectLeft(),
+                                         member->textRectTop(),
+                                         member->textRectRight(),
+                                         member->textRectBottom());
+        }
+        if (prop == "font") return stringDatum(member->textFont());
+        if (prop == "fontsize") return lingo::Datum::of(member->textFontSize());
+        if (prop == "fontstyle") return stringDatum(member->textFontStyle());
+        if (prop == "alignment") return lingo::Datum::symbol(member->textAlignment());
+        if (prop == "color") return colorDatumFromArgb(member->textColor());
+        if (prop == "bgcolor") return colorDatumFromArgb(member->textBgColor());
+        if (prop == "wordwrap") return lingo::Datum::of(member->textWordWrap() ? 1 : 0);
+        if (prop == "antialias") return lingo::Datum::of(member->textAntialias() ? 1 : 0);
+        if (prop == "boxtype") return lingo::Datum::of(member->textBoxType());
+        if (prop == "fixedlinespace") return lingo::Datum::of(member->textFixedLineSpace());
+        if (prop == "topspacing") return lingo::Datum::of(member->textTopSpacing());
+        if (prop == "editable") return lingo::Datum::of(member->editable() ? 1 : 0);
+    }
     if (prop == "width") return lingo::Datum::of(member->width());
     if (prop == "height") return lingo::Datum::of(member->height());
     if (prop == "depth") {
@@ -495,17 +576,87 @@ bool CastLib::setMemberProp(int memberNumber, const std::string& propName, const
         member->setName(value.stringValue());
         return true;
     }
-    if (member->isText() && prop == "text") {
-        member->setDynamicText(value.stringValue());
-        return true;
-    }
-    if (member->isText() && prop == "html") {
-        member->setDynamicText(stripHtmlTags(value.stringValue()));
-        return true;
-    }
-    if (member->isText() && prop == "media" && (value.isString() || value.isSymbol())) {
-        member->setDynamicText(value.stringValue());
-        return true;
+    if (member->isTextLike()) {
+        if (prop == "text") {
+            member->setDynamicText(value.stringValue());
+            return true;
+        }
+        if (prop == "html") {
+            member->setDynamicText(stripHtmlTags(value.stringValue()));
+            return true;
+        }
+        if (prop == "media" && (value.isString() || value.isSymbol())) {
+            member->setDynamicText(value.stringValue());
+            return true;
+        }
+        if (prop == "font") {
+            member->setTextFont(value.stringValue());
+            return true;
+        }
+        if (prop == "fontsize") {
+            member->setTextFontSize(value.intValue());
+            return true;
+        }
+        if (prop == "fontstyle") {
+            member->setTextFontStyle(fontStyleFromDatum(value));
+            return true;
+        }
+        if (prop == "alignment") {
+            member->setTextAlignment(lower(value.stringValue()));
+            return true;
+        }
+        if (prop == "color") {
+            if (!value.isVoid()) {
+                member->setTextColor(textColorToArgb(value));
+            }
+            return true;
+        }
+        if (prop == "bgcolor") {
+            if (!value.isVoid()) {
+                member->setTextBgColor(textColorToArgb(value));
+            }
+            return true;
+        }
+        if (prop == "wordwrap") {
+            member->setTextWordWrap(value.intValue() != 0);
+            return true;
+        }
+        if (prop == "antialias") {
+            member->setTextAntialias(value.intValue() != 0);
+            return true;
+        }
+        if (prop == "boxtype") {
+            member->setTextBoxType(value.intValue());
+            return true;
+        }
+        if (prop == "rect") {
+            const auto* rect = value.asIntRect();
+            if (rect == nullptr) {
+                return false;
+            }
+            member->setTextRect(rect->left, rect->top, rect->right, rect->bottom);
+            return true;
+        }
+        if (prop == "width") {
+            member->setTextWidth(value.intValue());
+            return true;
+        }
+        if (prop == "height") {
+            member->setTextHeight(value.intValue());
+            return true;
+        }
+        if (prop == "fixedlinespace") {
+            member->setTextFixedLineSpace(value.intValue());
+            return true;
+        }
+        if (prop == "topspacing") {
+            member->setTextTopSpacing(value.intValue());
+            return true;
+        }
+        if (prop == "editable") {
+            member->setEditable(value.intValue() != 0);
+            return true;
+        }
     }
     if (prop == "image") {
         const auto* image = value.asImageRef();
@@ -754,7 +905,7 @@ bool CastLib::looksLikeDirectFileBindingName(const std::string& candidateName) c
 }
 
 std::string CastLib::resolveMemberText(const std::shared_ptr<libreshockwave::cast::CastMember>& member) {
-    if (!member || !member->isText()) {
+    if (!member || !member->isTextLike()) {
         return "";
     }
     if (member->hasDynamicText()) {

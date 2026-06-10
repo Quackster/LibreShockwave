@@ -8372,6 +8372,15 @@ void testSpriteBakerFoundation() {
     dynamicTextBaker.setTextRenderer(&dynamicTextRenderer);
     auto dynamicTextMember = std::make_shared<CastMember>(1, 10050, MemberType::Text);
     dynamicTextMember->setDynamicText("Runtime text");
+    dynamicTextMember->setTextFont("Courier");
+    dynamicTextMember->setTextFontSize(18);
+    dynamicTextMember->setTextFontStyle("bold,italic");
+    dynamicTextMember->setTextAlignment("right");
+    dynamicTextMember->setTextColor(static_cast<int>(0xFF123456U));
+    dynamicTextMember->setTextWordWrap(true);
+    dynamicTextMember->setTextAntialias(true);
+    dynamicTextMember->setTextFixedLineSpace(14);
+    dynamicTextMember->setTextTopSpacing(2);
     RenderSprite dynamicTextSprite(14,
                                    0,
                                    0,
@@ -8396,16 +8405,16 @@ void testSpriteBakerFoundation() {
     assert(dynamicTextRenderer.lastText == "Runtime text");
     assert(dynamicTextRenderer.lastWidth == 9);
     assert(dynamicTextRenderer.lastHeight == 4);
-    assert(dynamicTextRenderer.lastFontName == "Arial");
-    assert(dynamicTextRenderer.lastFontSize == 12);
-    assert(dynamicTextRenderer.lastFontStyle == "plain");
-    assert(dynamicTextRenderer.lastAlignment == "left");
-    assert(dynamicTextRenderer.lastTextColor == static_cast<int>(0xFF000000U));
+    assert(dynamicTextRenderer.lastFontName == "Courier");
+    assert(dynamicTextRenderer.lastFontSize == 18);
+    assert(dynamicTextRenderer.lastFontStyle == "bold,italic");
+    assert(dynamicTextRenderer.lastAlignment == "right");
+    assert(dynamicTextRenderer.lastTextColor == static_cast<int>(0xFF123456U));
     assert(dynamicTextRenderer.lastBgColor == 0);
-    assert(!dynamicTextRenderer.lastWordWrap);
-    assert(!dynamicTextRenderer.lastAntialias);
-    assert(dynamicTextRenderer.lastFixedLineSpace == 0);
-    assert(dynamicTextRenderer.lastTopSpacing == 0);
+    assert(dynamicTextRenderer.lastWordWrap);
+    assert(dynamicTextRenderer.lastAntialias);
+    assert(dynamicTextRenderer.lastFixedLineSpace == 14);
+    assert(dynamicTextRenderer.lastTopSpacing == 2);
     assert(bakedDynamicText.width() == 9);
     assert(bakedDynamicText.height() == 4);
     assert(bakedDynamicText.bakedBitmap()->isNativeAlpha());
@@ -12270,6 +12279,45 @@ void testCastLibManagerFoundation() {
     assert(manager.getMemberProp(1, 10001, "text").stringValue() == "Plain Text");
     assert(manager.setMemberProp(1, 10001, "media", Datum::symbol("Symbolic")));
     assert(manager.getMemberProp(1, 10001, "text").stringValue() == "Symbolic");
+    assert(manager.getMemberProp(1, 10001, "font").stringValue() == "Arial");
+    assert(manager.getMemberProp(1, 10001, "fontSize").intValue() == 12);
+    assert(manager.getMemberProp(1, 10001, "width").intValue() == 480);
+    assert(manager.getMemberProp(1, 10001, "height").intValue() == 480);
+    assert(manager.setMemberProp(1, 10001, "font", Datum::of(std::string("Courier"))));
+    assert(manager.setMemberProp(1, 10001, "fontSize", Datum::of(18)));
+    assert(manager.setMemberProp(1, 10001, "fontStyle", Datum::list({Datum::symbol("bold"), Datum::symbol("italic")})));
+    assert(manager.setMemberProp(1, 10001, "alignment", Datum::symbol("right")));
+    assert(manager.setMemberProp(1, 10001, "color", Datum::colorRef(0x12, 0x34, 0x56)));
+    assert(manager.setMemberProp(1, 10001, "bgColor", Datum::of(std::string("#ABCDEF"))));
+    assert(manager.setMemberProp(1, 10001, "wordWrap", Datum::of(1)));
+    assert(manager.setMemberProp(1, 10001, "antialias", Datum::of(1)));
+    assert(manager.setMemberProp(1, 10001, "boxType", Datum::of(1)));
+    assert(manager.setMemberProp(1, 10001, "rect", Datum::intRect(2, 3, 42, 18)));
+    assert(manager.setMemberProp(1, 10001, "width", Datum::of(50)));
+    assert(manager.setMemberProp(1, 10001, "height", Datum::of(30)));
+    assert(manager.setMemberProp(1, 10001, "fixedLineSpace", Datum::of(14)));
+    assert(manager.setMemberProp(1, 10001, "topSpacing", Datum::of(2)));
+    assert(manager.setMemberProp(1, 10001, "editable", Datum::of(1)));
+    assert(manager.getMemberProp(1, 10001, "font").stringValue() == "Courier");
+    assert(manager.getMemberProp(1, 10001, "fontSize").intValue() == 18);
+    assert(manager.getMemberProp(1, 10001, "fontStyle").stringValue() == "bold,italic");
+    assert(manager.getMemberProp(1, 10001, "alignment").asSymbol()->name == "right");
+    assert(manager.getMemberProp(1, 10001, "color").asColorRef()->r == 0x12);
+    assert(manager.getMemberProp(1, 10001, "color").asColorRef()->g == 0x34);
+    assert(manager.getMemberProp(1, 10001, "color").asColorRef()->b == 0x56);
+    assert(manager.getMemberProp(1, 10001, "bgColor").asColorRef()->r == 0xAB);
+    assert(manager.getMemberProp(1, 10001, "bgColor").asColorRef()->g == 0xCD);
+    assert(manager.getMemberProp(1, 10001, "bgColor").asColorRef()->b == 0xEF);
+    assert(manager.getMemberProp(1, 10001, "wordWrap").intValue() == 1);
+    assert(manager.getMemberProp(1, 10001, "antialias").intValue() == 1);
+    assert(manager.getMemberProp(1, 10001, "boxType").intValue() == 1);
+    assert(manager.getMemberProp(1, 10001, "width").intValue() == 50);
+    assert(manager.getMemberProp(1, 10001, "height").intValue() == 30);
+    assert(manager.getMemberProp(1, 10001, "rect").asIntRect()->left == 2);
+    assert(manager.getMemberProp(1, 10001, "rect").asIntRect()->right == 52);
+    assert(manager.getMemberProp(1, 10001, "fixedLineSpace").intValue() == 14);
+    assert(manager.getMemberProp(1, 10001, "topSpacing").intValue() == 2);
+    assert(manager.getMemberProp(1, 10001, "editable").intValue() == 1);
 
     const auto builtinRuntime = registry.invoke("createMember",
                                                 context,

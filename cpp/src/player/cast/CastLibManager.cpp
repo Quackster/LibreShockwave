@@ -397,7 +397,7 @@ lingo::Datum CastLibManager::getFieldValue(const lingo::Datum& identifier, int c
     if (member->hasDynamicText()) {
         return lingo::Datum::of(member->textContent());
     }
-    if (!member->isText()) {
+    if (!member->isTextLike()) {
         return lingo::Datum::of(std::string());
     }
     auto text = getMemberProp(member->castLib(), member->memberNum(), "text");

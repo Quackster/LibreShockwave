@@ -43,6 +43,7 @@ public:
 
     [[nodiscard]] bool isBitmap() const;
     [[nodiscard]] bool isText() const;
+    [[nodiscard]] bool isTextLike() const;
     [[nodiscard]] bool isSound() const;
     [[nodiscard]] bool isScript() const;
     [[nodiscard]] bool isShape() const;
@@ -60,6 +61,37 @@ public:
     [[nodiscard]] bool hasDynamicText() const;
     [[nodiscard]] std::string textContent() const;
     void setDynamicText(std::string text);
+    [[nodiscard]] const std::string& textFont() const;
+    void setTextFont(std::string font);
+    [[nodiscard]] int textFontSize() const;
+    void setTextFontSize(int size);
+    [[nodiscard]] const std::string& textFontStyle() const;
+    void setTextFontStyle(std::string style);
+    [[nodiscard]] const std::string& textAlignment() const;
+    void setTextAlignment(std::string alignment);
+    [[nodiscard]] int textColor() const;
+    void setTextColor(int argb);
+    [[nodiscard]] int textBgColor() const;
+    void setTextBgColor(int argb);
+    [[nodiscard]] bool textWordWrap() const;
+    void setTextWordWrap(bool wordWrap);
+    [[nodiscard]] bool textAntialias() const;
+    void setTextAntialias(bool antialias);
+    [[nodiscard]] int textBoxType() const;
+    void setTextBoxType(int boxType);
+    [[nodiscard]] int textRectLeft() const;
+    [[nodiscard]] int textRectTop() const;
+    [[nodiscard]] int textRectRight() const;
+    [[nodiscard]] int textRectBottom() const;
+    void setTextRect(int left, int top, int right, int bottom);
+    void setTextWidth(int width);
+    void setTextHeight(int height);
+    [[nodiscard]] int textFixedLineSpace() const;
+    void setTextFixedLineSpace(int lineSpace);
+    [[nodiscard]] int textTopSpacing() const;
+    void setTextTopSpacing(int spacing);
+    [[nodiscard]] bool editable() const;
+    void setEditable(bool editable);
     [[nodiscard]] std::shared_ptr<bitmap::Bitmap> runtimeBitmap() const;
     void setRuntimeBitmap(const bitmap::Bitmap& bitmap, bool markScriptModified = true);
     void erase();
@@ -69,6 +101,7 @@ public:
 private:
     void parseSpecificData();
     void resetRuntimePayload();
+    void resetTextProperties();
 
     int id_;
     int castLib_;
@@ -87,6 +120,22 @@ private:
     std::optional<int> runtimeRegX_;
     std::optional<int> runtimeRegY_;
     std::optional<std::string> dynamicText_;
+    std::string textFont_ = "Arial";
+    int textFontSize_ = 12;
+    std::string textFontStyle_ = "plain";
+    std::string textAlignment_ = "left";
+    int textColor_ = static_cast<int>(0xFF000000U);
+    int textBgColor_ = static_cast<int>(0xFFFFFFFFU);
+    bool textWordWrap_ = false;
+    bool textAntialias_ = false;
+    int textBoxType_ = 0;
+    int textRectLeft_ = 0;
+    int textRectTop_ = 0;
+    int textRectRight_ = 480;
+    int textRectBottom_ = 480;
+    int textFixedLineSpace_ = 0;
+    int textTopSpacing_ = 0;
+    bool editable_ = false;
 };
 
 } // namespace libreshockwave::cast
