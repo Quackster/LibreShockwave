@@ -13,6 +13,7 @@
 #include "libreshockwave/io/BinaryReader.hpp"
 #include "libreshockwave/chunks/ScoreChunk.hpp"
 #include "libreshockwave/bitmap/Bitmap.hpp"
+#include "libreshockwave/cast/XmedStyledText.hpp"
 
 namespace libreshockwave::chunks {
 class CastChunk;
@@ -129,6 +130,8 @@ public:
     [[nodiscard]] bool hasExternalCasts() const;
     [[nodiscard]] bool hasScore() const;
     [[nodiscard]] std::optional<std::string> getFontNameForId(int fontId) const;
+    [[nodiscard]] std::optional<cast::XmedStyledText> getXmedStyledTextForMember(
+        const std::shared_ptr<chunks::CastMemberChunk>& member);
     [[nodiscard]] std::shared_ptr<chunks::ScoreChunk> getScoreForMember(const std::shared_ptr<chunks::CastMemberChunk>& member);
     [[nodiscard]] std::vector<std::shared_ptr<chunks::TextChunk>> getTextChunksForMember(
         const std::shared_ptr<chunks::CastMemberChunk>& member);

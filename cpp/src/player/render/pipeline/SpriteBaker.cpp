@@ -186,6 +186,25 @@ bool isTransparentTextInk(const RenderSprite& sprite) {
            sprite.inkMode() == id::InkMode::MATTE;
 }
 
+bool shouldUseSpriteForeColorForStyledText(const RenderSprite& sprite, std::uint32_t styledTextColor) {
+    if (sprite.inkMode() == id::InkMode::MATTE) {
+        return false;
+    }
+    if (sprite.inkMode() == id::InkMode::BACKGROUND_TRANSPARENT &&
+        !sprite.hasForeColor() &&
+        (styledTextColor & 0x00FFFFFFU) == 0x00FFFFFFU) {
+        return true;
+    }
+    if (!sprite.hasForeColor()) {
+        return false;
+    }
+    const int spriteColor = argbRgb(sprite.foreColor());
+    if ((spriteColor & 0x00FFFFFF) != 0x00FFFFFF) {
+        return true;
+    }
+    return (styledTextColor & 0x00FFFFFFU) == 0x00FFFFFFU;
+}
+
 std::shared_ptr<bitmap::Bitmap> insetTextBitmap(std::shared_ptr<bitmap::Bitmap> source,
                                                 int width,
                                                 int height,
@@ -209,6 +228,47 @@ std::shared_ptr<bitmap::Bitmap> insetTextBitmap(std::shared_ptr<bitmap::Bitmap> 
         bitmap.setNativeAlpha(true);
     }
     return std::make_shared<bitmap::Bitmap>(std::move(bitmap));
+}
+
+int bottomTransparentRows(const bitmap::Bitmap& source) {
+    int rows = 0;
+    for (int y = source.height() - 1; y >= 0; --y) {
+        bool rowTransparent = true;
+        for (int x = 0; x < source.width(); ++x) {
+            if (((source.getPixel(x, y) >> 24) & 0xFFU) != 0) {
+                rowTransparent = false;
+                break;
+            }
+        }
+        if (!rowTransparent) {
+            break;
+        }
+        ++rows;
+    }
+    return rows;
+}
+
+std::shared_ptr<bitmap::Bitmap> shiftBitmapDown(std::shared_ptr<bitmap::Bitmap> source, int dy, int bgColor) {
+    if (source == nullptr || dy <= 0) {
+        return source;
+    }
+    const int safeDy = std::min(dy, bottomTransparentRows(*source));
+    if (safeDy <= 0) {
+        return source;
+    }
+
+    bitmap::Bitmap shifted(source->width(), source->height(), source->bitDepth());
+    shifted.fill(static_cast<std::uint32_t>(bgColor));
+    for (int y = 0; y < source->height() - safeDy; ++y) {
+        for (int x = 0; x < source->width(); ++x) {
+            shifted.setPixel(x, y + safeDy, source->getPixel(x, y));
+        }
+    }
+    shifted.markScriptModified();
+    if (source->isNativeAlpha()) {
+        shifted.setNativeAlpha(true);
+    }
+    return std::make_shared<bitmap::Bitmap>(std::move(shifted));
 }
 
 } // namespace
@@ -390,8 +450,34 @@ std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeFilmLoop(const RenderSpri
 std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeFileBackedText(const RenderSprite& sprite) {
     const auto member = sprite.castMember();
     auto* file = mutableFileFor(member);
-    if (member == nullptr || file == nullptr || textRenderer_ == nullptr || member->isTextXtra()) {
+    if (member == nullptr || file == nullptr || textRenderer_ == nullptr) {
         return nullptr;
+    }
+
+    if (member->isTextXtra()) {
+        auto styled = file->getXmedStyledTextForMember(std::const_pointer_cast<chunks::CastMemberChunk>(member));
+        if (!styled.has_value() || styled->text.empty()) {
+            return nullptr;
+        }
+        const int width = styled->width > 0 ? styled->width : (sprite.width() > 0 ? sprite.width() : 200);
+        const int height = styled->height > 0 ? styled->height : (sprite.height() > 0 ? sprite.height() : 20);
+        const auto styledTextColor = styled->textColorARGB();
+        const int textColor = shouldUseSpriteForeColorForStyledText(sprite, styledTextColor)
+            ? argbRgb(sprite.foreColor())
+            : static_cast<int>(styledTextColor);
+        const int bgColor = isTransparentTextInk(sprite) ? 0 : argbRgb(sprite.backColor());
+        auto textImage = textRenderer_->renderXmedText(&*styled, width, height, textColor, bgColor);
+        if (sprite.inkMode() == id::InkMode::BACKGROUND_TRANSPARENT) {
+            textImage = shiftBitmapDown(std::move(textImage), 2, bgColor);
+        }
+        if (textImage == nullptr || isTransparentTextInk(sprite)) {
+            return textImage;
+        }
+        if (InkProcessor::shouldProcessInk(sprite.inkMode())) {
+            return std::make_shared<bitmap::Bitmap>(
+                InkProcessor::applyInk(*textImage, sprite.inkMode(), sprite.backColor(), false, nullptr));
+        }
+        return textImage;
     }
 
     auto textChunk = file->getTextForMember(std::const_pointer_cast<chunks::CastMemberChunk>(member));

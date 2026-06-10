@@ -16,6 +16,7 @@ add_library(libreshockwave
     src/cast/Shockwave3DInfo.cpp
     src/cast/TextInfo.cpp
     src/cast/XmedStyledText.cpp
+    src/cast/XmedTextParser.cpp
     src/chunks/BitmapChunk.cpp
     src/chunks/CastChunk.cpp
     src/chunks/CastListChunk.cpp

@@ -35,6 +35,7 @@
 #include "libreshockwave/cast/Shockwave3DInfo.hpp"
 #include "libreshockwave/cast/TextInfo.hpp"
 #include "libreshockwave/cast/XmedStyledText.hpp"
+#include "libreshockwave/cast/XmedTextParser.hpp"
 #include "libreshockwave/chunks/BitmapChunk.hpp"
 #include "libreshockwave/chunks/CastChunk.hpp"
 #include "libreshockwave/chunks/CastListChunk.hpp"
@@ -153,6 +154,7 @@ using libreshockwave::cast::Shockwave3DInfo;
 using libreshockwave::cast::StyledSpan;
 using libreshockwave::cast::TextInfo;
 using libreshockwave::cast::XmedStyledText;
+using libreshockwave::cast::XmedTextParser;
 using libreshockwave::chunks::BitmapChunk;
 using libreshockwave::chunks::CastChunk;
 using libreshockwave::chunks::CastListChunk;
@@ -6728,6 +6730,166 @@ void testSpriteBakerFoundation() {
     assert(bakedFileText.width() == 7);
     assert(bakedFileText.height() == 3);
     assert(bakedFileText.bakedBitmap()->getPixel(6, 2) == 0xFFABCDEFU);
+
+    std::vector<std::uint8_t> xmedKeyData;
+    appendI16(xmedKeyData, 12);
+    appendI16(xmedKeyData, 12);
+    appendI32(xmedKeyData, 1);
+    appendI32(xmedKeyData, 1);
+    appendI32(xmedKeyData, 2);
+    appendI32(xmedKeyData, 9);
+    appendI32(xmedKeyData, BinaryReader::fourCC("XMED"));
+
+    auto appendAscii = [](std::vector<std::uint8_t>& data, const std::string& value) {
+        data.insert(data.end(), value.begin(), value.end());
+    };
+    std::vector<std::uint8_t> xmedData;
+    appendAscii(xmedData, "0002");
+    xmedData.push_back(0);
+    appendAscii(xmedData, "9,Xmed text");
+    xmedData.push_back(0x03);
+    xmedData.push_back(0x03);
+    appendAscii(xmedData, "0008");
+    appendAscii(xmedData, "00000050");
+    appendAscii(xmedData, "00000001");
+    xmedData.push_back(0);
+    appendAscii(xmedData, "40,");
+    xmedData.push_back(6);
+    appendAscii(xmedData, "Geneva");
+    xmedData.resize(xmedData.size() + 58, 0);
+    xmedData.push_back(0x03);
+    appendAscii(xmedData, "0006");
+    appendAscii(xmedData, "00000010");
+    appendAscii(xmedData, "00000001");
+    xmedData.push_back(0x02);
+    appendAscii(xmedData, "C0000");
+    xmedData.push_back(0x02);
+    xmedData.push_back(0x03);
+    appendAscii(xmedData, "0003");
+    xmedData.push_back(0);
+    appendAscii(xmedData, "8,17,34,51");
+    xmedData.push_back(0x03);
+    xmedData.push_back(0x03);
+    appendAscii(xmedData, "0005");
+    appendAscii(xmedData, "00000004");
+    appendAscii(xmedData, "00000001");
+    xmedData.push_back(0x02);
+    xmedData.push_back('0');
+    xmedData.push_back(0x01);
+    xmedData.push_back('1');
+
+    const std::vector<std::pair<std::string, std::vector<std::uint8_t>>> xmedChunks{
+        {"DRCF", textConfigData},
+        {"KEY*", xmedKeyData},
+        {"XMED", xmedData}
+    };
+    const int xmedMmapLen = 24 + static_cast<int>(xmedChunks.size()) * 20;
+    int xmedDataStart = mmapOffset + 8 + xmedMmapLen;
+    std::vector<int> xmedChunkDataStarts;
+    xmedChunkDataStarts.reserve(xmedChunks.size());
+    for (const auto& chunk : xmedChunks) {
+        xmedChunkDataStarts.push_back(xmedDataStart);
+        xmedDataStart += static_cast<int>(chunk.second.size());
+    }
+
+    std::vector<std::uint8_t> xmedFileData;
+    appendFourCC(xmedFileData, "RIFX");
+    appendI32(xmedFileData, 0);
+    appendFourCC(xmedFileData, "MV93");
+    appendFourCC(xmedFileData, "imap");
+    appendI32(xmedFileData, 12);
+    appendI32(xmedFileData, 1);
+    appendI32(xmedFileData, mmapOffset);
+    appendI32(xmedFileData, 0x04B1);
+    appendFourCC(xmedFileData, "mmap");
+    appendI32(xmedFileData, static_cast<std::uint32_t>(xmedMmapLen));
+    appendI16(xmedFileData, 24);
+    appendI16(xmedFileData, 20);
+    appendI32(xmedFileData, static_cast<std::uint32_t>(xmedChunks.size()));
+    appendI32(xmedFileData, static_cast<std::uint32_t>(xmedChunks.size()));
+    appendI32(xmedFileData, 0);
+    appendI32(xmedFileData, 0);
+    appendI32(xmedFileData, 0);
+    for (std::size_t index = 0; index < xmedChunks.size(); ++index) {
+        appendI32(xmedFileData, BinaryReader::fourCC(xmedChunks[index].first));
+        appendI32(xmedFileData, static_cast<std::uint32_t>(xmedChunks[index].second.size()));
+        appendI32(xmedFileData, static_cast<std::uint32_t>(xmedChunkDataStarts[index] - 8));
+        appendI16(xmedFileData, 0);
+        appendI16(xmedFileData, 0);
+        appendI32(xmedFileData, 0);
+    }
+    for (const auto& chunk : xmedChunks) {
+        xmedFileData.insert(xmedFileData.end(), chunk.second.begin(), chunk.second.end());
+    }
+    putI32At(xmedFileData, 4, static_cast<std::uint32_t>(xmedFileData.size() - 8));
+
+    auto xmedFile = DirectorFile::load(xmedFileData);
+    std::vector<std::uint8_t> xmedSpecificData(56, 0);
+    xmedSpecificData[4] = 't';
+    xmedSpecificData[5] = 'e';
+    xmedSpecificData[6] = 'x';
+    xmedSpecificData[7] = 't';
+    putI32At(xmedSpecificData, 48, 4);
+    putI32At(xmedSpecificData, 52, 11);
+    assert(XmedTextParser::isTextXtra(xmedSpecificData));
+    auto fileXmedMember = std::make_shared<CastMemberChunk>(xmedFile.get(),
+                                                            ChunkId(9),
+                                                            MemberType::Xtra,
+                                                            0,
+                                                            static_cast<int>(xmedSpecificData.size()),
+                                                            std::vector<std::uint8_t>{},
+                                                            xmedSpecificData,
+                                                            "file-xmed",
+                                                            0,
+                                                            0,
+                                                            0);
+    auto parsedXmed = xmedFile->getXmedStyledTextForMember(fileXmedMember);
+    assert(parsedXmed.has_value());
+    assert(parsedXmed->text == "Xmed text");
+    assert(parsedXmed->fontName == "Geneva");
+    assert(parsedXmed->fontSize == 12);
+    assert(parsedXmed->alignment == "center");
+    assert(parsedXmed->width == 11);
+    assert(parsedXmed->height == 4);
+    assert(parsedXmed->textColorARGB() == 0xFF112233U);
+
+    RecordingSpriteBakerTextRenderer fileXmedRenderer;
+    SpriteBaker fileXmedBaker;
+    fileXmedBaker.setTextRenderer(&fileXmedRenderer);
+    RenderSprite fileXmedSprite(14,
+                                0,
+                                0,
+                                20,
+                                9,
+                                0,
+                                true,
+                                SpriteType::Text,
+                                fileXmedMember,
+                                nullptr,
+                                0x778899,
+                                0x112233,
+                                true,
+                                true,
+                                0,
+                                100,
+                                false,
+                                false,
+                                nullptr,
+                                false);
+    auto bakedFileXmed = fileXmedBaker.bake(fileXmedSprite);
+    assert(fileXmedRenderer.lastText == "Xmed text");
+    assert(fileXmedRenderer.lastWidth == 11);
+    assert(fileXmedRenderer.lastHeight == 4);
+    assert(fileXmedRenderer.lastFontName == "Geneva");
+    assert(fileXmedRenderer.lastFontSize == 12);
+    assert(fileXmedRenderer.lastAlignment == "center");
+    assert(fileXmedRenderer.lastTextColor == static_cast<int>(0xFF778899U));
+    assert(fileXmedRenderer.lastBgColor == static_cast<int>(0xFF112233U));
+    assert(fileXmedRenderer.lastWordWrap);
+    assert(fileXmedRenderer.lastAntialias);
+    assert(bakedFileXmed.width() == 11);
+    assert(bakedFileXmed.height() == 4);
+    assert(bakedFileXmed.bakedBitmap()->getPixel(10, 3) == 0xFFABCDEFU);
 
     RenderSprite solidShape(3,
                             0,

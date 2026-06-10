@@ -6,6 +6,7 @@
 
 #include "libreshockwave/bitmap/BitmapDecoder.hpp"
 #include "libreshockwave/cast/BitmapInfo.hpp"
+#include "libreshockwave/cast/XmedTextParser.hpp"
 #include "libreshockwave/chunks/BitmapChunk.hpp"
 #include "libreshockwave/chunks/CastChunk.hpp"
 #include "libreshockwave/chunks/CastListChunk.hpp"
@@ -376,6 +377,23 @@ std::optional<std::string> DirectorFile::getFontNameForId(int fontId) const {
         auto fontName = map->fontNameForId(fontId);
         if (fontName.has_value() && !fontName->empty()) {
             return fontName;
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<cast::XmedStyledText> DirectorFile::getXmedStyledTextForMember(
+    const std::shared_ptr<chunks::CastMemberChunk>& member) {
+    if (!member || !keyTable_) {
+        return std::nullopt;
+    }
+
+    for (const auto& entry : keyTable_->getEntriesForOwner(member->id())) {
+        if (entry.fourcc != format::fourCC(format::ChunkType::XMED)) {
+            continue;
+        }
+        if (auto raw = std::dynamic_pointer_cast<chunks::RawChunk>(getChunk(entry.sectionId))) {
+            return cast::XmedTextParser::parseStyled(raw->data(), member->specificData());
         }
     }
     return std::nullopt;

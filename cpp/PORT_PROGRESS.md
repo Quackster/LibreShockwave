@@ -46,6 +46,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `cast::StyledSpan` and `cast::XmedStyledText` helpers.
 - `cast::BitmapInfo` parser for D4/D5 and D6+ bitmap specific data.
 - `cast::TextInfo` parser for compact and D7+ text specific data.
+- `cast::XmedTextParser` foundation for Director text-Xtra XMED chunks, including text/font/color/alignment/dimension parsing into `XmedStyledText`.
 - `cast::ShapeInfo` parser and shape helpers.
 - `cast::FilmLoopInfo` parser and dimension/registration helpers.
 - `cast::Shockwave3DInfo` parser for basic camera, color, flag, and Pascal string metadata.
@@ -374,8 +375,8 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `render::pipeline::SpriteBaker` ports ordered sprite bake steps, tick counting for batch bakes, custom bake-step registration, immutable `RenderSprite` baked-bitmap attachment, and text/button size replacement when baked output dimensions differ from score dimensions.
 - Bitmap sprites can now bake through an injected decode provider, consume provider-backed live script-modified bitmap buffers before cache/decode, reuse `BitmapCache`, record decode failures, apply Copy-ink 1-bit foreColor/backColor remapping, apply live COPY exact-white backColor remapping, run shared `InkProcessor.applyInk`, and preserve indexed matte/background-transparent remap behavior.
-- Text/button sprites can bake through an injected text provider or file-backed STXT chunks using an injected `TextRenderer`, film-loop sprites can bake from file-backed embedded score chunks or through an injected tick-aware raw-composite provider with parent sprite ink processing, shape sprites bake solid and authored shape bitmaps through shared ink processing, and unsupported sprites pass through without a baked bitmap until their backing resolvers are ported.
-- Runtime CastLibManager lookup, file-backed XMED text resolution, and remaining Java `InkProcessor.applyInk` edge cases remain deferred.
+- Text/button sprites can bake through an injected text provider, file-backed STXT chunks, or file-backed XMED text-Xtra chunks using an injected `TextRenderer`, film-loop sprites can bake from file-backed embedded score chunks or through an injected tick-aware raw-composite provider with parent sprite ink processing, shape sprites bake solid and authored shape bitmaps through shared ink processing, and unsupported sprites pass through without a baked bitmap until their backing resolvers are ported.
+- Runtime CastLibManager lookup, advanced XMED multi-span style-record fidelity, and remaining Java `InkProcessor.applyInk` edge cases remain deferred.
 
 ### Software Frame Renderer
 
@@ -399,7 +400,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `render::output::TextRenderer` ports the platform-neutral text rendering and measurement interface.
 - Shared line splitting, character-line lookup, line-start lookup, and word-wrap helpers are available in C++.
-- The default XMED rendering path delegates to `renderText` using parsed `XmedStyledText` fields, matching the Java interface contract.
+- The default XMED rendering path delegates to `renderText` using parsed `XmedStyledText` fields, and `DirectorFile` can resolve file-backed XMED chunks for text-Xtra members through KEY* ownership.
 
 ### Network Task Foundation
 
@@ -591,7 +592,7 @@ Result:
 - Breakpoint, BreakpointManager, WatchExpression, and DebugSnapshot tests passed through the same CTest executable.
 - RenderPipelineTrace, RenderSprite, transform mirror, baked bitmap helpers, and FrameSnapshot tests passed through the same CTest executable.
 - StageRenderer stage-image lifecycle, dynamic/puppeted sprite collection, locZ/channel sorting, last-baked sprite storage, sprite-end cleanup, reset behavior, and RGB555 expansion tests passed through the same CTest executable.
-- SpriteBaker tick counting, default/custom bake-step dispatch, bitmap decode-provider caching, provider-backed live script-modified bitmap priority, live COPY exact-white backColor remapping, live DARKEN white-canvas neutralization, 1-bit Copy-ink color remap, shared bitmap ink processing, text baked-size replacement, file-backed STXT renderer dispatch, provider-backed film-loop parent ink processing, file-backed film-loop sub-score compositing, shape baking, transparency-key shape ink, unsupported pass-through, and external BitmapCache ownership tests passed through the same CTest executable.
+- SpriteBaker tick counting, default/custom bake-step dispatch, bitmap decode-provider caching, provider-backed live script-modified bitmap priority, live COPY exact-white backColor remapping, live DARKEN white-canvas neutralization, 1-bit Copy-ink color remap, shared bitmap ink processing, text baked-size replacement, file-backed STXT renderer dispatch, file-backed XMED parser/renderer dispatch, provider-backed film-loop parent ink processing, file-backed film-loop sub-score compositing, shape baking, transparency-key shape ink, unsupported pass-through, and external BitmapCache ownership tests passed through the same CTest executable.
 - FrameRenderPipeline default StageRenderer/SpriteBaker path, default step names/order, score/dynamic trace summaries, bake tick propagation, baked-sprite publication, snapshot generation, and software-rendered default output tests passed through the same CTest executable.
 - SoftwareFrameRenderer background, stage-image, alpha, blend, scaling, flip, Director mirror, and special-ink tests passed through the same CTest executable.
 - FrameRenderPipelineContext mutation, trace building, snapshot storage, and FrameRenderPipelineStep tests passed through the same CTest executable.
@@ -786,4 +787,4 @@ Result:
 - `c879164f Port C++ sound object property dispatch`
 - `938442ce Port C++ behavior parameter value parser`
 - `3410a54f Port C++ value builtin parser`
-- Current checkpoint commit message: `Port C++ STXT text baking`
+- Current checkpoint commit message: `Port C++ XMED text baking`
