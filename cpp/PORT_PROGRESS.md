@@ -268,6 +268,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Handler lookup uses real `ScriptChunk`/`ScriptNamesChunk` metadata where available, with callback hooks for handler invocation and dynamic script-instance response checks until the C++ Lingo VM is ported.
 - Pass propagation, stopEvent state, mouse-handler detection, and sprite mouse-interactivity checks across score behaviors and dynamic script instances are available in C++.
 
+### Frame Context Foundation
+
+- `player::frame::FrameContext` ports frame navigation state, pending go-to-frame behavior, first-frame initialization, active/entered channel tracking, beginSprite/endSprite lifecycle dispatch, frame script setup, actor/timeout callback hooks, event listener notifications, and reset behavior.
+- Frame transitions coordinate `ScoreNavigator`, `BehaviorManager`, `EventDispatcher`, and `SpriteRegistry`, including puppeted sprite persistence across score-span exits and external-cast behavior rebinding hooks.
+- Full actorList VM dispatch, timeout VM dispatch, startup Flags behavior quirk, and full Player render-loop integration remain deferred to later C++ VM/player slices.
+
 ### Sprite Properties Foundation
 
 - `player::SpriteProperties` ports Lingo sprite property get/set behavior over `SpriteState` and `SpriteRegistry`, including missing-sprite defaults, dynamic sprite auto-creation, revision bumps, loc/rect/visibility/puppet/ink/blend/stretch/trails/color/transform/cursor/script-instance properties, and no-op acceptance for Director compatibility properties.
@@ -626,6 +632,7 @@ Result:
 - CursorManager editable text, button, explicit sprite cursor, interactive fallback, custom bitmap cursor, global cursor, mask application, hotspot, cursor member encoding, near-white, and navigator-whitespace suppression tests passed through the same CTest executable.
 - BehaviorInstance and BehaviorManager ID/property state, behavior-ref parameters, frame-script caching, channel lookup/removal, sprite-instance ordering, and clear tests passed through the same CTest executable.
 - EventDispatcher global, frame/movie, sprite/movie, sprite-only, behavior-only, and movie-only dispatch ordering, pass propagation, dynamic script-instance dispatch, sprite handler lookup, mouse interactivity, mouse-handler recognition, debug flag, and stopEvent state tests passed through the same CTest executable.
+- FrameContext first-frame setup, pending frame navigation, begin/end sprite dispatch, frame events, actor/timeout hooks, puppeted sprite persistence, force navigation, reset, and BehaviorManager script-resolver hooks passed through the same CTest executable.
 - SpriteProperties missing defaults, property get/set, revision bumps, cast member assignment, autosizing, registration-aware bounds, cursor lists, script-instance sprite numbers, release cleanup, color refs, and image callbacks passed through the same CTest executable.
 - Lingo `GET_CHUNK` char/word/item/line extraction, range, negative last-index, sequential narrowing, and provider-backed item delimiters passed through the same CTest executable.
 - Lingo `PUSH_CHUNK_VAR_REF` typed raw-index varref creation tests passed through the same CTest executable.
@@ -805,4 +812,5 @@ Result:
 - `938442ce Port C++ behavior parameter value parser`
 - `3410a54f Port C++ value builtin parser`
 - `dc9a7820 Integrate C++ PFR TTF registry cache`
-- Current checkpoint commit message: `Port C++ cast library manager foundation`
+- `cee0bb98 Port C++ cast library manager foundation`
+- Current checkpoint commit message: `Port C++ frame context foundation`

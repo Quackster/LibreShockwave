@@ -76,6 +76,7 @@ add_library(libreshockwave
     src/player/debug/BreakpointManager.cpp
     src/player/debug/WatchExpression.cpp
     src/player/event/EventDispatcher.cpp
+    src/player/frame/FrameContext.cpp
     src/player/render/RenderConfig.cpp
     src/player/render/RenderType.cpp
     src/player/render/SpriteRegistry.cpp

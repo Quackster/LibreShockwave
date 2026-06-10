@@ -28,6 +28,10 @@ bool BehaviorManager::debugEnabled() const {
     return debugEnabled_;
 }
 
+void BehaviorManager::setScriptResolver(ScriptResolver resolver) {
+    scriptResolver_ = std::move(resolver);
+}
+
 std::shared_ptr<BehaviorInstance> BehaviorManager::createInstance(const score::ScoreBehaviorRef& behaviorRef,
                                                                   int channel) {
     return createInstanceForScript(findScript(behaviorRef), behaviorRef, channel);
@@ -173,6 +177,12 @@ int BehaviorManager::instanceCount() const {
 }
 
 std::shared_ptr<chunks::ScriptChunk> BehaviorManager::findScript(const score::ScoreBehaviorRef& behaviorRef) {
+    if (scriptResolver_) {
+        if (auto script = scriptResolver_(behaviorRef)) {
+            return script;
+        }
+    }
+
     if (file_ == nullptr) {
         return nullptr;
     }

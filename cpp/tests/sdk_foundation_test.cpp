@@ -95,6 +95,7 @@
 #include "libreshockwave/player/debug/DebugSnapshot.hpp"
 #include "libreshockwave/player/debug/WatchExpression.hpp"
 #include "libreshockwave/player/event/EventDispatcher.hpp"
+#include "libreshockwave/player/frame/FrameContext.hpp"
 #include "libreshockwave/player/frame/FrameEvent.hpp"
 #include "libreshockwave/player/input/DirectorKeyCodes.hpp"
 #include "libreshockwave/player/input/HitTester.hpp"
@@ -229,6 +230,7 @@ using libreshockwave::player::event::EventDispatcher;
 using libreshockwave::player::event::EventTarget;
 using libreshockwave::player::event::EventTargetKind;
 using libreshockwave::player::event::HandlerResult;
+using libreshockwave::player::frame::FrameContext;
 using libreshockwave::player::frame::FrameEvent;
 using libreshockwave::player::input::AlphaHitRule;
 using libreshockwave::player::input::DirectorKeyCodes;
@@ -5870,6 +5872,163 @@ void testEventDispatcherFoundation() {
     assert(dispatcher.debugEnabled());
 }
 
+void testFrameContextFoundation() {
+    auto names = std::make_shared<ScriptNamesChunk>(
+        nullptr,
+        ChunkId(920),
+        std::vector<std::string>{"", "beginSprite", "endSprite", "stepFrame", "prepareFrame", "enterFrame", "exitFrame"});
+
+    auto spriteScript = makeScriptWithHandlers(921, ScriptChunkType::Behavior, {1, 2, 3, 4, 5, 6});
+    auto frameScript = makeScriptWithHandlers(922, ScriptChunkType::Behavior, {1, 3, 4, 5, 6});
+
+    std::vector<ScoreChunk::FrameInterval> intervals{
+        ScoreChunk::FrameInterval{
+            ScoreChunk::FrameIntervalPrimary{1, 1, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0},
+            ScoreChunk::FrameIntervalSecondary{1, 11, 0}
+        },
+        ScoreChunk::FrameInterval{
+            ScoreChunk::FrameIntervalPrimary{1, 2, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0},
+            ScoreChunk::FrameIntervalSecondary{1, 12, 0}
+        },
+        ScoreChunk::FrameInterval{
+            ScoreChunk::FrameIntervalPrimary{2, 3, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0},
+            ScoreChunk::FrameIntervalSecondary{1, 13, 0}
+        },
+        ScoreChunk::FrameInterval{
+            ScoreChunk::FrameIntervalPrimary{1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+            ScoreChunk::FrameIntervalSecondary{1, 20, 0}
+        }
+    };
+    ScoreChunk::ScoreFrameData frameData = ScoreChunk::ScoreFrameData::empty();
+    frameData.header.frameCount = 3;
+    frameData.header.numChannels = 6;
+    auto score = std::make_shared<ScoreChunk>(
+        nullptr,
+        ChunkId(923),
+        ScoreChunk::Header{0, 0, 0, 0, 0, 0},
+        std::vector<std::vector<std::uint8_t>>{},
+        frameData,
+        intervals);
+    ScoreNavigator navigator(score, nullptr);
+
+    BehaviorManager behaviorManager;
+    behaviorManager.setScriptResolver([spriteScript, frameScript](const ScoreBehaviorRef& ref) {
+        return ref.castMember() == 20 ? frameScript : spriteScript;
+    });
+
+    EventDispatcher dispatcher(&behaviorManager);
+    dispatcher.setScriptNamesResolver([names](const std::shared_ptr<ScriptChunk>&) {
+        return names;
+    });
+    dispatcher.setRespondsPredicate([names](const EventTarget& target, std::string_view handler) {
+        return target.script && target.script->findHandler(handler, names.get()).has_value();
+    });
+
+    std::vector<std::string> calls;
+    dispatcher.setHandlerInvoker([&calls](const EventTarget& target,
+                                           std::string_view handler,
+                                           const std::vector<Datum>& args) {
+        (void)args;
+        const int member = target.behavior ? target.behavior->behaviorRef().castMember() : 0;
+        calls.push_back(std::to_string(target.channel) + ":" + std::to_string(member) + ":" + std::string(handler));
+        return HandlerResult{true, true};
+    });
+
+    std::vector<std::string> actorEvents;
+    std::vector<std::string> timeoutEvents;
+    std::vector<FrameEvent> notified;
+    SpriteRegistry registry;
+
+    FrameContext context(nullptr, &navigator, &behaviorManager, &dispatcher);
+    context.setSpriteRegistry(&registry);
+    context.setActorListDispatcher([&actorEvents](std::string_view handler) {
+        actorEvents.emplace_back(handler);
+    });
+    context.setTimeoutEventDispatcher([&timeoutEvents](std::string_view handler) {
+        timeoutEvents.emplace_back(handler);
+    });
+    context.setEventListener([&notified](const FrameEvent& event) {
+        notified.push_back(event);
+    });
+
+    assert(context.frameCount() == 3);
+    assert(context.currentFrame() == 1);
+    assert(context.effectiveFrame() == 1);
+    context.goToFrame(99);
+    assert(context.effectiveFrame() == 1);
+    context.goToFrame(2);
+    assert(context.effectiveFrame() == 2);
+
+    context.initializeFirstFrame();
+    assert(context.currentFrame() == 1);
+    assert(context.effectiveFrame() == 1);
+    assert((context.activeChannels() == std::set<int>{3, 4}));
+    assert(behaviorManager.getInstancesForChannel(3).size() == 1);
+    assert(behaviorManager.getInstancesForChannel(4).size() == 1);
+    assert(behaviorManager.frameScriptInstance() != nullptr);
+    assert(registry.hasScoreBehaviorChannel(3));
+    assert(registry.hasScoreBehaviorChannel(4));
+
+    calls.clear();
+    context.dispatchBeginSpriteEvents();
+    assert((calls == std::vector<std::string>{
+        "3:11:beginSprite",
+        "4:12:beginSprite",
+        "0:20:beginSprite"
+    }));
+    assert(behaviorManager.getInstancesForChannel(3).front()->isBeginSpriteCalled());
+    assert(behaviorManager.frameScriptInstance()->isBeginSpriteCalled());
+
+    calls.clear();
+    assert(context.executeFrame());
+    assert((actorEvents == std::vector<std::string>{"stepFrame", "prepareFrame", "enterFrame"}));
+    assert((timeoutEvents == std::vector<std::string>{"prepareFrame"}));
+    assert((notified == std::vector<FrameEvent>{
+        FrameEvent{PlayerEvent::StepFrame, 1},
+        FrameEvent{PlayerEvent::PrepareFrame, 1},
+        FrameEvent{PlayerEvent::EnterFrame, 1}
+    }));
+    assert(!context.inFrameScript());
+    assert(calls.size() == 9);
+
+    context.goToFrame(3);
+    calls.clear();
+    assert(context.advanceFrame() == 3);
+    assert(context.currentFrame() == 3);
+    assert((context.activeChannels() == std::set<int>{5}));
+    assert(behaviorManager.getInstancesForChannel(3).empty());
+    assert(behaviorManager.getInstancesForChannel(4).empty());
+    assert(behaviorManager.getInstancesForChannel(5).size() == 1);
+    assert(behaviorManager.frameScriptInstance() == nullptr);
+    assert(std::find(calls.begin(), calls.end(), "3:11:endSprite") != calls.end());
+    assert(std::find(calls.begin(), calls.end(), "4:12:endSprite") != calls.end());
+    assert(std::find(calls.begin(), calls.end(), "5:13:beginSprite") != calls.end());
+
+    calls.clear();
+    context.forceGoToFrame(1);
+    assert(context.currentFrame() == 1);
+    assert((context.activeChannels() == std::set<int>{3, 4}));
+    assert(std::find(calls.begin(), calls.end(), "5:13:endSprite") != calls.end());
+    assert(std::find(calls.begin(), calls.end(), "3:11:beginSprite") != calls.end());
+    assert(std::find(calls.begin(), calls.end(), "4:12:beginSprite") != calls.end());
+
+    auto puppet = registry.getOrCreateDynamic(4);
+    puppet->setPuppet(true);
+    context.goToFrame(3);
+    calls.clear();
+    assert(context.advanceFrame() == 3);
+    assert(context.activeChannels().contains(4));
+    assert(registry.contains(4));
+    assert(behaviorManager.getInstancesForChannel(4).size() == 1);
+    assert(std::find(calls.begin(), calls.end(), "4:12:endSprite") == calls.end());
+
+    context.reset();
+    assert(context.currentFrame() == 1);
+    assert(context.effectiveFrame() == 1);
+    assert(context.activeChannels().empty());
+    assert(behaviorManager.instanceCount() == 0);
+}
+
 void testDebugFoundation() {
     Breakpoint breakpoint = Breakpoint::simple(4, "mouseUp", 12);
     assert(breakpoint.scriptId == 4);
@@ -11095,6 +11254,7 @@ int main() {
     testSpritePropertiesFoundation();
     testBehaviorFoundation();
     testEventDispatcherFoundation();
+    testFrameContextFoundation();
     testDebugFoundation();
     testRenderPipelineFoundation();
     testStageRendererFoundation();
