@@ -12883,6 +12883,21 @@ void testCastLibManagerFoundation() {
     assert(autoTextImage->bitmap->isNativeAlpha());
     assert(methodRenderer.lastRenderWidth == 125);
     assert(methodRenderer.lastRenderHeight == 0);
+
+    auto assignedTextImage = std::make_shared<Bitmap>(4, 2, 32);
+    assignedTextImage->fill(0xFF112233U);
+    assignedTextImage->setPixel(3, 1, 0xFF445566U);
+    assert(manager.setMemberProp(1, 10001, "image", Datum::imageRef(assignedTextImage)));
+    auto assignedTextRuntime = manager.resolveMember(1, 10001)->runtimeBitmap();
+    assert(assignedTextRuntime != nullptr);
+    assert(assignedTextRuntime != assignedTextImage);
+    assert(!assignedTextRuntime->isScriptModified());
+    assert(assignedTextRuntime->width() == 4);
+    assert(assignedTextRuntime->height() == 2);
+    assert(assignedTextRuntime->getPixel(3, 1) == 0xFF445566U);
+    assignedTextImage->setPixel(3, 1, 0xFFFFFFFFU);
+    assert(assignedTextRuntime->getPixel(3, 1) == 0xFF445566U);
+
     assert(manager.setMemberProp(1, 10001, "boxType", Datum::of(1)));
     assert(manager.setMemberProp(1, 10001, "wordWrap", Datum::of(1)));
     assert(manager.setMemberProp(1, 10001, "rect", Datum::intRect(2, 3, 52, 33)));

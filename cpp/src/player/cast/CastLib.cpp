@@ -789,6 +789,14 @@ bool CastLib::setMemberProp(int memberNumber, const std::string& propName, const
             member->setDynamicText(value.stringValue());
             return true;
         }
+        if (prop == "image") {
+            const auto* image = value.asImageRef();
+            if (image == nullptr || image->bitmap == nullptr) {
+                return false;
+            }
+            member->setRuntimeBitmap(*image->bitmap, false);
+            return true;
+        }
         if (prop == "font") {
             member->setTextFont(value.stringValue());
             return true;
