@@ -6228,6 +6228,45 @@ void testSpriteBakerFoundation() {
     assert(bakedText.height() == 2);
     assert(bakedText.bakedBitmap()->getPixel(2, 1) == 0xFF666666U);
 
+    SpriteBaker filmBaker;
+    int filmCalls = 0;
+    int filmTick = 0;
+    filmBaker.setFilmLoopBakeProvider([&](const RenderSprite& sprite, int tickCounter) {
+        ++filmCalls;
+        filmTick = tickCounter;
+        assert(sprite.type() == SpriteType::FilmLoop);
+        return std::make_shared<Bitmap>(2, 1, 32, std::vector<std::uint32_t>{
+            0xFFFFFFFFU,
+            0xFF551100U
+        });
+    });
+    RenderSprite filmLoopSprite(10,
+                                0,
+                                0,
+                                2,
+                                1,
+                                0,
+                                true,
+                                SpriteType::FilmLoop,
+                                nullptr,
+                                nullptr,
+                                0,
+                                0xFFFFFF,
+                                false,
+                                true,
+                                libreshockwave::id::code(InkMode::BACKGROUND_TRANSPARENT),
+                                100,
+                                false,
+                                false,
+                                nullptr,
+                                false);
+    auto bakedFilmLoopSprites = filmBaker.bakeSprites({filmLoopSprite});
+    assert(filmBaker.tickCounter() == 1);
+    assert(filmCalls == 1);
+    assert(filmTick == 1);
+    assert(bakedFilmLoopSprites[0].bakedBitmap()->getPixel(0, 0) == 0x00000000U);
+    assert(bakedFilmLoopSprites[0].bakedBitmap()->getPixel(1, 0) == 0xFF551100U);
+
     RenderSprite solidShape(3,
                             0,
                             0,

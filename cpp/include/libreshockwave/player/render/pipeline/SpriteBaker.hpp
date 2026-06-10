@@ -24,6 +24,9 @@ public:
         const bitmap::Palette* paletteOverride)>;
     using LiveBitmapProvider = std::function<std::shared_ptr<const bitmap::Bitmap>(const RenderSprite& sprite)>;
     using TextBakeProvider = std::function<std::shared_ptr<const bitmap::Bitmap>(const RenderSprite& sprite)>;
+    using FilmLoopBakeProvider = std::function<std::shared_ptr<const bitmap::Bitmap>(
+        const RenderSprite& sprite,
+        int tickCounter)>;
     using SupportsFn = std::function<bool(const RenderSprite& sprite)>;
     using BakeFn = std::function<std::shared_ptr<const bitmap::Bitmap>(const RenderSprite& sprite)>;
 
@@ -46,6 +49,7 @@ public:
     void setBitmapDecodeProvider(BitmapDecodeProvider provider);
     void setLiveBitmapProvider(LiveBitmapProvider provider);
     void setTextBakeProvider(TextBakeProvider provider);
+    void setFilmLoopBakeProvider(FilmLoopBakeProvider provider);
 
     [[nodiscard]] BitmapCache& bitmapCache();
     [[nodiscard]] const BitmapCache& bitmapCache() const;
@@ -75,6 +79,7 @@ private:
     BitmapDecodeProvider bitmapDecodeProvider_;
     LiveBitmapProvider liveBitmapProvider_;
     TextBakeProvider textBakeProvider_;
+    FilmLoopBakeProvider filmLoopBakeProvider_;
     std::vector<SpriteBakeStep> bakeSteps_;
     int tickCounter_{0};
 };

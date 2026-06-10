@@ -113,6 +113,10 @@ void SpriteBaker::setTextBakeProvider(TextBakeProvider provider) {
     textBakeProvider_ = std::move(provider);
 }
 
+void SpriteBaker::setFilmLoopBakeProvider(FilmLoopBakeProvider provider) {
+    filmLoopBakeProvider_ = std::move(provider);
+}
+
 BitmapCache& SpriteBaker::bitmapCache() {
     return *bitmapCache_;
 }
@@ -193,8 +197,18 @@ std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeShape(const RenderSprite&
     return shape;
 }
 
-std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeFilmLoop(const RenderSprite&) {
-    return nullptr;
+std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeFilmLoop(const RenderSprite& sprite) {
+    if (!filmLoopBakeProvider_) {
+        return nullptr;
+    }
+
+    auto loop = filmLoopBakeProvider_(sprite, tickCounter_);
+    if (loop == nullptr || !InkProcessor::shouldProcessInk(sprite.inkMode())) {
+        return loop;
+    }
+
+    return std::make_shared<bitmap::Bitmap>(
+        InkProcessor::applyInk(*loop, sprite.inkMode(), sprite.backColor(), false, loop->imagePalette().get()));
 }
 
 bitmap::Bitmap SpriteBaker::processDecodedBitmap(const bitmap::Bitmap& raw, const RenderSprite& sprite) const {
