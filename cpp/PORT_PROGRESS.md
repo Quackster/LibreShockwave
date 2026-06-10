@@ -750,6 +750,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Mutable ChunkRef creation and char-range deletion now use a dedicated C++ datum; broader mutable chunk-ref operations remain deferred.
 - VarRef char `getProp` and mutable ChunkRef char deletion now match Java's inverted-range behavior, returning an empty chunk or leaving the source string unchanged when the requested range is empty.
 - ScriptRef receiver dispatch now supports Java-compatible `new` method calls through the registered constructor builtin.
+- SpriteRef receiver dispatch now walks provider-backed `scriptInstanceList` script instances before falling through to the sprite method handler, matching Java's sprite object-call behavior/broker dispatch order.
 - ScriptInstance receiver dispatch now supports Java-compatible property/list-like `getAt`, `setAt`, `getAProp`, `setAProp`, `getProp`, `getPropRef`, `setProp`, `addProp`, `deleteProp`, `count`, `ilk`, `addAt`, handler-existence/dispatch methods, and prefilled `pAllMemNumList` member-registry lookups over C++ script-instance datums.
 - ScriptInstance VM property writes now match Java's ancestor-chain walker guard by ignoring non-instance `ancestor` assignments through `SET_PROP`, `SET_OBJ_PROP`, and receiver `setAt`/`setAProp`/`setProp` while preserving valid script-instance replacement.
 - ScriptInstance property traversal now uses the Java VM's bounded ancestor-chain depth so cyclic/self-referential ancestors return VOID/false for missing properties instead of recursing indefinitely.
@@ -945,7 +946,7 @@ Result:
 - OpcodeRegistry movie-property provider reads/writes and provider-backed `the` lookups passed through the same CTest executable.
 - OpcodeRegistry provider-backed object property gets/sets for movie, player, stage, sprite, integer-as-sprite refs, cast-member metadata/provider properties, timeout refs, sound channels, and ImageMethodDispatcher-backed image `useAlpha`/`paletteRef` setters passed through the same CTest executable.
 - OpcodeRegistry local/external call handlers, builtin dispatch, no-return calls, constant fallback, and error-state handling passed through the same CTest executable.
-- OpcodeRegistry object method calls and receiver-style external method calls for ImageMethodDispatcher-backed images, ListMethodDispatcher-backed lists, MemberRegistryMethodDispatcher-backed script-instance registry prefill/fallbacks, PropListMethodDispatcher-backed property-list typed symbol/string namespaces and nested list/proplist deep-copy `duplicate`, ScriptInstanceMethodDispatcher-backed script-instance receivers, StringMethodDispatcher-backed string receiver methods, SoundChannelMethodDispatcher-backed sound channels, VarRef inverted char ranges, mutable ChunkRef inverted delete ranges, points, rectangles, script-instance ancestor assignment guards/bounded cyclic ancestor traversal/registry bootstrap/prefill/alias import/stale cleanup/persistent alias refresh, cast library member lookups/accessors, timeouts, and Xtra instances passed through the same CTest executable.
+- OpcodeRegistry object method calls and receiver-style external method calls for ImageMethodDispatcher-backed images, ListMethodDispatcher-backed lists, MemberRegistryMethodDispatcher-backed script-instance registry prefill/fallbacks, PropListMethodDispatcher-backed property-list typed symbol/string namespaces and nested list/proplist deep-copy `duplicate`, ScriptInstanceMethodDispatcher-backed script-instance receivers and SpriteRef scriptInstanceList dispatch before provider fallback, StringMethodDispatcher-backed string receiver methods, SoundChannelMethodDispatcher-backed sound channels, VarRef inverted char ranges, mutable ChunkRef inverted delete ranges, points, rectangles, script-instance ancestor assignment guards/bounded cyclic ancestor traversal/registry bootstrap/prefill/alias import/stale cleanup/persistent alias refresh, cast library member lookups/accessors, timeouts, and Xtra instances passed through the same CTest executable.
 - OpcodeRegistry `NEW_OBJ` script construction delegation, provider-resolved fallback construction, declared property preinitialization, automatic `new` handler invocation, and non-script rejection passed through the same CTest executable.
 
 ## Remaining Major Work
@@ -1175,4 +1176,5 @@ Result:
 - `21ae244d Port C++ sound channel method dispatcher`
 - `4933fc03 Port C++ image method dispatcher`
 - `b6bfe6bc Port C++ member registry method dispatcher`
-- Current checkpoint commit message: `Port C++ script instance method dispatcher`
+- `1eaf5cfd Port C++ script instance method dispatcher`
+- Current checkpoint commit message: `Port C++ sprite object script dispatch`

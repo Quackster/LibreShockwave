@@ -3316,7 +3316,30 @@ Datum spriteObjectMethod(ExecutionContext& context,
                          std::string_view methodName,
                          const std::vector<Datum>& args) {
     auto* builtinContext = context.builtinContext();
-    if (builtinContext == nullptr || !builtinContext->spriteMethodHandler) {
+    if (builtinContext == nullptr) {
+        return Datum::voidValue();
+    }
+
+    if (builtinContext->spriteProperties != nullptr) {
+        auto scripts = builtinContext->spriteProperties->getScriptInstanceList(sprite.channel);
+        if (scripts.has_value()) {
+            for (auto& scriptInstance : *scripts) {
+                if (scriptInstance.type() != DatumType::ScriptInstanceRef) {
+                    continue;
+                }
+                Datum result = dispatch::ScriptInstanceMethodDispatcher::dispatch(
+                    context,
+                    scriptInstance,
+                    methodName,
+                    args);
+                if (!result.isVoid()) {
+                    return result;
+                }
+            }
+        }
+    }
+
+    if (!builtinContext->spriteMethodHandler) {
         return Datum::voidValue();
     }
     return builtinContext->spriteMethodHandler(sprite.channel, std::string(methodName), args);

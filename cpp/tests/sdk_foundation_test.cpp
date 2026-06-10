@@ -4778,10 +4778,12 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     };
     bool exposeGetMemNumHandler = false;
     bool exposeReadAliasHandler = false;
+    bool exposeSpriteSetCursorHandler = false;
     callbacks.handlerFinder = [&script,
                                &otherHandler,
                                &exposeGetMemNumHandler,
-                               &exposeReadAliasHandler](std::string_view name) -> std::optional<HandlerRef> {
+                               &exposeReadAliasHandler,
+                               &exposeSpriteSetCursorHandler](std::string_view name) -> std::optional<HandlerRef> {
         if (name == "known") {
             return HandlerRef{&script, otherHandler};
         }
@@ -4789,6 +4791,9 @@ void testLingoVmScopeAndExecutionContextFoundation() {
             return HandlerRef{&script, otherHandler};
         }
         if (exposeReadAliasHandler && name == "readAliasIndexesFromField") {
+            return HandlerRef{&script, otherHandler};
+        }
+        if (exposeSpriteSetCursorHandler && name == "setcursor") {
             return HandlerRef{&script, otherHandler};
         }
         return std::nullopt;
@@ -7062,6 +7067,15 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         assert(args.front().asSymbol()->name == "arrow");
         return Datum::of(std::string("sprite-handled"));
     };
+    auto spriteObjectBehavior = Datum::scriptInstance("sprite-object-behavior");
+    assert(objectSpriteProps.setSpriteProp(5, "scriptInstanceList", Datum::list({spriteObjectBehavior})));
+    exposeSpriteSetCursorHandler = true;
+    builtinContext.spriteProperties = &objectSpriteProps;
+    assert(runObjCall(112, {Datum::spriteRef(ChannelId(5)), Datum::symbol("arrow")}).stringValue() ==
+           "receiver-exec:99:1");
+    assert(spriteMethodCalls == 0);
+    exposeSpriteSetCursorHandler = false;
+    builtinContext.spriteProperties = nullptr;
     assert(runObjCall(112, {Datum::spriteRef(ChannelId(5)), Datum::symbol("arrow")}).stringValue() == "sprite-handled");
     assert(spriteMethodCalls == 1);
     builtinContext.spriteMethodHandler = {};
