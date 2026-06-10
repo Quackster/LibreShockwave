@@ -80,6 +80,7 @@ add_library(libreshockwave
     src/player/render/pipeline/InkProcessor.cpp
     src/player/render/pipeline/RenderPipelineTrace.cpp
     src/player/render/pipeline/RenderSprite.cpp
+    src/player/render/pipeline/StageRenderer.cpp
     src/player/score/ScoreBehaviorRef.cpp
     src/player/score/ScoreNavigator.cpp
     src/player/score/SpriteSpan.cpp

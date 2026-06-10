@@ -220,7 +220,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `input::HitTester` ports front-to-back visible sprite hit selection over baked `RenderSprite` lists, hit type lookup, and all-hit collection with channel filter/forced bounding-box support.
 - Bounds fallback, scaled bitmap sampling, flip/mirror coordinate adjustment, static native-alpha bitmap thresholds, and dynamic transparency-ink alpha checks are available in C++.
-- Direct `StageRenderer` overloads remain deferred until the C++ stage renderer object is ported.
+- Direct `StageRenderer` overloads remain deferred until hit testing is wired to the C++ stage renderer object.
 
 ### Cursor Manager Foundation
 
@@ -232,7 +232,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `sprite::SpriteState` ports score-backed and dynamic sprite runtime state, including position, dimensions, visibility, puppet state, ink/blend/trails/stretch, colors, flip flags, rotation/skew, cursor members, script-instance lists, and dynamic member overrides.
 - Score synchronization preserves explicit Lingo overrides, score-default application uses Director's inverted blend-byte mapping, and score rebinding can either clear or preserve attached script instances.
-- Rendering integration through StageRenderer/SpriteBaker remains deferred until those C++ pipeline stages are ported.
+- StageRenderer collection now consumes sprite state for score-backed and dynamic/puppeted render sprite metadata; SpriteBaker rasterization integration remains deferred.
 
 ### Sprite Registry Foundation
 
@@ -364,6 +364,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `render::pipeline::RenderSprite` ports renderable sprite metadata, ink-mode decoding, transform mirror detection, baked-bitmap copy helpers, and member identity/name fallbacks.
 - `render::pipeline::FrameSnapshot` ports the immutable frame render payload without invoking the not-yet-ported software frame renderer.
 
+### Stage Renderer Foundation
+
+- `render::pipeline::StageRenderer` ports stage size/background state, lazy opaque stage-image creation, script-modified renderable stage-image exposure, visual reset/discard behavior, last-baked sprite storage, and sprite-registry ownership.
+- Score-frame sprite collection, dynamic/puppeted sprite collection, locZ/channel ordering, score RGB555 expansion, score color palette fallback, registration-point scaling/mirroring, sprite type inference, score update on frame entry, and sprite-end cleanup are available in C++.
+- CastLibManager-backed external/runtime member lookup and SpriteBaker bitmap/text/shape rasterization remain deferred to later player render-pipeline slices.
+
 ### Software Frame Renderer
 
 - `render::output::SoftwareFrameRenderer` ports pure ARGB frame compositing for `FrameSnapshot` data.
@@ -379,7 +385,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `render::pipeline::FrameRenderPipeline` ports ordered step registration and linear step execution over `FrameRenderPipelineContext`.
 - Rendering requires a step-produced immutable `FrameSnapshot`, matching the Java pipeline failure behavior when no snapshot is published.
-- Default StageRenderer/SpriteBaker collection, ordering, baking, publishing, and snapshot steps remain deferred until the C++ stage renderer and sprite baker are ported.
+- Default StageRenderer/SpriteBaker collection, baking, publishing, and snapshot steps remain deferred until the C++ sprite baker and pipeline step wiring are ported.
 
 ### Text Renderer Interface Foundation
 
@@ -576,6 +582,7 @@ Result:
 - ScoreBehaviorRef, SpriteSpan, ScoreNavigator labels, marker resolution, active sprites/channels, parsed behavior parameters, and frame-count tests passed through the same CTest executable.
 - Breakpoint, BreakpointManager, WatchExpression, and DebugSnapshot tests passed through the same CTest executable.
 - RenderPipelineTrace, RenderSprite, transform mirror, baked bitmap helpers, and FrameSnapshot tests passed through the same CTest executable.
+- StageRenderer stage-image lifecycle, dynamic/puppeted sprite collection, locZ/channel sorting, last-baked sprite storage, sprite-end cleanup, reset behavior, and RGB555 expansion tests passed through the same CTest executable.
 - SoftwareFrameRenderer background, stage-image, alpha, blend, scaling, flip, Director mirror, and special-ink tests passed through the same CTest executable.
 - FrameRenderPipelineContext mutation, trace building, snapshot storage, and FrameRenderPipelineStep tests passed through the same CTest executable.
 - FrameRenderPipeline step ordering, snapshot return, null-step rejection, and missing-snapshot failure tests passed through the same CTest executable.

@@ -107,6 +107,7 @@
 #include "libreshockwave/player/render/pipeline/InkProcessor.hpp"
 #include "libreshockwave/player/render/pipeline/RenderPipelineTrace.hpp"
 #include "libreshockwave/player/render/pipeline/RenderSprite.hpp"
+#include "libreshockwave/player/render/pipeline/StageRenderer.hpp"
 #include "libreshockwave/player/score/ScoreBehaviorRef.hpp"
 #include "libreshockwave/player/score/ScoreNavigator.hpp"
 #include "libreshockwave/player/score/SpriteSpan.hpp"
@@ -236,6 +237,7 @@ using libreshockwave::player::render::pipeline::InkProcessor;
 using libreshockwave::player::render::pipeline::RenderPipelineStepTrace;
 using libreshockwave::player::render::pipeline::RenderPipelineTrace;
 using libreshockwave::player::render::pipeline::RenderSprite;
+using libreshockwave::player::render::pipeline::StageRenderer;
 using libreshockwave::player::render::pipeline::SpriteType;
 using libreshockwave::player::score::ScoreBehaviorRef;
 using libreshockwave::player::score::ScoreNavigator;
@@ -5857,6 +5859,127 @@ void testRenderPipelineFoundation() {
     assert(missingSnapshotThrew);
 }
 
+void testStageRendererFoundation() {
+    StageRenderer renderer;
+    assert(renderer.stageWidth() == 640);
+    assert(renderer.stageHeight() == 480);
+    assert(renderer.backgroundColor() == 0xFFFFFF);
+    assert(!renderer.hasStageImage());
+    assert(renderer.renderableStageImage() == nullptr);
+
+    auto stage = renderer.stageImage();
+    assert(renderer.hasStageImage());
+    assert(stage->width() == 640);
+    assert(stage->height() == 480);
+    assert(stage->bitDepth() == 32);
+    assert(stage->getPixel(0, 0) == 0xFFFFFFFFU);
+    assert(renderer.renderableStageImage() == nullptr);
+
+    renderer.setBackgroundColor(0x123456);
+    assert(renderer.backgroundColor() == 0x123456);
+    assert(stage->getPixel(0, 0) == 0xFF123456U);
+
+    stage->markScriptModified();
+    renderer.setBackgroundColor(0x654321);
+    assert(renderer.backgroundColor() == 0x654321);
+    assert(stage->getPixel(0, 0) == 0xFF123456U);
+    auto renderableStage = renderer.renderableStageImage();
+    assert(renderableStage.get() == stage.get());
+
+    renderer.discardStageImage();
+    assert(!renderer.hasStageImage());
+    renderer.setDefaultBackgroundColor(0xABCDEF);
+    auto defaultStage = renderer.stageImage();
+    assert(defaultStage->getPixel(0, 0) == 0xFFABCDEFU);
+    renderer.setBackgroundColor(0x010203);
+    assert(defaultStage->getPixel(0, 0) == 0xFF010203U);
+    renderer.resetVisualState();
+    assert(renderer.backgroundColor() == 0xABCDEF);
+    assert(!renderer.hasStageImage());
+
+    std::vector<RenderSprite> sorted{
+        RenderSprite(9, 0, 0, 1, 1, 2, true, SpriteType::Shape, nullptr, nullptr, 0, 0, false, false, 0, 100, false, false, nullptr, false),
+        RenderSprite(3, 0, 0, 1, 1, 1, true, SpriteType::Shape, nullptr, nullptr, 0, 0, false, false, 0, 100, false, false, nullptr, false),
+        RenderSprite(2, 0, 0, 1, 1, 2, true, SpriteType::Shape, nullptr, nullptr, 0, 0, false, false, 0, 100, false, false, nullptr, false)
+    };
+    StageRenderer::sortSprites(sorted);
+    assert(sorted[0].channel() == 3);
+    assert(sorted[1].channel() == 2);
+    assert(sorted[2].channel() == 9);
+
+    auto& registry = renderer.spriteRegistry();
+    auto late = registry.getOrCreateDynamic(12);
+    late->setLocH(50);
+    late->setLocV(60);
+    late->setLocZ(3);
+    late->setWidth(7);
+    late->setHeight(8);
+    late->setBackColor(0x112233);
+    late->setBlend(80);
+    registry.markScoreBehaviorChannel(12);
+
+    auto early = registry.getOrCreateDynamic(4);
+    early->setLocH(5);
+    early->setLocV(6);
+    early->setLocZ(1);
+    early->setWidth(3);
+    early->setHeight(4);
+    early->setBackColor(0x445566);
+    early->setFlipH(true);
+    early->setFlipV(true);
+
+    auto hidden = registry.getOrCreateDynamic(5);
+    hidden->setWidth(2);
+    hidden->setHeight(2);
+    hidden->setBackColor(0xFFFFFF);
+    hidden->setVisible(false);
+
+    auto noFill = registry.getOrCreateDynamic(6);
+    noFill->setWidth(2);
+    noFill->setHeight(2);
+
+    const auto sprites = renderer.getSpritesForFrame(99);
+    assert(sprites.size() == 2);
+    assert(sprites[0].channel() == 4);
+    assert(sprites[0].x() == 5);
+    assert(sprites[0].y() == 6);
+    assert(sprites[0].width() == 3);
+    assert(sprites[0].height() == 4);
+    assert(sprites[0].locZ() == 1);
+    assert(sprites[0].type() == SpriteType::Shape);
+    assert(sprites[0].foreColor() == 0x445566);
+    assert(sprites[0].backColor() == 0x445566);
+    assert(sprites[0].hasForeColor());
+    assert(sprites[0].hasBackColor());
+    assert(sprites[0].inkMode() == InkMode::COPY);
+    assert(sprites[0].blend() == 100);
+    assert(sprites[0].isFlipH());
+    assert(sprites[0].isFlipV());
+    assert(!sprites[0].hasBehaviors());
+
+    assert(sprites[1].channel() == 12);
+    assert(sprites[1].locZ() == 3);
+    assert(sprites[1].blend() == 80);
+    assert(sprites[1].hasBehaviors());
+
+    renderer.setLastBakedSprites({sprites[1]});
+    assert(renderer.lastBakedSprites().size() == 1);
+    assert(renderer.lastBakedSprites()[0].channel() == 12);
+
+    renderer.onSpriteEnd(12);
+    assert(!registry.contains(12));
+
+    assert(StageRenderer::expandScoreRgb555(0x000000) == 0x000000);
+    assert(StageRenderer::expandScoreRgb555(0x080808) == 0x080808);
+    assert(StageRenderer::expandScoreRgb555(0xF8F8F8) == 0xFFFFFF);
+
+    renderer.reset();
+    assert(registry.getAll().empty());
+    assert(renderer.lastBakedSprites().empty());
+    assert(!renderer.hasStageImage());
+    assert(renderer.backgroundColor() == 0xABCDEF);
+}
+
 void testBitmapCacheAndInkProcessorFoundation() {
     assert(InkProcessor::shouldProcessInk(InkMode::MASK));
     assert(InkProcessor::shouldProcessInk(InkMode::BACKGROUND_TRANSPARENT));
@@ -9043,6 +9166,7 @@ int main() {
     testEventDispatcherFoundation();
     testDebugFoundation();
     testRenderPipelineFoundation();
+    testStageRendererFoundation();
     testBitmapCacheAndInkProcessorFoundation();
     testSoftwareFrameRenderer();
     testTextRendererFoundation();
