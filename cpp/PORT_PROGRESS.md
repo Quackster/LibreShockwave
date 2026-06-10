@@ -739,6 +739,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - List and property-list method dispatch covers Java-compatible mutation and lookup helpers such as `getAt`, `setAt`, `append`, `addProp`, `getProp`, `count`, `sort`, and duplicate-preserving property insertion.
 - `lingo::vm::dispatch::ListMethodDispatcher` ports Java linear-list receiver methods, including padded `setAt`, clamped `addAt`, value search/delete, `join`, case-insensitive sort, deep-copy `duplicate`, and out-of-range `getAt` diagnostics for `OBJ_CALL`.
 - `lingo::vm::dispatch::PropListMethodDispatcher` ports Java property-list receiver methods, including sub-list indexed `getProp`, typed `getAt`/`setAt`, duplicate-preserving `addProp`, `getOne`/`findPos`, positional key reads/deletes, first/last reads, and deep-copy `duplicate`.
+- `lingo::vm::dispatch::SoundChannelMethodDispatcher` ports Java sound-channel method/property dispatch through the C++ `SoundBuiltins`/`SoundManager` surface, covering playback controls, status/time reads, playlist stubs, volume get/set, loop/time no-op properties, and null-context VM fallback behavior.
 - Property-list object methods now preserve Java's symbol/string key namespace rules for `getAt`, `setAt`, `setProp`, and `deleteProp`, including exact-case cross-type fallback and numeric out-of-range `setAt` string-key insertion.
 - List and property-list `duplicate` object methods now use Java-style deep copies so nested mutable containers are independent of the source value.
 - String receiver dispatch now covers direct `getProp`/`getPropRef` chunk extraction, and VarRef receiver dispatch resolves referenced context variables for string-like `getProp`, `getPropRef`, `char`, and `count` object methods.
@@ -840,7 +841,7 @@ Result:
 - XMED text parsing for multi-span style runs, underline ranges, referenced style-run font-size selection, per-span font records, paragraph alignment codes, and paragraph record counts passed through the same CTest executable.
 - W3D entry, typed resource, transform, texture format, and lookup tests passed through the same CTest executable.
 - Generated font Base64/zlib decode, wrong-length, and invalid-deflate tests passed through the same CTest executable.
-- File/path fallback utilities, shared string display/HTML escaping helpers, string chunk counting/extraction helpers, Java-compatible StringMethodDispatcher/ListMethodDispatcher/PropListMethodDispatcher receiver methods, and script formatting utilities passed through the same CTest executable.
+- File/path fallback utilities, shared string display/HTML escaping helpers, string chunk counting/extraction helpers, Java-compatible StringMethodDispatcher/ListMethodDispatcher/PropListMethodDispatcher/SoundChannelMethodDispatcher receiver methods, and script formatting utilities passed through the same CTest executable.
 - BitmapColorizer 32-bit, indexed, foreground-only, packed-index, and ink predicate tests passed through the same CTest executable.
 - PfrBitReader byte, signed, skip, alignment, bit-buffer, and partial-EOF tests passed through the same CTest executable.
 - BitmapFont glyph drawing, overflow metrics, BDF parsing, direct PFR outline/bitmap/curve glyph rasterization, PFR1 metadata/character-record/simple/compound/curve-outline parsing, PFR-to-TTF table generation/cache registration, pure TTF bitmap rasterization with the bundled Verdana fixture, and FontRegistry prebuilt-cache/PFR-registration/rasterization/alias behavior passed through the same CTest executable.
@@ -918,7 +919,7 @@ Result:
 - Editable text field no-handler click focus, drag selection extension, focus clearing, printable insertion, selected-text replacement, backspace, left/right arrow caret movement, and tab/shift-tab field cycling passed through the same CTest executable.
 - Editable text field caret geometry, single-line and multi-line selection rectangles, paste replacement, selected-text extraction, cut mutation, select-all, no-focus fallbacks, and sprite-registry revision bumps passed through the same CTest executable.
 - ListBuiltins point/rect positional reads, shared mutable point/rect datum copies, and `setAt` component mutation passed through the same CTest executable.
-- SoundBuiltins channel creation, availability, sound-channel method dispatch, VM object-property defaults/mutation, and SoundManager playback delegation passed through the same CTest executable.
+- SoundBuiltins channel creation, availability, SoundChannelMethodDispatcher-backed sound-channel method/property dispatch, VM object-property defaults/mutation, and SoundManager playback delegation passed through the same CTest executable.
 - ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration, Java-style constructor argument coercion, callback hooks, direct script-instance fallback, and `NEW_OBJ` script-ref handler dispatch passed through the same CTest executable.
 - TypeBuiltins object/void/type predicates, `value` literal parsing/provider fallback, direct `script` lookup/scoping/unscoped list fallback, `script`/`callAncestor` callback hooks and list fanout, symbol conversion, and `ilk` alias/field-text checks passed through the same CTest executable.
 - Lingo VM Scope and ExecutionContext stack, param, local, return, loop, jump, global callback, handler callback, builtin invocation, global debug-config propagation, and call-stack formatting behavior passed through the same CTest executable.
@@ -941,7 +942,7 @@ Result:
 - OpcodeRegistry movie-property provider reads/writes and provider-backed `the` lookups passed through the same CTest executable.
 - OpcodeRegistry provider-backed object property gets/sets for movie, player, stage, sprite, integer-as-sprite refs, cast-member metadata/provider properties, timeout refs, sound channels, and image `useAlpha`/`paletteRef` setters passed through the same CTest executable.
 - OpcodeRegistry local/external call handlers, builtin dispatch, no-return calls, constant fallback, and error-state handling passed through the same CTest executable.
-- OpcodeRegistry object method calls and receiver-style external method calls for ListMethodDispatcher-backed lists, PropListMethodDispatcher-backed property-list typed symbol/string namespaces and nested list/proplist deep-copy `duplicate`, StringMethodDispatcher-backed string receiver methods, VarRef inverted char ranges, mutable ChunkRef inverted delete ranges, points, rectangles, script-instance ancestor assignment guards/bounded cyclic ancestor traversal/registry bootstrap/prefill/alias import/stale cleanup/persistent alias refresh, cast library member lookups/accessors, timeouts, sound channels, and Xtra instances passed through the same CTest executable.
+- OpcodeRegistry object method calls and receiver-style external method calls for ListMethodDispatcher-backed lists, PropListMethodDispatcher-backed property-list typed symbol/string namespaces and nested list/proplist deep-copy `duplicate`, StringMethodDispatcher-backed string receiver methods, SoundChannelMethodDispatcher-backed sound channels, VarRef inverted char ranges, mutable ChunkRef inverted delete ranges, points, rectangles, script-instance ancestor assignment guards/bounded cyclic ancestor traversal/registry bootstrap/prefill/alias import/stale cleanup/persistent alias refresh, cast library member lookups/accessors, timeouts, and Xtra instances passed through the same CTest executable.
 - OpcodeRegistry `NEW_OBJ` script construction delegation, provider-resolved fallback construction, declared property preinitialization, automatic `new` handler invocation, and non-script rejection passed through the same CTest executable.
 
 ## Remaining Major Work
@@ -1167,4 +1168,5 @@ Result:
 - `53aa113d Port C++ property ID mappings`
 - `27c22fc3 Port C++ string method dispatcher`
 - `2a420a0d Port C++ list method dispatcher`
-- Current checkpoint commit message: `Port C++ property list method dispatcher`
+- `508cbf3d Port C++ property list method dispatcher`
+- Current checkpoint commit message: `Port C++ sound channel method dispatcher`

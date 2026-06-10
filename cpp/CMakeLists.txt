@@ -60,6 +60,7 @@ add_library(libreshockwave
     src/lingo/vm/Scope.cpp
     src/lingo/vm/dispatch/ListMethodDispatcher.cpp
     src/lingo/vm/dispatch/PropListMethodDispatcher.cpp
+    src/lingo/vm/dispatch/SoundChannelMethodDispatcher.cpp
     src/lingo/vm/dispatch/StringMethodDispatcher.cpp
     src/lingo/vm/trace/ConsoleTracePrinter.cpp
     src/lingo/vm/trace/InstructionAnnotator.cpp

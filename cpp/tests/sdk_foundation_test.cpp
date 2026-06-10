@@ -97,6 +97,7 @@
 #include "libreshockwave/lingo/vm/Scope.hpp"
 #include "libreshockwave/lingo/vm/dispatch/ListMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/PropListMethodDispatcher.hpp"
+#include "libreshockwave/lingo/vm/dispatch/SoundChannelMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/StringMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/trace/ConsoleTracePrinter.hpp"
 #include "libreshockwave/lingo/vm/trace/InstructionAnnotator.hpp"
@@ -248,6 +249,7 @@ using libreshockwave::lingo::vm::Scope;
 using libreshockwave::lingo::vm::TraceListener;
 using libreshockwave::lingo::vm::dispatch::ListMethodDispatcher;
 using libreshockwave::lingo::vm::dispatch::PropListMethodDispatcher;
+using libreshockwave::lingo::vm::dispatch::SoundChannelMethodDispatcher;
 using libreshockwave::lingo::vm::dispatch::StringMethodDispatcher;
 using libreshockwave::lingo::vm::trace::ConsoleTracePrinter;
 using libreshockwave::lingo::vm::trace::InstructionAnnotator;
@@ -3362,6 +3364,9 @@ void testBuiltinRegistryFoundation() {
     const auto* builtinSoundChannel = builtinSoundDatum.asSoundChannel();
     assert(builtinSoundChannel != nullptr);
     assert(builtinSoundChannel->channel == 2);
+    assert(SoundChannelMethodDispatcher::dispatch(nullptr, *builtinSoundChannel, "volume", {}).isVoid());
+    assert(SoundChannelMethodDispatcher::getProperty(nullptr, *builtinSoundChannel, "volume").isVoid());
+    assert(!SoundChannelMethodDispatcher::setProperty(nullptr, *builtinSoundChannel, "volume", Datum::of(7)));
     assert(libreshockwave::lingo::builtin::SoundBuiltins::handleMethod(context, *builtinSoundChannel, "volume", {}).intValue() == 255);
     assert(!libreshockwave::lingo::builtin::SoundBuiltins::handleMethod(context, *builtinSoundChannel, "isBusy", {}).boolValue());
     assert(libreshockwave::lingo::builtin::SoundBuiltins::handleMethod(context, *builtinSoundChannel, "status", {}).intValue() == 0);
@@ -3436,6 +3441,29 @@ void testBuiltinRegistryFoundation() {
     });
     context.soundManager = &builtinSoundManager;
     builtinSoundBackend.elapsedTimes[2] = 37;
+    assert(SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "volume", {Datum::of(123)}).isVoid());
+    assert(builtinSoundManager.getVolume(2) == 123);
+    assert(SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "volume", {}).intValue() == 123);
+    assert(SoundChannelMethodDispatcher::getProperty(&context, *builtinSoundChannel, "volume").intValue() == 123);
+    assert(SoundChannelMethodDispatcher::dispatch(&context,
+                                                  *builtinSoundChannel,
+                                                  "play",
+                                                  {Datum::castMemberRef(CastLibId(1), MemberId(8))}).isVoid());
+    assert(SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "isBusy", {}).boolValue());
+    assert(SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "status", {}).intValue() == 1);
+    assert(SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "elapsedTime", {}).intValue() == 37);
+    assert(SoundChannelMethodDispatcher::getProperty(&context, *builtinSoundChannel, "currentTime").intValue() == 37);
+    assert(SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "stop", {}).isVoid());
+    assert(SoundChannelMethodDispatcher::setProperty(&context, *builtinSoundChannel, "volume", Datum::of(300)));
+    assert(builtinSoundManager.getVolume(2) == 255);
+    assert(SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "getPlaylist", {}).listValue().count() == 0);
+    assert(SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "ilk", {}).asSymbol()->name == "instance");
+    assert(SoundChannelMethodDispatcher::getProperty(&context, *builtinSoundChannel, "loopCount").intValue() == 1);
+    assert(!SoundChannelMethodDispatcher::setProperty(&context, *builtinSoundChannel, "unknown", Datum::of(1)));
+    builtinSoundBackend.playCount = 0;
+    builtinSoundBackend.stopCount = 0;
+    builtinSoundBackend.setVolumeCount = 0;
+    builtinSoundBackend.playing[2] = false;
     assert(libreshockwave::lingo::builtin::SoundBuiltins::handleMethod(context, *builtinSoundChannel, "volume", {Datum::of(123)}).isVoid());
     assert(builtinSoundManager.getVolume(2) == 123);
     assert(builtinSoundBackend.lastVolumeChannel == 2);

@@ -4,6 +4,7 @@
 #include "libreshockwave/bitmap/Palette.hpp"
 #include "libreshockwave/lingo/vm/dispatch/ListMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/PropListMethodDispatcher.hpp"
+#include "libreshockwave/lingo/vm/dispatch/SoundChannelMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/StringMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/PropertyIdMappings.hpp"
 #include "libreshockwave/lingo/vm/util/AncestorChainWalker.hpp"
@@ -743,8 +744,7 @@ Datum getObjectProperty(ExecutionContext& context, const Datum& object, std::str
                                          : Datum::voidValue();
     }
     if (const auto* soundChannel = object.asSoundChannel()) {
-        return builtinContext != nullptr ? builtin::SoundBuiltins::getProperty(*builtinContext, *soundChannel, propName)
-                                         : Datum::voidValue();
+        return dispatch::SoundChannelMethodDispatcher::getProperty(builtinContext, *soundChannel, propName);
     }
     if (const auto* xtraInstance = object.asXtraInstance()) {
         return builtinContext != nullptr ? builtin::XtraBuiltins::getProperty(*builtinContext, *xtraInstance, propName)
@@ -825,9 +825,7 @@ void setObjectProperty(ExecutionContext& context, Datum& object, std::string_vie
         return;
     }
     if (const auto* soundChannel = object.asSoundChannel()) {
-        if (builtinContext != nullptr) {
-            (void)builtin::SoundBuiltins::setProperty(*builtinContext, *soundChannel, propName, std::move(value));
-        }
+        (void)dispatch::SoundChannelMethodDispatcher::setProperty(builtinContext, *soundChannel, propName, std::move(value));
         return;
     }
     if (const auto* xtraInstance = object.asXtraInstance()) {
@@ -3444,8 +3442,7 @@ Datum dispatchObjectMethod(ExecutionContext& context, Datum target, std::string_
                                          : Datum::voidValue();
     }
     if (const auto* soundChannel = target.asSoundChannel()) {
-        return builtinContext != nullptr ? builtin::SoundBuiltins::handleMethod(*builtinContext, *soundChannel, methodName, args)
-                                         : Datum::voidValue();
+        return dispatch::SoundChannelMethodDispatcher::dispatch(builtinContext, *soundChannel, methodName, args);
     }
     if (const auto* xtraInstance = target.asXtraInstance()) {
         return builtinContext != nullptr ? builtin::XtraBuiltins::callHandler(*builtinContext, *xtraInstance, methodName, args)
@@ -4584,8 +4581,8 @@ bool getLegacyProperty(ExecutionContext& context) {
     if (propertyType == 0x0B) {
         const int channelNum = toIntLikeJava(context.pop());
         const std::string propName = PropertyIdMappings::getSoundPropName(propertyId);
-        if (channelNum >= 1 && channelNum <= 8 && builtinContext != nullptr) {
-            context.push(builtin::SoundBuiltins::getProperty(*builtinContext, Datum::SoundChannel{channelNum}, propName));
+        if (channelNum >= 1 && channelNum <= 8) {
+            context.push(dispatch::SoundChannelMethodDispatcher::getProperty(builtinContext, Datum::SoundChannel{channelNum}, propName));
         } else {
             context.push(Datum::voidValue());
         }
@@ -4636,8 +4633,8 @@ bool setLegacyProperty(ExecutionContext& context) {
     if (propertyType == 0x04) {
         const int channelNum = toIntLikeJava(context.pop());
         const std::string propName = PropertyIdMappings::getSoundPropName(propertyId);
-        if (channelNum >= 1 && channelNum <= 8 && builtinContext != nullptr) {
-            (void)builtin::SoundBuiltins::setProperty(*builtinContext, Datum::SoundChannel{channelNum}, propName, value);
+        if (channelNum >= 1 && channelNum <= 8) {
+            (void)dispatch::SoundChannelMethodDispatcher::setProperty(builtinContext, Datum::SoundChannel{channelNum}, propName, value);
         }
         return true;
     }
