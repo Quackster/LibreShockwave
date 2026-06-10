@@ -62,6 +62,7 @@
 #include "libreshockwave/font/BitmapFont.hpp"
 #include "libreshockwave/font/PfrBitReader.hpp"
 #include "libreshockwave/font/Pfr1Font.hpp"
+#include "libreshockwave/font/Pfr1TtfConverter.hpp"
 #include "libreshockwave/fonts/FontDataDecoder.hpp"
 #include "libreshockwave/id/Ids.hpp"
 #include "libreshockwave/io/BinaryReader.hpp"
@@ -130,6 +131,7 @@ using libreshockwave::font::BdfParser;
 using libreshockwave::font::BitmapFont;
 using libreshockwave::font::PfrBitReader;
 using libreshockwave::font::Pfr1Font;
+using libreshockwave::font::Pfr1TtfConverter;
 using libreshockwave::fonts::FontDataDecoder;
 using libreshockwave::DirectorFile;
 using libreshockwave::W3DFile;
@@ -514,6 +516,77 @@ void testPfr1FontParserAndRegistry() {
     assert(dGlyph.contours[0].commands[1].type == 1);
     assert(dGlyph.contours[0].commands[1].x == 3.0F);
     assert(dGlyph.contours[0].commands[1].y == 2.0F);
+
+    auto readU16At = [](const std::vector<std::uint8_t>& bytes, int offset) {
+        return ((bytes[static_cast<std::size_t>(offset)] & 0xFF) << 8) |
+               (bytes[static_cast<std::size_t>(offset + 1)] & 0xFF);
+    };
+    auto readU32At = [](const std::vector<std::uint8_t>& bytes, int offset) {
+        return (static_cast<std::uint32_t>(bytes[static_cast<std::size_t>(offset)] & 0xFF) << 24U) |
+               (static_cast<std::uint32_t>(bytes[static_cast<std::size_t>(offset + 1)] & 0xFF) << 16U) |
+               (static_cast<std::uint32_t>(bytes[static_cast<std::size_t>(offset + 2)] & 0xFF) << 8U) |
+               static_cast<std::uint32_t>(bytes[static_cast<std::size_t>(offset + 3)] & 0xFF);
+    };
+    struct TtfTable {
+        int offset = 0;
+        int length = 0;
+    };
+    auto findTable = [&](const std::vector<std::uint8_t>& bytes, const std::string& tag) {
+        const int numTables = readU16At(bytes, 4);
+        for (int i = 0; i < numTables; ++i) {
+            const int entry = 12 + i * 16;
+            std::string current(reinterpret_cast<const char*>(bytes.data() + entry), 4);
+            if (current == tag) {
+                return TtfTable{
+                    static_cast<int>(readU32At(bytes, entry + 8)),
+                    static_cast<int>(readU32At(bytes, entry + 12)),
+                };
+            }
+        }
+        return TtfTable{};
+    };
+
+    auto ttf = Pfr1TtfConverter::convert(*font, "Tiny PFR");
+    assert(ttf.size() > 200);
+    assert(readU32At(ttf, 0) == 0x00010000U);
+    assert(readU16At(ttf, 4) == 10);
+    assert(readU16At(ttf, 6) == 128);
+    assert(readU16At(ttf, 8) == 3);
+    assert(readU16At(ttf, 10) == 32);
+    const auto head = findTable(ttf, "head");
+    const auto hhea = findTable(ttf, "hhea");
+    const auto hmtx = findTable(ttf, "hmtx");
+    const auto maxp = findTable(ttf, "maxp");
+    const auto loca = findTable(ttf, "loca");
+    const auto glyf = findTable(ttf, "glyf");
+    const auto name = findTable(ttf, "name");
+    const auto cmap = findTable(ttf, "cmap");
+    const auto post = findTable(ttf, "post");
+    const auto os2 = findTable(ttf, "OS/2");
+    assert(head.length == 54);
+    assert(hhea.length == 36);
+    assert(hmtx.length == 16);
+    assert(maxp.length == 32);
+    assert(loca.length == 10);
+    assert(glyf.length > 0);
+    assert(name.length > 0);
+    assert(cmap.length > 0);
+    assert(post.length == 32);
+    assert(os2.length > 0);
+    assert(readU16At(ttf, head.offset + 18) == 1024);
+    assert(readU16At(ttf, hhea.offset + 34) == 4);
+    assert(readU16At(ttf, maxp.offset + 4) == 4);
+    assert(readU16At(ttf, name.offset + 2) == 7);
+    assert(readU16At(ttf, cmap.offset + 12) == 4);
+    assert(readU16At(ttf, cmap.offset + 18) == 6);
+    assert(readU16At(ttf, cmap.offset + 20) == 4);
+    assert(readU16At(ttf, cmap.offset + 22) == 1);
+    assert(readU16At(ttf, cmap.offset + 24) == 2);
+    assert(readU16At(ttf, loca.offset) == 0);
+    assert(readU16At(ttf, loca.offset + 2) == 0);
+    assert(readU16At(ttf, loca.offset + 4) == 0);
+    assert(readU16At(ttf, loca.offset + 6) > 0);
+    assert(readU16At(ttf, loca.offset + 8) > readU16At(ttf, loca.offset + 6));
 
     assert(Pfr1Font::parse({}) == nullptr);
     auto partial = data;
