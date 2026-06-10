@@ -108,6 +108,20 @@ lingo::vm::LingoVM& Player::vm() { return vm_; }
 lingo::builtin::BuiltinRegistry& Player::builtinRegistry() { return vm_.builtinRegistry(); }
 lingo::builtin::BuiltinContext& Player::builtinContext() { return vm_.builtinContext(); }
 
+void Player::receiveUpdate(const lingo::Datum& target) {
+    if (target.isVoid()) {
+        return;
+    }
+    if (std::find(updatingObjects_.begin(), updatingObjects_.end(), target) == updatingObjects_.end()) {
+        updatingObjects_.push_back(target);
+    }
+}
+
+void Player::removeUpdate(const lingo::Datum& target) {
+    updatingObjects_.erase(std::remove(updatingObjects_.begin(), updatingObjects_.end(), target),
+                           updatingObjects_.end());
+}
+
 PlayerState Player::state() const { return state_; }
 int Player::currentFrame() const { return frameContext_.currentFrame(); }
 int Player::effectiveFrame() const { return frameContext_.effectiveFrame(); }
@@ -257,6 +271,7 @@ bool Player::tick() {
         timeoutProcessor_();
     }
     xtraManager_.tickAll();
+    processUpdatingObjects();
     vm_.flushDeferredTasks();
     (void)frameContext_.advanceFrame();
     return true;
@@ -864,6 +879,24 @@ void Player::prepareMovieFoundation() {
     }
     eventDispatcher().dispatchSpriteAndMovieEvent(handlerName(PlayerEvent::ExitFrame));
     castLibManager_.preloadCasts(1);
+}
+
+void Player::processUpdatingObjects() {
+    if (updatingObjects_.empty() || !vm_.builtinContext().callTargetHandler) {
+        return;
+    }
+
+    const auto snapshot = updatingObjects_;
+    for (const auto& target : snapshot) {
+        if (target.type() != lingo::DatumType::ScriptInstanceRef) {
+            continue;
+        }
+        try {
+            (void)vm_.builtinContext().callTargetHandler(target, "update", {});
+        } catch (...) {
+            // Java's update-provider dispatch suppresses per-target handler failures.
+        }
+    }
 }
 
 } // namespace libreshockwave::player

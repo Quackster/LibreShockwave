@@ -80,6 +80,9 @@ public:
     [[nodiscard]] lingo::builtin::BuiltinRegistry& builtinRegistry();
     [[nodiscard]] lingo::builtin::BuiltinContext& builtinContext();
 
+    void receiveUpdate(const lingo::Datum& target);
+    void removeUpdate(const lingo::Datum& target);
+
     [[nodiscard]] PlayerState state() const;
     [[nodiscard]] int currentFrame() const;
     [[nodiscard]] int effectiveFrame() const;
@@ -116,6 +119,7 @@ public:
 private:
     void wireComponents();
     void prepareMovieFoundation();
+    void processUpdatingObjects();
     [[nodiscard]] bool applyExternalCastDataNow(int castLibNumber,
                                                 const std::vector<std::uint8_t>& data,
                                                 std::function<void()> afterLoad);
@@ -147,6 +151,7 @@ private:
     std::function<void()> castLoadedListener_;
     std::function<void(const ExternalCastLoadEvent&)> externalCastLoadListener_;
     std::vector<ExternalCastLoadHandler*> externalCastLoadHandlers_;
+    std::vector<lingo::Datum> updatingObjects_;
     std::function<void()> timeoutProcessor_;
     std::function<void(std::string_view handlerName)> timeoutSystemEventDispatcher_;
 };

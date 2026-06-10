@@ -3457,6 +3457,36 @@ void testPlayerFacadeFoundation() {
     assert(player.state() == PlayerState::Paused);
     assert(player.currentFrame() == 2);
 
+    Player updatePlayer;
+    std::vector<std::string> updateCalls;
+    const auto updateTarget = Datum::scriptInstance("updater");
+    const auto removedDuringUpdate = Datum::scriptInstance("removed-during-update");
+    updatePlayer.builtinContext().callTargetHandler = [&](const Datum& target,
+                                                          const std::string& handlerName,
+                                                          const std::vector<Datum>& args) {
+        assert(target.type() == DatumType::ScriptInstanceRef);
+        assert(handlerName == "update");
+        assert(args.empty());
+        updateCalls.push_back(target.scriptInstanceValue().scriptName());
+        if (target == updateTarget) {
+            updatePlayer.removeUpdate(removedDuringUpdate);
+        }
+        return Datum::voidValue();
+    };
+    updatePlayer.receiveUpdate(Datum::voidValue());
+    updatePlayer.receiveUpdate(Datum::of(std::string("ignored")));
+    updatePlayer.receiveUpdate(updateTarget);
+    updatePlayer.receiveUpdate(updateTarget);
+    updatePlayer.receiveUpdate(removedDuringUpdate);
+    updatePlayer.play();
+    assert(updatePlayer.tick());
+    assert((updateCalls == std::vector<std::string>{"updater", "removed-during-update"}));
+    assert(updatePlayer.tick());
+    assert((updateCalls == std::vector<std::string>{"updater", "removed-during-update", "updater"}));
+    updatePlayer.removeUpdate(updateTarget);
+    assert(updatePlayer.tick());
+    assert((updateCalls == std::vector<std::string>{"updater", "removed-during-update", "updater"}));
+
     Player stageImagePlayer;
     assert(stageImagePlayer.movieProperties().setStageProp("bgcolor", Datum::colorRef(0x12, 0x34, 0x56)));
     const auto stageImageDatum = stageImagePlayer.movieProperties().getStageProp("image");
