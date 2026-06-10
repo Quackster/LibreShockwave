@@ -95,6 +95,7 @@
 #include "libreshockwave/lingo/vm/OpcodeRegistry.hpp"
 #include "libreshockwave/lingo/vm/PropertyIdMappings.hpp"
 #include "libreshockwave/lingo/vm/Scope.hpp"
+#include "libreshockwave/lingo/vm/dispatch/StringMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/trace/ConsoleTracePrinter.hpp"
 #include "libreshockwave/lingo/vm/trace/InstructionAnnotator.hpp"
 #include "libreshockwave/lingo/vm/trace/TracingHelper.hpp"
@@ -243,6 +244,7 @@ using libreshockwave::lingo::vm::OpcodeRegistry;
 using libreshockwave::lingo::vm::PropertyIdMappings;
 using libreshockwave::lingo::vm::Scope;
 using libreshockwave::lingo::vm::TraceListener;
+using libreshockwave::lingo::vm::dispatch::StringMethodDispatcher;
 using libreshockwave::lingo::vm::trace::ConsoleTracePrinter;
 using libreshockwave::lingo::vm::trace::InstructionAnnotator;
 using libreshockwave::lingo::vm::trace::TracingHelper;
@@ -1097,6 +1099,30 @@ void testLingoDatumTypes() {
                                                           ',') == "a\nb");
     assert((libreshockwave::lingo::vm::util::splitIntoChunks("xy", StringChunkType::Char) ==
             std::vector<std::string>{"x", "y"}));
+    assert(StringMethodDispatcher::dispatch("alpha beta gamma", "length", {}).intValue() == 16);
+    assert(StringMethodDispatcher::dispatch("abc", "char", {Datum::of(2)}).stringValue() == "b");
+    assert(StringMethodDispatcher::dispatch("abc", "char", {Datum::of(4)}).stringValue().empty());
+    assert(StringMethodDispatcher::dispatch("alpha beta gamma", "count", {Datum::symbol("word")}).intValue() == 3);
+    assert(StringMethodDispatcher::dispatch("alpha beta gamma", "count", {Datum::of(std::string("word"))}).intValue() == 16);
+    assert(StringMethodDispatcher::dispatch("one\ntwo", "count", {Datum::symbol("line")}).intValue() == 2);
+    assert(StringMethodDispatcher::dispatch("red|green|blue", "count", {Datum::symbol("item")}, '|').intValue() == 3);
+    assert(StringMethodDispatcher::dispatch("alpha beta gamma",
+                                            "getProp",
+                                            {Datum::symbol("word"), Datum::of(2), Datum::of(0)})
+               .stringValue() == "beta");
+    assert(StringMethodDispatcher::dispatch("alpha beta gamma",
+                                            "getProp",
+                                            {Datum::symbol("word"), Datum::of(2), Datum::of(-1)})
+               .stringValue() == "beta gamma");
+    assert(StringMethodDispatcher::dispatch("red|green|blue",
+                                            "getPropRef",
+                                            {Datum::symbol("item"), Datum::of(2)},
+                                            '|')
+               .stringValue() == "green");
+    assert(StringMethodDispatcher::dispatch("alpha beta", "getProp", {Datum::of(std::string("word")), Datum::of(1)})
+               .stringValue()
+               .empty());
+    assert(StringMethodDispatcher::dispatch("alpha", "missing", {}).isVoid());
 
     assert(Datum::of(42).isInt());
     assert(Datum::of(42).intValue() == 42);

@@ -2,6 +2,7 @@
 
 #include "libreshockwave/bitmap/Bitmap.hpp"
 #include "libreshockwave/bitmap/Palette.hpp"
+#include "libreshockwave/lingo/vm/dispatch/StringMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/PropertyIdMappings.hpp"
 #include "libreshockwave/lingo/vm/util/AncestorChainWalker.hpp"
 #include "libreshockwave/lingo/vm/util/StringChunkUtils.hpp"
@@ -1177,10 +1178,6 @@ Datum propListObjectMethod(Datum::PropList& propList, std::string_view methodNam
     return Datum::voidValue();
 }
 
-std::vector<std::string> splitWords(std::string_view value) {
-    return util::splitIntoChunks(value, StringChunkType::Word);
-}
-
 std::string pickLineDelimiter(std::string_view value) {
     return util::pickLineDelimiter(value);
 }
@@ -1191,10 +1188,6 @@ std::vector<std::string> splitLines(std::string_view value) {
 
 int countLines(std::string_view value) {
     return util::countChunks(value, StringChunkType::Line);
-}
-
-int countItems(std::string_view value, char delimiter = ',') {
-    return util::countChunks(value, StringChunkType::Item, delimiter);
 }
 
 std::vector<std::string> splitChunks(std::string_view value, StringChunkType type, char itemDelimiter = ',') {
@@ -1550,52 +1543,6 @@ ChunkSpec chooseSingleChunkSpec(int firstChar,
         return {StringChunkType::Char, firstChar, lastChar};
     }
     return {StringChunkType::Char, 1, 1};
-}
-
-Datum stringObjectMethod(ExecutionContext& context,
-                         const Datum& target,
-                         std::string_view methodName,
-                         const std::vector<Datum>& args) {
-    const std::string value = toStringLikeJava(target);
-    if (equalsIgnoreCase(methodName, "length")) {
-        return Datum::of(static_cast<int>(value.size()));
-    }
-    if (equalsIgnoreCase(methodName, "char")) {
-        if (args.empty()) {
-            return Datum::of(std::string());
-        }
-        const int index = toIntLikeJava(args[0]);
-        if (index >= 1 && index <= static_cast<int>(value.size())) {
-            return Datum::of(value.substr(static_cast<std::size_t>(index - 1), 1));
-        }
-        return Datum::of(std::string());
-    }
-    if (equalsIgnoreCase(methodName, "count")) {
-        if (args.empty()) {
-            return Datum::of(static_cast<int>(value.size()));
-        }
-        const std::string chunkType = keyNameLikeJava(args[0]);
-        if (equalsIgnoreCase(chunkType, "char")) return Datum::of(static_cast<int>(value.size()));
-        if (equalsIgnoreCase(chunkType, "word")) return Datum::of(static_cast<int>(splitWords(value).size()));
-        if (equalsIgnoreCase(chunkType, "line")) return Datum::of(countLines(value));
-        if (equalsIgnoreCase(chunkType, "item")) return Datum::of(countItems(value, currentItemDelimiter(context)));
-        return Datum::of(static_cast<int>(value.size()));
-    }
-    if (equalsIgnoreCase(methodName, "getProp") || equalsIgnoreCase(methodName, "getPropRef")) {
-        if (args.size() < 2) {
-            return Datum::of(std::string());
-        }
-        StringChunkType chunkType = StringChunkType::Char;
-        try {
-            chunkType = stringChunkTypeFromName(keyNameLikeJava(args[0]));
-        } catch (const std::invalid_argument&) {
-            return Datum::of(std::string());
-        }
-        const int start = toIntLikeJava(args[1]);
-        const int end = equalsIgnoreCase(methodName, "getPropRef") || args.size() < 3 ? start : toIntLikeJava(args[2]);
-        return Datum::of(resolveChunkRange(value, chunkType, start, end, currentItemDelimiter(context)));
-    }
-    return Datum::voidValue();
 }
 
 Datum pointObjectMethod(const Datum::IntPoint& point, std::string_view methodName, const std::vector<Datum>& args) {
@@ -3774,7 +3721,10 @@ Datum varRefObjectMethod(ExecutionContext& context,
         return propListObjectMethod(value.propListValue(), methodName, args);
     }
     if (value.isString()) {
-        return stringObjectMethod(context, value, methodName, args);
+        return dispatch::StringMethodDispatcher::dispatch(toStringLikeJava(value),
+                                                          methodName,
+                                                          args,
+                                                          currentItemDelimiter(context));
     }
     if (const auto* point = value.asIntPoint()) {
         return pointObjectMethod(*point, methodName, args);
@@ -3827,7 +3777,10 @@ Datum dispatchObjectMethod(ExecutionContext& context, Datum target, std::string_
         return propListObjectMethod(target.propListValue(), methodName, args);
     }
     if (target.isString()) {
-        return stringObjectMethod(context, target, methodName, args);
+        return dispatch::StringMethodDispatcher::dispatch(toStringLikeJava(target),
+                                                          methodName,
+                                                          args,
+                                                          currentItemDelimiter(context));
     }
     if (const auto* point = target.asIntPoint()) {
         return pointObjectMethod(*point, methodName, args);
