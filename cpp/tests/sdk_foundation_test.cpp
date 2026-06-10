@@ -6210,6 +6210,9 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 134) {
             return std::string("ancestorProvider");
         }
+        if (nameId == 135) {
+            return std::string("paletteIndex");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.variableSetListener = [&variableTraces](std::string_view type,
@@ -7052,6 +7055,9 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runObjectPropertyGet(Datum::intPoint(9, 8), 52).intValue() == 9);
     assert(runObjectPropertyGet(Datum::intRect(1, 2, 6, 9), 53).intValue() == 5);
     assert(runObjectPropertyGet(Datum::colorRef(200, 20, 10), 55).intValue() == 200);
+    assert(runObjectPropertyGet(Datum::paletteIndexColor(44), 135).intValue() == 44);
+    assert(runObjectPropertyGet(Datum::paletteIndexColor(44), 56).asSymbol()->name == "color");
+    assert(runObjectPropertyGet(Datum::paletteIndexColor(44), 55).isVoid());
     assert(runObjectPropertyGet(Datum::of(3), 56).stringValue() == "integer");
     auto objectImageBitmap = std::make_shared<Bitmap>(4, 5, 32);
     objectImageBitmap->setNativeAlpha(true);

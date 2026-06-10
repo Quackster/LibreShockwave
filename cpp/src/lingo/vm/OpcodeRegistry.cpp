@@ -632,6 +632,11 @@ void setRectProp(Datum::IntRect& rect, std::string_view propName, const Datum& v
 }
 
 Datum getColorProp(const Datum::ColorRef& color, std::string_view propName) {
+    if (color.paletteIndex.has_value()) {
+        if (equalsIgnoreCase(propName, "paletteindex")) return Datum::of(*color.paletteIndex);
+        if (equalsIgnoreCase(propName, "ilk")) return Datum::symbol("color");
+        return Datum::voidValue();
+    }
     if (equalsIgnoreCase(propName, "red")) return Datum::of(color.r);
     if (equalsIgnoreCase(propName, "green")) return Datum::of(color.g);
     if (equalsIgnoreCase(propName, "blue")) return Datum::of(color.b);

@@ -742,7 +742,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 ### Lingo Opcode Basic Property Foundation
 
-- Property opcode handlers now cover receiver script-instance get/set, object property get/set for script instances, property lists, points, and rectangles, object property reads for lists, strings, points, rectangles, colors, and images, and image object writes for `useAlpha`/`paletteRef`.
+- Property opcode handlers now cover receiver script-instance get/set, object property get/set for script instances, property lists, points, and rectangles, object property reads for lists, strings, points, rectangles, RGB/palette-index colors, and images, and image object writes for `useAlpha`/`paletteRef`.
 - String and FieldText object property reads now expose Java-compatible `lineCount` and `line` values through the shared opcode property path.
 - Chained property reads now follow Java's narrower `GET_CHAINED_PROP` path for list indexes, property-list keys, string length, script instances, points, rectangles, and colors, while top-level `_player`/`_movie` property reads produce C++ reference datums.
 - Legacy property ID opcodes now cover string chunk counts, last-chunk reads, provider-backed sprite/sound properties, and `number of castMembers of castLib N` through the C++ cast-member count callback.
@@ -972,7 +972,7 @@ Result:
 - OpcodeRegistry arithmetic, comparison, and logical handlers passed through the same CTest executable.
 - OpcodeRegistry variable, arg-list, linear-list, and property-list handlers passed through the same CTest executable.
 - OpcodeRegistry simple string concatenation, containment, and shared string-chunk helper routing passed through the same CTest executable.
-- OpcodeRegistry basic property handlers, object property reads/writes, string/FieldText `lineCount`/`line` properties, Java-compatible PropertyIdMappings tables, legacy cast-member count property IDs, built-in constants, and simple `the` lookups passed through the same CTest executable.
+- OpcodeRegistry basic property handlers, object property reads/writes, string/FieldText `lineCount`/`line` properties, palette-index color `paletteIndex`/`ilk` object-property reads, Java-compatible PropertyIdMappings tables, legacy cast-member count property IDs, built-in constants, and simple `the` lookups passed through the same CTest executable.
 - OpcodeRegistry movie-property provider reads/writes and provider-backed `the` lookups passed through the same CTest executable.
 - OpcodeRegistry provider-backed object property gets/sets for movie, player, stage, sprite, integer-as-sprite refs, cast-library properties, cast-member metadata/provider properties, timeout refs, sound channels, and ImageMethodDispatcher-backed image `useAlpha`/`paletteRef` setters passed through the same CTest executable.
 - OpcodeRegistry local/external call handlers, builtin dispatch, no-return calls, constant fallback, and error-state handling passed through the same CTest executable.
@@ -1231,4 +1231,4 @@ Result:
 - `5df5e6fd Port C++ decompiler fallback mapping`
 - `2d9420b0 Port C++ decompiler linear bytecode`
 - `1e40b253 Port C++ decompiler chunk opcodes`
-- Current checkpoint commit message: `Port C++ provider script construction handlers`
+- Current checkpoint commit message: `Port C++ palette-index color object props`
