@@ -544,6 +544,22 @@ void LingoDecompiler::translateInstruction(const chunks::ScriptChunk::Instructio
             translation = std::make_unique<CallNode>(resolveName(instruction.argument), popNode());
             break;
 
+        case Opcode::OBJ_CALL_V4: {
+            auto object = readVar(instruction.argument);
+            auto argList = popNode();
+            const auto argListType = argList->valueType() == ValueType::ArgListNoRet
+                ? ValueType::ArgListNoRet
+                : ValueType::ArgList;
+            auto args = takeArgNodes(std::move(argList));
+            if (!args.empty() && args[0]->valueType() == ValueType::Symbol) {
+                args[0] = std::make_unique<VarNode>(args[0]->stringValue());
+            }
+            translation = std::make_unique<ObjCallV4Node>(
+                std::move(object),
+                std::make_unique<LiteralNode>(argListType, std::move(args)));
+            break;
+        }
+
         case Opcode::GET_MOVIE_PROP:
             translation = std::make_unique<TheExprNode>(resolveName(instruction.argument));
             break;
@@ -572,6 +588,10 @@ void LingoDecompiler::translateInstruction(const chunks::ScriptChunk::Instructio
             (void)popNode();
             translation = std::make_unique<TheExprNode>(resolveName(instruction.argument));
             break;
+
+        case Opcode::OBJ_CALL:
+            translateObjCall(instruction.offset, instruction.argument, block);
+            return;
 
         case Opcode::PUSH_CHUNK_VAR_REF:
             translation = readVar(instruction.argument);
@@ -622,6 +642,80 @@ void LingoDecompiler::translateInstruction(const chunks::ScriptChunk::Instructio
     }
 }
 
+void LingoDecompiler::translateObjCall(int bytecodeOffset, int nameId, BlockNode& block) {
+    const auto method = resolveName(nameId);
+    auto argList = popNode();
+    const auto& rawArgs = argList->argNodes();
+    const auto nargs = rawArgs.size();
+
+    NodePtr translation;
+
+    if (method == "getAt" && nargs == 2) {
+        auto args = takeArgNodes(std::move(argList));
+        translation = std::make_unique<ObjBracketExprNode>(std::move(args[0]), std::move(args[1]));
+    } else if (method == "setAt" && nargs == 3) {
+        auto args = takeArgNodes(std::move(argList));
+        auto propExpr = std::make_unique<ObjBracketExprNode>(std::move(args[0]), std::move(args[1]));
+        translation = std::make_unique<AssignmentStmtNode>(std::move(propExpr), std::move(args[2]));
+    } else if ((method == "getProp" || method == "getPropRef") &&
+               (nargs == 3 || nargs == 4) &&
+               rawArgs[1]->valueType() == ValueType::Symbol) {
+        const auto propName = rawArgs[1]->stringValue();
+        auto args = takeArgNodes(std::move(argList));
+        NodePtr index2;
+        if (nargs == 4) {
+            index2 = std::move(args[3]);
+        }
+        translation = std::make_unique<ObjPropIndexExprNode>(
+            std::move(args[0]),
+            propName,
+            std::move(args[2]),
+            std::move(index2));
+    } else if (method == "setProp" &&
+               (nargs == 4 || nargs == 5) &&
+               rawArgs[1]->valueType() == ValueType::Symbol) {
+        const auto propName = rawArgs[1]->stringValue();
+        auto args = takeArgNodes(std::move(argList));
+        NodePtr index2;
+        if (nargs == 5) {
+            index2 = std::move(args[3]);
+        }
+        auto propExpr = std::make_unique<ObjPropIndexExprNode>(
+            std::move(args[0]),
+            propName,
+            std::move(args[2]),
+            std::move(index2));
+        translation = std::make_unique<AssignmentStmtNode>(std::move(propExpr), std::move(args[nargs - 1]));
+    } else if (method == "count" &&
+               nargs == 2 &&
+               rawArgs[1]->valueType() == ValueType::Symbol) {
+        const auto propName = rawArgs[1]->stringValue();
+        auto args = takeArgNodes(std::move(argList));
+        auto propExpr = std::make_unique<ObjPropExprNode>(std::move(args[0]), propName);
+        translation = std::make_unique<ObjPropExprNode>(std::move(propExpr), "count");
+    } else if ((method == "setContents" || method == "setContentsAfter" || method == "setContentsBefore") &&
+               nargs == 2) {
+        const int putType = method == "setContents" ? 1 : method == "setContentsAfter" ? 2 : 3;
+        auto args = takeArgNodes(std::move(argList));
+        translation = std::make_unique<PutStmtNode>(putType, std::move(args[0]), std::move(args[1]));
+    } else if (method == "hilite" && nargs == 1) {
+        auto args = takeArgNodes(std::move(argList));
+        translation = std::make_unique<ChunkHiliteStmtNode>(std::move(args[0]));
+    } else if (method == "delete" && nargs == 1) {
+        auto args = takeArgNodes(std::move(argList));
+        translation = std::make_unique<ChunkDeleteStmtNode>(std::move(args[0]));
+    } else {
+        translation = std::make_unique<ObjCallNode>(method, std::move(argList));
+    }
+
+    translation->setBytecodeOffset(bytecodeOffset);
+    if (translation->isExpression()) {
+        stack_.push_back(std::move(translation));
+    } else {
+        block.addChild(std::move(translation));
+    }
+}
+
 NodePtr LingoDecompiler::popNode() {
     if (stack_.empty()) {
         return std::make_unique<ErrorNode>();
@@ -629,6 +723,13 @@ NodePtr LingoDecompiler::popNode() {
     auto node = std::move(stack_.back());
     stack_.pop_back();
     return node;
+}
+
+std::vector<NodePtr> LingoDecompiler::takeArgNodes(NodePtr argList) const {
+    if (auto* literal = dynamic_cast<LiteralNode*>(argList.get()); literal != nullptr) {
+        return literal->takeItems();
+    }
+    return {};
 }
 
 NodePtr LingoDecompiler::readVar(int varType) {

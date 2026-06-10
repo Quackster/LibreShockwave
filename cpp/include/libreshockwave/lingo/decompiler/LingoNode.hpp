@@ -100,6 +100,7 @@ public:
     [[nodiscard]] double floatValue() const;
     [[nodiscard]] std::string stringValue() const override;
     [[nodiscard]] const std::vector<NodePtr>& argNodes() const override;
+    [[nodiscard]] std::vector<NodePtr> takeItems();
     void setValueType(ValueType type) override;
     [[nodiscard]] std::string toLingo(bool dot) const override;
 

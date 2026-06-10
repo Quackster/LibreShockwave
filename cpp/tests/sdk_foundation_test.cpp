@@ -1623,7 +1623,25 @@ void testLingoDecompilerNodeFoundation() {
 
     ScriptNamesChunk scriptNames(nullptr,
                                  ChunkId(501),
-                                 {"prepareMovie", "argOne", "pFlag", "gFlag", "localOne", "doThing", "fieldRef", "chunkOps"});
+                                 {"prepareMovie",
+                                  "argOne",
+                                  "pFlag",
+                                  "gFlag",
+                                  "localOne",
+                                  "doThing",
+                                  "fieldRef",
+                                  "chunkOps",
+                                  "getAt",
+                                  "setAt",
+                                  "getProp",
+                                  "setProp",
+                                  "count",
+                                  "setContentsAfter",
+                                  "hilite",
+                                  "delete",
+                                  "doObj",
+                                  "objOps",
+                                  "propName"});
     ScriptChunk::Handler bytecodeHandler{
         0,
         0,
@@ -1803,6 +1821,116 @@ void testLingoDecompilerNodeFoundation() {
     assert(chunkMapping.lines[4].bytecodeOffset == 40);
     assert(chunkMapping.lines[5].bytecodeOffset == 62);
     assert(chunkMapping.lines[6].bytecodeOffset == 82);
+
+    ScriptChunk::Handler objectHandler{
+        17,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        {},
+        {4},
+        {
+            ScriptChunk::Instruction{0, Opcode::GET_GLOBAL, 0x49, 6},
+            ScriptChunk::Instruction{2, Opcode::PUSH_INT8, 0x41, 2},
+            ScriptChunk::Instruction{4, Opcode::PUSH_ARG_LIST, 0x43, 2},
+            ScriptChunk::Instruction{6, Opcode::OBJ_CALL, 0x67, 8},
+            ScriptChunk::Instruction{8, Opcode::SET_LOCAL, 0x52, 0},
+
+            ScriptChunk::Instruction{10, Opcode::GET_GLOBAL, 0x49, 6},
+            ScriptChunk::Instruction{12, Opcode::PUSH_INT8, 0x41, 2},
+            ScriptChunk::Instruction{14, Opcode::PUSH_INT8, 0x41, 99},
+            ScriptChunk::Instruction{16, Opcode::PUSH_ARG_LIST_NO_RET, 0x42, 3},
+            ScriptChunk::Instruction{18, Opcode::OBJ_CALL, 0x67, 9},
+
+            ScriptChunk::Instruction{20, Opcode::GET_GLOBAL, 0x49, 6},
+            ScriptChunk::Instruction{22, Opcode::PUSH_SYMB, 0x45, 18},
+            ScriptChunk::Instruction{24, Opcode::PUSH_INT8, 0x41, 1},
+            ScriptChunk::Instruction{26, Opcode::PUSH_INT8, 0x41, 3},
+            ScriptChunk::Instruction{28, Opcode::PUSH_ARG_LIST, 0x43, 4},
+            ScriptChunk::Instruction{30, Opcode::OBJ_CALL, 0x67, 10},
+            ScriptChunk::Instruction{32, Opcode::SET_LOCAL, 0x52, 0},
+
+            ScriptChunk::Instruction{34, Opcode::GET_GLOBAL, 0x49, 6},
+            ScriptChunk::Instruction{36, Opcode::PUSH_SYMB, 0x45, 18},
+            ScriptChunk::Instruction{38, Opcode::PUSH_INT8, 0x41, 1},
+            ScriptChunk::Instruction{40, Opcode::PUSH_INT8, 0x41, 3},
+            ScriptChunk::Instruction{42, Opcode::PUSH_INT8, 0x41, 44},
+            ScriptChunk::Instruction{44, Opcode::PUSH_ARG_LIST_NO_RET, 0x42, 5},
+            ScriptChunk::Instruction{46, Opcode::OBJ_CALL, 0x67, 11},
+
+            ScriptChunk::Instruction{48, Opcode::GET_GLOBAL, 0x49, 6},
+            ScriptChunk::Instruction{50, Opcode::PUSH_SYMB, 0x45, 18},
+            ScriptChunk::Instruction{52, Opcode::PUSH_ARG_LIST, 0x43, 2},
+            ScriptChunk::Instruction{54, Opcode::OBJ_CALL, 0x67, 12},
+            ScriptChunk::Instruction{56, Opcode::SET_LOCAL, 0x52, 0},
+
+            ScriptChunk::Instruction{58, Opcode::GET_GLOBAL, 0x49, 6},
+            ScriptChunk::Instruction{60, Opcode::PUSH_CONS, 0x44, 0},
+            ScriptChunk::Instruction{62, Opcode::PUSH_ARG_LIST_NO_RET, 0x42, 2},
+            ScriptChunk::Instruction{64, Opcode::OBJ_CALL, 0x67, 13},
+
+            ScriptChunk::Instruction{66, Opcode::GET_GLOBAL, 0x49, 6},
+            ScriptChunk::Instruction{68, Opcode::PUSH_ARG_LIST_NO_RET, 0x42, 1},
+            ScriptChunk::Instruction{70, Opcode::OBJ_CALL, 0x67, 14},
+
+            ScriptChunk::Instruction{72, Opcode::GET_GLOBAL, 0x49, 6},
+            ScriptChunk::Instruction{74, Opcode::PUSH_ARG_LIST_NO_RET, 0x42, 1},
+            ScriptChunk::Instruction{76, Opcode::OBJ_CALL, 0x67, 15},
+
+            ScriptChunk::Instruction{78, Opcode::GET_GLOBAL, 0x49, 6},
+            ScriptChunk::Instruction{80, Opcode::PUSH_INT8, 0x41, 5},
+            ScriptChunk::Instruction{82, Opcode::PUSH_ARG_LIST_NO_RET, 0x42, 2},
+            ScriptChunk::Instruction{84, Opcode::OBJ_CALL, 0x67, 16},
+
+            ScriptChunk::Instruction{86, Opcode::PUSH_SYMB, 0x45, 18},
+            ScriptChunk::Instruction{88, Opcode::PUSH_INT8, 0x41, 8},
+            ScriptChunk::Instruction{90, Opcode::PUSH_ARG_LIST_NO_RET, 0x42, 2},
+            ScriptChunk::Instruction{92, Opcode::GET_GLOBAL, 0x49, 6},
+            ScriptChunk::Instruction{94, Opcode::OBJ_CALL_V4, 0x58, 1},
+            ScriptChunk::Instruction{96, Opcode::RET, 0x01, 0}
+        },
+        {}
+    };
+    ScriptChunk objectScript(nullptr,
+                             ChunkId(503),
+                             ScriptChunkType::MovieScript,
+                             0,
+                             {objectHandler},
+                             {ScriptChunk::LiteralEntry{1, 0, std::string("Tail"), 0.0}},
+                             {},
+                             {},
+                             {});
+    assert(decompiler.decompileHandler(objectScript.handlers().front(), objectScript, &scriptNames) ==
+           "on objOps\n"
+           "  localOne = fieldRef[2]\n\n"
+           "  fieldRef[2] = 99\n\n"
+           "  localOne = fieldRef.propName[1..3]\n\n"
+           "  fieldRef.propName[1..3] = 44\n\n"
+           "  localOne = fieldRef.propName.count\n\n"
+           "  put \"Tail\" after fieldRef\n\n"
+           "  hilite fieldRef\n\n"
+           "  delete fieldRef\n\n"
+           "  fieldRef.doObj(5)\n\n"
+           "  fieldRef(propName, 8)\n\n"
+           "end");
+    const auto objectMapping = decompiler.decompileHandlerWithMapping(objectScript.handlers().front(),
+                                                                      objectScript,
+                                                                      &scriptNames);
+    assert(objectMapping.lines.size() == 12);
+    assert(objectMapping.lines[1].bytecodeOffset == 8);
+    assert(objectMapping.lines[2].bytecodeOffset == 18);
+    assert(objectMapping.lines[3].bytecodeOffset == 32);
+    assert(objectMapping.lines[4].bytecodeOffset == 46);
+    assert(objectMapping.lines[5].bytecodeOffset == 56);
+    assert(objectMapping.lines[6].bytecodeOffset == 64);
+    assert(objectMapping.lines[7].bytecodeOffset == 70);
+    assert(objectMapping.lines[8].bytecodeOffset == 76);
+    assert(objectMapping.lines[9].bytecodeOffset == 84);
+    assert(objectMapping.lines[10].bytecodeOffset == 94);
 
     HandlerNode mappedHandler("mapped", {"me"}, {"gFlag"});
     auto ifNode = std::make_unique<IfStmtNode>(std::make_unique<VarNode>("ready"));

@@ -176,6 +176,10 @@ const std::vector<NodePtr>& LiteralNode::argNodes() const {
     return items_;
 }
 
+std::vector<NodePtr> LiteralNode::takeItems() {
+    return std::move(items_);
+}
+
 void LiteralNode::setValueType(ValueType type) {
     valueType_ = type;
 }

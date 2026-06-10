@@ -52,7 +52,9 @@ private:
     void translateInstruction(const chunks::ScriptChunk::Instruction& instruction,
                               std::size_t index,
                               BlockNode& block);
+    void translateObjCall(int bytecodeOffset, int nameId, BlockNode& block);
     [[nodiscard]] NodePtr popNode();
+    [[nodiscard]] std::vector<NodePtr> takeArgNodes(NodePtr argList) const;
     [[nodiscard]] NodePtr readVar(int varType);
     [[nodiscard]] NodePtr readChunkRef(NodePtr string);
     [[nodiscard]] NodePtr readV4Property(int propertyType, int propertyId);
