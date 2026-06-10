@@ -130,6 +130,14 @@ int Player::currentFrame() const { return frameContext_.currentFrame(); }
 int Player::effectiveFrame() const { return frameContext_.effectiveFrame(); }
 int Player::frameCount() const { return frameContext_.frameCount(); }
 
+int Player::getFrameForLabel(std::string_view label) const {
+    return frameContext_.navigator().getFrameForLabel(label);
+}
+
+std::set<std::string> Player::getFrameLabels() const {
+    return frameContext_.navigator().getFrameLabels();
+}
+
 int Player::tempo() const {
     const int puppetTempo = movieProperties_.puppetTempo();
     if (puppetTempo > 0) {
@@ -307,6 +315,17 @@ bool Player::tick() {
     vm_.flushDeferredTasks();
     (void)frameContext_.advanceFrame();
     return true;
+}
+
+bool Player::fireTestError(std::string_view errorMessage) {
+    try {
+        const bool handled = vm_.fireAlertHook(errorMessage);
+        vm_.flushDeferredTasks();
+        return handled;
+    } catch (...) {
+        vm_.flushDeferredTasks();
+        throw;
+    }
 }
 
 int Player::preloadAllCasts() {

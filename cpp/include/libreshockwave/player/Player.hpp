@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -91,6 +92,8 @@ public:
     [[nodiscard]] int frameCount() const;
     [[nodiscard]] int tempo() const;
     [[nodiscard]] int baseTempo() const;
+    [[nodiscard]] int getFrameForLabel(std::string_view label) const;
+    [[nodiscard]] std::set<std::string> getFrameLabels() const;
     void setTempo(int tempo);
 
     void setEventListener(std::function<void(const PlayerEventInfo&)> listener);
@@ -114,6 +117,7 @@ public:
     void goToLabel(std::string_view label);
     void stepFrame();
     [[nodiscard]] bool tick();
+    [[nodiscard]] bool fireTestError(std::string_view errorMessage);
     [[nodiscard]] int preloadAllCasts();
     void onSynchronousExternalCastLoad(int castLibNumber);
     [[nodiscard]] bool loadExternalCastFromCachedData(int castLibNumber,

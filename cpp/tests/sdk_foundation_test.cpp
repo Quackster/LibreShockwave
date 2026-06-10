@@ -3253,6 +3253,72 @@ void testPlayerInputFoundation() {
 }
 
 void testPlayerFacadeFoundation() {
+    auto appendFourCC = [](std::vector<std::uint8_t>& data, std::string_view value) {
+        assert(value.size() == 4);
+        data.insert(data.end(), value.begin(), value.end());
+    };
+    auto appendI16 = [](std::vector<std::uint8_t>& data, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data.push_back(static_cast<std::uint8_t>((raw >> 8U) & 0xFFU));
+        data.push_back(static_cast<std::uint8_t>(raw & 0xFFU));
+    };
+    auto appendI32 = [](std::vector<std::uint8_t>& data, std::uint32_t value) {
+        data.push_back(static_cast<std::uint8_t>((value >> 24U) & 0xFFU));
+        data.push_back(static_cast<std::uint8_t>((value >> 16U) & 0xFFU));
+        data.push_back(static_cast<std::uint8_t>((value >> 8U) & 0xFFU));
+        data.push_back(static_cast<std::uint8_t>(value & 0xFFU));
+    };
+    auto putI32 = [](std::vector<std::uint8_t>& data, int offset, std::uint32_t value) {
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((value >> 24U) & 0xFFU);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>((value >> 16U) & 0xFFU);
+        data[static_cast<std::size_t>(offset + 2)] = static_cast<std::uint8_t>((value >> 8U) & 0xFFU);
+        data[static_cast<std::size_t>(offset + 3)] = static_cast<std::uint8_t>(value & 0xFFU);
+    };
+    auto buildRifx = [&](const std::vector<std::pair<std::string, std::vector<std::uint8_t>>>& chunks) {
+        constexpr int mmapOffset = 32;
+        const int mmapPayloadLength = 24 + static_cast<int>(chunks.size()) * 20;
+        int payloadStart = mmapOffset + 8 + mmapPayloadLength;
+
+        std::vector<int> offsets;
+        offsets.reserve(chunks.size());
+        for (const auto& chunk : chunks) {
+            offsets.push_back(payloadStart - 8);
+            payloadStart += static_cast<int>(chunk.second.size());
+        }
+
+        std::vector<std::uint8_t> data;
+        appendFourCC(data, "RIFX");
+        appendI32(data, 0);
+        appendFourCC(data, "MV93");
+        appendFourCC(data, "imap");
+        appendI32(data, 12);
+        appendI32(data, 1);
+        appendI32(data, mmapOffset);
+        appendI32(data, 0x04B1);
+        appendFourCC(data, "mmap");
+        appendI32(data, static_cast<std::uint32_t>(mmapPayloadLength));
+        appendI16(data, 24);
+        appendI16(data, 20);
+        appendI32(data, static_cast<std::uint32_t>(chunks.size()));
+        appendI32(data, static_cast<std::uint32_t>(chunks.size()));
+        appendI32(data, 0);
+        appendI32(data, 0);
+        appendI32(data, 0);
+        for (int index = 0; index < static_cast<int>(chunks.size()); ++index) {
+            appendI32(data, BinaryReader::fourCC(chunks[static_cast<std::size_t>(index)].first));
+            appendI32(data, static_cast<std::uint32_t>(chunks[static_cast<std::size_t>(index)].second.size()));
+            appendI32(data, static_cast<std::uint32_t>(offsets[static_cast<std::size_t>(index)]));
+            appendI16(data, 0);
+            appendI16(data, 0);
+            appendI32(data, 0);
+        }
+        for (const auto& chunk : chunks) {
+            data.insert(data.end(), chunk.second.begin(), chunk.second.end());
+        }
+        putI32(data, 4, static_cast<std::uint32_t>(data.size() - 8));
+        return data;
+    };
+
     auto file = std::make_shared<DirectorFile>(ByteOrder::BigEndian, false, 0, ChunkType::MV93);
     file->setBasePath("/movies/example.dir");
 
@@ -3262,6 +3328,8 @@ void testPlayerFacadeFoundation() {
     assert(player.currentFrame() == 1);
     assert(player.effectiveFrame() == 1);
     assert(player.frameCount() == 0);
+    assert(player.getFrameForLabel("missing") == -1);
+    assert(player.getFrameLabels().empty());
     assert(player.baseTempo() == 15);
     assert(player.tempo() == 15);
     assert(player.netManager().basePath() == "/movies/example.dir");
@@ -3275,6 +3343,26 @@ void testPlayerFacadeFoundation() {
     assert(player.builtinContext().timeoutManager == &player.timeoutManager());
     assert(player.builtinContext().alertHookHandler);
     assert(!player.builtinContext().alertHookHandler("Alert", "no hook"));
+    auto playerAlertHookHandler = player.builtinContext().alertHookHandler;
+    int fireTestErrorCalls = 0;
+    int fireTestErrorDeferredTasks = 0;
+    player.builtinContext().alertHookHandler = [&player, &fireTestErrorCalls, &fireTestErrorDeferredTasks](
+        const std::string& alertType,
+        const std::string& text) {
+        ++fireTestErrorCalls;
+        assert(alertType == "Alert");
+        assert(text == "handled");
+        player.vm().deferTask([&fireTestErrorDeferredTasks] {
+            ++fireTestErrorDeferredTasks;
+        });
+        return true;
+    };
+    assert(player.fireTestError("handled"));
+    assert(fireTestErrorCalls == 1);
+    assert(fireTestErrorDeferredTasks == 1);
+    player.builtinContext().alertHookHandler = {};
+    assert(!player.fireTestError("unhandled"));
+    player.builtinContext().alertHookHandler = std::move(playerAlertHookHandler);
     assert(player.xtraManager().isXtraRegistered("xmlparser"));
     assert(player.builtinContext().xtraRegisteredResolver);
     assert(player.builtinContext().xtraInstanceCreator);
@@ -3435,6 +3523,22 @@ void testPlayerFacadeFoundation() {
     assert(imageRef->bitmap->imagePalette().get() == &Palette::systemMacPalette());
     assert(imageRef->bitmap->paletteRefCastLib() == 1);
     assert(imageRef->bitmap->paletteRefMemberNum() == 42);
+
+    std::vector<std::uint8_t> labelsData;
+    appendI16(labelsData, 2);
+    appendI16(labelsData, 3);
+    appendI16(labelsData, 0);
+    appendI16(labelsData, 9);
+    appendI16(labelsData, 6);
+    appendI32(labelsData, 11);
+    labelsData.insert(labelsData.end(), {'I', 'n', 't', 'r', 'o', 0, 'F', 'i', 'n', 'a', 'l'});
+    auto labeledFile = DirectorFile::load(buildRifx({{"VWLB", labelsData}}));
+    assert(labeledFile != nullptr);
+    Player labeledPlayer(labeledFile);
+    assert(labeledPlayer.getFrameForLabel("intro") == 3);
+    assert(labeledPlayer.getFrameForLabel("FINAL") == 9);
+    assert(labeledPlayer.getFrameForLabel("missing") == -1);
+    assert((labeledPlayer.getFrameLabels() == std::set<std::string>{"final", "intro"}));
 
     std::vector<PlayerEventInfo> events;
     player.setEventListener([&events](const PlayerEventInfo& event) {
