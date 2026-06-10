@@ -2,9 +2,12 @@
 
 #include <algorithm>
 #include <cctype>
+#include <limits>
+#include <optional>
 #include <utility>
 
 #include "libreshockwave/DirectorFile.hpp"
+#include "libreshockwave/bitmap/Bitmap.hpp"
 #include "libreshockwave/cast/CastMember.hpp"
 #include "libreshockwave/chunks/CastChunk.hpp"
 #include "libreshockwave/chunks/CastListChunk.hpp"
@@ -24,6 +27,69 @@ std::string lower(std::string value) {
 
 bool equalsIgnoreCase(const std::string& lhs, const std::string& rhs) {
     return lower(lhs) == lower(rhs);
+}
+
+std::uint32_t readU32BE(const std::vector<std::uint8_t>& data, std::size_t offset) {
+    return (static_cast<std::uint32_t>(data[offset]) << 24U) |
+           (static_cast<std::uint32_t>(data[offset + 1]) << 16U) |
+           (static_cast<std::uint32_t>(data[offset + 2]) << 8U) |
+           static_cast<std::uint32_t>(data[offset + 3]);
+}
+
+std::optional<bitmap::Bitmap> decodeImportedImage(const std::vector<std::uint8_t>& data) {
+    if (data.size() < 12 ||
+        data[0] != static_cast<std::uint8_t>('L') ||
+        data[1] != static_cast<std::uint8_t>('S') ||
+        data[2] != static_cast<std::uint8_t>('W') ||
+        data[3] != static_cast<std::uint8_t>('I')) {
+        return std::nullopt;
+    }
+
+    const auto rawWidth = readU32BE(data, 4);
+    const auto rawHeight = readU32BE(data, 8);
+    if (rawWidth == 0 ||
+        rawHeight == 0 ||
+        rawWidth > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
+        rawHeight > static_cast<std::uint32_t>(std::numeric_limits<int>::max())) {
+        return std::nullopt;
+    }
+
+    const std::size_t width = rawWidth;
+    const std::size_t height = rawHeight;
+    if (width > (std::numeric_limits<std::size_t>::max() / height) ||
+        width * height > (std::numeric_limits<std::size_t>::max() / 4U)) {
+        return std::nullopt;
+    }
+
+    const std::size_t pixelBytes = width * height * 4U;
+    if (data.size() < 12U + pixelBytes) {
+        return std::nullopt;
+    }
+
+    bitmap::Bitmap bitmap(static_cast<int>(width), static_cast<int>(height), 32);
+    bool hasAlpha = false;
+    std::size_t offset = 12;
+    for (int y = 0; y < bitmap.height(); ++y) {
+        for (int x = 0; x < bitmap.width(); ++x) {
+            const int r = data[offset++];
+            const int g = data[offset++];
+            const int b = data[offset++];
+            const int a = data[offset++];
+            if (a < 255) {
+                hasAlpha = true;
+            }
+            bitmap.setPixel(x,
+                            y,
+                            (static_cast<std::uint32_t>(a & 0xFF) << 24U) |
+                                (static_cast<std::uint32_t>(r & 0xFF) << 16U) |
+                                (static_cast<std::uint32_t>(g & 0xFF) << 8U) |
+                                static_cast<std::uint32_t>(b & 0xFF));
+        }
+    }
+    if (hasAlpha) {
+        bitmap.setNativeAlpha(true);
+    }
+    return bitmap;
 }
 
 } // namespace
@@ -280,7 +346,7 @@ std::shared_ptr<libreshockwave::cast::CastMember> CastLibManager::findRuntimeMem
     ensureInitialized();
     for (const auto& [_, castLib] : castLibs_) {
         if (!castLib->isLoaded()) {
-            continue;
+            castLib->load();
         }
         const int memberNumber = castLib->getMemberNumber(target);
         if (memberNumber >= 0) {
@@ -301,6 +367,30 @@ std::shared_ptr<const bitmap::Palette> CastLibManager::resolvePaletteByMember(in
     }
 
     return file_ != nullptr ? file_->resolvePaletteByMemberNumber(memberNumber) : nullptr;
+}
+
+bool CastLibManager::importFileIntoMember(int castLibNumber,
+                                          int memberNumber,
+                                          const std::string& url,
+                                          const lingo::Datum& options) {
+    (void)options;
+    auto castLib = getCastLib(castLibNumber);
+    if (!castLib || castLib->getMember(memberNumber) == nullptr) {
+        return false;
+    }
+
+    auto data = getCachedDownloadedData(url);
+    if (!data.has_value() || data->empty()) {
+        return false;
+    }
+
+    auto bitmap = decodeImportedImage(*data);
+    if (!bitmap.has_value()) {
+        return false;
+    }
+
+    auto image = std::make_shared<bitmap::Bitmap>(std::move(*bitmap));
+    return castLib->setMemberProp(memberNumber, "image", lingo::Datum::imageRef(std::move(image)));
 }
 
 void CastLibManager::cacheExternalData(const std::string& url, const std::vector<std::uint8_t>& data) {
@@ -421,6 +511,11 @@ void CastLibManager::installBuiltinCallbacks(lingo::builtin::BuiltinContext& con
     };
     context.castMemberPropertySetter = [this](int castLib, int memberNum, const std::string& propertyName, const lingo::Datum& value) {
         return setMemberProp(castLib, memberNum, propertyName, value);
+    };
+    context.importFileIntoHandler = [this](const lingo::Datum::CastMemberRef& ref,
+                                           const std::string& url,
+                                           const lingo::Datum& options) {
+        return importFileIntoMember(ref.castLib > 0 ? ref.castLib : 1, ref.memberNum(), url, options);
     };
 }
 

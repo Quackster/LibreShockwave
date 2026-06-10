@@ -5,6 +5,7 @@
 #include <string>
 #include <utility>
 
+#include "libreshockwave/bitmap/Bitmap.hpp"
 #include "libreshockwave/cast/CastMember.hpp"
 #include "libreshockwave/chunks/CastMemberChunk.hpp"
 #include "libreshockwave/lingo/Datum.hpp"
@@ -311,6 +312,19 @@ void Player::wireComponents() {
     spriteBaker_.setBitmapDecodeProvider([this](const chunks::CastMemberChunk& member,
                                                 const bitmap::Palette* palette) {
         return bitmapResolver_.decodeBitmapForProvider(member, palette);
+    });
+    spriteBaker_.setLiveBitmapProvider([this](const render::pipeline::RenderSprite& sprite)
+        -> std::shared_ptr<const bitmap::Bitmap> {
+        if (auto dynamicMember = sprite.dynamicMember()) {
+            return dynamicMember->runtimeBitmap();
+        }
+        if (auto member = sprite.castMember()) {
+            if (auto runtimeMember = castLibManager_.findRuntimeMember(
+                    std::const_pointer_cast<chunks::CastMemberChunk>(member))) {
+                return runtimeMember->runtimeBitmap();
+            }
+        }
+        return nullptr;
     });
 
     cursorManager_.setSpriteProvider([this] {

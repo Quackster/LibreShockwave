@@ -70,6 +70,10 @@ public:
     [[nodiscard]] std::shared_ptr<libreshockwave::cast::CastMember> findRuntimeMember(
         const std::shared_ptr<chunks::CastMemberChunk>& target);
     [[nodiscard]] std::shared_ptr<const bitmap::Palette> resolvePaletteByMember(int castLibNumber, int memberNumber);
+    bool importFileIntoMember(int castLibNumber,
+                              int memberNumber,
+                              const std::string& url,
+                              const lingo::Datum& options);
 
     void cacheExternalData(const std::string& url, const std::vector<std::uint8_t>& data);
     [[nodiscard]] std::optional<std::vector<std::uint8_t>> getCachedExternalData(const std::string& baseName) const;

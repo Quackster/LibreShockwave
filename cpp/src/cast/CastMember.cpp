@@ -3,6 +3,7 @@
 #include <sstream>
 #include <utility>
 
+#include "libreshockwave/bitmap/Bitmap.hpp"
 #include "libreshockwave/chunks/CastMemberChunk.hpp"
 
 namespace libreshockwave::cast {
@@ -43,6 +44,7 @@ bool CastMember::isFont() const { return memberType_ == MemberType::Font; }
 bool CastMember::isShockwave3D() const { return memberType_ == MemberType::Shockwave3D; }
 
 int CastMember::width() const {
+    if (runtimeBitmap_) return runtimeBitmap_->width();
     if (bitmapInfo_) return bitmapInfo_->width;
     if (shapeInfo_) return shapeInfo_->width;
     if (filmLoopInfo_) return filmLoopInfo_->width();
@@ -50,6 +52,7 @@ int CastMember::width() const {
 }
 
 int CastMember::height() const {
+    if (runtimeBitmap_) return runtimeBitmap_->height();
     if (bitmapInfo_) return bitmapInfo_->height;
     if (shapeInfo_) return shapeInfo_->height;
     if (filmLoopInfo_) return filmLoopInfo_->height();
@@ -57,6 +60,7 @@ int CastMember::height() const {
 }
 
 int CastMember::regX() const {
+    if (runtimeRegX_.has_value()) return *runtimeRegX_;
     if (bitmapInfo_) return bitmapInfo_->regX;
     if (shapeInfo_) return shapeInfo_->regX;
     if (filmLoopInfo_) return filmLoopInfo_->regX();
@@ -64,10 +68,25 @@ int CastMember::regX() const {
 }
 
 int CastMember::regY() const {
+    if (runtimeRegY_.has_value()) return *runtimeRegY_;
     if (bitmapInfo_) return bitmapInfo_->regY;
     if (shapeInfo_) return shapeInfo_->regY;
     if (filmLoopInfo_) return filmLoopInfo_->regY();
     return 0;
+}
+
+std::shared_ptr<bitmap::Bitmap> CastMember::runtimeBitmap() const {
+    return runtimeBitmap_;
+}
+
+void CastMember::setRuntimeBitmap(const bitmap::Bitmap& bitmap, bool markScriptModified) {
+    auto copy = std::make_shared<bitmap::Bitmap>(bitmap.copy());
+    if (markScriptModified) {
+        copy->markScriptModified();
+    }
+    runtimeRegX_ = bitmap.hasAnchorPoint() ? std::optional<int>(bitmap.anchorX()) : std::optional<int>(0);
+    runtimeRegY_ = bitmap.hasAnchorPoint() ? std::optional<int>(bitmap.anchorY()) : std::optional<int>(0);
+    runtimeBitmap_ = std::move(copy);
 }
 
 std::string CastMember::toString() const {

@@ -15,6 +15,10 @@ namespace libreshockwave::chunks {
 class CastMemberChunk;
 }
 
+namespace libreshockwave::bitmap {
+class Bitmap;
+}
+
 namespace libreshockwave::cast {
 
 class CastMember {
@@ -49,6 +53,8 @@ public:
     [[nodiscard]] int height() const;
     [[nodiscard]] int regX() const;
     [[nodiscard]] int regY() const;
+    [[nodiscard]] std::shared_ptr<bitmap::Bitmap> runtimeBitmap() const;
+    void setRuntimeBitmap(const bitmap::Bitmap& bitmap, bool markScriptModified = true);
     [[nodiscard]] std::string toString() const;
 
 private:
@@ -67,6 +73,9 @@ private:
     std::optional<FilmLoopInfo> filmLoopInfo_;
     std::optional<ScriptType> scriptType_;
     std::optional<Shockwave3DInfo> shockwave3DInfo_;
+    std::shared_ptr<bitmap::Bitmap> runtimeBitmap_;
+    std::optional<int> runtimeRegX_;
+    std::optional<int> runtimeRegY_;
 };
 
 } // namespace libreshockwave::cast

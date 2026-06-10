@@ -12126,8 +12126,30 @@ void testCastLibManagerFoundation() {
     assert(manager.getMemberProp(1, 2, "type").asSymbol()->name == "bitmap");
     assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->x == 8);
     assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->y == 7);
+    assert(manager.getMemberProp(1, 2, "depth").intValue() == 8);
     assert(manager.getMemberProp(1, 99, "type").asSymbol()->name == "empty");
     assert(!manager.setMemberProp(1, 2, "name", Datum::of("Other")));
+
+    auto runtimeImage = std::make_shared<Bitmap>(3, 1, 32);
+    runtimeImage->setPixel(0, 0, 0xFF112233U);
+    runtimeImage->setPixel(1, 0, 0xFF445566U);
+    runtimeImage->setPixel(2, 0, 0xFF778899U);
+    runtimeImage->setAnchorPoint(2, 1);
+    assert(manager.setMemberProp(1, 2, "image", Datum::imageRef(runtimeImage)));
+    auto assignedRuntime = manager.resolveMember(1, 2)->runtimeBitmap();
+    assert(assignedRuntime != nullptr);
+    assert(assignedRuntime != runtimeImage);
+    assert(assignedRuntime->isScriptModified());
+    assert(assignedRuntime->width() == 3);
+    assert(assignedRuntime->getPixel(1, 0) == 0xFF445566U);
+    assert(manager.getMemberProp(1, 2, "width").intValue() == 3);
+    assert(manager.getMemberProp(1, 2, "height").intValue() == 1);
+    assert(manager.getMemberProp(1, 2, "depth").intValue() == 32);
+    assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->x == 2);
+    assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->y == 1);
+    const auto memberImage = manager.getMemberProp(1, 2, "image").asImageRef();
+    assert(memberImage != nullptr);
+    assert(memberImage->bitmap == assignedRuntime);
 
     BuiltinContext context;
     manager.installBuiltinCallbacks(context);
@@ -12136,6 +12158,56 @@ void testCastLibManagerFoundation() {
     assert(registry.invoke("member", context, {Datum::of(std::string("Hero"))}).asCastMemberRef()->memberNum() == 2);
     assert(context.castMemberExistsResolver(1, 2));
     assert(context.castMemberPropertyGetter(1, 2, "name").stringValue() == "Hero");
+
+    std::vector<std::uint8_t> importedImage{
+        'L', 'S', 'W', 'I',
+        0, 0, 0, 2,
+        0, 0, 0, 1,
+        0x10, 0x20, 0x30, 0xFF,
+        0x40, 0x50, 0x60, 0x80
+    };
+    manager.cacheExternalData("media/hero.lswi", importedImage);
+    assert(registry.invoke("importFileInto",
+                           context,
+                           {Datum::castMemberRef(CastLibId(1), MemberId(2)),
+                            Datum::of(std::string("media/hero.lswi"))}).boolValue());
+    auto importedRuntime = manager.resolveMember(1, 2)->runtimeBitmap();
+    assert(importedRuntime != nullptr);
+    assert(importedRuntime->isScriptModified());
+    assert(importedRuntime->isNativeAlpha());
+    assert(importedRuntime->width() == 2);
+    assert(importedRuntime->height() == 1);
+    assert(importedRuntime->getPixel(0, 0) == 0xFF102030U);
+    assert(importedRuntime->getPixel(1, 0) == 0x80405060U);
+    assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->x == 0);
+    assert(!registry.invoke("importFileInto",
+                            context,
+                            {Datum::castMemberRef(CastLibId(1), MemberId(2)),
+                             Datum::of(std::string("missing.lswi"))}).boolValue());
+
+    Player player(file);
+    player.castLibManager().cacheExternalData("media/player-hero.lswi", importedImage);
+    assert(player.builtinRegistry()
+               .invoke("importFileInto",
+                       player.builtinContext(),
+                       {Datum::castMemberRef(CastLibId(1), MemberId(2)),
+                        Datum::of(std::string("media/player-hero.lswi"))})
+               .boolValue());
+    RenderSprite liveSprite(1,
+                            0,
+                            0,
+                            2,
+                            1,
+                            true,
+                            SpriteType::Bitmap,
+                            player.castLibManager().getCastMember(1, 2),
+                            0xFFFFFF,
+                            0,
+                            0,
+                            100);
+    const auto bakedLive = player.spriteBaker().bake(liveSprite);
+    assert(bakedLive.bakedBitmap() != nullptr);
+    assert(bakedLive.bakedBitmap()->getPixel(1, 0) == 0x80405060U);
 
     const auto matching = manager.getMatchingCastLibNumbersByUrl("https://cdn.example/ext.cst");
     assert(matching.size() == 1);

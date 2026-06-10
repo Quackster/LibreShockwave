@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "libreshockwave/DirectorFile.hpp"
+#include "libreshockwave/bitmap/Bitmap.hpp"
 #include "libreshockwave/cast/CastMember.hpp"
 #include "libreshockwave/cast/MemberType.hpp"
 #include "libreshockwave/chunks/CastChunk.hpp"
@@ -385,14 +386,37 @@ lingo::Datum CastLib::getMemberProp(int memberNumber, const std::string& propNam
     if (prop == "castlibnum" || prop == "castlib") return lingo::Datum::of(castLibId_.value());
     if (prop == "width") return lingo::Datum::of(member->width());
     if (prop == "height") return lingo::Datum::of(member->height());
+    if (prop == "depth") {
+        auto bitmap = member->runtimeBitmap();
+        if (bitmap) {
+            return lingo::Datum::of(bitmap->bitDepth());
+        }
+        return lingo::Datum::of(member->bitmapInfo().has_value() ? member->bitmapInfo()->bitDepth : 0);
+    }
     if (prop == "regpoint") return lingo::Datum::intPoint(member->regX(), member->regY());
+    if (prop == "rect") return lingo::Datum::intRect(0, 0, member->width(), member->height());
+    if (prop == "image") {
+        auto bitmap = member->runtimeBitmap();
+        return bitmap ? lingo::Datum::imageRef(std::move(bitmap)) : lingo::Datum::voidValue();
+    }
     return lingo::Datum::voidValue();
 }
 
 bool CastLib::setMemberProp(int memberNumber, const std::string& propName, const lingo::Datum& value) {
-    (void)memberNumber;
-    (void)propName;
-    (void)value;
+    auto member = getMember(memberNumber);
+    if (!member) {
+        return false;
+    }
+
+    const auto prop = lower(propName);
+    if (prop == "image") {
+        const auto* image = value.asImageRef();
+        if (image == nullptr || image->bitmap == nullptr) {
+            return false;
+        }
+        member->setRuntimeBitmap(*image->bitmap);
+        return true;
+    }
     return false;
 }
 
