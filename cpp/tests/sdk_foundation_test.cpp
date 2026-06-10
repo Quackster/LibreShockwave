@@ -87,6 +87,8 @@
 #include "libreshockwave/lingo/LingoValueParser.hpp"
 #include "libreshockwave/lingo/Opcode.hpp"
 #include "libreshockwave/lingo/builtin/BuiltinRegistry.hpp"
+#include "libreshockwave/lingo/decompiler/LingoNode.hpp"
+#include "libreshockwave/lingo/decompiler/LingoProperties.hpp"
 #include "libreshockwave/lingo/vm/AlertHookHandler.hpp"
 #include "libreshockwave/lingo/vm/DebugConfig.hpp"
 #include "libreshockwave/lingo/vm/datum/DatumFormatter.hpp"
@@ -1431,6 +1433,190 @@ void testLingoOpcodeHelpers() {
     assert(libreshockwave::lingo::isReturn(Opcode::RET_FACTORY));
     assert(libreshockwave::lingo::isPush(Opcode::PUSH_FLOAT32));
     assert(!libreshockwave::lingo::isPush(Opcode::ADD));
+}
+
+void testLingoDecompilerNodeFoundation() {
+    namespace decomp = libreshockwave::lingo::decompiler;
+    using decomp::AssignmentStmtNode;
+    using decomp::BinaryOpNode;
+    using decomp::BlockNode;
+    using decomp::CallNode;
+    using decomp::ChunkDeleteStmtNode;
+    using decomp::ChunkExprNode;
+    using decomp::HandlerNode;
+    using decomp::InverseOpNode;
+    using decomp::LastStringChunkExprNode;
+    using decomp::LiteralNode;
+    using decomp::MemberExprNode;
+    using decomp::NodePtr;
+    using decomp::NotOpNode;
+    using decomp::ObjCallNode;
+    using decomp::ObjPropExprNode;
+    using decomp::ObjPropIndexExprNode;
+    using decomp::PutStmtNode;
+    using decomp::SpritePropExprNode;
+    using decomp::StringChunkCountExprNode;
+    using decomp::ThePropExprNode;
+    using decomp::ValueType;
+    using decomp::VarNode;
+    using decomp::WhenStmtNode;
+
+    assert(decomp::binaryOpName(Opcode::JOIN_PAD_STR) == "&&");
+    assert(decomp::binaryOpName(Opcode::PUSH_ZERO) == "?");
+    assert(decomp::chunkTypeName(3) == "item");
+    assert(decomp::chunkTypeName(99) == "chunk");
+    assert(decomp::putTypeName(3) == "before");
+    assert(decomp::putTypeName(99) == "into");
+    assert(decomp::moviePropertyName(0x06) == "short time");
+    assert(decomp::whenEventName(0x05) == "timeOut");
+    assert(decomp::menuPropertyName(0x02) == "number of menuItems");
+    assert(decomp::menuItemPropertyName(0x04) == "script");
+    assert(decomp::soundPropertyName(0x01) == "volume");
+    assert(decomp::spritePropertyName(0x25) == "member");
+    assert(decomp::animationPropertyName(0x1b) == "stageColor");
+    assert(decomp::animation2PropertyName(0x05) == "number of xtras");
+    assert(decomp::memberPropertyName(0x13) == "type");
+    assert(decomp::memberPropertyName(0x99) == "ERROR");
+
+    assert(LiteralNode(ValueType::Void, std::string()).toLingo(true) == "VOID");
+    assert(LiteralNode(ValueType::String, "").toLingo(true) == "EMPTY");
+    assert(LiteralNode(ValueType::String, "\x03").toLingo(true) == "ENTER");
+    assert(LiteralNode(ValueType::String, "\b").toLingo(true) == "BACKSPACE");
+    assert(LiteralNode(ValueType::String, "\t").toLingo(true) == "TAB");
+    assert(LiteralNode(ValueType::String, "\r").toLingo(true) == "RETURN");
+    assert(LiteralNode(ValueType::String, "\"").toLingo(true) == "QUOTE");
+    assert(LiteralNode(ValueType::String, "abc").toLingo(true) == "\"abc\"");
+    assert(LiteralNode(ValueType::Symbol, "ready").toLingo(true) == "#ready");
+    assert(LiteralNode(ValueType::VarRef, "fieldRef").toLingo(true) == "fieldRef");
+    assert(LiteralNode(42).toLingo(true) == "42");
+    assert(LiteralNode(3.500).toLingo(true) == "3.5");
+    assert(LiteralNode(7.0).toLingo(true) == "7.0");
+
+    std::vector<NodePtr> listItems;
+    listItems.push_back(std::make_unique<LiteralNode>(1));
+    listItems.push_back(std::make_unique<LiteralNode>(ValueType::Symbol, "ok"));
+    assert(LiteralNode(ValueType::List, std::move(listItems)).toLingo(true) == "[1, #ok]");
+
+    std::vector<NodePtr> emptyPropItems;
+    assert(LiteralNode(ValueType::PropList, std::move(emptyPropItems)).toLingo(true) == "[:]");
+
+    std::vector<NodePtr> propItems;
+    propItems.push_back(std::make_unique<LiteralNode>(ValueType::Symbol, "name"));
+    propItems.push_back(std::make_unique<LiteralNode>(ValueType::String, "alex"));
+    propItems.push_back(std::make_unique<LiteralNode>(ValueType::Symbol, "score"));
+    propItems.push_back(std::make_unique<LiteralNode>(7));
+    assert(LiteralNode(ValueType::PropList, std::move(propItems)).toLingo(true) ==
+           "[#name: \"alex\", #score: 7]");
+
+    auto add = std::make_unique<BinaryOpNode>(
+        Opcode::ADD,
+        std::make_unique<LiteralNode>(1),
+        std::make_unique<LiteralNode>(2));
+    auto multiply = BinaryOpNode(Opcode::MUL, std::move(add), std::make_unique<LiteralNode>(3));
+    assert(multiply.toLingo(true) == "(1 + 2) * 3");
+
+    auto nestedSubtract = BinaryOpNode(
+        Opcode::SUB,
+        std::make_unique<LiteralNode>(1),
+        std::make_unique<BinaryOpNode>(
+            Opcode::SUB,
+            std::make_unique<LiteralNode>(2),
+            std::make_unique<LiteralNode>(3)));
+    assert(nestedSubtract.toLingo(true) == "1 - (2 - 3)");
+
+    assert(InverseOpNode(std::make_unique<BinaryOpNode>(
+               Opcode::ADD,
+               std::make_unique<LiteralNode>(1),
+               std::make_unique<LiteralNode>(2))).toLingo(true) == "-(1 + 2)");
+    assert(NotOpNode(std::make_unique<BinaryOpNode>(
+               Opcode::OR,
+               std::make_unique<VarNode>("a"),
+               std::make_unique<VarNode>("b"))).toLingo(true) == "not (a or b)");
+
+    assert(MemberExprNode("member", std::make_unique<LiteralNode>(4)).toLingo(false) == "member 4");
+    assert(MemberExprNode("member", std::make_unique<LiteralNode>(4)).toLingo(true) == "member(4)");
+    assert(MemberExprNode("member", std::make_unique<LiteralNode>(4), std::make_unique<LiteralNode>(2))
+               .toLingo(true) == "member(4, 2)");
+    assert(MemberExprNode(
+               "member",
+               std::make_unique<BinaryOpNode>(
+                   Opcode::ADD,
+                   std::make_unique<LiteralNode>(1),
+                   std::make_unique<LiteralNode>(2)))
+               .toLingo(false) == "member (1 + 2)");
+
+    assert(ObjPropExprNode(std::make_unique<VarNode>("obj"), "locH").toLingo(true) == "obj.locH");
+    assert(ObjPropExprNode(std::make_unique<VarNode>("obj"), "locH").toLingo(false) ==
+           "the locH of obj");
+    assert(ObjPropExprNode(std::make_unique<LiteralNode>(1), "locH").toLingo(true) == "(1).locH");
+    assert(ObjPropIndexExprNode(
+               std::make_unique<VarNode>("sprite(1)"),
+               "loc",
+               std::make_unique<LiteralNode>(1),
+               std::make_unique<LiteralNode>(3))
+               .toLingo(true) == "sprite(1).loc[1..3]");
+    assert(ThePropExprNode(std::make_unique<VarNode>("obj"), "name").toLingo(true) == "the name of obj");
+
+    assert(ChunkExprNode(
+               2,
+               std::make_unique<LiteralNode>(1),
+               std::make_unique<LiteralNode>(0),
+               std::make_unique<VarNode>("fieldRef"))
+               .toLingo(true) == "word 1 of fieldRef");
+    assert(ChunkExprNode(
+               4,
+               std::make_unique<LiteralNode>(2),
+               std::make_unique<LiteralNode>(5),
+               std::make_unique<VarNode>("fieldRef"))
+               .toLingo(true) == "line 2 to 5 of fieldRef");
+    assert(LastStringChunkExprNode(1, std::make_unique<VarNode>("s")).toLingo(true) ==
+           "the last char in s");
+    assert(StringChunkCountExprNode(3, std::make_unique<VarNode>("s")).toLingo(true) ==
+           "the number of items in s");
+    assert(SpritePropExprNode(std::make_unique<LiteralNode>(2), 0x25).toLingo(true) ==
+           "the member of sprite 2");
+
+    assert(AssignmentStmtNode(std::make_unique<VarNode>("x"), std::make_unique<LiteralNode>(7)).toLingo(false) ==
+           "set x to 7");
+    assert(AssignmentStmtNode(std::make_unique<VarNode>("x"), std::make_unique<LiteralNode>(7)).toLingo(true) ==
+           "x = 7");
+    assert(AssignmentStmtNode(std::make_unique<VarNode>("x"), std::make_unique<LiteralNode>(7), true)
+               .toLingo(true) == "set x to 7");
+    assert(PutStmtNode(3, std::make_unique<VarNode>("x"), std::make_unique<LiteralNode>(9)).toLingo(true) ==
+           "put 9 before x");
+    assert(ChunkDeleteStmtNode(std::make_unique<ChunkExprNode>(
+               1,
+               std::make_unique<LiteralNode>(1),
+               std::make_unique<LiteralNode>(2),
+               std::make_unique<VarNode>("s"))).toLingo(true) == "delete char 1 to 2 of s");
+    assert(WhenStmtNode(1, " put 1\r put 2").toLingo(true) == "when mouseDown then put 1\n  put 2");
+
+    std::vector<NodePtr> returnArgs;
+    returnArgs.push_back(std::make_unique<LiteralNode>(9));
+    assert(CallNode("return", std::make_unique<LiteralNode>(ValueType::ArgListNoRet, std::move(returnArgs)))
+               .toLingo(true) == "return 9");
+    std::vector<NodePtr> noArgs;
+    assert(CallNode("pi", std::make_unique<LiteralNode>(ValueType::ArgList, std::move(noArgs))).toLingo(true) ==
+           "PI");
+
+    std::vector<NodePtr> objArgs;
+    objArgs.push_back(std::make_unique<VarNode>("obj"));
+    objArgs.push_back(std::make_unique<LiteralNode>(1));
+    objArgs.push_back(std::make_unique<LiteralNode>(2));
+    assert(ObjCallNode("doIt", std::make_unique<LiteralNode>(ValueType::ArgList, std::move(objArgs)))
+               .toLingo(true) == "obj.doIt(1, 2)");
+
+    BlockNode block;
+    block.addChild(std::make_unique<AssignmentStmtNode>(
+        std::make_unique<VarNode>("x"),
+        std::make_unique<LiteralNode>(1)));
+    assert(block.toLingo(true) == "  x = 1\n\n");
+
+    HandlerNode handler("demo", {"arg1", "arg2"}, {"gOne"});
+    handler.block().addChild(std::make_unique<AssignmentStmtNode>(
+        std::make_unique<VarNode>("x"),
+        std::make_unique<LiteralNode>(1)));
+    assert(handler.toLingo(true) == "on demo arg1, arg2\n  global gOne\n  x = 1\n\nend");
 }
 
 void testPlayerCoreFoundation() {
@@ -17111,6 +17297,7 @@ int main() {
     testUtilityFormatting();
     testLingoDatumTypes();
     testLingoOpcodeHelpers();
+    testLingoDecompilerNodeFoundation();
     testPlayerCoreFoundation();
     testPlayerInputFoundation();
     testPlayerFacadeFoundation();

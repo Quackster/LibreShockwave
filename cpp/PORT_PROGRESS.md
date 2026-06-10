@@ -77,6 +77,11 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `chunks::ScriptContextChunk` Lctx parser for script table metadata, Lnam section references, valid counts, flags, free pointer, and script entries.
 - Script context entry parsing clamps free/empty negative script chunk IDs to `ChunkId(0)` like the Java baseline.
 
+### Lingo Decompiler Node Foundation
+
+- `lingo::decompiler::LingoProperties` ports Java decompiler operator, chunk, put, event, and property-name lookup tables used while reconstructing Lingo source.
+- `lingo::decompiler::LingoNode` ports the Java decompiler AST/source-rendering node foundation for literals, unary/binary expressions, member/object/chunk expressions, calls, assignments, puts, when scripts, blocks, handlers, loops, cases, and Director 4 versus dot-syntax output forms.
+
 ### Script Bytecode Chunk Parser
 
 - `chunks::ScriptChunk` Lscr parser for script type, behavior flags, properties, globals, literals, handler metadata, and handler name tables.
@@ -930,6 +935,7 @@ Result:
 - SoundBuiltins channel creation, availability, SoundChannelMethodDispatcher-backed sound-channel method/property dispatch, VM object-property defaults/mutation, and SoundManager playback delegation passed through the same CTest executable.
 - ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration, Java-style constructor argument coercion, palette-index color identity/display, callback hooks, direct script-instance fallback, and `NEW_OBJ` script-ref handler dispatch passed through the same CTest executable.
 - TypeBuiltins object/void/type predicates, `value` literal parsing/provider fallback, direct `script` lookup/scoping/unscoped list fallback, `script`/`callAncestor` callback hooks and list fanout, symbol conversion, and `ilk` alias/field-text checks passed through the same CTest executable.
+- Lingo decompiler property-name lookup and AST/source-rendering nodes for literals, operator precedence, member/object/chunk expressions, calls, statements, blocks, and handlers passed through the same CTest executable.
 - Lingo VM Scope and ExecutionContext stack, param, local, return, loop, jump, global callback, handler callback, builtin invocation, global debug-config propagation, and call-stack formatting behavior passed through the same CTest executable.
 - Lingo VM ExecutionContext name resolver callback and resolver-backed global opcode behavior passed through the same CTest executable.
 - Lingo VM long-handler safepoint callback, tick deadline, handler timeout, and cleanup behavior passed through the same CTest executable.
@@ -1200,4 +1206,5 @@ Result:
 - `4a0c7ff2 Port C++ image mutation callback`
 - `800cc9b5 Port C++ live image anchor sync`
 - `249adf8d Port C++ player image mutation invalidation`
-- Current checkpoint commit message: `Cover C++ StageRenderer regPoint transforms`
+- `8f705ce9 Cover C++ StageRenderer regPoint transforms`
+- Current checkpoint commit message: `Port C++ decompiler AST foundation`
