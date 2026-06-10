@@ -202,10 +202,16 @@ public final class MemberRegistryMethodDispatcher {
         if (!(bootstrapRef instanceof Datum.CastMemberRef cmr) || cmr.castLibNum() < 1 || cmr.memberNum() < 1) {
             return 0;
         }
-        if (!provider.isRegistryVisibleMember(cmr.castLibNum(), cmr.memberNum())) {
+        if (!provider.isRegistryVisibleMember(cmr.castLibNum(), cmr.memberNum())
+                && !isBootstrapScriptMember(provider, cmr.castLibNum(), cmr.memberNum())) {
             return 0;
         }
         return SlotId.of(cmr.castLibNum(), cmr.memberNum()).value();
+    }
+
+    private static boolean isBootstrapScriptMember(CastLibProvider provider, int castLibNumber, int memberNumber) {
+        Datum memberType = provider.getMemberProp(castLibNumber, memberNumber, "type");
+        return memberType != null && "script".equalsIgnoreCase(memberType.toStr());
     }
 
     private static boolean isRegisteredRegistrySlotLive(int slotValue) {

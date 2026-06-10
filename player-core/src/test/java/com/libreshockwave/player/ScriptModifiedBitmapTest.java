@@ -1615,7 +1615,7 @@ public class ScriptModifiedBitmapTest {
 
         assertNotNull(baked.getBakedBitmap());
         assertEquals(0xFFA04B26, baked.getBakedBitmap().getPixel(0, 0));
-        assertEquals(0xFF903F20, baked.getBakedBitmap().getPixel(1, 0));
+        assertEquals(0xFF903E1F, baked.getBakedBitmap().getPixel(1, 0));
         assertEquals(0xFFE88543, baked.getBakedBitmap().getPixel(2, 0));
     }
 

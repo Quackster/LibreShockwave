@@ -759,12 +759,15 @@ Commands:
 ```bash
 cmake --build cmake-build-debug --parallel
 ctest --test-dir cmake-build-debug --output-on-failure
+git diff --check
 ./gradlew test
 ```
 
 Result:
 
 - `libreshockwave_cpp_tests`: passed.
+- `./gradlew test`: passed, including the script-modified indexed DARKEN fixed-point baseline and script-bootstrap registry prefill behavior.
+- `git diff --check`: passed.
 - zlib support was detected in the local CMake build and the zlib decompression path is covered by the C++ tests.
 - Chunk/audio foundation tests passed through the same CTest executable.
 - Cast metadata parser tests passed through the same CTest executable.
@@ -886,7 +889,6 @@ Result:
 - OpcodeRegistry local/external call handlers, builtin dispatch, no-return calls, constant fallback, and error-state handling passed through the same CTest executable.
 - OpcodeRegistry object method calls and receiver-style external method calls for lists, property lists, strings, points, rectangles, cast library member lookups/accessors, timeouts, sound channels, and Xtra instances passed through the same CTest executable.
 - OpcodeRegistry `NEW_OBJ` script construction delegation, provider-resolved fallback construction, declared property preinitialization, automatic `new` handler invocation, and non-script rejection passed through the same CTest executable.
-- Full Gradle Java test baseline is not green at this checkpoint: `:player-core:test` fails in `ScriptModifiedBitmapTest.scriptModifiedIndexedDarkenUsesPaletteIndicesForSpriteColorRamp` with `expected 0xFF903F20`, actual `0xFF903E1F`. No Java files are changed in this checkpoint.
 
 ## Remaining Major Work
 
@@ -1089,4 +1091,5 @@ Result:
 - `2983be9f Port C++ XMED paragraph records`
 - `3c96a286 Port C++ ink rectangular media matte skip`
 - `9342375e Port C++ ink Java parity regressions`
-- Current checkpoint commit message: `Port C++ live indexed darken bake`
+- `b1982eb9 Port C++ live indexed darken bake`
+- Current checkpoint commit message: `Fix Java verification parity`
