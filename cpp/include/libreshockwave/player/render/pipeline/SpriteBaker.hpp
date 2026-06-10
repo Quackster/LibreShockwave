@@ -66,8 +66,6 @@ private:
     static void drawRect(bitmap::Bitmap& bitmap, int x, int y, int width, int height, std::uint32_t argb);
     static void drawOval(bitmap::Bitmap& bitmap, int cx, int cy, int rx, int ry, std::uint32_t argb, bool filled);
     static void drawLine(bitmap::Bitmap& bitmap, int x0, int y0, int x1, int y1, std::uint32_t argb);
-    [[nodiscard]] static bitmap::Bitmap applySimpleTransparencyInk(const bitmap::Bitmap& src,
-                                                                   const RenderSprite& sprite);
 
     BitmapCache ownedBitmapCache_;
     BitmapCache* bitmapCache_{nullptr};

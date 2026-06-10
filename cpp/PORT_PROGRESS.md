@@ -373,9 +373,9 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 ### Sprite Baker Foundation
 
 - `render::pipeline::SpriteBaker` ports ordered sprite bake steps, tick counting for batch bakes, custom bake-step registration, immutable `RenderSprite` baked-bitmap attachment, and text/button size replacement when baked output dimensions differ from score dimensions.
-- Bitmap sprites can now bake through an injected decode provider, reuse `BitmapCache`, record decode failures, apply Copy-ink 1-bit foreColor/backColor remapping, and preserve indexed matte/background-transparent remap behavior.
-- Text/button sprites can bake through an injected text provider, shape sprites bake solid and authored shape bitmaps with simple transparency-key ink handling, and unsupported/film-loop sprites pass through without a baked bitmap until their backing resolvers are ported.
-- Runtime CastLibManager lookup, live script-modified bitmap buffers, file-backed STXT/XMED text resolution, film-loop sub-score compositing, and full Java `InkProcessor.applyInk` parity remain deferred.
+- Bitmap sprites can now bake through an injected decode provider, reuse `BitmapCache`, record decode failures, apply Copy-ink 1-bit foreColor/backColor remapping, run shared `InkProcessor.applyInk`, and preserve indexed matte/background-transparent remap behavior.
+- Text/button sprites can bake through an injected text provider, shape sprites bake solid and authored shape bitmaps through shared ink processing, and unsupported/film-loop sprites pass through without a baked bitmap until their backing resolvers are ported.
+- Runtime CastLibManager lookup, live script-modified bitmap buffers, file-backed STXT/XMED text resolution, film-loop sub-score compositing, and remaining Java `InkProcessor.applyInk` edge cases remain deferred.
 
 ### Software Frame Renderer
 
@@ -425,9 +425,9 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 ### Bitmap Cache and Ink Helper Foundation
 
-- `render::pipeline::InkProcessor` ports ink-processing predicates, Copy-ink colorization eligibility, backColor resolution, foreground/backColor grayscale remapping, indexed color remapping, Darken foreColor offsets, and exact-color remapping helpers.
+- `render::pipeline::InkProcessor` ports ink-processing predicates, Copy-ink colorization eligibility, backColor resolution, foreground/backColor grayscale remapping, indexed color remapping, Darken foreColor offsets, exact-color remapping helpers, shared `applyInk` dispatch, background-transparent keying, indexed default matte keying, mask alpha, matte flood fill, Darken tint multiply, and opaque-white conversion.
 - `render::pipeline::BitmapCache` ports processed-bitmap cache keys, decode-failure tracking, palette-version invalidation, non-native 32-bit alpha coercion, and indexed matte/background-transparent color remap selection.
-- Full matte/flood-fill ink processing and bitmap decoding through the player resolver remain deferred to the larger render-pipeline port.
+- Outlined-white body preservation, ADD flood-fill isolation, dynamic bitmap edge cases, and bitmap decoding through the player resolver remain deferred to the larger render-pipeline port.
 
 ### Image Builtins Foundation
 
@@ -591,7 +591,7 @@ Result:
 - Breakpoint, BreakpointManager, WatchExpression, and DebugSnapshot tests passed through the same CTest executable.
 - RenderPipelineTrace, RenderSprite, transform mirror, baked bitmap helpers, and FrameSnapshot tests passed through the same CTest executable.
 - StageRenderer stage-image lifecycle, dynamic/puppeted sprite collection, locZ/channel sorting, last-baked sprite storage, sprite-end cleanup, reset behavior, and RGB555 expansion tests passed through the same CTest executable.
-- SpriteBaker tick counting, default/custom bake-step dispatch, bitmap decode-provider caching, 1-bit Copy-ink color remap, text baked-size replacement, shape baking, transparency-key shape ink, unsupported pass-through, and external BitmapCache ownership tests passed through the same CTest executable.
+- SpriteBaker tick counting, default/custom bake-step dispatch, bitmap decode-provider caching, 1-bit Copy-ink color remap, shared bitmap ink processing, text baked-size replacement, shape baking, transparency-key shape ink, unsupported pass-through, and external BitmapCache ownership tests passed through the same CTest executable.
 - FrameRenderPipeline default StageRenderer/SpriteBaker path, default step names/order, score/dynamic trace summaries, bake tick propagation, baked-sprite publication, snapshot generation, and software-rendered default output tests passed through the same CTest executable.
 - SoftwareFrameRenderer background, stage-image, alpha, blend, scaling, flip, Director mirror, and special-ink tests passed through the same CTest executable.
 - FrameRenderPipelineContext mutation, trace building, snapshot storage, and FrameRenderPipelineStep tests passed through the same CTest executable.
@@ -601,7 +601,7 @@ Result:
 - NetManager URL resolution, cache fallback, GET/POST registration, handler-backed completion/failure, latest-task lookup, stream-status prop lists, raw byte/text results, callbacks, shutdown, and clear tests passed through the same CTest executable.
 - SoundManager channel validation, volume clamping, backend delegation, Lingo play argument parsing, resolver lookup, format detection, KEY-owned member lookup, and SoundChunk playable conversion tests passed through the same CTest executable.
 - TimeoutManager creation, property access/mutation, one-shot/persistent flags, timeout references, names/count, forget, and clear tests passed through the same CTest executable.
-- BitmapCache cache-keying, palette invalidation, non-native alpha coercion, indexed matte remap selection/application, and InkProcessor color remap helpers passed through the same CTest executable.
+- BitmapCache cache-keying, palette invalidation, non-native alpha coercion, indexed matte remap selection/application, and InkProcessor color remap/applyInk helpers passed through the same CTest executable.
 - SpriteState score construction, Director blend-byte mapping, explicit override preservation, dynamic defaults, cursor state, script-instance rebinding, and release resets passed through the same CTest executable.
 - SpriteRegistry score/dynamic creation, lookup, score-behavior channel tracking, score updates, identity rebinding, dynamic-member cleanup, revision tracking, removal, and clear tests passed through the same CTest executable.
 - HitTester front-to-back bounds hits, static native-alpha thresholds, dynamic transparency-ink alpha hits, forced bounding-box hits, all-hit ordering, type lookup, and flip/scale source sampling passed through the same CTest executable.
@@ -786,4 +786,4 @@ Result:
 - `c879164f Port C++ sound object property dispatch`
 - `938442ce Port C++ behavior parameter value parser`
 - `3410a54f Port C++ value builtin parser`
-- Current checkpoint commit message: `Port C++ chunk varref mutation coverage`
+- Current checkpoint commit message: `Port C++ ink processor applyInk foundation`

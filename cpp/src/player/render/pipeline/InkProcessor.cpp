@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <queue>
 #include <vector>
 
 namespace libreshockwave::player::render::pipeline {
@@ -47,6 +48,125 @@ int interpolate(float t, int fore, int back) {
                                         t * static_cast<float>(back)));
 }
 
+int maskAlphaFromPixel(std::uint32_t pixel) {
+    const int r = static_cast<int>((pixel >> 16) & 0xFFU);
+    const int g = static_cast<int>((pixel >> 8) & 0xFFU);
+    const int b = static_cast<int>(pixel & 0xFFU);
+    return ((77 * r) + (150 * g) + (29 * b) + 128) >> 8;
+}
+
+bool matchesRgb(std::uint32_t pixel, int matteRgb, int tolerance) {
+    const int pr = static_cast<int>((pixel >> 16) & 0xFFU);
+    const int pg = static_cast<int>((pixel >> 8) & 0xFFU);
+    const int pb = static_cast<int>(pixel & 0xFFU);
+    const int mr = (matteRgb >> 16) & 0xFF;
+    const int mg = (matteRgb >> 8) & 0xFF;
+    const int mb = matteRgb & 0xFF;
+    return std::abs(pr - mr) <= tolerance &&
+           std::abs(pg - mg) <= tolerance &&
+           std::abs(pb - mb) <= tolerance;
+}
+
+bool isUniformPaletteIndex(const std::vector<std::uint8_t>& paletteIndices, int paletteIndex) {
+    return std::all_of(paletteIndices.begin(), paletteIndices.end(), [&](std::uint8_t entry) {
+        return static_cast<int>(entry & 0xFFU) == paletteIndex;
+    });
+}
+
+bool edgeContainsOpaquePaletteIndex(const bitmap::Bitmap& src,
+                                    const std::vector<std::uint8_t>& paletteIndices,
+                                    int paletteIndex) {
+    const int w = src.width();
+    const int h = src.height();
+    if (w <= 0 || h <= 0) {
+        return false;
+    }
+
+    const auto isEdgeIndex = [&](int x, int y) {
+        const auto index = static_cast<std::size_t>(y * w + x);
+        return index < src.pixels().size() &&
+               index < paletteIndices.size() &&
+               ((src.pixels()[index] >> 24) & 0xFFU) != 0 &&
+               static_cast<int>(paletteIndices[index] & 0xFFU) == paletteIndex;
+    };
+
+    for (int x = 0; x < w; ++x) {
+        if (isEdgeIndex(x, 0) || isEdgeIndex(x, h - 1)) {
+            return true;
+        }
+    }
+    for (int y = 1; y < h - 1; ++y) {
+        if (isEdgeIndex(0, y) || isEdgeIndex(w - 1, y)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+int resolvePaletteIndexRgb(const bitmap::Bitmap& src,
+                           const std::vector<std::uint8_t>& paletteIndices,
+                           int paletteIndex) {
+    const auto& pixels = src.pixels();
+    for (std::size_t index = 0; index < pixels.size() && index < paletteIndices.size(); ++index) {
+        if (static_cast<int>(paletteIndices[index] & 0xFFU) == paletteIndex) {
+            return static_cast<int>(pixels[index] & 0x00FFFFFFU);
+        }
+    }
+    return 0xFFFFFF;
+}
+
+bool hasOpaqueNonPaletteIndexContent(const bitmap::Bitmap& src,
+                                     const std::vector<std::uint8_t>& paletteIndices,
+                                     int paletteIndex) {
+    const auto& pixels = src.pixels();
+    for (std::size_t index = 0; index < pixels.size() && index < paletteIndices.size(); ++index) {
+        if (((pixels[index] >> 24) & 0xFFU) != 0 &&
+            static_cast<int>(paletteIndices[index] & 0xFFU) != paletteIndex) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool isNearWhiteGrayscale(int rgb, int minChannel, int maxDelta) {
+    const int r = (rgb >> 16) & 0xFF;
+    const int g = (rgb >> 8) & 0xFF;
+    const int b = rgb & 0xFF;
+    return r >= minChannel && g >= minChannel && b >= minChannel &&
+           std::abs(r - g) <= maxDelta &&
+           std::abs(g - b) <= maxDelta &&
+           std::abs(r - b) <= maxDelta;
+}
+
+bool shouldKeyDefaultIndexedMatte(const bitmap::Bitmap& src,
+                                  int backgroundKeyRgb,
+                                  const std::vector<std::uint8_t>* paletteIndices) {
+    if (src.bitDepth() > 8 || (backgroundKeyRgb & 0x00FFFFFF) != 0xFFFFFF ||
+        paletteIndices == nullptr || paletteIndices->size() < src.pixels().size()) {
+        return false;
+    }
+    if (isUniformPaletteIndex(*paletteIndices, 0)) {
+        return false;
+    }
+    if (!edgeContainsOpaquePaletteIndex(src, *paletteIndices, 0)) {
+        return false;
+    }
+
+    const int indexZeroRgb = resolvePaletteIndexRgb(src, *paletteIndices, 0);
+    return isNearWhiteGrayscale(indexZeroRgb, 232, 16) &&
+           hasOpaqueNonPaletteIndexContent(src, *paletteIndices, 0);
+}
+
+int multiplyDirectorChannel(int src, int tint) {
+    if (tint >= 255) {
+        return src;
+    }
+    if (src >= 255) {
+        return tint;
+    }
+    return (src * tint) >> 8;
+}
+
 } // namespace
 
 bool InkProcessor::shouldProcessInk(int ink) {
@@ -79,6 +199,62 @@ bool InkProcessor::allowsColorize(int ink) {
 
 bool InkProcessor::allowsColorize(id::InkMode ink) {
     return ink == id::InkMode::COPY;
+}
+
+bitmap::Bitmap InkProcessor::applyInk(const bitmap::Bitmap& src,
+                                      int ink,
+                                      int backColor,
+                                      bool useAlpha,
+                                      const bitmap::Palette* palette) {
+    return applyInk(src, id::inkModeFromCode(ink), backColor, useAlpha, palette);
+}
+
+bitmap::Bitmap InkProcessor::applyInk(const bitmap::Bitmap& src,
+                                      id::InkMode ink,
+                                      int backColor,
+                                      bool useAlpha,
+                                      const bitmap::Palette* palette) {
+    if (src.width() == 0 || src.height() == 0 || !shouldProcessInk(ink)) {
+        return src.copy();
+    }
+
+    if (ink == id::InkMode::MATTE) {
+        if (src.hasNativeMatteAlpha() && useAlpha) {
+            return src.copy();
+        }
+        const int matteColor = resolveBackColor(src, ink, backColor, useAlpha, palette);
+        return matteColor >= 0 ? applyMatte(src, matteColor) : src.copy();
+    }
+
+    if (ink == id::InkMode::MASK) {
+        return applyMask(src);
+    }
+
+    if (ink == id::InkMode::DARKEN || ink == id::InkMode::LIGHTEN) {
+        bitmap::Bitmap masked = src.copy();
+        if (!(src.bitDepth() == 32 && !useAlpha)) {
+            const int matteColor = resolveBackColor(src, ink, backColor, useAlpha, palette);
+            if (matteColor >= 0) {
+                masked = src.bitDepth() >= 16
+                    ? applyBackgroundTransparent(src, matteColor)
+                    : applyMatte(src, matteColor);
+            }
+        }
+
+        if (ink == id::InkMode::DARKEN) {
+            const int tintRgb = resolveBackColor(src, ink, backColor, false, palette);
+            if (tintRgb >= 0 && tintRgb != 0xFFFFFF) {
+                masked = multiplyColor(masked, tintRgb);
+            }
+        }
+        return masked;
+    }
+
+    const int bgColor = resolveBackColor(src, ink, backColor, useAlpha, palette);
+    if (bgColor < 0) {
+        return src.copy();
+    }
+    return applyBackgroundTransparent(src, bgColor);
 }
 
 int InkProcessor::resolveBackColor(const bitmap::Bitmap& src,
@@ -226,6 +402,147 @@ bitmap::Bitmap InkProcessor::remapExactColor(const bitmap::Bitmap& src,
         } else {
             result.push_back(pixel);
         }
+    }
+    return derivedBitmap(src, std::move(result));
+}
+
+bitmap::Bitmap InkProcessor::applyBackgroundTransparent(const bitmap::Bitmap& src, int bgColorRgb) {
+    std::vector<std::uint32_t> result;
+    result.reserve(src.pixels().size());
+
+    const auto paletteIndices = src.paletteIndices();
+    const auto* paletteIndexPtr =
+        (paletteIndices.has_value() && paletteIndices->size() >= src.pixels().size()) ? &*paletteIndices : nullptr;
+    const bool keyDefaultIndexedMatte = shouldKeyDefaultIndexedMatte(src, bgColorRgb, paletteIndexPtr);
+
+    for (std::size_t index = 0; index < src.pixels().size(); ++index) {
+        const auto pixel = src.pixels()[index];
+        const int alpha = static_cast<int>((pixel >> 24) & 0xFFU);
+        if (alpha == 0) {
+            result.push_back(0);
+            continue;
+        }
+
+        const auto rgb = pixel & 0x00FFFFFFU;
+        if (keyDefaultIndexedMatte &&
+            paletteIndexPtr != nullptr &&
+            index < paletteIndexPtr->size() &&
+            static_cast<int>((*paletteIndexPtr)[index] & 0xFFU) == 0) {
+            result.push_back(0);
+        } else if (rgb == static_cast<std::uint32_t>(bgColorRgb & 0x00FFFFFF)) {
+            result.push_back(0);
+        } else {
+            result.push_back(pixel | 0xFF000000U);
+        }
+    }
+
+    return derivedBitmap(src, std::move(result));
+}
+
+bitmap::Bitmap InkProcessor::applyMask(const bitmap::Bitmap& src) {
+    std::vector<std::uint32_t> result;
+    result.reserve(src.pixels().size());
+    for (const auto pixel : src.pixels()) {
+        const int srcAlpha = static_cast<int>((pixel >> 24) & 0xFFU);
+        if (srcAlpha == 0) {
+            result.push_back(0);
+            continue;
+        }
+
+        const int maskAlpha = maskAlphaFromPixel(pixel);
+        const int combinedAlpha = (srcAlpha * maskAlpha) / 255;
+        result.push_back((static_cast<std::uint32_t>(combinedAlpha & 0xFF) << 24) |
+                         (pixel & 0x00FFFFFFU));
+    }
+    return derivedBitmap(src, std::move(result));
+}
+
+bitmap::Bitmap InkProcessor::applyMatte(const bitmap::Bitmap& src, int matteColorRgb, int tolerance) {
+    const int width = src.width();
+    const int height = src.height();
+    if (width <= 0 || height <= 0) {
+        return src.copy();
+    }
+
+    std::vector<bool> transparent(static_cast<std::size_t>(width * height), false);
+    std::queue<int> queue;
+    const auto seed = [&](int x, int y) {
+        const int index = y * width + x;
+        if (transparent[static_cast<std::size_t>(index)]) {
+            return;
+        }
+        const auto pixel = src.pixels()[static_cast<std::size_t>(index)];
+        if (((pixel >> 24) & 0xFFU) == 0 || matchesRgb(pixel, matteColorRgb, tolerance)) {
+            transparent[static_cast<std::size_t>(index)] = true;
+            queue.push(index);
+        }
+    };
+
+    for (int x = 0; x < width; ++x) {
+        seed(x, 0);
+        seed(x, height - 1);
+    }
+    for (int y = 1; y < height - 1; ++y) {
+        seed(0, y);
+        seed(width - 1, y);
+    }
+
+    while (!queue.empty()) {
+        const int index = queue.front();
+        queue.pop();
+        const int x = index % width;
+        const int y = index / width;
+        if (x > 0) seed(x - 1, y);
+        if (x < width - 1) seed(x + 1, y);
+        if (y > 0) seed(x, y - 1);
+        if (y < height - 1) seed(x, y + 1);
+    }
+
+    std::vector<std::uint32_t> result = src.pixels();
+    for (std::size_t index = 0; index < result.size() && index < transparent.size(); ++index) {
+        if (transparent[index]) {
+            result[index] = 0;
+        }
+    }
+    return derivedBitmap(src, std::move(result));
+}
+
+bitmap::Bitmap InkProcessor::convertOpaqueWhiteToTransparent(const bitmap::Bitmap& src) {
+    bool changed = false;
+    std::vector<std::uint32_t> result;
+    result.reserve(src.pixels().size());
+    for (const auto pixel : src.pixels()) {
+        if (pixel == 0xFFFFFFFFU) {
+            result.push_back(0x00FFFFFFU);
+            changed = true;
+        } else {
+            result.push_back(pixel);
+        }
+    }
+    return changed ? derivedBitmap(src, std::move(result)) : src.copy();
+}
+
+bitmap::Bitmap InkProcessor::multiplyColor(const bitmap::Bitmap& src, int tintRgb) {
+    const int tintR = (tintRgb >> 16) & 0xFF;
+    const int tintG = (tintRgb >> 8) & 0xFF;
+    const int tintB = tintRgb & 0xFF;
+
+    std::vector<std::uint32_t> result;
+    result.reserve(src.pixels().size());
+    for (const auto pixel : src.pixels()) {
+        const int alpha = static_cast<int>((pixel >> 24) & 0xFFU);
+        if (alpha == 0) {
+            result.push_back(0);
+            continue;
+        }
+
+        const int r = static_cast<int>((pixel >> 16) & 0xFFU);
+        const int g = static_cast<int>((pixel >> 8) & 0xFFU);
+        const int b = static_cast<int>(pixel & 0xFFU);
+        result.push_back(packArgb(alpha,
+                                  multiplyDirectorChannel(r, tintR),
+                                  multiplyDirectorChannel(g, tintG),
+                                  multiplyDirectorChannel(b, tintB)));
     }
     return derivedBitmap(src, std::move(result));
 }

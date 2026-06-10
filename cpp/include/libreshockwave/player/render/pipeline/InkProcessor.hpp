@@ -15,6 +15,16 @@ public:
     [[nodiscard]] static bool allowsColorize(int ink);
     [[nodiscard]] static bool allowsColorize(id::InkMode ink);
 
+    [[nodiscard]] static bitmap::Bitmap applyInk(const bitmap::Bitmap& src,
+                                                 int ink,
+                                                 int backColor,
+                                                 bool useAlpha,
+                                                 const bitmap::Palette* palette);
+    [[nodiscard]] static bitmap::Bitmap applyInk(const bitmap::Bitmap& src,
+                                                 id::InkMode ink,
+                                                 int backColor,
+                                                 bool useAlpha,
+                                                 const bitmap::Palette* palette);
     [[nodiscard]] static int resolveBackColor(const bitmap::Bitmap& src,
                                               id::InkMode ink,
                                               int backColor,
@@ -34,6 +44,14 @@ public:
     [[nodiscard]] static bitmap::Bitmap remapExactColor(const bitmap::Bitmap& src,
                                                         std::uint32_t fromRgb,
                                                         std::uint32_t toRgb);
+    [[nodiscard]] static bitmap::Bitmap applyBackgroundTransparent(const bitmap::Bitmap& src,
+                                                                   int bgColorRgb);
+    [[nodiscard]] static bitmap::Bitmap applyMask(const bitmap::Bitmap& src);
+    [[nodiscard]] static bitmap::Bitmap applyMatte(const bitmap::Bitmap& src,
+                                                   int matteColorRgb,
+                                                   int tolerance = 0);
+    [[nodiscard]] static bitmap::Bitmap convertOpaqueWhiteToTransparent(const bitmap::Bitmap& src);
+    [[nodiscard]] static bitmap::Bitmap multiplyColor(const bitmap::Bitmap& src, int tintRgb);
 };
 
 } // namespace libreshockwave::player::render::pipeline

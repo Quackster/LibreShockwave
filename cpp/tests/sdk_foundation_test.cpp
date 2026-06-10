@@ -6232,6 +6232,51 @@ void testSpriteBakerFoundation() {
     assert(bakedAuthoredShape.bakedBitmap()->getPixel(0, 0) == 0xFF445566U);
     assert(bakedAuthoredShape.bakedBitmap()->getPixel(2, 1) == 0xFF445566U);
 
+    auto inkMember = std::make_shared<CastMemberChunk>(nullptr,
+                                                       ChunkId(803),
+                                                       MemberType::Bitmap,
+                                                       0,
+                                                       0,
+                                                       std::vector<std::uint8_t>{},
+                                                       std::vector<std::uint8_t>{},
+                                                       "inked-bitmap",
+                                                       0,
+                                                       0,
+                                                       0);
+    SpriteBaker inkBaker;
+    int inkDecodeCalls = 0;
+    inkBaker.setBitmapDecodeProvider([&inkDecodeCalls](const CastMemberChunk&, const Palette*) {
+        ++inkDecodeCalls;
+        return std::make_shared<Bitmap>(2, 1, 32, std::vector<std::uint32_t>{
+            0xFFFFFFFFU,
+            0xFF010203U
+        });
+    });
+    RenderSprite inkedBitmap(7,
+                             0,
+                             0,
+                             2,
+                             1,
+                             0,
+                             true,
+                             SpriteType::Bitmap,
+                             inkMember,
+                             nullptr,
+                             0,
+                             0xFFFFFF,
+                             false,
+                             true,
+                             libreshockwave::id::code(InkMode::BACKGROUND_TRANSPARENT),
+                             100,
+                             false,
+                             false,
+                             nullptr,
+                             false);
+    auto bakedInkedBitmap = inkBaker.bake(inkedBitmap);
+    assert(inkDecodeCalls == 1);
+    assert(bakedInkedBitmap.bakedBitmap()->getPixel(0, 0) == 0x00000000U);
+    assert(bakedInkedBitmap.bakedBitmap()->getPixel(1, 0) == 0xFF010203U);
+
     RenderSprite unsupported(6,
                              0,
                              0,
@@ -6324,6 +6369,53 @@ void testBitmapCacheAndInkProcessorFoundation() {
     assert(foreRemap.getPixel(0, 0) == 0xFFFF0000U);
     assert(foreRemap.getPixel(1, 0) == 0xFF7F0080U);
     assert(foreRemap.getPixel(2, 0) == 0xFF0000FFU);
+
+    Bitmap backgroundSource(3, 1, 32, {0xFFFFFFFFU, 0xFF010203U, 0x00000000U});
+    Bitmap backgroundTransparent = InkProcessor::applyBackgroundTransparent(backgroundSource, 0xFFFFFF);
+    assert(backgroundTransparent.getPixel(0, 0) == 0x00000000U);
+    assert(backgroundTransparent.getPixel(1, 0) == 0xFF010203U);
+    assert(backgroundTransparent.getPixel(2, 0) == 0x00000000U);
+
+    Bitmap indexedBackground(3, 1, 8, {0xFFF0F0F0U, 0xFF123456U, 0xFFF0F0F0U});
+    indexedBackground.setPaletteIndices({0, 9, 0});
+    Bitmap indexedBackgroundTransparent = InkProcessor::applyBackgroundTransparent(indexedBackground, 0xFFFFFF);
+    assert(indexedBackgroundTransparent.getPixel(0, 0) == 0x00000000U);
+    assert(indexedBackgroundTransparent.getPixel(1, 0) == 0xFF123456U);
+    assert(indexedBackgroundTransparent.getPixel(2, 0) == 0x00000000U);
+
+    Bitmap maskSource(3, 1, 32, {0xFFFF0000U, 0xFF00FF00U, 0xFF0000FFU});
+    Bitmap mask = InkProcessor::applyMask(maskSource);
+    assert(mask.getPixel(0, 0) == 0x4DFF0000U);
+    assert(mask.getPixel(1, 0) == 0x9500FF00U);
+    assert(mask.getPixel(2, 0) == 0x1D0000FFU);
+
+    Bitmap matteSource(5, 5, 32, {
+        0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU,
+        0xFFFFFFFFU, 0xFF000000U, 0xFF000000U, 0xFF000000U, 0xFFFFFFFFU,
+        0xFFFFFFFFU, 0xFF000000U, 0xFFFFFFFFU, 0xFF000000U, 0xFFFFFFFFU,
+        0xFFFFFFFFU, 0xFF000000U, 0xFF000000U, 0xFF000000U, 0xFFFFFFFFU,
+        0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU
+    });
+    Bitmap matte = InkProcessor::applyMatte(matteSource, 0xFFFFFF);
+    assert(matte.getPixel(0, 0) == 0x00000000U);
+    assert(matte.getPixel(1, 1) == 0xFF000000U);
+    assert(matte.getPixel(2, 2) == 0xFFFFFFFFU);
+
+    Bitmap darkenTintSource(2, 1, 32, {0xFFFFFFFFU, 0xFF808080U});
+    Bitmap darkenTint = InkProcessor::applyInk(darkenTintSource, InkMode::DARKEN, 0x804020, false, nullptr);
+    assert(darkenTint.getPixel(0, 0) == 0xFF804020U);
+    assert(darkenTint.getPixel(1, 0) == 0xFF402010U);
+
+    Bitmap nativeTransparent(1, 1, 32, {0x00FFFFFFU});
+    nativeTransparent.setNativeAlpha(true);
+    Bitmap nativeMatte = InkProcessor::applyInk(nativeTransparent, InkMode::MATTE, 0xFFFFFF, true, nullptr);
+    assert(nativeMatte.getPixel(0, 0) == 0x00FFFFFFU);
+    assert(nativeMatte.isNativeAlpha());
+
+    Bitmap whiteCanvas(2, 1, 32, {0xFFFFFFFFU, 0xFF010203U});
+    Bitmap transparentWhite = InkProcessor::convertOpaqueWhiteToTransparent(whiteCanvas);
+    assert(transparentWhite.getPixel(0, 0) == 0x00FFFFFFU);
+    assert(transparentWhite.getPixel(1, 0) == 0xFF010203U);
 
     CastMemberChunk member(nullptr,
                            ChunkId(501),

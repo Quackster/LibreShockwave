@@ -18,12 +18,6 @@ std::uint32_t opaqueArgb(int rgb) {
     return 0xFF000000U | static_cast<std::uint32_t>(rgb & 0x00FFFFFF);
 }
 
-bool isTransparencyKeyInk(id::InkMode ink) {
-    return ink == id::InkMode::TRANSPARENT ||
-           ink == id::InkMode::MATTE ||
-           ink == id::InkMode::BACKGROUND_TRANSPARENT;
-}
-
 const cast::ShapeInfo* dynamicShapeInfo(const RenderSprite& sprite) {
     const auto dynamic = sprite.dynamicMember();
     if (dynamic == nullptr || !dynamic->shapeInfo().has_value()) {
@@ -177,6 +171,13 @@ bitmap::Bitmap SpriteBaker::processDecodedBitmap(const bitmap::Bitmap& raw, cons
                                                       static_cast<std::uint32_t>(sprite.foreColor()),
                                                       static_cast<std::uint32_t>(sprite.backColor()));
     }
+    if (InkProcessor::shouldProcessInk(sprite.inkMode())) {
+        processed = InkProcessor::applyInk(processed,
+                                           sprite.inkMode(),
+                                           sprite.backColor(),
+                                           processed.isNativeAlpha(),
+                                           raw.imagePalette().get());
+    }
 
     return BitmapCache::applyIndexedMatteColorRemapIfNeeded(&raw,
                                                             processed,
@@ -226,7 +227,10 @@ bitmap::Bitmap SpriteBaker::drawShapeBitmap(const RenderSprite& sprite, const ca
         drawAuthoredShape(bitmap, sprite, *shapeInfo);
     }
 
-    return applySimpleTransparencyInk(bitmap, sprite);
+    if (InkProcessor::shouldProcessInk(sprite.inkMode())) {
+        return InkProcessor::applyInk(bitmap, sprite.inkMode(), sprite.backColor(), false, nullptr);
+    }
+    return bitmap;
 }
 
 void SpriteBaker::drawAuthoredShape(bitmap::Bitmap& bitmap,
@@ -342,28 +346,6 @@ void SpriteBaker::drawLine(bitmap::Bitmap& bitmap, int x0, int y0, int x1, int y
             y0 += sy;
         }
     }
-}
-
-bitmap::Bitmap SpriteBaker::applySimpleTransparencyInk(const bitmap::Bitmap& src, const RenderSprite& sprite) {
-    if (!isTransparencyKeyInk(sprite.inkMode())) {
-        return src.copy();
-    }
-
-    const int keyRgb = InkProcessor::resolveBackColor(src, sprite.inkMode(), sprite.backColor(), false, nullptr);
-    if (keyRgb < 0) {
-        return src.copy();
-    }
-
-    bitmap::Bitmap result = src.copy();
-    for (int y = 0; y < result.height(); ++y) {
-        for (int x = 0; x < result.width(); ++x) {
-            const auto pixel = result.getPixel(x, y);
-            if ((pixel & 0x00FFFFFFU) == static_cast<std::uint32_t>(keyRgb & 0x00FFFFFF)) {
-                result.setPixel(x, y, 0x00000000U);
-            }
-        }
-    }
-    return result;
 }
 
 } // namespace libreshockwave::player::render::pipeline
