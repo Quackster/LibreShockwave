@@ -10,6 +10,8 @@
 #include <utility>
 #include <vector>
 
+#include "libreshockwave/cast/StyledSpan.hpp"
+#include "libreshockwave/cast/XmedStyledText.hpp"
 #include "libreshockwave/player/cast/FontRegistry.hpp"
 
 namespace libreshockwave::player::render::output {
@@ -17,7 +19,24 @@ namespace {
 
 using bitmap::Bitmap;
 using font::BitmapFont;
+using ::libreshockwave::cast::StyledSpan;
+using ::libreshockwave::cast::XmedStyledText;
 using ::libreshockwave::player::cast::FontRegistry;
+
+struct ResolvedXmedSpan {
+    std::shared_ptr<BitmapFont> font;
+    bool syntheticBold = false;
+    bool underline = false;
+    std::uint32_t color = 0xFF000000U;
+};
+
+struct StyledLine {
+    int start = 0;
+    int end = 0;
+    int width = 0;
+    int maxLineHeight = 0;
+    bool paragraphBreakBefore = false;
+};
 
 std::string lowerAscii(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
@@ -126,6 +145,203 @@ void drawUnderline(std::vector<std::uint32_t>& pixels,
     for (int x = std::max(0, lineStartX); x < std::min(width, lineEndX); ++x) {
         pixels[static_cast<std::size_t>(y * width + x)] = textColor;
     }
+}
+
+bool isLineBreak(char ch) {
+    return ch == '\r' || ch == '\n';
+}
+
+int widthForChar(const std::vector<ResolvedXmedSpan>& spans, int index, char ch) {
+    if (index < 0 || index >= static_cast<int>(spans.size()) || spans[static_cast<std::size_t>(index)].font == nullptr) {
+        return 0;
+    }
+    return spans[static_cast<std::size_t>(index)].font->getCharWidth(static_cast<unsigned char>(ch));
+}
+
+int measureStyledWidth(const std::string& text,
+                       const std::vector<ResolvedXmedSpan>& spans,
+                       int start,
+                       int end) {
+    int width = 0;
+    for (int index = start; index < end; ++index) {
+        const char ch = text[static_cast<std::size_t>(index)];
+        if (!isLineBreak(ch)) {
+            width += widthForChar(spans, index, ch);
+        }
+    }
+    return width;
+}
+
+int measureMaxLineHeight(const std::vector<ResolvedXmedSpan>& spans, int start, int end) {
+    int maximum = 0;
+    for (int index = start; index < end; ++index) {
+        const auto& span = spans[static_cast<std::size_t>(index)];
+        if (span.font != nullptr) {
+            maximum = std::max(maximum, span.font->getLineHeight());
+        }
+    }
+    return maximum;
+}
+
+StyledLine createStyledLine(const std::string& text,
+                            const std::vector<ResolvedXmedSpan>& spans,
+                            int start,
+                            int end,
+                            bool paragraphBreakBefore) {
+    return StyledLine{start,
+                      end,
+                      measureStyledWidth(text, spans, start, end),
+                      measureMaxLineHeight(spans, start, end),
+                      paragraphBreakBefore};
+}
+
+void wrapStyledRange(const std::string& text,
+                     const std::vector<ResolvedXmedSpan>& spans,
+                     int start,
+                     int end,
+                     int maxWidth,
+                     std::vector<StyledLine>& out,
+                     bool paragraphBreakBefore) {
+    int currentStart = start;
+    bool firstWrappedLine = true;
+    while (currentStart < end) {
+        int pos = currentStart;
+        int width = 0;
+        int lastBreak = -1;
+        while (pos < end) {
+            const char ch = text[static_cast<std::size_t>(pos)];
+            const int charWidth = widthForChar(spans, pos, ch);
+            if (width + charWidth > maxWidth && pos > currentStart) {
+                break;
+            }
+            width += charWidth;
+            if (std::isspace(static_cast<unsigned char>(ch)) != 0 || ch == '-') {
+                lastBreak = pos + 1;
+            }
+            ++pos;
+        }
+        if (pos >= end) {
+            out.push_back(createStyledLine(text, spans, currentStart, end, paragraphBreakBefore && firstWrappedLine));
+            return;
+        }
+
+        int breakPos = lastBreak > currentStart ? lastBreak : pos;
+        int trimmedEnd = breakPos;
+        while (trimmedEnd > currentStart &&
+               std::isspace(static_cast<unsigned char>(text[static_cast<std::size_t>(trimmedEnd - 1)])) != 0) {
+            --trimmedEnd;
+        }
+        out.push_back(createStyledLine(text,
+                                       spans,
+                                       currentStart,
+                                       trimmedEnd,
+                                       paragraphBreakBefore && firstWrappedLine));
+        firstWrappedLine = false;
+        currentStart = breakPos;
+        while (currentStart < end &&
+               std::isspace(static_cast<unsigned char>(text[static_cast<std::size_t>(currentStart)])) != 0) {
+            ++currentStart;
+        }
+        if (currentStart == breakPos && breakPos == pos) {
+            currentStart = std::min(end, pos + 1);
+        }
+    }
+}
+
+std::vector<StyledLine> layoutStyledLines(const std::string& text,
+                                          const std::vector<ResolvedXmedSpan>& spans,
+                                          int maxWidth,
+                                          bool wordWrap) {
+    std::vector<StyledLine> lines;
+    const int textLength = static_cast<int>(text.size());
+    int lineStart = 0;
+    while (lineStart <= textLength) {
+        int lineEnd = lineStart;
+        while (lineEnd < textLength && !isLineBreak(text[static_cast<std::size_t>(lineEnd)])) {
+            ++lineEnd;
+        }
+        if (!wordWrap || measureStyledWidth(text, spans, lineStart, lineEnd) <= maxWidth) {
+            lines.push_back(createStyledLine(text, spans, lineStart, lineEnd, lineStart > 0));
+        } else {
+            wrapStyledRange(text, spans, lineStart, lineEnd, maxWidth, lines, lineStart > 0);
+        }
+        if (lineEnd >= textLength) {
+            break;
+        }
+        if (text[static_cast<std::size_t>(lineEnd)] == '\r' &&
+            lineEnd + 1 < textLength &&
+            text[static_cast<std::size_t>(lineEnd + 1)] == '\n') {
+            lineStart = lineEnd + 2;
+        } else {
+            lineStart = lineEnd + 1;
+        }
+        if (lineStart == textLength) {
+            lines.push_back(createStyledLine(text, spans, textLength, textLength, true));
+            break;
+        }
+    }
+    if (lines.empty()) {
+        lines.push_back(StyledLine{});
+    }
+    return lines;
+}
+
+bool needsPerSpanBitmapRendering(const XmedStyledText& styledText,
+                                 const std::vector<ResolvedXmedSpan>& spans) {
+    if (styledText.text.empty() || spans.empty()) {
+        return false;
+    }
+
+    const ResolvedXmedSpan* first = nullptr;
+    for (int index = 0; index < static_cast<int>(spans.size()); ++index) {
+        if (!isLineBreak(styledText.text[static_cast<std::size_t>(index)])) {
+            first = &spans[static_cast<std::size_t>(index)];
+            break;
+        }
+    }
+    if (first == nullptr) {
+        return false;
+    }
+
+    for (int index = 0; index < static_cast<int>(spans.size()); ++index) {
+        if (isLineBreak(styledText.text[static_cast<std::size_t>(index)])) {
+            continue;
+        }
+        const auto& current = spans[static_cast<std::size_t>(index)];
+        if (current.font != first->font ||
+            current.syntheticBold != first->syntheticBold ||
+            current.underline != first->underline ||
+            current.color != first->color) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void drawStyledUnderline(std::vector<std::uint32_t>& pixels,
+                         int width,
+                         int height,
+                         int glyphY,
+                         int startX,
+                         int endX,
+                         int lineHeight,
+                         std::uint32_t color) {
+    const int bottom = findInkBottom(pixels,
+                                     width,
+                                     height,
+                                     startX,
+                                     endX,
+                                     glyphY,
+                                     std::min(height - 1, glyphY + std::max(0, lineHeight - 1)));
+    const auto bounds = findHorizontalInkBounds(pixels,
+                                                width,
+                                                height,
+                                                startX,
+                                                endX,
+                                                glyphY,
+                                                std::min(height - 1, glyphY + std::max(0, lineHeight - 1)));
+    const int underlineY = std::min(height - 1, std::max(glyphY, bottom + 2));
+    drawUnderline(pixels, width, height, underlineY, bounds[0], extendUnderlineRightEdge(bounds[1], endX, width), color);
 }
 
 std::shared_ptr<Bitmap> applyTextAA(const Bitmap& bitmap) {
@@ -471,6 +687,111 @@ std::shared_ptr<Bitmap> renderWithBuiltinFont(const std::string& text,
     return bitmap;
 }
 
+std::shared_ptr<Bitmap> renderStyledXmedText(const std::vector<ResolvedXmedSpan>& spans,
+                                             const XmedStyledText& styledText,
+                                             int width,
+                                             int height,
+                                             std::uint32_t bgColor) {
+    const auto lines = layoutStyledLines(styledText.text, spans, width, styledText.wordWrap);
+    int maxFontLineHeight = 0;
+    for (const auto& span : spans) {
+        if (span.font != nullptr) {
+            maxFontLineHeight = std::max(maxFontLineHeight, span.font->getLineHeight());
+        }
+    }
+    if (maxFontLineHeight <= 0) {
+        maxFontLineHeight = styledText.fontSize;
+    }
+    const int lineHeight = styledText.fixedLineSpace > 0 ? styledText.fixedLineSpace : maxFontLineHeight;
+    const int safeLineHeight = std::max(1, lineHeight);
+    int neededHeight = std::max(height, std::max(1, static_cast<int>(lines.size())) * safeLineHeight);
+    int paragraphBreakCount = 0;
+    for (const auto& line : lines) {
+        if (line.paragraphBreakBefore) {
+            ++paragraphBreakCount;
+        }
+    }
+    const int paragraphGap = paragraphBreakCount > 0
+        ? std::max(0, (height - std::max(1, static_cast<int>(lines.size())) * safeLineHeight) / (paragraphBreakCount + 1))
+        : 0;
+
+    std::vector<std::uint32_t> pixels(static_cast<std::size_t>(width * neededHeight), bgColor);
+    int y = 0;
+    for (const auto& line : lines) {
+        if (y >= neededHeight) {
+            break;
+        }
+        if (line.paragraphBreakBefore) {
+            y += paragraphGap;
+            if (y >= neededHeight) {
+                break;
+            }
+        }
+
+        const int lineX = alignmentOffset(styledText.alignment, width, line.width);
+        int x = lineX;
+        for (int index = line.start; index < line.end; ++index) {
+            const char ch = styledText.text[static_cast<std::size_t>(index)];
+            if (isLineBreak(ch)) {
+                continue;
+            }
+            const auto& span = spans[static_cast<std::size_t>(index)];
+            if (span.font == nullptr) {
+                continue;
+            }
+            span.font->drawChar(static_cast<unsigned char>(ch), pixels, width, neededHeight, x, y, span.color);
+            if (span.syntheticBold) {
+                span.font->drawChar(static_cast<unsigned char>(ch), pixels, width, neededHeight, x + 1, y, span.color);
+            }
+            x += span.font->getCharWidth(static_cast<unsigned char>(ch));
+        }
+
+        int runStart = -1;
+        int runStartX = 0;
+        x = lineX;
+        for (int index = line.start; index < line.end; ++index) {
+            const char ch = styledText.text[static_cast<std::size_t>(index)];
+            if (isLineBreak(ch)) {
+                continue;
+            }
+            const auto& span = spans[static_cast<std::size_t>(index)];
+            const int charWidth = span.font != nullptr ? span.font->getCharWidth(static_cast<unsigned char>(ch)) : 0;
+            if (span.underline) {
+                if (runStart < 0) {
+                    runStart = index;
+                    runStartX = x;
+                }
+            } else if (runStart >= 0) {
+                drawStyledUnderline(pixels,
+                                    width,
+                                    neededHeight,
+                                    y,
+                                    runStartX,
+                                    x,
+                                    line.maxLineHeight,
+                                    spans[static_cast<std::size_t>(runStart)].color);
+                runStart = -1;
+            }
+            x += charWidth;
+        }
+        if (runStart >= 0) {
+            drawStyledUnderline(pixels,
+                                width,
+                                neededHeight,
+                                y,
+                                runStartX,
+                                x,
+                                line.maxLineHeight,
+                                spans[static_cast<std::size_t>(runStart)].color);
+        }
+        y += safeLineHeight;
+    }
+
+    auto bitmap = std::make_shared<Bitmap>(width, neededHeight, 32, std::move(pixels));
+    bitmap->markScriptModified();
+    return bitmap;
+}
+
 } // namespace
 
 std::shared_ptr<Bitmap> SimpleTextRenderer::renderText(std::string text,
@@ -692,6 +1013,104 @@ int SimpleTextRenderer::getLineHeight(std::string fontName,
     return font != nullptr ? font->getLineHeight() : builtinLineHeight(fontSize);
 }
 
+std::shared_ptr<Bitmap> SimpleTextRenderer::renderXmedText(
+    const XmedStyledText* styledText,
+    int width,
+    int height,
+    int textColor,
+    int bgColor) {
+    if (styledText == nullptr) {
+        return nullptr;
+    }
+    if (width <= 0) {
+        width = 200;
+    }
+    if (height <= 0) {
+        height = 1;
+    }
+
+    const auto style = lowerAscii(styledText->fontStyleString());
+    const bool wantsBold = style.find("bold") != std::string::npos;
+    const bool wantsItalic = style.find("italic") != std::string::npos;
+    const bool underline = style.find("underline") != std::string::npos;
+
+    bool usedRealBold = false;
+    auto font = resolveXmedFont(*styledText, styledText->fontSize, wantsBold, wantsItalic, &usedRealBold);
+    if (font != nullptr) {
+        const std::uint32_t defaultColor = textColor != 0
+            ? static_cast<std::uint32_t>(textColor)
+            : styledText->textColorARGB();
+        std::vector<ResolvedXmedSpan> spans(styledText->text.size());
+        for (const auto& sourceSpan : styledText->styledSpans) {
+            bool spanUsedRealBold = false;
+            auto spanFont = sourceSpan.fontName.empty() || lowerAscii(sourceSpan.fontName) == lowerAscii(styledText->fontName)
+                ? font
+                : resolveXmedFontByName(sourceSpan.fontName,
+                                        nullptr,
+                                        sourceSpan.fontSize,
+                                        sourceSpan.bold,
+                                        sourceSpan.italic,
+                                        &spanUsedRealBold);
+            if (spanFont == nullptr) {
+                spanFont = font;
+            }
+            const bool syntheticBold = sourceSpan.bold && !spanUsedRealBold;
+            const std::uint32_t spanColor = textColor != 0
+                ? static_cast<std::uint32_t>(textColor)
+                : (0xFF000000U |
+                   (static_cast<std::uint32_t>(sourceSpan.colorR & 0xFF) << 16U) |
+                   (static_cast<std::uint32_t>(sourceSpan.colorG & 0xFF) << 8U) |
+                   static_cast<std::uint32_t>(sourceSpan.colorB & 0xFF));
+            const int start = std::max(0, sourceSpan.startOffset);
+            const int end = std::min(static_cast<int>(styledText->text.size()), sourceSpan.endOffset);
+            for (int index = start; index < end; ++index) {
+                spans[static_cast<std::size_t>(index)] = ResolvedXmedSpan{spanFont,
+                                                                          syntheticBold,
+                                                                          sourceSpan.underline,
+                                                                          spanColor};
+            }
+        }
+
+        const ResolvedXmedSpan fallback{font, false, underline, defaultColor};
+        for (auto& span : spans) {
+            if (span.font == nullptr) {
+                span = fallback;
+            }
+        }
+
+        std::shared_ptr<Bitmap> bitmap;
+        if (needsPerSpanBitmapRendering(*styledText, spans)) {
+            bitmap = renderStyledXmedText(spans, *styledText, width, height, static_cast<std::uint32_t>(bgColor));
+        } else {
+            bitmap = renderWithBitmapFont(font,
+                                          styledText->text,
+                                          width,
+                                          height,
+                                          styledText->alignment,
+                                          defaultColor,
+                                          static_cast<std::uint32_t>(bgColor),
+                                          styledText->wordWrap,
+                                          styledText->fixedLineSpace,
+                                          0,
+                                          wantsBold && !usedRealBold,
+                                          underline);
+        }
+        return bitmap;
+    }
+
+    return renderWithBuiltinFont(styledText->text,
+                                 width,
+                                 height,
+                                 styledText->fontSize,
+                                 styledText->alignment,
+                                 textColor != 0 ? static_cast<std::uint32_t>(textColor) : styledText->textColorARGB(),
+                                 static_cast<std::uint32_t>(bgColor),
+                                 styledText->wordWrap,
+                                 styledText->fixedLineSpace,
+                                 0,
+                                 underline);
+}
+
 std::shared_ptr<BitmapFont> SimpleTextRenderer::resolveBitmapFont(const std::string& fontName,
                                                                   int fontSize,
                                                                   bool bold,
@@ -820,6 +1239,93 @@ std::shared_ptr<BitmapFont> SimpleTextRenderer::resolveRegisteredPfrCandidate(
         return nullptr;
     }
     return FontRegistry::getBitmapFont(*resolved, fontSize);
+}
+
+std::shared_ptr<BitmapFont> SimpleTextRenderer::resolveXmedFont(
+    const XmedStyledText& styledText,
+    int fontSize,
+    bool bold,
+    bool italic,
+    bool* usedRealBold) {
+    return resolveXmedFontByName(styledText.fontName,
+                                 &styledText.fontCandidates,
+                                 fontSize,
+                                 bold,
+                                 italic,
+                                 usedRealBold);
+}
+
+std::shared_ptr<BitmapFont> SimpleTextRenderer::resolveXmedFontByName(
+    const std::string& fontName,
+    const std::vector<std::string>* fontCandidates,
+    int fontSize,
+    bool bold,
+    bool italic,
+    bool* usedRealBold) {
+    if (fontName.empty()) {
+        return nullptr;
+    }
+
+    if (auto aliasFont = resolveDirectorFontAlias(fontName, fontSize, bold, italic, usedRealBold, false);
+        aliasFont != nullptr) {
+        return aliasFont;
+    }
+
+    if (auto movieFont = resolveMovieFontCandidate(fontCandidates, fontName, fontSize, bold, italic, usedRealBold);
+        movieFont != nullptr) {
+        return movieFont;
+    }
+
+    if (auto exact = FontRegistry::getBitmapFont(fontName, fontSize, bold, italic); exact != nullptr) {
+        if (usedRealBold != nullptr) {
+            *usedRealBold = bold && FontRegistry::hasEmbeddedBoldVariant(fontName);
+        }
+        return exact;
+    }
+
+    if (const auto resolved = FontRegistry::resolveFont(fontName); resolved.has_value()) {
+        if (auto font = FontRegistry::getBitmapFont(*resolved, fontSize, bold, italic); font != nullptr) {
+            if (usedRealBold != nullptr) {
+                *usedRealBold = bold && FontRegistry::hasEmbeddedBoldVariant(*resolved);
+            }
+            return font;
+        }
+    }
+
+    if (const auto fallback = FontRegistry::getFirstRegisteredFont(); fallback.has_value()) {
+        const int fallbackSize = fontSize > 1 ? fontSize - 1 : fontSize;
+        return FontRegistry::getBitmapFont(*fallback, fallbackSize);
+    }
+    return nullptr;
+}
+
+std::shared_ptr<BitmapFont> SimpleTextRenderer::resolveMovieFontCandidate(
+    const std::vector<std::string>* fontCandidates,
+    const std::string& primaryFontName,
+    int fontSize,
+    bool bold,
+    bool italic,
+    bool* usedRealBold) {
+    if (italic || fontCandidates == nullptr || fontCandidates->empty()) {
+        return nullptr;
+    }
+    const auto primaryLower = lowerAscii(primaryFontName);
+    for (const auto& candidate : *fontCandidates) {
+        if (candidate.empty() || lowerAscii(candidate) == primaryLower) {
+            continue;
+        }
+        if (auto registered = resolveRegisteredDirectorFont(candidate, candidate, fontSize, bold, false, usedRealBold);
+            registered != nullptr) {
+            return registered;
+        }
+        if (auto exact = FontRegistry::getBitmapFont(candidate, fontSize, bold, false); exact != nullptr) {
+            if (usedRealBold != nullptr) {
+                *usedRealBold = bold && FontRegistry::hasEmbeddedBoldVariant(candidate);
+            }
+            return exact;
+        }
+    }
+    return nullptr;
 }
 
 int SimpleTextRenderer::directorAliasFontSize(int fontSize) {

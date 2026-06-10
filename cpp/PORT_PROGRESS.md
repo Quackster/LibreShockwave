@@ -524,7 +524,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `render::output::TextRenderer` ports the platform-neutral text rendering and measurement interface.
 - Shared line splitting, character-line lookup, line-start lookup, and word-wrap helpers are available in C++.
 - `render::output::SimpleTextRenderer` ports the Java platform-independent simple text renderer core, including bitmap-font and Director alias lookup, legacy STXT registered-font preference, built-in 5x7 fallback glyph rendering, word wrapping, underline drawing, simple text antialiasing, line-height lookup, and `charPosToLoc`/`locToCharPos` measurement.
-- The default XMED rendering path delegates to `renderText` using parsed `XmedStyledText` fields, and `DirectorFile` can resolve file-backed XMED chunks for text-Xtra members through KEY* ownership; Java's per-span XMED bitmap rendering remains deferred to a later text-rendering slice.
+- The SimpleTextRenderer XMED path now ports Java's per-span bitmap rendering for mixed span fonts, colors, underline runs, paragraph/word-wrap layout, and authored font-candidate fallback while still supporting the default `TextRenderer` delegation path; `DirectorFile` can resolve file-backed XMED chunks for text-Xtra members through KEY* ownership.
 
 ### Network Task Foundation
 
@@ -877,7 +877,7 @@ Result:
 - File/path fallback utilities, shared string display/HTML escaping helpers, string chunk counting/extraction helpers, Java-compatible ImageMethodDispatcher/StringMethodDispatcher/ListMethodDispatcher/MemberRegistryMethodDispatcher/PropListMethodDispatcher/ScriptInstanceMethodDispatcher/SoundChannelMethodDispatcher receiver methods, and script formatting utilities passed through the same CTest executable.
 - BitmapColorizer 32-bit, indexed, foreground-only, packed-index, and ink predicate tests passed through the same CTest executable.
 - PfrBitReader byte, signed, skip, alignment, bit-buffer, and partial-EOF tests passed through the same CTest executable.
-- BitmapFont glyph drawing, overflow metrics, BDF parsing, direct PFR outline/bitmap/curve glyph rasterization, PFR1 metadata/character-record/simple/compound/curve-outline parsing, PFR-to-TTF table generation/cache registration, pure TTF bitmap rasterization with the bundled Verdana fixture, FontRegistry prebuilt-cache/PFR-registration/rasterization/size-aware embedded-TTF/alias behavior, and SimpleTextRenderer bitmap-font/built-in-fallback/wrapping/underline/caret measurement behavior passed through the same CTest executable.
+- BitmapFont glyph drawing, overflow metrics, BDF parsing, direct PFR outline/bitmap/curve glyph rasterization, PFR1 metadata/character-record/simple/compound/curve-outline parsing, PFR-to-TTF table generation/cache registration, pure TTF bitmap rasterization with the bundled Verdana fixture, FontRegistry prebuilt-cache/PFR-registration/rasterization/size-aware embedded-TTF/alias behavior, and SimpleTextRenderer bitmap-font/built-in-fallback/wrapping/underline/caret/XMED per-span rendering behavior passed through the same CTest executable.
 - SoundConverter WAV layout, SoundChunk header stripping, signed/endianness conversion, MP3 extraction, IMA ADPCM, and duration tests passed through the same CTest executable.
 - CastMember bitmap, script, shape, dimension, type-check, raw chunk, and display string tests passed through the same CTest executable.
 - CastLib and CastLibManager lazy MCsL/CAS* initialization, member count/name lookup, source-prefixed lookup fallback, member metadata properties, registry filtering, builtin callback installation, external-cache keys, pending external-load bookkeeping, and Player external-cast cached-load callbacks passed through the same CTest executable.
@@ -1231,4 +1231,4 @@ Result:
 - `5df5e6fd Port C++ decompiler fallback mapping`
 - `2d9420b0 Port C++ decompiler linear bytecode`
 - `1e40b253 Port C++ decompiler chunk opcodes`
-- Current checkpoint commit message: `Port C++ simple text renderer core`
+- Current checkpoint commit message: `Port C++ XMED text span rendering`

@@ -66,6 +66,13 @@ public:
                                     std::string fontStyle,
                                     int fixedLineSpace) override;
 
+    [[nodiscard]] std::shared_ptr<bitmap::Bitmap> renderXmedText(
+        const ::libreshockwave::cast::XmedStyledText* styledText,
+        int width,
+        int height,
+        int textColor,
+        int bgColor) override;
+
 private:
     [[nodiscard]] std::shared_ptr<bitmap::Bitmap> renderTextInternal(
         std::string text,
@@ -110,6 +117,29 @@ private:
     [[nodiscard]] static std::shared_ptr<font::BitmapFont> resolveRegisteredPfrCandidate(
         const std::string& fontName,
         int fontSize);
+
+    [[nodiscard]] static std::shared_ptr<font::BitmapFont> resolveXmedFont(
+        const ::libreshockwave::cast::XmedStyledText& styledText,
+        int fontSize,
+        bool bold,
+        bool italic,
+        bool* usedRealBold);
+
+    [[nodiscard]] static std::shared_ptr<font::BitmapFont> resolveXmedFontByName(
+        const std::string& fontName,
+        const std::vector<std::string>* fontCandidates,
+        int fontSize,
+        bool bold,
+        bool italic,
+        bool* usedRealBold);
+
+    [[nodiscard]] static std::shared_ptr<font::BitmapFont> resolveMovieFontCandidate(
+        const std::vector<std::string>* fontCandidates,
+        const std::string& primaryFontName,
+        int fontSize,
+        bool bold,
+        bool italic,
+        bool* usedRealBold);
 
     [[nodiscard]] static int directorAliasFontSize(int fontSize);
 };

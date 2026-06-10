@@ -14108,8 +14108,7 @@ void testTextRendererFoundation() {
 }
 
 void testSimpleTextRendererFoundation() {
-    auto makeTinyFont = [] {
-        const int cellWidth = 3;
+    auto makeTinyFont = [](std::string fontName, int cellWidth) {
         const int cellHeight = 5;
         const int bitmapWidth = cellWidth * BitmapFont::GRID_COLUMNS;
         const int bitmapHeight = cellHeight * BitmapFont::GRID_ROWS;
@@ -14121,18 +14120,18 @@ void testSimpleTextRendererFoundation() {
         };
         for (int y = 0; y < cellHeight; ++y) {
             setGlyphPixel('A', 0, y);
-            setGlyphPixel('A', 2, y);
+            setGlyphPixel('A', cellWidth - 1, y);
         }
-        setGlyphPixel('A', 1, 0);
-        setGlyphPixel('A', 1, 2);
+        setGlyphPixel('A', cellWidth / 2, 0);
+        setGlyphPixel('A', cellWidth / 2, 2);
         for (int y = 0; y < cellHeight; ++y) {
             setGlyphPixel('B', 0, y);
         }
-        setGlyphPixel('B', 1, 0);
-        setGlyphPixel('B', 1, 2);
-        setGlyphPixel('B', 1, 4);
+        setGlyphPixel('B', cellWidth / 2, 0);
+        setGlyphPixel('B', cellWidth / 2, 2);
+        setGlyphPixel('B', cellWidth / 2, 4);
 
-        std::vector<int> widths(BitmapFont::NUM_CHARS, 3);
+        std::vector<int> widths(BitmapFont::NUM_CHARS, cellWidth);
         widths[static_cast<std::size_t>(' ')] = 2;
         return BitmapFont::create(std::move(bitmap),
                                   bitmapWidth,
@@ -14140,7 +14139,7 @@ void testSimpleTextRendererFoundation() {
                                   cellWidth,
                                   cellHeight,
                                   widths,
-                                  "TinyRenderFont",
+                                  std::move(fontName),
                                   9,
                                   7,
                                   10);
@@ -14166,11 +14165,23 @@ void testSimpleTextRendererFoundation() {
         }
         return -1;
     };
+    auto findLastNonBackgroundColumn = [](const Bitmap& bitmap, std::uint32_t bgColor) {
+        for (int x = bitmap.width() - 1; x >= 0; --x) {
+            for (int y = 0; y < bitmap.height(); ++y) {
+                if (bitmap.getPixel(x, y) != bgColor) {
+                    return x;
+                }
+            }
+        }
+        return -1;
+    };
 
     FontRegistry::clear();
     try {
-        auto tinyFont = makeTinyFont();
+        auto tinyFont = makeTinyFont("TinyRenderFont", 3);
+        auto wideFont = makeTinyFont("WideSpanFont", 5);
         FontRegistry::registerBitmapFont("TinyRenderFont", 9, tinyFont);
+        FontRegistry::registerBitmapFont("WideSpanFont", 9, wideFont);
         FontRegistry::registerFontAlias("TR", "TinyRenderFont", false);
 
         SimpleTextRenderer renderer;
@@ -14219,6 +14230,40 @@ void testSimpleTextRendererFoundation() {
         assert(renderer.locToCharPos("A\nB", 0, 10, "TinyRenderFont", 9, "plain", 10, "left", 24) == 2);
         assert(renderer.getLineHeight("TinyRenderFont", 9, "plain", 0) == 10);
         assert(renderer.getLineHeight("TinyRenderFont", 9, "plain", 12) == 12);
+
+        XmedStyledText xmed{};
+        xmed.text = "ABA";
+        xmed.styledSpans = {
+            StyledSpan{0, 1, "TinyRenderFont", 9, false, false, false, 0x11, 0x22, 0x33},
+            StyledSpan{1, 2, "WideSpanFont", 9, false, false, true, 0x44, 0x55, 0x66},
+            StyledSpan{2, 3, "TinyRenderFont", 9, false, false, false, 0x77, 0x88, 0x99},
+        };
+        xmed.alignment = "left";
+        xmed.wordWrap = false;
+        xmed.fixedLineSpace = 10;
+        xmed.width = 40;
+        xmed.height = 14;
+        xmed.fontName = "TinyRenderFont";
+        xmed.fontSize = 9;
+        auto xmedRendered = renderer.renderXmedText(&xmed, 40, 14, 0, 0x00FFFFFF);
+        assert(xmedRendered != nullptr);
+        assert(xmedRendered->height() == 14);
+        assert(countPixels(*xmedRendered, 0xFF445566U) > 0);
+        assert(countPixels(*xmedRendered, 0xFF112233U) > 0);
+        assert(countPixels(*xmedRendered, 0xFF778899U) > 0);
+        assert(findLastNonBackgroundColumn(*xmedRendered, 0x00FFFFFF) >= 10);
+        const int xmedUnderlineRow = findLastOpaqueRow(*xmedRendered);
+        assert(xmedUnderlineRow >= 0);
+        assert(xmedRendered->getPixel(3, xmedUnderlineRow) == 0xFF445566U);
+
+        XmedStyledText candidateXmed = xmed;
+        candidateXmed.text = "A";
+        candidateXmed.styledSpans = {StyledSpan{0, 1, "MissingPrimary", 9, false, false, false, 0x10, 0x20, 0x30}};
+        candidateXmed.fontName = "MissingPrimary";
+        candidateXmed.fontCandidates = {"MissingPrimary", "WideSpanFont"};
+        auto candidateRendered = renderer.renderXmedText(&candidateXmed, 40, 14, 0, 0x00FFFFFF);
+        assert(candidateRendered != nullptr);
+        assert(findLastNonBackgroundColumn(*candidateRendered, 0x00FFFFFF) >= 4);
     } catch (...) {
         FontRegistry::clear();
         throw;
