@@ -5549,6 +5549,43 @@ void testLingoVmRuntimeFoundation() {
     vm.setTraceListener(nullptr);
     assert(vm.traceListener() == nullptr);
 
+    std::vector<std::string> traceLines;
+    vm.setTraceOutputHandler([&traceLines](std::string_view line) {
+        traceLines.emplace_back(line);
+    });
+    vm.addTraceHandler("HANDLER#3");
+    assert(vm.tracedHandlers().contains("handler#3"));
+    assert(vm.executeHandler(script, paramHandler, {Datum::of(321)}).intValue() == 321);
+    assert(traceLines.size() == 2);
+    assert(traceLines[0] == "[TRACE] handler#3(321) in \"script#960\"");
+    assert(traceLines[1].find("Lingo call stack: (empty)") != std::string::npos);
+    vm.removeTraceHandler("handler#3");
+    assert(!vm.tracedHandlers().contains("handler#3"));
+    traceLines.clear();
+    assert(vm.executeHandler(script, paramHandler, {Datum::of(322)}).intValue() == 322);
+    assert(traceLines.empty());
+
+    vm.addTraceHandler("random");
+    assert(vm.tracedHandlers().contains("random"));
+    assert(vm.randomInt(0) == 1);
+    assert((traceLines == std::vector<std::string>{"[TRACE] random(0)=1"}));
+    vm.clearTraceHandlers();
+    assert(vm.tracedHandlers().empty());
+
+    traceLines.clear();
+    vm.setTraceEnabled(true);
+    assert(vm.traceEnabled());
+    assert(vm.executeHandler(script, returnHandler).intValue() == 42);
+    vm.setTraceEnabled(false);
+    assert(!vm.traceEnabled());
+    assert(traceLines.size() == 4);
+    assert(traceLines[0] == "== Script: script#960 Handler: handler#1");
+    assert(traceLines[1].find("pushInt8") != std::string::npos);
+    assert(traceLines[1].find("[  0]") != std::string::npos);
+    assert(traceLines[2].find("ret") != std::string::npos);
+    assert(traceLines[3] == "== handler#1 returned 42");
+    vm.setTraceOutputHandler(nullptr);
+
     std::vector<std::pair<Opcode, int>> longOps;
     longOps.reserve(65537);
     for (int index = 0; index < 65536; ++index) {

@@ -32,6 +32,8 @@ namespace libreshockwave::lingo::vm {
 
 class LingoVM {
 public:
+    using TraceOutputHandler = std::function<void(std::string_view line)>;
+
     struct CallStackFrame {
         std::string handlerName;
         std::string scriptName;
@@ -86,6 +88,13 @@ public:
     void setTraceListener(std::shared_ptr<TraceListener> listener);
     [[nodiscard]] std::shared_ptr<TraceListener> traceListener() const;
     void fireTraceError(std::string_view message, std::string_view error);
+    void setTraceEnabled(bool enabled);
+    [[nodiscard]] bool traceEnabled() const;
+    void setTraceOutputHandler(TraceOutputHandler handler);
+    void addTraceHandler(std::string_view name);
+    void removeTraceHandler(std::string_view name);
+    void clearTraceHandlers();
+    [[nodiscard]] const std::unordered_set<std::string>& tracedHandlers() const;
 
     [[nodiscard]] int callStackDepth() const;
     [[nodiscard]] bool hasActiveCallStack() const;
@@ -142,6 +151,16 @@ private:
                                                      const chunks::ScriptChunk::Handler& handler) const;
     void executeInstruction(Scope& scope, ExecutionContext& context);
     [[nodiscard]] std::int64_t currentTimeMillis() const;
+    void traceRandomCall(int max, int result);
+    void emitTracedHandlerCall(std::string_view handlerName,
+                               const chunks::ScriptChunk& script,
+                               const std::vector<Datum>& args);
+    void traceOutput(const std::string& line) const;
+    void emitConsoleHandlerEnter(const TraceListener::HandlerInfo& info);
+    void emitConsoleHandlerExit(const TraceListener::HandlerInfo& info, const Datum& returnValue);
+    void emitConsoleInstruction(const TraceListener::InstructionInfo& info);
+    void resetConsoleTraceForHandler(int scriptId);
+    [[nodiscard]] bool shouldSuppressConsoleInstruction(int offset);
     [[nodiscard]] CallStackFrame toCallStackFrame(const Scope& scope) const;
     void registerRuntimeBuiltins();
     void flushDeferredScriptInstanceCalls();
@@ -162,6 +181,8 @@ private:
     builtin::BuiltinContext builtinContext_;
     OpcodeRegistry opcodeRegistry_;
     std::shared_ptr<TraceListener> traceListener_;
+    TraceOutputHandler traceOutputHandler_;
+    std::unordered_set<std::string> tracedHandlers_;
     std::unordered_map<std::string, HandlerRef> handlerCache_;
     std::unordered_set<std::string> missingHandlerCache_;
     std::function<void()> passCallback_;
@@ -169,13 +190,17 @@ private:
     bool inErrorState_{false};
     bool flushingDeferredScriptInstanceCalls_{false};
     bool flushingDeferredTasks_{false};
+    bool traceEnabled_{false};
+    bool consoleLoopSuppressed_{false};
     int alertHookDepth_{0};
+    int consoleCurrentHandlerId_{-1};
     int stepLimit_{0};
     std::int64_t tickDeadlineMs_{0};
     std::int64_t tickDeadline_{0};
     int randomSeed_{0};
     std::int64_t randomState_{0};
     std::function<std::int64_t()> timeProvider_;
+    std::unordered_set<int> consoleVisitedOffsets_;
     static std::function<void()> gcCallback_;
 };
 

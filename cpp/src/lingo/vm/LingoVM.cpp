@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <chrono>
 #include <cctype>
+#include <iomanip>
+#include <iostream>
 #include <sstream>
 #include <stdexcept>
 #include <utility>
@@ -136,26 +138,29 @@ int LingoVM::randomSeed() const {
 }
 
 int LingoVM::randomInt(int max) {
-    if (max <= 0) {
-        return 1;
-    }
+    int finalResult = 1;
+    if (max > 0) {
+        auto nextBits = [this](int bits) {
+            randomState_ = (randomState_ * RANDOM_MULTIPLIER + RANDOM_ADDEND) & RANDOM_MASK;
+            return static_cast<int>(randomState_ >> (48 - bits));
+        };
 
-    auto nextBits = [this](int bits) {
-        randomState_ = (randomState_ * RANDOM_MULTIPLIER + RANDOM_ADDEND) & RANDOM_MASK;
-        return static_cast<int>(randomState_ >> (48 - bits));
-    };
-
-    int result = 0;
-    if ((max & -max) == max) {
-        result = static_cast<int>((static_cast<std::int64_t>(max) * nextBits(31)) >> 31);
+        int result = 0;
+        if ((max & -max) == max) {
+            result = static_cast<int>((static_cast<std::int64_t>(max) * nextBits(31)) >> 31);
+        } else {
+            int bits = 0;
+            do {
+                bits = nextBits(31);
+                result = bits % max;
+            } while (bits - result + (max - 1) < 0);
+        }
+        finalResult = result + 1;
     } else {
-        int bits = 0;
-        do {
-            bits = nextBits(31);
-            result = bits % max;
-        } while (bits - result + (max - 1) < 0);
+        finalResult = 1;
     }
-    return result + 1;
+    traceRandomCall(max, finalResult);
+    return finalResult;
 }
 
 void LingoVM::setStepLimit(int limit) {
@@ -234,6 +239,36 @@ void LingoVM::fireTraceError(std::string_view message, std::string_view error) {
     if (traceListener_) {
         traceListener_->onError(message, error);
     }
+}
+
+void LingoVM::setTraceEnabled(bool enabled) {
+    traceEnabled_ = enabled;
+}
+
+bool LingoVM::traceEnabled() const {
+    return traceEnabled_;
+}
+
+void LingoVM::setTraceOutputHandler(TraceOutputHandler handler) {
+    traceOutputHandler_ = std::move(handler);
+}
+
+void LingoVM::addTraceHandler(std::string_view name) {
+    if (!name.empty()) {
+        tracedHandlers_.insert(normalizeLookupName(name));
+    }
+}
+
+void LingoVM::removeTraceHandler(std::string_view name) {
+    tracedHandlers_.erase(normalizeLookupName(name));
+}
+
+void LingoVM::clearTraceHandlers() {
+    tracedHandlers_.clear();
+}
+
+const std::unordered_set<std::string>& LingoVM::tracedHandlers() const {
+    return tracedHandlers_;
 }
 
 int LingoVM::callStackDepth() const {
@@ -430,9 +465,13 @@ Datum LingoVM::executeHandler(const chunks::ScriptChunk& script,
     }
 
     const std::string currentHandlerName = handlerName(script, handler);
+    const std::string normalizedHandlerName = normalizeLookupName(currentHandlerName);
     const bool isAlertHookHandler = equalsIgnoreCase(currentHandlerName, "alertHook");
     if (isAlertHookHandler && alertHookDepth_ > 0) {
         return Datum::voidValue();
+    }
+    if (tracedHandlers_.contains(normalizedHandlerName)) {
+        emitTracedHandlerCall(currentHandlerName, script, args);
     }
 
     std::vector<Datum> effectiveArgs = args;
@@ -455,6 +494,9 @@ Datum LingoVM::executeHandler(const chunks::ScriptChunk& script,
         if (traceListener_ && handlerInfo.has_value()) {
             traceListener_->onHandlerExit(*handlerInfo, result);
         }
+        if (traceEnabled_ && handlerInfo.has_value()) {
+            emitConsoleHandlerExit(*handlerInfo, result);
+        }
         if (alertHookDepthIncremented) {
             --alertHookDepth_;
             alertHookDepthIncremented = false;
@@ -463,8 +505,13 @@ Datum LingoVM::executeHandler(const chunks::ScriptChunk& script,
         flushDeferredScriptInstanceCalls();
     };
     try {
-        if (traceListener_) {
+        if (traceListener_ || traceEnabled_) {
             handlerInfo = buildHandlerInfo(script, handler, args, receiver);
+            if (traceEnabled_) {
+                emitConsoleHandlerEnter(*handlerInfo);
+            }
+        }
+        if (traceListener_ && handlerInfo.has_value()) {
             traceListener_->onHandlerEnter(*handlerInfo);
         }
         if (const auto* first = scope.currentInstruction()) {
@@ -692,8 +739,14 @@ void LingoVM::executeInstruction(Scope& scope, ExecutionContext& context) {
         return;
     }
 
-    if (traceListener_ && traceListener_->needsInstructionTrace()) {
-        traceListener_->onInstruction(buildInstructionInfo(scope, *instruction));
+    if (traceEnabled_ || (traceListener_ && traceListener_->needsInstructionTrace())) {
+        auto info = buildInstructionInfo(scope, *instruction);
+        if (traceEnabled_) {
+            emitConsoleInstruction(info);
+        }
+        if (traceListener_) {
+            traceListener_->onInstruction(info);
+        }
     }
 
     const auto* handler = opcodeRegistry_.get(instruction->opcode);
@@ -715,6 +768,103 @@ std::int64_t LingoVM::currentTimeMillis() const {
     }
     using namespace std::chrono;
     return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+}
+
+void LingoVM::traceRandomCall(int max, int result) {
+    if (!tracedHandlers_.contains("random")) {
+        return;
+    }
+
+    std::ostringstream out;
+    out << "[TRACE] random(" << max << ")=" << result;
+    if (const Scope* scope = currentScope(); scope != nullptr && scope->script() != nullptr) {
+        out << " at " << handlerName(*scope->script(), scope->handler())
+            << " in \"" << scriptDisplayName(*scope->script()) << "\"";
+    }
+    traceOutput(out.str());
+}
+
+void LingoVM::emitTracedHandlerCall(std::string_view handlerNameValue,
+                                    const chunks::ScriptChunk& script,
+                                    const std::vector<Datum>& args) {
+    std::ostringstream out;
+    out << "[TRACE] " << handlerNameValue << '(';
+    for (std::size_t index = 0; index < args.size(); ++index) {
+        if (index > 0) {
+            out << ", ";
+        }
+        out << formatTraceArgument(args[index]);
+    }
+    out << ')';
+    const std::string scriptName = scriptDisplayName(script);
+    if (!scriptName.empty()) {
+        out << " in \"" << scriptName << "\"";
+    }
+    traceOutput(out.str());
+    traceOutput(formatCallStack());
+}
+
+void LingoVM::traceOutput(const std::string& line) const {
+    if (traceOutputHandler_) {
+        traceOutputHandler_(line);
+        return;
+    }
+    std::cout << line << '\n';
+}
+
+void LingoVM::emitConsoleHandlerEnter(const TraceListener::HandlerInfo& info) {
+    resetConsoleTraceForHandler(info.scriptId);
+    traceOutput("== Script: " + info.scriptDisplayName + " Handler: " + info.handlerName);
+}
+
+void LingoVM::emitConsoleHandlerExit(const TraceListener::HandlerInfo& info, const Datum& returnValue) {
+    if (!returnValue.isVoid()) {
+        traceOutput("== " + info.handlerName + " returned " + returnValue.stringValue());
+    }
+}
+
+void LingoVM::emitConsoleInstruction(const TraceListener::InstructionInfo& info) {
+    if (shouldSuppressConsoleInstruction(info.offset)) {
+        return;
+    }
+
+    std::ostringstream out;
+    out << "--> [" << std::setw(3) << info.offset << "] "
+        << std::left << std::setw(16) << info.opcode;
+    if (info.argument != 0) {
+        out << ' ' << info.argument;
+    }
+    std::string line = out.str();
+    while (line.size() < 38) {
+        line.push_back('.');
+    }
+    if (!info.annotation.empty()) {
+        line.push_back(' ');
+        line += info.annotation;
+    }
+    traceOutput(line);
+}
+
+void LingoVM::resetConsoleTraceForHandler(int scriptId) {
+    if (scriptId == consoleCurrentHandlerId_) {
+        return;
+    }
+    consoleVisitedOffsets_.clear();
+    consoleLoopSuppressed_ = false;
+    consoleCurrentHandlerId_ = scriptId;
+}
+
+bool LingoVM::shouldSuppressConsoleInstruction(int offset) {
+    if (consoleVisitedOffsets_.contains(offset)) {
+        if (!consoleLoopSuppressed_) {
+            traceOutput("    ... [loop iterations suppressed] ...");
+            consoleLoopSuppressed_ = true;
+        }
+        return true;
+    }
+    consoleVisitedOffsets_.insert(offset);
+    consoleLoopSuppressed_ = false;
+    return false;
 }
 
 LingoVM::CallStackFrame LingoVM::toCallStackFrame(const Scope& scope) const {
