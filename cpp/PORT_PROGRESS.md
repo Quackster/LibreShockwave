@@ -213,12 +213,13 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Type-specific bitmap, shape, film-loop, script, and Shockwave 3D metadata are parsed lazily at wrapper construction.
 - Type checks, dimensions, registration point helpers, raw chunk access, and display string formatting are available in C++.
 - Runtime bitmap image assignment now stores a copied, script-modified member bitmap and updates member width/height/registration metadata for downstream sprite and property providers.
+- Runtime-created cast members can now be constructed without a raw chunk, carry mutable names, and expose their runtime type through the same property surface.
 
 ### Cast Library Manager Foundation
 
 - `player::cast::CastLib` ports lazy cast-library metadata, authored/external file binding state, stable registry binding checks, member chunk maps, script maps, source-prefixed member-name fallback, font-alias/PFR XMED scanning, and Java-compatible cast/member property fallbacks.
 - `player::cast::CastLibManager` ports DirectorFile-backed cast-library initialization from MCsL/CAS* chunks, castLib/member number and name lookup, registry-visible member filtering, external-cast cache keys, pending external load tracking, preload-mode loading, and builtin callback installation.
-- Runtime bitmap member image mutation and cached imported-image assignment are available for existing members; dynamic member creation, non-bitmap media mutation, ediM/JPEG/ALFA sidecars, and full CastLibProvider palette/field integration remain deferred to later player runtime slices.
+- Runtime bitmap member image mutation, cached imported-image assignment, Director BITD imported-media assignment, and dynamic member creation are available for existing cast libraries; non-bitmap media mutation, ediM/JPEG/ALFA sidecars, dynamic-member sprite rendering, and full CastLibProvider palette/field integration remain deferred to later player runtime slices.
 
 ### Bitmap Resolver Foundation
 
@@ -498,7 +499,14 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `CastLibManager::importFileIntoMember` now resolves cached external payloads, decodes the Java-compatible `LSWI` imported-image format, assigns it through the member image path, and wires `BuiltinContext::importFileIntoHandler` during callback installation.
 - Director `DTIB`/BITD imported bitmap media now falls back through `BitmapInfo` metadata parsing, little-endian BITD payload length handling, `BitmapDecoder` dispatch, cast-aware palette lookup for indexed media, and anchor-point propagation.
 - `player::Player` now wires `SpriteBaker::setLiveBitmapProvider` to runtime cast-member lookup so authored bitmap members whose `image` was mutated render from the live script-modified bitmap before stale decode/cache fallback.
-- ediM/JPEG/ALFA sidecars and dynamic runtime member creation remain deferred.
+- ediM/JPEG/ALFA sidecars, non-bitmap imported media, and dynamic-member sprite rendering remain deferred.
+
+### Runtime Dynamic Member Creation Foundation
+
+- `CastLib` now allocates runtime member slots from 10000, skips authored/dynamic collisions, maps Director type names (`field`/`text`, bitmap, palette, script, button, shape, sound) to C++ `MemberType`, and leaves authored member counts unchanged.
+- `CastLibManager` wires `new(#type, castLib)` through the cast-member creator callback and `createMember(name, #type)` through the named creator callback; named creation returns the Java-compatible encoded slot integer.
+- Dynamic members resolve by number and name through the existing cast-member lookup and property paths, including runtime name/type property reflection.
+- Dynamic sprite collection/rendering from member refs and dynamic slot erase/reuse remain deferred.
 
 ### Lingo VM Scope and Execution Context Foundation
 
@@ -745,6 +753,7 @@ Result:
 - NetBuiltins preload/get/post aliases, task result/error/status lookups, stream-status toggling, navigation callbacks, and ExternalParamBuiltins ordered parameter lookup passed through the same CTest executable.
 - ImageBuiltins image creation, invalid-dimension handling, white fill defaults, built-in/system palette metadata, provider-resolved member palette metadata, string/ilk behavior, and `importFileInto` callback delegation passed through the same CTest executable.
 - Runtime member image assignment, cached `LSWI` and Director `DTIB`/BITD `importFileInto` assignment, imported-image alpha preservation, imported anchor-point propagation, indexed imported-media palette metadata, runtime member property reflection, and Player SpriteBaker live runtime bitmap rendering passed through the same CTest executable.
+- Runtime dynamic member creation, named encoded slot creation, `new(#type, castLib)` callback creation, stable authored member counts, and dynamic member name/type lookup passed through the same CTest executable.
 - SoundBuiltins channel creation, availability, sound-channel method dispatch, VM object-property defaults/mutation, and SoundManager playback delegation passed through the same CTest executable.
 - ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration and callback hooks passed through the same CTest executable.
 - TypeBuiltins object/void/type predicates, `value` literal parsing/provider fallback, `script`/`callAncestor` callback hooks, symbol conversion, and `ilk` alias checks passed through the same CTest executable.
@@ -927,4 +936,5 @@ Result:
 - `f77adf3f Port C++ VM safepoints`
 - `90b02a58 Port C++ console trace hooks`
 - `3d7a59cf Port C++ runtime member image import`
-- Current checkpoint commit message: `Port C++ Director BITD media import`
+- `d1463491 Port C++ Director BITD media import`
+- Current checkpoint commit message: `Port C++ dynamic member creation`

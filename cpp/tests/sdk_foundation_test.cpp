@@ -12165,6 +12165,35 @@ void testCastLibManagerFoundation() {
     assert(context.castMemberExistsResolver(1, 2));
     assert(context.castMemberPropertyGetter(1, 2, "name").stringValue() == "Hero");
 
+    const auto createdRuntime = manager.createMember(1, "bitmap");
+    const auto* createdRuntimeRef = createdRuntime.asCastMemberRef();
+    assert(createdRuntimeRef != nullptr);
+    assert(createdRuntimeRef->castLib == 1);
+    assert(createdRuntimeRef->memberNum() == 10000);
+    assert(manager.memberExists(1, 10000));
+    assert(manager.getMemberCount(1) == 3);
+    assert(manager.getMemberProp(1, 10000, "type").asSymbol()->name == "bitmap");
+    assert(manager.getMemberProp(1, 10000, "name").stringValue().empty());
+
+    const auto namedRuntime = manager.createMember("Runtime Field", "field");
+    assert(namedRuntime.intValue() == ((1 << 16) | 10001));
+    assert(manager.getMemberProp(1, 10001, "type").asSymbol()->name == "text");
+    assert(manager.getMemberProp(1, 10001, "name").stringValue() == "Runtime Field");
+    assert(manager.getMemberByName(0, "Runtime Field").asCastMemberRef()->memberNum() == 10001);
+    assert(manager.findCastMemberByName("Runtime Field")->memberNum() == 10001);
+
+    const auto builtinRuntime = registry.invoke("createMember",
+                                                context,
+                                                {Datum::of(std::string("Runtime Bitmap")), Datum::symbol("bitmap")});
+    assert(builtinRuntime.intValue() == ((1 << 16) | 10002));
+    assert(manager.getMemberProp(1, 10002, "name").stringValue() == "Runtime Bitmap");
+    const auto newRuntime = registry.invoke("new",
+                                            context,
+                                            {Datum::symbol("shape"), Datum::castLibRef(CastLibId(1))});
+    assert(newRuntime.asCastMemberRef() != nullptr);
+    assert(newRuntime.asCastMemberRef()->memberNum() == 10003);
+    assert(manager.getMemberProp(1, 10003, "type").asSymbol()->name == "shape");
+
     std::vector<std::uint8_t> importedImage{
         'L', 'S', 'W', 'I',
         0, 0, 0, 2,

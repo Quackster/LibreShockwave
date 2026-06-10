@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "libreshockwave/cast/MemberType.hpp"
 #include "libreshockwave/chunks/CastListChunk.hpp"
 #include "libreshockwave/id/Ids.hpp"
 #include "libreshockwave/lingo/Datum.hpp"
@@ -74,6 +75,11 @@ public:
     [[nodiscard]] std::shared_ptr<chunks::CastMemberChunk> findMemberByName(const std::string& memberName);
     [[nodiscard]] std::shared_ptr<libreshockwave::cast::CastMember> getMember(int memberNumber);
     [[nodiscard]] std::shared_ptr<libreshockwave::cast::CastMember> getMemberByName(const std::string& memberName);
+    [[nodiscard]] std::shared_ptr<libreshockwave::cast::CastMember> createDynamicMember(
+        const std::string& memberType);
+    [[nodiscard]] std::shared_ptr<libreshockwave::cast::CastMember> createDynamicMember(
+        const std::string& memberName,
+        const std::string& memberType);
     [[nodiscard]] bool hasMemberNamedExact(const std::string& memberName);
     [[nodiscard]] int getMemberNumber(const std::shared_ptr<chunks::CastMemberChunk>& member);
     [[nodiscard]] std::shared_ptr<chunks::ScriptChunk> getScript(int memberNumber);
@@ -106,10 +112,12 @@ private:
     [[nodiscard]] bool sameFileBinding(const std::string& currentFileName, const std::string& newFileName) const;
     [[nodiscard]] bool usesGeneratedPlaceholderName(const std::string& candidateName) const;
     [[nodiscard]] bool looksLikeDirectFileBindingName(const std::string& candidateName) const;
+    [[nodiscard]] int nextAvailableDynamicMemberNumber();
     [[nodiscard]] std::shared_ptr<chunks::CastMemberChunk> findMemberChunkByNameExact(const std::string& memberName);
     [[nodiscard]] std::shared_ptr<libreshockwave::cast::CastMember> findMemberByNameExact(const std::string& memberName);
 
     [[nodiscard]] static std::optional<std::string> sourcePrefixedLookupName(const std::string& requestedName);
+    [[nodiscard]] static libreshockwave::cast::MemberType dynamicMemberTypeFor(const std::string& typeName);
     [[nodiscard]] static bool sameAuthoredMember(const std::shared_ptr<chunks::CastMemberChunk>& left,
                                                  const std::shared_ptr<chunks::CastMemberChunk>& right);
     [[nodiscard]] static std::optional<FontAliasInfo> parseFontAlias(const std::vector<std::uint8_t>& data,
@@ -135,6 +143,7 @@ private:
     std::map<int, std::shared_ptr<chunks::ScriptChunk>> scripts_;
     std::vector<std::shared_ptr<chunks::ScriptChunk>> cachedScripts_;
     int totalSlotCount_ = 0;
+    int nextDynamicMember_ = 10000;
 };
 
 } // namespace libreshockwave::player::cast

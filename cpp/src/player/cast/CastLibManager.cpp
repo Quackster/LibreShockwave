@@ -463,6 +463,30 @@ std::shared_ptr<const bitmap::Palette> CastLibManager::resolvePaletteByMember(in
     return file_ != nullptr ? file_->resolvePaletteByMemberNumber(memberNumber) : nullptr;
 }
 
+lingo::Datum CastLibManager::createMember(int castLibNumber, const std::string& memberType) {
+    auto castLib = getCastLib(castLibNumber);
+    if (!castLib) {
+        return lingo::Datum::voidValue();
+    }
+    auto member = castLib->createDynamicMember(memberType);
+    if (!member) {
+        return lingo::Datum::voidValue();
+    }
+    return lingo::Datum::castMemberRef(id::CastLibId(castLibNumber), id::MemberId(member->memberNum()));
+}
+
+lingo::Datum CastLibManager::createMember(const std::string& memberName, const std::string& memberType) {
+    auto castLib = getCastLib(1);
+    if (!castLib) {
+        return lingo::Datum::voidValue();
+    }
+    auto member = castLib->createDynamicMember(memberName, memberType);
+    if (!member) {
+        return lingo::Datum::voidValue();
+    }
+    return lingo::Datum::of((castLib->number() << 16) | member->memberNum());
+}
+
 bool CastLibManager::importFileIntoMember(int castLibNumber,
                                           int memberNumber,
                                           const std::string& url,
@@ -585,6 +609,12 @@ void CastLibManager::clearPendingExternalLoad(int castLibNumber) {
 }
 
 void CastLibManager::installBuiltinCallbacks(lingo::builtin::BuiltinContext& context) {
+    context.castMemberCreator = [this](int castLib, const std::string& memberType) {
+        return createMember(castLib, memberType);
+    };
+    context.namedCastMemberCreator = [this](const std::string& memberName, const std::string& memberType) {
+        return createMember(memberName, memberType);
+    };
     context.castLibNumberResolver = [this](int castLib) {
         return getCastLibByNumber(castLib);
     };

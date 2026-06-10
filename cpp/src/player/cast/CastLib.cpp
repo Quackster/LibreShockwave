@@ -295,6 +295,29 @@ std::shared_ptr<libreshockwave::cast::CastMember> CastLib::getMemberByName(const
     return nullptr;
 }
 
+std::shared_ptr<libreshockwave::cast::CastMember> CastLib::createDynamicMember(const std::string& memberType) {
+    if (!isLoaded()) {
+        load();
+    }
+    const int memberNumber = nextAvailableDynamicMemberNumber();
+    auto member = std::make_shared<libreshockwave::cast::CastMember>(
+        castLibId_.value(),
+        memberNumber,
+        dynamicMemberTypeFor(memberType));
+    members_[memberNumber] = member;
+    return member;
+}
+
+std::shared_ptr<libreshockwave::cast::CastMember> CastLib::createDynamicMember(
+    const std::string& memberName,
+    const std::string& memberType) {
+    auto member = createDynamicMember(memberType);
+    if (member) {
+        member->setName(memberName);
+    }
+    return member;
+}
+
 bool CastLib::hasMemberNamedExact(const std::string& memberName) {
     return findMemberChunkByNameExact(memberName) != nullptr || findMemberByNameExact(memberName) != nullptr;
 }
@@ -655,6 +678,13 @@ bool CastLib::looksLikeDirectFileBindingName(const std::string& candidateName) c
     return !fileName_.empty() && normalizedName == lower(trim(fileName_));
 }
 
+int CastLib::nextAvailableDynamicMemberNumber() {
+    while (memberChunks_.contains(nextDynamicMember_) || members_.contains(nextDynamicMember_)) {
+        ++nextDynamicMember_;
+    }
+    return nextDynamicMember_++;
+}
+
 std::shared_ptr<chunks::CastMemberChunk> CastLib::findMemberChunkByNameExact(const std::string& memberName) {
     if (memberName.empty()) {
         return nullptr;
@@ -689,6 +719,18 @@ std::optional<std::string> CastLib::sourcePrefixedLookupName(const std::string& 
         return std::nullopt;
     }
     return "s_" + requestedName;
+}
+
+libreshockwave::cast::MemberType CastLib::dynamicMemberTypeFor(const std::string& typeName) {
+    const auto type = lower(typeName);
+    if (type == "field" || type == "text") return libreshockwave::cast::MemberType::Text;
+    if (type == "bitmap") return libreshockwave::cast::MemberType::Bitmap;
+    if (type == "palette") return libreshockwave::cast::MemberType::Palette;
+    if (type == "script") return libreshockwave::cast::MemberType::Script;
+    if (type == "button") return libreshockwave::cast::MemberType::Button;
+    if (type == "shape") return libreshockwave::cast::MemberType::Shape;
+    if (type == "sound") return libreshockwave::cast::MemberType::Sound;
+    return libreshockwave::cast::MemberType::Text;
 }
 
 bool CastLib::sameAuthoredMember(const std::shared_ptr<chunks::CastMemberChunk>& left,

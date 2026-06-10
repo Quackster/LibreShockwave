@@ -24,12 +24,14 @@ namespace libreshockwave::cast {
 class CastMember {
 public:
     CastMember(int id, int castLib, int memberNum, std::shared_ptr<chunks::CastMemberChunk> chunk);
+    CastMember(int castLib, int memberNum, MemberType memberType);
 
     [[nodiscard]] int id() const;
     [[nodiscard]] int castLib() const;
     [[nodiscard]] int memberNum() const;
     [[nodiscard]] MemberType memberType() const;
     [[nodiscard]] const std::string& name() const;
+    void setName(std::string name);
     [[nodiscard]] int scriptId() const;
     [[nodiscard]] const std::shared_ptr<chunks::CastMemberChunk>& rawChunk() const;
 

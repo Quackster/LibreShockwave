@@ -19,11 +19,19 @@ CastMember::CastMember(int id, int castLib, int memberNum, std::shared_ptr<chunk
     parseSpecificData();
 }
 
+CastMember::CastMember(int castLib, int memberNum, MemberType memberType)
+    : id_(0),
+      castLib_(castLib),
+      memberNum_(memberNum),
+      memberType_(memberType),
+      scriptId_(0) {}
+
 int CastMember::id() const { return id_; }
 int CastMember::castLib() const { return castLib_; }
 int CastMember::memberNum() const { return memberNum_; }
 MemberType CastMember::memberType() const { return memberType_; }
 const std::string& CastMember::name() const { return name_; }
+void CastMember::setName(std::string name) { name_ = std::move(name); }
 int CastMember::scriptId() const { return scriptId_; }
 const std::shared_ptr<chunks::CastMemberChunk>& CastMember::rawChunk() const { return rawChunk_; }
 
