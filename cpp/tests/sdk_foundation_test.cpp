@@ -6522,6 +6522,32 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runObjCall(103, {noOpFillRef, Datum::intRect(1, 1, 1, 2), Datum::colorRef(1, 2, 3)}).isVoid());
     assert(!noOpFillBitmap->isScriptModified());
     assert(noOpFillBitmap->getPixel(1, 1) == 0xFFFFFFFFU);
+    int imageMutationCallbackCount = 0;
+    ImageMethodDispatcher::setImageMutationCallback([&imageMutationCallbackCount]() {
+        ++imageMutationCallbackCount;
+    });
+    auto callbackFillBitmap = std::make_shared<Bitmap>(2, 2, 32);
+    assert(runObjCall(103, {Datum::imageRef(callbackFillBitmap),
+                            Datum::intRect(0, 0, 2, 2),
+                            Datum::colorRef(255, 0, 0)}).isVoid());
+    assert(callbackFillBitmap->isScriptModified());
+    assert(imageMutationCallbackCount == 1);
+    auto callbackCopySource = std::make_shared<Bitmap>(1, 1, 32);
+    callbackCopySource->fill(0xFF00FF00U);
+    assert(runObjCall(110, {Datum::imageRef(callbackFillBitmap),
+                            Datum::imageRef(callbackCopySource),
+                            Datum::intRect(0, 0, 1, 1),
+                            Datum::intRect(0, 0, 1, 1)}).isVoid());
+    assert(imageMutationCallbackCount == 2);
+    auto callbackNoOpBitmap = std::make_shared<Bitmap>(1, 1, 32);
+    callbackNoOpBitmap->fill(0xFF000066U);
+    assert(runObjCall(103, {Datum::imageRef(callbackNoOpBitmap),
+                            Datum::intRect(0, 0, 1, 1),
+                            Datum::voidValue()}).isVoid());
+    assert(!callbackNoOpBitmap->isScriptModified());
+    assert(callbackNoOpBitmap->getPixel(0, 0) == 0xFF000066U);
+    assert(imageMutationCallbackCount == 2);
+    ImageMethodDispatcher::setImageMutationCallback({});
     auto cropBitmap = std::make_shared<Bitmap>(3, 2, 8, std::vector<std::uint32_t>{
         0xFFFFFFFFU, 0xFF000000U, 0xFF010203U,
         0xFFFFFFFFU, 0xFF336699U, 0xFFFFFFFFU

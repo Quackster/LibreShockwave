@@ -34,6 +34,8 @@
 namespace libreshockwave::lingo::vm {
 namespace {
 
+std::function<void()> imageMutationCallback;
+
 Datum literalToDatum(const chunks::ScriptChunk::LiteralEntry& literal) {
     switch (literal.type) {
         case 1:
@@ -635,6 +637,13 @@ Datum getImageProp(const Datum::ImageRef& image, std::string_view propName) {
     return Datum::voidValue();
 }
 
+void notifyImageMutation(bitmap::Bitmap& bmp) {
+    bmp.markScriptModified();
+    if (imageMutationCallback) {
+        imageMutationCallback();
+    }
+}
+
 bool applyImagePaletteProperty(bitmap::Bitmap& bmp, const Datum& value, builtin::BuiltinContext* builtinContext) {
     bool resolved = false;
     if (value.isString() || value.isSymbol()) {
@@ -672,7 +681,7 @@ bool applyImagePaletteProperty(bitmap::Bitmap& bmp, const Datum& value, builtin:
     }
 
     if (resolved) {
-        bmp.markScriptModified();
+        notifyImageMutation(bmp);
     }
     return resolved;
 }
@@ -684,7 +693,7 @@ void setImageProp(builtin::BuiltinContext* builtinContext, const Datum::ImageRef
     auto& bitmap = *image.bitmap;
     if (equalsIgnoreCase(propName, "usealpha")) {
         bitmap.setNativeAlpha(truthy(value));
-        bitmap.markScriptModified();
+        notifyImageMutation(bitmap);
         return;
     }
     if (equalsIgnoreCase(propName, "paletteref")) {
@@ -4053,16 +4062,16 @@ Datum imageObjectMethod(const Datum::ImageRef& image, std::string_view methodNam
     auto& bmp = *image.bitmap;
     if (equalsIgnoreCase(methodName, "fill")) {
         if (imageFill(bmp, args)) {
-            bmp.markScriptModified();
+            notifyImageMutation(bmp);
         }
         return Datum::voidValue();
     }
     if (equalsIgnoreCase(methodName, "setAlpha")) {
-        bmp.markScriptModified();
+        notifyImageMutation(bmp);
         return imageSetAlpha(bmp, args);
     }
     if (equalsIgnoreCase(methodName, "draw")) {
-        bmp.markScriptModified();
+        notifyImageMutation(bmp);
         return imageDraw(bmp, args);
     }
     if (equalsIgnoreCase(methodName, "createMatte")) {
@@ -4074,7 +4083,7 @@ Datum imageObjectMethod(const Datum::ImageRef& image, std::string_view methodNam
         return Datum::imageRef(imageCreateMask(bmp, alphaThreshold));
     }
     if (equalsIgnoreCase(methodName, "copyPixels")) {
-        bmp.markScriptModified();
+        notifyImageMutation(bmp);
         return imageCopyPixels(bmp, args);
     }
     if (equalsIgnoreCase(methodName, "duplicate")) {
@@ -4127,7 +4136,7 @@ Datum imageObjectMethod(const Datum::ImageRef& image, std::string_view methodNam
             const int y = toIntLikeJava(args[1]);
             if (x >= 0 && x < bmp.width() && y >= 0 && y < bmp.height()) {
                 bmp.setPixel(x, y, imageColorArgb(args[2]));
-                bmp.markScriptModified();
+                notifyImageMutation(bmp);
             }
         }
         return Datum::voidValue();
@@ -5648,6 +5657,10 @@ bool objCall(ExecutionContext& context) {
 } // namespace
 
 namespace dispatch {
+
+void ImageMethodDispatcher::setImageMutationCallback(std::function<void()> callback) {
+    imageMutationCallback = std::move(callback);
+}
 
 Datum ScriptInstanceMethodDispatcher::dispatch(ExecutionContext& context,
                                                Datum& receiver,

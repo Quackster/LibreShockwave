@@ -2,6 +2,7 @@
 
 #include "libreshockwave/lingo/Datum.hpp"
 
+#include <functional>
 #include <string_view>
 #include <vector>
 
@@ -13,6 +14,7 @@ namespace libreshockwave::lingo::vm::dispatch {
 
 class ImageMethodDispatcher {
 public:
+    static void setImageMutationCallback(std::function<void()> callback);
     [[nodiscard]] static Datum dispatch(const Datum::ImageRef& imageRef,
                                         std::string_view methodName,
                                         const std::vector<Datum>& args);

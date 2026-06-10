@@ -739,7 +739,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `OBJ_CALL` now dispatches data-owned list, property-list, string, point, rectangle, and script-instance methods through the C++ opcode registry.
 - Receiver-style external calls now fall back to the same data-owned method dispatch path after handler and builtin lookup.
 - List and property-list method dispatch covers Java-compatible mutation and lookup helpers such as `getAt`, `setAt`, `append`, `addProp`, `getProp`, `count`, `sort`, and duplicate-preserving property insertion.
-- `lingo::vm::dispatch::ImageMethodDispatcher` ports Java image receiver method/property dispatch through the existing C++ image helper surface, including null-image fallbacks, `fill`/`draw`/`copyPixels`/`setAlpha` mutation, image duplication/cropping/trimming/matte-mask creation, indexed palette fill/getPixel color identity, pixel access, `useAlpha`, and palette-reference property routing.
+- `lingo::vm::dispatch::ImageMethodDispatcher` ports Java image receiver method/property dispatch through the existing C++ image helper surface, including null-image fallbacks, `fill`/`draw`/`copyPixels`/`setAlpha` mutation, image duplication/cropping/trimming/matte-mask creation, indexed palette fill/getPixel color identity, pixel access, `useAlpha`, palette-reference property routing, and the Java-style image mutation callback hook.
 - `lingo::vm::dispatch::ListMethodDispatcher` ports Java linear-list receiver methods, including padded `setAt`, clamped `addAt`, value search/delete, `join`, case-insensitive sort, deep-copy `duplicate`, and out-of-range `getAt` diagnostics for `OBJ_CALL`.
 - `lingo::vm::dispatch::MemberRegistryMethodDispatcher` ports Java script-instance member-registry receiver prefill/fallback dispatch over the existing C++ alias registry logic, including `getMemNum`, `exists`/`memberExists`, `getMember`, `readAliasIndexesFromField`, stale slot cleanup, bootstrap script-member visibility, and persistent alias lookup.
 - `lingo::vm::dispatch::PropListMethodDispatcher` ports Java property-list receiver methods, including sub-list indexed `getProp`, typed `getAt`/`setAt`, duplicate-preserving `addProp`, `getOne`/`findPos`, positional key reads/deletes, first/last reads, and deep-copy `duplicate`.
@@ -1194,4 +1194,5 @@ Result:
 - `1b529579 Port C++ copyPixels matte mask destinations`
 - `3c00a226 Port C++ copyPixels color remap preservation`
 - `ecf0efd8 Cover C++ paletted image index parity`
-- Current checkpoint commit message: `Cover C++ chat bubble matte bake parity`
+- `d63fdfe6 Cover C++ chat bubble matte bake parity`
+- Current checkpoint commit message: `Port C++ image mutation callback`
