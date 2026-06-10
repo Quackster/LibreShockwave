@@ -448,10 +448,10 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 ### Sprite Baker Foundation
 
 - `render::pipeline::SpriteBaker` ports ordered sprite bake steps, tick counting for batch bakes, custom bake-step registration, immutable `RenderSprite` baked-bitmap attachment, and text/button size replacement when baked output dimensions differ from score dimensions.
-- Bitmap sprites can now bake through an injected decode provider, consume provider-backed live script-modified bitmap buffers before cache/decode, reuse `BitmapCache`, record decode failures, apply Copy-ink 1-bit foreColor/backColor remapping, apply live COPY exact-white backColor remapping, run shared `InkProcessor.applyInk`, and preserve indexed matte/background-transparent remap, native-alpha background-border keying, and rectangular DARKEN/LIGHTEN media behavior.
+- Bitmap sprites can now bake through an injected decode provider, consume provider-backed live script-modified bitmap buffers before cache/decode, reuse `BitmapCache`, record decode failures, apply Copy-ink 1-bit foreColor/backColor remapping, apply live COPY exact-white backColor remapping, run shared `InkProcessor.applyInk`, and preserve indexed matte/background-transparent remap, native-alpha background-border keying, rectangular DARKEN/LIGHTEN media behavior, and Java ink edge-regression parity.
 - Bitmap sprite cache reuse now invalidates on provider-supplied palette-version changes, letting member-level palette overrides re-decode authored bitmap sprites instead of reusing stale processed cache entries.
 - Text/button sprites can bake through an injected text provider, file-backed STXT chunks, or file-backed XMED text-Xtra chunks using an injected `TextRenderer`, film-loop sprites can bake from file-backed embedded score chunks or through an injected tick-aware raw-composite provider with parent sprite ink processing, shape sprites bake solid and authored shape bitmaps through shared ink processing, and unsupported sprites pass through without a baked bitmap until their backing resolvers are ported.
-- Runtime CastLibManager lookup and broader Java `InkProcessor.applyInk` edge-case audit remain deferred.
+- Runtime CastLibManager lookup and broader end-to-end script-modified bitmap scenarios remain deferred.
 
 ### Software Frame Renderer
 
@@ -501,7 +501,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 ### Bitmap Cache and Ink Helper Foundation
 
-- `render::pipeline::InkProcessor` ports ink-processing predicates, Copy-ink colorization eligibility, backColor resolution, MATTE color fallback for decoded RGB data with active palettes, explicit indexed MATTE palette-index selection, default indexed MATTE slot-0 black/white fallback, foreground/backColor grayscale remapping, indexed color remapping, Darken foreColor offsets, exact-color remapping helpers, shared `applyInk` dispatch, background-transparent keying including native-alpha opaque-border fallback, indexed default matte keying, mask alpha, matte flood fill, ADD/ADD_PIN indexed flood-fill isolation, outlined-white body preservation, DARKEN/LIGHTEN rectangular-media matte skipping, Darken tint multiply, and opaque-white conversion.
+- `render::pipeline::InkProcessor` ports ink-processing predicates, Copy-ink colorization eligibility, backColor resolution, MATTE color fallback for decoded RGB data with active palettes, explicit indexed MATTE palette-index selection, default indexed MATTE slot-0 black/white fallback, foreground/backColor grayscale remapping, indexed color remapping, Darken foreColor offsets, exact-color remapping helpers, shared `applyInk` dispatch, background-transparent keying including exact-match and native-alpha opaque-border fallback behavior, indexed default matte keying, mask alpha, matte flood fill, ADD/ADD_PIN indexed flood-fill isolation, outlined-white body preservation, DARKEN/LIGHTEN rectangular-media matte skipping, Darken tint multiply, and opaque-white conversion.
 - `render::pipeline::BitmapCache` ports processed-bitmap cache keys, decode-failure tracking, palette-version invalidation, non-native 32-bit alpha coercion, and indexed matte/background-transparent color remap selection.
 - Player-owned live runtime bitmap lookup is wired into `SpriteBaker` through `CastLibManager::findRuntimeMember`; full dynamic member sprite lookup and broader player-resolver decoding remain deferred to the larger render-pipeline port.
 
@@ -812,7 +812,7 @@ Result:
 - NetManager URL resolution, cache fallback, GET/POST registration, handler-backed completion/failure, latest-task lookup, stream-status prop lists, raw byte/text results, callbacks, shutdown, and clear tests passed through the same CTest executable.
 - SoundManager channel validation, volume clamping, backend delegation, Lingo play argument parsing, resolver lookup, format detection, KEY-owned member lookup, and SoundChunk playable conversion tests passed through the same CTest executable.
 - TimeoutManager creation, property access/mutation, one-shot/persistent flags, timeout references, names/count, elapsed-time processing, one-shot removal-before-fire recreation, system-event script-instance target filtering, forget, and clear tests passed through the same CTest executable.
-- BitmapCache cache-keying, palette invalidation, non-native alpha coercion, indexed matte remap selection/application, and InkProcessor color remap/applyInk helpers, native-alpha background-border keying, MATTE palette fallback, duplicate-RGB explicit indexed MATTE selection, black/white default indexed MATTE fallback, ADD/ADD_PIN flood-fill isolation, outlined-white body matte preservation, and DARKEN/LIGHTEN rectangular-media matte skipping passed through the same CTest executable.
+- BitmapCache cache-keying, palette invalidation, non-native alpha coercion, indexed matte remap selection/application, and InkProcessor color remap/applyInk helpers, exact background-transparent keying, native-alpha background-border keying, native-alpha MATTE skip, 32-bit MATTE fallback preservation, MATTE palette fallback, duplicate-RGB explicit indexed MATTE selection, black/white default indexed MATTE fallback, indexed window-shadow MATTE selection, ADD/ADD_PIN flood-fill isolation, RGB ADD_PIN preservation, outlined-white body matte preservation, and DARKEN/LIGHTEN rectangular-media matte skipping passed through the same CTest executable.
 - SpriteState score construction, Director blend-byte mapping, explicit override preservation, dynamic defaults, cursor state, script-instance rebinding, and release resets passed through the same CTest executable.
 - SpriteRegistry score/dynamic creation, lookup, score-behavior channel tracking, score updates, identity rebinding, dynamic-member cleanup, revision tracking, removal, and clear tests passed through the same CTest executable.
 - HitTester front-to-back bounds hits, static native-alpha thresholds, dynamic transparency-ink alpha hits, forced bounding-box hits, all-hit ordering, type lookup, flip/scale source sampling, direct StageRenderer last-baked lookup, and StageRenderer frame fallback passed through the same CTest executable.
@@ -1086,4 +1086,6 @@ Result:
 - `b9bad38e Port C++ text image native alpha`
 - `212f84d3 Port C++ text image assignment copy`
 - `070d0852 Port C++ XMED style spans`
-- Current checkpoint commit message: `Port C++ ink rectangular media matte skip`
+- `2983be9f Port C++ XMED paragraph records`
+- `3c96a286 Port C++ ink rectangular media matte skip`
+- Current checkpoint commit message: `Port C++ ink Java parity regressions`

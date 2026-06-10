@@ -9308,6 +9308,192 @@ void testBitmapCacheAndInkProcessorFoundation() {
     assert(cache.trackedPaletteVersionCount() == 0);
 }
 
+void testInkProcessorJavaParityEdges() {
+    Bitmap maskWater(3, 1, 32, {
+        0xFF009999U,
+        0xFFFFFFFFU,
+        0x80009999U
+    });
+    Bitmap maskWaterResult = InkProcessor::applyInk(maskWater, InkMode::MASK, 0, false, nullptr);
+    assert(maskWaterResult.getPixel(0, 0) == 0x6B009999U);
+    assert(maskWaterResult.getPixel(1, 0) == 0xFFFFFFFFU);
+    assert(maskWaterResult.getPixel(2, 0) == 0x35009999U);
+
+    Bitmap nearWhiteBackground(3, 1, 32, {
+        0xFFFFFFFFU,
+        0xFFC8C8C8U,
+        0xFF000000U
+    });
+    Bitmap exactBackground = InkProcessor::applyBackgroundTransparent(nearWhiteBackground, 0xFFFFFF);
+    assert(exactBackground.getPixel(0, 0) == 0x00000000U);
+    assert(exactBackground.getPixel(1, 0) == 0xFFC8C8C8U);
+    assert(exactBackground.getPixel(2, 0) == 0xFF000000U);
+
+    Bitmap duplicateRgbIndexedBackground(3, 3, 8, {
+        0xFFEFEFEFU, 0xFF6794A7U, 0xFFEFEFEFU,
+        0xFF6794A7U, 0xFFEFEFEFU, 0xFF6794A7U,
+        0xFFEFEFEFU, 0xFF6794A7U, 0xFFEFEFEFU
+    });
+    duplicateRgbIndexedBackground.setPaletteIndices({
+        0, 1, 0,
+        1, 5, 1,
+        0, 1, 0
+    });
+    Bitmap duplicateRgbBackground =
+        InkProcessor::applyBackgroundTransparent(duplicateRgbIndexedBackground, 0xFFFFFF);
+    assert(duplicateRgbBackground.getPixel(0, 0) == 0x00000000U);
+    assert(duplicateRgbBackground.getPixel(1, 0) == 0xFF6794A7U);
+    assert(duplicateRgbBackground.getPixel(1, 1) == 0xFFEFEFEFU);
+    assert(duplicateRgbBackground.getPixel(2, 2) == 0x00000000U);
+
+    Bitmap whiteKey32(3, 1, 32, {
+        0xFF000000U,
+        0xFFFFFFFFU,
+        0xFFF5A000U
+    });
+    const int whiteKeyColor =
+        InkProcessor::resolveBackColor(whiteKey32, InkMode::BACKGROUND_TRANSPARENT, 0, false, nullptr);
+    Bitmap whiteKey32Result = InkProcessor::applyBackgroundTransparent(whiteKey32, whiteKeyColor);
+    assert(whiteKeyColor == 0xFFFFFF);
+    assert(whiteKey32Result.getPixel(0, 0) == 0xFF000000U);
+    assert(whiteKey32Result.getPixel(1, 0) == 0x00000000U);
+    assert(whiteKey32Result.getPixel(2, 0) == 0xFFF5A000U);
+
+    Bitmap fullTintDarken(1, 1, 32, {0xFFE88543U});
+    Bitmap fullTintResult = InkProcessor::applyInk(fullTintDarken, InkMode::DARKEN, 0xFFCC66, false, nullptr);
+    assert(fullTintResult.getPixel(0, 0) == 0xFFE8691AU);
+
+    Bitmap matteAntialias(4, 1, 32, {
+        0xFFFFFFFFU,
+        0x00DDDDDDU,
+        0xFF000000U,
+        0xFFFFFFFFU
+    });
+    Bitmap matteAntialiasResult = InkProcessor::applyMatte(matteAntialias, 0xFFFFFF);
+    assert(matteAntialiasResult.getPixel(0, 0) == 0x00000000U);
+    assert(matteAntialiasResult.getPixel(1, 0) == 0x00000000U);
+    assert(matteAntialiasResult.getPixel(2, 0) == 0xFF000000U);
+    assert(matteAntialiasResult.getPixel(3, 0) == 0x00000000U);
+
+    Bitmap nativeAlphaMatte(3, 1, 32, {
+        0xFFFFFFFFU,
+        0x40000000U,
+        0x00FFFFFFU
+    });
+    nativeAlphaMatte.setNativeAlpha(true);
+    Bitmap nativeAlphaMatteResult = InkProcessor::applyInk(nativeAlphaMatte, InkMode::MATTE, 0, true, nullptr);
+    assert(nativeAlphaMatteResult.getPixel(0, 0) == 0xFFFFFFFFU);
+    assert(nativeAlphaMatteResult.getPixel(1, 0) == 0x40000000U);
+    assert(nativeAlphaMatteResult.getPixel(2, 0) == 0x00FFFFFFU);
+
+    Bitmap solidDarkMatte(3, 3, 32, {
+        0xFF020304U, 0xFF020304U, 0xFF020304U,
+        0xFF020304U, 0xFF020304U, 0xFF020304U,
+        0xFF020304U, 0xFF020304U, 0xFF020304U
+    });
+    Bitmap solidDarkMatteResult = InkProcessor::applyInk(solidDarkMatte, InkMode::MATTE, 0, false, nullptr);
+    assert(solidDarkMatteResult.getPixel(0, 0) == 0xFF020304U);
+    assert(solidDarkMatteResult.getPixel(1, 1) == 0xFF020304U);
+    assert(solidDarkMatteResult.getPixel(2, 2) == 0xFF020304U);
+
+    Bitmap mixed32Matte(3, 3, 32, {
+        0xFF2A6883U, 0xFF2A6883U, 0xFF2A6883U,
+        0xFF2A6883U, 0xFFFFFFFFU, 0xFF2A6883U,
+        0xFF2A6883U, 0xFF2A6883U, 0xFF2A6883U
+    });
+    Bitmap mixed32MatteResult = InkProcessor::applyInk(mixed32Matte, InkMode::MATTE, 0, false, nullptr);
+    assert(mixed32MatteResult.getPixel(0, 0) == 0xFF2A6883U);
+    assert(mixed32MatteResult.getPixel(1, 1) == 0xFFFFFFFFU);
+
+    Bitmap noWhiteMixed32(5, 1, 32, {
+        0xFF88ADBDU, 0xFF88ADBDU, 0xFF88ADBDU, 0xFF88ADBDU, 0xFF000000U
+    });
+    Bitmap noWhiteMixedResult = InkProcessor::applyInk(noWhiteMixed32, InkMode::MATTE, 0, false, nullptr);
+    assert(noWhiteMixedResult.getPixel(0, 0) == 0xFF88ADBDU);
+    assert(noWhiteMixedResult.getPixel(4, 0) == 0xFF000000U);
+
+    Bitmap spriteBackColorMatte(3, 3, 32, {
+        0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU,
+        0xFFFFFFFFU, 0xFF000000U, 0xFFFFFFFFU,
+        0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU
+    });
+    Bitmap spriteBackColorMatteResult =
+        InkProcessor::applyInk(spriteBackColorMatte, InkMode::MATTE, 0x6794A7, false, nullptr);
+    assert(spriteBackColorMatteResult.getPixel(0, 0) == 0x00000000U);
+    assert(spriteBackColorMatteResult.getPixel(1, 1) == 0xFF000000U);
+    assert(spriteBackColorMatteResult.getPixel(2, 2) == 0x00000000U);
+
+    Bitmap dominantEdgeMatte(4, 4, 8, {
+        0xFFFFCC00U, 0xFFFFCC00U, 0xFFFFCC00U, 0xFFFFCC00U,
+        0xFFFFCC00U, 0xFFFFFFFFU, 0xFFCCCCCCU, 0xFFFFCC00U,
+        0xFFFFCC00U, 0xFF000000U, 0xFFFFFFFFU, 0xFFFFCC00U,
+        0xFFFFCC00U, 0xFFFFCC00U, 0xFFFFCC00U, 0xFFFFCC00U
+    });
+    dominantEdgeMatte.setPaletteIndices({
+        200, 200, 200, 200,
+        200, 0, 1, 200,
+        200, 255, 0, 200,
+        200, 200, 200, 200
+    });
+    Bitmap dominantEdgeMatteResult = InkProcessor::applyInk(dominantEdgeMatte, InkMode::MATTE, 0, false, nullptr);
+    assert(dominantEdgeMatteResult.getPixel(0, 0) == 0xFFFFCC00U);
+    assert(dominantEdgeMatteResult.getPixel(1, 1) == 0xFFFFFFFFU);
+    assert(dominantEdgeMatteResult.getPixel(2, 1) == 0xFFCCCCCCU);
+    assert(dominantEdgeMatteResult.getPixel(1, 2) == 0xFF000000U);
+    assert(dominantEdgeMatteResult.getPixel(2, 2) == 0xFFFFFFFFU);
+    assert(dominantEdgeMatteResult.getPixel(3, 3) == 0xFFFFCC00U);
+
+    Bitmap indexedWindowShadow(5, 5, 8, {
+        0xFF000000U, 0xFF000000U, 0xFF000000U, 0xFF000000U, 0xFF000000U,
+        0xFF000000U, 0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU, 0xFF000000U,
+        0xFF000000U, 0xFFFFFFFFU, 0xFF000000U, 0xFFFFFFFFU, 0xFF000000U,
+        0xFF000000U, 0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU, 0xFF000000U,
+        0xFF000000U, 0xFF000000U, 0xFFFFFFFFU, 0xFF000000U, 0xFF000000U
+    });
+    indexedWindowShadow.setPaletteIndices({
+        1, 1, 1, 1, 1,
+        1, 0, 0, 0, 1,
+        1, 0, 1, 0, 1,
+        1, 0, 0, 0, 1,
+        1, 1, 0, 1, 1
+    });
+    Palette interfacePalette({
+        0xFFFFFFFFU,
+        0xFF000000U
+    }, "interface palette");
+    indexedWindowShadow.setImagePalette(&interfacePalette);
+    indexedWindowShadow.markScriptModified();
+    Bitmap indexedWindowShadowResult =
+        InkProcessor::applyInk(indexedWindowShadow, InkMode::MATTE, 0xFFFFFF, false, &interfacePalette);
+    assert(indexedWindowShadowResult.getPixel(0, 0) == 0xFF000000U);
+    assert(indexedWindowShadowResult.getPixel(1, 1) == 0x00000000U);
+    assert(indexedWindowShadowResult.getPixel(2, 2) == 0xFF000000U);
+    assert(indexedWindowShadowResult.getPixel(2, 4) == 0x00000000U);
+
+    Bitmap addPinEdgeZero(3, 3, 8, {
+        0xFF000000U, 0xFF000000U, 0xFF000000U,
+        0xFF000000U, 0xFF6E6E6EU, 0xFF000000U,
+        0xFF000000U, 0xFF000000U, 0xFF000000U
+    });
+    addPinEdgeZero.setPaletteIndices({
+        0, 0, 0,
+        0, 145, 0,
+        0, 0, 0
+    });
+    Bitmap addPinEdgeZeroResult = InkProcessor::applyInk(addPinEdgeZero, InkMode::ADD_PIN, 0, false, nullptr);
+    assert(addPinEdgeZeroResult.getPixel(0, 0) == 0x00000000U);
+    assert(addPinEdgeZeroResult.getPixel(1, 1) == 0xFF6E6E6EU);
+    assert(addPinEdgeZeroResult.getPixel(2, 2) == 0x00000000U);
+
+    Bitmap addPinRgbBlack(2, 1, 32, {
+        0xFF000000U,
+        0xFF6E6E6EU
+    });
+    Bitmap addPinRgbBlackResult = InkProcessor::applyInk(addPinRgbBlack, InkMode::ADD_PIN, 0, false, nullptr);
+    assert(addPinRgbBlackResult.getPixel(0, 0) == 0xFF000000U);
+    assert(addPinRgbBlackResult.getPixel(1, 0) == 0xFF6E6E6EU);
+}
+
 void testSoftwareFrameRenderer() {
     FrameSnapshot backgroundSnapshot{
         1,
@@ -14042,6 +14228,7 @@ int main() {
     testStageRendererFoundation();
     testSpriteBakerFoundation();
     testBitmapCacheAndInkProcessorFoundation();
+    testInkProcessorJavaParityEdges();
     testSoftwareFrameRenderer();
     testTextRendererFoundation();
     testNetTaskFoundation();
