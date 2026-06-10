@@ -1,5 +1,7 @@
 #include "libreshockwave/player/debug/ExpressionEvaluator.hpp"
 
+#include "libreshockwave/lingo/vm/datum/DatumFormatter.hpp"
+
 #include <algorithm>
 #include <charconv>
 #include <cctype>
@@ -99,7 +101,13 @@ Datum getPropListProperty(const Datum::PropList& propList, const std::string& pr
 }
 
 std::string formatValue(const Datum& value) {
-    return value.stringValue();
+    if (value.asString() != nullptr) {
+        return value.stringValue();
+    }
+    if (value.isVoid()) {
+        return "<Void>";
+    }
+    return lingo::vm::datum::formatExpanded(value);
 }
 
 enum class TokenType {

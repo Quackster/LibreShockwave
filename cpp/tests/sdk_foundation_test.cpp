@@ -11734,6 +11734,7 @@ void testDebugFoundation() {
     props.propListValue().put(Datum::symbol("score"), Datum::of(9));
     props.propListValue().put(Datum::of(std::string("bgColor")), Datum::of(12));
     evalContext.locals["obj"] = props;
+    evalContext.locals["items"] = Datum::list({Datum::of(1), Datum::symbol("ready")});
     Datum instance = Datum::scriptInstance("Thing");
     instance.scriptInstanceValue().setProperty("foo", Datum::of(6));
     evalContext.receiver = instance;
@@ -11756,6 +11757,8 @@ void testDebugFoundation() {
     assert(emptyEval.error == "Empty expression");
     assert(evaluator.interpolateLogMessage("i={i}, name={name}, bad={1 / 0}", evalContext) ==
            "i=5, name=Door, bad=<Division by zero>");
+    assert(evaluator.interpolateLogMessage("sym={#door}, items={items}, obj={obj}, missing={missing}", evalContext) ==
+           "sym=#door, items=[1, #ready], obj=[#score: 9, \"bgColor\": 12], missing=<Void>");
 
     std::ostringstream lifecycleOut;
     auto* previousCout = std::cout.rdbuf(lifecycleOut.rdbuf());
