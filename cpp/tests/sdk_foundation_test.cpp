@@ -7969,6 +7969,21 @@ void testSpriteBakerFoundation() {
     assert(decodeCalls == 1);
     assert(baker.tickCounter() == 1);
 
+    int paletteVersion = 0;
+    baker.setPaletteVersionProvider([&paletteVersion](const RenderSprite&) {
+        return std::optional<int>{paletteVersion};
+    });
+    auto versionedSprite = baker.bake(bitmapSprite);
+    assert(versionedSprite.bakedBitmap() != bakedBitmap);
+    assert(decodeCalls == 2);
+    auto versionedCachedSprite = baker.bake(bitmapSprite);
+    assert(versionedCachedSprite.bakedBitmap() == versionedSprite.bakedBitmap());
+    assert(decodeCalls == 2);
+    paletteVersion = 1;
+    auto changedPaletteSprite = baker.bake(bitmapSprite);
+    assert(changedPaletteSprite.bakedBitmap() != versionedSprite.bakedBitmap());
+    assert(decodeCalls == 3);
+
     BitmapCache liveCache;
     auto liveMember = std::make_shared<CastMemberChunk>(nullptr,
                                                         ChunkId(804),
@@ -12817,6 +12832,14 @@ void testCastLibManagerFoundation() {
     assert(runtimeMemberPaletteBitmap->imagePalette() == sourceRuntimePalette);
     assert(runtimeMemberPaletteBitmap->paletteRefCastLib() == 1);
     assert(runtimeMemberPaletteBitmap->paletteRefMemberNum() == 10000);
+    BitmapResolver memberPaletteResolver(file, &manager, nullptr);
+    auto decodedWithMemberPalette = memberPaletteResolver.decodeBitmap(heroChunk);
+    assert(decodedWithMemberPalette.has_value());
+    assert(decodedWithMemberPalette->getPixel(0, 0) == 0xFF112233U);
+    assert(decodedWithMemberPalette->getPixel(1, 0) == 0xFF445566U);
+    assert(decodedWithMemberPalette->imagePalette() == sourceRuntimePalette);
+    assert(decodedWithMemberPalette->paletteRefCastLib() == 1);
+    assert(decodedWithMemberPalette->paletteRefMemberNum() == 10000);
     assert(manager.setMemberProp(1, 2, "palette", Datum::of(std::string("Runtime Palette"))));
     assert(manager.getMemberProp(1, 2, "paletteRef").asCastMemberRef()->memberNum() == 10000);
     const auto paletteColors = manager.getMemberProp(1, 10000, "color");

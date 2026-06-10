@@ -231,6 +231,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 ### Bitmap Resolver Foundation
 
 - `player::BitmapResolver` ports Player-owned bitmap cast-member decoding across the main movie and loaded external cast sources, including palette override dispatch and a SpriteBaker-compatible decode-provider adapter.
+- Bitmap decoding now honors stored cast-member `paletteRef`/`palette` overrides for authored bitmap members, preserving palette-reference metadata on decoded images.
 - Movie palette lookup now follows score palette channel, built-in palette, config default palette, cast-library palette member, and DirectorFile fallback paths with frame-based caching.
 - `CastLibManager::resolvePaletteByMember` exposes cast-aware authored and dynamic palette member resolution for player/runtime callers, and `resolvePaletteByName` resolves named runtime palette members; broader dynamic member resolver coverage remains deferred to later Player integration slices.
 
@@ -442,6 +443,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `render::pipeline::SpriteBaker` ports ordered sprite bake steps, tick counting for batch bakes, custom bake-step registration, immutable `RenderSprite` baked-bitmap attachment, and text/button size replacement when baked output dimensions differ from score dimensions.
 - Bitmap sprites can now bake through an injected decode provider, consume provider-backed live script-modified bitmap buffers before cache/decode, reuse `BitmapCache`, record decode failures, apply Copy-ink 1-bit foreColor/backColor remapping, apply live COPY exact-white backColor remapping, run shared `InkProcessor.applyInk`, and preserve indexed matte/background-transparent remap behavior.
+- Bitmap sprite cache reuse now invalidates on provider-supplied palette-version changes, letting member-level palette overrides re-decode authored bitmap sprites instead of reusing stale processed cache entries.
 - Text/button sprites can bake through an injected text provider, file-backed STXT chunks, or file-backed XMED text-Xtra chunks using an injected `TextRenderer`, film-loop sprites can bake from file-backed embedded score chunks or through an injected tick-aware raw-composite provider with parent sprite ink processing, shape sprites bake solid and authored shape bitmaps through shared ink processing, and unsupported sprites pass through without a baked bitmap until their backing resolvers are ported.
 - Runtime CastLibManager lookup, advanced XMED multi-span style-record fidelity, and remaining Java `InkProcessor.applyInk` edge cases remain deferred.
 
@@ -785,7 +787,7 @@ Result:
 - Breakpoint, BreakpointManager, WatchExpression, and DebugSnapshot tests passed through the same CTest executable.
 - RenderPipelineTrace, RenderSprite, transform mirror, baked bitmap helpers, and FrameSnapshot tests passed through the same CTest executable.
 - StageRenderer stage-image lifecycle, dynamic/puppeted sprite collection, locZ/channel sorting, last-baked sprite storage, sprite-end cleanup, reset behavior, and RGB555 expansion tests passed through the same CTest executable.
-- SpriteBaker tick counting, default/custom bake-step dispatch, bitmap decode-provider caching, provider-backed live script-modified bitmap priority, live COPY exact-white backColor remapping, live DARKEN white-canvas neutralization, 1-bit Copy-ink color remap, shared bitmap ink processing, text baked-size replacement, file-backed STXT renderer dispatch, file-backed XMED parser/renderer dispatch, provider-backed film-loop parent ink processing, file-backed film-loop sub-score compositing, shape baking, transparency-key shape ink, unsupported pass-through, and external BitmapCache ownership tests passed through the same CTest executable.
+- SpriteBaker tick counting, default/custom bake-step dispatch, bitmap decode-provider caching, palette-version cache invalidation, provider-backed live script-modified bitmap priority, live COPY exact-white backColor remapping, live DARKEN white-canvas neutralization, 1-bit Copy-ink color remap, shared bitmap ink processing, text baked-size replacement, file-backed STXT renderer dispatch, file-backed XMED parser/renderer dispatch, provider-backed film-loop parent ink processing, file-backed film-loop sub-score compositing, shape baking, transparency-key shape ink, unsupported pass-through, and external BitmapCache ownership tests passed through the same CTest executable.
 - FrameRenderPipeline default StageRenderer/SpriteBaker path, default step names/order, score/dynamic trace summaries, bake tick propagation, baked-sprite publication, snapshot generation, and software-rendered default output tests passed through the same CTest executable.
 - SoftwareFrameRenderer background, stage-image, alpha, blend, scaling, flip, Director mirror, and special-ink tests passed through the same CTest executable.
 - FrameRenderPipelineContext mutation, trace building, snapshot storage, and FrameRenderPipelineStep tests passed through the same CTest executable.
@@ -803,7 +805,7 @@ Result:
 - BehaviorInstance and BehaviorManager ID/property state, behavior-ref parameters, frame-script caching, channel lookup/removal, sprite-instance ordering, and clear tests passed through the same CTest executable.
 - EventDispatcher global, frame/movie, sprite/movie, sprite-only, behavior-only, and movie-only dispatch ordering, pass propagation, dynamic script-instance dispatch, sprite handler lookup, mouse interactivity, mouse-handler recognition, debug flag, and stopEvent state tests passed through the same CTest executable.
 - FrameContext first-frame setup, pending frame navigation, begin/end sprite dispatch, frame events, actor/timeout hooks, puppeted sprite persistence, force navigation, reset, and BehaviorManager script-resolver hooks passed through the same CTest executable.
-- BitmapResolver RIFX-backed BITD bitmap decode, `ediM` JPEG/`ALFA` sidecar decode, palette override decode, SpriteBaker provider adapter, movie palette config fallback, null fallback behavior, and CastLibManager palette-member lookup passed through the same CTest executable.
+- BitmapResolver RIFX-backed BITD bitmap decode, `ediM` JPEG/`ALFA` sidecar decode, explicit and member-stored palette override decode, SpriteBaker provider adapter, movie palette config fallback, null fallback behavior, and CastLibManager palette-member lookup passed through the same CTest executable.
 - SpriteProperties missing defaults, property get/set, revision bumps, cast member assignment, autosizing, registration-aware bounds, cursor lists, script-instance sprite numbers, release cleanup, color refs, and image callbacks passed through the same CTest executable.
 - Lingo `GET_CHUNK` char/word/item/line extraction, range, negative last-index, sequential narrowing, and provider-backed item delimiters passed through the same CTest executable.
 - Lingo `PUSH_CHUNK_VAR_REF` typed raw-index varref creation tests passed through the same CTest executable.
@@ -830,7 +832,7 @@ Result:
 - TimeoutBuiltins `timeout` creation, factory-mode `.new`, named `.new`, `.forget`, property get/set helpers, VM object-property get/set dispatch, and missing-provider behavior passed through the same CTest executable.
 - NetBuiltins preload/get/post aliases, task result/error/status lookups, stream-status toggling, navigation callbacks, and ExternalParamBuiltins ordered parameter lookup passed through the same CTest executable.
 - ImageBuiltins image creation, invalid-dimension handling, white fill defaults, built-in/system palette metadata, provider-resolved member palette metadata, string/ilk behavior, and `importFileInto` callback delegation passed through the same CTest executable.
-- Runtime member image assignment, direct raw-media `LSWI`/Director `DTIB`/BITD bitmap assignment, cached `LSWI` and Director `DTIB`/BITD `importFileInto` assignment, imported-image alpha preservation, imported anchor-point propagation, indexed imported-media palette metadata, runtime member property reflection, and Player SpriteBaker live runtime bitmap rendering passed through the same CTest executable.
+- Runtime member image assignment, direct raw-media `LSWI`/Director `DTIB`/BITD bitmap assignment, cached `LSWI` and Director `DTIB`/BITD `importFileInto` assignment, imported-image alpha preservation, imported anchor-point propagation, indexed imported-media palette metadata, runtime member property reflection, authored bitmap palette override decoding, and Player SpriteBaker live runtime bitmap rendering passed through the same CTest executable.
 - Runtime dynamic member creation, named encoded slot creation, `new(#type, castLib)` callback creation, stable authored member counts, and dynamic member name/type lookup passed through the same CTest executable.
 - Common cast-member `number`, `memberNum`, `castLibNum`, `castLib`, `script`, `scriptText`, `mediaReady`, Director-facing `type`, and bitmap `paletteRef`/`palette` property getters/setters passed through the same CTest executable.
 - Runtime-created bitmap member render sprites, runtime registration-point placement, Player StageRenderer-to-CastLibManager resolver wiring, SpriteBaker live dynamic bitmap baking, and rendered frame pixels for dynamic bitmap sprites passed through the same CTest executable.
@@ -1052,4 +1054,5 @@ Result:
 - `8a18de57 Port C++ member common properties`
 - `37b19cb3 Port C++ member type surface`
 - `3f81ef7b Port C++ bitmap member palette refs`
-- Current checkpoint commit message: `Port C++ bitmap member palette setters`
+- `21ff6605 Port C++ bitmap member palette setters`
+- Current checkpoint commit message: `Port C++ bitmap palette override decoding`

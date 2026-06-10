@@ -332,6 +332,10 @@ void SpriteBaker::setLiveBitmapProvider(LiveBitmapProvider provider) {
     liveBitmapProvider_ = std::move(provider);
 }
 
+void SpriteBaker::setPaletteVersionProvider(PaletteVersionProvider provider) {
+    paletteVersionProvider_ = std::move(provider);
+}
+
 void SpriteBaker::setTextBakeProvider(TextBakeProvider provider) {
     textBakeProvider_ = std::move(provider);
 }
@@ -775,6 +779,11 @@ std::shared_ptr<const bitmap::Bitmap> SpriteBaker::cachedBitmap(const RenderSpri
     auto member = sprite.castMember();
     if (member == nullptr) {
         return nullptr;
+    }
+    if (paletteVersionProvider_) {
+        if (const auto version = paletteVersionProvider_(sprite)) {
+            (void)bitmapCache_->invalidateIfPaletteChanged(*member, *version);
+        }
     }
     return bitmapCache_->getCachedProcessed(*member,
                                             sprite.ink(),

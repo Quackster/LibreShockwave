@@ -4,6 +4,7 @@
 
 #include "libreshockwave/DirectorFile.hpp"
 #include "libreshockwave/cast/BitmapInfo.hpp"
+#include "libreshockwave/cast/CastMember.hpp"
 #include "libreshockwave/chunks/CastMemberChunk.hpp"
 #include "libreshockwave/chunks/ConfigChunk.hpp"
 #include "libreshockwave/player/cast/CastLib.hpp"
@@ -31,6 +32,18 @@ std::shared_ptr<chunks::CastMemberChunk> borrowedMember(const chunks::CastMember
     return std::shared_ptr<chunks::CastMemberChunk>(
         const_cast<chunks::CastMemberChunk*>(&member),
         [](chunks::CastMemberChunk*) {});
+}
+
+void applyPaletteRefMetadata(bitmap::Bitmap& bitmap,
+                             const std::shared_ptr<libreshockwave::cast::CastMember>& member) {
+    if (!member) {
+        return;
+    }
+    if (member->paletteRefCastLib() >= 1 && member->paletteRefMemberNum() >= 1) {
+        bitmap.setPaletteRefCastMember(member->paletteRefCastLib(), member->paletteRefMemberNum());
+    } else if (member->paletteRefSystemName().has_value()) {
+        bitmap.setPaletteRefSystemName(*member->paletteRefSystemName());
+    }
 }
 
 } // namespace
@@ -68,25 +81,42 @@ std::optional<bitmap::Bitmap> BitmapResolver::decodeBitmap(
         return std::nullopt;
     }
 
+    std::shared_ptr<libreshockwave::cast::CastMember> runtimeMember;
+    std::shared_ptr<const bitmap::Palette> memberPaletteOverride;
+    const bitmap::Palette* effectivePaletteOverride = paletteOverride;
+    if (effectivePaletteOverride == nullptr && castLibManager_ != nullptr) {
+        runtimeMember = castLibManager_->findRuntimeMember(member);
+        if (runtimeMember && runtimeMember->runtimePaletteOverride()) {
+            memberPaletteOverride = runtimeMember->runtimePaletteOverride();
+            effectivePaletteOverride = memberPaletteOverride.get();
+        }
+    }
+    auto withPaletteRefMetadata = [&](std::optional<bitmap::Bitmap> decoded) {
+        if (decoded.has_value() && memberPaletteOverride) {
+            applyPaletteRefMetadata(*decoded, runtimeMember);
+        }
+        return decoded;
+    };
+
     DirectorFile* memberFile = mutableFileFor(member);
-    if (memberFile != nullptr && paletteOverride == nullptr && file_ != nullptr && memberFile != file_.get() &&
+    if (memberFile != nullptr && effectivePaletteOverride == nullptr && file_ != nullptr && memberFile != file_.get() &&
         member->isBitmap()) {
         if (auto crossFilePalette = resolvePaletteCrossFile(member, memberFile)) {
             if (auto decoded = memberFile->decodeBitmap(member, crossFilePalette.get())) {
-                return decoded;
+                return withPaletteRefMetadata(std::move(decoded));
             }
         }
     }
 
     if (memberFile != nullptr) {
-        if (auto decoded = memberFile->decodeBitmap(member, paletteOverride)) {
-            return decoded;
+        if (auto decoded = memberFile->decodeBitmap(member, effectivePaletteOverride)) {
+            return withPaletteRefMetadata(std::move(decoded));
         }
     }
 
     if (file_ != nullptr && file_.get() != memberFile) {
-        if (auto decoded = file_->decodeBitmap(member, paletteOverride)) {
-            return decoded;
+        if (auto decoded = file_->decodeBitmap(member, effectivePaletteOverride)) {
+            return withPaletteRefMetadata(std::move(decoded));
         }
     }
 
@@ -97,8 +127,8 @@ std::optional<bitmap::Bitmap> BitmapResolver::decodeBitmap(
             }
             auto source = castLib->sourceFile();
             if (source != nullptr && source.get() != memberFile && source != file_) {
-                if (auto decoded = source->decodeBitmap(member, paletteOverride)) {
-                    return decoded;
+                if (auto decoded = source->decodeBitmap(member, effectivePaletteOverride)) {
+                    return withPaletteRefMetadata(std::move(decoded));
                 }
             }
         }

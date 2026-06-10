@@ -101,6 +101,7 @@ public:
     [[nodiscard]] std::shared_ptr<const bitmap::Palette> runtimePaletteOverride() const;
     [[nodiscard]] int paletteRefCastLib() const;
     [[nodiscard]] int paletteRefMemberNum() const;
+    [[nodiscard]] int paletteVersion() const;
     [[nodiscard]] const std::optional<std::string>& paletteRefSystemName() const;
     void setRuntimePaletteOverride(std::shared_ptr<const bitmap::Palette> palette,
                                    int paletteRefCastLib,
@@ -136,6 +137,7 @@ private:
     std::shared_ptr<const bitmap::Palette> runtimePaletteOverride_;
     int paletteRefCastLib_ = -1;
     int paletteRefMemberNum_ = -1;
+    int paletteVersion_ = 0;
     std::optional<std::string> paletteRefSystemName_;
     std::optional<int> runtimeRegX_;
     std::optional<int> runtimeRegY_;

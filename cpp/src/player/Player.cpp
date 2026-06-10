@@ -339,6 +339,16 @@ void Player::wireComponents() {
         }
         return nullptr;
     });
+    spriteBaker_.setPaletteVersionProvider([this](const render::pipeline::RenderSprite& sprite)
+        -> std::optional<int> {
+        if (auto member = sprite.castMember()) {
+            if (auto runtimeMember = castLibManager_.findRuntimeMember(
+                    std::const_pointer_cast<chunks::CastMemberChunk>(member))) {
+                return runtimeMember->paletteVersion();
+            }
+        }
+        return std::nullopt;
+    });
 
     cursorManager_.setSpriteProvider([this] {
         return stageRenderer_.lastBakedSprites();

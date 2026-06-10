@@ -178,6 +178,7 @@ std::shared_ptr<const bitmap::Palette> CastMember::runtimePaletteOverride() cons
 
 int CastMember::paletteRefCastLib() const { return paletteRefCastLib_; }
 int CastMember::paletteRefMemberNum() const { return paletteRefMemberNum_; }
+int CastMember::paletteVersion() const { return paletteVersion_; }
 
 const std::optional<std::string>& CastMember::paletteRefSystemName() const {
     return paletteRefSystemName_;
@@ -188,10 +189,17 @@ void CastMember::setRuntimePaletteOverride(std::shared_ptr<const bitmap::Palette
                                            int paletteRefMemberNum,
                                            std::optional<std::string> paletteRefSystemName,
                                            bool remapDeepBitmapRgb) {
+    const bool changed = runtimePaletteOverride_.get() != palette.get() ||
+                         paletteRefCastLib_ != paletteRefCastLib ||
+                         paletteRefMemberNum_ != paletteRefMemberNum ||
+                         paletteRefSystemName_ != paletteRefSystemName;
     runtimePaletteOverride_ = std::move(palette);
     paletteRefCastLib_ = paletteRefCastLib;
     paletteRefMemberNum_ = paletteRefMemberNum;
     paletteRefSystemName_ = std::move(paletteRefSystemName);
+    if (changed) {
+        ++paletteVersion_;
+    }
 
     if (!runtimeBitmap_ || !runtimePaletteOverride_) {
         return;

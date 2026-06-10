@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -28,6 +29,7 @@ public:
         const chunks::CastMemberChunk& member,
         const bitmap::Palette* paletteOverride)>;
     using LiveBitmapProvider = std::function<std::shared_ptr<const bitmap::Bitmap>(const RenderSprite& sprite)>;
+    using PaletteVersionProvider = std::function<std::optional<int>(const RenderSprite& sprite)>;
     using TextBakeProvider = std::function<std::shared_ptr<const bitmap::Bitmap>(const RenderSprite& sprite)>;
     using FilmLoopBakeProvider = std::function<std::shared_ptr<const bitmap::Bitmap>(
         const RenderSprite& sprite,
@@ -53,6 +55,7 @@ public:
 
     void setBitmapDecodeProvider(BitmapDecodeProvider provider);
     void setLiveBitmapProvider(LiveBitmapProvider provider);
+    void setPaletteVersionProvider(PaletteVersionProvider provider);
     void setTextBakeProvider(TextBakeProvider provider);
     void setTextRenderer(output::TextRenderer* renderer);
     void setFilmLoopBakeProvider(FilmLoopBakeProvider provider);
@@ -93,6 +96,7 @@ private:
     BitmapCache* bitmapCache_{nullptr};
     BitmapDecodeProvider bitmapDecodeProvider_;
     LiveBitmapProvider liveBitmapProvider_;
+    PaletteVersionProvider paletteVersionProvider_;
     TextBakeProvider textBakeProvider_;
     output::TextRenderer* textRenderer_{nullptr};
     FilmLoopBakeProvider filmLoopBakeProvider_;
