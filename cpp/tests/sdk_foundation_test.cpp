@@ -981,7 +981,24 @@ void testBitmapFontAndFontRegistry() {
     assert(FontRegistry::canonicalFontName("Arial*Bold") == "arial bold");
     assert(FontRegistry::resolveFont("TF").value() == "tf");
     assert(!FontRegistry::hasPfrFont("Tiny"));
+    FontRegistry::registerEmbeddedTtfFont("Embedded Verdana", verdanaBytes, verdanaBytes);
+    assert(FontRegistry::hasEmbeddedBoldVariant("embedded verdana"));
+    assert(FontRegistry::resolveFont("Embedded_Verdana_400_0").value() == "embedded verdana");
+    assert(FontRegistry::getPreferredDirectorPixelFont().value() == "Embedded Verdana");
+    const auto embeddedVerdana = FontRegistry::getBitmapFont("Embedded Verdana", 9);
+    assert(embeddedVerdana != nullptr);
+    assert(embeddedVerdana->getFontName() == "Embedded Verdana");
+    assert(embeddedVerdana->getFontSize() == 9);
+    assert(embeddedVerdana->getCharWidth('H') > 0);
+    assert(FontRegistry::getBitmapFont("Embedded Verdana", 9) == embeddedVerdana);
+    const auto embeddedVerdanaCanonical = FontRegistry::getBitmapFont("Embedded_Verdana_400_0", 9);
+    assert(embeddedVerdanaCanonical != nullptr);
+    assert(embeddedVerdanaCanonical->getCharWidth('H') == embeddedVerdana->getCharWidth('H'));
+    const auto embeddedVerdanaBold = FontRegistry::getBitmapFont("Embedded Verdana", 9, true, false);
+    assert(embeddedVerdanaBold != nullptr);
+    assert(FontRegistry::getBitmapFont("Embedded Verdana", 9, true, false) == embeddedVerdanaBold);
     FontRegistry::clear();
+    assert(!FontRegistry::hasEmbeddedBoldVariant("embedded verdana"));
 }
 
 void testIdsAndEnums() {

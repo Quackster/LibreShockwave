@@ -31,6 +31,12 @@ public:
                                                                          int fontSize,
                                                                          bool bold,
                                                                          bool italic);
+    static void registerEmbeddedTtfFont(const std::string& fontName,
+                                        std::vector<std::uint8_t> regular,
+                                        std::vector<std::uint8_t> bold = {},
+                                        std::vector<std::uint8_t> italic = {},
+                                        std::vector<std::uint8_t> boldItalic = {});
+    [[nodiscard]] static bool hasEmbeddedBoldVariant(const std::string& fontName);
 
     static void registerFontAlias(const std::string& alias,
                                   const std::string& fontName,

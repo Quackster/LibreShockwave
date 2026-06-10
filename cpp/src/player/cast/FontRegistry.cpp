@@ -14,10 +14,35 @@
 namespace libreshockwave::player::cast {
 namespace {
 
+struct EmbeddedTtfVariants {
+    std::vector<std::uint8_t> regular;
+    std::vector<std::uint8_t> bold;
+    std::vector<std::uint8_t> italic;
+    std::vector<std::uint8_t> boldItalic;
+
+    [[nodiscard]] const std::vector<std::uint8_t>* get(bool boldRequested, bool italicRequested) const {
+        if (boldRequested && italicRequested && !boldItalic.empty()) {
+            return &boldItalic;
+        }
+        if (boldRequested && !bold.empty()) {
+            return &bold;
+        }
+        if (italicRequested && !italic.empty()) {
+            return &italic;
+        }
+        return regular.empty() ? nullptr : &regular;
+    }
+
+    [[nodiscard]] bool hasBold() const {
+        return !bold.empty();
+    }
+};
+
 struct RegistryState {
     std::unordered_map<std::string, std::shared_ptr<font::Pfr1Font>> parsedFonts;
     std::unordered_map<std::string, std::vector<std::uint8_t>> ttfCache;
     std::unordered_map<std::string, std::shared_ptr<font::BitmapFont>> rasterizedCache;
+    std::unordered_map<std::string, EmbeddedTtfVariants> embeddedTtfFonts;
     std::unordered_map<std::string, std::string> canonicalIndex;
     std::unordered_map<std::string, FontRegistry::FontAlias> aliases;
     std::optional<std::string> firstRegisteredFont;
@@ -86,6 +111,11 @@ std::string fontCacheKey(const std::string& fontName, int fontSize, bool bold, b
         key += ":" + std::string(bold ? "1" : "0") + ":" + (italic ? "1" : "0");
     }
     return key;
+}
+
+std::string embeddedFontCacheKey(const std::string& fontName, int fontSize, bool bold, bool italic) {
+    return lowerAscii(fontName) + ":" + std::to_string(fontSize) + ":embedded:" +
+           std::string(bold ? "1" : "0") + ":" + (italic ? "1" : "0");
 }
 
 } // namespace
@@ -206,7 +236,63 @@ std::shared_ptr<font::BitmapFont> FontRegistry::getBitmapFont(const std::string&
             return rasterized;
         }
     }
+
+    const auto embeddedKey = registry.embeddedTtfFonts.contains(key)
+        ? key
+        : [&registry, &fontName]() -> std::string {
+              if (const auto mapped = registry.canonicalIndex.find(canonicalFontName(fontName));
+                  mapped != registry.canonicalIndex.end() && registry.embeddedTtfFonts.contains(mapped->second)) {
+                  return mapped->second;
+              }
+              return {};
+          }();
+    if (!embeddedKey.empty()) {
+        const auto cacheKey = embeddedFontCacheKey(embeddedKey, fontSize, bold, italic);
+        if (const auto cached = registry.rasterizedCache.find(cacheKey); cached != registry.rasterizedCache.end()) {
+            return cached->second;
+        }
+        const auto* ttfBytes = registry.embeddedTtfFonts.at(embeddedKey).get(bold, italic);
+        if (ttfBytes != nullptr) {
+            auto rasterized = font::TtfBitmapRasterizer::rasterize(*ttfBytes, fontSize, fontName);
+            if (rasterized != nullptr) {
+                registry.rasterizedCache[cacheKey] = rasterized;
+                return rasterized;
+            }
+        }
+    }
     return nullptr;
+}
+
+void FontRegistry::registerEmbeddedTtfFont(const std::string& fontName,
+                                           std::vector<std::uint8_t> regular,
+                                           std::vector<std::uint8_t> bold,
+                                           std::vector<std::uint8_t> italic,
+                                           std::vector<std::uint8_t> boldItalic) {
+    if (fontName.empty() || isBlank(fontName) || regular.empty()) {
+        return;
+    }
+    auto& registry = state();
+    std::lock_guard lock(registry.mutex);
+    const auto key = lowerAscii(fontName);
+    registry.embeddedTtfFonts[key] = EmbeddedTtfVariants{std::move(regular),
+                                                         std::move(bold),
+                                                         std::move(italic),
+                                                         std::move(boldItalic)};
+    registry.canonicalIndex[canonicalFontName(fontName)] = key;
+    if (!registry.firstEmbeddedFont.has_value()) {
+        registry.firstEmbeddedFont = fontName;
+    }
+}
+
+bool FontRegistry::hasEmbeddedBoldVariant(const std::string& fontName) {
+    if (fontName.empty()) {
+        return false;
+    }
+    auto& registry = state();
+    std::lock_guard lock(registry.mutex);
+    const auto key = lowerAscii(fontName);
+    const auto it = registry.embeddedTtfFonts.find(key);
+    return it != registry.embeddedTtfFonts.end() && it->second.hasBold();
 }
 
 void FontRegistry::registerFontAlias(const std::string& alias,
@@ -304,6 +390,7 @@ void FontRegistry::clear() {
     registry.parsedFonts.clear();
     registry.ttfCache.clear();
     registry.rasterizedCache.clear();
+    registry.embeddedTtfFonts.clear();
     registry.canonicalIndex.clear();
     registry.aliases.clear();
     registry.firstRegisteredFont.reset();
