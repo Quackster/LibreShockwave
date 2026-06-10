@@ -2151,6 +2151,12 @@ Datum TypeBuiltins::value(BuiltinContext& context, const std::vector<Datum>& arg
     if (args.empty()) {
         return Datum::voidValue();
     }
+    auto identifierResolver = [&context](std::string_view identifier) {
+        if (!context.valueEvaluator) {
+            return Datum::voidValue();
+        }
+        return context.valueEvaluator(Datum::of(std::string(identifier)));
+    };
     if (const auto* fieldText = args[0].asFieldText()) {
         if (context.fieldParsedValueResolver) {
             Datum parsed = context.fieldParsedValueResolver(fieldText->castLib, fieldText->memberNum);
@@ -2158,7 +2164,7 @@ Datum TypeBuiltins::value(BuiltinContext& context, const std::vector<Datum>& arg
                 return parsed;
             }
         }
-        return LingoValueParser::parseWithPartial(fieldText->value);
+        return LingoValueParser::parseWithPartial(fieldText->value, identifierResolver);
     }
     if (!args[0].isString()) {
         return args[0];
@@ -2170,7 +2176,7 @@ Datum TypeBuiltins::value(BuiltinContext& context, const std::vector<Datum>& arg
         }
     }
     const std::string raw = args[0].stringValue();
-    Datum parsed = LingoValueParser::parseWithPartial(raw);
+    Datum parsed = LingoValueParser::parseWithPartial(raw, identifierResolver);
     if (!parsed.isVoid()) {
         return parsed;
     }

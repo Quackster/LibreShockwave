@@ -1743,6 +1743,11 @@ void testPlayerVmEventDispatchFoundation() {
     player.vm().setGlobal("valueGlobal", Datum::of(123));
     assert(player.vm().callBuiltin("value", {Datum::of(std::string("valueGlobal"))}).intValue() == 123);
     assert(player.vm().callBuiltin("value", {Datum::of(std::string("valueGlobal trailing"))}).intValue() == 123);
+    const Datum nestedValueGlobal = player.vm().callBuiltin(
+        "value",
+        {Datum::of(std::string("[#seen: valueGlobal, #items: [valueGlobal, 4]]"))});
+    assert(nestedValueGlobal.propListValue().get(Datum::symbol("seen")).intValue() == 123);
+    assert(nestedValueGlobal.propListValue().get(Datum::symbol("items")).listValue().getAt(1).intValue() == 123);
     assert(player.vm().callBuiltin("value", {Datum::of(std::string("3 valueGlobal"))}).intValue() == 3);
     assert(player.vm().callBuiltin("value", {Datum::of(std::string("prepareMovie"))}).isVoid());
     assert(player.vm().getGlobal("prepared").intValue() == 55);

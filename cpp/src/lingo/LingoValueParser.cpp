@@ -10,6 +10,8 @@
 namespace libreshockwave::lingo {
 namespace {
 
+using IdentifierResolver = LingoValueParser::IdentifierResolver;
+
 std::string trim(std::string_view value) {
     std::size_t begin = 0;
     while (begin < value.size() && std::isspace(static_cast<unsigned char>(value[begin]))) {
@@ -202,7 +204,8 @@ int findPropListColon(std::string_view element) {
     return -1;
 }
 
-std::optional<Datum> tryParseComplete(std::string_view expression);
+std::optional<Datum> tryParseComplete(std::string_view expression,
+                                      const IdentifierResolver& identifierResolver);
 
 bool isPropListElement(std::string_view element) {
     const int colonIndex = findPropListColon(element);
@@ -215,7 +218,7 @@ bool isPropListElement(std::string_view element) {
     }
     if (startsWith(rawKey, "#")) {
         const std::string key = trim(std::string_view(rawKey).substr(1));
-        return isIdentifier(key) || tryParseComplete(key).has_value();
+        return isIdentifier(key) || tryParseComplete(key, {}).has_value();
     }
     if (startsWith(rawKey, "\"") && endsWith(rawKey, "\"") && rawKey.size() >= 2) {
         return true;
@@ -223,26 +226,26 @@ bool isPropListElement(std::string_view element) {
     return isIdentifier(rawKey);
 }
 
-Datum parsePropListKey(std::string_view rawKey) {
+Datum parsePropListKey(std::string_view rawKey, const IdentifierResolver& identifierResolver) {
     const std::string key = trim(rawKey);
     if (startsWith(key, "#") && key.size() > 1) {
         const std::string symbolText = trim(std::string_view(key).substr(1));
         if (isIdentifier(symbolText)) {
             return Datum::symbol(symbolText);
         }
-        const auto parsed = tryParseComplete(symbolText);
+        const auto parsed = tryParseComplete(symbolText, identifierResolver);
         return parsed.has_value() && !parsed->isVoid() ? *parsed : Datum::symbol(symbolText);
     }
     if (startsWith(key, "\"") && endsWith(key, "\"") && key.size() >= 2) {
         const std::string unquoted = unescapeString(std::string_view(key).substr(1, key.size() - 2));
-        const auto parsed = tryParseComplete(unquoted);
+        const auto parsed = tryParseComplete(unquoted, identifierResolver);
         return parsed.has_value() && !parsed->isVoid() ? *parsed : Datum::of(unquoted);
     }
-    const auto parsed = tryParseComplete(key);
+    const auto parsed = tryParseComplete(key, identifierResolver);
     return parsed.has_value() && !parsed->isVoid() ? *parsed : Datum::of(key);
 }
 
-Datum parseListOrPropList(std::string_view content) {
+Datum parseListOrPropList(std::string_view content, const IdentifierResolver& identifierResolver) {
     const std::string trimmed = trim(content);
     if (trimmed.empty()) {
         return Datum::list();
@@ -264,9 +267,11 @@ Datum parseListOrPropList(std::string_view content) {
             if (colonIndex <= 0) {
                 continue;
             }
-            const Datum key = parsePropListKey(std::string_view(element).substr(0, static_cast<std::size_t>(colonIndex)));
+            const Datum key = parsePropListKey(std::string_view(element).substr(0, static_cast<std::size_t>(colonIndex)),
+                                               identifierResolver);
             const Datum value = LingoValueParser::parseWithPartial(
-                std::string_view(element).substr(static_cast<std::size_t>(colonIndex + 1)));
+                std::string_view(element).substr(static_cast<std::size_t>(colonIndex + 1)),
+                identifierResolver);
             props.propListValue().properties().emplace_back(key, value);
         }
         return props;
@@ -275,7 +280,7 @@ Datum parseListOrPropList(std::string_view content) {
     std::vector<Datum> items;
     items.reserve(elements.size());
     for (const auto& element : elements) {
-        items.push_back(LingoValueParser::parseWithPartial(trim(element)));
+        items.push_back(LingoValueParser::parseWithPartial(trim(element), identifierResolver));
     }
     return Datum::list(std::move(items));
 }
@@ -358,7 +363,8 @@ std::optional<Datum> parseRgb(std::string_view expression) {
     return std::nullopt;
 }
 
-std::optional<Datum> tryParseComplete(std::string_view expression) {
+std::optional<Datum> tryParseComplete(std::string_view expression,
+                                      const IdentifierResolver& identifierResolver) {
     const std::string expr = trim(expression);
     if (expr.empty()) {
         return Datum::voidValue();
@@ -391,19 +397,26 @@ std::optional<Datum> tryParseComplete(std::string_view expression) {
         return *parsed;
     }
     if (startsWith(expr, "[") && endsWith(expr, "]")) {
-        return parseListOrPropList(std::string_view(expr).substr(1, expr.size() - 2));
+        return parseListOrPropList(std::string_view(expr).substr(1, expr.size() - 2), identifierResolver);
     }
     if (isIdentifier(expr)) {
         if (equalsIgnoreCase(expr, "TRUE")) return Datum::TRUE;
         if (equalsIgnoreCase(expr, "FALSE")) return Datum::FALSE;
         if (equalsIgnoreCase(expr, "VOID")) return Datum::voidValue();
         if (equalsIgnoreCase(expr, "EMPTY")) return Datum::of(std::string());
+        if (identifierResolver) {
+            const Datum resolved = identifierResolver(expr);
+            if (!resolved.isVoid()) {
+                return resolved;
+            }
+        }
         return Datum::voidValue();
     }
     return std::nullopt;
 }
 
-Datum parseFirstValidExpression(std::string_view expression) {
+Datum parseFirstValidExpression(std::string_view expression,
+                                const IdentifierResolver& identifierResolver) {
     const std::string expr = trim(expression);
     if (expr.empty()) {
         return Datum::voidValue();
@@ -476,7 +489,7 @@ Datum parseFirstValidExpression(std::string_view expression) {
             }
         }
         if (bracketDepth == 0) {
-            return parseListOrPropList(std::string_view(expr).substr(1, pos - 2));
+            return parseListOrPropList(std::string_view(expr).substr(1, pos - 2), identifierResolver);
         }
         return Datum::voidValue();
     }
@@ -492,6 +505,12 @@ Datum parseFirstValidExpression(std::string_view expression) {
         if (equalsIgnoreCase(identifier, "FALSE")) return Datum::FALSE;
         if (equalsIgnoreCase(identifier, "VOID")) return Datum::voidValue();
         if (equalsIgnoreCase(identifier, "EMPTY")) return Datum::of(std::string());
+        if (identifierResolver) {
+            const Datum resolved = identifierResolver(identifier);
+            if (!resolved.isVoid()) {
+                return resolved;
+            }
+        }
     }
     return Datum::voidValue();
 }
@@ -502,16 +521,16 @@ Datum LingoValueParser::parseLiteral(std::string_view expression) {
     return parseWithPartial(expression);
 }
 
-Datum LingoValueParser::parseWithPartial(std::string_view expression) {
+Datum LingoValueParser::parseWithPartial(std::string_view expression, IdentifierResolver identifierResolver) {
     const std::string expr = trim(expression);
     if (expr.empty()) {
         return Datum::voidValue();
     }
-    const auto complete = tryParseComplete(expr);
+    const auto complete = tryParseComplete(expr, identifierResolver);
     if (complete.has_value()) {
         return *complete;
     }
-    return parseFirstValidExpression(expr);
+    return parseFirstValidExpression(expr, identifierResolver);
 }
 
 } // namespace libreshockwave::lingo

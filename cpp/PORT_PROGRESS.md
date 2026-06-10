@@ -418,6 +418,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Type builtins now register `objectp`, `voidp`, `value`, `script`, `ilk`, `listp`, `stringp`, `integerp`, `floatp`, `symbolp`, `symbol`, and `callAncestor`.
 - Java-compatible type predicates, symbol conversion, `ilk` type names including field-text-as-string, and Director alias checks such as `#list`, `#linearList`, `#number`, and `#object` are covered in C++.
 - `value` now evaluates string literals through the C++ `LingoValueParser`, keeps the VM callback hook for provider-owned evaluation, and preserves resolver-confirmed multi-word member names for downstream script construction.
+- `value` now passes VM-backed identifier resolution into nested list/proplist literal parsing so globals and zero-argument handlers embedded inside parsed values match Java's parser fallback.
 - `script` now resolves direct cast-member refs, strings, symbols, raw member numbers, encoded slot numbers, and cast-library scoped lookups through C++ provider hooks before falling back to the generic script resolver.
 - `script` list-candidate lookup now mirrors Java by evaluating each candidate as an unscoped standalone identifier even when the outer call has a cast-library scope argument.
 - `callAncestor` now rejects non-instance `me` arguments and fans out over list targets, invoking the ancestor callback only for script-instance entries and returning the last result like Java.
@@ -891,6 +892,7 @@ Result:
 - Lingo VM console trace controls, targeted handler trace output, random-call trace seed output, trace-enabled handler/instruction/return output, and output redirection passed through the same CTest executable.
 - Lingo VM startup random seed override, invalid seed fallback, and Java-compatible seed-4096 random sequence passed through the same CTest executable.
 - Lingo VM-backed `value(...)` global lookup, partial identifier lookup, and zero-argument movie-handler fallback passed through the same CTest executable.
+- Lingo VM-backed nested `value(...)` list/proplist global identifier resolution passed through the same CTest executable.
 - Lingo VM trace listener handler enter/exit, optional instruction tracing, stack/global snapshots, local/param/global/script-instance-property variable-set callbacks, error callbacks, and trace argument formatting passed through the same CTest executable.
 - Lingo VM deferred script-instance call ordering, automatic outer-handler flush, deferred task explicit flushing, flush-state guards, Player call-target provider wiring, and numeric `closeThread` task deferral passed through the same CTest executable.
 - Lingo VM alertHook manual firing, `alert()` suppression, script-error suppression/rethrow behavior, and Player no-hook fallback passed through the same CTest executable.
@@ -1123,4 +1125,5 @@ Result:
 - `58b08250 Port C++ ancestor assignment guard`
 - `72fc2f3a Port C++ bounded ancestor traversal`
 - `3b15a1e5 Port C++ random seed trace parity`
-- Current checkpoint commit message: `Port C++ VM value identifier fallback`
+- `7c27afaf Port C++ VM value identifier fallback`
+- Current checkpoint commit message: `Port C++ nested value identifier fallback`
