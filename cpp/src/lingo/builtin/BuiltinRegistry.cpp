@@ -439,6 +439,7 @@ bool hasCastProvider(const BuiltinContext& context) {
            context.castLibNumberResolver ||
            context.castLibNameResolver ||
            context.castLibCountSupplier ||
+           context.castMemberCountSupplier ||
            context.castMemberResolver ||
            context.castMemberNameResolver ||
            context.registryCastMemberNameResolver ||

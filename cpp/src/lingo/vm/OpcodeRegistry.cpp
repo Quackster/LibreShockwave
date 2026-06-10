@@ -5181,8 +5181,12 @@ bool getLegacyProperty(ExecutionContext& context) {
 
     if (propertyType == 0x08) {
         if (propertyId == 0x02) {
-            (void)context.pop();
-            context.push(Datum::of(0));
+            const int castLibNum = toIntLikeJava(context.pop());
+            if (builtinContext != nullptr && builtinContext->castMemberCountSupplier) {
+                context.push(Datum::of(builtinContext->castMemberCountSupplier(castLibNum)));
+            } else {
+                context.push(Datum::of(0));
+            }
             return true;
         }
         if (const auto propName = animation2PropNameById(propertyId);

@@ -4749,6 +4749,11 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runLegacyGet(0x00, Datum::voidValue(), 0x00).intValue() == 4);
     assert(runLegacyGet(0x06, Datum::of(5), 0x0D).intValue() == 22);
     assert(runLegacyGet(0x0B, Datum::of(2), 0x01).intValue() == 65);
+    builtinContext.castMemberCountSupplier = [](int castLib) {
+        return castLib == 5 ? 7 : 0;
+    };
+    assert(runLegacyGet(0x08, Datum::of(5), 0x02).intValue() == 7);
+    assert(runLegacyGet(0x08, Datum::of(6), 0x02).intValue() == 0);
     legacySetContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET, libreshockwave::lingo::code(Opcode::SET), 0x00});
     legacySetContext.push(Datum::of(8));
     legacySetContext.push(Datum::of(0x00));
@@ -4770,6 +4775,7 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     builtinContext.movieProperties = nullptr;
     builtinContext.spriteProperties = nullptr;
     builtinContext.soundManager = nullptr;
+    builtinContext.castMemberCountSupplier = {};
 
     Scope fieldScope(&script, handler, {});
     ExecutionContext fieldContext(fieldScope,
@@ -13590,6 +13596,8 @@ void testCastLibManagerFoundation() {
     assert(createdRuntimeRef->memberNum() == 10000);
     assert(manager.memberExists(1, 10000));
     assert(manager.getMemberCount(1) == 3);
+    assert(context.castMemberCountSupplier(1) == 3);
+    assert(context.castMemberCountSupplier(99) == 0);
     assert(manager.getMemberProp(1, 10000, "type").asSymbol()->name == "bitmap");
     assert(manager.getMemberProp(1, 10000, "name").stringValue().empty());
     assert(manager.getMemberProp(1, 10000, "width").intValue() == 0);

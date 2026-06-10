@@ -1177,6 +1177,9 @@ void CastLibManager::installBuiltinCallbacks(lingo::builtin::BuiltinContext& con
     context.castLibCountSupplier = [this]() {
         return getCastLibCount();
     };
+    context.castMemberCountSupplier = [this](int castLib) {
+        return getMemberCount(castLib);
+    };
     context.castMemberResolver = [this](int castLib, int memberNum) {
         return getMember(castLib, memberNum);
     };
