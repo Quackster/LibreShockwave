@@ -213,6 +213,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Type-specific bitmap, shape, film-loop, script, and Shockwave 3D metadata are parsed lazily at wrapper construction.
 - Type checks, dimensions, registration point helpers, raw chunk access, and display string formatting are available in C++.
 
+### Cast Library Manager Foundation
+
+- `player::cast::CastLib` ports lazy cast-library metadata, authored/external file binding state, stable registry binding checks, member chunk maps, script maps, source-prefixed member-name fallback, font-alias/PFR XMED scanning, and Java-compatible cast/member property fallbacks.
+- `player::cast::CastLibManager` ports DirectorFile-backed cast-library initialization from MCsL/CAS* chunks, castLib/member number and name lookup, registry-visible member filtering, external-cast cache keys, pending external load tracking, preload-mode loading, and builtin callback installation.
+- Dynamic runtime member media mutation, imported-media assignment, and full CastLibProvider palette/field integration remain deferred to later player runtime slices.
+
 ### Player Event and Render Configuration Foundation
 
 - `player::PlayerEvent` ports the Java player event enum and handler-name mapping used by script dispatch.
@@ -596,6 +602,7 @@ Result:
 - BitmapFont glyph drawing, overflow metrics, BDF parsing, PFR1 metadata/character-record/simple/compound-outline parsing, PFR-to-TTF table generation/cache registration, and FontRegistry prebuilt-cache/PFR-registration/alias behavior passed through the same CTest executable.
 - SoundConverter WAV layout, SoundChunk header stripping, signed/endianness conversion, MP3 extraction, IMA ADPCM, and duration tests passed through the same CTest executable.
 - CastMember bitmap, script, shape, dimension, type-check, raw chunk, and display string tests passed through the same CTest executable.
+- CastLib and CastLibManager lazy MCsL/CAS* initialization, member count/name lookup, source-prefixed lookup fallback, member metadata properties, registry filtering, builtin callback installation, external-cache keys, and pending external-load bookkeeping passed through the same CTest executable.
 - PlayerEvent handler names, event payload records, RenderType, and RenderConfig tests passed through the same CTest executable.
 - PlayerState, InputEvent factories, DirectorKeyCodes, and InputState mutation/queue tests passed through the same CTest executable.
 - ScoreBehaviorRef, SpriteSpan, ScoreNavigator labels, marker resolution, active sprites/channels, parsed behavior parameters, and frame-count tests passed through the same CTest executable.
@@ -797,4 +804,5 @@ Result:
 - `c879164f Port C++ sound object property dispatch`
 - `938442ce Port C++ behavior parameter value parser`
 - `3410a54f Port C++ value builtin parser`
-- Current checkpoint commit message: `Integrate C++ PFR TTF registry cache`
+- `dc9a7820 Integrate C++ PFR TTF registry cache`
+- Current checkpoint commit message: `Port C++ cast library manager foundation`

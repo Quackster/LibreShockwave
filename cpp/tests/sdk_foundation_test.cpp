@@ -87,6 +87,8 @@
 #include "libreshockwave/player/audio/SoundManager.hpp"
 #include "libreshockwave/player/behavior/BehaviorInstance.hpp"
 #include "libreshockwave/player/behavior/BehaviorManager.hpp"
+#include "libreshockwave/player/cast/CastLib.hpp"
+#include "libreshockwave/player/cast/CastLibManager.hpp"
 #include "libreshockwave/player/cast/FontRegistry.hpp"
 #include "libreshockwave/player/debug/Breakpoint.hpp"
 #include "libreshockwave/player/debug/BreakpointManager.hpp"
@@ -217,6 +219,8 @@ using libreshockwave::player::debug::BreakpointManager;
 using libreshockwave::player::debug::CallFrame;
 using libreshockwave::player::behavior::BehaviorInstance;
 using libreshockwave::player::behavior::BehaviorManager;
+using libreshockwave::player::cast::CastLib;
+using libreshockwave::player::cast::CastLibManager;
 using libreshockwave::player::cast::FontRegistry;
 using libreshockwave::player::debug::DebugSnapshot;
 using libreshockwave::player::debug::InstructionDisplay;
@@ -10620,6 +10624,286 @@ void testDirectorFileRiffLoader() {
     assert(file->getChunk(ChunkId(1))->type() == ChunkType::Lnam);
 }
 
+void testCastLibManagerFoundation() {
+    auto appendFourCC = [](std::vector<std::uint8_t>& data, const std::string& value) {
+        data.insert(data.end(), value.begin(), value.end());
+    };
+    auto appendI16 = [](std::vector<std::uint8_t>& data, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data.push_back(static_cast<std::uint8_t>((raw >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(raw & 0xFF));
+    };
+    auto appendI32 = [](std::vector<std::uint8_t>& data, std::uint32_t value) {
+        data.push_back(static_cast<std::uint8_t>((value >> 24) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 16) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(value & 0xFF));
+    };
+    auto putI16At = [](std::vector<std::uint8_t>& data, int offset, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((raw >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>(raw & 0xFF);
+    };
+    auto putI32At = [](std::vector<std::uint8_t>& data, int offset, std::uint32_t value) {
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((value >> 24) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>((value >> 16) & 0xFF);
+        data[static_cast<std::size_t>(offset + 2)] = static_cast<std::uint8_t>((value >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 3)] = static_cast<std::uint8_t>(value & 0xFF);
+    };
+    auto appendPascal = [](std::vector<std::uint8_t>& data, const std::string& value) {
+        data.push_back(static_cast<std::uint8_t>(value.size()));
+        data.insert(data.end(), value.begin(), value.end());
+    };
+
+    std::vector<std::uint8_t> configData(80, 0);
+    putI16At(configData, 2, 0x04B1);
+    putI16At(configData, 8, 240);
+    putI16At(configData, 10, 320);
+    putI16At(configData, 26, 1);
+    putI16At(configData, 28, 8);
+    putI16At(configData, 36, 0x04B1);
+    putI16At(configData, 54, 24);
+
+    auto appendCastListItem = [&](std::vector<std::uint8_t>& items,
+                                  std::vector<int>& offsets,
+                                  const std::vector<std::uint8_t>& item) {
+        offsets.push_back(static_cast<int>(items.size()));
+        items.insert(items.end(), item.begin(), item.end());
+    };
+    auto pascalItem = [&](const std::string& value) {
+        std::vector<std::uint8_t> item;
+        appendPascal(item, value);
+        return item;
+    };
+    auto preloadItem = [&](int value) {
+        std::vector<std::uint8_t> item;
+        appendI16(item, value);
+        return item;
+    };
+    auto memberRangeItem = [&](int minMember, int maxMember, int castId) {
+        std::vector<std::uint8_t> item;
+        appendI16(item, minMember);
+        appendI16(item, maxMember);
+        appendI32(item, static_cast<std::uint32_t>(castId));
+        return item;
+    };
+
+    std::vector<std::uint8_t> castListItems;
+    std::vector<int> castListOffsets;
+    appendCastListItem(castListItems, castListOffsets, {});
+    appendCastListItem(castListItems, castListOffsets, pascalItem("Internal"));
+    appendCastListItem(castListItems, castListOffsets, {});
+    appendCastListItem(castListItems, castListOffsets, preloadItem(0));
+    appendCastListItem(castListItems, castListOffsets, memberRangeItem(1, 3, 1));
+    appendCastListItem(castListItems, castListOffsets, pascalItem("External"));
+    appendCastListItem(castListItems, castListOffsets, pascalItem("casts/ext.cct"));
+    appendCastListItem(castListItems, castListOffsets, preloadItem(2));
+    appendCastListItem(castListItems, castListOffsets, memberRangeItem(1, 2, 2));
+
+    std::vector<std::uint8_t> castListData;
+    appendI32(castListData, 12);
+    appendI16(castListData, 0);
+    appendI16(castListData, 2);
+    appendI16(castListData, 4);
+    appendI16(castListData, 0);
+    appendI16(castListData, static_cast<int>(castListOffsets.size()));
+    for (int offset : castListOffsets) {
+        appendI32(castListData, static_cast<std::uint32_t>(offset));
+    }
+    appendI32(castListData, static_cast<std::uint32_t>(castListItems.size()));
+    castListData.insert(castListData.end(), castListItems.begin(), castListItems.end());
+
+    std::vector<std::uint8_t> castData;
+    appendI32(castData, 0);
+    appendI32(castData, 3);
+    appendI32(castData, 4);
+
+    auto makeMemberData = [&](MemberType type,
+                              const std::string& name,
+                              int scriptId,
+                              const std::vector<std::uint8_t>& specificData) {
+        std::vector<std::uint8_t> info;
+        appendI32(info, 20);
+        appendI32(info, 0);
+        appendI32(info, 0);
+        appendI32(info, 0);
+        appendI32(info, static_cast<std::uint32_t>(scriptId));
+        appendI16(info, 3);
+        appendI32(info, 0);
+        appendI32(info, 0);
+        appendI32(info, static_cast<std::uint32_t>(name.size() + 1));
+        appendI32(info, static_cast<std::uint32_t>(name.size() + 1));
+        appendPascal(info, name);
+
+        std::vector<std::uint8_t> data;
+        appendI32(data, static_cast<std::uint32_t>(libreshockwave::cast::code(type)));
+        appendI32(data, static_cast<std::uint32_t>(info.size()));
+        appendI32(data, static_cast<std::uint32_t>(specificData.size()));
+        data.insert(data.end(), info.begin(), info.end());
+        data.insert(data.end(), specificData.begin(), specificData.end());
+        return data;
+    };
+
+    std::vector<std::uint8_t> bitmapSpecific;
+    appendI16(bitmapSpecific, 0x8018);
+    appendI16(bitmapSpecific, 2);
+    appendI16(bitmapSpecific, 3);
+    appendI16(bitmapSpecific, 18);
+    appendI16(bitmapSpecific, 19);
+    bitmapSpecific.insert(bitmapSpecific.end(), {0, 0, 0, 0, 0, 0, 0, 0});
+    appendI16(bitmapSpecific, 7);
+    appendI16(bitmapSpecific, 8);
+    bitmapSpecific.push_back(0);
+    bitmapSpecific.push_back(8);
+    appendI16(bitmapSpecific, 0);
+    appendI16(bitmapSpecific, 1);
+
+    const auto heroMemberData = makeMemberData(MemberType::Bitmap, "Hero", 0, bitmapSpecific);
+    const auto sourceDoorMemberData = makeMemberData(MemberType::Script, "s_Door", 1, {0x00, 0x02});
+
+    auto buildRifx = [&](const std::vector<std::pair<std::string, std::vector<std::uint8_t>>>& chunks) {
+        constexpr int mmapOffset = 32;
+        const int mmapPayloadLength = 24 + static_cast<int>(chunks.size()) * 20;
+        int payloadStart = mmapOffset + 8 + mmapPayloadLength;
+
+        std::vector<int> offsets;
+        offsets.reserve(chunks.size());
+        for (const auto& chunk : chunks) {
+            offsets.push_back(payloadStart - 8);
+            payloadStart += static_cast<int>(chunk.second.size());
+        }
+
+        std::vector<std::uint8_t> data;
+        appendFourCC(data, "RIFX");
+        appendI32(data, 0);
+        appendFourCC(data, "MV93");
+        appendFourCC(data, "imap");
+        appendI32(data, 12);
+        appendI32(data, 1);
+        appendI32(data, mmapOffset);
+        appendI32(data, 0x04B1);
+        appendFourCC(data, "mmap");
+        appendI32(data, static_cast<std::uint32_t>(mmapPayloadLength));
+        appendI16(data, 24);
+        appendI16(data, 20);
+        appendI32(data, static_cast<std::uint32_t>(chunks.size()));
+        appendI32(data, static_cast<std::uint32_t>(chunks.size()));
+        appendI32(data, 0);
+        appendI32(data, 0);
+        appendI32(data, 0);
+        for (int index = 0; index < static_cast<int>(chunks.size()); ++index) {
+            appendI32(data, BinaryReader::fourCC(chunks[static_cast<std::size_t>(index)].first));
+            appendI32(data, static_cast<std::uint32_t>(chunks[static_cast<std::size_t>(index)].second.size()));
+            appendI32(data, static_cast<std::uint32_t>(offsets[static_cast<std::size_t>(index)]));
+            appendI16(data, 0);
+            appendI16(data, 0);
+            appendI32(data, 0);
+        }
+        for (const auto& chunk : chunks) {
+            data.insert(data.end(), chunk.second.begin(), chunk.second.end());
+        }
+        putI32At(data, 4, static_cast<std::uint32_t>(data.size() - 8));
+        return data;
+    };
+
+    auto file = DirectorFile::load(buildRifx({
+        {"DRCF", configData},
+        {"MCsL", castListData},
+        {"CAS*", castData},
+        {"CASt", heroMemberData},
+        {"CASt", sourceDoorMemberData},
+    }));
+    assert(file->casts().size() == 1);
+    assert(file->castMembers().size() == 2);
+    assert(file->castList()->entries().size() == 2);
+
+    int requestedCast = 0;
+    std::string requestedFile;
+    CastLibManager manager(file, [&](int castLibNumber, const std::string& fileName) {
+        requestedCast = castLibNumber;
+        requestedFile = fileName;
+    });
+
+    assert(manager.getCastLibCount() == 2);
+    assert(manager.getCastLibByName("internal") == 1);
+    assert(manager.getCastLibByName("external") == 2);
+    assert(manager.getCastLibByNumber(3) == -1);
+    assert(manager.getCastLibName(1) == "Internal");
+    assert(manager.getCastLibFileName(2) == "casts/ext.cct");
+    assert(manager.isCastLibExternal(2));
+    assert(!manager.fetchCastLib(2));
+
+    auto internal = manager.getCastLib(1);
+    assert(internal != nullptr);
+    assert(internal->isLoaded());
+    assert(internal->memberCount() == 3);
+    assert(manager.getMemberCount(1) == 3);
+    assert(!manager.memberExists(1, 1));
+    assert(manager.memberExists(1, 2));
+    assert(manager.isRegistryVisibleMember(1, 2));
+
+    auto heroRef = manager.getMemberByName(0, "hero").asCastMemberRef();
+    assert(heroRef != nullptr);
+    assert(heroRef->castLib == 1);
+    assert(heroRef->memberNum() == 2);
+    auto doorRef = manager.getMemberByName(1, "Door").asCastMemberRef();
+    assert(doorRef != nullptr);
+    assert(doorRef->castLib == 1);
+    assert(doorRef->memberNum() == 3);
+    assert(manager.getRegistryMemberByName(0, "Hero").asCastMemberRef()->memberNum() == 2);
+    assert(manager.getMemberByName(0, "Missing").isVoid());
+
+    auto heroChunk = manager.getCastMember(1, 2);
+    assert(heroChunk != nullptr);
+    assert(heroChunk->name() == "Hero");
+    assert(manager.getCastMemberByName("Door")->name() == "s_Door");
+    auto heroRuntime = manager.resolveMember(1, 2);
+    assert(heroRuntime != nullptr);
+    assert(heroRuntime->name() == "Hero");
+    assert(manager.findCastMemberByName("Hero")->memberNum() == 2);
+    assert(manager.findRuntimeMember(heroChunk)->memberNum() == 2);
+
+    assert(manager.getCastLibProp(1, "number").intValue() == 1);
+    assert(manager.getCastLibProp(1, "number of castMembers").intValue() == 3);
+    assert(manager.getCastLibProp(1, "loaded").boolValue());
+    assert(manager.getMemberProp(1, 2, "name").stringValue() == "Hero");
+    assert(manager.getMemberProp(1, 2, "type").asSymbol()->name == "bitmap");
+    assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->x == 8);
+    assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->y == 7);
+    assert(manager.getMemberProp(1, 99, "type").asSymbol()->name == "empty");
+    assert(!manager.setMemberProp(1, 2, "name", Datum::of("Other")));
+
+    BuiltinContext context;
+    manager.installBuiltinCallbacks(context);
+    BuiltinRegistry registry;
+    assert(registry.invoke("castLib", context, {Datum::of(std::string("Internal"))}).asCastLibRef()->castLib == 1);
+    assert(registry.invoke("member", context, {Datum::of(std::string("Hero"))}).asCastMemberRef()->memberNum() == 2);
+    assert(context.castMemberExistsResolver(1, 2));
+    assert(context.castMemberPropertyGetter(1, 2, "name").stringValue() == "Hero");
+
+    const auto matching = manager.getMatchingCastLibNumbersByUrl("https://cdn.example/ext.cst");
+    assert(matching.size() == 1);
+    assert(matching[0] == 2);
+    auto requestedSlots = manager.getRequestedExternalCastSlots("https://cdn.example/ext.cct");
+    assert(requestedSlots.size() == 1);
+    assert(requestedSlots[0] == 2);
+
+    const std::vector<std::uint8_t> cachedBytes{1, 2, 3};
+    manager.cacheExternalData("https://cdn.example/ext.cct?cache=1", cachedBytes);
+    assert(manager.getCachedExternalData("ext").value() == cachedBytes);
+    assert(manager.getCachedDownloadedData("ext.cst").value() == cachedBytes);
+    assert(manager.fetchCastLib(2));
+
+    assert(manager.setCastLibProp(2, "fileName", Datum::of(std::string("runtime/newCast.cct"))));
+    assert(requestedCast == 2);
+    assert(requestedFile == "runtime/newCast.cct");
+    requestedSlots = manager.getRequestedExternalCastSlots("newCast.cst");
+    assert(requestedSlots.size() == 1);
+    assert(requestedSlots[0] == 2);
+    manager.clearPendingExternalLoad(2);
+    assert(manager.getRequestedExternalCastSlots("newCast.cst").empty());
+}
+
 void testLookupHelpers() {
     auto cast = std::make_shared<CastChunk>(nullptr, ChunkId(80), std::vector<int>{41, 42});
     auto member5 = std::make_shared<CastMemberChunk>(nullptr,
@@ -10844,6 +11128,7 @@ int main() {
     testAfterburnerReader();
     testDirectorFileAfterburnerLoader();
     testDirectorFileRiffLoader();
+    testCastLibManagerFoundation();
     testLookupHelpers();
 
     std::cout << "LibreShockwave C++ SDK foundation tests passed\n";

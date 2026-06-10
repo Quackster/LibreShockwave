@@ -63,6 +63,8 @@ add_library(libreshockwave
     src/player/audio/SoundManager.cpp
     src/player/behavior/BehaviorInstance.cpp
     src/player/behavior/BehaviorManager.cpp
+    src/player/cast/CastLib.cpp
+    src/player/cast/CastLibManager.cpp
     src/player/cast/FontRegistry.cpp
     src/player/input/DirectorKeyCodes.cpp
     src/player/input/HitTester.cpp
