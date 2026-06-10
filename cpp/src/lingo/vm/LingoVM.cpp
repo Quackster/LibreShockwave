@@ -65,6 +65,27 @@ LingoVM::LingoVM(DirectorFile* file)
     builtinContext_.setPrefHandler = [this](const std::string& name, const Datum& value) {
         return setPref(name, value);
     };
+    builtinContext_.scriptInstanceMethodDeferrer = [this](const Datum& instance,
+                                                          const std::string& methodName,
+                                                          const std::vector<Datum>& args) {
+        if (instance.type() != DatumType::ScriptInstanceRef || methodName.empty() ||
+            isFlushingDeferredScriptInstanceCalls() || isFlushingDeferredTasks() || !hasActiveCallStack()) {
+            return false;
+        }
+
+        deferTask([this, instance, methodName, args] {
+            try {
+                if (builtinContext_.callTargetHandler) {
+                    (void)builtinContext_.callTargetHandler(instance, methodName, args);
+                } else {
+                    (void)callHandler(methodName, args, instance);
+                }
+            } catch (...) {
+                // Java's deferred task path suppresses individual script-instance failures.
+            }
+        });
+        return true;
+    };
     registerRuntimeBuiltins();
 }
 

@@ -63,6 +63,9 @@ struct BuiltinContext {
     using CallTargetHandler = std::function<Datum(const Datum& target,
                                                   const std::string& handlerName,
                                                   const std::vector<Datum>& args)>;
+    using ScriptInstanceMethodDeferrer = std::function<bool(const Datum& instance,
+                                                            const std::string& methodName,
+                                                            const std::vector<Datum>& args)>;
     using NewInstanceHandler = std::function<Datum(const Datum& target, const std::vector<Datum>& args)>;
     using ValueEvaluator = std::function<Datum(const Datum& value)>;
     using ScriptResolver = std::function<Datum(const Datum& identifier, const std::optional<Datum>& scope)>;
@@ -111,6 +114,7 @@ struct BuiltinContext {
     XtraPropertyGetter xtraPropertyGetter;
     XtraPropertySetter xtraPropertySetter;
     CallTargetHandler callTargetHandler;
+    ScriptInstanceMethodDeferrer scriptInstanceMethodDeferrer;
     NewInstanceHandler newInstanceHandler;
     ValueEvaluator valueEvaluator;
     ScriptResolver scriptResolver;

@@ -3233,6 +3233,9 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 124) {
             return std::string("period");
         }
+        if (nameId == 125) {
+            return std::string("closeThread");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.callStackFormatter = []() {
@@ -4460,6 +4463,32 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runObjCall(120, {registryInstance, Datum::of(std::string("missing"))}).isVoid());
     assert(runObjCall(121, {registryInstance, Datum::of(std::string("memberalias.index")), Datum::of(11)}).intValue() == 0);
     assert(runObjCall(61, {scriptInstance, Datum::of(123)}).stringValue() == "receiver-exec:99:1");
+    int closeThreadDeferrals = 0;
+    builtinContext.scriptInstanceMethodDeferrer = [&closeThreadDeferrals](
+                                                      const Datum& target,
+                                                      const std::string& methodName,
+                                                      const std::vector<Datum>& args) {
+        ++closeThreadDeferrals;
+        assert(target.type() == DatumType::ScriptInstanceRef);
+        assert(methodName == "closeThread");
+        assert(args.size() == 1);
+        assert(args.front().intValue() == 17);
+        return true;
+    };
+    assert(runObjCall(125, {scriptInstance, Datum::of(17)}).boolValue());
+    assert(closeThreadDeferrals == 1);
+    assert(runObjCall(125, {scriptInstance, Datum::of(std::string("17"))}).isVoid());
+    assert(closeThreadDeferrals == 1);
+    builtinContext.scriptInstanceMethodDeferrer = [&closeThreadDeferrals](
+                                                      const Datum&,
+                                                      const std::string&,
+                                                      const std::vector<Datum>&) {
+        ++closeThreadDeferrals;
+        return false;
+    };
+    assert(runObjCall(125, {scriptInstance, Datum::of(18)}).isVoid());
+    assert(closeThreadDeferrals == 2);
+    builtinContext.scriptInstanceMethodDeferrer = {};
 
     auto imageMethodBitmap = std::make_shared<Bitmap>(2, 2, 32);
     imageMethodBitmap->fill(0xFFFFFFFFU);
@@ -5468,6 +5497,36 @@ void testLingoVmRuntimeFoundation() {
     assert(deferredTaskCalls == 2);
     vm.flushDeferredTasks();
     assert(deferredTaskCalls == 3);
+
+    assert(!vm.builtinContext().scriptInstanceMethodDeferrer(
+        queuedInstance,
+        "closeThread",
+        {Datum::of(76)}));
+    std::vector<std::string> deferredMethodTasks;
+    vm.builtinContext().callTargetHandler = [&vm, &deferredMethodTasks](
+                                                const Datum& target,
+                                                const std::string& handlerName,
+                                                const std::vector<Datum>& args) {
+        assert(vm.isFlushingDeferredTasks());
+        assert(target.type() == DatumType::ScriptInstanceRef);
+        deferredMethodTasks.push_back(target.scriptInstanceValue().scriptName() + ":" +
+                                      handlerName + ":" +
+                                      std::to_string(args.front().intValue()));
+        return Datum::voidValue();
+    };
+    vm.opcodeRegistry().registerHandler(Opcode::PUSH_ZERO, [&vm, &queuedInstance](ExecutionContext& context) {
+        assert(vm.builtinContext().scriptInstanceMethodDeferrer(
+            queuedInstance,
+            "closeThread",
+            {Datum::of(77)}));
+        context.push(Datum::of(90));
+        return true;
+    });
+    assert(vm.executeHandler(script, stackHandler).intValue() == 90);
+    assert(deferredMethodTasks.empty());
+    vm.flushDeferredTasks();
+    assert((deferredMethodTasks == std::vector<std::string>{"queued:closeThread:77"}));
+    vm.builtinContext().callTargetHandler = {};
 
     vm.setStepLimit(1);
     bool threw = false;

@@ -2000,11 +2000,27 @@ std::optional<Datum> scriptInstanceMemberRegistryMethod(Datum::ScriptInstanceRef
     return Datum::voidValue();
 }
 
+bool shouldDeferNumericCloseThread(ExecutionContext& context,
+                                   const Datum& receiver,
+                                   std::string_view methodName,
+                                   const std::vector<Datum>& args) {
+    if (!equalsIgnoreCase(methodName, "closeThread") || args.size() != 1 ||
+        (!args.front().isInt() && !args.front().isFloat())) {
+        return false;
+    }
+    auto* builtinContext = context.builtinContext();
+    return builtinContext != nullptr && builtinContext->scriptInstanceMethodDeferrer &&
+           builtinContext->scriptInstanceMethodDeferrer(receiver, std::string(methodName), args);
+}
+
 Datum scriptInstanceObjectMethod(ExecutionContext& context,
                                  Datum& receiver,
                                  std::string_view methodName,
                                  const std::vector<Datum>& args) {
     auto& instance = receiver.scriptInstanceValue();
+    if (shouldDeferNumericCloseThread(context, receiver, methodName, args)) {
+        return Datum::TRUE;
+    }
     if (equalsIgnoreCase(methodName, "setAt") || equalsIgnoreCase(methodName, "setAProp")) {
         if (args.size() >= 2) {
             instance.setProperty(keyNameLikeJava(args[0]), args[1]);
