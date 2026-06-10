@@ -6,6 +6,7 @@
 
 #include "libreshockwave/DirectorFile.hpp"
 #include "libreshockwave/lingo/vm/LingoVM.hpp"
+#include "libreshockwave/lingo/xtra/XtraManager.hpp"
 #include "libreshockwave/player/BitmapResolver.hpp"
 #include "libreshockwave/player/CursorManager.hpp"
 #include "libreshockwave/player/InputHandler.hpp"
@@ -55,6 +56,7 @@ public:
     [[nodiscard]] event::EventDispatcher& eventDispatcher();
     [[nodiscard]] render::pipeline::StageRenderer& stageRenderer();
     [[nodiscard]] net::NetManager& netManager();
+    [[nodiscard]] lingo::xtra::XtraManager& xtraManager();
     [[nodiscard]] MovieProperties& movieProperties();
     [[nodiscard]] SpriteProperties& spriteProperties();
     [[nodiscard]] cast::CastLibManager& castLibManager();
@@ -102,6 +104,7 @@ private:
     frame::FrameContext frameContext_;
     render::pipeline::StageRenderer stageRenderer_;
     net::NetManager netManager_;
+    lingo::xtra::XtraManager xtraManager_;
     MovieProperties movieProperties_;
     SpriteProperties spriteProperties_;
     cast::CastLibManager castLibManager_;

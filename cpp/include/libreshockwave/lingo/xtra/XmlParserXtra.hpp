@@ -6,20 +6,21 @@
 #include <vector>
 
 #include "libreshockwave/lingo/Datum.hpp"
+#include "libreshockwave/lingo/xtra/XtraManager.hpp"
 
 namespace libreshockwave::lingo::xtra {
 
-class XmlParserXtra {
+class XmlParserXtra : public Xtra {
 public:
-    [[nodiscard]] std::string name() const;
-    [[nodiscard]] int createInstance(const std::vector<Datum>& args = {});
-    void destroyInstance(int instanceId);
+    [[nodiscard]] std::string name() const override;
+    [[nodiscard]] int createInstance(const std::vector<Datum>& args = {}) override;
+    void destroyInstance(int instanceId) override;
 
     [[nodiscard]] Datum callHandler(int instanceId,
                                     std::string_view handlerName,
-                                    const std::vector<Datum>& args = {});
-    [[nodiscard]] Datum getProperty(int instanceId, std::string_view propertyName) const;
-    void setProperty(int instanceId, std::string_view propertyName, const Datum& value);
+                                    const std::vector<Datum>& args = {}) override;
+    [[nodiscard]] Datum getProperty(int instanceId, std::string_view propertyName) const override;
+    void setProperty(int instanceId, std::string_view propertyName, const Datum& value) override;
 
 private:
     struct InstanceState {

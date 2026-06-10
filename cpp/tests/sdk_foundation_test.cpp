@@ -210,6 +210,8 @@ using libreshockwave::lingo::vm::OpcodeRegistry;
 using libreshockwave::lingo::vm::Scope;
 using libreshockwave::lingo::vm::TraceListener;
 using libreshockwave::lingo::xtra::XmlParserXtra;
+using libreshockwave::lingo::xtra::Xtra;
+using libreshockwave::lingo::xtra::XtraManager;
 using libreshockwave::lookup::CastMemberLookup;
 using libreshockwave::lookup::PaletteResolver;
 using libreshockwave::lookup::ScriptLookup;
@@ -1455,6 +1457,41 @@ void testPlayerFacadeFoundation() {
     assert(player.builtinContext().timeoutManager == &player.timeoutManager());
     assert(player.builtinContext().alertHookHandler);
     assert(!player.builtinContext().alertHookHandler("Alert", "no hook"));
+    assert(player.xtraManager().isXtraRegistered("xmlparser"));
+    assert(player.builtinContext().xtraRegisteredResolver);
+    assert(player.builtinContext().xtraInstanceCreator);
+    assert(player.builtinContext().xtraHandler);
+    assert(player.builtinContext().xtraPropertyGetter);
+    assert(player.movieProperties().getMovieProp("number of xtras").intValue() == 1);
+    auto playerXtraList = player.movieProperties().getMovieProp("xtraList");
+    assert(playerXtraList.isList());
+    assert(playerXtraList.listValue().count() == 1);
+    assert(playerXtraList.listValue().getAt(1).propListValue().get(Datum::of(std::string("name"))).stringValue() ==
+           "xmlparser");
+    const auto playerXmlXtra = player.builtinRegistry().invoke("xtra",
+                                                               player.builtinContext(),
+                                                               {Datum::of(std::string("xmlparser"))});
+    assert(playerXmlXtra.asXtra() != nullptr);
+    const auto playerXmlInstanceDatum =
+        player.builtinRegistry().invoke("new", player.builtinContext(), {playerXmlXtra});
+    const auto* playerXmlInstance = playerXmlInstanceDatum.asXtraInstance();
+    assert(playerXmlInstance != nullptr);
+    assert(playerXmlInstance->xtraName == "xmlparser");
+    assert(libreshockwave::lingo::builtin::XtraBuiltins::callHandler(
+               player.builtinContext(),
+               *playerXmlInstance,
+               "parseString",
+               {Datum::of(std::string("<root><child>ok</child></root>"))}).boolValue());
+    assert(libreshockwave::lingo::builtin::XtraBuiltins::getProperty(
+               player.builtinContext(),
+               *playerXmlInstance,
+               "name").stringValue() == "#document");
+    const auto playerXmlRoot = libreshockwave::lingo::builtin::XtraBuiltins::callHandler(
+        player.builtinContext(),
+        *playerXmlInstance,
+        "getPropRef",
+        {Datum::symbol("child"), Datum::of(1)});
+    assert(playerXmlRoot.propListValue().get(Datum::symbol("name")).stringValue() == "root");
     assert(player.builtinContext().spriteMethodHandler);
     assert(player.builtinContext()
                .spriteMethodHandler(12,
@@ -3423,6 +3460,58 @@ void testXmlParserXtraFoundation() {
     xtra.destroyInstance(id);
     assert(xtra.callHandler(id, "count").isVoid());
     assert(xtra.getProperty(id, "child").isVoid());
+
+    XtraManager manager;
+    manager.registerXtra(std::make_unique<XmlParserXtra>());
+    assert(manager.registeredXtraCount() == 1);
+    assert(manager.isXtraRegistered("xmlparser"));
+    assert(manager.registeredXtraNames().size() == 1);
+    assert(manager.registeredXtraNames()[0] == "xmlparser");
+    assert(XtraManager::toLookupName("Multiusr") == "multiuser");
+    assert(XtraManager::toDirectorXtraListName("Multiuser") == "Multiusr");
+    const auto instanceDatum = manager.createInstance("xmlparser", {});
+    const auto* instance = instanceDatum.asXtraInstance();
+    assert(instance != nullptr);
+    assert(instance->xtraName == "xmlparser");
+    assert(manager.callHandler(*instance, "parseString", {Datum::of(std::string("<root id=\"1\"/>"))}).boolValue());
+    assert(manager.getProperty(*instance, "name").stringValue() == "#document");
+    manager.setProperty(*instance, "name", Datum::of(std::string("ignored")));
+    assert(manager.getProperty(*instance, "name").stringValue() == "#document");
+    manager.destroyInstance(*instance);
+    assert(manager.callHandler(*instance, "count", {}).isVoid());
+
+    class CountingXtra final : public Xtra {
+    public:
+        explicit CountingXtra(int* ticks) : ticks_(ticks) {}
+        [[nodiscard]] std::string name() const override { return "Multiuser"; }
+        [[nodiscard]] int createInstance(const std::vector<Datum>&) override { return 99; }
+        void destroyInstance(int) override {}
+        [[nodiscard]] Datum callHandler(int, std::string_view, const std::vector<Datum>&) override {
+            return Datum::of(std::string("tick-xtra"));
+        }
+        [[nodiscard]] Datum getProperty(int, std::string_view) const override {
+            return Datum::of(std::string("tick-prop"));
+        }
+        void setProperty(int, std::string_view, const Datum&) override {}
+        void tick() override { ++(*ticks_); }
+
+    private:
+        int* ticks_;
+    };
+
+    int ticks = 0;
+    XtraManager tickingManager;
+    tickingManager.registerXtra(std::make_unique<CountingXtra>(&ticks));
+    assert(tickingManager.isXtraRegistered("Multiusr"));
+    assert(tickingManager.registeredXtraNames()[0] == "Multiusr");
+    const auto multiusrInstanceDatum = tickingManager.createInstance("Multiusr", {});
+    const auto* multiusrInstance = multiusrInstanceDatum.asXtraInstance();
+    assert(multiusrInstance != nullptr);
+    assert(multiusrInstance->xtraName == "Multiusr");
+    assert(tickingManager.callHandler(*multiusrInstance, "anything", {}).stringValue() == "tick-xtra");
+    assert(tickingManager.getProperty(*multiusrInstance, "state").stringValue() == "tick-prop");
+    tickingManager.tickAll();
+    assert(ticks == 1);
 }
 
 void testLingoVmScopeAndExecutionContextFoundation() {

@@ -1,6 +1,7 @@
 #include "libreshockwave/player/Player.hpp"
 
 #include <algorithm>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -9,6 +10,7 @@
 #include "libreshockwave/cast/CastMember.hpp"
 #include "libreshockwave/chunks/CastMemberChunk.hpp"
 #include "libreshockwave/lingo/Datum.hpp"
+#include "libreshockwave/lingo/xtra/XmlParserXtra.hpp"
 #include "libreshockwave/player/PlayerEvent.hpp"
 #include "libreshockwave/player/event/EventDispatcher.hpp"
 #include "libreshockwave/player/score/ScoreNavigator.hpp"
@@ -53,6 +55,7 @@ Player::Player(std::shared_ptr<DirectorFile> file)
       frameContext_(file_.get()),
       stageRenderer_(file_.get()),
       netManager_(),
+      xtraManager_(),
       movieProperties_(file_.get()),
       spriteProperties_(&stageRenderer_.spriteRegistry()),
       castLibManager_(file_),
@@ -67,6 +70,7 @@ Player::Player(std::shared_ptr<DirectorFile> file)
       inputHandler_(&inputState_, &stageRenderer_, &frameContext_.eventDispatcher(), &castLibManager_),
       vm_(file_.get()),
       tempo_(configuredTempo(file_)) {
+    xtraManager_.registerXtra(std::make_unique<lingo::xtra::XmlParserXtra>());
     wireComponents();
 }
 
@@ -77,6 +81,7 @@ behavior::BehaviorManager& Player::behaviorManager() { return frameContext_.beha
 event::EventDispatcher& Player::eventDispatcher() { return frameContext_.eventDispatcher(); }
 render::pipeline::StageRenderer& Player::stageRenderer() { return stageRenderer_; }
 net::NetManager& Player::netManager() { return netManager_; }
+lingo::xtra::XtraManager& Player::xtraManager() { return xtraManager_; }
 MovieProperties& Player::movieProperties() { return movieProperties_; }
 SpriteProperties& Player::spriteProperties() { return spriteProperties_; }
 cast::CastLibManager& Player::castLibManager() { return castLibManager_; }
@@ -192,6 +197,7 @@ void Player::stepFrame() {
     if (timeoutProcessor_) {
         timeoutProcessor_();
     }
+    xtraManager_.tickAll();
     vm_.flushDeferredTasks();
     (void)frameContext_.advanceFrame();
 }
@@ -207,6 +213,7 @@ bool Player::tick() {
     if (timeoutProcessor_) {
         timeoutProcessor_();
     }
+    xtraManager_.tickAll();
     vm_.flushDeferredTasks();
     (void)frameContext_.advanceFrame();
     return true;
@@ -375,6 +382,9 @@ void Player::wireComponents() {
     cursorManager_.setGlobalCursorSupplier([this] {
         return movieProperties_.getMovieProp("cursor");
     });
+    movieProperties_.setXtraNamesSupplier([this] {
+        return xtraManager_.registeredXtraNames();
+    });
 
     inputHandler_.setCurrentFrameSupplier([this] {
         return currentFrame();
@@ -391,6 +401,26 @@ void Player::wireComponents() {
     context.timeoutManager = &timeoutManager_;
     context.debugPlaybackEnabled = debugEnabled_;
     castLibManager_.installBuiltinCallbacks(context);
+    context.xtraRegisteredResolver = [this](const std::string& name) {
+        return xtraManager_.isXtraRegistered(name);
+    };
+    context.xtraInstanceCreator = [this](const std::string& name, const std::vector<lingo::Datum>& args) {
+        return xtraManager_.createInstance(name, args);
+    };
+    context.xtraHandler = [this](const lingo::Datum::XtraInstance& instance,
+                                 const std::string& handlerName,
+                                 const std::vector<lingo::Datum>& args) {
+        return xtraManager_.callHandler(instance, handlerName, args);
+    };
+    context.xtraPropertyGetter = [this](const lingo::Datum::XtraInstance& instance,
+                                        const std::string& propertyName) {
+        return xtraManager_.getProperty(instance, propertyName);
+    };
+    context.xtraPropertySetter = [this](const lingo::Datum::XtraInstance& instance,
+                                        const std::string& propertyName,
+                                        const lingo::Datum& value) {
+        xtraManager_.setProperty(instance, propertyName, value);
+    };
     context.spriteMethodHandler = [this](int channel,
                                          const std::string& methodName,
                                          const std::vector<lingo::Datum>& args) {

@@ -265,9 +265,9 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 ### Player Facade Foundation
 
-- `player::Player` now owns and wires the C++ frame context, stage renderer, cast library manager, movie/sprite properties, bitmap resolver, cursor manager, input handler, network manager, timeout manager, sound manager, sprite baker, bitmap cache, and frame render pipeline.
+- `player::Player` now owns and wires the C++ frame context, stage renderer, cast library manager, movie/sprite properties, bitmap resolver, cursor manager, input handler, network manager, timeout manager, sound manager, Xtra manager, sprite baker, bitmap cache, and frame render pipeline.
 - Playback control ports the Java state transitions for play, pause, resume, stop, manual step, tick, direct frame/label navigation, event-listener forwarding, base/puppet/score tempo lookup, debug flag propagation, and render snapshot creation with player-state debug metadata.
-- Full VM provider setup, Xtra ticking, asynchronous playback, non-bitmap imported-media mutation, and external-cast fetch completion remain deferred to later player runtime slices.
+- Full VM provider setup, asynchronous playback, non-bitmap imported-media mutation, and external-cast fetch completion remain deferred to later player runtime slices.
 
 ### Player Builtin Context Foundation
 
@@ -399,8 +399,9 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - Xtra builtins now register Java-compatible `xtra(name)` and expose C++ Xtra/XtraInstance datum factories/accessors.
 - `new(xtraRef, ...)` now delegates through an Xtra instance-creation callback before falling back to generic object construction.
-- Xtra instance handler calls and property get/set behavior are exposed through VM-owned callbacks until the C++ Xtra manager is ported.
+- Xtra instance handler calls and property get/set behavior are exposed through VM-owned callbacks and can now be backed by the C++ Xtra manager.
 - `lingo::xtra::XmlParserXtra` now ports the Java XML Parser Xtra's lightweight `parseString`, `getError`, `count`, `getProp`/`getPropRef`/`getAProp`/`getProperty`, direct property read, empty-document fallback, entity decoding, and instance lifecycle behavior.
+- `lingo::xtra::XtraManager` now ports registered-Xtra lookup, Director-facing `xtraList` names including the `Multiuser`/`Multiusr` alias, instance creation, handler/property dispatch, destroy, and tick fanout; `Player` registers `XmlParserXtra`, wires Xtra builtins through the manager, exposes registered Xtras through `MovieProperties`, and ticks registered Xtras during frame processing.
 
 ### Control Flow Builtins Foundation
 
@@ -867,7 +868,7 @@ Result:
 - StringBuiltins string coercion, length, chars, charToNum, numToChar, offset, and getPref/setPref callback hooks passed through the same CTest executable.
 - OutputBuiltins debug-gated `put`, Java-style argument joining, default alert output, and alert-hook suppression passed through the same CTest executable.
 - CastLibBuiltins castLib/member/field/createMember registration, missing-provider fallback, cast/member provider callbacks, encoded member numbers, search-all lookup, and omitted helper builtins passed through the same CTest executable.
-- XtraBuiltins registration, missing-manager behavior, registered-Xtra lookup, `new(xtraRef, ...)` instance creation, handler dispatch, property get/set callbacks, Java-style display strings, and XML Parser Xtra parse/error/property/count lifecycle behavior passed through the same CTest executable.
+- XtraBuiltins registration, missing-manager behavior, registered-Xtra lookup, `new(xtraRef, ...)` instance creation, handler dispatch, property get/set callbacks, Java-style display strings, XML Parser Xtra parse/error/property/count lifecycle behavior, XtraManager lookup/list/alias/lifecycle/tick dispatch, and Player-owned XML Xtra builtin wiring passed through the same CTest executable.
 - ControlFlowBuiltins return/abort state, param lookup, frame/label `go`, call-target dispatch, list/proplist call snapshots, and omitted update builtins passed through the same CTest executable.
 - ListBuiltins list/proplist counts, access, mutation, searches, sorting, constructors, key namespace behavior, and aliases passed through the same CTest executable.
 - TimeoutBuiltins `timeout` creation, factory-mode `.new`, named `.new`, `.forget`, property get/set helpers, VM object-property get/set dispatch, and missing-provider behavior passed through the same CTest executable.
