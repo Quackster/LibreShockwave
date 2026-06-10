@@ -7903,6 +7903,12 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     auto nativeMatteSource = std::make_shared<Bitmap>(
         3, 1, 32, std::vector<std::uint32_t>{0x7FFFFFFFU, 0x80FFFFFFU, 0xFFFFFFFFU});
     nativeMatteSource->setNativeAlpha(true);
+    const auto directNativeMatte = libreshockwave::bitmap::Drawing::createMatte(*nativeMatteSource, 0x80);
+    assert(directNativeMatte != nullptr);
+    assert(directNativeMatte->isNativeAlpha());
+    assert(directNativeMatte->getPixel(0, 0) == 0x00FFFFFFU);
+    assert(directNativeMatte->getPixel(1, 0) == 0x80FFFFFFU);
+    assert(directNativeMatte->getPixel(2, 0) == 0xFFFFFFFFU);
     const Datum nativeMatteDatum = runObjCall(108, {Datum::imageRef(nativeMatteSource), Datum::of(0x80)});
     const auto* nativeMatte = nativeMatteDatum.asImageRef();
     assert(nativeMatte != nullptr);
@@ -7916,6 +7922,12 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         0xFFFFFFFFU, 0xFF224466U, 0xFFFFFFFFU,
         0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU
     });
+    const auto directFloodMatte = libreshockwave::bitmap::Drawing::createMatte(*floodMatteSource);
+    assert(directFloodMatte != nullptr);
+    assert(directFloodMatte->isNativeAlpha());
+    assert(directFloodMatte->getPixel(0, 0) == 0x00FFFFFFU);
+    assert(directFloodMatte->getPixel(1, 1) == 0xFFFFFFFFU);
+    assert(directFloodMatte->getPixel(2, 2) == 0x00FFFFFFU);
     const Datum floodMatteDatum = runObjCall(108, {Datum::imageRef(floodMatteSource)});
     const auto* floodMatte = floodMatteDatum.asImageRef();
     assert(floodMatte != nullptr);
@@ -7942,6 +7954,13 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         0xFFFFFFFFU, 0xFF000000U, 0xFFFFFFFFU,
         0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU
     });
+    const auto directMask = libreshockwave::bitmap::Drawing::createMask(*maskSource);
+    assert(directMask != nullptr);
+    assert(!directMask->isNativeAlpha());
+    assert(directMask->bitDepth() == 8);
+    assert(directMask->getPixel(0, 1) == 0xFFFFFFFFU);
+    assert(directMask->getPixel(1, 1) == 0xFF000000U);
+    assert(directMask->getPixel(2, 1) == 0xFFFFFFFFU);
     const Datum maskDatum = runObjCall(109, {Datum::imageRef(maskSource)});
     const auto* mask = maskDatum.asImageRef();
     assert(mask != nullptr);

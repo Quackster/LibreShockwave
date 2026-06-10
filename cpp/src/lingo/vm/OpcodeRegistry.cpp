@@ -2637,54 +2637,6 @@ std::vector<bool> imageComputeFloodFillTransparency(
     return transparent;
 }
 
-std::shared_ptr<bitmap::Bitmap> imageCreateAlphaMatte(const bitmap::Bitmap& src, int alphaThreshold) {
-    const int width = src.width();
-    const int height = src.height();
-    const int threshold = std::clamp(alphaThreshold, 0, 255);
-    std::vector<std::uint32_t> mask(static_cast<std::size_t>(width * height), 0x00FFFFFFU);
-    for (int y = 0; y < height; ++y) {
-        for (int x = 0; x < width; ++x) {
-            int alpha = static_cast<int>((src.getPixel(x, y) >> 24) & 0xFFU);
-            if (alpha < threshold) {
-                alpha = 0;
-            }
-            mask[static_cast<std::size_t>(y * width + x)] =
-                (static_cast<std::uint32_t>(alpha) << 24) | 0x00FFFFFFU;
-        }
-    }
-    auto matte = std::make_shared<bitmap::Bitmap>(width, height, 32, std::move(mask));
-    matte->setNativeAlpha(true);
-    return matte;
-}
-
-std::shared_ptr<bitmap::Bitmap> imageCreateFloodFillMatte(const bitmap::Bitmap& src) {
-    const int width = src.width();
-    const int height = src.height();
-    const auto pixels = src.pixels();
-    const auto paletteIndices = src.paletteIndices();
-    const auto matte = imageResolveFloodFillMatte(pixels, paletteIndices, width, height);
-    const auto transparent = matte
-        ? imageComputeFloodFillTransparency(pixels, paletteIndices, width, height, *matte)
-        : std::vector<bool>(static_cast<std::size_t>(width * height), false);
-
-    std::vector<std::uint32_t> mask(static_cast<std::size_t>(width * height), 0x00FFFFFFU);
-    for (std::size_t index = 0; index < pixels.size(); ++index) {
-        if (transparent[index]) {
-            mask[index] = 0x00FFFFFFU;
-        } else {
-            auto alpha = static_cast<std::uint32_t>((pixels[index] >> 24) & 0xFFU);
-            if (alpha == 0) {
-                alpha = 0xFFU;
-            }
-            mask[index] = (alpha << 24) | 0x00FFFFFFU;
-        }
-    }
-
-    auto matteBitmap = std::make_shared<bitmap::Bitmap>(width, height, 32, std::move(mask));
-    matteBitmap->setNativeAlpha(true);
-    return matteBitmap;
-}
-
 std::shared_ptr<bitmap::Bitmap> imageApplyMatteToSource(const bitmap::Bitmap& src) {
     auto result = std::make_shared<bitmap::Bitmap>(src.copy());
     if (src.width() <= 0 || src.height() <= 0) {
@@ -2841,68 +2793,6 @@ bool imageCopyMatteToMaskImage(bitmap::Bitmap& dest,
         }
     }
     return true;
-}
-
-std::shared_ptr<bitmap::Bitmap> imageCreateDirectMask(const bitmap::Bitmap& src,
-                                                      const ImageFloodFillMatte& matte,
-                                                      int alphaThreshold) {
-    const int width = src.width();
-    const int height = src.height();
-    const int threshold = std::clamp(alphaThreshold, 0, 255);
-    const auto pixels = src.pixels();
-    const int matteLuma = imageMaskAlphaFromPixel(0xFF000000U | static_cast<std::uint32_t>(matte.colorRgb & 0x00FFFFFF));
-    const bool lightMatte = matteLuma >= 128;
-
-    std::vector<std::uint32_t> mask(static_cast<std::size_t>(width * height), 0xFFFFFFFFU);
-    for (std::size_t index = 0; index < pixels.size(); ++index) {
-        const auto pixel = pixels[index];
-        if (((pixel >> 24) & 0xFFU) == 0) {
-            mask[index] = 0xFFFFFFFFU;
-            continue;
-        }
-        int maskLuma = imageMaskAlphaFromPixel(pixel);
-        if (!lightMatte) {
-            maskLuma = 255 - maskLuma;
-        }
-        const int opacity = 255 - maskLuma;
-        if (opacity < threshold) {
-            maskLuma = 255;
-        }
-        const auto luma = static_cast<std::uint32_t>(maskLuma & 0xFF);
-        mask[index] = 0xFF000000U | (luma << 16) | (luma << 8) | luma;
-    }
-    return std::make_shared<bitmap::Bitmap>(width, height, src.bitDepth(), std::move(mask));
-}
-
-std::shared_ptr<bitmap::Bitmap> imageCreateMatte(const bitmap::Bitmap& src, int alphaThreshold) {
-    if (src.width() <= 0 || src.height() <= 0) {
-        return std::make_shared<bitmap::Bitmap>(1, 1, 32);
-    }
-    if (src.hasNativeMatteAlpha()) {
-        return imageCreateAlphaMatte(src, alphaThreshold);
-    }
-    return imageCreateFloodFillMatte(src);
-}
-
-std::shared_ptr<bitmap::Bitmap> imageCreateMask(const bitmap::Bitmap& src, int alphaThreshold) {
-    if (src.width() <= 0 || src.height() <= 0) {
-        return std::make_shared<bitmap::Bitmap>(1, 1, 32);
-    }
-    if (src.hasNativeMatteAlpha()) {
-        return imageCreateAlphaMatte(src, alphaThreshold);
-    }
-
-    const auto pixels = src.pixels();
-    const auto paletteIndices = src.paletteIndices();
-    const auto matte = imageResolveFloodFillMatte(pixels, paletteIndices, src.width(), src.height());
-    if (matte.has_value()) {
-        const auto transparent =
-            imageComputeFloodFillTransparency(pixels, paletteIndices, src.width(), src.height(), *matte);
-        if (imageIsMaskSource(pixels, transparent, *matte)) {
-            return imageCreateDirectMask(src, *matte, alphaThreshold);
-        }
-    }
-    return imageCreateFloodFillMatte(src);
 }
 
 std::shared_ptr<bitmap::Bitmap> imageApplyBackgroundTransparentToRegion(const bitmap::Bitmap& src, int backgroundKeyRgb) {
@@ -4013,11 +3903,11 @@ Datum imageObjectMethod(const Datum::ImageRef& image, std::string_view methodNam
     }
     if (equalsIgnoreCase(methodName, "createMatte")) {
         const int alphaThreshold = !args.empty() && !args[0].isVoid() ? toIntLikeJava(args[0]) : 0;
-        return Datum::imageRef(imageCreateMatte(bmp, alphaThreshold));
+        return Datum::imageRef(bitmap::Drawing::createMatte(bmp, alphaThreshold));
     }
     if (equalsIgnoreCase(methodName, "createMask")) {
         const int alphaThreshold = !args.empty() && !args[0].isVoid() ? toIntLikeJava(args[0]) : 0;
-        return Datum::imageRef(imageCreateMask(bmp, alphaThreshold));
+        return Datum::imageRef(bitmap::Drawing::createMask(bmp, alphaThreshold));
     }
     if (equalsIgnoreCase(methodName, "copyPixels")) {
         notifyImageMutation(bmp);
