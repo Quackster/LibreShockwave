@@ -287,6 +287,7 @@ void LingoDecompiler::initFileInfo(const chunks::ScriptChunk& script) {
 std::unique_ptr<HandlerNode> LingoDecompiler::translateHandler(const chunks::ScriptChunk::Handler& handler) {
     currentHandler_ = &handler;
     stack_.clear();
+    currentBlock_ = nullptr;
 
     std::vector<std::string> argumentNames;
     argumentNames.reserve(handler.argNameIds.size());
@@ -295,9 +296,24 @@ std::unique_ptr<HandlerNode> LingoDecompiler::translateHandler(const chunks::Scr
     }
 
     auto root = std::make_unique<HandlerNode>(resolveName(handler.nameId), std::move(argumentNames), std::vector<std::string>{});
+    currentBlock_ = &root->block();
     for (std::size_t index = 0; index < handler.instructions.size(); ++index) {
-        translateInstruction(handler.instructions[index], index, root->block());
+        const auto& instruction = handler.instructions[index];
+        while (currentBlock_ != nullptr && instruction.offset == currentBlock_->endPos) {
+            auto* exitedBlock = currentBlock_;
+            auto* ancestorStatement = currentBlock_->ancestorStatement();
+            exitBlock();
+            if (auto* ifStmt = dynamic_cast<IfStmtNode*>(ancestorStatement);
+                ifStmt != nullptr && ifStmt->hasElse() && exitedBlock == &ifStmt->trueBlock()) {
+                enterBlock(ifStmt->falseBlock());
+            }
+        }
+        if (currentBlock_ == nullptr) {
+            currentBlock_ = &root->block();
+        }
+        translateInstruction(instruction, index, *currentBlock_);
     }
+    currentBlock_ = nullptr;
     return root;
 }
 
@@ -593,6 +609,38 @@ void LingoDecompiler::translateInstruction(const chunks::ScriptChunk::Instructio
             translateObjCall(instruction.offset, instruction.argument, block);
             return;
 
+        case Opcode::JMP: {
+            const int targetOffset = instruction.offset + instruction.argument;
+            if (currentBlock_ != nullptr &&
+                currentHandler_ != nullptr &&
+                index + 1 < currentHandler_->instructions.size() &&
+                currentHandler_->instructions[index + 1].offset == currentBlock_->endPos) {
+                auto* ancestorStatement = currentBlock_->ancestorStatement();
+                if (auto* ifStmt = dynamic_cast<IfStmtNode*>(ancestorStatement);
+                    ifStmt != nullptr && currentBlock_ == &ifStmt->trueBlock()) {
+                    ifStmt->setHasElse(true);
+                    ifStmt->falseBlock().endPos = targetOffset;
+                    return;
+                }
+            }
+            translation = std::make_unique<CommentNode>("ERROR: Could not identify jmp");
+            break;
+        }
+
+        case Opcode::JMP_IF_Z: {
+            auto ifStmt = std::make_unique<IfStmtNode>(popNode());
+            ifStmt->setBytecodeOffset(instruction.offset);
+            ifStmt->trueBlock().endPos = instruction.offset + instruction.argument;
+            auto* nextBlock = &ifStmt->trueBlock();
+            block.addChild(std::move(ifStmt));
+            enterBlock(*nextBlock);
+            return;
+        }
+
+        case Opcode::END_REPEAT:
+            translation = std::make_unique<CommentNode>("ERROR: Stray endrepeat");
+            break;
+
         case Opcode::PUSH_CHUNK_VAR_REF:
             translation = readVar(instruction.argument);
             break;
@@ -713,6 +761,26 @@ void LingoDecompiler::translateObjCall(int bytecodeOffset, int nameId, BlockNode
         stack_.push_back(std::move(translation));
     } else {
         block.addChild(std::move(translation));
+    }
+}
+
+void LingoDecompiler::enterBlock(BlockNode& block) {
+    currentBlock_ = &block;
+}
+
+void LingoDecompiler::exitBlock() {
+    if (currentBlock_ == nullptr) {
+        return;
+    }
+    auto* ancestorStatement = currentBlock_->ancestorStatement();
+    if (ancestorStatement == nullptr) {
+        currentBlock_ = nullptr;
+        return;
+    }
+    if (auto* parentBlock = dynamic_cast<BlockNode*>(ancestorStatement->parent()); parentBlock != nullptr) {
+        currentBlock_ = parentBlock;
+    } else {
+        currentBlock_ = nullptr;
     }
 }
 

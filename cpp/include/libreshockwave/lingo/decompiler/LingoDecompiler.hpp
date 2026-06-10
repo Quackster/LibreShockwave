@@ -45,6 +45,7 @@ private:
     int version_ = 0x4C1;
     bool capitalX_ = false;
     bool dotSyntax_ = false;
+    BlockNode* currentBlock_ = nullptr;
     std::vector<NodePtr> stack_;
 
     void initFileInfo(const chunks::ScriptChunk& script);
@@ -53,6 +54,8 @@ private:
                               std::size_t index,
                               BlockNode& block);
     void translateObjCall(int bytecodeOffset, int nameId, BlockNode& block);
+    void enterBlock(BlockNode& block);
+    void exitBlock();
     [[nodiscard]] NodePtr popNode();
     [[nodiscard]] std::vector<NodePtr> takeArgNodes(NodePtr argList) const;
     [[nodiscard]] NodePtr readVar(int varType);

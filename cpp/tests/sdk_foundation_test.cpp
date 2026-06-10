@@ -1641,7 +1641,10 @@ void testLingoDecompilerNodeFoundation() {
                                   "delete",
                                   "doObj",
                                   "objOps",
-                                  "propName"});
+                                  "propName",
+                                  "ifOps",
+                                  "elseOps",
+                                  "readyFlag"});
     ScriptChunk::Handler bytecodeHandler{
         0,
         0,
@@ -1931,6 +1934,110 @@ void testLingoDecompilerNodeFoundation() {
     assert(objectMapping.lines[8].bytecodeOffset == 76);
     assert(objectMapping.lines[9].bytecodeOffset == 84);
     assert(objectMapping.lines[10].bytecodeOffset == 94);
+
+    ScriptChunk::Handler ifHandler{
+        19,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        {},
+        {4},
+        {
+            ScriptChunk::Instruction{0, Opcode::GET_GLOBAL, 0x49, 21},
+            ScriptChunk::Instruction{2, Opcode::JMP_IF_Z, 0x55, 8},
+            ScriptChunk::Instruction{4, Opcode::PUSH_INT8, 0x41, 1},
+            ScriptChunk::Instruction{6, Opcode::SET_LOCAL, 0x52, 0},
+            ScriptChunk::Instruction{10, Opcode::PUSH_INT8, 0x41, 2},
+            ScriptChunk::Instruction{12, Opcode::SET_LOCAL, 0x52, 0},
+            ScriptChunk::Instruction{14, Opcode::RET, 0x01, 0}
+        },
+        {}
+    };
+    ScriptChunk ifScript(nullptr,
+                         ChunkId(504),
+                         ScriptChunkType::MovieScript,
+                         0,
+                         {ifHandler},
+                         {},
+                         {},
+                         {},
+                         {});
+    assert(decompiler.decompileHandler(ifScript.handlers().front(), ifScript, &scriptNames) ==
+           "on ifOps\n"
+           "  if readyFlag then\n"
+           "    localOne = 1\n\n"
+           "  end if\n\n"
+           "  localOne = 2\n\n"
+           "end");
+
+    ScriptChunk::Handler elseHandler{
+        20,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        {},
+        {4},
+        {
+            ScriptChunk::Instruction{0, Opcode::GET_GLOBAL, 0x49, 21},
+            ScriptChunk::Instruction{2, Opcode::JMP_IF_Z, 0x55, 8},
+            ScriptChunk::Instruction{4, Opcode::PUSH_INT8, 0x41, 1},
+            ScriptChunk::Instruction{6, Opcode::SET_LOCAL, 0x52, 0},
+            ScriptChunk::Instruction{8, Opcode::JMP, 0x53, 6},
+            ScriptChunk::Instruction{10, Opcode::PUSH_INT8, 0x41, 2},
+            ScriptChunk::Instruction{12, Opcode::SET_LOCAL, 0x52, 0},
+            ScriptChunk::Instruction{14, Opcode::PUSH_INT8, 0x41, 3},
+            ScriptChunk::Instruction{16, Opcode::SET_LOCAL, 0x52, 0},
+            ScriptChunk::Instruction{18, Opcode::RET, 0x01, 0}
+        },
+        {}
+    };
+    ScriptChunk elseScript(nullptr,
+                           ChunkId(505),
+                           ScriptChunkType::MovieScript,
+                           0,
+                           {elseHandler},
+                           {},
+                           {},
+                           {},
+                           {});
+    assert(decompiler.decompileHandler(elseScript.handlers().front(), elseScript, &scriptNames) ==
+           "on elseOps\n"
+           "  if readyFlag then\n"
+           "    localOne = 1\n\n"
+           "  else\n"
+           "    localOne = 2\n\n"
+           "  end if\n\n"
+           "  localOne = 3\n\n"
+           "end");
+    const auto elseMapping = decompiler.decompileHandlerWithMapping(elseScript.handlers().front(),
+                                                                    elseScript,
+                                                                    &scriptNames);
+    assert(elseMapping.toText() ==
+           "on elseOps\n"
+           "  if readyFlag then\n"
+           "    localOne = 1\n"
+           "  else\n"
+           "    localOne = 2\n"
+           "  end if\n"
+           "  localOne = 3\n"
+           "end\n");
+    assert(elseMapping.lines.size() == 8);
+    assert(elseMapping.lines[0].bytecodeOffset == -1);
+    assert(elseMapping.lines[1].bytecodeOffset == 2);
+    assert(elseMapping.lines[2].bytecodeOffset == 6);
+    assert(elseMapping.lines[3].bytecodeOffset == -1);
+    assert(elseMapping.lines[4].bytecodeOffset == 12);
+    assert(elseMapping.lines[5].bytecodeOffset == -1);
+    assert(elseMapping.lines[6].bytecodeOffset == 16);
+    assert(elseMapping.lines[7].bytecodeOffset == -1);
 
     HandlerNode mappedHandler("mapped", {"me"}, {"gFlag"});
     auto ifNode = std::make_unique<IfStmtNode>(std::make_unique<VarNode>("ready"));
