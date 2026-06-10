@@ -214,6 +214,91 @@ bool isDefaultIndexedMatteRgb(int rgb) {
     return (rgb & 0x00FFFFFF) == 0x000000 || (rgb & 0x00FFFFFF) == 0xFFFFFF;
 }
 
+bool indexMatchesRgb(const bitmap::Bitmap& src,
+                     const std::vector<std::uint8_t>& paletteIndices,
+                     const bitmap::Palette* palette,
+                     int paletteIndex,
+                     int rgb) {
+    const int indexRgb = palette != nullptr && paletteIndex >= 0 && paletteIndex < palette->size()
+        ? static_cast<int>(palette->getColor(paletteIndex) & 0x00FFFFFFU)
+        : resolvePaletteIndexRgb(src, paletteIndices, paletteIndex);
+    return indexRgb == (rgb & 0x00FFFFFF);
+}
+
+std::optional<int> explicitIndexedMatteIndex(const bitmap::Bitmap& src,
+                                             const std::vector<std::uint8_t>& paletteIndices,
+                                             int matteRgb,
+                                             const bitmap::Palette* palette) {
+    if (indexMatchesRgb(src, paletteIndices, palette, 0, matteRgb) &&
+        edgeContainsOpaquePaletteIndex(src, paletteIndices, 0)) {
+        return 0;
+    }
+
+    std::vector<int> counts(256, 0);
+    int bestIndex = -1;
+    int bestCount = 0;
+    const int width = src.width();
+    const int height = src.height();
+    const auto countEdgeIndex = [&](int x, int y) {
+        const auto index = static_cast<std::size_t>(y * width + x);
+        if (index >= src.pixels().size() || index >= paletteIndices.size() ||
+            ((src.pixels()[index] >> 24) & 0xFFU) == 0) {
+            return;
+        }
+        const int paletteIndex = static_cast<int>(paletteIndices[index] & 0xFFU);
+        if (!indexMatchesRgb(src, paletteIndices, palette, paletteIndex, matteRgb)) {
+            return;
+        }
+        const int count = ++counts[static_cast<std::size_t>(paletteIndex)];
+        if (count > bestCount) {
+            bestCount = count;
+            bestIndex = paletteIndex;
+        }
+    };
+
+    for (int x = 0; x < width; ++x) {
+        countEdgeIndex(x, 0);
+        if (height > 1) {
+            countEdgeIndex(x, height - 1);
+        }
+    }
+    for (int y = 1; y < height - 1; ++y) {
+        countEdgeIndex(0, y);
+        if (width > 1) {
+            countEdgeIndex(width - 1, y);
+        }
+    }
+    return bestIndex >= 0 ? std::optional<int>(bestIndex) : std::nullopt;
+}
+
+std::optional<int> resolveExplicitIndexedMatteIndex(const bitmap::Bitmap& src,
+                                                    int backColor,
+                                                    const bitmap::Palette* palette) {
+    if (src.bitDepth() > 8) {
+        return std::nullopt;
+    }
+    const auto paletteIndices = src.paletteIndices();
+    if (!paletteIndices.has_value() || paletteIndices->size() < src.pixels().size()) {
+        return std::nullopt;
+    }
+
+    const auto imagePalette = src.imagePalette();
+    const auto* effectivePalette = palette != nullptr ? palette : imagePalette.get();
+    const int matteRgb = InkProcessor::resolveBackColorIgnoringAlpha(backColor, effectivePalette) & 0x00FFFFFF;
+    if (matteRgb != 0xFFFFFF) {
+        return std::nullopt;
+    }
+
+    const auto matteIndex = explicitIndexedMatteIndex(src, *paletteIndices, matteRgb, effectivePalette);
+    if (!matteIndex.has_value() || isUniformPaletteIndex(*paletteIndices, *matteIndex)) {
+        return std::nullopt;
+    }
+    if (!hasOpaqueNonPaletteIndexContent(src, *paletteIndices, *matteIndex)) {
+        return std::nullopt;
+    }
+    return matteIndex;
+}
+
 std::optional<int> resolveDefaultIndexedFloodFillMatteIndex(const bitmap::Bitmap& src,
                                                             const std::vector<std::uint8_t>& paletteIndices) {
     if (paletteIndices.size() < src.pixels().size()) {
@@ -230,7 +315,7 @@ std::optional<int> resolveDefaultIndexedFloodFillMatteIndex(const bitmap::Bitmap
     return std::nullopt;
 }
 
-bitmap::Bitmap applyIndexedMatteInternal(const bitmap::Bitmap& src, int matteIndex) {
+bitmap::Bitmap applyIndexedMatteInternal(const bitmap::Bitmap& src, int matteIndex, bool clearTransparentRgb) {
     const int width = src.width();
     const int height = src.height();
     const auto paletteIndices = src.paletteIndices();
@@ -278,7 +363,7 @@ bitmap::Bitmap applyIndexedMatteInternal(const bitmap::Bitmap& src, int matteInd
     std::vector<std::uint32_t> result = src.pixels();
     for (std::size_t index = 0; index < result.size() && index < transparent.size(); ++index) {
         if (transparent[index]) {
-            result[index] &= 0x00FFFFFFU;
+            result[index] = clearTransparentRgb ? 0x00000000U : (result[index] & 0x00FFFFFFU);
         }
     }
     return derivedBitmap(src, std::move(result));
@@ -390,7 +475,8 @@ bitmap::Bitmap applyOutlinedWhiteBodyMatte(const bitmap::Bitmap& src) {
 std::optional<bitmap::Bitmap> applyOutlinedWhiteBodyMatteIfNeeded(const bitmap::Bitmap& src,
                                                                   int matteColorRgb,
                                                                   int tolerance,
-                                                                  bool allowScriptBuilt32Bit) {
+                                                                  bool allowScriptBuilt32Bit,
+                                                                  std::optional<int> mattePaletteIndex) {
     if ((matteColorRgb & 0x00FFFFFF) != 0xFFFFFF) {
         return std::nullopt;
     }
@@ -441,7 +527,9 @@ std::optional<bitmap::Bitmap> applyOutlinedWhiteBodyMatteIfNeeded(const bitmap::
         return std::nullopt;
     }
 
-    const auto plain = InkProcessor::applyMatte(src, matteColorRgb, tolerance);
+    const auto plain = mattePaletteIndex.has_value()
+        ? applyIndexedMatteInternal(src, *mattePaletteIndex, true)
+        : InkProcessor::applyMatte(src, matteColorRgb, tolerance);
     int remainingWhite = 0;
     for (const auto pixel : plain.pixels()) {
         if (((pixel >> 24) & 0xFFU) != 0 && (pixel & 0x00FFFFFFU) == 0xFFFFFFU) {
@@ -503,14 +591,19 @@ bitmap::Bitmap applyInkInternal(const bitmap::Bitmap& src,
     const auto& input = *working;
 
     if (ink == id::InkMode::MATTE) {
+        const auto explicitMatteIndex = resolveExplicitIndexedMatteIndex(input, backColor, palette);
         const int matteColor = resolveMatteColorForInk(
             input, ink, backColor, useAlpha, palette, preserveScriptOutlinedWhiteBody);
         if (matteColor < 0) {
             return input.copy();
         }
-        auto outlined = applyOutlinedWhiteBodyMatteIfNeeded(input, matteColor, 0, preserveScriptOutlinedWhiteBody);
+        auto outlined = applyOutlinedWhiteBodyMatteIfNeeded(
+            input, matteColor, 0, preserveScriptOutlinedWhiteBody, explicitMatteIndex);
         if (outlined.has_value()) {
             return std::move(*outlined);
+        }
+        if (explicitMatteIndex.has_value()) {
+            return applyIndexedMatteInternal(input, *explicitMatteIndex, true);
         }
         return InkProcessor::applyMatte(input, matteColor);
     }
@@ -871,7 +964,7 @@ bitmap::Bitmap InkProcessor::applyFloodFillTransparency(const bitmap::Bitmap& sr
     if (!matteIndex.has_value()) {
         return src.copy();
     }
-    return applyIndexedMatteInternal(src, *matteIndex);
+    return applyIndexedMatteInternal(src, *matteIndex, false);
 }
 
 bitmap::Bitmap InkProcessor::convertOpaqueWhiteToTransparent(const bitmap::Bitmap& src) {

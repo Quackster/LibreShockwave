@@ -425,7 +425,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 ### Bitmap Cache and Ink Helper Foundation
 
-- `render::pipeline::InkProcessor` ports ink-processing predicates, Copy-ink colorization eligibility, backColor resolution, MATTE color fallback for decoded RGB data with active palettes, foreground/backColor grayscale remapping, indexed color remapping, Darken foreColor offsets, exact-color remapping helpers, shared `applyInk` dispatch, background-transparent keying, indexed default matte keying, mask alpha, matte flood fill, ADD/ADD_PIN indexed flood-fill isolation, outlined-white body preservation, Darken tint multiply, and opaque-white conversion.
+- `render::pipeline::InkProcessor` ports ink-processing predicates, Copy-ink colorization eligibility, backColor resolution, MATTE color fallback for decoded RGB data with active palettes, explicit indexed MATTE palette-index selection, foreground/backColor grayscale remapping, indexed color remapping, Darken foreColor offsets, exact-color remapping helpers, shared `applyInk` dispatch, background-transparent keying, indexed default matte keying, mask alpha, matte flood fill, ADD/ADD_PIN indexed flood-fill isolation, outlined-white body preservation, Darken tint multiply, and opaque-white conversion.
 - `render::pipeline::BitmapCache` ports processed-bitmap cache keys, decode-failure tracking, palette-version invalidation, non-native 32-bit alpha coercion, and indexed matte/background-transparent color remap selection.
 - Dynamic bitmap edge cases and bitmap decoding through the player resolver remain deferred to the larger render-pipeline port.
 
@@ -601,7 +601,7 @@ Result:
 - NetManager URL resolution, cache fallback, GET/POST registration, handler-backed completion/failure, latest-task lookup, stream-status prop lists, raw byte/text results, callbacks, shutdown, and clear tests passed through the same CTest executable.
 - SoundManager channel validation, volume clamping, backend delegation, Lingo play argument parsing, resolver lookup, format detection, KEY-owned member lookup, and SoundChunk playable conversion tests passed through the same CTest executable.
 - TimeoutManager creation, property access/mutation, one-shot/persistent flags, timeout references, names/count, forget, and clear tests passed through the same CTest executable.
-- BitmapCache cache-keying, palette invalidation, non-native alpha coercion, indexed matte remap selection/application, and InkProcessor color remap/applyInk helpers, MATTE palette fallback, ADD/ADD_PIN flood-fill isolation, and outlined-white body matte preservation passed through the same CTest executable.
+- BitmapCache cache-keying, palette invalidation, non-native alpha coercion, indexed matte remap selection/application, and InkProcessor color remap/applyInk helpers, MATTE palette fallback, duplicate-RGB explicit indexed MATTE selection, ADD/ADD_PIN flood-fill isolation, and outlined-white body matte preservation passed through the same CTest executable.
 - SpriteState score construction, Director blend-byte mapping, explicit override preservation, dynamic defaults, cursor state, script-instance rebinding, and release resets passed through the same CTest executable.
 - SpriteRegistry score/dynamic creation, lookup, score-behavior channel tracking, score updates, identity rebinding, dynamic-member cleanup, revision tracking, removal, and clear tests passed through the same CTest executable.
 - HitTester front-to-back bounds hits, static native-alpha thresholds, dynamic transparency-ink alpha hits, forced bounding-box hits, all-hit ordering, type lookup, and flip/scale source sampling passed through the same CTest executable.
@@ -786,4 +786,4 @@ Result:
 - `c879164f Port C++ sound object property dispatch`
 - `938442ce Port C++ behavior parameter value parser`
 - `3410a54f Port C++ value builtin parser`
-- Current checkpoint commit message: `Port C++ matte palette fallback`
+- Current checkpoint commit message: `Port C++ explicit indexed matte`

@@ -6413,6 +6413,30 @@ void testBitmapCacheAndInkProcessorFoundation() {
     assert(palettedMatte.getPixel(1, 1) == 0xFF00AA00U);
     assert(palettedMatte.getPixel(2, 2) == 0x00000000U);
 
+    Bitmap indexedDuplicateWhiteMatte(3, 3, 8, {
+        0xFFFFFFFFU, 0xFF6794A7U, 0xFFFFFFFFU,
+        0xFF6794A7U, 0xFFFFFFFFU, 0xFF6794A7U,
+        0xFFFFFFFFU, 0xFF6794A7U, 0xFFFFFFFFU
+    });
+    indexedDuplicateWhiteMatte.setPaletteIndices({
+        0, 1, 0,
+        1, 5, 1,
+        0, 1, 0
+    });
+    Palette duplicateWhitePalette({
+        0xFFFFFFFFU,
+        0xFF6794A7U,
+        0xFF000000U,
+        0xFF000000U,
+        0xFF000000U,
+        0xFFFFFFFFU
+    }, "duplicate-white-matte");
+    Bitmap duplicateWhiteMatte = InkProcessor::applyInk(
+        indexedDuplicateWhiteMatte, InkMode::MATTE, 0, false, &duplicateWhitePalette);
+    assert(duplicateWhiteMatte.getPixel(0, 0) == 0x00000000U);
+    assert(duplicateWhiteMatte.getPixel(1, 1) == 0xFFFFFFFFU);
+    assert(duplicateWhiteMatte.getPixel(2, 2) == 0x00000000U);
+
     Bitmap darkenTintSource(2, 1, 32, {0xFFFFFFFFU, 0xFF808080U});
     Bitmap darkenTint = InkProcessor::applyInk(darkenTintSource, InkMode::DARKEN, 0x804020, false, nullptr);
     assert(darkenTint.getPixel(0, 0) == 0xFF804020U);
