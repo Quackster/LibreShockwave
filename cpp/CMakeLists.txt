@@ -43,6 +43,7 @@ add_library(libreshockwave
     src/font/PfrBitReader.cpp
     src/font/Pfr1Font.cpp
     src/font/Pfr1TtfConverter.cpp
+    src/font/TtfBitmapRasterizer.cpp
     src/fonts/FontDataDecoder.cpp
     src/io/BinaryReader.cpp
     src/lingo/Datum.cpp

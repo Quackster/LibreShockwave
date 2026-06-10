@@ -9,6 +9,7 @@
 #include <unordered_map>
 
 #include "libreshockwave/font/Pfr1TtfConverter.hpp"
+#include "libreshockwave/font/TtfBitmapRasterizer.hpp"
 
 namespace libreshockwave::player::cast {
 namespace {
@@ -189,6 +190,15 @@ std::shared_ptr<font::BitmapFont> FontRegistry::getBitmapFont(const std::string&
         return styled->second;
     }
     const auto key = lowerAscii(fontName);
+    if (!bold && !italic) {
+        if (const auto ttf = registry.ttfCache.find(key); ttf != registry.ttfCache.end()) {
+            auto rasterized = font::TtfBitmapRasterizer::rasterize(ttf->second, fontSize, fontName);
+            if (rasterized != nullptr) {
+                registry.rasterizedCache[fontCacheKey(fontName, fontSize, bold, italic)] = rasterized;
+                return rasterized;
+            }
+        }
+    }
     if (const auto parsed = registry.parsedFonts.find(key); parsed != registry.parsedFonts.end()) {
         auto rasterized = font::BitmapFont::fromPfr1(*parsed->second, fontSize);
         if (rasterized != nullptr) {

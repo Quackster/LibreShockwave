@@ -78,6 +78,7 @@
 #include "libreshockwave/font/PfrBitReader.hpp"
 #include "libreshockwave/font/Pfr1Font.hpp"
 #include "libreshockwave/font/Pfr1TtfConverter.hpp"
+#include "libreshockwave/font/TtfBitmapRasterizer.hpp"
 #include "libreshockwave/fonts/FontDataDecoder.hpp"
 #include "libreshockwave/id/Ids.hpp"
 #include "libreshockwave/io/BinaryReader.hpp"
@@ -157,6 +158,7 @@ using libreshockwave::font::BitmapFont;
 using libreshockwave::font::PfrBitReader;
 using libreshockwave::font::Pfr1Font;
 using libreshockwave::font::Pfr1TtfConverter;
+using libreshockwave::font::TtfBitmapRasterizer;
 using libreshockwave::fonts::FontDataDecoder;
 using libreshockwave::DirectorFile;
 using libreshockwave::W3DFile;
@@ -298,6 +300,30 @@ using libreshockwave::player::sprite::SpriteState;
 using libreshockwave::player::timeout::TimeoutManager;
 using libreshockwave::player::xtra::SocketMultiuserBridge;
 using libreshockwave::w3d::W3DEntryType;
+
+std::vector<std::uint8_t> readFixtureBytes(const std::filesystem::path& relativePath) {
+    std::filesystem::path base = std::filesystem::current_path();
+    for (int i = 0; i < 8; ++i) {
+        const auto candidate = base / relativePath;
+        if (std::filesystem::exists(candidate)) {
+            std::ifstream input(candidate, std::ios::binary);
+            assert(input);
+            input.seekg(0, std::ios::end);
+            const auto size = input.tellg();
+            assert(size >= 0);
+            input.seekg(0, std::ios::beg);
+            std::vector<std::uint8_t> bytes(static_cast<std::size_t>(size));
+            input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(size));
+            return bytes;
+        }
+        const auto parent = base.parent_path();
+        if (parent == base) {
+            break;
+        }
+        base = parent;
+    }
+    throw std::runtime_error("Missing fixture: " + relativePath.string());
+}
 
 void testBinaryReaderEndianAndBounds() {
     BinaryReader big({0x01, 0x02, 0x03, 0x04});
@@ -652,6 +678,7 @@ void testPfr1FontParserAndRegistry() {
     assert(readU16At(ttf, loca.offset + 6) > 0);
     assert(readU16At(ttf, loca.offset + 8) > readU16At(ttf, loca.offset + 6));
     assert(readU16At(ttf, loca.offset + 10) > readU16At(ttf, loca.offset + 8));
+    assert(TtfBitmapRasterizer::rasterize(ttf, 100, "TinyPFR") == nullptr);
 
     assert(Pfr1Font::parse({}) == nullptr);
     auto partial = data;
@@ -845,6 +872,29 @@ void testBitmapFontAndFontRegistry() {
             return ((pixel >> 24U) & 0xFFU) != 0;
         }));
     };
+
+    const auto verdanaBytes = readFixtureBytes("player-core/src/main/resources/fonts/windows/Verdana.ttf");
+    assert(verdanaBytes.size() == 171811);
+    auto verdanaFont = TtfBitmapRasterizer::rasterize(verdanaBytes, 9, "Verdana");
+    assert(verdanaFont != nullptr);
+    assert(verdanaFont->getFontName() == "Verdana");
+    assert(verdanaFont->getFontSize() == 9);
+    std::vector<std::uint32_t> verdanaDst(32 * 32, 0);
+    verdanaFont->drawChar('H', verdanaDst, 32, 32, 0, 0, 0xFF000000U);
+    int minInkX = 32;
+    int maxInkX = -1;
+    for (int y = 0; y < 32; ++y) {
+        for (int x = 0; x < 32; ++x) {
+            if (((verdanaDst[static_cast<std::size_t>(y * 32 + x)] >> 24U) & 0xFFU) != 0) {
+                minInkX = std::min(minInkX, x);
+                maxInkX = std::max(maxInkX, x);
+            }
+        }
+    }
+    const int verdanaInkWidth = maxInkX - minInkX + 1;
+    assert(maxInkX >= 0);
+    assert(minInkX > 0);
+    assert(verdanaFont->getCharWidth('H') > verdanaInkWidth);
 
     std::vector<std::uint32_t> pfrADst(30 * 30, 0);
     pfrBitmapFont->drawChar('A', pfrADst, 30, 30, 0, 0, 0xFF112244U);
