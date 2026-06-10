@@ -107,6 +107,7 @@ add_library(libreshockwave
     src/player/render/RenderConfig.cpp
     src/player/render/RenderType.cpp
     src/player/render/SpriteRegistry.cpp
+    src/player/render/output/SimpleTextRenderer.cpp
     src/player/render/output/SoftwareFrameRenderer.cpp
     src/player/render/output/TextRenderer.cpp
     src/player/render/pipeline/BitmapCache.cpp

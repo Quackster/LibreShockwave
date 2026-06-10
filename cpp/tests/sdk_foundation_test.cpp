@@ -154,6 +154,7 @@
 #include "libreshockwave/player/render/RenderConfig.hpp"
 #include "libreshockwave/player/render/RenderType.hpp"
 #include "libreshockwave/player/render/SpriteRegistry.hpp"
+#include "libreshockwave/player/render/output/SimpleTextRenderer.hpp"
 #include "libreshockwave/player/render/output/SoftwareFrameRenderer.hpp"
 #include "libreshockwave/player/render/output/TextRenderer.hpp"
 #include "libreshockwave/player/render/pipeline/BitmapCache.hpp"
@@ -323,6 +324,7 @@ using libreshockwave::player::net::NetTaskState;
 using libreshockwave::player::render::RenderConfig;
 using libreshockwave::player::render::RenderType;
 using libreshockwave::player::render::SpriteRegistry;
+using libreshockwave::player::render::output::SimpleTextRenderer;
 using libreshockwave::player::render::output::SoftwareFrameRenderer;
 using libreshockwave::player::render::output::TextRenderer;
 using libreshockwave::player::render::pipeline::BitmapCache;
@@ -14105,6 +14107,148 @@ void testTextRendererFoundation() {
     assert(renderer.lastTopSpacing == 0);
 }
 
+void testSimpleTextRendererFoundation() {
+    auto makeTinyFont = [] {
+        const int cellWidth = 3;
+        const int cellHeight = 5;
+        const int bitmapWidth = cellWidth * BitmapFont::GRID_COLUMNS;
+        const int bitmapHeight = cellHeight * BitmapFont::GRID_ROWS;
+        std::vector<std::uint32_t> bitmap(static_cast<std::size_t>(bitmapWidth * bitmapHeight), 0);
+        auto setGlyphPixel = [&](int ch, int x, int y) {
+            const int cellX = (ch % BitmapFont::GRID_COLUMNS) * cellWidth;
+            const int cellY = (ch / BitmapFont::GRID_COLUMNS) * cellHeight;
+            bitmap[static_cast<std::size_t>((cellY + y) * bitmapWidth + cellX + x)] = 0xFFFFFFFFU;
+        };
+        for (int y = 0; y < cellHeight; ++y) {
+            setGlyphPixel('A', 0, y);
+            setGlyphPixel('A', 2, y);
+        }
+        setGlyphPixel('A', 1, 0);
+        setGlyphPixel('A', 1, 2);
+        for (int y = 0; y < cellHeight; ++y) {
+            setGlyphPixel('B', 0, y);
+        }
+        setGlyphPixel('B', 1, 0);
+        setGlyphPixel('B', 1, 2);
+        setGlyphPixel('B', 1, 4);
+
+        std::vector<int> widths(BitmapFont::NUM_CHARS, 3);
+        widths[static_cast<std::size_t>(' ')] = 2;
+        return BitmapFont::create(std::move(bitmap),
+                                  bitmapWidth,
+                                  bitmapHeight,
+                                  cellWidth,
+                                  cellHeight,
+                                  widths,
+                                  "TinyRenderFont",
+                                  9,
+                                  7,
+                                  10);
+    };
+
+    auto countPixels = [](const Bitmap& bitmap, std::uint32_t color) {
+        return static_cast<int>(std::count(bitmap.pixels().begin(), bitmap.pixels().end(), color));
+    };
+    auto countOpaqueOnRow = [](const Bitmap& bitmap, int y) {
+        int count = 0;
+        for (int x = 0; x < bitmap.width(); ++x) {
+            if (((bitmap.getPixel(x, y) >> 24U) & 0xFFU) != 0) {
+                ++count;
+            }
+        }
+        return count;
+    };
+    auto findLastOpaqueRow = [&](const Bitmap& bitmap) {
+        for (int y = bitmap.height() - 1; y >= 0; --y) {
+            if (countOpaqueOnRow(bitmap, y) > 0) {
+                return y;
+            }
+        }
+        return -1;
+    };
+
+    FontRegistry::clear();
+    try {
+        auto tinyFont = makeTinyFont();
+        FontRegistry::registerBitmapFont("TinyRenderFont", 9, tinyFont);
+        FontRegistry::registerFontAlias("TR", "TinyRenderFont", false);
+
+        SimpleTextRenderer renderer;
+        auto rendered = renderer.renderText("AB\r\nA",
+                                            24,
+                                            0,
+                                            "TR",
+                                            9,
+                                            "underline",
+                                            "left",
+                                            static_cast<int>(0xFF112233U),
+                                            0,
+                                            false,
+                                            false,
+                                            9,
+                                            1);
+        assert(rendered != nullptr);
+        assert(rendered->width() == 24);
+        assert(rendered->height() == 19);
+        assert(rendered->isScriptModified());
+        assert(countPixels(*rendered, 0xFF112233U) > 0);
+        const int underlineRow = findLastOpaqueRow(*rendered);
+        assert(underlineRow >= 0);
+        assert(countOpaqueOnRow(*rendered, underlineRow) >= tinyFont->getStringWidth("A"));
+
+        auto wrapped = renderer.renderText("AB AB",
+                                           7,
+                                           0,
+                                           "TinyRenderFont",
+                                           9,
+                                           "plain",
+                                           "left",
+                                           static_cast<int>(0xFF445566U),
+                                           0,
+                                           true,
+                                           false,
+                                           10,
+                                           0);
+        assert(wrapped != nullptr);
+        assert(wrapped->height() == 20);
+
+        auto secondChar = renderer.charPosToLoc("AB", 2, "TinyRenderFont", 9, "plain", 10, "left", 80);
+        assert((secondChar == std::vector<int>{4, 0}));
+        auto centeredStart = renderer.charPosToLoc("AB", 1, "TinyRenderFont", 9, "plain", 10, "center", 20);
+        assert((centeredStart == std::vector<int>{7, 0}));
+        assert(renderer.locToCharPos("A\nB", 0, 10, "TinyRenderFont", 9, "plain", 10, "left", 24) == 2);
+        assert(renderer.getLineHeight("TinyRenderFont", 9, "plain", 0) == 10);
+        assert(renderer.getLineHeight("TinyRenderFont", 9, "plain", 12) == 12);
+    } catch (...) {
+        FontRegistry::clear();
+        throw;
+    }
+    FontRegistry::clear();
+
+    SimpleTextRenderer fallbackRenderer;
+    auto fallback = fallbackRenderer.renderText("A",
+                                                0,
+                                                0,
+                                                "Missing",
+                                                8,
+                                                "plain",
+                                                "left",
+                                                static_cast<int>(0xFF778899U),
+                                                0,
+                                                false,
+                                                false,
+                                                0,
+                                                0);
+    assert(fallback != nullptr);
+    assert(fallback->width() == 200);
+    assert(fallback->height() == 9);
+    assert(countPixels(*fallback, 0xFF778899U) > 0);
+    assert((fallbackRenderer.charPosToLoc("Go", 2, "Missing", 8, "plain", 10, "left", 0) ==
+            std::vector<int>{7, 0}));
+    assert(fallbackRenderer.locToCharPos("A\nB", 0, 9, "Missing", 8, "plain", 9, "left", 20) == 2);
+    assert(fallbackRenderer.getLineHeight("Missing", 8, "plain", 0) == 9);
+}
+
 void testNetTaskFoundation() {
     auto getTask = NetTask::get(1, "movie.dir", "https://example.invalid/movie.dir");
     assert(getTask.taskId() == 1);
@@ -18741,6 +18885,7 @@ int main() {
     testInkProcessorJavaParityEdges();
     testSoftwareFrameRenderer();
     testTextRendererFoundation();
+    testSimpleTextRendererFoundation();
     testNetTaskFoundation();
     testNetManagerFoundation();
     testTimeoutManagerFoundation();
