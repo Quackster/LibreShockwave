@@ -56,6 +56,7 @@ enum class DatumType {
     IntRect,
     Vector,
     ColorRef,
+    Media,
     ImageRef,
     BitmapRef,
     PaletteRef,
@@ -239,6 +240,11 @@ public:
         friend bool operator==(const ImageRef&, const ImageRef&) = default;
     };
 
+    struct Media {
+        std::vector<std::uint8_t> bytes;
+        friend bool operator==(const Media&, const Media&) = default;
+    };
+
     struct BitmapRef {
         int bitmapId;
         friend bool operator==(const BitmapRef&, const BitmapRef&) = default;
@@ -340,6 +346,7 @@ public:
     [[nodiscard]] static Datum intRect(int left, int top, int right, int bottom);
     [[nodiscard]] static Datum vector3(float x, float y, float z);
     [[nodiscard]] static Datum colorRef(int r, int g, int b);
+    [[nodiscard]] static Datum media(std::vector<std::uint8_t> bytes);
     [[nodiscard]] static Datum imageRef(std::shared_ptr<bitmap::Bitmap> bitmap);
     [[nodiscard]] static Datum soundChannel(int channel);
     [[nodiscard]] static Datum xtra(std::string name);
@@ -380,6 +387,7 @@ public:
     [[nodiscard]] const ScriptRef* asScriptRef() const;
     [[nodiscard]] const SpriteRef* asSpriteRef() const;
     [[nodiscard]] const ColorRef* asColorRef() const;
+    [[nodiscard]] const Media* asMedia() const;
     [[nodiscard]] const ImageRef* asImageRef() const;
     [[nodiscard]] const SoundChannel* asSoundChannel() const;
     [[nodiscard]] const Xtra* asXtra() const;
@@ -436,6 +444,7 @@ private:
         IntRect,
         Vector3,
         ColorRef,
+        Media,
         ImageRef,
         BitmapRef,
         PaletteRef,

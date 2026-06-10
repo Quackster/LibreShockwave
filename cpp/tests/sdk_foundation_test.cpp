@@ -911,6 +911,12 @@ void testLingoDatumTypes() {
     const auto sprite = Datum::spriteRef(ChannelId(6));
     assert(sprite.asSpriteRef()->spriteNum() == 6);
     assert(Datum::colorRef(1, 2, 3).asColorRef()->g == 2);
+    const auto media = Datum::media(std::vector<std::uint8_t>{1, 2, 3});
+    assert(media.type() == DatumType::Media);
+    assert(media.typeString() == "media");
+    assert(media.stringValue() == "<media 3 bytes>");
+    assert(media.asMedia() != nullptr);
+    assert(media.asMedia()->bytes[1] == 2);
 
     auto ancestor = Datum::scriptInstance("base");
     ancestor.scriptInstanceValue().setProperty("baseValue", Datum::of(3));
@@ -12782,6 +12788,18 @@ void testCastLibManagerFoundation() {
         0x10, 0x20, 0x30, 0xFF,
         0x40, 0x50, 0x60, 0x80
     };
+    assert(manager.setMemberProp(1, 2, "media", Datum::media(importedImage)));
+    auto directPinnedRuntime = manager.resolveMember(1, 2)->runtimeBitmap();
+    assert(directPinnedRuntime != nullptr);
+    assert(directPinnedRuntime->isScriptModified());
+    assert(directPinnedRuntime->isNativeAlpha());
+    assert(directPinnedRuntime->width() == 2);
+    assert(directPinnedRuntime->height() == 1);
+    assert(directPinnedRuntime->getPixel(1, 0) == 0x80405060U);
+    assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->x == 9);
+    assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->y == 11);
+    assert(directPinnedRuntime->anchorX() == 9);
+    assert(directPinnedRuntime->anchorY() == 11);
     manager.cacheExternalData("media/hero.lswi", importedImage);
     assert(registry.invoke("importFileInto",
                            context,
@@ -12821,6 +12839,38 @@ void testCastLibManagerFoundation() {
         0x22, 0x55,
         0x33, 0x66
     });
+    const auto directMediaMember = manager.createMember(1, "bitmap");
+    const auto* directMediaRef = directMediaMember.asCastMemberRef();
+    assert(directMediaRef != nullptr);
+    assert(manager.setMemberProp(1, directMediaRef->memberNum(), "media", Datum::media(importedImage)));
+    auto directImportedRuntime = manager.resolveMember(1, directMediaRef->memberNum())->runtimeBitmap();
+    assert(directImportedRuntime != nullptr);
+    assert(directImportedRuntime->isScriptModified());
+    assert(directImportedRuntime->isNativeAlpha());
+    assert(directImportedRuntime->width() == 2);
+    assert(directImportedRuntime->height() == 1);
+    assert(directImportedRuntime->getPixel(0, 0) == 0xFF102030U);
+    assert(directImportedRuntime->getPixel(1, 0) == 0x80405060U);
+    assert(manager.getMemberProp(1, directMediaRef->memberNum(), "regPoint").asIntPoint()->x == 0);
+    assert(manager.getMemberProp(1, directMediaRef->memberNum(), "regPoint").asIntPoint()->y == 0);
+    assert(!directImportedRuntime->hasAnchorPoint());
+    assert(manager.setMemberProp(1, directMediaRef->memberNum(), "media", Datum::media(directorMedia)));
+    auto directDirectorRuntime = manager.resolveMember(1, directMediaRef->memberNum())->runtimeBitmap();
+    assert(directDirectorRuntime != nullptr);
+    assert(directDirectorRuntime->isScriptModified());
+    assert(directDirectorRuntime->width() == 2);
+    assert(directDirectorRuntime->height() == 1);
+    assert(directDirectorRuntime->getPixel(0, 0) == 0xFF112233U);
+    assert(directDirectorRuntime->getPixel(1, 0) == 0x80445566U);
+    assert(manager.getMemberProp(1, directMediaRef->memberNum(), "regPoint").asIntPoint()->x == 3);
+    assert(manager.getMemberProp(1, directMediaRef->memberNum(), "regPoint").asIntPoint()->y == 4);
+    assert(directDirectorRuntime->anchorX() == 3);
+    assert(directDirectorRuntime->anchorY() == 4);
+    assert(!manager.setMemberProp(1,
+                                  directMediaRef->memberNum(),
+                                  "media",
+                                  Datum::media(std::vector<std::uint8_t>{1, 2, 3})));
+    assert(!manager.setMemberProp(1, 10001, "media", Datum::media(importedImage)));
     manager.cacheExternalData("media/director-bitd.bin", directorMedia);
     assert(registry.invoke("importFileInto",
                            context,

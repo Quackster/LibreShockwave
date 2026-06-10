@@ -471,6 +471,7 @@ std::string ilkTypeName(const Datum& datum) {
         case DatumType::IntPoint: return "point";
         case DatumType::IntRect: return "rect";
         case DatumType::ColorRef: return "color";
+        case DatumType::Media: return "media";
         case DatumType::ImageRef: return "image";
         case DatumType::CastLibRef: return "castLib";
         case DatumType::CastMemberRef: return "member";

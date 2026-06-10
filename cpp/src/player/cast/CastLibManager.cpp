@@ -232,6 +232,16 @@ std::optional<bitmap::Bitmap> decodeDirectorBitmapMedia(const std::vector<std::u
     return bitmap;
 }
 
+std::optional<bitmap::Bitmap> decodeBitmapMedia(const std::vector<std::uint8_t>& data,
+                                                int defaultCastLib,
+                                                CastLibManager* manager) {
+    auto bitmap = decodeImportedImage(data);
+    if (!bitmap.has_value()) {
+        bitmap = decodeDirectorBitmapMedia(data, defaultCastLib, manager);
+    }
+    return bitmap;
+}
+
 } // namespace
 
 CastLibManager::CastLibManager(std::shared_ptr<DirectorFile> file,
@@ -434,6 +444,19 @@ bool CastLibManager::setMemberProp(int castLibNumber,
     if (equalsIgnoreCase(propName, "media")) {
         if (const auto* sourceRef = value.asCastMemberRef()) {
             return copyMemberMedia(castLibNumber, memberNumber, *sourceRef);
+        }
+        if (const auto* media = value.asMedia()) {
+            auto member = resolveMember(castLibNumber, memberNumber);
+            if (!member || !member->isBitmap()) {
+                return false;
+            }
+            auto bitmap = decodeBitmapMedia(media->bytes, castLibNumber, this);
+            if (!bitmap.has_value()) {
+                return false;
+            }
+            auto image = std::make_shared<bitmap::Bitmap>(std::move(*bitmap));
+            auto castLib = getCastLib(castLibNumber);
+            return castLib && castLib->setMemberProp(memberNumber, "image", lingo::Datum::imageRef(std::move(image)));
         }
     }
     auto castLib = getCastLib(castLibNumber);
@@ -751,10 +774,7 @@ bool CastLibManager::importFileIntoMember(int castLibNumber,
         return false;
     }
 
-    auto bitmap = decodeImportedImage(*data);
-    if (!bitmap.has_value()) {
-        bitmap = decodeDirectorBitmapMedia(*data, castLibNumber, this);
-    }
+    auto bitmap = decodeBitmapMedia(*data, castLibNumber, this);
     if (!bitmap.has_value()) {
         return false;
     }
