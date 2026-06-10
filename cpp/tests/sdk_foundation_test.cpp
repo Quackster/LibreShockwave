@@ -96,6 +96,7 @@
 #include "libreshockwave/lingo/vm/PropertyIdMappings.hpp"
 #include "libreshockwave/lingo/vm/Scope.hpp"
 #include "libreshockwave/lingo/vm/dispatch/ListMethodDispatcher.hpp"
+#include "libreshockwave/lingo/vm/dispatch/PropListMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/StringMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/trace/ConsoleTracePrinter.hpp"
 #include "libreshockwave/lingo/vm/trace/InstructionAnnotator.hpp"
@@ -246,6 +247,7 @@ using libreshockwave::lingo::vm::PropertyIdMappings;
 using libreshockwave::lingo::vm::Scope;
 using libreshockwave::lingo::vm::TraceListener;
 using libreshockwave::lingo::vm::dispatch::ListMethodDispatcher;
+using libreshockwave::lingo::vm::dispatch::PropListMethodDispatcher;
 using libreshockwave::lingo::vm::dispatch::StringMethodDispatcher;
 using libreshockwave::lingo::vm::trace::ConsoleTracePrinter;
 using libreshockwave::lingo::vm::trace::InstructionAnnotator;
@@ -1158,6 +1160,47 @@ void testLingoDatumTypes() {
     }
     assert(outOfRangeListCaught);
     assert(ListMethodDispatcher::dispatch(dispatcherList, "missing", {}).isVoid());
+    Datum dispatcherPropDatum = Datum::propList();
+    auto& dispatcherProps = dispatcherPropDatum.propListValue();
+    dispatcherProps.properties().emplace_back(Datum::symbol("name"), Datum::of(std::string("first")));
+    dispatcherProps.properties().emplace_back(Datum::of(std::string("name")), Datum::of(std::string("string-first")));
+    dispatcherProps.properties().emplace_back(Datum::symbol("items"), Datum::list({Datum::of(7), Datum::of(8)}));
+    assert(PropListMethodDispatcher::dispatch(dispatcherProps, "count", {}).intValue() == 3);
+    assert(PropListMethodDispatcher::dispatch(dispatcherProps, "count", {Datum::symbol("items")}).intValue() == 2);
+    assert(PropListMethodDispatcher::dispatch(dispatcherProps, "getProp", {Datum::symbol("items"), Datum::of(2)})
+               .intValue() == 8);
+    assert(PropListMethodDispatcher::dispatch(dispatcherProps, "getAt", {Datum::symbol("name")}).stringValue() ==
+           "first");
+    assert(PropListMethodDispatcher::dispatch(dispatcherProps, "getAt", {Datum::of(std::string("name"))})
+               .stringValue() == "string-first");
+    assert(PropListMethodDispatcher::dispatch(dispatcherProps, "setAt", {Datum::of(9), Datum::of(90)}).isVoid());
+    assert(PropListMethodDispatcher::dispatch(dispatcherProps, "getAt", {Datum::of(std::string("9"))}).intValue() ==
+           90);
+    assert(PropListMethodDispatcher::dispatch(dispatcherProps,
+                                              "setProp",
+                                              {Datum::symbol("name"), Datum::of(std::string("updated"))})
+               .isVoid());
+    assert(PropListMethodDispatcher::dispatch(dispatcherProps, "getAt", {Datum::symbol("name")}).stringValue() ==
+           "updated");
+    assert(PropListMethodDispatcher::dispatch(dispatcherProps,
+                                              "addProp",
+                                              {Datum::symbol("name"), Datum::of(std::string("duplicate"))})
+               .isVoid());
+    assert(dispatcherProps.count() == 5);
+    assert(PropListMethodDispatcher::dispatch(dispatcherProps, "getOne", {Datum::of(90)}).stringValue() == "9");
+    assert(PropListMethodDispatcher::dispatch(dispatcherProps, "findPos", {Datum::symbol("items")}).intValue() == 3);
+    assert(PropListMethodDispatcher::dispatch(dispatcherProps, "getPropAt", {Datum::of(2)}).stringValue() == "name");
+    assert(PropListMethodDispatcher::dispatch(dispatcherProps, "getFirst", {}).stringValue() == "updated");
+    assert(PropListMethodDispatcher::dispatch(dispatcherProps, "getLast", {}).stringValue() == "duplicate");
+    Datum propCopy = PropListMethodDispatcher::dispatch(dispatcherProps, "duplicate", {});
+    dispatcherProps.properties()[2].second.listValue().add(Datum::of(9));
+    assert(propCopy.propListValue().properties()[2].second.listValue().count() == 2);
+    assert(PropListMethodDispatcher::dispatch(dispatcherProps, "deleteProp", {Datum::symbol("name")}).isVoid());
+    assert(PropListMethodDispatcher::dispatch(dispatcherProps, "getAt", {Datum::symbol("name")}).stringValue() ==
+           "duplicate");
+    assert(PropListMethodDispatcher::dispatch(dispatcherProps, "deleteAt", {Datum::of(3)}).isVoid());
+    assert(PropListMethodDispatcher::dispatch(dispatcherProps, "getAt", {Datum::of(std::string("9"))}).isVoid());
+    assert(PropListMethodDispatcher::dispatch(dispatcherProps, "missing", {}).isVoid());
 
     assert(Datum::of(42).isInt());
     assert(Datum::of(42).intValue() == 42);

@@ -3,6 +3,7 @@
 #include "libreshockwave/bitmap/Bitmap.hpp"
 #include "libreshockwave/bitmap/Palette.hpp"
 #include "libreshockwave/lingo/vm/dispatch/ListMethodDispatcher.hpp"
+#include "libreshockwave/lingo/vm/dispatch/PropListMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/StringMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/PropertyIdMappings.hpp"
 #include "libreshockwave/lingo/vm/util/AncestorChainWalker.hpp"
@@ -865,183 +866,6 @@ Datum safeExecuteHandler(ExecutionContext& context,
         context.setErrorState(true);
         return Datum::voidValue();
     }
-}
-
-int findPropIndexByKey(const Datum::PropList& propList, const Datum& key) {
-    const std::string target = keyNameLikeJava(key);
-    const auto& properties = propList.properties();
-    for (std::size_t index = 0; index < properties.size(); ++index) {
-        if (equalsIgnoreCase(keyNameLikeJava(properties[index].first), target)) {
-            return static_cast<int>(index);
-        }
-    }
-    return -1;
-}
-
-int findPropIndexTypedKey(const Datum::PropList& propList, const Datum& key) {
-    const std::string target = keyNameLikeJava(key);
-    const bool targetIsSymbol = key.asSymbol() != nullptr;
-    int fallback = -1;
-    const auto& properties = propList.properties();
-    for (std::size_t index = 0; index < properties.size(); ++index) {
-        const std::string entryName = keyNameLikeJava(properties[index].first);
-        if (!equalsIgnoreCase(entryName, target)) {
-            continue;
-        }
-
-        const bool entryIsSymbol = properties[index].first.asSymbol() != nullptr;
-        if (entryIsSymbol == targetIsSymbol) {
-            return static_cast<int>(index);
-        }
-        if (fallback < 0 && entryName == target) {
-            fallback = static_cast<int>(index);
-        }
-    }
-    return fallback;
-}
-
-Datum getPropListTypedKey(const Datum::PropList& propList, const Datum& key) {
-    const int index = findPropIndexTypedKey(propList, key);
-    return index >= 0 ? propList.properties()[static_cast<std::size_t>(index)].second : Datum::voidValue();
-}
-
-void putPropListTypedKey(Datum::PropList& propList, const Datum& key, Datum value) {
-    const int index = findPropIndexTypedKey(propList, key);
-    if (index >= 0) {
-        propList.properties()[static_cast<std::size_t>(index)].second = std::move(value);
-        return;
-    }
-    propList.properties().emplace_back(key, std::move(value));
-}
-
-Datum stringKeyFromInt(const Datum& key) {
-    return Datum::of(std::to_string(toIntLikeJava(key)));
-}
-
-Datum propListObjectMethod(Datum::PropList& propList, std::string_view methodName, const std::vector<Datum>& args) {
-    auto& properties = propList.properties();
-    if (equalsIgnoreCase(methodName, "count")) {
-        if (!args.empty()) {
-            const Datum value = getPropListKey(propList, keyNameLikeJava(args[0]));
-            if (value.isList()) return Datum::of(value.listValue().count());
-            if (value.isPropList()) return Datum::of(value.propListValue().count());
-            return Datum::of(0);
-        }
-        return Datum::of(propList.count());
-    }
-    if (equalsIgnoreCase(methodName, "getProp") || equalsIgnoreCase(methodName, "getPropRef") ||
-        equalsIgnoreCase(methodName, "getAProp") || equalsIgnoreCase(methodName, "getProperty")) {
-        if (args.empty()) {
-            return Datum::voidValue();
-        }
-        Datum value = getPropListKey(propList, keyNameLikeJava(args[0]));
-        if (args.size() >= 2 && value.isList()) {
-            const int index = toIntLikeJava(args[1]);
-            if (index >= 1 && index <= value.listValue().count()) {
-                return value.listValue().getAt(index);
-            }
-            return Datum::voidValue();
-        }
-        return value;
-    }
-    if (equalsIgnoreCase(methodName, "setProp") || equalsIgnoreCase(methodName, "setAProp")) {
-        if (args.size() >= 2) {
-            putPropListTypedKey(propList, args[0], args[1]);
-        }
-        return Datum::voidValue();
-    }
-    if (equalsIgnoreCase(methodName, "addProp")) {
-        if (args.size() >= 2) {
-            properties.emplace_back(args[0], args[1]);
-        }
-        return Datum::voidValue();
-    }
-    if (equalsIgnoreCase(methodName, "getAt")) {
-        if (args.empty()) {
-            return Datum::voidValue();
-        }
-        if (args[0].isString() || args[0].isSymbol()) {
-            return getPropListTypedKey(propList, args[0]);
-        }
-        const int index = toIntLikeJava(args[0]) - 1;
-        if (index >= 0 && index < static_cast<int>(properties.size())) {
-            return properties[static_cast<std::size_t>(index)].second;
-        }
-        if (args[0].isInt()) {
-            return getPropListTypedKey(propList, stringKeyFromInt(args[0]));
-        }
-        return Datum::voidValue();
-    }
-    if (equalsIgnoreCase(methodName, "setAt")) {
-        if (args.size() >= 2) {
-            const int index = toIntLikeJava(args[0]) - 1;
-            if (args[0].isInt() && index >= 0 && index < static_cast<int>(properties.size())) {
-                properties[static_cast<std::size_t>(index)].second = args[1];
-            } else if (args[0].isInt()) {
-                putPropListTypedKey(propList, stringKeyFromInt(args[0]), args[1]);
-            } else {
-                putPropListTypedKey(propList, args[0], args[1]);
-            }
-        }
-        return Datum::voidValue();
-    }
-    if (equalsIgnoreCase(methodName, "getOne")) {
-        if (args.empty()) {
-            return Datum::of(0);
-        }
-        for (const auto& entry : properties) {
-            if (lingoEquals(entry.second, args[0])) {
-                return entry.first;
-            }
-        }
-        return Datum::of(0);
-    }
-    if (equalsIgnoreCase(methodName, "deleteProp")) {
-        if (!args.empty()) {
-            const int index = findPropIndexTypedKey(propList, args[0]);
-            if (index >= 0) {
-                properties.erase(properties.begin() + index);
-            }
-        }
-        return Datum::voidValue();
-    }
-    if (equalsIgnoreCase(methodName, "findPos")) {
-        if (args.empty()) {
-            return Datum::voidValue();
-        }
-        const int index = findPropIndexByKey(propList, args[0]);
-        return index >= 0 ? Datum::of(index + 1) : Datum::voidValue();
-    }
-    if (equalsIgnoreCase(methodName, "getPropAt")) {
-        if (!args.empty()) {
-            const int index = toIntLikeJava(args[0]) - 1;
-            if (index >= 0 && index < static_cast<int>(properties.size())) {
-                return properties[static_cast<std::size_t>(index)].first;
-            }
-        }
-        return Datum::voidValue();
-    }
-    if (equalsIgnoreCase(methodName, "deleteAt")) {
-        if (!args.empty()) {
-            const int index = toIntLikeJava(args[0]) - 1;
-            if (index >= 0 && index < static_cast<int>(properties.size())) {
-                properties.erase(properties.begin() + index);
-            }
-        }
-        return Datum::voidValue();
-    }
-    if (equalsIgnoreCase(methodName, "getLast")) {
-        return properties.empty() ? Datum::voidValue() : properties.back().second;
-    }
-    if (equalsIgnoreCase(methodName, "getFirst")) {
-        return properties.empty() ? Datum::voidValue() : properties.front().second;
-    }
-    if (equalsIgnoreCase(methodName, "duplicate")) {
-        Datum copy = Datum::propList(propList.sorted());
-        copy.propListValue().properties() = properties;
-        return copy.deepCopy();
-    }
-    return Datum::voidValue();
 }
 
 std::string pickLineDelimiter(std::string_view value) {
@@ -3584,7 +3408,7 @@ Datum varRefObjectMethod(ExecutionContext& context,
         return dispatch::ListMethodDispatcher::dispatch(value.listValue(), methodName, args);
     }
     if (value.isPropList()) {
-        return propListObjectMethod(value.propListValue(), methodName, args);
+        return dispatch::PropListMethodDispatcher::dispatch(value.propListValue(), methodName, args);
     }
     if (value.isString()) {
         return dispatch::StringMethodDispatcher::dispatch(toStringLikeJava(value),
@@ -3640,7 +3464,7 @@ Datum dispatchObjectMethod(ExecutionContext& context, Datum target, std::string_
         return dispatch::ListMethodDispatcher::dispatch(target.listValue(), methodName, args);
     }
     if (target.isPropList()) {
-        return propListObjectMethod(target.propListValue(), methodName, args);
+        return dispatch::PropListMethodDispatcher::dispatch(target.propListValue(), methodName, args);
     }
     if (target.isString()) {
         return dispatch::StringMethodDispatcher::dispatch(toStringLikeJava(target),
