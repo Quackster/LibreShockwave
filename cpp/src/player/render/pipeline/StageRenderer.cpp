@@ -234,7 +234,7 @@ std::optional<RenderSprite> StageRenderer::createRenderSprite(int channel,
 
     SpriteType type = member != nullptr ? determineSpriteTypeFromMember(member) : SpriteType::Unknown;
     if (type == SpriteType::Unknown && data.spriteType >= 2 && data.spriteType <= 8 &&
-        member != nullptr && member->memberType() == cast::MemberType::Shape) {
+        member != nullptr && member->memberType() == ::libreshockwave::cast::MemberType::Shape) {
         type = SpriteType::Shape;
     }
 
@@ -320,7 +320,9 @@ std::optional<RenderSprite> StageRenderer::createDynamicRenderSprite(const sprit
         y -= reg.y;
 
         if (width == 0 && height == 0 && member->isBitmap() && member->specificData().size() >= 10) {
-            const auto info = cast::BitmapInfo::parse(member->specificData(), directorVersionForParsing());
+            const auto info = ::libreshockwave::cast::BitmapInfo::parse(
+                member->specificData(),
+                directorVersionForParsing());
             width = info.width;
             height = info.height;
         }
@@ -368,14 +370,14 @@ SpriteType StageRenderer::determineSpriteTypeFromMember(
     }
 
     switch (member->memberType()) {
-        case cast::MemberType::Shape:
+        case ::libreshockwave::cast::MemberType::Shape:
             return SpriteType::Shape;
-        case cast::MemberType::Text:
-        case cast::MemberType::RichText:
+        case ::libreshockwave::cast::MemberType::Text:
+        case ::libreshockwave::cast::MemberType::RichText:
             return SpriteType::Text;
-        case cast::MemberType::Button:
+        case ::libreshockwave::cast::MemberType::Button:
             return SpriteType::Button;
-        case cast::MemberType::FilmLoop:
+        case ::libreshockwave::cast::MemberType::FilmLoop:
             return SpriteType::FilmLoop;
         default:
             return SpriteType::Unknown;
@@ -390,7 +392,9 @@ StageRenderer::RegPoint StageRenderer::scaledRegPoint(const chunks::CastMemberCh
                                                       bool flipH,
                                                       bool flipV) const {
     if (member.isBitmap() && member.specificData().size() >= 10) {
-        const auto info = cast::BitmapInfo::parse(member.specificData(), directorVersionForParsing());
+        const auto info = ::libreshockwave::cast::BitmapInfo::parse(
+            member.specificData(),
+            directorVersionForParsing());
         int regX = info.regXLocal();
         int regY = info.regYLocal();
         if (spriteWidth > 0 && info.width > 0 && info.width != spriteWidth) {
@@ -404,8 +408,8 @@ StageRenderer::RegPoint StageRenderer::scaledRegPoint(const chunks::CastMemberCh
         return RegPoint{regX, regY};
     }
 
-    if (member.memberType() == cast::MemberType::FilmLoop && member.specificData().size() >= 8) {
-        const auto info = cast::FilmLoopInfo::parse(member.specificData());
+    if (member.memberType() == ::libreshockwave::cast::MemberType::FilmLoop && member.specificData().size() >= 8) {
+        const auto info = ::libreshockwave::cast::FilmLoopInfo::parse(member.specificData());
         return RegPoint{posX - info.rectLeft, posY - info.rectTop};
     }
 

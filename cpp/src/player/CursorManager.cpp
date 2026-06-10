@@ -54,10 +54,10 @@ int CursorManager::getCursorAtMouse() const {
             if (memberNum > 0 && memberInfoResolver_) {
                 const auto info = memberInfoResolver_(castLib, memberNum);
                 if (info.has_value()) {
-                    if (info->editable && info->memberType == cast::MemberType::Text) {
+                    if (info->editable && info->memberType == ::libreshockwave::cast::MemberType::Text) {
                         return IBEAM_CURSOR;
                     }
-                    if (info->memberType == cast::MemberType::Button) {
+                    if (info->memberType == ::libreshockwave::cast::MemberType::Button) {
                         return POINTER_CURSOR;
                     }
                 }

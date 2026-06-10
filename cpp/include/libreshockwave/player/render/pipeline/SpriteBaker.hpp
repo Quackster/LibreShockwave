@@ -78,8 +78,11 @@ private:
     [[nodiscard]] std::shared_ptr<const bitmap::Bitmap> cachedBitmap(const RenderSprite& sprite) const;
     void cacheBitmap(const RenderSprite& sprite, std::shared_ptr<const bitmap::Bitmap> bitmap);
 
-    [[nodiscard]] static bitmap::Bitmap drawShapeBitmap(const RenderSprite& sprite, const cast::ShapeInfo* shapeInfo);
-    static void drawAuthoredShape(bitmap::Bitmap& bitmap, const RenderSprite& sprite, const cast::ShapeInfo& shapeInfo);
+    [[nodiscard]] static bitmap::Bitmap drawShapeBitmap(const RenderSprite& sprite,
+                                                        const ::libreshockwave::cast::ShapeInfo* shapeInfo);
+    static void drawAuthoredShape(bitmap::Bitmap& bitmap,
+                                  const RenderSprite& sprite,
+                                  const ::libreshockwave::cast::ShapeInfo& shapeInfo);
     static void fillSolidShape(bitmap::Bitmap& bitmap, int rgb);
     static void drawRect(bitmap::Bitmap& bitmap, int x, int y, int width, int height, std::uint32_t argb);
     static void drawOval(bitmap::Bitmap& bitmap, int cx, int cy, int rx, int ry, std::uint32_t argb, bool filled);

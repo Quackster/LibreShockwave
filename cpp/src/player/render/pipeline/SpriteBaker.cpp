@@ -27,7 +27,7 @@ std::uint32_t opaqueArgb(int rgb) {
     return 0xFF000000U | static_cast<std::uint32_t>(rgb & 0x00FFFFFF);
 }
 
-const cast::ShapeInfo* dynamicShapeInfo(const RenderSprite& sprite) {
+const ::libreshockwave::cast::ShapeInfo* dynamicShapeInfo(const RenderSprite& sprite) {
     const auto dynamic = sprite.dynamicMember();
     if (dynamic == nullptr || !dynamic->shapeInfo().has_value()) {
         return nullptr;
@@ -415,11 +415,11 @@ std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeText(const RenderSprite& 
 }
 
 std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeShape(const RenderSprite& sprite) {
-    const cast::ShapeInfo* shapeInfo = nullptr;
+    const ::libreshockwave::cast::ShapeInfo* shapeInfo = nullptr;
     auto member = sprite.castMember();
-    std::optional<cast::ShapeInfo> parsedShape;
-    if (member != nullptr && member->memberType() == cast::MemberType::Shape) {
-        parsedShape = cast::ShapeInfo::parse(member->specificData());
+    std::optional<::libreshockwave::cast::ShapeInfo> parsedShape;
+    if (member != nullptr && member->memberType() == ::libreshockwave::cast::MemberType::Shape) {
+        parsedShape = ::libreshockwave::cast::ShapeInfo::parse(member->specificData());
         shapeInfo = &parsedShape.value();
     } else {
         shapeInfo = dynamicShapeInfo(sprite);
@@ -485,7 +485,7 @@ std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeFileBackedText(const Rend
         return nullptr;
     }
 
-    const auto textInfo = cast::TextInfo::parse(member->specificData());
+    const auto textInfo = ::libreshockwave::cast::TextInfo::parse(member->specificData());
     std::string fontName = defaultStxtFontName(*file);
     int fontSize = 12;
     int fontStyle = 0;
@@ -552,7 +552,7 @@ std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeFileBackedFilmLoop(const 
         return nullptr;
     }
 
-    const auto info = cast::FilmLoopInfo::parse(member->specificData());
+    const auto info = ::libreshockwave::cast::FilmLoopInfo::parse(member->specificData());
     const int loopWidth = info.width() > 0 ? info.width() : sprite.width();
     const int loopHeight = info.height() > 0 ? info.height() : sprite.height();
     if (loopWidth <= 0 || loopHeight <= 0) {
@@ -592,7 +592,9 @@ std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeFileBackedFilmLoop(const 
         int x = data.posX;
         int y = data.posY;
         if (subMember->isBitmap() && subMember->specificData().size() >= 10) {
-            const auto bitmapInfo = cast::BitmapInfo::parse(subMember->specificData(), directorVersionFor(*file));
+            const auto bitmapInfo = ::libreshockwave::cast::BitmapInfo::parse(
+                subMember->specificData(),
+                directorVersionFor(*file));
             x -= bitmapInfo.regXLocal();
             y -= bitmapInfo.regYLocal();
         } else {
@@ -753,7 +755,8 @@ void SpriteBaker::cacheBitmap(const RenderSprite& sprite, std::shared_ptr<const 
                                std::move(bitmap));
 }
 
-bitmap::Bitmap SpriteBaker::drawShapeBitmap(const RenderSprite& sprite, const cast::ShapeInfo* shapeInfo) {
+bitmap::Bitmap SpriteBaker::drawShapeBitmap(const RenderSprite& sprite,
+                                            const ::libreshockwave::cast::ShapeInfo* shapeInfo) {
     const int width = sprite.width() > 0 ? sprite.width() : 50;
     const int height = sprite.height() > 0 ? sprite.height() : 50;
     bitmap::Bitmap bitmap(width, height, 32);
@@ -772,15 +775,15 @@ bitmap::Bitmap SpriteBaker::drawShapeBitmap(const RenderSprite& sprite, const ca
 
 void SpriteBaker::drawAuthoredShape(bitmap::Bitmap& bitmap,
                                     const RenderSprite& sprite,
-                                    const cast::ShapeInfo& shapeInfo) {
-    if (shapeInfo.isOutlineInvisible() && shapeInfo.shapeType != cast::ShapeType::Line) {
+                                    const ::libreshockwave::cast::ShapeInfo& shapeInfo) {
+    if (shapeInfo.isOutlineInvisible() && shapeInfo.shapeType != ::libreshockwave::cast::ShapeType::Line) {
         return;
     }
 
     const std::uint32_t argb = opaqueArgb(sprite.foreColor());
     switch (shapeInfo.shapeType) {
-        case cast::ShapeType::Rect:
-        case cast::ShapeType::OvalRect:
+        case ::libreshockwave::cast::ShapeType::Rect:
+        case ::libreshockwave::cast::ShapeType::OvalRect:
             if (shapeInfo.isFilled()) {
                 bitmap.fill(argb);
             } else {
@@ -790,7 +793,7 @@ void SpriteBaker::drawAuthoredShape(bitmap::Bitmap& bitmap,
                 }
             }
             break;
-        case cast::ShapeType::Oval:
+        case ::libreshockwave::cast::ShapeType::Oval:
             drawOval(bitmap,
                      bitmap.width() / 2,
                      bitmap.height() / 2,
@@ -799,7 +802,7 @@ void SpriteBaker::drawAuthoredShape(bitmap::Bitmap& bitmap,
                      argb,
                      shapeInfo.isFilled());
             break;
-        case cast::ShapeType::Line: {
+        case ::libreshockwave::cast::ShapeType::Line: {
             const int strokes = std::max(1, shapeInfo.lineThickness);
             const bool bottomToTop = shapeInfo.lineDirection == 6;
             const int startY = bottomToTop ? bitmap.height() - 1 : 0;
@@ -814,7 +817,7 @@ void SpriteBaker::drawAuthoredShape(bitmap::Bitmap& bitmap,
             }
             break;
         }
-        case cast::ShapeType::Unknown:
+        case ::libreshockwave::cast::ShapeType::Unknown:
             fillSolidShape(bitmap, sprite.foreColor());
             break;
     }

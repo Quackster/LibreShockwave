@@ -17,7 +17,7 @@ namespace libreshockwave::player {
 class CursorManager {
 public:
     struct MemberInfo {
-        cast::MemberType memberType{cast::MemberType::Unknown};
+        ::libreshockwave::cast::MemberType memberType{::libreshockwave::cast::MemberType::Unknown};
         bool editable{false};
         int regX{0};
         int regY{0};

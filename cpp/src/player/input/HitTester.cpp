@@ -125,7 +125,7 @@ AlphaHitRule HitTester::getAlphaHitRule(const render::pipeline::RenderSprite& sp
         return AlphaHitRule{};
     }
 
-    const auto info = cast::BitmapInfo::parse(castMember->specificData());
+    const auto info = ::libreshockwave::cast::BitmapInfo::parse(castMember->specificData());
     if (info.bitDepth != 32) {
         return AlphaHitRule{};
     }

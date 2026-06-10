@@ -56,7 +56,7 @@ public:
                  bool visible,
                  SpriteType type,
                  std::shared_ptr<const chunks::CastMemberChunk> castMember,
-                 std::shared_ptr<const cast::CastMember> dynamicMember,
+                 std::shared_ptr<const ::libreshockwave::cast::CastMember> dynamicMember,
                  int foreColor,
                  int backColor,
                  bool hasForeColor,
@@ -77,7 +77,7 @@ public:
                  bool visible,
                  SpriteType type,
                  std::shared_ptr<const chunks::CastMemberChunk> castMember,
-                 std::shared_ptr<const cast::CastMember> dynamicMember,
+                 std::shared_ptr<const ::libreshockwave::cast::CastMember> dynamicMember,
                  int foreColor,
                  int backColor,
                  bool hasForeColor,
@@ -101,7 +101,7 @@ public:
     [[nodiscard]] bool isVisible() const;
     [[nodiscard]] SpriteType type() const;
     [[nodiscard]] std::shared_ptr<const chunks::CastMemberChunk> castMember() const;
-    [[nodiscard]] std::shared_ptr<const cast::CastMember> dynamicMember() const;
+    [[nodiscard]] std::shared_ptr<const ::libreshockwave::cast::CastMember> dynamicMember() const;
     [[nodiscard]] int foreColor() const;
     [[nodiscard]] int backColor() const;
     [[nodiscard]] bool hasForeColor() const;
@@ -133,7 +133,7 @@ private:
     bool visible_{false};
     SpriteType type_{SpriteType::Unknown};
     std::shared_ptr<const chunks::CastMemberChunk> castMember_;
-    std::shared_ptr<const cast::CastMember> dynamicMember_;
+    std::shared_ptr<const ::libreshockwave::cast::CastMember> dynamicMember_;
     int foreColor_{0};
     int backColor_{0};
     bool hasForeColor_{false};

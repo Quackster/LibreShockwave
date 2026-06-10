@@ -58,6 +58,8 @@
 #include "libreshockwave/format/ChunkType.hpp"
 #include "libreshockwave/format/MoaID.hpp"
 #include "libreshockwave/format/ScriptFormatUtils.hpp"
+#include "libreshockwave/font/BdfParser.hpp"
+#include "libreshockwave/font/BitmapFont.hpp"
 #include "libreshockwave/font/PfrBitReader.hpp"
 #include "libreshockwave/fonts/FontDataDecoder.hpp"
 #include "libreshockwave/id/Ids.hpp"
@@ -83,6 +85,7 @@
 #include "libreshockwave/player/audio/SoundManager.hpp"
 #include "libreshockwave/player/behavior/BehaviorInstance.hpp"
 #include "libreshockwave/player/behavior/BehaviorManager.hpp"
+#include "libreshockwave/player/cast/FontRegistry.hpp"
 #include "libreshockwave/player/debug/Breakpoint.hpp"
 #include "libreshockwave/player/debug/BreakpointManager.hpp"
 #include "libreshockwave/player/debug/DebugSnapshot.hpp"
@@ -122,6 +125,8 @@ using libreshockwave::format::ChunkInfo;
 using libreshockwave::format::AfterburnerReader;
 using libreshockwave::format::ChunkType;
 using libreshockwave::format::MoaID;
+using libreshockwave::font::BdfParser;
+using libreshockwave::font::BitmapFont;
 using libreshockwave::font::PfrBitReader;
 using libreshockwave::fonts::FontDataDecoder;
 using libreshockwave::DirectorFile;
@@ -208,6 +213,7 @@ using libreshockwave::player::debug::BreakpointManager;
 using libreshockwave::player::debug::CallFrame;
 using libreshockwave::player::behavior::BehaviorInstance;
 using libreshockwave::player::behavior::BehaviorManager;
+using libreshockwave::player::cast::FontRegistry;
 using libreshockwave::player::debug::DebugSnapshot;
 using libreshockwave::player::debug::InstructionDisplay;
 using libreshockwave::player::debug::WatchExpression;
@@ -354,6 +360,118 @@ void testPfrBitReader() {
 
     PfrBitReader partial({0b11000000});
     assert(partial.readBits(10) == 0b11000000);
+}
+
+void testBitmapFontAndFontRegistry() {
+    const int cellWidth = 2;
+    const int cellHeight = 2;
+    const int bitmapWidth = cellWidth * BitmapFont::GRID_COLUMNS;
+    const int bitmapHeight = cellHeight * BitmapFont::GRID_ROWS;
+    std::vector<std::uint32_t> grid(static_cast<std::size_t>(bitmapWidth * bitmapHeight), 0);
+
+    const int charCode = 'A';
+    const int cellX = (charCode % BitmapFont::GRID_COLUMNS) * cellWidth;
+    const int cellY = (charCode / BitmapFont::GRID_COLUMNS) * cellHeight;
+    grid[static_cast<std::size_t>(cellY * bitmapWidth + cellX)] = 0xFF000000U;
+    grid[static_cast<std::size_t>(cellY * bitmapWidth + cellX + 1)] = 0x80000000U;
+
+    std::vector<int> widths(BitmapFont::NUM_CHARS, 1);
+    widths[static_cast<std::size_t>(charCode)] = 3;
+    std::vector<int> offsets(BitmapFont::NUM_CHARS, 0);
+    offsets[static_cast<std::size_t>(charCode)] = 1;
+
+    BitmapFont::GlyphMap overflowGlyphs;
+    overflowGlyphs[0xE9] = {0, 0, 0, 0xFF000000U};
+    BitmapFont::MetricMap overflowWidths{{0xE9, 4}};
+    BitmapFont::MetricMap overflowOffsets{{0xE9, -1}};
+    auto font = BitmapFont::create(std::move(grid),
+                                   bitmapWidth,
+                                   bitmapHeight,
+                                   cellWidth,
+                                   cellHeight,
+                                   widths,
+                                   offsets,
+                                   "Tiny",
+                                   9,
+                                   7,
+                                   10,
+                                   std::move(overflowGlyphs),
+                                   std::move(overflowWidths),
+                                   std::move(overflowOffsets));
+
+    assert(font->getFontName() == "Tiny");
+    assert(font->getFontSize() == 9);
+    assert(font->getAscent() == 7);
+    assert(font->getLineHeight() == 10);
+    assert(font->getCharWidth('A') == 3);
+    assert(font->getCharOffsetX('A') == 1);
+    assert(font->getCharWidth(0xE9) == 4);
+    assert(font->getCharOffsetX(0xE9) == -1);
+    assert(font->getStringWidth("AA") == 6);
+
+    std::vector<std::uint32_t> dst(6 * 4, 0);
+    font->drawChar('A', dst, 6, 4, 1, 1, 0xFF112233U);
+    assert(dst[static_cast<std::size_t>(1 * 6 + 2)] == 0xFF112233U);
+    assert((dst[static_cast<std::size_t>(1 * 6 + 3)] >> 24U) == 0x80U);
+    assert((dst[static_cast<std::size_t>(1 * 6 + 3)] & 0x00FFFFFFU) == 0x00081119U);
+    font->drawChar(0xE9, dst, 6, 4, 2, 1, 0xFF445566U);
+    assert(dst[static_cast<std::size_t>(2 * 6 + 2)] == 0xFF445566U);
+
+    const std::string bdf =
+        "STARTFONT 2.1\n"
+        "FONT tiny\n"
+        "FONT_ASCENT 7\n"
+        "FONT_DESCENT 2\n"
+        "PIXEL_SIZE 9\n"
+        "STARTCHAR A\n"
+        "ENCODING 65\n"
+        "DWIDTH 5 0\n"
+        "BBX 3 5 1 0\n"
+        "BITMAP\n"
+        "A0\n"
+        "E0\n"
+        "A0\n"
+        "A0\n"
+        "A0\n"
+        "ENDCHAR\n"
+        "STARTCHAR eacute\n"
+        "ENCODING 233\n"
+        "DWIDTH 4 0\n"
+        "BBX 2 2 0 0\n"
+        "BITMAP\n"
+        "C0\n"
+        "C0\n"
+        "ENDCHAR\n"
+        "ENDFONT\n";
+    auto bdfFont = BdfParser::parse(bdf, "BDF Tiny");
+    assert(bdfFont != nullptr);
+    assert(bdfFont->getFontName() == "BDF Tiny");
+    assert(bdfFont->getFontSize() == 9);
+    assert(bdfFont->getLineHeight() == 9);
+    assert(bdfFont->getCharWidth('A') == 5);
+    assert(bdfFont->getCharWidth(0xE9) == 4);
+    std::vector<std::uint32_t> bdfDst(12 * 12, 0);
+    bdfFont->drawChar('A', bdfDst, 12, 12, 0, 0, 0xFF778899U);
+    assert(bdfDst[static_cast<std::size_t>(2 * 12 + 1)] == 0xFF778899U);
+    assert(bdfDst[static_cast<std::size_t>(2 * 12 + 2)] == 0);
+    assert(bdfDst[static_cast<std::size_t>(2 * 12 + 3)] == 0xFF778899U);
+
+    FontRegistry::clear();
+    assert(FontRegistry::getBitmapFont("Tiny", 9) == nullptr);
+    FontRegistry::registerBitmapFont("Tiny", 9, font);
+    assert(FontRegistry::getBitmapFont("tiny", 9) == font);
+    assert(FontRegistry::getBitmapFont("Tiny", 9, true, false) == nullptr);
+    assert(FontRegistry::getBitmapFont("Tiny", 10) == nullptr);
+    FontRegistry::registerFontAlias("tf", "Tiny", true);
+    const auto alias = FontRegistry::getFontAlias("TF");
+    assert(alias.has_value());
+    assert(alias->fontName == "Tiny");
+    assert(alias->bold);
+    assert(FontRegistry::canonicalFontName("Volter_400_0") == "volter");
+    assert(FontRegistry::canonicalFontName("Arial*Bold") == "arial bold");
+    assert(FontRegistry::resolveFont("TF").value() == "tf");
+    assert(!FontRegistry::hasPfrFont("Tiny"));
+    FontRegistry::clear();
 }
 
 void testIdsAndEnums() {
@@ -10420,6 +10538,7 @@ int main() {
     testBinaryReaderZlib();
     testFontDataDecoder();
     testPfrBitReader();
+    testBitmapFontAndFontRegistry();
     testIdsAndEnums();
     testFormatTypes();
     testUtilityFormatting();

@@ -38,6 +38,8 @@ add_library(libreshockwave
     src/format/ChunkType.cpp
     src/format/MoaID.cpp
     src/format/ScriptFormatUtils.cpp
+    src/font/BdfParser.cpp
+    src/font/BitmapFont.cpp
     src/font/PfrBitReader.cpp
     src/fonts/FontDataDecoder.cpp
     src/io/BinaryReader.cpp
@@ -59,6 +61,7 @@ add_library(libreshockwave
     src/player/audio/SoundManager.cpp
     src/player/behavior/BehaviorInstance.cpp
     src/player/behavior/BehaviorManager.cpp
+    src/player/cast/FontRegistry.cpp
     src/player/input/DirectorKeyCodes.cpp
     src/player/input/HitTester.cpp
     src/player/input/InputEvent.cpp

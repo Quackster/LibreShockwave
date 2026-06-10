@@ -7,11 +7,12 @@
 
 namespace libreshockwave::player::render::output {
 
-std::shared_ptr<bitmap::Bitmap> TextRenderer::renderXmedText(const cast::XmedStyledText* styledText,
-                                                             int width,
-                                                             int height,
-                                                             int textColor,
-                                                             int bgColor) {
+std::shared_ptr<bitmap::Bitmap> TextRenderer::renderXmedText(
+    const ::libreshockwave::cast::XmedStyledText* styledText,
+    int width,
+    int height,
+    int textColor,
+    int bgColor) {
     if (styledText == nullptr) {
         return nullptr;
     }

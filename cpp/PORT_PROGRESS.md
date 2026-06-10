@@ -192,6 +192,13 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Signed 8-bit, 16-bit, and 24-bit reads preserve Java sign-extension behavior.
 - Bit reads preserve partial EOF behavior and byte-alignment reset on byte-level reads, position changes, and skips.
 
+### Bitmap Font and Registry Foundation
+
+- `font::BitmapFont` ports the Java bitmap-font grid container, advance widths, draw offsets, overflow glyph storage, ARGB glyph drawing, and Java-compatible alpha blending.
+- `font::BdfParser` ports BDF bitmap-font parsing into `BitmapFont` instances, including font metrics, glyph bounding boxes, BDF row bit placement, default widths, and extended overflow glyphs.
+- `player::cast::FontRegistry` ports prebuilt bitmap-font cache lookup, Director font aliases, canonical font-name normalization, and basic alias resolution for the future C++ simple text renderer path.
+- PFR1 parsing/conversion, TTF rasterization, and bundled platform font families remain deferred to later font-rendering slices.
+
 ### Sound Converter
 
 - `audio::SoundConverter` ports WAV construction for raw PCM and `SoundChunk` data, including Director big-endian 16-bit swapping and signed 8-bit conversion.
@@ -584,6 +591,7 @@ Result:
 - File/path fallback utilities and script formatting utilities passed through the same CTest executable.
 - BitmapColorizer 32-bit, indexed, foreground-only, packed-index, and ink predicate tests passed through the same CTest executable.
 - PfrBitReader byte, signed, skip, alignment, bit-buffer, and partial-EOF tests passed through the same CTest executable.
+- BitmapFont glyph drawing, overflow metrics, BDF parsing, and FontRegistry prebuilt-cache/alias behavior passed through the same CTest executable.
 - SoundConverter WAV layout, SoundChunk header stripping, signed/endianness conversion, MP3 extraction, IMA ADPCM, and duration tests passed through the same CTest executable.
 - CastMember bitmap, script, shape, dimension, type-check, raw chunk, and display string tests passed through the same CTest executable.
 - PlayerEvent handler names, event payload records, RenderType, and RenderConfig tests passed through the same CTest executable.
@@ -655,7 +663,7 @@ Result:
 ## Remaining Major Work
 
 - Higher-level media integration.
-- Remaining ediM/ALFA bitmap integration, sound, font, text, score, and script chunk decoders.
+- Remaining ediM/ALFA bitmap integration, sound, full PFR/TTF font rasterization, text, score, and script chunk decoders.
 - Detailed W3D geometry/material decoding and rendering integration.
 - Lingo decompiler, VM runtime values, dispatchers, and builtins.
 - Player core, rendering pipeline, input, networking, audio, cast management, and debugging.
@@ -787,4 +795,4 @@ Result:
 - `c879164f Port C++ sound object property dispatch`
 - `938442ce Port C++ behavior parameter value parser`
 - `3410a54f Port C++ value builtin parser`
-- Current checkpoint commit message: `Port C++ XMED text baking`
+- Current checkpoint commit message: `Port C++ bitmap font registry foundation`

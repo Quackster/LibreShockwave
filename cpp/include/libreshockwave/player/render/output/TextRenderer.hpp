@@ -55,7 +55,7 @@ public:
                                             int fixedLineSpace) = 0;
 
     [[nodiscard]] virtual std::shared_ptr<bitmap::Bitmap> renderXmedText(
-        const cast::XmedStyledText* styledText,
+        const ::libreshockwave::cast::XmedStyledText* styledText,
         int width,
         int height,
         int textColor,

@@ -74,7 +74,7 @@ RenderSprite::RenderSprite(int channel,
                            bool visible,
                            SpriteType type,
                            std::shared_ptr<const chunks::CastMemberChunk> castMember,
-                           std::shared_ptr<const cast::CastMember> dynamicMember,
+                           std::shared_ptr<const ::libreshockwave::cast::CastMember> dynamicMember,
                            int foreColor,
                            int backColor,
                            bool hasForeColor,
@@ -117,7 +117,7 @@ RenderSprite::RenderSprite(int channel,
                            bool visible,
                            SpriteType type,
                            std::shared_ptr<const chunks::CastMemberChunk> castMember,
-                           std::shared_ptr<const cast::CastMember> dynamicMember,
+                           std::shared_ptr<const ::libreshockwave::cast::CastMember> dynamicMember,
                            int foreColor,
                            int backColor,
                            bool hasForeColor,
@@ -163,7 +163,9 @@ int RenderSprite::locZ() const { return locZ_; }
 bool RenderSprite::isVisible() const { return visible_; }
 SpriteType RenderSprite::type() const { return type_; }
 std::shared_ptr<const chunks::CastMemberChunk> RenderSprite::castMember() const { return castMember_; }
-std::shared_ptr<const cast::CastMember> RenderSprite::dynamicMember() const { return dynamicMember_; }
+std::shared_ptr<const ::libreshockwave::cast::CastMember> RenderSprite::dynamicMember() const {
+    return dynamicMember_;
+}
 int RenderSprite::foreColor() const { return foreColor_; }
 int RenderSprite::backColor() const { return backColor_; }
 bool RenderSprite::hasForeColor() const { return hasForeColor_; }
