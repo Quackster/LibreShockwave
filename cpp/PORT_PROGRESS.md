@@ -765,7 +765,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Image receiver dispatch now supports Java-compatible `fill`, `draw`, `setAlpha`, `createMatte`, `createMask`, `copyPixels`, `duplicate`, `crop`, `trimWhiteSpace`, `getAt`, `getPixel`, and `setPixel` methods over C++ bitmap refs.
 - Image `fill` and `draw` now resolve small integer colors and `paletteIndex(...)` colors through the target bitmap palette when one is attached, matching Java's bitmap-aware color conversion.
 - Image `createMatte` and `createMask` cover native-alpha matte extraction, RGB/indexed flood-fill matte extraction, and direct grayscale mask output.
-- Image `copyPixels` covers default rectangular copy, nearest-neighbor scaling, COPY source-alpha/global-blend compositing, white-backed grayscale text background transparency, maskImage clipping, transparent/background-transparent keying including native-alpha source fallback and inverse white alpha-mask ink conversion, arithmetic ink modes, grayscale #color/#bgColor remaps including source-palette `paletteIndex(...)` remap resolution, DARKEN #bgColor source tinting for grayscale, indexed-shade, and custom-palette sources, quad destination transforms, transformed maskImage props, Java-compatible palette-index preservation/refresh for compatible indexed copies, indexed destinations, and background-transparent quad copies, palette metadata, and anchor propagation.
+- Image `copyPixels` covers default rectangular copy, nearest-neighbor scaling, COPY source-alpha/global-blend compositing, white-backed grayscale text background transparency, maskImage clipping, transparent/background-transparent keying including native-alpha source fallback, inverse white alpha-mask ink conversion, near-white matte border keying, and non-native background-transparent flood-fill preprocessing, arithmetic ink modes, grayscale #color/#bgColor remaps including source-palette `paletteIndex(...)` remap resolution, DARKEN #bgColor source tinting for grayscale, indexed-shade, and custom-palette sources, quad destination transforms, transformed maskImage props, Java-compatible palette-index preservation/refresh for compatible indexed copies, indexed destinations, and background-transparent quad copies, palette metadata, and anchor propagation.
 
 ### Lingo Opcode Object Construction Foundation
 
@@ -807,7 +807,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 ## Verification
 
-Last verified: 2026-06-10
+Last verified: 2026-06-11
 
 Commands:
 
@@ -892,7 +892,7 @@ Result:
 - Lingo direct-string and VarRef object-call string chunk extraction, mutable char chunk-ref deletion, ScriptRef `new`, string method delegation, and provider-backed item counting tests passed through the same CTest executable.
 - Lingo CastMemberRef object-method provider dispatch tests passed through the same CTest executable.
 - Lingo SpriteRef object-method provider dispatch tests passed through the same CTest executable.
-- Lingo image object-method fill, draw, setAlpha, createMatte, createMask, copyPixels source-palette `paletteIndex(...)` remaps, DARKEN #bgColor source tinting, background-transparent native-alpha source fallback, inverse white alpha-mask ink conversion, white-backed grayscale text background transparency, indexed destination palette-index refresh/preserve behavior, and background-transparent quad palette-index refresh, duplicate, crop, trimWhiteSpace, indexed palette fill/getPixel color identity, getAt, getPixel, setPixel, and null-image fallback tests passed through the same CTest executable.
+- Lingo image object-method fill, draw, setAlpha, createMatte, createMask, copyPixels source-palette `paletteIndex(...)` remaps, DARKEN #bgColor source tinting, background-transparent native-alpha source fallback, inverse white alpha-mask ink conversion, near-white matte border keying, non-native background-transparent flood-fill preprocessing, white-backed grayscale text background transparency, indexed destination palette-index refresh/preserve behavior, and background-transparent quad palette-index refresh, duplicate, crop, trimWhiteSpace, indexed palette fill/getPixel color identity, getAt, getPixel, setPixel, and null-image fallback tests passed through the same CTest executable.
 - MovieProperties movie/stage property reads and writes, file/input-backed values, xtra lists, item delimiters, timers, stage background color, random seed, navigation callbacks, and net navigation callbacks passed through the same CTest executable.
 - BuiltinRegistry case-insensitive lookup, custom registration, movie label/marker builtins, sprite puppet/cursor/spriteBox builtins, puppetPalette hooks, and Java-compatible no-op sprite builtins passed through the same CTest executable.
 - MathBuiltins numeric coercion, integer/float conversion, bit operations, trig, power, min/max, list min/max, and random callback hooks passed through the same CTest executable.
@@ -1187,4 +1187,5 @@ Result:
 - `42a06314 Port C++ copyPixels inverse alpha masks`
 - `7577d523 Port C++ copyPixels white text background`
 - `3e61a8e1 Port C++ copyPixels palette index refresh`
-- Current checkpoint commit message: `Port C++ copyPixels quad palette refresh`
+- `41b43430 Port C++ copyPixels quad palette refresh`
+- Current checkpoint commit message: `Port C++ copyPixels near-white matte keying`

@@ -2351,6 +2351,16 @@ bool imageDefaultIndexedMatteRgb(int rgb) {
     return rgb == 0x000000 || rgb == 0xFFFFFF;
 }
 
+bool imageIsNearWhiteGrayscale(int rgb, int minChannel, int maxDelta) {
+    const int r = (rgb >> 16) & 0xFF;
+    const int g = (rgb >> 8) & 0xFF;
+    const int b = rgb & 0xFF;
+    return r >= minChannel && g >= minChannel && b >= minChannel &&
+           std::abs(r - g) <= maxDelta &&
+           std::abs(g - b) <= maxDelta &&
+           std::abs(r - b) <= maxDelta;
+}
+
 std::optional<int> imageInferDominantEdgePaletteIndex(const std::vector<std::uint32_t>& pixels,
                                                       const std::vector<std::uint8_t>& paletteIndices,
                                                       int width,
@@ -2496,6 +2506,125 @@ std::optional<ImageFloodFillMatte> imageResolveFloodFillMatte(
         return imageResolveIndexedFloodFillMatte(pixels, *paletteIndices, width, height);
     }
     return imageResolveRgbFloodFillMatte(pixels, width, height);
+}
+
+bool imageCornersAreNearWhite(const std::vector<std::uint32_t>& pixels,
+                              int width,
+                              int height,
+                              int minChannel,
+                              int maxDelta) {
+    bool sawOpaqueCorner = false;
+    for (const int index : imageCornerIndices(width, height)) {
+        const auto pixel = pixels[static_cast<std::size_t>(index)];
+        if (((pixel >> 24) & 0xFFU) == 0) {
+            continue;
+        }
+        sawOpaqueCorner = true;
+        if (!imageIsNearWhiteGrayscale(static_cast<int>(pixel & 0x00FFFFFFU), minChannel, maxDelta)) {
+            return false;
+        }
+    }
+    return sawOpaqueCorner;
+}
+
+bool imageHasOpaqueNonNearWhiteContent(const std::vector<std::uint32_t>& pixels,
+                                       const std::optional<std::vector<std::uint8_t>>& paletteIndices,
+                                       int width,
+                                       int height,
+                                       int minChannel,
+                                       int maxDelta) {
+    int contentPixels = 0;
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            const auto index = static_cast<std::size_t>(y * width + x);
+            const auto pixel = pixels[index];
+            if (((pixel >> 24) & 0xFFU) == 0) {
+                continue;
+            }
+            int rgb = static_cast<int>(pixel & 0x00FFFFFFU);
+            if (paletteIndices.has_value() && index < paletteIndices->size()) {
+                rgb = imageResolvePaletteIndexRgb(pixels, *paletteIndices, static_cast<int>((*paletteIndices)[index]));
+            }
+            if (!imageIsNearWhiteGrayscale(rgb, minChannel, maxDelta)) {
+                ++contentPixels;
+                if (contentPixels >= 8) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+bool imageEdgeContainsOpaquePaletteIndex(const std::vector<std::uint32_t>& pixels,
+                                         const std::vector<std::uint8_t>& paletteIndices,
+                                         int width,
+                                         int height,
+                                         int paletteIndex) {
+    for (const int index : imageEdgeIndices(width, height)) {
+        const auto offset = static_cast<std::size_t>(index);
+        if (((pixels[offset] >> 24) & 0xFFU) != 0 &&
+            offset < paletteIndices.size() &&
+            static_cast<int>(paletteIndices[offset]) == paletteIndex) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool imageHasOpaqueNonPaletteIndexContent(const std::vector<std::uint32_t>& pixels,
+                                          const std::vector<std::uint8_t>& paletteIndices,
+                                          int paletteIndex) {
+    for (std::size_t index = 0; index < pixels.size() && index < paletteIndices.size(); ++index) {
+        if (((pixels[index] >> 24) & 0xFFU) != 0 &&
+            static_cast<int>(paletteIndices[index]) != paletteIndex) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::optional<ImageFloodFillMatte> imageResolveBackgroundTransparentMatte(
+    const std::vector<std::uint32_t>& pixels,
+    const std::optional<std::vector<std::uint8_t>>& paletteIndices,
+    int width,
+    int height) {
+    if (imageHasPaletteIndices(paletteIndices, width, height)) {
+        const auto matteIndex = imageInferDominantEdgePaletteIndex(pixels, *paletteIndices, width, height);
+        if (!matteIndex.has_value()) {
+            return std::nullopt;
+        }
+        const int matteRgb = imageResolvePaletteIndexRgb(pixels, *paletteIndices, *matteIndex);
+        if (!imageIsNearWhiteGrayscale(matteRgb, 232, 16) ||
+            !imageHasOpaqueNonNearWhiteContent(pixels, paletteIndices, width, height, 232, 16)) {
+            return std::nullopt;
+        }
+        return ImageFloodFillMatte{*matteIndex, matteRgb, 0};
+    }
+
+    if (!imageCornersAreNearWhite(pixels, width, height, 232, 16)) {
+        return std::nullopt;
+    }
+
+    int opaqueEdgeCount = 0;
+    int nearWhiteEdgeCount = 0;
+    for (const int index : imageEdgeIndices(width, height)) {
+        const auto pixel = pixels[static_cast<std::size_t>(index)];
+        if (((pixel >> 24) & 0xFFU) == 0) {
+            continue;
+        }
+        ++opaqueEdgeCount;
+        if (imageIsNearWhiteGrayscale(static_cast<int>(pixel & 0x00FFFFFFU), 232, 16)) {
+            ++nearWhiteEdgeCount;
+        }
+    }
+    if (opaqueEdgeCount == 0 || nearWhiteEdgeCount * 4 < opaqueEdgeCount * 3) {
+        return std::nullopt;
+    }
+    if (!imageHasOpaqueNonNearWhiteContent(pixels, std::nullopt, width, height, 232, 16)) {
+        return std::nullopt;
+    }
+    return ImageFloodFillMatte{std::nullopt, 0xFFFFFF, 24};
 }
 
 bool imageMatchesRgb(std::uint32_t pixel, int matteRgb, int tolerance) {
@@ -2719,6 +2848,40 @@ std::shared_ptr<bitmap::Bitmap> imageCreateMask(const bitmap::Bitmap& src, int a
         }
     }
     return imageCreateFloodFillMatte(src);
+}
+
+std::shared_ptr<bitmap::Bitmap> imageApplyBackgroundTransparentToRegion(const bitmap::Bitmap& src, int backgroundKeyRgb) {
+    if (src.width() <= 0 ||
+        src.height() <= 0 ||
+        (backgroundKeyRgb & 0x00FFFFFF) != 0xFFFFFF ||
+        src.hasNativeMatteAlpha()) {
+        return nullptr;
+    }
+
+    const auto pixels = src.pixels();
+    const auto paletteIndices = src.paletteIndices();
+    const auto matte = imageResolveBackgroundTransparentMatte(pixels, paletteIndices, src.width(), src.height());
+    if (!matte.has_value()) {
+        return nullptr;
+    }
+
+    const auto transparent =
+        imageComputeFloodFillTransparency(pixels, paletteIndices, src.width(), src.height(), *matte);
+    auto result = std::make_shared<bitmap::Bitmap>(src.copy());
+    bool changed = false;
+    auto& resultPixels = result->pixels();
+    for (std::size_t index = 0; index < resultPixels.size() && index < transparent.size(); ++index) {
+        if (!transparent[index]) {
+            continue;
+        }
+        resultPixels[index] &= 0x00FFFFFFU;
+        changed = true;
+    }
+    if (!changed) {
+        return nullptr;
+    }
+    result->setNativeAlpha(true);
+    return result;
 }
 
 int imageCombineAlpha(int srcAlpha, int blendAlpha) {
@@ -3027,6 +3190,70 @@ bool imageShouldTreatWhiteTextBackgroundAsTransparent(const bitmap::Bitmap& src,
 
 std::uint32_t imageMakeWhiteTextBackgroundTransparentPixel(std::uint32_t pixel) {
     return (pixel & 0x00FFFFFFU) == 0x00FFFFFFU ? (pixel & 0x00FFFFFFU) : pixel;
+}
+
+bool imageIsNearWhiteMattePixel(std::uint32_t pixel) {
+    if (((pixel >> 24) & 0xFFU) == 0) {
+        return false;
+    }
+    const int r = static_cast<int>((pixel >> 16) & 0xFFU);
+    const int g = static_cast<int>((pixel >> 8) & 0xFFU);
+    const int b = static_cast<int>(pixel & 0xFFU);
+    return r >= 240 && g >= 240 && b >= 240 &&
+           std::abs(r - g) <= 2 &&
+           std::abs(g - b) <= 2;
+}
+
+bool imageShouldKeyNearWhiteMatte(const bitmap::Bitmap& src, const Datum::IntRect& rect, int backgroundKeyRgb) {
+    if (src.bitDepth() < 32 ||
+        !src.hasTransparentPixels() ||
+        (backgroundKeyRgb & 0x00FFFFFF) != 0xFFFFFF ||
+        rect.right <= rect.left ||
+        rect.bottom <= rect.top ||
+        src.width() <= 0 ||
+        src.height() <= 0) {
+        return false;
+    }
+
+    const int maxX = src.width() - 1;
+    const int maxY = src.height() - 1;
+    const int left = std::clamp(rect.left, 0, maxX);
+    const int top = std::clamp(rect.top, 0, maxY);
+    const int right = std::clamp(rect.right - 1, 0, maxX);
+    const int bottom = std::clamp(rect.bottom - 1, 0, maxY);
+    for (int x = left; x <= right; ++x) {
+        if (imageIsNearWhiteMattePixel(src.getPixel(x, top)) ||
+            imageIsNearWhiteMattePixel(src.getPixel(x, bottom))) {
+            return true;
+        }
+    }
+    for (int y = top + 1; y < bottom; ++y) {
+        if (imageIsNearWhiteMattePixel(src.getPixel(left, y)) ||
+            imageIsNearWhiteMattePixel(src.getPixel(right, y))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool imageShouldKeyDefaultIndexedMatte(const bitmap::Bitmap& src,
+                                       int backgroundKeyRgb,
+                                       const std::optional<std::vector<std::uint8_t>>& paletteIndices) {
+    if (src.bitDepth() > 8 ||
+        (backgroundKeyRgb & 0x00FFFFFF) != 0xFFFFFF ||
+        !imageHasPaletteIndices(paletteIndices, src.width(), src.height()) ||
+        imageIsUniformPaletteIndex(*paletteIndices, 0)) {
+        return false;
+    }
+
+    const auto& pixels = src.pixels();
+    if (!imageEdgeContainsOpaquePaletteIndex(pixels, *paletteIndices, src.width(), src.height(), 0)) {
+        return false;
+    }
+
+    const int indexZeroRgb = imageResolvePaletteIndexRgb(pixels, *paletteIndices, 0);
+    return imageIsNearWhiteGrayscale(indexZeroRgb, 232, 16) &&
+           imageHasOpaqueNonPaletteIndexContent(pixels, *paletteIndices, 0);
 }
 
 bool imagePalettesCompatibleForIndexPreserve(const bitmap::Bitmap& dest, const bitmap::Bitmap& src) {
@@ -3485,15 +3712,24 @@ Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
                             destRect->top + src.anchorY() - srcRect->top);
     }
 
-    const auto srcPaletteIndices = src.paletteIndices();
+    std::shared_ptr<bitmap::Bitmap> backgroundTransparentSource;
+    const bitmap::Bitmap* effectiveSource = &src;
+    if (ink == id::InkMode::BACKGROUND_TRANSPARENT) {
+        backgroundTransparentSource = imageApplyBackgroundTransparentToRegion(src, backgroundKeyRgb);
+        if (backgroundTransparentSource != nullptr) {
+            effectiveSource = backgroundTransparentSource.get();
+        }
+    }
+    const auto& copySrc = *effectiveSource;
+    const auto srcPaletteIndices = copySrc.paletteIndices();
 
     const bool applyGrayscaleRemap =
         (colorRemap.has_value() || bgColorRemap.has_value()) &&
-        !src.hasNativeMatteAlpha() &&
-        imageRegionIsMostlyGrayscale(src, *srcRect);
+        !copySrc.hasNativeMatteAlpha() &&
+        imageRegionIsMostlyGrayscale(copySrc, *srcRect);
     const bool darkenBgTint =
         ink == id::InkMode::DARKEN && bgColorRemap.has_value() && !colorRemap.has_value();
-    const bool indexedShadeForDarken = imageUsesIndexedShadeForDarken(src);
+    const bool indexedShadeForDarken = imageUsesIndexedShadeForDarken(copySrc);
     const bool inverseWhiteAlphaMask =
         ink == id::InkMode::BACKGROUND_TRANSPARENT &&
         src.hasNativeMatteAlpha() &&
@@ -3514,9 +3750,15 @@ Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
         effectiveInk = id::InkMode::BLEND;
     }
     const bool whiteTextBackgroundTransparent = imageShouldTreatWhiteTextBackgroundAsTransparent(
-        src, *srcRect, effectiveInk, blend, mask, colorRemap, bgColorRemap);
+        copySrc, *srcRect, effectiveInk, blend, mask, colorRemap, bgColorRemap);
+    const bool keyNearWhiteMatte =
+        effectiveInk == id::InkMode::BACKGROUND_TRANSPARENT &&
+        imageShouldKeyNearWhiteMatte(copySrc, *srcRect, backgroundKeyRgb);
+    const bool keyDefaultIndexedMatte =
+        effectiveInk == id::InkMode::BACKGROUND_TRANSPARENT &&
+        imageShouldKeyDefaultIndexedMatte(copySrc, backgroundKeyRgb, srcPaletteIndices);
     const bool preservePaletteIndices = imageCanPreservePaletteIndices(
-        dest, src, srcPaletteIndices, effectiveInk, blend, mask, colorRemap, bgColorRemap);
+        dest, copySrc, srcPaletteIndices, effectiveInk, blend, mask, colorRemap, bgColorRemap);
     const bool refreshPreservedBackgroundTransparentIndices =
         preservePaletteIndices &&
         effectiveInk == id::InkMode::BACKGROUND_TRANSPARENT &&
@@ -3534,52 +3776,62 @@ Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
     for (int dy = 0; dy < destHeight; ++dy) {
         const int sy = srcRect->top + (dy * srcHeight / destHeight);
         const int py = destRect->top + dy;
-        if (sy < 0 || sy >= src.height() || py < 0 || py >= dest.height()) {
+        if (sy < 0 || sy >= copySrc.height() || py < 0 || py >= dest.height()) {
             continue;
         }
         for (int dx = 0; dx < destWidth; ++dx) {
             const int sx = srcRect->left + (dx * srcWidth / destWidth);
             const int px = destRect->left + dx;
-            if (sx < 0 || sx >= src.width() || px < 0 || px >= dest.width()) {
+            if (sx < 0 || sx >= copySrc.width() || px < 0 || px >= dest.width()) {
                 continue;
             }
             if (mask != nullptr && !imageMaskAllowsPixel(*mask, sx, sy)) {
                 continue;
             }
-            const auto rawSourcePixel = src.getPixel(sx, sy);
+            const auto rawSourcePixel = copySrc.getPixel(sx, sy);
+            const auto srcOffset = static_cast<std::size_t>(sy * copySrc.width() + sx);
+            const bool skipSource =
+                (keyNearWhiteMatte && imageIsNearWhiteMattePixel(rawSourcePixel)) ||
+                (keyDefaultIndexedMatte &&
+                 srcPaletteIndices.has_value() &&
+                 srcOffset < srcPaletteIndices->size() &&
+                 static_cast<int>((*srcPaletteIndices)[srcOffset]) == 0);
             std::uint32_t sourcePixel = rawSourcePixel;
-            if (inverseWhiteAlphaMask) {
-                sourcePixel = imageInvertWhiteAlphaMaskPixel(rawSourcePixel, inverseWhiteAlphaMaskInkRgb);
-            } else if (whiteTextBackgroundTransparent) {
-                sourcePixel = imageMakeWhiteTextBackgroundTransparentPixel(rawSourcePixel);
-            } else if (applyGrayscaleRemap) {
-                if (darkenBgTint) {
-                    std::optional<int> indexedShade;
-                    if (indexedShadeForDarken) {
-                        const int r = static_cast<int>((rawSourcePixel >> 16) & 0xFFU);
-                        indexedShade = imageShadeForDarken(src, srcPaletteIndices, sx, sy, r, true);
+            if (!skipSource) {
+                if (inverseWhiteAlphaMask) {
+                    sourcePixel = imageInvertWhiteAlphaMaskPixel(rawSourcePixel, inverseWhiteAlphaMaskInkRgb);
+                } else if (whiteTextBackgroundTransparent) {
+                    sourcePixel = imageMakeWhiteTextBackgroundTransparentPixel(rawSourcePixel);
+                } else if (applyGrayscaleRemap) {
+                    if (darkenBgTint) {
+                        std::optional<int> indexedShade;
+                        if (indexedShadeForDarken) {
+                            const int r = static_cast<int>((rawSourcePixel >> 16) & 0xFFU);
+                            indexedShade = imageShadeForDarken(copySrc, srcPaletteIndices, sx, sy, r, true);
+                        }
+                        sourcePixel = imageDarkenBgTintPixel(rawSourcePixel, *bgColorRemap, indexedShade);
+                    } else {
+                        sourcePixel = imageRemapGrayscalePixel(rawSourcePixel, colorRemap, bgColorRemap);
                     }
-                    sourcePixel = imageDarkenBgTintPixel(rawSourcePixel, *bgColorRemap, indexedShade);
-                } else {
-                    sourcePixel = imageRemapGrayscalePixel(rawSourcePixel, colorRemap, bgColorRemap);
+                } else if (ink == id::InkMode::DARKEN) {
+                    sourcePixel = imageMultiplyDarkenPixel(
+                        rawSourcePixel,
+                        bgColorRemap.value_or(0xFFFFFF),
+                        copySrc,
+                        srcPaletteIndices,
+                        sx,
+                        sy,
+                        indexedShadeForDarken);
                 }
-            } else if (ink == id::InkMode::DARKEN) {
-                sourcePixel = imageMultiplyDarkenPixel(
-                    rawSourcePixel,
-                    bgColorRemap.value_or(0xFFFFFF),
-                    src,
-                    srcPaletteIndices,
-                    sx,
-                    sy,
-                    indexedShadeForDarken);
             }
-            const auto destPixel = imageApplyCopyPixelsInk(
-                sourcePixel, dest.getPixel(px, py), effectiveInk, blend, backgroundKeyRgb);
+            const auto currentDestPixel = dest.getPixel(px, py);
+            const auto destPixel = skipSource
+                ? currentDestPixel
+                : imageApplyCopyPixelsInk(sourcePixel, currentDestPixel, effectiveInk, blend, backgroundKeyRgb);
             dest.setPixelPreservePaletteIndex(px, py, destPixel);
             const auto destOffset = static_cast<std::size_t>(py * dest.width() + px);
             if (preservePaletteIndices && destPaletteIndices.has_value() && srcPaletteIndices.has_value()) {
-                if (!imageShouldSkipPaletteIndexPreserve(sourcePixel, effectiveInk, backgroundKeyRgb)) {
-                    const auto srcOffset = static_cast<std::size_t>(sy * src.width() + sx);
+                if (!skipSource && !imageShouldSkipPaletteIndexPreserve(sourcePixel, effectiveInk, backgroundKeyRgb)) {
                     if (srcOffset < srcPaletteIndices->size() && destOffset < destPaletteIndices->size()) {
                         (*destPaletteIndices)[destOffset] = (*srcPaletteIndices)[srcOffset];
                     }

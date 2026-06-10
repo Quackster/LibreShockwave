@@ -6804,6 +6804,48 @@ void testLingoVmScopeAndExecutionContextFoundation() {
                             nativeAlphaBackgroundInkProps}).isVoid());
     assert(nativeAlphaBackgroundInkDest->getPixel(0, 0) == 0xFFC0C0C0U);
     assert(nativeAlphaBackgroundInkDest->getPixel(1, 1) == 0xFF000000U);
+    auto nativeAlphaWhiteMatteSource = std::make_shared<Bitmap>(7, 5, 32);
+    nativeAlphaWhiteMatteSource->fill(0x00FFFFFFU);
+    for (int x = 0; x < 7; ++x) {
+        nativeAlphaWhiteMatteSource->setPixel(x, 0, 0xFFFFFFFFU);
+    }
+    nativeAlphaWhiteMatteSource->setPixel(1, 1, 0xFFFFFFFFU);
+    nativeAlphaWhiteMatteSource->setPixel(2, 2, 0xFF000000U);
+    nativeAlphaWhiteMatteSource->setPixel(3, 3, 0xFFF0F0F0U);
+    nativeAlphaWhiteMatteSource->setNativeAlpha(true);
+    auto nativeAlphaWhiteMatteDest = std::make_shared<Bitmap>(7, 5, 32);
+    nativeAlphaWhiteMatteDest->fill(0xFF99CC33U);
+    auto nativeAlphaWhiteMatteProps = Datum::propList();
+    nativeAlphaWhiteMatteProps.propListValue().put(Datum::symbol("ink"), Datum::of(36));
+    assert(runObjCall(110, {Datum::imageRef(nativeAlphaWhiteMatteDest),
+                            Datum::imageRef(nativeAlphaWhiteMatteSource),
+                            Datum::intRect(0, 0, 7, 5),
+                            Datum::intRect(0, 0, 7, 5),
+                            nativeAlphaWhiteMatteProps}).isVoid());
+    assert(nativeAlphaWhiteMatteDest->getPixel(0, 0) == 0xFF99CC33U);
+    assert(nativeAlphaWhiteMatteDest->getPixel(1, 1) == 0xFF99CC33U);
+    assert(nativeAlphaWhiteMatteDest->getPixel(2, 2) == 0xFF000000U);
+    assert(nativeAlphaWhiteMatteDest->getPixel(3, 3) == 0xFF99CC33U);
+    auto nearWhiteBorderSource = std::make_shared<Bitmap>(
+        5, 5, 32, std::vector<std::uint32_t>{
+            0xFFF0F0F0U, 0xFFF0F0F0U, 0xFFF0F0F0U, 0xFFF0F0F0U, 0xFFF0F0F0U,
+            0xFFF0F0F0U, 0xFF000000U, 0xFF000000U, 0xFF000000U, 0xFFF0F0F0U,
+            0xFFF0F0F0U, 0xFF000000U, 0xFF000000U, 0xFF000000U, 0xFFF0F0F0U,
+            0xFFF0F0F0U, 0xFF000000U, 0xFF000000U, 0xFF000000U, 0xFFF0F0F0U,
+            0xFFF0F0F0U, 0xFFF0F0F0U, 0xFFF0F0F0U, 0xFFF0F0F0U, 0xFFF0F0F0U,
+        });
+    auto nearWhiteBorderDest = std::make_shared<Bitmap>(5, 5, 32);
+    nearWhiteBorderDest->fill(0xFF445566U);
+    auto nearWhiteBorderProps = Datum::propList();
+    nearWhiteBorderProps.propListValue().put(Datum::symbol("ink"), Datum::of(36));
+    assert(runObjCall(110, {Datum::imageRef(nearWhiteBorderDest),
+                            Datum::imageRef(nearWhiteBorderSource),
+                            Datum::intRect(0, 0, 5, 5),
+                            Datum::intRect(0, 0, 5, 5),
+                            nearWhiteBorderProps}).isVoid());
+    assert(nearWhiteBorderDest->getPixel(0, 0) == 0xFF445566U);
+    assert(nearWhiteBorderDest->getPixel(4, 4) == 0xFF445566U);
+    assert(nearWhiteBorderDest->getPixel(2, 2) == 0xFF000000U);
     auto inverseAlphaMaskSource = std::make_shared<Bitmap>(
         3, 1, 32, std::vector<std::uint32_t>{0xFFFFFFFFU, 0x00FFFFFFU, 0xFFFFFFFFU});
     inverseAlphaMaskSource->setNativeAlpha(true);
