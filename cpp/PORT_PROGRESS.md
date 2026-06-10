@@ -553,7 +553,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `CastMember` now stores Java-compatible runtime text defaults for font, font size, font style, alignment, text color, background color, word wrap, antialias, box type, text rect, fixed line space, top spacing, and editable state.
 - `CastLib::getMemberProp` and `setMemberProp` now expose those text-like member properties, including list-valued `fontStyle`, symbol/string `alignment`, Director-style color coercion, and rect/width/height text geometry mutation.
-- `CastLibManager::getMemberProp` now routes text-like `image`, boxType-adjusted `height`, and boxType-adjusted `rect` through the installed `TextRenderer`, including Java-style non-wrapped auto-width measurement.
+- `CastLibManager::getMemberProp` now routes text-like `image`, boxType-adjusted `height`, and boxType-adjusted `rect` through the installed `TextRenderer`, including Java-style non-wrapped auto-width measurement and native-alpha marking when rendered text contains transparent pixels.
 - Dynamic text baking now consumes the runtime text style state while retaining sprite-driven transparent/background color handling.
 - Editable selection/caret rendering remains deferred.
 
@@ -852,7 +852,7 @@ Result:
 - Dynamic member `erase`, `#empty` type reflection, first erased-slot reuse, cast-member method callback routing, and Player sprite binding cleanup on slot retirement passed through the same CTest executable.
 - Runtime field text storage, `member.text`/`member.html`/text-like `member.media` mutation, field lookup by name/number/encoded reference, builtin `field`, and field setter callback routing passed through the same CTest executable.
 - Runtime dynamic text member baking, default renderer arguments, transparent-text native-alpha marking, and dynamic text sprite sizing passed through the same CTest executable.
-- Runtime text member style property get/set, Director-style text color coercion, rect/width/height geometry mutation, renderer-backed text `image` reads, boxType-adjusted text height/rect reads, and SpriteBaker dynamic text style propagation passed through the same CTest executable.
+- Runtime text member style property get/set, Director-style text color coercion, rect/width/height geometry mutation, renderer-backed text `image` reads with transparent-pixel native-alpha marking, boxType-adjusted text height/rect reads, and SpriteBaker dynamic text style propagation passed through the same CTest executable.
 - Runtime text-like `media` assignment from another cast member, including copied text content and style state through the cast-member property callback, passed through the same CTest executable.
 - Runtime and file-backed bitmap `media` assignment from another cast member, including decoded BITD pixels, script-modified runtime copies, alpha-threshold propagation, registration-point propagation, and copied runtime palette override metadata, passed through the same CTest executable.
 - Runtime palette payload storage, `member.color` list exposure, palette member lookup by member/name, palette-to-palette `media` copying, and palette-member `duplicate` target handling passed through the same CTest executable.
@@ -1080,4 +1080,5 @@ Result:
 - `7352d9b3 Port C++ authored bitmap image reads`
 - `034fea56 Port C++ authored bitmap palette redecode`
 - `f0ebc6ee Port C++ text member auto image props`
-- Current checkpoint commit message: `Port C++ copied bitmap palette refs`
+- `dd2674e5 Port C++ copied bitmap palette refs`
+- Current checkpoint commit message: `Port C++ text image native alpha`

@@ -170,19 +170,25 @@ std::shared_ptr<bitmap::Bitmap> renderTextMemberImage(
         width = std::max(width, measureAutoTextWidth(member, renderer, text, rectWidth));
     }
     const int height = member->textBoxType() == 0 ? 0 : member->textRectBottom() - member->textRectTop();
-    return renderer->renderText(text,
-                                width,
-                                height,
-                                member->textFont(),
-                                member->textFontSize(),
-                                member->textFontStyle(),
-                                member->textAlignment(),
-                                member->textColor(),
-                                member->textBgColor(),
-                                member->textWordWrap(),
-                                member->textAntialias(),
-                                member->textFixedLineSpace(),
-                                member->textTopSpacing());
+    auto rendered = renderer->renderText(text,
+                                         width,
+                                         height,
+                                         member->textFont(),
+                                         member->textFontSize(),
+                                         member->textFontStyle(),
+                                         member->textAlignment(),
+                                         member->textColor(),
+                                         member->textBgColor(),
+                                         member->textWordWrap(),
+                                         member->textAntialias(),
+                                         member->textFixedLineSpace(),
+                                         member->textTopSpacing());
+    if (rendered != nullptr &&
+        ((((static_cast<std::uint32_t>(member->textBgColor()) >> 24U) & 0xFFU) < 0xFFU) ||
+         rendered->hasTransparentPixels())) {
+        rendered->setNativeAlpha(true);
+    }
+    return rendered;
 }
 
 std::uint32_t readU32BE(const std::vector<std::uint8_t>& data, std::size_t offset) {

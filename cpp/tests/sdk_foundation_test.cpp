@@ -12789,6 +12789,7 @@ void testCastLibManagerFoundation() {
             lastRenderHeight = height;
             auto rendered = std::make_shared<Bitmap>(std::max(1, width), height == 0 ? 44 : height, 32);
             rendered->fill(0xFFEEDDCCU);
+            rendered->setPixel(0, 0, 0x00000000U);
             return rendered;
         }
 
@@ -12879,6 +12880,7 @@ void testCastLibManagerFoundation() {
     assert(autoTextImage->bitmap != nullptr);
     assert(autoTextImage->bitmap->width() == 125);
     assert(autoTextImage->bitmap->height() == 44);
+    assert(autoTextImage->bitmap->isNativeAlpha());
     assert(methodRenderer.lastRenderWidth == 125);
     assert(methodRenderer.lastRenderHeight == 0);
     assert(manager.setMemberProp(1, 10001, "boxType", Datum::of(1)));
