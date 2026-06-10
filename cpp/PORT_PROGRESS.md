@@ -743,7 +743,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - Property opcode handlers now cover receiver script-instance get/set, object property get/set for script instances, property lists, points, and rectangles, object property reads for lists, strings, points, rectangles, colors, and images, and image object writes for `useAlpha`/`paletteRef`.
 - String and FieldText object property reads now expose Java-compatible `lineCount` and `line` values through the shared opcode property path.
-- Chained property reads now reuse the same data-owned object property path, and top-level `_player`/`_movie` property reads produce C++ reference datums.
+- Chained property reads now reuse the same data-owned object property path, including Java-compatible numeric-index suppression for script instances, and top-level `_player`/`_movie` property reads produce C++ reference datums.
 - Legacy property ID opcodes now cover string chunk counts, last-chunk reads, provider-backed sprite/sound properties, and `number of castMembers of castLib N` through the C++ cast-member count callback.
 - `lingo::vm::PropertyIdMappings` ports Java's movie/sprite/animation/animation2/sound property ID tables, including the Java fallback name for unknown sound properties.
 - `GET_FIELD` now consumes field identifier/cast operands and returns the Java-compatible empty string fallback when no field provider is wired.
@@ -912,7 +912,7 @@ Result:
 - Lingo `PUT` local, parameter, global, receiver-property, before, and after mutation tests passed through the same CTest executable.
 - Lingo `DELETE_CHUNK` char, word, item, line, negative last-index, local/param/global/property/field targets, provider-backed item delimiter, and out-of-range tests passed through the same CTest executable.
 - Lingo `PUT_CHUNK` char replacement/insertion, local/param/global/property/field targets, provider-backed item replacement, word/line insertion, negative target, and out-of-range no-op tests passed through the same CTest executable.
-- Lingo `GET_CHAINED_PROP` list, string, point, property-list, and script-instance reads plus `GET_TOP_LEVEL_PROP` `_player`/`_movie` refs passed through the same CTest executable.
+- Lingo `GET_CHAINED_PROP` list, string, point, property-list, script-instance reads, and script-instance numeric-index suppression plus `GET_TOP_LEVEL_PROP` `_player`/`_movie` refs passed through the same CTest executable.
 - Lingo image object-property width, height, rect, depth, useAlpha, ilk, image, and paletteRef reads passed through the same CTest executable.
 - Lingo legacy `GET` last-chunk/count chunk reads, provider-backed movie/sprite/sound property mappings, and provider-backed `SET` mutations passed through the same CTest executable.
 - Lingo `GET_FIELD` provider-backed field lookup, cast-library lookup, provider-missing empty-string fallback, and stack-consumption tests passed through the same CTest executable.

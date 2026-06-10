@@ -4911,6 +4911,10 @@ bool getObjProp(ExecutionContext& context) {
 bool getChainedProp(ExecutionContext& context) {
     const std::string propName = context.resolveName(context.argument());
     const Datum object = context.pop();
+    if (object.type() == DatumType::ScriptInstanceRef && parseIntStrict(propName).has_value()) {
+        context.push(Datum::voidValue());
+        return true;
+    }
     context.push(getObjectProperty(context, object, propName));
     return true;
 }

@@ -6130,6 +6130,9 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 131) {
             return std::string("bottom");
         }
+        if (nameId == 132) {
+            return std::string("1");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.variableSetListener = [&variableTraces](std::string_view type,
@@ -6949,7 +6952,9 @@ void testLingoVmScopeAndExecutionContextFoundation() {
 
     Datum objectInstance = Datum::scriptInstance("objectBehavior");
     objectInstance.scriptInstanceValue().setProperty("health", Datum::of(21));
+    objectInstance.scriptInstanceValue().setProperty("1", Datum::of(91));
     assert(runObjectPropertyGet(objectInstance, 50).intValue() == 21);
+    assert(runObjectPropertyGet(objectInstance, 132).intValue() == 91);
     assert(runObjectPropertyGet(Datum::list({Datum::of(4), Datum::of(5)}), 51).intValue() == 2);
     assert(runObjectPropertyGet(Datum::of(std::string("abcd")), 54).intValue() == 4);
     assert(runObjectPropertyGet(Datum::of(std::string("right=a*\r\nleft=b")), 127).intValue() == 2);
@@ -7229,9 +7234,14 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(chainedContext.pop().intValue() == 31);
     Datum chainedInstance = Datum::scriptInstance("chained");
     chainedInstance.scriptInstanceValue().setProperty("health", Datum::of(41));
+    chainedInstance.scriptInstanceValue().setProperty("1", Datum::of(99));
     chainedContext.push(chainedInstance);
     assert(opcodeRegistry.execute(Opcode::GET_CHAINED_PROP, chainedContext));
     assert(chainedContext.pop().intValue() == 41);
+    chainedContext.setInstruction(ScriptChunk::Instruction{0, Opcode::GET_CHAINED_PROP, libreshockwave::lingo::code(Opcode::GET_CHAINED_PROP), 132});
+    chainedContext.push(chainedInstance);
+    assert(opcodeRegistry.execute(Opcode::GET_CHAINED_PROP, chainedContext));
+    assert(chainedContext.pop().isVoid());
 
     Scope topLevelScope(&script, handler, {});
     ExecutionContext topLevelContext(topLevelScope,
