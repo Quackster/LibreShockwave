@@ -646,6 +646,12 @@ void testPfr1FontParserAndRegistry() {
     assert(readU32At(*memberTtf, 0) == 0x00010000U);
     assert(readU16At(*memberTtf, 4) == 10);
     assert(!FontRegistry::getTtfBytes("Tiny_400_0").has_value());
+    const auto rasterizedMember = FontRegistry::getBitmapFont("TinyPFR", 20);
+    assert(rasterizedMember != nullptr);
+    assert(rasterizedMember->getFontName() == "TinyPFR");
+    assert(rasterizedMember->getFontSize() == 20);
+    assert(rasterizedMember->getCharWidth('C') > 0);
+    assert(FontRegistry::getBitmapFont("TinyPFR", 20) == rasterizedMember);
     assert(FontRegistry::resolveFont("TinyPFR").value() == "tinypfr");
     assert(FontRegistry::resolveFont("Tiny Member").value() == "tiny member");
     assert(FontRegistry::getFirstRegisteredFont().value() == "tiny member");
@@ -747,6 +753,85 @@ void testBitmapFontAndFontRegistry() {
     assert(bdfDst[static_cast<std::size_t>(2 * 12 + 1)] == 0xFF778899U);
     assert(bdfDst[static_cast<std::size_t>(2 * 12 + 2)] == 0);
     assert(bdfDst[static_cast<std::size_t>(2 * 12 + 3)] == 0xFF778899U);
+
+    Pfr1Font rasterPfr;
+    rasterPfr.fontName = "VectorPFR";
+    rasterPfr.metrics.outlineResolution = 1000;
+    rasterPfr.metrics.xMin = 0;
+    rasterPfr.metrics.xMax = 500;
+    rasterPfr.metrics.yMin = -200;
+    rasterPfr.metrics.yMax = 800;
+    rasterPfr.metrics.ascender = 800;
+    rasterPfr.metrics.descender = -200;
+    rasterPfr.pfrBlackPixel = true;
+
+    auto makeTriangleGlyph = [](int charCode) {
+        Pfr1Font::OutlineGlyph glyph;
+        glyph.charCode = charCode;
+        glyph.setWidth = 500.0F;
+        Pfr1Font::Contour contour;
+        contour.moveTo(0.0F, 0.0F);
+        contour.lineTo(500.0F, 0.0F);
+        contour.lineTo(250.0F, 800.0F);
+        glyph.contours.push_back(std::move(contour));
+        return glyph;
+    };
+
+    rasterPfr.glyphs['A'] = makeTriangleGlyph('A');
+    rasterPfr.glyphs[0xE9] = makeTriangleGlyph(0xE9);
+    Pfr1Font::OutlineGlyph bitmapCarrier;
+    bitmapCarrier.charCode = 'B';
+    bitmapCarrier.setWidth = 400.0F;
+    rasterPfr.glyphs['B'] = bitmapCarrier;
+    Pfr1Font::BitmapGlyph bitmapGlyph;
+    bitmapGlyph.charCode = 'B';
+    bitmapGlyph.xSize = 2;
+    bitmapGlyph.ySize = 2;
+    bitmapGlyph.setWidth = 400;
+    bitmapGlyph.imageData = {0x90};
+    rasterPfr.bitmapGlyphs['B'] = bitmapGlyph;
+
+    assert(BitmapFont::fromPfr1(rasterPfr, 0) == nullptr);
+    auto pfrBitmapFont = BitmapFont::fromPfr1(rasterPfr, 20);
+    assert(pfrBitmapFont != nullptr);
+    assert(pfrBitmapFont->getFontName() == "VectorPFR");
+    assert(pfrBitmapFont->getFontSize() == 20);
+    assert(pfrBitmapFont->getAscent() == 16);
+    assert(pfrBitmapFont->getLineHeight() == 20);
+    assert(pfrBitmapFont->cellWidth() == 10);
+    assert(pfrBitmapFont->cellHeight() == 21);
+    assert(pfrBitmapFont->getCharWidth('A') == 10);
+    assert(pfrBitmapFont->getCharWidth('a') == 10);
+    assert(pfrBitmapFont->getCharWidth('B') == 8);
+    assert(pfrBitmapFont->getCharWidth(0xE9) == 10);
+
+    auto countInk = [](const std::vector<std::uint32_t>& pixels) {
+        return static_cast<int>(std::count_if(pixels.begin(), pixels.end(), [](std::uint32_t pixel) {
+            return ((pixel >> 24U) & 0xFFU) != 0;
+        }));
+    };
+
+    std::vector<std::uint32_t> pfrADst(30 * 30, 0);
+    pfrBitmapFont->drawChar('A', pfrADst, 30, 30, 0, 0, 0xFF112244U);
+    const int aInk = countInk(pfrADst);
+    assert(aInk > 0);
+    assert(std::any_of(pfrADst.begin(), pfrADst.end(), [](std::uint32_t pixel) {
+        return pixel == 0xFF112244U;
+    }));
+
+    std::vector<std::uint32_t> pfrLowerDst(30 * 30, 0);
+    pfrBitmapFont->drawChar('a', pfrLowerDst, 30, 30, 0, 0, 0xFF335577U);
+    assert(countInk(pfrLowerDst) == aInk);
+
+    std::vector<std::uint32_t> pfrOverflowDst(30 * 30, 0);
+    pfrBitmapFont->drawChar(0xE9, pfrOverflowDst, 30, 30, 0, 0, 0xFF556677U);
+    assert(countInk(pfrOverflowDst) > 0);
+
+    std::vector<std::uint32_t> pfrBDst(12 * 12, 0);
+    pfrBitmapFont->drawChar('B', pfrBDst, 12, 12, 0, 0, 0xFF778899U);
+    assert(pfrBDst[0] == 0xFF778899U);
+    assert(pfrBDst[static_cast<std::size_t>(1 * 12 + 1)] == 0xFF778899U);
+    assert(countInk(pfrBDst) == 2);
 
     FontRegistry::clear();
     assert(FontRegistry::getBitmapFont("Tiny", 9) == nullptr);

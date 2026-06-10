@@ -188,6 +188,14 @@ std::shared_ptr<font::BitmapFont> FontRegistry::getBitmapFont(const std::string&
         styled != registry.rasterizedCache.end()) {
         return styled->second;
     }
+    const auto key = lowerAscii(fontName);
+    if (const auto parsed = registry.parsedFonts.find(key); parsed != registry.parsedFonts.end()) {
+        auto rasterized = font::BitmapFont::fromPfr1(*parsed->second, fontSize);
+        if (rasterized != nullptr) {
+            registry.rasterizedCache[fontCacheKey(fontName, fontSize, bold, italic)] = rasterized;
+            return rasterized;
+        }
+    }
     return nullptr;
 }
 

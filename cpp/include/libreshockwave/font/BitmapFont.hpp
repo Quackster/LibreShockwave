@@ -9,6 +9,8 @@
 
 namespace libreshockwave::font {
 
+class Pfr1Font;
+
 class BitmapFont {
 public:
     static constexpr int GRID_COLUMNS = 16;
@@ -47,6 +49,8 @@ public:
         GlyphMap overflowGlyphs = {},
         MetricMap overflowWidths = {},
         MetricMap overflowOffsetsX = {});
+
+    [[nodiscard]] static std::shared_ptr<BitmapFont> fromPfr1(const Pfr1Font& font, int targetHeight);
 
     [[nodiscard]] int bitmapWidth() const;
     [[nodiscard]] int bitmapHeight() const;
