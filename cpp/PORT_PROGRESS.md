@@ -720,6 +720,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - String and FieldText object property reads now expose Java-compatible `lineCount` and `line` values through the shared opcode property path.
 - Chained property reads now reuse the same data-owned object property path, and top-level `_player`/`_movie` property reads produce C++ reference datums.
 - Legacy property ID opcodes now cover string chunk counts, last-chunk reads, provider-backed sprite/sound properties, and `number of castMembers of castLib N` through the C++ cast-member count callback.
+- `lingo::vm::PropertyIdMappings` ports Java's movie/sprite/animation/animation2/sound property ID tables, including the Java fallback name for unknown sound properties.
 - `GET_FIELD` now consumes field identifier/cast operands and returns the Java-compatible empty string fallback when no field provider is wired.
 - Built-in movie constants and basic `the paramCount`/`the result` lookups are available without a provider.
 - Cast-member object property reads/writes now delegate unknown member properties through C++ provider hooks after built-in metadata handling.
@@ -933,7 +934,7 @@ Result:
 - OpcodeRegistry arithmetic, comparison, and logical handlers passed through the same CTest executable.
 - OpcodeRegistry variable, arg-list, linear-list, and property-list handlers passed through the same CTest executable.
 - OpcodeRegistry simple string concatenation, containment, and shared string-chunk helper routing passed through the same CTest executable.
-- OpcodeRegistry basic property handlers, object property reads/writes, string/FieldText `lineCount`/`line` properties, legacy cast-member count property IDs, built-in constants, and simple `the` lookups passed through the same CTest executable.
+- OpcodeRegistry basic property handlers, object property reads/writes, string/FieldText `lineCount`/`line` properties, Java-compatible PropertyIdMappings tables, legacy cast-member count property IDs, built-in constants, and simple `the` lookups passed through the same CTest executable.
 - OpcodeRegistry movie-property provider reads/writes and provider-backed `the` lookups passed through the same CTest executable.
 - OpcodeRegistry provider-backed object property gets/sets for movie, player, stage, sprite, integer-as-sprite refs, cast-member metadata/provider properties, timeout refs, sound channels, and image `useAlpha`/`paletteRef` setters passed through the same CTest executable.
 - OpcodeRegistry local/external call handlers, builtin dispatch, no-return calls, constant fallback, and error-state handling passed through the same CTest executable.
@@ -1159,4 +1160,5 @@ Result:
 - `3b15a1e5 Port C++ random seed trace parity`
 - `7c27afaf Port C++ VM value identifier fallback`
 - `1aafff66 Port C++ nested value identifier fallback`
-- Current checkpoint commit message: `Port C++ alert hook handler`
+- `2601667f Port C++ alert hook handler`
+- Current checkpoint commit message: `Port C++ property ID mappings`

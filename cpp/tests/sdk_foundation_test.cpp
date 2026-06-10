@@ -93,6 +93,7 @@
 #include "libreshockwave/lingo/vm/ExecutionContext.hpp"
 #include "libreshockwave/lingo/vm/LingoVM.hpp"
 #include "libreshockwave/lingo/vm/OpcodeRegistry.hpp"
+#include "libreshockwave/lingo/vm/PropertyIdMappings.hpp"
 #include "libreshockwave/lingo/vm/Scope.hpp"
 #include "libreshockwave/lingo/vm/trace/ConsoleTracePrinter.hpp"
 #include "libreshockwave/lingo/vm/trace/InstructionAnnotator.hpp"
@@ -239,6 +240,7 @@ using libreshockwave::lingo::vm::ExecutionContext;
 using libreshockwave::lingo::vm::HandlerRef;
 using libreshockwave::lingo::vm::LingoVM;
 using libreshockwave::lingo::vm::OpcodeRegistry;
+using libreshockwave::lingo::vm::PropertyIdMappings;
 using libreshockwave::lingo::vm::Scope;
 using libreshockwave::lingo::vm::TraceListener;
 using libreshockwave::lingo::vm::trace::ConsoleTracePrinter;
@@ -4790,6 +4792,21 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opcodeRegistry.hasHandler(Opcode::JMP_IF_Z));
     assert(opcodeRegistry.hasHandler(Opcode::END_REPEAT));
     assert(!opcodeRegistry.hasHandler(Opcode::INVALID));
+
+    const auto moviePropName = PropertyIdMappings::getMoviePropName(0x00);
+    assert(moviePropName.has_value() && *moviePropName == "floatPrecision");
+    assert(!PropertyIdMappings::getMoviePropName(0x2A).has_value());
+    const auto spritePropName = PropertyIdMappings::getSpritePropName(0x2A);
+    assert(spritePropName.has_value() && *spritePropName == "name");
+    assert(!PropertyIdMappings::getSpritePropName(0x2B).has_value());
+    const auto animPropName = PropertyIdMappings::getAnimPropName(0x28);
+    assert(animPropName.has_value() && *animPropName == "soundMixMedia");
+    assert(!PropertyIdMappings::getAnimPropName(0x1C).has_value());
+    const auto anim2PropName = PropertyIdMappings::getAnim2PropName(0x05);
+    assert(anim2PropName.has_value() && *anim2PropName == "number of xtras");
+    assert(!PropertyIdMappings::getAnim2PropName(0x06).has_value());
+    assert(PropertyIdMappings::getSoundPropName(0x07) == "loopEndTime");
+    assert(PropertyIdMappings::getSoundPropName(0x08) == "unknown_sound_prop_8");
 
     Scope opScope(&script, handler, {});
     ExecutionContext opContext(opScope, ScriptChunk::Instruction{0, Opcode::PUSH_ZERO, 0x03, 0});
