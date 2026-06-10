@@ -12760,10 +12760,13 @@ void testCastLibManagerFoundation() {
         int lastFixedLineSpace = 0;
         std::string lastAlignment;
         int lastFieldWidth = 0;
+        int renderCalls = 0;
+        int lastRenderWidth = 0;
+        int lastRenderHeight = 0;
 
         std::shared_ptr<Bitmap> renderText(std::string,
-                                           int,
-                                           int,
+                                           int width,
+                                           int height,
                                            std::string,
                                            int,
                                            std::string,
@@ -12774,7 +12777,12 @@ void testCastLibManagerFoundation() {
                                            bool,
                                            int,
                                            int) override {
-            return nullptr;
+            ++renderCalls;
+            lastRenderWidth = width;
+            lastRenderHeight = height;
+            auto rendered = std::make_shared<Bitmap>(std::max(1, width), height == 0 ? 44 : height, 32);
+            rendered->fill(0xFFEEDDCCU);
+            return rendered;
         }
 
         std::vector<int> charPosToLoc(std::string text,
@@ -12849,6 +12857,27 @@ void testCastLibManagerFoundation() {
     assert(methodRenderer.locCalls == 1);
     assert(methodRenderer.lastX == 11);
     assert(methodRenderer.lastY == 22);
+    assert(manager.setMemberProp(1, 10001, "boxType", Datum::of(0)));
+    assert(manager.setMemberProp(1, 10001, "wordWrap", Datum::of(0)));
+    assert(manager.setMemberProp(1, 10001, "rect", Datum::intRect(2, 3, 32, 13)));
+    assert(manager.setMemberProp(1, 10001, "text", Datum::of(std::string("Auto height"))));
+    assert(manager.getMemberProp(1, 10001, "height").intValue() == 44);
+    const auto autoTextRect = manager.getMemberProp(1, 10001, "rect").asIntRect();
+    assert(autoTextRect != nullptr);
+    assert(autoTextRect->left == 2);
+    assert(autoTextRect->right == 32);
+    assert(autoTextRect->bottom == 47);
+    const auto autoTextImage = manager.getMemberProp(1, 10001, "image").asImageRef();
+    assert(autoTextImage != nullptr);
+    assert(autoTextImage->bitmap != nullptr);
+    assert(autoTextImage->bitmap->width() == 125);
+    assert(autoTextImage->bitmap->height() == 44);
+    assert(methodRenderer.lastRenderWidth == 125);
+    assert(methodRenderer.lastRenderHeight == 0);
+    assert(manager.setMemberProp(1, 10001, "boxType", Datum::of(1)));
+    assert(manager.setMemberProp(1, 10001, "wordWrap", Datum::of(1)));
+    assert(manager.setMemberProp(1, 10001, "rect", Datum::intRect(2, 3, 52, 33)));
+    assert(manager.setMemberProp(1, 10001, "text", Datum::of(std::string("Symbolic"))));
 
     const auto builtinRuntime = registry.invoke("createMember",
                                                 context,

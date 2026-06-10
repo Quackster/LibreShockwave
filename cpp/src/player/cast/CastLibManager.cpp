@@ -134,6 +134,57 @@ int countMethodTextChunks(std::string_view text, const std::string& chunkType) {
     return 0;
 }
 
+int measureAutoTextWidth(const std::shared_ptr<libreshockwave::cast::CastMember>& member,
+                         render::output::TextRenderer* renderer,
+                         const std::string& text,
+                         int rectWidth) {
+    int maxWidth = std::max(1, rectWidth);
+    for (const auto& line : render::output::TextRenderer::splitLines(text)) {
+        auto loc = renderer->charPosToLoc(line,
+                                          static_cast<int>(line.size()) + 1,
+                                          member->textFont(),
+                                          member->textFontSize(),
+                                          member->textFontStyle(),
+                                          member->textFixedLineSpace(),
+                                          "left",
+                                          0);
+        if (!loc.empty()) {
+            maxWidth = std::max(maxWidth, loc[0] + 2);
+        }
+    }
+    return maxWidth;
+}
+
+std::shared_ptr<bitmap::Bitmap> renderTextMemberImage(
+    CastLib& castLib,
+    const std::shared_ptr<libreshockwave::cast::CastMember>& member,
+    render::output::TextRenderer* renderer) {
+    if (!member || !member->isTextLike() || renderer == nullptr) {
+        return nullptr;
+    }
+
+    const std::string text = castLib.getMemberProp(member->memberNum(), "text").stringValue();
+    const int rectWidth = member->textRectRight() - member->textRectLeft();
+    int width = rectWidth;
+    if (member->textBoxType() == 0 && !member->textWordWrap()) {
+        width = std::max(width, measureAutoTextWidth(member, renderer, text, rectWidth));
+    }
+    const int height = member->textBoxType() == 0 ? 0 : member->textRectBottom() - member->textRectTop();
+    return renderer->renderText(text,
+                                width,
+                                height,
+                                member->textFont(),
+                                member->textFontSize(),
+                                member->textFontStyle(),
+                                member->textAlignment(),
+                                member->textColor(),
+                                member->textBgColor(),
+                                member->textWordWrap(),
+                                member->textAntialias(),
+                                member->textFixedLineSpace(),
+                                member->textTopSpacing());
+}
+
 std::uint32_t readU32BE(const std::vector<std::uint8_t>& data, std::size_t offset) {
     return (static_cast<std::uint32_t>(data[offset]) << 24U) |
            (static_cast<std::uint32_t>(data[offset + 1]) << 16U) |
@@ -536,7 +587,38 @@ int CastLibManager::getMemberCount(int castLibNumber) {
 
 lingo::Datum CastLibManager::getMemberProp(int castLibNumber, int memberNumber, const std::string& propName) {
     auto castLib = getCastLib(castLibNumber);
-    return castLib ? castLib->getMemberProp(memberNumber, propName) : CastLib::getInvalidMemberProp(propName);
+    if (!castLib) {
+        return CastLib::getInvalidMemberProp(propName);
+    }
+
+    const auto prop = lower(propName);
+    if (auto member = castLib->getMember(memberNumber); member && member->isTextLike()) {
+        if (prop == "image") {
+            auto rendered = renderTextMemberImage(*castLib, member, textRenderer_);
+            return rendered
+                ? lingo::Datum::imageRef(std::move(rendered))
+                : castLib->getMemberProp(memberNumber, propName);
+        }
+        if ((prop == "height" || prop == "rect") && member->textBoxType() == 0 && textRenderer_ != nullptr) {
+            auto rendered = renderTextMemberImage(*castLib, member, textRenderer_);
+            if (rendered) {
+                const int rectHeight = member->textRectBottom() - member->textRectTop();
+                if (prop == "height") {
+                    if (member->isRuntimeDynamic() && rectHeight >= 256) {
+                        return lingo::Datum::of(rendered->height());
+                    }
+                    return lingo::Datum::of(std::max(rendered->height(), rectHeight));
+                }
+                if (rendered->height() > rectHeight) {
+                    return lingo::Datum::intRect(member->textRectLeft(),
+                                                 member->textRectTop(),
+                                                 member->textRectRight(),
+                                                 member->textRectTop() + rendered->height());
+                }
+            }
+        }
+    }
+    return castLib->getMemberProp(memberNumber, propName);
 }
 
 bool CastLibManager::setMemberProp(int castLibNumber,
