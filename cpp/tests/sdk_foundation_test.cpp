@@ -1383,7 +1383,7 @@ void testPlayerVmEventDispatchFoundation() {
 
     std::vector<std::uint8_t> namesData(20, 0);
     putI16(namesData, 16, 20);
-    putI16(namesData, 18, 24);
+    putI16(namesData, 18, 27);
     auto appendName = [&namesData](const std::string& value) {
         namesData.push_back(static_cast<std::uint8_t>(value.size()));
         namesData.insert(namesData.end(), value.begin(), value.end());
@@ -1412,6 +1412,9 @@ void testPlayerVmEventDispatchFoundation() {
     appendName("timeoutFired");
     appendName("globalTimer");
     appendName("globalTimeout");
+    appendName("moviePrepareFrame");
+    appendName("movieEnterFrame");
+    appendName("movieExitFrame");
 
     auto putHandlerRecord = [&](std::vector<std::uint8_t>& data, int offset, int nameId, int bytecodeOffset) {
         putI16(data, offset, nameId);
@@ -1430,21 +1433,27 @@ void testPlayerVmEventDispatchFoundation() {
             static_cast<std::uint8_t>(libreshockwave::lingo::code(Opcode::RET));
     };
 
-    std::vector<std::uint8_t> scriptData(350, 0);
-    putI16(scriptData, 18, 5);
+    std::vector<std::uint8_t> scriptData(560, 0);
+    putI16(scriptData, 18, 8);
     putI32(scriptData, 38, 0x00000003);
-    putI16(scriptData, 72, 5);
+    putI16(scriptData, 72, 8);
     putI32(scriptData, 74, 110);
-    putHandlerRecord(scriptData, 110, 1, 320);
-    putHandlerRecord(scriptData, 152, 3, 325);
-    putHandlerRecord(scriptData, 194, 5, 330);
-    putHandlerRecord(scriptData, 236, 9, 335);
-    putHandlerRecord(scriptData, 278, 22, 340);
-    putSetGlobalHandlerBytecode(scriptData, 320, 44, 2);
-    putSetGlobalHandlerBytecode(scriptData, 325, 55, 4);
-    putSetGlobalHandlerBytecode(scriptData, 330, 66, 6);
-    putSetGlobalHandlerBytecode(scriptData, 335, 70, 10);
-    putSetGlobalHandlerBytecode(scriptData, 340, 42, 23);
+    putHandlerRecord(scriptData, 110, 1, 500);
+    putHandlerRecord(scriptData, 152, 3, 505);
+    putHandlerRecord(scriptData, 194, 5, 510);
+    putHandlerRecord(scriptData, 236, 9, 515);
+    putHandlerRecord(scriptData, 278, 22, 520);
+    putHandlerRecord(scriptData, 320, 14, 525);
+    putHandlerRecord(scriptData, 362, 16, 530);
+    putHandlerRecord(scriptData, 404, 18, 535);
+    putSetGlobalHandlerBytecode(scriptData, 500, 44, 2);
+    putSetGlobalHandlerBytecode(scriptData, 505, 55, 4);
+    putSetGlobalHandlerBytecode(scriptData, 510, 66, 6);
+    putSetGlobalHandlerBytecode(scriptData, 515, 70, 10);
+    putSetGlobalHandlerBytecode(scriptData, 520, 42, 23);
+    putSetGlobalHandlerBytecode(scriptData, 525, 57, 24);
+    putSetGlobalHandlerBytecode(scriptData, 530, 58, 25);
+    putSetGlobalHandlerBytecode(scriptData, 535, 59, 26);
 
     std::vector<std::uint8_t> castData;
     appendI32(castData, 3);
@@ -1505,6 +1514,12 @@ void testPlayerVmEventDispatchFoundation() {
     assert(player.vm().getGlobal("started").intValue() == 66);
     assert(player.vm().getGlobal("timeoutPrepared").intValue() == 77);
     assert(player.vm().getGlobal("timeoutStarted").intValue() == 88);
+    assert(player.vm().getGlobal("moviePrepareFrame").intValue() == 57);
+    assert(player.vm().getGlobal("movieEnterFrame").intValue() == 58);
+    assert(player.vm().getGlobal("movieExitFrame").intValue() == 59);
+    assert(player.vm().getGlobal("actorPrepare").intValue() == 34);
+    assert(player.vm().getGlobal("actorExit").intValue() == 36);
+    assert(player.vm().getGlobal("actorEnter").isVoid());
 
     player.timeoutManager().clear();
     assert(player.movieProperties().setMovieProp("actorList", Datum::list({timeoutTarget, Datum::of(123)})));

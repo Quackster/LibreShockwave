@@ -559,10 +559,20 @@ void Player::prepareMovieFoundation() {
     castLibManager_.preloadCasts(1);
     frameContext_.initializeFirstFrame();
     frameContext_.dispatchBeginSpriteEvents();
+    if (timeoutSystemEventDispatcher_) {
+        timeoutSystemEventDispatcher_("prepareFrame");
+    }
+    eventDispatcher().dispatchGlobalEvent(PlayerEvent::PrepareFrame);
     eventDispatcher().dispatchToMovieScripts(PlayerEvent::StartMovie);
     if (timeoutSystemEventDispatcher_) {
         timeoutSystemEventDispatcher_("startMovie");
     }
+    eventDispatcher().dispatchGlobalEvent(PlayerEvent::EnterFrame);
+    if (timeoutSystemEventDispatcher_) {
+        timeoutSystemEventDispatcher_("exitFrame");
+    }
+    eventDispatcher().dispatchSpriteAndMovieEvent(handlerName(PlayerEvent::ExitFrame));
+    castLibManager_.preloadCasts(1);
 }
 
 } // namespace libreshockwave::player
