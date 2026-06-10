@@ -880,6 +880,23 @@ void testLingoDatumTypes() {
     assert(propList.propListValue().get(Datum::symbol("key")).intValue() == 7);
     assert(propList.propListValue().get(Datum::symbol("missing")).isVoid());
 
+    auto nestedList = Datum::list({Datum::of(std::string("payload"))});
+    auto connectionInstance = Datum::scriptInstance("Connection");
+    auto deepSource = Datum::propList();
+    deepSource.propListValue().put(Datum::symbol("connection"), connectionInstance);
+    deepSource.propListValue().put(Datum::symbol("content"), nestedList);
+    const Datum deepCopied = deepSource.deepCopy();
+    nestedList.listValue().add(Datum::of(std::string("mutated")));
+    assert(deepSource.propListValue().get(Datum::symbol("content")).listValue().count() == 2);
+    assert(deepCopied.propListValue().get(Datum::symbol("content")).listValue().count() == 1);
+    assert(deepCopied.propListValue().get(Datum::symbol("connection")).scriptInstanceValue().identityId() ==
+           connectionInstance.scriptInstanceValue().identityId());
+    auto sourcePoint = Datum::intPoint(5, 6);
+    auto copiedPoint = sourcePoint.deepCopy();
+    copiedPoint.asIntPoint()->x = 10;
+    assert(sourcePoint.asIntPoint()->x == 5);
+    assert(copiedPoint.asIntPoint()->x == 10);
+
     const auto member = Datum::castMemberRef(CastLibId(2), MemberId(5));
     assert(member.type() == DatumType::CastMemberRef);
     assert(member.asCastMemberRef()->castLibId()->value() == 2);
@@ -2439,6 +2456,63 @@ void testBuiltinRegistryFoundation() {
     assert(calledHandler == "doIt");
     assert(calledArgs.size() == 1);
     assert(calledArgs[0].intValue() == 5);
+
+    auto callConnection = Datum::scriptInstance("Connection");
+    auto callContent = Datum::list({Datum::of(std::string("payload"))});
+    auto messageStruct = Datum::propList();
+    messageStruct.propListValue().put(Datum::symbol("ilk"), Datum::symbol("struct"));
+    messageStruct.propListValue().put(Datum::symbol("connection"), callConnection);
+    messageStruct.propListValue().put(Datum::symbol("subject"), Datum::of(std::string("85")));
+    messageStruct.propListValue().put(Datum::symbol("content"), callContent);
+    Datum capturedStruct = Datum::voidValue();
+    context.callTargetHandler = [&capturedStruct](const Datum& target,
+                                                  const std::string&,
+                                                  const std::vector<Datum>& args) {
+        assert(target.intValue() == 7);
+        assert(args.size() == 1);
+        capturedStruct = args[0];
+        return Datum::of(1);
+    };
+    assert(registry.invoke("call", context, {Datum::symbol("deliver"), Datum::of(7), messageStruct}).intValue() == 1);
+    callContent.listValue().add(Datum::of(std::string("mutated")));
+    assert(messageStruct.propListValue().get(Datum::symbol("content")).listValue().count() == 2);
+    assert(capturedStruct.propListValue().get(Datum::symbol("content")).listValue().count() == 1);
+    assert(capturedStruct.propListValue().get(Datum::symbol("connection")).scriptInstanceValue().identityId() ==
+           callConnection.scriptInstanceValue().identityId());
+
+    auto plainStruct = Datum::propList();
+    plainStruct.propListValue().put(Datum::symbol("name"), Datum::of(std::string("plain")));
+    context.callTargetHandler = [](const Datum&,
+                                   const std::string&,
+                                   const std::vector<Datum>& args) {
+        auto forwarded = args[0];
+        forwarded.propListValue().put(Datum::symbol("mutated"), Datum::of(1));
+        return Datum::of(1);
+    };
+    assert(registry.invoke("call", context, {Datum::symbol("plain"), Datum::of(7), plainStruct}).intValue() == 1);
+    assert(plainStruct.propListValue().get(Datum::symbol("mutated")).intValue() == 1);
+
+    auto multiTargetMessage = Datum::propList();
+    auto multiTargetContent = Datum::list({Datum::of(std::string("payload"))});
+    multiTargetMessage.propListValue().put(Datum::symbol("connection"), callConnection);
+    multiTargetMessage.propListValue().put(Datum::symbol("subject"), Datum::of(std::string("86")));
+    multiTargetMessage.propListValue().put(Datum::symbol("content"), multiTargetContent);
+    std::vector<int> perTargetContentCounts;
+    context.callTargetHandler = [&perTargetContentCounts](const Datum&,
+                                                          const std::string&,
+                                                          const std::vector<Datum>& args) {
+        auto forwarded = args[0];
+        auto content = forwarded.propListValue().get(Datum::symbol("content"));
+        perTargetContentCounts.push_back(content.listValue().count());
+        content.listValue().add(Datum::of(std::string("handler-mutation")));
+        return Datum::of(static_cast<int>(perTargetContentCounts.size()));
+    };
+    assert(registry.invoke("call",
+                           context,
+                           {Datum::symbol("deliver"), Datum::list({Datum::of(1), Datum::of(2)}), multiTargetMessage})
+               .intValue() == 2);
+    assert(perTargetContentCounts == std::vector<int>({1, 1}));
+    assert(multiTargetContent.listValue().count() == 1);
     context.callTargetHandler = nullptr;
     assert(registry.invoke("call", context, {Datum::symbol("noop"), Datum::of(1)}).isVoid());
 
@@ -5687,6 +5761,12 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runObjCall(66, {sortableList, Datum::of(std::string("c"))}).isVoid());
     assert(runObjCall(73, {sortableList}).isVoid());
     assert(sortableList.listValue().getAt(1).stringValue() == "A");
+    Datum nestedMethodList = Datum::list({Datum::list({Datum::of(1)})});
+    Datum duplicatedMethodList = runObjCall(72, {nestedMethodList});
+    auto sourceMethodNested = nestedMethodList.listValue().getAt(1);
+    sourceMethodNested.listValue().add(Datum::of(2));
+    assert(nestedMethodList.listValue().getAt(1).listValue().count() == 2);
+    assert(duplicatedMethodList.listValue().getAt(1).listValue().count() == 1);
 
     Scope receiverStyleScope(&script, handler, {});
     ExecutionContext receiverStyleContext(receiverStyleScope,
@@ -5707,6 +5787,13 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runObjCall(68, {methodProps, Datum::symbol("name"), Datum::of(std::string("second"))}).isVoid());
     assert(methodProps.propListValue().properties().size() == 3);
     assert(methodProps.propListValue().properties()[2].second.stringValue() == "second");
+    Datum nestedMethodProps = Datum::propList();
+    nestedMethodProps.propListValue().put(Datum::symbol("child"), Datum::list({Datum::of(1)}));
+    Datum duplicatedMethodProps = runObjCall(72, {nestedMethodProps});
+    auto sourceMethodPropChild = nestedMethodProps.propListValue().get(Datum::symbol("child"));
+    sourceMethodPropChild.listValue().add(Datum::of(2));
+    assert(nestedMethodProps.propListValue().get(Datum::symbol("child")).listValue().count() == 2);
+    assert(duplicatedMethodProps.propListValue().get(Datum::symbol("child")).listValue().count() == 1);
 
     globals["globalName"] = Datum::of(std::string("abcd"));
     Datum globalVarRef = Datum::varRef(VarType::GLOBAL, 42);

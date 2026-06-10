@@ -23,6 +23,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `format::ChunkType`, `format::ChunkInfo`, and `format::MoaID`.
 - Typed IDs and enums in `id::Ids`.
 - SDK Lingo datum foundation in `lingo::Datum`.
+- `lingo::Datum::deepCopy()` now mirrors Java mutable-container copy semantics for nested lists, property lists, arg lists, points, rectangles, media, image refs, and string chunks while preserving script-instance reference identity.
 
 ### Bitmap Foundation
 
@@ -654,6 +655,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Deferred VM tasks can now be queued and explicitly flushed at safe call-stack-empty boundaries, including tasks queued by tasks during a flush.
 - `player::Player` now wires the builtin `callTargetHandler` provider to Player event dispatch for direct script-instance targets and sprite-channel `scriptInstanceList` targets, and flushes VM deferred tasks after frame/timeout execution in `tick()` and `stepFrame()`.
 - Script-instance object calls now port Java's numeric `closeThread` defer path, queuing the call through the VM task boundary only while a handler is active and no deferred flush is already in progress.
+- `call(...)` now snapshots Java message-struct prop-list arguments per target dispatch, deep-copying nested content while preserving connection script-instance references and leaving non-message prop lists forwarded by reference.
 - Additional provider-specific script-instance method dispatch quirks remain deferred to later focused VM/player slices.
 
 ### Lingo VM AlertHook Foundation
@@ -710,6 +712,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `OBJ_CALL` now dispatches data-owned list, property-list, string, point, rectangle, and script-instance methods through the C++ opcode registry.
 - Receiver-style external calls now fall back to the same data-owned method dispatch path after handler and builtin lookup.
 - List and property-list method dispatch covers Java-compatible mutation and lookup helpers such as `getAt`, `setAt`, `append`, `addProp`, `getProp`, `count`, `sort`, and duplicate-preserving property insertion.
+- List and property-list `duplicate` object methods now use Java-style deep copies so nested mutable containers are independent of the source value.
 - String receiver dispatch now covers direct `getProp`/`getPropRef` chunk extraction, and VarRef receiver dispatch resolves referenced context variables for string-like `getProp`, `getPropRef`, `char`, and `count` object methods.
 - Mutable ChunkRef creation and char-range deletion now use a dedicated C++ datum; broader mutable chunk-ref operations remain deferred.
 - VarRef char `getProp` and mutable ChunkRef char deletion now match Java's inverted-range behavior, returning an empty chunk or leaving the source string unchanged when the requested range is empty.
@@ -899,6 +902,7 @@ Result:
 - Lingo VM trace listener handler enter/exit, optional instruction tracing, stack/global snapshots, local/param/global/script-instance-property variable-set callbacks, error callbacks, and trace argument formatting passed through the same CTest executable.
 - Lingo VM deferred script-instance call ordering, automatic outer-handler flush, deferred task explicit flushing, flush-state guards, Player call-target provider wiring, and numeric `closeThread` task deferral passed through the same CTest executable.
 - Lingo VM alertHook manual firing, `alert()` suppression, script-error suppression/rethrow behavior, and Player no-hook fallback passed through the same CTest executable.
+- Lingo Datum deep-copy behavior, `call(...)` message-struct argument snapshots, non-message prop-list forwarding, and per-target call snapshot freshness passed through the same CTest executable.
 - Player-owned LingoVM builtin delegation, file-backed dispatcher movie-script discovery/bytecode invocation, startup movie-script frame lifecycle and timeout-target dispatch, actorList frame-event dispatch, elapsed timeout target/global dispatch, `stopMovie` timeout/movie dispatch, and VM preference storage passed through the same CTest executable.
 - OpcodeRegistry stack/control handler registration, custom handler registration, literal/symbol pushes, stack manipulation, return/factory return, and jump opcodes passed through the same CTest executable.
 - OpcodeRegistry arithmetic, comparison, and logical handlers passed through the same CTest executable.
@@ -908,7 +912,7 @@ Result:
 - OpcodeRegistry movie-property provider reads/writes and provider-backed `the` lookups passed through the same CTest executable.
 - OpcodeRegistry provider-backed object property gets/sets for movie, player, stage, sprite, integer-as-sprite refs, cast-member metadata/provider properties, timeout refs, sound channels, and image `useAlpha`/`paletteRef` setters passed through the same CTest executable.
 - OpcodeRegistry local/external call handlers, builtin dispatch, no-return calls, constant fallback, and error-state handling passed through the same CTest executable.
-- OpcodeRegistry object method calls and receiver-style external method calls for lists, property lists, strings, VarRef inverted char ranges, mutable ChunkRef inverted delete ranges, points, rectangles, script-instance ancestor assignment guards/bounded cyclic ancestor traversal/registry bootstrap/prefill/alias import/stale cleanup/persistent alias refresh, cast library member lookups/accessors, timeouts, sound channels, and Xtra instances passed through the same CTest executable.
+- OpcodeRegistry object method calls and receiver-style external method calls for lists, property lists, nested list/proplist deep-copy `duplicate`, strings, VarRef inverted char ranges, mutable ChunkRef inverted delete ranges, points, rectangles, script-instance ancestor assignment guards/bounded cyclic ancestor traversal/registry bootstrap/prefill/alias import/stale cleanup/persistent alias refresh, cast library member lookups/accessors, timeouts, sound channels, and Xtra instances passed through the same CTest executable.
 - OpcodeRegistry `NEW_OBJ` script construction delegation, provider-resolved fallback construction, declared property preinitialization, automatic `new` handler invocation, and non-script rejection passed through the same CTest executable.
 
 ## Remaining Major Work

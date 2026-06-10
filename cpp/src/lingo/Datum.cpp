@@ -633,6 +633,76 @@ const Datum::ArgListNoRet& Datum::argListNoRetValue() const {
     return **value;
 }
 
+Datum Datum::deepCopy() const {
+    if (isList()) {
+        const auto& source = listValue();
+        std::vector<Datum> copied;
+        copied.reserve(source.items().size());
+        for (const auto& item : source.items()) {
+            copied.push_back(item.deepCopy());
+        }
+        return Datum::list(std::move(copied), source.sorted());
+    }
+
+    if (isPropList()) {
+        const auto& source = propListValue();
+        Datum copied = Datum::propList(source.sorted());
+        auto& copiedProperties = copied.propListValue().properties();
+        copiedProperties.reserve(source.properties().size());
+        for (const auto& entry : source.properties()) {
+            copiedProperties.emplace_back(entry.first.deepCopy(), entry.second.deepCopy());
+        }
+        return copied;
+    }
+
+    if (const auto* point = asIntPoint()) {
+        return Datum::intPoint(point->x, point->y);
+    }
+
+    if (const auto* rect = asIntRect()) {
+        return Datum::intRect(rect->left, rect->top, rect->right, rect->bottom);
+    }
+
+    if (const auto* media = asMedia()) {
+        return Datum::media(media->bytes);
+    }
+
+    if (const auto* image = asImageRef()) {
+        return Datum::imageRef(image->bitmap != nullptr
+            ? std::make_shared<bitmap::Bitmap>(image->bitmap->copy())
+            : std::shared_ptr<bitmap::Bitmap>{});
+    }
+
+    if (const auto* chunk = std::get_if<StringChunk>(&value_)) {
+        return Datum::stringChunk(chunk->source != nullptr ? chunk->source->deepCopy() : Datum::voidValue(),
+                                  chunk->chunkType,
+                                  chunk->start,
+                                  chunk->end,
+                                  chunk->itemDelimiter,
+                                  chunk->value);
+    }
+
+    if (std::holds_alternative<ArgListPtr>(value_)) {
+        std::vector<Datum> copied;
+        copied.reserve(argListValue().args().size());
+        for (const auto& arg : argListValue().args()) {
+            copied.push_back(arg.deepCopy());
+        }
+        return Datum::argList(std::move(copied));
+    }
+
+    if (std::holds_alternative<ArgListNoRetPtr>(value_)) {
+        std::vector<Datum> copied;
+        copied.reserve(argListNoRetValue().args().size());
+        for (const auto& arg : argListNoRetValue().args()) {
+            copied.push_back(arg.deepCopy());
+        }
+        return Datum::argListNoRet(std::move(copied));
+    }
+
+    return *this;
+}
+
 Datum::List::List(std::vector<Datum> items, bool sorted)
     : items_(std::move(items)), sorted_(sorted) {}
 

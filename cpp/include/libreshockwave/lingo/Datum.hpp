@@ -409,6 +409,8 @@ public:
     [[nodiscard]] const ArgList& argListValue() const;
     [[nodiscard]] const ArgListNoRet& argListNoRetValue() const;
 
+    [[nodiscard]] Datum deepCopy() const;
+
     friend bool operator==(const Datum& lhs, const Datum& rhs);
     friend bool operator!=(const Datum& lhs, const Datum& rhs) { return !(lhs == rhs); }
 

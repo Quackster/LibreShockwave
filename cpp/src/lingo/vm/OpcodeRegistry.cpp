@@ -1001,7 +1001,7 @@ Datum listObjectMethod(Datum::List& list, std::string_view methodName, const std
         return Datum::voidValue();
     }
     if (equalsIgnoreCase(methodName, "duplicate")) {
-        return Datum::list(items, list.sorted());
+        return Datum::list(items, list.sorted()).deepCopy();
     }
     return Datum::voidValue();
 }
@@ -1136,7 +1136,7 @@ Datum propListObjectMethod(Datum::PropList& propList, std::string_view methodNam
     if (equalsIgnoreCase(methodName, "duplicate")) {
         Datum copy = Datum::propList(propList.sorted());
         copy.propListValue().properties() = properties;
-        return copy;
+        return copy.deepCopy();
     }
     return Datum::voidValue();
 }

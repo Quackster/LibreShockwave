@@ -434,6 +434,41 @@ Datum defaultStreamStatusDatum() {
     return props;
 }
 
+Datum getTypedSymbolProp(const Datum::PropList& propList, std::string_view key) {
+    const int index = findPropIndexTyped(propList, Datum::symbol(std::string(key)));
+    return index >= 0 ? propList.properties()[static_cast<std::size_t>(index)].second : Datum::voidValue();
+}
+
+bool isMessageStruct(const Datum::PropList& propList) {
+    if (getTypedSymbolProp(propList, "connection").type() != DatumType::ScriptInstanceRef) {
+        return false;
+    }
+
+    const Datum ilk = getTypedSymbolProp(propList, "ilk");
+    if (const auto* symbol = ilk.asSymbol(); symbol != nullptr && equalsIgnoreCase(symbol->name, "struct")) {
+        return true;
+    }
+
+    return !getTypedSymbolProp(propList, "subject").isVoid() &&
+           !getTypedSymbolProp(propList, "content").isVoid();
+}
+
+Datum snapshotStructArgForCall(const Datum& arg) {
+    if (!arg.isPropList() || !isMessageStruct(arg.propListValue())) {
+        return arg;
+    }
+    return arg.deepCopy();
+}
+
+std::vector<Datum> snapshotStructArgsForCall(const std::vector<Datum>& args) {
+    std::vector<Datum> snapshot;
+    snapshot.reserve(args.size());
+    for (const auto& arg : args) {
+        snapshot.push_back(snapshotStructArgForCall(arg));
+    }
+    return snapshot;
+}
+
 bool hasCastProvider(const BuiltinContext& context) {
     return context.namedCastMemberCreator ||
            context.castLibNumberResolver ||
@@ -1946,7 +1981,8 @@ Datum ControlFlowBuiltins::call(BuiltinContext& context, const std::vector<Datum
     if (target.isList()) {
         const auto snapshot = target.listValue().items();
         for (const auto& item : snapshot) {
-            lastResult = context.callTargetHandler(item, handlerName, extraArgs);
+            const auto callArgs = snapshotStructArgsForCall(extraArgs);
+            lastResult = context.callTargetHandler(item, handlerName, callArgs);
         }
         return lastResult;
     }
@@ -1957,12 +1993,14 @@ Datum ControlFlowBuiltins::call(BuiltinContext& context, const std::vector<Datum
             snapshot.push_back(entry.second);
         }
         for (const auto& item : snapshot) {
-            lastResult = context.callTargetHandler(item, handlerName, extraArgs);
+            const auto callArgs = snapshotStructArgsForCall(extraArgs);
+            lastResult = context.callTargetHandler(item, handlerName, callArgs);
         }
         return lastResult;
     }
 
-    return context.callTargetHandler(target, handlerName, extraArgs);
+    const auto callArgs = snapshotStructArgsForCall(extraArgs);
+    return context.callTargetHandler(target, handlerName, callArgs);
 }
 
 void ConstructorBuiltins::registerBuiltins(BuiltinRegistry& registry) {
