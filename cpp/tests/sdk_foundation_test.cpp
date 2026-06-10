@@ -2894,6 +2894,24 @@ void testBuiltinRegistryFoundation() {
                                            {Datum::scriptRef(Datum::CastMemberRef{4, 8}), Datum::of(99)});
     assert(genericNewCalls == 1);
     assert(newScript.scriptInstanceValue().scriptName() == "created");
+    context.newInstanceHandler = {};
+    int directNewPropertyLookups = 0;
+    context.scriptPropertyNamesResolver = [&directNewPropertyLookups](int castLib, int memberNum) {
+        ++directNewPropertyLookups;
+        assert(castLib == 5);
+        assert(memberNum == 9);
+        return std::vector<std::string>{"pDeclared", "pOther"};
+    };
+    const auto directNewScript = registry.invoke("new",
+                                                 context,
+                                                 {Datum::scriptRef(Datum::CastMemberRef{5, 9}), Datum::of(123)});
+    assert(directNewPropertyLookups == 1);
+    assert(directNewScript.scriptInstanceValue().scriptName() == "script");
+    assert(directNewScript.scriptInstanceValue().scriptRef()->castLib == 5);
+    assert(directNewScript.scriptInstanceValue().scriptRef()->memberNum() == 9);
+    assert(directNewScript.scriptInstanceValue().getProperty("pDeclared").isVoid());
+    assert(directNewScript.scriptInstanceValue().getProperty("pOther").isVoid());
+    context.scriptPropertyNamesResolver = {};
 
     assert(registry.contains("objectp"));
     assert(registry.contains("voidp"));
@@ -3809,6 +3827,47 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     newObjContext.push(Datum::argList({Datum::symbol("notScript")}));
     assert(opcodeRegistry.execute(Opcode::NEW_OBJ, newObjContext));
     assert(newObjContext.pop().isVoid());
+
+    builtinContext.scriptPropertyNamesResolver = [](int castLib, int memberNum) {
+        assert(castLib == 4);
+        assert(memberNum == 8);
+        return std::vector<std::string>{"pDirect"};
+    };
+    int directScriptRefNewHandlerCalls = 0;
+    ExecutionContext::Callbacks directScriptRefNewObjCallbacks = callbacks;
+    directScriptRefNewObjCallbacks.handlerFinder = [&script, &otherHandler](std::string_view name) -> std::optional<HandlerRef> {
+        if (name == "new") {
+            return HandlerRef{&script, otherHandler};
+        }
+        return std::nullopt;
+    };
+    directScriptRefNewObjCallbacks.handlerExecutor = [&directScriptRefNewHandlerCalls](const ScriptChunk& calledScript,
+                                                                                       const ScriptChunk::Handler&,
+                                                                                       const std::vector<Datum>& args,
+                                                                                       const Datum& receiverArg) {
+        ++directScriptRefNewHandlerCalls;
+        assert(calledScript.id().value() == 700);
+        assert(args.size() == 1);
+        assert(args.front().intValue() == 101);
+        assert(receiverArg.type() == DatumType::ScriptInstanceRef);
+        assert(receiverArg.scriptInstanceValue().scriptRef()->castLib == 4);
+        assert(receiverArg.scriptInstanceValue().scriptRef()->memberNum() == 8);
+        assert(receiverArg.scriptInstanceValue().getProperty("pDirect").isVoid());
+        return Datum::voidValue();
+    };
+    ExecutionContext directScriptRefNewObjContext(newObjScope,
+                                                  ScriptChunk::Instruction{0, Opcode::NEW_OBJ, libreshockwave::lingo::code(Opcode::NEW_OBJ), 74},
+                                                  &registry,
+                                                  &builtinContext,
+                                                  directScriptRefNewObjCallbacks);
+    directScriptRefNewObjContext.push(Datum::argList({Datum::scriptRef(Datum::CastMemberRef{4, 8}), Datum::of(101)}));
+    assert(opcodeRegistry.execute(Opcode::NEW_OBJ, directScriptRefNewObjContext));
+    Datum directScriptRefNewInstance = directScriptRefNewObjContext.pop();
+    assert(directScriptRefNewHandlerCalls == 1);
+    assert(directScriptRefNewInstance.scriptInstanceValue().scriptRef()->castLib == 4);
+    assert(directScriptRefNewInstance.scriptInstanceValue().scriptRef()->memberNum() == 8);
+    assert(directScriptRefNewInstance.scriptInstanceValue().getProperty("pDirect").isVoid());
+    builtinContext.scriptPropertyNamesResolver = {};
 
     builtinContext.scriptResolver = [](const Datum& identifier, const std::optional<Datum>& scope) {
         assert(!scope.has_value());

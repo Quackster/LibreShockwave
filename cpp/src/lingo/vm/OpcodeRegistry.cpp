@@ -4177,6 +4177,20 @@ std::optional<Datum::CastMemberRef> scriptConstructorMemberRef(const Datum& scri
     return std::nullopt;
 }
 
+bool shouldInvokeBuiltinNewForScriptConstructor(ExecutionContext& context, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return false;
+    }
+    auto* builtinContext = context.builtinContext();
+    if (builtinContext != nullptr && builtinContext->newInstanceHandler) {
+        return true;
+    }
+    if (args.front().asXtra() != nullptr) {
+        return true;
+    }
+    return args.front().asSymbol() != nullptr && args.size() > 1 && args[1].asCastLibRef() != nullptr;
+}
+
 void initializeDeclaredScriptProperties(ExecutionContext& context, Datum& instance, const Datum::CastMemberRef& memberRef) {
     auto* builtinContext = context.builtinContext();
     if (builtinContext == nullptr || !builtinContext->scriptPropertyNamesResolver ||
@@ -4216,9 +4230,11 @@ bool newObj(ExecutionContext& context) {
         return true;
     }
 
-    if (const auto result = context.invokeBuiltinIfPresent("new", args); result && !result->isVoid()) {
-        context.push(*result);
-        return true;
+    if (shouldInvokeBuiltinNewForScriptConstructor(context, args)) {
+        if (const auto result = context.invokeBuiltinIfPresent("new", args); result && !result->isVoid()) {
+            context.push(*result);
+            return true;
+        }
     }
 
     const Datum constructorTarget = resolveScriptConstructorTarget(context, args.front());

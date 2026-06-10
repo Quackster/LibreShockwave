@@ -139,6 +139,19 @@ Datum scriptRefFromCastMemberDatum(const Datum& memberRef) {
     return Datum::voidValue();
 }
 
+Datum createScriptInstanceFromRef(BuiltinContext& context, const Datum::CastMemberRef& memberRef) {
+    Datum instance = Datum::scriptInstance("script", memberRef);
+    if (!context.scriptPropertyNamesResolver) {
+        return instance;
+    }
+    for (const auto& propertyName : context.scriptPropertyNamesResolver(memberRef.castLib, memberRef.memberNum())) {
+        if (!instance.scriptInstanceValue().hasProperty(propertyName)) {
+            instance.scriptInstanceValue().setProperty(propertyName, Datum::voidValue());
+        }
+    }
+    return instance;
+}
+
 double toDoubleLikeJava(const Datum& datum) {
     if (const auto* value = datum.asInt()) {
         return static_cast<double>(value->value);
@@ -2078,6 +2091,9 @@ Datum ConstructorBuiltins::newInstance(BuiltinContext& context, const std::vecto
 
     if (context.newInstanceHandler) {
         return context.newInstanceHandler(target, constructorArgs);
+    }
+    if (const auto* scriptRef = target.asScriptRef()) {
+        return createScriptInstanceFromRef(context, scriptRef->memberRef);
     }
     return Datum::voidValue();
 }

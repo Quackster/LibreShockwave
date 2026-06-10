@@ -408,6 +408,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - Constructor builtins now register `point`, `rect`, `union`, `intersect`, `color`, `rgb`, `paletteIndex`, `sprite`, and `new` in the C++ builtin registry.
 - Point/rect geometry constructors, rectangle union/intersection, RGB and palette-index color construction, color pass-through, and trimmed hex-string RGB parsing match the Java constructor helpers.
+- Direct `new(scriptRef, ...)` now creates C++ script instances with their cast-member reference and preinitializes declared script properties through provider hooks, while `NEW_OBJ` keeps the VM-aware path for authored `new` handler execution.
 - `new(#memberType, castLib)` and generic object construction are exposed through callback hooks until the C++ cast provider, Xtra support, and script-instance VM runtime are ported.
 
 ### Type Builtins Foundation
@@ -876,7 +877,7 @@ Result:
 - Editable text field no-handler click focus, drag selection extension, focus clearing, printable insertion, selected-text replacement, backspace, left/right arrow caret movement, and tab/shift-tab field cycling passed through the same CTest executable.
 - Editable text field caret geometry, single-line and multi-line selection rectangles, paste replacement, selected-text extraction, cut mutation, select-all, no-focus fallbacks, and sprite-registry revision bumps passed through the same CTest executable.
 - SoundBuiltins channel creation, availability, sound-channel method dispatch, VM object-property defaults/mutation, and SoundManager playback delegation passed through the same CTest executable.
-- ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration and callback hooks passed through the same CTest executable.
+- ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration, callback hooks, direct script-instance fallback, and `NEW_OBJ` script-ref handler dispatch passed through the same CTest executable.
 - TypeBuiltins object/void/type predicates, `value` literal parsing/provider fallback, direct `script` lookup/scoping/unscoped list fallback, `script`/`callAncestor` callback hooks and list fanout, symbol conversion, and `ilk` alias/field-text checks passed through the same CTest executable.
 - Lingo VM Scope and ExecutionContext stack, param, local, return, loop, jump, global callback, handler callback, builtin invocation, and call-stack formatting behavior passed through the same CTest executable.
 - Lingo VM ExecutionContext name resolver callback and resolver-backed global opcode behavior passed through the same CTest executable.
@@ -1107,4 +1108,5 @@ Result:
 - `53949afa Port C++ callAncestor list fanout`
 - `8fc7526c Port C++ direct script lookup`
 - `288d5c4d Port C++ FieldText ilk parity`
-- Current checkpoint commit message: `Port C++ script list scope parity`
+- `8b63f843 Port C++ script list scope parity`
+- Current checkpoint commit message: `Port C++ script constructor fallback`
