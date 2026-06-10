@@ -6083,11 +6083,66 @@ void testLingoVmRuntimeFoundation() {
     assert(LingoVM::isGlobalHandlerScriptType(ScriptChunkType::MovieScript));
     assert(!LingoVM::isGlobalHandlerScriptType(ScriptChunkType::Behavior));
 
+    ScriptChunk ancestorScript(nullptr,
+                               ChunkId(962),
+                               ScriptChunkType::Parent,
+                               0,
+                               {},
+                               {},
+                               {},
+                               {},
+                               {});
+    const auto deconstructReceiver = Datum::scriptInstance("cleanup");
+    const auto otherDeconstructReceiver = Datum::scriptInstance("cleanup");
+    assert(LingoVM::shouldSkipDeconstructReentry("deconstruct",
+                                                 deconstructReceiver,
+                                                 script,
+                                                 "deconstruct",
+                                                 deconstructReceiver,
+                                                 script));
+    assert(!LingoVM::shouldSkipDeconstructReentry("deconstruct",
+                                                  deconstructReceiver,
+                                                  ancestorScript,
+                                                  "deconstruct",
+                                                  deconstructReceiver,
+                                                  script));
+    assert(!LingoVM::shouldSkipDeconstructReentry("preparemovie",
+                                                  deconstructReceiver,
+                                                  script,
+                                                  "deconstruct",
+                                                  deconstructReceiver,
+                                                  script));
+    assert(!LingoVM::shouldSkipDeconstructReentry("deconstruct",
+                                                  otherDeconstructReceiver,
+                                                  script,
+                                                  "deconstruct",
+                                                  deconstructReceiver,
+                                                  script));
+
     assert(vm.findHandler(script, "handler#1").has_value());
     assert(vm.findHandler(script, "#1").has_value());
     assert(!vm.findHandler(script, "missing").has_value());
     assert(vm.executeHandler(script, returnHandler).intValue() == 42);
     assert(vm.callStackDepth() == 0);
+
+    LingoVM implicitReceiverVm;
+    const auto implicitReceiver = Datum::scriptInstance("implicit");
+    implicitReceiverVm.opcodeRegistry().registerHandler(
+        Opcode::PUSH_ZERO,
+        [&implicitReceiverVm, &implicitReceiver](ExecutionContext& context) {
+            const auto* scope = implicitReceiverVm.currentScope();
+            assert(scope != nullptr);
+            assert(scope->receiver() == implicitReceiver);
+            assert(context.scope().receiver() == implicitReceiver);
+            assert(scope->getParam(0).intValue() == 9);
+            const auto displayArgs = scope->displayArguments();
+            assert(displayArgs.size() == 1);
+            assert(displayArgs[0].intValue() == 9);
+            context.push(Datum::of(91));
+            return true;
+        });
+    assert(implicitReceiverVm.executeHandler(script, stackHandler, {implicitReceiver, Datum::of(9)}).intValue() == 91);
+    assert(implicitReceiverVm.callStackDepth() == 0);
 
     assert(vm.executeHandler(script, globalHandler).intValue() == 7);
     assert(vm.getGlobal("#3").intValue() == 7);

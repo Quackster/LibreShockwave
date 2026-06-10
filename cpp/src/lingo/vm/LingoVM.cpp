@@ -554,15 +554,42 @@ Datum LingoVM::executeHandler(const chunks::ScriptChunk& script,
     if (inErrorState_) {
         return Datum::voidValue();
     }
-    if (callStack_.size() >= MAX_CALL_STACK_DEPTH) {
-        throw LingoException("Call stack overflow (max " + std::to_string(MAX_CALL_STACK_DEPTH) + " frames)");
-    }
 
     const std::string currentHandlerName = handlerName(script, handler);
     const std::string normalizedHandlerName = normalizeLookupName(currentHandlerName);
     const bool isAlertHookHandler = equalsIgnoreCase(currentHandlerName, "alertHook");
     if (isAlertHookHandler && alertHookDepth_ > 0) {
         return Datum::voidValue();
+    }
+
+    Datum scopeReceiver = receiver;
+    const Datum* effectiveReceiver = nullptr;
+    if (!receiver.isVoid() && !receiver.isNull()) {
+        effectiveReceiver = &receiver;
+    } else if (!args.empty() && args.front().type() == DatumType::ScriptInstanceRef) {
+        scopeReceiver = args.front();
+        effectiveReceiver = &args.front();
+    }
+    if (normalizedHandlerName == "deconstruct" && effectiveReceiver != nullptr) {
+        for (const auto& existing : callStack_) {
+            const auto* existingScript = existing.script();
+            if (existingScript == nullptr) {
+                continue;
+            }
+            const std::string existingHandlerName = normalizeLookupName(handlerName(*existingScript, existing.handler()));
+            if (shouldSkipDeconstructReentry(normalizedHandlerName,
+                                             *effectiveReceiver,
+                                             script,
+                                             existingHandlerName,
+                                             existing.receiver(),
+                                             *existingScript)) {
+                return Datum::voidValue();
+            }
+        }
+    }
+
+    if (callStack_.size() >= MAX_CALL_STACK_DEPTH) {
+        throw LingoException("Call stack overflow (max " + std::to_string(MAX_CALL_STACK_DEPTH) + " frames)");
     }
     if (tracedHandlers_.contains(normalizedHandlerName)) {
         emitTracedHandlerCall(currentHandlerName, script, args);
@@ -575,7 +602,7 @@ Datum LingoVM::executeHandler(const chunks::ScriptChunk& script,
         effectiveArgs.insert(effectiveArgs.begin(), receiver);
     }
 
-    callStack_.emplace_back(&script, handler, std::move(effectiveArgs), receiver, firstParamDeclaredMe);
+    callStack_.emplace_back(&script, handler, std::move(effectiveArgs), scopeReceiver, firstParamDeclaredMe);
     Scope& scope = callStack_.back();
     Datum result = Datum::voidValue();
     std::optional<TraceListener::HandlerInfo> handlerInfo;
@@ -683,6 +710,20 @@ std::string LingoVM::formatTraceArgument(const Datum& value) {
 
 bool LingoVM::isGlobalHandlerScriptType(chunks::ScriptChunkType scriptType) {
     return scriptType == chunks::ScriptChunkType::MovieScript;
+}
+
+bool LingoVM::shouldSkipDeconstructReentry(std::string_view normalizedHandlerName,
+                                           const Datum& effectiveReceiver,
+                                           const chunks::ScriptChunk& currentScript,
+                                           std::string_view existingNormalizedHandlerName,
+                                           const Datum& existingReceiver,
+                                           const chunks::ScriptChunk& existingScript) {
+    return normalizedHandlerName == "deconstruct" &&
+           existingNormalizedHandlerName == "deconstruct" &&
+           effectiveReceiver.type() == DatumType::ScriptInstanceRef &&
+           existingReceiver.type() == DatumType::ScriptInstanceRef &&
+           effectiveReceiver == existingReceiver &&
+           &currentScript == &existingScript;
 }
 
 ExecutionContext::Callbacks LingoVM::callbacksFor(const chunks::ScriptChunk& script) {

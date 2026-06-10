@@ -626,6 +626,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `lingo::vm::LingoVM` now owns globals, prefs, a builtin registry/context, an opcode registry, call-stack state, pass/stopEvent runtime builtins, Java-compatible seeded random numbers, step limits, error state, and handler cache invalidation.
 - The VM can execute `ScriptChunk::Handler` bytecode end to end through reusable `Scope` and `ExecutionContext` callbacks, including global get/set opcodes, parameter reads, return values, direct builtin calls, builtin fallback from `callHandler`, and formatted call-stack frames.
 - VM-backed `value(...)` evaluation now mirrors Java's identifier fallback by resolving active globals and zero-argument global handlers through the C++ VM before returning void for unresolved identifiers.
+- Handler execution now mirrors Java's effective-receiver path for script instances passed as the first `me` argument, and same-script/same-receiver `deconstruct` reentry is skipped while ancestor-script cleanup remains allowed.
 - Tests cover direct handler execution, VM-backed globals/prefs/random, pass and stopEvent callbacks, step-limit cleanup, and visible call-stack state during opcode execution.
 
 ### Lingo VM Safepoint Foundation
@@ -1126,4 +1127,5 @@ Result:
 - `72fc2f3a Port C++ bounded ancestor traversal`
 - `3b15a1e5 Port C++ random seed trace parity`
 - `7c27afaf Port C++ VM value identifier fallback`
-- Current checkpoint commit message: `Port C++ nested value identifier fallback`
+- `1aafff66 Port C++ nested value identifier fallback`
+- Current checkpoint commit message: `Port C++ deconstruct reentry guard`

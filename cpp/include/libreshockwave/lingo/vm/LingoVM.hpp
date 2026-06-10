@@ -129,6 +129,13 @@ public:
     [[nodiscard]] static std::string normalizeLookupName(std::string_view name);
     [[nodiscard]] static std::string formatTraceArgument(const Datum& value);
     [[nodiscard]] static bool isGlobalHandlerScriptType(chunks::ScriptChunkType scriptType);
+    [[nodiscard]] static bool shouldSkipDeconstructReentry(
+        std::string_view normalizedHandlerName,
+        const Datum& effectiveReceiver,
+        const chunks::ScriptChunk& currentScript,
+        std::string_view existingNormalizedHandlerName,
+        const Datum& existingReceiver,
+        const chunks::ScriptChunk& existingScript);
 
 private:
     [[nodiscard]] ExecutionContext::Callbacks callbacksFor(const chunks::ScriptChunk& script);
