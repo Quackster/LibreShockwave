@@ -6530,6 +6530,205 @@ void testSpriteBakerFoundation() {
     assert(fileFilmDecodeCalls == 2);
     assert(fileBackedFilmAgain.bakedBitmap()->getPixel(1, 0) == 0xFF0000FFU);
 
+    std::vector<std::uint8_t> textConfigData(80, 0);
+    putI16At(textConfigData, 2, 0x04B1);
+    putI16At(textConfigData, 8, 100);
+    putI16At(textConfigData, 10, 100);
+    putI16At(textConfigData, 12, 1);
+    putI16At(textConfigData, 14, 1);
+    putI16At(textConfigData, 36, 0x04B1);
+    putI16At(textConfigData, 54, 30);
+
+    std::vector<std::uint8_t> textKeyData;
+    appendI16(textKeyData, 12);
+    appendI16(textKeyData, 12);
+    appendI32(textKeyData, 1);
+    appendI32(textKeyData, 1);
+    appendI32(textKeyData, 2);
+    appendI32(textKeyData, 3);
+    appendI32(textKeyData, BinaryReader::fourCC("STXT"));
+
+    const std::string fileText = "File text";
+    std::vector<std::uint8_t> stxtData;
+    appendI32(stxtData, 8);
+    appendI32(stxtData, static_cast<std::uint32_t>(fileText.size()));
+    stxtData.insert(stxtData.end(), fileText.begin(), fileText.end());
+    appendI16(stxtData, 1);
+    appendI16(stxtData, 0);
+    appendI32(stxtData, 0);
+    appendI16(stxtData, 99);
+    stxtData.push_back(1);
+    stxtData.insert(stxtData.end(), {0, 0, 0});
+    appendI16(stxtData, 9);
+    stxtData.insert(stxtData.end(), {0x11, 0x22, 0x33, 0});
+
+    const std::vector<std::pair<std::string, std::vector<std::uint8_t>>> textChunks{
+        {"DRCF", textConfigData},
+        {"KEY*", textKeyData},
+        {"STXT", stxtData}
+    };
+    const int textMmapLen = 24 + static_cast<int>(textChunks.size()) * 20;
+    int textDataStart = mmapOffset + 8 + textMmapLen;
+    std::vector<int> textChunkDataStarts;
+    textChunkDataStarts.reserve(textChunks.size());
+    for (const auto& chunk : textChunks) {
+        textChunkDataStarts.push_back(textDataStart);
+        textDataStart += static_cast<int>(chunk.second.size());
+    }
+
+    std::vector<std::uint8_t> textFileData;
+    appendFourCC(textFileData, "RIFX");
+    appendI32(textFileData, 0);
+    appendFourCC(textFileData, "MV93");
+    appendFourCC(textFileData, "imap");
+    appendI32(textFileData, 12);
+    appendI32(textFileData, 1);
+    appendI32(textFileData, mmapOffset);
+    appendI32(textFileData, 0x04B1);
+    appendFourCC(textFileData, "mmap");
+    appendI32(textFileData, static_cast<std::uint32_t>(textMmapLen));
+    appendI16(textFileData, 24);
+    appendI16(textFileData, 20);
+    appendI32(textFileData, static_cast<std::uint32_t>(textChunks.size()));
+    appendI32(textFileData, static_cast<std::uint32_t>(textChunks.size()));
+    appendI32(textFileData, 0);
+    appendI32(textFileData, 0);
+    appendI32(textFileData, 0);
+    for (std::size_t index = 0; index < textChunks.size(); ++index) {
+        appendI32(textFileData, BinaryReader::fourCC(textChunks[index].first));
+        appendI32(textFileData, static_cast<std::uint32_t>(textChunks[index].second.size()));
+        appendI32(textFileData, static_cast<std::uint32_t>(textChunkDataStarts[index] - 8));
+        appendI16(textFileData, 0);
+        appendI16(textFileData, 0);
+        appendI32(textFileData, 0);
+    }
+    for (const auto& chunk : textChunks) {
+        textFileData.insert(textFileData.end(), chunk.second.begin(), chunk.second.end());
+    }
+    putI32At(textFileData, 4, static_cast<std::uint32_t>(textFileData.size() - 8));
+
+    auto textFile = DirectorFile::load(textFileData);
+    std::vector<std::uint8_t> textSpecificData(48, 0);
+    putI16At(textSpecificData, 0, 1);
+    textSpecificData[2] = 0xAA;
+    textSpecificData[4] = 0xBB;
+    textSpecificData[6] = 0xCC;
+    putI16At(textSpecificData, 38, 7);
+    putI16At(textSpecificData, 40, 3);
+    auto fileTextMember = std::make_shared<CastMemberChunk>(textFile.get(),
+                                                            ChunkId(3),
+                                                            MemberType::Text,
+                                                            0,
+                                                            static_cast<int>(textSpecificData.size()),
+                                                            std::vector<std::uint8_t>{},
+                                                            textSpecificData,
+                                                            "file-text",
+                                                            0,
+                                                            0,
+                                                            0);
+    assert(textFile->getTextForMember(fileTextMember)->text() == fileText);
+
+    class RecordingSpriteBakerTextRenderer final : public TextRenderer {
+    public:
+        std::string lastText;
+        int lastWidth = 0;
+        int lastHeight = 0;
+        std::string lastFontName;
+        int lastFontSize = 0;
+        std::string lastFontStyle;
+        std::string lastAlignment;
+        int lastTextColor = 0;
+        int lastBgColor = 0;
+        bool lastWordWrap = false;
+        bool lastAntialias = true;
+        int lastFixedLineSpace = -1;
+        int lastTopSpacing = -1;
+
+        std::shared_ptr<Bitmap> renderText(std::string text,
+                                           int width,
+                                           int height,
+                                           std::string fontName,
+                                           int fontSize,
+                                           std::string fontStyle,
+                                           std::string alignment,
+                                           int textColor,
+                                           int bgColor,
+                                           bool wordWrap,
+                                           bool antialias,
+                                           int fixedLineSpace,
+                                           int topSpacing) override {
+            lastText = std::move(text);
+            lastWidth = width;
+            lastHeight = height;
+            lastFontName = std::move(fontName);
+            lastFontSize = fontSize;
+            lastFontStyle = std::move(fontStyle);
+            lastAlignment = std::move(alignment);
+            lastTextColor = textColor;
+            lastBgColor = bgColor;
+            lastWordWrap = wordWrap;
+            lastAntialias = antialias;
+            lastFixedLineSpace = fixedLineSpace;
+            lastTopSpacing = topSpacing;
+            return std::make_shared<Bitmap>(width, height, 32,
+                                            std::vector<std::uint32_t>(
+                                                static_cast<std::size_t>(width * height), 0xFFABCDEFU));
+        }
+
+        std::vector<int> charPosToLoc(std::string, int, std::string, int, std::string, int, std::string, int) override {
+            return {0, 0};
+        }
+
+        int locToCharPos(std::string, int, int, std::string, int, std::string, int, std::string, int) override {
+            return 0;
+        }
+
+        int getLineHeight(std::string, int fontSize, std::string, int fixedLineSpace) override {
+            return fixedLineSpace > 0 ? fixedLineSpace : fontSize;
+        }
+    };
+
+    RecordingSpriteBakerTextRenderer fileTextRenderer;
+    SpriteBaker fileTextBaker;
+    fileTextBaker.setTextRenderer(&fileTextRenderer);
+    RenderSprite fileTextSprite(13,
+                                0,
+                                0,
+                                20,
+                                9,
+                                0,
+                                true,
+                                SpriteType::Text,
+                                fileTextMember,
+                                nullptr,
+                                0x445566,
+                                0,
+                                true,
+                                false,
+                                0,
+                                100,
+                                false,
+                                false,
+                                nullptr,
+                                false);
+    auto bakedFileText = fileTextBaker.bake(fileTextSprite);
+    assert(fileTextRenderer.lastText == fileText);
+    assert(fileTextRenderer.lastWidth == 7);
+    assert(fileTextRenderer.lastHeight == 3);
+    assert(fileTextRenderer.lastFontName == "Geneva");
+    assert(fileTextRenderer.lastFontSize == 9);
+    assert(fileTextRenderer.lastFontStyle == "bold");
+    assert(fileTextRenderer.lastAlignment == "center");
+    assert(fileTextRenderer.lastTextColor == static_cast<int>(0xFF445566U));
+    assert(fileTextRenderer.lastBgColor == static_cast<int>(0xFFAABBCCU));
+    assert(fileTextRenderer.lastWordWrap);
+    assert(!fileTextRenderer.lastAntialias);
+    assert(fileTextRenderer.lastFixedLineSpace == 0);
+    assert(fileTextRenderer.lastTopSpacing == 0);
+    assert(bakedFileText.width() == 7);
+    assert(bakedFileText.height() == 3);
+    assert(bakedFileText.bakedBitmap()->getPixel(6, 2) == 0xFFABCDEFU);
+
     RenderSprite solidShape(3,
                             0,
                             0,

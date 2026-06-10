@@ -12,9 +12,12 @@
 #include "libreshockwave/cast/CastMember.hpp"
 #include "libreshockwave/cast/FilmLoopInfo.hpp"
 #include "libreshockwave/cast/ShapeInfo.hpp"
+#include "libreshockwave/cast/TextInfo.hpp"
 #include "libreshockwave/chunks/ConfigChunk.hpp"
 #include "libreshockwave/chunks/ScoreChunk.hpp"
+#include "libreshockwave/chunks/TextChunk.hpp"
 #include "libreshockwave/id/Ids.hpp"
+#include "libreshockwave/player/render/output/TextRenderer.hpp"
 #include "libreshockwave/player/render/pipeline/InkProcessor.hpp"
 
 namespace libreshockwave::player::render::pipeline {
@@ -127,6 +130,87 @@ int directorVersionFor(const DirectorFile& file) {
     return file.config() != nullptr ? file.config()->directorVersion() : 1200;
 }
 
+std::string defaultStxtFontName(const DirectorFile& file) {
+    const int version = directorVersionFor(file);
+    return version > 0 && version <= 1600 ? "Geneva" : "Arial";
+}
+
+std::string textAlignment(int textAlign) {
+    switch (textAlign) {
+        case 1: return "center";
+        case -1: return "right";
+        default: return "left";
+    }
+}
+
+std::string fontStyleString(int fontStyle) {
+    std::string style;
+    if ((fontStyle & 1) != 0) {
+        style += "bold";
+    }
+    if ((fontStyle & 2) != 0) {
+        if (!style.empty()) style += ",";
+        style += "italic";
+    }
+    if ((fontStyle & 4) != 0) {
+        if (!style.empty()) style += ",";
+        style += "underline";
+    }
+    return style;
+}
+
+int argbRgb(int rgb) {
+    return static_cast<int>(0xFF000000U | (static_cast<std::uint32_t>(rgb) & 0x00FFFFFFU));
+}
+
+int runTextColor(int r, int g, int b) {
+    if (r >= 0 && g >= 0 && b >= 0) {
+        return argbRgb((r << 16) | (g << 8) | b);
+    }
+    return argbRgb(0);
+}
+
+bool shouldUseSpriteForeColorForFileText(const RenderSprite& sprite, int runColor) {
+    if (!sprite.hasForeColor()) {
+        return false;
+    }
+    const int spriteColor = argbRgb(sprite.foreColor());
+    if ((spriteColor & 0x00FFFFFF) != 0x00FFFFFF) {
+        return true;
+    }
+    return (runColor & 0x00FFFFFF) == 0x00FFFFFF;
+}
+
+bool isTransparentTextInk(const RenderSprite& sprite) {
+    return sprite.inkMode() == id::InkMode::BACKGROUND_TRANSPARENT ||
+           sprite.inkMode() == id::InkMode::MATTE;
+}
+
+std::shared_ptr<bitmap::Bitmap> insetTextBitmap(std::shared_ptr<bitmap::Bitmap> source,
+                                                int width,
+                                                int height,
+                                                int insetX,
+                                                int bgColor) {
+    if (source == nullptr || insetX <= 0 || source->width() == width) {
+        return source;
+    }
+
+    bitmap::Bitmap bitmap(width, height, source->bitDepth());
+    bitmap.fill(static_cast<std::uint32_t>(bgColor));
+    const int copyWidth = std::min(source->width(), std::max(0, width - insetX));
+    const int copyHeight = std::min(source->height(), height);
+    for (int y = 0; y < copyHeight; ++y) {
+        for (int x = 0; x < copyWidth; ++x) {
+            bitmap.setPixel(x + insetX, y, source->getPixel(x, y));
+        }
+    }
+    bitmap.markScriptModified();
+    if (source->isNativeAlpha()) {
+        bitmap.setNativeAlpha(true);
+    }
+    return std::make_shared<bitmap::Bitmap>(std::move(bitmap));
+}
+
 } // namespace
 
 SpriteBaker::SpriteBaker(BitmapCache* bitmapCache)
@@ -190,6 +274,10 @@ void SpriteBaker::setLiveBitmapProvider(LiveBitmapProvider provider) {
 
 void SpriteBaker::setTextBakeProvider(TextBakeProvider provider) {
     textBakeProvider_ = std::move(provider);
+}
+
+void SpriteBaker::setTextRenderer(output::TextRenderer* renderer) {
+    textRenderer_ = renderer;
 }
 
 void SpriteBaker::setFilmLoopBakeProvider(FilmLoopBakeProvider provider) {
@@ -258,7 +346,12 @@ std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeBitmap(const RenderSprite
 }
 
 std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeText(const RenderSprite& sprite) {
-    return textBakeProvider_ ? textBakeProvider_(sprite) : nullptr;
+    if (textBakeProvider_) {
+        if (auto baked = textBakeProvider_(sprite)) {
+            return baked;
+        }
+    }
+    return bakeFileBackedText(sprite);
 }
 
 std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeShape(const RenderSprite& sprite) {
@@ -292,6 +385,73 @@ std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeFilmLoop(const RenderSpri
 
     return std::make_shared<bitmap::Bitmap>(
         InkProcessor::applyInk(*loop, sprite.inkMode(), sprite.backColor(), false, loop->imagePalette().get()));
+}
+
+std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeFileBackedText(const RenderSprite& sprite) {
+    const auto member = sprite.castMember();
+    auto* file = mutableFileFor(member);
+    if (member == nullptr || file == nullptr || textRenderer_ == nullptr || member->isTextXtra()) {
+        return nullptr;
+    }
+
+    auto textChunk = file->getTextForMember(std::const_pointer_cast<chunks::CastMemberChunk>(member));
+    if (textChunk == nullptr) {
+        return nullptr;
+    }
+
+    const auto textInfo = cast::TextInfo::parse(member->specificData());
+    std::string fontName = defaultStxtFontName(*file);
+    int fontSize = 12;
+    int fontStyle = 0;
+    int runR = -1;
+    int runG = -1;
+    int runB = -1;
+    if (!textChunk->runs().empty()) {
+        const auto& run = textChunk->runs().front();
+        if (auto mapped = file->getFontNameForId(run.fontId); mapped.has_value() && !mapped->empty()) {
+            fontName = *mapped;
+        }
+        fontSize = run.fontSize;
+        fontStyle = run.fontStyle;
+        runR = run.colorR;
+        runG = run.colorG;
+        runB = run.colorB;
+    }
+
+    const int width = textInfo.width > 0 ? textInfo.width : (sprite.width() > 0 ? sprite.width() : 200);
+    const int height = textInfo.height > 0 ? textInfo.height : (sprite.height() > 0 ? sprite.height() : 20);
+    const int runColor = runTextColor(runR, runG, runB);
+    const int textColor = shouldUseSpriteForeColorForFileText(sprite, runColor) ? argbRgb(sprite.foreColor()) : runColor;
+    const int bgColor = isTransparentTextInk(sprite)
+        ? 0
+        : argbRgb((textInfo.bgRed << 16) | (textInfo.bgGreen << 8) | textInfo.bgBlue);
+    const int horizontalInset = std::min(textInfo.gutterSize, std::max(0, width - 1));
+    const int renderWidth = std::max(1, width - horizontalInset * 2);
+    const int fixedLineSpace = textInfo.textHeight > fontSize ? fontSize : 0;
+    const int topSpacing = textInfo.textHeight > fontSize ? textInfo.textHeight - fontSize : 0;
+
+    auto rendered = textRenderer_->renderText(textChunk->text(),
+                                              renderWidth,
+                                              height,
+                                              fontName,
+                                              fontSize,
+                                              fontStyleString(fontStyle),
+                                              textAlignment(textInfo.textAlign),
+                                              textColor,
+                                              bgColor,
+                                              textInfo.isWordWrap,
+                                              false,
+                                              fixedLineSpace,
+                                              topSpacing);
+    auto textImage = insetTextBitmap(std::move(rendered), width, height, horizontalInset, bgColor);
+    if (textImage == nullptr || isTransparentTextInk(sprite)) {
+        return textImage;
+    }
+    if (InkProcessor::shouldProcessInk(sprite.inkMode())) {
+        return std::make_shared<bitmap::Bitmap>(
+            InkProcessor::applyInk(*textImage, sprite.inkMode(), sprite.backColor(), false, nullptr));
+    }
+    return textImage;
 }
 
 std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeFileBackedFilmLoop(const RenderSprite& sprite) {

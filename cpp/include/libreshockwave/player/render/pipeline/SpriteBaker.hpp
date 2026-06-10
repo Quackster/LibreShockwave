@@ -16,6 +16,10 @@ namespace libreshockwave::cast {
 struct ShapeInfo;
 }
 
+namespace libreshockwave::player::render::output {
+class TextRenderer;
+}
+
 namespace libreshockwave::player::render::pipeline {
 
 class SpriteBaker {
@@ -50,6 +54,7 @@ public:
     void setBitmapDecodeProvider(BitmapDecodeProvider provider);
     void setLiveBitmapProvider(LiveBitmapProvider provider);
     void setTextBakeProvider(TextBakeProvider provider);
+    void setTextRenderer(output::TextRenderer* renderer);
     void setFilmLoopBakeProvider(FilmLoopBakeProvider provider);
 
     [[nodiscard]] BitmapCache& bitmapCache();
@@ -65,6 +70,7 @@ private:
 
     [[nodiscard]] bitmap::Bitmap processDecodedBitmap(const bitmap::Bitmap& raw, const RenderSprite& sprite) const;
     [[nodiscard]] bitmap::Bitmap processLiveBitmap(const bitmap::Bitmap& live, const RenderSprite& sprite) const;
+    [[nodiscard]] std::shared_ptr<const bitmap::Bitmap> bakeFileBackedText(const RenderSprite& sprite);
     [[nodiscard]] std::shared_ptr<const bitmap::Bitmap> bakeFileBackedFilmLoop(const RenderSprite& sprite);
     [[nodiscard]] std::shared_ptr<const bitmap::Bitmap> bakeFilmLoopMemberBitmap(
         const std::shared_ptr<chunks::CastMemberChunk>& member,
@@ -84,6 +90,7 @@ private:
     BitmapDecodeProvider bitmapDecodeProvider_;
     LiveBitmapProvider liveBitmapProvider_;
     TextBakeProvider textBakeProvider_;
+    output::TextRenderer* textRenderer_{nullptr};
     FilmLoopBakeProvider filmLoopBakeProvider_;
     std::vector<SpriteBakeStep> bakeSteps_;
     int tickCounter_{0};
