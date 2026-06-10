@@ -6788,6 +6788,55 @@ void testLingoVmScopeAndExecutionContextFoundation() {
                             backgroundInkProps}).isVoid());
     assert(backgroundInkDest->getPixel(0, 0) == 0xFF000000U);
     assert(backgroundInkDest->getPixel(1, 0) == 0xFFFF0000U);
+    auto runDarkenBgTint = [&](std::shared_ptr<Bitmap> source, Datum bgColor) {
+        auto darkenDest = std::make_shared<Bitmap>(1, 1, 32, std::vector<std::uint32_t>{0xFFFFFFFFU});
+        auto darkenProps = Datum::propList();
+        darkenProps.propListValue().put(Datum::symbol("ink"), Datum::of(41));
+        darkenProps.propListValue().put(Datum::symbol("bgColor"), std::move(bgColor));
+        assert(runObjCall(110, {Datum::imageRef(darkenDest),
+                                Datum::imageRef(std::move(source)),
+                                Datum::intRect(0, 0, 1, 1),
+                                Datum::intRect(0, 0, 1, 1),
+                                darkenProps}).isVoid());
+        return darkenDest->getPixel(0, 0);
+    };
+    auto darkenTintDest = std::make_shared<Bitmap>(1, 1, 32, std::vector<std::uint32_t>{0xFF202020U});
+    auto darkenTintSource = std::make_shared<Bitmap>(1, 1, 32, std::vector<std::uint32_t>{0xFFC0C0C0U});
+    auto darkenTintProps = Datum::propList();
+    darkenTintProps.propListValue().put(Datum::symbol("ink"), Datum::of(41));
+    darkenTintProps.propListValue().put(Datum::symbol("bgColor"), Datum::colorRef(160, 112, 32));
+    assert(runObjCall(110, {Datum::imageRef(darkenTintDest),
+                            Datum::imageRef(darkenTintSource),
+                            Datum::intRect(0, 0, 1, 1),
+                            Datum::intRect(0, 0, 1, 1),
+                            darkenTintProps}).isVoid());
+    assert(darkenTintDest->getPixel(0, 0) == 0xFF785418U);
+    assert(runDarkenBgTint(
+        std::make_shared<Bitmap>(1, 1, 32, std::vector<std::uint32_t>{0xFFC6C6C6U}),
+        Datum::colorRef(0xEE, 0x7E, 0xA4)) == 0xFFB8617EU);
+    assert(runDarkenBgTint(
+        std::make_shared<Bitmap>(1, 1, 32, std::vector<std::uint32_t>{0xFFC9C9CBU}),
+        Datum::colorRef(0x46, 0x8D, 0xB9)) == 0xFF366E92U);
+    auto noPaletteIndexedDarkenSource = std::make_shared<Bitmap>(
+        1, 1, 8, std::vector<std::uint32_t>{0xFF990000U});
+    noPaletteIndexedDarkenSource->setPaletteIndices({13});
+    assert(runDarkenBgTint(noPaletteIndexedDarkenSource, Datum::colorRef(0xFF, 0x9B, 0xBD)) == 0xFF985C70U);
+    auto grayscaleIndexedDarkenSource = std::make_shared<Bitmap>(
+        1, 1, 8, std::vector<std::uint32_t>{0xFFCCCCCCU});
+    grayscaleIndexedDarkenSource->setImagePalette(&Palette::grayscalePalette());
+    grayscaleIndexedDarkenSource->setPaletteIndices({57});
+    assert(runDarkenBgTint(grayscaleIndexedDarkenSource, Datum::colorRef(0xEE, 0x7E, 0xA4)) == 0xFFB8617EU);
+    auto fullTintIndexedDarkenSource = std::make_shared<Bitmap>(
+        1, 1, 8, std::vector<std::uint32_t>{0xFFCC6666U});
+    fullTintIndexedDarkenSource->setImagePalette(&Palette::systemMacPalette());
+    fullTintIndexedDarkenSource->setPaletteIndices({107});
+    assert(runDarkenBgTint(fullTintIndexedDarkenSource, Datum::colorRef(0xFF, 0x9B, 0xBD)) == 0xFF94596DU);
+    auto customPaletteDarkenSource = std::make_shared<Bitmap>(
+        1, 1, 8, std::vector<std::uint32_t>{0xFFBDBABCU});
+    customPaletteDarkenSource->setImagePalette(std::make_shared<Palette>(
+        std::vector<std::uint32_t>{0xBDBABCU}, "Custom Palette"));
+    customPaletteDarkenSource->setPaletteIndices({34});
+    assert(runDarkenBgTint(customPaletteDarkenSource, Datum::colorRef(0xFF, 0xDD, 0xEF)) == 0xFFBDA0AFU);
     auto runInkCopy = [&](Datum ink, std::uint32_t srcPixel, std::uint32_t destPixel) {
         auto inkSource = std::make_shared<Bitmap>(1, 1, 32, std::vector<std::uint32_t>{srcPixel});
         auto inkDest = std::make_shared<Bitmap>(1, 1, 32, std::vector<std::uint32_t>{destPixel});

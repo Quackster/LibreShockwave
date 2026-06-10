@@ -2864,8 +2864,6 @@ bool imageRegionIsMostlyGrayscale(const bitmap::Bitmap& src, const Datum::IntRec
     const int height = rect.bottom - rect.top;
     if (width <= 0 || height <= 0) return false;
 
-    int sampled = 0;
-    int grayscale = 0;
     const int step = std::max(1, (width * height) / 64);
     for (int index = 0; index < width * height; index += step) {
         const int x = rect.left + (index % width);
@@ -2877,16 +2875,107 @@ bool imageRegionIsMostlyGrayscale(const bitmap::Bitmap& src, const Datum::IntRec
         if (((pixel >> 24) & 0xFFU) == 0) {
             continue;
         }
-        ++sampled;
         const auto r = (pixel >> 16) & 0xFFU;
         const auto g = (pixel >> 8) & 0xFFU;
         const auto b = pixel & 0xFFU;
-        if (std::abs(static_cast<int>(r) - static_cast<int>(g)) <= 3 &&
-            std::abs(static_cast<int>(g) - static_cast<int>(b)) <= 3) {
-            ++grayscale;
+        if (std::abs(static_cast<int>(r) - static_cast<int>(g)) > 2 ||
+            std::abs(static_cast<int>(g) - static_cast<int>(b)) > 2) {
+            return false;
         }
     }
-    return sampled > 0 && grayscale * 4 >= sampled * 3;
+    return true;
+}
+
+bool imageUsesIndexedShadeForDarken(const bitmap::Bitmap& src) {
+    if (!src.paletteIndices().has_value() || src.bitDepth() > 8 || src.imagePalette() == nullptr) {
+        return false;
+    }
+    const auto& name = src.imagePalette()->name();
+    return equalsIgnoreCase(name, "Grayscale") ||
+           equalsIgnoreCase(name, "System - Mac") ||
+           equalsIgnoreCase(name, "System Mac");
+}
+
+int imageShadeForDarken(const bitmap::Bitmap& src,
+                        const std::optional<std::vector<std::uint8_t>>& paletteIndices,
+                        int x,
+                        int y,
+                        int r,
+                        bool indexedShade) {
+    if (indexedShade && paletteIndices.has_value() &&
+        x >= 0 && x < src.width() && y >= 0 && y < src.height()) {
+        const auto offset = static_cast<std::size_t>(y * src.width() + x);
+        if (offset < paletteIndices->size()) {
+            return 255 - static_cast<int>((*paletteIndices)[offset]);
+        }
+    }
+    return r;
+}
+
+int imageDarkenFixedChannel(int source, int tint, bool preserveFullTint) {
+    return preserveFullTint && tint == 0xFF ? source : source * tint / 256;
+}
+
+std::uint32_t imageDarkenBgTintPixel(std::uint32_t pixel, int tintRgb, std::optional<int> indexedShade) {
+    const int alpha = static_cast<int>((pixel >> 24) & 0xFFU);
+    const int tintR = (tintRgb >> 16) & 0xFF;
+    const int tintG = (tintRgb >> 8) & 0xFF;
+    const int tintB = tintRgb & 0xFF;
+    const int sourceR = indexedShade.value_or(static_cast<int>((pixel >> 16) & 0xFFU));
+    const int sourceG = indexedShade.value_or(static_cast<int>((pixel >> 8) & 0xFFU));
+    const int sourceB = indexedShade.value_or(static_cast<int>(pixel & 0xFFU));
+    const int r = sourceR * tintR / 256;
+    const int g = sourceG * tintG / 256;
+    const int b = sourceB * tintB / 256;
+    return (static_cast<std::uint32_t>(alpha & 0xFF) << 24) |
+           (static_cast<std::uint32_t>(r & 0xFF) << 16) |
+           (static_cast<std::uint32_t>(g & 0xFF) << 8) |
+           static_cast<std::uint32_t>(b & 0xFF);
+}
+
+std::uint32_t imageMultiplyDarkenPixel(std::uint32_t pixel,
+                                       int tintRgb,
+                                       const bitmap::Bitmap& src,
+                                       const std::optional<std::vector<std::uint8_t>>& paletteIndices,
+                                       int x,
+                                       int y,
+                                       bool indexedShade) {
+    if (tintRgb == 0xFFFFFF) {
+        return pixel;
+    }
+    const int alpha = static_cast<int>((pixel >> 24) & 0xFFU);
+    if (alpha == 0) {
+        return 0;
+    }
+
+    const int tintR = (tintRgb >> 16) & 0xFF;
+    const int tintG = (tintRgb >> 8) & 0xFF;
+    const int tintB = tintRgb & 0xFF;
+    const int srcR = static_cast<int>((pixel >> 16) & 0xFFU);
+    const int srcG = static_cast<int>((pixel >> 8) & 0xFFU);
+    const int srcB = static_cast<int>(pixel & 0xFFU);
+    int r = srcR * tintR / 255;
+    int g = srcG * tintG / 255;
+    int b = srcB * tintB / 255;
+
+    if (paletteIndices.has_value() && src.bitDepth() <= 8) {
+        const bool customPaletteColorShade = !indexedShade && src.imagePalette() != nullptr;
+        if (customPaletteColorShade) {
+            r = imageDarkenFixedChannel(srcR, tintR, true);
+            g = imageDarkenFixedChannel(srcG, tintG, true);
+            b = imageDarkenFixedChannel(srcB, tintB, true);
+        } else {
+            const int shade = imageShadeForDarken(src, paletteIndices, x, y, srcR, indexedShade);
+            r = imageDarkenFixedChannel(shade, tintR, indexedShade);
+            g = imageDarkenFixedChannel(shade, tintG, indexedShade);
+            b = imageDarkenFixedChannel(shade, tintB, indexedShade);
+        }
+    }
+
+    return (static_cast<std::uint32_t>(alpha & 0xFF) << 24) |
+           (static_cast<std::uint32_t>(r & 0xFF) << 16) |
+           (static_cast<std::uint32_t>(g & 0xFF) << 8) |
+           static_cast<std::uint32_t>(b & 0xFF);
 }
 
 std::uint32_t imageRemapGrayscalePixel(std::uint32_t pixel,
@@ -3164,6 +3253,9 @@ Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
         (colorRemap.has_value() || bgColorRemap.has_value()) &&
         !src.hasNativeMatteAlpha() &&
         imageRegionIsMostlyGrayscale(src, *srcRect);
+    const bool darkenBgTint =
+        ink == id::InkMode::DARKEN && bgColorRemap.has_value() && !colorRemap.has_value();
+    const bool indexedShadeForDarken = imageUsesIndexedShadeForDarken(src);
 
     for (int dy = 0; dy < destHeight; ++dy) {
         const int sy = srcRect->top + (dy * srcHeight / destHeight);
@@ -3180,9 +3272,29 @@ Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
             if (mask != nullptr && !imageMaskAllowsPixel(*mask, sx, sy)) {
                 continue;
             }
-            const auto sourcePixel = applyGrayscaleRemap
-                ? imageRemapGrayscalePixel(src.getPixel(sx, sy), colorRemap, bgColorRemap)
-                : src.getPixel(sx, sy);
+            const auto rawSourcePixel = src.getPixel(sx, sy);
+            std::uint32_t sourcePixel = rawSourcePixel;
+            if (applyGrayscaleRemap) {
+                if (darkenBgTint) {
+                    std::optional<int> indexedShade;
+                    if (indexedShadeForDarken) {
+                        const int r = static_cast<int>((rawSourcePixel >> 16) & 0xFFU);
+                        indexedShade = imageShadeForDarken(src, srcPaletteIndices, sx, sy, r, true);
+                    }
+                    sourcePixel = imageDarkenBgTintPixel(rawSourcePixel, *bgColorRemap, indexedShade);
+                } else {
+                    sourcePixel = imageRemapGrayscalePixel(rawSourcePixel, colorRemap, bgColorRemap);
+                }
+            } else if (ink == id::InkMode::DARKEN) {
+                sourcePixel = imageMultiplyDarkenPixel(
+                    rawSourcePixel,
+                    bgColorRemap.value_or(0xFFFFFF),
+                    src,
+                    srcPaletteIndices,
+                    sx,
+                    sy,
+                    indexedShadeForDarken);
+            }
             dest.setPixelPreservePaletteIndex(
                 px,
                 py,
