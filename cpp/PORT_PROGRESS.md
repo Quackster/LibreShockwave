@@ -305,6 +305,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Player now ports Java's external-cast fetch completion bridge: network completion caches downloaded cast bytes, hydrates requested and authored matching cast slots, emits Player-owned external-cast load notifications, and reloads `castLib.fileName` assignments from the network/cast data caches.
 - Player now ports Java's Player-level frame-label and test-error utility facades, delegating `getFrameForLabel`/`getFrameLabels` through `ScoreNavigator` and exposing `fireTestError` through the VM alertHook path with deferred-task flushing.
 - Player now ports Java's public `onNetFetchComplete` provider handoff, caching arbitrary downloaded payloads and hydrating external cast slots only for fetched `.cct`/`.cst` URLs.
+- Player now ports Java's synchronous `shutdown` facade for the C++ runtime pieces, stopping playback, resetting frame/runtime state through `stop`, clearing the default network fetch handler, and releasing the owner-scoped image mutation callback before destruction.
 - Full VM provider setup, asynchronous playback, non-bitmap imported-media mutation, and platform-specific async external-cast fetch backends remain deferred to later player runtime slices.
 
 ### Player Builtin Context Foundation
@@ -889,7 +890,7 @@ Result:
 - CastMember bitmap, script, shape, dimension, type-check, raw chunk, and display string tests passed through the same CTest executable.
 - CastLib and CastLibManager lazy MCsL/CAS* initialization, member count/name lookup, source-prefixed lookup fallback, member metadata properties, registry filtering, builtin callback installation, external-cache keys, pending external-load bookkeeping, Player external-cast preload queuing, public provider fetch handoff, fetch-completion hydration, cached fileName reloads, and Player external-cast cached-load callbacks passed through the same CTest executable.
 - PlayerEvent handler names, event payload records, ExternalCastLoadHandler callback fanout, RenderType, and RenderConfig tests passed through the same CTest executable.
-- PlayerState, Player frame-label/test-error facades, InputEvent factories, DirectorKeyCodes, and InputState mutation/queue tests passed through the same CTest executable.
+- PlayerState, Player frame-label/test-error/shutdown facades, InputEvent factories, DirectorKeyCodes, and InputState mutation/queue tests passed through the same CTest executable.
 - InputHandler mouse/key queueing, interactive hit filtering, rollover dispatch, mouse-up-outside fallback, focused key dispatch, blur synthesis, dispatcher/sprite supplier hooks, and sprite-registry revision bumps passed through the same CTest executable.
 - ScoreBehaviorRef, SpriteSpan, ScoreNavigator labels, marker resolution, active sprites/channels, parsed behavior parameters, and frame-count tests passed through the same CTest executable.
 - Breakpoint, BreakpointManager, WatchExpression, ExpressionEvaluator condition/watch evaluation, compound-value log interpolation, LifecycleDiagnostics, and DebugSnapshot tests passed through the same CTest executable.
@@ -1238,4 +1239,4 @@ Result:
 - `5df5e6fd Port C++ decompiler fallback mapping`
 - `2d9420b0 Port C++ decompiler linear bytecode`
 - `1e40b253 Port C++ decompiler chunk opcodes`
-- Current checkpoint commit message: `Port C++ player net fetch handoff`
+- Current checkpoint commit message: `Port C++ player shutdown facade`

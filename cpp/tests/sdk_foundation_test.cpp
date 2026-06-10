@@ -3591,6 +3591,23 @@ void testPlayerFacadeFoundation() {
     assert(player.state() == PlayerState::Paused);
     assert(player.currentFrame() == 2);
 
+    int shutdownFetchCalls = 0;
+    player.netManager().setFetchHandler([&shutdownFetchCalls](const NetTask&) {
+        ++shutdownFetchCalls;
+        return NetManager::LoadResult::success(std::vector<std::uint8_t>{'O', 'K'});
+    });
+    const int beforeShutdownFetchTask = player.netManager().preloadNetThing("before-shutdown.txt");
+    assert(player.netManager().netDone(beforeShutdownFetchTask));
+    assert(player.netManager().netTextResult(beforeShutdownFetchTask) == "OK");
+    assert(shutdownFetchCalls == 1);
+    player.shutdown();
+    assert(player.state() == PlayerState::Stopped);
+    assert(player.currentFrame() == 1);
+    const int afterShutdownFetchTask = player.netManager().preloadNetThing("after-shutdown.txt");
+    assert(player.netManager().netDone(afterShutdownFetchTask));
+    assert(player.netManager().netError(afterShutdownFetchTask) == 404);
+    assert(shutdownFetchCalls == 1);
+
     Player updatePlayer;
     std::vector<std::string> updateCalls;
     const auto updateTarget = Datum::scriptInstance("updater");

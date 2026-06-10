@@ -275,6 +275,12 @@ void Player::stop() {
     state_ = PlayerState::Stopped;
 }
 
+void Player::shutdown() {
+    stop();
+    netManager_.shutdown();
+    lingo::vm::dispatch::ImageMethodDispatcher::clearImageMutationCallback(this);
+}
+
 void Player::goToFrame(int frame) {
     frameContext_.goToFrame(frame);
 }

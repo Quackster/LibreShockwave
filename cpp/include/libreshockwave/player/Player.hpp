@@ -113,6 +113,7 @@ public:
     void pause();
     void resume();
     void stop();
+    void shutdown();
     void goToFrame(int frame);
     void goToLabel(std::string_view label);
     void stepFrame();
