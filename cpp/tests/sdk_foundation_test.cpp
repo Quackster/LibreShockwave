@@ -107,6 +107,7 @@
 #include "libreshockwave/player/render/pipeline/InkProcessor.hpp"
 #include "libreshockwave/player/render/pipeline/RenderPipelineTrace.hpp"
 #include "libreshockwave/player/render/pipeline/RenderSprite.hpp"
+#include "libreshockwave/player/render/pipeline/SpriteBaker.hpp"
 #include "libreshockwave/player/render/pipeline/StageRenderer.hpp"
 #include "libreshockwave/player/score/ScoreBehaviorRef.hpp"
 #include "libreshockwave/player/score/ScoreNavigator.hpp"
@@ -237,6 +238,7 @@ using libreshockwave::player::render::pipeline::InkProcessor;
 using libreshockwave::player::render::pipeline::RenderPipelineStepTrace;
 using libreshockwave::player::render::pipeline::RenderPipelineTrace;
 using libreshockwave::player::render::pipeline::RenderSprite;
+using libreshockwave::player::render::pipeline::SpriteBaker;
 using libreshockwave::player::render::pipeline::StageRenderer;
 using libreshockwave::player::render::pipeline::SpriteType;
 using libreshockwave::player::score::ScoreBehaviorRef;
@@ -5980,6 +5982,235 @@ void testStageRendererFoundation() {
     assert(renderer.backgroundColor() == 0xABCDEF);
 }
 
+void testSpriteBakerFoundation() {
+    BitmapCache cache;
+    SpriteBaker baker(&cache);
+    assert(baker.tickCounter() == 0);
+    assert(baker.bakeStepCount() == 4);
+    assert(&baker.bitmapCache() == &cache);
+    assert(baker.bakeSteps()[0].name == "bitmap");
+    assert(baker.bakeSteps()[1].name == "text");
+    assert(baker.bakeSteps()[2].name == "shape");
+    assert(baker.bakeSteps()[3].name == "film-loop");
+
+    int decodeCalls = 0;
+    baker.setBitmapDecodeProvider([&decodeCalls](const CastMemberChunk& member, const Palette*) {
+        ++decodeCalls;
+        assert(member.id().value() == 801);
+        return std::make_shared<Bitmap>(2, 1, 1, std::vector<std::uint32_t>{
+            0xFF000000U,
+            0xFFFFFFFFU
+        });
+    });
+
+    auto bitmapMember = std::make_shared<CastMemberChunk>(nullptr,
+                                                          ChunkId(801),
+                                                          MemberType::Bitmap,
+                                                          0,
+                                                          0,
+                                                          std::vector<std::uint8_t>{},
+                                                          std::vector<std::uint8_t>{},
+                                                          "baker-bitmap",
+                                                          0,
+                                                          0,
+                                                          0);
+    RenderSprite bitmapSprite(1,
+                              0,
+                              0,
+                              2,
+                              1,
+                              0,
+                              true,
+                              SpriteType::Bitmap,
+                              bitmapMember,
+                              nullptr,
+                              0x0000FF,
+                              0xFF0000,
+                              true,
+                              true,
+                              libreshockwave::id::code(InkMode::COPY),
+                              100,
+                              false,
+                              false,
+                              nullptr,
+                              false);
+    auto bakedSprites = baker.bakeSprites({bitmapSprite});
+    assert(baker.tickCounter() == 1);
+    assert(bakedSprites.size() == 1);
+    auto bakedBitmap = bakedSprites[0].bakedBitmap();
+    assert(bakedBitmap != nullptr);
+    assert(bakedBitmap->getPixel(0, 0) == 0xFF0000FFU);
+    assert(bakedBitmap->getPixel(1, 0) == 0xFFFF0000U);
+    assert(cache.cachedBitmapCount() == 1);
+    assert(decodeCalls == 1);
+
+    auto cachedSprite = baker.bake(bitmapSprite);
+    assert(cachedSprite.bakedBitmap() == bakedBitmap);
+    assert(decodeCalls == 1);
+    assert(baker.tickCounter() == 1);
+
+    int textCalls = 0;
+    baker.setTextBakeProvider([&textCalls](const RenderSprite& sprite) {
+        ++textCalls;
+        assert(sprite.type() == SpriteType::Text);
+        return std::make_shared<Bitmap>(3, 2, 32, std::vector<std::uint32_t>{
+            0xFF111111U, 0xFF222222U, 0xFF333333U,
+            0xFF444444U, 0xFF555555U, 0xFF666666U
+        });
+    });
+    RenderSprite textSprite(2,
+                            0,
+                            0,
+                            10,
+                            4,
+                            0,
+                            true,
+                            SpriteType::Text,
+                            nullptr,
+                            nullptr,
+                            0,
+                            0,
+                            false,
+                            false,
+                            0,
+                            100,
+                            false,
+                            false,
+                            nullptr,
+                            false);
+    auto bakedText = baker.bake(textSprite);
+    assert(textCalls == 1);
+    assert(bakedText.width() == 3);
+    assert(bakedText.height() == 2);
+    assert(bakedText.bakedBitmap()->getPixel(2, 1) == 0xFF666666U);
+
+    RenderSprite solidShape(3,
+                            0,
+                            0,
+                            2,
+                            2,
+                            0,
+                            true,
+                            SpriteType::Shape,
+                            nullptr,
+                            nullptr,
+                            0x112233,
+                            0xFFFFFF,
+                            true,
+                            true,
+                            0,
+                            100,
+                            false,
+                            false,
+                            nullptr,
+                            false);
+    auto bakedShape = baker.bake(solidShape);
+    assert(bakedShape.bakedBitmap() != nullptr);
+    assert(bakedShape.bakedBitmap()->getPixel(0, 0) == 0xFF112233U);
+    assert(bakedShape.bakedBitmap()->getPixel(1, 1) == 0xFF112233U);
+
+    RenderSprite transparentShape(4,
+                                  0,
+                                  0,
+                                  2,
+                                  2,
+                                  0,
+                                  true,
+                                  SpriteType::Shape,
+                                  nullptr,
+                                  nullptr,
+                                  0xFFFFFF,
+                                  0xFFFFFF,
+                                  true,
+                                  true,
+                                  libreshockwave::id::code(InkMode::BACKGROUND_TRANSPARENT),
+                                  100,
+                                  false,
+                                  false,
+                                  nullptr,
+                                  false);
+    auto bakedTransparentShape = baker.bake(transparentShape);
+    assert(bakedTransparentShape.bakedBitmap()->getPixel(0, 0) == 0x00000000U);
+    assert(bakedTransparentShape.bakedBitmap()->getPixel(1, 1) == 0x00000000U);
+
+    auto shapeMember = std::make_shared<CastMemberChunk>(nullptr,
+                                                         ChunkId(802),
+                                                         MemberType::Shape,
+                                                         0,
+                                                         16,
+                                                         std::vector<std::uint8_t>{},
+                                                         std::vector<std::uint8_t>{
+                                                             0x00, 0x01,
+                                                             0x00, 0x00,
+                                                             0x00, 0x00,
+                                                             0x00, 0x02,
+                                                             0x00, 0x03,
+                                                             0x00, 0x00,
+                                                             0x00, 0x00,
+                                                             0x01, 0x02
+                                                         },
+                                                         "filled-shape",
+                                                         0,
+                                                         0,
+                                                         0);
+    RenderSprite authoredShape(5,
+                               0,
+                               0,
+                               3,
+                               2,
+                               0,
+                               true,
+                               SpriteType::Shape,
+                               shapeMember,
+                               nullptr,
+                               0x445566,
+                               0,
+                               true,
+                               false,
+                               0,
+                               100,
+                               false,
+                               false,
+                               nullptr,
+                               false);
+    auto bakedAuthoredShape = baker.bake(authoredShape);
+    assert(bakedAuthoredShape.bakedBitmap()->getPixel(0, 0) == 0xFF445566U);
+    assert(bakedAuthoredShape.bakedBitmap()->getPixel(2, 1) == 0xFF445566U);
+
+    RenderSprite unsupported(6,
+                             0,
+                             0,
+                             1,
+                             1,
+                             0,
+                             true,
+                             SpriteType::Unknown,
+                             nullptr,
+                             nullptr,
+                             0,
+                             0,
+                             false,
+                             false,
+                             0,
+                             100,
+                             false,
+                             false,
+                             nullptr,
+                             false);
+    assert(baker.bake(unsupported).bakedBitmap() == nullptr);
+    baker.registerBakeStep(SpriteBaker::SpriteBakeStep{
+        "unknown-test",
+        [](const RenderSprite& sprite) { return sprite.type() == SpriteType::Unknown; },
+        [](const RenderSprite&) {
+            return std::make_shared<Bitmap>(1, 1, 32, std::vector<std::uint32_t>{0xFFABCDEFU});
+        }
+    });
+    assert(baker.bakeStepCount() == 5);
+    auto customUnknown = baker.bake(unsupported);
+    assert(customUnknown.bakedBitmap() != nullptr);
+    assert(customUnknown.bakedBitmap()->getPixel(0, 0) == 0xFFABCDEFU);
+}
+
 void testBitmapCacheAndInkProcessorFoundation() {
     assert(InkProcessor::shouldProcessInk(InkMode::MASK));
     assert(InkProcessor::shouldProcessInk(InkMode::BACKGROUND_TRANSPARENT));
@@ -9167,6 +9398,7 @@ int main() {
     testDebugFoundation();
     testRenderPipelineFoundation();
     testStageRendererFoundation();
+    testSpriteBakerFoundation();
     testBitmapCacheAndInkProcessorFoundation();
     testSoftwareFrameRenderer();
     testTextRendererFoundation();

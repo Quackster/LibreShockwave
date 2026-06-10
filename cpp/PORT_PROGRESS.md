@@ -368,7 +368,14 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `render::pipeline::StageRenderer` ports stage size/background state, lazy opaque stage-image creation, script-modified renderable stage-image exposure, visual reset/discard behavior, last-baked sprite storage, and sprite-registry ownership.
 - Score-frame sprite collection, dynamic/puppeted sprite collection, locZ/channel ordering, score RGB555 expansion, score color palette fallback, registration-point scaling/mirroring, sprite type inference, score update on frame entry, and sprite-end cleanup are available in C++.
-- CastLibManager-backed external/runtime member lookup and SpriteBaker bitmap/text/shape rasterization remain deferred to later player render-pipeline slices.
+- CastLibManager-backed external/runtime member lookup remains deferred to later player render-pipeline slices.
+
+### Sprite Baker Foundation
+
+- `render::pipeline::SpriteBaker` ports ordered sprite bake steps, tick counting for batch bakes, custom bake-step registration, immutable `RenderSprite` baked-bitmap attachment, and text/button size replacement when baked output dimensions differ from score dimensions.
+- Bitmap sprites can now bake through an injected decode provider, reuse `BitmapCache`, record decode failures, apply Copy-ink 1-bit foreColor/backColor remapping, and preserve indexed matte/background-transparent remap behavior.
+- Text/button sprites can bake through an injected text provider, shape sprites bake solid and authored shape bitmaps with simple transparency-key ink handling, and unsupported/film-loop sprites pass through without a baked bitmap until their backing resolvers are ported.
+- Runtime CastLibManager lookup, live script-modified bitmap buffers, file-backed STXT/XMED text resolution, film-loop sub-score compositing, and full Java `InkProcessor.applyInk` parity remain deferred.
 
 ### Software Frame Renderer
 
@@ -385,7 +392,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `render::pipeline::FrameRenderPipeline` ports ordered step registration and linear step execution over `FrameRenderPipelineContext`.
 - Rendering requires a step-produced immutable `FrameSnapshot`, matching the Java pipeline failure behavior when no snapshot is published.
-- Default StageRenderer/SpriteBaker collection, baking, publishing, and snapshot steps remain deferred until the C++ sprite baker and pipeline step wiring are ported.
+- Default StageRenderer/SpriteBaker collection, baking, publishing, and snapshot steps remain deferred until the C++ pipeline step wiring is ported.
 
 ### Text Renderer Interface Foundation
 
@@ -419,7 +426,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `render::pipeline::InkProcessor` ports ink-processing predicates, Copy-ink colorization eligibility, backColor resolution, foreground/backColor grayscale remapping, indexed color remapping, Darken foreColor offsets, and exact-color remapping helpers.
 - `render::pipeline::BitmapCache` ports processed-bitmap cache keys, decode-failure tracking, palette-version invalidation, non-native 32-bit alpha coercion, and indexed matte/background-transparent color remap selection.
-- Full matte/flood-fill ink processing, bitmap decoding through the player resolver, and SpriteBaker integration remain deferred to the larger render-pipeline port.
+- Full matte/flood-fill ink processing and bitmap decoding through the player resolver remain deferred to the larger render-pipeline port.
 
 ### Image Builtins Foundation
 
@@ -583,6 +590,7 @@ Result:
 - Breakpoint, BreakpointManager, WatchExpression, and DebugSnapshot tests passed through the same CTest executable.
 - RenderPipelineTrace, RenderSprite, transform mirror, baked bitmap helpers, and FrameSnapshot tests passed through the same CTest executable.
 - StageRenderer stage-image lifecycle, dynamic/puppeted sprite collection, locZ/channel sorting, last-baked sprite storage, sprite-end cleanup, reset behavior, and RGB555 expansion tests passed through the same CTest executable.
+- SpriteBaker tick counting, default/custom bake-step dispatch, bitmap decode-provider caching, 1-bit Copy-ink color remap, text baked-size replacement, shape baking, transparency-key shape ink, unsupported pass-through, and external BitmapCache ownership tests passed through the same CTest executable.
 - SoftwareFrameRenderer background, stage-image, alpha, blend, scaling, flip, Director mirror, and special-ink tests passed through the same CTest executable.
 - FrameRenderPipelineContext mutation, trace building, snapshot storage, and FrameRenderPipelineStep tests passed through the same CTest executable.
 - FrameRenderPipeline step ordering, snapshot return, null-step rejection, and missing-snapshot failure tests passed through the same CTest executable.
