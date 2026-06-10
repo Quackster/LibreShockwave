@@ -6834,6 +6834,33 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(defaultInverseMaskDest->getPixel(2, 0) == 0xFFC0C0C0U);
     assert(defaultInverseMaskDest->getPixel(3, 0) == 0xFFC0C0C0U);
     assert(defaultInverseMaskDest->getPixel(4, 0) == 0xFFC0C0C0U);
+    auto whiteBackedTextDest = std::make_shared<Bitmap>(4, 3, 32);
+    whiteBackedTextDest->fill(0xFF88ADBDU);
+    auto whiteBackedTextSource = std::make_shared<Bitmap>(
+        4, 3, 32, std::vector<std::uint32_t>{
+            0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU,
+            0xFFFFFFFFU, 0xFF000000U, 0xFF000000U, 0xFFFFFFFFU,
+            0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU,
+        });
+    assert(runObjCall(110, {Datum::imageRef(whiteBackedTextDest),
+                            Datum::imageRef(whiteBackedTextSource),
+                            Datum::intRect(0, 0, 4, 3),
+                            Datum::intRect(0, 0, 4, 3)}).isVoid());
+    assert(whiteBackedTextDest->getPixel(0, 0) == 0xFF88ADBDU);
+    assert(whiteBackedTextDest->getPixel(1, 1) == 0xFF000000U);
+    assert(whiteBackedTextDest->getPixel(2, 1) == 0xFF000000U);
+    assert(whiteBackedTextDest->getPixel(3, 2) == 0xFF88ADBDU);
+    auto coloredWhiteBackedDest = std::make_shared<Bitmap>(
+        3, 1, 32, std::vector<std::uint32_t>{0xFF111111U, 0xFF111111U, 0xFF111111U});
+    auto coloredWhiteBackedSource = std::make_shared<Bitmap>(
+        3, 1, 32, std::vector<std::uint32_t>{0xFFFFFFFFU, 0xFFEECCAAU, 0xFFFFFFFFU});
+    assert(runObjCall(110, {Datum::imageRef(coloredWhiteBackedDest),
+                            Datum::imageRef(coloredWhiteBackedSource),
+                            Datum::intRect(0, 0, 3, 1),
+                            Datum::intRect(0, 0, 3, 1)}).isVoid());
+    assert(coloredWhiteBackedDest->getPixel(0, 0) == 0xFFFFFFFFU);
+    assert(coloredWhiteBackedDest->getPixel(1, 0) == 0xFFEECCAAU);
+    assert(coloredWhiteBackedDest->getPixel(2, 0) == 0xFFFFFFFFU);
     auto runDarkenBgTint = [&](std::shared_ptr<Bitmap> source, Datum bgColor) {
         auto darkenDest = std::make_shared<Bitmap>(1, 1, 32, std::vector<std::uint32_t>{0xFFFFFFFFU});
         auto darkenProps = Datum::propList();

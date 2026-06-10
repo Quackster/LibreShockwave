@@ -2968,6 +2968,66 @@ std::uint32_t imageInvertWhiteAlphaMaskPixel(std::uint32_t pixel, int inkRgb) {
         : 0x00000000U;
 }
 
+bool imageShouldTreatWhiteTextBackgroundAsTransparent(const bitmap::Bitmap& src,
+                                                      const Datum::IntRect& rect,
+                                                      id::InkMode ink,
+                                                      int blend,
+                                                      const std::shared_ptr<bitmap::Bitmap>& mask,
+                                                      std::optional<int> colorRemap,
+                                                      std::optional<int> bgColorRemap) {
+    if (src.bitDepth() < 32 ||
+        src.hasNativeMatteAlpha() ||
+        ink != id::InkMode::COPY ||
+        blend < 255 ||
+        mask != nullptr ||
+        colorRemap.has_value() ||
+        bgColorRemap.has_value()) {
+        return false;
+    }
+
+    const int width = rect.right - rect.left;
+    const int height = rect.bottom - rect.top;
+    if (width <= 0 || height <= 0) {
+        return false;
+    }
+
+    int white = 0;
+    int nonWhite = 0;
+    int colored = 0;
+    for (int y = 0; y < height; ++y) {
+        const int sy = rect.top + y;
+        if (sy < 0 || sy >= src.height()) {
+            continue;
+        }
+        for (int x = 0; x < width; ++x) {
+            const int sx = rect.left + x;
+            if (sx < 0 || sx >= src.width()) {
+                continue;
+            }
+            const auto pixel = src.getPixel(sx, sy);
+            if (((pixel >> 24) & 0xFFU) != 255) {
+                return false;
+            }
+            const int r = static_cast<int>((pixel >> 16) & 0xFFU);
+            const int g = static_cast<int>((pixel >> 8) & 0xFFU);
+            const int b = static_cast<int>(pixel & 0xFFU);
+            if (r == 255 && g == 255 && b == 255) {
+                ++white;
+            } else {
+                ++nonWhite;
+                if (std::abs(r - g) > 2 || std::abs(g - b) > 2) {
+                    ++colored;
+                }
+            }
+        }
+    }
+    return white > 0 && nonWhite > 0 && colored == 0 && white >= nonWhite;
+}
+
+std::uint32_t imageMakeWhiteTextBackgroundTransparentPixel(std::uint32_t pixel) {
+    return (pixel & 0x00FFFFFFU) == 0x00FFFFFFU ? (pixel & 0x00FFFFFFU) : pixel;
+}
+
 bool imageRegionIsMostlyGrayscale(const bitmap::Bitmap& src, const Datum::IntRect& rect) {
     const int width = rect.right - rect.left;
     const int height = rect.bottom - rect.top;
@@ -3384,6 +3444,8 @@ Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
     if (blend < 255 && effectiveInk == id::InkMode::COPY) {
         effectiveInk = id::InkMode::BLEND;
     }
+    const bool whiteTextBackgroundTransparent = imageShouldTreatWhiteTextBackgroundAsTransparent(
+        src, *srcRect, effectiveInk, blend, mask, colorRemap, bgColorRemap);
 
     for (int dy = 0; dy < destHeight; ++dy) {
         const int sy = srcRect->top + (dy * srcHeight / destHeight);
@@ -3404,6 +3466,8 @@ Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
             std::uint32_t sourcePixel = rawSourcePixel;
             if (inverseWhiteAlphaMask) {
                 sourcePixel = imageInvertWhiteAlphaMaskPixel(rawSourcePixel, inverseWhiteAlphaMaskInkRgb);
+            } else if (whiteTextBackgroundTransparent) {
+                sourcePixel = imageMakeWhiteTextBackgroundTransparentPixel(rawSourcePixel);
             } else if (applyGrayscaleRemap) {
                 if (darkenBgTint) {
                     std::optional<int> indexedShade;
