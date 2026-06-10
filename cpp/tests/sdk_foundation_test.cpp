@@ -12325,6 +12325,16 @@ void testCastLibManagerFoundation() {
 
     const auto heroMemberData = makeMemberData(MemberType::Bitmap, "Hero", 0, bitmapSpecific);
     const auto sourceDoorMemberData = makeMemberData(MemberType::Script, "s_Door", 1, {0x00, 0x02});
+    std::vector<std::uint8_t> keyData;
+    appendI16(keyData, 12);
+    appendI16(keyData, 12);
+    appendI32(keyData, 1);
+    appendI32(keyData, 1);
+    appendI32(keyData, 6);
+    appendI32(keyData, 3);
+    appendI32(keyData, BinaryReader::fourCC("BITD"));
+    std::vector<std::uint8_t> bitdData(24 * 16, 0);
+    bitdData[1] = 1;
 
     auto buildRifx = [&](const std::vector<std::pair<std::string, std::vector<std::uint8_t>>>& chunks) {
         constexpr int mmapOffset = 32;
@@ -12377,6 +12387,8 @@ void testCastLibManagerFoundation() {
         {"CAS*", castData},
         {"CASt", heroMemberData},
         {"CASt", sourceDoorMemberData},
+        {"KEY*", keyData},
+        {"BITD", bitdData},
     }));
     assert(file->casts().size() == 1);
     assert(file->castMembers().size() == 2);
@@ -12438,6 +12450,25 @@ void testCastLibManagerFoundation() {
     assert(manager.getMemberProp(1, 2, "depth").intValue() == 8);
     assert(manager.getMemberProp(1, 99, "type").asSymbol()->name == "empty");
     assert(!manager.setMemberProp(1, 2, "name", Datum::of("Other")));
+
+    const auto fileBackedCopy = manager.createMember(1, "bitmap");
+    const auto* fileBackedCopyRef = fileBackedCopy.asCastMemberRef();
+    assert(fileBackedCopyRef != nullptr);
+    assert(fileBackedCopyRef->memberNum() == 10000);
+    assert(manager.setMemberProp(1,
+                                 fileBackedCopyRef->memberNum(),
+                                 "media",
+                                 Datum::castMemberRef(CastLibId(1), MemberId(2))));
+    auto copiedFileBitmap = manager.resolveMember(1, fileBackedCopyRef->memberNum())->runtimeBitmap();
+    assert(copiedFileBitmap != nullptr);
+    assert(copiedFileBitmap->isScriptModified());
+    assert(copiedFileBitmap->width() == 16);
+    assert(copiedFileBitmap->height() == 16);
+    assert(copiedFileBitmap->bitDepth() == 8);
+    assert(copiedFileBitmap->paletteIndex(1, 0).value() == 1);
+    assert(manager.getMemberProp(1, fileBackedCopyRef->memberNum(), "regPoint").asIntPoint()->x == 8);
+    assert(manager.getMemberProp(1, fileBackedCopyRef->memberNum(), "regPoint").asIntPoint()->y == 7);
+    assert(manager.callMemberMethod(1, fileBackedCopyRef->memberNum(), "erase", {}).intValue() == 1);
 
     auto runtimeImage = std::make_shared<Bitmap>(3, 1, 32);
     runtimeImage->setPixel(0, 0, 0xFF112233U);

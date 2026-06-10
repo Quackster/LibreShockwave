@@ -17,6 +17,7 @@
 #include "libreshockwave/chunks/CastMemberChunk.hpp"
 #include "libreshockwave/id/Ids.hpp"
 #include "libreshockwave/lingo/LingoValueParser.hpp"
+#include "libreshockwave/player/BitmapResolver.hpp"
 #include "libreshockwave/player/render/output/TextRenderer.hpp"
 #include "libreshockwave/util/FileUtil.hpp"
 
@@ -1049,6 +1050,14 @@ bool CastLibManager::copyMemberMedia(int targetCastLibNumber,
         if (auto bitmap = source->runtimeBitmap()) {
             target->setRuntimeBitmap(*bitmap);
             return true;
+        }
+        if (source->rawChunk()) {
+            ::libreshockwave::player::BitmapResolver resolver(file_, this, nullptr);
+            if (auto bitmap = resolver.decodeBitmap(source->rawChunk())) {
+                bitmap->setAnchorPoint(source->regX(), source->regY());
+                target->setRuntimeBitmap(*bitmap);
+                return true;
+            }
         }
     }
     return false;

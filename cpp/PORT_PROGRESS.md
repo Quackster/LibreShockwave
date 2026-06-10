@@ -545,8 +545,8 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 ### Runtime Text Media Copy Foundation
 
 - `CastLibManager::setMemberProp("media", castMemberRef)` now resolves source and target members and copies text content plus runtime text style state when both members are text-like.
-- Runtime bitmap-to-bitmap media copy now handles live runtime bitmaps through the same manager-owned member-resolution path.
-- File-backed bitmap media copy and imported non-bitmap media payload decoding remain deferred.
+- Bitmap-to-bitmap media copy now handles live runtime bitmaps and file-backed authored bitmap sources through the same manager-owned member-resolution path.
+- Imported non-bitmap media payload decoding remains deferred.
 
 ### Runtime Text Member Method Foundation
 
@@ -818,6 +818,7 @@ Result:
 - Runtime dynamic text member baking, default renderer arguments, transparent-text native-alpha marking, and dynamic text sprite sizing passed through the same CTest executable.
 - Runtime text member style property get/set, Director-style text color coercion, rect/width/height geometry mutation, and SpriteBaker dynamic text style propagation passed through the same CTest executable.
 - Runtime text-like `media` assignment from another cast member, including copied text content and style state through the cast-member property callback, passed through the same CTest executable.
+- Runtime and file-backed bitmap `media` assignment from another cast member, including decoded BITD pixels, script-modified runtime copies, and registration-point propagation, passed through the same CTest executable.
 - Runtime text-like member `charPosToLoc`/`locToCharPos` method dispatch, no-renderer fallbacks, builtin callback routing, and Player text-renderer wiring passed through the same CTest executable.
 - Runtime text `lineCount`/`line` properties plus cast-member `getProp` and `count(#char/#word/#line/#item)` method helpers passed through the same CTest executable.
 - FieldText datum identity, field builtin member identity preservation, and `value(field(...))` parsed-field callback behavior passed through the same CTest executable.
@@ -1017,4 +1018,6 @@ Result:
 - `360ac5a7 Port C++ cast member utility methods`
 - `1434fb05 Port C++ field datum identity`
 - `3759c22a Port C++ editable field input`
-- Current checkpoint commit message: `Port C++ ediM bitmap sidecars`
+- `7cf00e5f Port C++ editable field helpers`
+- `36bac722 Port C++ ediM bitmap sidecars`
+- Current checkpoint commit message: `Port C++ file-backed bitmap media copy`
