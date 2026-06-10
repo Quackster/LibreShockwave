@@ -6788,6 +6788,22 @@ void testLingoVmScopeAndExecutionContextFoundation() {
                             backgroundInkProps}).isVoid());
     assert(backgroundInkDest->getPixel(0, 0) == 0xFF000000U);
     assert(backgroundInkDest->getPixel(1, 0) == 0xFFFF0000U);
+    auto nativeAlphaBackgroundInkSource = std::make_shared<Bitmap>(3, 3, 32);
+    nativeAlphaBackgroundInkSource->fill(0x00FFFFFFU);
+    nativeAlphaBackgroundInkSource->setPixel(1, 1, 0xFF000000U);
+    nativeAlphaBackgroundInkSource->setNativeAlpha(true);
+    auto nativeAlphaBackgroundInkDest = std::make_shared<Bitmap>(3, 3, 32);
+    nativeAlphaBackgroundInkDest->fill(0xFFC0C0C0U);
+    auto nativeAlphaBackgroundInkProps = Datum::propList();
+    nativeAlphaBackgroundInkProps.propListValue().put(Datum::symbol("ink"), Datum::of(36));
+    nativeAlphaBackgroundInkProps.propListValue().put(Datum::symbol("bgColor"), Datum::colorRef(0, 0, 0));
+    assert(runObjCall(110, {Datum::imageRef(nativeAlphaBackgroundInkDest),
+                            Datum::imageRef(nativeAlphaBackgroundInkSource),
+                            Datum::intRect(0, 0, 3, 3),
+                            Datum::intRect(0, 0, 3, 3),
+                            nativeAlphaBackgroundInkProps}).isVoid());
+    assert(nativeAlphaBackgroundInkDest->getPixel(0, 0) == 0xFFC0C0C0U);
+    assert(nativeAlphaBackgroundInkDest->getPixel(1, 1) == 0xFF000000U);
     auto runDarkenBgTint = [&](std::shared_ptr<Bitmap> source, Datum bgColor) {
         auto darkenDest = std::make_shared<Bitmap>(1, 1, 32, std::vector<std::uint32_t>{0xFFFFFFFFU});
         auto darkenProps = Datum::propList();

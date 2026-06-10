@@ -2859,6 +2859,37 @@ bool imageMaskAllowsPixel(const bitmap::Bitmap& mask, int x, int y) {
     return imageMaskAlphaFromPixel(pixel) < 255;
 }
 
+bool imageIsOpaqueKeyPixel(std::uint32_t pixel, int keyRgb) {
+    return ((pixel >> 24) & 0xFFU) == 255 && static_cast<int>(pixel & 0x00FFFFFFU) == (keyRgb & 0x00FFFFFF);
+}
+
+bool imageHasOpaqueBackgroundKeyBorder(const bitmap::Bitmap& src, const Datum::IntRect& rect, int keyRgb) {
+    const int width = rect.right - rect.left;
+    const int height = rect.bottom - rect.top;
+    if (src.width() <= 0 || src.height() <= 0 || width <= 0 || height <= 0) {
+        return false;
+    }
+
+    const int left = std::clamp(rect.left, 0, src.width() - 1);
+    const int top = std::clamp(rect.top, 0, src.height() - 1);
+    const int right = std::clamp(rect.right - 1, 0, src.width() - 1);
+    const int bottom = std::clamp(rect.bottom - 1, 0, src.height() - 1);
+
+    for (int x = left; x <= right; ++x) {
+        if (imageIsOpaqueKeyPixel(src.getPixel(x, top), keyRgb) ||
+            imageIsOpaqueKeyPixel(src.getPixel(x, bottom), keyRgb)) {
+            return true;
+        }
+    }
+    for (int y = top + 1; y < bottom; ++y) {
+        if (imageIsOpaqueKeyPixel(src.getPixel(left, y), keyRgb) ||
+            imageIsOpaqueKeyPixel(src.getPixel(right, y), keyRgb)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool imageRegionIsMostlyGrayscale(const bitmap::Bitmap& src, const Datum::IntRect& rect) {
     const int width = rect.right - rect.left;
     const int height = rect.bottom - rect.top;
@@ -3256,6 +3287,15 @@ Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
     const bool darkenBgTint =
         ink == id::InkMode::DARKEN && bgColorRemap.has_value() && !colorRemap.has_value();
     const bool indexedShadeForDarken = imageUsesIndexedShadeForDarken(src);
+    id::InkMode effectiveInk = ink;
+    if (effectiveInk == id::InkMode::BACKGROUND_TRANSPARENT &&
+        src.hasNativeMatteAlpha() &&
+        !imageHasOpaqueBackgroundKeyBorder(src, *srcRect, backgroundKeyRgb)) {
+        effectiveInk = id::InkMode::COPY;
+    }
+    if (blend < 255 && effectiveInk == id::InkMode::COPY) {
+        effectiveInk = id::InkMode::BLEND;
+    }
 
     for (int dy = 0; dy < destHeight; ++dy) {
         const int sy = srcRect->top + (dy * srcHeight / destHeight);
@@ -3298,7 +3338,7 @@ Datum imageCopyPixels(bitmap::Bitmap& dest, const std::vector<Datum>& args) {
             dest.setPixelPreservePaletteIndex(
                 px,
                 py,
-                imageApplyCopyPixelsInk(sourcePixel, dest.getPixel(px, py), ink, blend, backgroundKeyRgb));
+                imageApplyCopyPixelsInk(sourcePixel, dest.getPixel(px, py), effectiveInk, blend, backgroundKeyRgb));
             if (destPaletteIndices.has_value() && srcPaletteIndices.has_value()) {
                 const auto srcOffset = static_cast<std::size_t>(sy * src.width() + sx);
                 const auto destOffset = static_cast<std::size_t>(py * dest.width() + px);

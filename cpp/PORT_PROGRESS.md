@@ -765,7 +765,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Image receiver dispatch now supports Java-compatible `fill`, `draw`, `setAlpha`, `createMatte`, `createMask`, `copyPixels`, `duplicate`, `crop`, `trimWhiteSpace`, `getAt`, `getPixel`, and `setPixel` methods over C++ bitmap refs.
 - Image `fill` and `draw` now resolve small integer colors and `paletteIndex(...)` colors through the target bitmap palette when one is attached, matching Java's bitmap-aware color conversion.
 - Image `createMatte` and `createMask` cover native-alpha matte extraction, RGB/indexed flood-fill matte extraction, and direct grayscale mask output.
-- Image `copyPixels` covers default rectangular copy, nearest-neighbor scaling, COPY source-alpha/global-blend compositing, maskImage clipping, transparent/background-transparent keying, arithmetic ink modes, grayscale #color/#bgColor remaps including source-palette `paletteIndex(...)` remap resolution, DARKEN #bgColor source tinting for grayscale, indexed-shade, and custom-palette sources, quad destination transforms, transformed maskImage props, palette-index metadata, palette metadata, and anchor propagation.
+- Image `copyPixels` covers default rectangular copy, nearest-neighbor scaling, COPY source-alpha/global-blend compositing, maskImage clipping, transparent/background-transparent keying including native-alpha source fallback, arithmetic ink modes, grayscale #color/#bgColor remaps including source-palette `paletteIndex(...)` remap resolution, DARKEN #bgColor source tinting for grayscale, indexed-shade, and custom-palette sources, quad destination transforms, transformed maskImage props, palette-index metadata, palette metadata, and anchor propagation.
 
 ### Lingo Opcode Object Construction Foundation
 
@@ -892,7 +892,7 @@ Result:
 - Lingo direct-string and VarRef object-call string chunk extraction, mutable char chunk-ref deletion, ScriptRef `new`, string method delegation, and provider-backed item counting tests passed through the same CTest executable.
 - Lingo CastMemberRef object-method provider dispatch tests passed through the same CTest executable.
 - Lingo SpriteRef object-method provider dispatch tests passed through the same CTest executable.
-- Lingo image object-method fill, draw, setAlpha, createMatte, createMask, copyPixels source-palette `paletteIndex(...)` remaps and DARKEN #bgColor source tinting, duplicate, crop, trimWhiteSpace, indexed palette fill/getPixel color identity, getAt, getPixel, setPixel, and null-image fallback tests passed through the same CTest executable.
+- Lingo image object-method fill, draw, setAlpha, createMatte, createMask, copyPixels source-palette `paletteIndex(...)` remaps, DARKEN #bgColor source tinting, and background-transparent native-alpha source fallback, duplicate, crop, trimWhiteSpace, indexed palette fill/getPixel color identity, getAt, getPixel, setPixel, and null-image fallback tests passed through the same CTest executable.
 - MovieProperties movie/stage property reads and writes, file/input-backed values, xtra lists, item delimiters, timers, stage background color, random seed, navigation callbacks, and net navigation callbacks passed through the same CTest executable.
 - BuiltinRegistry case-insensitive lookup, custom registration, movie label/marker builtins, sprite puppet/cursor/spriteBox builtins, puppetPalette hooks, and Java-compatible no-op sprite builtins passed through the same CTest executable.
 - MathBuiltins numeric coercion, integer/float conversion, bit operations, trig, power, min/max, list min/max, and random callback hooks passed through the same CTest executable.
@@ -1182,4 +1182,5 @@ Result:
 - `99438bf3 Port C++ call target return values`
 - `a6ce1b79 Port C++ paletteIndex color identity`
 - `f0788e46 Port C++ copyPixels paletteIndex remaps`
-- Current checkpoint commit message: `Port C++ copyPixels darken tint`
+- `d0d212b3 Port C++ copyPixels darken tint`
+- Current checkpoint commit message: `Port C++ copyPixels native alpha keying`
