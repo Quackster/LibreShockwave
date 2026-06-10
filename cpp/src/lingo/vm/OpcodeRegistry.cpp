@@ -3848,6 +3848,12 @@ Datum dispatchObjectMethod(ExecutionContext& context, Datum target, std::string_
     if (target.type() == DatumType::ScriptInstanceRef) {
         return dispatch::ScriptInstanceMethodDispatcher::dispatch(context, target, methodName, args);
     }
+    if (target.type() == DatumType::MovieRef) {
+        if (const auto builtinResult = context.invokeBuiltinIfPresent(methodName, args)) {
+            return *builtinResult;
+        }
+        return Datum::voidValue();
+    }
 
     std::vector<Datum> fullArgs;
     fullArgs.reserve(args.size() + 1);

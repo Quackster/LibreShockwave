@@ -6121,6 +6121,9 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 128) {
             return std::string("line");
         }
+        if (nameId == 129) {
+            return std::string("movieArgsOnly");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.variableSetListener = [&variableTraces](std::string_view type,
@@ -7412,6 +7415,17 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         }
         return objectCallContext.pop();
     };
+
+    int movieArgsOnlyCalls = 0;
+    registry.registerBuiltin("movieArgsOnly", [&movieArgsOnlyCalls](BuiltinContext&, const std::vector<Datum>& args) {
+        ++movieArgsOnlyCalls;
+        if (args.size() == 2 && args[0].intValue() == 7 && args[1].intValue() == 8) {
+            return Datum::of(std::string("movie-args-only"));
+        }
+        return Datum::of("wrong-args:" + std::to_string(args.size()));
+    });
+    assert(runObjCall(129, {Datum::movieRef(), Datum::of(7), Datum::of(8)}).stringValue() == "movie-args-only");
+    assert(movieArgsOnlyCalls == 1);
 
     int scriptRefNewCalls = 0;
     builtinContext.newInstanceHandler = [&scriptRefNewCalls](const Datum& target, const std::vector<Datum>& args) {

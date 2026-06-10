@@ -775,6 +775,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Mutable ChunkRef creation and char-range deletion now use a dedicated C++ datum; broader mutable chunk-ref operations remain deferred.
 - VarRef char `getProp` and mutable ChunkRef char deletion now match Java's inverted-range behavior, returning an empty chunk or leaving the source string unchanged when the requested range is empty.
 - ScriptRef receiver dispatch now supports Java-compatible `new` method calls through the registered constructor builtin.
+- MovieRef receiver dispatch now mirrors Java's `_movie.method(...)` path by invoking registered builtins with only the explicit method arguments before the generic target-prepending fallback.
 - SpriteRef receiver dispatch now walks provider-backed `scriptInstanceList` script instances before falling through to the sprite method handler, matching Java's sprite object-call behavior/broker dispatch order.
 - ScriptInstance receiver dispatch now supports Java-compatible property/list-like `getAt`, `setAt`, `getAProp`, `setAProp`, `getProp`, `getPropRef`, `setProp`, `addProp`, `deleteProp`, `count`, `ilk`, `addAt`, handler-existence/dispatch methods, and prefilled `pAllMemNumList` member-registry lookups over C++ script-instance datums.
 - ScriptInstance VM property writes now match Java's ancestor-chain walker guard by ignoring non-instance `ancestor` assignments through `SET_PROP`, `SET_OBJ_PROP`, and receiver `setAt`/`setAProp`/`setProp` while preserving valid script-instance replacement.
