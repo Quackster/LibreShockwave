@@ -518,7 +518,7 @@ std::unique_ptr<HandlerNode> LingoDecompiler::translateHandler(const chunks::Scr
 
     auto root = std::make_unique<HandlerNode>(resolveName(handler.nameId), std::move(argumentNames), std::vector<std::string>{});
     currentBlock_ = &root->block();
-    for (std::size_t index = 0; index < handler.instructions.size(); ++index) {
+    for (std::size_t index = 0; index < handler.instructions.size();) {
         const auto& instruction = handler.instructions[index];
         while (currentBlock_ != nullptr && instruction.offset == currentBlock_->endPos) {
             auto* exitedBlock = currentBlock_;
@@ -527,12 +527,32 @@ std::unique_ptr<HandlerNode> LingoDecompiler::translateHandler(const chunks::Scr
             if (auto* ifStmt = dynamic_cast<IfStmtNode*>(ancestorStatement);
                 ifStmt != nullptr && ifStmt->hasElse() && exitedBlock == &ifStmt->trueBlock()) {
                 enterBlock(ifStmt->falseBlock());
+            } else if (auto* casesStmt = dynamic_cast<CasesStmtNode*>(ancestorStatement);
+                       casesStmt != nullptr && currentBlock_ != nullptr) {
+                auto* caseNode = currentBlock_->currentCase;
+                if (caseNode != nullptr) {
+                    if (caseNode->expect() == CaseNode::EXPECT_OTHERWISE) {
+                        if (exitedBlock == caseNode->block()) {
+                            auto otherwise = std::make_unique<BlockNode>();
+                            otherwise->endPos = casesStmt->endPos;
+                            auto* otherwiseBlock = otherwise.get();
+                            caseNode->setOtherwise(std::move(otherwise));
+                            enterBlock(*otherwiseBlock);
+                        } else {
+                            currentBlock_->currentCase = nullptr;
+                        }
+                    } else if (caseNode->expect() == CaseNode::EXPECT_POP) {
+                        currentBlock_->currentCase = nullptr;
+                    }
+                }
             }
         }
         if (currentBlock_ == nullptr) {
             currentBlock_ = &root->block();
         }
+        lastConsumed_ = 1;
         translateInstruction(instruction, index, *currentBlock_);
+        index += std::max<std::size_t>(lastConsumed_, 1);
     }
     currentBlock_ = nullptr;
     return root;
@@ -838,6 +858,10 @@ void LingoDecompiler::translateInstruction(const chunks::ScriptChunk::Instructio
             break;
         }
 
+        case Opcode::PEEK:
+            translatePeek(instruction, index, block);
+            return;
+
         case Opcode::THE_BUILTIN:
             (void)popNode();
             translation = std::make_unique<TheExprNode>(resolveName(instruction.argument));
@@ -876,6 +900,10 @@ void LingoDecompiler::translateInstruction(const chunks::ScriptChunk::Instructio
                         ifStmt != nullptr && currentBlock_ == &ifStmt->trueBlock()) {
                         ifStmt->setHasElse(true);
                         ifStmt->falseBlock().endPos = targetOffset;
+                        return;
+                    }
+                    if (auto* casesStmt = dynamic_cast<CasesStmtNode*>(ancestorStatement); casesStmt != nullptr) {
+                        casesStmt->endPos = targetOffset;
                         return;
                     }
                 }
@@ -994,6 +1022,145 @@ void LingoDecompiler::translateInstruction(const chunks::ScriptChunk::Instructio
     } else {
         block.addChild(std::move(translation));
     }
+}
+
+void LingoDecompiler::translatePeek(const chunks::ScriptChunk::Instruction& instruction,
+                                    std::size_t index,
+                                    BlockNode& block) {
+    const auto addError = [&](std::string text, std::size_t consumed) {
+        auto error = std::make_unique<CommentNode>(std::move(text));
+        error->setBytecodeOffset(instruction.offset);
+        block.addChild(std::move(error));
+        lastConsumed_ = std::max<std::size_t>(consumed, 1);
+    };
+
+    if (currentHandler_ == nullptr) {
+        addError("ERROR: Missing handler for case translation", 1);
+        return;
+    }
+
+    const auto& instructions = currentHandler_->instructions;
+    auto* previousCase = block.currentCase;
+    NodePtr peekedValue;
+    if (previousCase == nullptr) {
+        peekedValue = popNode();
+    }
+
+    std::size_t currentIndex = index + 1;
+    while (currentIndex < instructions.size() && instructions[currentIndex].opcode == Opcode::PEEK) {
+        ++currentIndex;
+    }
+    if (currentIndex >= instructions.size()) {
+        addError("ERROR: Expected case value", currentIndex - index);
+        return;
+    }
+
+    const auto& valueInstruction = instructions[currentIndex];
+    NodePtr caseValue;
+    switch (valueInstruction.opcode) {
+        case Opcode::PUSH_ZERO:
+            caseValue = std::make_unique<LiteralNode>(0);
+            break;
+        case Opcode::PUSH_INT8:
+        case Opcode::PUSH_INT16:
+        case Opcode::PUSH_INT32:
+            caseValue = std::make_unique<LiteralNode>(valueInstruction.argument);
+            break;
+        case Opcode::PUSH_SYMB:
+            caseValue = std::make_unique<LiteralNode>(ValueType::Symbol, resolveName(valueInstruction.argument));
+            break;
+        case Opcode::PUSH_CONS: {
+            const int literalId = valueInstruction.argument / variableMultiplier();
+            if (script_ != nullptr && literalId >= 0 && literalId < static_cast<int>(script_->literals().size())) {
+                caseValue = literalToNode(script_->literals()[static_cast<std::size_t>(literalId)]);
+            } else {
+                caseValue = std::make_unique<ErrorNode>();
+            }
+            break;
+        }
+        case Opcode::GET_GLOBAL:
+        case Opcode::GET_GLOBAL2:
+        case Opcode::GET_PROP:
+        case Opcode::GET_TOP_LEVEL_PROP:
+            caseValue = std::make_unique<VarNode>(resolveName(valueInstruction.argument));
+            break;
+        case Opcode::GET_PARAM:
+            caseValue = std::make_unique<VarNode>(getArgumentName(valueInstruction.argument));
+            break;
+        case Opcode::GET_LOCAL:
+            caseValue = std::make_unique<VarNode>(getLocalName(valueInstruction.argument));
+            break;
+        default:
+            addError("ERROR: Unsupported case value", currentIndex - index + 1);
+            return;
+    }
+    ++currentIndex;
+
+    if (currentIndex >= instructions.size() ||
+        (instructions[currentIndex].opcode != Opcode::EQ && instructions[currentIndex].opcode != Opcode::NT_EQ)) {
+        addError("ERROR: Expected eq or nteq", currentIndex - index + 1);
+        return;
+    }
+    const bool notEqual = instructions[currentIndex].opcode == Opcode::NT_EQ;
+    ++currentIndex;
+
+    if (currentIndex >= instructions.size() || instructions[currentIndex].opcode != Opcode::JMP_IF_Z) {
+        addError("ERROR: Expected jmpifz", currentIndex - index + 1);
+        return;
+    }
+
+    const auto& jump = instructions[currentIndex];
+    const int jumpPos = jump.offset + jump.argument;
+    const int targetIndex = instructionIndexForOffset(jumpPos);
+
+    int expect = CaseNode::EXPECT_OTHERWISE;
+    if (notEqual) {
+        expect = CaseNode::EXPECT_OR;
+    } else if (targetIndex >= 0 &&
+               targetIndex < static_cast<int>(instructions.size()) &&
+               instructions[static_cast<std::size_t>(targetIndex)].opcode == Opcode::PEEK) {
+        expect = CaseNode::EXPECT_NEXT;
+    } else if (targetIndex >= 0 &&
+               targetIndex < static_cast<int>(instructions.size()) &&
+               instructions[static_cast<std::size_t>(targetIndex)].opcode == Opcode::POP) {
+        expect = CaseNode::EXPECT_POP;
+    }
+
+    auto currentCase = std::make_unique<CaseNode>(std::move(caseValue), expect);
+    currentCase->setBytecodeOffset(instruction.offset);
+    auto* currentCasePtr = currentCase.get();
+    bool attached = false;
+
+    if (previousCase == nullptr) {
+        auto casesStmt = std::make_unique<CasesStmtNode>(
+            peekedValue ? std::move(peekedValue) : std::make_unique<ErrorNode>());
+        casesStmt->setBytecodeOffset(instruction.offset);
+        casesStmt->setFirstCase(std::move(currentCase));
+        block.addChild(std::move(casesStmt));
+        attached = true;
+    } else if (previousCase->expect() == CaseNode::EXPECT_OR) {
+        previousCase->setNextOr(std::move(currentCase));
+        attached = true;
+    } else if (previousCase->expect() == CaseNode::EXPECT_NEXT) {
+        previousCase->setNextCase(std::move(currentCase));
+        attached = true;
+    }
+
+    if (!attached) {
+        addError("ERROR: Unexpected case branch", currentIndex - index + 1);
+        return;
+    }
+
+    block.currentCase = currentCasePtr;
+    if (expect != CaseNode::EXPECT_OR) {
+        auto caseBlock = std::make_unique<BlockNode>();
+        caseBlock->endPos = jumpPos;
+        auto* nextBlock = caseBlock.get();
+        currentCasePtr->setBlock(std::move(caseBlock));
+        enterBlock(*nextBlock);
+    }
+
+    lastConsumed_ = currentIndex - index + 1;
 }
 
 void LingoDecompiler::translateObjCall(int bytecodeOffset, int nameId, BlockNode& block) {

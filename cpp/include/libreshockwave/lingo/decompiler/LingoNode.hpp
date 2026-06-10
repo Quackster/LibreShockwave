@@ -556,9 +556,13 @@ public:
     void setOtherwise(std::unique_ptr<BlockNode> otherwise);
     [[nodiscard]] const LingoNode& value() const { return *value_; }
     [[nodiscard]] int expect() const { return expect_; }
+    [[nodiscard]] CaseNode* nextOr() { return nextOr_.get(); }
     [[nodiscard]] const CaseNode* nextOr() const { return nextOr_.get(); }
+    [[nodiscard]] CaseNode* nextCase() { return nextCase_.get(); }
     [[nodiscard]] const CaseNode* nextCase() const { return nextCase_.get(); }
+    [[nodiscard]] BlockNode* block() { return block_.get(); }
     [[nodiscard]] const BlockNode* block() const { return block_.get(); }
+    [[nodiscard]] BlockNode* otherwise() { return otherwise_.get(); }
     [[nodiscard]] const BlockNode* otherwise() const { return otherwise_.get(); }
     [[nodiscard]] std::string toLingo(bool dot) const override;
 
@@ -576,6 +580,7 @@ public:
     explicit CasesStmtNode(NodePtr value);
     void setFirstCase(std::unique_ptr<CaseNode> firstCase);
     [[nodiscard]] const LingoNode& value() const { return *value_; }
+    [[nodiscard]] CaseNode* firstCase() { return firstCase_.get(); }
     [[nodiscard]] const CaseNode* firstCase() const { return firstCase_.get(); }
     [[nodiscard]] std::string toLingo(bool dot) const override;
 

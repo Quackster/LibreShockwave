@@ -49,6 +49,7 @@ private:
     std::vector<int> tags_;
     std::vector<int> ownerLoops_;
     std::vector<NodePtr> stack_;
+    std::size_t lastConsumed_ = 1;
 
     void initFileInfo(const chunks::ScriptChunk& script);
     void tagLoops();
@@ -60,6 +61,7 @@ private:
     void translateInstruction(const chunks::ScriptChunk::Instruction& instruction,
                               std::size_t index,
                               BlockNode& block);
+    void translatePeek(const chunks::ScriptChunk::Instruction& instruction, std::size_t index, BlockNode& block);
     void translateObjCall(int bytecodeOffset, int nameId, BlockNode& block);
     void enterBlock(BlockNode& block);
     void exitBlock();
