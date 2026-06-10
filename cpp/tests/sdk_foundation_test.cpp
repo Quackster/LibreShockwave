@@ -136,6 +136,8 @@
 #include "libreshockwave/player/cast/CastLib.hpp"
 #include "libreshockwave/player/cast/CastLibManager.hpp"
 #include "libreshockwave/player/cast/FontRegistry.hpp"
+#include "libreshockwave/player/cast/MacFontBundle.hpp"
+#include "libreshockwave/player/cast/WindowsFontBundle.hpp"
 #include "libreshockwave/player/debug/Breakpoint.hpp"
 #include "libreshockwave/player/debug/BreakpointManager.hpp"
 #include "libreshockwave/player/debug/DebugController.hpp"
@@ -307,6 +309,8 @@ using libreshockwave::player::behavior::BehaviorManager;
 using libreshockwave::player::cast::CastLib;
 using libreshockwave::player::cast::CastLibManager;
 using libreshockwave::player::cast::FontRegistry;
+using libreshockwave::player::cast::MacFontBundle;
+using libreshockwave::player::cast::WindowsFontBundle;
 using libreshockwave::player::debug::DebugSnapshot;
 using libreshockwave::player::debug::DebugStateListener;
 using libreshockwave::player::debug::ExpressionEvaluator;
@@ -951,6 +955,66 @@ void testBitmapFontAndFontRegistry() {
     assert(minInkX > 0);
     assert(verdanaFont->getCharWidth('H') > verdanaInkWidth);
 
+    const auto verdanaBoldBytes = readFixtureBytes("player-core/src/main/resources/fonts/windows/VerdanaBd.ttf");
+    const auto arialBytes = readFixtureBytes("player-core/src/main/resources/fonts/windows/Arial.ttf");
+    const auto geneva9Bytes = readFixtureBytes("player-core/src/main/resources/fonts/mac/Geneva-9.ttf");
+    const auto espySans9Bytes = readFixtureBytes("player-core/src/main/resources/fonts/mac/EspySans-9.ttf");
+    const auto espySansBold9Bytes = readFixtureBytes("player-core/src/main/resources/fonts/mac/EspySansBold-9.ttf");
+    assert(!verdanaBoldBytes.empty());
+    assert(!arialBytes.empty());
+    assert(!geneva9Bytes.empty());
+    assert(!espySans9Bytes.empty());
+    assert(!espySansBold9Bytes.empty());
+
+    MacFontBundle::clearTtfData();
+    WindowsFontBundle::clearFontData();
+    assert(MacFontBundle::hasMacFont("Verdana"));
+    assert(MacFontBundle::hasMacFont("Geneva"));
+    assert(!MacFontBundle::hasMacFont("Wingdings"));
+    assert(MacFontBundle::hasBoldVariant("EspySans"));
+    assert(!MacFontBundle::hasBoldVariant("Geneva"));
+    assert(MacFontBundle::getFont("Verdana", 9, false, false) == nullptr);
+    MacFontBundle::registerTtfData("Geneva-9", geneva9Bytes);
+    MacFontBundle::registerTtfData("EspySans-9", espySans9Bytes);
+    MacFontBundle::registerTtfData("EspySansBold-9", espySansBold9Bytes);
+    const auto macAliasFont = MacFontBundle::getFont("Verdana", 9, false, false);
+    assert(macAliasFont != nullptr);
+    assert(macAliasFont->getFontName() == "geneva");
+    assert(macAliasFont->getFontSize() == 9);
+    assert(MacFontBundle::getFont("Verdana", 9, false, false) == macAliasFont);
+    const auto macBoldFont = MacFontBundle::getFont("EspySans", 9, true, false);
+    assert(macBoldFont != nullptr);
+    assert(macBoldFont->getFontName() == "espysans");
+    assert(macBoldFont->getFontSize() == 9);
+    FontRegistry::clear();
+    assert(FontRegistry::getBitmapFont("Verdana", 9) == macAliasFont);
+    MacFontBundle::initialize();
+    const auto registryGeneva = FontRegistry::getBitmapFont("geneva", 9);
+    assert(registryGeneva != nullptr);
+    assert(registryGeneva->getFontName() == "geneva");
+    assert(registryGeneva->getCharWidth('H') == macAliasFont->getCharWidth('H'));
+
+    assert(WindowsFontBundle::hasWindowsFont("Verdana"));
+    assert(WindowsFontBundle::hasWindowsFont("Times New Roman"));
+    assert(!WindowsFontBundle::hasWindowsFont("Geneva"));
+    assert(WindowsFontBundle::hasBoldVariant("Verdana"));
+    assert(!WindowsFontBundle::hasBoldVariant("Arial"));
+    assert(WindowsFontBundle::getFont("Verdana", 9, false, false) == nullptr);
+    WindowsFontBundle::registerFontData("Verdana", verdanaBytes, verdanaBoldBytes);
+    const auto windowsRegular = WindowsFontBundle::getFont("Verdana", 9, false, false);
+    assert(windowsRegular != nullptr);
+    assert(windowsRegular->getFontName() == "Verdana");
+    assert(windowsRegular->getFontSize() == 9);
+    const auto windowsBold = WindowsFontBundle::getFont("Verdana", 9, true, false);
+    assert(windowsBold != nullptr);
+    assert(windowsBold->getFontName() == "Verdana");
+    assert(WindowsFontBundle::getFont("Verdana", 9, true, false) == windowsBold);
+    WindowsFontBundle::registerFontData("Arial", arialBytes);
+    const auto arialBoldFallback = WindowsFontBundle::getFont("Arial", 9, true, false);
+    assert(arialBoldFallback != nullptr);
+    assert(arialBoldFallback->getFontName() == "Arial");
+    assert(WindowsFontBundle::getFont("Arial", 9, false, false) == arialBoldFallback);
+
     std::vector<std::uint32_t> pfrADst(30 * 30, 0);
     pfrBitmapFont->drawChar('A', pfrADst, 30, 30, 0, 0, 0xFF112244U);
     const int aInk = countInk(pfrADst);
@@ -1028,6 +1092,8 @@ void testBitmapFontAndFontRegistry() {
     FontRegistry::clear();
     assert(!FontRegistry::hasEmbeddedBoldVariant("embedded verdana"));
     assert(!FontRegistry::hasEmbeddedBoldVariant("sized verdana"));
+    MacFontBundle::clearTtfData();
+    WindowsFontBundle::clearFontData();
 }
 
 void testIdsAndEnums() {

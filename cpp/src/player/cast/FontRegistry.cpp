@@ -11,6 +11,7 @@
 
 #include "libreshockwave/font/Pfr1TtfConverter.hpp"
 #include "libreshockwave/font/TtfBitmapRasterizer.hpp"
+#include "libreshockwave/player/cast/MacFontBundle.hpp"
 
 namespace libreshockwave::player::cast {
 namespace {
@@ -224,6 +225,7 @@ std::shared_ptr<font::Pfr1Font> FontRegistry::getPfr1Font(const std::string& fon
             return it->second;
         }
     }
+
     return nullptr;
 }
 
@@ -300,6 +302,9 @@ std::shared_ptr<font::BitmapFont> FontRegistry::getBitmapFont(const std::string&
                 return rasterized;
             }
         }
+    }
+    if (auto macFont = MacFontBundle::getFont(fontName, fontSize, bold, italic); macFont != nullptr) {
+        return macFont;
     }
     return nullptr;
 }

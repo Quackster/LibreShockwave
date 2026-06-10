@@ -91,6 +91,8 @@ add_library(libreshockwave
     src/player/cast/CastLib.cpp
     src/player/cast/CastLibManager.cpp
     src/player/cast/FontRegistry.cpp
+    src/player/cast/MacFontBundle.cpp
+    src/player/cast/WindowsFontBundle.cpp
     src/player/input/DirectorKeyCodes.cpp
     src/player/input/HitTester.cpp
     src/player/input/InputEvent.cpp
