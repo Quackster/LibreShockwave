@@ -25,6 +25,7 @@
 #include "libreshockwave/player/render/pipeline/SpriteBaker.hpp"
 #include "libreshockwave/player/render/pipeline/StageRenderer.hpp"
 #include "libreshockwave/player/timeout/TimeoutManager.hpp"
+#include "libreshockwave/player/xtra/SocketMultiuserBridge.hpp"
 
 namespace libreshockwave::player::behavior {
 class BehaviorManager;
@@ -84,6 +85,7 @@ public:
     void setEventListener(std::function<void(const PlayerEventInfo&)> listener);
     void setDebugEnabled(bool enabled);
     void setTextRenderer(render::output::TextRenderer* renderer);
+    void registerMultiuserXtra(lingo::xtra::MultiuserNetBridge& bridge);
     [[nodiscard]] bool debugEnabled() const;
 
     void play();
@@ -105,6 +107,7 @@ private:
     render::pipeline::StageRenderer stageRenderer_;
     net::NetManager netManager_;
     lingo::xtra::XtraManager xtraManager_;
+    std::unique_ptr<xtra::SocketMultiuserBridge> socketMultiuserBridge_;
     MovieProperties movieProperties_;
     SpriteProperties spriteProperties_;
     cast::CastLibManager castLibManager_;

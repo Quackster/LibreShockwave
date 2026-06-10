@@ -10,6 +10,7 @@
 #include "libreshockwave/cast/CastMember.hpp"
 #include "libreshockwave/chunks/CastMemberChunk.hpp"
 #include "libreshockwave/lingo/Datum.hpp"
+#include "libreshockwave/lingo/xtra/MultiuserXtra.hpp"
 #include "libreshockwave/lingo/xtra/XmlParserXtra.hpp"
 #include "libreshockwave/player/PlayerEvent.hpp"
 #include "libreshockwave/player/event/EventDispatcher.hpp"
@@ -71,6 +72,8 @@ Player::Player(std::shared_ptr<DirectorFile> file)
       vm_(file_.get()),
       tempo_(configuredTempo(file_)) {
     xtraManager_.registerXtra(std::make_unique<lingo::xtra::XmlParserXtra>());
+    socketMultiuserBridge_ = std::make_unique<xtra::SocketMultiuserBridge>();
+    registerMultiuserXtra(*socketMultiuserBridge_);
     wireComponents();
 }
 
@@ -137,6 +140,25 @@ void Player::setDebugEnabled(bool enabled) {
 void Player::setTextRenderer(render::output::TextRenderer* renderer) {
     spriteBaker_.setTextRenderer(renderer);
     castLibManager_.setTextRenderer(renderer);
+}
+
+void Player::registerMultiuserXtra(lingo::xtra::MultiuserNetBridge& bridge) {
+    xtraManager_.registerXtra(std::make_unique<lingo::xtra::MultiuserXtra>(
+        &bridge,
+        [this](const lingo::Datum& target,
+               const std::string& handlerName,
+               const std::vector<lingo::Datum>& args) {
+            try {
+                if (target.type() == lingo::DatumType::ScriptInstanceRef &&
+                    vm_.builtinContext().callTargetHandler) {
+                    (void)vm_.builtinContext().callTargetHandler(target, handlerName, args);
+                    return;
+                }
+                (void)vm_.callHandler(handlerName, args);
+            } catch (...) {
+                // Match Java Player callback behavior: Xtra callbacks do not break frame polling.
+            }
+        }));
 }
 
 bool Player::debugEnabled() const { return debugEnabled_; }

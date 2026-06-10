@@ -12,6 +12,15 @@ void XtraManager::registerXtra(std::unique_ptr<Xtra> xtra) {
     }
     auto key = toLookupName(xtra->name());
     auto* raw = xtra.get();
+    if (const auto existing = byName_.find(key); existing != byName_.end()) {
+        for (auto& registered : xtras_) {
+            if (registered.get() == existing->second) {
+                registered = std::move(xtra);
+                existing->second = raw;
+                return;
+            }
+        }
+    }
     xtras_.push_back(std::move(xtra));
     byName_[std::move(key)] = raw;
 }

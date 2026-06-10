@@ -103,6 +103,7 @@ add_library(libreshockwave
     src/player/score/SpriteSpan.cpp
     src/player/sprite/SpriteState.cpp
     src/player/timeout/TimeoutManager.cpp
+    src/player/xtra/SocketMultiuserBridge.cpp
     src/util/AudioCodecUtils.cpp
     src/util/FileUtil.cpp
     src/w3d/W3DEntry.cpp
@@ -124,6 +125,9 @@ target_include_directories(libreshockwave
 )
 
 target_compile_features(libreshockwave PUBLIC cxx_std_20)
+
+find_package(Threads REQUIRED)
+target_link_libraries(libreshockwave PUBLIC Threads::Threads)
 
 find_package(ZLIB QUIET)
 if(ZLIB_FOUND)

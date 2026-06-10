@@ -1,8 +1,13 @@
 #include <cassert>
+#include <array>
+#include <atomic>
 #include <bit>
+#include <chrono>
 #include <cmath>
+#include <cerrno>
 #include <cstdlib>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -14,9 +19,15 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <variant>
 #include <vector>
+
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 #ifdef LIBRESHOCKWAVE_HAVE_ZLIB
 #include <zlib.h>
@@ -133,6 +144,7 @@
 #include "libreshockwave/player/score/SpriteSpan.hpp"
 #include "libreshockwave/player/sprite/SpriteState.hpp"
 #include "libreshockwave/player/timeout/TimeoutManager.hpp"
+#include "libreshockwave/player/xtra/SocketMultiuserBridge.hpp"
 #include "libreshockwave/util/AudioCodecUtils.hpp"
 #include "libreshockwave/util/FileUtil.hpp"
 
@@ -284,6 +296,7 @@ using libreshockwave::player::score::ScoreNavigator;
 using libreshockwave::player::score::SpriteSpan;
 using libreshockwave::player::sprite::SpriteState;
 using libreshockwave::player::timeout::TimeoutManager;
+using libreshockwave::player::xtra::SocketMultiuserBridge;
 using libreshockwave::w3d::W3DEntryType;
 
 void testBinaryReaderEndianAndBounds() {
@@ -1465,12 +1478,15 @@ void testPlayerFacadeFoundation() {
     assert(player.builtinContext().xtraInstanceCreator);
     assert(player.builtinContext().xtraHandler);
     assert(player.builtinContext().xtraPropertyGetter);
-    assert(player.movieProperties().getMovieProp("number of xtras").intValue() == 1);
+    assert(player.xtraManager().isXtraRegistered("Multiusr"));
+    assert(player.movieProperties().getMovieProp("number of xtras").intValue() == 2);
     auto playerXtraList = player.movieProperties().getMovieProp("xtraList");
     assert(playerXtraList.isList());
-    assert(playerXtraList.listValue().count() == 1);
+    assert(playerXtraList.listValue().count() == 2);
     assert(playerXtraList.listValue().getAt(1).propListValue().get(Datum::of(std::string("name"))).stringValue() ==
            "xmlparser");
+    assert(playerXtraList.listValue().getAt(2).propListValue().get(Datum::of(std::string("name"))).stringValue() ==
+           "Multiusr");
     const auto playerXmlXtra = player.builtinRegistry().invoke("xtra",
                                                                player.builtinContext(),
                                                                {Datum::of(std::string("xmlparser"))});
@@ -1495,6 +1511,20 @@ void testPlayerFacadeFoundation() {
         "getPropRef",
         {Datum::symbol("child"), Datum::of(1)});
     assert(playerXmlRoot.propListValue().get(Datum::symbol("name")).stringValue() == "root");
+    const auto playerMultiuserXtra = player.builtinRegistry().invoke("xtra",
+                                                                     player.builtinContext(),
+                                                                     {Datum::of(std::string("Multiusr"))});
+    assert(playerMultiuserXtra.asXtra() != nullptr);
+    const auto playerMultiuserInstanceDatum =
+        player.builtinRegistry().invoke("new", player.builtinContext(), {playerMultiuserXtra});
+    const auto* playerMultiuserInstance = playerMultiuserInstanceDatum.asXtraInstance();
+    assert(playerMultiuserInstance != nullptr);
+    assert(playerMultiuserInstance->xtraName == "Multiusr");
+    assert(libreshockwave::lingo::builtin::XtraBuiltins::callHandler(
+               player.builtinContext(),
+               *playerMultiuserInstance,
+               "getNetErrorString",
+               {Datum::of(-2)}).stringValue() == "Network error");
     assert(player.builtinContext().spriteMethodHandler);
     assert(player.builtinContext()
                .spriteMethodHandler(12,
@@ -3681,6 +3711,134 @@ void testMultiuserXtraFoundation() {
     const auto managerInstance = manager.createInstance("Multiusr", {});
     assert(managerInstance.asXtraInstance() != nullptr);
     assert(managerInstance.asXtraInstance()->xtraName == "Multiusr");
+}
+
+void testSocketMultiuserBridgeFoundation() {
+    class LoopbackServer {
+    public:
+        LoopbackServer() {
+            const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+            assert(fd >= 0);
+            listenFd_.store(fd);
+
+            int reuse = 1;
+            assert(::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) == 0);
+
+            sockaddr_in addr{};
+            addr.sin_family = AF_INET;
+            addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+            addr.sin_port = 0;
+            assert(::bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0);
+            assert(::listen(fd, 1) == 0);
+
+            socklen_t addrLen = sizeof(addr);
+            assert(::getsockname(fd, reinterpret_cast<sockaddr*>(&addr), &addrLen) == 0);
+            port_ = ntohs(addr.sin_port);
+
+            worker_ = std::thread([this] {
+                const int accepted = ::accept(listenFd_.load(), nullptr, nullptr);
+                if (accepted < 0) {
+                    return;
+                }
+                clientFd_.store(accepted);
+
+                std::array<char, 1024> buffer{};
+                while (running_.load()) {
+                    const ssize_t read = ::recv(accepted, buffer.data(), buffer.size(), 0);
+                    if (read > 0) {
+                        {
+                            std::lock_guard lock(mutex_);
+                            received_.append(buffer.data(), static_cast<std::size_t>(read));
+                        }
+                        const std::string reply = "server-payload";
+                        (void)::send(accepted, reply.data(), reply.size(), 0);
+                        continue;
+                    }
+                    if (read < 0 && errno == EINTR) {
+                        continue;
+                    }
+                    break;
+                }
+
+                const int fd = clientFd_.exchange(-1);
+                if (fd >= 0) {
+                    ::close(fd);
+                }
+            });
+        }
+
+        ~LoopbackServer() {
+            running_.store(false);
+            const int clientFd = clientFd_.exchange(-1);
+            if (clientFd >= 0) {
+                ::shutdown(clientFd, SHUT_RDWR);
+                ::close(clientFd);
+            }
+            const int listenFd = listenFd_.exchange(-1);
+            if (listenFd >= 0) {
+                ::shutdown(listenFd, SHUT_RDWR);
+                ::close(listenFd);
+            }
+            if (worker_.joinable()) {
+                worker_.join();
+            }
+        }
+
+        [[nodiscard]] int port() const { return port_; }
+
+        [[nodiscard]] std::string received() const {
+            std::lock_guard lock(mutex_);
+            return received_;
+        }
+
+    private:
+        std::atomic<bool> running_{true};
+        std::atomic<int> listenFd_{-1};
+        std::atomic<int> clientFd_{-1};
+        mutable std::mutex mutex_;
+        std::thread worker_;
+        std::string received_;
+        int port_ = 0;
+    };
+
+    auto waitUntil = [](const auto& predicate) {
+        for (int i = 0; i < 100; ++i) {
+            if (predicate()) {
+                return true;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        return false;
+    };
+
+    LoopbackServer server;
+    SocketMultiuserBridge bridge;
+    constexpr int instanceId = 42;
+    bridge.requestConnect(instanceId, "127.0.0.1", server.port(), 0);
+    assert(waitUntil([&] { return bridge.isConnected(instanceId); }));
+
+    bridge.requestSend(instanceId,
+                       "*",
+                       "HELLO",
+                       Datum::of(std::string("payload")));
+    assert(waitUntil([&] {
+        return server.received().find("HELLO payload") != std::string::npos;
+    }));
+
+    std::vector<MultiuserNetBridge::NetMessage> messages;
+    assert(waitUntil([&] {
+        messages = bridge.pollMessages(instanceId);
+        return !messages.empty();
+    }));
+    assert(messages.size() == 1);
+    assert(messages[0].errorCode == 0);
+    assert(messages[0].senderID.empty());
+    assert(messages[0].subject.empty());
+    assert(messages[0].content.stringValue() == "server-payload");
+
+    bridge.requestDisconnect(instanceId);
+    assert(!bridge.isConnected(instanceId));
+    bridge.destroyInstance(instanceId);
 }
 
 void testLingoVmScopeAndExecutionContextFoundation() {
@@ -15307,6 +15465,7 @@ int main() {
     testBuiltinRegistryFoundation();
     testXmlParserXtraFoundation();
     testMultiuserXtraFoundation();
+    testSocketMultiuserBridgeFoundation();
     testLingoVmScopeAndExecutionContextFoundation();
     testLingoVmRuntimeFoundation();
     testHitTesterFoundation();

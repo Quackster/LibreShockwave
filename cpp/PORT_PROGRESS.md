@@ -402,7 +402,8 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Xtra instance handler calls and property get/set behavior are exposed through VM-owned callbacks and can now be backed by the C++ Xtra manager.
 - `lingo::xtra::XmlParserXtra` now ports the Java XML Parser Xtra's lightweight `parseString`, `getError`, `count`, `getProp`/`getPropRef`/`getAProp`/`getProperty`, direct property read, empty-document fallback, entity decoding, and instance lifecycle behavior.
 - `lingo::xtra::MultiuserXtra` now ports the Java Multiuser Xtra's transport-abstract bridge surface, including buffer-limit setup, message handler registration/clearing, `connectToNetServer`, `sendNetMessage`, queued `checkNetMessages`, callback-visible `getNetMessage`, waiting-message counts, error strings, destroy cleanup, and frame-tick auto-callback polling.
-- `lingo::xtra::XtraManager` now ports registered-Xtra lookup, Director-facing `xtraList` names including the `Multiuser`/`Multiusr` alias, instance creation, handler/property dispatch, destroy, and tick fanout; `Player` registers `XmlParserXtra`, wires Xtra builtins through the manager, exposes registered Xtras through `MovieProperties`, and ticks registered Xtras during frame processing.
+- `player::xtra::SocketMultiuserBridge` now ports the Java desktop Multiuser socket bridge with background TCP connect, raw UTF-8 send serialization, nonblocking available-data polling into `NetMessage` content, connection-state checks, disconnect, and destroy cleanup.
+- `lingo::xtra::XtraManager` now ports registered-Xtra lookup/replacement, Director-facing `xtraList` names including the `Multiuser`/`Multiusr` alias, instance creation, handler/property dispatch, destroy, and tick fanout; `Player` registers `XmlParserXtra` plus the socket-backed `MultiuserXtra`, exposes custom `registerMultiuserXtra(...)` bridge injection, wires Xtra builtins through the manager, exposes registered Xtras through `MovieProperties`, and ticks registered Xtras during frame processing.
 
 ### Control Flow Builtins Foundation
 
@@ -869,7 +870,7 @@ Result:
 - StringBuiltins string coercion, length, chars, charToNum, numToChar, offset, and getPref/setPref callback hooks passed through the same CTest executable.
 - OutputBuiltins debug-gated `put`, Java-style argument joining, default alert output, and alert-hook suppression passed through the same CTest executable.
 - CastLibBuiltins castLib/member/field/createMember registration, missing-provider fallback, cast/member provider callbacks, encoded member numbers, search-all lookup, and omitted helper builtins passed through the same CTest executable.
-- XtraBuiltins registration, missing-manager behavior, registered-Xtra lookup, `new(xtraRef, ...)` instance creation, handler dispatch, property get/set callbacks, Java-style display strings, XML Parser Xtra parse/error/property/count lifecycle behavior, Multiuser Xtra bridge/connect/send/message/callback/tick/error/destroy behavior, XtraManager lookup/list/alias/lifecycle/tick dispatch, and Player-owned XML Xtra builtin wiring passed through the same CTest executable.
+- XtraBuiltins registration, missing-manager behavior, registered-Xtra lookup, `new(xtraRef, ...)` instance creation, handler dispatch, property get/set callbacks, Java-style display strings, XML Parser Xtra parse/error/property/count lifecycle behavior, Multiuser Xtra bridge/connect/send/message/callback/tick/error/destroy behavior, socket Multiuser bridge loopback connect/send/poll/disconnect behavior, XtraManager lookup/list/alias/replacement/lifecycle/tick dispatch, and Player-owned XML plus socket Multiuser Xtra builtin wiring passed through the same CTest executable.
 - ControlFlowBuiltins return/abort state, param lookup, frame/label `go`, call-target dispatch, list/proplist call snapshots, and omitted update builtins passed through the same CTest executable.
 - ListBuiltins list/proplist counts, access, mutation, searches, sorting, constructors, key namespace behavior, and aliases passed through the same CTest executable.
 - TimeoutBuiltins `timeout` creation, factory-mode `.new`, named `.new`, `.forget`, property get/set helpers, VM object-property get/set dispatch, and missing-provider behavior passed through the same CTest executable.
@@ -1139,4 +1140,4 @@ Result:
 - `3b15a1e5 Port C++ random seed trace parity`
 - `7c27afaf Port C++ VM value identifier fallback`
 - `1aafff66 Port C++ nested value identifier fallback`
-- Current checkpoint commit message: `Port C++ deconstruct reentry guard`
+- Current checkpoint commit message: `Port C++ socket Multiuser bridge`
