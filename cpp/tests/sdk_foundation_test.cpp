@@ -1310,6 +1310,72 @@ void testPlayerFacadeFoundation() {
     assert(player.currentFrame() == 2);
 }
 
+void testPlayerVmEventDispatchFoundation() {
+    auto makeHandler = [](int nameId, std::vector<std::pair<Opcode, int>> ops) {
+        std::vector<ScriptChunk::Instruction> instructions;
+        std::unordered_map<int, int> indexMap;
+        instructions.reserve(ops.size());
+        for (std::size_t index = 0; index < ops.size(); ++index) {
+            const int offset = static_cast<int>(index);
+            const auto [opcode, argument] = ops[index];
+            indexMap[offset] = static_cast<int>(index);
+            instructions.push_back(ScriptChunk::Instruction{
+                offset,
+                opcode,
+                libreshockwave::lingo::code(opcode),
+                argument
+            });
+        }
+        return ScriptChunk::Handler{
+            nameId,
+            0,
+            static_cast<int>(instructions.size()),
+            0,
+            0,
+            0,
+            0,
+            0,
+            {},
+            {},
+            std::move(instructions),
+            std::move(indexMap)
+        };
+    };
+
+    auto names = std::make_shared<ScriptNamesChunk>(
+        nullptr,
+        ChunkId(930),
+        std::vector<std::string>{"", "mouseUp", "clicked"});
+    auto mouseUp = makeHandler(1, {
+        {Opcode::PUSH_INT8, 33},
+        {Opcode::SET_GLOBAL, 2},
+        {Opcode::RET, 0}
+    });
+    auto script = std::make_shared<ScriptChunk>(nullptr,
+                                                ChunkId(931),
+                                                ScriptChunkType::MovieScript,
+                                                0,
+                                                std::vector<ScriptChunk::Handler>{mouseUp},
+                                                std::vector<ScriptChunk::LiteralEntry>{},
+                                                std::vector<ScriptChunk::PropertyEntry>{},
+                                                std::vector<ScriptChunk::GlobalEntry>{},
+                                                std::vector<std::uint8_t>{});
+
+    Player player;
+    assert(&player.vm().builtinRegistry() == &player.builtinRegistry());
+    assert(&player.vm().builtinContext() == &player.builtinContext());
+
+    player.eventDispatcher().addMovieScript(EventDispatcher::MovieScriptTarget{script, names});
+    player.eventDispatcher().dispatchToMovieScripts(PlayerEvent::MouseUp);
+    assert(player.vm().getGlobal("#2").intValue() == 33);
+
+    assert(player.vm().callBuiltin("puppetTempo", {Datum::of(21)}).isVoid());
+    assert(player.tempo() == 21);
+    assert(player.vm().callBuiltin("setPref", {Datum::of(std::string("Mode")), Datum::of(std::string("debug"))})
+               .stringValue() == "debug");
+    assert(player.vm().getPref("mode").stringValue() == "debug");
+}
+
 void testMoviePropertiesFoundation() {
     MovieProperties props;
     assert(props.getMovieProp("return").stringValue() == "\r");
@@ -11782,6 +11848,7 @@ int main() {
     testPlayerCoreFoundation();
     testPlayerInputFoundation();
     testPlayerFacadeFoundation();
+    testPlayerVmEventDispatchFoundation();
     testMoviePropertiesFoundation();
     testBuiltinRegistryFoundation();
     testLingoVmScopeAndExecutionContextFoundation();

@@ -44,6 +44,7 @@ Player::Player(std::shared_ptr<DirectorFile> file)
       bitmapResolver_(file_, &castLibManager_, &frameContext_),
       cursorManager_(&inputState_, &stageRenderer_.spriteRegistry()),
       inputHandler_(&inputState_, &stageRenderer_, &frameContext_.eventDispatcher()),
+      vm_(file_.get()),
       tempo_(configuredTempo(file_)) {
     wireComponents();
 }
@@ -67,8 +68,9 @@ input::InputState& Player::inputState() { return inputState_; }
 BitmapResolver& Player::bitmapResolver() { return bitmapResolver_; }
 CursorManager& Player::cursorManager() { return cursorManager_; }
 InputHandler& Player::inputHandler() { return inputHandler_; }
-lingo::builtin::BuiltinRegistry& Player::builtinRegistry() { return builtinRegistry_; }
-lingo::builtin::BuiltinContext& Player::builtinContext() { return builtinContext_; }
+lingo::vm::LingoVM& Player::vm() { return vm_; }
+lingo::builtin::BuiltinRegistry& Player::builtinRegistry() { return vm_.builtinRegistry(); }
+lingo::builtin::BuiltinContext& Player::builtinContext() { return vm_.builtinContext(); }
 
 PlayerState Player::state() const { return state_; }
 int Player::currentFrame() const { return frameContext_.currentFrame(); }
@@ -102,7 +104,7 @@ void Player::setEventListener(std::function<void(const PlayerEventInfo&)> listen
 
 void Player::setDebugEnabled(bool enabled) {
     debugEnabled_ = enabled;
-    builtinContext_.debugPlaybackEnabled = enabled;
+    vm_.builtinContext().debugPlaybackEnabled = enabled;
     frameContext_.setDebugEnabled(enabled);
 }
 
@@ -311,15 +313,15 @@ void Player::wireComponents() {
         return &eventDispatcher();
     });
 
-    builtinContext_ = lingo::builtin::BuiltinContext{};
-    builtinContext_.movieProperties = &movieProperties_;
-    builtinContext_.netManager = &netManager_;
-    builtinContext_.soundManager = &soundManager_;
-    builtinContext_.spriteProperties = &spriteProperties_;
-    builtinContext_.timeoutManager = &timeoutManager_;
-    builtinContext_.debugPlaybackEnabled = debugEnabled_;
-    castLibManager_.installBuiltinCallbacks(builtinContext_);
-    builtinContext_.imagePaletteResolver = [this](const lingo::Datum& paletteRef)
+    auto& context = vm_.builtinContext();
+    context.movieProperties = &movieProperties_;
+    context.netManager = &netManager_;
+    context.soundManager = &soundManager_;
+    context.spriteProperties = &spriteProperties_;
+    context.timeoutManager = &timeoutManager_;
+    context.debugPlaybackEnabled = debugEnabled_;
+    castLibManager_.installBuiltinCallbacks(context);
+    context.imagePaletteResolver = [this](const lingo::Datum& paletteRef)
         -> std::optional<lingo::builtin::BuiltinContext::ResolvedPalette> {
         const auto* member = paletteRef.asCastMemberRef();
         if (member == nullptr || member->memberNum() <= 0) {
@@ -337,6 +339,66 @@ void Player::wireComponents() {
             std::nullopt
         };
     };
+
+    auto findEventHandler = [this](const event::EventTarget& target,
+                                   std::string_view handlerName)
+        -> std::optional<chunks::ScriptChunk::Handler> {
+        if (!target.script) {
+            return std::nullopt;
+        }
+        if (target.scriptNames) {
+            if (auto handler = target.script->findHandler(handlerName, target.scriptNames.get())) {
+                return handler;
+            }
+        }
+        if (auto handler = vm_.findHandler(*target.script, handlerName)) {
+            return handler->handler;
+        }
+        return std::nullopt;
+    };
+
+    eventDispatcher().setScriptNamesResolver([this](const std::shared_ptr<chunks::ScriptChunk>& script) {
+        return file_ != nullptr ? file_->getScriptNamesForScript(script) : nullptr;
+    });
+    eventDispatcher().setRespondsPredicate([findEventHandler](const event::EventTarget& target,
+                                                              std::string_view handlerName) {
+        return findEventHandler(target, handlerName).has_value();
+    });
+    eventDispatcher().setHandlerInvoker([this, findEventHandler](const event::EventTarget& target,
+                                                                std::string_view handlerName,
+                                                                const std::vector<lingo::Datum>& args) {
+        auto handler = findEventHandler(target, handlerName);
+        if (!handler || !target.script) {
+            return event::HandlerResult{false, false};
+        }
+
+        lingo::Datum receiver = lingo::Datum::voidValue();
+        if (target.behavior) {
+            receiver = target.behavior->toDatum();
+        } else if (target.scriptInstance) {
+            receiver = *target.scriptInstance;
+        }
+
+        bool passed = false;
+        vm_.resetEventStopped();
+        vm_.setPassCallback([this, &passed] {
+            passed = true;
+            eventDispatcher().pass();
+        });
+        try {
+            (void)vm_.executeHandler(*target.script, *handler, args, receiver);
+        } catch (...) {
+            vm_.clearPassCallback();
+            vm_.resetEventStopped();
+            throw;
+        }
+        vm_.clearPassCallback();
+        if (vm_.eventStopped()) {
+            eventDispatcher().stopEvent();
+            vm_.resetEventStopped();
+        }
+        return event::HandlerResult{true, passed};
+    });
 }
 
 void Player::prepareMovieFoundation() {

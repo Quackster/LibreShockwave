@@ -5,7 +5,7 @@
 #include <string_view>
 
 #include "libreshockwave/DirectorFile.hpp"
-#include "libreshockwave/lingo/builtin/BuiltinRegistry.hpp"
+#include "libreshockwave/lingo/vm/LingoVM.hpp"
 #include "libreshockwave/player/BitmapResolver.hpp"
 #include "libreshockwave/player/CursorManager.hpp"
 #include "libreshockwave/player/InputHandler.hpp"
@@ -67,6 +67,7 @@ public:
     [[nodiscard]] BitmapResolver& bitmapResolver();
     [[nodiscard]] CursorManager& cursorManager();
     [[nodiscard]] InputHandler& inputHandler();
+    [[nodiscard]] lingo::vm::LingoVM& vm();
     [[nodiscard]] lingo::builtin::BuiltinRegistry& builtinRegistry();
     [[nodiscard]] lingo::builtin::BuiltinContext& builtinContext();
 
@@ -112,8 +113,7 @@ private:
     BitmapResolver bitmapResolver_;
     CursorManager cursorManager_;
     InputHandler inputHandler_;
-    lingo::builtin::BuiltinRegistry builtinRegistry_;
-    lingo::builtin::BuiltinContext builtinContext_;
+    lingo::vm::LingoVM vm_;
     PlayerState state_{PlayerState::Stopped};
     int tempo_{15};
     bool debugEnabled_{false};

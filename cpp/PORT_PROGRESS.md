@@ -252,9 +252,15 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 ### Player Builtin Context Foundation
 
-- `player::Player` now owns a `lingo::builtin::BuiltinRegistry` and `BuiltinContext` for the future C++ VM runtime path.
-- The Player builtin context wires movie, sprite, net, sound, timeout, cast-library, cast-member, and palette-resolution callbacks to Player-owned managers.
+- `player::Player` now owns a `lingo::vm::LingoVM` and exposes the VM-owned builtin registry/context through the existing Player accessors.
+- The Player VM builtin context wires movie, sprite, net, sound, timeout, cast-library, cast-member, and palette-resolution callbacks to Player-owned managers.
 - Tests now exercise Player-backed builtin calls for puppet tempo, cached network preloading, sound channel references, cast member lookup, and palette-aware image construction.
+
+### Player VM Event Dispatch Foundation
+
+- `player::Player` now wires its `EventDispatcher` to VM-backed script handler lookup and execution for behavior and movie-script targets.
+- Event dispatch resolves `ScriptChunk` handler names through target-provided `ScriptNamesChunk` metadata or VM fallback lookup, passes behavior receivers as script-instance `me`, and maps VM `pass`/`stopEvent` runtime builtins back to dispatcher propagation state.
+- Tests cover Player dispatcher movie-script invocation executing Lingo bytecode through the Player-owned VM, plus VM-backed Player builtin and preference storage access.
 
 ### Hit Testing Foundation
 
@@ -284,7 +290,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `behavior::BehaviorInstance` ports behavior IDs, script references, score behavior references, sprite/frame identity, persistent script-instance receiver properties, and begin/end sprite lifecycle flags.
 - `behavior::BehaviorManager` ports instance registration, property parameter application from behavior refs, per-channel lookup, frame-script caching, instance removal, sprite-instance ordering, and clear state.
-- Handler invocation and VM/event dispatch remain deferred to the C++ event dispatcher and Lingo VM runtime slices.
+- Dynamic `ScriptInstanceRef`-to-script resolution and richer behavior lifecycle VM coverage remain deferred to later C++ event dispatcher and Lingo VM runtime slices.
 
 ### Event Dispatcher Foundation
 
@@ -696,6 +702,7 @@ Result:
 - TypeBuiltins object/void/type predicates, `value` literal parsing/provider fallback, `script`/`callAncestor` callback hooks, symbol conversion, and `ilk` alias checks passed through the same CTest executable.
 - Lingo VM Scope and ExecutionContext stack, param, local, return, loop, jump, global callback, handler callback, builtin invocation, and call-stack formatting behavior passed through the same CTest executable.
 - Lingo VM ExecutionContext name resolver callback and resolver-backed global opcode behavior passed through the same CTest executable.
+- Player-owned LingoVM builtin delegation, dispatcher movie-script bytecode invocation, and VM preference storage passed through the same CTest executable.
 - OpcodeRegistry stack/control handler registration, custom handler registration, literal/symbol pushes, stack manipulation, return/factory return, and jump opcodes passed through the same CTest executable.
 - OpcodeRegistry arithmetic, comparison, and logical handlers passed through the same CTest executable.
 - OpcodeRegistry variable, arg-list, linear-list, and property-list handlers passed through the same CTest executable.
@@ -850,4 +857,5 @@ Result:
 - `eb545ccc Port C++ input handler foundation`
 - `6f78a995 Port C++ player foundation`
 - `fd62f0e1 Port C++ player builtin context`
-- Current checkpoint commit message: `Port C++ Lingo VM runtime foundation`
+- `c4370a8e Port C++ Lingo VM runtime foundation`
+- Current checkpoint commit message: `Port C++ player VM event dispatch`
