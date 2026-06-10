@@ -820,6 +820,32 @@ bool CastLib::setMemberProp(int memberNumber, const std::string& propName, const
         member->setBitmapAlphaThreshold(value.intValue());
         return true;
     }
+    if (member->isBitmap() && prop == "width") {
+        const int newWidth = value.intValue();
+        if (newWidth > 0) {
+            auto current = member->runtimeBitmap();
+            const int height = current ? current->height() : 1;
+            const int depth = current ? current->bitDepth() : 32;
+            bitmap::Bitmap resized(newWidth, height, depth);
+            resized.fill(0xFFFFFFFFU);
+            resized.setAnchorPoint(member->regX(), member->regY());
+            member->setRuntimeBitmap(resized);
+        }
+        return true;
+    }
+    if (member->isBitmap() && prop == "height") {
+        const int newHeight = value.intValue();
+        if (newHeight > 0) {
+            auto current = member->runtimeBitmap();
+            const int width = current ? current->width() : 1;
+            const int depth = current ? current->bitDepth() : 32;
+            bitmap::Bitmap resized(width, newHeight, depth);
+            resized.fill(0xFFFFFFFFU);
+            resized.setAnchorPoint(member->regX(), member->regY());
+            member->setRuntimeBitmap(resized);
+        }
+        return true;
+    }
     if (prop == "image") {
         const auto* image = value.asImageRef();
         if (image == nullptr || image->bitmap == nullptr) {

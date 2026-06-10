@@ -13037,6 +13037,28 @@ void testCastLibManagerFoundation() {
     assert(manager.getMemberProp(1, directMediaRef->memberNum(), "regPoint").asIntPoint()->y == 4);
     assert(directDirectorRuntime->anchorX() == 3);
     assert(directDirectorRuntime->anchorY() == 4);
+    assert(manager.setMemberProp(1, directMediaRef->memberNum(), "width", Datum::of(4)));
+    auto resizedWidthRuntime = manager.resolveMember(1, directMediaRef->memberNum())->runtimeBitmap();
+    assert(resizedWidthRuntime != nullptr);
+    assert(resizedWidthRuntime->isScriptModified());
+    assert(resizedWidthRuntime->width() == 4);
+    assert(resizedWidthRuntime->height() == 1);
+    assert(resizedWidthRuntime->bitDepth() == 32);
+    assert(resizedWidthRuntime->getPixel(3, 0) == 0xFFFFFFFFU);
+    assert(manager.getMemberProp(1, directMediaRef->memberNum(), "regPoint").asIntPoint()->x == 3);
+    assert(manager.getMemberProp(1, directMediaRef->memberNum(), "regPoint").asIntPoint()->y == 4);
+    assert(resizedWidthRuntime->anchorX() == 3);
+    assert(resizedWidthRuntime->anchorY() == 4);
+    assert(manager.setMemberProp(1, directMediaRef->memberNum(), "height", Datum::of(3)));
+    auto resizedHeightRuntime = manager.resolveMember(1, directMediaRef->memberNum())->runtimeBitmap();
+    assert(resizedHeightRuntime != nullptr);
+    assert(resizedHeightRuntime->width() == 4);
+    assert(resizedHeightRuntime->height() == 3);
+    assert(resizedHeightRuntime->getPixel(3, 2) == 0xFFFFFFFFU);
+    assert(manager.getMemberProp(1, directMediaRef->memberNum(), "width").intValue() == 4);
+    assert(manager.getMemberProp(1, directMediaRef->memberNum(), "height").intValue() == 3);
+    assert(manager.setMemberProp(1, directMediaRef->memberNum(), "width", Datum::of(0)));
+    assert(manager.getMemberProp(1, directMediaRef->memberNum(), "width").intValue() == 4);
     assert(!manager.setMemberProp(1,
                                   directMediaRef->memberNum(),
                                   "media",
