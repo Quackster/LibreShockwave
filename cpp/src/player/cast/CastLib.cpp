@@ -251,6 +251,19 @@ lingo::Datum colorDatumFromArgb(int argb) {
     return lingo::Datum::colorRef((argb >> 16) & 0xFF, (argb >> 8) & 0xFF, argb & 0xFF);
 }
 
+void applyRuntimePaletteMetadata(bitmap::Bitmap& bitmap,
+                                 const std::shared_ptr<libreshockwave::cast::CastMember>& member) {
+    if (member == nullptr || !member->runtimePaletteOverride()) {
+        return;
+    }
+    bitmap.setImagePalette(member->runtimePaletteOverride());
+    if (member->paletteRefCastLib() >= 1 && member->paletteRefMemberNum() >= 1) {
+        bitmap.setPaletteRefCastMember(member->paletteRefCastLib(), member->paletteRefMemberNum());
+    } else if (member->paletteRefSystemName().has_value()) {
+        bitmap.setPaletteRefSystemName(*member->paletteRefSystemName());
+    }
+}
+
 lingo::Datum paletteColorListDatum(const bitmap::Palette& palette) {
     std::vector<lingo::Datum> colors;
     colors.reserve(static_cast<std::size_t>(palette.size()));
@@ -710,6 +723,24 @@ lingo::Datum CastLib::getMemberProp(int memberNumber, const std::string& propNam
     if (prop == "rect") return lingo::Datum::intRect(0, 0, member->width(), member->height());
     if (prop == "image") {
         auto bitmap = member->runtimeBitmap();
+        if (!bitmap && member->isBitmap() && member->rawChunk() && sourceFile_) {
+            const auto paletteOverride = member->runtimePaletteOverride();
+            auto decoded = sourceFile_->decodeBitmap(member->rawChunk(), paletteOverride.get());
+            if (decoded.has_value()) {
+                applyRuntimePaletteMetadata(*decoded, member);
+                member->setRuntimeBitmap(*decoded, false);
+                bitmap = member->runtimeBitmap();
+            } else if (member->bitmapInfo().has_value() &&
+                       member->bitmapInfo()->width > 0 &&
+                       member->bitmapInfo()->height > 0) {
+                bitmap::Bitmap placeholder(member->bitmapInfo()->width,
+                                           member->bitmapInfo()->height,
+                                           std::max(member->bitmapInfo()->bitDepth, 32));
+                placeholder.setNativeAlpha(true);
+                member->setRuntimeBitmap(placeholder, false);
+                bitmap = member->runtimeBitmap();
+            }
+        }
         if (!bitmap && member->isBitmap() && member->isRuntimeDynamic()) {
             bitmap::Bitmap defaultBitmap(1, 1, 32);
             defaultBitmap.fill(0xFFFFFFFFU);
