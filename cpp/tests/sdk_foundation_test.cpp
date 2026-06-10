@@ -6104,6 +6104,95 @@ void testSpriteBakerFoundation() {
     assert(decodeCalls == 1);
     assert(baker.tickCounter() == 1);
 
+    BitmapCache liveCache;
+    auto liveMember = std::make_shared<CastMemberChunk>(nullptr,
+                                                        ChunkId(804),
+                                                        MemberType::Bitmap,
+                                                        0,
+                                                        0,
+                                                        std::vector<std::uint8_t>{},
+                                                        std::vector<std::uint8_t>{},
+                                                        "live-bitmap",
+                                                        0,
+                                                        0,
+                                                        0);
+    auto staleBitmap = std::make_shared<Bitmap>(1, 1, 32, std::vector<std::uint32_t>{0xFFFF0000U});
+    liveCache.putProcessed(*liveMember, 0, 0, 0, false, false, staleBitmap);
+    auto liveBitmap = std::make_shared<Bitmap>(1, 1, 32, std::vector<std::uint32_t>{0xFF0000FFU});
+    liveBitmap->markScriptModified();
+    SpriteBaker liveBaker(&liveCache);
+    int liveDecodeCalls = 0;
+    int liveProviderCalls = 0;
+    liveBaker.setBitmapDecodeProvider([&liveDecodeCalls](const CastMemberChunk&, const Palette*) {
+        ++liveDecodeCalls;
+        return std::make_shared<Bitmap>(1, 1, 32, std::vector<std::uint32_t>{0xFF00FF00U});
+    });
+    liveBaker.setLiveBitmapProvider([&](const RenderSprite& sprite) -> std::shared_ptr<const Bitmap> {
+        ++liveProviderCalls;
+        return sprite.castMember() == liveMember ? liveBitmap : nullptr;
+    });
+    RenderSprite liveSprite(8,
+                            0,
+                            0,
+                            1,
+                            1,
+                            0,
+                            true,
+                            SpriteType::Bitmap,
+                            liveMember,
+                            nullptr,
+                            0,
+                            0,
+                            false,
+                            false,
+                            0,
+                            100,
+                            false,
+                            false,
+                            nullptr,
+                            false);
+    auto bakedLive = liveBaker.bake(liveSprite);
+    assert(liveProviderCalls == 1);
+    assert(liveDecodeCalls == 0);
+    assert(bakedLive.bakedBitmap()->getPixel(0, 0) == 0xFF0000FFU);
+    assert(liveCache.cachedBitmapCount() == 1);
+    assert(liveCache.getCachedProcessed(*liveMember, 0, 0, 0, false, false) == staleBitmap);
+
+    auto darkenLiveBitmap = std::make_shared<Bitmap>(3, 1, 32, std::vector<std::uint32_t>{
+        0xFFFFFFFFU,
+        0xFF808080U,
+        0xFFFFFFFFU
+    });
+    darkenLiveBitmap->markScriptModified();
+    SpriteBaker liveDarkenBaker;
+    liveDarkenBaker.setLiveBitmapProvider([&](const RenderSprite&) -> std::shared_ptr<const Bitmap> {
+        return darkenLiveBitmap;
+    });
+    RenderSprite liveDarkenSprite(9,
+                                  0,
+                                  0,
+                                  3,
+                                  1,
+                                  0,
+                                  true,
+                                  SpriteType::Bitmap,
+                                  nullptr,
+                                  nullptr,
+                                  0,
+                                  0xA07020,
+                                  false,
+                                  true,
+                                  libreshockwave::id::code(InkMode::DARKEN),
+                                  100,
+                                  false,
+                                  false,
+                                  nullptr,
+                                  false);
+    auto bakedLiveDarken = liveDarkenBaker.bake(liveDarkenSprite);
+    assert(bakedLiveDarken.bakedBitmap()->getPixel(0, 0) == 0x00000000U);
+    assert(bakedLiveDarken.bakedBitmap()->getPixel(1, 0) == 0xFF503810U);
+    assert(bakedLiveDarken.bakedBitmap()->getPixel(2, 0) == 0x00000000U);
+
     int textCalls = 0;
     baker.setTextBakeProvider([&textCalls](const RenderSprite& sprite) {
         ++textCalls;

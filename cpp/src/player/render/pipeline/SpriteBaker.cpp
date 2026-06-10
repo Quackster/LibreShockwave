@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <optional>
+#include <string>
 #include <utility>
 
 #include "libreshockwave/cast/CastMember.hpp"
@@ -24,6 +25,27 @@ const cast::ShapeInfo* dynamicShapeInfo(const RenderSprite& sprite) {
         return nullptr;
     }
     return &dynamic->shapeInfo().value();
+}
+
+bool shouldNeutralizeOpaqueWhiteForScriptCanvas(const RenderSprite& sprite, const bitmap::Bitmap& bitmap) {
+    if (bitmap.bitDepth() != 32 || bitmap.isNativeAlpha() || !bitmap.isScriptModified()) {
+        return false;
+    }
+    return sprite.inkMode() == id::InkMode::DARKEN || sprite.inkMode() == id::InkMode::LIGHTEN;
+}
+
+bool shouldPreserveOutlinedWhiteBodyForScriptCanvas(const RenderSprite& sprite, const bitmap::Bitmap& bitmap) {
+    if (sprite.inkMode() != id::InkMode::MATTE ||
+        bitmap.bitDepth() != 32 ||
+        !bitmap.isScriptModified() ||
+        bitmap.isNativeAlpha()) {
+        return false;
+    }
+
+    const auto memberName = sprite.memberName();
+    return memberName.has_value() &&
+           (memberName->starts_with("chat_item_background_") ||
+            memberName->starts_with("chat_item_sing_background_"));
 }
 
 } // namespace
@@ -83,6 +105,10 @@ void SpriteBaker::setBitmapDecodeProvider(BitmapDecodeProvider provider) {
     bitmapDecodeProvider_ = std::move(provider);
 }
 
+void SpriteBaker::setLiveBitmapProvider(LiveBitmapProvider provider) {
+    liveBitmapProvider_ = std::move(provider);
+}
+
 void SpriteBaker::setTextBakeProvider(TextBakeProvider provider) {
     textBakeProvider_ = std::move(provider);
 }
@@ -121,6 +147,13 @@ void SpriteBaker::registerDefaultSteps() {
 }
 
 std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeBitmap(const RenderSprite& sprite) {
+    if (liveBitmapProvider_) {
+        auto live = liveBitmapProvider_(sprite);
+        if (live != nullptr && live->isScriptModified()) {
+            return std::make_shared<bitmap::Bitmap>(processLiveBitmap(*live, sprite));
+        }
+    }
+
     if (auto cached = cachedBitmap(sprite)) {
         return cached;
     }
@@ -187,6 +220,43 @@ bitmap::Bitmap SpriteBaker::processDecodedBitmap(const bitmap::Bitmap& raw, cons
                                                             sprite.hasForeColor(),
                                                             sprite.hasBackColor(),
                                                             raw.imagePalette().get());
+}
+
+bitmap::Bitmap SpriteBaker::processLiveBitmap(const bitmap::Bitmap& live, const RenderSprite& sprite) const {
+    bitmap::Bitmap source = live.copy();
+    if (source.bitDepth() <= 1 && sprite.hasForeColor()) {
+        source = InkProcessor::applyForeColorRemap(source,
+                                                   static_cast<std::uint32_t>(sprite.foreColor()),
+                                                   static_cast<std::uint32_t>(sprite.backColor()));
+    }
+
+    bitmap::Bitmap processed = source.copy();
+    if (InkProcessor::shouldProcessInk(sprite.inkMode())) {
+        bitmap::Bitmap inkSource = shouldNeutralizeOpaqueWhiteForScriptCanvas(sprite, source)
+            ? InkProcessor::convertOpaqueWhiteToTransparent(source)
+            : source.copy();
+        const bool hasNativeAlpha = inkSource.bitDepth() == 32 && inkSource.isNativeAlpha();
+        processed = shouldPreserveOutlinedWhiteBodyForScriptCanvas(sprite, inkSource)
+            ? InkProcessor::applyInkPreservingOutlinedWhiteBody(inkSource,
+                                                                sprite.inkMode(),
+                                                                sprite.backColor(),
+                                                                hasNativeAlpha,
+                                                                inkSource.imagePalette().get())
+            : InkProcessor::applyInk(inkSource,
+                                     sprite.inkMode(),
+                                     sprite.backColor(),
+                                     hasNativeAlpha,
+                                     inkSource.imagePalette().get());
+    }
+
+    return BitmapCache::applyIndexedMatteColorRemapIfNeeded(&source,
+                                                            processed,
+                                                            sprite.ink(),
+                                                            sprite.foreColor(),
+                                                            sprite.backColor(),
+                                                            sprite.hasForeColor(),
+                                                            sprite.hasBackColor(),
+                                                            source.imagePalette().get());
 }
 
 std::shared_ptr<const bitmap::Bitmap> SpriteBaker::cachedBitmap(const RenderSprite& sprite) const {

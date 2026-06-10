@@ -22,6 +22,7 @@ public:
     using BitmapDecodeProvider = std::function<std::shared_ptr<const bitmap::Bitmap>(
         const chunks::CastMemberChunk& member,
         const bitmap::Palette* paletteOverride)>;
+    using LiveBitmapProvider = std::function<std::shared_ptr<const bitmap::Bitmap>(const RenderSprite& sprite)>;
     using TextBakeProvider = std::function<std::shared_ptr<const bitmap::Bitmap>(const RenderSprite& sprite)>;
     using SupportsFn = std::function<bool(const RenderSprite& sprite)>;
     using BakeFn = std::function<std::shared_ptr<const bitmap::Bitmap>(const RenderSprite& sprite)>;
@@ -43,6 +44,7 @@ public:
     [[nodiscard]] int bakeStepCount() const;
 
     void setBitmapDecodeProvider(BitmapDecodeProvider provider);
+    void setLiveBitmapProvider(LiveBitmapProvider provider);
     void setTextBakeProvider(TextBakeProvider provider);
 
     [[nodiscard]] BitmapCache& bitmapCache();
@@ -57,6 +59,7 @@ private:
     [[nodiscard]] std::shared_ptr<const bitmap::Bitmap> bakeFilmLoop(const RenderSprite& sprite);
 
     [[nodiscard]] bitmap::Bitmap processDecodedBitmap(const bitmap::Bitmap& raw, const RenderSprite& sprite) const;
+    [[nodiscard]] bitmap::Bitmap processLiveBitmap(const bitmap::Bitmap& live, const RenderSprite& sprite) const;
     [[nodiscard]] std::shared_ptr<const bitmap::Bitmap> cachedBitmap(const RenderSprite& sprite) const;
     void cacheBitmap(const RenderSprite& sprite, std::shared_ptr<const bitmap::Bitmap> bitmap);
 
@@ -70,6 +73,7 @@ private:
     BitmapCache ownedBitmapCache_;
     BitmapCache* bitmapCache_{nullptr};
     BitmapDecodeProvider bitmapDecodeProvider_;
+    LiveBitmapProvider liveBitmapProvider_;
     TextBakeProvider textBakeProvider_;
     std::vector<SpriteBakeStep> bakeSteps_;
     int tickCounter_{0};
