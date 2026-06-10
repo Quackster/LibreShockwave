@@ -86,6 +86,8 @@ std::uint64_t nextScriptInstanceIdentityId() {
     return nextId.fetch_add(1, std::memory_order_relaxed);
 }
 
+constexpr int kMaxAncestorDepth = 100;
+
 } // namespace
 
 LingoException LingoException::typeMismatch(const std::string& expected, const std::string& actual) {
@@ -750,14 +752,16 @@ Datum Datum::ScriptInstanceRef::getProperty(const std::string& name) const {
         return Datum::voidValue();
     }
 
-    for (const auto& entry : properties_) {
-        if (equalsIgnoreCase(entry.first, name)) {
-            return entry.second;
+    const auto* current = this;
+    for (int depth = 0; current != nullptr && depth < kMaxAncestorDepth; ++depth) {
+        for (const auto& entry : current->properties_) {
+            if (equalsIgnoreCase(entry.first, name)) {
+                return entry.second;
+            }
         }
+        current = current->ancestor_.get();
     }
-    if (ancestor_) {
-        return ancestor_->getProperty(name);
-    }
+
     return Datum::voidValue();
 }
 
@@ -778,21 +782,32 @@ void Datum::ScriptInstanceRef::setProperty(const std::string& name, Datum value)
         }
     }
 
-    if (ancestor_ && ancestor_->hasProperty(name)) {
-        ancestor_->setProperty(name, std::move(value));
-        return;
+    auto* current = ancestor_.get();
+    for (int depth = 1; current != nullptr && depth < kMaxAncestorDepth; ++depth) {
+        for (auto& entry : current->properties_) {
+            if (equalsIgnoreCase(entry.first, name)) {
+                entry.second = std::move(value);
+                return;
+            }
+        }
+        current = current->ancestor_.get();
     }
 
     properties_.emplace_back(name, std::move(value));
 }
 
 bool Datum::ScriptInstanceRef::hasProperty(const std::string& name) const {
-    for (const auto& entry : properties_) {
-        if (equalsIgnoreCase(entry.first, name)) {
-            return true;
+    const auto* current = this;
+    for (int depth = 0; current != nullptr && depth < kMaxAncestorDepth; ++depth) {
+        for (const auto& entry : current->properties_) {
+            if (equalsIgnoreCase(entry.first, name)) {
+                return true;
+            }
         }
+        current = current->ancestor_.get();
     }
-    return ancestor_ ? ancestor_->hasProperty(name) : false;
+
+    return false;
 }
 
 const std::vector<std::pair<std::string, Datum>>& Datum::ScriptInstanceRef::properties() const {

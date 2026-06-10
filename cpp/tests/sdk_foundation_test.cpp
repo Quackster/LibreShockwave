@@ -931,6 +931,23 @@ void testLingoDatumTypes() {
     instance.scriptInstanceValue().setProperty("ancestor", Datum::voidValue());
     assert(instance.scriptInstanceValue().getProperty("ancestor").isVoid());
     assert(instance.scriptInstanceValue().getProperty("baseValue").isVoid());
+    auto cyclicInstance = Datum::scriptInstance("cyclic");
+    cyclicInstance.scriptInstanceValue().setProperty("ancestor", cyclicInstance);
+    assert(cyclicInstance.scriptInstanceValue().getProperty("missingCycleProperty").isVoid());
+    assert(!cyclicInstance.scriptInstanceValue().hasProperty("missingCycleProperty"));
+    cyclicInstance.scriptInstanceValue().setProperty("createdAfterCycle", Datum::of(8));
+    assert(cyclicInstance.scriptInstanceValue().getProperty("createdAfterCycle").intValue() == 8);
+    cyclicInstance.scriptInstanceValue().setProperty("ancestor", Datum::voidValue());
+    auto cycleParent = Datum::scriptInstance("cycleParent");
+    auto cycleChild = Datum::scriptInstance("cycleChild");
+    cycleParent.scriptInstanceValue().setProperty("sharedCycleValue", Datum::of(12));
+    cycleParent.scriptInstanceValue().setProperty("ancestor", cycleChild);
+    cycleChild.scriptInstanceValue().setProperty("ancestor", cycleParent);
+    cycleChild.scriptInstanceValue().setProperty("sharedCycleValue", Datum::of(14));
+    assert(cycleParent.scriptInstanceValue().getProperty("sharedCycleValue").intValue() == 14);
+    assert(cycleChild.scriptInstanceValue().getProperty("missingCycleProperty").isVoid());
+    cycleParent.scriptInstanceValue().setProperty("ancestor", Datum::voidValue());
+    cycleChild.scriptInstanceValue().setProperty("ancestor", Datum::voidValue());
 }
 
 void testLingoOpcodeHelpers() {

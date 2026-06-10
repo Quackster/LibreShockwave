@@ -711,6 +711,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - ScriptRef receiver dispatch now supports Java-compatible `new` method calls through the registered constructor builtin.
 - ScriptInstance receiver dispatch now supports Java-compatible property/list-like `getAt`, `setAt`, `getAProp`, `setAProp`, `getProp`, `getPropRef`, `setProp`, `addProp`, `deleteProp`, `count`, `ilk`, `addAt`, handler-existence/dispatch methods, and prefilled `pAllMemNumList` member-registry lookups over C++ script-instance datums.
 - ScriptInstance VM property writes now match Java's ancestor-chain walker guard by ignoring non-instance `ancestor` assignments through `SET_PROP`, `SET_OBJ_PROP`, and receiver `setAt`/`setAProp`/`setProp` while preserving valid script-instance replacement.
+- ScriptInstance property traversal now uses the Java VM's bounded ancestor-chain depth so cyclic/self-referential ancestors return VOID/false for missing properties instead of recursing indefinitely.
 - ScriptInstance member-registry dispatch now lazily seeds stable provider-backed member names, rejects hidden broad member lookups, allows script-member bootstrap lookup, and pre-fills registry entries before authored handlers run.
 - ScriptInstance `readAliasIndexesFromField` now imports Java-compatible `memberalias.index` mappings into `pAllMemNumList`, including mirrored negative aliases and transient source-cast aliases that avoid publishing hidden raw targets.
 - ScriptInstance member-registry lookups now validate pre-indexed registry slots against provider visibility and remove stale hidden positive or mirrored entries before falling back to lazy resolution.
@@ -899,7 +900,7 @@ Result:
 - OpcodeRegistry movie-property provider reads/writes and provider-backed `the` lookups passed through the same CTest executable.
 - OpcodeRegistry provider-backed object property gets/sets for movie, player, stage, sprite, integer-as-sprite refs, cast-member metadata/provider properties, timeout refs, sound channels, and image `useAlpha`/`paletteRef` setters passed through the same CTest executable.
 - OpcodeRegistry local/external call handlers, builtin dispatch, no-return calls, constant fallback, and error-state handling passed through the same CTest executable.
-- OpcodeRegistry object method calls and receiver-style external method calls for lists, property lists, strings, points, rectangles, script-instance ancestor assignment guards/registry bootstrap/prefill/alias import/stale cleanup/persistent alias refresh, cast library member lookups/accessors, timeouts, sound channels, and Xtra instances passed through the same CTest executable.
+- OpcodeRegistry object method calls and receiver-style external method calls for lists, property lists, strings, points, rectangles, script-instance ancestor assignment guards/bounded cyclic ancestor traversal/registry bootstrap/prefill/alias import/stale cleanup/persistent alias refresh, cast library member lookups/accessors, timeouts, sound channels, and Xtra instances passed through the same CTest executable.
 - OpcodeRegistry `NEW_OBJ` script construction delegation, provider-resolved fallback construction, declared property preinitialization, automatic `new` handler invocation, and non-script rejection passed through the same CTest executable.
 
 ## Remaining Major Work
@@ -1116,4 +1117,5 @@ Result:
 - `2f1bf76a Port C++ script constructor fallback`
 - `1c8b39dd Port C++ constructor argument coercion`
 - `97288df5 Port C++ mutable point rect setAt`
-- Current checkpoint commit message: `Port C++ ancestor assignment guard`
+- `58b08250 Port C++ ancestor assignment guard`
+- Current checkpoint commit message: `Port C++ bounded ancestor traversal`
