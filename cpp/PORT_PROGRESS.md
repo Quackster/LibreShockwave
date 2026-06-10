@@ -309,6 +309,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Player now ports Java's `setAudioBackend` facade, delegating host audio backend installation and clearing through the Player-owned `SoundManager`.
 - Player now ports Java's Lingo error/call-stack facade, installing a Player-owned trace listener, preserving lifecycle diagnostics without default instruction tracing, exposing call-stack accessors, forwarding script errors to an optional listener, and retaining recent error message/stack snapshots with age filtering.
 - Player now ports Java's debug script-summary facade, dumping no-file, total-script, per-movie-script handler, and script-type count diagnostics through `dumpScriptInfo()` with a testable stream overload.
+- Player now ports Java's debug-controller facade entry points, storing a shared `DebugControllerApi`, exposing `setDebugController`/`getDebugController`, and forwarding handler, instruction, variable-set, error, and debug-message trace callbacks through the Player-owned trace listener while preserving lifecycle/error state behavior.
 - Full VM provider setup, asynchronous playback, non-bitmap imported-media mutation, and platform-specific async external-cast fetch backends remain deferred to later player runtime slices.
 
 ### Player Builtin Context Foundation
@@ -490,6 +491,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `debug::ExpressionEvaluator` ports debugger watch/condition expression parsing and evaluation, including variables, literals, arithmetic, comparisons, logical operators with short-circuiting, prop-list/script-instance property access, and Java-compatible log-message interpolation for string, symbol, list, prop-list, and void values.
 - `debug::LifecycleDiagnostics` ports the runtime lifecycle trace toggle, interesting-handler detection, handler/cast/sprite/error log formatting, argument formatting, and printable datum sanitization.
 - `debug::DebugSnapshot`, `InstructionDisplay`, and `CallFrame` port immutable debugger UI state payloads without pulling in the full debug controller.
+- `debug::DebugControllerApi`, `DebugState`, and `DebugStateListener` port the Java debugger control/listener interfaces over the C++ `TraceListener`, breakpoint manager, watch expression, call-stack, and snapshot payload types; the blocking debugger controller implementation remains deferred.
 
 ### Render Pipeline Data Foundation
 
@@ -893,10 +895,10 @@ Result:
 - CastMember bitmap, script, shape, dimension, type-check, raw chunk, and display string tests passed through the same CTest executable.
 - CastLib and CastLibManager lazy MCsL/CAS* initialization, member count/name lookup, source-prefixed lookup fallback, member metadata properties, registry filtering, builtin callback installation, external-cache keys, pending external-load bookkeeping, Player external-cast preload queuing, public provider fetch handoff, fetch-completion hydration, cached fileName reloads, and Player external-cast cached-load callbacks passed through the same CTest executable.
 - PlayerEvent handler names, event payload records, ExternalCastLoadHandler callback fanout, RenderType, and RenderConfig tests passed through the same CTest executable.
-- PlayerState, Player frame-label/test-error/shutdown/audio-backend/error-listener/debug-script-dump facades, InputEvent factories, DirectorKeyCodes, and InputState mutation/queue tests passed through the same CTest executable.
+- PlayerState, Player frame-label/test-error/shutdown/audio-backend/error-listener/debug-script-dump/debug-controller facades, InputEvent factories, DirectorKeyCodes, and InputState mutation/queue tests passed through the same CTest executable.
 - InputHandler mouse/key queueing, interactive hit filtering, rollover dispatch, mouse-up-outside fallback, focused key dispatch, blur synthesis, dispatcher/sprite supplier hooks, and sprite-registry revision bumps passed through the same CTest executable.
 - ScoreBehaviorRef, SpriteSpan, ScoreNavigator labels, marker resolution, active sprites/channels, parsed behavior parameters, and frame-count tests passed through the same CTest executable.
-- Breakpoint, BreakpointManager, WatchExpression, ExpressionEvaluator condition/watch evaluation, compound-value log interpolation, LifecycleDiagnostics, and DebugSnapshot tests passed through the same CTest executable.
+- Breakpoint, BreakpointManager, WatchExpression, ExpressionEvaluator condition/watch evaluation, compound-value log interpolation, LifecycleDiagnostics, DebugSnapshot, and DebugControllerApi delegation tests passed through the same CTest executable.
 - RenderPipelineTrace, RenderSprite, transform mirror, baked bitmap helpers, and FrameSnapshot tests passed through the same CTest executable.
 - StageRenderer stage-image lifecycle, dynamic/puppeted sprite collection, locZ/channel sorting, registration-point mirror/stretch placement, last-baked sprite storage, sprite-end cleanup, reset behavior, and RGB555 expansion tests passed through the same CTest executable.
 - SpriteBaker tick counting, default/custom bake-step dispatch, explicit unsupported pass-through step ordering, bitmap decode-provider caching, palette-version cache invalidation, provider-backed live script-modified bitmap priority, live COPY exact-white backColor remapping, live DARKEN white-canvas neutralization, chat-background MATTE outlined-white preservation, live indexed DARKEN foreColor/backColor ramping, 1-bit Copy-ink color remap, shared bitmap ink processing, text baked-size replacement, file-backed STXT renderer dispatch, legacy embedded STXT font fallback, file-backed XMED parser/renderer dispatch, provider-backed film-loop parent ink processing, file-backed film-loop sub-score compositing, shape baking, transparency-key shape ink, unsupported pass-through, and external BitmapCache ownership tests passed through the same CTest executable.
@@ -1242,4 +1244,4 @@ Result:
 - `5df5e6fd Port C++ decompiler fallback mapping`
 - `2d9420b0 Port C++ decompiler linear bytecode`
 - `1e40b253 Port C++ decompiler chunk opcodes`
-- Current checkpoint commit message: `Port C++ player script debug dump`
+- Current checkpoint commit message: `Port C++ player debug controller facade`

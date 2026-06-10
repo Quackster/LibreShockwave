@@ -138,7 +138,9 @@
 #include "libreshockwave/player/cast/FontRegistry.hpp"
 #include "libreshockwave/player/debug/Breakpoint.hpp"
 #include "libreshockwave/player/debug/BreakpointManager.hpp"
+#include "libreshockwave/player/debug/DebugControllerApi.hpp"
 #include "libreshockwave/player/debug/DebugSnapshot.hpp"
+#include "libreshockwave/player/debug/DebugStateListener.hpp"
 #include "libreshockwave/player/debug/ExpressionEvaluator.hpp"
 #include "libreshockwave/player/debug/LifecycleDiagnostics.hpp"
 #include "libreshockwave/player/debug/WatchExpression.hpp"
@@ -295,12 +297,15 @@ using libreshockwave::player::debug::Breakpoint;
 using libreshockwave::player::debug::BreakpointKey;
 using libreshockwave::player::debug::BreakpointManager;
 using libreshockwave::player::debug::CallFrame;
+using libreshockwave::player::debug::DebugControllerApi;
+using libreshockwave::player::debug::DebugState;
 using libreshockwave::player::behavior::BehaviorInstance;
 using libreshockwave::player::behavior::BehaviorManager;
 using libreshockwave::player::cast::CastLib;
 using libreshockwave::player::cast::CastLibManager;
 using libreshockwave::player::cast::FontRegistry;
 using libreshockwave::player::debug::DebugSnapshot;
+using libreshockwave::player::debug::DebugStateListener;
 using libreshockwave::player::debug::ExpressionEvaluator;
 using libreshockwave::player::debug::InstructionDisplay;
 using libreshockwave::player::debug::LifecycleDiagnostics;
@@ -3507,6 +3512,176 @@ void testPlayerFacadeFoundation() {
     player.vm().fireTraceError("Second facade error", "listener cleared");
     assert(playerErrors.size() == 1);
     assert(player.getRecentScriptErrorMessage(1000) == "Second facade error");
+
+    class PlayerFacadeDebugController final : public DebugControllerApi {
+    public:
+        void setGlobalsSnapshot(std::map<std::string, Datum> globals) override {
+            globalsSnapshot = std::move(globals);
+        }
+
+        void setLocalsSnapshot(std::map<std::string, Datum> locals) override {
+            localsSnapshot = std::move(locals);
+        }
+
+        [[nodiscard]] bool isAwaitingStepContinuation() const override { return false; }
+        void reset() override { ++resetCount; }
+        [[nodiscard]] bool isPaused() const override { return paused; }
+        [[nodiscard]] DebugState state() const override { return debugState; }
+        [[nodiscard]] std::optional<DebugSnapshot> currentSnapshot() const override { return snapshot; }
+        void stepInto() override { debugState = DebugState::Stepping; }
+        void stepOver() override { debugState = DebugState::Stepping; }
+        void stepOut() override { debugState = DebugState::Stepping; }
+        void continueExecution() override { debugState = DebugState::Running; }
+        void pause() override {
+            paused = true;
+            debugState = DebugState::Paused;
+        }
+
+        [[nodiscard]] bool toggleBreakpoint(int scriptId, std::string handlerName, int offset) override {
+            return breakpointManager_.toggleBreakpoint(scriptId, std::move(handlerName), offset).has_value();
+        }
+
+        void clearAllBreakpoints() override { breakpointManager_.clearAll(); }
+
+        [[nodiscard]] bool hasBreakpoint(int scriptId, const std::string& handlerName, int offset) const override {
+            return breakpointManager_.hasBreakpoint(scriptId, handlerName, offset);
+        }
+
+        [[nodiscard]] std::optional<Breakpoint> getBreakpoint(int scriptId,
+                                                              const std::string& handlerName,
+                                                              int offset) const override {
+            return breakpointManager_.getBreakpoint(scriptId, handlerName, offset);
+        }
+
+        [[nodiscard]] BreakpointManager& breakpointManager() override { return breakpointManager_; }
+        [[nodiscard]] const BreakpointManager& breakpointManager() const override { return breakpointManager_; }
+        [[nodiscard]] std::string serializeBreakpoints() const override { return breakpointManager_.serialize(); }
+        void deserializeBreakpoints(std::string data) override { breakpointManager_.deserialize(std::move(data)); }
+
+        [[nodiscard]] WatchExpression addWatchExpression(std::string expression) override {
+            auto watch = WatchExpression::create(std::move(expression));
+            watches.push_back(watch);
+            return watch;
+        }
+
+        [[nodiscard]] bool removeWatchExpression(const std::string& id) override {
+            const auto before = watches.size();
+            watches.erase(std::remove_if(watches.begin(),
+                                         watches.end(),
+                                         [&id](const WatchExpression& watch) {
+                                             return watch.id == id;
+                                         }),
+                          watches.end());
+            return watches.size() != before;
+        }
+
+        [[nodiscard]] std::vector<WatchExpression> watchExpressions() const override { return watches; }
+        [[nodiscard]] std::vector<WatchExpression> evaluateWatchExpressions() override { return watches; }
+        void clearWatchExpressions() override { watches.clear(); }
+        [[nodiscard]] std::vector<CallFrame> callStackSnapshot() const override { return callStack; }
+
+        [[nodiscard]] bool needsInstructionTrace() const override { return instructionTrace; }
+
+        void onHandlerEnter(const HandlerInfo& info) override {
+            ++handlerEnterCount;
+            lastHandlerName = info.handlerName;
+        }
+
+        void onHandlerExit(const HandlerInfo&, const Datum& returnValue) override {
+            ++handlerExitCount;
+            lastReturnValue = returnValue;
+        }
+
+        void onInstruction(const InstructionInfo& info) override {
+            ++instructionCount;
+            lastOpcode = info.opcode;
+        }
+
+        void onVariableSet(std::string_view type, std::string_view name, const Datum& value) override {
+            ++variableSetCount;
+            lastVariableSet = std::string(type) + ":" + std::string(name);
+            lastVariableSetValue = value;
+        }
+
+        void onError(std::string_view message, std::string_view error) override {
+            ++errorCount;
+            lastError = std::string(message) + "|" + std::string(error);
+        }
+
+        void onDebugMessage(std::string_view message) override {
+            ++debugMessageCount;
+            lastDebugMessage = std::string(message);
+        }
+
+        std::map<std::string, Datum> globalsSnapshot;
+        std::map<std::string, Datum> localsSnapshot;
+        std::optional<DebugSnapshot> snapshot;
+        std::vector<WatchExpression> watches;
+        std::vector<CallFrame> callStack;
+        BreakpointManager breakpointManager_;
+        bool instructionTrace = true;
+        bool paused = false;
+        DebugState debugState = DebugState::Running;
+        int resetCount = 0;
+        int handlerEnterCount = 0;
+        int handlerExitCount = 0;
+        int instructionCount = 0;
+        int variableSetCount = 0;
+        int errorCount = 0;
+        int debugMessageCount = 0;
+        std::string lastHandlerName;
+        std::string lastOpcode;
+        std::string lastVariableSet;
+        std::string lastError;
+        std::string lastDebugMessage;
+        Datum lastVariableSetValue = Datum::voidValue();
+        Datum lastReturnValue = Datum::voidValue();
+    };
+    auto debugController = std::make_shared<PlayerFacadeDebugController>();
+    assert(player.getDebugController() == nullptr);
+    player.setDebugController(debugController);
+    assert(player.getDebugController() == debugController);
+    assert(player.vm().traceListener()->needsInstructionTrace());
+    libreshockwave::lingo::vm::TraceListener::HandlerInfo debugHandler{
+        "debugHandler",
+        88,
+        "Debug Script",
+        {Datum::of(4)},
+        Datum::voidValue(),
+    };
+    player.vm().traceListener()->onHandlerEnter(debugHandler);
+    libreshockwave::lingo::vm::TraceListener::InstructionInfo debugInstruction{
+        1,
+        12,
+        "pushInt8",
+        4,
+        "<4>",
+        0,
+    };
+    player.vm().traceListener()->onInstruction(debugInstruction);
+    player.vm().traceListener()->onVariableSet("global", "debugVar", Datum::of(4));
+    player.vm().traceListener()->onDebugMessage("debug message");
+    player.vm().fireTraceError("Debug controller error", "delegated detail");
+    player.vm().traceListener()->onHandlerExit(debugHandler, Datum::of(9));
+    assert(debugController->handlerEnterCount == 1);
+    assert(debugController->lastHandlerName == "debugHandler");
+    assert(debugController->instructionCount == 1);
+    assert(debugController->lastOpcode == "pushInt8");
+    assert(debugController->variableSetCount == 1);
+    assert(debugController->lastVariableSet == "global:debugVar");
+    assert(debugController->lastVariableSetValue.intValue() == 4);
+    assert(debugController->debugMessageCount == 1);
+    assert(debugController->lastDebugMessage == "debug message");
+    assert(debugController->errorCount == 1);
+    assert(debugController->lastError == "Debug controller error|delegated detail");
+    assert(debugController->handlerExitCount == 1);
+    assert(debugController->lastReturnValue.intValue() == 9);
+    assert(player.getRecentScriptErrorMessage(1000) == "Debug controller error");
+    player.setDebugController(nullptr);
+    assert(player.getDebugController() == nullptr);
+    assert(!player.vm().traceListener()->needsInstructionTrace());
+    player.vm().traceListener()->onDebugMessage("after clear");
+    assert(debugController->debugMessageCount == 1);
 
     player.setTempo(24);
     assert(player.baseTempo() == 24);
@@ -12093,6 +12268,11 @@ void testDebugFoundation() {
     assert(snapshot.locals.at("localVar").intValue() == 3);
     assert(snapshot.callStack[0].receiver->intValue() == 8);
     assert(snapshot.watchResults[0].getResultDisplay() == "42");
+    DebugStateListener debugStateListener;
+    debugStateListener.onPaused(snapshot);
+    debugStateListener.onResumed();
+    debugStateListener.onBreakpointsChanged();
+    debugStateListener.onWatchExpressionsChanged();
 }
 
 void testRenderPipelineFoundation() {

@@ -46,6 +46,10 @@ namespace libreshockwave::player::score {
 class ScoreNavigator;
 }
 
+namespace libreshockwave::player::debug {
+class DebugControllerApi;
+}
+
 namespace libreshockwave::player {
 
 class ExternalCastLoadHandler;
@@ -105,6 +109,8 @@ public:
     void setErrorListener(ErrorListener listener);
     void addExternalCastLoadHandler(ExternalCastLoadHandler* handler);
     void setDebugEnabled(bool enabled);
+    void setDebugController(std::shared_ptr<debug::DebugControllerApi> controller);
+    [[nodiscard]] std::shared_ptr<debug::DebugControllerApi> getDebugController() const;
     void setAudioBackend(audio::AudioBackend* backend);
     void setTextRenderer(render::output::TextRenderer* renderer);
     void registerMultiuserXtra(lingo::xtra::MultiuserNetBridge& bridge);
@@ -182,6 +188,7 @@ private:
     std::function<void(const PlayerEventInfo&)> eventListener_;
     std::function<void()> castLoadedListener_;
     std::function<void(const ExternalCastLoadEvent&)> externalCastLoadListener_;
+    std::shared_ptr<debug::DebugControllerApi> debugController_;
     ErrorListener errorListener_;
     std::vector<ExternalCastLoadHandler*> externalCastLoadHandlers_;
     std::vector<std::pair<std::string, std::string>> externalParams_;

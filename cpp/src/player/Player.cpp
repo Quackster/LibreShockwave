@@ -20,6 +20,7 @@
 #include "libreshockwave/lingo/xtra/XmlParserXtra.hpp"
 #include "libreshockwave/player/ExternalCastLoadHandler.hpp"
 #include "libreshockwave/player/PlayerEvent.hpp"
+#include "libreshockwave/player/debug/DebugControllerApi.hpp"
 #include "libreshockwave/player/debug/LifecycleDiagnostics.hpp"
 #include "libreshockwave/player/event/EventDispatcher.hpp"
 #include "libreshockwave/player/score/ScoreNavigator.hpp"
@@ -72,19 +73,46 @@ public:
 
     void onHandlerEnter(const HandlerInfo& info) override {
         debug::LifecycleDiagnostics::logHandlerEnter(info);
+        if (player_.debugController_) {
+            player_.debugController_->onHandlerEnter(info);
+        }
     }
 
     void onHandlerExit(const HandlerInfo& info, const lingo::Datum& returnValue) override {
         debug::LifecycleDiagnostics::logHandlerExit(info, returnValue);
+        if (player_.debugController_) {
+            player_.debugController_->onHandlerExit(info, returnValue);
+        }
     }
 
     [[nodiscard]] bool needsInstructionTrace() const override {
-        return false;
+        return player_.debugController_ != nullptr && player_.debugController_->needsInstructionTrace();
+    }
+
+    void onInstruction(const InstructionInfo& info) override {
+        if (player_.debugController_) {
+            player_.debugController_->onInstruction(info);
+        }
+    }
+
+    void onVariableSet(std::string_view type, std::string_view name, const lingo::Datum& value) override {
+        if (player_.debugController_) {
+            player_.debugController_->onVariableSet(type, name, value);
+        }
     }
 
     void onError(std::string_view message, std::string_view error) override {
         debug::LifecycleDiagnostics::logError(message, error);
+        if (player_.debugController_) {
+            player_.debugController_->onError(message, error);
+        }
         player_.handleTraceError(message, error);
+    }
+
+    void onDebugMessage(std::string_view message) override {
+        if (player_.debugController_) {
+            player_.debugController_->onDebugMessage(message);
+        }
     }
 
 private:
@@ -227,6 +255,14 @@ void Player::setDebugEnabled(bool enabled) {
     if (enabled) {
         dumpScriptInfo();
     }
+}
+
+void Player::setDebugController(std::shared_ptr<debug::DebugControllerApi> controller) {
+    debugController_ = std::move(controller);
+}
+
+std::shared_ptr<debug::DebugControllerApi> Player::getDebugController() const {
+    return debugController_;
 }
 
 void Player::setAudioBackend(audio::AudioBackend* backend) {
