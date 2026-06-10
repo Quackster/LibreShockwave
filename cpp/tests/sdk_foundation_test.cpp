@@ -1383,7 +1383,7 @@ void testPlayerVmEventDispatchFoundation() {
 
     std::vector<std::uint8_t> namesData(20, 0);
     putI16(namesData, 16, 20);
-    putI16(namesData, 18, 7);
+    putI16(namesData, 18, 12);
     auto appendName = [&namesData](const std::string& value) {
         namesData.push_back(static_cast<std::uint8_t>(value.size()));
         namesData.insert(namesData.end(), value.begin(), value.end());
@@ -1395,41 +1395,76 @@ void testPlayerVmEventDispatchFoundation() {
     appendName("prepared");
     appendName("startMovie");
     appendName("started");
+    appendName("timeoutPrepared");
+    appendName("timeoutStarted");
+    appendName("stopMovie");
+    appendName("stopped");
+    appendName("timeoutStopped");
 
-    std::vector<std::uint8_t> scriptData(350, 0);
-    auto putHandlerRecord = [&](int offset, int nameId, int bytecodeOffset) {
-        putI16(scriptData, offset, nameId);
-        putI16(scriptData, offset + 2, 0);
-        putI32(scriptData, offset + 4, 5);
-        putI32(scriptData, offset + 8, bytecodeOffset);
+    auto putHandlerRecord = [&](std::vector<std::uint8_t>& data, int offset, int nameId, int bytecodeOffset) {
+        putI16(data, offset, nameId);
+        putI16(data, offset + 2, 0);
+        putI32(data, offset + 4, 5);
+        putI32(data, offset + 8, bytecodeOffset);
     };
-    auto putSetGlobalHandlerBytecode = [&](int offset, int value, int globalNameId) {
-        scriptData[static_cast<std::size_t>(offset)] =
+    auto putSetGlobalHandlerBytecode = [&](std::vector<std::uint8_t>& data, int offset, int value, int globalNameId) {
+        data[static_cast<std::size_t>(offset)] =
             static_cast<std::uint8_t>(libreshockwave::lingo::code(Opcode::PUSH_INT8));
-        scriptData[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>(value);
-        scriptData[static_cast<std::size_t>(offset + 2)] =
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>(value);
+        data[static_cast<std::size_t>(offset + 2)] =
             static_cast<std::uint8_t>(libreshockwave::lingo::code(Opcode::SET_GLOBAL));
-        scriptData[static_cast<std::size_t>(offset + 3)] = static_cast<std::uint8_t>(globalNameId);
-        scriptData[static_cast<std::size_t>(offset + 4)] =
+        data[static_cast<std::size_t>(offset + 3)] = static_cast<std::uint8_t>(globalNameId);
+        data[static_cast<std::size_t>(offset + 4)] =
             static_cast<std::uint8_t>(libreshockwave::lingo::code(Opcode::RET));
     };
-    putI16(scriptData, 18, 3);
+
+    std::vector<std::uint8_t> scriptData(350, 0);
+    putI16(scriptData, 18, 4);
     putI32(scriptData, 38, 0x00000003);
-    putI16(scriptData, 72, 3);
+    putI16(scriptData, 72, 4);
     putI32(scriptData, 74, 110);
-    putHandlerRecord(110, 1, 320);
-    putHandlerRecord(152, 3, 325);
-    putHandlerRecord(194, 5, 330);
-    putSetGlobalHandlerBytecode(320, 44, 2);
-    putSetGlobalHandlerBytecode(325, 55, 4);
-    putSetGlobalHandlerBytecode(330, 66, 6);
+    putHandlerRecord(scriptData, 110, 1, 320);
+    putHandlerRecord(scriptData, 152, 3, 325);
+    putHandlerRecord(scriptData, 194, 5, 330);
+    putHandlerRecord(scriptData, 236, 9, 335);
+    putSetGlobalHandlerBytecode(scriptData, 320, 44, 2);
+    putSetGlobalHandlerBytecode(scriptData, 325, 55, 4);
+    putSetGlobalHandlerBytecode(scriptData, 330, 66, 6);
+    putSetGlobalHandlerBytecode(scriptData, 335, 70, 10);
+
+    std::vector<std::uint8_t> castData;
+    appendI32(castData, 3);
+
+    std::vector<std::uint8_t> scriptMemberInfo(20, 0);
+    putI32(scriptMemberInfo, 16, 4);
+    std::vector<std::uint8_t> scriptMemberData;
+    appendI32(scriptMemberData, static_cast<std::uint32_t>(libreshockwave::cast::code(MemberType::Script)));
+    appendI32(scriptMemberData, static_cast<std::uint32_t>(scriptMemberInfo.size()));
+    appendI32(scriptMemberData, 2);
+    scriptMemberData.insert(scriptMemberData.end(), scriptMemberInfo.begin(), scriptMemberInfo.end());
+    appendI16(scriptMemberData, 2);
+
+    std::vector<std::uint8_t> timeoutScriptData(250, 0);
+    putI16(timeoutScriptData, 18, 3);
+    putI32(timeoutScriptData, 38, 0x00000002);
+    putI16(timeoutScriptData, 72, 3);
+    putI32(timeoutScriptData, 74, 110);
+    putHandlerRecord(timeoutScriptData, 110, 3, 220);
+    putHandlerRecord(timeoutScriptData, 152, 5, 225);
+    putHandlerRecord(timeoutScriptData, 194, 9, 230);
+    putSetGlobalHandlerBytecode(timeoutScriptData, 220, 77, 7);
+    putSetGlobalHandlerBytecode(timeoutScriptData, 225, 88, 8);
+    putSetGlobalHandlerBytecode(timeoutScriptData, 230, 99, 11);
 
     auto file = DirectorFile::load(buildRifx({
         {"Lnam", namesData},
         {"Lscr", scriptData},
+        {"CAS*", castData},
+        {"CASt", scriptMemberData},
+        {"Lscr", timeoutScriptData},
     }));
     assert(file != nullptr);
-    assert(file->scripts().size() == 1);
+    assert(file->scripts().size() == 2);
 
     Player player(file);
     assert(&player.vm().builtinRegistry() == &player.builtinRegistry());
@@ -1438,10 +1473,19 @@ void testPlayerVmEventDispatchFoundation() {
     player.eventDispatcher().dispatchToMovieScripts(PlayerEvent::MouseUp);
     assert(player.vm().getGlobal("clicked").intValue() == 44);
 
+    const auto timeoutTarget = Datum::scriptInstance("timeout-target", Datum::CastMemberRef{1, 1});
+    (void)player.timeoutManager().createTimeout("startup", 0, "unused", timeoutTarget);
     player.play();
     assert(player.state() == PlayerState::Playing);
     assert(player.vm().getGlobal("prepared").intValue() == 55);
     assert(player.vm().getGlobal("started").intValue() == 66);
+    assert(player.vm().getGlobal("timeoutPrepared").intValue() == 77);
+    assert(player.vm().getGlobal("timeoutStarted").intValue() == 88);
+
+    player.stop();
+    assert(player.state() == PlayerState::Stopped);
+    assert(player.vm().getGlobal("stopped").intValue() == 70);
+    assert(player.vm().getGlobal("timeoutStopped").intValue() == 99);
 
     assert(player.vm().callBuiltin("puppetTempo", {Datum::of(21)}).isVoid());
     assert(player.tempo() == 21);
@@ -8908,6 +8952,13 @@ void testTimeoutManagerFoundation() {
     assert(oneShotRef.asTimeoutRef()->name == "once");
     assert(manager.getEntry("once")->oneShot);
     assert((manager.getTimeoutNames() == std::vector<std::string>{"once", "timer"}));
+    auto systemTarget = Datum::scriptInstance("system-target");
+    (void)manager.createTimeout("system", 1, "ignored", systemTarget);
+    std::vector<std::string> systemEvents;
+    manager.dispatchSystemEvent("prepareFrame", [&systemEvents](const Datum& target, std::string_view handlerName) {
+        systemEvents.push_back(target.scriptInstanceValue().scriptName() + ":" + std::string(handlerName));
+    });
+    assert((systemEvents == std::vector<std::string>{"system-target:prepareFrame"}));
     manager.forgetTimeout("timer");
     assert(!manager.timeoutExists("timer"));
     assert(manager.timeoutExists("once"));

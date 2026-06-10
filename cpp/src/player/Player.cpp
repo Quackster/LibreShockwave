@@ -17,6 +17,11 @@ namespace {
 
 constexpr int DEFAULT_TEMPO = 15;
 
+struct ResolvedScriptTarget {
+    std::shared_ptr<chunks::ScriptChunk> script;
+    std::shared_ptr<const chunks::ScriptNamesChunk> scriptNames;
+};
+
 int configuredTempo(const std::shared_ptr<DirectorFile>& file) {
     if (file == nullptr) {
         return DEFAULT_TEMPO;
@@ -135,6 +140,9 @@ void Player::stop() {
         return;
     }
 
+    if (timeoutSystemEventDispatcher_) {
+        timeoutSystemEventDispatcher_("stopMovie");
+    }
     eventDispatcher().dispatchToMovieScripts(PlayerEvent::StopMovie);
     frameContext_.reset();
     stageRenderer_.reset();
@@ -342,19 +350,95 @@ void Player::wireComponents() {
 
     auto findEventHandler = [this](const event::EventTarget& target,
                                    std::string_view handlerName)
-        -> std::optional<chunks::ScriptChunk::Handler> {
-        if (!target.script) {
-            return std::nullopt;
-        }
-        if (target.scriptNames) {
-            if (auto handler = target.script->findHandler(handlerName, target.scriptNames.get())) {
-                return handler;
+        -> std::optional<lingo::vm::HandlerRef> {
+        const chunks::ScriptChunk* script = target.script.get();
+        auto scriptNames = target.scriptNames;
+
+        if (script == nullptr && target.scriptInstance) {
+            const auto* scriptRef = target.scriptInstance->type() == lingo::DatumType::ScriptInstanceRef
+                ? &target.scriptInstance->scriptInstanceValue().scriptRef()
+                : nullptr;
+            if (scriptRef != nullptr && scriptRef->has_value()) {
+                const int castLib = (*scriptRef)->castLib > 0 ? (*scriptRef)->castLib : 1;
+                const int memberNum = (*scriptRef)->memberNum();
+                std::optional<ResolvedScriptTarget> resolved;
+
+                if (auto castLibRef = castLibManager_.getCastLib(castLib)) {
+                    if (auto resolvedScript = castLibRef->getScript(memberNum)) {
+                        const auto source = castLibRef->sourceFile();
+                        resolved = ResolvedScriptTarget{
+                            resolvedScript,
+                            source ? source->getScriptNamesForScript(resolvedScript) : castLibRef->scriptNames()
+                        };
+                    }
+                }
+
+                if (!resolved.has_value() && file_ != nullptr) {
+                    if (auto member = file_->getCastMemberByNumber(castLib, memberNum); member && member->isScript()) {
+                        if (auto resolvedScript = file_->getScriptForCastMember(member, file_->getMappedCastChunk(castLib))) {
+                            resolved = ResolvedScriptTarget{
+                                resolvedScript,
+                                file_->getScriptNamesForScript(resolvedScript)
+                            };
+                        }
+                    }
+                }
+
+                if (resolved.has_value()) {
+                    script = resolved->script.get();
+                    scriptNames = resolved->scriptNames;
+                }
             }
         }
-        if (auto handler = vm_.findHandler(*target.script, handlerName)) {
-            return handler->handler;
+
+        if (script == nullptr) {
+            return std::nullopt;
+        }
+        if (scriptNames) {
+            if (auto handler = script->findHandler(handlerName, scriptNames.get())) {
+                return lingo::vm::HandlerRef{script, *handler};
+            }
+        }
+        if (auto handler = vm_.findHandler(*script, handlerName)) {
+            return handler;
         }
         return std::nullopt;
+    };
+
+    auto invokeTarget = [this, findEventHandler](const event::EventTarget& target,
+                                                 std::string_view handlerName,
+                                                 const std::vector<lingo::Datum>& args) {
+        auto handler = findEventHandler(target, handlerName);
+        if (!handler || handler->script == nullptr) {
+            return event::HandlerResult{false, false};
+        }
+
+        lingo::Datum receiver = lingo::Datum::voidValue();
+        if (target.behavior) {
+            receiver = target.behavior->toDatum();
+        } else if (target.scriptInstance) {
+            receiver = *target.scriptInstance;
+        }
+
+        bool passed = false;
+        vm_.resetEventStopped();
+        vm_.setPassCallback([this, &passed] {
+            passed = true;
+            eventDispatcher().pass();
+        });
+        try {
+            (void)vm_.executeHandler(*handler->script, handler->handler, args, receiver);
+        } catch (...) {
+            vm_.clearPassCallback();
+            vm_.resetEventStopped();
+            throw;
+        }
+        vm_.clearPassCallback();
+        if (vm_.eventStopped()) {
+            eventDispatcher().stopEvent();
+            vm_.resetEventStopped();
+        }
+        return event::HandlerResult{true, passed};
     };
 
     eventDispatcher().setScriptNamesResolver([this](const std::shared_ptr<chunks::ScriptChunk>& script) {
@@ -397,50 +481,36 @@ void Player::wireComponents() {
                                                               std::string_view handlerName) {
         return findEventHandler(target, handlerName).has_value();
     });
-    eventDispatcher().setHandlerInvoker([this, findEventHandler](const event::EventTarget& target,
-                                                                std::string_view handlerName,
-                                                                const std::vector<lingo::Datum>& args) {
-        auto handler = findEventHandler(target, handlerName);
-        if (!handler || !target.script) {
-            return event::HandlerResult{false, false};
-        }
-
-        lingo::Datum receiver = lingo::Datum::voidValue();
-        if (target.behavior) {
-            receiver = target.behavior->toDatum();
-        } else if (target.scriptInstance) {
-            receiver = *target.scriptInstance;
-        }
-
-        bool passed = false;
-        vm_.resetEventStopped();
-        vm_.setPassCallback([this, &passed] {
-            passed = true;
-            eventDispatcher().pass();
-        });
-        try {
-            (void)vm_.executeHandler(*target.script, *handler, args, receiver);
-        } catch (...) {
-            vm_.clearPassCallback();
-            vm_.resetEventStopped();
-            throw;
-        }
-        vm_.clearPassCallback();
-        if (vm_.eventStopped()) {
-            eventDispatcher().stopEvent();
-            vm_.resetEventStopped();
-        }
-        return event::HandlerResult{true, passed};
+    eventDispatcher().setHandlerInvoker([invokeTarget](const event::EventTarget& target,
+                                                       std::string_view handlerName,
+                                                       const std::vector<lingo::Datum>& args) {
+        return invokeTarget(target, handlerName, args);
     });
+    timeoutSystemEventDispatcher_ = [this, invokeTarget](std::string_view handlerName) {
+        timeoutManager_.dispatchSystemEvent(handlerName, [invokeTarget](const lingo::Datum& target,
+                                                                       std::string_view systemHandler) {
+            event::EventTarget eventTarget;
+            eventTarget.kind = event::EventTargetKind::ScriptInstance;
+            eventTarget.scriptInstance = target;
+            (void)invokeTarget(eventTarget, systemHandler, {});
+        });
+    };
+    frameContext_.setTimeoutEventDispatcher(timeoutSystemEventDispatcher_);
 }
 
 void Player::prepareMovieFoundation() {
     castLibManager_.preloadCasts(2);
+    if (timeoutSystemEventDispatcher_) {
+        timeoutSystemEventDispatcher_("prepareMovie");
+    }
     eventDispatcher().dispatchToMovieScripts(PlayerEvent::PrepareMovie);
     castLibManager_.preloadCasts(1);
     frameContext_.initializeFirstFrame();
     frameContext_.dispatchBeginSpriteEvents();
     eventDispatcher().dispatchToMovieScripts(PlayerEvent::StartMovie);
+    if (timeoutSystemEventDispatcher_) {
+        timeoutSystemEventDispatcher_("startMovie");
+    }
 }
 
 } // namespace libreshockwave::player

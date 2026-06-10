@@ -114,6 +114,24 @@ int TimeoutManager::getTimeoutCount() const {
     return static_cast<int>(timeouts_.size());
 }
 
+void TimeoutManager::dispatchSystemEvent(std::string_view handlerName, const SystemEventInvoker& invoker) const {
+    if (!invoker || timeouts_.empty()) {
+        return;
+    }
+
+    std::vector<TimeoutEntry> targets;
+    targets.reserve(timeouts_.size());
+    for (const auto& [_, entry] : timeouts_) {
+        targets.push_back(entry);
+    }
+
+    for (const auto& entry : targets) {
+        if (entry.target.type() == lingo::DatumType::ScriptInstanceRef) {
+            invoker(entry.target, handlerName);
+        }
+    }
+}
+
 void TimeoutManager::clear() {
     timeouts_.clear();
 }

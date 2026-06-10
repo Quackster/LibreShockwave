@@ -118,6 +118,7 @@ private:
     int tempo_{15};
     bool debugEnabled_{false};
     std::function<void(const PlayerEventInfo&)> eventListener_;
+    std::function<void(std::string_view handlerName)> timeoutSystemEventDispatcher_;
 };
 
 } // namespace libreshockwave::player
