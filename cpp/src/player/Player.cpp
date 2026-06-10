@@ -67,6 +67,8 @@ input::InputState& Player::inputState() { return inputState_; }
 BitmapResolver& Player::bitmapResolver() { return bitmapResolver_; }
 CursorManager& Player::cursorManager() { return cursorManager_; }
 InputHandler& Player::inputHandler() { return inputHandler_; }
+lingo::builtin::BuiltinRegistry& Player::builtinRegistry() { return builtinRegistry_; }
+lingo::builtin::BuiltinContext& Player::builtinContext() { return builtinContext_; }
 
 PlayerState Player::state() const { return state_; }
 int Player::currentFrame() const { return frameContext_.currentFrame(); }
@@ -100,6 +102,7 @@ void Player::setEventListener(std::function<void(const PlayerEventInfo&)> listen
 
 void Player::setDebugEnabled(bool enabled) {
     debugEnabled_ = enabled;
+    builtinContext_.debugPlaybackEnabled = enabled;
     frameContext_.setDebugEnabled(enabled);
 }
 
@@ -307,6 +310,33 @@ void Player::wireComponents() {
     inputHandler_.setEventDispatcherSupplier([this] {
         return &eventDispatcher();
     });
+
+    builtinContext_ = lingo::builtin::BuiltinContext{};
+    builtinContext_.movieProperties = &movieProperties_;
+    builtinContext_.netManager = &netManager_;
+    builtinContext_.soundManager = &soundManager_;
+    builtinContext_.spriteProperties = &spriteProperties_;
+    builtinContext_.timeoutManager = &timeoutManager_;
+    builtinContext_.debugPlaybackEnabled = debugEnabled_;
+    castLibManager_.installBuiltinCallbacks(builtinContext_);
+    builtinContext_.imagePaletteResolver = [this](const lingo::Datum& paletteRef)
+        -> std::optional<lingo::builtin::BuiltinContext::ResolvedPalette> {
+        const auto* member = paletteRef.asCastMemberRef();
+        if (member == nullptr || member->memberNum() <= 0) {
+            return std::nullopt;
+        }
+
+        const int castLib = member->castLib > 0 ? member->castLib : 1;
+        auto palette = bitmapResolver_.resolvePaletteByMember(castLib, member->memberNum());
+        if (palette == nullptr) {
+            return std::nullopt;
+        }
+        return lingo::builtin::BuiltinContext::ResolvedPalette{
+            palette,
+            lingo::Datum::CastMemberRef::of(id::CastLibId(castLib), id::MemberId(member->memberNum())),
+            std::nullopt
+        };
+    };
 }
 
 void Player::prepareMovieFoundation() {

@@ -250,6 +250,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Playback control ports the Java state transitions for play, pause, resume, stop, manual step, tick, direct frame/label navigation, event-listener forwarding, base/puppet/score tempo lookup, debug flag propagation, and render snapshot creation with player-state debug metadata.
 - Full VM provider setup, startup movie-script/timeout ordering, Xtra ticking, actorList dispatch, asynchronous playback, imported-media mutation, and external-cast fetch completion remain deferred to later player runtime slices.
 
+### Player Builtin Context Foundation
+
+- `player::Player` now owns a `lingo::builtin::BuiltinRegistry` and `BuiltinContext` for the future C++ VM runtime path.
+- The Player builtin context wires movie, sprite, net, sound, timeout, cast-library, cast-member, and palette-resolution callbacks to Player-owned managers.
+- Tests now exercise Player-backed builtin calls for puppet tempo, cached network preloading, sound channel references, cast member lookup, and palette-aware image construction.
+
 ### Hit Testing Foundation
 
 - `input::HitTester` ports front-to-back visible sprite hit selection over baked `RenderSprite` lists, hit type lookup, and all-hit collection with channel filter/forced bounding-box support.
@@ -836,4 +842,5 @@ Result:
 - `4326a2c7 Port C++ frame context foundation`
 - `0b0c2afa Port C++ bitmap resolver foundation`
 - `eb545ccc Port C++ input handler foundation`
-- Current checkpoint commit message: `Port C++ player foundation`
+- `6f78a995 Port C++ player foundation`
+- Current checkpoint commit message: `Port C++ player builtin context`

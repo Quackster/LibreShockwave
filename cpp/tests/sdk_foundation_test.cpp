@@ -1191,6 +1191,13 @@ void testPlayerFacadeFoundation() {
     assert(&player.eventDispatcher() == &player.frameContext().eventDispatcher());
     assert(&player.behaviorManager() == &player.frameContext().behaviorManager());
     assert(&player.navigator() == &player.frameContext().navigator());
+    assert(player.builtinContext().movieProperties == &player.movieProperties());
+    assert(player.builtinContext().netManager == &player.netManager());
+    assert(player.builtinContext().soundManager == &player.soundManager());
+    assert(player.builtinContext().spriteProperties == &player.spriteProperties());
+    assert(player.builtinContext().timeoutManager == &player.timeoutManager());
+    assert(player.builtinRegistry().contains("puppetTempo"));
+    assert(player.builtinRegistry().contains("preloadNetThing"));
 
     player.setTempo(24);
     assert(player.baseTempo() == 24);
@@ -1208,6 +1215,50 @@ void testPlayerFacadeFoundation() {
     assert(player.stageRenderer().backgroundColor() == 0x123456);
     assert(player.movieProperties().getMovieProp("frame").intValue() == 1);
     assert(player.movieProperties().getMovieProp("lastframe").intValue() == 0);
+
+    assert(player.builtinRegistry().invoke("puppetTempo", player.builtinContext(), {Datum::of(18)}).isVoid());
+    assert(player.tempo() == 18);
+    assert(player.movieProperties().puppetTempo() == 18);
+    player.movieProperties().setPuppetTempo(0);
+
+    player.netManager().cacheData("asset.txt", std::vector<std::uint8_t>{'O', 'K'});
+    const int taskId = player.builtinRegistry()
+                           .invoke("preloadNetThing", player.builtinContext(), {Datum::of(std::string("asset.txt"))})
+                           .intValue();
+    assert(taskId == 1);
+    assert(player.netManager().netDone(taskId));
+    assert(player.netManager().netTextResult(taskId) == "OK");
+
+    const auto soundDatum = player.builtinRegistry().invoke("sound", player.builtinContext(), {Datum::of(1)});
+    assert(soundDatum.asSoundChannel() != nullptr);
+    assert(soundDatum.asSoundChannel()->channel == 1);
+
+    const auto memberDatum = player.builtinRegistry().invoke("member", player.builtinContext(), {Datum::of(42)});
+    const auto* memberRef = memberDatum.asCastMemberRef();
+    assert(memberRef != nullptr);
+    assert(memberRef->castLib == 1);
+    assert(memberRef->memberNum() == 42);
+
+    auto resolvedPalette = player.builtinContext().imagePaletteResolver(
+        Datum::castMemberRef(CastLibId(1), MemberId(42)));
+    assert(resolvedPalette.has_value());
+    assert(resolvedPalette->palette.get() == &Palette::systemMacPalette());
+    assert(resolvedPalette->memberRef.has_value());
+    assert(resolvedPalette->memberRef->castLib == 1);
+    assert(resolvedPalette->memberRef->memberNum() == 42);
+
+    const auto imageDatum = player.builtinRegistry().invoke("image",
+                                                           player.builtinContext(),
+                                                           {Datum::of(1),
+                                                            Datum::of(1),
+                                                            Datum::of(8),
+                                                            Datum::castMemberRef(CastLibId(1), MemberId(42))});
+    const auto* imageRef = imageDatum.asImageRef();
+    assert(imageRef != nullptr);
+    assert(imageRef->bitmap != nullptr);
+    assert(imageRef->bitmap->imagePalette().get() == &Palette::systemMacPalette());
+    assert(imageRef->bitmap->paletteRefCastLib() == 1);
+    assert(imageRef->bitmap->paletteRefMemberNum() == 42);
 
     std::vector<PlayerEventInfo> events;
     player.setEventListener([&events](const PlayerEventInfo& event) {
