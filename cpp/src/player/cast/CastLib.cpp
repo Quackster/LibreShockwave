@@ -821,6 +821,14 @@ bool CastLib::setMemberProp(int memberNumber, const std::string& propName, const
         member->setRuntimeBitmap(*image->bitmap);
         return true;
     }
+    if (prop == "media" && member->isBitmap()) {
+        const auto* image = value.asImageRef();
+        if (image == nullptr || image->bitmap == nullptr) {
+            return false;
+        }
+        member->setRuntimeBitmap(*image->bitmap);
+        return true;
+    }
     return false;
 }
 
