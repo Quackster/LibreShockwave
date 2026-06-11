@@ -8746,6 +8746,23 @@ void testPlayerFacadeFoundation() {
     assert(player.builtinContext().soundManager == &player.soundManager());
     assert(player.builtinContext().spriteProperties == &player.spriteProperties());
     assert(player.builtinContext().timeoutManager == &player.timeoutManager());
+    Player cursorFallbackPlayer;
+    auto cursorFallbackSprite = cursorFallbackPlayer.stageRenderer().spriteRegistry().getOrCreateDynamic(17);
+    cursorFallbackSprite->setLocH(4);
+    cursorFallbackSprite->setLocV(5);
+    cursorFallbackSprite->setLocZ(1);
+    cursorFallbackSprite->setWidth(6);
+    cursorFallbackSprite->setHeight(7);
+    cursorFallbackSprite->setBackColor(0xFF0000);
+    cursorFallbackSprite->setCursor(CursorManager::WAIT_CURSOR);
+    const auto cursorFallbackRenderSprites =
+        cursorFallbackPlayer.stageRenderer().getSpritesForFrame(cursorFallbackPlayer.currentFrame());
+    assert(cursorFallbackRenderSprites.size() == 1);
+    assert(cursorFallbackRenderSprites.front().channel() == 17);
+    cursorFallbackPlayer.inputState().setMousePosition(cursorFallbackRenderSprites.front().x() + 1,
+                                                       cursorFallbackRenderSprites.front().y() + 1);
+    assert(cursorFallbackPlayer.stageRenderer().lastBakedSprites().empty());
+    assert(cursorFallbackPlayer.cursorManager().getCursorAtMouse() == CursorManager::WAIT_CURSOR);
     Player noFilePlayer;
     std::ostringstream noFileScriptDump;
     noFilePlayer.dumpScriptInfo(noFileScriptDump);

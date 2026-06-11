@@ -835,7 +835,11 @@ void Player::wireComponents() {
     });
 
     cursorManager_.setSpriteProvider([this] {
-        return stageRenderer_.lastBakedSprites();
+        auto sprites = stageRenderer_.lastBakedSprites();
+        if (sprites.empty()) {
+            sprites = stageRenderer_.getSpritesForFrame(currentFrame());
+        }
+        return sprites;
     });
     cursorManager_.setMemberInfoResolver([this](int castLib,
                                                 int memberNum) -> std::optional<CursorManager::MemberInfo> {

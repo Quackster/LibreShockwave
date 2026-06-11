@@ -403,6 +403,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Player now ports Java's async VM playback facades with `isVmRunning`, `playAsync`, `stepFrameAsync`, and `tickAsync` over a single C++ worker thread, including callback completion, duplicate-run suppression, debugger stepping continuation loops, and shutdown/destructor joins after debug reset.
 - Player now ports Java's net-provider override surface through a C++ `NetProvider` interface implemented by `NetManager`, including construction-time provider injection, `setNetProvider` replacement/clearing, and VM net builtin plus Player-owned preload/navigation handlers pointed at either the override provider or the default manager.
 - Player now ports the alternate-runtime external-cast data request callback used with injected net providers, so cache-missing `castLib.fileName` reloads can hand the requested cast slot and filename back to browser/host fetch code before later `onNetFetchComplete` hydration.
+- Player-owned cursor lookup now falls back from the last baked sprite snapshot to current-frame `StageRenderer` sprites, matching Java pre-render cursor hit testing for score and dynamic sprites.
 - Full VM provider setup, non-bitmap imported-media mutation, and platform-specific async external-cast fetch backends remain deferred to later player runtime slices.
 
 ### Player Builtin Context Foundation
@@ -1004,7 +1005,7 @@ Result:
 - CastLib and CastLibManager lazy MCsL/CAS* initialization, member count/name lookup, source-prefixed lookup fallback, member metadata properties, registry filtering, builtin callback installation, external-cache keys, pending external-load bookkeeping, Player external-cast preload queuing, public provider fetch handoff, fetch-completion hydration, cached and callback-backed fileName reloads, and Player external-cast cached-load callbacks passed through the same CTest executable.
 - Provider-constructed Players now match Java's alternate-runtime Xtra registration path by installing core XML parser support without auto-registering the socket Multiuser Xtra; callers can explicitly register their bridge when the host supports it.
 - PlayerEvent handler names, event payload records, ExternalCastLoadHandler callback fanout, RenderType, and RenderConfig tests passed through the same CTest executable.
-- PlayerState, Player frame-label/test-error/shutdown/audio-backend/error-listener/debug-script-dump/debug-controller/debug-runtime/async playback/net-provider and alternate-runtime Xtra registration facades, InputEvent factories, DirectorKeyCodes, and InputState mutation/queue tests passed through the same CTest executable.
+- PlayerState, Player frame-label/test-error/shutdown/audio-backend/error-listener/debug-script-dump/debug-controller/debug-runtime/async playback/net-provider, alternate-runtime Xtra registration, and pre-render cursor fallback facades, InputEvent factories, DirectorKeyCodes, and InputState mutation/queue tests passed through the same CTest executable.
 - InputHandler mouse/key queueing, interactive hit filtering, rollover dispatch, mouse-up-outside fallback, focused key dispatch, blur synthesis, dispatcher/sprite supplier hooks, and sprite-registry revision bumps passed through the same CTest executable.
 - ScoreBehaviorRef, SpriteSpan, ScoreNavigator labels, marker resolution, active sprites/channels, parsed behavior parameters, and frame-count tests passed through the same CTest executable.
 - Breakpoint, BreakpointManager, WatchExpression, ExpressionEvaluator condition/watch evaluation, compound-value log interpolation, LifecycleDiagnostics, DebugSnapshot, DebugControllerApi delegation, and DebugController breakpoint/pause/step/watch/listener/delegate tests passed through the same CTest executable.
@@ -1449,4 +1450,5 @@ Result:
 - `6876a30f Size C++ GTK floating pane bodies`
 - `bdd24288 Move C++ GTK floating panes by drag`
 - `19305c39 Detach C++ GTK docked panes by drag`
-- Current checkpoint commit message: `Port C++ root-relative net fetches`
+- `fdee541c Port C++ root-relative net fetches`
+- Current checkpoint commit message: `Port C++ cursor frame fallback`
