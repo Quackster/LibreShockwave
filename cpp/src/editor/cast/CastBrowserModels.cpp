@@ -9,6 +9,12 @@
 namespace libreshockwave::editor::castbrowser {
 namespace {
 
+constexpr std::uint32_t PLACEHOLDER_BACKGROUND = 0xFFF0F0F0U;
+constexpr std::uint32_t PLACEHOLDER_BORDER = 0xFF808080U;
+constexpr std::uint32_t PLACEHOLDER_TEXT = 0xFF404040U;
+constexpr std::uint32_t BITMAP_BACKGROUND = 0xFFFFFFFFU;
+constexpr std::uint32_t CHECKER_COLOR = 0xFFCCCCCCU;
+
 bool containsInt(const std::vector<int>& values, int value) {
     return std::find(values.begin(), values.end(), value) != values.end();
 }
@@ -87,6 +93,40 @@ std::optional<std::string> CastBrowserModel::editorPanelIdFor(::libreshockwave::
         default:
             return std::nullopt;
     }
+}
+
+CastThumbnailPresentation CastBrowserModel::placeholderThumbnail(std::string_view typeAbbreviation, int thumbSize) {
+    return CastThumbnailPresentation{
+        CastThumbnailKind::Placeholder,
+        thumbSize,
+        typeAbbreviation.empty() ? "?" : std::string(typeAbbreviation),
+        PLACEHOLDER_BACKGROUND,
+        PLACEHOLDER_BORDER,
+        PLACEHOLDER_TEXT,
+        "SansSerif",
+        10,
+        true,
+        0,
+        0,
+        ThumbnailPlacement{thumbSize, 0, 0, 0, 0, false},
+    };
+}
+
+CastThumbnailPresentation CastBrowserModel::bitmapThumbnail(int sourceWidth, int sourceHeight, int thumbSize) {
+    return CastThumbnailPresentation{
+        CastThumbnailKind::Bitmap,
+        thumbSize,
+        "",
+        BITMAP_BACKGROUND,
+        0,
+        0,
+        "",
+        0,
+        false,
+        CHECKER_COLOR,
+        CHECKER_SIZE,
+        thumbnailPlacement(sourceWidth, sourceHeight, thumbSize),
+    };
 }
 
 ThumbnailPlacement CastBrowserModel::thumbnailPlacement(int sourceWidth, int sourceHeight, int thumbSize) {

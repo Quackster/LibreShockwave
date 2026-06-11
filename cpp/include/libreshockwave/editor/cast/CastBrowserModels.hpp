@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <cstddef>
 #include <optional>
 #include <string>
@@ -21,6 +22,11 @@ enum class CastContextAction {
     ExportSelected,
     SelectAll,
     CopyName
+};
+
+enum class CastThumbnailKind {
+    Placeholder,
+    Bitmap
 };
 
 struct CastLibDescriptor {
@@ -79,6 +85,23 @@ struct ThumbnailPlacement {
     friend bool operator==(const ThumbnailPlacement&, const ThumbnailPlacement&) = default;
 };
 
+struct CastThumbnailPresentation {
+    CastThumbnailKind kind{CastThumbnailKind::Placeholder};
+    int size{};
+    std::string label;
+    std::uint32_t backgroundColor{};
+    std::uint32_t borderColor{};
+    std::uint32_t textColor{};
+    std::string fontFamily;
+    int fontSize{};
+    bool bold{false};
+    std::uint32_t checkerColor{};
+    int checkerSize{};
+    ThumbnailPlacement placement;
+
+    friend bool operator==(const CastThumbnailPresentation&, const CastThumbnailPresentation&) = default;
+};
+
 struct CastGridInsets {
     int top{};
     int left{};
@@ -115,6 +138,7 @@ public:
     static constexpr int CELL_HEIGHT = 80;
     static constexpr int CELL_GAP = 4;
     static constexpr int DEFAULT_THUMB_SIZE = 48;
+    static constexpr int CHECKER_SIZE = 8;
     static constexpr int DEFAULT_GRID_WIDTH = 400;
 
     [[nodiscard]] static std::vector<std::string> typeFilterItems();
@@ -122,6 +146,13 @@ public:
         const std::vector<CastLibDescriptor>& descriptors);
     [[nodiscard]] static std::string typeAbbreviation(::libreshockwave::cast::MemberType type);
     [[nodiscard]] static std::optional<std::string> editorPanelIdFor(::libreshockwave::cast::MemberType type);
+    [[nodiscard]] static CastThumbnailPresentation placeholderThumbnail(
+        std::string_view typeAbbreviation,
+        int thumbSize = DEFAULT_THUMB_SIZE);
+    [[nodiscard]] static CastThumbnailPresentation bitmapThumbnail(
+        int sourceWidth,
+        int sourceHeight,
+        int thumbSize = DEFAULT_THUMB_SIZE);
     [[nodiscard]] static ThumbnailPlacement thumbnailPlacement(int sourceWidth,
                                                                int sourceHeight,
                                                                int thumbSize = DEFAULT_THUMB_SIZE);

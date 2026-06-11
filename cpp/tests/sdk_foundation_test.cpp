@@ -328,6 +328,8 @@ using libreshockwave::editor::castbrowser::CastGridLayout;
 using libreshockwave::editor::castbrowser::CastLibDescriptor;
 using libreshockwave::editor::castbrowser::CastLibEntry;
 using libreshockwave::editor::castbrowser::CastListRow;
+using libreshockwave::editor::castbrowser::CastThumbnailKind;
+using libreshockwave::editor::castbrowser::CastThumbnailPresentation;
 using libreshockwave::editor::castbrowser::CastViewMode;
 using libreshockwave::editor::castbrowser::ThumbnailPlacement;
 using libreshockwave::editor::debug::BytecodeListBuildOptions;
@@ -2065,6 +2067,34 @@ void testEditorCastBrowserModels() {
     assert(CastBrowserModel::editorPanelIdFor(MemberType::RichText).value() == "text");
     assert(CastBrowserModel::editorPanelIdFor(MemberType::Shape).value() == "vector-shape");
     assert(!CastBrowserModel::editorPanelIdFor(MemberType::Palette).has_value());
+    assert((CastBrowserModel::placeholderThumbnail("Bmp") ==
+            CastThumbnailPresentation{CastThumbnailKind::Placeholder,
+                                      48,
+                                      "Bmp",
+                                      0xFFF0F0F0U,
+                                      0xFF808080U,
+                                      0xFF404040U,
+                                      "SansSerif",
+                                      10,
+                                      true,
+                                      0,
+                                      0,
+                                      ThumbnailPlacement{48, 0, 0, 0, 0, false}}));
+    assert(CastBrowserModel::placeholderThumbnail("").label == "?");
+    assert((CastBrowserModel::bitmapThumbnail(320, 160, 48) ==
+            CastThumbnailPresentation{CastThumbnailKind::Bitmap,
+                                      48,
+                                      "",
+                                      0xFFFFFFFFU,
+                                      0,
+                                      0,
+                                      "",
+                                      0,
+                                      false,
+                                      0xFFCCCCCCU,
+                                      8,
+                                      ThumbnailPlacement{48, 48, 24, 0, 12, true}}));
+    assert(!CastBrowserModel::bitmapThumbnail(0, 10, 48).placement.valid);
     assert((CastBrowserModel::thumbnailPlacement(320, 160, 48) == ThumbnailPlacement{48, 48, 24, 0, 12, true}));
     assert((CastBrowserModel::thumbnailPlacement(10, 200, 48) == ThumbnailPlacement{48, 2, 48, 23, 0, true}));
     assert(!CastBrowserModel::thumbnailPlacement(0, 10, 48).valid);
