@@ -174,6 +174,7 @@ add_library(libreshockwave
     src/player/SpriteProperties.cpp
     src/player/audio/QueuedAudioBackend.cpp
     src/player/audio/SoundManager.cpp
+    src/player/media/QueuedJpegDecoder.cpp
     src/player/behavior/BehaviorInstance.cpp
     src/player/behavior/BehaviorManager.cpp
     src/player/cast/CastLib.cpp

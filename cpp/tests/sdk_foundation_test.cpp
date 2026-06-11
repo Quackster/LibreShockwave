@@ -186,6 +186,7 @@
 #include "libreshockwave/player/audio/AudioBackend.hpp"
 #include "libreshockwave/player/audio/QueuedAudioBackend.hpp"
 #include "libreshockwave/player/audio/SoundManager.hpp"
+#include "libreshockwave/player/media/QueuedJpegDecoder.hpp"
 #include "libreshockwave/player/behavior/BehaviorInstance.hpp"
 #include "libreshockwave/player/behavior/BehaviorManager.hpp"
 #include "libreshockwave/player/cast/CastLib.hpp"
@@ -564,6 +565,7 @@ using libreshockwave::player::playerEventFromHandlerName;
 using libreshockwave::player::audio::AudioBackend;
 using libreshockwave::player::audio::QueuedAudioBackend;
 using libreshockwave::player::audio::SoundManager;
+using libreshockwave::player::media::QueuedJpegDecoder;
 using libreshockwave::player::debug::Breakpoint;
 using libreshockwave::player::debug::BreakpointKey;
 using libreshockwave::player::debug::BreakpointManager;
@@ -21547,6 +21549,88 @@ void testQueuedAudioBackendFoundation() {
     }
 }
 
+void testQueuedJpegDecoderFoundation() {
+    QueuedJpegDecoder decoder;
+    DirectorFile::clearJpegDecodePending();
+
+    const std::vector<std::uint8_t> crcFixture{'1', '2', '3', '4', '5', '6', '7', '8', '9'};
+    assert(QueuedJpegDecoder::idFor(crcFixture) == static_cast<int>(static_cast<std::int32_t>(0xCBF43926U)));
+
+    const std::vector<std::uint8_t> firstJpeg{0xFF, 0xD8, 0x11, 0x22, 0xFF, 0xD9};
+    const std::vector<std::uint8_t> secondJpeg{0xFF, 0xD8, 0x33, 0x44, 0xFF, 0xD9};
+    const int firstId = QueuedJpegDecoder::idFor(firstJpeg);
+    const int secondId = QueuedJpegDecoder::idFor(secondJpeg);
+
+    assert(!decoder.decode(firstJpeg).has_value());
+    assert(DirectorFile::consumeJpegDecodePending());
+    assert(!DirectorFile::consumeJpegDecodePending());
+    assert(decoder.pendingCount() == 1);
+    assert(decoder.pendingId(0) == firstId);
+    assert(decoder.pendingId(1) == 0);
+    assert(decoder.pendingId(-1) == 0);
+
+    assert(!decoder.decode(firstJpeg).has_value());
+    assert(decoder.pendingCount() == 1);
+    assert(DirectorFile::consumeJpegDecodePending());
+
+    assert(!decoder.decode(secondJpeg).has_value());
+    assert(decoder.pendingCount() == 2);
+    assert(decoder.pendingId(0) == firstId);
+    assert(decoder.pendingId(1) == secondId);
+    assert(DirectorFile::consumeJpegDecodePending());
+
+    assert(decoder.prepareData(firstId) == static_cast<int>(firstJpeg.size()));
+    assert(decoder.currentData() != nullptr);
+    assert(*decoder.currentData() == firstJpeg);
+    assert(decoder.prepareData(123456) == 0);
+    assert(decoder.currentData() == nullptr);
+
+    const std::vector<std::uint8_t> rgba{
+        0x10, 0x20, 0x30, 0x40,
+        0xAA, 0xBB, 0xCC, 0xDD,
+    };
+    decoder.deliverDecoded(firstId, 2, 1, rgba);
+    assert(decoder.pendingCount() == 1);
+    assert(decoder.pendingId(0) == secondId);
+    assert(decoder.currentData() == nullptr);
+
+    auto decoded = decoder.decode(firstJpeg);
+    assert(decoded.has_value());
+    assert(decoded->width() == 2);
+    assert(decoded->height() == 1);
+    assert(decoded->bitDepth() == 32);
+    assert(decoded->isNativeAlpha());
+    assert(decoded->getPixel(0, 0) == 0x40102030U);
+    assert(decoded->getPixel(1, 0) == 0xDDAABBCCU);
+    assert(decoder.pendingCount() == 1);
+    assert(!DirectorFile::consumeJpegDecodePending());
+
+    decoder.prepareData(secondId);
+    assert(decoder.currentData() != nullptr);
+    decoder.deliverDecoded(secondId, 0, 1, {0x00, 0x00, 0x00, 0x00});
+    assert(decoder.pendingCount() == 0);
+    assert(decoder.currentData() != nullptr);
+
+    decoder.reset();
+    assert(decoder.pendingCount() == 0);
+    assert(decoder.currentData() == nullptr);
+    assert(!decoder.decode(firstJpeg).has_value());
+    assert(decoder.pendingCount() == 1);
+
+    decoder.reset();
+    auto callback = decoder.decoder();
+    assert(!callback(firstJpeg).has_value());
+    assert(decoder.pendingCount() == 1);
+    decoder.deliverDecoded(firstId, 1, 1, {0x01, 0x02, 0x03, 0x04});
+    auto callbackDecoded = callback(firstJpeg);
+    assert(callbackDecoded.has_value());
+    assert(callbackDecoded->getPixel(0, 0) == 0x04010203U);
+
+    decoder.install();
+    DirectorFile::setJpegDecoder(DirectorFile::JpegDecoder{});
+    DirectorFile::clearJpegDecodePending();
+}
+
 void testTimeoutManagerFoundation() {
     TimeoutManager manager;
     assert(manager.getTimeoutCount() == 0);
@@ -26432,6 +26516,7 @@ int main() {
     testNetManagerFoundation();
     testQueuedNetProviderFoundation();
     testQueuedAudioBackendFoundation();
+    testQueuedJpegDecoderFoundation();
     testTimeoutManagerFoundation();
     testPaletteAndColorRefs();
     testBitmapAlphaAndPaletteBehavior();
