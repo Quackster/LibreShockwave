@@ -234,6 +234,7 @@
 #include "libreshockwave/player/score/SpriteSpan.hpp"
 #include "libreshockwave/player/sprite/SpriteState.hpp"
 #include "libreshockwave/player/timeout/TimeoutManager.hpp"
+#include "libreshockwave/player/xtra/QueuedMultiuserBridge.hpp"
 #include "libreshockwave/player/xtra/SocketMultiuserBridge.hpp"
 #include "libreshockwave/util/AudioCodecUtils.hpp"
 #include "libreshockwave/util/FileUtil.hpp"
@@ -628,6 +629,7 @@ using libreshockwave::player::score::ScoreNavigator;
 using libreshockwave::player::score::SpriteSpan;
 using libreshockwave::player::sprite::SpriteState;
 using libreshockwave::player::timeout::TimeoutManager;
+using libreshockwave::player::xtra::QueuedMultiuserBridge;
 using libreshockwave::player::xtra::SocketMultiuserBridge;
 using libreshockwave::w3d::W3DEntryType;
 
@@ -11809,6 +11811,155 @@ void testSocketMultiuserBridgeFoundation() {
     bridge.requestDisconnect(instanceId);
     assert(!bridge.isConnected(instanceId));
     bridge.destroyInstance(instanceId);
+}
+
+void testQueuedMultiuserBridgeFoundation() {
+    QueuedMultiuserBridge bridge;
+    assert(QueuedMultiuserBridge::serializeWireContent("", "body") == "body");
+    assert(QueuedMultiuserBridge::serializeWireContent("0", "body") == "body");
+    assert(QueuedMultiuserBridge::serializeWireContent("subject", "") == "subject");
+    assert(QueuedMultiuserBridge::serializeWireContent("subject", "body") == "subject body");
+    assert(QueuedMultiuserBridge::decodeShockwaveCommand('C', 'D') == 196);
+    assert(bridge.getRequest(0) == nullptr);
+
+    bridge.requestConnect(7, "chat.example", 1234, 1);
+    assert(bridge.pendingRequests().size() == 1);
+    const auto* connect = bridge.getRequest(0);
+    assert(connect != nullptr);
+    assert(connect->type == QueuedMultiuserBridge::REQ_CONNECT);
+    assert(connect->instanceId == 7);
+    assert(connect->host == "chat.example");
+    assert(connect->port == 1234);
+    assert(!bridge.isConnected(7));
+
+    bridge.notifyConnected(7);
+    assert(bridge.isConnected(7));
+    auto messages = bridge.pollMessages(7);
+    assert(messages.size() == 1);
+    assert(messages[0].errorCode == 0);
+    assert(messages[0].senderID == "System");
+    assert(messages[0].subject == "ConnectToNetServer");
+    assert(messages[0].content.stringValue().empty());
+    assert(bridge.pollMessages(7).empty());
+
+    bridge.requestSend(7, "me", "CHAT", Datum::of(std::string("hello")));
+    assert(bridge.pendingRequests().size() == 2);
+    const auto* send = bridge.getRequest(1);
+    assert(send != nullptr);
+    assert(send->type == QueuedMultiuserBridge::REQ_SEND);
+    assert(send->senderID == "me");
+    assert(send->subject == "CHAT");
+    assert(send->content == "hello");
+    assert(send->wireContent() == "CHAT hello");
+    assert((send->wireBytes() == std::vector<std::uint8_t>{'C', 'H', 'A', 'T', ' ', 'h', 'e', 'l', 'l', 'o'}));
+
+    bridge.deliverMessage(7, 0, "server", "keepalive", std::string("@r", 2) + char(1));
+    messages = bridge.pollMessages(7);
+    assert(messages.size() == 1);
+    assert(messages[0].senderID == "server");
+    assert(messages[0].subject == "keepalive");
+    assert(messages[0].content.stringValue() == std::string("@r", 2) + char(1));
+
+    const auto pendingBeforeSuppressedPong = bridge.pendingRequests().size();
+    bridge.requestSend(7, "me", "0", Datum::of(std::string("@@BCD")));
+    assert(bridge.pendingRequests().size() == pendingBeforeSuppressedPong);
+    bridge.requestSend(7, "me", "0", Datum::of(std::string("@@BCD")));
+    assert(bridge.pendingRequests().size() == pendingBeforeSuppressedPong + 1);
+    assert(bridge.pendingRequests().back().wireContent() == "@@BCD");
+
+    bridge.deliverMessageBytes(7, {'A', 0x00, 0xFF});
+    messages = bridge.pollMessages(7);
+    assert(messages.size() == 1);
+    assert(messages[0].content.stringValue() == std::string({'A', '\0', static_cast<char>(0xFF)}));
+
+    bridge.notifyError(7, -3);
+    messages = bridge.pollMessages(7);
+    assert(messages.size() == 1);
+    assert(messages[0].errorCode == -3);
+    assert(messages[0].senderID == "System");
+    assert(messages[0].subject == "ConnectionProblem");
+
+    bridge.requestDisconnect(7);
+    assert(!bridge.isConnected(7));
+    assert(bridge.pendingRequests().back().type == QueuedMultiuserBridge::REQ_DISCONNECT);
+    bridge.destroyInstance(7);
+    bridge.drainPendingRequests();
+    assert(bridge.pendingRequests().empty());
+
+    QueuedMultiuserBridge smus;
+    smus.requestConnect(3, "smus.example", 1235, 0);
+    smus.drainPendingRequests();
+    smus.notifyConnected(3);
+    assert(smus.isConnected(3));
+    assert(smus.pendingRequests().size() == 1);
+    const auto* logon = smus.getRequest(0);
+    assert(logon != nullptr);
+    assert(logon->type == QueuedMultiuserBridge::REQ_SEND);
+    assert(logon->subject == "Logon");
+    auto logonBytes = logon->wireBytes();
+    assert(logonBytes.size() == 80);
+    assert(logonBytes[0] == 114);
+    assert(logonBytes[1] == 0);
+    messages = smus.pollMessages(3);
+    assert(messages.size() == 1);
+    assert(messages[0].subject == "ConnectToNetServer");
+
+    smus.drainPendingRequests();
+    auto props = Datum::propList();
+    props.propListValue().put(Datum::symbol("image"), Datum::media({9, 8, 7}));
+    props.propListValue().put(Datum::symbol("cs"), Datum::of(123));
+    auto content = Datum::list({
+        Datum::of(42),
+        Datum::symbol("ok"),
+        Datum::media({1, 2, 3}),
+        Datum::intPoint(4, 5),
+        Datum::intRect(6, 7, 8, 9),
+        Datum::colorRef(10, 11, 12),
+        props,
+    });
+    smus.requestSend(3, "alice", "CHAT", content);
+    assert(smus.pendingRequests().size() == 1);
+    const auto* smusSend = smus.getRequest(0);
+    assert(smusSend != nullptr);
+    auto wire = smusSend->wireBytes();
+    assert(wire.size() > 6);
+    assert(wire[0] == 114);
+    assert(wire[1] == 0);
+    smus.deliverMessageBytes(3, wire);
+    messages = smus.pollMessages(3);
+    assert(messages.size() == 1);
+    assert(messages[0].errorCode == 0);
+    assert(messages[0].senderID == "alice");
+    assert(messages[0].subject == "CHAT");
+    assert(messages[0].content.isList());
+    const auto& decodedItems = messages[0].content.listValue().items();
+    assert(decodedItems.size() == 7);
+    assert(decodedItems[0].intValue() == 42);
+    assert(decodedItems[1].asSymbol() != nullptr);
+    assert(decodedItems[1].asSymbol()->name == "ok");
+    assert(decodedItems[2].asMedia() != nullptr);
+    assert((decodedItems[2].asMedia()->bytes == std::vector<std::uint8_t>{1, 2, 3}));
+    assert(decodedItems[3].asIntPoint() != nullptr);
+    assert(decodedItems[3].asIntPoint()->x == 4);
+    assert(decodedItems[3].asIntPoint()->y == 5);
+    assert(decodedItems[4].asIntRect() != nullptr);
+    assert(decodedItems[4].asIntRect()->left == 6);
+    assert(decodedItems[4].asIntRect()->bottom == 9);
+    assert(decodedItems[5].asColorRef() != nullptr);
+    assert(decodedItems[5].asColorRef()->r == 10);
+    assert(decodedItems[5].asColorRef()->g == 11);
+    assert(decodedItems[5].asColorRef()->b == 12);
+    assert(decodedItems[6].isPropList());
+    assert(decodedItems[6].propListValue().get(Datum::symbol("cs")).intValue() == 123);
+    assert(decodedItems[6].propListValue().get(Datum::symbol("image")).asMedia() != nullptr);
+
+    smus.deliverMessageBytes(3, {114, 0, 0, 0, 0, 2, 0, 0});
+    messages = smus.pollMessages(3);
+    assert(messages.size() == 1);
+    assert(messages[0].errorCode == -5);
+    assert(messages[0].subject == "ConnectionProblem");
+    smus.notifyDisconnected(3);
+    assert(!smus.isConnected(3));
 }
 
 void testLingoVmScopeAndExecutionContextFoundation() {
@@ -26491,6 +26642,7 @@ int main() {
     testXmlParserXtraFoundation();
     testMultiuserXtraFoundation();
     testSocketMultiuserBridgeFoundation();
+    testQueuedMultiuserBridgeFoundation();
     testLingoVmScopeAndExecutionContextFoundation();
     testLingoVmRuntimeFoundation();
     testLingoExpressionParserFoundation();
