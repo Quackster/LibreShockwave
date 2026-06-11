@@ -211,6 +211,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `editor::property::PropertyInspectorModels` ports Java's property-inspector tab labels, read-only grid row state, behavior-list placeholder/action state, tab order/names, and selection-driven active-tab routing as GTK-neutral models.
 - `editor::script::ScriptEditorModels` ports Java's handler dropdown placeholder/list behavior, Lingo document edit/rehighlight flow, and Director MX syntax-highlight colors/bold flags as GTK-neutral style ranges.
 - `editor::audio::EditorAudioModels` ports Java's sound-member playback controller state, status/state callbacks, timer-position updates, seek/pause/stop behavior, and eight-channel editor audio backend state behind GTK-pluggable clip/backend interfaces.
+- `editor::docking::DockingModels` ports Java's recursive docking layout state for center nodes, tab leaves, binary splits, edge docking, adjacent splits, tab splitting, undock collapse, default layout replay, and compact JSON serialization as GTK-neutral panel layout data.
 
 ### Bitmap Colorizer
 
@@ -915,7 +916,7 @@ Result:
 - W3D entry, typed resource, transform, texture format, and lookup tests passed through the same CTest executable.
 - Generated font Base64/zlib decode, wrong-length, and invalid-deflate tests passed through the same CTest executable.
 - File/path fallback utilities, shared string display/HTML escaping helpers, string chunk counting/extraction helpers, Java-compatible ImageMethodDispatcher/StringMethodDispatcher/ListMethodDispatcher/MemberRegistryMethodDispatcher/PropListMethodDispatcher/ScriptInstanceMethodDispatcher/SoundChannelMethodDispatcher receiver methods, and script formatting utilities passed through the same CTest executable.
-- Editor channel-name formatting, palette descriptions, bytecode instruction formatting, preview text formatting, palette/script/sound/text/generic preview generation, sound/script/text/palette/generic asset extraction, property-inspector row models, script editor dropdown/document/highlight models, editor audio playback/backend models, score color lookup, model record display strings, selection manager notifications, playback-head clamping, score model color storage, score appearance formatting, score-grid/frame-label/frame-script display helpers, member association/detail scanning, Lingo keyword tables, and Lingo tokenizer behavior passed through the same CTest executable.
+- Editor channel-name formatting, palette descriptions, bytecode instruction formatting, preview text formatting, palette/script/sound/text/generic preview generation, sound/script/text/palette/generic asset extraction, property-inspector row models, script editor dropdown/document/highlight models, editor audio playback/backend models, docking layout models, score color lookup, model record display strings, selection manager notifications, playback-head clamping, score model color storage, score appearance formatting, score-grid/frame-label/frame-script display helpers, member association/detail scanning, Lingo keyword tables, and Lingo tokenizer behavior passed through the same CTest executable.
 - BitmapColorizer 32-bit, indexed, foreground-only, packed-index, and ink predicate tests passed through the same CTest executable.
 - PfrBitReader byte, signed, skip, alignment, bit-buffer, and partial-EOF tests passed through the same CTest executable.
 - BitmapFont glyph drawing, overflow metrics, BDF parsing, direct PFR outline/bitmap/curve glyph rasterization, PFR1 metadata/character-record/simple/compound/curve-outline parsing, PFR-to-TTF table generation/cache registration, pure TTF bitmap rasterization with the bundled Verdana fixture, FontRegistry prebuilt-cache/PFR-registration/rasterization/size-aware embedded-TTF/alias/Mac fallback behavior, Mac/Windows platform font bundle selection and caching, and SimpleTextRenderer bitmap-font/built-in-fallback/wrapping/underline/caret/XMED per-span/styled-underline rendering behavior passed through the same CTest executable.
@@ -1286,4 +1287,5 @@ Result:
 - `700d0c47 Port C++ editor debug browser models`
 - `91db0f68 Port C++ editor property inspector models`
 - `e96419bf Port C++ editor script editing models`
-- Current checkpoint commit message: `Port C++ editor audio models`
+- `b84facdd Port C++ editor audio models`
+- Current checkpoint commit message: `Port C++ editor docking models`

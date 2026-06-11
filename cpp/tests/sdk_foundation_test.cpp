@@ -76,6 +76,7 @@
 #include "libreshockwave/editor/debug/DebugBrowserModels.hpp"
 #include "libreshockwave/editor/debug/DebugDisplayItems.hpp"
 #include "libreshockwave/editor/debug/DebugTableModels.hpp"
+#include "libreshockwave/editor/docking/DockingModels.hpp"
 #include "libreshockwave/editor/format/ChannelNames.hpp"
 #include "libreshockwave/editor/format/InstructionFormatter.hpp"
 #include "libreshockwave/editor/format/PaletteDescriptions.hpp"
@@ -299,6 +300,11 @@ using libreshockwave::editor::debug::TimeoutSnapshot;
 using libreshockwave::editor::debug::TimeoutTableModel;
 using libreshockwave::editor::debug::VariablesTableModel;
 using libreshockwave::editor::debug::WatchesTableModel;
+using libreshockwave::editor::docking::DockEdge;
+using libreshockwave::editor::docking::DockingLayoutModel;
+using libreshockwave::editor::docking::DockNodeKind;
+using libreshockwave::editor::docking::DockNodeModel;
+using libreshockwave::editor::docking::DockOrientation;
 using libreshockwave::editor::format::ChannelNames;
 using libreshockwave::editor::format::InstructionFormatter;
 using libreshockwave::editor::format::PaletteDescriptions;
@@ -1843,6 +1849,118 @@ void testEditorAudioModels() {
     assert(AudioPlaybackController::formatTimeLabel(1'250'000, 2'500'000) == "1.2s / 2.5s");
     assert(AudioPlaybackController::progressPercent(500'000, 2'000'000) == 25);
     assert(AudioPlaybackController::progressPercent(500'000, 0) == 0);
+}
+
+void testEditorDockingModels() {
+    auto standaloneLeaf = DockNodeModel::leaf();
+    assert(!standaloneLeaf->hasTabs());
+    assert(standaloneLeaf->addTab({"score", "Score"}));
+    assert(standaloneLeaf->addTab({"cast", "Cast"}));
+    assert(!standaloneLeaf->addTab({"cast", "Duplicate"}));
+    assert(standaloneLeaf->hasTab("score"));
+    assert((standaloneLeaf->panelIds() == std::vector<std::string>{"score", "cast"}));
+    assert(standaloneLeaf->selectedTab()->panelId == "cast");
+    assert(standaloneLeaf->selectTab("score"));
+    assert(standaloneLeaf->selectedTab()->panelId == "score");
+    assert(standaloneLeaf->removeTab("score"));
+    assert(!standaloneLeaf->hasTab("score"));
+    assert(standaloneLeaf->selectedTab()->panelId == "cast");
+
+    DockingLayoutModel layout;
+    for (const auto& [id, title] : std::vector<std::pair<std::string, std::string>>{
+             {"score", "Score"},
+             {"cast", "Cast"},
+             {"script", "Script"},
+             {"message", "Message"},
+             {"tool-palette", "Tool Palette"},
+             {"property-inspector", "Property Inspector"},
+             {"bytecode-debugger", "Bytecode Debugger"},
+             {"quote\"panel", "Quote"},
+         }) {
+        layout.registerPanel(id, title);
+    }
+
+    assert(layout.root().kind == DockNodeKind::Center);
+    assert(layout.serializeLayout() == "{\"type\":\"center\"}");
+    assert(DockingLayoutModel::edgeName(DockEdge::Bottom) == "BOTTOM");
+    assert(DockingLayoutModel::orientationName(DockOrientation::Vertical) == "vertical");
+    assert(!layout.dockAtEdge("missing", DockEdge::Left));
+    assert(!layout.isDocked("missing"));
+
+    assert(layout.dockCenter("script"));
+    assert(layout.isDocked("script"));
+    assert(layout.center().hasTabs());
+    assert(layout.center().selectedTab()->panelId == "script");
+    assert(!layout.dockAsTab("script", "script"));
+    assert(!layout.dockAdjacentToPanel("script", "script", DockEdge::Right));
+    assert(layout.dockAsTab("message", "script"));
+    assert(layout.center().tabs.size() == 2);
+    assert(layout.center().selectedTab()->panelId == "message");
+    assert(layout.selectPanel("script"));
+    assert(layout.center().selectedTab()->panelId == "script");
+    assert(!layout.splitTab("script", DockEdge::Right));
+    assert(layout.undock("message"));
+    assert(!layout.isDocked("message"));
+    assert(layout.center().tabs.size() == 1);
+
+    assert(layout.dockAtEdge("tool-palette", DockEdge::Left));
+    assert(layout.root().kind == DockNodeKind::Split);
+    assert(layout.root().orientation == DockOrientation::Horizontal);
+    assert(layout.root().dividerFraction == 0.15);
+    assert(layout.root().first->kind == DockNodeKind::Leaf);
+    assert(layout.root().first->tabs[0].panelId == "tool-palette");
+    assert(DockingLayoutModel::containsCenter(layout.root()));
+
+    assert(layout.dockAtEdge("property-inspector", DockEdge::Right));
+    assert(layout.isDocked("property-inspector"));
+    assert(layout.dockAsTab("cast", "tool-palette"));
+    const auto* toolNode = layout.nodeForPanel("tool-palette");
+    const auto* castNode = layout.nodeForPanel("cast");
+    assert(toolNode != nullptr);
+    assert(toolNode == castNode);
+    assert(toolNode->tabs.size() == 2);
+    assert(toolNode->selectedTab()->panelId == "cast");
+
+    assert(layout.splitTab("cast", DockEdge::Right));
+    assert(layout.nodeForPanel("tool-palette") != layout.nodeForPanel("cast"));
+    assert(layout.nodeForPanel("cast")->kind == DockNodeKind::Leaf);
+    assert(layout.nodeForPanel("cast")->selectedTab()->panelId == "cast");
+    assert(layout.dockAdjacentToPanel("bytecode-debugger", "property-inspector", DockEdge::Bottom));
+    assert(layout.isDocked("bytecode-debugger"));
+
+    const auto serialized = layout.serializeLayout();
+    assert(serialized.find("\"type\":\"split\"") != std::string::npos);
+    assert(serialized.find("\"orientation\":\"horizontal\"") != std::string::npos);
+    assert(serialized.find("\"tabs\":[\"tool-palette\"") != std::string::npos);
+    assert(serialized.find("\"centerTabs\":[\"script\"]") != std::string::npos);
+
+    assert(layout.dockCenter("quote\"panel"));
+    assert(layout.serializeLayout().find("quote\\\"panel") != std::string::npos);
+    assert(layout.undock("quote\"panel"));
+
+    assert(layout.undock("cast"));
+    assert(!layout.isDocked("cast"));
+    assert(layout.undock("tool-palette"));
+    assert(!layout.isDocked("tool-palette"));
+    assert(!layout.undock("tool-palette"));
+
+    layout.applyDefaultDockedLayout();
+    const auto defaultDocked = layout.dockedPanelIds();
+    assert((defaultDocked == std::vector<std::string>{"bytecode-debugger",
+                                                      "cast",
+                                                      "message",
+                                                      "property-inspector",
+                                                      "score",
+                                                      "script",
+                                                      "tool-palette"}));
+    assert(layout.nodeForPanel("property-inspector") != nullptr);
+    assert(layout.nodeForPanel("bytecode-debugger") != nullptr);
+    assert(layout.center().tabs.empty());
+    assert(DockingLayoutModel::containsCenter(layout.root()));
+
+    layout.undockAll();
+    assert(layout.dockedPanelIds().empty());
+    assert(layout.root().kind == DockNodeKind::Center);
 }
 
 void testEditorDebugDataModels() {
@@ -22037,6 +22155,7 @@ int main() {
     testEditorFormattingAndScriptHelpers();
     testEditorModelAndSelectionFoundation();
     testEditorAudioModels();
+    testEditorDockingModels();
     testEditorDebugDataModels();
     testEditorScoreDataHelpers();
     testEditorScanningHelpers();
