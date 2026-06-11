@@ -22685,112 +22685,95 @@ void testWasmCppAdapterResourceFoundation() {
     const std::string exportList = readTextFile(exportListPath);
     const std::string header = readTextFile(headerPath);
 
-    const std::set<std::string> adapterNames{
-        "addTraceHandler",
-        "allocateBuffer",
-        "allocateNetBuffer",
-        "audioNotifyStopped",
-        "blur",
-        "clearExternalParams",
-        "clearTraceHandlers",
-        "cutSelectedText",
-        "deliverFetchError",
-        "deliverFetchResult",
-        "deliverFetchStatus",
-        "deliverJpegDecodeResult",
-        "drainAudioPending",
-        "drainMusPending",
-        "drainPendingFetches",
-        "getAudioBufferAddress",
-        "getAudioPendingAction",
-        "getAudioPendingChannel",
-        "getAudioPendingCount",
-        "getAudioPendingData",
-        "getAudioPendingFormat",
-        "getAudioPendingLoopCount",
-        "getAudioPendingVolume",
-        "getBootstrapDiagnostics",
-        "getCallStack",
-        "getCaretHeight",
-        "getCaretX",
-        "getCaretY",
-        "getCurrentFrame",
-        "getCursorBitmapAddress",
-        "getCursorBitmapHeight",
-        "getCursorBitmapLength",
-        "getCursorBitmapWidth",
-        "getCursorRegPointX",
-        "getCursorRegPointY",
-        "getCursorType",
-        "getDebugLog",
-        "getFrameCount",
-        "getLastError",
-        "getMusPendingCount",
-        "getMusPendingHost",
-        "getMusPendingInstanceId",
-        "getMusPendingPort",
-        "getMusPendingSendData",
-        "getMusPendingType",
-        "getNetBufferAddress",
-        "getPendingFetchCount",
-        "getPendingFetchFallbackCount",
-        "getPendingFetchFallbackUrl",
-        "getPendingFetchMethod",
-        "getPendingFetchPostData",
-        "getPendingFetchTaskId",
-        "getPendingFetchUrl",
-        "getPendingJpegDecodeCount",
-        "getPendingJpegDecodeData",
-        "getPendingJpegDecodeDataAddress",
-        "getPendingJpegDecodeId",
-        "getRenderBufferAddress",
-        "getSelectedTextLength",
-        "getSelectionRectCount",
-        "getSelectionRectH",
-        "getSelectionRectW",
-        "getSelectionRectX",
-        "getSelectionRectY",
-        "getSpriteCount",
-        "getStageHeight",
-        "getStageWidth",
-        "getStringBufferAddress",
-        "getStringBufferCapacity",
-        "getTempo",
-        "getVisibleTextDiagnostics",
-        "getWindowSpriteDiagnostics",
-        "goToFrame",
-        "isCaretVisible",
-        "keyDown",
-        "keyUp",
-        "loadMovie",
-        "mouseDown",
-        "mouseMove",
-        "mouseUp",
-        "musDeliverConnected",
-        "musDeliverDisconnected",
-        "musDeliverError",
-        "musDeliverMessage",
-        "pasteText",
-        "pause",
-        "play",
-        "preloadCasts",
-        "readNextGotoNetMovie",
-        "readNextGotoNetPage",
-        "removeTraceHandler",
-        "render",
-        "selectAll",
-        "setDebugPlaybackEnabled",
-        "setExternalParam",
-        "setInitialBuiltinSymbol",
-        "setMovieProperty",
-        "setPuppetTempo",
-        "stepBackward",
-        "stepForward",
-        "stop",
-        "tick",
-        "triggerTestError",
-        "updateCursorBitmap",
+    auto isIdent = [](char ch) {
+        return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+            (ch >= '0' && ch <= '9') || ch == '_';
     };
+
+    auto parseAdapterRequiredExports = [&isIdent](const std::string& source) {
+        std::set<std::pair<std::string, std::string>> entries;
+        const auto marker = std::string_view("var requiredExports");
+        auto pos = source.find(marker);
+        assert(pos != std::string::npos);
+        pos = source.find('{', pos);
+        assert(pos != std::string::npos);
+        const auto end = source.find("};", pos);
+        assert(end != std::string::npos);
+        while (pos < end) {
+            while (pos < end && !isIdent(source[pos])) {
+                ++pos;
+            }
+            if (pos >= end) {
+                break;
+            }
+            const auto nameStart = pos;
+            while (pos < end && isIdent(source[pos])) {
+                ++pos;
+            }
+            const auto publicName = source.substr(nameStart, pos - nameStart);
+            const auto suffixStartQuote = source.find('\'', pos);
+            assert(suffixStartQuote != std::string::npos && suffixStartQuote < end);
+            const auto suffixEndQuote = source.find('\'', suffixStartQuote + 1);
+            assert(suffixEndQuote != std::string::npos && suffixEndQuote < end);
+            entries.emplace(publicName, source.substr(suffixStartQuote + 1, suffixEndQuote - suffixStartQuote - 1));
+            pos = suffixEndQuote + 1;
+        }
+        assert(!entries.empty());
+        return entries;
+    };
+
+    auto parseHeaderExports = [&isIdent](const std::string& source) {
+        std::set<std::string> exports;
+        const auto marker = std::string_view("LIBRESHOCKWAVE_WASM_EXPORT");
+        std::size_t pos = 0;
+        while ((pos = source.find(marker, pos)) != std::string::npos) {
+            pos += marker.size();
+            const auto lineEnd = source.find('\n', pos);
+            const auto openParen = source.find('(', pos);
+            if (openParen == std::string::npos || (lineEnd != std::string::npos && openParen > lineEnd)) {
+                continue;
+            }
+            auto nameEnd = openParen;
+            while (nameEnd > pos && std::isspace(static_cast<unsigned char>(source[nameEnd - 1]))) {
+                --nameEnd;
+            }
+            auto nameStart = nameEnd;
+            while (nameStart > pos && isIdent(source[nameStart - 1])) {
+                --nameStart;
+            }
+            const auto exportName = source.substr(nameStart, nameEnd - nameStart);
+            if (exportName.starts_with("libreshockwave_wasm_")) {
+                exports.insert("_" + exportName);
+            }
+        }
+        assert(!exports.empty());
+        return exports;
+    };
+
+    auto parseCmakeExportList = [&isIdent](const std::string& source) {
+        std::set<std::string> exports;
+        std::size_t pos = 0;
+        while ((pos = source.find("\"_libreshockwave_wasm_", pos)) != std::string::npos) {
+            ++pos;
+            const auto start = pos;
+            while (pos < source.size() && isIdent(source[pos])) {
+                ++pos;
+            }
+            exports.insert(source.substr(start, pos - start));
+        }
+        assert(!exports.empty());
+        return exports;
+    };
+
+    const auto adapterRequiredExports = parseAdapterRequiredExports(adapter);
+    std::set<std::string> adapterNames;
+    std::set<std::string> adapterCExports;
+    for (const auto& [publicName, suffix] : adapterRequiredExports) {
+        adapterNames.insert(publicName);
+        adapterCExports.insert("_libreshockwave_wasm_" + suffix);
+    }
+    assert(adapterNames.size() == adapterRequiredExports.size());
+    assert(adapterCExports.size() == adapterRequiredExports.size());
 
     assert(adapter.find("LibreShockwaveCppWasmAdapter") != std::string::npos);
     assert(adapter.find("libreshockwave_wasm_") != std::string::npos);
@@ -22804,15 +22787,6 @@ void testWasmCppAdapterResourceFoundation() {
     assert(adapter.find("get_selected_text_length") != std::string::npos);
     assert(adapter.find("get_window_sprite_diagnostics") != std::string::npos);
     assert(adapter.find("fallbackExportNames: Object.keys(fallbackExports)") != std::string::npos);
-
-    for (const auto& name : adapterNames) {
-        assert(adapter.find(name) != std::string::npos);
-    }
-
-    auto isIdent = [](char ch) {
-        return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
-            (ch >= '0' && ch <= '9') || ch == '_';
-    };
 
     std::set<std::string> workerExportNames;
     std::size_t pos = 0;
@@ -22840,28 +22814,10 @@ void testWasmCppAdapterResourceFoundation() {
     assert(cmake.find("-sALLOW_MEMORY_GROWTH=1") != std::string::npos);
     assert(cmake.find("libreshockwave-wasm-exports.json") != std::string::npos);
 
-    std::set<std::string> headerExports;
-    pos = 0;
-    while ((pos = header.find("libreshockwave_wasm_", pos)) != std::string::npos) {
-        const auto start = pos;
-        while (pos < header.size() && isIdent(header[pos])) {
-            ++pos;
-        }
-        headerExports.insert("_" + header.substr(start, pos - start));
-    }
-    assert(!headerExports.empty());
-
-    std::set<std::string> listedExports;
-    pos = 0;
-    while ((pos = exportList.find("\"_libreshockwave_wasm_", pos)) != std::string::npos) {
-        ++pos;
-        const auto start = pos;
-        while (pos < exportList.size() && exportList[pos] != '"') {
-            ++pos;
-        }
-        listedExports.insert(exportList.substr(start, pos - start));
-    }
+    const auto headerExports = parseHeaderExports(header);
+    const auto listedExports = parseCmakeExportList(exportList);
     assert(listedExports == headerExports);
+    assert(adapterCExports == listedExports);
 }
 
 void testTimeoutManagerFoundation() {
