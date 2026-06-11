@@ -103,6 +103,7 @@
 #include "libreshockwave/editor/score/ScoreModel.hpp"
 #include "libreshockwave/editor/scanning/FileProcessor.hpp"
 #include "libreshockwave/editor/scanning/MemberResolver.hpp"
+#include "libreshockwave/editor/script/ScriptEditorModels.hpp"
 #include "libreshockwave/editor/script/LingoKeywords.hpp"
 #include "libreshockwave/editor/script/LingoTokenizer.hpp"
 #include "libreshockwave/format/ChunkInfo.hpp"
@@ -327,9 +328,14 @@ using libreshockwave::editor::score::ScoreColors;
 using libreshockwave::editor::score::ScoreModel;
 using libreshockwave::editor::scanning::FileProcessor;
 using libreshockwave::editor::scanning::MemberResolver;
+using libreshockwave::editor::script::HandlerDropdownModel;
 using libreshockwave::editor::script::LingoKeywords;
+using libreshockwave::editor::script::LingoDocumentModel;
+using libreshockwave::editor::script::LingoSyntaxHighlighterModel;
 using libreshockwave::editor::script::LingoTokenizer;
 using libreshockwave::editor::script::LingoTokenType;
+using libreshockwave::editor::script::ScriptStyle;
+using libreshockwave::editor::script::ScriptStyleColor;
 using libreshockwave::editor::script::tokenTypeName;
 using libreshockwave::lingo::Datum;
 using libreshockwave::lingo::DatumType;
@@ -1402,6 +1408,76 @@ void testEditorFormattingAndScriptHelpers() {
     assert(javaCaseTokens[4].type == LingoTokenType::Identifier);
     assert(javaCaseTokens[6].type == LingoTokenType::Keyword);
     assert(javaCaseTokens[8].type == LingoTokenType::Identifier);
+
+    HandlerDropdownModel dropdown;
+    assert(HandlerDropdownModel::noHandlersLabel() == "(No handlers)");
+    assert((dropdown.items() == std::vector<std::string>{"(No handlers)"}));
+    assert(dropdown.selectedIndex() == 0);
+    assert(dropdown.selectedItem() == "(No handlers)");
+    assert(!dropdown.hasHandlers());
+    dropdown.setHandlers({"startMovie", "mouseUp"});
+    assert((dropdown.items() == std::vector<std::string>{"startMovie", "mouseUp"}));
+    assert(dropdown.hasHandlers());
+    assert(dropdown.selectHandler("mouseUp"));
+    assert(dropdown.selectedIndex() == 1);
+    assert(dropdown.selectedItem() == "mouseUp");
+    assert(!dropdown.selectHandler("missing"));
+    assert(dropdown.selectedIndex() == 1);
+    dropdown.setHandlers({});
+    assert((dropdown.items() == std::vector<std::string>{"(No handlers)"}));
+    assert(!dropdown.hasHandlers());
+
+    assert(LingoSyntaxHighlighterModel::defaultStyle() ==
+           (ScriptStyle{ScriptStyleColor{0, 0, 0}, false}));
+    assert(LingoSyntaxHighlighterModel::styleForToken(LingoTokenType::Keyword) ==
+           (ScriptStyle{ScriptStyleColor{0, 0, 192}, true}));
+    assert(LingoSyntaxHighlighterModel::styleForToken(LingoTokenType::Function) ==
+           (ScriptStyle{ScriptStyleColor{0, 128, 0}, false}));
+    assert(LingoSyntaxHighlighterModel::styleForToken(LingoTokenType::Event) ==
+           (ScriptStyle{ScriptStyleColor{128, 0, 128}, false}));
+    assert(LingoSyntaxHighlighterModel::styleForToken(LingoTokenType::String) ==
+           (ScriptStyle{ScriptStyleColor{128, 0, 0}, false}));
+    assert(LingoSyntaxHighlighterModel::styleForToken(LingoTokenType::Comment) ==
+           (ScriptStyle{ScriptStyleColor{128, 128, 128}, true}));
+    assert(LingoSyntaxHighlighterModel::styleForToken(LingoTokenType::Number) ==
+           (ScriptStyle{ScriptStyleColor{255, 0, 0}, false}));
+    assert(LingoSyntaxHighlighterModel::styleForToken(LingoTokenType::Symbol) ==
+           (ScriptStyle{ScriptStyleColor{0, 128, 128}, false}));
+    assert(!LingoSyntaxHighlighterModel::hasExplicitStyle(LingoTokenType::Identifier));
+    assert(!LingoSyntaxHighlighterModel::hasExplicitStyle(LingoTokenType::Whitespace));
+
+    const auto styleRanges = LingoSyntaxHighlighterModel::highlight("on idle\n--x\n#sym 12 \"hi\"");
+    assert(styleRanges.size() == 6);
+    assert(styleRanges[0].start == 0);
+    assert(styleRanges[0].end == 2);
+    assert(styleRanges[0].tokenType == LingoTokenType::Keyword);
+    assert(styleRanges[0].style.bold);
+    assert(styleRanges[1].tokenType == LingoTokenType::Event);
+    assert(styleRanges[2].tokenType == LingoTokenType::Comment);
+    assert(styleRanges[3].tokenType == LingoTokenType::Symbol);
+    assert(styleRanges[4].tokenType == LingoTokenType::Number);
+    assert(styleRanges[5].tokenType == LingoTokenType::String);
+
+    LingoDocumentModel document("on idle");
+    assert(document.text() == "on idle");
+    assert(document.length() == 7);
+    assert(document.highlights().size() == 2);
+    assert(!document.isHighlighting());
+    assert(document.insertString(document.length(), "\n--x"));
+    assert(document.text() == "on idle\n--x");
+    assert(document.highlights().size() == 3);
+    assert(document.highlights().back().tokenType == LingoTokenType::Comment);
+    assert(!document.insertString(99, "bad"));
+    assert(!document.remove(99, 1));
+    assert(!document.remove(1, 99));
+    assert(document.remove(2, 5));
+    assert(document.text() == "on\n--x");
+    assert(document.highlights().size() == 2);
+    document.setText("go #done");
+    assert(document.text() == "go #done");
+    assert(document.highlights().size() == 2);
+    assert(document.highlights()[0].tokenType == LingoTokenType::Command);
+    assert(document.highlights()[1].tokenType == LingoTokenType::Symbol);
 
     const CastMemberInfo previewInfo{7, "Door", nullptr, MemberType::Bitmap, "16x16"};
     std::string headerText;

@@ -80,6 +80,7 @@ add_library(libreshockwave
     src/editor/scanning/FileProcessor.cpp
     src/editor/scanning/MemberResolver.cpp
     src/editor/script/LingoKeywords.cpp
+    src/editor/script/ScriptEditorModels.cpp
     src/editor/script/LingoTokenizer.cpp
     src/format/AfterburnerReader.cpp
     src/format/ChunkType.cpp
