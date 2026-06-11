@@ -44,6 +44,7 @@ public:
 
     bool togglePanel(std::string_view panelId, bool visible);
     bool showPanel(std::string_view panelId);
+    bool floatPanel(std::string_view panelId);
     bool selectPanel(std::string_view panelId);
     bool iconifyPanelForTesting(std::string_view panelId);
     void resetLayout();

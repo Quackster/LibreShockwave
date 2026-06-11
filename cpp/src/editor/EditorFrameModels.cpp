@@ -105,6 +105,25 @@ bool EditorFramePanelModel::showPanel(std::string_view panelId) {
     return true;
 }
 
+bool EditorFramePanelModel::floatPanel(std::string_view panelId) {
+    const auto index = indexOf(panelId);
+    if (!index.has_value()) {
+        return false;
+    }
+
+    if (dockingLayout_.isDocked(panelId)) {
+        dockingLayout_.undock(panelId);
+    }
+
+    clearSelection();
+    auto& panel = panels_[*index];
+    panel.docked = false;
+    panel.visible = true;
+    panel.iconified = false;
+    panel.selected = true;
+    return true;
+}
+
 bool EditorFramePanelModel::selectPanel(std::string_view panelId) {
     const auto index = indexOf(panelId);
     if (!index.has_value()) {

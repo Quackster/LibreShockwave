@@ -153,6 +153,8 @@ struct GtkWorkbenchTabSpec {
     bool active{false};
     std::string focusActionName;
     std::string detailedFocusActionName;
+    std::string floatActionName;
+    std::string detailedFloatActionName;
     std::string toggleActionName;
     std::string detailedToggleActionName;
 
@@ -230,6 +232,7 @@ public:
     [[nodiscard]] static std::string commandActionName(EditorCommand command);
     [[nodiscard]] static std::string panelActionName(std::string_view panelId);
     [[nodiscard]] static std::string workbenchPanelActionName(std::string_view panelId);
+    [[nodiscard]] static std::string workbenchPanelFloatActionName(std::string_view panelId);
     [[nodiscard]] static std::string appAction(std::string_view actionName);
 
     [[nodiscard]] static std::vector<GtkActionSpec> actionSpecs(const EditorMenuModel& menuModel,
@@ -280,8 +283,10 @@ public:
     void setOpenMoviePath(std::optional<std::string> path);
     std::vector<EditorContextEvent> openFile(std::string path);
     std::vector<EditorContextEvent> closeFile();
+    GtkWorkbenchPanelActivation floatWorkbenchPanel(std::string_view panelId);
     GtkWorkbenchPanelActivation activateWorkbenchPanel(std::string_view panelId);
     GtkWorkbenchPanelActivation activateWorkbenchAction(std::string_view actionName);
+    GtkWorkbenchPanelActivation activateWorkbenchFloatAction(std::string_view actionName);
     GtkActionActivation activateAction(std::string_view name);
     GtkShellDialogResult applyExternalParameters(std::vector<ExternalParamRow> rows);
     GtkShellDialogResult applyTraceHandlerInput(std::string_view input);

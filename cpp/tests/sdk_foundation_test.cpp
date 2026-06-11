@@ -1985,6 +1985,14 @@ void testEditorFrameModels() {
     assert(frame.panel("sound")->selected);
     assert(frame.togglePanel("script", true));
     assert(frame.dockingLayout().center().selectedTab()->panelId == "script");
+    assert(frame.floatPanel("script"));
+    assert(frame.isPanelVisible("script"));
+    assert(!frame.dockingLayout().isDocked("script"));
+    assert(!frame.panel("script")->docked);
+    assert(frame.panel("script")->selected);
+    assert(!frame.panel("sound")->selected);
+    assert(frame.togglePanel("script", true));
+    assert(frame.dockingLayout().center().selectedTab()->panelId == "script");
     assert(frame.selectPanel("sound"));
     assert(frame.dockingLayout().center().selectedTab()->panelId == "sound");
     assert(frame.panel("sound")->selected);
@@ -2010,6 +2018,13 @@ void testEditorFrameModels() {
     assert(frame.panel("stage")->selected);
     assert(!frame.panel("paint")->selected);
     assert(!frame.selectPanel("paint"));
+    assert(frame.floatPanel("paint"));
+    assert(frame.isPanelVisible("paint"));
+    assert(!frame.dockingLayout().isDocked("paint"));
+    assert(!frame.panel("paint")->docked);
+    assert(frame.panel("paint")->selected);
+    assert(!frame.panel("stage")->selected);
+    assert(!frame.floatPanel("missing"));
 }
 
 void testEditorShellActionModels() {
@@ -2092,6 +2107,8 @@ void testEditorShellActionModels() {
     assert(EditorGtkShellModel::commandActionName(EditorCommand::ExternalParameters) == "externalParameters");
     assert(EditorGtkShellModel::panelActionName("property-inspector") == "panel_property_inspector");
     assert(EditorGtkShellModel::workbenchPanelActionName("property-inspector") == "workbench_property_inspector");
+    assert(EditorGtkShellModel::workbenchPanelFloatActionName("property-inspector") ==
+           "workbench_float_property_inspector");
     assert(EditorGtkShellModel::appAction("open") == "app.open");
 
     const auto gtkActions = EditorGtkShellModel::actionSpecs(menus, toolbar, gtkFrame);
@@ -2211,6 +2228,8 @@ void testEditorShellActionModels() {
                false,
                "workbench_stage",
                "app.workbench_stage",
+               "workbench_float_stage",
+               "app.workbench_float_stage",
                "panel_stage",
                "app.panel_stage",
            }));
@@ -2222,6 +2241,8 @@ void testEditorShellActionModels() {
                true,
                "workbench_paint",
                "app.workbench_paint",
+               "workbench_float_paint",
+               "app.workbench_float_paint",
                "panel_paint",
                "app.panel_paint",
            }));
@@ -2275,12 +2296,15 @@ void testEditorShellActionModels() {
                true,
                "workbench_stage",
                "app.workbench_stage",
+               "workbench_float_stage",
+               "app.workbench_float_stage",
                "panel_stage",
                "app.panel_stage",
            }));
     assert(gtkWorkbenchTabsState[5].panelId == "message");
     assert(!gtkWorkbenchTabsState[5].active);
     assert(gtkWorkbenchTabsState[5].focusActionName == "workbench_message");
+    assert(gtkWorkbenchTabsState[5].floatActionName == "workbench_float_message");
     assert(gtkWorkbenchTabsState[5].toggleActionName == "panel_message");
     assert(gtkState.workbenchContent().hasPanel);
     assert(gtkState.workbenchContent().panelId == "stage");
@@ -2407,6 +2431,24 @@ void testEditorShellActionModels() {
     assert(!missingWorkbenchFocus.handled);
     assert(missingWorkbenchFocus.statusMessage == "Unknown workbench action: workbench_missing");
     assert(gtkState.statusMessage() == "Unknown workbench action: workbench_missing");
+
+    EditorGtkShellState floatHiddenGtkState;
+    auto floatHiddenPaint = floatHiddenGtkState.activateWorkbenchFloatAction("workbench_float_paint");
+    assert(floatHiddenPaint.actionName == "workbench_float_paint");
+    assert(floatHiddenPaint.panelId == "paint");
+    assert(floatHiddenPaint.handled);
+    assert(floatHiddenPaint.refreshActions);
+    assert(floatHiddenPaint.refreshPanels);
+    assert(floatHiddenPaint.refreshView);
+    assert(floatHiddenPaint.statusMessage == "Paint floated");
+    assert(floatHiddenPaint.panel.has_value());
+    assert(!floatHiddenPaint.panel->docked);
+    assert(floatHiddenPaint.panel->selected);
+    assert(floatHiddenGtkState.viewState().workbenchContent.panelId == "paint");
+    auto missingFloatAction = floatHiddenGtkState.activateWorkbenchFloatAction("workbench_float_missing");
+    assert(missingFloatAction.actionName == "workbench_float_missing");
+    assert(!missingFloatAction.handled);
+    assert(missingFloatAction.statusMessage == "Unknown workbench float action: workbench_float_missing");
 
     auto openRequest = gtkState.activateAction("open");
     assert(openRequest.handled);
@@ -2754,6 +2796,7 @@ void testEditorShellActionModels() {
     assert(gtkView.workbenchTabs == gtkState.workbenchTabs());
     assert(gtkView.workbenchTabs[7].panelId == "paint");
     assert(gtkView.workbenchTabs[7].active);
+    assert(gtkView.workbenchTabs[7].floatActionName == "workbench_float_paint");
     assert(gtkView.workbenchTabs[7].toggleActionName == "panel_paint");
     assert(gtkView.workbenchContent.hasPanel);
     assert(gtkView.workbenchContent.panelId == "paint");
@@ -2789,6 +2832,29 @@ void testEditorShellActionModels() {
     assert(paintWorkbench != nullptr);
     assert(paintWorkbench->selected);
     assert(gtkView.statusMessage == "Paint selected");
+
+    auto floatPaint = gtkState.activateWorkbenchFloatAction("workbench_float_paint");
+    assert(floatPaint.actionName == "workbench_float_paint");
+    assert(floatPaint.panelId == "paint");
+    assert(floatPaint.handled);
+    assert(floatPaint.refreshActions);
+    assert(floatPaint.refreshPanels);
+    assert(floatPaint.refreshView);
+    assert(floatPaint.statusMessage == "Paint floated");
+    assert(floatPaint.panel.has_value());
+    assert(!floatPaint.panel->docked);
+    assert(floatPaint.panel->selected);
+    assert(gtkState.statusMessage() == "Paint floated");
+    gtkView = gtkState.viewState();
+    paintWorkbench = findWorkbenchPanel(gtkView.workbenchPanels, "paint");
+    assert(paintWorkbench != nullptr);
+    assert(!paintWorkbench->docked);
+    assert(paintWorkbench->selected);
+    assert(gtkView.panelRows[7].visible);
+    assert(!gtkView.panelRows[7].docked);
+    assert(gtkView.workbenchTabs[7].panelId == "paint");
+    assert(gtkView.workbenchTabs[7].active);
+    assert(gtkView.workbenchContent.panelId == "paint");
 
     auto hidePaint = gtkState.activateAction("panel_paint");
     assert(hidePaint.handled);

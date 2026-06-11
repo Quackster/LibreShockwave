@@ -240,6 +240,10 @@ std::string EditorGtkShellModel::workbenchPanelActionName(std::string_view panel
     return "workbench_" + sanitizeActionName(panelId);
 }
 
+std::string EditorGtkShellModel::workbenchPanelFloatActionName(std::string_view panelId) {
+    return "workbench_float_" + sanitizeActionName(panelId);
+}
+
 std::string EditorGtkShellModel::appAction(std::string_view actionName) {
     return "app." + std::string(actionName);
 }
@@ -394,6 +398,7 @@ std::vector<GtkWorkbenchTabSpec> EditorGtkShellModel::workbenchTabs(const Editor
     result.reserve(layout.panels.size());
     for (const auto& panel : layout.panels) {
         const bool active = layout.activePanel.has_value() && layout.activePanel->panelId == panel.panelId;
+        const auto floatAction = workbenchPanelFloatActionName(panel.panelId);
         const auto toggleAction = panelActionName(panel.panelId);
         result.push_back(GtkWorkbenchTabSpec{
             panel.panelId,
@@ -402,6 +407,8 @@ std::vector<GtkWorkbenchTabSpec> EditorGtkShellModel::workbenchTabs(const Editor
             active,
             panel.activationActionName,
             panel.detailedActivationActionName,
+            floatAction,
+            appAction(floatAction),
             toggleAction,
             appAction(toggleAction),
         });
@@ -611,6 +618,34 @@ std::vector<EditorContextEvent> EditorGtkShellState::closeFile() {
     return events;
 }
 
+GtkWorkbenchPanelActivation EditorGtkShellState::floatWorkbenchPanel(std::string_view panelId) {
+    GtkWorkbenchPanelActivation result;
+    result.panelId = std::string(panelId);
+    result.actionName = EditorGtkShellModel::workbenchPanelFloatActionName(panelId);
+
+    if (!frameModel_.floatPanel(panelId)) {
+        result.statusMessage = "Panel not available: " + result.panelId;
+        statusMessage_ = result.statusMessage;
+        return result;
+    }
+
+    result.handled = true;
+    result.refreshActions = true;
+    result.refreshPanels = true;
+    result.refreshView = true;
+    result.statusMessage = panelTitle(panelId) + " floated";
+    statusMessage_ = result.statusMessage;
+
+    const auto panels = workbenchPanels();
+    const auto found = std::find_if(panels.begin(), panels.end(), [panelId](const GtkWorkbenchPanelSpec& panel) {
+        return panel.panelId == panelId;
+    });
+    if (found != panels.end()) {
+        result.panel = *found;
+    }
+    return result;
+}
+
 GtkWorkbenchPanelActivation EditorGtkShellState::activateWorkbenchPanel(std::string_view panelId) {
     GtkWorkbenchPanelActivation result;
     result.panelId = std::string(panelId);
@@ -650,6 +685,22 @@ GtkWorkbenchPanelActivation EditorGtkShellState::activateWorkbenchAction(std::st
     GtkWorkbenchPanelActivation result;
     result.actionName = std::string(actionName);
     result.statusMessage = "Unknown workbench action: " + result.actionName;
+    statusMessage_ = result.statusMessage;
+    return result;
+}
+
+GtkWorkbenchPanelActivation EditorGtkShellState::activateWorkbenchFloatAction(std::string_view actionName) {
+    for (const auto& descriptor : panels::EditorPanelCatalog::descriptors()) {
+        if (EditorGtkShellModel::workbenchPanelFloatActionName(descriptor.panelId) == actionName) {
+            auto result = floatWorkbenchPanel(descriptor.panelId);
+            result.actionName = std::string(actionName);
+            return result;
+        }
+    }
+
+    GtkWorkbenchPanelActivation result;
+    result.actionName = std::string(actionName);
+    result.statusMessage = "Unknown workbench float action: " + result.actionName;
     statusMessage_ = result.statusMessage;
     return result;
 }
