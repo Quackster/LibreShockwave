@@ -377,6 +377,7 @@ using libreshockwave::editor::debug::MoviePropertiesTableModel;
 using libreshockwave::editor::debug::WatchPanelAction;
 using libreshockwave::editor::debug::WatchPanelButton;
 using libreshockwave::editor::debug::WatchPanelView;
+using libreshockwave::editor::debug::WatchEditRequest;
 using libreshockwave::editor::debug::WatchesTableModel;
 using libreshockwave::editor::docking::DockEdge;
 using libreshockwave::editor::docking::DockReplayAction;
@@ -3891,7 +3892,8 @@ void testEditorDebugDataModels() {
                             WatchPanelButton{WatchPanelAction::Clear, "Clear", "Clear all watches", true}},
                            "Add Watch",
                            "Enter watch expression:",
-                           "Edit watch expression:"}));
+                           "Edit watch expression:",
+                           true}));
     assert(DebugInspectionModels::watchesPanelView(true).buttons[1].enabled);
     assert(DebugInspectionModels::sanitizedWatchExpression("  the frame  ").value() == "the frame");
     assert(!DebugInspectionModels::sanitizedWatchExpression(" \t\n ").has_value());
@@ -3902,6 +3904,10 @@ void testEditorDebugDataModels() {
     assert(DebugInspectionModels::selectedWatchId(watchRows, 1).value() == "watch-b");
     assert(!DebugInspectionModels::selectedWatchId(watchRows, -1).has_value());
     assert(!DebugInspectionModels::selectedWatchId(watchRows, 2).has_value());
+    assert((DebugInspectionModels::selectedWatchEditRequest(watchRows, 1).value() ==
+            WatchEditRequest{"watch-b", "the mouseH", "Edit watch expression:"}));
+    assert(!DebugInspectionModels::selectedWatchEditRequest(watchRows, -1).has_value());
+    assert(!DebugInspectionModels::selectedWatchEditRequest(watchRows, 2).has_value());
     assert(DebugInspectionModels::datumDetailsTitleFor(DebugInspectionTable::Stack, "", 3).value() == "Stack[3]");
     assert(DebugInspectionModels::datumDetailsTitleFor(DebugInspectionTable::Locals, "score", 0).value() ==
            "Local: score");

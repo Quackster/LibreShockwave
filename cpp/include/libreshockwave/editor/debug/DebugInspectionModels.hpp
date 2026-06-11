@@ -132,8 +132,17 @@ struct WatchPanelView {
     std::string addDialogTitle;
     std::string addDialogPrompt;
     std::string editDialogPrompt;
+    bool doubleClickEditsSelection{false};
 
     friend bool operator==(const WatchPanelView&, const WatchPanelView&) = default;
+};
+
+struct WatchEditRequest {
+    std::string watchId;
+    std::string currentExpression;
+    std::string prompt;
+
+    friend bool operator==(const WatchEditRequest&, const WatchEditRequest&) = default;
 };
 
 enum class HandlerDetailsTab {
@@ -205,6 +214,9 @@ public:
     [[nodiscard]] static WatchPanelView watchesPanelView(bool hasSelection);
     [[nodiscard]] static std::optional<std::string> sanitizedWatchExpression(std::string_view expression);
     [[nodiscard]] static std::optional<std::string> selectedWatchId(
+        const std::vector<player::debug::WatchExpression>& watches,
+        int selectedRow);
+    [[nodiscard]] static std::optional<WatchEditRequest> selectedWatchEditRequest(
         const std::vector<player::debug::WatchExpression>& watches,
         int selectedRow);
     [[nodiscard]] static std::optional<std::string> datumDetailsTitleFor(DebugInspectionTable table,

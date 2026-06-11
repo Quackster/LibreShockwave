@@ -463,6 +463,7 @@ WatchPanelView DebugInspectionModels::watchesPanelView(bool hasSelection) {
         "Add Watch",
         "Enter watch expression:",
         "Edit watch expression:",
+        true,
     };
 }
 
@@ -481,6 +482,17 @@ std::optional<std::string> DebugInspectionModels::selectedWatchId(
         return std::nullopt;
     }
     return watches[static_cast<std::size_t>(selectedRow)].id;
+}
+
+std::optional<WatchEditRequest> DebugInspectionModels::selectedWatchEditRequest(
+    const std::vector<player::debug::WatchExpression>& watches,
+    int selectedRow) {
+    if (selectedRow < 0 || selectedRow >= static_cast<int>(watches.size())) {
+        return std::nullopt;
+    }
+
+    const auto& watch = watches[static_cast<std::size_t>(selectedRow)];
+    return WatchEditRequest{watch.id, watch.expression, watchesPanelView(true).editDialogPrompt};
 }
 
 std::optional<std::string> DebugInspectionModels::datumDetailsTitleFor(DebugInspectionTable table,
