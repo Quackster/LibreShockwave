@@ -2252,7 +2252,7 @@ void testEditorShellActionModels() {
         EditorGtkShellModel::actionSpec("workbench_float_paint", menus, toolbar, gtkFrame);
     assert(paintFloatAction.has_value());
     assert(paintFloatAction->panelId == "paint");
-    assert(!paintFloatAction->enabled);
+    assert(paintFloatAction->enabled);
     assert(!paintFloatAction->stateful);
     assert(paintFloatAction->accelerators.empty());
 
@@ -2269,7 +2269,7 @@ void testEditorShellActionModels() {
         EditorGtkShellModel::actionSpec("workbench_dock_bottom_paint", menus, toolbar, gtkFrame);
     assert(paintDockBottomAction.has_value());
     assert(paintDockBottomAction->panelId == "paint");
-    assert(!paintDockBottomAction->enabled);
+    assert(paintDockBottomAction->enabled);
     assert(!paintDockBottomAction->stateful);
     assert(paintDockBottomAction->detailedName == "app.workbench_dock_bottom_paint");
     assert(paintDockBottomAction->accelerators.empty());
@@ -2369,7 +2369,11 @@ void testEditorShellActionModels() {
                "Paint",
                std::vector<GtkPanelContextMenuItemSpec>{
                    {"Show", "panel_paint", "app.panel_paint", true},
-                   {"Float", "workbench_float_paint", "app.workbench_float_paint", false},
+                   {"Float", "workbench_float_paint", "app.workbench_float_paint", true},
+                   {"Dock Left", "workbench_dock_left_paint", "app.workbench_dock_left_paint", true},
+                   {"Dock Right", "workbench_dock_right_paint", "app.workbench_dock_right_paint", true},
+                   {"Dock Top", "workbench_dock_top_paint", "app.workbench_dock_top_paint", true},
+                   {"Dock Bottom", "workbench_dock_bottom_paint", "app.workbench_dock_bottom_paint", true},
                },
            }));
     assert(gtkFrame.togglePanel("paint", true));
@@ -2388,6 +2392,10 @@ void testEditorShellActionModels() {
                std::vector<GtkPanelContextMenuItemSpec>{
                    {"Focus", "workbench_paint", "app.workbench_paint", true},
                    {"Float", "workbench_float_paint", "app.workbench_float_paint", true},
+                   {"Dock Left", "workbench_dock_left_paint", "app.workbench_dock_left_paint", true},
+                   {"Dock Right", "workbench_dock_right_paint", "app.workbench_dock_right_paint", true},
+                   {"Dock Top", "workbench_dock_top_paint", "app.workbench_dock_top_paint", true},
+                   {"Dock Bottom", "workbench_dock_bottom_paint", "app.workbench_dock_bottom_paint", true},
                    {"Hide", "panel_paint", "app.panel_paint", true},
                },
            }));
@@ -2503,6 +2511,10 @@ void testEditorShellActionModels() {
                std::vector<GtkPanelContextMenuItemSpec>{
                    {"Focus", "workbench_paint", "app.workbench_paint", true},
                    {"Float", "workbench_float_paint", "app.workbench_float_paint", true},
+                   {"Dock Left", "workbench_dock_left_paint", "app.workbench_dock_left_paint", true},
+                   {"Dock Right", "workbench_dock_right_paint", "app.workbench_dock_right_paint", true},
+                   {"Dock Top", "workbench_dock_top_paint", "app.workbench_dock_top_paint", true},
+                   {"Dock Bottom", "workbench_dock_bottom_paint", "app.workbench_dock_bottom_paint", true},
                    {"Hide", "panel_paint", "app.panel_paint", true},
                },
            }));
@@ -2758,19 +2770,35 @@ void testEditorShellActionModels() {
     assert(genericDockView.workbenchLayout.dockRoot.children[0].activePanel->panelId == "message");
     assert(genericDockView.workbenchLayout.dockRoot.children[1].kind == DockNodeKind::Center);
 
-    auto genericHiddenPaintDock = genericWorkbenchActionState.activateAction("workbench_dock_right_paint");
-    assert(genericHiddenPaintDock.actionName == "workbench_dock_right_paint");
-    assert(genericHiddenPaintDock.command == EditorCommand::None);
-    assert(genericHiddenPaintDock.panelId == "paint");
-    assert(!genericHiddenPaintDock.handled);
-    assert(genericHiddenPaintDock.statusMessage == "Action disabled: workbench_dock_right_paint");
-
-    auto genericHiddenPaintFloat = genericWorkbenchActionState.activateAction("workbench_float_paint");
+    EditorGtkShellState genericHiddenFloatState;
+    auto genericHiddenPaintFloat = genericHiddenFloatState.activateAction("workbench_float_paint");
     assert(genericHiddenPaintFloat.actionName == "workbench_float_paint");
     assert(genericHiddenPaintFloat.command == EditorCommand::None);
     assert(genericHiddenPaintFloat.panelId == "paint");
-    assert(!genericHiddenPaintFloat.handled);
-    assert(genericHiddenPaintFloat.statusMessage == "Action disabled: workbench_float_paint");
+    assert(genericHiddenPaintFloat.handled);
+    assert(genericHiddenPaintFloat.refreshActions);
+    assert(genericHiddenPaintFloat.refreshPanels);
+    assert(genericHiddenPaintFloat.refreshView);
+    assert(genericHiddenPaintFloat.statusMessage == "Paint floated");
+    assert(genericHiddenFloatState.viewState().workbenchContent.panelId == "paint");
+
+    EditorGtkShellState genericHiddenDockState;
+    auto genericHiddenPaintDock = genericHiddenDockState.activateAction("workbench_dock_right_paint");
+    assert(genericHiddenPaintDock.actionName == "workbench_dock_right_paint");
+    assert(genericHiddenPaintDock.command == EditorCommand::None);
+    assert(genericHiddenPaintDock.panelId == "paint");
+    assert(genericHiddenPaintDock.handled);
+    assert(genericHiddenPaintDock.refreshActions);
+    assert(genericHiddenPaintDock.refreshPanels);
+    assert(genericHiddenPaintDock.refreshView);
+    assert(genericHiddenPaintDock.statusMessage == "Paint docked to right edge");
+    const auto genericHiddenDockView = genericHiddenDockState.viewState();
+    assert(genericHiddenDockView.workbenchContent.panelId == "paint");
+    const auto* dockedGenericPaint = findWorkbenchPanel(genericHiddenDockView.workbenchPanels, "paint");
+    assert(dockedGenericPaint != nullptr);
+    assert(dockedGenericPaint->docked);
+    assert(dockedGenericPaint->selected);
+    assert(genericHiddenDockView.workbenchLayout.hasDockedLayout);
 
     auto focusMessage = gtkState.activateWorkbenchAction("workbench_message");
     assert(focusMessage.actionName == "workbench_message");

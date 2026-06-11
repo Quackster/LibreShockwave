@@ -41,6 +41,32 @@ std::string_view dockEdgeActionToken(docking::DockEdge edge) {
     return "left";
 }
 
+const char* dockEdgeMenuLabel(docking::DockEdge edge) {
+    switch (edge) {
+        case docking::DockEdge::Left: return "Dock Left";
+        case docking::DockEdge::Right: return "Dock Right";
+        case docking::DockEdge::Top: return "Dock Top";
+        case docking::DockEdge::Bottom: return "Dock Bottom";
+    }
+    return "Dock Left";
+}
+
+bool placementActionEnabled(const GtkPanelRowSpec& row) {
+    return row.focusEnabled || row.primaryActionEnabled;
+}
+
+void appendDockContextMenuItems(GtkPanelContextMenuSpec& spec, std::string_view panelId, bool enabled) {
+    for (const auto edge : DOCK_EDGES) {
+        const auto actionName = EditorGtkShellModel::workbenchPanelDockActionName(panelId, edge);
+        spec.items.push_back(GtkPanelContextMenuItemSpec{
+            dockEdgeMenuLabel(edge),
+            actionName,
+            EditorGtkShellModel::appAction(actionName),
+            enabled,
+        });
+    }
+}
+
 const GtkWorkbenchPanelSpec* findPanelSpec(const std::vector<GtkWorkbenchPanelSpec>& panels,
                                            std::string_view panelId) {
     const auto found = std::find_if(panels.begin(), panels.end(), [panelId](const GtkWorkbenchPanelSpec& panel) {
@@ -866,12 +892,13 @@ std::vector<GtkActionSpec> EditorGtkShellModel::actionSpecs(const EditorMenuMode
 
     for (const auto& row : panelRows(frameModel)) {
         const auto name = workbenchPanelFloatActionName(row.panelId);
+        const auto placementEnabled = placementActionEnabled(row);
         specs[name] = GtkActionSpec{
             name,
             appAction(name),
             EditorCommand::None,
             row.panelId,
-            row.focusEnabled,
+            placementEnabled,
             false,
             false,
             {},
@@ -884,7 +911,7 @@ std::vector<GtkActionSpec> EditorGtkShellModel::actionSpecs(const EditorMenuMode
                 appAction(dockName),
                 EditorCommand::None,
                 row.panelId,
-                row.focusEnabled,
+                placementEnabled,
                 false,
                 false,
                 {},
@@ -1011,6 +1038,7 @@ GtkPanelContextMenuSpec EditorGtkShellModel::panelContextMenu(const GtkPanelRowS
     GtkPanelContextMenuSpec spec;
     spec.panelId = row.panelId;
     spec.title = row.title;
+    const auto placementEnabled = placementActionEnabled(row);
 
     if (row.visible) {
         spec.items.push_back(GtkPanelContextMenuItemSpec{
@@ -1033,8 +1061,9 @@ GtkPanelContextMenuSpec EditorGtkShellModel::panelContextMenu(const GtkPanelRowS
         "Float",
         floatAction,
         appAction(floatAction),
-        row.focusEnabled,
+        placementEnabled,
     });
+    appendDockContextMenuItems(spec, row.panelId, placementEnabled);
 
     if (row.visible) {
         spec.items.push_back(GtkPanelContextMenuItemSpec{
@@ -1127,26 +1156,26 @@ GtkPanelContextMenuSpec EditorGtkShellModel::workbenchTabContextMenu(const GtkWo
     GtkPanelContextMenuSpec spec;
     spec.panelId = tab.panelId;
     spec.title = tab.title;
-    spec.items = {
-        GtkPanelContextMenuItemSpec{
-            "Focus",
-            tab.focusActionName,
-            tab.detailedFocusActionName,
-            !tab.detailedFocusActionName.empty(),
-        },
-        GtkPanelContextMenuItemSpec{
-            tab.floatLabel,
-            tab.floatActionName,
-            tab.detailedFloatActionName,
-            !tab.detailedFloatActionName.empty(),
-        },
-        GtkPanelContextMenuItemSpec{
-            tab.hideLabel,
-            tab.toggleActionName,
-            tab.detailedToggleActionName,
-            !tab.detailedToggleActionName.empty(),
-        },
-    };
+    const auto placementEnabled = !tab.detailedFloatActionName.empty();
+    spec.items.push_back(GtkPanelContextMenuItemSpec{
+        "Focus",
+        tab.focusActionName,
+        tab.detailedFocusActionName,
+        !tab.detailedFocusActionName.empty(),
+    });
+    spec.items.push_back(GtkPanelContextMenuItemSpec{
+        tab.floatLabel,
+        tab.floatActionName,
+        tab.detailedFloatActionName,
+        placementEnabled,
+    });
+    appendDockContextMenuItems(spec, tab.panelId, placementEnabled);
+    spec.items.push_back(GtkPanelContextMenuItemSpec{
+        tab.hideLabel,
+        tab.toggleActionName,
+        tab.detailedToggleActionName,
+        !tab.detailedToggleActionName.empty(),
+    });
     return spec;
 }
 
