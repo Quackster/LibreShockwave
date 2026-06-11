@@ -73,6 +73,7 @@
 #include "libreshockwave/chunks/SoundChunk.hpp"
 #include "libreshockwave/chunks/TextChunk.hpp"
 #include "libreshockwave/editor/AppModels.hpp"
+#include "libreshockwave/editor/EditorContextModels.hpp"
 #include "libreshockwave/editor/EditorShellModels.hpp"
 #include "libreshockwave/editor/audio/EditorAudioModels.hpp"
 #include "libreshockwave/editor/cast/CastBrowserModels.hpp"
@@ -294,6 +295,9 @@ using libreshockwave::chunks::SoundChunk;
 using libreshockwave::chunks::TextChunk;
 using libreshockwave::editor::ExternalParamRow;
 using libreshockwave::editor::ExternalParamsTableModel;
+using libreshockwave::editor::EditorContextEvent;
+using libreshockwave::editor::EditorContextModel;
+using libreshockwave::editor::EditorContextProperty;
 using libreshockwave::editor::EditorAccelerator;
 using libreshockwave::editor::EditorCommand;
 using libreshockwave::editor::EditorMenuItem;
@@ -1715,6 +1719,154 @@ void testEditorAppShellModels() {
     assert(params.rowCount() == 5);
     assert(params.rows()[0].key == "sw1");
     assert(params.rows()[4].value.find("external.variables.txt") != std::string::npos);
+}
+
+void testEditorContextModels() {
+    assert(EditorContextModel::propertyName(EditorContextProperty::File) == "file");
+    assert(EditorContextModel::propertyName(EditorContextProperty::Frame) == "currentFrame");
+    assert(EditorContextModel::propertyName(EditorContextProperty::Playing) == "playing");
+    assert(EditorContextModel::propertyName(EditorContextProperty::CastsLoaded) == "castsLoaded");
+
+    EditorContextModel context;
+    assert(!context.hasFile());
+    assert(!context.isPlaying());
+    assert(context.currentFrame() == 1);
+    assert(!context.currentPath().has_value());
+    assert(!context.play().has_value());
+    assert(!context.stop().has_value());
+    assert(context.closeFile().empty());
+
+    auto openEvents = context.openFile("/srv/site/htdocs/movies/room.dir");
+    assert(openEvents.size() == 1);
+    assert((openEvents[0] == EditorContextEvent{EditorContextProperty::File,
+                                                "file",
+                                                std::nullopt,
+                                                std::optional<std::string>{"/srv/site/htdocs/movies/room.dir"},
+                                                std::nullopt,
+                                                std::nullopt,
+                                                std::nullopt,
+                                                std::nullopt,
+                                                false}));
+    assert(context.hasFile());
+    assert(context.currentFrame() == 1);
+    assert(context.currentPath().value() == "/srv/site/htdocs/movies/room.dir");
+    assert(context.currentMovieKey().value() == "/srv/site/htdocs/movies/room.dir");
+
+    assert(EditorContextModel::detectLocalHttpRoot("/srv/site/htdocs/movies/room.dir").value() ==
+           "/srv/site/htdocs");
+    assert(EditorContextModel::detectLocalHttpRoot("C:\\Web\\HTDOCS\\movie.dir").value() == "C:/Web/HTDOCS");
+    assert(!EditorContextModel::detectLocalHttpRoot("/srv/site/movie.dir").has_value());
+
+    assert(EditorContextModel::sanitizePreferenceKey("C:/movies\\test:one.dir") == "C__movies_test_one.dir");
+    assert(EditorContextModel::javaStringHashCode("abc") == 96354);
+    assert(EditorContextModel::sanitizePreferenceKey(std::string(81, 'a')) == "hash_-759882911");
+    assert(EditorContextModel::breakpointPreferenceKey("C:/Movies\\Foo.dir") ==
+           "breakpoints:C__Movies_Foo.dir");
+
+    auto frameEvent = context.setCurrentFrame(3);
+    assert(frameEvent.has_value());
+    assert((frameEvent.value() == EditorContextEvent{EditorContextProperty::Frame,
+                                                     "currentFrame",
+                                                     std::nullopt,
+                                                     std::nullopt,
+                                                     1,
+                                                     3,
+                                                     std::nullopt,
+                                                     std::nullopt,
+                                                     false}));
+    assert(!context.setCurrentFrame(3).has_value());
+
+    auto playEvent = context.play();
+    assert(playEvent.has_value());
+    assert(context.isPlaying());
+    assert((playEvent.value() == EditorContextEvent{EditorContextProperty::Playing,
+                                                    "playing",
+                                                    std::nullopt,
+                                                    std::nullopt,
+                                                    std::nullopt,
+                                                    std::nullopt,
+                                                    false,
+                                                    true,
+                                                    false}));
+    assert(context.updateTimerDelay(12).value() == 83);
+    assert(context.timerDelayMillis().value() == 83);
+    assert(!context.updateTimerDelay(0).has_value());
+    assert(context.timerDelayMillis().value() == 83);
+
+    assert(!context.playbackTick(true, false, 4, 15).has_value());
+    auto repaintEvent = context.playbackTick(false, true, 4, 15);
+    assert(repaintEvent.has_value());
+    assert((repaintEvent.value() == EditorContextEvent{EditorContextProperty::Frame,
+                                                       "currentFrame",
+                                                       std::nullopt,
+                                                       std::nullopt,
+                                                       std::nullopt,
+                                                       3,
+                                                       std::nullopt,
+                                                       std::nullopt,
+                                                       true}));
+    assert(context.currentFrame() == 3);
+
+    auto tickEvent = context.playbackTick(false, false, 4, 15);
+    assert(tickEvent.has_value());
+    assert((tickEvent.value() == EditorContextEvent{EditorContextProperty::Frame,
+                                                    "currentFrame",
+                                                    std::nullopt,
+                                                    std::nullopt,
+                                                    std::nullopt,
+                                                    4,
+                                                    std::nullopt,
+                                                    std::nullopt,
+                                                    true}));
+    assert(context.currentFrame() == 4);
+    assert(context.timerDelayMillis().value() == 66);
+
+    auto stepBack = context.stepBackward(4);
+    assert(stepBack.has_value());
+    assert(stepBack->oldFrame.value() == 4);
+    assert(stepBack->newFrame.value() == 3);
+    assert(context.currentFrame() == 3);
+    assert(!context.stepBackward(1).has_value());
+
+    auto rewindEvents = context.rewind();
+    assert(rewindEvents.size() == 2);
+    assert(rewindEvents[0].property == EditorContextProperty::Frame);
+    assert(rewindEvents[0].oldFrame.value() == 3);
+    assert(rewindEvents[0].newFrame.value() == 1);
+    assert(rewindEvents[1].property == EditorContextProperty::Playing);
+    assert(rewindEvents[1].oldBool.value());
+    assert(!rewindEvents[1].newBool.value());
+    assert(context.currentFrame() == 1);
+    assert(!context.isPlaying());
+
+    auto stopEvent = context.stop();
+    assert(stopEvent.has_value());
+    assert(stopEvent->property == EditorContextProperty::Playing);
+    assert(stopEvent->oldBool.value());
+    assert(!stopEvent->newBool.value());
+
+    const auto castEvent = EditorContextModel::castsLoadedEvent();
+    assert(castEvent.property == EditorContextProperty::CastsLoaded);
+    assert(castEvent.propertyName == "castsLoaded");
+    assert(!castEvent.oldBool.value());
+    assert(castEvent.newBool.value());
+
+    auto closeEvents = context.closeFile();
+    assert(closeEvents.size() == 1);
+    assert(closeEvents[0].property == EditorContextProperty::File);
+    assert(closeEvents[0].oldPath.value() == "/srv/site/htdocs/movies/room.dir");
+    assert(!closeEvents[0].newPath.has_value());
+    assert(!context.hasFile());
+    assert(context.currentFrame() == 1);
+    assert(context.closeFile().empty());
+
+    (void)context.openFile("one.dir");
+    auto reopenEvents = context.openFile("two.dir");
+    assert(reopenEvents.size() == 2);
+    assert(reopenEvents[0].oldPath.value() == "one.dir");
+    assert(!reopenEvents[0].newPath.has_value());
+    assert(!reopenEvents[1].oldPath.has_value());
+    assert(reopenEvents[1].newPath.value() == "two.dir");
 }
 
 void testEditorShellActionModels() {
@@ -23225,6 +23377,7 @@ int main() {
     testUtilityFormatting();
     testEditorFormattingAndScriptHelpers();
     testEditorAppShellModels();
+    testEditorContextModels();
     testEditorShellActionModels();
     testEditorCastBrowserModels();
     testEditorScoreViewModels();
