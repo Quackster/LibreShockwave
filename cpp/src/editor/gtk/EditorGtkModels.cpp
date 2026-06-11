@@ -359,6 +359,23 @@ std::vector<GtkWorkbenchPanelSpec> EditorGtkShellModel::workbenchPanels(const Ed
     return result;
 }
 
+GtkWorkbenchLayoutSpec EditorGtkShellModel::workbenchLayout(const EditorFramePanelModel& frameModel,
+                                                           const EditorContextModel& contextModel) {
+    GtkWorkbenchLayoutSpec layout;
+    layout.emptyText = "No editor panels available";
+    layout.panels = workbenchPanels(frameModel, contextModel);
+    auto active = std::find_if(layout.panels.begin(), layout.panels.end(), [](const GtkWorkbenchPanelSpec& panel) {
+        return panel.selected;
+    });
+    if (active == layout.panels.end() && !layout.panels.empty()) {
+        active = layout.panels.begin();
+    }
+    if (active != layout.panels.end()) {
+        layout.activePanel = *active;
+    }
+    return layout;
+}
+
 const EditorMenuModel& EditorGtkShellState::menuModel() const {
     return menuModel_;
 }
@@ -421,6 +438,10 @@ std::vector<GtkWorkbenchPanelSpec> EditorGtkShellState::workbenchPanels() const 
     return EditorGtkShellModel::workbenchPanels(frameModel_, contextModel_);
 }
 
+GtkWorkbenchLayoutSpec EditorGtkShellState::workbenchLayout() const {
+    return EditorGtkShellModel::workbenchLayout(frameModel_, contextModel_);
+}
+
 GtkShellViewState EditorGtkShellState::viewState() const {
     const auto defaults = panels::EditorPanelCatalog::frameDefaults();
     const auto& currentPath = contextModel_.currentPath();
@@ -443,6 +464,7 @@ GtkShellViewState EditorGtkShellState::viewState() const {
         toolbarItems(),
         panelRows(),
         workbenchPanels(),
+        workbenchLayout(),
     };
 }
 

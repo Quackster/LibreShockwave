@@ -76,6 +76,9 @@ bool EditorFramePanelModel::togglePanel(std::string_view panelId, bool visible) 
     }
 
     const bool docked = dockingLayout_.dockCenter(panelId);
+    if (docked) {
+        clearSelection();
+    }
     panel.docked = docked;
     panel.visible = true;
     panel.selected = docked;

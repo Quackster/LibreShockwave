@@ -2154,7 +2154,7 @@ void testEditorShellActionModels() {
                                 "Stage",
                                 PanelBounds{170, 10, 660, 500},
                                 true,
-                                true,
+                                false,
                                 false,
                                 "No movie loaded",
                                 "Frame: 1",
@@ -2166,9 +2166,16 @@ void testEditorShellActionModels() {
         });
     assert(staticPaintWorkbench != gtkWorkbench.end());
     assert(staticPaintWorkbench->kind == GtkWorkbenchPanelKind::Paint);
+    assert(staticPaintWorkbench->selected);
     assert(staticPaintWorkbench->primaryText == "No bitmap selected");
     assert(staticPaintWorkbench->statusText == " Ready");
     assert(staticPaintWorkbench->actionLabels.front() == "Pencil");
+    const auto gtkWorkbenchLayout = EditorGtkShellModel::workbenchLayout(gtkFrame, closedGtkContext);
+    assert(gtkWorkbenchLayout.panels == gtkWorkbench);
+    assert(gtkWorkbenchLayout.activePanel.has_value());
+    assert(gtkWorkbenchLayout.activePanel->panelId == "paint");
+    assert(gtkWorkbenchLayout.activePanel->primaryText == "No bitmap selected");
+    assert(gtkWorkbenchLayout.emptyText == "No editor panels available");
 
     EditorGtkShellState gtkState;
     auto findWorkbenchPanel = [](const std::vector<GtkWorkbenchPanelSpec>& panels,
@@ -2185,6 +2192,8 @@ void testEditorShellActionModels() {
     auto gtkWorkbenchPanels = gtkState.workbenchPanels();
     assert(gtkWorkbenchPanels.size() == 7);
     assert(gtkWorkbenchPanels.front().kind == GtkWorkbenchPanelKind::Stage);
+    assert(gtkState.workbenchLayout().activePanel.has_value());
+    assert(gtkState.workbenchLayout().activePanel->panelId == "stage");
     assert(gtkWorkbenchPanels.front().primaryText == "No movie loaded");
     assert(gtkWorkbenchPanels.front().statusText == "Frame: 1");
     const auto* messageWorkbench = findWorkbenchPanel(gtkWorkbenchPanels, "message");
@@ -2215,6 +2224,10 @@ void testEditorShellActionModels() {
     assert(gtkView.toolbarItems == gtkState.toolbarItems());
     assert(gtkView.panelRows == gtkState.panelRows());
     assert(gtkView.workbenchPanels == gtkWorkbenchPanels);
+    assert(gtkView.workbenchLayout == gtkState.workbenchLayout());
+    assert(gtkView.workbenchLayout.panels == gtkWorkbenchPanels);
+    assert(gtkView.workbenchLayout.activePanel.has_value());
+    assert(gtkView.workbenchLayout.activePanel->panelId == "stage");
 
     auto focusMessage = gtkState.activateWorkbenchPanel("message");
     assert(focusMessage.panelId == "message");
@@ -2237,6 +2250,8 @@ void testEditorShellActionModels() {
     gtkView = gtkState.viewState();
     assert(gtkView.statusMessage == "Message selected");
     assert(gtkView.workbenchPanels == gtkWorkbenchPanels);
+    assert(gtkView.workbenchLayout.activePanel.has_value());
+    assert(gtkView.workbenchLayout.activePanel->panelId == "message");
 
     auto focusHiddenPaint = gtkState.activateWorkbenchPanel("paint");
     assert(focusHiddenPaint.panelId == "paint");
@@ -2372,6 +2387,9 @@ void testEditorShellActionModels() {
     assert(gtkView.currentFrame == 1);
     assert(gtkView.toolbarItems[7].label == "Frame: 1");
     assert(gtkView.workbenchPanels == gtkState.workbenchPanels());
+    assert(gtkView.workbenchLayout.panels == gtkView.workbenchPanels);
+    assert(gtkView.workbenchLayout.activePanel.has_value());
+    assert(gtkView.workbenchLayout.activePanel->panelId == "message");
     const auto* openedStageWorkbench = findWorkbenchPanel(gtkView.workbenchPanels, "stage");
     assert(openedStageWorkbench != nullptr);
     assert(openedStageWorkbench->title == "Stage - Movie.dir");
@@ -2571,6 +2589,9 @@ void testEditorShellActionModels() {
     assert(paintWorkbench != nullptr);
     assert(paintWorkbench->kind == GtkWorkbenchPanelKind::Paint);
     assert(paintWorkbench->docked);
+    assert(paintWorkbench->selected);
+    assert(gtkView.workbenchLayout.activePanel.has_value());
+    assert(gtkView.workbenchLayout.activePanel->panelId == "paint");
     assert(paintWorkbench->primaryText == "No bitmap selected");
     assert(paintWorkbench->statusText == " Ready");
     assert(paintWorkbench->actionLabels.size() == 9);
