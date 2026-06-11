@@ -106,6 +106,7 @@
 #include "libreshockwave/lingo/vm/dispatch/ScriptInstanceMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/SoundChannelMethodDispatcher.hpp"
 #include "libreshockwave/lingo/vm/dispatch/StringMethodDispatcher.hpp"
+#include "libreshockwave/lingo/vm/parse/LingoExpressionParser.hpp"
 #include "libreshockwave/lingo/vm/trace/ConsoleTracePrinter.hpp"
 #include "libreshockwave/lingo/vm/trace/InstructionAnnotator.hpp"
 #include "libreshockwave/lingo/vm/trace/TracingHelper.hpp"
@@ -267,6 +268,7 @@ using libreshockwave::lingo::vm::dispatch::PropListMethodDispatcher;
 using libreshockwave::lingo::vm::dispatch::ScriptInstanceMethodDispatcher;
 using libreshockwave::lingo::vm::dispatch::SoundChannelMethodDispatcher;
 using libreshockwave::lingo::vm::dispatch::StringMethodDispatcher;
+using libreshockwave::lingo::vm::parse::LingoExpressionParser;
 using libreshockwave::lingo::vm::trace::ConsoleTracePrinter;
 using libreshockwave::lingo::vm::trace::InstructionAnnotator;
 using libreshockwave::lingo::vm::trace::TracingHelper;
@@ -10972,6 +10974,48 @@ void testLingoVmRuntimeFoundation() {
     assert(!vm.isInErrorState());
 }
 
+void testLingoExpressionParserFoundation() {
+    assert(LingoExpressionParser::parse("").isVoid());
+    assert(LingoExpressionParser::parse(" 42 ").intValue() == 42);
+    assert(LingoExpressionParser::parse("-7").intValue() == -7);
+    assert(std::fabs(LingoExpressionParser::parse("3.5").floatValue() - 3.5F) < 0.0001F);
+
+    const auto symbol = LingoExpressionParser::parse("#door_1");
+    assert(symbol.isSymbol());
+    assert(symbol.asSymbol()->name == "door_1");
+    assert(LingoExpressionParser::parse("#bad:key").isVoid());
+    assert(LingoExpressionParser::parse("\"hello\"").stringValue() == "hello");
+    assert(LingoExpressionParser::parse("TRUE").isVoid());
+    assert(LingoExpressionParser::parse("12 trailing").isVoid());
+
+    const auto list = LingoExpressionParser::parse("[1, #two, \"three\", [4, 5]]");
+    assert(list.isList());
+    assert(list.listValue().count() == 4);
+    assert(list.listValue().items()[0].intValue() == 1);
+    assert(list.listValue().items()[1].asSymbol()->name == "two");
+    assert(list.listValue().items()[2].stringValue() == "three");
+    assert(list.listValue().items()[3].isList());
+    assert(list.listValue().items()[3].listValue().count() == 2);
+
+    const auto props = LingoExpressionParser::parse("[#a: 1, #b: [#nested: 2], #c: \"three\"]");
+    assert(props.isPropList());
+    assert(props.propListValue().get(Datum::symbol("a")).intValue() == 1);
+    const auto nested = props.propListValue().get(Datum::symbol("b"));
+    assert(nested.isPropList());
+    assert(nested.propListValue().get(Datum::symbol("nested")).intValue() == 2);
+    assert(props.propListValue().get(Datum::symbol("c")).stringValue() == "three");
+
+    const auto quotedKeyStrict = LingoExpressionParser::parse("[\"a\": 1]");
+    assert(quotedKeyStrict.isList());
+    assert(quotedKeyStrict.listValue().count() == 1);
+    assert(quotedKeyStrict.listValue().items()[0].isVoid());
+
+    LingoVM vm;
+    vm.setGlobal("globalValue", Datum::of(88));
+    assert(LingoExpressionParser::parse("globalValue", &vm).intValue() == 88);
+    assert(LingoExpressionParser::parse("missingGlobal", &vm).isVoid());
+}
+
 std::shared_ptr<Bitmap> makeSolidHitBitmap(std::uint32_t argb) {
     auto bitmap = std::make_shared<Bitmap>(3, 3, 32);
     bitmap->fill(argb);
@@ -20460,6 +20504,7 @@ int main() {
     testSocketMultiuserBridgeFoundation();
     testLingoVmScopeAndExecutionContextFoundation();
     testLingoVmRuntimeFoundation();
+    testLingoExpressionParserFoundation();
     testHitTesterFoundation();
     testCursorManagerFoundation();
     testScoreNavigationFoundation();
