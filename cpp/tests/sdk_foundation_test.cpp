@@ -2120,11 +2120,33 @@ void testEditorShellActionModels() {
     assert(!saveAction->enabled);
     assert(!saveAction->stateful);
     assert(saveAction->detailedName == "app.save");
+    assert((saveAction->accelerators == std::vector<std::string>{"<Control>S"}));
+
+    const auto openAction = EditorGtkShellModel::actionSpec("open", menus, toolbar, gtkFrame);
+    assert(openAction.has_value());
+    assert((openAction->accelerators == std::vector<std::string>{"<Control>O"}));
 
     const auto playAction = EditorGtkShellModel::actionSpec("play", menus, toolbar, gtkFrame);
     assert(playAction.has_value());
     assert(playAction->enabled);
     assert(playAction->command == EditorCommand::Play);
+    assert((playAction->accelerators == std::vector<std::string>{"<Control><Alt>P"}));
+
+    const auto stopAction = EditorGtkShellModel::actionSpec("stop", menus, toolbar, gtkFrame);
+    assert(stopAction.has_value());
+    assert((stopAction->accelerators == std::vector<std::string>{"<Control>period"}));
+
+    const auto clearAction = EditorGtkShellModel::actionSpec("clear", menus, toolbar, gtkFrame);
+    assert(clearAction.has_value());
+    assert((clearAction->accelerators == std::vector<std::string>{"Delete"}));
+
+    const auto stepForwardAction = EditorGtkShellModel::actionSpec("stepForward", menus, toolbar, gtkFrame);
+    assert(stepForwardAction.has_value());
+    assert((stepForwardAction->accelerators == std::vector<std::string>{"<Control><Alt>Right"}));
+
+    const auto debugStepOutAction = EditorGtkShellModel::actionSpec("debugStepOut", menus, toolbar, gtkFrame);
+    assert(debugStepOutAction.has_value());
+    assert((debugStepOutAction->accelerators == std::vector<std::string>{"<Shift>F11"}));
 
     const auto stageAction = EditorGtkShellModel::actionSpec("panel_stage", menus, toolbar, gtkFrame);
     assert(stageAction.has_value());
@@ -2132,11 +2154,13 @@ void testEditorShellActionModels() {
     assert(stageAction->active);
     assert(stageAction->panelId == "stage");
     assert(stageAction->detailedName == "app.panel_stage");
+    assert((stageAction->accelerators == std::vector<std::string>{"<Control>1"}));
 
     const auto paintAction = EditorGtkShellModel::actionSpec("panel_paint", menus, toolbar, gtkFrame);
     assert(paintAction.has_value());
     assert(paintAction->stateful);
     assert(!paintAction->active);
+    assert((paintAction->accelerators == std::vector<std::string>{"<Control>5"}));
 
     const auto stageWorkbenchAction = EditorGtkShellModel::actionSpec("workbench_stage", menus, toolbar, gtkFrame);
     assert(stageWorkbenchAction.has_value());
@@ -2145,6 +2169,7 @@ void testEditorShellActionModels() {
     assert(stageWorkbenchAction->stateful);
     assert(stageWorkbenchAction->active);
     assert(stageWorkbenchAction->detailedName == "app.workbench_stage");
+    assert(stageWorkbenchAction->accelerators.empty());
 
     const auto paintWorkbenchAction = EditorGtkShellModel::actionSpec("workbench_paint", menus, toolbar, gtkFrame);
     assert(paintWorkbenchAction.has_value());
@@ -2152,6 +2177,7 @@ void testEditorShellActionModels() {
     assert(!paintWorkbenchAction->enabled);
     assert(paintWorkbenchAction->stateful);
     assert(!paintWorkbenchAction->active);
+    assert(paintWorkbenchAction->accelerators.empty());
 
     const auto stageFloatAction =
         EditorGtkShellModel::actionSpec("workbench_float_stage", menus, toolbar, gtkFrame);
@@ -2161,6 +2187,7 @@ void testEditorShellActionModels() {
     assert(!stageFloatAction->stateful);
     assert(!stageFloatAction->active);
     assert(stageFloatAction->detailedName == "app.workbench_float_stage");
+    assert(stageFloatAction->accelerators.empty());
 
     const auto paintFloatAction =
         EditorGtkShellModel::actionSpec("workbench_float_paint", menus, toolbar, gtkFrame);
@@ -2168,6 +2195,7 @@ void testEditorShellActionModels() {
     assert(paintFloatAction->panelId == "paint");
     assert(!paintFloatAction->enabled);
     assert(!paintFloatAction->stateful);
+    assert(paintFloatAction->accelerators.empty());
 
     const auto gtkToolbar = EditorGtkShellModel::toolbarItems(toolbar);
     assert(gtkToolbar.size() == toolbar.items().size());

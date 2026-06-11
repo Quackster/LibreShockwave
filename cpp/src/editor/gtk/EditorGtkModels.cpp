@@ -22,6 +22,47 @@ constexpr std::string_view ABOUT_BODY =
     "A recreation of Macromedia Director MX 2004.\n\n"
     "Part of the LibreShockwave project.";
 
+std::string gtkAcceleratorKey(std::string_view key) {
+    if (key == "DELETE") {
+        return "Delete";
+    }
+    if (key == "PERIOD") {
+        return "period";
+    }
+    if (key == "RIGHT") {
+        return "Right";
+    }
+    if (key == "LEFT") {
+        return "Left";
+    }
+    return std::string(key);
+}
+
+std::string gtkAccelerator(const EditorAccelerator& accelerator) {
+    std::string result;
+    if (accelerator.ctrl) {
+        result += "<Control>";
+    }
+    if (accelerator.alt) {
+        result += "<Alt>";
+    }
+    if (accelerator.shift) {
+        result += "<Shift>";
+    }
+    result += gtkAcceleratorKey(accelerator.key);
+    return result;
+}
+
+void appendAccelerator(GtkActionSpec& spec, const std::optional<EditorAccelerator>& accelerator) {
+    if (!accelerator.has_value()) {
+        return;
+    }
+    const auto formatted = gtkAccelerator(*accelerator);
+    if (std::find(spec.accelerators.begin(), spec.accelerators.end(), formatted) == spec.accelerators.end()) {
+        spec.accelerators.push_back(formatted);
+    }
+}
+
 void collectMenuActions(const std::vector<EditorMenuItem>& items, std::map<std::string, GtkActionSpec>& specs) {
     for (const auto& item : items) {
         if (item.command != EditorCommand::None) {
@@ -32,6 +73,18 @@ void collectMenuActions(const std::vector<EditorMenuItem>& items, std::map<std::
             spec.detailedName = EditorGtkShellModel::appAction(name);
             spec.command = item.command;
             spec.enabled = initialized ? (spec.enabled || item.enabled) : item.enabled;
+            appendAccelerator(spec, item.accelerator);
+        } else if (!item.panelId.empty()) {
+            const auto name = EditorGtkShellModel::panelActionName(item.panelId);
+            auto& spec = specs[name];
+            const bool initialized = !spec.name.empty();
+            spec.name = name;
+            spec.detailedName = EditorGtkShellModel::appAction(name);
+            spec.panelId = item.panelId;
+            spec.enabled = initialized ? (spec.enabled || item.enabled) : item.enabled;
+            spec.stateful = true;
+            spec.active = item.checked;
+            appendAccelerator(spec, item.accelerator);
         }
         collectMenuActions(item.children, specs);
     }
@@ -284,6 +337,8 @@ std::vector<GtkActionSpec> EditorGtkShellModel::actionSpecs(const EditorMenuMode
 
     for (const auto& [panelId, visible] : frameModel.panelVisibility()) {
         const auto name = panelActionName(panelId);
+        const auto existing = specs.find(name);
+        auto accelerators = existing == specs.end() ? std::vector<std::string>{} : existing->second.accelerators;
         specs[name] = GtkActionSpec{
             name,
             appAction(name),
@@ -292,6 +347,7 @@ std::vector<GtkActionSpec> EditorGtkShellModel::actionSpecs(const EditorMenuMode
             true,
             true,
             visible,
+            std::move(accelerators),
         };
     }
 
@@ -304,6 +360,7 @@ std::vector<GtkActionSpec> EditorGtkShellModel::actionSpecs(const EditorMenuMode
             focus.enabled,
             true,
             focus.active,
+            {},
         };
     }
 
@@ -317,6 +374,7 @@ std::vector<GtkActionSpec> EditorGtkShellModel::actionSpecs(const EditorMenuMode
             row.focusEnabled,
             false,
             false,
+            {},
         };
     }
 

@@ -84,6 +84,7 @@ struct GtkActionSpec {
     bool enabled{true};
     bool stateful{false};
     bool active{false};
+    std::vector<std::string> accelerators;
 
     friend bool operator==(const GtkActionSpec&, const GtkActionSpec&) = default;
 };
