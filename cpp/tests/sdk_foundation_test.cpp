@@ -2480,6 +2480,17 @@ void testEditorShellActionModels() {
     assert(gtkWorkbenchLayout.dockRoot.panels[0].panelId == "paint");
     assert(gtkWorkbenchLayout.dockRoot.activePanel.has_value());
     assert(gtkWorkbenchLayout.dockRoot.activePanel->panelId == "paint");
+    assert(gtkWorkbenchLayout.floatingPanels.size() == 7);
+    assert(std::none_of(gtkWorkbenchLayout.floatingPanels.begin(),
+                        gtkWorkbenchLayout.floatingPanels.end(),
+                        [](const GtkWorkbenchPanelSpec& panel) {
+                            return panel.panelId == "paint";
+                        }));
+    assert(std::any_of(gtkWorkbenchLayout.floatingPanels.begin(),
+                       gtkWorkbenchLayout.floatingPanels.end(),
+                       [](const GtkWorkbenchPanelSpec& panel) {
+                           return panel.panelId == "stage" && !panel.docked;
+                       }));
     assert(gtkWorkbenchLayout.emptyText == "No editor panels available");
     const auto gtkWorkbenchTabs = EditorGtkShellModel::workbenchTabs(gtkFrame, closedGtkContext);
     assert(gtkWorkbenchTabs.size() == gtkWorkbench.size());
@@ -3738,6 +3749,25 @@ void testEditorShellActionModels() {
     assert(gtkView.workbenchTabs[7].panelId == "paint");
     assert(gtkView.workbenchTabs[7].active);
     assert(gtkView.workbenchContent.panelId == "paint");
+
+    EditorGtkShellState mixedFloatingState;
+    assert(mixedFloatingState.activateAction("panel_paint").handled);
+    assert(mixedFloatingState.activateAction("workbench_dock_left_message").handled);
+    auto mixedFloatPaint = mixedFloatingState.activateAction("workbench_float_paint");
+    assert(mixedFloatPaint.handled);
+    assert(mixedFloatPaint.statusMessage == "Paint floated");
+    const auto mixedFloatingLayout = mixedFloatingState.workbenchLayout();
+    assert(mixedFloatingLayout.hasDockedLayout);
+    assert(mixedFloatingLayout.activePanel.has_value());
+    assert(mixedFloatingLayout.activePanel->panelId == "paint");
+    assert(!mixedFloatingState.frameModel().dockingLayout().isDocked("paint"));
+    assert(mixedFloatingState.frameModel().dockingLayout().isDocked("message"));
+    const auto* mixedFloatingPaint = findWorkbenchPanel(mixedFloatingLayout.floatingPanels, "paint");
+    assert(mixedFloatingPaint != nullptr);
+    assert(!mixedFloatingPaint->docked);
+    assert(mixedFloatingPaint->selected);
+    assert(findWorkbenchPanel(mixedFloatingLayout.dockRoot.panels, "paint") == nullptr);
+    assert(findWorkbenchPanel(mixedFloatingLayout.panels, "paint") != nullptr);
 
     auto hidePaint = gtkState.activateAction("panel_paint");
     assert(hidePaint.handled);

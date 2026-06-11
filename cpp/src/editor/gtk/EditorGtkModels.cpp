@@ -1141,6 +1141,11 @@ GtkWorkbenchLayoutSpec EditorGtkShellModel::workbenchLayout(const EditorFramePan
     GtkWorkbenchLayoutSpec layout;
     layout.emptyText = "No editor panels available";
     layout.panels = workbenchPanels(frameModel, contextModel);
+    for (const auto& panel : layout.panels) {
+        if (!panel.docked) {
+            layout.floatingPanels.push_back(panel);
+        }
+    }
     layout.hasDockedLayout = !frameModel.dockingLayout().dockedPanelIds().empty();
     layout.dockRoot = dockNodeSpec(frameModel.dockingLayout().root(), layout.panels);
     auto active = std::find_if(layout.panels.begin(), layout.panels.end(), [](const GtkWorkbenchPanelSpec& panel) {

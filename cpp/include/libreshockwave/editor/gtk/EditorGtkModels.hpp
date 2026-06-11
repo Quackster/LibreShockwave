@@ -377,6 +377,7 @@ struct GtkWorkbenchDockNodeSpec {
 
 struct GtkWorkbenchLayoutSpec {
     std::vector<GtkWorkbenchPanelSpec> panels;
+    std::vector<GtkWorkbenchPanelSpec> floatingPanels;
     std::optional<GtkWorkbenchPanelSpec> activePanel;
     bool hasDockedLayout{false};
     GtkWorkbenchDockNodeSpec dockRoot;
