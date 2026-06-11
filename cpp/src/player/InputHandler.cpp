@@ -55,6 +55,10 @@ void InputHandler::setHitSpritesSupplier(HitSpritesSupplier supplier) {
     hitSpritesSupplier_ = std::move(supplier);
 }
 
+void InputHandler::setLegacyEventScriptDispatcher(LegacyEventScriptDispatcher dispatcher) {
+    legacyEventScriptDispatcher_ = std::move(dispatcher);
+}
+
 int InputHandler::previousRolloverSprite() const {
     return previousRolloverSprite_;
 }
@@ -536,27 +540,34 @@ void InputHandler::dispatchInputEvent(const input::InputEvent& inputEvent) {
             inputState_->setClickOnSprite(hitSprite);
             autoFocusEditableField(stageHitSprite, inputEvent.stageX, inputEvent.stageY);
             dispatcher->resetEventStopped();
-            if (hitSprite > 0) {
-                dispatcher->dispatchSpriteEvent(hitSprite, PlayerEvent::MouseDown);
+            if (!dispatchLegacyEventScript(PlayerEvent::MouseDown) && !dispatcher->isEventStopped()) {
+                if (hitSprite > 0) {
+                    dispatcher->dispatchSpriteEvent(hitSprite, PlayerEvent::MouseDown);
+                }
+                dispatcher->dispatchFrameAndMovieEvent(PlayerEvent::MouseDown);
             }
-            dispatcher->dispatchFrameAndMovieEvent(PlayerEvent::MouseDown);
             break;
         }
         case input::InputEventType::MouseUp: {
             const int pressedSprite = inputState_->clickOnSprite();
             const int releaseSprite = hitTestExact(inputEvent.stageX, inputEvent.stageY);
             dispatcher->resetEventStopped();
-            if (pressedSprite > 0 && releaseSprite == pressedSprite) {
-                dispatcher->dispatchSpriteEvent(pressedSprite, PlayerEvent::MouseUp);
-            } else if (pressedSprite > 0 && dispatcher->spriteHasHandler(pressedSprite, "mouseUpOutSide")) {
-                dispatcher->dispatchSpriteEvent(pressedSprite, "mouseUpOutSide");
-            } else if (pressedSprite > 0 && dispatcher->spriteHasHandler(pressedSprite, handlerName(PlayerEvent::MouseUp))) {
-                dispatcher->dispatchSpriteEvent(pressedSprite, PlayerEvent::MouseUp);
-            } else if (releaseSprite > 0) {
-                dispatcher->dispatchSpriteEvent(releaseSprite, PlayerEvent::MouseUp);
+            const bool legacyConsumed = dispatchLegacyEventScript(PlayerEvent::MouseUp);
+            if (!legacyConsumed && !dispatcher->isEventStopped()) {
+                if (pressedSprite > 0 && releaseSprite == pressedSprite) {
+                    dispatcher->dispatchSpriteEvent(pressedSprite, PlayerEvent::MouseUp);
+                } else if (pressedSprite > 0 && dispatcher->spriteHasHandler(pressedSprite, "mouseUpOutSide")) {
+                    dispatcher->dispatchSpriteEvent(pressedSprite, "mouseUpOutSide");
+                } else if (pressedSprite > 0 && dispatcher->spriteHasHandler(pressedSprite, handlerName(PlayerEvent::MouseUp))) {
+                    dispatcher->dispatchSpriteEvent(pressedSprite, PlayerEvent::MouseUp);
+                } else if (releaseSprite > 0) {
+                    dispatcher->dispatchSpriteEvent(releaseSprite, PlayerEvent::MouseUp);
+                }
             }
             inputState_->setClickOnSprite(0);
-            dispatcher->dispatchFrameAndMovieEvent(PlayerEvent::MouseUp);
+            if (!legacyConsumed && !dispatcher->isEventStopped()) {
+                dispatcher->dispatchFrameAndMovieEvent(PlayerEvent::MouseUp);
+            }
             break;
         }
         case input::InputEventType::RightMouseDown:
@@ -566,27 +577,42 @@ void InputHandler::dispatchInputEvent(const input::InputEvent& inputEvent) {
             dispatcher->dispatchFrameAndMovieEvent(PlayerEvent::RightMouseUp);
             break;
         case input::InputEventType::KeyDown: {
+            dispatcher->resetEventStopped();
             inputState_->setLastKey(inputEvent.keyChar);
             inputState_->setLastKeyCode(inputEvent.keyCode);
-            const int focusSprite = inputState_->keyboardFocusSprite();
-            if (focusSprite > 0) {
-                handleEditableFieldInput(focusSprite, inputEvent.keyChar);
-                dispatcher->dispatchSpriteEvent(focusSprite, PlayerEvent::KeyDown);
+            if (!dispatchLegacyEventScript(PlayerEvent::KeyDown) && !dispatcher->isEventStopped()) {
+                const int focusSprite = inputState_->keyboardFocusSprite();
+                if (focusSprite > 0) {
+                    handleEditableFieldInput(focusSprite, inputEvent.keyChar);
+                    dispatcher->dispatchSpriteEvent(focusSprite, PlayerEvent::KeyDown);
+                }
+                dispatcher->dispatchFrameAndMovieEvent(PlayerEvent::KeyDown);
             }
-            dispatcher->dispatchFrameAndMovieEvent(PlayerEvent::KeyDown);
             break;
         }
         case input::InputEventType::KeyUp: {
+            dispatcher->resetEventStopped();
             inputState_->setLastKey(inputEvent.keyChar);
             inputState_->setLastKeyCode(inputEvent.keyCode);
-            const int focusSprite = inputState_->keyboardFocusSprite();
-            if (focusSprite > 0) {
-                dispatcher->dispatchSpriteEvent(focusSprite, PlayerEvent::KeyUp);
+            if (!dispatchLegacyEventScript(PlayerEvent::KeyUp) && !dispatcher->isEventStopped()) {
+                const int focusSprite = inputState_->keyboardFocusSprite();
+                if (focusSprite > 0) {
+                    dispatcher->dispatchSpriteEvent(focusSprite, PlayerEvent::KeyUp);
+                }
+                dispatcher->dispatchFrameAndMovieEvent(PlayerEvent::KeyUp);
             }
-            dispatcher->dispatchFrameAndMovieEvent(PlayerEvent::KeyUp);
             break;
         }
     }
+}
+
+bool InputHandler::dispatchLegacyEventScript(PlayerEvent event) {
+    if (!legacyEventScriptDispatcher_) {
+        return false;
+    }
+
+    const LegacyEventScriptResult result = legacyEventScriptDispatcher_(event);
+    return result.handled && !result.passed;
 }
 
 int InputHandler::hitTestStage(int stageX, int stageY) const {

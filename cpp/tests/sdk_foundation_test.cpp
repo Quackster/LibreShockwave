@@ -8497,6 +8497,49 @@ void testPlayerInputFoundation() {
     assert(!handlerState.isControlDown());
     assert(!handlerState.isAltDown());
 
+    InputState legacyState;
+    StageRenderer legacyStageRenderer;
+    EventDispatcher legacyDispatcher;
+    legacyDispatcher.setSpriteRegistry(&legacyStageRenderer.spriteRegistry());
+    auto legacySprite = legacyStageRenderer.spriteRegistry().getOrCreateDynamic(2);
+    legacySprite->setScriptInstanceList({Datum::scriptInstance("legacy-interactive")});
+    legacyStageRenderer.setLastBakedSprites({
+        RenderSprite(2, 0, 0, 20, 20, 2, true, SpriteType::Shape, nullptr, nullptr, 0, 0, false, false, 0, 100, false, false, nullptr, true),
+    });
+    legacyDispatcher.setRespondsPredicate([](const EventTarget& target, std::string_view handler) {
+        return target.kind == EventTargetKind::ScriptInstance && handler == "mouseDown";
+    });
+    std::vector<std::string> legacyRoutedCalls;
+    legacyDispatcher.setHandlerInvoker([&legacyRoutedCalls](const EventTarget& target,
+                                                            std::string_view handler,
+                                                            const std::vector<Datum>& args) {
+        assert(args.empty());
+        legacyRoutedCalls.push_back(std::to_string(target.channel) + ":" + std::string(handler));
+        return HandlerResult{true, true};
+    });
+    InputHandler legacyInputHandler(&legacyState, &legacyStageRenderer, &legacyDispatcher);
+    std::vector<std::string> legacyScriptCalls;
+    legacyInputHandler.setLegacyEventScriptDispatcher(
+        [&legacyScriptCalls](PlayerEvent event) {
+            legacyScriptCalls.emplace_back(handlerName(event));
+            return InputHandler::LegacyEventScriptResult{true, false};
+        });
+    legacyInputHandler.onMouseDown(5, 5);
+    assert(legacyInputHandler.processInputEvents());
+    assert((legacyScriptCalls == std::vector<std::string>{"mouseDown"}));
+    assert(legacyRoutedCalls.empty());
+
+    legacyScriptCalls.clear();
+    legacyInputHandler.setLegacyEventScriptDispatcher(
+        [&legacyScriptCalls](PlayerEvent event) {
+            legacyScriptCalls.emplace_back(handlerName(event));
+            return InputHandler::LegacyEventScriptResult{true, true};
+        });
+    legacyInputHandler.onMouseDown(5, 5);
+    assert(legacyInputHandler.processInputEvents());
+    assert((legacyScriptCalls == std::vector<std::string>{"mouseDown"}));
+    assert((legacyRoutedCalls == std::vector<std::string>{"2:mouseDown"}));
+
     inputCalls.clear();
     inputHandler.onMouseDown(5, 5, true);
     inputHandler.onBlur();
@@ -9811,6 +9854,24 @@ void testPlayerVmEventDispatchFoundation() {
     assert(player.vm().callBuiltin("value", {Datum::of(std::string("3 valueGlobal"))}).intValue() == 3);
     assert(player.vm().callBuiltin("value", {Datum::of(std::string("prepareMovie"))}).isVoid());
     assert(player.vm().getGlobal("prepared").intValue() == 55);
+    player.vm().clearGlobals();
+
+    assert(player.movieProperties().setMovieProp("mouseDownScript", Datum::of(std::string("prepareMovie"))));
+    assert(player.movieProperties().setMovieProp("mouseUpScript", Datum::of(std::string("#stopMovie"))));
+    assert(player.movieProperties().setMovieProp("keyDownScript", Datum::symbol("startMovie")));
+    assert(player.movieProperties().setMovieProp("keyUpScript", Datum::of(std::string("globalTimer"))));
+    player.inputHandler().onMouseDown(1, 1);
+    assert(player.inputHandler().processInputEvents());
+    player.inputHandler().onMouseUp(1, 1);
+    assert(player.inputHandler().processInputEvents());
+    player.inputHandler().onKeyDown(36, "a", false, false, false);
+    assert(player.inputHandler().processInputEvents());
+    player.inputHandler().onKeyUp(36, "a", false, false, false);
+    assert(player.inputHandler().processInputEvents());
+    assert(player.vm().getGlobal("prepared").intValue() == 55);
+    assert(player.vm().getGlobal("stopped").intValue() == 70);
+    assert(player.vm().getGlobal("started").intValue() == 66);
+    assert(player.vm().getGlobal("globalTimeout").intValue() == 42);
     player.vm().clearGlobals();
 
     const auto directCallTarget = Datum::scriptInstance("direct-call-target", Datum::CastMemberRef{1, 1});

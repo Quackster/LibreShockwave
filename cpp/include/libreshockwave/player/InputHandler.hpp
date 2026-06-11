@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "libreshockwave/bitmap/Bitmap.hpp"
+#include "libreshockwave/player/PlayerEvent.hpp"
 #include "libreshockwave/player/input/InputEvent.hpp"
 #include "libreshockwave/player/render/pipeline/RenderSprite.hpp"
 
@@ -66,6 +67,11 @@ public:
     using CurrentFrameSupplier = std::function<int()>;
     using EventDispatcherSupplier = std::function<event::EventDispatcher*()>;
     using HitSpritesSupplier = std::function<std::vector<render::pipeline::RenderSprite>()>;
+    struct LegacyEventScriptResult {
+        bool handled{false};
+        bool passed{false};
+    };
+    using LegacyEventScriptDispatcher = std::function<LegacyEventScriptResult(PlayerEvent event)>;
 
     InputHandler(input::InputState* inputState = nullptr,
                  render::pipeline::StageRenderer* stageRenderer = nullptr,
@@ -79,6 +85,7 @@ public:
     void setEventDispatcherSupplier(EventDispatcherSupplier supplier);
     void setCurrentFrameSupplier(CurrentFrameSupplier supplier);
     void setHitSpritesSupplier(HitSpritesSupplier supplier);
+    void setLegacyEventScriptDispatcher(LegacyEventScriptDispatcher dispatcher);
 
     [[nodiscard]] int previousRolloverSprite() const;
     [[nodiscard]] int hitTestExact(int stageX, int stageY) const;
@@ -123,6 +130,7 @@ private:
     void tabToNextField(int currentChannel, bool reverse);
     void dispatchRolloverEvents();
     void dispatchInputEvent(const input::InputEvent& inputEvent);
+    [[nodiscard]] bool dispatchLegacyEventScript(PlayerEvent event);
 
     input::InputState* inputState_{nullptr};
     render::pipeline::StageRenderer* stageRenderer_{nullptr};
@@ -131,6 +139,7 @@ private:
     EventDispatcherSupplier eventDispatcherSupplier_;
     CurrentFrameSupplier currentFrameSupplier_;
     HitSpritesSupplier hitSpritesSupplier_;
+    LegacyEventScriptDispatcher legacyEventScriptDispatcher_;
     int previousRolloverSprite_{0};
 };
 

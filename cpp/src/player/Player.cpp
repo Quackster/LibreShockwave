@@ -67,6 +67,70 @@ std::int64_t currentTimeMillis() {
         std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
+std::string trimWhitespace(std::string_view value) {
+    std::size_t begin = 0;
+    while (begin < value.size() && std::isspace(static_cast<unsigned char>(value[begin]))) {
+        ++begin;
+    }
+
+    std::size_t end = value.size();
+    while (end > begin && std::isspace(static_cast<unsigned char>(value[end - 1]))) {
+        --end;
+    }
+
+    return std::string(value.substr(begin, end - begin));
+}
+
+bool isLingoIdentifier(std::string_view value) {
+    if (value.empty()) {
+        return false;
+    }
+    const auto first = static_cast<unsigned char>(value.front());
+    if (!std::isalpha(first) && value.front() != '_') {
+        return false;
+    }
+    for (char ch : value.substr(1)) {
+        const auto raw = static_cast<unsigned char>(ch);
+        if (!std::isalnum(raw) && ch != '_') {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::optional<std::string> legacyEventHandlerName(const lingo::Datum& value) {
+    if (const auto* symbol = value.asSymbol()) {
+        if (symbol->name.empty()) {
+            return std::nullopt;
+        }
+        return symbol->name;
+    }
+    if (!value.isString()) {
+        return std::nullopt;
+    }
+
+    std::string handlerName = trimWhitespace(value.stringValue());
+    if (!handlerName.empty() && handlerName.front() == '#') {
+        handlerName.erase(handlerName.begin());
+    }
+    return isLingoIdentifier(handlerName) ? std::optional<std::string>(std::move(handlerName)) : std::nullopt;
+}
+
+std::string_view legacyEventScriptProperty(PlayerEvent event) {
+    switch (event) {
+        case PlayerEvent::MouseDown:
+            return "mouseDownScript";
+        case PlayerEvent::MouseUp:
+            return "mouseUpScript";
+        case PlayerEvent::KeyDown:
+            return "keyDownScript";
+        case PlayerEvent::KeyUp:
+            return "keyUpScript";
+        default:
+            return {};
+    }
+}
+
 } // namespace
 
 class Player::PlayerTraceListener final : public lingo::vm::TraceListener {
@@ -1164,10 +1228,7 @@ void Player::wireComponents() {
         }
     };
 
-    eventDispatcher().setScriptNamesResolver([this](const std::shared_ptr<chunks::ScriptChunk>& script) {
-        return file_ != nullptr ? file_->getScriptNamesForScript(script) : nullptr;
-    });
-    eventDispatcher().setMovieScriptSupplier([this] {
+    auto collectMovieScriptTargets = [this] {
         std::vector<event::EventDispatcher::MovieScriptTarget> targets;
         if (file_ != nullptr) {
             targets.reserve(file_->scripts().size());
@@ -1201,7 +1262,49 @@ void Player::wireComponents() {
             }
         }
         return targets;
+    };
+
+    inputHandler_.setLegacyEventScriptDispatcher([this, invokeTarget, collectMovieScriptTargets](PlayerEvent event) {
+        const std::string_view propName = legacyEventScriptProperty(event);
+        if (propName.empty()) {
+            return InputHandler::LegacyEventScriptResult{};
+        }
+
+        const auto handlerName = legacyEventHandlerName(movieProperties_.getMovieProp(propName));
+        if (!handlerName.has_value()) {
+            return InputHandler::LegacyEventScriptResult{};
+        }
+
+        InputHandler::LegacyEventScriptResult aggregate;
+        eventDispatcher().resetEventStopped();
+        for (const auto& movie : collectMovieScriptTargets()) {
+            if (!movie.script || movie.script->resolvedScriptType() != chunks::ScriptChunkType::MovieScript) {
+                continue;
+            }
+
+            event::EventTarget target;
+            target.kind = event::EventTargetKind::MovieScript;
+            target.script = movie.script;
+            target.scriptNames = movie.scriptNames;
+            target.scriptOwner = movie.scriptOwner;
+            const auto result = invokeTarget(target, *handlerName, {});
+            if (!result.handled) {
+                continue;
+            }
+
+            aggregate.handled = true;
+            aggregate.passed = result.passed;
+            if (!result.passed || eventDispatcher().isEventStopped()) {
+                break;
+            }
+        }
+        return aggregate;
     });
+
+    eventDispatcher().setScriptNamesResolver([this](const std::shared_ptr<chunks::ScriptChunk>& script) {
+        return file_ != nullptr ? file_->getScriptNamesForScript(script) : nullptr;
+    });
+    eventDispatcher().setMovieScriptSupplier(collectMovieScriptTargets);
     eventDispatcher().setRespondsPredicate([findEventHandler](const event::EventTarget& target,
                                                               std::string_view handlerName) {
         return findEventHandler(target, handlerName).has_value();
