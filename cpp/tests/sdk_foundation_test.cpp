@@ -28122,6 +28122,41 @@ void testCastLibManagerFoundation() {
     assert(!runtimeShape->shapeFilled());
     assert(runtimeShape->shapeLineSize() == 4);
     assert(runtimeShape->shapePattern() == 2);
+    assert(manager.getMemberProp(1, 10003, "width").intValue() == 0);
+    assert(manager.getMemberProp(1, 10003, "height").intValue() == 0);
+    assert(manager.setMemberProp(1, 10003, "width", Datum::of(12)));
+    assert(manager.setMemberProp(1, 10003, "height", Datum::of(9)));
+    assert(manager.getMemberProp(1, 10003, "width").intValue() == 12);
+    assert(manager.getMemberProp(1, 10003, "height").intValue() == 9);
+    assert(manager.setMemberProp(1, 10003, "rect", Datum::intRect(3, 4, 33, 24)));
+    assert(manager.getMemberProp(1, 10003, "width").intValue() == 30);
+    assert(manager.getMemberProp(1, 10003, "height").intValue() == 20);
+    const auto runtimeShapeRect = manager.getMemberProp(1, 10003, "rect").asIntRect();
+    assert(runtimeShapeRect != nullptr);
+    assert(runtimeShapeRect->left == 0);
+    assert(runtimeShapeRect->top == 0);
+    assert(runtimeShapeRect->right == 30);
+    assert(runtimeShapeRect->bottom == 20);
+    SpriteRegistry shapeSpriteRegistry;
+    SpriteProperties shapeSpriteProps(&shapeSpriteRegistry);
+    shapeSpriteProps.setMemberInfoResolver([runtimeShape](int castLib, int memberNum)
+        -> std::optional<SpriteProperties::MemberInfo> {
+        if (castLib != 1 || memberNum != 10003) {
+            return std::nullopt;
+        }
+        SpriteProperties::MemberInfo info;
+        info.width = runtimeShape->width();
+        info.height = runtimeShape->height();
+        info.regX = runtimeShape->regX();
+        info.regY = runtimeShape->regY();
+        info.runtimeDynamic = runtimeShape->isRuntimeDynamic();
+        return info;
+    });
+    assert(shapeSpriteProps.setSpriteProp(44, "member", Datum::castMemberRef(CastLibId(1), MemberId(10003))));
+    auto runtimeShapeSprite = shapeSpriteRegistry.get(44);
+    assert(runtimeShapeSprite != nullptr);
+    assert(runtimeShapeSprite->width() == 30);
+    assert(runtimeShapeSprite->height() == 20);
 
     const auto copiedRuntimeField = manager.createMember(1, "text");
     const auto* copiedRuntimeFieldRef = copiedRuntimeField.asCastMemberRef();

@@ -171,6 +171,31 @@ void CastMember::setShapePattern(int pattern) {
     shapePattern_ = std::max(1, pattern);
 }
 
+void CastMember::setShapeWidth(int width) {
+    if (!isShape()) {
+        return;
+    }
+    ensureRuntimeShapeInfo();
+    shapeInfo_->width = std::max(0, width);
+}
+
+void CastMember::setShapeHeight(int height) {
+    if (!isShape()) {
+        return;
+    }
+    ensureRuntimeShapeInfo();
+    shapeInfo_->height = std::max(0, height);
+}
+
+void CastMember::setShapeSize(int width, int height) {
+    if (!isShape()) {
+        return;
+    }
+    ensureRuntimeShapeInfo();
+    shapeInfo_->width = std::max(0, width);
+    shapeInfo_->height = std::max(0, height);
+}
+
 std::shared_ptr<bitmap::Bitmap> CastMember::runtimeBitmap() const {
     return runtimeBitmap_;
 }

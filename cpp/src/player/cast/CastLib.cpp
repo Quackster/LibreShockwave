@@ -899,6 +899,22 @@ bool CastLib::setMemberProp(int memberNumber, const std::string& propName, const
             member->setShapePattern(value.intValue());
             return true;
         }
+        if (prop == "width") {
+            member->setShapeWidth(value.intValue());
+            return true;
+        }
+        if (prop == "height") {
+            member->setShapeHeight(value.intValue());
+            return true;
+        }
+        if (prop == "rect") {
+            const auto* rect = value.asIntRect();
+            if (rect == nullptr) {
+                return false;
+            }
+            member->setShapeSize(rect->width(), rect->height());
+            return true;
+        }
     }
     if (member->isBitmap() && prop == "width") {
         const int newWidth = value.intValue();

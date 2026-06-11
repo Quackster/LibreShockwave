@@ -74,6 +74,9 @@ public:
     void setShapeLineSize(int lineSize);
     [[nodiscard]] int shapePattern() const;
     void setShapePattern(int pattern);
+    void setShapeWidth(int width);
+    void setShapeHeight(int height);
+    void setShapeSize(int width, int height);
     [[nodiscard]] bool hasDynamicText() const;
     [[nodiscard]] std::string textContent() const;
     void setDynamicText(std::string text);
