@@ -1,0 +1,100 @@
+#pragma once
+
+#include <cstdint>
+
+#include "libreshockwave/player/web/WasmRuntime.hpp"
+
+#if defined(__EMSCRIPTEN__)
+#include <emscripten/emscripten.h>
+#define LIBRESHOCKWAVE_WASM_EXPORT extern "C" EMSCRIPTEN_KEEPALIVE
+#else
+#define LIBRESHOCKWAVE_WASM_EXPORT extern "C"
+#endif
+
+namespace libreshockwave::player::web {
+
+[[nodiscard]] WasmRuntime& wasmExportRuntime();
+
+} // namespace libreshockwave::player::web
+
+LIBRESHOCKWAVE_WASM_EXPORT std::uintptr_t libreshockwave_wasm_allocate_buffer(int size);
+LIBRESHOCKWAVE_WASM_EXPORT std::uintptr_t libreshockwave_wasm_get_string_buffer_address();
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_string_buffer_capacity();
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_load_movie(int movieSize, int basePathLen);
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_set_initial_builtin_symbol(int keyLen, int valueLen);
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_set_movie_property(int keyLen, int valueLen);
+
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_read_next_goto_net_page();
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_read_next_goto_net_movie();
+
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_preload_casts();
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_play();
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_tick();
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_pause();
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_stop();
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_go_to_frame(int frame);
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_step_forward();
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_step_backward();
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_current_frame();
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_frame_count();
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_tempo();
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_set_puppet_tempo(int tempo);
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_stage_width();
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_stage_height();
+
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_set_external_param(int keyLen, int valueLen);
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_clear_external_params();
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_mouse_move(int stageX, int stageY);
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_mouse_down(int stageX, int stageY, int button);
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_mouse_up(int stageX, int stageY, int button);
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_blur();
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_key_down(int browserKeyCode, int keyCharLen, int modifiers);
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_key_up(int browserKeyCode, int keyCharLen, int modifiers);
+
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_pending_fetch_count();
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_pending_fetch_task_id(int index);
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_pending_fetch_url(int index);
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_pending_fetch_method(int index);
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_pending_fetch_post_data(int index);
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_pending_fetch_fallback_count(int index);
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_pending_fetch_fallback_url(int index, int fallbackIndex);
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_drain_pending_fetches();
+LIBRESHOCKWAVE_WASM_EXPORT std::uintptr_t libreshockwave_wasm_allocate_net_buffer(int size);
+LIBRESHOCKWAVE_WASM_EXPORT std::uintptr_t libreshockwave_wasm_get_net_buffer_address();
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_deliver_fetch_result(int taskId, int dataSize);
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_deliver_fetch_status(int taskId, int byteCount);
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_deliver_fetch_error(int taskId, int status);
+
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_pending_jpeg_decode_count();
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_pending_jpeg_decode_id(int index);
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_pending_jpeg_decode_data(int id);
+LIBRESHOCKWAVE_WASM_EXPORT std::uintptr_t libreshockwave_wasm_get_pending_jpeg_decode_data_address();
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_deliver_jpeg_decode_result(
+    int id, int width, int height, int dataLen);
+
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_audio_pending_count();
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_audio_pending_action(int index);
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_audio_pending_channel(int index);
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_audio_pending_format(int index);
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_audio_pending_loop_count(int index);
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_audio_pending_volume(int index);
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_audio_pending_data(int index);
+LIBRESHOCKWAVE_WASM_EXPORT std::uintptr_t libreshockwave_wasm_get_audio_buffer_address();
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_drain_audio_pending();
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_audio_notify_stopped(int channelNum);
+
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_mus_pending_count();
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_mus_pending_type(int index);
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_mus_pending_instance_id(int index);
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_mus_pending_host(int index);
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_mus_pending_port(int index);
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_mus_pending_send_data(int index);
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_drain_mus_pending();
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_mus_deliver_connected(int instanceId);
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_mus_deliver_disconnected(int instanceId);
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_mus_deliver_error(int instanceId, int errorCode);
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_mus_deliver_message(int instanceId, int dataLen);
+
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_last_error();
+
+#undef LIBRESHOCKWAVE_WASM_EXPORT

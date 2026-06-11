@@ -234,6 +234,7 @@
 #include "libreshockwave/player/score/SpriteSpan.hpp"
 #include "libreshockwave/player/sprite/SpriteState.hpp"
 #include "libreshockwave/player/timeout/TimeoutManager.hpp"
+#include "libreshockwave/player/web/WasmExports.hpp"
 #include "libreshockwave/player/web/WasmPlayer.hpp"
 #include "libreshockwave/player/web/WasmRuntime.hpp"
 #include "libreshockwave/player/xtra/QueuedMultiuserBridge.hpp"
@@ -22211,6 +22212,261 @@ void testWasmRuntimeBridgeFoundation() {
     runtime.shutdown();
 }
 
+void testWasmExportsFoundation() {
+    using libreshockwave::player::web::wasmExportRuntime;
+
+    auto appendFourCC = [](std::vector<std::uint8_t>& data, std::string_view value) {
+        data.insert(data.end(), value.begin(), value.end());
+    };
+    auto appendI16 = [](std::vector<std::uint8_t>& data, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data.push_back(static_cast<std::uint8_t>((raw >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(raw & 0xFF));
+    };
+    auto appendI32 = [](std::vector<std::uint8_t>& data, std::uint32_t value) {
+        data.push_back(static_cast<std::uint8_t>((value >> 24) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 16) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(value & 0xFF));
+    };
+    auto putI16At = [](std::vector<std::uint8_t>& data, int offset, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((raw >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>(raw & 0xFF);
+    };
+    auto putI32At = [](std::vector<std::uint8_t>& data, int offset, std::uint32_t value) {
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((value >> 24) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>((value >> 16) & 0xFF);
+        data[static_cast<std::size_t>(offset + 2)] = static_cast<std::uint8_t>((value >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 3)] = static_cast<std::uint8_t>(value & 0xFF);
+    };
+    auto buildRifx = [&](const std::vector<std::pair<std::string, std::vector<std::uint8_t>>>& chunks) {
+        constexpr int mmapOffset = 32;
+        const int mmapPayloadLength = 24 + static_cast<int>(chunks.size()) * 20;
+        int payloadStart = mmapOffset + 8 + mmapPayloadLength;
+
+        std::vector<int> offsets;
+        offsets.reserve(chunks.size());
+        for (const auto& chunk : chunks) {
+            offsets.push_back(payloadStart - 8);
+            payloadStart += static_cast<int>(chunk.second.size());
+        }
+
+        std::vector<std::uint8_t> data;
+        appendFourCC(data, "RIFX");
+        appendI32(data, 0);
+        appendFourCC(data, "MV93");
+        appendFourCC(data, "imap");
+        appendI32(data, 12);
+        appendI32(data, 1);
+        appendI32(data, mmapOffset);
+        appendI32(data, 0x0207);
+        appendFourCC(data, "mmap");
+        appendI32(data, static_cast<std::uint32_t>(mmapPayloadLength));
+        appendI16(data, 24);
+        appendI16(data, 20);
+        appendI32(data, static_cast<std::uint32_t>(chunks.size()));
+        appendI32(data, static_cast<std::uint32_t>(chunks.size()));
+        appendI32(data, 0);
+        appendI32(data, 0);
+        appendI32(data, 0);
+        for (int index = 0; index < static_cast<int>(chunks.size()); ++index) {
+            appendI32(data, BinaryReader::fourCC(chunks[static_cast<std::size_t>(index)].first));
+            appendI32(data, static_cast<std::uint32_t>(chunks[static_cast<std::size_t>(index)].second.size()));
+            appendI32(data, static_cast<std::uint32_t>(offsets[static_cast<std::size_t>(index)]));
+            appendI16(data, 0);
+            appendI16(data, 0);
+            appendI32(data, 0);
+        }
+        for (const auto& chunk : chunks) {
+            data.insert(data.end(), chunk.second.begin(), chunk.second.end());
+        }
+        putI32At(data, 4, static_cast<std::uint32_t>(data.size() - 8));
+        return data;
+    };
+
+    std::vector<std::uint8_t> configData(80, 0);
+    putI16At(configData, 2, 0x0207);
+    putI16At(configData, 8, 90);
+    putI16At(configData, 10, 160);
+    putI16At(configData, 36, 0x0207);
+    putI16At(configData, 54, 18);
+    const auto movieData = buildRifx({{"DRCF", configData}});
+
+    auto* movieBuffer = reinterpret_cast<std::uint8_t*>(
+        libreshockwave_wasm_allocate_buffer(static_cast<int>(movieData.size())));
+    assert(movieBuffer != nullptr);
+    std::memcpy(movieBuffer, movieData.data(), movieData.size());
+
+    auto* stringBuffer = reinterpret_cast<std::uint8_t*>(libreshockwave_wasm_get_string_buffer_address());
+    assert(stringBuffer != nullptr);
+    assert(libreshockwave_wasm_get_string_buffer_capacity() >= 65536);
+    auto writeStringBuffer = [&](std::string_view value, int offset = 0) {
+        std::memcpy(stringBuffer + offset, value.data(), value.size());
+    };
+    auto readStringBuffer = [&](int length, int offset = 0) {
+        return std::string(reinterpret_cast<char*>(stringBuffer + offset), static_cast<std::size_t>(length));
+    };
+
+    const std::string basePath = "https://example.invalid/wasm/entry.dir";
+    writeStringBuffer(basePath);
+    assert(libreshockwave_wasm_load_movie(static_cast<int>(movieData.size()),
+                                          static_cast<int>(basePath.size())) == ((160 << 16) | 90));
+    auto& runtime = wasmExportRuntime();
+    assert(runtime.player() != nullptr);
+    assert(runtime.player()->player() != nullptr);
+    assert(libreshockwave_wasm_stage_width() == 160);
+    assert(libreshockwave_wasm_stage_height() == 90);
+    assert(libreshockwave_wasm_tempo() == 18);
+    libreshockwave_wasm_set_puppet_tempo(27);
+    assert(libreshockwave_wasm_tempo() == 27);
+    assert(libreshockwave_wasm_current_frame() >= 0);
+    assert(libreshockwave_wasm_frame_count() >= 0);
+    assert(libreshockwave_wasm_preload_casts() == 0);
+    assert(libreshockwave_wasm_tick() == 0);
+    libreshockwave_wasm_pause();
+    libreshockwave_wasm_stop();
+    libreshockwave_wasm_go_to_frame(1);
+    libreshockwave_wasm_step_forward();
+    libreshockwave_wasm_step_backward();
+
+    writeStringBuffer("sw1beta");
+    libreshockwave_wasm_set_external_param(3, 4);
+    assert(runtime.player()->player()->externalParams().size() == 1);
+    assert(runtime.player()->player()->externalParams()[0].first == "sw1");
+    assert(runtime.player()->player()->externalParams()[0].second == "beta");
+    libreshockwave_wasm_clear_external_params();
+    assert(runtime.player()->player()->externalParams().empty());
+
+    libreshockwave_wasm_mouse_move(31, 41);
+    assert(runtime.player()->player()->inputState().mouseH() == 31);
+    assert(runtime.player()->player()->inputState().mouseV() == 41);
+    libreshockwave_wasm_mouse_down(32, 42, 0);
+    assert(runtime.player()->player()->inputState().isMouseDown());
+    libreshockwave_wasm_mouse_up(33, 43, 0);
+    assert(!runtime.player()->player()->inputState().isMouseDown());
+    writeStringBuffer("q");
+    libreshockwave_wasm_key_down(81, 1, 1);
+    assert(runtime.player()->player()->inputState().lastKey() == "q");
+    assert(runtime.player()->player()->inputState().isShiftDown());
+    libreshockwave_wasm_key_up(81, 1, 0);
+    assert(!runtime.player()->player()->inputState().isShiftDown());
+    libreshockwave_wasm_blur();
+
+    runtime.player()->player()->movieProperties().gotoNetPage("https://example.invalid/page", "_blank");
+    int pageLengths = libreshockwave_wasm_read_next_goto_net_page();
+    const int pageUrlLen = (pageLengths >> 16) & 0xFFFF;
+    const int pageTargetLen = pageLengths & 0xFFFF;
+    assert(readStringBuffer(pageUrlLen) == "https://example.invalid/page");
+    assert(readStringBuffer(pageTargetLen, pageUrlLen) == "_blank");
+    assert(libreshockwave_wasm_read_next_goto_net_page() == 0);
+
+    (void)runtime.player()->player()->movieProperties().gotoNetMovie("next.dir");
+    int movieUrlLen = libreshockwave_wasm_read_next_goto_net_movie();
+    assert(readStringBuffer(movieUrlLen) == "next.dir");
+    assert(libreshockwave_wasm_read_next_goto_net_movie() == 0);
+
+    const int fetchTask = runtime.player()->netProvider()->preloadNetThing("asset.txt");
+    assert(libreshockwave_wasm_get_pending_fetch_count() == 1);
+    assert(libreshockwave_wasm_get_pending_fetch_task_id(0) == fetchTask);
+    int fetchUrlLen = libreshockwave_wasm_get_pending_fetch_url(0);
+    assert(readStringBuffer(fetchUrlLen) == "https://example.invalid/wasm/asset.txt");
+    assert(libreshockwave_wasm_get_pending_fetch_method(0) == 0);
+    assert(libreshockwave_wasm_get_pending_fetch_post_data(0) == 0);
+    assert(libreshockwave_wasm_get_pending_fetch_fallback_count(0) >= 0);
+
+    auto* netBuffer = reinterpret_cast<std::uint8_t*>(libreshockwave_wasm_allocate_net_buffer(2));
+    assert(netBuffer != nullptr);
+    netBuffer[0] = 'O';
+    netBuffer[1] = 'K';
+    assert(libreshockwave_wasm_get_net_buffer_address() == reinterpret_cast<std::uintptr_t>(netBuffer));
+    libreshockwave_wasm_deliver_fetch_result(fetchTask, 2);
+    assert(runtime.player()->netProvider()->netTextResult(fetchTask) == "OK");
+    libreshockwave_wasm_drain_pending_fetches();
+    assert(libreshockwave_wasm_get_pending_fetch_count() == 0);
+
+    const int postTask = runtime.player()->netProvider()->postNetText("submit", "name=value");
+    assert(libreshockwave_wasm_get_pending_fetch_task_id(0) == postTask);
+    assert(libreshockwave_wasm_get_pending_fetch_method(0) == 1);
+    int postDataLen = libreshockwave_wasm_get_pending_fetch_post_data(0);
+    assert(readStringBuffer(postDataLen) == "name=value");
+    libreshockwave_wasm_deliver_fetch_status(postTask, 42);
+    assert(runtime.player()->netProvider()->netDone(postTask));
+    const int errorTask = runtime.player()->netProvider()->preloadNetThing("missing.bin");
+    libreshockwave_wasm_deliver_fetch_error(errorTask, 500);
+    assert(runtime.player()->netProvider()->netError(errorTask) == 500);
+    libreshockwave_wasm_drain_pending_fetches();
+
+    runtime.player()->audioBackend()->play(1, {'R', 'I', 'F', 'F'}, "wav", 2);
+    assert(libreshockwave_wasm_get_audio_pending_count() == 1);
+    int audioActionLen = libreshockwave_wasm_get_audio_pending_action(0);
+    assert(readStringBuffer(audioActionLen) == "play");
+    assert(libreshockwave_wasm_get_audio_pending_channel(0) == 1);
+    int audioFormatLen = libreshockwave_wasm_get_audio_pending_format(0);
+    assert(readStringBuffer(audioFormatLen) == "wav");
+    assert(libreshockwave_wasm_get_audio_pending_loop_count(0) == 2);
+    assert(libreshockwave_wasm_get_audio_pending_volume(0) == 255);
+    assert(libreshockwave_wasm_get_audio_pending_data(0) == 4);
+    auto* audioBuffer = reinterpret_cast<std::uint8_t*>(libreshockwave_wasm_get_audio_buffer_address());
+    assert(audioBuffer != nullptr);
+    assert((std::vector<std::uint8_t>(audioBuffer, audioBuffer + 4) ==
+            std::vector<std::uint8_t>({'R', 'I', 'F', 'F'})));
+    libreshockwave_wasm_drain_audio_pending();
+    assert(libreshockwave_wasm_get_audio_pending_count() == 0);
+    libreshockwave_wasm_audio_notify_stopped(1);
+    assert(!runtime.player()->audioBackend()->isPlaying(1));
+
+    runtime.player()->multiuserBridge()->requestConnect(55, "multiuser.example", 1626, 0);
+    assert(libreshockwave_wasm_get_mus_pending_count() == 1);
+    assert(libreshockwave_wasm_get_mus_pending_type(0) == QueuedMultiuserBridge::REQ_CONNECT);
+    assert(libreshockwave_wasm_get_mus_pending_instance_id(0) == 55);
+    int musHostLen = libreshockwave_wasm_get_mus_pending_host(0);
+    assert(readStringBuffer(musHostLen) == "multiuser.example");
+    assert(libreshockwave_wasm_get_mus_pending_port(0) == 1626);
+    libreshockwave_wasm_drain_mus_pending();
+    libreshockwave_wasm_mus_deliver_connected(55);
+    assert(runtime.player()->multiuserBridge()->isConnected(55));
+    writeStringBuffer("pong");
+    libreshockwave_wasm_mus_deliver_message(55, 4);
+    auto musMessages = runtime.player()->multiuserBridge()->pollMessages(55);
+    assert(musMessages.size() == 1);
+    libreshockwave_wasm_mus_deliver_error(55, 9);
+    musMessages = runtime.player()->multiuserBridge()->pollMessages(55);
+    assert(musMessages.size() == 1);
+    assert(musMessages[0].errorCode == 9);
+    libreshockwave_wasm_mus_deliver_disconnected(55);
+    assert(!runtime.player()->multiuserBridge()->isConnected(55));
+
+    DirectorFile::clearJpegDecodePending();
+    const std::vector<std::uint8_t> jpegData{0xFF, 0xD8, 0x45, 0x67, 0xFF, 0xD9};
+    const int jpegId = QueuedJpegDecoder::idFor(jpegData);
+    assert(!runtime.player()->jpegDecoder()->decode(jpegData).has_value());
+    assert(libreshockwave_wasm_get_pending_jpeg_decode_count() == 1);
+    assert(libreshockwave_wasm_get_pending_jpeg_decode_id(0) == jpegId);
+    assert(libreshockwave_wasm_get_pending_jpeg_decode_data(jpegId) == static_cast<int>(jpegData.size()));
+    auto* jpegPending = reinterpret_cast<std::uint8_t*>(
+        libreshockwave_wasm_get_pending_jpeg_decode_data_address());
+    assert(jpegPending != nullptr);
+    assert((std::vector<std::uint8_t>(jpegPending, jpegPending + jpegData.size()) == jpegData));
+    netBuffer = reinterpret_cast<std::uint8_t*>(libreshockwave_wasm_allocate_net_buffer(4));
+    netBuffer[0] = 0x01;
+    netBuffer[1] = 0x02;
+    netBuffer[2] = 0x03;
+    netBuffer[3] = 0x04;
+    libreshockwave_wasm_deliver_jpeg_decode_result(jpegId, 1, 1, 4);
+    auto decoded = runtime.player()->jpegDecoder()->decode(jpegData);
+    assert(decoded.has_value());
+    assert(decoded->getPixel(0, 0) == 0x04010203U);
+    DirectorFile::setJpegDecoder(DirectorFile::JpegDecoder{});
+    DirectorFile::clearJpegDecodePending();
+
+    runtime.player()->player()->vm().fireTraceError("Export error", "detail");
+    int errorLen = libreshockwave_wasm_get_last_error();
+    assert(readStringBuffer(errorLen) == "Export error: detail");
+    assert(libreshockwave_wasm_get_last_error() == 0);
+    runtime.shutdown();
+}
+
 void testTimeoutManagerFoundation() {
     TimeoutManager manager;
     assert(manager.getTimeoutCount() == 0);
@@ -27100,6 +27356,7 @@ int main() {
     testQueuedJpegDecoderFoundation();
     testWasmPlayerWrapperFoundation();
     testWasmRuntimeBridgeFoundation();
+    testWasmExportsFoundation();
     testTimeoutManagerFoundation();
     testPaletteAndColorRefs();
     testBitmapAlphaAndPaletteBehavior();

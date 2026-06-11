@@ -217,6 +217,7 @@ add_library(libreshockwave
     src/player/score/SpriteSpan.cpp
     src/player/sprite/SpriteState.cpp
     src/player/timeout/TimeoutManager.cpp
+    src/player/web/WasmExports.cpp
     src/player/web/WasmPlayer.cpp
     src/player/web/WasmRuntime.cpp
     src/player/xtra/QueuedMultiuserBridge.cpp
