@@ -18105,6 +18105,16 @@ void testSpritePropertiesFoundation() {
     assert(sprite->trails() == 4);
     assert(sprite->foreColor() == 0x010203);
     assert(sprite->backColor() == 0xAABBCC);
+    const auto* spriteColor = props.getSpriteProp(3, "color").asColorRef();
+    assert(spriteColor != nullptr);
+    assert(spriteColor->r == 0x01);
+    assert(spriteColor->g == 0x02);
+    assert(spriteColor->b == 0x03);
+    const auto* spriteBgColor = props.getSpriteProp(3, "bgColor").asColorRef();
+    assert(spriteBgColor != nullptr);
+    assert(spriteBgColor->r == 0xAA);
+    assert(spriteBgColor->g == 0xBB);
+    assert(spriteBgColor->b == 0xCC);
     assert(props.getSpriteProp(3, "constraint").intValue() == 12);
     assert(props.getSpriteProp(3, "immediate").boolValue());
     assert(props.getSpriteProp(3, "lineSize").intValue() == 6);

@@ -69,6 +69,10 @@ bool isLegacySpriteRuntimeProp(std::string_view prop) {
     return defaultLegacySpriteProp(prop).has_value();
 }
 
+lingo::Datum rgbColorDatum(int rgb) {
+    return lingo::Datum::colorRef((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
+}
+
 } // namespace
 
 SpriteProperties::SpriteProperties(render::SpriteRegistry* registry)
@@ -129,6 +133,8 @@ lingo::Datum SpriteProperties::getSpriteProp(int spriteNum, std::string_view pro
     if (prop == "stretch") return lingo::Datum::of(sprite->stretch());
     if (prop == "forecolor") return lingo::Datum::of(sprite->foreColor());
     if (prop == "backcolor") return lingo::Datum::of(sprite->backColor());
+    if (prop == "color") return rgbColorDatum(sprite->foreColor());
+    if (prop == "bgcolor") return rgbColorDatum(sprite->backColor());
     if (prop == "left") return lingo::Datum::of(resolveSpriteBounds(*sprite).left);
     if (prop == "top") return lingo::Datum::of(resolveSpriteBounds(*sprite).top);
     if (prop == "right") return lingo::Datum::of(resolveSpriteBounds(*sprite).right);
@@ -516,6 +522,7 @@ lingo::Datum SpriteProperties::defaultProp(int spriteNum, std::string_view prop)
         prop == "forecolor" || prop == "backcolor") {
         return lingo::Datum::of(0);
     }
+    if (prop == "color" || prop == "bgcolor") return rgbColorDatum(0);
     if (prop == "loc") return lingo::Datum::intPoint(0, 0);
     if (prop == "rect") return lingo::Datum::intRect(0, 0, 0, 0);
     if (prop == "spritenum") return lingo::Datum::of(spriteNum);
