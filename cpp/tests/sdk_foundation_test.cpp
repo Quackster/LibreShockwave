@@ -73,6 +73,7 @@
 #include "libreshockwave/chunks/SoundChunk.hpp"
 #include "libreshockwave/chunks/TextChunk.hpp"
 #include "libreshockwave/editor/AppModels.hpp"
+#include "libreshockwave/editor/EditorShellModels.hpp"
 #include "libreshockwave/editor/audio/EditorAudioModels.hpp"
 #include "libreshockwave/editor/debug/DebugBrowserModels.hpp"
 #include "libreshockwave/editor/debug/DebugDisplayItems.hpp"
@@ -285,9 +286,16 @@ using libreshockwave::chunks::SoundChunk;
 using libreshockwave::chunks::TextChunk;
 using libreshockwave::editor::ExternalParamRow;
 using libreshockwave::editor::ExternalParamsTableModel;
+using libreshockwave::editor::EditorAccelerator;
+using libreshockwave::editor::EditorCommand;
+using libreshockwave::editor::EditorMenuItem;
+using libreshockwave::editor::EditorMenuModel;
+using libreshockwave::editor::EditorToolBarModel;
 using libreshockwave::editor::PreferencesModel;
 using libreshockwave::editor::RecentProjectEntry;
 using libreshockwave::editor::StartScreenModel;
+using libreshockwave::editor::ToolbarItem;
+using libreshockwave::editor::commandName;
 using libreshockwave::editor::audio::AudioPlaybackController;
 using libreshockwave::editor::audio::EditorAudioBackend;
 using libreshockwave::editor::audio::EditorAudioClip;
@@ -1624,6 +1632,81 @@ void testEditorAppShellModels() {
     assert(params.rowCount() == 5);
     assert(params.rows()[0].key == "sw1");
     assert(params.rows()[4].value.find("external.variables.txt") != std::string::npos);
+}
+
+void testEditorShellActionModels() {
+    EditorMenuModel menus;
+    assert(menus.menus().size() == 9);
+    assert(menus.menus()[0].label == "File");
+    assert(menus.menus()[0].mnemonic == 'F');
+    assert(menus.findMenu("Control") != nullptr);
+    assert(menus.findMenu("Missing") == nullptr);
+
+    const auto* open = menus.findCommand(EditorCommand::Open);
+    assert(open != nullptr);
+    assert(open->label == "Open...");
+    assert(open->enabled);
+    assert(open->accelerator.has_value());
+    assert(open->accelerator.value() == (EditorAccelerator{"O", true, false, false}));
+
+    const auto* newMovie = menus.findCommand(EditorCommand::NewMovie);
+    assert(newMovie != nullptr);
+    assert(!newMovie->enabled);
+    assert(newMovie->accelerator.value() == (EditorAccelerator{"N", true, false, false}));
+
+    const auto* externalParams = menus.findCommand(EditorCommand::ExternalParameters);
+    assert(externalParams != nullptr);
+    assert(externalParams->label == "External Parameters...");
+    assert(externalParams->accelerator.value() == (EditorAccelerator{"E", true, false, true}));
+
+    const auto* loop = menus.findCommand(EditorCommand::LoopPlayback);
+    assert(loop != nullptr);
+    assert(loop->kind == EditorMenuItem::Kind::Check);
+    assert(loop->checked);
+
+    const auto* toggleBreakpoint = menus.findCommand(EditorCommand::ToggleBreakpoint);
+    assert(toggleBreakpoint != nullptr);
+    assert(!toggleBreakpoint->enabled);
+    assert(toggleBreakpoint->accelerator.value() == (EditorAccelerator{"F9", false, false, false}));
+
+    const auto* detailedStack = menus.findCommand(EditorCommand::DetailedStackWindow);
+    assert(detailedStack != nullptr);
+    assert(detailedStack->kind == EditorMenuItem::Kind::Check);
+    assert(!detailedStack->checked);
+    assert(detailedStack->accelerator.value() == (EditorAccelerator{"S", true, false, true}));
+
+    const auto* windowMenu = menus.findMenu("Window");
+    assert(windowMenu != nullptr);
+    assert(windowMenu->items[0].kind == EditorMenuItem::Kind::Check);
+    assert(windowMenu->items[0].panelId == "stage");
+    assert(windowMenu->items[0].accelerator.value() == (EditorAccelerator{"1", true, false, false}));
+    assert(menus.findCommand(EditorCommand::ResetLayout) != nullptr);
+
+    const auto generatedWindowItems = menus.windowItems({{"stage", true}, {"score", false}});
+    assert(generatedWindowItems.size() == 2);
+    assert(generatedWindowItems[0].kind == EditorMenuItem::Kind::Check);
+    assert(generatedWindowItems[0].panelId == "stage");
+    assert(generatedWindowItems[0].checked);
+    assert(!generatedWindowItems[1].checked);
+
+    assert((EditorMenuModel::traceHandlersFromInput(" startMovie, mouseUp ,, enterFrame ") ==
+            std::vector<std::string>{"startMovie", "mouseUp", "enterFrame"}));
+    assert(EditorMenuModel::traceHandlersFromInput(" , ").empty());
+    assert(commandName(EditorCommand::StepForward) == "stepForward");
+    assert(commandName(EditorCommand::About) == "about");
+
+    EditorToolBarModel toolbar;
+    assert(toolbar.items().size() == 8);
+    assert(toolbar.items()[0] == (ToolbarItem{ToolbarItem::Kind::Button, "Rewind", "Rewind", EditorCommand::Rewind}));
+    assert(toolbar.items()[1].command == EditorCommand::Stop);
+    assert(toolbar.items()[2].command == EditorCommand::Play);
+    assert(toolbar.items()[3].kind == ToolbarItem::Kind::Separator);
+    assert(toolbar.items()[4].command == EditorCommand::StepBackward);
+    assert(toolbar.items()[5].command == EditorCommand::StepForward);
+    assert(toolbar.items()[7].kind == ToolbarItem::Kind::Label);
+    assert(toolbar.items()[7].label == "Frame: 1");
+    assert(EditorToolBarModel::frameLabel(7, 30) == "Frame: 7 / 30");
+    assert(EditorToolBarModel::frameLabel(7) == "Frame: 1");
 }
 
 void testEditorModelAndSelectionFoundation() {
@@ -22250,6 +22333,7 @@ int main() {
     testUtilityFormatting();
     testEditorFormattingAndScriptHelpers();
     testEditorAppShellModels();
+    testEditorShellActionModels();
     testEditorModelAndSelectionFoundation();
     testEditorAudioModels();
     testEditorDockingModels();

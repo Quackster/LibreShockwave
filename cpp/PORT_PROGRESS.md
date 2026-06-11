@@ -213,6 +213,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `editor::audio::EditorAudioModels` ports Java's sound-member playback controller state, status/state callbacks, timer-position updates, seek/pause/stop behavior, and eight-channel editor audio backend state behind GTK-pluggable clip/backend interfaces.
 - `editor::docking::DockingModels` ports Java's recursive docking layout state for center nodes, tab leaves, binary splits, edge docking, adjacent splits, tab splitting, undock collapse, default layout replay, and compact JSON serialization as GTK-neutral panel layout data.
 - `editor::AppModels` ports Java's preferences/recent-project/movie-params state, start-screen recent-project option modeling, Director file extension list, and external-params table/Habbo preset behavior for a future GTK app shell.
+- `editor::EditorShellModels` ports Java's Director-style menu tree, command identifiers, enabled/check states, accelerators, window panel toggles, trace-handler input parsing, toolbar command order, and frame label formatting as GTK-neutral shell metadata.
 
 ### Bitmap Colorizer
 
@@ -917,7 +918,7 @@ Result:
 - W3D entry, typed resource, transform, texture format, and lookup tests passed through the same CTest executable.
 - Generated font Base64/zlib decode, wrong-length, and invalid-deflate tests passed through the same CTest executable.
 - File/path fallback utilities, shared string display/HTML escaping helpers, string chunk counting/extraction helpers, Java-compatible ImageMethodDispatcher/StringMethodDispatcher/ListMethodDispatcher/MemberRegistryMethodDispatcher/PropListMethodDispatcher/ScriptInstanceMethodDispatcher/SoundChannelMethodDispatcher receiver methods, and script formatting utilities passed through the same CTest executable.
-- Editor app-shell preferences/start-screen/external-param table models, channel-name formatting, palette descriptions, bytecode instruction formatting, preview text formatting, palette/script/sound/text/generic preview generation, sound/script/text/palette/generic asset extraction, property-inspector row models, script editor dropdown/document/highlight models, editor audio playback/backend models, docking layout models, score color lookup, model record display strings, selection manager notifications, playback-head clamping, score model color storage, score appearance formatting, score-grid/frame-label/frame-script display helpers, member association/detail scanning, Lingo keyword tables, and Lingo tokenizer behavior passed through the same CTest executable.
+- Editor app-shell preferences/start-screen/external-param table models, menu/toolbar shell action metadata, channel-name formatting, palette descriptions, bytecode instruction formatting, preview text formatting, palette/script/sound/text/generic preview generation, sound/script/text/palette/generic asset extraction, property-inspector row models, script editor dropdown/document/highlight models, editor audio playback/backend models, docking layout models, score color lookup, model record display strings, selection manager notifications, playback-head clamping, score model color storage, score appearance formatting, score-grid/frame-label/frame-script display helpers, member association/detail scanning, Lingo keyword tables, and Lingo tokenizer behavior passed through the same CTest executable.
 - BitmapColorizer 32-bit, indexed, foreground-only, packed-index, and ink predicate tests passed through the same CTest executable.
 - PfrBitReader byte, signed, skip, alignment, bit-buffer, and partial-EOF tests passed through the same CTest executable.
 - BitmapFont glyph drawing, overflow metrics, BDF parsing, direct PFR outline/bitmap/curve glyph rasterization, PFR1 metadata/character-record/simple/compound/curve-outline parsing, PFR-to-TTF table generation/cache registration, pure TTF bitmap rasterization with the bundled Verdana fixture, FontRegistry prebuilt-cache/PFR-registration/rasterization/size-aware embedded-TTF/alias/Mac fallback behavior, Mac/Windows platform font bundle selection and caching, and SimpleTextRenderer bitmap-font/built-in-fallback/wrapping/underline/caret/XMED per-span/styled-underline rendering behavior passed through the same CTest executable.
@@ -1290,4 +1291,5 @@ Result:
 - `e96419bf Port C++ editor script editing models`
 - `b84facdd Port C++ editor audio models`
 - `c53a249b Port C++ editor docking models`
-- Current checkpoint commit message: `Port C++ editor app shell models`
+- `6aa7179c Port C++ editor app shell models`
+- Current checkpoint commit message: `Port C++ editor shell action models`
