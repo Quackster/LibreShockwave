@@ -87,6 +87,7 @@
 #include "libreshockwave/editor/format/ChannelNames.hpp"
 #include "libreshockwave/editor/format/InstructionFormatter.hpp"
 #include "libreshockwave/editor/format/PaletteDescriptions.hpp"
+#include "libreshockwave/editor/gtk/EditorGtkModels.hpp"
 #include "libreshockwave/editor/model/BitmapKey.hpp"
 #include "libreshockwave/editor/model/CastMemberInfo.hpp"
 #include "libreshockwave/editor/model/ExtractionTask.hpp"
@@ -328,6 +329,9 @@ using libreshockwave::editor::castbrowser::CastGridLayout;
 using libreshockwave::editor::castbrowser::CastLibDescriptor;
 using libreshockwave::editor::castbrowser::CastLibEntry;
 using libreshockwave::editor::castbrowser::CastListRow;
+using libreshockwave::editor::gtk::EditorGtkShellModel;
+using libreshockwave::editor::gtk::GtkPanelRowSpec;
+using libreshockwave::editor::gtk::GtkToolbarItemSpec;
 using libreshockwave::editor::castbrowser::CastThumbnailKind;
 using libreshockwave::editor::castbrowser::CastThumbnailPresentation;
 using libreshockwave::editor::castbrowser::CastViewMode;
@@ -2056,6 +2060,68 @@ void testEditorShellActionModels() {
     assert(toolbar.items()[7].label == "Frame: 1");
     assert(EditorToolBarModel::frameLabel(7, 30) == "Frame: 7 / 30");
     assert(EditorToolBarModel::frameLabel(7) == "Frame: 1");
+
+    EditorFramePanelModel gtkFrame;
+    assert(EditorGtkShellModel::sanitizeActionName("property-inspector") == "property_inspector");
+    assert(EditorGtkShellModel::sanitizeActionName("") == "none");
+    assert(EditorGtkShellModel::commandActionName(EditorCommand::ExternalParameters) == "externalParameters");
+    assert(EditorGtkShellModel::panelActionName("property-inspector") == "panel_property_inspector");
+    assert(EditorGtkShellModel::appAction("open") == "app.open");
+
+    const auto gtkActions = EditorGtkShellModel::actionSpecs(menus, toolbar, gtkFrame);
+    assert(!gtkActions.empty());
+    const auto saveAction = EditorGtkShellModel::actionSpec("save", menus, toolbar, gtkFrame);
+    assert(saveAction.has_value());
+    assert(saveAction->command == EditorCommand::Save);
+    assert(!saveAction->enabled);
+    assert(!saveAction->stateful);
+    assert(saveAction->detailedName == "app.save");
+
+    const auto playAction = EditorGtkShellModel::actionSpec("play", menus, toolbar, gtkFrame);
+    assert(playAction.has_value());
+    assert(playAction->enabled);
+    assert(playAction->command == EditorCommand::Play);
+
+    const auto stageAction = EditorGtkShellModel::actionSpec("panel_stage", menus, toolbar, gtkFrame);
+    assert(stageAction.has_value());
+    assert(stageAction->stateful);
+    assert(stageAction->active);
+    assert(stageAction->panelId == "stage");
+    assert(stageAction->detailedName == "app.panel_stage");
+
+    const auto paintAction = EditorGtkShellModel::actionSpec("panel_paint", menus, toolbar, gtkFrame);
+    assert(paintAction.has_value());
+    assert(paintAction->stateful);
+    assert(!paintAction->active);
+
+    const auto gtkToolbar = EditorGtkShellModel::toolbarItems(toolbar);
+    assert(gtkToolbar.size() == toolbar.items().size());
+    assert(gtkToolbar[0] == (GtkToolbarItemSpec{ToolbarItem::Kind::Button, "Rewind", "Rewind", "rewind", "app.rewind"}));
+    assert(gtkToolbar[3].kind == ToolbarItem::Kind::Separator);
+    assert(gtkToolbar[3].detailedActionName.empty());
+    assert(gtkToolbar[7].kind == ToolbarItem::Kind::Label);
+    assert(gtkToolbar[7].label == "Frame: 1");
+
+    auto gtkRows = EditorGtkShellModel::panelRows(gtkFrame);
+    assert(gtkRows.size() == EditorFramePanelModel::creationOrder().size());
+    assert(gtkRows[0] == (GtkPanelRowSpec{
+                             "stage",
+                             "Stage",
+                             "Stage",
+                             PanelBounds{170, 10, 660, 500},
+                             true,
+                             true,
+                             false,
+                             false,
+                         }));
+    assert(gtkRows[7].panelId == "paint");
+    assert(gtkRows[7].displayLabel == "Paint (hidden)");
+    assert(!gtkRows[7].visible);
+    assert(gtkFrame.togglePanel("paint", true));
+    gtkRows = EditorGtkShellModel::panelRows(gtkFrame);
+    assert(gtkRows[7].displayLabel == "Paint");
+    assert(gtkRows[7].visible);
+    assert(gtkRows[7].docked);
 }
 
 void testEditorCastBrowserModels() {

@@ -69,6 +69,7 @@ add_library(libreshockwave
     src/editor/format/ChannelNames.cpp
     src/editor/format/InstructionFormatter.cpp
     src/editor/format/PaletteDescriptions.cpp
+    src/editor/gtk/EditorGtkModels.cpp
     src/editor/model/BitmapKey.cpp
     src/editor/model/FileNode.cpp
     src/editor/model/MemberNodeData.cpp

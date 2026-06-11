@@ -1,18 +1,17 @@
 #include <gtk/gtk.h>
 
-#include <cctype>
-#include <map>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "libreshockwave/editor/EditorFrameModels.hpp"
 #include "libreshockwave/editor/EditorShellModels.hpp"
+#include "libreshockwave/editor/gtk/EditorGtkModels.hpp"
 #include "libreshockwave/editor/panels/EditorPanelCatalog.hpp"
 
 namespace {
 
 namespace editor = libreshockwave::editor;
+namespace gtk_models = libreshockwave::editor::gtk;
 namespace panels = libreshockwave::editor::panels;
 
 struct EditorGtkState {
@@ -20,42 +19,6 @@ struct EditorGtkState {
     editor::EditorToolBarModel toolbarModel;
     editor::EditorFramePanelModel frameModel;
 };
-
-std::string sanitizeActionName(std::string_view value) {
-    std::string result;
-    result.reserve(value.size());
-    for (const char c : value) {
-        if (std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_') {
-            result.push_back(c);
-        } else {
-            result.push_back('_');
-        }
-    }
-    return result.empty() ? "none" : result;
-}
-
-std::string commandActionName(editor::EditorCommand command) {
-    return sanitizeActionName(editor::commandName(command));
-}
-
-std::string panelActionName(std::string_view panelId) {
-    return "panel_" + sanitizeActionName(panelId);
-}
-
-std::string appAction(std::string_view name) {
-    return "app." + std::string(name);
-}
-
-void collectMenuActions(const std::vector<editor::EditorMenuItem>& items,
-                        std::map<std::string, bool>& commandEnabled) {
-    for (const auto& item : items) {
-        if (item.command != editor::EditorCommand::None) {
-            commandEnabled[commandActionName(item.command)] =
-                commandEnabled[commandActionName(item.command)] || item.enabled;
-        }
-        collectMenuActions(item.children, commandEnabled);
-    }
-}
 
 void appendMenuItems(GMenu* menu, const std::vector<editor::EditorMenuItem>& items) {
     for (const auto& item : items) {
@@ -73,9 +36,11 @@ void appendMenuItems(GMenu* menu, const std::vector<editor::EditorMenuItem>& ite
 
         std::string action;
         if (!item.panelId.empty()) {
-            action = appAction(panelActionName(item.panelId));
+            action = gtk_models::EditorGtkShellModel::appAction(
+                gtk_models::EditorGtkShellModel::panelActionName(item.panelId));
         } else if (item.command != editor::EditorCommand::None) {
-            action = appAction(commandActionName(item.command));
+            action = gtk_models::EditorGtkShellModel::appAction(
+                gtk_models::EditorGtkShellModel::commandActionName(item.command));
         }
         g_menu_append(menu, item.label.c_str(), action.empty() ? nullptr : action.c_str());
     }
@@ -94,7 +59,7 @@ GMenu* buildMenuModel(const editor::EditorMenuModel& menuModel) {
 
 void commandActivated(GSimpleAction* action, GVariant*, gpointer userData) {
     const char* name = g_action_get_name(G_ACTION(action));
-    const auto exitAction = commandActionName(editor::EditorCommand::Exit);
+    const auto exitAction = gtk_models::EditorGtkShellModel::commandActionName(editor::EditorCommand::Exit);
     if (name != nullptr && exitAction == name) {
         g_application_quit(G_APPLICATION(userData));
         return;
@@ -112,29 +77,16 @@ void panelActionActivated(GSimpleAction* action, GVariant*, gpointer) {
 }
 
 void installActions(GtkApplication* app, const EditorGtkState& state) {
-    std::map<std::string, bool> commandEnabled;
-    for (const auto& menu : state.menuModel.menus()) {
-        collectMenuActions(menu.items, commandEnabled);
-    }
-    for (const auto& item : state.toolbarModel.items()) {
-        if (item.command != editor::EditorCommand::None) {
-            commandEnabled[commandActionName(item.command)] = true;
-        }
-    }
-
-    for (const auto& [name, enabled] : commandEnabled) {
-        GSimpleAction* action = g_simple_action_new(name.c_str(), nullptr);
-        g_simple_action_set_enabled(action, enabled);
-        g_signal_connect(action, "activate", G_CALLBACK(commandActivated), app);
-        g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(action));
-        g_object_unref(action);
-    }
-
-    for (const auto& [panelId, visible] : state.frameModel.panelVisibility()) {
-        GSimpleAction* action = g_simple_action_new_stateful(panelActionName(panelId).c_str(),
-                                                             nullptr,
-                                                             g_variant_new_boolean(visible));
-        g_signal_connect(action, "activate", G_CALLBACK(panelActionActivated), nullptr);
+    for (const auto& spec : gtk_models::EditorGtkShellModel::actionSpecs(
+             state.menuModel, state.toolbarModel, state.frameModel)) {
+        GSimpleAction* action = spec.stateful
+            ? g_simple_action_new_stateful(spec.name.c_str(), nullptr, g_variant_new_boolean(spec.active))
+            : g_simple_action_new(spec.name.c_str(), nullptr);
+        g_simple_action_set_enabled(action, spec.enabled);
+        g_signal_connect(action,
+                         "activate",
+                         spec.stateful ? G_CALLBACK(panelActionActivated) : G_CALLBACK(commandActivated),
+                         spec.stateful ? nullptr : app);
         g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(action));
         g_object_unref(action);
     }
@@ -154,7 +106,7 @@ GtkWidget* makeToolbar(const editor::EditorToolBarModel& toolbarModel) {
     gtk_widget_set_margin_top(toolbar, 6);
     gtk_widget_set_margin_bottom(toolbar, 6);
 
-    for (const auto& item : toolbarModel.items()) {
+    for (const auto& item : gtk_models::EditorGtkShellModel::toolbarItems(toolbarModel)) {
         if (item.kind == editor::ToolbarItem::Kind::Separator) {
             gtk_box_append(GTK_BOX(toolbar), gtk_separator_new(GTK_ORIENTATION_VERTICAL));
             continue;
@@ -167,9 +119,8 @@ GtkWidget* makeToolbar(const editor::EditorToolBarModel& toolbarModel) {
 
         GtkWidget* button = gtk_button_new_with_label(item.label.c_str());
         gtk_widget_set_tooltip_text(button, item.tooltip.c_str());
-        if (item.command != editor::EditorCommand::None) {
-            const auto action = appAction(commandActionName(item.command));
-            gtk_actionable_set_action_name(GTK_ACTIONABLE(button), action.c_str());
+        if (!item.detailedActionName.empty()) {
+            gtk_actionable_set_action_name(GTK_ACTIONABLE(button), item.detailedActionName.c_str());
         }
         gtk_box_append(GTK_BOX(toolbar), button);
     }
@@ -178,14 +129,8 @@ GtkWidget* makeToolbar(const editor::EditorToolBarModel& toolbarModel) {
 
 GtkWidget* makePanelList(const editor::EditorFramePanelModel& frameModel) {
     GtkWidget* list = gtk_list_box_new();
-    const auto descriptors = panels::EditorPanelCatalog::descriptors();
-    for (const auto& descriptor : descriptors) {
-        const bool visible = frameModel.isPanelVisible(descriptor.panelId);
-        std::string labelText = descriptor.title;
-        if (!visible) {
-            labelText += " (hidden)";
-        }
-        GtkWidget* label = gtk_label_new(labelText.c_str());
+    for (const auto& row : gtk_models::EditorGtkShellModel::panelRows(frameModel)) {
+        GtkWidget* label = gtk_label_new(row.displayLabel.c_str());
         gtk_label_set_xalign(GTK_LABEL(label), 0.0F);
         gtk_widget_set_margin_start(label, 8);
         gtk_widget_set_margin_end(label, 8);
