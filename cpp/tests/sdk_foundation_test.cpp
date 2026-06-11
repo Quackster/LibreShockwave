@@ -22265,6 +22265,68 @@ void testWasmExportsFoundation() {
         data[static_cast<std::size_t>(offset + 2)] = static_cast<std::uint8_t>((value >> 8) & 0xFF);
         data[static_cast<std::size_t>(offset + 3)] = static_cast<std::uint8_t>(value & 0xFF);
     };
+    auto appendPascal = [&](std::vector<std::uint8_t>& data, const std::string& value) {
+        data.push_back(static_cast<std::uint8_t>(value.size()));
+        data.insert(data.end(), value.begin(), value.end());
+    };
+    auto appendDelta = [&](std::vector<std::uint8_t>& data,
+                           int channelOffset,
+                           const std::vector<std::uint8_t>& payload) {
+        appendI16(data, static_cast<int>(payload.size()));
+        appendI16(data, channelOffset);
+        data.insert(data.end(), payload.begin(), payload.end());
+    };
+    auto makeChannelData = [&](int castLib,
+                               int castMember,
+                               int posX,
+                               int posY,
+                               int width,
+                               int height,
+                               int rgb) {
+        std::vector<std::uint8_t> channel(28, 0);
+        channel[0] = 2;
+        channel[2] = static_cast<std::uint8_t>((rgb >> 16) & 0xFF);
+        channel[4] = static_cast<std::uint8_t>((castLib >> 8) & 0xFF);
+        channel[5] = static_cast<std::uint8_t>(castLib & 0xFF);
+        channel[6] = static_cast<std::uint8_t>((castMember >> 8) & 0xFF);
+        channel[7] = static_cast<std::uint8_t>(castMember & 0xFF);
+        channel[12] = static_cast<std::uint8_t>((posY >> 8) & 0xFF);
+        channel[13] = static_cast<std::uint8_t>(posY & 0xFF);
+        channel[14] = static_cast<std::uint8_t>((posX >> 8) & 0xFF);
+        channel[15] = static_cast<std::uint8_t>(posX & 0xFF);
+        channel[16] = static_cast<std::uint8_t>((height >> 8) & 0xFF);
+        channel[17] = static_cast<std::uint8_t>(height & 0xFF);
+        channel[18] = static_cast<std::uint8_t>((width >> 8) & 0xFF);
+        channel[19] = static_cast<std::uint8_t>(width & 0xFF);
+        channel[20] = 0x10;
+        channel[24] = static_cast<std::uint8_t>((rgb >> 8) & 0xFF);
+        channel[26] = static_cast<std::uint8_t>(rgb & 0xFF);
+        return channel;
+    };
+    auto makeMemberData = [&](MemberType type,
+                              const std::string& name,
+                              const std::vector<std::uint8_t>& specificData) {
+        std::vector<std::uint8_t> info;
+        appendI32(info, 20);
+        appendI32(info, 0);
+        appendI32(info, 0);
+        appendI32(info, 0);
+        appendI32(info, 0);
+        appendI16(info, 3);
+        appendI32(info, 0);
+        appendI32(info, 0);
+        appendI32(info, static_cast<std::uint32_t>(name.size() + 1));
+        appendI32(info, static_cast<std::uint32_t>(name.size() + 1));
+        appendPascal(info, name);
+
+        std::vector<std::uint8_t> data;
+        appendI32(data, static_cast<std::uint32_t>(libreshockwave::cast::code(type)));
+        appendI32(data, static_cast<std::uint32_t>(info.size()));
+        appendI32(data, static_cast<std::uint32_t>(specificData.size()));
+        data.insert(data.end(), info.begin(), info.end());
+        data.insert(data.end(), specificData.begin(), specificData.end());
+        return data;
+    };
     auto buildRifx = [&](const std::vector<std::pair<std::string, std::vector<std::uint8_t>>>& chunks) {
         constexpr int mmapOffset = 32;
         const int mmapPayloadLength = 24 + static_cast<int>(chunks.size()) * 20;
@@ -22311,12 +22373,60 @@ void testWasmExportsFoundation() {
     };
 
     std::vector<std::uint8_t> configData(80, 0);
-    putI16At(configData, 2, 0x0207);
+    putI16At(configData, 2, 0x06A4);
     putI16At(configData, 8, 90);
     putI16At(configData, 10, 160);
-    putI16At(configData, 36, 0x0207);
+    putI16At(configData, 36, 0x06A4);
     putI16At(configData, 54, 18);
-    const auto movieData = buildRifx({{"DRCF", configData}});
+
+    std::vector<std::uint8_t> castData(1 * 4, 0);
+    putI32At(castData, 0, 2);
+
+    const std::vector<std::uint8_t> shapeSpecific{
+        0x00, 0x01,
+        0x00, 0x00,
+        0x00, 0x00,
+        0x00, 0x08,
+        0x00, 0x0A,
+        0x00, 0x00,
+        0x01,
+        0x00,
+        0x01,
+        0x01,
+        0x00
+    };
+
+    std::vector<std::uint8_t> frameEntry;
+    appendI32(frameEntry, 0);
+    appendI32(frameEntry, 0);
+    appendI32(frameEntry, 1);
+    appendI16(frameEntry, 14);
+    appendI16(frameEntry, 28);
+    appendI16(frameEntry, 7);
+    appendI16(frameEntry, 0);
+
+    std::vector<std::uint8_t> frame0;
+    appendDelta(frame0, 6 * 28, makeChannelData(1, 1, 11, 13, 10, 8, 0x123456));
+    appendI16(frameEntry, static_cast<int>(frame0.size()) + 2);
+    frameEntry.insert(frameEntry.end(), frame0.begin(), frame0.end());
+
+    std::vector<std::uint8_t> scoreData;
+    appendI32(scoreData, static_cast<std::uint32_t>(frameEntry.size()));
+    appendI32(scoreData, 0);
+    appendI32(scoreData, 0);
+    appendI32(scoreData, 1);
+    appendI32(scoreData, 0);
+    appendI32(scoreData, static_cast<std::uint32_t>(frameEntry.size()));
+    appendI32(scoreData, 0);
+    appendI32(scoreData, static_cast<std::uint32_t>(frameEntry.size()));
+    scoreData.insert(scoreData.end(), frameEntry.begin(), frameEntry.end());
+
+    const auto movieData = buildRifx({
+        {"DRCF", configData},
+        {"CAS*", castData},
+        {"CASt", makeMemberData(MemberType::Shape, "BridgeShape", shapeSpecific)},
+        {"VWSC", scoreData},
+    });
 
     auto* movieBuffer = reinterpret_cast<std::uint8_t*>(
         libreshockwave_wasm_allocate_buffer(static_cast<int>(movieData.size())));
@@ -22349,10 +22459,18 @@ void testWasmExportsFoundation() {
     assert(libreshockwave_wasm_frame_count() >= 0);
     assert(libreshockwave_wasm_preload_casts() == 0);
     assert(libreshockwave_wasm_tick() == 0);
+    libreshockwave_wasm_play();
+    assert(libreshockwave_wasm_current_frame() == 1);
+    assert(libreshockwave_wasm_get_sprite_count() == 0);
     assert(libreshockwave_wasm_render() == 160 * 90 * 4);
     auto* renderBuffer = reinterpret_cast<std::uint8_t*>(libreshockwave_wasm_get_render_buffer_address());
     assert(renderBuffer != nullptr);
-    assert(libreshockwave_wasm_get_sprite_count() == 0);
+    assert(libreshockwave_wasm_get_sprite_count() == 1);
+    const int renderedPixelOffset = ((13 * 160) + 11) * 4;
+    assert(renderBuffer[renderedPixelOffset] == 0x12);
+    assert(renderBuffer[renderedPixelOffset + 1] == 0x34);
+    assert(renderBuffer[renderedPixelOffset + 2] == 0x56);
+    assert(renderBuffer[renderedPixelOffset + 3] == 0xFF);
     assert(libreshockwave_wasm_get_cursor_type() == CursorManager::ARROW_CURSOR);
     assert(libreshockwave_wasm_update_cursor_bitmap() == 0);
     assert(libreshockwave_wasm_get_cursor_bitmap_width() == 0);
@@ -22402,6 +22520,7 @@ void testWasmExportsFoundation() {
     assert(readStringBuffer(debugLogLen).find("triggerTestError") != std::string::npos);
     libreshockwave_wasm_pause();
     libreshockwave_wasm_stop();
+    libreshockwave_wasm_drain_audio_pending();
     libreshockwave_wasm_go_to_frame(1);
     libreshockwave_wasm_step_forward();
     libreshockwave_wasm_step_backward();
