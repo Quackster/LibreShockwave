@@ -25,6 +25,7 @@ var _sharedFrameControl = null;
 var _sharedFrameCapacity = 0;
 var _sharedFrameSeq = 0;
 var _activeLoadSeq = 0;
+var _diagnosticDepth = 0;
 
 var _requiredExports = {
     allocateBuffer: 'allocate_buffer',
@@ -474,6 +475,19 @@ function _waitForMusState(instanceId, predicate, timeoutMs) {
         }
         poll();
     });
+}
+
+function _diagnosticActive() {
+    return _diagnosticDepth > 0;
+}
+
+async function _runExclusiveDiagnostic(callback) {
+    _diagnosticDepth++;
+    try {
+        return await callback();
+    } finally {
+        _diagnosticDepth--;
+    }
 }
 
 function _writeU32BE(bytes, offset, value) {
@@ -1586,7 +1600,7 @@ async function _loadMovie(message) {
 }
 
 async function _tick() {
-    if (!_ready) {
+    if (!_ready || _diagnosticActive()) {
         return;
     }
     await _driveHostQueues(8);
@@ -1798,21 +1812,27 @@ self.onmessage = function(event) {
                 self.postMessage({
                     type: 'musWebSocketSelfTest',
                     requestId: message.requestId || 0,
-                    diagnostics: await _runMusWebSocketSelfTest(message)
+                    diagnostics: await _runExclusiveDiagnostic(function() {
+                        return _runMusWebSocketSelfTest(message);
+                    })
                 });
                 break;
             case 'runCxxSmusBridgeSelfTest':
                 self.postMessage({
                     type: 'cxxSmusBridgeSelfTest',
                     requestId: message.requestId || 0,
-                    diagnostics: await _runCxxSmusBridgeSelfTest(message)
+                    diagnostics: await _runExclusiveDiagnostic(function() {
+                        return _runCxxSmusBridgeSelfTest(message);
+                    })
                 });
                 break;
             case 'runFixtureMultiuserScriptSelfTest':
                 self.postMessage({
                     type: 'fixtureMultiuserScriptSelfTest',
                     requestId: message.requestId || 0,
-                    diagnostics: await _runFixtureMultiuserScriptSelfTest(message)
+                    diagnostics: await _runExclusiveDiagnostic(function() {
+                        return _runFixtureMultiuserScriptSelfTest(message);
+                    })
                 });
                 break;
             case 'triggerTestError': {

@@ -23210,6 +23210,10 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(worker.find("drain_audio_pending") != std::string::npos);
     assert(worker.find("get_mus_pending_count") != std::string::npos);
     assert(worker.find("mus_deliver_message") != std::string::npos);
+    assert(worker.find("_diagnosticDepth") != std::string::npos);
+    assert(worker.find("_diagnosticActive") != std::string::npos);
+    assert(worker.find("_runExclusiveDiagnostic") != std::string::npos);
+    assert(worker.find("if (!_ready || _diagnosticActive())") != std::string::npos);
     assert(worker.find("_runMusWebSocketSelfTest") != std::string::npos);
     assert(worker.find("runMusWebSocketSelfTest") != std::string::npos);
     assert(worker.find("musWebSocketSelfTest") != std::string::npos);
