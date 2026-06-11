@@ -257,6 +257,12 @@ add_executable(libreshockwave_render_probe
 target_link_libraries(libreshockwave_render_probe PRIVATE LibreShockwave::libreshockwave)
 target_compile_features(libreshockwave_render_probe PRIVATE cxx_std_20)
 
+add_executable(libreshockwave_wasm_bridge_probe
+    tools/WasmBridgeProbe.cpp
+)
+target_link_libraries(libreshockwave_wasm_bridge_probe PRIVATE LibreShockwave::libreshockwave)
+target_compile_features(libreshockwave_wasm_bridge_probe PRIVATE cxx_std_20)
+
 find_package(Threads REQUIRED)
 target_link_libraries(libreshockwave PUBLIC Threads::Threads)
 
