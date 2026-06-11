@@ -397,6 +397,25 @@ std::optional<GtkActionSpec> EditorGtkShellModel::actionSpec(std::string_view na
     return found == specs.end() ? std::nullopt : std::optional(*found);
 }
 
+std::vector<GtkActionAcceleratorSpec> EditorGtkShellModel::actionAcceleratorSpecs(
+    const std::vector<GtkActionSpec>& actionSpecs) {
+    std::vector<GtkActionAcceleratorSpec> result;
+    for (const auto& spec : actionSpecs) {
+        if (spec.accelerators.empty()) {
+            continue;
+        }
+        result.push_back(GtkActionAcceleratorSpec{spec.detailedName, spec.accelerators});
+    }
+    return result;
+}
+
+std::vector<GtkActionAcceleratorSpec> EditorGtkShellModel::actionAcceleratorSpecs(
+    const EditorMenuModel& menuModel,
+    const EditorToolBarModel& toolbarModel,
+    const EditorFramePanelModel& frameModel) {
+    return actionAcceleratorSpecs(actionSpecs(menuModel, toolbarModel, frameModel));
+}
+
 std::vector<GtkToolbarItemSpec> EditorGtkShellModel::toolbarItems(const EditorToolBarModel& toolbarModel) {
     std::vector<GtkToolbarItemSpec> result;
     result.reserve(toolbarModel.items().size());
@@ -603,6 +622,10 @@ const PreferencesModel& EditorGtkShellState::preferences() const {
 
 std::vector<GtkActionSpec> EditorGtkShellState::actionSpecs() const {
     return EditorGtkShellModel::actionSpecs(menuModel_, toolbarModel_, frameModel_);
+}
+
+std::vector<GtkActionAcceleratorSpec> EditorGtkShellState::actionAcceleratorSpecs() const {
+    return EditorGtkShellModel::actionAcceleratorSpecs(actionSpecs());
 }
 
 std::optional<GtkActionSpec> EditorGtkShellState::actionSpec(std::string_view name) const {

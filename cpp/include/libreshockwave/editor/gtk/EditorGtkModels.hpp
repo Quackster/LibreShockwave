@@ -89,6 +89,13 @@ struct GtkActionSpec {
     friend bool operator==(const GtkActionSpec&, const GtkActionSpec&) = default;
 };
 
+struct GtkActionAcceleratorSpec {
+    std::string detailedActionName;
+    std::vector<std::string> accelerators;
+
+    friend bool operator==(const GtkActionAcceleratorSpec&, const GtkActionAcceleratorSpec&) = default;
+};
+
 struct GtkToolbarItemSpec {
     ToolbarItem::Kind kind{ToolbarItem::Kind::Button};
     std::string label;
@@ -250,6 +257,12 @@ public:
     [[nodiscard]] static std::vector<GtkActionSpec> actionSpecs(const EditorMenuModel& menuModel,
                                                                 const EditorToolBarModel& toolbarModel,
                                                                 const EditorFramePanelModel& frameModel);
+    [[nodiscard]] static std::vector<GtkActionAcceleratorSpec> actionAcceleratorSpecs(
+        const std::vector<GtkActionSpec>& actionSpecs);
+    [[nodiscard]] static std::vector<GtkActionAcceleratorSpec> actionAcceleratorSpecs(
+        const EditorMenuModel& menuModel,
+        const EditorToolBarModel& toolbarModel,
+        const EditorFramePanelModel& frameModel);
     [[nodiscard]] static std::optional<GtkActionSpec> actionSpec(std::string_view name,
                                                                  const EditorMenuModel& menuModel,
                                                                  const EditorToolBarModel& toolbarModel,
@@ -281,6 +294,7 @@ public:
     [[nodiscard]] const PreferencesModel& preferences() const;
 
     [[nodiscard]] std::vector<GtkActionSpec> actionSpecs() const;
+    [[nodiscard]] std::vector<GtkActionAcceleratorSpec> actionAcceleratorSpecs() const;
     [[nodiscard]] std::optional<GtkActionSpec> actionSpec(std::string_view name) const;
     [[nodiscard]] std::vector<GtkToolbarItemSpec> toolbarItems() const;
     [[nodiscard]] std::vector<GtkPanelRowSpec> panelRows() const;

@@ -332,6 +332,7 @@ using libreshockwave::editor::castbrowser::CastListRow;
 using libreshockwave::editor::gtk::EditorGtkShellModel;
 using libreshockwave::editor::gtk::EditorGtkShellState;
 using libreshockwave::editor::gtk::GtkActionActivation;
+using libreshockwave::editor::gtk::GtkActionAcceleratorSpec;
 using libreshockwave::editor::gtk::GtkPanelRowSpec;
 using libreshockwave::editor::gtk::GtkShellDialogKind;
 using libreshockwave::editor::gtk::GtkStartScreenRequest;
@@ -2162,6 +2163,25 @@ void testEditorShellActionModels() {
     assert(!paintAction->active);
     assert((paintAction->accelerators == std::vector<std::string>{"<Control>5"}));
 
+    const auto acceleratorSpecs = EditorGtkShellModel::actionAcceleratorSpecs(gtkActions);
+    const auto acceleratorFor = [&acceleratorSpecs](std::string_view detailedActionName) {
+        return std::find_if(acceleratorSpecs.begin(),
+                            acceleratorSpecs.end(),
+                            [detailedActionName](const GtkActionAcceleratorSpec& spec) {
+                                return spec.detailedActionName == detailedActionName;
+                            });
+    };
+    const auto openAccelerator = acceleratorFor("app.open");
+    assert(openAccelerator != acceleratorSpecs.end());
+    assert((*openAccelerator ==
+            GtkActionAcceleratorSpec{"app.open", std::vector<std::string>{"<Control>O"}}));
+    const auto stageAccelerator = acceleratorFor("app.panel_stage");
+    assert(stageAccelerator != acceleratorSpecs.end());
+    assert((*stageAccelerator ==
+            GtkActionAcceleratorSpec{"app.panel_stage", std::vector<std::string>{"<Control>1"}}));
+    assert(acceleratorFor("app.workbench_stage") == acceleratorSpecs.end());
+    assert(EditorGtkShellModel::actionAcceleratorSpecs(menus, toolbar, gtkFrame) == acceleratorSpecs);
+
     const auto stageWorkbenchAction = EditorGtkShellModel::actionSpec("workbench_stage", menus, toolbar, gtkFrame);
     assert(stageWorkbenchAction.has_value());
     assert(stageWorkbenchAction->panelId == "stage");
@@ -2422,6 +2442,7 @@ void testEditorShellActionModels() {
     assert(!gtkView.playing);
     assert(gtkView.currentFrame == 1);
     assert(gtkView.actionSpecs == gtkState.actionSpecs());
+    assert(gtkState.actionAcceleratorSpecs() == EditorGtkShellModel::actionAcceleratorSpecs(gtkView.actionSpecs));
     assert(gtkView.toolbarItems == gtkState.toolbarItems());
     assert(gtkView.panelRows == gtkState.panelRows());
     assert(gtkView.workbenchPanels == gtkWorkbenchPanels);

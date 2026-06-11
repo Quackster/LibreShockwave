@@ -86,6 +86,19 @@ void refreshGtkActions(GtkApplication* app, const std::vector<gtk_models::GtkAct
     }
 }
 
+void installActionAccelerators(GtkApplication* app,
+                               const std::vector<gtk_models::GtkActionAcceleratorSpec>& specs) {
+    for (const auto& spec : specs) {
+        std::vector<const char*> accelerators;
+        accelerators.reserve(spec.accelerators.size() + 1);
+        for (const auto& accelerator : spec.accelerators) {
+            accelerators.push_back(accelerator.c_str());
+        }
+        accelerators.push_back(nullptr);
+        gtk_application_set_accels_for_action(app, spec.detailedActionName.c_str(), accelerators.data());
+    }
+}
+
 void refreshGtkShell(EditorGtkState& state) {
     const auto view = state.shellState.viewState();
     if (state.app != nullptr) {
@@ -142,6 +155,7 @@ void installActions(GtkApplication* app, EditorGtkState& state) {
         g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(action));
         g_object_unref(action);
     }
+    installActionAccelerators(app, state.shellState.actionAcceleratorSpecs());
 }
 
 GtkWidget* makeMenuBar(const gtk_models::EditorGtkShellState& shellState) {
