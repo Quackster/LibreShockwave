@@ -31,7 +31,10 @@ public:
     [[nodiscard]] const std::vector<w3d::W3DResourceRef>& resourceRefs() const;
 
     [[nodiscard]] std::optional<w3d::W3DNode> findNode(std::string_view name) const;
+    [[nodiscard]] std::optional<w3d::W3DMeshResource> findMeshResource(std::string_view name) const;
     [[nodiscard]] std::optional<w3d::W3DTexture> findTexture(std::string_view name) const;
+    [[nodiscard]] std::optional<w3d::W3DMaterial> findMaterial(std::string_view name) const;
+    [[nodiscard]] std::optional<w3d::W3DResourceRef> findResourceRef(std::string_view name) const;
 
 private:
     void parse(const std::vector<std::uint8_t>& data);

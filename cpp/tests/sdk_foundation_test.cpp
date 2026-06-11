@@ -24268,8 +24268,15 @@ void testW3DFileParser() {
 
     assert(file.findNode("RootNode").has_value());
     assert(!file.findNode("Missing").has_value());
+    assert(file.findMeshResource("Mesh01")->hasDecodedGeometry());
+    assert(file.findMeshResource("Mesh01")->faces[0].c == 2);
+    assert(!file.findMeshResource("Missing").has_value());
     assert(file.findTexture("Tex01")->format == "jpeg");
     assert(!file.findTexture("Missing").has_value());
+    assert(file.findMaterial("Mat01")->textureName == "Tex01");
+    assert(!file.findMaterial("Missing").has_value());
+    assert(file.findResourceRef("Ref01")->refType == 9);
+    assert(!file.findResourceRef("Missing").has_value());
 
     const auto tmpPath = std::filesystem::temp_directory_path() / "libreshockwave_w3d_file_parser_test.w3d";
     {

@@ -66,10 +66,37 @@ std::optional<w3d::W3DNode> W3DFile::findNode(std::string_view name) const {
     return std::nullopt;
 }
 
+std::optional<w3d::W3DMeshResource> W3DFile::findMeshResource(std::string_view name) const {
+    for (const auto& meshResource : meshResources_) {
+        if (meshResource.name == name) {
+            return meshResource;
+        }
+    }
+    return std::nullopt;
+}
+
 std::optional<w3d::W3DTexture> W3DFile::findTexture(std::string_view name) const {
     for (const auto& texture : textures_) {
         if (texture.name == name) {
             return texture;
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<w3d::W3DMaterial> W3DFile::findMaterial(std::string_view name) const {
+    for (const auto& material : materials_) {
+        if (material.name == name) {
+            return material;
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<w3d::W3DResourceRef> W3DFile::findResourceRef(std::string_view name) const {
+    for (const auto& resourceRef : resourceRefs_) {
+        if (resourceRef.name == name) {
+            return resourceRef;
         }
     }
     return std::nullopt;
