@@ -82,6 +82,7 @@ public:
     [[nodiscard]] std::shared_ptr<libreshockwave::cast::CastMember> findRuntimeMember(
         const std::shared_ptr<chunks::CastMemberChunk>& target);
     [[nodiscard]] std::shared_ptr<const bitmap::Palette> resolvePaletteByMember(int castLibNumber, int memberNumber);
+    [[nodiscard]] std::shared_ptr<const bitmap::Palette> resolvePaletteById(int castLibNumber, int paletteId);
     [[nodiscard]] std::shared_ptr<const bitmap::Palette> resolvePaletteByName(const std::string& name);
     [[nodiscard]] lingo::Datum createMember(int castLibNumber, const std::string& memberType);
     [[nodiscard]] lingo::Datum createMember(const std::string& memberName, const std::string& memberType);

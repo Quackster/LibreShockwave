@@ -288,11 +288,17 @@ std::shared_ptr<const bitmap::Palette> resolveMediaPalette(const ::libreshockwav
     const int memberNumber = info.paletteId + 1;
     if (manager != nullptr) {
         if (info.paletteCastLib > 0) {
+            if (auto palette = manager->resolvePaletteById(info.paletteCastLib, info.paletteId)) {
+                return palette;
+            }
             if (auto palette = manager->resolvePaletteByMember(info.paletteCastLib, memberNumber)) {
                 return palette;
             }
         }
         if (defaultCastLib > 0) {
+            if (auto palette = manager->resolvePaletteById(defaultCastLib, info.paletteId)) {
+                return palette;
+            }
             if (auto palette = manager->resolvePaletteByMember(defaultCastLib, memberNumber)) {
                 return palette;
             }
@@ -376,6 +382,38 @@ std::shared_ptr<const bitmap::Palette> paletteFromCastMember(const std::shared_p
     }
     if (castLib->sourceFile() != nullptr) {
         return castLib->sourceFile()->resolvePaletteByMemberNumber(memberNumber);
+    }
+    return nullptr;
+}
+
+std::shared_ptr<const bitmap::Palette> paletteFromCastById(const std::shared_ptr<CastLib>& castLib,
+                                                           int paletteId) {
+    if (!castLib) {
+        return nullptr;
+    }
+
+    auto source = castLib->sourceFile();
+    if (source) {
+        if (auto palette = source->resolvePaletteExact(paletteId)) {
+            return palette;
+        }
+    }
+
+    if (!castLib->isLoaded()) {
+        castLib->load();
+    }
+
+    const int memberNumber = paletteId + 1;
+    auto member = castLib->getMember(memberNumber);
+    if (member && member->isPalette()) {
+        if (auto palette = member->paletteData()) {
+            return palette;
+        }
+    }
+
+    auto chunk = castLib->findMemberByNumber(memberNumber);
+    if (chunk && source) {
+        return source->resolvePaletteByMemberNumber(memberNumber);
     }
     return nullptr;
 }
@@ -855,6 +893,38 @@ std::shared_ptr<const bitmap::Palette> CastLibManager::resolvePaletteByMember(in
     }
 
     return file_ != nullptr ? file_->resolvePaletteByMemberNumber(memberNumber) : nullptr;
+}
+
+std::shared_ptr<const bitmap::Palette> CastLibManager::resolvePaletteById(int castLibNumber, int paletteId) {
+    if (paletteId < 0) {
+        return borrowedPalette(&bitmap::Palette::builtIn(paletteId));
+    }
+
+    ensureInitialized();
+    if (castLibNumber > 0) {
+        if (auto palette = paletteFromCastById(getCastLib(castLibNumber), paletteId)) {
+            return palette;
+        }
+    }
+
+    if (file_ != nullptr) {
+        if (auto palette = file_->resolvePaletteExact(paletteId)) {
+            return palette;
+        }
+    }
+
+    for (const auto& [number, castLib] : castLibs_) {
+        if (castLibNumber > 0 && number == castLibNumber) {
+            continue;
+        }
+        if (!castLib || !castLib->isLoaded()) {
+            continue;
+        }
+        if (auto palette = paletteFromCastById(castLib, paletteId)) {
+            return palette;
+        }
+    }
+    return nullptr;
 }
 
 std::shared_ptr<const bitmap::Palette> CastLibManager::resolvePaletteByName(const std::string& name) {

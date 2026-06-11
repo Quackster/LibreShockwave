@@ -24980,6 +24980,9 @@ void testCastLibManagerFoundation() {
         "Runtime Palette Data");
     reusableRuntime->setPaletteData(sourceRuntimePalette);
     assert(manager.resolvePaletteByMember(1, 10000) == sourceRuntimePalette);
+    assert(manager.resolvePaletteById(1, Palette::SYSTEM_WIN).get() == &Palette::systemWinPalette());
+    assert(manager.resolvePaletteById(1, 9999) == sourceRuntimePalette);
+    assert(manager.resolvePaletteById(1, 123456) == nullptr);
     assert(manager.resolvePaletteByName("Runtime Palette") == sourceRuntimePalette);
     assert(manager.setMemberProp(1, 2, "paletteRef", Datum::castMemberRef(CastLibId(1), MemberId(10000))));
     const auto* runtimeMemberPaletteRef = manager.getMemberProp(1, 2, "paletteRef").asCastMemberRef();
@@ -25247,6 +25250,26 @@ void testCastLibManagerFoundation() {
     assert(indexedRuntime->paletteIndex(1, 0).value() == 2);
     assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->x == 9);
     assert(manager.getMemberProp(1, 2, "regPoint").asIntPoint()->y == 11);
+
+    std::vector<std::uint8_t> runtimeIndexedInfo = indexedInfo;
+    putI16At(runtimeIndexedInfo, 26, 10000);
+    std::vector<std::uint8_t> runtimeIndexedMedia = runtimeIndexedInfo;
+    runtimeIndexedMedia.insert(runtimeIndexedMedia.end(), {'D', 'T', 'I', 'B'});
+    appendI32LE(runtimeIndexedMedia, 2);
+    runtimeIndexedMedia.insert(runtimeIndexedMedia.end(), {1, 2});
+    manager.cacheExternalData("media/runtime-indexed-bitd.bin", runtimeIndexedMedia);
+    assert(registry.invoke("importFileInto",
+                           context,
+                           {Datum::castMemberRef(CastLibId(1), MemberId(2)),
+                            Datum::of(std::string("media/runtime-indexed-bitd.bin"))}).boolValue());
+    auto runtimeIndexed = manager.resolveMember(1, 2)->runtimeBitmap();
+    assert(runtimeIndexed != nullptr);
+    assert(runtimeIndexed->bitDepth() == 8);
+    assert(runtimeIndexed->imagePalette() == sourceRuntimePalette);
+    assert(runtimeIndexed->getPixel(0, 0) == 0xFF445566U);
+    assert(runtimeIndexed->getPixel(1, 0) == 0xFF778899U);
+    assert(runtimeIndexed->paletteIndex(0, 0).value() == 1);
+    assert(runtimeIndexed->paletteIndex(1, 0).value() == 2);
     assert(!registry.invoke("importFileInto",
                             context,
                             {Datum::castMemberRef(CastLibId(1), MemberId(2)),
