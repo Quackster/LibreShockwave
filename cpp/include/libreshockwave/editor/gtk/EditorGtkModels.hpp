@@ -549,6 +549,7 @@ public:
     GtkActionActivation activateRecentProjectAction(std::string_view actionName, StartScreenModel::ExistsCallback exists);
     GtkWorkbenchPanelActivation floatWorkbenchPanel(std::string_view panelId);
     GtkWorkbenchPanelActivation moveFloatingPanel(std::string_view panelId, int deltaX, int deltaY);
+    GtkWorkbenchPanelActivation dragWorkbenchPanel(std::string_view panelId, int deltaX, int deltaY);
     GtkWorkbenchPanelActivation dockWorkbenchPanel(std::string_view panelId, docking::DockEdge edge);
     GtkWorkbenchPanelActivation activateWorkbenchPanel(std::string_view panelId);
     GtkWorkbenchPanelActivation activateWorkbenchAction(std::string_view actionName);

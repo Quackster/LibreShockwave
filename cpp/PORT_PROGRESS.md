@@ -278,6 +278,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - The optional GTK scaffold now renders visible floating pane bodies in the default all-floating workbench state too, hiding the single-panel fallback whenever explicit floating pane bodies are available.
 - Floating GTK pane bodies now apply the frame model's stored panel width and height as native GTK size requests, preserving authored/default pane dimensions in the scaffold.
 - `editor::EditorFramePanelModel` and `editor::gtk::EditorGtkShellState` now support moving visible undocked panes by drag offsets, and the optional GTK scaffold updates floating pane bounds when a drag ends outside snap zones.
+- `editor::gtk::EditorGtkShellState` now treats non-snap drags on docked panes as detach-and-move operations, so docked panes can be dragged back into the floating pane area.
 
 ### Bitmap Colorizer
 
@@ -994,6 +995,7 @@ Result:
 - GTK all-floating coverage now verifies the startup workbench and undocked-only workbench expose every visible pane body through `floatingPanels`.
 - GTK floating pane layout coverage now verifies visible floating panels retain their model bounds for native frame sizing.
 - GTK floating pane movement coverage now verifies non-snap drags update visible undocked pane bounds while hidden and docked panes do not move.
+- GTK docked-pane drag coverage now verifies a non-snap drag detaches the pane from the dock layout, moves it into `floatingPanels`, and refreshes dock/action state.
 - PfrBitReader byte, signed, skip, alignment, bit-buffer, and partial-EOF tests passed through the same CTest executable.
 - BitmapFont glyph drawing, overflow metrics, BDF parsing, direct PFR outline/bitmap/curve glyph rasterization, PFR1 metadata/character-record/simple/compound/curve-outline parsing, PFR-to-TTF table generation/cache registration, pure TTF bitmap rasterization with the bundled Verdana fixture, FontRegistry prebuilt-cache/PFR-registration/rasterization/size-aware embedded-TTF/alias/Windows-first/Mac fallback behavior, bundled Mac/Windows platform font selection and caching, and SimpleTextRenderer bitmap-font/built-in-fallback/wrapping/underline/caret/XMED per-span/styled-underline rendering behavior passed through the same CTest executable.
 - SoundConverter WAV layout, SoundChunk header stripping, signed/endianness conversion, MP3 extraction, IMA ADPCM, and duration tests passed through the same CTest executable.
@@ -1444,4 +1446,5 @@ Result:
 - `af75994a Render C++ GTK floating pane bodies`
 - `4fb7ce3f Render C++ GTK all-floating pane bodies`
 - `6876a30f Size C++ GTK floating pane bodies`
-- Current checkpoint commit message: `Move C++ GTK floating panes by drag`
+- `bdd24288 Move C++ GTK floating panes by drag`
+- Current checkpoint commit message: `Detach C++ GTK docked panes by drag`

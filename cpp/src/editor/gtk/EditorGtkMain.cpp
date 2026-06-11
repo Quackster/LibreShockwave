@@ -201,7 +201,7 @@ void snapPanelDragToEdge(GtkGestureDrag* gesture, double offsetX, double offsetY
         return;
     }
 
-    const auto moved = data->state->shellState.moveFloatingPanel(data->panelId, deltaX, deltaY);
+    const auto moved = data->state->shellState.dragWorkbenchPanel(data->panelId, deltaX, deltaY);
     if (moved.handled) {
         refreshGtkShell(*data->state);
     }
