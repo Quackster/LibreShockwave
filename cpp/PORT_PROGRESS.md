@@ -654,6 +654,10 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `net::QueuedNetProvider` ports the Java WASM polling net provider as a platform-neutral C++ `NetProvider`, including queued GET/POST requests, host-delivered completion/error/status callbacks, movie-navigation task completion, satisfied-fetch short-circuiting, cast fallback URL expansion, cache-key lookup, and stream-status byte-count reporting while loading.
 
+### Queued Audio Backend Foundation
+
+- `audio::QueuedAudioBackend` ports the Java WASM audio command queue as a platform-neutral C++ `AudioBackend`, including play/stop/stopAll/volume commands, 1-based Director channel validation, pending-command drain, host stop notifications, clamped channel volumes, and elapsed-time fallback behavior.
+
 ### Sound Manager Foundation
 
 - `audio::AudioBackend` ports the platform-neutral playback contract for 1-based Director sound channels.
@@ -974,6 +978,7 @@ Result:
 - `git diff --check`: passed.
 - zlib support was detected in the local CMake build and the zlib decompression path is covered by the C++ tests.
 - GTK4 was detected by local `pkg-config`, so the optional `libreshockwave_editor_gtk` target compiled and linked in the local CMake build.
+- QueuedAudioBackend play/stop/stopAll/volume command queue, channel validation, pending drain, host stop notification, volume clamp, and elapsed-time fallback tests passed through the same CTest executable.
 - Chunk/audio foundation tests passed through the same CTest executable.
 - Cast metadata parser tests passed through the same CTest executable.
 - Compact chunk parser tests passed through the same CTest executable.
@@ -1465,4 +1470,6 @@ Result:
 - `abe1e357 Port C++ external cast sound playback`
 - `b0e6e80d Port C++ XMED font-size ties`
 - `9a4467d9 Port C++ palette ID provider resolution`
-- Current checkpoint commit message: `Port C++ queued net provider`
+- `64ae5dc6 Port C++ Director channel count fallback`
+- `43c1d73e Port C++ queued net provider`
+- Current checkpoint commit message: `Port C++ queued audio backend`

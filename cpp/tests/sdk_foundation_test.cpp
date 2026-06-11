@@ -184,6 +184,7 @@
 #include "libreshockwave/player/MovieProperties.hpp"
 #include "libreshockwave/player/SpriteProperties.hpp"
 #include "libreshockwave/player/audio/AudioBackend.hpp"
+#include "libreshockwave/player/audio/QueuedAudioBackend.hpp"
 #include "libreshockwave/player/audio/SoundManager.hpp"
 #include "libreshockwave/player/behavior/BehaviorInstance.hpp"
 #include "libreshockwave/player/behavior/BehaviorManager.hpp"
@@ -561,6 +562,7 @@ using libreshockwave::player::handlerName;
 using libreshockwave::player::name;
 using libreshockwave::player::playerEventFromHandlerName;
 using libreshockwave::player::audio::AudioBackend;
+using libreshockwave::player::audio::QueuedAudioBackend;
 using libreshockwave::player::audio::SoundManager;
 using libreshockwave::player::debug::Breakpoint;
 using libreshockwave::player::debug::BreakpointKey;
@@ -21464,6 +21466,87 @@ void testQueuedNetProviderFoundation() {
     assert(satisfiedProvider.getDebugStatus().find("pendingRequests=") != std::string::npos);
 }
 
+void testQueuedAudioBackendFoundation() {
+    QueuedAudioBackend backend;
+    assert(QueuedAudioBackend::MAX_CHANNELS == 8);
+    assert(backend.pendingCommands().empty());
+    assert(backend.pendingCount() == 0);
+    assert(backend.getPending(0) == nullptr);
+    assert(backend.getPending(-1) == nullptr);
+    assert(!backend.isPlaying(0));
+    assert(!backend.isPlaying(9));
+    assert(backend.getElapsedTime(1) == 0);
+    assert(backend.volume(1) == 255);
+    assert(backend.volume(9) == 0);
+
+    backend.play(0, {'x'}, "wav", 1);
+    assert(backend.pendingCount() == 0);
+
+    backend.play(1, {'R', 'I', 'F', 'F'}, "wav", 2);
+    assert(backend.isPlaying(1));
+    assert(backend.pendingCount() == 1);
+    const auto* play = backend.getPending(0);
+    assert(play != nullptr);
+    assert(play->action == "play");
+    assert(play->channelNum == 1);
+    assert(play->audioData.has_value());
+    assert(play->audioData.value() == std::vector<std::uint8_t>({'R', 'I', 'F', 'F'}));
+    assert(play->format.has_value());
+    assert(play->format.value() == "wav");
+    assert(play->loopCount == 2);
+    assert(play->volume == 255);
+
+    backend.setVolume(1, 300);
+    assert(backend.volume(1) == 255);
+    const auto* highVolume = backend.getPending(1);
+    assert(highVolume != nullptr);
+    assert(highVolume->action == "volume");
+    assert(highVolume->channelNum == 1);
+    assert(!highVolume->audioData.has_value());
+    assert(!highVolume->format.has_value());
+    assert(highVolume->volume == 255);
+
+    backend.setVolume(1, -5);
+    assert(backend.volume(1) == 0);
+    assert(backend.getPending(2)->volume == 0);
+    backend.setVolume(9, 128);
+    assert(backend.pendingCount() == 3);
+
+    backend.play(1, {0xFF, 0xFB}, "mp3", 0);
+    const auto* quietPlay = backend.getPending(3);
+    assert(quietPlay != nullptr);
+    assert(quietPlay->action == "play");
+    assert(quietPlay->format.value() == "mp3");
+    assert(quietPlay->loopCount == 0);
+    assert(quietPlay->volume == 0);
+
+    backend.notifyStopped(1);
+    assert(!backend.isPlaying(1));
+    backend.notifyStopped(9);
+
+    backend.stop(1);
+    assert(!backend.isPlaying(1));
+    const auto* stop = backend.getPending(4);
+    assert(stop != nullptr);
+    assert(stop->action == "stop");
+    assert(stop->channelNum == 1);
+    assert(!stop->audioData.has_value());
+    assert(!stop->format.has_value());
+    backend.stop(9);
+    assert(backend.pendingCount() == 5);
+
+    backend.drainPending();
+    assert(backend.pendingCommands().empty());
+    backend.stopAll();
+    assert(backend.pendingCount() == 8);
+    for (int index = 0; index < backend.pendingCount(); ++index) {
+        const auto* command = backend.getPending(index);
+        assert(command != nullptr);
+        assert(command->action == "stop");
+        assert(command->channelNum == index + 1);
+    }
+}
+
 void testTimeoutManagerFoundation() {
     TimeoutManager manager;
     assert(manager.getTimeoutCount() == 0);
@@ -26348,6 +26431,7 @@ int main() {
     testNetTaskFoundation();
     testNetManagerFoundation();
     testQueuedNetProviderFoundation();
+    testQueuedAudioBackendFoundation();
     testTimeoutManagerFoundation();
     testPaletteAndColorRefs();
     testBitmapAlphaAndPaletteBehavior();

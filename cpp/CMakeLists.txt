@@ -172,6 +172,7 @@ add_library(libreshockwave
     src/player/InputHandler.cpp
     src/player/MovieProperties.cpp
     src/player/SpriteProperties.cpp
+    src/player/audio/QueuedAudioBackend.cpp
     src/player/audio/SoundManager.cpp
     src/player/behavior/BehaviorInstance.cpp
     src/player/behavior/BehaviorManager.cpp
