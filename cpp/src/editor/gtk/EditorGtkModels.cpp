@@ -600,6 +600,17 @@ GtkShellViewState EditorGtkShellState::viewState() const {
     };
 }
 
+GtkStartScreenRequest EditorGtkShellState::startScreen(StartScreenModel::ExistsCallback exists) const {
+    return GtkStartScreenRequest{
+        std::string(StartScreenModel::TITLE),
+        std::string(StartScreenModel::SUBTITLE),
+        std::string(StartScreenModel::EMPTY_RECENTS_MESSAGE),
+        StartScreenModel::recentEntries(preferences_, std::move(exists)),
+        StartScreenModel::createNewMovieEnabled(),
+        EditorFramePanelModel::openFileDialog(preferences_.lastOpenDirectory()),
+    };
+}
+
 void EditorGtkShellState::setPreferences(PreferencesModel preferences) {
     preferences_ = std::move(preferences);
 }
@@ -641,6 +652,36 @@ std::vector<EditorContextEvent> EditorGtkShellState::closeFile() {
     traceHandlers_.clear();
     statusMessage_ = oldPath.has_value() ? "Closed " + displayFileName(*oldPath) : "No movie loaded";
     return events;
+}
+
+GtkActionActivation EditorGtkShellState::openRecentProject(int index, StartScreenModel::ExistsCallback exists) {
+    GtkActionActivation result;
+    result.actionName = "open_recent";
+
+    const auto entries = StartScreenModel::recentEntries(preferences_, std::move(exists));
+    if (index < 0 || static_cast<std::size_t>(index) >= entries.size()) {
+        result.statusMessage = "Recent project not available";
+        statusMessage_ = result.statusMessage;
+        return result;
+    }
+    if (!entries[static_cast<std::size_t>(index)].exists) {
+        result.statusMessage = "Recent project not found: " + entries[static_cast<std::size_t>(index)].path;
+        statusMessage_ = result.statusMessage;
+        return result;
+    }
+
+    const auto selectedPath = StartScreenModel::selectRecentPath(entries, index);
+    if (!selectedPath.has_value()) {
+        result.statusMessage = "Recent project not available";
+        statusMessage_ = result.statusMessage;
+        return result;
+    }
+
+    result.handled = true;
+    result.refreshView = true;
+    result.contextEvents = openFile(*selectedPath);
+    result.statusMessage = statusMessage_;
+    return result;
 }
 
 GtkWorkbenchPanelActivation EditorGtkShellState::floatWorkbenchPanel(std::string_view panelId) {

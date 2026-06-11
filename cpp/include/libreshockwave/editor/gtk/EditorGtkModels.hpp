@@ -65,6 +65,17 @@ struct GtkShellDialogResult {
     friend bool operator==(const GtkShellDialogResult&, const GtkShellDialogResult&) = default;
 };
 
+struct GtkStartScreenRequest {
+    std::string title;
+    std::string subtitle;
+    std::string emptyRecentsMessage;
+    std::vector<RecentProjectEntry> recentProjects;
+    bool createNewMovieEnabled{false};
+    EditorOpenFileDialogModel openFileDialog;
+
+    friend bool operator==(const GtkStartScreenRequest&, const GtkStartScreenRequest&) = default;
+};
+
 struct GtkActionSpec {
     std::string name;
     std::string detailedName;
@@ -278,11 +289,13 @@ public:
     [[nodiscard]] GtkWorkbenchContentSpec workbenchContent() const;
     [[nodiscard]] std::vector<GtkWorkbenchFocusActionSpec> workbenchFocusActions() const;
     [[nodiscard]] GtkShellViewState viewState() const;
+    [[nodiscard]] GtkStartScreenRequest startScreen(StartScreenModel::ExistsCallback exists) const;
 
     void setPreferences(PreferencesModel preferences);
     void setOpenMoviePath(std::optional<std::string> path);
     std::vector<EditorContextEvent> openFile(std::string path);
     std::vector<EditorContextEvent> closeFile();
+    GtkActionActivation openRecentProject(int index, StartScreenModel::ExistsCallback exists);
     GtkWorkbenchPanelActivation floatWorkbenchPanel(std::string_view panelId);
     GtkWorkbenchPanelActivation activateWorkbenchPanel(std::string_view panelId);
     GtkWorkbenchPanelActivation activateWorkbenchAction(std::string_view actionName);

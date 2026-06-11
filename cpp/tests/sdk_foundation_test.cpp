@@ -334,6 +334,7 @@ using libreshockwave::editor::gtk::EditorGtkShellState;
 using libreshockwave::editor::gtk::GtkActionActivation;
 using libreshockwave::editor::gtk::GtkPanelRowSpec;
 using libreshockwave::editor::gtk::GtkShellDialogKind;
+using libreshockwave::editor::gtk::GtkStartScreenRequest;
 using libreshockwave::editor::gtk::GtkToolbarItemSpec;
 using libreshockwave::editor::gtk::GtkWorkbenchContentSpec;
 using libreshockwave::editor::gtk::GtkWorkbenchFocusActionSpec;
@@ -2555,6 +2556,55 @@ void testEditorShellActionModels() {
     assert((seededGtkState.externalParams() ==
             std::vector<ExternalParamRow>{ExternalParamRow{"swSeed", "from-preferences"}}));
     assert(seededGtkState.preferences().recentProjects().front() == "/seed/Movie.dir");
+
+    EditorGtkShellState startScreenGtkState;
+    PreferencesModel startScreenPreferences;
+    startScreenPreferences.setLastOpenDirectory("/movies");
+    startScreenPreferences.addRecentProject("/movies/Missing.dir");
+    startScreenPreferences.addRecentProject("/movies/Existing.dir");
+    startScreenGtkState.setPreferences(std::move(startScreenPreferences));
+    auto recentExists = [](std::string_view path) {
+        return path == "/movies/Existing.dir";
+    };
+    const auto startScreen = startScreenGtkState.startScreen(recentExists);
+    assert(startScreen ==
+           (GtkStartScreenRequest{
+               "LibreShockwave Editor",
+               "Director MX 2004",
+               "No recent projects. Open a movie to get started.",
+               std::vector<RecentProjectEntry>{
+                   RecentProjectEntry{"/movies/Existing.dir", "Existing.dir", "/movies", true},
+                   RecentProjectEntry{"/movies/Missing.dir", "Missing.dir", "/movies", false},
+               },
+               false,
+               EditorOpenFileDialogModel{
+                   "Open Director File",
+                   "Director Files (*.dir, *.dxr, *.dcr, *.cct, *.cst)",
+                   std::vector<std::string>{"dir", "dxr", "dcr", "cct", "cst"},
+                   std::optional<std::string>{"/movies"},
+               },
+           }));
+
+    auto missingRecent = startScreenGtkState.openRecentProject(1, recentExists);
+    assert(missingRecent.actionName == "open_recent");
+    assert(!missingRecent.handled);
+    assert(missingRecent.contextEvents.empty());
+    assert(missingRecent.statusMessage == "Recent project not found: /movies/Missing.dir");
+    assert(!startScreenGtkState.openMoviePath().has_value());
+
+    auto invalidRecent = startScreenGtkState.openRecentProject(5, recentExists);
+    assert(!invalidRecent.handled);
+    assert(invalidRecent.statusMessage == "Recent project not available");
+
+    auto openedRecent = startScreenGtkState.openRecentProject(0, recentExists);
+    assert(openedRecent.actionName == "open_recent");
+    assert(openedRecent.handled);
+    assert(openedRecent.refreshView);
+    assert(openedRecent.contextEvents.size() == 1);
+    assert(openedRecent.contextEvents[0].newPath.value() == "/movies/Existing.dir");
+    assert(openedRecent.statusMessage == "Opened Existing.dir");
+    assert(startScreenGtkState.openMoviePath().value() == "/movies/Existing.dir");
+    assert(startScreenGtkState.preferences().recentProjects().front() == "/movies/Existing.dir");
 
     EditorGtkShellState habboGtkState;
     auto habboOpenEvents = habboGtkState.openFile("/srv/site/htdocs/client/Movie.dir");
