@@ -221,6 +221,10 @@ const std::vector<std::string>& EditorGtkShellState::traceHandlers() const {
     return traceHandlers_;
 }
 
+const PreferencesModel& EditorGtkShellState::preferences() const {
+    return preferences_;
+}
+
 std::vector<GtkActionSpec> EditorGtkShellState::actionSpecs() const {
     return EditorGtkShellModel::actionSpecs(menuModel_, toolbarModel_, frameModel_);
 }
@@ -267,6 +271,10 @@ GtkShellViewState EditorGtkShellState::viewState() const {
     };
 }
 
+void EditorGtkShellState::setPreferences(PreferencesModel preferences) {
+    preferences_ = std::move(preferences);
+}
+
 void EditorGtkShellState::setOpenMoviePath(std::optional<std::string> path) {
     if (path.has_value()) {
         (void)openFile(std::move(*path));
@@ -276,8 +284,23 @@ void EditorGtkShellState::setOpenMoviePath(std::optional<std::string> path) {
 }
 
 std::vector<EditorContextEvent> EditorGtkShellState::openFile(std::string path) {
-    lastOpenDirectory_ = parentDirectory(path);
+    if (const auto directory = parentDirectory(path); directory.has_value()) {
+        preferences_.setLastOpenDirectory(*directory);
+    }
+    preferences_.addRecentProject(path);
     auto events = contextModel_.openFile(std::move(path));
+    traceHandlers_.clear();
+    if (const auto& movieKey = contextModel_.currentMovieKey(); movieKey.has_value()) {
+        if (auto savedParams = preferences_.movieParams(*movieKey); savedParams.has_value()) {
+            externalParams_ = std::move(*savedParams);
+        } else if (EditorContextModel::detectLocalHttpRoot(*movieKey).has_value()) {
+            externalParams_ = ExternalParamsTableModel::habboPresetRows();
+        } else {
+            externalParams_.clear();
+        }
+    } else {
+        externalParams_.clear();
+    }
     statusMessage_ = "Opened " + displayFileName(*contextModel_.currentPath());
     return events;
 }
@@ -285,6 +308,8 @@ std::vector<EditorContextEvent> EditorGtkShellState::openFile(std::string path) 
 std::vector<EditorContextEvent> EditorGtkShellState::closeFile() {
     const auto oldPath = contextModel_.currentPath();
     auto events = contextModel_.closeFile();
+    externalParams_.clear();
+    traceHandlers_.clear();
     statusMessage_ = oldPath.has_value() ? "Closed " + displayFileName(*oldPath) : "No movie loaded";
     return events;
 }
@@ -325,7 +350,7 @@ GtkActionActivation EditorGtkShellState::activateAction(std::string_view name) {
             result.handled = true;
             result.requestOpenFile = true;
             result.refreshView = true;
-            result.openFileDialog = EditorFramePanelModel::openFileDialog(lastOpenDirectory_);
+            result.openFileDialog = EditorFramePanelModel::openFileDialog(preferences_.lastOpenDirectory());
             result.statusMessage = "Open Director file requested";
             statusMessage_ = result.statusMessage;
             return result;
@@ -508,6 +533,9 @@ GtkShellDialogResult EditorGtkShellState::applyExternalParameters(std::vector<Ex
     auto sanitized = ExternalParamsTableModel{std::move(rows)}.toParams();
     const bool changed = sanitized != externalParams_;
     externalParams_ = std::move(sanitized);
+    if (const auto& movieKey = contextModel_.currentMovieKey(); movieKey.has_value()) {
+        preferences_.setMovieParams(*movieKey, externalParams_);
+    }
     statusMessage_ = "External parameters updated";
     return GtkShellDialogResult{
         GtkShellDialogKind::ExternalParameters,

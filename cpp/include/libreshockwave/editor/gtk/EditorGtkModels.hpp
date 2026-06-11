@@ -149,6 +149,7 @@ public:
     [[nodiscard]] const std::string& statusMessage() const;
     [[nodiscard]] const std::vector<ExternalParamRow>& externalParams() const;
     [[nodiscard]] const std::vector<std::string>& traceHandlers() const;
+    [[nodiscard]] const PreferencesModel& preferences() const;
 
     [[nodiscard]] std::vector<GtkActionSpec> actionSpecs() const;
     [[nodiscard]] std::optional<GtkActionSpec> actionSpec(std::string_view name) const;
@@ -156,6 +157,7 @@ public:
     [[nodiscard]] std::vector<GtkPanelRowSpec> panelRows() const;
     [[nodiscard]] GtkShellViewState viewState() const;
 
+    void setPreferences(PreferencesModel preferences);
     void setOpenMoviePath(std::optional<std::string> path);
     std::vector<EditorContextEvent> openFile(std::string path);
     std::vector<EditorContextEvent> closeFile();
@@ -168,7 +170,7 @@ private:
     EditorToolBarModel toolbarModel_;
     EditorFramePanelModel frameModel_;
     EditorContextModel contextModel_;
-    std::optional<std::string> lastOpenDirectory_;
+    PreferencesModel preferences_;
     std::string statusMessage_;
     std::vector<ExternalParamRow> externalParams_;
     std::vector<std::string> traceHandlers_;

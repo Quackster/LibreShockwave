@@ -2130,6 +2130,7 @@ void testEditorShellActionModels() {
     assert(gtkState.menuModel().findMenu("File") != nullptr);
     assert(gtkState.toolbarItems().front().detailedActionName == "app.rewind");
     assert(gtkState.actionSpec("panel_paint")->active == false);
+    assert(gtkState.preferences().recentProjects().empty());
 
     auto gtkView = gtkState.viewState();
     assert(gtkView.windowTitle == EditorPanelCatalog::closedFrameTitle());
@@ -2162,6 +2163,25 @@ void testEditorShellActionModels() {
     assert(openRequest.statusMessage == "Open Director file requested");
     assert(!gtkState.openMoviePath().has_value());
     assert(gtkState.viewState().statusMessage == "Open Director file requested");
+
+    EditorGtkShellState seededGtkState;
+    PreferencesModel seededPreferences;
+    seededPreferences.setLastOpenDirectory("/seed");
+    seededPreferences.setMovieParams("/seed/Movie.dir", {ExternalParamRow{"swSeed", "from-preferences"}});
+    seededGtkState.setPreferences(std::move(seededPreferences));
+    auto seededOpenRequest = seededGtkState.activateAction("open");
+    assert(seededOpenRequest.openFileDialog->currentDirectory.value() == "/seed");
+    auto seededOpenEvents = seededGtkState.openFile("/seed/Movie.dir");
+    assert(seededOpenEvents.size() == 1);
+    assert((seededGtkState.externalParams() ==
+            std::vector<ExternalParamRow>{ExternalParamRow{"swSeed", "from-preferences"}}));
+    assert(seededGtkState.preferences().recentProjects().front() == "/seed/Movie.dir");
+
+    EditorGtkShellState habboGtkState;
+    auto habboOpenEvents = habboGtkState.openFile("/srv/site/htdocs/client/Movie.dir");
+    assert(habboOpenEvents.size() == 1);
+    assert(habboGtkState.externalParams() == ExternalParamsTableModel::habboPresetRows());
+    assert(!habboGtkState.preferences().movieParams("/srv/site/htdocs/client/Movie.dir").has_value());
 
     auto playWithoutMovie = gtkState.activateAction("play");
     assert(!playWithoutMovie.handled);
@@ -2215,6 +2235,7 @@ void testEditorShellActionModels() {
     assert(paramsResult.traceHandlers.empty());
     assert(gtkState.externalParams() == paramsResult.externalParams);
     assert(gtkState.statusMessage() == "External parameters updated");
+    assert(!gtkState.preferences().movieParams("/tmp/Movie.dir").has_value());
 
     externalParamsRequest = gtkState.activateAction("externalParameters");
     assert(externalParamsRequest.dialogRequest->externalParams.rowCount() == 2);
@@ -2240,6 +2261,9 @@ void testEditorShellActionModels() {
     assert(gtkState.contextModel().hasFile());
     assert(gtkState.openMoviePath().value() == "/tmp/Movie.dir");
     assert(gtkState.statusMessage() == "Opened Movie.dir");
+    assert(gtkState.externalParams().empty());
+    assert(gtkState.preferences().lastOpenDirectory().value() == "/tmp");
+    assert(gtkState.preferences().recentProjects().front() == "/tmp/Movie.dir");
     gtkView = gtkState.viewState();
     assert(gtkView.windowTitle == "LibreShockwave Editor - Movie.dir");
     assert(gtkView.stagePlaceholderText == "Movie loaded: Movie.dir");
@@ -2248,6 +2272,17 @@ void testEditorShellActionModels() {
     assert(!gtkView.playing);
     assert(gtkView.currentFrame == 1);
     assert(gtkView.toolbarItems[7].label == "Frame: 1");
+
+    auto movieParamsResult = gtkState.applyExternalParameters({{"swPersist", "saved-value"}});
+    assert(movieParamsResult.accepted);
+    assert((movieParamsResult.externalParams == std::vector<ExternalParamRow>{{"swPersist", "saved-value"}}));
+    const auto savedMovieParams = gtkState.preferences().movieParams("/tmp/Movie.dir");
+    assert(savedMovieParams.has_value());
+    assert(*savedMovieParams == movieParamsResult.externalParams);
+    externalParamsRequest = gtkState.activateAction("externalParameters");
+    assert(externalParamsRequest.dialogRequest->externalParams.rowCount() == 1);
+    assert(externalParamsRequest.dialogRequest->externalParams.valueAt(0, 0) == "swPersist");
+    assert(externalParamsRequest.dialogRequest->externalParams.valueAt(0, 1) == "saved-value");
 
     auto playActivation = gtkState.activateAction("play");
     assert(playActivation.handled);
@@ -2365,6 +2400,8 @@ void testEditorShellActionModels() {
     assert(closeActivation.statusMessage == "Closed Movie.dir");
     assert(!gtkState.contextModel().hasFile());
     assert(!gtkState.openMoviePath().has_value());
+    assert(gtkState.externalParams().empty());
+    assert(gtkState.traceHandlers().empty());
     assert(gtkState.viewState().windowTitle == EditorPanelCatalog::closedFrameTitle());
     assert(gtkState.viewState().stagePlaceholderText == "No movie loaded");
 
@@ -2372,10 +2409,12 @@ void testEditorShellActionModels() {
     assert(gtkState.openMoviePath().value() == "/tmp/Movie.dir");
     assert(gtkState.viewState().windowTitle == "LibreShockwave Editor - Movie.dir");
     assert(gtkState.statusMessage() == "Opened Movie.dir");
+    assert((gtkState.externalParams() == std::vector<ExternalParamRow>{{"swPersist", "saved-value"}}));
     gtkState.setOpenMoviePath(std::nullopt);
     assert(!gtkState.openMoviePath().has_value());
     assert(gtkState.viewState().windowTitle == EditorPanelCatalog::closedFrameTitle());
     assert(gtkState.statusMessage() == "Closed Movie.dir");
+    assert(gtkState.externalParams().empty());
 
     auto missingActivation = gtkState.activateAction("missing");
     assert(missingActivation.actionName == "missing");
