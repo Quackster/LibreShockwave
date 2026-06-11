@@ -363,6 +363,22 @@ GtkShellDialogPresentation EditorGtkShellModel::dialogPresentation(const GtkShel
     return presentation;
 }
 
+GtkOpenFileDialogPresentation EditorGtkShellModel::openFileDialogPresentation(
+    const EditorOpenFileDialogModel& request) {
+    GtkOpenFileDialogPresentation presentation;
+    presentation.title = request.title;
+    presentation.filter.label = request.filterLabel;
+    presentation.filter.extensions = request.extensions;
+    presentation.filter.patterns.reserve(request.extensions.size());
+    for (const auto& extension : request.extensions) {
+        presentation.filter.patterns.push_back("*." + extension);
+    }
+    presentation.currentDirectory = request.currentDirectory;
+    presentation.acceptLabel = "Open";
+    presentation.cancelLabel = "Cancel";
+    return presentation;
+}
+
 std::vector<GtkActionSpec> EditorGtkShellModel::actionSpecs(const EditorMenuModel& menuModel,
                                                             const EditorToolBarModel& toolbarModel,
                                                             const EditorFramePanelModel& frameModel) {

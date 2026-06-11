@@ -85,6 +85,27 @@ struct GtkShellDialogResult {
     friend bool operator==(const GtkShellDialogResult&, const GtkShellDialogResult&) = default;
 };
 
+struct GtkOpenFileFilterSpec {
+    std::string label;
+    std::vector<std::string> extensions;
+    std::vector<std::string> patterns;
+
+    friend bool operator==(const GtkOpenFileFilterSpec&, const GtkOpenFileFilterSpec&) = default;
+};
+
+struct GtkOpenFileDialogPresentation {
+    std::string title;
+    GtkOpenFileFilterSpec filter;
+    std::optional<std::string> currentDirectory;
+    std::string acceptLabel;
+    std::string cancelLabel;
+    bool modal{true};
+    bool selectMultiple{false};
+    bool mustExist{true};
+
+    friend bool operator==(const GtkOpenFileDialogPresentation&, const GtkOpenFileDialogPresentation&) = default;
+};
+
 struct GtkStartScreenRequest {
     std::string title;
     std::string subtitle;
@@ -287,6 +308,8 @@ public:
     [[nodiscard]] static std::string workbenchPanelFloatActionName(std::string_view panelId);
     [[nodiscard]] static std::string appAction(std::string_view actionName);
     [[nodiscard]] static GtkShellDialogPresentation dialogPresentation(const GtkShellDialogRequest& request);
+    [[nodiscard]] static GtkOpenFileDialogPresentation openFileDialogPresentation(
+        const EditorOpenFileDialogModel& request);
 
     [[nodiscard]] static std::vector<GtkActionSpec> actionSpecs(const EditorMenuModel& menuModel,
                                                                 const EditorToolBarModel& toolbarModel,

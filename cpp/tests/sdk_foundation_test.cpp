@@ -2622,6 +2622,18 @@ void testEditorShellActionModels() {
     assert(openRequest.statusMessage == "Open Director file requested");
     assert(!gtkState.openMoviePath().has_value());
     assert(gtkState.viewState().statusMessage == "Open Director file requested");
+    const auto openPresentation = EditorGtkShellModel::openFileDialogPresentation(*openRequest.openFileDialog);
+    assert(openPresentation.title == "Open Director File");
+    assert(openPresentation.filter.label == "Director Files (*.dir, *.dxr, *.dcr, *.cct, *.cst)");
+    assert((openPresentation.filter.extensions == std::vector<std::string>{"dir", "dxr", "dcr", "cct", "cst"}));
+    assert((openPresentation.filter.patterns ==
+            std::vector<std::string>{"*.dir", "*.dxr", "*.dcr", "*.cct", "*.cst"}));
+    assert(!openPresentation.currentDirectory.has_value());
+    assert(openPresentation.acceptLabel == "Open");
+    assert(openPresentation.cancelLabel == "Cancel");
+    assert(openPresentation.modal);
+    assert(!openPresentation.selectMultiple);
+    assert(openPresentation.mustExist);
 
     EditorGtkShellState openDialogGtkState;
     auto cancelledOpen = openDialogGtkState.cancelOpenFile();
@@ -2656,6 +2668,11 @@ void testEditorShellActionModels() {
     seededGtkState.setPreferences(std::move(seededPreferences));
     auto seededOpenRequest = seededGtkState.activateAction("open");
     assert(seededOpenRequest.openFileDialog->currentDirectory.value() == "/seed");
+    const auto seededOpenPresentation =
+        EditorGtkShellModel::openFileDialogPresentation(*seededOpenRequest.openFileDialog);
+    assert(seededOpenPresentation.currentDirectory.value() == "/seed");
+    assert((seededOpenPresentation.filter.patterns ==
+            std::vector<std::string>{"*.dir", "*.dxr", "*.dcr", "*.cct", "*.cst"}));
     auto seededOpenEvents = seededGtkState.openFile("/seed/Movie.dir");
     assert(seededOpenEvents.size() == 1);
     assert((seededGtkState.externalParams() ==
@@ -2689,6 +2706,10 @@ void testEditorShellActionModels() {
                    std::optional<std::string>{"/movies"},
                },
            }));
+    const auto startScreenOpenPresentation =
+        EditorGtkShellModel::openFileDialogPresentation(startScreen.openFileDialog);
+    assert(startScreenOpenPresentation.currentDirectory.value() == "/movies");
+    assert(startScreenOpenPresentation.acceptLabel == "Open");
 
     auto missingRecent = startScreenGtkState.openRecentProject(1, recentExists);
     assert(missingRecent.actionName == "open_recent");
