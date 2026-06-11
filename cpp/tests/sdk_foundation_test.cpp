@@ -114,6 +114,7 @@
 #include "libreshockwave/editor/script/LingoKeywords.hpp"
 #include "libreshockwave/editor/script/LingoTokenizer.hpp"
 #include "libreshockwave/editor/stage/StageViewModels.hpp"
+#include "libreshockwave/editor/ui/EditorRendererModels.hpp"
 #include "libreshockwave/format/ChunkInfo.hpp"
 #include "libreshockwave/format/AfterburnerReader.hpp"
 #include "libreshockwave/format/ChunkType.hpp"
@@ -396,6 +397,12 @@ using libreshockwave::editor::stage::StageMouseEvent;
 using libreshockwave::editor::stage::StagePoint;
 using libreshockwave::editor::stage::StageRect;
 using libreshockwave::editor::stage::StageViewModel;
+using libreshockwave::editor::ui::EditorRendererModels;
+using libreshockwave::editor::ui::HorizontalAlignment;
+using libreshockwave::editor::ui::RowHeaderPresentation;
+using libreshockwave::editor::ui::TreeCellPresentation;
+using libreshockwave::editor::ui::TreeIcon;
+using libreshockwave::editor::ui::UiColor;
 using libreshockwave::lingo::Datum;
 using libreshockwave::lingo::DatumType;
 using libreshockwave::lingo::LingoValueParser;
@@ -2079,6 +2086,66 @@ void testEditorPanelCatalogModels() {
     assert(layout.isDocked("tool-palette"));
     assert(layout.isDocked("bytecode-debugger"));
     assert(!layout.isDocked("stage"));
+}
+
+void testEditorRendererModels() {
+    const CastMemberInfo bitmapInfo{7, "Door", nullptr, MemberType::Bitmap, "16x16"};
+    const CastMemberInfo scriptInfo{8, "RoomScript", nullptr, MemberType::Script, "Movie Script [startMovie]"};
+    const CastMemberInfo textInfo{9, "Caption", nullptr, MemberType::Text, ""};
+    const CastMemberInfo buttonInfo{10, "Go", nullptr, MemberType::Button, ""};
+    const CastMemberInfo shapeInfo{11, "Vector", nullptr, MemberType::Shape, ""};
+    const CastMemberInfo paletteInfo{12, "Theme", nullptr, MemberType::Palette, ""};
+    const CastMemberInfo filmLoopInfo{13, "Loop", nullptr, MemberType::FilmLoop, ""};
+    const CastMemberInfo unknownInfo{14, "Mystery", nullptr, MemberType::Unknown, ""};
+
+    assert(EditorRendererModels::memberTypeForeground(MemberType::Bitmap).value() == (UiColor{0, 100, 0}));
+    assert(EditorRendererModels::memberTypeForeground(MemberType::Script).value() == (UiColor{0, 0, 180}));
+    assert(EditorRendererModels::memberTypeForeground(MemberType::Sound).value() == (UiColor{180, 0, 180}));
+    assert(EditorRendererModels::memberTypeForeground(MemberType::Text).value() == (UiColor{100, 100, 0}));
+    assert(EditorRendererModels::memberTypeForeground(MemberType::Button).value() == (UiColor{100, 100, 0}));
+    assert(EditorRendererModels::memberTypeForeground(MemberType::Shape).value() == (UiColor{180, 100, 0}));
+    assert(EditorRendererModels::memberTypeForeground(MemberType::Palette).value() == (UiColor{100, 0, 100}));
+    assert(EditorRendererModels::memberTypeForeground(MemberType::FilmLoop).value() == (UiColor{0, 100, 100}));
+    assert(!EditorRendererModels::memberTypeForeground(MemberType::RichText).has_value());
+    assert(!EditorRendererModels::memberTypeForeground(MemberType::Unknown).has_value());
+
+    const FileNode fileNode{"/tmp/Movie.dir", "Movie.dir", {bitmapInfo, scriptInfo, textInfo}};
+    assert((EditorRendererModels::fileTreeCell(fileNode, true, true, false, 3, true) ==
+            TreeCellPresentation{"Movie.dir (3 members)", TreeIcon::Directory, std::nullopt, true, true, false, 3,
+                                 true}));
+
+    assert((EditorRendererModels::memberTreeCell(MemberNodeData{"/tmp/Movie.dir", bitmapInfo}, false, false, true, 4,
+                                                 false) ==
+            TreeCellPresentation{"#7 Door [bitmap] (16x16)", TreeIcon::File, UiColor{0, 100, 0}, false, false, true, 4,
+                                 false}));
+    assert((EditorRendererModels::memberTreeCell(MemberNodeData{"/tmp/Movie.dir", scriptInfo}).text ==
+            "#8 RoomScript - Movie Script [startMovie]"));
+    assert((EditorRendererModels::memberTreeCell(MemberNodeData{"/tmp/Movie.dir", unknownInfo}).foreground ==
+            std::nullopt));
+    assert(EditorRendererModels::memberTreeCell(MemberNodeData{"/tmp/Movie.dir", textInfo}).foreground.value() ==
+           (UiColor{100, 100, 0}));
+    assert(EditorRendererModels::memberTreeCell(MemberNodeData{"/tmp/Movie.dir", buttonInfo}).foreground.value() ==
+           (UiColor{100, 100, 0}));
+    assert(EditorRendererModels::memberTreeCell(MemberNodeData{"/tmp/Movie.dir", shapeInfo}).foreground.value() ==
+           (UiColor{180, 100, 0}));
+    assert(EditorRendererModels::memberTreeCell(MemberNodeData{"/tmp/Movie.dir", paletteInfo}).foreground.value() ==
+           (UiColor{100, 0, 100}));
+    assert(EditorRendererModels::memberTreeCell(MemberNodeData{"/tmp/Movie.dir", filmLoopInfo}).foreground.value() ==
+           (UiColor{0, 100, 100}));
+
+    assert((EditorRendererModels::plainTreeCell("Loading...", false, false, true, 5, false) ==
+            TreeCellPresentation{"Loading...", TreeIcon::None, std::nullopt, false, false, true, 5, false}));
+
+    assert((EditorRendererModels::rowHeaderCell("Sound 1", 3, true, true) ==
+            RowHeaderPresentation{"Sound 1",
+                                  "table-header-background",
+                                  "table-header-cell-border",
+                                  "table-header-font",
+                                  HorizontalAlignment::Center,
+                                  true,
+                                  3,
+                                  true,
+                                  true}));
 }
 
 void testEditorModelAndSelectionFoundation() {
@@ -22710,6 +22777,7 @@ int main() {
     testEditorScoreViewModels();
     testEditorStageViewModels();
     testEditorPanelCatalogModels();
+    testEditorRendererModels();
     testEditorModelAndSelectionFoundation();
     testEditorAudioModels();
     testEditorDockingModels();
