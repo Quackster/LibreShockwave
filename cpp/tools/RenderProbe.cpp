@@ -69,6 +69,8 @@ struct RenderProbeSummary {
     int firstNonBackgroundFrame = 0;
     std::map<std::string, std::size_t> unbakedSpriteTypes;
     std::map<std::string, std::size_t> unbakedMemberTypes;
+    std::map<std::string, std::size_t> nonRenderableSpriteTypes;
+    std::map<std::string, std::size_t> nonRenderableMemberTypes;
     int stageWidth = 0;
     int stageHeight = 0;
     int frame = 0;
@@ -363,13 +365,25 @@ std::string memberTypeName(const libreshockwave::player::render::pipeline::Rende
     return "missing";
 }
 
-void accumulateUnbakedSpriteStats(const libreshockwave::player::render::pipeline::FrameSnapshot& snapshot,
-                                  std::map<std::string, std::size_t>& spriteTypes,
-                                  std::map<std::string, std::size_t>& memberTypes) {
+bool isExpectedNonRenderableSprite(const libreshockwave::player::render::pipeline::RenderSprite& sprite) {
+    if (sprite.castMember() == nullptr && sprite.dynamicMember() == nullptr) {
+        return true;
+    }
+    const auto member = sprite.castMember();
+    return member != nullptr && member->memberType() == libreshockwave::cast::MemberType::Script;
+}
+
+void accumulateSpriteDiagnostics(const libreshockwave::player::render::pipeline::FrameSnapshot& snapshot,
+                                 std::map<std::string, std::size_t>& unbakedSpriteTypes,
+                                 std::map<std::string, std::size_t>& unbakedMemberTypes,
+                                 std::map<std::string, std::size_t>& nonRenderableSpriteTypes,
+                                 std::map<std::string, std::size_t>& nonRenderableMemberTypes) {
     for (const auto& sprite : snapshot.sprites) {
         if (sprite.bakedBitmap() != nullptr) {
             continue;
         }
+        auto& spriteTypes = isExpectedNonRenderableSprite(sprite) ? nonRenderableSpriteTypes : unbakedSpriteTypes;
+        auto& memberTypes = isExpectedNonRenderableSprite(sprite) ? nonRenderableMemberTypes : unbakedMemberTypes;
         ++spriteTypes[std::string(libreshockwave::player::render::pipeline::name(sprite.type()))];
         ++memberTypes[memberTypeName(sprite)];
     }
@@ -465,7 +479,13 @@ RenderProbeSummary probeFile(const fs::path& path, const RenderProbeOptions& opt
     int firstNonBackgroundFrame = 0;
     std::map<std::string, std::size_t> unbakedSpriteTypes;
     std::map<std::string, std::size_t> unbakedMemberTypes;
-    accumulateUnbakedSpriteStats(snapshot, unbakedSpriteTypes, unbakedMemberTypes);
+    std::map<std::string, std::size_t> nonRenderableSpriteTypes;
+    std::map<std::string, std::size_t> nonRenderableMemberTypes;
+    accumulateSpriteDiagnostics(snapshot,
+                                unbakedSpriteTypes,
+                                unbakedMemberTypes,
+                                nonRenderableSpriteTypes,
+                                nonRenderableMemberTypes);
     if (options.scanFrames > 0 && player.frameCount() > 0) {
         const int framesToScan = std::min(options.scanFrames, player.frameCount());
         for (int frame = 1; frame <= framesToScan; ++frame) {
@@ -482,7 +502,11 @@ RenderProbeSummary probeFile(const fs::path& path, const RenderProbeOptions& opt
             if (countBakedSprites(scanSnapshot.sprites) > 0) {
                 ++framesWithBakedSprites;
             }
-            accumulateUnbakedSpriteStats(scanSnapshot, unbakedSpriteTypes, unbakedMemberTypes);
+            accumulateSpriteDiagnostics(scanSnapshot,
+                                        unbakedSpriteTypes,
+                                        unbakedMemberTypes,
+                                        nonRenderableSpriteTypes,
+                                        nonRenderableMemberTypes);
             if (measureBitmap(scanSnapshot, scanBitmap).nonBackgroundPixels > 0) {
                 ++framesWithNonBackgroundPixels;
                 if (firstNonBackgroundFrame == 0) {
@@ -512,6 +536,8 @@ RenderProbeSummary probeFile(const fs::path& path, const RenderProbeOptions& opt
         firstNonBackgroundFrame,
         std::move(unbakedSpriteTypes),
         std::move(unbakedMemberTypes),
+        std::move(nonRenderableSpriteTypes),
+        std::move(nonRenderableMemberTypes),
         snapshot.stageWidth,
         snapshot.stageHeight,
         player.currentFrame(),
@@ -549,6 +575,8 @@ void printVerboseOk(const fs::path& path, const RenderProbeSummary& summary) {
               << " firstNonBackgroundFrame=" << summary.firstNonBackgroundFrame
               << " unbakedSpriteTypes=" << formatCounts(summary.unbakedSpriteTypes)
               << " unbakedMemberTypes=" << formatCounts(summary.unbakedMemberTypes)
+              << " nonRenderableSpriteTypes=" << formatCounts(summary.nonRenderableSpriteTypes)
+              << " nonRenderableMemberTypes=" << formatCounts(summary.nonRenderableMemberTypes)
               << " scriptErrors=" << summary.scriptErrors.size()
               << '\n';
 
