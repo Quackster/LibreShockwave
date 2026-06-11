@@ -1041,10 +1041,31 @@ void testPfr1FontParserAndRegistry() {
     assert(rasterizedMember->getFontSize() == 20);
     assert(rasterizedMember->getCharWidth('C') > 0);
     assert(FontRegistry::getBitmapFont("TinyPFR", 20) == rasterizedMember);
+    const auto directPfrMember = FontRegistry::getPfrBitmapFont("TinyPFR", 20);
+    assert(directPfrMember != nullptr);
+    assert(directPfrMember->getFontName() == "TinyPFR");
+    assert(directPfrMember->getCharWidth('C') > 0);
     assert(FontRegistry::resolveFont("TinyPFR").value() == "tinypfr");
     assert(FontRegistry::resolveFont("Tiny Member").value() == "tiny member");
     assert(FontRegistry::getFirstRegisteredFont().value() == "tiny member");
     assert(FontRegistry::getPreferredDirectorPixelFont().value() == "Volter");
+    XmedStyledText goldfishText{};
+    goldfishText.text = "First time here?";
+    goldfishText.fontName = "Volter-Bold (goldfish)";
+    goldfishText.fontSize = 9;
+    goldfishText.memberBold = true;
+    goldfishText.alignment = "center";
+    goldfishText.width = 140;
+    goldfishText.height = 16;
+    goldfishText.colorR = 255;
+    goldfishText.colorG = 255;
+    goldfishText.colorB = 255;
+    SimpleTextRenderer textRenderer;
+    auto goldfishRendered = textRenderer.renderXmedText(&goldfishText, 140, 16, 0, 0);
+    assert(goldfishRendered != nullptr);
+    assert(std::any_of(goldfishRendered->pixels().begin(), goldfishRendered->pixels().end(), [](std::uint32_t pixel) {
+        return ((pixel >> 24U) & 0xFFU) != 0;
+    }));
     FontRegistry::clear();
     assert(!FontRegistry::getTtfBytes("tiny member").has_value());
     assert(FontRegistry::hasEmbeddedBoldVariant("Volter"));
@@ -6069,13 +6090,15 @@ void testEditorScoreDataHelpers() {
     appendI32(labelsData, 12);
     labelsData.insert(labelsData.end(), {'S', 't', 'a', 'r', 't', '\0', 'M', 'i', 'd', 'd', 'l', 'e'});
 
+    const std::vector<std::uint8_t> emptyScoreData(24, 0);
     auto file = DirectorFile::load(buildRifx({
         {"DRCF", configData},
         {"CAS*", castData},
         {"CASt", makeMemberData(MemberType::Bitmap, "Door", {})},
         {"CASt", makeMemberData(MemberType::Script, "FrameScript", {0x00, 0x03})},
-        {"VWSC", scoreData},
+        {"SCVW", scoreData},
         {"VWLB", labelsData},
+        {"VWSC", emptyScoreData},
     }));
     assert(file->hasScore());
     assert(file->scoreChunk()->getFrameCount() == 2);
@@ -19998,13 +20021,25 @@ void testSpriteBakerFoundation() {
     assert(bakedDynamicText.bakedBitmap()->isNativeAlpha());
     assert(bakedDynamicText.bakedBitmap()->getPixel(8, 3) == 0xFFABCDEFU);
 
+    std::vector<std::uint8_t> xmedSpecificData(56, 0);
+    xmedSpecificData[4] = 't';
+    xmedSpecificData[5] = 'e';
+    xmedSpecificData[6] = 'x';
+    xmedSpecificData[7] = 't';
+    putI32At(xmedSpecificData, 48, 4);
+    putI32At(xmedSpecificData, 52, 11);
+    assert(XmedTextParser::isTextXtra(xmedSpecificData));
+
+    std::vector<std::uint8_t> xmedCastData;
+    appendI32(xmedCastData, 2);
+
     std::vector<std::uint8_t> xmedKeyData;
     appendI16(xmedKeyData, 12);
     appendI16(xmedKeyData, 12);
     appendI32(xmedKeyData, 1);
     appendI32(xmedKeyData, 1);
+    appendI32(xmedKeyData, 4);
     appendI32(xmedKeyData, 2);
-    appendI32(xmedKeyData, 9);
     appendI32(xmedKeyData, BinaryReader::fourCC("XMED"));
 
     auto appendAscii = [](std::vector<std::uint8_t>& data, const std::string& value) {
@@ -20047,6 +20082,8 @@ void testSpriteBakerFoundation() {
 
     const std::vector<std::pair<std::string, std::vector<std::uint8_t>>> xmedChunks{
         {"DRCF", textConfigData},
+        {"CAS*", xmedCastData},
+        {"CASt", makeCastMemberData(MemberType::Xtra, xmedSpecificData)},
         {"KEY*", xmedKeyData},
         {"XMED", xmedData}
     };
@@ -20091,25 +20128,11 @@ void testSpriteBakerFoundation() {
     putI32At(xmedFileData, 4, static_cast<std::uint32_t>(xmedFileData.size() - 8));
 
     auto xmedFile = DirectorFile::load(xmedFileData);
-    std::vector<std::uint8_t> xmedSpecificData(56, 0);
-    xmedSpecificData[4] = 't';
-    xmedSpecificData[5] = 'e';
-    xmedSpecificData[6] = 'x';
-    xmedSpecificData[7] = 't';
-    putI32At(xmedSpecificData, 48, 4);
-    putI32At(xmedSpecificData, 52, 11);
-    assert(XmedTextParser::isTextXtra(xmedSpecificData));
-    auto fileXmedMember = std::make_shared<CastMemberChunk>(xmedFile.get(),
-                                                            ChunkId(9),
-                                                            MemberType::Xtra,
-                                                            0,
-                                                            static_cast<int>(xmedSpecificData.size()),
-                                                            std::vector<std::uint8_t>{},
-                                                            xmedSpecificData,
-                                                            "file-xmed",
-                                                            0,
-                                                            0,
-                                                            0);
+    assert(xmedFile->casts().size() == 1);
+    assert(xmedFile->castMembers().size() == 1);
+    auto fileXmedMember = xmedFile->castMembers().front();
+    assert(fileXmedMember != nullptr);
+    assert(fileXmedMember->id().value() == 2);
     auto parsedXmed = xmedFile->getXmedStyledTextForMember(fileXmedMember);
     assert(parsedXmed.has_value());
     assert(parsedXmed->text == "Xmed text");
@@ -20150,13 +20173,32 @@ void testSpriteBakerFoundation() {
     assert(fileXmedRenderer.lastFontName == "Geneva");
     assert(fileXmedRenderer.lastFontSize == 12);
     assert(fileXmedRenderer.lastAlignment == "center");
-    assert(fileXmedRenderer.lastTextColor == static_cast<int>(0xFF778899U));
+    assert(fileXmedRenderer.lastTextColor == static_cast<int>(0xFF112233U));
     assert(fileXmedRenderer.lastBgColor == static_cast<int>(0xFF112233U));
     assert(fileXmedRenderer.lastWordWrap);
     assert(fileXmedRenderer.lastAntialias);
     assert(bakedFileXmed.width() == 11);
     assert(bakedFileXmed.height() == 4);
     assert(bakedFileXmed.bakedBitmap()->getPixel(10, 3) == 0xFFABCDEFU);
+
+    CastLibManager xmedManager(xmedFile);
+    assert(xmedManager.getMemberProp(1, 1, "text").stringValue() == "Xmed text");
+    const auto copiedXmedText = xmedManager.createMember(1, "text");
+    const auto* copiedXmedTextRef = copiedXmedText.asCastMemberRef();
+    assert(copiedXmedTextRef != nullptr);
+    assert(xmedManager.setMemberProp(1,
+                                     copiedXmedTextRef->memberNum(),
+                                     "media",
+                                     Datum::castMemberRef(CastLibId(1), MemberId(1))));
+    assert(xmedManager.getMemberProp(1, copiedXmedTextRef->memberNum(), "text").stringValue() == "Xmed text");
+    assert(xmedManager.getMemberProp(1, copiedXmedTextRef->memberNum(), "font").stringValue() == "Geneva");
+    assert(xmedManager.getMemberProp(1, copiedXmedTextRef->memberNum(), "fontSize").intValue() == 12);
+    assert(xmedManager.getMemberProp(1, copiedXmedTextRef->memberNum(), "alignment").asSymbol()->name == "center");
+    assert(xmedManager.getMemberProp(1, copiedXmedTextRef->memberNum(), "color").asColorRef()->r == 0x11);
+    assert(xmedManager.getMemberProp(1, copiedXmedTextRef->memberNum(), "color").asColorRef()->g == 0x22);
+    assert(xmedManager.getMemberProp(1, copiedXmedTextRef->memberNum(), "color").asColorRef()->b == 0x33);
+    assert(xmedManager.getMemberProp(1, copiedXmedTextRef->memberNum(), "rect").asIntRect()->right == 11);
+    assert(xmedManager.getMemberProp(1, copiedXmedTextRef->memberNum(), "rect").asIntRect()->bottom == 4);
 
     RenderSprite solidShape(3,
                             0,
@@ -25321,29 +25363,38 @@ void testScoreChunkParser() {
     appendI16(secondary, 12);
     appendI32(secondary, 99);
 
+    std::vector<std::uint8_t> invalidIntervalLikeEntry(48, 0);
+
+    const auto scoreEntrySizeSum = static_cast<std::uint32_t>(frameEntry.size() +
+                                                              invalidIntervalLikeEntry.size() +
+                                                              primary.size() +
+                                                              secondary.size());
     std::vector<std::uint8_t> scoreData;
-    appendI32(scoreData, static_cast<std::uint32_t>(frameEntry.size() + primary.size() + secondary.size()));
+    appendI32(scoreData, scoreEntrySizeSum);
     appendI32(scoreData, 0x11111111);
     appendI32(scoreData, 0x22222222);
-    appendI32(scoreData, 4);
+    appendI32(scoreData, 5);
     appendI32(scoreData, 0x33333333);
-    appendI32(scoreData, static_cast<std::uint32_t>(frameEntry.size() + primary.size() + secondary.size()));
+    appendI32(scoreData, scoreEntrySizeSum);
     appendI32(scoreData, 0);
     appendI32(scoreData, static_cast<std::uint32_t>(frameEntry.size()));
     appendI32(scoreData, static_cast<std::uint32_t>(frameEntry.size()));
-    appendI32(scoreData, static_cast<std::uint32_t>(frameEntry.size() + primary.size()));
-    appendI32(scoreData, static_cast<std::uint32_t>(frameEntry.size() + primary.size() + secondary.size()));
+    appendI32(scoreData, static_cast<std::uint32_t>(frameEntry.size() + invalidIntervalLikeEntry.size()));
+    appendI32(scoreData, static_cast<std::uint32_t>(frameEntry.size() + invalidIntervalLikeEntry.size() + primary.size()));
+    appendI32(scoreData, scoreEntrySizeSum);
     scoreData.insert(scoreData.end(), frameEntry.begin(), frameEntry.end());
+    scoreData.insert(scoreData.end(), invalidIntervalLikeEntry.begin(), invalidIntervalLikeEntry.end());
     scoreData.insert(scoreData.end(), primary.begin(), primary.end());
     scoreData.insert(scoreData.end(), secondary.begin(), secondary.end());
 
     BinaryReader scoreReader(scoreData, ByteOrder::LittleEndian);
     ScoreChunk score = ScoreChunk::read(nullptr, scoreReader, ChunkId(35), 0x4B1);
     assert(score.type() == ChunkType::VWSC);
-    assert(score.header().entryCount == 4);
-    assert(score.entries().size() == 4);
+    assert(score.header().entryCount == 5);
+    assert(score.entries().size() == 5);
     assert(score.entries()[0].size() == frameEntry.size());
     assert(score.entries()[1].empty());
+    assert(score.entries()[2].size() == invalidIntervalLikeEntry.size());
     assert(score.getFrameCount() == 2);
     assert(score.getChannelCount() == 6);
     assert(score.getSpriteRecordSize() == 28);
@@ -25456,6 +25507,30 @@ void testScoreChunkParser() {
     assert(lastLargeEntry.data.posY == 40);
     assert(lastLargeEntry.data.posX == 52);
     assert(largeScoreReader.order() == ByteOrder::LittleEndian);
+
+    constexpr int largeEntryCount = 12000;
+    std::vector<std::uint8_t> highEntryScoreData;
+    appendI32(highEntryScoreData, static_cast<std::uint32_t>(frameEntry.size()));
+    appendI32(highEntryScoreData, 0);
+    appendI32(highEntryScoreData, 0);
+    appendI32(highEntryScoreData, largeEntryCount);
+    appendI32(highEntryScoreData, 0);
+    appendI32(highEntryScoreData, static_cast<std::uint32_t>(frameEntry.size()));
+    appendI32(highEntryScoreData, 0);
+    appendI32(highEntryScoreData, static_cast<std::uint32_t>(frameEntry.size()));
+    for (int index = 2; index <= largeEntryCount; ++index) {
+        appendI32(highEntryScoreData, static_cast<std::uint32_t>(frameEntry.size()));
+    }
+    highEntryScoreData.insert(highEntryScoreData.end(), frameEntry.begin(), frameEntry.end());
+
+    BinaryReader highEntryScoreReader(highEntryScoreData, ByteOrder::LittleEndian);
+    ScoreChunk highEntryScore = ScoreChunk::read(nullptr, highEntryScoreReader, ChunkId(37), 0x4B1);
+    assert(highEntryScore.header().entryCount == largeEntryCount);
+    assert(highEntryScore.entries().size() == static_cast<std::size_t>(largeEntryCount));
+    assert(highEntryScore.getFrameCount() == 2);
+    assert(highEntryScore.frameData().frameChannelData.size() == 2);
+    assert(highEntryScore.frameIntervals().empty());
+    assert(highEntryScoreReader.order() == ByteOrder::LittleEndian);
 }
 
 void testDirectorFileRifxLoader() {

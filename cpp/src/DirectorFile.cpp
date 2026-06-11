@@ -69,6 +69,23 @@ std::uint32_t readContainerFourCC(io::BinaryReader& reader, io::ByteOrder endian
     return reader.readFourCC();
 }
 
+bool shouldReplaceSelectedScore(const std::shared_ptr<chunks::ScoreChunk>& current,
+                                const std::shared_ptr<chunks::ScoreChunk>& candidate) {
+    if (!candidate) {
+        return false;
+    }
+    if (!current) {
+        return true;
+    }
+    if (candidate->getFrameCount() != current->getFrameCount()) {
+        return candidate->getFrameCount() > current->getFrameCount();
+    }
+    if (candidate->frameData().frameChannelData.size() != current->frameData().frameChannelData.size()) {
+        return candidate->frameData().frameChannelData.size() > current->frameData().frameChannelData.size();
+    }
+    return candidate->frameIntervals().size() > current->frameIntervals().size();
+}
+
 } // namespace
 
 format::ChunkType DirectorChunkInfo::type() const {
@@ -1096,7 +1113,9 @@ void DirectorFile::categorizeChunk(const std::shared_ptr<chunks::Chunk>& chunk) 
     } else if (auto script = std::dynamic_pointer_cast<chunks::ScriptChunk>(chunk)) {
         scripts_.push_back(script);
     } else if (auto score = std::dynamic_pointer_cast<chunks::ScoreChunk>(chunk)) {
-        scoreChunk_ = score;
+        if (shouldReplaceSelectedScore(scoreChunk_, score)) {
+            scoreChunk_ = score;
+        }
     } else if (auto frameLabels = std::dynamic_pointer_cast<chunks::FrameLabelsChunk>(chunk)) {
         frameLabelsChunk_ = frameLabels;
     } else if (auto palette = std::dynamic_pointer_cast<chunks::PaletteChunk>(chunk)) {

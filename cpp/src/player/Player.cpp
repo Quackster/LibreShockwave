@@ -1145,7 +1145,8 @@ void Player::wireComponents() {
                 }
                 targets.push_back(event::EventDispatcher::MovieScriptTarget{
                     script,
-                    file_->getScriptNamesForScript(script)
+                    file_->getScriptNamesForScript(script),
+                    file_
                 });
             }
         }
@@ -1162,7 +1163,8 @@ void Player::wireComponents() {
                 }
                 targets.push_back(event::EventDispatcher::MovieScriptTarget{
                     script,
-                    source ? source->getScriptNamesForScript(script) : defaultNames
+                    source ? source->getScriptNamesForScript(script) : defaultNames,
+                    source
                 });
             }
         }

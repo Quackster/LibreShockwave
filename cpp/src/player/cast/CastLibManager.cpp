@@ -13,6 +13,7 @@
 #include "libreshockwave/bitmap/Palette.hpp"
 #include "libreshockwave/cast/BitmapInfo.hpp"
 #include "libreshockwave/cast/CastMember.hpp"
+#include "libreshockwave/cast/XmedStyledText.hpp"
 #include "libreshockwave/chunks/CastChunk.hpp"
 #include "libreshockwave/chunks/CastListChunk.hpp"
 #include "libreshockwave/chunks/CastMemberChunk.hpp"
@@ -364,6 +365,40 @@ std::optional<bitmap::Bitmap> decodeBitmapMedia(const std::vector<std::uint8_t>&
 
 std::shared_ptr<const bitmap::Palette> clonePalette(const bitmap::Palette& palette) {
     return std::make_shared<bitmap::Palette>(palette.colors(), palette.name());
+}
+
+std::optional<::libreshockwave::cast::XmedStyledText> authoredXmedText(
+    const std::shared_ptr<CastLib>& castLib,
+    const std::shared_ptr<::libreshockwave::cast::CastMember>& member) {
+    if (!castLib || !member || !member->rawChunk()) {
+        return std::nullopt;
+    }
+    const auto sourceFile = castLib->sourceFile();
+    if (!sourceFile) {
+        return std::nullopt;
+    }
+    return sourceFile->getXmedStyledTextForMember(member->rawChunk());
+}
+
+void applyTextStyleFromXmed(::libreshockwave::cast::CastMember& target,
+                            const ::libreshockwave::cast::XmedStyledText& styled) {
+    if (!styled.fontName.empty()) {
+        target.setTextFont(styled.fontName);
+    }
+    if (styled.fontSize > 0) {
+        target.setTextFontSize(styled.fontSize);
+    }
+    target.setTextFontStyle(styled.fontStyleString().empty() ? "plain" : styled.fontStyleString());
+    if (!styled.alignment.empty()) {
+        target.setTextAlignment(styled.alignment);
+    }
+    target.setTextColor(static_cast<int>(styled.textColorARGB()));
+    target.setTextWordWrap(styled.wordWrap);
+    target.setTextAntialias(styled.antialias);
+    if (styled.width > 0 && styled.height > 0) {
+        target.setTextRect(0, 0, styled.width, styled.height);
+    }
+    target.setTextFixedLineSpace(styled.fixedLineSpace);
 }
 
 std::shared_ptr<const bitmap::Palette> paletteFromCastMember(const std::shared_ptr<CastLib>& castLib,
@@ -1418,22 +1453,27 @@ bool CastLibManager::copyMemberMedia(int targetCastLibNumber,
     }
 
     if (target->isTextLike() && source->isTextLike()) {
+        const auto sourceCast = getCastLib(sourceCastLib);
         const auto sourceText = getMemberProp(source->castLib(), source->memberNum(), "text").stringValue();
         target->setDynamicText(sourceText);
-        target->setTextFont(source->textFont());
-        target->setTextFontSize(source->textFontSize());
-        target->setTextFontStyle(source->textFontStyle());
-        target->setTextAlignment(source->textAlignment());
-        target->setTextColor(source->textColor());
+        if (const auto styledText = authoredXmedText(sourceCast, source)) {
+            applyTextStyleFromXmed(*target, *styledText);
+        } else {
+            target->setTextFont(source->textFont());
+            target->setTextFontSize(source->textFontSize());
+            target->setTextFontStyle(source->textFontStyle());
+            target->setTextAlignment(source->textAlignment());
+            target->setTextColor(source->textColor());
+            target->setTextWordWrap(source->textWordWrap());
+            target->setTextAntialias(source->textAntialias());
+            target->setTextRect(source->textRectLeft(),
+                                source->textRectTop(),
+                                source->textRectRight(),
+                                source->textRectBottom());
+            target->setTextFixedLineSpace(source->textFixedLineSpace());
+        }
         target->setTextBgColor(source->textBgColor());
-        target->setTextWordWrap(source->textWordWrap());
-        target->setTextAntialias(source->textAntialias());
         target->setTextBoxType(source->textBoxType());
-        target->setTextRect(source->textRectLeft(),
-                            source->textRectTop(),
-                            source->textRectRight(),
-                            source->textRectBottom());
-        target->setTextFixedLineSpace(source->textFixedLineSpace());
         target->setTextTopSpacing(source->textTopSpacing());
         target->setEditable(source->editable());
         return true;

@@ -10,6 +10,8 @@
 namespace libreshockwave::chunks {
 namespace {
 
+constexpr int kMaxScoreEntryCount = 100000;
+
 class ScopedByteOrder {
 public:
     ScopedByteOrder(io::BinaryReader& reader, io::ByteOrder order)
@@ -257,7 +259,22 @@ ScoreChunk::ScoreFrameData parseFrameData(const std::vector<std::uint8_t>& data)
     };
 }
 
-std::vector<ScoreChunk::FrameInterval> parseFrameIntervals(const std::vector<std::vector<std::uint8_t>>& entries) {
+bool isPlausiblePrimaryInterval(const ScoreChunk::FrameIntervalPrimary& primary,
+                                const ScoreChunk::FrameDataHeader& frameHeader) {
+    if (primary.startFrame < 1 || primary.endFrame < primary.startFrame || primary.channelIndex < 0) {
+        return false;
+    }
+    if (frameHeader.frameCount > 0 && primary.endFrame > frameHeader.frameCount) {
+        return false;
+    }
+    if (frameHeader.numChannels > 0 && primary.channelIndex >= frameHeader.numChannels) {
+        return false;
+    }
+    return true;
+}
+
+std::vector<ScoreChunk::FrameInterval> parseFrameIntervals(const std::vector<std::vector<std::uint8_t>>& entries,
+                                                           const ScoreChunk::FrameDataHeader& frameHeader) {
     std::vector<ScoreChunk::FrameInterval> results;
     std::size_t index = 2;
 
@@ -271,6 +288,10 @@ std::vector<ScoreChunk::FrameInterval> parseFrameIntervals(const std::vector<std
         if (entryBytes.size() >= 44 && entryBytes.size() <= 48) {
             io::BinaryReader reader(entryBytes, io::ByteOrder::BigEndian);
             auto primary = readPrimaryInterval(reader);
+            if (!isPlausiblePrimaryInterval(primary, frameHeader)) {
+                ++index;
+                continue;
+            }
 
             std::vector<ScoreChunk::FrameIntervalSecondary> secondaries;
             std::size_t next = index + 1;
@@ -497,12 +518,17 @@ ScoreChunk ScoreChunk::read(const DirectorFile* file, io::BinaryReader& reader, 
     }
 
     const auto header = readHeader(reader);
-    if (header.entryCount < 0 || header.entryCount > 10000) {
+    if (header.entryCount < 0 || header.entryCount > kMaxScoreEntryCount) {
+        return createEmptyScore(file, id);
+    }
+
+    const auto offsetCount = static_cast<std::size_t>(header.entryCount) + 1U;
+    if (offsetCount > reader.bytesLeft() / 4U) {
         return createEmptyScore(file, id);
     }
 
     std::vector<int> offsets;
-    offsets.reserve(static_cast<std::size_t>(header.entryCount) + 1U);
+    offsets.reserve(offsetCount);
     for (int index = 0; index <= header.entryCount; ++index) {
         if (reader.bytesLeft() < 4) {
             break;
@@ -515,9 +541,12 @@ ScoreChunk ScoreChunk::read(const DirectorFile* file, io::BinaryReader& reader, 
     }
 
     for (std::size_t index = 0; index + 1 < offsets.size(); ++index) {
-        if (offsets[index] > offsets[index + 1]) {
+        if (offsets[index] < 0 || offsets[index] > offsets[index + 1]) {
             return createEmptyScore(file, id);
         }
+    }
+    if (!offsets.empty() && (offsets.back() < 0 || static_cast<std::size_t>(offsets.back()) > reader.bytesLeft())) {
+        return createEmptyScore(file, id);
     }
 
     std::vector<std::vector<std::uint8_t>> entries;
@@ -536,7 +565,7 @@ ScoreChunk ScoreChunk::read(const DirectorFile* file, io::BinaryReader& reader, 
         frameData = parseFrameData(entries[0]);
     }
 
-    auto frameIntervals = parseFrameIntervals(entries);
+    auto frameIntervals = parseFrameIntervals(entries, frameData.header);
     return ScoreChunk(file, id, header, std::move(entries), std::move(frameData), std::move(frameIntervals));
 }
 

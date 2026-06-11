@@ -25,6 +25,10 @@ std::uint32_t opaqueArgb(int rgb) {
     return 0xFF000000U | static_cast<std::uint32_t>(rgb & 0xFFFFFF);
 }
 
+bool isDefaultCastLibSentinel(int castLib) {
+    return castLib == 0 || castLib == 0xFFFF;
+}
+
 } // namespace
 
 StageRenderer::StageRenderer(DirectorFile* file)
@@ -226,10 +230,22 @@ std::optional<RenderSprite> StageRenderer::createRenderSprite(int channel,
     const bool visible = state->isVisible();
 
     auto dynamicMember = resolveCastMember(data.castLib, data.castMember);
+    if (dynamicMember == nullptr && isDefaultCastLibSentinel(data.castLib)) {
+        dynamicMember = resolveCastMember(1, data.castMember);
+    }
     std::shared_ptr<chunks::CastMemberChunk> member =
         dynamicMember != nullptr && dynamicMember->rawChunk() != nullptr
             ? dynamicMember->rawChunk()
             : (file_ != nullptr ? file_->getCastMemberByNumber(data.castLib, data.castMember) : nullptr);
+    if (member == nullptr && file_ != nullptr && isDefaultCastLibSentinel(data.castLib)) {
+        member = file_->getCastMemberByNumber(1, data.castMember);
+    }
+    if (member == nullptr && file_ != nullptr) {
+        member = file_->getCastMemberByIndex(data.castLib, data.castMember);
+        if (member == nullptr && isDefaultCastLibSentinel(data.castLib)) {
+            member = file_->getCastMemberByIndex(1, data.castMember);
+        }
+    }
 
     if (dynamicMember != nullptr) {
         const auto reg = scaledRegPoint(*dynamicMember, width, height, x, y,
@@ -323,10 +339,16 @@ std::optional<RenderSprite> StageRenderer::createDynamicRenderSprite(const sprit
     int width = pos.width;
     int height = pos.height;
     auto dynamicMember = resolveCastMember(castLib, castMember);
+    if (dynamicMember == nullptr && isDefaultCastLibSentinel(castLib)) {
+        dynamicMember = resolveCastMember(1, castMember);
+    }
     std::shared_ptr<chunks::CastMemberChunk> member =
         dynamicMember != nullptr && dynamicMember->rawChunk() != nullptr
             ? dynamicMember->rawChunk()
             : (file_ != nullptr ? file_->getCastMemberByIndex(castLib, castMember) : nullptr);
+    if (member == nullptr && file_ != nullptr && isDefaultCastLibSentinel(castLib)) {
+        member = file_->getCastMemberByIndex(1, castMember);
+    }
 
     SpriteType type = SpriteType::Unknown;
     if (dynamicMember != nullptr) {

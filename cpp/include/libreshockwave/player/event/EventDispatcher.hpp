@@ -15,6 +15,10 @@
 #include "libreshockwave/player/behavior/BehaviorManager.hpp"
 #include "libreshockwave/player/render/SpriteRegistry.hpp"
 
+namespace libreshockwave {
+class DirectorFile;
+}
+
 namespace libreshockwave::player::event {
 
 enum class EventTargetKind {
@@ -30,6 +34,7 @@ struct EventTarget {
     std::optional<lingo::Datum> scriptInstance;
     std::shared_ptr<chunks::ScriptChunk> script;
     std::shared_ptr<const chunks::ScriptNamesChunk> scriptNames;
+    std::shared_ptr<const DirectorFile> scriptOwner;
 };
 
 struct HandlerResult {
@@ -50,6 +55,7 @@ public:
     struct MovieScriptTarget {
         std::shared_ptr<chunks::ScriptChunk> script;
         std::shared_ptr<const chunks::ScriptNamesChunk> scriptNames;
+        std::shared_ptr<const DirectorFile> scriptOwner;
     };
     using MovieScriptSupplier = std::function<std::vector<MovieScriptTarget>()>;
 

@@ -342,6 +342,37 @@ std::shared_ptr<font::BitmapFont> FontRegistry::getBitmapFont(const std::string&
     return nullptr;
 }
 
+std::shared_ptr<font::BitmapFont> FontRegistry::getPfrBitmapFont(const std::string& fontName,
+                                                                 int fontSize) {
+    if (fontName.empty() || fontSize <= 0) {
+        return nullptr;
+    }
+    auto& registry = state();
+    std::lock_guard lock(registry.mutex);
+    auto key = lowerAscii(fontName);
+    auto parsed = registry.parsedFonts.find(key);
+    if (parsed == registry.parsedFonts.end()) {
+        if (const auto mapped = registry.canonicalIndex.find(canonicalFontName(fontName));
+            mapped != registry.canonicalIndex.end()) {
+            key = mapped->second;
+            parsed = registry.parsedFonts.find(key);
+        }
+    }
+    if (parsed == registry.parsedFonts.end()) {
+        return nullptr;
+    }
+
+    const auto cacheKey = fontCacheKey(key, fontSize, true, false);
+    if (const auto cached = registry.rasterizedCache.find(cacheKey); cached != registry.rasterizedCache.end()) {
+        return cached->second;
+    }
+    auto rasterized = font::BitmapFont::fromPfr1(*parsed->second, fontSize);
+    if (rasterized != nullptr) {
+        registry.rasterizedCache[cacheKey] = rasterized;
+    }
+    return rasterized;
+}
+
 void FontRegistry::registerEmbeddedTtfFont(const std::string& fontName,
                                            std::vector<std::uint8_t> regular,
                                            std::vector<std::uint8_t> bold,

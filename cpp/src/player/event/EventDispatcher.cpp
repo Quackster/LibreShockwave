@@ -223,6 +223,7 @@ void EventDispatcher::dispatchToMovieScripts(std::string_view handlerName, const
         target.kind = EventTargetKind::MovieScript;
         target.script = movie.script;
         target.scriptNames = resolveScriptNames(movie.script, movie.scriptNames);
+        target.scriptOwner = movie.scriptOwner;
         if (targetResponds(target, handlerName)) {
             invokeTarget(target, handlerName, args);
         }

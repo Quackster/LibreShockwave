@@ -1169,6 +1169,9 @@ std::string CastLib::resolveMemberText(const std::shared_ptr<libreshockwave::cas
         return member->textContent();
     }
     if (sourceFile_ && member->rawChunk()) {
+        if (auto styledText = sourceFile_->getXmedStyledTextForMember(member->rawChunk())) {
+            return normalizeTextLineEndings(styledText->text);
+        }
         if (auto text = sourceFile_->getTextForMember(member->rawChunk())) {
             return normalizeTextLineEndings(text->text());
         }

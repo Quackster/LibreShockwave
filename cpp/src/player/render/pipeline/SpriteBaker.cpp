@@ -189,28 +189,22 @@ bool shouldUseSpriteForeColorForFileText(const RenderSprite& sprite, int runColo
     return (runColor & 0x00FFFFFF) == 0x00FFFFFF;
 }
 
+bool shouldUseSpriteForeColorForStyledText(const RenderSprite& sprite, std::uint32_t styledTextColor) {
+    if (sprite.inkMode() != id::InkMode::BACKGROUND_TRANSPARENT) {
+        return false;
+    }
+    if ((styledTextColor & 0x00FFFFFFU) != 0x00FFFFFFU) {
+        return false;
+    }
+    if (!sprite.hasForeColor()) {
+        return true;
+    }
+    return (argbRgb(sprite.foreColor()) & 0x00FFFFFF) != 0x00FFFFFF;
+}
+
 bool isTransparentTextInk(const RenderSprite& sprite) {
     return sprite.inkMode() == id::InkMode::BACKGROUND_TRANSPARENT ||
            sprite.inkMode() == id::InkMode::MATTE;
-}
-
-bool shouldUseSpriteForeColorForStyledText(const RenderSprite& sprite, std::uint32_t styledTextColor) {
-    if (sprite.inkMode() == id::InkMode::MATTE) {
-        return false;
-    }
-    if (sprite.inkMode() == id::InkMode::BACKGROUND_TRANSPARENT &&
-        !sprite.hasForeColor() &&
-        (styledTextColor & 0x00FFFFFFU) == 0x00FFFFFFU) {
-        return true;
-    }
-    if (!sprite.hasForeColor()) {
-        return false;
-    }
-    const int spriteColor = argbRgb(sprite.foreColor());
-    if ((spriteColor & 0x00FFFFFF) != 0x00FFFFFF) {
-        return true;
-    }
-    return (styledTextColor & 0x00FFFFFFU) == 0x00FFFFFFU;
 }
 
 std::shared_ptr<bitmap::Bitmap> insetTextBitmap(std::shared_ptr<bitmap::Bitmap> source,

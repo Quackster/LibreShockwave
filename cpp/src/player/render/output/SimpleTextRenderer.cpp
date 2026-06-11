@@ -151,6 +151,52 @@ bool isLineBreak(char ch) {
     return ch == '\r' || ch == '\n';
 }
 
+bool xmedDisplayNameImpliesBold(std::string_view fontName) {
+    return lowerAscii(std::string(fontName)).find("bold") != std::string::npos;
+}
+
+bool isPreferredDirectorPixelDisplayName(std::string_view fontName) {
+    return FontRegistry::canonicalFontName(std::string(fontName)).starts_with("volter");
+}
+
+std::shared_ptr<BitmapFont> resolvePreferredDirectorPixelFont(const std::string& fontName,
+                                                              int fontSize,
+                                                              bool bold,
+                                                              bool italic,
+                                                              bool* usedRealBold) {
+    if (italic) {
+        return nullptr;
+    }
+
+    std::vector<std::string> candidates;
+    const auto normalizedName = FontRegistry::canonicalFontName(fontName);
+    if (normalizedName.starts_with("volter")) {
+        candidates.emplace_back("Volter");
+    }
+    if (const auto preferred = FontRegistry::getPreferredDirectorPixelFont();
+        preferred.has_value() && !preferred->empty() &&
+        std::find(candidates.begin(), candidates.end(), *preferred) == candidates.end()) {
+        candidates.push_back(*preferred);
+    }
+
+    const bool resolvedBold = bold || xmedDisplayNameImpliesBold(fontName);
+    for (const auto& candidate : candidates) {
+        if (auto font = FontRegistry::getBitmapFont(candidate, fontSize, resolvedBold, false); font != nullptr) {
+            if (usedRealBold != nullptr) {
+                *usedRealBold = resolvedBold && FontRegistry::hasEmbeddedBoldVariant(candidate);
+            }
+            return font;
+        }
+        if (auto font = FontRegistry::getBitmapFont(candidate, fontSize, false, false); font != nullptr) {
+            if (usedRealBold != nullptr) {
+                *usedRealBold = false;
+            }
+            return font;
+        }
+    }
+    return nullptr;
+}
+
 int widthForChar(const std::vector<ResolvedXmedSpan>& spans, int index, char ch) {
     if (index < 0 || index >= static_cast<int>(spans.size()) || spans[static_cast<std::size_t>(index)].font == nullptr) {
         return 0;
@@ -1339,7 +1385,7 @@ std::shared_ptr<BitmapFont> SimpleTextRenderer::resolveRegisteredPfrCandidate(
     if (!resolved.has_value() || !FontRegistry::hasPfrFont(*resolved)) {
         return nullptr;
     }
-    return FontRegistry::getBitmapFont(*resolved, fontSize);
+    return FontRegistry::getPfrBitmapFont(*resolved, fontSize);
 }
 
 std::shared_ptr<BitmapFont> SimpleTextRenderer::resolveXmedFont(
@@ -1365,6 +1411,13 @@ std::shared_ptr<BitmapFont> SimpleTextRenderer::resolveXmedFontByName(
     bool* usedRealBold) {
     if (fontName.empty()) {
         return nullptr;
+    }
+
+    if (isPreferredDirectorPixelDisplayName(fontName)) {
+        if (auto preferred = resolvePreferredDirectorPixelFont(fontName, fontSize, bold, italic, usedRealBold);
+            preferred != nullptr) {
+            return preferred;
+        }
     }
 
     if (auto aliasFont = resolveDirectorFontAlias(fontName, fontSize, bold, italic, usedRealBold, false);
@@ -1393,11 +1446,7 @@ std::shared_ptr<BitmapFont> SimpleTextRenderer::resolveXmedFontByName(
         }
     }
 
-    if (const auto fallback = FontRegistry::getFirstRegisteredFont(); fallback.has_value()) {
-        const int fallbackSize = fontSize > 1 ? fontSize - 1 : fontSize;
-        return FontRegistry::getBitmapFont(*fallback, fallbackSize);
-    }
-    return nullptr;
+    return resolvePreferredDirectorPixelFont(fontName, fontSize, bold, italic, usedRealBold);
 }
 
 std::shared_ptr<BitmapFont> SimpleTextRenderer::resolveMovieFontCandidate(
