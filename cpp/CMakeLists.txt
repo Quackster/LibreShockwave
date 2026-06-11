@@ -88,6 +88,7 @@ add_library(libreshockwave
     src/editor/script/LingoKeywords.cpp
     src/editor/script/ScriptEditorModels.cpp
     src/editor/script/LingoTokenizer.cpp
+    src/editor/stage/StageViewModels.cpp
     src/format/AfterburnerReader.cpp
     src/format/ChunkType.cpp
     src/format/MoaID.cpp

@@ -112,6 +112,7 @@
 #include "libreshockwave/editor/script/ScriptEditorModels.hpp"
 #include "libreshockwave/editor/script/LingoKeywords.hpp"
 #include "libreshockwave/editor/script/LingoTokenizer.hpp"
+#include "libreshockwave/editor/stage/StageViewModels.hpp"
 #include "libreshockwave/format/ChunkInfo.hpp"
 #include "libreshockwave/format/AfterburnerReader.hpp"
 #include "libreshockwave/format/ChunkType.hpp"
@@ -380,6 +381,13 @@ using libreshockwave::editor::script::LingoTokenType;
 using libreshockwave::editor::script::ScriptStyle;
 using libreshockwave::editor::script::ScriptStyleColor;
 using libreshockwave::editor::script::tokenTypeName;
+using libreshockwave::editor::stage::StageCanvasView;
+using libreshockwave::editor::stage::StageColor;
+using libreshockwave::editor::stage::StageKeyEvent;
+using libreshockwave::editor::stage::StageMouseEvent;
+using libreshockwave::editor::stage::StagePoint;
+using libreshockwave::editor::stage::StageRect;
+using libreshockwave::editor::stage::StageViewModel;
 using libreshockwave::lingo::Datum;
 using libreshockwave::lingo::DatumType;
 using libreshockwave::lingo::LingoValueParser;
@@ -1935,6 +1943,69 @@ void testEditorScoreViewModels() {
     assert(ScoreViewModels::noScoreStatus() == "Score: No score data");
     assert(ScoreViewModels::closedStatus() == "Frame: 1 | Channel: -");
     assert(ScoreViewModels::frameStatus(7) == "Frame: 7");
+}
+
+void testEditorStageViewModels() {
+    StageViewModel stage;
+    assert(stage.stageWidth() == 640);
+    assert(stage.stageHeight() == 480);
+    assert(stage.canvasBounds(800, 600) == (StageRect{80, 60, 640, 480}));
+    assert(stage.borderBounds(800, 600) == (StageRect{79, 59, 641, 481}));
+    assert(stage.toStagePoint(800, 600, 100, 90) == (StagePoint{20, 30}));
+    assert(stage.toStagePoint(320, 240, 0, 0) == (StagePoint{160, 120}));
+
+    auto emptyView = stage.canvasView(800, 600, false);
+    assert(emptyView == (StageCanvasView{StageRect{0, 0, 800, 600},
+                                         StageRect{80, 60, 640, 480},
+                                         StageRect{79, 59, 641, 481},
+                                         StageColor{48, 48, 48, 255},
+                                         StageColor{80, 80, 80, 255},
+                                         StageColor{192, 192, 192, 255},
+                                         std::optional<std::string>("No movie loaded"),
+                                         std::nullopt}));
+
+    auto playerView = stage.canvasView(800, 600, true, "Frame 12");
+    assert(!playerView.emptyMessage.has_value());
+    assert(playerView.debugInfo.value() == "Frame 12");
+
+    stage.setStageSize(320, 200);
+    assert(stage.stageWidth() == 320);
+    assert(stage.stageHeight() == 200);
+    assert(stage.canvasBounds(800, 600) == (StageRect{240, 200, 320, 200}));
+    assert(stage.toStagePoint(800, 600, 260, 230) == (StagePoint{20, 30}));
+    assert(stage.mouseDown(800, 600, 260, 230, true) ==
+           (StageMouseEvent{StageMouseEvent::Kind::Down, StagePoint{20, 30}, true}));
+    assert(stage.mouseUp(800, 600, 260, 230, false) ==
+           (StageMouseEvent{StageMouseEvent::Kind::Up, StagePoint{20, 30}, false}));
+    assert(stage.mouseMove(800, 600, 260, 230) ==
+           (StageMouseEvent{StageMouseEvent::Kind::Move, StagePoint{20, 30}, false}));
+    stage.setStageSize(0, -5);
+    assert(stage.stageWidth() == 640);
+    assert(stage.stageHeight() == 480);
+    stage.setStageSize(10, 20);
+    stage.resetStageSize();
+    assert(stage.stageWidth() == 640);
+    assert(stage.stageHeight() == 480);
+
+    assert(StageViewModel::keyCharToString(0).empty());
+    assert(StageViewModel::keyCharToString(0xFFFF).empty());
+    assert(StageViewModel::keyCharToString('\n') == "\r");
+    assert(StageViewModel::keyCharToString('\r') == "\r");
+    assert(StageViewModel::keyCharToString('\t') == "\t");
+    assert(StageViewModel::keyCharToString('\b') == "\b");
+    assert(StageViewModel::keyCharToString('A') == "A");
+    assert(StageViewModel::keyCharToString(0xE9) == std::string("\xC3\xA9"));
+
+    assert((StageViewModel::keyEventFromJava(65, 'a', true, false, true, false) ==
+            std::optional<StageKeyEvent>(StageKeyEvent{0, "a", true, false, true})));
+    assert((StageViewModel::keyEventFromJava(10, '\n', false, false, false, false) ==
+            std::optional<StageKeyEvent>(StageKeyEvent{36, "\r", false, false, false})));
+    assert(!StageViewModel::keyEventFromJava(65, 'a', false, true, false, false).has_value());
+    assert(!StageViewModel::keyEventFromJava(65, 'a', false, false, false, true).has_value());
+
+    assert(StageViewModel::titleForOpenedPath("/tmp/Movie.dir") == "Stage - Movie.dir");
+    assert(StageViewModel::titleForOpenedPath("") == "Stage - Untitled");
+    assert(StageViewModel::closedTitle() == "Stage");
 }
 
 void testEditorModelAndSelectionFoundation() {
@@ -22564,6 +22635,7 @@ int main() {
     testEditorShellActionModels();
     testEditorCastBrowserModels();
     testEditorScoreViewModels();
+    testEditorStageViewModels();
     testEditorModelAndSelectionFoundation();
     testEditorAudioModels();
     testEditorDockingModels();
