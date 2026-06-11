@@ -273,6 +273,31 @@ else()
     message(STATUS "GTK4 not found; libreshockwave_editor_gtk target disabled. Install gtk4-devel to build it.")
 endif()
 
+if(EMSCRIPTEN)
+    add_executable(libreshockwave_cpp_wasm
+        src/player/web/WasmModule.cpp
+    )
+    target_link_libraries(libreshockwave_cpp_wasm
+        PRIVATE
+            LibreShockwave::libreshockwave
+    )
+    target_compile_features(libreshockwave_cpp_wasm PRIVATE cxx_std_20)
+    set_target_properties(libreshockwave_cpp_wasm PROPERTIES
+        OUTPUT_NAME "libreshockwave-cpp-wasm"
+        SUFFIX ".js"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/wasm-dist"
+    )
+    target_link_options(libreshockwave_cpp_wasm PRIVATE
+        "--no-entry"
+        "-sWASM=1"
+        "-sMODULARIZE=1"
+        "-sEXPORT_NAME=createLibreShockwaveCppWasm"
+        "-sENVIRONMENT=worker"
+        "-sALLOW_MEMORY_GROWTH=1"
+        "-sEXPORTED_FUNCTIONS=@${CMAKE_CURRENT_SOURCE_DIR}/cmake/libreshockwave-wasm-exports.json"
+    )
+endif()
+
 if(BUILD_TESTING)
     add_executable(libreshockwave_tests
         tests/sdk_foundation_test.cpp

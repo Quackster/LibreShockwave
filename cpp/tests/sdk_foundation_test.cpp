@@ -22524,16 +22524,25 @@ void testWasmCppAdapterResourceFoundation() {
         "shockwave-cpp-wasm-adapter.js";
     const auto workerPath = repoRoot / "player-wasm" / "src" / "main" / "resources" / "web" /
         "shockwave-worker.js";
+    const auto libPath = repoRoot / "player-wasm" / "src" / "main" / "resources" / "web" /
+        "shockwave-lib.js";
+    const auto cmakePath = repoRoot / "cpp" / "CMakeLists.txt";
+    const auto exportListPath = repoRoot / "cpp" / "cmake" / "libreshockwave-wasm-exports.json";
+    const auto headerPath = repoRoot / "cpp" / "include" / "libreshockwave" / "player" / "web" /
+        "WasmExports.hpp";
 
-    std::ifstream adapterFile(adapterPath);
-    assert(adapterFile.good());
-    const std::string adapter((std::istreambuf_iterator<char>(adapterFile)),
-                              std::istreambuf_iterator<char>());
+    auto readTextFile = [](const std::filesystem::path& path) {
+        std::ifstream file(path);
+        assert(file.good());
+        return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    };
 
-    std::ifstream workerFile(workerPath);
-    assert(workerFile.good());
-    const std::string worker((std::istreambuf_iterator<char>(workerFile)),
-                             std::istreambuf_iterator<char>());
+    const std::string adapter = readTextFile(adapterPath);
+    const std::string worker = readTextFile(workerPath);
+    const std::string lib = readTextFile(libPath);
+    const std::string cmake = readTextFile(cmakePath);
+    const std::string exportList = readTextFile(exportListPath);
+    const std::string header = readTextFile(headerPath);
 
     const std::set<std::string> adapterNames{
         "addTraceHandler",
@@ -22653,6 +22662,9 @@ void testWasmCppAdapterResourceFoundation() {
     assert(adapter.find("get_cursor_bitmap_address") != std::string::npos);
     assert(adapter.find("get_selected_text_length") != std::string::npos);
     assert(adapter.find("get_window_sprite_diagnostics") != std::string::npos);
+    assert(adapter.find("HEAPU8") != std::string::npos);
+    assert(adapter.find("get buffer()") != std::string::npos);
+    assert(adapter.find("fallbackExportNames: Object.keys(fallbackExports)") != std::string::npos);
 
     for (const auto& name : adapterNames) {
         assert(adapter.find(name) != std::string::npos);
@@ -22679,6 +22691,50 @@ void testWasmCppAdapterResourceFoundation() {
     for (const auto& name : workerExportNames) {
         assert(adapterNames.count(name) == 1);
     }
+
+    assert(lib.find("options.wasmRuntime") != std::string::npos);
+    assert(lib.find("_normalizeWasmRuntime") != std::string::npos);
+    assert(lib.find("cppWasmModule") != std::string::npos);
+    assert(lib.find("libreshockwave-cpp-wasm.js") != std::string::npos);
+    assert(lib.find("createLibreShockwaveCppWasm") != std::string::npos);
+    assert(worker.find("_loadCppWasmRuntime") != std::string::npos);
+    assert(worker.find("LibreShockwaveCppWasmAdapter") != std::string::npos);
+    assert(worker.find("adapter.createEngine") != std::string::npos);
+    assert(worker.find("wasmRuntime === 'cpp'") != std::string::npos);
+    assert(worker.find("libreshockwave-cpp-wasm.js") != std::string::npos);
+    assert(worker.find("createLibreShockwaveCppWasm") != std::string::npos);
+
+    assert(cmake.find("if(EMSCRIPTEN)") != std::string::npos);
+    assert(cmake.find("libreshockwave_cpp_wasm") != std::string::npos);
+    assert(cmake.find("libreshockwave-cpp-wasm") != std::string::npos);
+    assert(cmake.find("--no-entry") != std::string::npos);
+    assert(cmake.find("-sMODULARIZE=1") != std::string::npos);
+    assert(cmake.find("-sEXPORT_NAME=createLibreShockwaveCppWasm") != std::string::npos);
+    assert(cmake.find("-sALLOW_MEMORY_GROWTH=1") != std::string::npos);
+    assert(cmake.find("libreshockwave-wasm-exports.json") != std::string::npos);
+
+    std::set<std::string> headerExports;
+    pos = 0;
+    while ((pos = header.find("libreshockwave_wasm_", pos)) != std::string::npos) {
+        const auto start = pos;
+        while (pos < header.size() && isIdent(header[pos])) {
+            ++pos;
+        }
+        headerExports.insert("_" + header.substr(start, pos - start));
+    }
+    assert(!headerExports.empty());
+
+    std::set<std::string> listedExports;
+    pos = 0;
+    while ((pos = exportList.find("\"_libreshockwave_wasm_", pos)) != std::string::npos) {
+        ++pos;
+        const auto start = pos;
+        while (pos < exportList.size() && exportList[pos] != '"') {
+            ++pos;
+        }
+        listedExports.insert(exportList.substr(start, pos - start));
+    }
+    assert(listedExports == headerExports);
 }
 
 void testTimeoutManagerFoundation() {

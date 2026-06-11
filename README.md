@@ -532,6 +532,8 @@ byte[] rifxData = file.saveToBytes();
 
 The `player-wasm` module compiles the player for the browser using [TeaVM](https://teavm.org/) v0.13's standard WebAssembly backend. It produces a `.wasm` file with a JavaScript library that runs in all modern browsers.
 
+An experimental C++ WebAssembly runtime can also be built with Emscripten. It uses the same worker shell and JavaScript library, selected with `wasmRuntime: "cpp"`.
+
 WASM is a pure computation engine with **zero `@Import` annotations** — JS owns networking (`fetch`), canvas rendering, and the animation loop. All WASM execution runs in a **Web Worker** so slow Lingo scripts never block the main thread.
 
 ### Building
@@ -541,6 +543,15 @@ WASM is a pure computation engine with **zero `@Import` annotations** — JS own
 ```
 
 This compiles the Java player to WebAssembly and assembles all files (WASM binary, JS runtime, HTML, CSS) into a single serveable directory at `player-wasm/build/dist/`.
+
+To build the experimental C++ WebAssembly runtime:
+
+```bash
+./gradlew :player-wasm:assembleWasm
+emcmake cmake -S . -B cmake-build-emscripten -DCMAKE_BUILD_TYPE=Release
+cmake --build cmake-build-emscripten --target libreshockwave_cpp_wasm --parallel
+cp cmake-build-emscripten/cpp/wasm-dist/libreshockwave-cpp-wasm.* player-wasm/build/dist/
+```
 
 ### Running locally
 
@@ -581,6 +592,8 @@ Include `shockwave-lib.js` and add a `<canvas>`. That's it.
 </script>
 ```
 
+Use `wasmRuntime: "cpp"` to load `libreshockwave-cpp-wasm.js/.wasm` through the C++ export adapter instead of the default TeaVM runtime.
+
 Set `websocketMode` to `ws` or `wss` when you want to explicitly control MUS
 WebSocket scheme selection instead of relying on the runtime protocol
 detection.
@@ -593,6 +606,9 @@ The following files must be served from the same directory as the script:
 | `shockwave-worker.js` | Web Worker — runs the WASM engine off the main thread |
 | `player-wasm.wasm` | Compiled player engine |
 | `player-wasm.wasm-runtime.js` | TeaVM runtime (loaded by the worker automatically) |
+| `shockwave-cpp-wasm-adapter.js` | C++ export-name adapter for `wasmRuntime: "cpp"` |
+| `libreshockwave-cpp-wasm.js` | Emscripten glue for the C++ runtime |
+| `libreshockwave-cpp-wasm.wasm` | C++ runtime binary |
 
 <details>
 <summary>JavaScript API</summary>
@@ -601,6 +617,7 @@ The following files must be served from the same directory as the script:
 // Create a player on a <canvas> element (by ID or element reference)
 var player = LibreShockwave.create("my-canvas", {
     basePath:      "/wasm/",                 // where the WASM files live (auto-detected by default)
+    wasmRuntime:   "teavm",                  // "teavm" or experimental "cpp"
     params:        { sw1: "key=value" },     // Shockwave <PARAM> tags
     websocketMode: "wss",                    // force MUS websocket scheme (optional)
     autoplay:      true,                     // start playing after load (default: true)
