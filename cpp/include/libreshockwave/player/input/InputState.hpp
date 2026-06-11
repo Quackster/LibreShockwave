@@ -12,6 +12,8 @@ class InputState {
 public:
     static constexpr int INITIAL_MOUSE_POSITION = -10000;
 
+    InputState();
+
     [[nodiscard]] int mouseH() const;
     [[nodiscard]] int mouseV() const;
     void setMousePosition(int h, int v);
@@ -28,6 +30,10 @@ public:
     void setClickLoc(int h, int v);
     [[nodiscard]] bool isDoubleClick() const;
     void updateDoubleClick(int h, int v);
+    [[nodiscard]] int lastClickTicks() const;
+    [[nodiscard]] int lastEventTicks() const;
+    [[nodiscard]] int lastKeyTicks() const;
+    [[nodiscard]] int lastRollTicks() const;
 
     [[nodiscard]] int rolloverSprite() const;
     void setRolloverSprite(int channel);
@@ -71,6 +77,9 @@ private:
     int clickLocH_{0};
     int clickLocV_{0};
     long long lastClickTimeMs_{0};
+    long long lastEventTimeMs_{0};
+    long long lastKeyTimeMs_{0};
+    long long lastRollTimeMs_{0};
     int lastClickLocH_{0};
     int lastClickLocV_{0};
     bool doubleClick_{false};

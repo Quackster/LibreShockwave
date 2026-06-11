@@ -13,12 +13,28 @@ long long currentTimeMillis() {
     return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
 }
 
+int elapsedTicksSince(long long timestampMs) {
+    const long long elapsedMs = std::max(0LL, currentTimeMillis() - timestampMs);
+    return static_cast<int>((elapsedMs * 60) / 1000);
+}
+
 } // namespace
+
+InputState::InputState()
+    : lastClickTimeMs_(currentTimeMillis()),
+      lastEventTimeMs_(lastClickTimeMs_),
+      lastKeyTimeMs_(lastClickTimeMs_),
+      lastRollTimeMs_(lastClickTimeMs_) {}
 
 int InputState::mouseH() const { return mouseH_; }
 int InputState::mouseV() const { return mouseV_; }
 
 void InputState::setMousePosition(int h, int v) {
+    if (mouseH_ != h || mouseV_ != v) {
+        const long long now = currentTimeMillis();
+        lastRollTimeMs_ = now;
+        lastEventTimeMs_ = now;
+    }
     mouseH_ = h;
     mouseV_ = v;
 }
@@ -49,9 +65,15 @@ void InputState::updateDoubleClick(int h, int v) {
 
     doubleClick_ = timeMatch && distMatch;
     lastClickTimeMs_ = now;
+    lastEventTimeMs_ = now;
     lastClickLocH_ = h;
     lastClickLocV_ = v;
 }
+
+int InputState::lastClickTicks() const { return elapsedTicksSince(lastClickTimeMs_); }
+int InputState::lastEventTicks() const { return elapsedTicksSince(lastEventTimeMs_); }
+int InputState::lastKeyTicks() const { return elapsedTicksSince(lastKeyTimeMs_); }
+int InputState::lastRollTicks() const { return elapsedTicksSince(lastRollTimeMs_); }
 
 int InputState::rolloverSprite() const { return rolloverSprite_; }
 void InputState::setRolloverSprite(int channel) { rolloverSprite_ = channel; }
@@ -60,10 +82,15 @@ const std::string& InputState::lastKey() const { return lastKey_; }
 
 void InputState::setLastKey(std::string key) {
     lastKey_ = std::move(key);
+    if (!lastKey_.empty()) {
+        const long long now = currentTimeMillis();
+        lastKeyTimeMs_ = now;
+        lastEventTimeMs_ = now;
+    }
 }
 
 void InputState::setLastKey(const char* key) {
-    lastKey_ = key == nullptr ? "" : key;
+    setLastKey(key == nullptr ? std::string{} : std::string(key));
 }
 
 int InputState::lastKeyCode() const { return lastKeyCode_; }

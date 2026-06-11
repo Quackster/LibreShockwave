@@ -8351,15 +8351,29 @@ void testPlayerInputFoundation() {
     assert(state.clickOnSprite() == 7);
     assert(state.clickLocH() == 30);
     assert(state.clickLocV() == 40);
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    assert(state.lastClickTicks() >= 1);
+    assert(state.lastEventTicks() >= 1);
+    assert(state.lastKeyTicks() >= 1);
+    assert(state.lastRollTicks() >= 1);
     state.updateDoubleClick(50, 60);
     assert(!state.isDoubleClick());
+    assert(state.lastClickTicks() <= 1);
+    assert(state.lastEventTicks() <= 1);
     state.updateDoubleClick(54, 64);
     assert(state.isDoubleClick());
 
     state.setRolloverSprite(9);
     assert(state.rolloverSprite() == 9);
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    state.setMousePosition(34, 45);
+    assert(state.lastRollTicks() <= 1);
+    assert(state.lastEventTicks() <= 1);
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
     state.setLastKey("a");
     assert(state.lastKey() == "a");
+    assert(state.lastKeyTicks() <= 1);
+    assert(state.lastEventTicks() <= 1);
     state.setLastKey(nullptr);
     assert(state.lastKey().empty());
     state.setLastKeyCode(36);
@@ -9881,18 +9895,33 @@ void testMoviePropertiesFoundation() {
     assert(props.getMovieProp("beepOn").boolValue());
     assert(props.getMovieProp("buttonStyle").intValue() == 0);
     assert(!props.getMovieProp("centerStage").boolValue());
+    assert(!props.getMovieProp("checkBoxAccess").boolValue());
+    assert(props.getMovieProp("checkboxType").intValue() == 0);
+    assert(props.getMovieProp("colorQD").boolValue());
     assert(!props.getMovieProp("fixStageSize").boolValue());
     assert(!props.getMovieProp("imageDirect").boolValue());
+    assert(props.getMovieProp("lastClick").intValue() == 0);
+    assert(props.getMovieProp("lastEvent").intValue() == 0);
+    assert(props.getMovieProp("lastKey").intValue() == 0);
+    assert(props.getMovieProp("lastRoll").intValue() == 0);
     assert(props.getMovieProp("soundEnabled").boolValue());
     assert(props.getMovieProp("soundLevel").intValue() == 7);
     assert(props.getMovieProp("soundKeepDevice").boolValue());
     assert(props.getMovieProp("soundMixMedia").boolValue());
     assert(props.getMovieProp("multiSound").boolValue());
     assert(props.getMovieProp("netPresent").boolValue());
+    assert(!props.getMovieProp("pauseState").boolValue());
     assert(props.getMovieProp("safePlayer").boolValue());
     assert(props.getMovieProp("preLoadRAM").intValue() == 0);
     assert(!props.getMovieProp("quickTimePresent").boolValue());
     assert(!props.getMovieProp("videoForWindowsPresent").boolValue());
+    assert(props.getMovieProp("stageColor").intValue() == 0);
+    assert(!props.getMovieProp("switchColorDepth").boolValue());
+    assert(props.getMovieProp("timeoutLapsed").intValue() == 0);
+    assert(props.getMovieProp("timeoutKeyDown").boolValue());
+    assert(props.getMovieProp("timeoutLength").intValue() == 0);
+    assert(props.getMovieProp("timeoutMouse").boolValue());
+    assert(props.getMovieProp("timeoutPlay").boolValue());
     assert(props.getMovieProp("unknownMovieProp").isVoid());
 
     DirectorFile emptyFile(ByteOrder::BigEndian, false, 0, ChunkType::RIFX);
@@ -9933,6 +9962,7 @@ void testMoviePropertiesFoundation() {
     assert(props.getMovieProp("randomSeed").intValue() == 99);
     assert(props.getMovieProp("paramCount").intValue() == 3);
     assert(props.getMovieProp("number of castLibs").intValue() == 4);
+    assert(props.getMovieProp("stageColor").intValue() == 0x223344);
     assert(props.getMovieProp("number of xtras").intValue() == 2);
     auto xtraList = props.getMovieProp("xtraList");
     const auto& xtras = xtraList.listValue().items();
@@ -9969,6 +9999,11 @@ void testMoviePropertiesFoundation() {
     assert(props.getMovieProp("doubleClick").intValue() == 1);
     assert(props.getMovieProp("rollover").intValue() == 6);
     assert(props.getMovieProp("key").stringValue() == "x");
+    assert(props.getMovieProp("lastClick").intValue() <= 1);
+    assert(props.getMovieProp("lastEvent").intValue() <= 1);
+    assert(props.getMovieProp("lastKey").intValue() <= 1);
+    assert(props.getMovieProp("lastRoll").intValue() <= 1);
+    assert(props.getMovieProp("timeoutLapsed").intValue() <= 1);
     assert(props.getMovieProp("keyCode").intValue() == 7);
     assert(props.getMovieProp("keyPressed").intValue() == 7);
     assert(props.getMovieProp("shiftDown").intValue() == 1);
@@ -9996,14 +10031,24 @@ void testMoviePropertiesFoundation() {
     assert(props.setMovieProp("beepOn", Datum::FALSE));
     assert(props.setMovieProp("buttonStyle", Datum::of(1)));
     assert(props.setMovieProp("centerStage", Datum::TRUE));
+    assert(props.setMovieProp("checkBoxAccess", Datum::TRUE));
+    assert(props.setMovieProp("checkboxType", Datum::of(2)));
+    assert(props.setMovieProp("colorQD", Datum::FALSE));
     assert(props.setMovieProp("fixStageSize", Datum::TRUE));
     assert(props.setMovieProp("imageDirect", Datum::TRUE));
     assert(props.setMovieProp("soundEnabled", Datum::FALSE));
     assert(props.setMovieProp("soundLevel", Datum::of(5)));
     assert(props.setMovieProp("soundKeepDevice", Datum::FALSE));
     assert(props.setMovieProp("soundMixMedia", Datum::FALSE));
+    assert(props.setMovieProp("pauseState", Datum::TRUE));
     assert(props.setMovieProp("safePlayer", Datum::FALSE));
     assert(props.setMovieProp("preLoadRAM", Datum::of(600)));
+    assert(props.setMovieProp("stageColor", Datum::colorRef(9, 8, 7)));
+    assert(props.setMovieProp("switchColorDepth", Datum::TRUE));
+    assert(props.setMovieProp("timeoutKeyDown", Datum::FALSE));
+    assert(props.setMovieProp("timeoutLength", Datum::of(123)));
+    assert(props.setMovieProp("timeoutMouse", Datum::FALSE));
+    assert(props.setMovieProp("timeoutPlay", Datum::FALSE));
     assert(props.setMovieProp("randomSeed", Datum::of(1234)));
     assert(props.setMovieProp("selStart", Datum::of(30)));
     assert(props.setMovieProp("selEnd", Datum::of(40)));
@@ -10028,16 +10073,29 @@ void testMoviePropertiesFoundation() {
     assert(!props.getMovieProp("beepOn").boolValue());
     assert(props.getMovieProp("buttonStyle").intValue() == 1);
     assert(props.getMovieProp("centerStage").boolValue());
+    assert(props.getMovieProp("checkBoxAccess").boolValue());
+    assert(props.getMovieProp("checkboxType").intValue() == 2);
+    assert(!props.getMovieProp("colorQD").boolValue());
     assert(props.getMovieProp("fixStageSize").boolValue());
     assert(props.getMovieProp("imageDirect").boolValue());
     assert(!props.getMovieProp("soundEnabled").boolValue());
     assert(props.getMovieProp("soundLevel").intValue() == 5);
     assert(!props.getMovieProp("soundKeepDevice").boolValue());
     assert(!props.getMovieProp("soundMixMedia").boolValue());
+    assert(props.getMovieProp("pauseState").boolValue());
     assert(props.getMovieProp("safePlayer").boolValue());
     assert(props.getMovieProp("preLoadRAM").intValue() == 600);
     assert(props.setMovieProp("preLoadRAM", Datum::of(-1)));
     assert(props.getMovieProp("preLoadRAM").intValue() == 0);
+    assert(stageBg == 0x090807);
+    assert(props.getMovieProp("stageColor").intValue() == 0x090807);
+    assert(props.getMovieProp("switchColorDepth").boolValue());
+    assert(!props.getMovieProp("timeoutKeyDown").boolValue());
+    assert(props.getMovieProp("timeoutLength").intValue() == 123);
+    assert(props.setMovieProp("timeoutLength", Datum::of(-5)));
+    assert(props.getMovieProp("timeoutLength").intValue() == 0);
+    assert(!props.getMovieProp("timeoutMouse").boolValue());
+    assert(!props.getMovieProp("timeoutPlay").boolValue());
     assert(randomSeed == 1234);
     assert(input.selStart() == 30);
     assert(input.selEnd() == 40);
@@ -10077,7 +10135,7 @@ void testMoviePropertiesFoundation() {
     assert(props.getStageProp("title").stringValue() == "Main Stage");
     assert(props.getStageProp("name").stringValue() == "stage");
     assert(props.getStageProp("visible") == Datum::TRUE);
-    assert(props.getStageProp("bgColor").intValue() == 0x223344);
+    assert(props.getStageProp("bgColor").intValue() == 0x090807);
     assert(props.setStageProp("bgColor", Datum::colorRef(1, 2, 3)));
     assert(stageBg == 0x010203);
     assert(props.setStageProp("bgColor", Datum::of(static_cast<int>(0xFFAABBCCU))));
@@ -12663,6 +12721,24 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 148) {
             return std::string("videoForWindowsPresent");
         }
+        if (nameId == 149) {
+            return std::string("lastClick");
+        }
+        if (nameId == 150) {
+            return std::string("lastEvent");
+        }
+        if (nameId == 151) {
+            return std::string("lastKey");
+        }
+        if (nameId == 152) {
+            return std::string("lastRoll");
+        }
+        if (nameId == 153) {
+            return std::string("switchColorDepth");
+        }
+        if (nameId == 154) {
+            return std::string("timeoutLength");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.variableSetListener = [&variableTraces](std::string_view type,
@@ -13767,6 +13843,12 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runObjectPropertyGet(Datum::movieRef(), 146).intValue() == 0);
     assert(!runObjectPropertyGet(Datum::playerRef(), 147).boolValue());
     assert(!runObjectPropertyGet(Datum::playerRef(), 148).boolValue());
+    assert(runObjectPropertyGet(Datum::playerRef(), 149).intValue() == 0);
+    assert(runObjectPropertyGet(Datum::playerRef(), 150).intValue() == 0);
+    assert(runObjectPropertyGet(Datum::playerRef(), 151).intValue() == 0);
+    assert(runObjectPropertyGet(Datum::playerRef(), 152).intValue() == 0);
+    assert(!runObjectPropertyGet(Datum::playerRef(), 153).boolValue());
+    assert(runObjectPropertyGet(Datum::playerRef(), 154).intValue() == 0);
     assert(runObjectPropertyGet(Datum::stageRef(), 81).intValue() == 0x224466);
     assert(runObjectPropertyGet(Datum::spriteRef(ChannelId(9)), 83).intValue() == 44);
     assert(runObjectPropertyGet(Datum::of(9), 83).intValue() == 44);
@@ -13790,6 +13872,16 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     setObjectContext.push(Datum::of(512));
     assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
     assert(objectMovieProps.getMovieProp("preLoadRAM").intValue() == 512);
+    setObjectContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_OBJ_PROP, libreshockwave::lingo::code(Opcode::SET_OBJ_PROP), 153});
+    setObjectContext.push(Datum::playerRef());
+    setObjectContext.push(Datum::TRUE);
+    assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
+    assert(objectMovieProps.getMovieProp("switchColorDepth").boolValue());
+    setObjectContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_OBJ_PROP, libreshockwave::lingo::code(Opcode::SET_OBJ_PROP), 154});
+    setObjectContext.push(Datum::playerRef());
+    setObjectContext.push(Datum::of(640));
+    assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
+    assert(objectMovieProps.getMovieProp("timeoutLength").intValue() == 640);
     setObjectContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_OBJ_PROP, libreshockwave::lingo::code(Opcode::SET_OBJ_PROP), 82});
     setObjectContext.push(Datum::stageRef());
     setObjectContext.push(Datum::of(std::string("Main Stage")));
@@ -13959,11 +14051,26 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runLegacyGet(0x06, Datum::of(5), 0x0D).intValue() == 22);
     assert(runLegacyGet(0x07, Datum::voidValue(), 0x02).intValue() == 0);
     assert(!runLegacyGet(0x07, Datum::voidValue(), 0x03).boolValue());
+    assert(!runLegacyGet(0x07, Datum::voidValue(), 0x04).boolValue());
+    assert(runLegacyGet(0x07, Datum::voidValue(), 0x05).intValue() == 0);
+    assert(runLegacyGet(0x07, Datum::voidValue(), 0x07).boolValue());
     assert(!runLegacyGet(0x07, Datum::voidValue(), 0x09).boolValue());
     assert(!runLegacyGet(0x07, Datum::voidValue(), 0x0B).boolValue());
+    assert(runLegacyGet(0x07, Datum::voidValue(), 0x0E).intValue() == 0);
+    assert(runLegacyGet(0x07, Datum::voidValue(), 0x0F).intValue() == 0);
+    assert(runLegacyGet(0x07, Datum::voidValue(), 0x11).intValue() == 0);
+    assert(runLegacyGet(0x07, Datum::voidValue(), 0x12).intValue() == 0);
+    assert(runLegacyGet(0x07, Datum::voidValue(), 0x13).intValue() == 0);
     assert(runLegacyGet(0x07, Datum::voidValue(), 0x14).boolValue());
+    assert(!runLegacyGet(0x07, Datum::voidValue(), 0x15).boolValue());
     assert(!runLegacyGet(0x07, Datum::voidValue(), 0x16).boolValue());
     assert(runLegacyGet(0x07, Datum::voidValue(), 0x1A).intValue() == 7);
+    assert(runLegacyGet(0x07, Datum::voidValue(), 0x1B).intValue() == 0);
+    assert(!runLegacyGet(0x07, Datum::voidValue(), 0x1D).boolValue());
+    assert(runLegacyGet(0x07, Datum::voidValue(), 0x1E).boolValue());
+    assert(runLegacyGet(0x07, Datum::voidValue(), 0x1F).intValue() == 0);
+    assert(runLegacyGet(0x07, Datum::voidValue(), 0x20).boolValue());
+    assert(runLegacyGet(0x07, Datum::voidValue(), 0x21).boolValue());
     assert(runLegacyGet(0x07, Datum::voidValue(), 0x23).intValue() == 0);
     assert(!runLegacyGet(0x07, Datum::voidValue(), 0x24).boolValue());
     assert(runLegacyGet(0x07, Datum::voidValue(), 0x25).boolValue());
@@ -14007,6 +14114,18 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
     assert(legacyMovieProps.getMovieProp("centerStage").boolValue());
     legacySetContext.push(Datum::TRUE);
+    legacySetContext.push(Datum::of(0x04));
+    assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
+    assert(legacyMovieProps.getMovieProp("checkBoxAccess").boolValue());
+    legacySetContext.push(Datum::of(5));
+    legacySetContext.push(Datum::of(0x05));
+    assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
+    assert(legacyMovieProps.getMovieProp("checkboxType").intValue() == 5);
+    legacySetContext.push(Datum::FALSE);
+    legacySetContext.push(Datum::of(0x07));
+    assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
+    assert(!legacyMovieProps.getMovieProp("colorQD").boolValue());
+    legacySetContext.push(Datum::TRUE);
     legacySetContext.push(Datum::of(0x09));
     assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
     assert(legacyMovieProps.getMovieProp("fixStageSize").boolValue());
@@ -14014,6 +14133,34 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     legacySetContext.push(Datum::of(0x0B));
     assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
     assert(legacyMovieProps.getMovieProp("imageDirect").boolValue());
+    legacySetContext.push(Datum::TRUE);
+    legacySetContext.push(Datum::of(0x15));
+    assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
+    assert(legacyMovieProps.getMovieProp("pauseState").boolValue());
+    legacySetContext.push(Datum::of(0xABCDEF));
+    legacySetContext.push(Datum::of(0x1B));
+    assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
+    assert(legacyMovieProps.getMovieProp("stageColor").intValue() == 0xABCDEF);
+    legacySetContext.push(Datum::TRUE);
+    legacySetContext.push(Datum::of(0x1D));
+    assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
+    assert(legacyMovieProps.getMovieProp("switchColorDepth").boolValue());
+    legacySetContext.push(Datum::FALSE);
+    legacySetContext.push(Datum::of(0x1E));
+    assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
+    assert(!legacyMovieProps.getMovieProp("timeoutKeyDown").boolValue());
+    legacySetContext.push(Datum::of(720));
+    legacySetContext.push(Datum::of(0x1F));
+    assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
+    assert(legacyMovieProps.getMovieProp("timeoutLength").intValue() == 720);
+    legacySetContext.push(Datum::FALSE);
+    legacySetContext.push(Datum::of(0x20));
+    assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
+    assert(!legacyMovieProps.getMovieProp("timeoutMouse").boolValue());
+    legacySetContext.push(Datum::FALSE);
+    legacySetContext.push(Datum::of(0x21));
+    assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
+    assert(!legacyMovieProps.getMovieProp("timeoutPlay").boolValue());
     legacySetContext.push(Datum::of(2048));
     legacySetContext.push(Datum::of(0x23));
     assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));

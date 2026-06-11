@@ -128,14 +128,23 @@ private:
     bool beepOn_{true};
     int buttonStyle_{0};
     bool centerStage_{false};
+    bool checkBoxAccess_{false};
+    int checkBoxType_{0};
+    bool colorQD_{true};
     bool fixStageSize_{false};
     bool imageDirect_{false};
+    bool pauseState_{false};
     bool soundEnabled_{true};
     int soundLevel_{7};
     bool soundKeepDevice_{true};
     bool soundMixMedia_{true};
     bool safePlayer_{true};
     int preLoadRAM_{0};
+    bool switchColorDepth_{false};
+    bool timeoutKeyDown_{true};
+    int timeoutLength_{0};
+    bool timeoutMouse_{true};
+    bool timeoutPlay_{true};
     int randomSeed_{0};
     int stageBackgroundColor_{0};
 

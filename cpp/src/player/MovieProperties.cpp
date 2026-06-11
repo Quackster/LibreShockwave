@@ -225,17 +225,32 @@ lingo::Datum MovieProperties::getMovieProp(std::string_view propName) const {
     if (prop == "beepon") return lingo::Datum::of(beepOn_ ? 1 : 0);
     if (prop == "buttonstyle") return lingo::Datum::of(buttonStyle_);
     if (prop == "centerstage") return lingo::Datum::of(centerStage_ ? 1 : 0);
+    if (prop == "checkboxaccess") return lingo::Datum::of(checkBoxAccess_ ? 1 : 0);
+    if (prop == "checkboxtype") return lingo::Datum::of(checkBoxType_);
+    if (prop == "colorqd") return lingo::Datum::of(colorQD_ ? 1 : 0);
     if (prop == "fixstagesize") return lingo::Datum::of(fixStageSize_ ? 1 : 0);
     if (prop == "imagedirect") return lingo::Datum::of(imageDirect_ ? 1 : 0);
+    if (prop == "lastclick") return lingo::Datum::of(inputState_ != nullptr ? inputState_->lastClickTicks() : 0);
+    if (prop == "lastevent") return lingo::Datum::of(inputState_ != nullptr ? inputState_->lastEventTicks() : 0);
+    if (prop == "lastkey") return lingo::Datum::of(inputState_ != nullptr ? inputState_->lastKeyTicks() : 0);
+    if (prop == "lastroll") return lingo::Datum::of(inputState_ != nullptr ? inputState_->lastRollTicks() : 0);
     if (prop == "soundenabled") return lingo::Datum::of(soundEnabled() ? 1 : 0);
     if (prop == "soundlevel") return lingo::Datum::of(soundLevel());
     if (prop == "soundkeepdevice") return lingo::Datum::of(soundKeepDevice() ? 1 : 0);
     if (prop == "soundmixmedia") return lingo::Datum::of(soundMixMedia() ? 1 : 0);
     if (prop == "multisound") return lingo::Datum::TRUE;
     if (prop == "netpresent") return lingo::Datum::TRUE;
+    if (prop == "pausestate") return lingo::Datum::of(pauseState_ ? 1 : 0);
     if (prop == "safeplayer") return lingo::Datum::of(safePlayer_ ? 1 : 0);
     if (prop == "preloadram") return lingo::Datum::of(preLoadRAM_);
     if (prop == "quicktimepresent" || prop == "videoforwindowspresent") return lingo::Datum::FALSE;
+    if (prop == "stagecolor") return lingo::Datum::of(stageBackgroundColor());
+    if (prop == "switchcolordepth") return lingo::Datum::of(switchColorDepth_ ? 1 : 0);
+    if (prop == "timeoutlapsed") return lingo::Datum::of(inputState_ != nullptr ? inputState_->lastEventTicks() : 0);
+    if (prop == "timeoutkeydown") return lingo::Datum::of(timeoutKeyDown_ ? 1 : 0);
+    if (prop == "timeoutlength") return lingo::Datum::of(timeoutLength_);
+    if (prop == "timeoutmouse") return lingo::Datum::of(timeoutMouse_ ? 1 : 0);
+    if (prop == "timeoutplay") return lingo::Datum::of(timeoutPlay_ ? 1 : 0);
     if (prop == "randomseed") return lingo::Datum::of(randomSeed());
     if (prop == "actorlist") return actorList_;
     if (prop == "framerate" || prop == "tempo" || prop == "frametempo") return lingo::Datum::of(tempo());
@@ -357,6 +372,18 @@ bool MovieProperties::setMovieProp(std::string_view propName, const lingo::Datum
         centerStage_ = value.boolValue();
         return true;
     }
+    if (prop == "checkboxaccess") {
+        checkBoxAccess_ = value.boolValue();
+        return true;
+    }
+    if (prop == "checkboxtype") {
+        checkBoxType_ = value.intValue();
+        return true;
+    }
+    if (prop == "colorqd") {
+        colorQD_ = value.boolValue();
+        return true;
+    }
     if (prop == "fixstagesize") {
         fixStageSize_ = value.boolValue();
         return true;
@@ -381,6 +408,10 @@ bool MovieProperties::setMovieProp(std::string_view propName, const lingo::Datum
         setSoundMixMedia(value.boolValue());
         return true;
     }
+    if (prop == "pausestate") {
+        pauseState_ = value.boolValue();
+        return true;
+    }
     if (prop == "safeplayer") {
         if (value.boolValue()) {
             safePlayer_ = true;
@@ -389,6 +420,32 @@ bool MovieProperties::setMovieProp(std::string_view propName, const lingo::Datum
     }
     if (prop == "preloadram") {
         preLoadRAM_ = std::max(0, value.intValue());
+        return true;
+    }
+    if (prop == "stagecolor") {
+        if (!value.isVoid()) {
+            setStageBackgroundColor(colorToRgb(value));
+        }
+        return true;
+    }
+    if (prop == "switchcolordepth") {
+        switchColorDepth_ = value.boolValue();
+        return true;
+    }
+    if (prop == "timeoutkeydown") {
+        timeoutKeyDown_ = value.boolValue();
+        return true;
+    }
+    if (prop == "timeoutlength") {
+        timeoutLength_ = std::max(0, value.intValue());
+        return true;
+    }
+    if (prop == "timeoutmouse") {
+        timeoutMouse_ = value.boolValue();
+        return true;
+    }
+    if (prop == "timeoutplay") {
+        timeoutPlay_ = value.boolValue();
         return true;
     }
     if (prop == "randomseed") {
