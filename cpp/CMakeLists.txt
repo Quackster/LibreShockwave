@@ -57,6 +57,7 @@ add_library(libreshockwave
     src/editor/audio/EditorAudioModels.cpp
     src/editor/cast/CastBrowserModels.cpp
     src/editor/debug/DebugBrowserModels.cpp
+    src/editor/debug/DebugCommandModels.cpp
     src/editor/debug/DebugDisplayItems.cpp
     src/editor/debug/DebugTableModels.cpp
     src/editor/docking/DockingModels.cpp

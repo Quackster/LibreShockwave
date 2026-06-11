@@ -77,6 +77,7 @@
 #include "libreshockwave/editor/audio/EditorAudioModels.hpp"
 #include "libreshockwave/editor/cast/CastBrowserModels.hpp"
 #include "libreshockwave/editor/debug/DebugBrowserModels.hpp"
+#include "libreshockwave/editor/debug/DebugCommandModels.hpp"
 #include "libreshockwave/editor/debug/DebugDisplayItems.hpp"
 #include "libreshockwave/editor/debug/DebugTableModels.hpp"
 #include "libreshockwave/editor/docking/DockingModels.hpp"
@@ -315,7 +316,13 @@ using libreshockwave::editor::castbrowser::CastListRow;
 using libreshockwave::editor::castbrowser::CastViewMode;
 using libreshockwave::editor::castbrowser::ThumbnailPlacement;
 using libreshockwave::editor::debug::BytecodeListBuildOptions;
+using libreshockwave::editor::debug::BytecodeContextMenuItem;
 using libreshockwave::editor::debug::BytecodeListModel;
+using libreshockwave::editor::debug::DebugCommand;
+using libreshockwave::editor::debug::DebugCommandModels;
+using libreshockwave::editor::debug::DebugShortcut;
+using libreshockwave::editor::debug::DebugToolbarButton;
+using libreshockwave::editor::debug::DebugToolbarLayout;
 using libreshockwave::editor::debug::HandlerLocation;
 using libreshockwave::editor::debug::HandlerItem;
 using libreshockwave::editor::debug::HandlerNavigator;
@@ -2640,6 +2647,87 @@ void testEditorDebugDataModels() {
     InstructionDisplayItem malformedCall{10, 3, "OBJ_CALL", 0, "go()", false};
     malformedCall.navigable = true;
     assert(!malformedCall.isNavigableCall());
+
+    assert(DebugCommandModels::commandId(DebugCommand::StepInto) == "debug.stepInto");
+    assert(DebugCommandModels::commandForActionName("debug.stepOver").value() == DebugCommand::StepOver);
+    assert(!DebugCommandModels::commandForActionName("debug.missing").has_value());
+    assert((DebugCommandModels::toolbarLayout() == DebugToolbarLayout{"left", 5, 2, 2, 5, 2, 5}));
+    assert((DebugCommandModels::toolbarButtons(false) ==
+            std::vector<DebugToolbarButton>{
+                DebugToolbarButton{DebugCommand::StepInto, "Step Into", "Step Into (F11)", false, 0},
+                DebugToolbarButton{DebugCommand::StepOver, "Step Over", "Step Over (F10)", false, 0},
+                DebugToolbarButton{DebugCommand::StepOut, "Step Out", "Step Out (Shift+F11)", false, 0},
+                DebugToolbarButton{DebugCommand::ContinueExecution, "Continue", "Continue (F5)", false, 10},
+                DebugToolbarButton{DebugCommand::ClearBreakpoints, "Clear BPs", "Clear all breakpoints", true, 20},
+            }));
+    const auto enabledToolbar = DebugCommandModels::toolbarButtons(true);
+    assert(enabledToolbar[0].enabled);
+    assert(enabledToolbar[3].enabled);
+    assert(enabledToolbar[4].enabled);
+    assert((DebugCommandModels::keyboardShortcuts() ==
+            std::vector<DebugShortcut>{
+                DebugShortcut{DebugCommand::ContinueExecution, "debug.continue", "F5", false, false, false, false},
+                DebugShortcut{DebugCommand::Pause, "debug.pause", "F6", false, false, false, false},
+                DebugShortcut{DebugCommand::StepOver, "debug.stepOver", "F10", false, false, false, false},
+                DebugShortcut{DebugCommand::StepInto, "debug.stepInto", "F11", false, false, false, false},
+                DebugShortcut{DebugCommand::StepOut, "debug.stepOut", "F11", true, false, false, false},
+            }));
+    assert(!DebugCommandModels::canExecute(DebugCommand::StepInto, false, true));
+    assert(DebugCommandModels::canExecute(DebugCommand::ContinueExecution, true, true));
+    assert(!DebugCommandModels::canExecute(DebugCommand::ContinueExecution, true, false));
+    assert(DebugCommandModels::canExecute(DebugCommand::Pause, true, false));
+    assert(!DebugCommandModels::canExecute(DebugCommand::Pause, true, true));
+    assert(DebugCommandModels::canExecute(DebugCommand::ClearBreakpoints, true, false));
+    assert(DebugCommandModels::canExecute(DebugCommand::ToggleBreakpointEnabled, true, true, true));
+    assert(!DebugCommandModels::canExecute(DebugCommand::ToggleBreakpointEnabled, true, true, false));
+
+    auto popupCall = callItem;
+    popupCall.navigable = true;
+    const auto navigablePopup =
+        DebugCommandModels::bytecodeContextMenu(popupCall, true, 243, "mouseUp", true);
+    assert((navigablePopup ==
+            std::vector<BytecodeContextMenuItem>{
+                BytecodeContextMenuItem{DebugCommand::ToggleBreakpoint,
+                                        "Toggle Breakpoint",
+                                        true,
+                                        true,
+                                        false,
+                                        std::optional<int>(12),
+                                        std::nullopt},
+                BytecodeContextMenuItem{DebugCommand::ToggleBreakpointEnabled,
+                                        "Enable/Disable Breakpoint",
+                                        true,
+                                        true,
+                                        false,
+                                        std::optional<int>(12),
+                                        std::nullopt},
+                BytecodeContextMenuItem{DebugCommand::GoToDefinition,
+                                        "Go to Definition",
+                                        true,
+                                        true,
+                                        true,
+                                        std::optional<int>(12),
+                                        std::optional<std::string>("go")},
+                BytecodeContextMenuItem{DebugCommand::ViewHandlerDetails,
+                                        "View Handler Details...",
+                                        true,
+                                        true,
+                                        false,
+                                        std::optional<int>(12),
+                                        std::optional<std::string>("go")},
+            }));
+    const auto nonNavigablePopup =
+        DebugCommandModels::bytecodeContextMenu(notCall, true, 243, "mouseUp", false);
+    assert(nonNavigablePopup[0].enabled);
+    assert(!nonNavigablePopup[1].enabled);
+    assert(!nonNavigablePopup[2].visible);
+    assert(!nonNavigablePopup[3].visible);
+    const auto missingContextPopup =
+        DebugCommandModels::bytecodeContextMenu(popupCall, false, -1, "", true);
+    assert(!missingContextPopup[0].enabled);
+    assert(!missingContextPopup[1].enabled);
+    assert(missingContextPopup[2].visible);
+    assert(missingContextPopup[2].enabled);
 
     auto browserNames = std::make_shared<ScriptNamesChunk>(
         nullptr,
