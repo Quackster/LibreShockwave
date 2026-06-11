@@ -491,6 +491,21 @@ int DirectorFile::stageHeight() const {
     return config_ ? config_->stageHeight() : 0;
 }
 
+int DirectorFile::channelCount() const {
+    if (!config_) {
+        return 120;
+    }
+
+    const int humanVersion = (config_->directorVersion() / 100) * 100;
+    if (humanVersion >= 1300) {
+        return 1000;
+    }
+    if (humanVersion >= 1200) {
+        return 120;
+    }
+    return 48;
+}
+
 int DirectorFile::tempo() const {
     return config_ ? config_->tempo() : 15;
 }

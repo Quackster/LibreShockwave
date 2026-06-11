@@ -433,7 +433,7 @@ int MovieProperties::frameCount() const {
 }
 
 int MovieProperties::channelCount() const {
-    return file_ != nullptr && file_->scoreChunk() ? file_->scoreChunk()->getChannelCount() : 0;
+    return file_ != nullptr ? file_->channelCount() : 0;
 }
 
 int MovieProperties::tempo() const {

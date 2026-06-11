@@ -6044,6 +6044,7 @@ void testEditorScoreDataHelpers() {
     assert(file->hasScore());
     assert(file->scoreChunk()->getFrameCount() == 2);
     assert(file->scoreChunk()->getChannelCount() == 7);
+    assert(file->channelCount() == 120);
 
     const auto appearances = finder.find(*file, 2);
     assert(appearances.size() == 2);
@@ -9825,6 +9826,7 @@ void testMoviePropertiesFoundation() {
     assert(props.getMovieProp("moviePath").stringValue() == "/movies/example.dir/");
     assert(props.getMovieProp("path").stringValue() == "/movies/example.dir");
     assert(props.getMovieProp("tempo").intValue() == 15);
+    assert(props.getMovieProp("lastChannel").intValue() == 120);
     assert(props.getMovieProp("number of castMembers").intValue() == 0);
     assert(props.getMovieProp("number of castLibs").intValue() == 0);
     assert(props.getStageProp("rect") == Datum::intRect(0, 0, 0, 0));
@@ -26142,6 +26144,7 @@ void testLookupHelpers() {
     DirectorFile emptyFile(ByteOrder::BigEndian, false, 0, ChunkType::MV93);
     assert(emptyFile.stageWidth() == 0);
     assert(emptyFile.stageHeight() == 0);
+    assert(emptyFile.channelCount() == 120);
     assert(emptyFile.tempo() == 15);
     assert(emptyFile.getScoreTempo(0) == -1);
     assert(!emptyFile.getScorePalette(0).has_value());

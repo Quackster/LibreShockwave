@@ -158,6 +158,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 ### DirectorFile Metadata Helpers
 
 - `DirectorFile` tracks mutable base-path metadata for external cast resolution.
+- `DirectorFile::channelCount` now ports Java's Director-version sprite-channel capacity fallback, and `MovieProperties` uses it for `lastChannel` instead of requiring parsed score data.
 - External cast path listing, external-cast presence checks, score-presence checks, and font-name lookup across Fmap chunks are exposed in C++.
 
 ### Bitmap Decoder Foundation
@@ -985,7 +986,7 @@ Result:
 - Palette resolver and DirectorFile palette lookup tests passed through the same CTest executable.
 - DirectorFile stage/tempo, associated text, and associated score lookup tests passed through the same CTest executable.
 - ScriptChunk name resolution and DirectorFile script-helper empty fallback tests passed through the same CTest executable.
-- DirectorFile base path, score presence, external cast, and font lookup fallback tests passed through the same CTest executable.
+- DirectorFile base path, score presence, external cast, font lookup fallback, version-backed channel capacity, and MovieProperties `lastChannel` tests passed through the same CTest executable.
 - Bitmap decoder RLE, scan-width, indexed, RGB555, 32-bit channel, and automatic dispatch tests passed through the same CTest executable.
 - DirectorFile BITD bitmap decode integration plus pluggable `ediM` JPEG/`ALFA` sidecar bitmap decode passed through the RIFX loader fixture in the same CTest executable.
 - XMED text parsing for multi-span style runs, underline ranges, referenced style-run font-size selection, close/wide font-size tie selection, per-span font records, paragraph alignment codes, and paragraph record counts passed through the same CTest executable.
@@ -1459,4 +1460,4 @@ Result:
 - `abe1e357 Port C++ external cast sound playback`
 - `b0e6e80d Port C++ XMED font-size ties`
 - `9a4467d9 Port C++ palette ID provider resolution`
-- Current checkpoint commit message: `Port C++ callAncestor provider dispatch`
+- Current checkpoint commit message: `Port C++ Director channel count fallback`

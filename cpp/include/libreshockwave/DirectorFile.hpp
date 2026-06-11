@@ -150,6 +150,7 @@ public:
     [[nodiscard]] std::shared_ptr<chunks::TextChunk> getTextForMember(const std::shared_ptr<chunks::CastMemberChunk>& member);
     [[nodiscard]] int stageWidth() const;
     [[nodiscard]] int stageHeight() const;
+    [[nodiscard]] int channelCount() const;
     [[nodiscard]] int tempo() const;
     [[nodiscard]] int getScoreTempo(int frame) const;
     [[nodiscard]] std::optional<chunks::ScoreChunk::PaletteChannelData> getScorePalette(int frame) const;
