@@ -335,6 +335,8 @@ using libreshockwave::editor::gtk::GtkActionActivation;
 using libreshockwave::editor::gtk::GtkPanelRowSpec;
 using libreshockwave::editor::gtk::GtkShellDialogKind;
 using libreshockwave::editor::gtk::GtkToolbarItemSpec;
+using libreshockwave::editor::gtk::GtkWorkbenchPanelKind;
+using libreshockwave::editor::gtk::GtkWorkbenchPanelSpec;
 using libreshockwave::editor::castbrowser::CastThumbnailKind;
 using libreshockwave::editor::castbrowser::CastThumbnailPresentation;
 using libreshockwave::editor::castbrowser::CastViewMode;
@@ -2126,11 +2128,58 @@ void testEditorShellActionModels() {
     assert(gtkRows[7].visible);
     assert(gtkRows[7].docked);
 
+    EditorContextModel closedGtkContext;
+    const auto gtkWorkbench = EditorGtkShellModel::workbenchPanels(gtkFrame, closedGtkContext);
+    assert(gtkWorkbench.size() == 8);
+    assert(gtkWorkbench[0] == (GtkWorkbenchPanelSpec{
+                                "stage",
+                                GtkWorkbenchPanelKind::Stage,
+                                "Stage",
+                                PanelBounds{170, 10, 660, 500},
+                                true,
+                                true,
+                                false,
+                                "No movie loaded",
+                                "Frame: 1",
+                                {},
+                            }));
+    const auto staticPaintWorkbench =
+        std::find_if(gtkWorkbench.begin(), gtkWorkbench.end(), [](const GtkWorkbenchPanelSpec& panel) {
+            return panel.panelId == "paint";
+        });
+    assert(staticPaintWorkbench != gtkWorkbench.end());
+    assert(staticPaintWorkbench->kind == GtkWorkbenchPanelKind::Paint);
+    assert(staticPaintWorkbench->primaryText == "No bitmap selected");
+    assert(staticPaintWorkbench->statusText == " Ready");
+    assert(staticPaintWorkbench->actionLabels.front() == "Pencil");
+
     EditorGtkShellState gtkState;
+    auto findWorkbenchPanel = [](const std::vector<GtkWorkbenchPanelSpec>& panels,
+                                 std::string_view panelId) -> const GtkWorkbenchPanelSpec* {
+        const auto found = std::find_if(panels.begin(), panels.end(), [panelId](const GtkWorkbenchPanelSpec& panel) {
+            return panel.panelId == panelId;
+        });
+        return found == panels.end() ? nullptr : &*found;
+    };
     assert(gtkState.menuModel().findMenu("File") != nullptr);
     assert(gtkState.toolbarItems().front().detailedActionName == "app.rewind");
     assert(gtkState.actionSpec("panel_paint")->active == false);
     assert(gtkState.preferences().recentProjects().empty());
+    auto gtkWorkbenchPanels = gtkState.workbenchPanels();
+    assert(gtkWorkbenchPanels.size() == 7);
+    assert(gtkWorkbenchPanels.front().kind == GtkWorkbenchPanelKind::Stage);
+    assert(gtkWorkbenchPanels.front().primaryText == "No movie loaded");
+    assert(gtkWorkbenchPanels.front().statusText == "Frame: 1");
+    const auto* messageWorkbench = findWorkbenchPanel(gtkWorkbenchPanels, "message");
+    assert(messageWorkbench != nullptr);
+    assert(messageWorkbench->kind == GtkWorkbenchPanelKind::Message);
+    assert(messageWorkbench->primaryText.find("Welcome to LibreShockwave Editor") == 0);
+    const auto* toolPaletteWorkbench = findWorkbenchPanel(gtkWorkbenchPanels, "tool-palette");
+    assert(toolPaletteWorkbench != nullptr);
+    assert(toolPaletteWorkbench->actionLabels.size() == 14);
+    assert(toolPaletteWorkbench->actionLabels[0] == "Arrow");
+    assert(toolPaletteWorkbench->actionLabels[13] == "Color");
+    assert(findWorkbenchPanel(gtkWorkbenchPanels, "paint") == nullptr);
 
     auto gtkView = gtkState.viewState();
     assert(gtkView.windowTitle == EditorPanelCatalog::closedFrameTitle());
@@ -2148,6 +2197,7 @@ void testEditorShellActionModels() {
     assert(gtkView.actionSpecs == gtkState.actionSpecs());
     assert(gtkView.toolbarItems == gtkState.toolbarItems());
     assert(gtkView.panelRows == gtkState.panelRows());
+    assert(gtkView.workbenchPanels == gtkWorkbenchPanels);
 
     auto openRequest = gtkState.activateAction("open");
     assert(openRequest.handled);
@@ -2272,6 +2322,12 @@ void testEditorShellActionModels() {
     assert(!gtkView.playing);
     assert(gtkView.currentFrame == 1);
     assert(gtkView.toolbarItems[7].label == "Frame: 1");
+    assert(gtkView.workbenchPanels == gtkState.workbenchPanels());
+    const auto* openedStageWorkbench = findWorkbenchPanel(gtkView.workbenchPanels, "stage");
+    assert(openedStageWorkbench != nullptr);
+    assert(openedStageWorkbench->title == "Stage - Movie.dir");
+    assert(openedStageWorkbench->primaryText == "Movie loaded: Movie.dir");
+    assert(openedStageWorkbench->statusText == "Frame: 1");
 
     auto movieParamsResult = gtkState.applyExternalParameters({{"swPersist", "saved-value"}});
     assert(movieParamsResult.accepted);
@@ -2355,6 +2411,10 @@ void testEditorShellActionModels() {
     gtkView = gtkState.viewState();
     assert(gtkView.currentFrame == 2);
     assert(gtkView.toolbarItems[7].label == "Frame: 2");
+    const auto* scoreWorkbench = findWorkbenchPanel(gtkView.workbenchPanels, "score");
+    assert(scoreWorkbench != nullptr);
+    assert(scoreWorkbench->kind == GtkWorkbenchPanelKind::Score);
+    assert(scoreWorkbench->statusText == "Frame: 2");
 
     auto stepBackward = gtkState.activateAction("stepBackward");
     assert(stepBackward.handled);
@@ -2458,6 +2518,13 @@ void testEditorShellActionModels() {
     assert(gtkView.panelRows[7].visible);
     assert(gtkView.panelRows[7].docked);
     assert(gtkView.panelRows[7].displayLabel == "Paint");
+    const auto* paintWorkbench = findWorkbenchPanel(gtkView.workbenchPanels, "paint");
+    assert(paintWorkbench != nullptr);
+    assert(paintWorkbench->kind == GtkWorkbenchPanelKind::Paint);
+    assert(paintWorkbench->docked);
+    assert(paintWorkbench->primaryText == "No bitmap selected");
+    assert(paintWorkbench->statusText == " Ready");
+    assert(paintWorkbench->actionLabels.size() == 9);
 
     auto hidePaint = gtkState.activateAction("panel_paint");
     assert(hidePaint.handled);
@@ -2466,6 +2533,7 @@ void testEditorShellActionModels() {
     assert(hidePaint.statusMessage == "Paint hidden");
     assert(!gtkState.actionSpec("panel_paint")->active);
     assert(gtkState.viewState().panelRows[7].displayLabel == "Paint (hidden)");
+    assert(findWorkbenchPanel(gtkState.viewState().workbenchPanels, "paint") == nullptr);
 
     assert(gtkState.activateAction("panel_sound").active.value());
     auto resetLayout = gtkState.activateAction("resetLayout");

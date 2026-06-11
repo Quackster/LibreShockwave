@@ -7,6 +7,9 @@
 #include <string>
 #include <utility>
 
+#include "libreshockwave/editor/panels/EditorPanelModels.hpp"
+#include "libreshockwave/editor/score/ScoreViewModels.hpp"
+#include "libreshockwave/editor/stage/StageViewModels.hpp"
 #include "libreshockwave/util/FileUtil.hpp"
 
 namespace libreshockwave::editor::gtk {
@@ -64,6 +67,150 @@ std::string joinTraceHandlers(const std::vector<std::string>& handlers) {
         result += handler;
     }
     return result;
+}
+
+GtkWorkbenchPanelKind panelKind(std::string_view panelId) {
+    if (panelId == "stage") {
+        return GtkWorkbenchPanelKind::Stage;
+    }
+    if (panelId == "score") {
+        return GtkWorkbenchPanelKind::Score;
+    }
+    if (panelId == "cast") {
+        return GtkWorkbenchPanelKind::Cast;
+    }
+    if (panelId == "property-inspector") {
+        return GtkWorkbenchPanelKind::PropertyInspector;
+    }
+    if (panelId == "script") {
+        return GtkWorkbenchPanelKind::Script;
+    }
+    if (panelId == "message") {
+        return GtkWorkbenchPanelKind::Message;
+    }
+    if (panelId == "tool-palette") {
+        return GtkWorkbenchPanelKind::ToolPalette;
+    }
+    if (panelId == "paint") {
+        return GtkWorkbenchPanelKind::Paint;
+    }
+    if (panelId == "vector-shape") {
+        return GtkWorkbenchPanelKind::VectorShape;
+    }
+    if (panelId == "text") {
+        return GtkWorkbenchPanelKind::Text;
+    }
+    if (panelId == "field") {
+        return GtkWorkbenchPanelKind::Field;
+    }
+    if (panelId == "sound") {
+        return GtkWorkbenchPanelKind::Sound;
+    }
+    if (panelId == "color-palettes") {
+        return GtkWorkbenchPanelKind::ColorPalettes;
+    }
+    if (panelId == "bytecode-debugger") {
+        return GtkWorkbenchPanelKind::BytecodeDebugger;
+    }
+    return GtkWorkbenchPanelKind::Generic;
+}
+
+std::vector<std::string> actionLabels(const std::vector<panels::DisabledPanelAction>& actions) {
+    std::vector<std::string> result;
+    result.reserve(actions.size());
+    for (const auto& action : actions) {
+        result.push_back(action.label);
+    }
+    return result;
+}
+
+std::vector<std::string> toolLabels(const std::vector<panels::ToolPaletteTool>& tools) {
+    std::vector<std::string> result;
+    result.reserve(tools.size());
+    for (const auto& tool : tools) {
+        result.push_back(tool.label);
+    }
+    return result;
+}
+
+void populateWorkbenchContent(GtkWorkbenchPanelSpec& spec, const EditorContextModel& contextModel) {
+    const auto& currentPath = contextModel.currentPath();
+    switch (spec.kind) {
+        case GtkWorkbenchPanelKind::Stage:
+            spec.title = currentPath.has_value()
+                ? stage::StageViewModel::titleForOpenedPath(*currentPath)
+                : stage::StageViewModel::closedTitle();
+            spec.primaryText = currentPath.has_value()
+                ? "Movie loaded: " + displayFileName(*currentPath)
+                : "No movie loaded";
+            spec.statusText = score::ScoreViewModels::frameStatus(contextModel.currentFrame());
+            break;
+        case GtkWorkbenchPanelKind::Score:
+            spec.primaryText = currentPath.has_value() ? "" : "No score data loaded";
+            spec.statusText = currentPath.has_value()
+                ? score::ScoreViewModels::frameStatus(contextModel.currentFrame())
+                : score::ScoreViewModels::closedStatus();
+            break;
+        case GtkWorkbenchPanelKind::Message:
+            spec.primaryText = panels::MessageConsoleModel::welcomeText();
+            break;
+        case GtkWorkbenchPanelKind::ToolPalette:
+            spec.actionLabels = toolLabels(panels::ToolPaletteModel::tools());
+            break;
+        case GtkWorkbenchPanelKind::Paint: {
+            const auto state = panels::PaintPanelModel::emptyState();
+            spec.primaryText = state.imageText;
+            spec.statusText = state.status;
+            spec.actionLabels = actionLabels(panels::PaintPanelModel::toolbarActions());
+            break;
+        }
+        case GtkWorkbenchPanelKind::VectorShape:
+            spec.primaryText = panels::VectorShapePanelModel::placeholderText();
+            spec.actionLabels = panels::VectorShapePanelModel::toolbarActions();
+            break;
+        case GtkWorkbenchPanelKind::Text: {
+            const auto state = panels::TextEditorPanelModel::emptyState();
+            spec.primaryText = state.text;
+            spec.statusText = state.status;
+            const auto toolbar = panels::TextEditorPanelModel::toolbar();
+            spec.actionLabels = actionLabels(toolbar.styleButtons);
+            break;
+        }
+        case GtkWorkbenchPanelKind::Field: {
+            const auto state = panels::FieldEditorModel::emptyState();
+            spec.primaryText = state.text;
+            spec.statusText = state.status;
+            spec.actionLabels = actionLabels(panels::FieldEditorModel::toolbarActions());
+            break;
+        }
+        case GtkWorkbenchPanelKind::Sound: {
+            const auto state = panels::SoundPanelModel::emptyState();
+            spec.primaryText = state.infoText;
+            spec.statusText = state.status;
+            break;
+        }
+        case GtkWorkbenchPanelKind::ColorPalettes: {
+            const auto view = panels::ColorPalettesModel::view();
+            spec.primaryText = view.placeholderText;
+            spec.actionLabels = view.paletteOptions;
+            break;
+        }
+        case GtkWorkbenchPanelKind::Cast:
+            spec.primaryText = "Cast members";
+            spec.statusText = " 0 of 0 members";
+            break;
+        case GtkWorkbenchPanelKind::PropertyInspector:
+            spec.primaryText = "No selection";
+            break;
+        case GtkWorkbenchPanelKind::Script:
+            spec.primaryText = "No script selected";
+            break;
+        case GtkWorkbenchPanelKind::BytecodeDebugger:
+            spec.primaryText = "Status: Running";
+            break;
+        case GtkWorkbenchPanelKind::Generic:
+            break;
+    }
 }
 
 } // namespace
@@ -189,6 +336,29 @@ std::vector<GtkPanelRowSpec> EditorGtkShellModel::panelRows(const EditorFramePan
     return result;
 }
 
+std::vector<GtkWorkbenchPanelSpec> EditorGtkShellModel::workbenchPanels(const EditorFramePanelModel& frameModel,
+                                                                       const EditorContextModel& contextModel) {
+    const auto rows = panelRows(frameModel);
+    std::vector<GtkWorkbenchPanelSpec> result;
+    result.reserve(rows.size());
+    for (const auto& row : rows) {
+        if (!row.visible || row.iconified) {
+            continue;
+        }
+        GtkWorkbenchPanelSpec spec;
+        spec.panelId = row.panelId;
+        spec.kind = panelKind(row.panelId);
+        spec.title = row.title;
+        spec.bounds = row.bounds;
+        spec.visible = row.visible;
+        spec.selected = row.selected;
+        spec.docked = row.docked;
+        populateWorkbenchContent(spec, contextModel);
+        result.push_back(std::move(spec));
+    }
+    return result;
+}
+
 const EditorMenuModel& EditorGtkShellState::menuModel() const {
     return menuModel_;
 }
@@ -247,6 +417,10 @@ std::vector<GtkPanelRowSpec> EditorGtkShellState::panelRows() const {
     return EditorGtkShellModel::panelRows(frameModel_);
 }
 
+std::vector<GtkWorkbenchPanelSpec> EditorGtkShellState::workbenchPanels() const {
+    return EditorGtkShellModel::workbenchPanels(frameModel_, contextModel_);
+}
+
 GtkShellViewState EditorGtkShellState::viewState() const {
     const auto defaults = panels::EditorPanelCatalog::frameDefaults();
     const auto& currentPath = contextModel_.currentPath();
@@ -268,6 +442,7 @@ GtkShellViewState EditorGtkShellState::viewState() const {
         actionSpecs(),
         toolbarItems(),
         panelRows(),
+        workbenchPanels(),
     };
 }
 

@@ -22,6 +22,24 @@ enum class GtkShellDialogKind {
     DetailedStack
 };
 
+enum class GtkWorkbenchPanelKind {
+    Stage,
+    Score,
+    Cast,
+    PropertyInspector,
+    Script,
+    Message,
+    ToolPalette,
+    Paint,
+    VectorShape,
+    Text,
+    Field,
+    Sound,
+    ColorPalettes,
+    BytecodeDebugger,
+    Generic
+};
+
 struct GtkShellDialogRequest {
     GtkShellDialogKind kind{GtkShellDialogKind::About};
     std::string title;
@@ -82,6 +100,21 @@ struct GtkPanelRowSpec {
     friend bool operator==(const GtkPanelRowSpec&, const GtkPanelRowSpec&) = default;
 };
 
+struct GtkWorkbenchPanelSpec {
+    std::string panelId;
+    GtkWorkbenchPanelKind kind{GtkWorkbenchPanelKind::Generic};
+    std::string title;
+    panels::PanelBounds bounds;
+    bool visible{false};
+    bool selected{false};
+    bool docked{false};
+    std::string primaryText;
+    std::string statusText;
+    std::vector<std::string> actionLabels;
+
+    friend bool operator==(const GtkWorkbenchPanelSpec&, const GtkWorkbenchPanelSpec&) = default;
+};
+
 struct GtkActionActivation {
     std::string actionName;
     EditorCommand command{EditorCommand::None};
@@ -117,6 +150,7 @@ struct GtkShellViewState {
     std::vector<GtkActionSpec> actionSpecs;
     std::vector<GtkToolbarItemSpec> toolbarItems;
     std::vector<GtkPanelRowSpec> panelRows;
+    std::vector<GtkWorkbenchPanelSpec> workbenchPanels;
 
     friend bool operator==(const GtkShellViewState&, const GtkShellViewState&) = default;
 };
@@ -137,6 +171,8 @@ public:
                                                                  const EditorFramePanelModel& frameModel);
     [[nodiscard]] static std::vector<GtkToolbarItemSpec> toolbarItems(const EditorToolBarModel& toolbarModel);
     [[nodiscard]] static std::vector<GtkPanelRowSpec> panelRows(const EditorFramePanelModel& frameModel);
+    [[nodiscard]] static std::vector<GtkWorkbenchPanelSpec> workbenchPanels(const EditorFramePanelModel& frameModel,
+                                                                           const EditorContextModel& contextModel);
 };
 
 class EditorGtkShellState {
@@ -155,6 +191,7 @@ public:
     [[nodiscard]] std::optional<GtkActionSpec> actionSpec(std::string_view name) const;
     [[nodiscard]] std::vector<GtkToolbarItemSpec> toolbarItems() const;
     [[nodiscard]] std::vector<GtkPanelRowSpec> panelRows() const;
+    [[nodiscard]] std::vector<GtkWorkbenchPanelSpec> workbenchPanels() const;
     [[nodiscard]] GtkShellViewState viewState() const;
 
     void setPreferences(PreferencesModel preferences);
