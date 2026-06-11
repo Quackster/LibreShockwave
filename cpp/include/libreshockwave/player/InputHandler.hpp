@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+#include "libreshockwave/bitmap/Bitmap.hpp"
 #include "libreshockwave/player/input/InputEvent.hpp"
 #include "libreshockwave/player/render/pipeline/RenderSprite.hpp"
 
@@ -51,6 +52,17 @@ public:
         friend bool operator==(const SelectionRect&, const SelectionRect&) = default;
     };
 
+    struct EditableFieldOverlay {
+        std::optional<CaretInfo> caret;
+        std::vector<SelectionRect> selectionRects;
+
+        [[nodiscard]] bool empty() const {
+            return !caret.has_value() && selectionRects.empty();
+        }
+
+        friend bool operator==(const EditableFieldOverlay&, const EditableFieldOverlay&) = default;
+    };
+
     using CurrentFrameSupplier = std::function<int()>;
     using EventDispatcherSupplier = std::function<event::EventDispatcher*()>;
     using HitSpritesSupplier = std::function<std::vector<render::pipeline::RenderSprite>()>;
@@ -79,6 +91,10 @@ public:
     void onKeyUp(int directorKeyCode, std::string keyChar, bool shift, bool ctrl, bool alt);
     [[nodiscard]] std::optional<CaretInfo> getCaretInfo() const;
     [[nodiscard]] std::vector<SelectionRect> getSelectionInfo() const;
+    [[nodiscard]] EditableFieldOverlay editableFieldOverlay() const;
+    static void applyEditableFieldOverlay(bitmap::Bitmap& bitmap, const EditableFieldOverlay& overlay);
+    [[nodiscard]] static bitmap::Bitmap withEditableFieldOverlay(const bitmap::Bitmap& bitmap,
+                                                                 const EditableFieldOverlay& overlay);
     void onPasteText(std::string pasteText);
     [[nodiscard]] std::optional<std::string> getSelectedText() const;
     [[nodiscard]] std::optional<std::string> cutSelectedText();

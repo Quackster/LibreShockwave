@@ -6701,8 +6701,35 @@ void testPlayerInputFoundation() {
         InputHandler::SelectionRect{60, 40, 70, 10},
         InputHandler::SelectionRect{50, 50, 20, 10},
     }));
+    auto selectionOverlay = editableInput.editableFieldOverlay();
+    assert(!selectionOverlay.empty());
+    assert(!selectionOverlay.caret.has_value());
+    assert((selectionOverlay.selectionRects == std::vector<InputHandler::SelectionRect>{
+        InputHandler::SelectionRect{60, 40, 70, 10},
+        InputHandler::SelectionRect{50, 50, 20, 10},
+    }));
     assert(editableInput.getSelectedText().has_value());
     assert(*editableInput.getSelectedText() == "bcde");
+
+    std::vector<std::uint32_t> overlayPixels(12, 0xFF102030U);
+    overlayPixels[4] = 0x80112233U;
+    Bitmap overlayBase(4, 3, 32, overlayPixels);
+    InputHandler::EditableFieldOverlay overlayPaint{
+        InputHandler::CaretInfo{2, -1, 4},
+        {
+            InputHandler::SelectionRect{-1, 1, 3, 1},
+            InputHandler::SelectionRect{3, 2, 5, 1},
+            InputHandler::SelectionRect{1, 0, 0, 2},
+        }
+    };
+    auto overlayCopy = InputHandler::withEditableFieldOverlay(overlayBase, overlayPaint);
+    assert(overlayBase.getPixel(2, 0) == 0xFF102030U);
+    assert(overlayCopy.getPixel(2, 0) == 0xFF000000U);
+    assert(overlayCopy.getPixel(0, 1) == 0x80EEDDCCU);
+    assert(overlayCopy.getPixel(1, 1) == 0xFFEFDFCFU);
+    assert(overlayCopy.getPixel(2, 1) == 0xFF000000U);
+    assert(overlayCopy.getPixel(3, 2) == 0xFFEFDFCFU);
+    assert(overlayCopy.getPixel(0, 0) == 0xFF102030U);
 
     const int revisionBeforePaste = editableRenderer.spriteRegistry().revision();
     editableInput.onPasteText("XY");

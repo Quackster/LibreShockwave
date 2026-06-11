@@ -296,7 +296,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Bitmap cast-member `paletteRef`/`palette` getters now expose runtime palette metadata first, then fall back to embedded BitmapInfo palette references and built-in palette symbols.
 - Bitmap cast-member `paletteRef`/`palette` setters now resolve built-in symbols, palette member refs, and named runtime palette members through the CastLibManager palette surface while storing the member-level override, applying it to script-modified runtime bitmaps, and deferring unmodified authored bitmap changes until the next image read.
 - `player::cast::CastLibManager` ports DirectorFile-backed cast-library initialization from MCsL/CAS* chunks, castLib/member number and name lookup, registry-visible member filtering, external-cast cache keys, pending external load tracking, preload-mode loading, and builtin callback installation.
-- Runtime bitmap member image mutation, authored bitmap image reads, live `member.image` reference preservation, runtime bitmap default-image creation, text-like image-ref assignment, image-ref bitmap media assignment, bitmap dimension mutation, direct raw-media bitmap assignment, cached imported-image assignment, Director BITD imported-media assignment, dynamic member creation/reuse, dynamic member `erase`, dynamic field text mutation, dynamic palette storage and media copy, script member type properties and script-to-script media copy, field provider lookup/setter callbacks, cast member count callbacks, text-like member media copy, mutable bitmap alpha-threshold properties, mutable and pinned registration-point properties, dynamic bitmap member sprite rendering, dynamic text sprite baking, common text styling property mutation, editable field input mutation, and editable field overlay/clipboard helper state are available for existing cast libraries; non-bitmap imported media payload decoding, platform overlay drawing, and remaining CastLibProvider edge cases remain deferred to later player runtime slices.
+- Runtime bitmap member image mutation, authored bitmap image reads, live `member.image` reference preservation, runtime bitmap default-image creation, text-like image-ref assignment, image-ref bitmap media assignment, bitmap dimension mutation, direct raw-media bitmap assignment, cached imported-image assignment, Director BITD imported-media assignment, dynamic member creation/reuse, dynamic member `erase`, dynamic field text mutation, dynamic palette storage and media copy, script member type properties and script-to-script media copy, field provider lookup/setter callbacks, cast member count callbacks, text-like member media copy, mutable bitmap alpha-threshold properties, mutable and pinned registration-point properties, dynamic bitmap member sprite rendering, dynamic text sprite baking, common text styling property mutation, editable field input mutation, and editable field overlay/clipboard helper state are available for existing cast libraries; non-bitmap imported media payload decoding, host-specific overlay backend wiring, and remaining CastLibProvider edge cases remain deferred to later player runtime slices.
 
 ### Bitmap Resolver Foundation
 
@@ -323,8 +323,9 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `player::InputHandler` ports host mouse/key entry points, queued input processing, rollover `mouseEnter`/`mouseLeave`/`mouseWithin` dispatch, mouse-down/up sprite targeting, `mouseUpOutSide` fallback routing, right-mouse and key event routing, and sprite-registry revision bumps after queued input.
 - Hit selection uses baked or supplied `RenderSprite` vectors plus `EventDispatcher::isSpriteMouseInteractive`, matching the Java interactive-hit filter without requiring the full C++ `Player` object yet.
 - Built-in editable text field focus, selection start/end placement, selection drag extension, printable character insertion, selected-text replacement, backspace, left/right arrow movement, and tab/shift-tab field cycling now mutate runtime text through `CastLibManager` while preserving normal mouse/key event routing.
-- `getCaretInfo`, `getSelectionInfo`, `onPasteText`, `getSelectedText`, `cutSelectedText`, and `selectAll` now expose Java-compatible editable field overlay geometry and clipboard editing helpers over baked/supplied `RenderSprite` state.
-- Platform overlay drawing and StageRenderer-owning overloads remain deferred; the lower-level C++ runtime cast-member text mutation, text styling, and sprite baking paths are available for those input slices.
+- `getCaretInfo`, `getSelectionInfo`, `editableFieldOverlay`, `onPasteText`, `getSelectedText`, `cutSelectedText`, and `selectAll` now expose Java-compatible editable field overlay geometry and clipboard editing helpers over baked/supplied `RenderSprite` state.
+- Editable field overlay compositing now ports the existing web-player presentation behavior into C++ helper APIs: selection rectangles invert RGB while preserving alpha, the caret draws a one-pixel black vertical line, and out-of-bounds overlay geometry clips to the target bitmap for future GTK/WASM hosts.
+- Host-specific overlay backend wiring remains deferred; the lower-level C++ runtime cast-member text mutation, text styling, sprite baking, and overlay composition paths are available for those input slices.
 
 ### Player Facade Foundation
 
@@ -644,13 +645,13 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `CastMember` now tracks Java-style dynamic text separately from file-backed text content and clears it as part of dynamic payload erase/reuse.
 - `CastLib::getMemberProp("text")` resolves dynamic text first, then associated STXT text with Director-style carriage-return line endings; `setMemberProp("text")`, `setMemberProp("html")`, and text-like string/symbol `media` assignment update runtime text.
 - `CastLibManager` now wires `BuiltinContext::fieldResolver` and `fieldSetter` to cast-member text lookup and mutation for member names, scoped member numbers, and encoded cast/member identifiers.
-- Editable field UI remains deferred.
+- Host-specific editable field UI/widget integration remains deferred.
 
 ### Runtime Dynamic Text Render Foundation
 
 - `SpriteBaker` now renders attached dynamic text members before file-backed text fallback, using the runtime member's current font, font size, font style, alignment, text color, wrapping, antialias, fixed-line-space, and top-spacing properties.
 - Dynamic text baking follows the existing text transparent-ink behavior and marks transparent-background results as native-alpha media.
-- Editable-field caret/selection rendering remains deferred.
+- Host-specific editable field UI/widget integration remains deferred.
 
 ### Runtime Text Style Property Foundation
 
@@ -659,7 +660,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `CastLibManager::getMemberProp` now routes text-like `image`, boxType-adjusted `height`, and boxType-adjusted `rect` through the installed `TextRenderer`, including Java-style non-wrapped auto-width measurement and native-alpha marking when rendered text contains transparent pixels.
 - Text-like `member.image` assignment now copies the source image into member runtime state without forcing the script-modified flag, matching Java's text-member path instead of the bitmap-member mutation path.
 - Dynamic text baking now consumes the runtime text style state while retaining sprite-driven transparent/background color handling.
-- Editable selection/caret rendering remains deferred.
+- Host-specific editable field UI/widget integration remains deferred.
 
 ### Runtime Text Media Copy Foundation
 
@@ -691,19 +692,19 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `CastLibManager::callMemberMethod` now dispatches text-like `charPosToLoc` and `locToCharPos` through an injected `TextRenderer`, using runtime text content, font, style, alignment, fixed-line-space, and rect width with Java-compatible empty/no-renderer fallbacks.
 - `Player::setTextRenderer` now installs a platform text renderer into both `SpriteBaker` and `CastLibManager`, keeping dynamic text sprite baking and Director member-method measurement on the same renderer surface.
-- Editable selection/caret rendering remains deferred.
+- Host-specific editable field UI/widget integration remains deferred.
 
 ### Cast Member Utility Method Foundation
 
 - `CastLib` now exposes Java-compatible text `lineCount` and `line` member properties over runtime/file-backed text content.
 - `CastLibManager::callMemberMethod` now ports Java's simple member `getProp` and text `count(#char/#word/#line/#item)` helper methods, including point/rect/list sub-property extraction through the same builtin callback surface used by VM object calls.
-- Editable selection/caret rendering remains deferred.
+- Host-specific editable field UI/widget integration remains deferred.
 
 ### Runtime Field Datum Foundation
 
 - `lingo::Datum` now exposes Java-compatible string-like `FieldText` values that preserve source cast/member identity while retaining normal string, truthiness, and numeric coercion behavior.
 - `CastLibManager` now returns member-backed `FieldText` datums from the `field(...)` builtin path and provides cached parsed field values for `value(field(...))` through a `BuiltinContext` parsed-field callback.
-- Editable field UI remains deferred.
+- Host-specific editable field UI/widget integration remains deferred.
 
 ### Lingo VM Scope and Execution Context Foundation
 
@@ -1006,7 +1007,7 @@ Result:
 - Runtime text `lineCount`/`line` properties plus cast-member `getProp` and `count(#char/#word/#line/#item)` method helpers passed through the same CTest executable.
 - FieldText datum identity, field builtin member identity preservation, and `value(field(...))` parsed-field callback behavior passed through the same CTest executable.
 - Editable text field no-handler click focus, drag selection extension, focus clearing, printable insertion, selected-text replacement, backspace, left/right arrow caret movement, and tab/shift-tab field cycling passed through the same CTest executable.
-- Editable text field caret geometry, single-line and multi-line selection rectangles, paste replacement, selected-text extraction, cut mutation, select-all, no-focus fallbacks, and sprite-registry revision bumps passed through the same CTest executable.
+- Editable text field caret geometry, single-line and multi-line selection rectangles, overlay snapshots, selection/caret bitmap compositing, paste replacement, selected-text extraction, cut mutation, select-all, no-focus fallbacks, and sprite-registry revision bumps passed through the same CTest executable.
 - ListBuiltins point/rect positional reads, shared mutable point/rect datum copies, and `setAt` component mutation passed through the same CTest executable.
 - SoundBuiltins channel creation, availability, SoundChannelMethodDispatcher-backed sound-channel method/property dispatch, VM object-property defaults/mutation, and SoundManager playback delegation passed through the same CTest executable.
 - ConstructorBuiltins point/rect/union/intersect/color/rgb/paletteIndex/sprite/new registration, Java-style constructor argument coercion, palette-index color identity/display, callback hooks, direct script-instance fallback, provider-backed script-ref `new` handler dispatch, and `NEW_OBJ` script-ref handler dispatch passed through the same CTest executable.
@@ -1327,4 +1328,5 @@ Result:
 - `b158dac2 Port C++ debugger objects snapshot model`
 - `19d58506 Port C++ debugger objects panel metadata`
 - `1b4c8b69 Port C++ debugger watch edit metadata`
-- Current checkpoint commit message: `Port C++ editor panel layout metadata`
+- `92f89662 Port C++ editor panel layout metadata`
+- Current checkpoint commit message: `Port C++ editable field overlay compositing`
