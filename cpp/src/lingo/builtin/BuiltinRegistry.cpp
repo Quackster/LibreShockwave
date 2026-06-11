@@ -873,6 +873,7 @@ void StringBuiltins::registerBuiltins(BuiltinRegistry& registry) {
     registry.registerBuiltin("chartonum", StringBuiltins::charToNum);
     registry.registerBuiltin("numtochar", StringBuiltins::numToChar);
     registry.registerBuiltin("offset", StringBuiltins::offset);
+    registry.registerBuiltin("stringReplace", StringBuiltins::stringReplace);
     registry.registerBuiltin("getpref", StringBuiltins::getPref);
     registry.registerBuiltin("setpref", StringBuiltins::setPref);
 }
@@ -954,6 +955,28 @@ Datum StringBuiltins::offset(BuiltinContext&, const std::vector<Datum>& args) {
         }
     }
     return Datum::of(0);
+}
+
+Datum StringBuiltins::stringReplace(BuiltinContext&, const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::of(std::string());
+    }
+    std::string result = toStringLikeJava(args[0]);
+    if (args.size() < 3) {
+        return Datum::of(result);
+    }
+
+    const std::string from = toStringLikeJava(args[1]);
+    if (from.empty()) {
+        return Datum::of(result);
+    }
+    const std::string to = toStringLikeJava(args[2]);
+    std::size_t pos = 0;
+    while ((pos = result.find(from, pos)) != std::string::npos) {
+        result.replace(pos, from.size(), to);
+        pos += to.size();
+    }
+    return Datum::of(result);
 }
 
 Datum StringBuiltins::getPref(BuiltinContext& context, const std::vector<Datum>& args) {
@@ -1853,6 +1876,30 @@ Datum CastLibBuiltins::createMember(BuiltinContext& context, const std::vector<D
 
 void XtraBuiltins::registerBuiltins(BuiltinRegistry& registry) {
     registry.registerBuiltin("xtra", XtraBuiltins::xtra);
+    registry.registerBuiltin("SetNetBufferLimits", [](BuiltinContext& context, const std::vector<Datum>& args) {
+        return XtraBuiltins::callInstanceGlobalHandler(context, "SetNetBufferLimits", args);
+    });
+    registry.registerBuiltin("SetNetMessageHandler", [](BuiltinContext& context, const std::vector<Datum>& args) {
+        return XtraBuiltins::callInstanceGlobalHandler(context, "SetNetMessageHandler", args);
+    });
+    registry.registerBuiltin("ConnectToNetServer", [](BuiltinContext& context, const std::vector<Datum>& args) {
+        return XtraBuiltins::callInstanceGlobalHandler(context, "ConnectToNetServer", args);
+    });
+    registry.registerBuiltin("SendNetMessage", [](BuiltinContext& context, const std::vector<Datum>& args) {
+        return XtraBuiltins::callInstanceGlobalHandler(context, "SendNetMessage", args);
+    });
+    registry.registerBuiltin("GetNetMessage", [](BuiltinContext& context, const std::vector<Datum>& args) {
+        return XtraBuiltins::callInstanceGlobalHandler(context, "GetNetMessage", args);
+    });
+    registry.registerBuiltin("CheckNetMessages", [](BuiltinContext& context, const std::vector<Datum>& args) {
+        return XtraBuiltins::callInstanceGlobalHandler(context, "CheckNetMessages", args);
+    });
+    registry.registerBuiltin("GetNumberWaitingNetMessages", [](BuiltinContext& context, const std::vector<Datum>& args) {
+        return XtraBuiltins::callInstanceGlobalHandler(context, "GetNumberWaitingNetMessages", args);
+    });
+    registry.registerBuiltin("GetNetErrorString", [](BuiltinContext& context, const std::vector<Datum>& args) {
+        return XtraBuiltins::callInstanceGlobalHandler(context, "GetNetErrorString", args);
+    });
 }
 
 Datum XtraBuiltins::xtra(BuiltinContext& context, const std::vector<Datum>& args) {
@@ -1883,6 +1930,20 @@ Datum XtraBuiltins::callHandler(BuiltinContext& context,
         return Datum::voidValue();
     }
     return context.xtraHandler(instance, std::string(handlerName), args);
+}
+
+Datum XtraBuiltins::callInstanceGlobalHandler(BuiltinContext& context,
+                                              std::string_view handlerName,
+                                              const std::vector<Datum>& args) {
+    if (args.empty()) {
+        return Datum::voidValue();
+    }
+    const auto* instance = args.front().asXtraInstance();
+    if (instance == nullptr) {
+        return Datum::voidValue();
+    }
+    std::vector<Datum> methodArgs(args.begin() + 1, args.end());
+    return callHandler(context, *instance, handlerName, methodArgs);
 }
 
 Datum XtraBuiltins::getProperty(BuiltinContext& context,

@@ -841,13 +841,28 @@ ExecutionContext::Callbacks LingoVM::callbacksFor(const chunks::ScriptChunk& scr
 }
 
 std::shared_ptr<chunks::ScriptNamesChunk> LingoVM::scriptNamesForScript(const chunks::ScriptChunk& script) const {
-    if (file_ == nullptr) {
-        return nullptr;
-    }
-    for (const auto& candidate : file_->scripts()) {
-        if (candidate.get() == &script) {
-            return file_->getScriptNamesForScript(candidate);
+    auto findInFile = [&script](DirectorFile* source) -> std::shared_ptr<chunks::ScriptNamesChunk> {
+        if (source == nullptr) {
+            return nullptr;
         }
+        for (const auto& candidate : source->scripts()) {
+            if (candidate.get() == &script) {
+                return source->getScriptNamesForScript(candidate);
+            }
+        }
+        for (const auto& candidate : source->scripts()) {
+            if (candidate && candidate->id().value() == script.id().value()) {
+                return source->getScriptNamesForScript(candidate);
+            }
+        }
+        return nullptr;
+    };
+
+    if (auto names = findInFile(file_)) {
+        return names;
+    }
+    if (auto* owner = const_cast<DirectorFile*>(script.file()); owner != file_) {
+        return findInFile(owner);
     }
     return nullptr;
 }
@@ -864,15 +879,27 @@ std::string LingoVM::handlerName(const chunks::ScriptChunk& script,
 }
 
 std::string LingoVM::scriptDisplayName(const chunks::ScriptChunk& script) const {
-    if (file_ != nullptr) {
-        for (const auto& candidate : file_->scripts()) {
+    auto findNameInFile = [&script](DirectorFile* source) -> std::string {
+        if (source == nullptr) {
+            return "";
+        }
+        for (const auto& candidate : source->scripts()) {
             if (candidate.get() == &script) {
-                const std::string name = file_->getScriptName(candidate);
+                const std::string name = source->getScriptName(candidate);
                 if (!name.empty()) {
                     return name;
                 }
                 break;
             }
+        }
+        return "";
+    };
+    if (auto name = findNameInFile(file_); !name.empty()) {
+        return name;
+    }
+    if (auto* owner = const_cast<DirectorFile*>(script.file()); owner != file_) {
+        if (auto name = findNameInFile(owner); !name.empty()) {
+            return name;
         }
     }
     return "script#" + std::to_string(script.id().value());

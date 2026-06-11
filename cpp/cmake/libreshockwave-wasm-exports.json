@@ -56,6 +56,7 @@
   "_libreshockwave_wasm_get_window_sprite_diagnostics",
   "_libreshockwave_wasm_get_visible_text_diagnostics",
   "_libreshockwave_wasm_get_bootstrap_diagnostics",
+  "_libreshockwave_wasm_get_script_diagnostics",
   "_libreshockwave_wasm_trigger_test_error",
   "_libreshockwave_wasm_set_external_param",
   "_libreshockwave_wasm_clear_external_params",
@@ -114,5 +115,11 @@
   "_libreshockwave_wasm_debug_mus_message_sender",
   "_libreshockwave_wasm_debug_mus_message_subject",
   "_libreshockwave_wasm_debug_mus_message_content",
+  "_libreshockwave_wasm_debug_set_global_string",
+  "_libreshockwave_wasm_debug_set_global_int",
+  "_libreshockwave_wasm_debug_call_handler",
+  "_libreshockwave_wasm_debug_call_handler_string_arg",
+  "_libreshockwave_wasm_debug_get_global_string",
+  "_libreshockwave_wasm_debug_get_global_int",
   "_libreshockwave_wasm_get_last_error"
 ]

@@ -10143,6 +10143,7 @@ void testBuiltinRegistryFoundation() {
     assert(registry.contains("charToNum"));
     assert(registry.contains("numToChar"));
     assert(registry.contains("offset"));
+    assert(registry.contains("stringReplace"));
     assert(registry.contains("getPref"));
     assert(registry.contains("setPref"));
     assert(registry.invoke("string", context).stringValue().empty());
@@ -10174,6 +10175,19 @@ void testBuiltinRegistryFoundation() {
     assert(registry.invoke("offset", context, {Datum::of(std::string("LL")), Datum::of(std::string("hello"))}).intValue() == 3);
     assert(registry.invoke("offset", context, {Datum::of(std::string("")), Datum::of(std::string("hello"))}).intValue() == 0);
     assert(registry.invoke("offset", context, {Datum::of(std::string("zz")), Datum::of(std::string("hello"))}).intValue() == 0);
+    assert(registry.invoke("stringReplace", context).stringValue().empty());
+    assert(registry.invoke("stringReplace",
+                           context,
+                           {Datum::of(std::string("room xxx xxx")), Datum::of(std::string("xxx")), Datum::of(7)})
+               .stringValue() == "room 7 7");
+    assert(registry.invoke("stringReplace",
+                           context,
+                           {Datum::of(std::string("alpha")), Datum::of(std::string("")), Datum::of(std::string("x"))})
+               .stringValue() == "alpha");
+    assert(registry.invoke("stringReplace",
+                           context,
+                           {Datum::of(std::string("alpha")), Datum::of(std::string("zz")), Datum::of(std::string("x"))})
+               .stringValue() == "alpha");
     assert(registry.invoke("getPref", context).isVoid());
     assert(registry.invoke("getPref", context, {Datum::of(std::string("volume"))}).isVoid());
     std::map<std::string, Datum> prefs;
@@ -10384,6 +10398,40 @@ void testBuiltinRegistryFoundation() {
     assert(xtraHandlerName == "sendMsg");
     assert(xtraHandlerArgs.size() == 1);
     assert(xtraHandlerArgs[0].stringValue() == "hi");
+    assert(registry.contains("SetNetMessageHandler"));
+    assert(registry.invoke("SetNetMessageHandler",
+                           context,
+                           {xtraInstanceDatum, Datum::symbol("DefaultMessageHandler"), Datum::of(std::string("Main Script"))})
+               .stringValue() == "called");
+    assert(xtraHandlerName == "SetNetMessageHandler");
+    assert(xtraHandlerArgs.size() == 2);
+    assert(xtraHandlerArgs[0].asSymbol()->name == "DefaultMessageHandler");
+    assert(xtraHandlerArgs[1].stringValue() == "Main Script");
+    assert(registry.invoke("ConnectToNetServer",
+                           context,
+                           {xtraInstanceDatum,
+                            Datum::of(std::string("*")),
+                            Datum::of(std::string("*")),
+                            Datum::of(std::string("127.0.0.1")),
+                            Datum::of(4000),
+                            Datum::of(std::string("*")),
+                            Datum::of(1)})
+               .stringValue() == "called");
+    assert(xtraHandlerName == "ConnectToNetServer");
+    assert(xtraHandlerArgs.size() == 6);
+    assert(xtraHandlerArgs[2].stringValue() == "127.0.0.1");
+    assert(xtraHandlerArgs[3].intValue() == 4000);
+    assert(registry.invoke("SendNetMessage",
+                           context,
+                           {xtraInstanceDatum, Datum::of(0), Datum::of(0), Datum::of(std::string("0008STATUSOK"))})
+               .stringValue() == "called");
+    assert(xtraHandlerName == "SendNetMessage");
+    assert(xtraHandlerArgs.size() == 3);
+    assert(xtraHandlerArgs[2].stringValue() == "0008STATUSOK");
+    assert(registry.invoke("GetNetMessage", context, {xtraInstanceDatum}).stringValue() == "called");
+    assert(xtraHandlerName == "GetNetMessage");
+    assert(xtraHandlerArgs.empty());
+    assert(registry.invoke("ConnectToNetServer", context, {Datum::of(1)}).isVoid());
     BuiltinContext noXtraContext;
     assert(libreshockwave::lingo::builtin::XtraBuiltins::callHandler(noXtraContext, *xtraInstance, "sendMsg", {}).isVoid());
 
@@ -22588,6 +22636,8 @@ void testWasmExportsFoundation() {
     assert(readStringBuffer(textDiagLen).find("sprites=") != std::string::npos);
     int bootstrapDiagLen = libreshockwave_wasm_get_bootstrap_diagnostics();
     assert(readStringBuffer(bootstrapDiagLen).find("stage=160x90") != std::string::npos);
+    int scriptDiagLen = libreshockwave_wasm_get_script_diagnostics();
+    assert(readStringBuffer(scriptDiagLen).find("handler Logon=") != std::string::npos);
     assert(libreshockwave_wasm_trigger_test_error() == 0);
     int debugLogLen = libreshockwave_wasm_get_debug_log();
     assert(readStringBuffer(debugLogLen).find("triggerTestError") != std::string::npos);
@@ -22757,6 +22807,29 @@ void testWasmExportsFoundation() {
     assert(!libreshockwave_wasm_debug_mus_is_connected(66));
     libreshockwave_wasm_drain_mus_pending();
     libreshockwave_wasm_debug_mus_destroy_instance(66);
+
+    const std::string debugGlobalKey = "fixture.debug.host";
+    const std::string debugGlobalValue = "127.0.0.1";
+    writeStringBuffer(debugGlobalKey, 0);
+    writeStringBuffer(debugGlobalValue, static_cast<int>(debugGlobalKey.size()));
+    libreshockwave_wasm_debug_set_global_string(static_cast<int>(debugGlobalKey.size()),
+                                                static_cast<int>(debugGlobalValue.size()));
+    assert(runtime.player()->player()->vm().getGlobal(debugGlobalKey).stringValue() == debugGlobalValue);
+    writeStringBuffer(debugGlobalKey);
+    assert(readStringBuffer(libreshockwave_wasm_debug_get_global_string(static_cast<int>(debugGlobalKey.size()))) ==
+           debugGlobalValue);
+    const std::string debugIntKey = "fixture.debug.port";
+    writeStringBuffer(debugIntKey);
+    libreshockwave_wasm_debug_set_global_int(static_cast<int>(debugIntKey.size()), 38101);
+    assert(runtime.player()->player()->vm().getGlobal(debugIntKey).intValue() == 38101);
+    writeStringBuffer(debugIntKey);
+    assert(libreshockwave_wasm_debug_get_global_int(static_cast<int>(debugIntKey.size())) == 38101);
+    const std::string integerHandler = "integer";
+    const std::string integerArg = "12";
+    writeStringBuffer(integerHandler, 0);
+    writeStringBuffer(integerArg, static_cast<int>(integerHandler.size()));
+    assert(libreshockwave_wasm_debug_call_handler_string_arg(static_cast<int>(integerHandler.size()),
+                                                            static_cast<int>(integerArg.size())) == 1);
 
     DirectorFile::clearJpegDecodePending();
     const std::vector<std::uint8_t> jpegData{0xFF, 0xD8, 0x45, 0x67, 0xFF, 0xD9};
@@ -22969,6 +23042,13 @@ void testWasmCppAdapterResourceFoundation() {
         "_libreshockwave_wasm_debug_mus_request_connect",
         "_libreshockwave_wasm_debug_mus_request_disconnect",
         "_libreshockwave_wasm_debug_mus_request_send_text",
+        "_libreshockwave_wasm_debug_call_handler",
+        "_libreshockwave_wasm_debug_call_handler_string_arg",
+        "_libreshockwave_wasm_debug_get_global_int",
+        "_libreshockwave_wasm_debug_get_global_string",
+        "_libreshockwave_wasm_debug_set_global_int",
+        "_libreshockwave_wasm_debug_set_global_string",
+        "_libreshockwave_wasm_get_script_diagnostics",
         "_libreshockwave_wasm_get_script_timeout_ms",
         "_libreshockwave_wasm_set_script_timeout_ms",
     }));
@@ -23093,12 +23173,15 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(player.find("clearTraceHandlers") != std::string::npos);
     assert(player.find("getCallStack") != std::string::npos);
     assert(player.find("getWindowSpriteDiagnostics") != std::string::npos);
+    assert(player.find("getScriptDiagnostics") != std::string::npos);
     assert(player.find("getRuntimeDiagnostics") != std::string::npos);
     assert(player.find("triggerTestError") != std::string::npos);
     assert(player.find("runMusWebSocketSelfTest") != std::string::npos);
     assert(player.find("musWebSocketSelfTest") != std::string::npos);
     assert(player.find("runCxxSmusBridgeSelfTest") != std::string::npos);
     assert(player.find("cxxSmusBridgeSelfTest") != std::string::npos);
+    assert(player.find("runFixtureMultiuserScriptSelfTest") != std::string::npos);
+    assert(player.find("fixtureMultiuserScriptSelfTest") != std::string::npos);
     assert(player.find("_requestDiagnostic") != std::string::npos);
     assert(player.find("Object.assign({}, payload || {}, { type: type, requestId: requestId })") != std::string::npos);
     assert(player.find("fetchWithTimeout") != std::string::npos);
@@ -23137,6 +23220,12 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(worker.find("debug_mus_request_connect") != std::string::npos);
     assert(worker.find("debugMusPollMessageCount") != std::string::npos);
     assert(worker.find("debugMusRequestSendText") != std::string::npos);
+    assert(worker.find("_runFixtureMultiuserScriptSelfTest") != std::string::npos);
+    assert(worker.find("runFixtureMultiuserScriptSelfTest") != std::string::npos);
+    assert(worker.find("fixtureMultiuserScriptSelfTest") != std::string::npos);
+    assert(worker.find("debug_set_global_string") != std::string::npos);
+    assert(worker.find("debugCallHandlerStringArg") != std::string::npos);
+    assert(worker.find("_debugCallHandler('Logon')") != std::string::npos);
     assert(worker.find("read_next_goto_net_page") != std::string::npos);
     assert(worker.find("OffscreenCanvas") != std::string::npos);
     assert(worker.find("new WebSocket") != std::string::npos);
@@ -23155,6 +23244,7 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(worker.find("get_window_sprite_diagnostics") != std::string::npos);
     assert(worker.find("get_visible_text_diagnostics") != std::string::npos);
     assert(worker.find("get_bootstrap_diagnostics") != std::string::npos);
+    assert(worker.find("get_script_diagnostics") != std::string::npos);
     assert(worker.find("trigger_test_error") != std::string::npos);
     assert(worker.find("_flushDebugLog") != std::string::npos);
     assert(worker.find("_postStringDiagnostic") != std::string::npos);
@@ -23206,6 +23296,9 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(workerExports.count("_libreshockwave_wasm_debug_mus_request_connect") == 1);
     assert(workerExports.count("_libreshockwave_wasm_debug_mus_request_send_text") == 1);
     assert(workerExports.count("_libreshockwave_wasm_debug_mus_poll_message_count") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_debug_call_handler") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_debug_call_handler_string_arg") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_debug_set_global_string") == 1);
     assert(workerExports.count("_libreshockwave_wasm_read_next_goto_net_page") == 1);
     assert(workerExports.count("_libreshockwave_wasm_go_to_frame") == 1);
     assert(workerExports.count("_libreshockwave_wasm_get_cursor_type") == 1);
@@ -23225,6 +23318,7 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(workerExports.count("_libreshockwave_wasm_get_window_sprite_diagnostics") == 1);
     assert(workerExports.count("_libreshockwave_wasm_get_visible_text_diagnostics") == 1);
     assert(workerExports.count("_libreshockwave_wasm_get_bootstrap_diagnostics") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_get_script_diagnostics") == 1);
     assert(workerExports.count("_libreshockwave_wasm_trigger_test_error") == 1);
 
     assert(cmake.find("LIBRESHOCKWAVE_CPP_WASM_WEB_ASSETS") != std::string::npos);

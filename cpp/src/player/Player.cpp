@@ -318,6 +318,14 @@ void Player::registerMultiuserXtra(lingo::xtra::MultiuserNetBridge& bridge) {
                     (void)vm_.builtinContext().callTargetHandler(target, handlerName, args);
                     return;
                 }
+                if (const auto* scriptRef = target.asScriptRef();
+                    scriptRef != nullptr && vm_.builtinContext().callTargetHandler) {
+                    (void)vm_.builtinContext().callTargetHandler(
+                        lingo::Datum::scriptInstance("script", scriptRef->memberRef),
+                        handlerName,
+                        args);
+                    return;
+                }
                 (void)vm_.callHandler(handlerName, args);
             } catch (...) {
                 // Match Java Player callback behavior: Xtra callbacks do not break frame polling.

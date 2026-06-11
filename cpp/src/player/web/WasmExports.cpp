@@ -4,7 +4,9 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cctype>
 #include <cstring>
+#include <exception>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -125,6 +127,140 @@ const lingo::xtra::MultiuserNetBridge::NetMessage* debugMusMessageAt(int index) 
         return nullptr;
     }
     return &messages[static_cast<std::size_t>(index)];
+}
+
+std::string scriptTypeName(chunks::ScriptChunkType type) {
+    switch (type) {
+        case chunks::ScriptChunkType::Score: return "score";
+        case chunks::ScriptChunkType::Behavior: return "behavior";
+        case chunks::ScriptChunkType::MovieScript: return "movie";
+        case chunks::ScriptChunkType::Parent: return "parent";
+        case chunks::ScriptChunkType::Unknown: return "unknown";
+    }
+    return "unknown";
+}
+
+bool equalsIgnoreCase(std::string_view lhs, std::string_view rhs) {
+    if (lhs.size() != rhs.size()) {
+        return false;
+    }
+    for (std::size_t index = 0; index < lhs.size(); ++index) {
+        if (std::tolower(static_cast<unsigned char>(lhs[index])) !=
+            std::tolower(static_cast<unsigned char>(rhs[index]))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::optional<lingo::vm::HandlerRef> findPlayerHandler(Player& player, std::string_view handlerName) {
+    if (auto handler = player.vm().findHandler(handlerName)) {
+        return handler;
+    }
+
+    for (const auto& [_, castLib] : player.castLibManager().castLibs()) {
+        if (!castLib || !castLib->isFetched()) {
+            continue;
+        }
+        const auto sourceFile = castLib->sourceFile();
+        const auto fallbackNames = castLib->scriptNames();
+        for (const auto& script : castLib->allScripts()) {
+            if (!script) {
+                continue;
+            }
+            const auto names = sourceFile ? sourceFile->getScriptNamesForScript(script) : fallbackNames;
+            if (names) {
+                if (auto handler = script->findHandler(handlerName, names.get())) {
+                    return lingo::vm::HandlerRef{script.get(), *handler};
+                }
+            }
+            if (auto handler = player.vm().findHandler(*script, handlerName)) {
+                return handler;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+bool hasNamedHandler(const chunks::ScriptChunk& script,
+                     const chunks::ScriptNamesChunk* names,
+                     std::string_view handlerName) {
+    if (script.findHandler(handlerName, names)) {
+        return true;
+    }
+    if (names != nullptr) {
+        return false;
+    }
+    for (const auto& handler : script.handlers()) {
+        if (equalsIgnoreCase(script.getHandlerName(handler, nullptr), handlerName) ||
+            equalsIgnoreCase("#" + std::to_string(handler.nameId), handlerName)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void appendScriptMatchDiagnostics(std::ostringstream& out,
+                                  std::string_view sourceLabel,
+                                  DirectorFile* sourceFile,
+                                  const std::vector<std::shared_ptr<chunks::ScriptChunk>>& scripts,
+                                  const std::shared_ptr<chunks::ScriptNamesChunk>& fallbackNames) {
+    constexpr std::array<std::string_view, 4> targets{
+        "Logon",
+        "sendFuseMsg",
+        "DefaultMessageHandler",
+        "EPDefaultMessageHandler",
+    };
+
+    int movieScripts = 0;
+    int matchedScripts = 0;
+    for (const auto& script : scripts) {
+        if (!script) {
+            continue;
+        }
+        if (script->resolvedScriptType() == chunks::ScriptChunkType::MovieScript) {
+            ++movieScripts;
+        }
+
+        const auto scriptNames = sourceFile != nullptr ? sourceFile->getScriptNamesForScript(script) : fallbackNames;
+        std::vector<std::string_view> matches;
+        for (const auto target : targets) {
+            if (hasNamedHandler(*script, scriptNames.get(), target)) {
+                matches.push_back(target);
+            }
+        }
+        if (matches.empty()) {
+            continue;
+        }
+
+        ++matchedScripts;
+        out << "scriptMatch source=" << sourceLabel
+            << " id=" << script->id().value()
+            << " type=" << scriptTypeName(script->resolvedScriptType())
+            << " name=\"" << script->displayName() << "\" handlers=";
+        for (std::size_t index = 0; index < matches.size(); ++index) {
+            if (index > 0) {
+                out << ',';
+            }
+            out << matches[index];
+        }
+        out << '\n';
+    }
+
+    out << "scriptSource source=" << sourceLabel
+        << " scripts=" << scripts.size()
+        << " movieScripts=" << movieScripts
+        << " matchedScripts=" << matchedScripts
+        << '\n';
+}
+
+lingo::Datum callPlayerHandler(Player& player,
+                               std::string_view handlerName,
+                               const std::vector<lingo::Datum>& args = {}) {
+    if (auto handler = findPlayerHandler(player, handlerName)) {
+        return player.vm().executeHandler(*handler->script, handler->handler, args);
+    }
+    return player.vm().callBuiltin(handlerName, args);
 }
 
 int packTwoLengths(int high, int low) {
@@ -651,6 +787,51 @@ int libreshockwave_wasm_get_bootstrap_diagnostics() {
     return writeBytes(out.str());
 }
 
+int libreshockwave_wasm_get_script_diagnostics() {
+    auto* player = activePlayer();
+    if (player == nullptr) {
+        return 0;
+    }
+
+    std::ostringstream out;
+    out << "handler Logon=" << (findPlayerHandler(*player, "Logon").has_value() ? "yes" : "no")
+        << " sendFuseMsg=" << (findPlayerHandler(*player, "sendFuseMsg").has_value() ? "yes" : "no")
+        << " DefaultMessageHandler="
+        << (findPlayerHandler(*player, "DefaultMessageHandler").has_value() ? "yes" : "no")
+        << '\n';
+
+    if (const auto file = player->file()) {
+        appendScriptMatchDiagnostics(out, "main", file.get(), file->scripts(), file->scriptNames());
+    } else {
+        out << "scriptSource source=main scripts=0 movieScripts=0 matchedScripts=0\n";
+    }
+
+    for (const auto& [number, castLib] : player->castLibManager().castLibs()) {
+        if (!castLib) {
+            continue;
+        }
+        auto sourceFile = castLib->sourceFile();
+        out << "castLib number=" << number
+            << " name=\"" << castLib->name() << '"'
+            << " file=\"" << castLib->fileName() << '"'
+            << " external=" << (castLib->isExternal() ? 1 : 0)
+            << " fetched=" << (castLib->isFetched() ? 1 : 0)
+            << " loaded=" << (castLib->isLoaded() ? 1 : 0)
+            << " preload=" << castLib->preloadMode()
+            << " sourceFile=" << (sourceFile ? 1 : 0)
+            << '\n';
+        if (castLib->isFetched()) {
+            const auto& scripts = castLib->allScripts();
+            appendScriptMatchDiagnostics(out,
+                                         "castLib" + std::to_string(number),
+                                         sourceFile.get(),
+                                         scripts,
+                                         castLib->scriptNames());
+        }
+    }
+    return writeBytes(out.str());
+}
+
 int libreshockwave_wasm_trigger_test_error() {
     auto* player = activePlayer();
     if (player == nullptr) {
@@ -956,6 +1137,78 @@ int libreshockwave_wasm_debug_mus_message_subject(int index) {
 int libreshockwave_wasm_debug_mus_message_content(int index) {
     const auto* message = debugMusMessageAt(index);
     return message != nullptr ? writeBytes(datumDebugString(message->content)) : 0;
+}
+
+void libreshockwave_wasm_debug_set_global_string(int keyLen, int valueLen) {
+    auto* player = activePlayer();
+    if (player == nullptr) {
+        return;
+    }
+    auto& buffer = state().stringBuffer;
+    const auto key = readString(buffer, 0, keyLen);
+    const auto value = readString(buffer, keyLen, valueLen);
+    player->vm().setGlobal(key, Datum::of(value));
+}
+
+void libreshockwave_wasm_debug_set_global_int(int keyLen, int value) {
+    auto* player = activePlayer();
+    if (player == nullptr) {
+        return;
+    }
+    player->vm().setGlobal(readString(state().stringBuffer, 0, keyLen), Datum::of(value));
+}
+
+int libreshockwave_wasm_debug_call_handler(int nameLen) {
+    auto* player = activePlayer();
+    if (player == nullptr) {
+        return -1;
+    }
+    try {
+        const auto result = callPlayerHandler(*player, readString(state().stringBuffer, 0, nameLen));
+        return result.isVoid() ? 0 : 1;
+    } catch (const std::exception& ex) {
+        player->vm().fireTraceError("Debug handler call failed", ex.what());
+        return -2;
+    } catch (...) {
+        player->vm().fireTraceError("Debug handler call failed", "unknown exception");
+        return -2;
+    }
+}
+
+int libreshockwave_wasm_debug_call_handler_string_arg(int nameLen, int argLen) {
+    auto* player = activePlayer();
+    if (player == nullptr) {
+        return -1;
+    }
+    try {
+        auto& buffer = state().stringBuffer;
+        const auto name = readString(buffer, 0, nameLen);
+        const auto arg = readString(buffer, nameLen, argLen);
+        const auto result = callPlayerHandler(*player, name, {Datum::of(arg)});
+        return result.isVoid() ? 0 : 1;
+    } catch (const std::exception& ex) {
+        player->vm().fireTraceError("Debug handler call failed", ex.what());
+        return -2;
+    } catch (...) {
+        player->vm().fireTraceError("Debug handler call failed", "unknown exception");
+        return -2;
+    }
+}
+
+int libreshockwave_wasm_debug_get_global_string(int keyLen) {
+    auto* player = activePlayer();
+    if (player == nullptr) {
+        return 0;
+    }
+    return writeBytes(datumDebugString(player->vm().getGlobal(readString(state().stringBuffer, 0, keyLen))));
+}
+
+int libreshockwave_wasm_debug_get_global_int(int keyLen) {
+    auto* player = activePlayer();
+    if (player == nullptr) {
+        return 0;
+    }
+    return player->vm().getGlobal(readString(state().stringBuffer, 0, keyLen)).intValue();
 }
 
 int libreshockwave_wasm_get_last_error() {

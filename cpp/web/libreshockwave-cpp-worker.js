@@ -82,6 +82,7 @@ var _requiredExports = {
     getWindowSpriteDiagnostics: 'get_window_sprite_diagnostics',
     getVisibleTextDiagnostics: 'get_visible_text_diagnostics',
     getBootstrapDiagnostics: 'get_bootstrap_diagnostics',
+    getScriptDiagnostics: 'get_script_diagnostics',
     triggerTestError: 'trigger_test_error',
     getPendingFetchCount: 'get_pending_fetch_count',
     getPendingFetchTaskId: 'get_pending_fetch_task_id',
@@ -130,6 +131,12 @@ var _requiredExports = {
     debugMusMessageSender: 'debug_mus_message_sender',
     debugMusMessageSubject: 'debug_mus_message_subject',
     debugMusMessageContent: 'debug_mus_message_content',
+    debugSetGlobalString: 'debug_set_global_string',
+    debugSetGlobalInt: 'debug_set_global_int',
+    debugCallHandler: 'debug_call_handler',
+    debugCallHandlerStringArg: 'debug_call_handler_string_arg',
+    debugGetGlobalString: 'debug_get_global_string',
+    debugGetGlobalInt: 'debug_get_global_int',
     setExternalParam: 'set_external_param',
     clearExternalParams: 'clear_external_params',
     mouseMove: 'mouse_move',
@@ -846,6 +853,36 @@ function _debugMusPollMessages(instanceId) {
     return messages;
 }
 
+function _debugSetGlobalString(key, value) {
+    var lengths = _writeStringSegments([key || '', value || '']);
+    _exports.debugSetGlobalString(lengths[0], lengths[1]);
+}
+
+function _debugSetGlobalInt(key, value) {
+    var keyLength = _writeString(key || '');
+    _exports.debugSetGlobalInt(keyLength, value | 0);
+}
+
+function _debugGetGlobalString(key) {
+    var keyLength = _writeString(key || '');
+    return _readString(_exports.debugGetGlobalString(keyLength));
+}
+
+function _debugGetGlobalInt(key) {
+    var keyLength = _writeString(key || '');
+    return _exports.debugGetGlobalInt(keyLength);
+}
+
+function _debugCallHandler(name) {
+    var nameLength = _writeString(name || '');
+    return _exports.debugCallHandler(nameLength);
+}
+
+function _debugCallHandlerStringArg(name, arg) {
+    var lengths = _writeStringSegments([name || '', arg || '']);
+    return _exports.debugCallHandlerStringArg(lengths[0], lengths[1]);
+}
+
 function _findPendingMusRequest(instanceId, type) {
     var count = _exports.getMusPendingCount();
     for (var i = 0; i < count; i++) {
@@ -864,6 +901,28 @@ function _findPendingMusRequest(instanceId, type) {
         }
     }
     return { index: -1, count: count, dataLength: 0, dataHexPrefix: '' };
+}
+
+function _findFirstPendingMusRequest(type) {
+    var count = _exports.getMusPendingCount();
+    for (var i = 0; i < count; i++) {
+        if (_exports.getMusPendingType(i) === type) {
+            var instanceId = _exports.getMusPendingInstanceId(i);
+            var hostLength = type === 0 ? _exports.getMusPendingHost(i) : 0;
+            var dataLength = type === 1 ? _exports.getMusPendingSendData(i) : 0;
+            return {
+                index: i,
+                count: count,
+                instanceId: instanceId,
+                host: hostLength > 0 ? _readString(hostLength) : '',
+                port: type === 0 ? _exports.getMusPendingPort(i) : 0,
+                dataLength: dataLength,
+                dataText: dataLength > 0 ? _bytesToText(_stringBufferView().subarray(0, dataLength)) : '',
+                dataHexPrefix: dataLength > 0 ? _hexPrefix(_stringBufferView().subarray(0, dataLength), 24) : ''
+            };
+        }
+    }
+    return { index: -1, count: count, instanceId: 0, host: '', port: 0, dataLength: 0, dataText: '', dataHexPrefix: '' };
 }
 
 async function _runMusWebSocketSelfTest(message) {
@@ -1162,6 +1221,98 @@ async function _runCxxSmusBridgeSelfTest(message) {
         _clearMusInstance(errorInstanceId);
         _exports.debugMusDestroyInstance(instanceId);
         _exports.debugMusDestroyInstance(errorInstanceId);
+    }
+}
+
+async function _runFixtureMultiuserScriptSelfTest(message) {
+    var timeoutMs = message.timeoutMs || 4000;
+    var host = message.host || '127.0.0.1';
+    var port = message.port | 0;
+    var sendMessage = message.message || 'STATUSOK';
+    var result = {
+        ok: false,
+        host: host,
+        port: port,
+        handler: 'Logon',
+        sendHandler: 'sendFuseMsg',
+        logonCalled: false,
+        connected: false,
+        callbackTicked: false,
+        connectionOk: false,
+        sendCalled: false,
+        scriptSendQueued: false,
+        scriptSendSent: false
+    };
+
+    if (!port) {
+        result.error = 'missing WebSocket port';
+        return result;
+    }
+
+    try {
+        _debugSetGlobalString('gChosenUnitIp', host);
+        _debugSetGlobalInt('gChosenUnitPort', port);
+        _debugSetGlobalInt('gConnectionOk', 0);
+        result.seededHost = _debugGetGlobalString('gChosenUnitIp');
+        result.seededPort = _debugGetGlobalInt('gChosenUnitPort');
+
+        result.logonReturn = _debugCallHandler('Logon');
+        result.logonCalled = result.logonReturn >= 0;
+        result.connectPending = _findFirstPendingMusRequest(0);
+        if (result.connectPending.index < 0) {
+            result.lastError = _readLastError();
+            return result;
+        }
+
+        var instanceId = result.connectPending.instanceId;
+        result.instanceId = instanceId;
+        _pumpMusRequests();
+
+        var openState = await _waitForMusState(instanceId, function() {
+            if (_hasQueuedMusEvent(_musConnected, instanceId)) {
+                return { type: 'connected' };
+            }
+            if (_hasQueuedMusEvent(_musErrors, instanceId)) {
+                return { type: 'error', code: _musErrors[instanceId] };
+            }
+            if (_hasQueuedMusEvent(_musDisconnected, instanceId)) {
+                return { type: 'disconnected' };
+            }
+            return null;
+        }, timeoutMs);
+        result.openState = openState ? openState.type : 'timeout';
+        if (!openState || openState.type !== 'connected') {
+            if (openState && openState.type === 'error') {
+                result.errorCode = openState.code;
+            }
+            return result;
+        }
+
+        result.connected = true;
+        _deliverMusEvents();
+        _exports.tick();
+        result.callbackTicked = true;
+        result.connectionOk = _debugGetGlobalInt('gConnectionOk') === 1;
+
+        result.sendReturn = _debugCallHandlerStringArg('sendFuseMsg', sendMessage);
+        result.sendCalled = result.sendReturn >= 0;
+        result.sendPending = _findFirstPendingMusRequest(1);
+        result.scriptSendQueued = result.sendPending.index >= 0 &&
+            result.sendPending.instanceId === instanceId &&
+            result.sendPending.dataText.indexOf(sendMessage) !== -1;
+        _pumpMusRequests();
+        result.scriptSendSent = result.scriptSendQueued;
+
+        _exports.debugMusRequestDisconnect(instanceId);
+        _pumpMusRequests();
+        result.disconnected = !_musSockets[instanceId];
+        result.ok = result.logonCalled && result.connected && result.callbackTicked &&
+            result.connectionOk && result.sendCalled && result.scriptSendQueued &&
+            result.scriptSendSent && result.disconnected;
+        return result;
+    } catch (e) {
+        result.exception = e && e.message ? e.message : String(e);
+        return result;
     }
 }
 
@@ -1630,6 +1781,12 @@ self.onmessage = function(event) {
                                       'diagnostics',
                                       _exports.getBootstrapDiagnostics);
                 break;
+            case 'getScriptDiagnostics':
+                _postStringDiagnostic(message,
+                                      'scriptDiagnostics',
+                                      'diagnostics',
+                                      _exports.getScriptDiagnostics);
+                break;
             case 'getRuntimeDiagnostics':
                 self.postMessage({
                     type: 'runtimeDiagnostics',
@@ -1649,6 +1806,13 @@ self.onmessage = function(event) {
                     type: 'cxxSmusBridgeSelfTest',
                     requestId: message.requestId || 0,
                     diagnostics: await _runCxxSmusBridgeSelfTest(message)
+                });
+                break;
+            case 'runFixtureMultiuserScriptSelfTest':
+                self.postMessage({
+                    type: 'fixtureMultiuserScriptSelfTest',
+                    requestId: message.requestId || 0,
+                    diagnostics: await _runFixtureMultiuserScriptSelfTest(message)
                 });
                 break;
             case 'triggerTestError': {

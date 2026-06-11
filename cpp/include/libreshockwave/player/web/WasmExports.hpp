@@ -76,6 +76,7 @@ LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_call_stack();
 LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_window_sprite_diagnostics();
 LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_visible_text_diagnostics();
 LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_bootstrap_diagnostics();
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_script_diagnostics();
 LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_trigger_test_error();
 
 LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_set_external_param(int keyLen, int valueLen);
@@ -142,6 +143,12 @@ LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_debug_mus_message_error(int i
 LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_debug_mus_message_sender(int index);
 LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_debug_mus_message_subject(int index);
 LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_debug_mus_message_content(int index);
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_debug_set_global_string(int keyLen, int valueLen);
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_debug_set_global_int(int keyLen, int value);
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_debug_call_handler(int nameLen);
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_debug_call_handler_string_arg(int nameLen, int argLen);
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_debug_get_global_string(int keyLen);
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_debug_get_global_int(int keyLen);
 
 LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_last_error();
 

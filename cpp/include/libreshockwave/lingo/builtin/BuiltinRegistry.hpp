@@ -208,6 +208,7 @@ public:
     [[nodiscard]] static Datum charToNum(BuiltinContext& context, const std::vector<Datum>& args);
     [[nodiscard]] static Datum numToChar(BuiltinContext& context, const std::vector<Datum>& args);
     [[nodiscard]] static Datum offset(BuiltinContext& context, const std::vector<Datum>& args);
+    [[nodiscard]] static Datum stringReplace(BuiltinContext& context, const std::vector<Datum>& args);
     [[nodiscard]] static Datum getPref(BuiltinContext& context, const std::vector<Datum>& args);
     [[nodiscard]] static Datum setPref(BuiltinContext& context, const std::vector<Datum>& args);
 };
@@ -326,6 +327,9 @@ public:
                                            const Datum::XtraInstance& instance,
                                            std::string_view handlerName,
                                            const std::vector<Datum>& args);
+    [[nodiscard]] static Datum callInstanceGlobalHandler(BuiltinContext& context,
+                                                         std::string_view handlerName,
+                                                         const std::vector<Datum>& args);
     [[nodiscard]] static Datum getProperty(BuiltinContext& context,
                                            const Datum::XtraInstance& instance,
                                            std::string_view propertyName);
