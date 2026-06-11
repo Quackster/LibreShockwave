@@ -225,6 +225,25 @@ if(ZLIB_FOUND)
     target_compile_definitions(libreshockwave PUBLIC LIBRESHOCKWAVE_HAVE_ZLIB=1)
 endif()
 
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(GTK4 QUIET IMPORTED_TARGET gtk4)
+endif()
+
+if(GTK4_FOUND)
+    add_executable(libreshockwave_editor_gtk
+        src/editor/gtk/EditorGtkMain.cpp
+    )
+    target_link_libraries(libreshockwave_editor_gtk
+        PRIVATE
+            LibreShockwave::libreshockwave
+            PkgConfig::GTK4
+    )
+    target_compile_features(libreshockwave_editor_gtk PRIVATE cxx_std_20)
+else()
+    message(STATUS "GTK4 not found; libreshockwave_editor_gtk target disabled. Install gtk4-devel to build it.")
+endif()
+
 if(BUILD_TESTING)
     add_executable(libreshockwave_tests
         tests/sdk_foundation_test.cpp

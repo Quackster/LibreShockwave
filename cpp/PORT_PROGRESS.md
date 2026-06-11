@@ -15,6 +15,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Added `LibreShockwave::libreshockwave` static library target.
 - Added `libreshockwave_cpp_tests` CTest executable.
 - Added optional zlib integration through CMake.
+- Added an optional GTK4 editor executable target, `libreshockwave_editor_gtk`, built from the C++ tree when `pkg-config` finds `gtk4`.
 
 ### SDK Foundation
 
@@ -225,6 +226,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `editor::panels::EditorPanelCatalog` ports Java's editor panel creation order, panel IDs/titles/capabilities, constructor sizes, default floating bounds/visibility/selection, desktop/frame defaults, frame title formatting, and docking-registration title list as GTK-neutral frame metadata.
 - `editor::panels::EditorPanelModels` ports Java's message console output flow and layout hints, tool-palette button grid/window layout metadata, color-palette selector/layout/placeholder metadata, field/text/paint/sound panel toolbar/default/missing/loaded status states, and vector-shape placeholder metadata as GTK-neutral panel content metadata.
 - `editor::ui::EditorRendererModels` ports Java's file-tree renderer text/icon/type-color routing and score row-header opacity, table-header role, border role, font role, and centered alignment as GTK-neutral renderer presentation data.
+- `editor::gtk` adds the first optional GTK4 editor executable scaffold in C++, reusing the existing menu, toolbar, frame, and panel catalog models for a native app window while leaving full panel implementations for later GTK slices.
 
 ### Bitmap Colorizer
 
@@ -895,6 +897,7 @@ Last verified: 2026-06-11
 Commands:
 
 ```bash
+cmake -S . -B cmake-build-debug
 cmake --build cmake-build-debug --parallel
 ctest --test-dir cmake-build-debug --output-on-failure
 git diff --check
@@ -907,6 +910,7 @@ Result:
 - `./gradlew test`: passed, including the script-modified indexed DARKEN fixed-point baseline and script-bootstrap registry prefill behavior.
 - `git diff --check`: passed.
 - zlib support was detected in the local CMake build and the zlib decompression path is covered by the C++ tests.
+- GTK4 was not found by local `pkg-config`, so the optional `libreshockwave_editor_gtk` target was disabled during configure; install Fedora package `gtk4-devel` to build the GTK scaffold.
 - Chunk/audio foundation tests passed through the same CTest executable.
 - Cast metadata parser tests passed through the same CTest executable.
 - Compact chunk parser tests passed through the same CTest executable.
@@ -1329,4 +1333,5 @@ Result:
 - `19d58506 Port C++ debugger objects panel metadata`
 - `1b4c8b69 Port C++ debugger watch edit metadata`
 - `92f89662 Port C++ editor panel layout metadata`
-- Current checkpoint commit message: `Port C++ editable field overlay compositing`
+- `fed4452b Port C++ editable field overlay compositing`
+- Current checkpoint commit message: `Add optional C++ GTK editor scaffold`
