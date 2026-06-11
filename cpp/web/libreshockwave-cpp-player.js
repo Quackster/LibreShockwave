@@ -46,6 +46,17 @@ var LibreShockwaveCppPlayer = (function() {
         this.loadedMovieUrl = null;
         this.audioCtx = null;
         this.audioChannels = {};
+        this.baseFrame = null;
+        this.compositeData = null;
+        this.cursorBitmap = null;
+        this.caretInfo = null;
+        this.selectionRects = null;
+        this.cursorDirty = true;
+        this.cursorRafId = null;
+        this.cursorUsingInterval = false;
+        this.cursorFps = options.cursorFps || 0;
+        this.mouseX = 0;
+        this.mouseY = 0;
         this._initWorker();
         this._initInput();
     }
@@ -94,6 +105,10 @@ var LibreShockwaveCppPlayer = (function() {
             case 'gotoNetMovie':
                 this._handleGotoNetMovie(message.url);
                 break;
+            case 'selectedText':
+            case 'cutText':
+                this._writeClipboardText(message.text || '');
+                break;
             case 'error':
                 this._emitError(message.message || message.msg || 'C++ WASM runtime error');
                 break;
@@ -123,6 +138,13 @@ var LibreShockwaveCppPlayer = (function() {
         }
     };
 
+    Player.prototype._writeClipboardText = function(text) {
+        if (!text || !navigator.clipboard || !navigator.clipboard.writeText) {
+            return;
+        }
+        navigator.clipboard.writeText(text).catch(function() {});
+    };
+
     Player.prototype._drawFrame = function(message) {
         var width = message.width | 0;
         var height = message.height | 0;
@@ -138,12 +160,188 @@ var LibreShockwaveCppPlayer = (function() {
         var rgba = message.rgba instanceof Uint8ClampedArray
             ? message.rgba
             : new Uint8ClampedArray(message.rgba);
-        var imageData = new ImageData(rgba, width, height);
-        this.ctx.putImageData(imageData, 0, 0);
+        this.baseFrame = new ImageData(rgba, width, height);
+        this.cursorBitmap = message.cursorBitmap || null;
+        this.caretInfo = message.caretInfo || null;
+        this.selectionRects = message.selectionRects || null;
+        this.cursorDirty = true;
+        this._updateCssCursor(message.cursorType);
+        if (this.cursorBitmap) {
+            this._startCursorLoop();
+        } else {
+            this._stopCursorLoop();
+        }
+        this._compositeOverlayAndBlit();
         this.lastFrame = message;
         if (this.onFrame) {
             this.onFrame(message);
         }
+    };
+
+    Player.prototype._updateCssCursor = function(cursorType) {
+        var cursorMap = {
+            '-1': 'default',
+            '0': 'default',
+            '1': 'text',
+            '2': 'crosshair',
+            '3': 'move',
+            '4': 'wait',
+            '5': 'none',
+            '6': 'pointer'
+        };
+        var cursor = cursorMap[String(cursorType)] || 'default';
+        if (this.canvas.style.cursor !== cursor) {
+            this.canvas.style.cursor = cursor;
+        }
+    };
+
+    Player.prototype._compositeOverlayAndBlit = function() {
+        if (!this.baseFrame) {
+            return;
+        }
+        var cursor = this.cursorBitmap;
+        if (!cursor && !this.caretInfo && !this.selectionRects) {
+            this.ctx.putImageData(this.baseFrame, 0, 0);
+            this.cursorDirty = false;
+            return;
+        }
+
+        var width = this.baseFrame.width;
+        var height = this.baseFrame.height;
+        if (!this.compositeData ||
+                this.compositeData.width !== width ||
+                this.compositeData.height !== height) {
+            this.compositeData = this.ctx.createImageData(width, height);
+        }
+        var dst = this.compositeData.data;
+        dst.set(this.baseFrame.data);
+
+        if (cursor) {
+            this._overlayCursor(dst, width, height, cursor);
+        }
+        this._overlaySelection(dst, width, height);
+        this._overlayCaret(dst, width, height);
+
+        this.ctx.putImageData(this.compositeData, 0, 0);
+        this.cursorDirty = false;
+    };
+
+    Player.prototype._overlayCursor = function(dst, width, height, cursor) {
+        var drawX = this.mouseX - cursor.regX;
+        var drawY = this.mouseY - cursor.regY;
+        var crgba = cursor.rgba instanceof Uint8ClampedArray
+            ? cursor.rgba
+            : new Uint8ClampedArray(cursor.rgba);
+        for (var cy = 0; cy < cursor.h; cy++) {
+            var dstY = drawY + cy;
+            if (dstY < 0 || dstY >= height) {
+                continue;
+            }
+            for (var cx = 0; cx < cursor.w; cx++) {
+                var dstX = drawX + cx;
+                if (dstX < 0 || dstX >= width) {
+                    continue;
+                }
+                var srcOff = (cy * cursor.w + cx) * 4;
+                var alpha = crgba[srcOff + 3];
+                if (alpha === 0) {
+                    continue;
+                }
+                var dstOff = (dstY * width + dstX) * 4;
+                if (alpha === 255) {
+                    dst[dstOff] = crgba[srcOff];
+                    dst[dstOff + 1] = crgba[srcOff + 1];
+                    dst[dstOff + 2] = crgba[srcOff + 2];
+                    dst[dstOff + 3] = 255;
+                    continue;
+                }
+                var invAlpha = 255 - alpha;
+                dst[dstOff] = (crgba[srcOff] * alpha + dst[dstOff] * invAlpha) / 255 | 0;
+                dst[dstOff + 1] = (crgba[srcOff + 1] * alpha + dst[dstOff + 1] * invAlpha) / 255 | 0;
+                dst[dstOff + 2] = (crgba[srcOff + 2] * alpha + dst[dstOff + 2] * invAlpha) / 255 | 0;
+                dst[dstOff + 3] = 255;
+            }
+        }
+    };
+
+    Player.prototype._overlaySelection = function(dst, width, height) {
+        var rects = this.selectionRects;
+        if (!rects) {
+            return;
+        }
+        for (var i = 0; i < rects.length; i++) {
+            var rect = rects[i];
+            for (var y = 0; y < rect.h; y++) {
+                var py = rect.y + y;
+                if (py < 0 || py >= height) {
+                    continue;
+                }
+                for (var x = 0; x < rect.w; x++) {
+                    var px = rect.x + x;
+                    if (px < 0 || px >= width) {
+                        continue;
+                    }
+                    var off = (py * width + px) * 4;
+                    dst[off] = 255 - dst[off];
+                    dst[off + 1] = 255 - dst[off + 1];
+                    dst[off + 2] = 255 - dst[off + 2];
+                }
+            }
+        }
+    };
+
+    Player.prototype._overlayCaret = function(dst, width, height) {
+        var caret = this.caretInfo;
+        if (!caret || caret.h <= 0) {
+            return;
+        }
+        for (var y = 0; y < caret.h; y++) {
+            var py = caret.y + y;
+            if (py < 0 || py >= height || caret.x < 0 || caret.x >= width) {
+                continue;
+            }
+            var off = (py * width + caret.x) * 4;
+            dst[off] = 0;
+            dst[off + 1] = 0;
+            dst[off + 2] = 0;
+            dst[off + 3] = 255;
+        }
+    };
+
+    Player.prototype._startCursorLoop = function() {
+        if (this.cursorRafId) {
+            return;
+        }
+        var self = this;
+        if (this.cursorFps > 0) {
+            this.cursorUsingInterval = true;
+            this.cursorRafId = setInterval(function() {
+                if (self.cursorDirty) {
+                    self._compositeOverlayAndBlit();
+                }
+            }, 1000 / this.cursorFps);
+            return;
+        }
+        this.cursorUsingInterval = false;
+        function cursorFrame() {
+            if (self.cursorDirty) {
+                self._compositeOverlayAndBlit();
+            }
+            self.cursorRafId = requestAnimationFrame(cursorFrame);
+        }
+        this.cursorRafId = requestAnimationFrame(cursorFrame);
+    };
+
+    Player.prototype._stopCursorLoop = function() {
+        if (!this.cursorRafId) {
+            return;
+        }
+        if (this.cursorUsingInterval) {
+            clearInterval(this.cursorRafId);
+        } else {
+            cancelAnimationFrame(this.cursorRafId);
+        }
+        this.cursorRafId = null;
     };
 
     Player.prototype._initInput = function() {
@@ -180,19 +378,39 @@ var LibreShockwaveCppPlayer = (function() {
 
         canvas.addEventListener('mousemove', function(event) {
             var p = point(event);
+            self.mouseX = p.x;
+            self.mouseY = p.y;
+            self.cursorDirty = true;
+            if (self.cursorBitmap && self.baseFrame) {
+                self._compositeOverlayAndBlit();
+            }
             self._post({ type: 'mouseMove', x: p.x, y: p.y });
         });
         canvas.addEventListener('mousedown', function(event) {
             canvas.focus();
             var p = point(event);
+            self.mouseX = p.x;
+            self.mouseY = p.y;
             self._post({ type: 'mouseDown', x: p.x, y: p.y, button: event.button || 0 });
         });
         canvas.addEventListener('mouseup', function(event) {
             var p = point(event);
+            self.mouseX = p.x;
+            self.mouseY = p.y;
             self._post({ type: 'mouseUp', x: p.x, y: p.y, button: event.button || 0 });
         });
         canvas.addEventListener('keydown', function(event) {
             if (event.ctrlKey || event.metaKey) {
+                if (event.key === 'c' || event.key === 'C') {
+                    event.preventDefault();
+                    self._post({ type: 'getSelectedText' });
+                } else if (event.key === 'x' || event.key === 'X') {
+                    event.preventDefault();
+                    self._post({ type: 'cutSelectedText' });
+                } else if (event.key === 'a' || event.key === 'A') {
+                    event.preventDefault();
+                    self._post({ type: 'selectAll' });
+                }
                 return;
             }
             event.preventDefault();
@@ -217,6 +435,16 @@ var LibreShockwaveCppPlayer = (function() {
         });
         window.addEventListener('blur', function() {
             self._post({ type: 'blur' });
+        });
+        document.addEventListener('paste', function(event) {
+            if (document.activeElement !== canvas || !self.worker) {
+                return;
+            }
+            var text = (event.clipboardData || window.clipboardData).getData('text');
+            if (text) {
+                event.preventDefault();
+                self._post({ type: 'paste', text: text });
+            }
         });
     };
 

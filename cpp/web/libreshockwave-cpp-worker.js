@@ -43,6 +43,27 @@ var _requiredExports = {
     render: 'render',
     getRenderBufferAddress: 'get_render_buffer_address',
     getSpriteCount: 'get_sprite_count',
+    getCursorType: 'get_cursor_type',
+    updateCursorBitmap: 'update_cursor_bitmap',
+    getCursorBitmapWidth: 'get_cursor_bitmap_width',
+    getCursorBitmapHeight: 'get_cursor_bitmap_height',
+    getCursorBitmapLength: 'get_cursor_bitmap_length',
+    getCursorBitmapAddress: 'get_cursor_bitmap_address',
+    getCursorRegPointX: 'get_cursor_reg_point_x',
+    getCursorRegPointY: 'get_cursor_reg_point_y',
+    isCaretVisible: 'is_caret_visible',
+    getCaretX: 'get_caret_x',
+    getCaretY: 'get_caret_y',
+    getCaretHeight: 'get_caret_height',
+    getSelectionRectCount: 'get_selection_rect_count',
+    getSelectionRectX: 'get_selection_rect_x',
+    getSelectionRectY: 'get_selection_rect_y',
+    getSelectionRectW: 'get_selection_rect_w',
+    getSelectionRectH: 'get_selection_rect_h',
+    pasteText: 'paste_text',
+    getSelectedTextLength: 'get_selected_text_length',
+    cutSelectedText: 'cut_selected_text',
+    selectAll: 'select_all',
     getPendingFetchCount: 'get_pending_fetch_count',
     getPendingFetchTaskId: 'get_pending_fetch_task_id',
     getPendingFetchUrl: 'get_pending_fetch_url',
@@ -631,10 +652,64 @@ function _renderFrame() {
     };
 }
 
+function _collectOverlayState() {
+    var cursorBitmap = null;
+    if (_exports.updateCursorBitmap()) {
+        var cursorLength = _exports.getCursorBitmapLength();
+        var cursorAddress = _exports.getCursorBitmapAddress();
+        if (cursorLength > 0 && cursorAddress !== 0) {
+            var cursorRgba = new Uint8ClampedArray(cursorLength);
+            cursorRgba.set(new Uint8ClampedArray(_mem(), cursorAddress, cursorLength));
+            cursorBitmap = {
+                rgba: cursorRgba,
+                w: _exports.getCursorBitmapWidth(),
+                h: _exports.getCursorBitmapHeight(),
+                regX: _exports.getCursorRegPointX(),
+                regY: _exports.getCursorRegPointY()
+            };
+        }
+    }
+
+    var caretInfo = null;
+    if (_exports.isCaretVisible()) {
+        caretInfo = {
+            x: _exports.getCaretX(),
+            y: _exports.getCaretY(),
+            h: _exports.getCaretHeight()
+        };
+    }
+
+    var selectionRects = null;
+    var selectionCount = _exports.getSelectionRectCount();
+    if (selectionCount > 0) {
+        selectionRects = [];
+        for (var i = 0; i < selectionCount; i++) {
+            selectionRects.push({
+                x: _exports.getSelectionRectX(i),
+                y: _exports.getSelectionRectY(i),
+                w: _exports.getSelectionRectW(i),
+                h: _exports.getSelectionRectH(i)
+            });
+        }
+    }
+
+    return {
+        cursorType: _exports.getCursorType(),
+        cursorBitmap: cursorBitmap,
+        caretInfo: caretInfo,
+        selectionRects: selectionRects
+    };
+}
+
 function _postFrame() {
     var frame = _renderFrame();
     if (!frame) {
         return;
+    }
+    var overlay = _collectOverlayState();
+    var transfer = [frame.rgba.buffer];
+    if (overlay.cursorBitmap) {
+        transfer.push(overlay.cursorBitmap.rgba.buffer);
     }
     self.postMessage({
         type: 'frame',
@@ -644,8 +719,12 @@ function _postFrame() {
         frameCount: frame.frameCount,
         tempo: frame.tempo,
         spriteCount: frame.spriteCount,
-        rgba: frame.rgba
-    }, [frame.rgba.buffer]);
+        rgba: frame.rgba,
+        cursorType: overlay.cursorType,
+        cursorBitmap: overlay.cursorBitmap,
+        caretInfo: overlay.caretInfo,
+        selectionRects: overlay.selectionRects
+    }, transfer);
 }
 
 async function _loadMovie(message) {
@@ -800,6 +879,28 @@ self.onmessage = function(event) {
                 _exports.keyUp(message.keyCode | 0, upLength, message.modifiers | 0);
                 break;
             }
+            case 'paste': {
+                var pasteLength = _writeString(message.text || '');
+                _exports.pasteText(pasteLength);
+                await _driveHostQueues(4);
+                _postFrame();
+                break;
+            }
+            case 'getSelectedText': {
+                var selectedLength = _exports.getSelectedTextLength();
+                self.postMessage({ type: 'selectedText', text: _readString(selectedLength) });
+                break;
+            }
+            case 'cutSelectedText': {
+                var cutLength = _exports.cutSelectedText();
+                self.postMessage({ type: 'cutText', text: _readString(cutLength) });
+                _postFrame();
+                break;
+            }
+            case 'selectAll':
+                _exports.selectAll();
+                _postFrame();
+                break;
             case 'blur':
                 _exports.blur();
                 break;

@@ -22952,6 +22952,14 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(player.find("_handleAudio") != std::string::npos);
     assert(player.find("_handleGotoNetPage") != std::string::npos);
     assert(player.find("audioStopped") != std::string::npos);
+    assert(player.find("_compositeOverlayAndBlit") != std::string::npos);
+    assert(player.find("_overlayCursor") != std::string::npos);
+    assert(player.find("_overlaySelection") != std::string::npos);
+    assert(player.find("_overlayCaret") != std::string::npos);
+    assert(player.find("_updateCssCursor") != std::string::npos);
+    assert(player.find("getSelectedText") != std::string::npos);
+    assert(player.find("cutSelectedText") != std::string::npos);
+    assert(player.find("navigator.clipboard.writeText") != std::string::npos);
 
     assert(worker.find("createLibreShockwaveCppWasm") != std::string::npos);
     assert(worker.find("libreshockwave-cpp-wasm.js") != std::string::npos);
@@ -22969,6 +22977,14 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(worker.find("read_next_goto_net_page") != std::string::npos);
     assert(worker.find("OffscreenCanvas") != std::string::npos);
     assert(worker.find("new WebSocket") != std::string::npos);
+    assert(worker.find("get_cursor_type") != std::string::npos);
+    assert(worker.find("update_cursor_bitmap") != std::string::npos);
+    assert(worker.find("is_caret_visible") != std::string::npos);
+    assert(worker.find("get_selection_rect_count") != std::string::npos);
+    assert(worker.find("paste_text") != std::string::npos);
+    assert(worker.find("cut_selected_text") != std::string::npos);
+    assert(worker.find("select_all") != std::string::npos);
+    assert(worker.find("_collectOverlayState") != std::string::npos);
     assert(worker.find("postMessage({\n        type: 'frame'") != std::string::npos);
 
     const auto headerExports = parseHeaderExports(header);
@@ -22995,6 +23011,14 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(workerExports.count("_libreshockwave_wasm_mus_deliver_message") == 1);
     assert(workerExports.count("_libreshockwave_wasm_read_next_goto_net_page") == 1);
     assert(workerExports.count("_libreshockwave_wasm_go_to_frame") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_get_cursor_type") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_update_cursor_bitmap") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_get_cursor_bitmap_address") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_is_caret_visible") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_get_selection_rect_count") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_paste_text") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_cut_selected_text") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_select_all") == 1);
 
     assert(cmake.find("LIBRESHOCKWAVE_CPP_WASM_WEB_ASSETS") != std::string::npos);
     assert(cmake.find("web/index.html") != std::string::npos);
