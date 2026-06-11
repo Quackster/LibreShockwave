@@ -124,6 +124,42 @@ void CastMember::setRegPointState(int x, int y, bool pinnedToMember) {
     syncRuntimeBitmapAnchorState();
 }
 
+bool CastMember::shapeFilled() const {
+    if (!isShape()) {
+        return false;
+    }
+    return !shapeInfo_.has_value() || shapeInfo_->isFilled();
+}
+
+void CastMember::setShapeFilled(bool filled) {
+    if (!isShape()) {
+        return;
+    }
+    ensureRuntimeShapeInfo();
+    shapeInfo_->fillType = filled ? 1 : 0;
+}
+
+int CastMember::shapeLineSize() const {
+    if (runtimeShapeLineSize_.has_value()) {
+        return *runtimeShapeLineSize_;
+    }
+    if (shapeInfo_.has_value()) {
+        return std::max(0, shapeInfo_->lineThickness);
+    }
+    return isShape() ? 1 : 0;
+}
+
+bool CastMember::hasRuntimeShapeLineSize() const {
+    return runtimeShapeLineSize_.has_value();
+}
+
+void CastMember::setShapeLineSize(int lineSize) {
+    if (!isShape()) {
+        return;
+    }
+    runtimeShapeLineSize_ = std::max(0, lineSize);
+}
+
 std::shared_ptr<bitmap::Bitmap> CastMember::runtimeBitmap() const {
     return runtimeBitmap_;
 }
@@ -347,6 +383,7 @@ void CastMember::resetRuntimePayload() {
     scriptId_ = 0;
     bitmapInfo_.reset();
     shapeInfo_.reset();
+    runtimeShapeLineSize_.reset();
     filmLoopInfo_.reset();
     scriptType_.reset();
     shockwave3DInfo_.reset();
@@ -384,6 +421,13 @@ void CastMember::resetTextProperties() {
     textFixedLineSpace_ = 0;
     textTopSpacing_ = 0;
     editable_ = false;
+}
+
+void CastMember::ensureRuntimeShapeInfo() {
+    if (shapeInfo_.has_value()) {
+        return;
+    }
+    shapeInfo_ = ShapeInfo{ShapeType::Rect, 0, 0, 0, 0, 0, 0, 1, 1, 0};
 }
 
 void CastMember::syncRuntimeBitmapAnchorState() {

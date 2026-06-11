@@ -19751,11 +19751,16 @@ void testStageRendererFoundation() {
     lineSizeState->setDynamicMember(1, 10003);
     lineSizeState->setWidth(6);
     lineSizeState->setHeight(6);
+    lineSizeShapeMember->setShapeLineSize(2);
+    const auto memberLineSizeSprites = lineSizeRenderer.getSpritesForFrame(1);
+    assert(memberLineSizeSprites.size() == 1);
+    assert(memberLineSizeSprites.front().shapeLineSize().has_value());
+    assert(*memberLineSizeSprites.front().shapeLineSize() == 2);
     assert(lineSizeProps.setSpriteProp(33, "lineSize", Datum::of(3)));
-    const auto lineSizeSprites = lineSizeRenderer.getSpritesForFrame(1);
-    assert(lineSizeSprites.size() == 1);
-    assert(lineSizeSprites.front().shapeLineSize().has_value());
-    assert(*lineSizeSprites.front().shapeLineSize() == 3);
+    const auto spriteLineSizeSprites = lineSizeRenderer.getSpritesForFrame(1);
+    assert(spriteLineSizeSprites.size() == 1);
+    assert(spriteLineSizeSprites.front().shapeLineSize().has_value());
+    assert(*spriteLineSizeSprites.front().shapeLineSize() == 3);
 
     StageRenderer regRenderer;
     auto mirroredMember = std::make_shared<CastMember>(1, 10001, MemberType::Bitmap);
@@ -21108,6 +21113,36 @@ void testSpriteBakerFoundation() {
     assert(*thickOutlineShape.shapeLineSize() == 3);
     assert(thickOutlineShape.bakedBitmap()->getPixel(2, 2) == 0xFF778899U);
 
+    auto mutableOutlineMember = std::make_shared<CastMember>(804, 1, 10004, outlineShapeMember);
+    mutableOutlineMember->setShapeFilled(true);
+    RenderSprite runtimeMemberShape(7,
+                                    0,
+                                    0,
+                                    6,
+                                    6,
+                                    0,
+                                    true,
+                                    SpriteType::Shape,
+                                    outlineShapeMember,
+                                    mutableOutlineMember,
+                                    0x778899,
+                                    0,
+                                    true,
+                                    false,
+                                    0,
+                                    100,
+                                    false,
+                                    false,
+                                    nullptr,
+                                    false);
+    auto filledRuntimeShape = baker.bake(runtimeMemberShape);
+    assert(filledRuntimeShape.bakedBitmap()->getPixel(2, 2) == 0xFF778899U);
+    mutableOutlineMember->setShapeFilled(false);
+    mutableOutlineMember->setShapeLineSize(3);
+    assert(mutableOutlineMember->hasRuntimeShapeLineSize());
+    auto lineSizedRuntimeShape = baker.bake(runtimeMemberShape);
+    assert(lineSizedRuntimeShape.bakedBitmap()->getPixel(2, 2) == 0xFF778899U);
+
     auto inkMember = std::make_shared<CastMemberChunk>(nullptr,
                                                        ChunkId(803),
                                                        MemberType::Bitmap,
@@ -21153,7 +21188,7 @@ void testSpriteBakerFoundation() {
     assert(bakedInkedBitmap.bakedBitmap()->getPixel(0, 0) == 0x00000000U);
     assert(bakedInkedBitmap.bakedBitmap()->getPixel(1, 0) == 0xFF010203U);
 
-    RenderSprite unsupported(6,
+    RenderSprite unsupported(8,
                              0,
                              0,
                              1,
@@ -28063,6 +28098,16 @@ void testCastLibManagerFoundation() {
     assert(newRuntime.asCastMemberRef() != nullptr);
     assert(newRuntime.asCastMemberRef()->memberNum() == 10003);
     assert(manager.getMemberProp(1, 10003, "type").asSymbol()->name == "shape");
+    assert(manager.getMemberProp(1, 10003, "filled").intValue() == 1);
+    assert(manager.getMemberProp(1, 10003, "lineSize").intValue() == 1);
+    assert(manager.setMemberProp(1, 10003, "filled", Datum::FALSE));
+    assert(manager.setMemberProp(1, 10003, "lineSize", Datum::of(4)));
+    assert(manager.getMemberProp(1, 10003, "filled").intValue() == 0);
+    assert(manager.getMemberProp(1, 10003, "lineSize").intValue() == 4);
+    auto runtimeShape = manager.resolveMember(1, 10003);
+    assert(runtimeShape != nullptr);
+    assert(!runtimeShape->shapeFilled());
+    assert(runtimeShape->shapeLineSize() == 4);
 
     const auto copiedRuntimeField = manager.createMember(1, "text");
     const auto* copiedRuntimeFieldRef = copiedRuntimeField.asCastMemberRef();

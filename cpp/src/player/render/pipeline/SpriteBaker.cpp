@@ -63,12 +63,20 @@ int shapeBorderStrokeCount(const RenderSprite& sprite, const ::libreshockwave::c
     if (const auto lineSize = sprite.shapeLineSize()) {
         return std::max(0, *lineSize);
     }
+    if (const auto dynamic = sprite.dynamicMember();
+        dynamic != nullptr && dynamic->isShape() && dynamic->hasRuntimeShapeLineSize()) {
+        return std::max(0, dynamic->shapeLineSize());
+    }
     return std::max(0, shapeInfo.lineThickness - 1);
 }
 
 int shapeLineStrokeCount(const RenderSprite& sprite, const ::libreshockwave::cast::ShapeInfo& shapeInfo) {
     if (const auto lineSize = sprite.shapeLineSize()) {
         return std::max(0, *lineSize);
+    }
+    if (const auto dynamic = sprite.dynamicMember();
+        dynamic != nullptr && dynamic->isShape() && dynamic->hasRuntimeShapeLineSize()) {
+        return std::max(0, dynamic->shapeLineSize());
     }
     return std::max(1, shapeInfo.lineThickness);
 }
@@ -450,11 +458,11 @@ std::shared_ptr<const bitmap::Bitmap> SpriteBaker::bakeShape(const RenderSprite&
     const ::libreshockwave::cast::ShapeInfo* shapeInfo = nullptr;
     auto member = sprite.castMember();
     std::optional<::libreshockwave::cast::ShapeInfo> parsedShape;
-    if (member != nullptr && member->memberType() == ::libreshockwave::cast::MemberType::Shape) {
+    if (auto dynamicInfo = dynamicShapeInfo(sprite)) {
+        shapeInfo = dynamicInfo;
+    } else if (member != nullptr && member->memberType() == ::libreshockwave::cast::MemberType::Shape) {
         parsedShape = ::libreshockwave::cast::ShapeInfo::parse(member->specificData());
         shapeInfo = &parsedShape.value();
-    } else {
-        shapeInfo = dynamicShapeInfo(sprite);
     }
 
     auto shape = std::make_shared<bitmap::Bitmap>(drawShapeBitmap(sprite, shapeInfo));

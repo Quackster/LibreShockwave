@@ -701,6 +701,10 @@ lingo::Datum CastLib::getMemberProp(int memberNumber, const std::string& propNam
     if (member->isBitmap() && (prop == "paletteref" || prop == "palette")) {
         return bitmapPaletteRefDatum(member, castLibId_);
     }
+    if (member->isShape()) {
+        if (prop == "filled") return lingo::Datum::of(member->shapeFilled() ? 1 : 0);
+        if (prop == "linesize") return lingo::Datum::of(member->shapeLineSize());
+    }
     if (member->isScript()) {
         if (prop == "text") return stringDatum("");
         if (prop == "scripttype") {
@@ -880,6 +884,16 @@ bool CastLib::setMemberProp(int memberNumber, const std::string& propName, const
     if (member->isBitmap() && prop == "alphathreshold") {
         member->setBitmapAlphaThreshold(value.intValue());
         return true;
+    }
+    if (member->isShape()) {
+        if (prop == "filled") {
+            member->setShapeFilled(value.boolValue());
+            return true;
+        }
+        if (prop == "linesize") {
+            member->setShapeLineSize(value.intValue());
+            return true;
+        }
     }
     if (member->isBitmap() && prop == "width") {
         const int newWidth = value.intValue();

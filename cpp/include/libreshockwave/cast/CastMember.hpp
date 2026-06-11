@@ -67,6 +67,11 @@ public:
     [[nodiscard]] bool regPointPinnedToMember() const;
     void setRegPoint(int x, int y);
     void setRegPointState(int x, int y, bool pinnedToMember);
+    [[nodiscard]] bool shapeFilled() const;
+    void setShapeFilled(bool filled);
+    [[nodiscard]] int shapeLineSize() const;
+    [[nodiscard]] bool hasRuntimeShapeLineSize() const;
+    void setShapeLineSize(int lineSize);
     [[nodiscard]] bool hasDynamicText() const;
     [[nodiscard]] std::string textContent() const;
     void setDynamicText(std::string text);
@@ -126,6 +131,7 @@ private:
     void parseSpecificData();
     void resetRuntimePayload();
     void resetTextProperties();
+    void ensureRuntimeShapeInfo();
     void setRuntimeBitmapInternal(const bitmap::Bitmap& bitmap, bool markScriptModified, bool authoredSource);
 
     int id_;
@@ -138,6 +144,7 @@ private:
 
     std::optional<BitmapInfo> bitmapInfo_;
     std::optional<ShapeInfo> shapeInfo_;
+    std::optional<int> runtimeShapeLineSize_;
     std::optional<FilmLoopInfo> filmLoopInfo_;
     std::optional<ScriptType> scriptType_;
     std::optional<Shockwave3DInfo> shockwave3DInfo_;

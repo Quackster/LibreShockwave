@@ -423,6 +423,10 @@ bool StageRenderer::hasAnyBehavior(const sprite::SpriteState& state) const {
 }
 
 RenderSprite StageRenderer::applyLegacyRenderProperties(RenderSprite sprite, const sprite::SpriteState& state) {
+    if (const auto dynamic = sprite.dynamicMember();
+        dynamic != nullptr && dynamic->isShape() && dynamic->hasRuntimeShapeLineSize()) {
+        sprite = sprite.withShapeLineSize(dynamic->shapeLineSize());
+    }
     if (auto lineSize = state.legacyProperty("linesize");
         lineSize.has_value() && !lineSize->isVoid()) {
         sprite = sprite.withShapeLineSize(std::max(0, lineSize->intValue()));
