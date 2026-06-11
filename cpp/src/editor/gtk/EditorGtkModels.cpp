@@ -334,11 +334,22 @@ std::vector<std::string> actionLabels(const std::vector<panels::DisabledPanelAct
     return result;
 }
 
-std::vector<GtkWorkbenchContentActionSpec> contentActionSpecs(const std::vector<std::string>& labels) {
+std::vector<GtkWorkbenchContentActionSpec> contentActionSpecs(std::string_view panelId,
+                                                              const std::vector<std::string>& labels) {
     std::vector<GtkWorkbenchContentActionSpec> result;
     result.reserve(labels.size());
-    for (const auto& label : labels) {
-        result.push_back(GtkWorkbenchContentActionSpec{label, label + " (not yet implemented)", false});
+    for (std::size_t index = 0; index < labels.size(); ++index) {
+        const auto& label = labels[index];
+        const auto actionName = EditorGtkShellModel::workbenchContentActionName(panelId,
+                                                                               static_cast<int>(index),
+                                                                               label);
+        result.push_back(GtkWorkbenchContentActionSpec{
+            label,
+            label + " (not yet implemented)",
+            actionName,
+            EditorGtkShellModel::appAction(actionName),
+            false,
+        });
     }
     return result;
 }
@@ -478,6 +489,13 @@ std::string EditorGtkShellModel::workbenchPanelActionName(std::string_view panel
 
 std::string EditorGtkShellModel::workbenchPanelFloatActionName(std::string_view panelId) {
     return "workbench_float_" + sanitizeActionName(panelId);
+}
+
+std::string EditorGtkShellModel::workbenchContentActionName(std::string_view panelId,
+                                                           int index,
+                                                           std::string_view label) {
+    return "workbench_content_" + sanitizeActionName(panelId) + "_" + std::to_string(index) + "_" +
+           sanitizeActionName(label);
 }
 
 std::string EditorGtkShellModel::recentProjectActionName(int index) {
@@ -926,7 +944,7 @@ std::vector<GtkWorkbenchPanelSpec> EditorGtkShellModel::workbenchPanels(const Ed
         spec.activationActionName = workbenchPanelActionName(row.panelId);
         spec.detailedActivationActionName = appAction(spec.activationActionName);
         populateWorkbenchContent(spec, contextModel);
-        spec.actionSpecs = contentActionSpecs(spec.actionLabels);
+        spec.actionSpecs = contentActionSpecs(spec.panelId, spec.actionLabels);
         result.push_back(std::move(spec));
     }
     return result;

@@ -262,6 +262,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - The optional GTK scaffold now builds its menu bar from `GtkMenuSpec`, preserving tested detailed action names, recursive submenu structure, and separator-delimited menu sections instead of rebuilding actions directly from `EditorMenuItem`.
 - `editor::gtk::GtkPanelRowSpec` now exposes primary row action metadata so the optional GTK panel list can focus visible panels or show hidden panels through tested action names instead of inert labels.
 - `editor::gtk::GtkWorkbenchContentActionSpec` ports disabled active-panel action button metadata, and the optional GTK scaffold now refreshes the active workbench title/body/status/action buttons from the tested content snapshot instead of a fixed Stage placeholder.
+- `editor::gtk::GtkWorkbenchContentActionSpec` now also exposes stable GTK action names and detailed action names for disabled workbench content tools, and the optional GTK scaffold binds those buttons through the tested metadata.
 - The optional GTK scaffold now renders workbench tab buttons from `GtkWorkbenchTabSpec`, binding tab focus, float, and hide actions through the same tested action names used by the model layer.
 - `editor::gtk::GtkToolbarItemSpec` now carries GTK symbolic icon names and enabled state for toolbar buttons, labels, and separators, and the optional GTK scaffold renders icon buttons when metadata is available while preserving tested labels and tooltips.
 
@@ -1410,4 +1411,5 @@ Result:
 - `77804276 Port C++ GTK dialog button actions`
 - `a0d20419 Port C++ GTK open-file button actions`
 - `7243bebc Route C++ GTK open-file dialog actions`
-- Current checkpoint commit message: `Route C++ GTK dialog button actions`
+- `01f20735 Route C++ GTK dialog button actions`
+- Current checkpoint commit message: `Bind C++ GTK workbench content actions`

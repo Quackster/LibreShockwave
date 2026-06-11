@@ -2119,6 +2119,8 @@ void testEditorShellActionModels() {
     assert(EditorGtkShellModel::workbenchPanelActionName("property-inspector") == "workbench_property_inspector");
     assert(EditorGtkShellModel::workbenchPanelFloatActionName("property-inspector") ==
            "workbench_float_property_inspector");
+    assert(EditorGtkShellModel::workbenchContentActionName("property-inspector", 2, "Round Rect") ==
+           "workbench_content_property_inspector_2_Round_Rect");
     assert(EditorGtkShellModel::dialogActionName(GtkShellDialogKind::ExternalParameters,
                                                  GtkShellDialogButtonRole::Accept) ==
            "dialog_external_parameters_accept");
@@ -2394,7 +2396,11 @@ void testEditorShellActionModels() {
     assert(staticPaintWorkbench->statusText == " Ready");
     assert(staticPaintWorkbench->actionLabels.front() == "Pencil");
     assert(staticPaintWorkbench->actionSpecs.front() ==
-           (GtkWorkbenchContentActionSpec{"Pencil", "Pencil (not yet implemented)", false}));
+           (GtkWorkbenchContentActionSpec{"Pencil",
+                                          "Pencil (not yet implemented)",
+                                          "workbench_content_paint_0_Pencil",
+                                          "app.workbench_content_paint_0_Pencil",
+                                          false}));
     const auto gtkWorkbenchLayout = EditorGtkShellModel::workbenchLayout(gtkFrame, closedGtkContext);
     assert(gtkWorkbenchLayout.panels == gtkWorkbench);
     assert(gtkWorkbenchLayout.activePanel.has_value());
@@ -2450,15 +2456,51 @@ void testEditorShellActionModels() {
                std::vector<std::string>{
                    "Pencil", "Brush", "Eraser", "Fill", "Line", "Rect", "Oval", "Select", "Lasso"},
                std::vector<GtkWorkbenchContentActionSpec>{
-                   {"Pencil", "Pencil (not yet implemented)", false},
-                   {"Brush", "Brush (not yet implemented)", false},
-                   {"Eraser", "Eraser (not yet implemented)", false},
-                   {"Fill", "Fill (not yet implemented)", false},
-                   {"Line", "Line (not yet implemented)", false},
-                   {"Rect", "Rect (not yet implemented)", false},
-                   {"Oval", "Oval (not yet implemented)", false},
-                   {"Select", "Select (not yet implemented)", false},
-                   {"Lasso", "Lasso (not yet implemented)", false},
+                   {"Pencil",
+                    "Pencil (not yet implemented)",
+                    "workbench_content_paint_0_Pencil",
+                    "app.workbench_content_paint_0_Pencil",
+                    false},
+                   {"Brush",
+                    "Brush (not yet implemented)",
+                    "workbench_content_paint_1_Brush",
+                    "app.workbench_content_paint_1_Brush",
+                    false},
+                   {"Eraser",
+                    "Eraser (not yet implemented)",
+                    "workbench_content_paint_2_Eraser",
+                    "app.workbench_content_paint_2_Eraser",
+                    false},
+                   {"Fill",
+                    "Fill (not yet implemented)",
+                    "workbench_content_paint_3_Fill",
+                    "app.workbench_content_paint_3_Fill",
+                    false},
+                   {"Line",
+                    "Line (not yet implemented)",
+                    "workbench_content_paint_4_Line",
+                    "app.workbench_content_paint_4_Line",
+                    false},
+                   {"Rect",
+                    "Rect (not yet implemented)",
+                    "workbench_content_paint_5_Rect",
+                    "app.workbench_content_paint_5_Rect",
+                    false},
+                   {"Oval",
+                    "Oval (not yet implemented)",
+                    "workbench_content_paint_6_Oval",
+                    "app.workbench_content_paint_6_Oval",
+                    false},
+                   {"Select",
+                    "Select (not yet implemented)",
+                    "workbench_content_paint_7_Select",
+                    "app.workbench_content_paint_7_Select",
+                    false},
+                   {"Lasso",
+                    "Lasso (not yet implemented)",
+                    "workbench_content_paint_8_Lasso",
+                    "app.workbench_content_paint_8_Lasso",
+                    false},
                },
                "workbench_paint",
                "app.workbench_paint",
@@ -2543,9 +2585,17 @@ void testEditorShellActionModels() {
     assert(toolPaletteWorkbench->actionLabels[13] == "Color");
     assert(toolPaletteWorkbench->actionSpecs.size() == 14);
     assert(toolPaletteWorkbench->actionSpecs.front() ==
-           (GtkWorkbenchContentActionSpec{"Arrow", "Arrow (not yet implemented)", false}));
+           (GtkWorkbenchContentActionSpec{"Arrow",
+                                          "Arrow (not yet implemented)",
+                                          "workbench_content_tool_palette_0_Arrow",
+                                          "app.workbench_content_tool_palette_0_Arrow",
+                                          false}));
     assert(toolPaletteWorkbench->actionSpecs.back() ==
-           (GtkWorkbenchContentActionSpec{"Color", "Color (not yet implemented)", false}));
+           (GtkWorkbenchContentActionSpec{"Color",
+                                          "Color (not yet implemented)",
+                                          "workbench_content_tool_palette_13_Color",
+                                          "app.workbench_content_tool_palette_13_Color",
+                                          false}));
     assert(findWorkbenchPanel(gtkWorkbenchPanels, "paint") == nullptr);
     auto shellWorkbenchFocusActions = gtkState.workbenchFocusActions();
     assert(shellWorkbenchFocusActions.size() == EditorFramePanelModel::creationOrder().size());
@@ -3469,7 +3519,11 @@ void testEditorShellActionModels() {
     assert(gtkView.workbenchContent.actionLabels.size() == 9);
     assert(gtkView.workbenchContent.actionSpecs.size() == 9);
     assert(gtkView.workbenchContent.actionSpecs[3] ==
-           (GtkWorkbenchContentActionSpec{"Fill", "Fill (not yet implemented)", false}));
+           (GtkWorkbenchContentActionSpec{"Fill",
+                                          "Fill (not yet implemented)",
+                                          "workbench_content_paint_3_Fill",
+                                          "app.workbench_content_paint_3_Fill",
+                                          false}));
     paintFocusAction = findWorkbenchFocusAction(gtkView.workbenchFocusActions, "paint");
     assert(paintFocusAction != nullptr);
     assert(paintFocusAction->enabled);

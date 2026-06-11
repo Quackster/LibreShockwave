@@ -140,6 +140,9 @@ void populateWorkbenchActions(GtkWidget* actionsBox,
         GtkWidget* button = gtk_button_new_with_label(action.label.c_str());
         gtk_widget_set_sensitive(button, action.enabled);
         gtk_widget_set_tooltip_text(button, action.tooltip.c_str());
+        if (!action.detailedActionName.empty()) {
+            gtk_actionable_set_action_name(GTK_ACTIONABLE(button), action.detailedActionName.c_str());
+        }
         gtk_box_append(GTK_BOX(actionsBox), button);
     }
 }

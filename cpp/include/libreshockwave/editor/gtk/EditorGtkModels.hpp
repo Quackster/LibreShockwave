@@ -287,6 +287,8 @@ struct GtkWorkbenchFocusActionSpec {
 struct GtkWorkbenchContentActionSpec {
     std::string label;
     std::string tooltip;
+    std::string actionName;
+    std::string detailedActionName;
     bool enabled{false};
 
     friend bool operator==(const GtkWorkbenchContentActionSpec&, const GtkWorkbenchContentActionSpec&) = default;
@@ -417,6 +419,9 @@ public:
     [[nodiscard]] static std::string panelActionName(std::string_view panelId);
     [[nodiscard]] static std::string workbenchPanelActionName(std::string_view panelId);
     [[nodiscard]] static std::string workbenchPanelFloatActionName(std::string_view panelId);
+    [[nodiscard]] static std::string workbenchContentActionName(std::string_view panelId,
+                                                                int index,
+                                                                std::string_view label);
     [[nodiscard]] static std::string recentProjectActionName(int index);
     [[nodiscard]] static std::optional<int> recentProjectActionIndex(std::string_view actionName);
     [[nodiscard]] static std::string dialogActionName(GtkShellDialogKind kind, GtkShellDialogButtonRole role);
