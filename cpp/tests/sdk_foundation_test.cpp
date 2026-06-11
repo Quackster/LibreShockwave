@@ -9703,7 +9703,7 @@ void testPlayerVmEventDispatchFoundation() {
 
     std::vector<std::uint8_t> namesData(20, 0);
     putI16(namesData, 16, 20);
-    putI16(namesData, 18, 28);
+    putI16(namesData, 18, 30);
     auto appendName = [&namesData](const std::string& value) {
         namesData.push_back(static_cast<std::uint8_t>(value.size()));
         namesData.insert(namesData.end(), value.begin(), value.end());
@@ -9736,6 +9736,8 @@ void testPlayerVmEventDispatchFoundation() {
     appendName("movieEnterFrame");
     appendName("movieExitFrame");
     appendName("directResult");
+    appendName("timeOut");
+    appendName("legacyTimedOut");
 
     auto putHandlerRecord = [&](std::vector<std::uint8_t>& data, int offset, int nameId, int bytecodeOffset) {
         putI16(data, offset, nameId);
@@ -9762,9 +9764,9 @@ void testPlayerVmEventDispatchFoundation() {
     };
 
     std::vector<std::uint8_t> scriptData(560, 0);
-    putI16(scriptData, 18, 8);
+    putI16(scriptData, 18, 9);
     putI32(scriptData, 38, 0x00000003);
-    putI16(scriptData, 72, 8);
+    putI16(scriptData, 72, 9);
     putI32(scriptData, 74, 110);
     putHandlerRecord(scriptData, 110, 1, 500);
     putHandlerRecord(scriptData, 152, 3, 505);
@@ -9774,6 +9776,7 @@ void testPlayerVmEventDispatchFoundation() {
     putHandlerRecord(scriptData, 320, 14, 525);
     putHandlerRecord(scriptData, 362, 16, 530);
     putHandlerRecord(scriptData, 404, 18, 535);
+    putHandlerRecord(scriptData, 446, 28, 540);
     putSetGlobalHandlerBytecode(scriptData, 500, 44, 2);
     putSetGlobalHandlerBytecode(scriptData, 505, 55, 4);
     putSetGlobalHandlerBytecode(scriptData, 510, 66, 6);
@@ -9782,6 +9785,7 @@ void testPlayerVmEventDispatchFoundation() {
     putSetGlobalHandlerBytecode(scriptData, 525, 57, 24);
     putSetGlobalHandlerBytecode(scriptData, 530, 58, 25);
     putSetGlobalHandlerBytecode(scriptData, 535, 59, 26);
+    putSetGlobalHandlerBytecode(scriptData, 540, 74, 29);
 
     std::vector<std::uint8_t> castData;
     appendI32(castData, 3);
@@ -9898,6 +9902,27 @@ void testPlayerVmEventDispatchFoundation() {
     assert(player.vm().getGlobal("actorEnter").isVoid());
 
     player.timeoutManager().clear();
+    assert(player.movieProperties().setMovieProp("timeoutLength", Datum::of(1)));
+    assert(player.movieProperties().setMovieProp("timeoutScript", Datum::of(std::string())));
+    player.vm().clearGlobals();
+    std::this_thread::sleep_for(std::chrono::milliseconds(25));
+    assert(player.tick());
+    assert(player.vm().getGlobal("legacyTimedOut").intValue() == 74);
+    player.vm().clearGlobals();
+    assert(player.tick());
+    assert(player.vm().getGlobal("legacyTimedOut").isVoid());
+
+    player.inputHandler().onMouseMove(3, 3);
+    assert(player.tick());
+    assert(player.vm().getGlobal("legacyTimedOut").isVoid());
+    assert(player.movieProperties().setMovieProp("timeoutScript", Datum::symbol("globalTimer")));
+    std::this_thread::sleep_for(std::chrono::milliseconds(25));
+    assert(player.tick());
+    assert(player.vm().getGlobal("globalTimeout").intValue() == 42);
+    assert(player.movieProperties().setMovieProp("timeoutLength", Datum::of(0)));
+    assert(player.movieProperties().setMovieProp("timeoutScript", Datum::of(std::string())));
+    player.vm().clearGlobals();
+
     assert(player.movieProperties().setMovieProp("actorList", Datum::list({timeoutTarget, Datum::of(123)})));
     assert(player.tick());
     assert(player.vm().getGlobal("actorStep").intValue() == 33);

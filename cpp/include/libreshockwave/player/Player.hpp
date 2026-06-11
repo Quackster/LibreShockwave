@@ -228,6 +228,7 @@ private:
     std::string lastScriptErrorMessage_;
     std::string lastScriptErrorStack_;
     std::int64_t lastScriptErrorTimeMs_{0};
+    bool legacyTimeoutArmed_{true};
     std::function<void()> timeoutProcessor_;
     std::function<void(std::string_view handlerName)> timeoutSystemEventDispatcher_;
 };

@@ -508,6 +508,7 @@ void Player::play() {
     const bool wasStopped = state_ == PlayerState::Stopped;
     state_ = PlayerState::Playing;
     if (wasStopped) {
+        legacyTimeoutArmed_ = true;
         prepareMovieFoundation();
     }
 }
@@ -552,6 +553,7 @@ void Player::stop() {
     stageRenderer_.reset();
     timeoutManager_.clear();
     soundManager_.stopAll();
+    legacyTimeoutArmed_ = true;
     state_ = PlayerState::Stopped;
 }
 
@@ -1264,6 +1266,63 @@ void Player::wireComponents() {
         return targets;
     };
 
+    auto legacyTimeoutHandlerName = [this]() -> std::optional<std::string> {
+        const lingo::Datum script = movieProperties_.getMovieProp("timeoutScript");
+        if (script.isVoid() || script.isNull() || (script.isString() && script.stringValue().empty())) {
+            return std::string("timeOut");
+        }
+        return legacyEventHandlerName(script);
+    };
+
+    auto dispatchLegacyMovieTimeout = [this, invokeTarget, collectMovieScriptTargets, legacyTimeoutHandlerName] {
+        const int timeoutLength = movieProperties_.getMovieProp("timeoutLength").intValue();
+        if (timeoutLength <= 0) {
+            legacyTimeoutArmed_ = true;
+            return;
+        }
+
+        const int elapsedTicks = movieProperties_.getMovieProp("timeoutLapsed").intValue();
+        if (elapsedTicks < timeoutLength) {
+            legacyTimeoutArmed_ = true;
+            return;
+        }
+        if (!legacyTimeoutArmed_) {
+            return;
+        }
+
+        const auto handlerName = legacyTimeoutHandlerName();
+        if (!handlerName.has_value() || handlerName->empty()) {
+            return;
+        }
+
+        bool handled = false;
+        eventDispatcher().resetEventStopped();
+        for (const auto& movie : collectMovieScriptTargets()) {
+            if (!movie.script || movie.script->resolvedScriptType() != chunks::ScriptChunkType::MovieScript) {
+                continue;
+            }
+
+            event::EventTarget target;
+            target.kind = event::EventTargetKind::MovieScript;
+            target.script = movie.script;
+            target.scriptNames = movie.scriptNames;
+            target.scriptOwner = movie.scriptOwner;
+            const auto result = invokeTarget(target, *handlerName, {});
+            if (!result.handled) {
+                continue;
+            }
+
+            handled = true;
+            if (!result.passed || eventDispatcher().isEventStopped()) {
+                break;
+            }
+        }
+        if (!handled) {
+            (void)vm_.callHandler(*handlerName, {});
+        }
+        legacyTimeoutArmed_ = false;
+    };
+
     inputHandler_.setLegacyEventScriptDispatcher([this, invokeTarget, collectMovieScriptTargets](PlayerEvent event) {
         const std::string_view propName = legacyEventScriptProperty(event);
         if (propName.empty()) {
@@ -1323,7 +1382,7 @@ void Player::wireComponents() {
             (void)invokeTarget(eventTarget, systemHandler, {});
         });
     };
-    timeoutProcessor_ = [this, invokeTarget] {
+    timeoutProcessor_ = [this, invokeTarget, dispatchLegacyMovieTimeout] {
         timeoutManager_.processTimeouts([this, invokeTarget](const timeout::TimeoutEntry& entry) {
             vm_.resetErrorState();
             lingo::Datum resolvedTarget = entry.target;
@@ -1348,6 +1407,7 @@ void Player::wireComponents() {
 
             (void)vm_.callHandler(entry.handler, args);
         });
+        dispatchLegacyMovieTimeout();
     };
     frameContext_.setTimeoutEventDispatcher(timeoutSystemEventDispatcher_);
     frameContext_.setActorListDispatcher([this, invokeTarget](std::string_view handlerName) {
