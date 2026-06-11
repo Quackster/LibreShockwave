@@ -1,4 +1,5 @@
 #include <cassert>
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <bit>
@@ -89,6 +90,8 @@
 #include "libreshockwave/editor/score/ScoreDataBuilder.hpp"
 #include "libreshockwave/editor/score/ScoreColors.hpp"
 #include "libreshockwave/editor/score/ScoreModel.hpp"
+#include "libreshockwave/editor/scanning/FileProcessor.hpp"
+#include "libreshockwave/editor/scanning/MemberResolver.hpp"
 #include "libreshockwave/editor/script/LingoKeywords.hpp"
 #include "libreshockwave/editor/script/LingoTokenizer.hpp"
 #include "libreshockwave/format/ChunkInfo.hpp"
@@ -287,6 +290,8 @@ using libreshockwave::editor::score::ScoreDataBuilder;
 using libreshockwave::editor::score::ScoreColor;
 using libreshockwave::editor::score::ScoreColors;
 using libreshockwave::editor::score::ScoreModel;
+using libreshockwave::editor::scanning::FileProcessor;
+using libreshockwave::editor::scanning::MemberResolver;
 using libreshockwave::editor::script::LingoKeywords;
 using libreshockwave::editor::script::LingoTokenizer;
 using libreshockwave::editor::script::LingoTokenType;
@@ -1740,6 +1745,271 @@ void testEditorScoreDataHelpers() {
     assert(grid[6][0]->height == 20);
     assert(grid[6][1]->memberName == "#2 Door");
     assert((builder.buildColumnNames(*file) == std::vector<std::string>{"1 [Start]", "2 [Middle]"}));
+}
+
+void testEditorScanningHelpers() {
+    auto appendFourCC = [](std::vector<std::uint8_t>& data, const std::string& value) {
+        data.push_back(static_cast<std::uint8_t>(value[0]));
+        data.push_back(static_cast<std::uint8_t>(value[1]));
+        data.push_back(static_cast<std::uint8_t>(value[2]));
+        data.push_back(static_cast<std::uint8_t>(value[3]));
+    };
+    auto appendI16 = [](std::vector<std::uint8_t>& data, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data.push_back(static_cast<std::uint8_t>((raw >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(raw & 0xFF));
+    };
+    auto appendI32 = [](std::vector<std::uint8_t>& data, std::uint32_t value) {
+        data.push_back(static_cast<std::uint8_t>((value >> 24) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 16) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(value & 0xFF));
+    };
+    auto putI16At = [](std::vector<std::uint8_t>& data, int offset, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((raw >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>(raw & 0xFF);
+    };
+    auto putI32At = [](std::vector<std::uint8_t>& data, int offset, std::uint32_t value) {
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((value >> 24) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>((value >> 16) & 0xFF);
+        data[static_cast<std::size_t>(offset + 2)] = static_cast<std::uint8_t>((value >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 3)] = static_cast<std::uint8_t>(value & 0xFF);
+    };
+    auto appendPascal = [&](std::vector<std::uint8_t>& data, const std::string& value) {
+        data.push_back(static_cast<std::uint8_t>(value.size()));
+        data.insert(data.end(), value.begin(), value.end());
+    };
+    auto makeMemberData = [&](MemberType type,
+                              const std::string& name,
+                              int scriptId,
+                              const std::vector<std::uint8_t>& specificData) {
+        std::vector<std::uint8_t> info;
+        appendI32(info, 20);
+        appendI32(info, 0);
+        appendI32(info, 0);
+        appendI32(info, 0);
+        appendI32(info, static_cast<std::uint32_t>(scriptId));
+        appendI16(info, 3);
+        appendI32(info, 0);
+        appendI32(info, 0);
+        appendI32(info, static_cast<std::uint32_t>(name.size() + 1));
+        appendI32(info, static_cast<std::uint32_t>(name.size() + 1));
+        appendPascal(info, name);
+
+        std::vector<std::uint8_t> data;
+        appendI32(data, static_cast<std::uint32_t>(libreshockwave::cast::code(type)));
+        appendI32(data, static_cast<std::uint32_t>(info.size()));
+        appendI32(data, static_cast<std::uint32_t>(specificData.size()));
+        data.insert(data.end(), info.begin(), info.end());
+        data.insert(data.end(), specificData.begin(), specificData.end());
+        return data;
+    };
+    auto buildRifx = [&](const std::vector<std::pair<std::string, std::vector<std::uint8_t>>>& chunks) {
+        constexpr int mmapOffset = 32;
+        const int mmapPayloadLength = 24 + static_cast<int>(chunks.size()) * 20;
+        int payloadStart = mmapOffset + 8 + mmapPayloadLength;
+
+        std::vector<int> offsets;
+        offsets.reserve(chunks.size());
+        for (const auto& chunk : chunks) {
+            offsets.push_back(payloadStart - 8);
+            payloadStart += static_cast<int>(chunk.second.size());
+        }
+
+        std::vector<std::uint8_t> data;
+        appendFourCC(data, "RIFX");
+        appendI32(data, 0);
+        appendFourCC(data, "MV93");
+        appendFourCC(data, "imap");
+        appendI32(data, 12);
+        appendI32(data, 1);
+        appendI32(data, mmapOffset);
+        appendI32(data, 0x04B1);
+        appendFourCC(data, "mmap");
+        appendI32(data, static_cast<std::uint32_t>(mmapPayloadLength));
+        appendI16(data, 24);
+        appendI16(data, 20);
+        appendI32(data, static_cast<std::uint32_t>(chunks.size()));
+        appendI32(data, static_cast<std::uint32_t>(chunks.size()));
+        appendI32(data, 0);
+        appendI32(data, 0);
+        appendI32(data, 0);
+        for (int index = 0; index < static_cast<int>(chunks.size()); ++index) {
+            appendI32(data, BinaryReader::fourCC(chunks[static_cast<std::size_t>(index)].first));
+            appendI32(data, static_cast<std::uint32_t>(chunks[static_cast<std::size_t>(index)].second.size()));
+            appendI32(data, static_cast<std::uint32_t>(offsets[static_cast<std::size_t>(index)]));
+            appendI16(data, 0);
+            appendI16(data, 0);
+            appendI32(data, 0);
+        }
+        for (const auto& chunk : chunks) {
+            data.insert(data.end(), chunk.second.begin(), chunk.second.end());
+        }
+        putI32At(data, 4, static_cast<std::uint32_t>(data.size() - 8));
+        return data;
+    };
+
+    std::vector<std::uint8_t> configData(80, 0);
+    putI16At(configData, 2, 0x04B1);
+    putI16At(configData, 36, 0x04B1);
+    putI16At(configData, 54, 30);
+
+    std::vector<std::uint8_t> contextData;
+    appendI32(contextData, 0);
+    appendI32(contextData, 0);
+    appendI32(contextData, 1);
+    appendI32(contextData, 0);
+    appendI16(contextData, 42);
+    appendI16(contextData, 0);
+    appendI32(contextData, 0);
+    appendI32(contextData, 0);
+    appendI32(contextData, 0);
+    appendI32(contextData, 2);
+    appendI16(contextData, 1);
+    appendI16(contextData, 0);
+    appendI16(contextData, 0);
+    appendI32(contextData, 0);
+    appendI32(contextData, 8);
+    appendI16(contextData, 0);
+    appendI16(contextData, 0);
+
+    std::vector<std::uint8_t> namesData(20, 0);
+    putI16At(namesData, 16, 20);
+    putI16At(namesData, 18, 2);
+    appendPascal(namesData, "go");
+    appendPascal(namesData, "stop");
+
+    std::vector<std::uint8_t> keyData;
+    appendI16(keyData, 12);
+    appendI16(keyData, 12);
+    appendI32(keyData, 4);
+    appendI32(keyData, 4);
+    appendI32(keyData, 8);
+    appendI32(keyData, 7);
+    appendI32(keyData, BinaryReader::fourCC("Lscr"));
+    appendI32(keyData, 10);
+    appendI32(keyData, 9);
+    appendI32(keyData, BinaryReader::fourCC("snd "));
+    appendI32(keyData, 12);
+    appendI32(keyData, 11);
+    appendI32(keyData, BinaryReader::fourCC("CLUT"));
+    appendI32(keyData, 14);
+    appendI32(keyData, 13);
+    appendI32(keyData, BinaryReader::fourCC("STXT"));
+
+    std::vector<std::uint8_t> bitmapSpecific;
+    appendI16(bitmapSpecific, 0x8018);
+    appendI16(bitmapSpecific, 0);
+    appendI16(bitmapSpecific, 0);
+    appendI16(bitmapSpecific, 16);
+    appendI16(bitmapSpecific, 24);
+    bitmapSpecific.insert(bitmapSpecific.end(), 8, 0);
+    appendI16(bitmapSpecific, 0);
+    appendI16(bitmapSpecific, 0);
+    bitmapSpecific.push_back(0);
+    bitmapSpecific.push_back(8);
+    appendI16(bitmapSpecific, 0);
+    appendI16(bitmapSpecific, 1);
+
+    std::vector<std::uint8_t> shapeSpecific;
+    appendI16(shapeSpecific, 1);
+    appendI16(shapeSpecific, 0);
+    appendI16(shapeSpecific, 0);
+    appendI16(shapeSpecific, 12);
+    appendI16(shapeSpecific, 34);
+    appendI16(shapeSpecific, 0);
+    shapeSpecific.insert(shapeSpecific.end(), {1, 0, 1, 1, 0});
+
+    std::vector<std::uint8_t> filmSpecific;
+    appendI16(filmSpecific, 0);
+    appendI16(filmSpecific, 0);
+    appendI16(filmSpecific, 12);
+    appendI16(filmSpecific, 34);
+    filmSpecific.insert(filmSpecific.end(), {0, 0, 0, 0});
+
+    std::vector<std::uint8_t> soundData(66, 0);
+    soundData[0x16] = 0x56;
+    soundData[0x17] = 0x22;
+    soundData[64] = 0x12;
+    soundData[65] = 0x34;
+
+    const std::vector<std::uint8_t> paletteData{
+        0x00, 0x00, 0x11, 0x00, 0x22, 0x00,
+        0x33, 0x00, 0x44, 0x00, 0x55, 0x00,
+    };
+
+    const std::string textValue = "Hello\r\nWorld";
+    std::vector<std::uint8_t> textData;
+    appendI32(textData, 8);
+    appendI32(textData, static_cast<std::uint32_t>(textValue.size()));
+    textData.insert(textData.end(), textValue.begin(), textValue.end());
+
+    auto file = DirectorFile::load(buildRifx({
+        {"DRCF", configData},
+        {"Lctx", contextData},
+        {"Lnam", namesData},
+        {"KEY*", keyData},
+        {"CASt", makeMemberData(MemberType::Bitmap, "BitmapMember", 0, bitmapSpecific)},
+        {"CASt", makeMemberData(MemberType::Shape, "ShapeMember", 0, shapeSpecific)},
+        {"CASt", makeMemberData(MemberType::FilmLoop, "LoopMember", 0, filmSpecific)},
+        {"CASt", makeMemberData(MemberType::Script, "ScriptMember", 1, {0x00, 0x03})},
+        {"Lscr", {}},
+        {"CASt", makeMemberData(MemberType::Sound, "SoundMember", 0, {})},
+        {"snd ", soundData},
+        {"CASt", makeMemberData(MemberType::Palette, "PaletteMember", 0, {})},
+        {"CLUT", paletteData},
+        {"CASt", makeMemberData(MemberType::Text, "TextMember", 0, {})},
+        {"STXT", textData},
+        {"CASt", makeMemberData(MemberType::Text, "", 0, {})},
+        {"CASt", makeMemberData(MemberType::Null, "Ignored", 0, {})},
+    }));
+
+    auto findMember = [&](int memberId) -> std::shared_ptr<CastMemberChunk> {
+        for (const auto& member : file->castMembers()) {
+            if (member != nullptr && member->id().value() == memberId) {
+                return member;
+            }
+        }
+        return nullptr;
+    };
+
+    const auto bitmapMember = findMember(4);
+    const auto shapeMember = findMember(5);
+    const auto filmMember = findMember(6);
+    const auto scriptMember = findMember(7);
+    const auto soundMember = findMember(9);
+    const auto paletteMember = findMember(11);
+    const auto textMember = findMember(13);
+    const auto unnamedMember = findMember(15);
+
+    assert(MemberResolver::findScriptForMember(*file, scriptMember)->id().value() == 8);
+    assert(MemberResolver::findSoundForMember(*file, soundMember)->sampleRate() == 22050);
+    assert(MemberResolver::findPaletteForMember(*file, paletteMember)->colorCount() == 2);
+    assert(MemberResolver::findTextForMember(*file, textMember)->text() == textValue);
+    assert(MemberResolver::findTextForMember(*file, unnamedMember) == nullptr);
+    assert(MemberResolver::getScriptTypeName(ScriptChunkType::Parent) == "Parent Script");
+
+    FileProcessor processor;
+    assert(processor.buildMemberDetails(*file, bitmapMember) == "24x16, 8-bit");
+    assert(processor.buildMemberDetails(*file, shapeMember) == "RECT 34x12");
+    assert(processor.buildMemberDetails(*file, filmMember) == "34x12");
+    assert(processor.buildMemberDetails(*file, scriptMember) == "Script");
+    assert(processor.buildMemberDetails(*file, soundMember) == "PCM, 22050Hz, 0.0s");
+    assert(processor.buildMemberDetails(*file, paletteMember) == "2 colors");
+    assert(processor.buildMemberDetails(*file, textMember) == "\"Hello World\"");
+
+    const auto members = processor.processMembers(*file);
+    assert(members.size() == 8);
+    auto unnamed = std::find_if(members.begin(), members.end(), [](const CastMemberInfo& info) {
+        return info.memberNum == 15;
+    });
+    assert(unnamed != members.end());
+    assert(unnamed->name == "Unnamed #15");
+    assert(unnamed->details.empty());
+    assert(std::none_of(members.begin(), members.end(), [](const CastMemberInfo& info) {
+        return info.memberNum == 16;
+    }));
 }
 
 void testLingoDatumTypes() {
@@ -21025,6 +21295,7 @@ int main() {
     testEditorFormattingAndScriptHelpers();
     testEditorModelAndSelectionFoundation();
     testEditorScoreDataHelpers();
+    testEditorScanningHelpers();
     testLingoDatumTypes();
     testLingoOpcodeHelpers();
     testLingoDecompilerNodeFoundation();

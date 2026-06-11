@@ -203,6 +203,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `editor::score::PlaybackHead` and `ScoreModel` port the Java score timeline state helpers with UI-neutral score colors.
 - `editor::score::FrameAppearanceFinder` and `ScoreDataBuilder` port Java's editor score usage summaries, score-grid cell construction, frame-label column names, frame-script interval display, cast-member display-name resolution, and palette/transition channel naming.
 - `editor::script::LingoKeywords` and `LingoTokenizer` port the Java editor syntax-highlighting keyword tables and token scanner, including the current Java case-sensitive table lookup behavior.
+- `editor::scanning::MemberResolver` and `FileProcessor` port Java's editor cast-member association and detail-building helpers for script, sound, palette, text/button, bitmap, shape, and film-loop members.
 
 ### Bitmap Colorizer
 
@@ -907,7 +908,7 @@ Result:
 - W3D entry, typed resource, transform, texture format, and lookup tests passed through the same CTest executable.
 - Generated font Base64/zlib decode, wrong-length, and invalid-deflate tests passed through the same CTest executable.
 - File/path fallback utilities, shared string display/HTML escaping helpers, string chunk counting/extraction helpers, Java-compatible ImageMethodDispatcher/StringMethodDispatcher/ListMethodDispatcher/MemberRegistryMethodDispatcher/PropListMethodDispatcher/ScriptInstanceMethodDispatcher/SoundChannelMethodDispatcher receiver methods, and script formatting utilities passed through the same CTest executable.
-- Editor channel-name formatting, palette descriptions, bytecode instruction formatting, preview text formatting, score color lookup, model record display strings, selection manager notifications, playback-head clamping, score model color storage, score appearance formatting, score-grid/frame-label/frame-script display helpers, Lingo keyword tables, and Lingo tokenizer behavior passed through the same CTest executable.
+- Editor channel-name formatting, palette descriptions, bytecode instruction formatting, preview text formatting, score color lookup, model record display strings, selection manager notifications, playback-head clamping, score model color storage, score appearance formatting, score-grid/frame-label/frame-script display helpers, member association/detail scanning, Lingo keyword tables, and Lingo tokenizer behavior passed through the same CTest executable.
 - BitmapColorizer 32-bit, indexed, foreground-only, packed-index, and ink predicate tests passed through the same CTest executable.
 - PfrBitReader byte, signed, skip, alignment, bit-buffer, and partial-EOF tests passed through the same CTest executable.
 - BitmapFont glyph drawing, overflow metrics, BDF parsing, direct PFR outline/bitmap/curve glyph rasterization, PFR1 metadata/character-record/simple/compound/curve-outline parsing, PFR-to-TTF table generation/cache registration, pure TTF bitmap rasterization with the bundled Verdana fixture, FontRegistry prebuilt-cache/PFR-registration/rasterization/size-aware embedded-TTF/alias/Mac fallback behavior, Mac/Windows platform font bundle selection and caching, and SimpleTextRenderer bitmap-font/built-in-fallback/wrapping/underline/caret/XMED per-span/styled-underline rendering behavior passed through the same CTest executable.
@@ -1270,4 +1271,5 @@ Result:
 - `eaf8d1fb Port C++ editor utility helpers`
 - `d8332f2b Port C++ editor model selection`
 - `d9cf18da Port C++ editor score data helpers`
-- Current checkpoint commit message: `Port C++ editor formatting helpers`
+- `762ed8b1 Port C++ editor formatting helpers`
+- Current checkpoint commit message: `Port C++ editor scanning helpers`
