@@ -333,6 +333,15 @@ bool SpriteProperties::setSpriteProp(int spriteNum, std::string_view propName, c
         }
         return true;
     }
+    if (prop == "castlibnum") {
+        const int castLib = value.intValue();
+        const int memberNum = sprite->effectiveCastMember();
+        sprite->setDynamicMember(castLib, memberNum);
+        if (memberNum > 0) {
+            autoSizeSprite(*sprite, castLib, memberNum, false);
+        }
+        return true;
+    }
     if (prop == "color") {
         return setColorValue(value, [sprite, value](int color) {
             sprite->setColorDatum(color, normalizedColorDatum(value, color));
@@ -558,7 +567,7 @@ lingo::Datum SpriteProperties::defaultProp(int spriteNum, std::string_view prop)
     if (prop == "puppet" || prop == "visible") return lingo::Datum::of(0);
     if (prop == "loch" || prop == "locv" || prop == "width" || prop == "height" ||
         prop == "left" || prop == "top" || prop == "ink" || prop == "castnum" ||
-        prop == "membernum" || prop == "blend" || prop == "stretch" || prop == "locz" ||
+        prop == "membernum" || prop == "castlibnum" || prop == "blend" || prop == "stretch" || prop == "locz" ||
         prop == "forecolor" || prop == "backcolor") {
         return lingo::Datum::of(0);
     }
