@@ -487,6 +487,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `score::ScoreNavigator` ports score span construction, frame-label lookup, active sprite/channel queries, marker resolution, and frame counts.
 - `lingo::LingoValueParser` ports Java-style literal parsing for saved behavior property lists, nested list/proplist values, symbols, strings, numbers, colors, points, rectangles, and partial expression fallback.
 - `ScoreNavigator` now decodes saved behavior parameter score entries through the C++ value parser and attaches parsed PropList parameters to behavior refs.
+- C++ parity coverage now mirrors Java `LingoValueParser` regressions for quoted-key prop lists, bare-key nested dynamic asset prop lists, asset index class literals, and flat quoted/mixed literal lists.
 
 ### Debug Breakpoint Foundation
 

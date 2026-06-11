@@ -11295,6 +11295,60 @@ void testScoreNavigationFoundation() {
     assert(layerLiteral.isPropList());
     assert(layerLiteral.propListValue().get(Datum::symbol("main")).listValue().count() == 1);
 
+    const Datum quotedKeyPropList = LingoValueParser::parseWithPartial(
+        "[\"a\": [:], \"b\": [:], \"c\": [#ink: 33]]");
+    assert(quotedKeyPropList.isPropList());
+    assert(quotedKeyPropList.propListValue().get(Datum::of(std::string("a"))).isPropList());
+    assert(quotedKeyPropList.propListValue().get(Datum::of(std::string("b"))).isPropList());
+    const Datum quotedNested = quotedKeyPropList.propListValue().get(Datum::of(std::string("c")));
+    assert(quotedNested.isPropList());
+    assert(quotedNested.propListValue().get(Datum::symbol("ink")).intValue() == 33);
+
+    const std::string dynamicAssetValue =
+        "[\r"
+        "states:[1,2],\r"
+        "statestrings:[ \"off\", \"on\" ],\r"
+        "layers:[ \r"
+        "a:[ [ frames:[ 0 ] ] ], \r"
+        "b:[ [ frames:[ 0 ] ], [ loop:0, delay:2, frames:[ 1, 2, 3 ] ] ]\r"
+        "]\r"
+        "]";
+    const Datum dynamicAsset = LingoValueParser::parseWithPartial(dynamicAssetValue);
+    assert(dynamicAsset.isPropList());
+    assert(dynamicAsset.propListValue().get(Datum::of(std::string("states"))).listValue().count() == 2);
+    const Datum assetLayers = dynamicAsset.propListValue().get(Datum::of(std::string("layers")));
+    assert(assetLayers.isPropList());
+    const Datum bLayersDatum = assetLayers.propListValue().get(Datum::of(std::string("b")));
+    assert(bLayersDatum.isList());
+    assert(bLayersDatum.listValue().count() == 2);
+    const Datum animatedLayer = bLayersDatum.listValue().items()[1];
+    assert(animatedLayer.isPropList());
+    assert(animatedLayer.propListValue().get(Datum::of(std::string("loop"))).intValue() == 0);
+    assert(animatedLayer.propListValue().get(Datum::of(std::string("delay"))).intValue() == 2);
+    assert(animatedLayer.propListValue().get(Datum::of(std::string("frames"))).isList());
+
+    const Datum assetIndexLine = LingoValueParser::parseWithPartial(
+        "[#id: \"window_70s_wide\", #classes: [\"Item Object Class\", \"Item Object Extension Class\", \"Window Class\"]]");
+    assert(assetIndexLine.isPropList());
+    assert(assetIndexLine.propListValue().get(Datum::symbol("id")).stringValue() == "window_70s_wide");
+    const Datum assetClasses = assetIndexLine.propListValue().get(Datum::symbol("classes"));
+    assert(assetClasses.isList());
+    assert(assetClasses.listValue().items()[1].stringValue() == "Item Object Extension Class");
+
+    const Datum flatQuotedList = LingoValueParser::parseWithPartial(
+        "[\"Manager Template Class\",\"Variable Container Class\"]");
+    assert(flatQuotedList.isList());
+    assert(flatQuotedList.listValue().count() == 2);
+    assert(flatQuotedList.listValue().items()[0].stringValue() == "Manager Template Class");
+    assert(flatQuotedList.listValue().items()[1].stringValue() == "Variable Container Class");
+
+    const Datum flatMixedList = LingoValueParser::parseWithPartial("[#core, 7, 3.5, \"Broker Manager Class\"]");
+    assert(flatMixedList.isList());
+    assert(flatMixedList.listValue().items()[0].asSymbol()->name == "core");
+    assert(flatMixedList.listValue().items()[1].intValue() == 7);
+    assert(std::fabs(flatMixedList.listValue().items()[2].floatValue() - 3.5F) < 0.0001F);
+    assert(flatMixedList.listValue().items()[3].stringValue() == "Broker Manager Class");
+
     ScoreChunk::ScoreFrameData frameData = ScoreChunk::ScoreFrameData::empty();
     frameData.header.frameCount = 12;
     ScoreChunk::Header header{0, 0, 0, static_cast<int>(entries.size()), 0, 0};
