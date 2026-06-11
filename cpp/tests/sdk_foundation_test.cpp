@@ -82,7 +82,9 @@
 #include "libreshockwave/editor/selection/SelectionEvent.hpp"
 #include "libreshockwave/editor/selection/SelectionListener.hpp"
 #include "libreshockwave/editor/selection/SelectionManager.hpp"
+#include "libreshockwave/editor/score/FrameAppearanceFinder.hpp"
 #include "libreshockwave/editor/score/PlaybackHead.hpp"
+#include "libreshockwave/editor/score/ScoreDataBuilder.hpp"
 #include "libreshockwave/editor/score/ScoreColors.hpp"
 #include "libreshockwave/editor/score/ScoreModel.hpp"
 #include "libreshockwave/editor/script/LingoKeywords.hpp"
@@ -275,7 +277,9 @@ using libreshockwave::editor::selection::SelectionEvent;
 using libreshockwave::editor::selection::SelectionListener;
 using libreshockwave::editor::selection::SelectionManager;
 using libreshockwave::editor::selection::SelectionType;
+using libreshockwave::editor::score::FrameAppearanceFinder;
 using libreshockwave::editor::score::PlaybackHead;
+using libreshockwave::editor::score::ScoreDataBuilder;
 using libreshockwave::editor::score::ScoreColor;
 using libreshockwave::editor::score::ScoreColors;
 using libreshockwave::editor::score::ScoreModel;
@@ -1395,6 +1399,263 @@ void testEditorModelAndSelectionFoundation() {
     manager.select(SelectionEvent::castMember(1, 9));
     assert(first.events.size() == 3);
     assert(second.events.size() == 3);
+}
+
+void testEditorScoreDataHelpers() {
+    FrameAppearanceFinder finder;
+    ScoreDataBuilder builder;
+
+    assert(finder.format({}) == "Not used in score");
+    assert(finder.format({
+        FrameAppearance{1, 6, "Ch 1", "", 0, 0},
+        FrameAppearance{2, 6, "Ch 1", "", 0, 0},
+        FrameAppearance{4, 7, "Ch 2", "", 0, 0},
+        FrameAppearance{5, 7, "Ch 2", "", 0, 0},
+        FrameAppearance{8, 8, "Ch 3", "", 0, 0},
+        FrameAppearance{10, 9, "Ch 4", "", 0, 0},
+    }) == "Frames 1-2 (Ch 1), Frames 4-5 (Ch 2), Frame 8 (Ch 3), Frame 10 (Ch 4)");
+    assert(finder.format({
+        FrameAppearance{1, 6, "Ch 1", "", 0, 0},
+        FrameAppearance{3, 6, "Ch 1", "", 0, 0},
+        FrameAppearance{5, 6, "Ch 1", "", 0, 0},
+        FrameAppearance{7, 6, "Ch 1", "", 0, 0},
+        FrameAppearance{9, 6, "Ch 1", "", 0, 0},
+        FrameAppearance{11, 6, "Ch 1", "", 0, 0},
+    }) == "Frame 1 (Ch 1), Frame 3 (Ch 1), Frame 5 (Ch 1) ... and 3 more");
+
+    DirectorFile emptyFile(ByteOrder::BigEndian, false, 0, ChunkType::MV93);
+    assert(finder.find(emptyFile, 1).empty());
+    assert(builder.buildScoreData(emptyFile).empty());
+    assert(builder.buildColumnNames(emptyFile).empty());
+
+    auto appendFourCC = [](std::vector<std::uint8_t>& data, const std::string& value) {
+        data.insert(data.end(), value.begin(), value.end());
+    };
+    auto appendI16 = [](std::vector<std::uint8_t>& data, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data.push_back(static_cast<std::uint8_t>((raw >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(raw & 0xFF));
+    };
+    auto appendI32 = [](std::vector<std::uint8_t>& data, std::uint32_t value) {
+        data.push_back(static_cast<std::uint8_t>((value >> 24) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 16) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(value & 0xFF));
+    };
+    auto putI16At = [](std::vector<std::uint8_t>& data, int offset, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((raw >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>(raw & 0xFF);
+    };
+    auto putI32At = [](std::vector<std::uint8_t>& data, int offset, std::uint32_t value) {
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((value >> 24) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>((value >> 16) & 0xFF);
+        data[static_cast<std::size_t>(offset + 2)] = static_cast<std::uint8_t>((value >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 3)] = static_cast<std::uint8_t>(value & 0xFF);
+    };
+    auto appendPascal = [&](std::vector<std::uint8_t>& data, const std::string& value) {
+        data.push_back(static_cast<std::uint8_t>(value.size()));
+        data.insert(data.end(), value.begin(), value.end());
+    };
+    auto appendDelta = [&](std::vector<std::uint8_t>& data,
+                           int channelOffset,
+                           const std::vector<std::uint8_t>& payload) {
+        appendI16(data, static_cast<int>(payload.size()));
+        appendI16(data, channelOffset);
+        data.insert(data.end(), payload.begin(), payload.end());
+    };
+    auto makeChannelData = [&](int castLib, int castMember, int posX, int posY, int width, int height) {
+        std::vector<std::uint8_t> channel(28, 0);
+        channel[0] = 1;
+        channel[1] = 8;
+        channel[4] = static_cast<std::uint8_t>((castLib >> 8) & 0xFF);
+        channel[5] = static_cast<std::uint8_t>(castLib & 0xFF);
+        channel[6] = static_cast<std::uint8_t>((castMember >> 8) & 0xFF);
+        channel[7] = static_cast<std::uint8_t>(castMember & 0xFF);
+        channel[12] = static_cast<std::uint8_t>((posY >> 8) & 0xFF);
+        channel[13] = static_cast<std::uint8_t>(posY & 0xFF);
+        channel[14] = static_cast<std::uint8_t>((posX >> 8) & 0xFF);
+        channel[15] = static_cast<std::uint8_t>(posX & 0xFF);
+        channel[16] = static_cast<std::uint8_t>((height >> 8) & 0xFF);
+        channel[17] = static_cast<std::uint8_t>(height & 0xFF);
+        channel[18] = static_cast<std::uint8_t>((width >> 8) & 0xFF);
+        channel[19] = static_cast<std::uint8_t>(width & 0xFF);
+        return channel;
+    };
+    auto makeMemberData = [&](MemberType type,
+                              const std::string& name,
+                              const std::vector<std::uint8_t>& specificData) {
+        std::vector<std::uint8_t> info;
+        appendI32(info, 20);
+        appendI32(info, 0);
+        appendI32(info, 0);
+        appendI32(info, 0);
+        appendI32(info, 0);
+        appendI16(info, 3);
+        appendI32(info, 0);
+        appendI32(info, 0);
+        appendI32(info, static_cast<std::uint32_t>(name.size() + 1));
+        appendI32(info, static_cast<std::uint32_t>(name.size() + 1));
+        appendPascal(info, name);
+
+        std::vector<std::uint8_t> data;
+        appendI32(data, static_cast<std::uint32_t>(libreshockwave::cast::code(type)));
+        appendI32(data, static_cast<std::uint32_t>(info.size()));
+        appendI32(data, static_cast<std::uint32_t>(specificData.size()));
+        data.insert(data.end(), info.begin(), info.end());
+        data.insert(data.end(), specificData.begin(), specificData.end());
+        return data;
+    };
+    auto buildRifx = [&](const std::vector<std::pair<std::string, std::vector<std::uint8_t>>>& chunks) {
+        constexpr int mmapOffset = 32;
+        const int mmapPayloadLength = 24 + static_cast<int>(chunks.size()) * 20;
+        int payloadStart = mmapOffset + 8 + mmapPayloadLength;
+
+        std::vector<int> offsets;
+        offsets.reserve(chunks.size());
+        for (const auto& chunk : chunks) {
+            offsets.push_back(payloadStart - 8);
+            payloadStart += static_cast<int>(chunk.second.size());
+        }
+
+        std::vector<std::uint8_t> data;
+        appendFourCC(data, "RIFX");
+        appendI32(data, 0);
+        appendFourCC(data, "MV93");
+        appendFourCC(data, "imap");
+        appendI32(data, 12);
+        appendI32(data, 1);
+        appendI32(data, mmapOffset);
+        appendI32(data, 0x04B1);
+        appendFourCC(data, "mmap");
+        appendI32(data, static_cast<std::uint32_t>(mmapPayloadLength));
+        appendI16(data, 24);
+        appendI16(data, 20);
+        appendI32(data, static_cast<std::uint32_t>(chunks.size()));
+        appendI32(data, static_cast<std::uint32_t>(chunks.size()));
+        appendI32(data, 0);
+        appendI32(data, 0);
+        appendI32(data, 0);
+        for (int index = 0; index < static_cast<int>(chunks.size()); ++index) {
+            appendI32(data, BinaryReader::fourCC(chunks[static_cast<std::size_t>(index)].first));
+            appendI32(data, static_cast<std::uint32_t>(chunks[static_cast<std::size_t>(index)].second.size()));
+            appendI32(data, static_cast<std::uint32_t>(offsets[static_cast<std::size_t>(index)]));
+            appendI16(data, 0);
+            appendI16(data, 0);
+            appendI32(data, 0);
+        }
+        for (const auto& chunk : chunks) {
+            data.insert(data.end(), chunk.second.begin(), chunk.second.end());
+        }
+        putI32At(data, 4, static_cast<std::uint32_t>(data.size() - 8));
+        return data;
+    };
+
+    std::vector<std::uint8_t> configData(80, 0);
+    putI16At(configData, 2, 0x04B1);
+    putI16At(configData, 26, 1);
+    putI16At(configData, 28, 8);
+    putI16At(configData, 36, 0x04B1);
+    putI16At(configData, 54, 24);
+
+    std::vector<std::uint8_t> castData(12 * 4, 0);
+    putI32At(castData, 11 * 4, 3);
+
+    std::vector<std::uint8_t> frameEntry;
+    appendI32(frameEntry, 0);
+    appendI32(frameEntry, 0);
+    appendI32(frameEntry, 2);
+    appendI16(frameEntry, 14);
+    appendI16(frameEntry, 28);
+    appendI16(frameEntry, 7);
+    appendI16(frameEntry, 0);
+
+    std::vector<std::uint8_t> frame0;
+    appendDelta(frame0, 0, makeChannelData(1, 99, 0, 0, 1, 1));
+    appendDelta(frame0, 6 * 28, makeChannelData(1, 1, 60, 50, 30, 20));
+    appendI16(frameEntry, static_cast<int>(frame0.size()) + 2);
+    frameEntry.insert(frameEntry.end(), frame0.begin(), frame0.end());
+    appendI16(frameEntry, 2);
+
+    std::vector<std::uint8_t> primary;
+    appendI32(primary, 1);
+    appendI32(primary, 2);
+    appendI32(primary, 0);
+    appendI32(primary, 0);
+    appendI32(primary, 0);
+    appendI16(primary, 0);
+    appendI32(primary, 0);
+    appendI16(primary, 0);
+    appendI32(primary, 0);
+    appendI32(primary, 0);
+    appendI32(primary, 0);
+    appendI32(primary, 0);
+
+    std::vector<std::uint8_t> secondary;
+    appendI16(secondary, 1);
+    appendI16(secondary, 12);
+    appendI32(secondary, 0);
+
+    std::vector<std::uint8_t> scoreData;
+    appendI32(scoreData, static_cast<std::uint32_t>(frameEntry.size() + primary.size() + secondary.size()));
+    appendI32(scoreData, 0);
+    appendI32(scoreData, 0);
+    appendI32(scoreData, 4);
+    appendI32(scoreData, 0);
+    appendI32(scoreData, static_cast<std::uint32_t>(frameEntry.size() + primary.size() + secondary.size()));
+    appendI32(scoreData, 0);
+    appendI32(scoreData, static_cast<std::uint32_t>(frameEntry.size()));
+    appendI32(scoreData, static_cast<std::uint32_t>(frameEntry.size()));
+    appendI32(scoreData, static_cast<std::uint32_t>(frameEntry.size() + primary.size()));
+    appendI32(scoreData, static_cast<std::uint32_t>(frameEntry.size() + primary.size() + secondary.size()));
+    scoreData.insert(scoreData.end(), frameEntry.begin(), frameEntry.end());
+    scoreData.insert(scoreData.end(), primary.begin(), primary.end());
+    scoreData.insert(scoreData.end(), secondary.begin(), secondary.end());
+
+    std::vector<std::uint8_t> labelsData;
+    appendI16(labelsData, 2);
+    appendI16(labelsData, 1);
+    appendI16(labelsData, 0);
+    appendI16(labelsData, 2);
+    appendI16(labelsData, 6);
+    appendI32(labelsData, 12);
+    labelsData.insert(labelsData.end(), {'S', 't', 'a', 'r', 't', '\0', 'M', 'i', 'd', 'd', 'l', 'e'});
+
+    auto file = DirectorFile::load(buildRifx({
+        {"DRCF", configData},
+        {"CAS*", castData},
+        {"CASt", makeMemberData(MemberType::Bitmap, "Door", {})},
+        {"CASt", makeMemberData(MemberType::Script, "FrameScript", {0x00, 0x03})},
+        {"VWSC", scoreData},
+        {"VWLB", labelsData},
+    }));
+    assert(file->hasScore());
+    assert(file->scoreChunk()->getFrameCount() == 2);
+    assert(file->scoreChunk()->getChannelCount() == 7);
+
+    const auto appearances = finder.find(*file, 2);
+    assert(appearances.size() == 2);
+    assert(appearances[0] == (FrameAppearance{1, 6, "Ch 1", "Start", 60, 50}));
+    assert(appearances[1] == (FrameAppearance{2, 6, "Ch 1", "Middle", 60, 50}));
+    assert(finder.format(appearances) == "Frames 1-2 (Ch 1)");
+    assert(finder.find(*file, 99).empty());
+
+    const auto grid = builder.buildScoreData(*file);
+    assert(grid.size() == 7);
+    assert(grid[0].size() == 2);
+    assert(grid[0][0].has_value());
+    assert(grid[0][0]->memberName == "#3 FrameScript");
+    assert(grid[0][1]->memberName == "#3 FrameScript");
+    assert(grid[6][0].has_value());
+    assert(grid[6][0]->castLib == 1);
+    assert(grid[6][0]->castMember == 1);
+    assert(grid[6][0]->memberName == "#2 Door");
+    assert(grid[6][0]->posX == 60);
+    assert(grid[6][0]->posY == 50);
+    assert(grid[6][0]->width == 30);
+    assert(grid[6][0]->height == 20);
+    assert(grid[6][1]->memberName == "#2 Door");
+    assert((builder.buildColumnNames(*file) == std::vector<std::string>{"1 [Start]", "2 [Middle]"}));
 }
 
 void testLingoDatumTypes() {
@@ -20679,6 +20940,7 @@ int main() {
     testUtilityFormatting();
     testEditorFormattingAndScriptHelpers();
     testEditorModelAndSelectionFoundation();
+    testEditorScoreDataHelpers();
     testLingoDatumTypes();
     testLingoOpcodeHelpers();
     testLingoDecompilerNodeFoundation();

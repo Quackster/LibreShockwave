@@ -60,7 +60,9 @@ add_library(libreshockwave
     src/editor/model/ScoreCellData.cpp
     src/editor/selection/SelectionEvent.cpp
     src/editor/selection/SelectionManager.cpp
+    src/editor/score/FrameAppearanceFinder.cpp
     src/editor/score/PlaybackHead.cpp
+    src/editor/score/ScoreDataBuilder.cpp
     src/editor/score/ScoreColors.cpp
     src/editor/score/ScoreModel.cpp
     src/editor/script/LingoKeywords.cpp
