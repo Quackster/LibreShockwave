@@ -4,6 +4,7 @@
 #include <utility>
 
 #include "libreshockwave/lingo/vm/datum/DatumFormatter.hpp"
+#include "libreshockwave/player/MovieProperties.hpp"
 
 namespace libreshockwave::editor::debug {
 namespace {
@@ -13,6 +14,18 @@ constexpr std::array<const char*, 3> VARIABLES_COLUMNS{"Name", "Type", "Value"};
 constexpr std::array<const char*, 3> WATCHES_COLUMNS{"Expression", "Type", "Value"};
 constexpr std::array<const char*, 5> TIMEOUT_COLUMNS{"Name", "Period (ms)", "Handler", "Target", "Persistent"};
 constexpr std::array<const char*, 2> MOVIE_PROPERTIES_COLUMNS{"Property", "Value"};
+constexpr std::array<const char*, 10> OBJECTS_MOVIE_PROPERTIES{
+    "frame",
+    "lastFrame",
+    "tempo",
+    "timer",
+    "ticks",
+    "movieName",
+    "platform",
+    "exitLock",
+    "itemDelimiter",
+    "puppetTempo"
+};
 
 template <std::size_t N>
 [[nodiscard]] std::string columnNameAt(const std::array<const char*, N>& columns, int column) {
@@ -256,6 +269,59 @@ const lingo::Datum* MoviePropertiesTableModel::datum(int row) const {
 std::string MoviePropertiesTableModel::name(int row) const {
     const auto* property = rowAt(properties_, row);
     return property ? property->first : std::string{};
+}
+
+std::vector<std::string> DebugObjectsSnapshotBuilder::moviePropertyNames() {
+    std::vector<std::string> names;
+    names.reserve(OBJECTS_MOVIE_PROPERTIES.size());
+    for (const auto* name : OBJECTS_MOVIE_PROPERTIES) {
+        names.emplace_back(name);
+    }
+    return names;
+}
+
+std::vector<std::pair<std::string, lingo::Datum>>
+DebugObjectsSnapshotBuilder::moviePropertyEntries(const player::MovieProperties& movieProperties) {
+    std::vector<std::pair<std::string, lingo::Datum>> entries;
+    entries.reserve(OBJECTS_MOVIE_PROPERTIES.size());
+    for (const auto* name : OBJECTS_MOVIE_PROPERTIES) {
+        entries.emplace_back(name, movieProperties.getMovieProp(name));
+    }
+    return entries;
+}
+
+std::vector<TimeoutSnapshot>
+DebugObjectsSnapshotBuilder::timeoutSnapshots(const player::timeout::TimeoutManager& timeoutManager) {
+    const auto names = timeoutManager.getTimeoutNames();
+    std::vector<TimeoutSnapshot> snapshots;
+    snapshots.reserve(names.size());
+    for (const auto& name : names) {
+        const auto periodDatum = timeoutManager.getTimeoutProp(name, "period");
+        const auto handlerDatum = timeoutManager.getTimeoutProp(name, "handler");
+        const auto target = timeoutManager.getTimeoutProp(name, "target");
+        const auto persistentDatum = timeoutManager.getTimeoutProp(name, "persistent");
+
+        const auto* period = periodDatum.asInt();
+        const auto* handler = handlerDatum.asSymbol();
+        snapshots.push_back(TimeoutSnapshot{
+            name,
+            period != nullptr ? period->value : 0,
+            handler != nullptr ? handler->name : handlerDatum.stringValue(),
+            target,
+            persistentDatum.boolValue()
+        });
+    }
+    return snapshots;
+}
+
+DebugObjectsSnapshot DebugObjectsSnapshotBuilder::snapshot(const player::timeout::TimeoutManager& timeoutManager,
+                                                           const std::map<std::string, lingo::Datum>& globals,
+                                                           const player::MovieProperties& movieProperties) {
+    return DebugObjectsSnapshot{
+        timeoutSnapshots(timeoutManager),
+        globals,
+        moviePropertyEntries(movieProperties)
+    };
 }
 
 } // namespace libreshockwave::editor::debug

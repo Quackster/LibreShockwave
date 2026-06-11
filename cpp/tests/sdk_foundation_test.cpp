@@ -347,6 +347,7 @@ using libreshockwave::editor::debug::DebugShortcut;
 using libreshockwave::editor::debug::DebugToolbarButton;
 using libreshockwave::editor::debug::DebugToolbarLayout;
 using libreshockwave::editor::debug::DatumDetailsView;
+using libreshockwave::editor::debug::DebugObjectsSnapshotBuilder;
 using libreshockwave::editor::debug::DebugInspectionModels;
 using libreshockwave::editor::debug::DebugInspectionTable;
 using libreshockwave::editor::debug::DebugObjectSectionView;
@@ -3736,6 +3737,76 @@ void testEditorDebugDataModels() {
     assert(moviePropsModel.name(99).empty());
     assert(moviePropsModel.datum(99) == nullptr);
     assert(moviePropsModel.valueAt(99, 0).empty());
+
+    TimeoutManager objectTimeouts;
+    (void)objectTimeouts.createTimeout("alpha", 150, "onAlpha", Datum::of(std::string("sprite-target")));
+    (void)objectTimeouts.createTimeout("beta", 250, "onBeta", Datum::of(42));
+    assert(objectTimeouts.setTimeoutProp("alpha", "persistent", Datum::TRUE));
+
+    MovieProperties objectMovieProperties;
+    objectMovieProperties.setEffectiveFrameSupplier([]() { return 18; });
+    objectMovieProperties.setFrameCountSupplier([]() { return 90; });
+    objectMovieProperties.setTempoSupplier([]() { return 24; });
+    objectMovieProperties.setItemDelimiter('|');
+    objectMovieProperties.setPuppetTempo(30);
+
+    const auto objectsMoviePropertyNames = DebugObjectsSnapshotBuilder::moviePropertyNames();
+    assert((objectsMoviePropertyNames == std::vector<std::string>{
+        "frame",
+        "lastFrame",
+        "tempo",
+        "timer",
+        "ticks",
+        "movieName",
+        "platform",
+        "exitLock",
+        "itemDelimiter",
+        "puppetTempo"
+    }));
+
+    const auto objectTimeoutSnapshots = DebugObjectsSnapshotBuilder::timeoutSnapshots(objectTimeouts);
+    assert(objectTimeoutSnapshots.size() == 2);
+    assert(objectTimeoutSnapshots[0].name == "alpha");
+    assert(objectTimeoutSnapshots[0].periodMs == 150);
+    assert(objectTimeoutSnapshots[0].handler == "onAlpha");
+    assert(objectTimeoutSnapshots[0].target.stringValue() == "sprite-target");
+    assert(objectTimeoutSnapshots[0].persistent);
+    assert(objectTimeoutSnapshots[1].name == "beta");
+    assert(objectTimeoutSnapshots[1].periodMs == 250);
+    assert(objectTimeoutSnapshots[1].handler == "onBeta");
+    assert(objectTimeoutSnapshots[1].target.intValue() == 42);
+    assert(!objectTimeoutSnapshots[1].persistent);
+
+    const auto objectMoviePropEntries =
+        DebugObjectsSnapshotBuilder::moviePropertyEntries(objectMovieProperties);
+    assert(objectMoviePropEntries.size() == objectsMoviePropertyNames.size());
+    assert(objectMoviePropEntries[0].first == "frame");
+    assert(objectMoviePropEntries[0].second.intValue() == 18);
+    assert(objectMoviePropEntries[1].first == "lastFrame");
+    assert(objectMoviePropEntries[1].second.intValue() == 90);
+    assert(objectMoviePropEntries[2].first == "tempo");
+    assert(objectMoviePropEntries[2].second.intValue() == 24);
+    assert(objectMoviePropEntries[6].first == "platform");
+    assert(objectMoviePropEntries[6].second.stringValue() == "Windows,32");
+    assert(objectMoviePropEntries[8].first == "itemDelimiter");
+    assert(objectMoviePropEntries[8].second.stringValue() == "|");
+    assert(objectMoviePropEntries[9].first == "puppetTempo");
+    assert(objectMoviePropEntries[9].second.intValue() == 30);
+
+    const auto objectSnapshot = DebugObjectsSnapshotBuilder::snapshot(
+        objectTimeouts,
+        std::map<std::string, Datum>{{"gMovie", Datum::of(std::string("Lobby"))}},
+        objectMovieProperties);
+    assert(objectSnapshot.timeouts == objectTimeoutSnapshots);
+    assert(objectSnapshot.globals.at("gMovie").stringValue() == "Lobby");
+    assert(objectSnapshot.movieProperties == objectMoviePropEntries);
+
+    moviePropsModel.setProperties(objectSnapshot.movieProperties);
+    assert(moviePropsModel.rowCount() == 10);
+    assert(moviePropsModel.valueAt(0, 0) == "frame");
+    assert(moviePropsModel.valueAt(0, 1) == "18");
+    assert(moviePropsModel.valueAt(8, 0) == "itemDelimiter");
+    assert(moviePropsModel.valueAt(8, 1) == "\"|\"");
 
     const auto stateTabs = DebugInspectionModels::stateTabsView();
     assert((stateTabs.tabTitles == std::vector<std::string>{"Stack", "Locals", "Globals", "Watches", "Objects"}));

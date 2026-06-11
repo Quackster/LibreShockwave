@@ -9,6 +9,10 @@
 #include "libreshockwave/player/debug/WatchExpression.hpp"
 #include "libreshockwave/player/timeout/TimeoutManager.hpp"
 
+namespace libreshockwave::player {
+class MovieProperties;
+} // namespace libreshockwave::player
+
 namespace libreshockwave::editor::debug {
 
 class StackTableModel {
@@ -96,6 +100,26 @@ public:
 
 private:
     std::vector<std::pair<std::string, lingo::Datum>> properties_;
+};
+
+struct DebugObjectsSnapshot {
+    std::vector<TimeoutSnapshot> timeouts;
+    std::map<std::string, lingo::Datum> globals;
+    std::vector<std::pair<std::string, lingo::Datum>> movieProperties;
+
+    friend bool operator==(const DebugObjectsSnapshot&, const DebugObjectsSnapshot&) = default;
+};
+
+class DebugObjectsSnapshotBuilder {
+public:
+    [[nodiscard]] static std::vector<std::string> moviePropertyNames();
+    [[nodiscard]] static std::vector<std::pair<std::string, lingo::Datum>>
+    moviePropertyEntries(const player::MovieProperties& movieProperties);
+    [[nodiscard]] static std::vector<TimeoutSnapshot>
+    timeoutSnapshots(const player::timeout::TimeoutManager& timeoutManager);
+    [[nodiscard]] static DebugObjectsSnapshot snapshot(const player::timeout::TimeoutManager& timeoutManager,
+                                                       const std::map<std::string, lingo::Datum>& globals,
+                                                       const player::MovieProperties& movieProperties);
 };
 
 } // namespace libreshockwave::editor::debug
