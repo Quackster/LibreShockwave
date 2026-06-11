@@ -100,6 +100,16 @@ struct GtkPanelRowSpec {
     friend bool operator==(const GtkPanelRowSpec&, const GtkPanelRowSpec&) = default;
 };
 
+struct GtkWorkbenchFocusActionSpec {
+    std::string name;
+    std::string detailedName;
+    std::string panelId;
+    bool enabled{false};
+    bool active{false};
+
+    friend bool operator==(const GtkWorkbenchFocusActionSpec&, const GtkWorkbenchFocusActionSpec&) = default;
+};
+
 struct GtkWorkbenchPanelSpec {
     std::string panelId;
     GtkWorkbenchPanelKind kind{GtkWorkbenchPanelKind::Generic};
@@ -175,6 +185,7 @@ struct GtkShellViewState {
     std::vector<GtkPanelRowSpec> panelRows;
     std::vector<GtkWorkbenchPanelSpec> workbenchPanels;
     GtkWorkbenchLayoutSpec workbenchLayout;
+    std::vector<GtkWorkbenchFocusActionSpec> workbenchFocusActions;
 
     friend bool operator==(const GtkShellViewState&, const GtkShellViewState&) = default;
 };
@@ -200,6 +211,8 @@ public:
                                                                            const EditorContextModel& contextModel);
     [[nodiscard]] static GtkWorkbenchLayoutSpec workbenchLayout(const EditorFramePanelModel& frameModel,
                                                                const EditorContextModel& contextModel);
+    [[nodiscard]] static std::vector<GtkWorkbenchFocusActionSpec> workbenchFocusActions(
+        const EditorFramePanelModel& frameModel);
 };
 
 class EditorGtkShellState {
@@ -220,6 +233,7 @@ public:
     [[nodiscard]] std::vector<GtkPanelRowSpec> panelRows() const;
     [[nodiscard]] std::vector<GtkWorkbenchPanelSpec> workbenchPanels() const;
     [[nodiscard]] GtkWorkbenchLayoutSpec workbenchLayout() const;
+    [[nodiscard]] std::vector<GtkWorkbenchFocusActionSpec> workbenchFocusActions() const;
     [[nodiscard]] GtkShellViewState viewState() const;
 
     void setPreferences(PreferencesModel preferences);

@@ -382,6 +382,25 @@ GtkWorkbenchLayoutSpec EditorGtkShellModel::workbenchLayout(const EditorFramePan
     return layout;
 }
 
+std::vector<GtkWorkbenchFocusActionSpec> EditorGtkShellModel::workbenchFocusActions(
+    const EditorFramePanelModel& frameModel) {
+    const auto rows = panelRows(frameModel);
+    std::vector<GtkWorkbenchFocusActionSpec> result;
+    result.reserve(rows.size());
+    for (const auto& row : rows) {
+        const bool enabled = row.visible && !row.iconified;
+        const auto name = workbenchPanelActionName(row.panelId);
+        result.push_back(GtkWorkbenchFocusActionSpec{
+            name,
+            appAction(name),
+            row.panelId,
+            enabled,
+            enabled && row.selected,
+        });
+    }
+    return result;
+}
+
 const EditorMenuModel& EditorGtkShellState::menuModel() const {
     return menuModel_;
 }
@@ -448,6 +467,10 @@ GtkWorkbenchLayoutSpec EditorGtkShellState::workbenchLayout() const {
     return EditorGtkShellModel::workbenchLayout(frameModel_, contextModel_);
 }
 
+std::vector<GtkWorkbenchFocusActionSpec> EditorGtkShellState::workbenchFocusActions() const {
+    return EditorGtkShellModel::workbenchFocusActions(frameModel_);
+}
+
 GtkShellViewState EditorGtkShellState::viewState() const {
     const auto defaults = panels::EditorPanelCatalog::frameDefaults();
     const auto& currentPath = contextModel_.currentPath();
@@ -471,6 +494,7 @@ GtkShellViewState EditorGtkShellState::viewState() const {
         panelRows(),
         workbenchPanels(),
         workbenchLayout(),
+        workbenchFocusActions(),
     };
 }
 

@@ -335,6 +335,7 @@ using libreshockwave::editor::gtk::GtkActionActivation;
 using libreshockwave::editor::gtk::GtkPanelRowSpec;
 using libreshockwave::editor::gtk::GtkShellDialogKind;
 using libreshockwave::editor::gtk::GtkToolbarItemSpec;
+using libreshockwave::editor::gtk::GtkWorkbenchFocusActionSpec;
 using libreshockwave::editor::gtk::GtkWorkbenchPanelKind;
 using libreshockwave::editor::gtk::GtkWorkbenchPanelSpec;
 using libreshockwave::editor::castbrowser::CastThumbnailKind;
@@ -2145,6 +2146,12 @@ void testEditorShellActionModels() {
     assert(gtkRows[7].displayLabel == "Paint");
     assert(gtkRows[7].visible);
     assert(gtkRows[7].docked);
+    const auto staticWorkbenchFocusActions = EditorGtkShellModel::workbenchFocusActions(gtkFrame);
+    assert(staticWorkbenchFocusActions.size() == EditorFramePanelModel::creationOrder().size());
+    assert(staticWorkbenchFocusActions[0] ==
+           (GtkWorkbenchFocusActionSpec{"workbench_stage", "app.workbench_stage", "stage", true, false}));
+    assert(staticWorkbenchFocusActions[7] ==
+           (GtkWorkbenchFocusActionSpec{"workbench_paint", "app.workbench_paint", "paint", true, true}));
 
     EditorContextModel closedGtkContext;
     const auto gtkWorkbench = EditorGtkShellModel::workbenchPanels(gtkFrame, closedGtkContext);
@@ -2190,6 +2197,13 @@ void testEditorShellActionModels() {
         });
         return found == panels.end() ? nullptr : &*found;
     };
+    auto findWorkbenchFocusAction = [](const std::vector<GtkWorkbenchFocusActionSpec>& actions,
+                                       std::string_view panelId) -> const GtkWorkbenchFocusActionSpec* {
+        const auto found = std::find_if(actions.begin(), actions.end(), [panelId](const GtkWorkbenchFocusActionSpec& action) {
+            return action.panelId == panelId;
+        });
+        return found == actions.end() ? nullptr : &*found;
+    };
     assert(gtkState.menuModel().findMenu("File") != nullptr);
     assert(gtkState.toolbarItems().front().detailedActionName == "app.rewind");
     assert(gtkState.actionSpec("panel_paint")->active == false);
@@ -2214,6 +2228,19 @@ void testEditorShellActionModels() {
     assert(toolPaletteWorkbench->actionLabels[0] == "Arrow");
     assert(toolPaletteWorkbench->actionLabels[13] == "Color");
     assert(findWorkbenchPanel(gtkWorkbenchPanels, "paint") == nullptr);
+    auto shellWorkbenchFocusActions = gtkState.workbenchFocusActions();
+    assert(shellWorkbenchFocusActions.size() == EditorFramePanelModel::creationOrder().size());
+    const auto* stageFocusAction = findWorkbenchFocusAction(shellWorkbenchFocusActions, "stage");
+    assert(stageFocusAction != nullptr);
+    assert(stageFocusAction->name == "workbench_stage");
+    assert(stageFocusAction->detailedName == "app.workbench_stage");
+    assert(stageFocusAction->enabled);
+    assert(stageFocusAction->active);
+    const auto* paintFocusAction = findWorkbenchFocusAction(shellWorkbenchFocusActions, "paint");
+    assert(paintFocusAction != nullptr);
+    assert(paintFocusAction->name == "workbench_paint");
+    assert(!paintFocusAction->enabled);
+    assert(!paintFocusAction->active);
 
     auto gtkView = gtkState.viewState();
     assert(gtkView.windowTitle == EditorPanelCatalog::closedFrameTitle());
@@ -2236,6 +2263,7 @@ void testEditorShellActionModels() {
     assert(gtkView.workbenchLayout.panels == gtkWorkbenchPanels);
     assert(gtkView.workbenchLayout.activePanel.has_value());
     assert(gtkView.workbenchLayout.activePanel->panelId == "stage");
+    assert(gtkView.workbenchFocusActions == shellWorkbenchFocusActions);
 
     auto focusMessage = gtkState.activateWorkbenchAction("workbench_message");
     assert(focusMessage.actionName == "workbench_message");
@@ -2261,6 +2289,20 @@ void testEditorShellActionModels() {
     assert(gtkView.workbenchPanels == gtkWorkbenchPanels);
     assert(gtkView.workbenchLayout.activePanel.has_value());
     assert(gtkView.workbenchLayout.activePanel->panelId == "message");
+    shellWorkbenchFocusActions = gtkState.workbenchFocusActions();
+    const auto* messageFocusAction = findWorkbenchFocusAction(shellWorkbenchFocusActions, "message");
+    assert(messageFocusAction != nullptr);
+    assert(messageFocusAction->enabled);
+    assert(messageFocusAction->active);
+    stageFocusAction = findWorkbenchFocusAction(shellWorkbenchFocusActions, "stage");
+    assert(stageFocusAction != nullptr);
+    assert(stageFocusAction->enabled);
+    assert(!stageFocusAction->active);
+    paintFocusAction = findWorkbenchFocusAction(shellWorkbenchFocusActions, "paint");
+    assert(paintFocusAction != nullptr);
+    assert(!paintFocusAction->enabled);
+    assert(!paintFocusAction->active);
+    assert(gtkView.workbenchFocusActions == shellWorkbenchFocusActions);
 
     auto focusHiddenPaint = gtkState.activateWorkbenchAction("workbench_paint");
     assert(focusHiddenPaint.actionName == "workbench_paint");
@@ -2611,6 +2653,14 @@ void testEditorShellActionModels() {
     assert(paintWorkbench->detailedActivationActionName == "app.workbench_paint");
     assert(gtkView.workbenchLayout.activePanel.has_value());
     assert(gtkView.workbenchLayout.activePanel->panelId == "paint");
+    paintFocusAction = findWorkbenchFocusAction(gtkView.workbenchFocusActions, "paint");
+    assert(paintFocusAction != nullptr);
+    assert(paintFocusAction->enabled);
+    assert(paintFocusAction->active);
+    messageFocusAction = findWorkbenchFocusAction(gtkView.workbenchFocusActions, "message");
+    assert(messageFocusAction != nullptr);
+    assert(messageFocusAction->enabled);
+    assert(!messageFocusAction->active);
     assert(paintWorkbench->primaryText == "No bitmap selected");
     assert(paintWorkbench->statusText == " Ready");
     assert(paintWorkbench->actionLabels.size() == 9);
@@ -2639,8 +2689,13 @@ void testEditorShellActionModels() {
     assert(!hidePaint.active.value());
     assert(hidePaint.statusMessage == "Paint hidden");
     assert(!gtkState.actionSpec("panel_paint")->active);
-    assert(gtkState.viewState().panelRows[7].displayLabel == "Paint (hidden)");
-    assert(findWorkbenchPanel(gtkState.viewState().workbenchPanels, "paint") == nullptr);
+    gtkView = gtkState.viewState();
+    assert(gtkView.panelRows[7].displayLabel == "Paint (hidden)");
+    assert(findWorkbenchPanel(gtkView.workbenchPanels, "paint") == nullptr);
+    paintFocusAction = findWorkbenchFocusAction(gtkView.workbenchFocusActions, "paint");
+    assert(paintFocusAction != nullptr);
+    assert(!paintFocusAction->enabled);
+    assert(!paintFocusAction->active);
 
     assert(gtkState.activateAction("panel_sound").active.value());
     auto resetLayout = gtkState.activateAction("resetLayout");
