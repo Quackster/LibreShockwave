@@ -16,6 +16,10 @@ struct EditorGtkState {
     GtkApplication* app{nullptr};
     GtkWindow* window{nullptr};
     GtkWidget* panelList{nullptr};
+    GtkWidget* workbenchTitleLabel{nullptr};
+    GtkWidget* workbenchPrimaryLabel{nullptr};
+    GtkWidget* workbenchStatusLabel{nullptr};
+    GtkWidget* workbenchActions{nullptr};
     GtkWidget* statusLabel{nullptr};
 };
 
@@ -77,6 +81,20 @@ void populatePanelList(GtkWidget* list, const std::vector<gtk_models::GtkPanelRo
     }
 }
 
+void populateWorkbenchActions(GtkWidget* actionsBox,
+                              const std::vector<gtk_models::GtkWorkbenchContentActionSpec>& actions) {
+    while (GtkWidget* child = gtk_widget_get_first_child(actionsBox)) {
+        gtk_box_remove(GTK_BOX(actionsBox), child);
+    }
+
+    for (const auto& action : actions) {
+        GtkWidget* button = gtk_button_new_with_label(action.label.c_str());
+        gtk_widget_set_sensitive(button, action.enabled);
+        gtk_widget_set_tooltip_text(button, action.tooltip.c_str());
+        gtk_box_append(GTK_BOX(actionsBox), button);
+    }
+}
+
 void refreshGtkActions(GtkApplication* app, const std::vector<gtk_models::GtkActionSpec>& specs) {
     for (const auto& spec : specs) {
         GAction* action = g_action_map_lookup_action(G_ACTION_MAP(app), spec.name.c_str());
@@ -114,6 +132,18 @@ void refreshGtkShell(EditorGtkState& state) {
     }
     if (state.panelList != nullptr) {
         populatePanelList(state.panelList, view.panelRows);
+    }
+    if (state.workbenchTitleLabel != nullptr) {
+        gtk_label_set_text(GTK_LABEL(state.workbenchTitleLabel), view.workbenchContent.title.c_str());
+    }
+    if (state.workbenchPrimaryLabel != nullptr) {
+        gtk_label_set_text(GTK_LABEL(state.workbenchPrimaryLabel), view.workbenchContent.primaryText.c_str());
+    }
+    if (state.workbenchStatusLabel != nullptr) {
+        gtk_label_set_text(GTK_LABEL(state.workbenchStatusLabel), view.workbenchContent.statusText.c_str());
+    }
+    if (state.workbenchActions != nullptr) {
+        populateWorkbenchActions(state.workbenchActions, view.workbenchContent.actionSpecs);
     }
     if (state.statusLabel != nullptr) {
         gtk_label_set_text(GTK_LABEL(state.statusLabel), view.statusMessage.c_str());
@@ -214,12 +244,33 @@ GtkWidget* makeWorkbench(EditorGtkState& state) {
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(panelScroller), makePanelList(state));
     gtk_paned_set_start_child(GTK_PANED(paned), panelScroller);
 
-    GtkWidget* stageFrame = gtk_frame_new(view.stageTitle.c_str());
-    GtkWidget* stageLabel = gtk_label_new(view.stagePlaceholderText.c_str());
-    gtk_widget_set_hexpand(stageLabel, TRUE);
-    gtk_widget_set_vexpand(stageLabel, TRUE);
-    gtk_frame_set_child(GTK_FRAME(stageFrame), stageLabel);
-    gtk_paned_set_end_child(GTK_PANED(paned), stageFrame);
+    GtkWidget* workbenchBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+    gtk_widget_set_margin_start(workbenchBox, 10);
+    gtk_widget_set_margin_end(workbenchBox, 10);
+    gtk_widget_set_margin_top(workbenchBox, 10);
+    gtk_widget_set_margin_bottom(workbenchBox, 10);
+
+    state.workbenchTitleLabel = gtk_label_new(view.workbenchContent.title.c_str());
+    gtk_label_set_xalign(GTK_LABEL(state.workbenchTitleLabel), 0.0F);
+    gtk_box_append(GTK_BOX(workbenchBox), state.workbenchTitleLabel);
+
+    state.workbenchPrimaryLabel = gtk_label_new(view.workbenchContent.primaryText.c_str());
+    gtk_label_set_xalign(GTK_LABEL(state.workbenchPrimaryLabel), 0.0F);
+    gtk_label_set_yalign(GTK_LABEL(state.workbenchPrimaryLabel), 0.0F);
+    gtk_label_set_wrap(GTK_LABEL(state.workbenchPrimaryLabel), TRUE);
+    gtk_widget_set_hexpand(state.workbenchPrimaryLabel, TRUE);
+    gtk_widget_set_vexpand(state.workbenchPrimaryLabel, TRUE);
+    gtk_box_append(GTK_BOX(workbenchBox), state.workbenchPrimaryLabel);
+
+    state.workbenchActions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    populateWorkbenchActions(state.workbenchActions, view.workbenchContent.actionSpecs);
+    gtk_box_append(GTK_BOX(workbenchBox), state.workbenchActions);
+
+    state.workbenchStatusLabel = gtk_label_new(view.workbenchContent.statusText.c_str());
+    gtk_label_set_xalign(GTK_LABEL(state.workbenchStatusLabel), 0.0F);
+    gtk_box_append(GTK_BOX(workbenchBox), state.workbenchStatusLabel);
+
+    gtk_paned_set_end_child(GTK_PANED(paned), workbenchBox);
 
     return paned;
 }

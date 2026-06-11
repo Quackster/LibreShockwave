@@ -337,6 +337,7 @@ using libreshockwave::editor::gtk::GtkPanelRowSpec;
 using libreshockwave::editor::gtk::GtkShellDialogKind;
 using libreshockwave::editor::gtk::GtkStartScreenRequest;
 using libreshockwave::editor::gtk::GtkToolbarItemSpec;
+using libreshockwave::editor::gtk::GtkWorkbenchContentActionSpec;
 using libreshockwave::editor::gtk::GtkWorkbenchContentSpec;
 using libreshockwave::editor::gtk::GtkWorkbenchFocusActionSpec;
 using libreshockwave::editor::gtk::GtkWorkbenchPanelKind;
@@ -2298,6 +2299,7 @@ void testEditorShellActionModels() {
                                 "No movie loaded",
                                 "Frame: 1",
                                 {},
+                                {},
                             }));
     const auto staticPaintWorkbench =
         std::find_if(gtkWorkbench.begin(), gtkWorkbench.end(), [](const GtkWorkbenchPanelSpec& panel) {
@@ -2311,6 +2313,8 @@ void testEditorShellActionModels() {
     assert(staticPaintWorkbench->primaryText == "No bitmap selected");
     assert(staticPaintWorkbench->statusText == " Ready");
     assert(staticPaintWorkbench->actionLabels.front() == "Pencil");
+    assert(staticPaintWorkbench->actionSpecs.front() ==
+           (GtkWorkbenchContentActionSpec{"Pencil", "Pencil (not yet implemented)", false}));
     const auto gtkWorkbenchLayout = EditorGtkShellModel::workbenchLayout(gtkFrame, closedGtkContext);
     assert(gtkWorkbenchLayout.panels == gtkWorkbench);
     assert(gtkWorkbenchLayout.activePanel.has_value());
@@ -2353,7 +2357,19 @@ void testEditorShellActionModels() {
                "Paint",
                "No bitmap selected",
                " Ready",
-               std::vector<std::string>{"Pencil", "Brush", "Eraser", "Fill", "Line", "Rect", "Oval", "Select", "Lasso"},
+               std::vector<std::string>{
+                   "Pencil", "Brush", "Eraser", "Fill", "Line", "Rect", "Oval", "Select", "Lasso"},
+               std::vector<GtkWorkbenchContentActionSpec>{
+                   {"Pencil", "Pencil (not yet implemented)", false},
+                   {"Brush", "Brush (not yet implemented)", false},
+                   {"Eraser", "Eraser (not yet implemented)", false},
+                   {"Fill", "Fill (not yet implemented)", false},
+                   {"Line", "Line (not yet implemented)", false},
+                   {"Rect", "Rect (not yet implemented)", false},
+                   {"Oval", "Oval (not yet implemented)", false},
+                   {"Select", "Select (not yet implemented)", false},
+                   {"Lasso", "Lasso (not yet implemented)", false},
+               },
                "workbench_paint",
                "app.workbench_paint",
            }));
@@ -2422,6 +2438,11 @@ void testEditorShellActionModels() {
     assert(toolPaletteWorkbench->actionLabels.size() == 14);
     assert(toolPaletteWorkbench->actionLabels[0] == "Arrow");
     assert(toolPaletteWorkbench->actionLabels[13] == "Color");
+    assert(toolPaletteWorkbench->actionSpecs.size() == 14);
+    assert(toolPaletteWorkbench->actionSpecs.front() ==
+           (GtkWorkbenchContentActionSpec{"Arrow", "Arrow (not yet implemented)", false}));
+    assert(toolPaletteWorkbench->actionSpecs.back() ==
+           (GtkWorkbenchContentActionSpec{"Color", "Color (not yet implemented)", false}));
     assert(findWorkbenchPanel(gtkWorkbenchPanels, "paint") == nullptr);
     auto shellWorkbenchFocusActions = gtkState.workbenchFocusActions();
     assert(shellWorkbenchFocusActions.size() == EditorFramePanelModel::creationOrder().size());
@@ -3046,6 +3067,9 @@ void testEditorShellActionModels() {
     assert(gtkView.workbenchContent.primaryText == "No bitmap selected");
     assert(gtkView.workbenchContent.statusText == " Ready");
     assert(gtkView.workbenchContent.actionLabels.size() == 9);
+    assert(gtkView.workbenchContent.actionSpecs.size() == 9);
+    assert(gtkView.workbenchContent.actionSpecs[3] ==
+           (GtkWorkbenchContentActionSpec{"Fill", "Fill (not yet implemented)", false}));
     paintFocusAction = findWorkbenchFocusAction(gtkView.workbenchFocusActions, "paint");
     assert(paintFocusAction != nullptr);
     assert(paintFocusAction->enabled);
@@ -3057,6 +3081,7 @@ void testEditorShellActionModels() {
     assert(paintWorkbench->primaryText == "No bitmap selected");
     assert(paintWorkbench->statusText == " Ready");
     assert(paintWorkbench->actionLabels.size() == 9);
+    assert(paintWorkbench->actionSpecs == gtkView.workbenchContent.actionSpecs);
 
     auto focusPaint = gtkState.activateWorkbenchPanel("paint");
     assert(focusPaint.actionName == "workbench_paint");

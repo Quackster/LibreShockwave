@@ -191,6 +191,15 @@ std::vector<std::string> actionLabels(const std::vector<panels::DisabledPanelAct
     return result;
 }
 
+std::vector<GtkWorkbenchContentActionSpec> contentActionSpecs(const std::vector<std::string>& labels) {
+    std::vector<GtkWorkbenchContentActionSpec> result;
+    result.reserve(labels.size());
+    for (const auto& label : labels) {
+        result.push_back(GtkWorkbenchContentActionSpec{label, label + " (not yet implemented)", false});
+    }
+    return result;
+}
+
 std::vector<std::string> toolLabels(const std::vector<panels::ToolPaletteTool>& tools) {
     std::vector<std::string> result;
     result.reserve(tools.size());
@@ -494,6 +503,7 @@ std::vector<GtkWorkbenchPanelSpec> EditorGtkShellModel::workbenchPanels(const Ed
         spec.activationActionName = workbenchPanelActionName(row.panelId);
         spec.detailedActivationActionName = appAction(spec.activationActionName);
         populateWorkbenchContent(spec, contextModel);
+        spec.actionSpecs = contentActionSpecs(spec.actionLabels);
         result.push_back(std::move(spec));
     }
     return result;
@@ -559,6 +569,7 @@ GtkWorkbenchContentSpec EditorGtkShellModel::workbenchContent(const EditorFrameP
     content.primaryText = panel.primaryText;
     content.statusText = panel.statusText;
     content.actionLabels = panel.actionLabels;
+    content.actionSpecs = panel.actionSpecs;
     content.focusActionName = panel.activationActionName;
     content.detailedFocusActionName = panel.detailedActivationActionName;
     return content;

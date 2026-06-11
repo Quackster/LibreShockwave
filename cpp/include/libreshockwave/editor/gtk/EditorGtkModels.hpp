@@ -137,6 +137,14 @@ struct GtkWorkbenchFocusActionSpec {
     friend bool operator==(const GtkWorkbenchFocusActionSpec&, const GtkWorkbenchFocusActionSpec&) = default;
 };
 
+struct GtkWorkbenchContentActionSpec {
+    std::string label;
+    std::string tooltip;
+    bool enabled{false};
+
+    friend bool operator==(const GtkWorkbenchContentActionSpec&, const GtkWorkbenchContentActionSpec&) = default;
+};
+
 struct GtkWorkbenchPanelSpec {
     std::string panelId;
     GtkWorkbenchPanelKind kind{GtkWorkbenchPanelKind::Generic};
@@ -150,6 +158,7 @@ struct GtkWorkbenchPanelSpec {
     std::string primaryText;
     std::string statusText;
     std::vector<std::string> actionLabels;
+    std::vector<GtkWorkbenchContentActionSpec> actionSpecs;
 
     friend bool operator==(const GtkWorkbenchPanelSpec&, const GtkWorkbenchPanelSpec&) = default;
 };
@@ -162,6 +171,7 @@ struct GtkWorkbenchContentSpec {
     std::string primaryText;
     std::string statusText;
     std::vector<std::string> actionLabels;
+    std::vector<GtkWorkbenchContentActionSpec> actionSpecs;
     std::string focusActionName;
     std::string detailedFocusActionName;
 
