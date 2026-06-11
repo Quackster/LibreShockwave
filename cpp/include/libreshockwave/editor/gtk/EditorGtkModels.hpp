@@ -108,6 +108,8 @@ struct GtkWorkbenchPanelSpec {
     bool visible{false};
     bool selected{false};
     bool docked{false};
+    std::string activationActionName;
+    std::string detailedActivationActionName;
     std::string primaryText;
     std::string statusText;
     std::vector<std::string> actionLabels;
@@ -124,6 +126,7 @@ struct GtkWorkbenchLayoutSpec {
 };
 
 struct GtkWorkbenchPanelActivation {
+    std::string actionName;
     std::string panelId;
     bool handled{false};
     bool refreshActions{false};
@@ -181,6 +184,7 @@ public:
     [[nodiscard]] static std::string sanitizeActionName(std::string_view value);
     [[nodiscard]] static std::string commandActionName(EditorCommand command);
     [[nodiscard]] static std::string panelActionName(std::string_view panelId);
+    [[nodiscard]] static std::string workbenchPanelActionName(std::string_view panelId);
     [[nodiscard]] static std::string appAction(std::string_view actionName);
 
     [[nodiscard]] static std::vector<GtkActionSpec> actionSpecs(const EditorMenuModel& menuModel,
@@ -223,6 +227,7 @@ public:
     std::vector<EditorContextEvent> openFile(std::string path);
     std::vector<EditorContextEvent> closeFile();
     GtkWorkbenchPanelActivation activateWorkbenchPanel(std::string_view panelId);
+    GtkWorkbenchPanelActivation activateWorkbenchAction(std::string_view actionName);
     GtkActionActivation activateAction(std::string_view name);
     GtkShellDialogResult applyExternalParameters(std::vector<ExternalParamRow> rows);
     GtkShellDialogResult applyTraceHandlerInput(std::string_view input);

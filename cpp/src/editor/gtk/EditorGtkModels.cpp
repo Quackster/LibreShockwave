@@ -236,6 +236,10 @@ std::string EditorGtkShellModel::panelActionName(std::string_view panelId) {
     return "panel_" + sanitizeActionName(panelId);
 }
 
+std::string EditorGtkShellModel::workbenchPanelActionName(std::string_view panelId) {
+    return "workbench_" + sanitizeActionName(panelId);
+}
+
 std::string EditorGtkShellModel::appAction(std::string_view actionName) {
     return "app." + std::string(actionName);
 }
@@ -353,6 +357,8 @@ std::vector<GtkWorkbenchPanelSpec> EditorGtkShellModel::workbenchPanels(const Ed
         spec.visible = row.visible;
         spec.selected = row.selected;
         spec.docked = row.docked;
+        spec.activationActionName = workbenchPanelActionName(row.panelId);
+        spec.detailedActivationActionName = appAction(spec.activationActionName);
         populateWorkbenchContent(spec, contextModel);
         result.push_back(std::move(spec));
     }
@@ -514,6 +520,7 @@ std::vector<EditorContextEvent> EditorGtkShellState::closeFile() {
 GtkWorkbenchPanelActivation EditorGtkShellState::activateWorkbenchPanel(std::string_view panelId) {
     GtkWorkbenchPanelActivation result;
     result.panelId = std::string(panelId);
+    result.actionName = EditorGtkShellModel::workbenchPanelActionName(panelId);
 
     if (!frameModel_.selectPanel(panelId)) {
         result.statusMessage = "Panel not available: " + result.panelId;
@@ -534,6 +541,22 @@ GtkWorkbenchPanelActivation EditorGtkShellState::activateWorkbenchPanel(std::str
     if (found != panels.end()) {
         result.panel = *found;
     }
+    return result;
+}
+
+GtkWorkbenchPanelActivation EditorGtkShellState::activateWorkbenchAction(std::string_view actionName) {
+    for (const auto& descriptor : panels::EditorPanelCatalog::descriptors()) {
+        if (EditorGtkShellModel::workbenchPanelActionName(descriptor.panelId) == actionName) {
+            auto result = activateWorkbenchPanel(descriptor.panelId);
+            result.actionName = std::string(actionName);
+            return result;
+        }
+    }
+
+    GtkWorkbenchPanelActivation result;
+    result.actionName = std::string(actionName);
+    result.statusMessage = "Unknown workbench action: " + result.actionName;
+    statusMessage_ = result.statusMessage;
     return result;
 }
 

@@ -2088,6 +2088,7 @@ void testEditorShellActionModels() {
     assert(EditorGtkShellModel::sanitizeActionName("") == "none");
     assert(EditorGtkShellModel::commandActionName(EditorCommand::ExternalParameters) == "externalParameters");
     assert(EditorGtkShellModel::panelActionName("property-inspector") == "panel_property_inspector");
+    assert(EditorGtkShellModel::workbenchPanelActionName("property-inspector") == "workbench_property_inspector");
     assert(EditorGtkShellModel::appAction("open") == "app.open");
 
     const auto gtkActions = EditorGtkShellModel::actionSpecs(menus, toolbar, gtkFrame);
@@ -2156,6 +2157,8 @@ void testEditorShellActionModels() {
                                 true,
                                 false,
                                 false,
+                                "workbench_stage",
+                                "app.workbench_stage",
                                 "No movie loaded",
                                 "Frame: 1",
                                 {},
@@ -2167,6 +2170,8 @@ void testEditorShellActionModels() {
     assert(staticPaintWorkbench != gtkWorkbench.end());
     assert(staticPaintWorkbench->kind == GtkWorkbenchPanelKind::Paint);
     assert(staticPaintWorkbench->selected);
+    assert(staticPaintWorkbench->activationActionName == "workbench_paint");
+    assert(staticPaintWorkbench->detailedActivationActionName == "app.workbench_paint");
     assert(staticPaintWorkbench->primaryText == "No bitmap selected");
     assert(staticPaintWorkbench->statusText == " Ready");
     assert(staticPaintWorkbench->actionLabels.front() == "Pencil");
@@ -2192,8 +2197,11 @@ void testEditorShellActionModels() {
     auto gtkWorkbenchPanels = gtkState.workbenchPanels();
     assert(gtkWorkbenchPanels.size() == 7);
     assert(gtkWorkbenchPanels.front().kind == GtkWorkbenchPanelKind::Stage);
+    assert(gtkWorkbenchPanels.front().activationActionName == "workbench_stage");
+    assert(gtkWorkbenchPanels.front().detailedActivationActionName == "app.workbench_stage");
     assert(gtkState.workbenchLayout().activePanel.has_value());
     assert(gtkState.workbenchLayout().activePanel->panelId == "stage");
+    assert(gtkState.workbenchLayout().activePanel->activationActionName == "workbench_stage");
     assert(gtkWorkbenchPanels.front().primaryText == "No movie loaded");
     assert(gtkWorkbenchPanels.front().statusText == "Frame: 1");
     const auto* messageWorkbench = findWorkbenchPanel(gtkWorkbenchPanels, "message");
@@ -2229,7 +2237,8 @@ void testEditorShellActionModels() {
     assert(gtkView.workbenchLayout.activePanel.has_value());
     assert(gtkView.workbenchLayout.activePanel->panelId == "stage");
 
-    auto focusMessage = gtkState.activateWorkbenchPanel("message");
+    auto focusMessage = gtkState.activateWorkbenchAction("workbench_message");
+    assert(focusMessage.actionName == "workbench_message");
     assert(focusMessage.panelId == "message");
     assert(focusMessage.handled);
     assert(!focusMessage.refreshActions);
@@ -2253,7 +2262,8 @@ void testEditorShellActionModels() {
     assert(gtkView.workbenchLayout.activePanel.has_value());
     assert(gtkView.workbenchLayout.activePanel->panelId == "message");
 
-    auto focusHiddenPaint = gtkState.activateWorkbenchPanel("paint");
+    auto focusHiddenPaint = gtkState.activateWorkbenchAction("workbench_paint");
+    assert(focusHiddenPaint.actionName == "workbench_paint");
     assert(focusHiddenPaint.panelId == "paint");
     assert(!focusHiddenPaint.handled);
     assert(!focusHiddenPaint.refreshActions);
@@ -2262,6 +2272,13 @@ void testEditorShellActionModels() {
     assert(focusHiddenPaint.statusMessage == "Panel not available: paint");
     assert(!focusHiddenPaint.panel.has_value());
     assert(gtkState.statusMessage() == "Panel not available: paint");
+
+    auto missingWorkbenchFocus = gtkState.activateWorkbenchAction("workbench_missing");
+    assert(missingWorkbenchFocus.actionName == "workbench_missing");
+    assert(missingWorkbenchFocus.panelId.empty());
+    assert(!missingWorkbenchFocus.handled);
+    assert(missingWorkbenchFocus.statusMessage == "Unknown workbench action: workbench_missing");
+    assert(gtkState.statusMessage() == "Unknown workbench action: workbench_missing");
 
     auto openRequest = gtkState.activateAction("open");
     assert(openRequest.handled);
@@ -2590,6 +2607,8 @@ void testEditorShellActionModels() {
     assert(paintWorkbench->kind == GtkWorkbenchPanelKind::Paint);
     assert(paintWorkbench->docked);
     assert(paintWorkbench->selected);
+    assert(paintWorkbench->activationActionName == "workbench_paint");
+    assert(paintWorkbench->detailedActivationActionName == "app.workbench_paint");
     assert(gtkView.workbenchLayout.activePanel.has_value());
     assert(gtkView.workbenchLayout.activePanel->panelId == "paint");
     assert(paintWorkbench->primaryText == "No bitmap selected");
@@ -2597,6 +2616,7 @@ void testEditorShellActionModels() {
     assert(paintWorkbench->actionLabels.size() == 9);
 
     auto focusPaint = gtkState.activateWorkbenchPanel("paint");
+    assert(focusPaint.actionName == "workbench_paint");
     assert(focusPaint.handled);
     assert(focusPaint.panelId == "paint");
     assert(!focusPaint.refreshActions);
