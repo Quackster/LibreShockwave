@@ -2137,6 +2137,37 @@ void testEditorShellActionModels() {
     assert(paintAction->stateful);
     assert(!paintAction->active);
 
+    const auto stageWorkbenchAction = EditorGtkShellModel::actionSpec("workbench_stage", menus, toolbar, gtkFrame);
+    assert(stageWorkbenchAction.has_value());
+    assert(stageWorkbenchAction->panelId == "stage");
+    assert(stageWorkbenchAction->enabled);
+    assert(stageWorkbenchAction->stateful);
+    assert(stageWorkbenchAction->active);
+    assert(stageWorkbenchAction->detailedName == "app.workbench_stage");
+
+    const auto paintWorkbenchAction = EditorGtkShellModel::actionSpec("workbench_paint", menus, toolbar, gtkFrame);
+    assert(paintWorkbenchAction.has_value());
+    assert(paintWorkbenchAction->panelId == "paint");
+    assert(!paintWorkbenchAction->enabled);
+    assert(paintWorkbenchAction->stateful);
+    assert(!paintWorkbenchAction->active);
+
+    const auto stageFloatAction =
+        EditorGtkShellModel::actionSpec("workbench_float_stage", menus, toolbar, gtkFrame);
+    assert(stageFloatAction.has_value());
+    assert(stageFloatAction->panelId == "stage");
+    assert(stageFloatAction->enabled);
+    assert(!stageFloatAction->stateful);
+    assert(!stageFloatAction->active);
+    assert(stageFloatAction->detailedName == "app.workbench_float_stage");
+
+    const auto paintFloatAction =
+        EditorGtkShellModel::actionSpec("workbench_float_paint", menus, toolbar, gtkFrame);
+    assert(paintFloatAction.has_value());
+    assert(paintFloatAction->panelId == "paint");
+    assert(!paintFloatAction->enabled);
+    assert(!paintFloatAction->stateful);
+
     const auto gtkToolbar = EditorGtkShellModel::toolbarItems(toolbar);
     assert(gtkToolbar.size() == toolbar.items().size());
     assert(gtkToolbar[0] == (GtkToolbarItemSpec{ToolbarItem::Kind::Button, "Rewind", "Rewind", "rewind", "app.rewind"}));
@@ -2176,6 +2207,16 @@ void testEditorShellActionModels() {
     assert(gtkRows[7].visible);
     assert(gtkRows[7].docked);
     assert(gtkRows[7].focusEnabled);
+    const auto visiblePaintWorkbenchAction =
+        EditorGtkShellModel::actionSpec("workbench_paint", menus, toolbar, gtkFrame);
+    assert(visiblePaintWorkbenchAction.has_value());
+    assert(visiblePaintWorkbenchAction->enabled);
+    assert(visiblePaintWorkbenchAction->active);
+    const auto visiblePaintFloatAction =
+        EditorGtkShellModel::actionSpec("workbench_float_paint", menus, toolbar, gtkFrame);
+    assert(visiblePaintFloatAction.has_value());
+    assert(visiblePaintFloatAction->enabled);
+    assert(!visiblePaintFloatAction->stateful);
     const auto staticWorkbenchFocusActions = EditorGtkShellModel::workbenchFocusActions(gtkFrame);
     assert(staticWorkbenchFocusActions.size() == EditorFramePanelModel::creationOrder().size());
     assert(staticWorkbenchFocusActions[0] ==
@@ -2363,6 +2404,43 @@ void testEditorShellActionModels() {
     assert(gtkView.workbenchContent == gtkState.workbenchContent());
     assert(gtkView.workbenchContent.panelId == "stage");
     assert(gtkView.workbenchFocusActions == shellWorkbenchFocusActions);
+
+    EditorGtkShellState genericWorkbenchActionState;
+    auto genericFocusMessage = genericWorkbenchActionState.activateAction("workbench_message");
+    assert(genericFocusMessage.actionName == "workbench_message");
+    assert(genericFocusMessage.command == EditorCommand::None);
+    assert(genericFocusMessage.panelId == "message");
+    assert(genericFocusMessage.handled);
+    assert(!genericFocusMessage.refreshActions);
+    assert(genericFocusMessage.refreshPanels);
+    assert(genericFocusMessage.refreshView);
+    assert(genericFocusMessage.statusMessage == "Message selected");
+    assert(genericWorkbenchActionState.viewState().workbenchContent.panelId == "message");
+
+    auto genericHiddenPaintFocus = genericWorkbenchActionState.activateAction("workbench_paint");
+    assert(genericHiddenPaintFocus.actionName == "workbench_paint");
+    assert(genericHiddenPaintFocus.command == EditorCommand::None);
+    assert(genericHiddenPaintFocus.panelId == "paint");
+    assert(!genericHiddenPaintFocus.handled);
+    assert(genericHiddenPaintFocus.statusMessage == "Action disabled: workbench_paint");
+
+    auto genericFloatMessage = genericWorkbenchActionState.activateAction("workbench_float_message");
+    assert(genericFloatMessage.actionName == "workbench_float_message");
+    assert(genericFloatMessage.command == EditorCommand::None);
+    assert(genericFloatMessage.panelId == "message");
+    assert(genericFloatMessage.handled);
+    assert(genericFloatMessage.refreshActions);
+    assert(genericFloatMessage.refreshPanels);
+    assert(genericFloatMessage.refreshView);
+    assert(genericFloatMessage.statusMessage == "Message floated");
+    assert(genericWorkbenchActionState.viewState().workbenchContent.panelId == "message");
+
+    auto genericHiddenPaintFloat = genericWorkbenchActionState.activateAction("workbench_float_paint");
+    assert(genericHiddenPaintFloat.actionName == "workbench_float_paint");
+    assert(genericHiddenPaintFloat.command == EditorCommand::None);
+    assert(genericHiddenPaintFloat.panelId == "paint");
+    assert(!genericHiddenPaintFloat.handled);
+    assert(genericHiddenPaintFloat.statusMessage == "Action disabled: workbench_float_paint");
 
     auto focusMessage = gtkState.activateWorkbenchAction("workbench_message");
     assert(focusMessage.actionName == "workbench_message");

@@ -281,6 +281,31 @@ std::vector<GtkActionSpec> EditorGtkShellModel::actionSpecs(const EditorMenuMode
         };
     }
 
+    for (const auto& focus : workbenchFocusActions(frameModel)) {
+        specs[focus.name] = GtkActionSpec{
+            focus.name,
+            focus.detailedName,
+            EditorCommand::None,
+            focus.panelId,
+            focus.enabled,
+            true,
+            focus.active,
+        };
+    }
+
+    for (const auto& row : panelRows(frameModel)) {
+        const auto name = workbenchPanelFloatActionName(row.panelId);
+        specs[name] = GtkActionSpec{
+            name,
+            appAction(name),
+            EditorCommand::None,
+            row.panelId,
+            row.focusEnabled,
+            false,
+            false,
+        };
+    }
+
     std::vector<GtkActionSpec> result;
     result.reserve(specs.size());
     for (auto& [_, spec] : specs) {
@@ -721,6 +746,28 @@ GtkActionActivation EditorGtkShellState::activateAction(std::string_view name) {
     if (!spec->enabled) {
         result.statusMessage = "Action disabled: " + result.actionName;
         statusMessage_ = result.statusMessage;
+        return result;
+    }
+
+    if (name.starts_with("workbench_float_")) {
+        const auto activation = activateWorkbenchFloatAction(name);
+        result.panelId = activation.panelId;
+        result.handled = activation.handled;
+        result.refreshActions = activation.refreshActions;
+        result.refreshPanels = activation.refreshPanels;
+        result.refreshView = activation.refreshView;
+        result.statusMessage = activation.statusMessage;
+        return result;
+    }
+
+    if (name.starts_with("workbench_")) {
+        const auto activation = activateWorkbenchAction(name);
+        result.panelId = activation.panelId;
+        result.handled = activation.handled;
+        result.refreshActions = activation.refreshActions;
+        result.refreshPanels = activation.refreshPanels;
+        result.refreshView = activation.refreshView;
+        result.statusMessage = activation.statusMessage;
         return result;
     }
 
