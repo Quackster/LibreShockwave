@@ -52,6 +52,11 @@ add_library(libreshockwave
     src/chunks/ScoreChunk.cpp
     src/chunks/SoundChunk.cpp
     src/chunks/TextChunk.cpp
+    src/editor/format/ChannelNames.cpp
+    src/editor/format/PaletteDescriptions.cpp
+    src/editor/score/ScoreColors.cpp
+    src/editor/script/LingoKeywords.cpp
+    src/editor/script/LingoTokenizer.cpp
     src/format/AfterburnerReader.cpp
     src/format/ChunkType.cpp
     src/format/MoaID.cpp

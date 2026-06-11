@@ -193,6 +193,12 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `lingo::vm::datum::DatumFormatter` ports Java stack/display formatting helpers for scalars, nested lists, prop-lists, arg-lists, script instances, refs, control-character escaping, and JSON-style detailed output.
 - `format::ScriptFormatUtils` ports literal type names, literal formatting, script type display names, name/handler fallback resolution, shared truncation, and line-ending normalization.
 
+### Editor Utility Foundation
+
+- `editor::format::ChannelNames` and `PaletteDescriptions` port Java's score-channel labels and human-readable palette descriptions for future editor panels.
+- `editor::score::ScoreColors` ports the Director-style score cell color lookup table without depending on AWT/Swing.
+- `editor::script::LingoKeywords` and `LingoTokenizer` port the Java editor syntax-highlighting keyword tables and token scanner, including the current Java case-sensitive table lookup behavior.
+
 ### Bitmap Colorizer
 
 - `bitmap::BitmapColorizer` ports Director foreColor/backColor bitmap recoloring for 32-bit and indexed bitmap surfaces.
@@ -896,6 +902,7 @@ Result:
 - W3D entry, typed resource, transform, texture format, and lookup tests passed through the same CTest executable.
 - Generated font Base64/zlib decode, wrong-length, and invalid-deflate tests passed through the same CTest executable.
 - File/path fallback utilities, shared string display/HTML escaping helpers, string chunk counting/extraction helpers, Java-compatible ImageMethodDispatcher/StringMethodDispatcher/ListMethodDispatcher/MemberRegistryMethodDispatcher/PropListMethodDispatcher/ScriptInstanceMethodDispatcher/SoundChannelMethodDispatcher receiver methods, and script formatting utilities passed through the same CTest executable.
+- Editor channel-name formatting, palette descriptions, score color lookup, Lingo keyword tables, and Lingo tokenizer behavior passed through the same CTest executable.
 - BitmapColorizer 32-bit, indexed, foreground-only, packed-index, and ink predicate tests passed through the same CTest executable.
 - PfrBitReader byte, signed, skip, alignment, bit-buffer, and partial-EOF tests passed through the same CTest executable.
 - BitmapFont glyph drawing, overflow metrics, BDF parsing, direct PFR outline/bitmap/curve glyph rasterization, PFR1 metadata/character-record/simple/compound/curve-outline parsing, PFR-to-TTF table generation/cache registration, pure TTF bitmap rasterization with the bundled Verdana fixture, FontRegistry prebuilt-cache/PFR-registration/rasterization/size-aware embedded-TTF/alias/Mac fallback behavior, Mac/Windows platform font bundle selection and caching, and SimpleTextRenderer bitmap-font/built-in-fallback/wrapping/underline/caret/XMED per-span/styled-underline rendering behavior passed through the same CTest executable.
@@ -1254,4 +1261,5 @@ Result:
 - `5df5e6fd Port C++ decompiler fallback mapping`
 - `2d9420b0 Port C++ decompiler linear bytecode`
 - `1e40b253 Port C++ decompiler chunk opcodes`
-- Current checkpoint commit message: `Port C++ debug controller foundation`
+- `088df8b2 Port C++ Lingo expression parser`
+- Current checkpoint commit message: `Port C++ editor utility helpers`

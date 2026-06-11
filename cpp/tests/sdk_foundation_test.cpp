@@ -70,6 +70,11 @@
 #include "libreshockwave/chunks/ScoreChunk.hpp"
 #include "libreshockwave/chunks/SoundChunk.hpp"
 #include "libreshockwave/chunks/TextChunk.hpp"
+#include "libreshockwave/editor/format/ChannelNames.hpp"
+#include "libreshockwave/editor/format/PaletteDescriptions.hpp"
+#include "libreshockwave/editor/score/ScoreColors.hpp"
+#include "libreshockwave/editor/script/LingoKeywords.hpp"
+#include "libreshockwave/editor/script/LingoTokenizer.hpp"
 #include "libreshockwave/format/ChunkInfo.hpp"
 #include "libreshockwave/format/AfterburnerReader.hpp"
 #include "libreshockwave/format/ChunkType.hpp"
@@ -244,6 +249,14 @@ using libreshockwave::chunks::ScriptNamesChunk;
 using libreshockwave::chunks::ScoreChunk;
 using libreshockwave::chunks::SoundChunk;
 using libreshockwave::chunks::TextChunk;
+using libreshockwave::editor::format::ChannelNames;
+using libreshockwave::editor::format::PaletteDescriptions;
+using libreshockwave::editor::score::ScoreColor;
+using libreshockwave::editor::score::ScoreColors;
+using libreshockwave::editor::script::LingoKeywords;
+using libreshockwave::editor::script::LingoTokenizer;
+using libreshockwave::editor::script::LingoTokenType;
+using libreshockwave::editor::script::tokenTypeName;
 using libreshockwave::lingo::Datum;
 using libreshockwave::lingo::DatumType;
 using libreshockwave::lingo::LingoValueParser;
@@ -1208,6 +1221,63 @@ void testUtilityFormatting() {
     assert(libreshockwave::format::resolveName(&names, 5) == "#5");
     assert(libreshockwave::format::resolveHandlerName(&names, 1) == "mouseUp");
     assert(libreshockwave::format::resolveHandlerName(nullptr, 3) == "handler#3");
+}
+
+void testEditorFormattingAndScriptHelpers() {
+    assert(ChannelNames::get(-1) == "Ch 0");
+    assert(ChannelNames::get(0) == "Tempo");
+    assert(ChannelNames::get(1) == "Palette");
+    assert(ChannelNames::get(5) == "Script");
+    assert(ChannelNames::get(6) == "Ch 1");
+    assert(ChannelNames::get(9) == "Ch 4");
+    assert((ChannelNames::createLabels(8) ==
+            std::vector<std::string>{"Tempo", "Palette", "Transition", "Sound 1", "Sound 2", "Script", "Ch 1", "Ch 2"}));
+    assert(ChannelNames::createLabels(0).empty());
+
+    assert(PaletteDescriptions::get(-1) == "System Mac");
+    assert(PaletteDescriptions::get(-7) == "Metallic");
+    assert(PaletteDescriptions::get(-102) == "System Windows (D4)");
+    assert(PaletteDescriptions::get(0) == "Cast Member #1");
+    assert(PaletteDescriptions::get(41) == "Cast Member #42");
+    assert(PaletteDescriptions::get(-999) == "Unknown (-999)");
+
+    assert(ScoreColors::getColor("").value() == ScoreColors::UNKNOWN);
+    assert(ScoreColors::getColor("bitmap").value() == ScoreColors::BITMAP);
+    assert(ScoreColors::getColor("FILMLOOP").value() == ScoreColors::FILM_LOOP);
+    assert(ScoreColors::getColor("film_loop").value() == ScoreColors::FILM_LOOP);
+    assert(ScoreColors::getColor("missing").value() == ScoreColors::UNKNOWN);
+    assert((ScoreColors::SPAN_CONTINUATION == ScoreColor{230, 230, 230}));
+
+    assert(LingoKeywords::isKeyword("on"));
+    assert(LingoKeywords::isKeyword("TRUE"));
+    assert(!LingoKeywords::isKeyword("true"));
+    assert(LingoKeywords::isCommand("updateStage"));
+    assert(!LingoKeywords::isCommand("updatestage"));
+    assert(LingoKeywords::isFunction("charToNum"));
+    assert(!LingoKeywords::isFunction("chartonum"));
+    assert(LingoKeywords::isEvent("mouseUp"));
+    assert(!LingoKeywords::isEvent("mouseup"));
+
+    const auto tokens = LingoTokenizer::tokenize("on idle\n--x\n#sym 12.5 .7 \"hi\" +");
+    assert(tokens.size() == 15);
+    assert(tokens[0] == (libreshockwave::editor::script::LingoToken{LingoTokenType::Keyword, 0, 2, "on"}));
+    assert(tokens[1] == (libreshockwave::editor::script::LingoToken{LingoTokenType::Whitespace, 2, 3, " "}));
+    assert(tokens[2] == (libreshockwave::editor::script::LingoToken{LingoTokenType::Event, 3, 7, "idle"}));
+    assert(tokens[3].type == LingoTokenType::Newline);
+    assert(tokens[4] == (libreshockwave::editor::script::LingoToken{LingoTokenType::Comment, 8, 11, "--x"}));
+    assert(tokens[6] == (libreshockwave::editor::script::LingoToken{LingoTokenType::Symbol, 12, 16, "#sym"}));
+    assert(tokens[8] == (libreshockwave::editor::script::LingoToken{LingoTokenType::Number, 17, 21, "12.5"}));
+    assert(tokens[10] == (libreshockwave::editor::script::LingoToken{LingoTokenType::Number, 22, 24, ".7"}));
+    assert(tokens[12] == (libreshockwave::editor::script::LingoToken{LingoTokenType::String, 25, 29, "\"hi\""}));
+    assert(tokens[14] == (libreshockwave::editor::script::LingoToken{LingoTokenType::Operator, 30, 31, "+"}));
+    assert(tokenTypeName(LingoTokenType::Keyword) == "KEYWORD");
+
+    const auto javaCaseTokens = LingoTokenizer::tokenize("charToNum updateStage mouseUp TRUE true");
+    assert(javaCaseTokens[0].type == LingoTokenType::Identifier);
+    assert(javaCaseTokens[2].type == LingoTokenType::Identifier);
+    assert(javaCaseTokens[4].type == LingoTokenType::Identifier);
+    assert(javaCaseTokens[6].type == LingoTokenType::Keyword);
+    assert(javaCaseTokens[8].type == LingoTokenType::Identifier);
 }
 
 void testLingoDatumTypes() {
@@ -20490,6 +20560,7 @@ int main() {
     testIdsAndEnums();
     testFormatTypes();
     testUtilityFormatting();
+    testEditorFormattingAndScriptHelpers();
     testLingoDatumTypes();
     testLingoOpcodeHelpers();
     testLingoDecompilerNodeFoundation();
