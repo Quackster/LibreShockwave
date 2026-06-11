@@ -268,6 +268,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - With `gtk4-devel` installed, the optional `libreshockwave_editor_gtk` target now compiles and links locally; the GTK entrypoint includes LibreShockwave headers before GTK to avoid GLib `TRUE`/`FALSE` macro collisions with `lingo::Datum`.
 - The optional GTK scaffold now presents Open requests with native `GtkFileDialog`, applying the tested Director file filter/current-folder metadata and routing accept/cancel results back through `EditorGtkShellState::activateOpenFileDialogAction`.
 - `editor::gtk::GtkPanelContextMenuSpec` ports GTK-facing pane context menu metadata for Show/Focus, Float, and Hide entries, and the optional GTK scaffold now opens those tested action bindings from right-click popover menus on pane rows and workbench tabs.
+- `editor::gtk` now exposes tested per-edge workbench dock actions and routes GTK tab primary-button drag releases through side snap zones into the same dock-at-edge frame model behavior used by the C++ docking layout.
 
 ### Bitmap Colorizer
 
@@ -1418,4 +1419,5 @@ Result:
 - `8e8a83e2 Bind C++ GTK workbench content actions`
 - `34f39ad6 Fix C++ GTK editor target build`
 - `b0c6194a Wire C++ GTK native open dialog`
-- Current checkpoint commit message: `Add C++ GTK pane context menus`
+- `65666e20 Add C++ GTK pane context menus`
+- Current checkpoint commit message: `Wire C++ GTK tab drag docking`

@@ -2036,6 +2036,13 @@ void testEditorFrameModels() {
     assert(!frame.panel("paint")->docked);
     assert(frame.panel("paint")->selected);
     assert(!frame.panel("stage")->selected);
+    assert(frame.dockPanelAtEdge("paint", DockEdge::Left));
+    assert(frame.isPanelVisible("paint"));
+    assert(frame.dockingLayout().isDocked("paint"));
+    assert(frame.panel("paint")->docked);
+    assert(frame.panel("paint")->selected);
+    assert(!frame.panel("stage")->selected);
+    assert(!frame.dockPanelAtEdge("missing", DockEdge::Right));
     assert(!frame.floatPanel("missing"));
 }
 
@@ -2121,6 +2128,10 @@ void testEditorShellActionModels() {
     assert(EditorGtkShellModel::workbenchPanelActionName("property-inspector") == "workbench_property_inspector");
     assert(EditorGtkShellModel::workbenchPanelFloatActionName("property-inspector") ==
            "workbench_float_property_inspector");
+    assert(EditorGtkShellModel::workbenchPanelDockActionName("property-inspector", DockEdge::Left) ==
+           "workbench_dock_left_property_inspector");
+    assert(EditorGtkShellModel::workbenchPanelDockActionName("property-inspector", DockEdge::Bottom) ==
+           "workbench_dock_bottom_property_inspector");
     assert(EditorGtkShellModel::workbenchContentActionName("property-inspector", 2, "Round Rect") ==
            "workbench_content_property_inspector_2_Round_Rect");
     assert(EditorGtkShellModel::dialogActionName(GtkShellDialogKind::ExternalParameters,
@@ -2249,6 +2260,24 @@ void testEditorShellActionModels() {
     assert(!paintFloatAction->enabled);
     assert(!paintFloatAction->stateful);
     assert(paintFloatAction->accelerators.empty());
+
+    const auto stageDockLeftAction =
+        EditorGtkShellModel::actionSpec("workbench_dock_left_stage", menus, toolbar, gtkFrame);
+    assert(stageDockLeftAction.has_value());
+    assert(stageDockLeftAction->panelId == "stage");
+    assert(stageDockLeftAction->enabled);
+    assert(!stageDockLeftAction->stateful);
+    assert(stageDockLeftAction->detailedName == "app.workbench_dock_left_stage");
+    assert(stageDockLeftAction->accelerators.empty());
+
+    const auto paintDockBottomAction =
+        EditorGtkShellModel::actionSpec("workbench_dock_bottom_paint", menus, toolbar, gtkFrame);
+    assert(paintDockBottomAction.has_value());
+    assert(paintDockBottomAction->panelId == "paint");
+    assert(!paintDockBottomAction->enabled);
+    assert(!paintDockBottomAction->stateful);
+    assert(paintDockBottomAction->detailedName == "app.workbench_dock_bottom_paint");
+    assert(paintDockBottomAction->accelerators.empty());
 
     const auto gtkMenus = EditorGtkShellModel::menuSpecs(menus, gtkFrame);
     assert(gtkMenus.size() == menus.menus().size());
@@ -2699,6 +2728,29 @@ void testEditorShellActionModels() {
     assert(genericFloatMessage.statusMessage == "Message floated");
     assert(genericWorkbenchActionState.viewState().workbenchContent.panelId == "message");
 
+    auto genericDockMessage = genericWorkbenchActionState.activateAction("workbench_dock_left_message");
+    assert(genericDockMessage.actionName == "workbench_dock_left_message");
+    assert(genericDockMessage.command == EditorCommand::None);
+    assert(genericDockMessage.panelId == "message");
+    assert(genericDockMessage.handled);
+    assert(genericDockMessage.refreshActions);
+    assert(genericDockMessage.refreshPanels);
+    assert(genericDockMessage.refreshView);
+    assert(genericDockMessage.statusMessage == "Message docked to left edge");
+    const auto genericDockView = genericWorkbenchActionState.viewState();
+    assert(genericDockView.workbenchContent.panelId == "message");
+    auto* dockedGenericMessage = findWorkbenchPanel(genericDockView.workbenchPanels, "message");
+    assert(dockedGenericMessage != nullptr);
+    assert(dockedGenericMessage->docked);
+    assert(dockedGenericMessage->selected);
+
+    auto genericHiddenPaintDock = genericWorkbenchActionState.activateAction("workbench_dock_right_paint");
+    assert(genericHiddenPaintDock.actionName == "workbench_dock_right_paint");
+    assert(genericHiddenPaintDock.command == EditorCommand::None);
+    assert(genericHiddenPaintDock.panelId == "paint");
+    assert(!genericHiddenPaintDock.handled);
+    assert(genericHiddenPaintDock.statusMessage == "Action disabled: workbench_dock_right_paint");
+
     auto genericHiddenPaintFloat = genericWorkbenchActionState.activateAction("workbench_float_paint");
     assert(genericHiddenPaintFloat.actionName == "workbench_float_paint");
     assert(genericHiddenPaintFloat.command == EditorCommand::None);
@@ -2791,6 +2843,24 @@ void testEditorShellActionModels() {
     assert(missingFloatAction.actionName == "workbench_float_missing");
     assert(!missingFloatAction.handled);
     assert(missingFloatAction.statusMessage == "Unknown workbench float action: workbench_float_missing");
+
+    EditorGtkShellState dockHiddenGtkState;
+    auto dockHiddenPaint = dockHiddenGtkState.activateWorkbenchDockAction("workbench_dock_right_paint");
+    assert(dockHiddenPaint.actionName == "workbench_dock_right_paint");
+    assert(dockHiddenPaint.panelId == "paint");
+    assert(dockHiddenPaint.handled);
+    assert(dockHiddenPaint.refreshActions);
+    assert(dockHiddenPaint.refreshPanels);
+    assert(dockHiddenPaint.refreshView);
+    assert(dockHiddenPaint.statusMessage == "Paint docked to right edge");
+    assert(dockHiddenPaint.panel.has_value());
+    assert(dockHiddenPaint.panel->docked);
+    assert(dockHiddenPaint.panel->selected);
+    assert(dockHiddenGtkState.viewState().workbenchContent.panelId == "paint");
+    auto missingDockAction = dockHiddenGtkState.activateWorkbenchDockAction("workbench_dock_right_missing");
+    assert(missingDockAction.actionName == "workbench_dock_right_missing");
+    assert(!missingDockAction.handled);
+    assert(missingDockAction.statusMessage == "Unknown workbench dock action: workbench_dock_right_missing");
 
     auto openRequest = gtkState.activateAction("open");
     assert(openRequest.handled);

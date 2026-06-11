@@ -436,6 +436,8 @@ public:
     [[nodiscard]] static std::string panelActionName(std::string_view panelId);
     [[nodiscard]] static std::string workbenchPanelActionName(std::string_view panelId);
     [[nodiscard]] static std::string workbenchPanelFloatActionName(std::string_view panelId);
+    [[nodiscard]] static std::string workbenchPanelDockActionName(std::string_view panelId,
+                                                                  docking::DockEdge edge);
     [[nodiscard]] static std::string workbenchContentActionName(std::string_view panelId,
                                                                 int index,
                                                                 std::string_view label);
@@ -527,9 +529,11 @@ public:
     GtkActionActivation openRecentProject(int index, StartScreenModel::ExistsCallback exists);
     GtkActionActivation activateRecentProjectAction(std::string_view actionName, StartScreenModel::ExistsCallback exists);
     GtkWorkbenchPanelActivation floatWorkbenchPanel(std::string_view panelId);
+    GtkWorkbenchPanelActivation dockWorkbenchPanel(std::string_view panelId, docking::DockEdge edge);
     GtkWorkbenchPanelActivation activateWorkbenchPanel(std::string_view panelId);
     GtkWorkbenchPanelActivation activateWorkbenchAction(std::string_view actionName);
     GtkWorkbenchPanelActivation activateWorkbenchFloatAction(std::string_view actionName);
+    GtkWorkbenchPanelActivation activateWorkbenchDockAction(std::string_view actionName);
     GtkActionActivation activateAction(std::string_view name);
     GtkShellDialogResult applyExternalParameters(std::vector<ExternalParamRow> rows);
     GtkShellDialogResult applyTraceHandlerInput(std::string_view input);

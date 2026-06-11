@@ -1,6 +1,7 @@
 #include "libreshockwave/editor/gtk/EditorGtkModels.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <limits>
 #include <map>
@@ -23,6 +24,22 @@ constexpr std::string_view ABOUT_BODY =
     "A recreation of Macromedia Director MX 2004.\n\n"
     "Part of the LibreShockwave project.";
 constexpr std::string_view OPEN_RECENT_ACTION_PREFIX = "open_recent_";
+constexpr std::array<docking::DockEdge, 4> DOCK_EDGES{
+    docking::DockEdge::Left,
+    docking::DockEdge::Right,
+    docking::DockEdge::Top,
+    docking::DockEdge::Bottom,
+};
+
+std::string_view dockEdgeActionToken(docking::DockEdge edge) {
+    switch (edge) {
+        case docking::DockEdge::Left: return "left";
+        case docking::DockEdge::Right: return "right";
+        case docking::DockEdge::Top: return "top";
+        case docking::DockEdge::Bottom: return "bottom";
+    }
+    return "left";
+}
 
 std::string gtkAcceleratorKey(std::string_view key) {
     if (key == "DELETE") {
@@ -491,6 +508,10 @@ std::string EditorGtkShellModel::workbenchPanelFloatActionName(std::string_view 
     return "workbench_float_" + sanitizeActionName(panelId);
 }
 
+std::string EditorGtkShellModel::workbenchPanelDockActionName(std::string_view panelId, docking::DockEdge edge) {
+    return "workbench_dock_" + std::string(dockEdgeActionToken(edge)) + "_" + sanitizeActionName(panelId);
+}
+
 std::string EditorGtkShellModel::workbenchContentActionName(std::string_view panelId,
                                                            int index,
                                                            std::string_view label) {
@@ -807,6 +828,20 @@ std::vector<GtkActionSpec> EditorGtkShellModel::actionSpecs(const EditorMenuMode
             false,
             {},
         };
+
+        for (const auto edge : DOCK_EDGES) {
+            const auto dockName = workbenchPanelDockActionName(row.panelId, edge);
+            specs[dockName] = GtkActionSpec{
+                dockName,
+                appAction(dockName),
+                EditorCommand::None,
+                row.panelId,
+                row.focusEnabled,
+                false,
+                false,
+                {},
+            };
+        }
     }
 
     std::vector<GtkActionSpec> result;
@@ -1424,6 +1459,35 @@ GtkWorkbenchPanelActivation EditorGtkShellState::floatWorkbenchPanel(std::string
     return result;
 }
 
+GtkWorkbenchPanelActivation EditorGtkShellState::dockWorkbenchPanel(std::string_view panelId,
+                                                                    docking::DockEdge edge) {
+    GtkWorkbenchPanelActivation result;
+    result.panelId = std::string(panelId);
+    result.actionName = EditorGtkShellModel::workbenchPanelDockActionName(panelId, edge);
+
+    if (!frameModel_.dockPanelAtEdge(panelId, edge)) {
+        result.statusMessage = "Panel not available: " + result.panelId;
+        statusMessage_ = result.statusMessage;
+        return result;
+    }
+
+    result.handled = true;
+    result.refreshActions = true;
+    result.refreshPanels = true;
+    result.refreshView = true;
+    result.statusMessage = panelTitle(panelId) + " docked to " + std::string(dockEdgeActionToken(edge)) + " edge";
+    statusMessage_ = result.statusMessage;
+
+    const auto panels = workbenchPanels();
+    const auto found = std::find_if(panels.begin(), panels.end(), [panelId](const GtkWorkbenchPanelSpec& panel) {
+        return panel.panelId == panelId;
+    });
+    if (found != panels.end()) {
+        result.panel = *found;
+    }
+    return result;
+}
+
 GtkWorkbenchPanelActivation EditorGtkShellState::activateWorkbenchPanel(std::string_view panelId) {
     GtkWorkbenchPanelActivation result;
     result.panelId = std::string(panelId);
@@ -1483,6 +1547,24 @@ GtkWorkbenchPanelActivation EditorGtkShellState::activateWorkbenchFloatAction(st
     return result;
 }
 
+GtkWorkbenchPanelActivation EditorGtkShellState::activateWorkbenchDockAction(std::string_view actionName) {
+    for (const auto& descriptor : panels::EditorPanelCatalog::descriptors()) {
+        for (const auto edge : DOCK_EDGES) {
+            if (EditorGtkShellModel::workbenchPanelDockActionName(descriptor.panelId, edge) == actionName) {
+                auto result = dockWorkbenchPanel(descriptor.panelId, edge);
+                result.actionName = std::string(actionName);
+                return result;
+            }
+        }
+    }
+
+    GtkWorkbenchPanelActivation result;
+    result.actionName = std::string(actionName);
+    result.statusMessage = "Unknown workbench dock action: " + result.actionName;
+    statusMessage_ = result.statusMessage;
+    return result;
+}
+
 GtkActionActivation EditorGtkShellState::activateAction(std::string_view name) {
     GtkActionActivation result;
     result.actionName = std::string(name);
@@ -1499,6 +1581,17 @@ GtkActionActivation EditorGtkShellState::activateAction(std::string_view name) {
     if (!spec->enabled) {
         result.statusMessage = "Action disabled: " + result.actionName;
         statusMessage_ = result.statusMessage;
+        return result;
+    }
+
+    if (name.starts_with("workbench_dock_")) {
+        const auto activation = activateWorkbenchDockAction(name);
+        result.panelId = activation.panelId;
+        result.handled = activation.handled;
+        result.refreshActions = activation.refreshActions;
+        result.refreshPanels = activation.refreshPanels;
+        result.refreshView = activation.refreshView;
+        result.statusMessage = activation.statusMessage;
         return result;
     }
 
