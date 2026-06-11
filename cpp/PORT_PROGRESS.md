@@ -269,6 +269,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - The optional GTK scaffold now presents Open requests with native `GtkFileDialog`, applying the tested Director file filter/current-folder metadata and routing accept/cancel results back through `EditorGtkShellState::activateOpenFileDialogAction`.
 - `editor::gtk::GtkPanelContextMenuSpec` ports GTK-facing pane context menu metadata for Show/Focus, Float, and Hide entries, and the optional GTK scaffold now opens those tested action bindings from right-click popover menus on pane rows and workbench tabs.
 - `editor::gtk` now exposes tested per-edge workbench dock actions and routes GTK tab primary-button drag releases through side snap zones into the same dock-at-edge frame model behavior used by the C++ docking layout.
+- `editor::gtk::GtkWorkbenchDockNodeSpec` now ports the recursive dock layout tree for GTK, and the optional GTK scaffold renders docked panes as nested `GtkPaned` workbench nodes while preserving the existing floating-pane fallback.
 
 ### Bitmap Colorizer
 
@@ -1420,4 +1421,5 @@ Result:
 - `34f39ad6 Fix C++ GTK editor target build`
 - `b0c6194a Wire C++ GTK native open dialog`
 - `65666e20 Add C++ GTK pane context menus`
-- Current checkpoint commit message: `Wire C++ GTK tab drag docking`
+- `616e1f32 Wire C++ GTK tab drag docking`
+- Current checkpoint commit message: `Render C++ GTK docked workbench layout`

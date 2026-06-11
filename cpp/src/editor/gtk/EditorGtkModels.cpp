@@ -41,6 +41,54 @@ std::string_view dockEdgeActionToken(docking::DockEdge edge) {
     return "left";
 }
 
+const GtkWorkbenchPanelSpec* findPanelSpec(const std::vector<GtkWorkbenchPanelSpec>& panels,
+                                           std::string_view panelId) {
+    const auto found = std::find_if(panels.begin(), panels.end(), [panelId](const GtkWorkbenchPanelSpec& panel) {
+        return panel.panelId == panelId;
+    });
+    return found == panels.end() ? nullptr : &*found;
+}
+
+GtkWorkbenchDockNodeSpec dockNodeSpec(const docking::DockNodeModel& node,
+                                      const std::vector<GtkWorkbenchPanelSpec>& panels) {
+    GtkWorkbenchDockNodeSpec spec;
+    spec.kind = node.kind;
+    spec.orientation = node.orientation;
+    spec.dividerFraction = node.dividerFraction;
+
+    if (node.kind == docking::DockNodeKind::Split) {
+        if (node.first) {
+            spec.children.push_back(dockNodeSpec(*node.first, panels));
+        }
+        if (node.second) {
+            spec.children.push_back(dockNodeSpec(*node.second, panels));
+        }
+        return spec;
+    }
+
+    const auto* selectedTab = node.selectedTab();
+    for (const auto& tab : node.tabs) {
+        const auto* panel = findPanelSpec(panels, tab.panelId);
+        if (panel == nullptr) {
+            continue;
+        }
+        auto panelSpec = *panel;
+        panelSpec.selected = selectedTab != nullptr && selectedTab->panelId == tab.panelId;
+        spec.panels.push_back(std::move(panelSpec));
+    }
+
+    auto active = std::find_if(spec.panels.begin(), spec.panels.end(), [](const GtkWorkbenchPanelSpec& panel) {
+        return panel.selected;
+    });
+    if (active == spec.panels.end() && !spec.panels.empty()) {
+        active = spec.panels.begin();
+    }
+    if (active != spec.panels.end()) {
+        spec.activePanel = *active;
+    }
+    return spec;
+}
+
 std::string gtkAcceleratorKey(std::string_view key) {
     if (key == "DELETE") {
         return "Delete";
@@ -1031,6 +1079,8 @@ GtkWorkbenchLayoutSpec EditorGtkShellModel::workbenchLayout(const EditorFramePan
     GtkWorkbenchLayoutSpec layout;
     layout.emptyText = "No editor panels available";
     layout.panels = workbenchPanels(frameModel, contextModel);
+    layout.hasDockedLayout = !frameModel.dockingLayout().dockedPanelIds().empty();
+    layout.dockRoot = dockNodeSpec(frameModel.dockingLayout().root(), layout.panels);
     auto active = std::find_if(layout.panels.begin(), layout.panels.end(), [](const GtkWorkbenchPanelSpec& panel) {
         return panel.selected;
     });

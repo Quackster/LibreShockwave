@@ -348,6 +348,7 @@ using libreshockwave::editor::gtk::GtkStartScreenRequest;
 using libreshockwave::editor::gtk::GtkToolbarItemSpec;
 using libreshockwave::editor::gtk::GtkWorkbenchContentActionSpec;
 using libreshockwave::editor::gtk::GtkWorkbenchContentSpec;
+using libreshockwave::editor::gtk::GtkWorkbenchDockNodeSpec;
 using libreshockwave::editor::gtk::GtkWorkbenchFocusActionSpec;
 using libreshockwave::editor::gtk::GtkWorkbenchPanelKind;
 using libreshockwave::editor::gtk::GtkWorkbenchPanelSpec;
@@ -2456,6 +2457,12 @@ void testEditorShellActionModels() {
     assert(gtkWorkbenchLayout.activePanel.has_value());
     assert(gtkWorkbenchLayout.activePanel->panelId == "paint");
     assert(gtkWorkbenchLayout.activePanel->primaryText == "No bitmap selected");
+    assert(gtkWorkbenchLayout.hasDockedLayout);
+    assert(gtkWorkbenchLayout.dockRoot.kind == DockNodeKind::Center);
+    assert(gtkWorkbenchLayout.dockRoot.panels.size() == 1);
+    assert(gtkWorkbenchLayout.dockRoot.panels[0].panelId == "paint");
+    assert(gtkWorkbenchLayout.dockRoot.activePanel.has_value());
+    assert(gtkWorkbenchLayout.dockRoot.activePanel->panelId == "paint");
     assert(gtkWorkbenchLayout.emptyText == "No editor panels available");
     const auto gtkWorkbenchTabs = EditorGtkShellModel::workbenchTabs(gtkFrame, closedGtkContext);
     assert(gtkWorkbenchTabs.size() == gtkWorkbench.size());
@@ -2596,6 +2603,9 @@ void testEditorShellActionModels() {
     assert(gtkState.workbenchLayout().activePanel.has_value());
     assert(gtkState.workbenchLayout().activePanel->panelId == "stage");
     assert(gtkState.workbenchLayout().activePanel->activationActionName == "workbench_stage");
+    assert(!gtkState.workbenchLayout().hasDockedLayout);
+    assert(gtkState.workbenchLayout().dockRoot.kind == DockNodeKind::Center);
+    assert(gtkState.workbenchLayout().dockRoot.panels.empty());
     auto gtkWorkbenchTabsState = gtkState.workbenchTabs();
     assert(gtkWorkbenchTabsState.size() == gtkWorkbenchPanels.size());
     assert(gtkWorkbenchTabsState.front() ==
@@ -2743,6 +2753,16 @@ void testEditorShellActionModels() {
     assert(dockedGenericMessage != nullptr);
     assert(dockedGenericMessage->docked);
     assert(dockedGenericMessage->selected);
+    assert(genericDockView.workbenchLayout.hasDockedLayout);
+    assert(genericDockView.workbenchLayout.dockRoot.kind == DockNodeKind::Split);
+    assert(genericDockView.workbenchLayout.dockRoot.orientation == DockOrientation::Horizontal);
+    assert(genericDockView.workbenchLayout.dockRoot.children.size() == 2);
+    assert(genericDockView.workbenchLayout.dockRoot.children[0].kind == DockNodeKind::Leaf);
+    assert(genericDockView.workbenchLayout.dockRoot.children[0].panels.size() == 1);
+    assert(genericDockView.workbenchLayout.dockRoot.children[0].panels[0].panelId == "message");
+    assert(genericDockView.workbenchLayout.dockRoot.children[0].activePanel.has_value());
+    assert(genericDockView.workbenchLayout.dockRoot.children[0].activePanel->panelId == "message");
+    assert(genericDockView.workbenchLayout.dockRoot.children[1].kind == DockNodeKind::Center);
 
     auto genericHiddenPaintDock = genericWorkbenchActionState.activateAction("workbench_dock_right_paint");
     assert(genericHiddenPaintDock.actionName == "workbench_dock_right_paint");

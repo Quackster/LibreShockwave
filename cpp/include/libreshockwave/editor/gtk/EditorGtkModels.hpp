@@ -364,9 +364,22 @@ struct GtkWorkbenchTabSpec {
     friend bool operator==(const GtkWorkbenchTabSpec&, const GtkWorkbenchTabSpec&) = default;
 };
 
+struct GtkWorkbenchDockNodeSpec {
+    docking::DockNodeKind kind{docking::DockNodeKind::Center};
+    docking::DockOrientation orientation{docking::DockOrientation::Horizontal};
+    double dividerFraction{0.5};
+    std::vector<GtkWorkbenchPanelSpec> panels;
+    std::optional<GtkWorkbenchPanelSpec> activePanel;
+    std::vector<GtkWorkbenchDockNodeSpec> children;
+
+    friend bool operator==(const GtkWorkbenchDockNodeSpec&, const GtkWorkbenchDockNodeSpec&) = default;
+};
+
 struct GtkWorkbenchLayoutSpec {
     std::vector<GtkWorkbenchPanelSpec> panels;
     std::optional<GtkWorkbenchPanelSpec> activePanel;
+    bool hasDockedLayout{false};
+    GtkWorkbenchDockNodeSpec dockRoot;
     std::string emptyText;
 
     friend bool operator==(const GtkWorkbenchLayoutSpec&, const GtkWorkbenchLayoutSpec&) = default;
