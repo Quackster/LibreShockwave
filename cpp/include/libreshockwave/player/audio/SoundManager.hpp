@@ -42,6 +42,12 @@ public:
 
     void setEnabled(bool enabled);
     [[nodiscard]] bool isEnabled() const;
+    void setSoundLevel(int level);
+    [[nodiscard]] int getSoundLevel() const;
+    void setSoundKeepDevice(bool keepDevice);
+    [[nodiscard]] bool soundKeepDevice() const;
+    void setSoundMixMedia(bool mixMedia);
+    [[nodiscard]] bool soundMixMedia() const;
     void play(int channelNum, const lingo::Datum& args);
     void stop(int channelNum);
     void stopAll();
@@ -70,9 +76,15 @@ private:
     };
 
     [[nodiscard]] static PlayArgs extractPlayArgs(const lingo::Datum& args);
+    [[nodiscard]] int effectiveVolume(int channelNum) const;
+    void applyVolume(int channelNum);
+    void applyAllVolumes();
 
     AudioBackend* backend_{nullptr};
     bool enabled_{true};
+    int soundLevel_{7};
+    bool soundKeepDevice_{true};
+    bool soundMixMedia_{true};
     std::array<int, MAX_CHANNELS + 1> volumes_{};
     std::unordered_map<int, DirectorFile*> castLibFiles_;
     AudioResolver resolver_;

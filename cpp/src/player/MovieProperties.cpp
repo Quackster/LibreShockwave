@@ -103,6 +103,30 @@ void MovieProperties::setSoundEnabledSetter(IntConsumer setter) {
     soundEnabledSetter_ = std::move(setter);
 }
 
+void MovieProperties::setSoundLevelSupplier(IntSupplier supplier) {
+    soundLevelSupplier_ = std::move(supplier);
+}
+
+void MovieProperties::setSoundLevelSetter(IntConsumer setter) {
+    soundLevelSetter_ = std::move(setter);
+}
+
+void MovieProperties::setSoundKeepDeviceSupplier(IntSupplier supplier) {
+    soundKeepDeviceSupplier_ = std::move(supplier);
+}
+
+void MovieProperties::setSoundKeepDeviceSetter(IntConsumer setter) {
+    soundKeepDeviceSetter_ = std::move(setter);
+}
+
+void MovieProperties::setSoundMixMediaSupplier(IntSupplier supplier) {
+    soundMixMediaSupplier_ = std::move(supplier);
+}
+
+void MovieProperties::setSoundMixMediaSetter(IntConsumer setter) {
+    soundMixMediaSetter_ = std::move(setter);
+}
+
 void MovieProperties::setRandomSeedSupplier(IntSupplier supplier) {
     randomSeedSupplier_ = std::move(supplier);
 }
@@ -200,6 +224,9 @@ lingo::Datum MovieProperties::getMovieProp(std::string_view propName) const {
     if (prop == "floatprecision") return lingo::Datum::of(floatPrecision_);
     if (prop == "beepon") return lingo::Datum::of(beepOn_ ? 1 : 0);
     if (prop == "soundenabled") return lingo::Datum::of(soundEnabled() ? 1 : 0);
+    if (prop == "soundlevel") return lingo::Datum::of(soundLevel());
+    if (prop == "soundkeepdevice") return lingo::Datum::of(soundKeepDevice() ? 1 : 0);
+    if (prop == "soundmixmedia") return lingo::Datum::of(soundMixMedia() ? 1 : 0);
     if (prop == "randomseed") return lingo::Datum::of(randomSeed());
     if (prop == "actorlist") return actorList_;
     if (prop == "framerate" || prop == "tempo" || prop == "frametempo") return lingo::Datum::of(tempo());
@@ -315,6 +342,18 @@ bool MovieProperties::setMovieProp(std::string_view propName, const lingo::Datum
     }
     if (prop == "soundenabled") {
         setSoundEnabled(value.boolValue());
+        return true;
+    }
+    if (prop == "soundlevel") {
+        setSoundLevel(value.intValue());
+        return true;
+    }
+    if (prop == "soundkeepdevice") {
+        setSoundKeepDevice(value.boolValue());
+        return true;
+    }
+    if (prop == "soundmixmedia") {
+        setSoundMixMedia(value.boolValue());
         return true;
     }
     if (prop == "randomseed") {
@@ -480,6 +519,39 @@ void MovieProperties::setSoundEnabled(bool enabled) {
     soundEnabled_ = enabled;
     if (soundEnabledSetter_) {
         soundEnabledSetter_(enabled ? 1 : 0);
+    }
+}
+
+int MovieProperties::soundLevel() const {
+    return soundLevelSupplier_ ? soundLevelSupplier_() : soundLevel_;
+}
+
+void MovieProperties::setSoundLevel(int level) {
+    soundLevel_ = std::clamp(level, 0, 7);
+    if (soundLevelSetter_) {
+        soundLevelSetter_(soundLevel_);
+    }
+}
+
+bool MovieProperties::soundKeepDevice() const {
+    return soundKeepDeviceSupplier_ ? soundKeepDeviceSupplier_() != 0 : soundKeepDevice_;
+}
+
+void MovieProperties::setSoundKeepDevice(bool keepDevice) {
+    soundKeepDevice_ = keepDevice;
+    if (soundKeepDeviceSetter_) {
+        soundKeepDeviceSetter_(keepDevice ? 1 : 0);
+    }
+}
+
+bool MovieProperties::soundMixMedia() const {
+    return soundMixMediaSupplier_ ? soundMixMediaSupplier_() != 0 : soundMixMedia_;
+}
+
+void MovieProperties::setSoundMixMedia(bool mixMedia) {
+    soundMixMedia_ = mixMedia;
+    if (soundMixMediaSetter_) {
+        soundMixMediaSetter_(mixMedia ? 1 : 0);
     }
 }
 

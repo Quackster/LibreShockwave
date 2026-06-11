@@ -75,6 +75,35 @@ bool SoundManager::isEnabled() const {
     return enabled_;
 }
 
+void SoundManager::setSoundLevel(int level) {
+    const int clamped = std::clamp(level, 0, 7);
+    if (soundLevel_ == clamped) {
+        return;
+    }
+    soundLevel_ = clamped;
+    applyAllVolumes();
+}
+
+int SoundManager::getSoundLevel() const {
+    return soundLevel_;
+}
+
+void SoundManager::setSoundKeepDevice(bool keepDevice) {
+    soundKeepDevice_ = keepDevice;
+}
+
+bool SoundManager::soundKeepDevice() const {
+    return soundKeepDevice_;
+}
+
+void SoundManager::setSoundMixMedia(bool mixMedia) {
+    soundMixMedia_ = mixMedia;
+}
+
+bool SoundManager::soundMixMedia() const {
+    return soundMixMedia_;
+}
+
 void SoundManager::play(int channelNum, const lingo::Datum& args) {
     if (!enabled_ || backend_ == nullptr || !isValidChannel(channelNum)) {
         return;
@@ -91,7 +120,7 @@ void SoundManager::play(int channelNum, const lingo::Datum& args) {
     }
 
     backend_->play(channelNum, *audioData, detectFormat(*audioData), parsed.loopCount);
-    backend_->setVolume(channelNum, volumes_[static_cast<std::size_t>(channelNum)]);
+    applyVolume(channelNum);
 }
 
 void SoundManager::stop(int channelNum) {
@@ -113,9 +142,7 @@ void SoundManager::setVolume(int channelNum, int volume) {
     }
     const int clamped = clampVolume(volume);
     volumes_[static_cast<std::size_t>(channelNum)] = clamped;
-    if (backend_ != nullptr) {
-        backend_->setVolume(channelNum, clamped);
-    }
+    applyVolume(channelNum);
 }
 
 int SoundManager::getVolume(int channelNum) const {
@@ -244,6 +271,31 @@ SoundManager::PlayArgs SoundManager::extractPlayArgs(const lingo::Datum& args) {
     }
 
     return result;
+}
+
+int SoundManager::effectiveVolume(int channelNum) const {
+    if (!isValidChannel(channelNum)) {
+        return 255;
+    }
+    const int channelVolume = volumes_[static_cast<std::size_t>(channelNum)];
+    return (channelVolume * soundLevel_) / 7;
+}
+
+void SoundManager::applyVolume(int channelNum) {
+    if (backend_ != nullptr && isValidChannel(channelNum)) {
+        backend_->setVolume(channelNum, effectiveVolume(channelNum));
+    }
+}
+
+void SoundManager::applyAllVolumes() {
+    if (backend_ == nullptr) {
+        return;
+    }
+    for (int channel = 1; channel <= MAX_CHANNELS; ++channel) {
+        if (backend_->isPlaying(channel)) {
+            applyVolume(channel);
+        }
+    }
 }
 
 } // namespace libreshockwave::player::audio

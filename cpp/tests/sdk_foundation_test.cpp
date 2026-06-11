@@ -9880,6 +9880,9 @@ void testMoviePropertiesFoundation() {
     assert(props.getMovieProp("perFrameHook").isVoid());
     assert(props.getMovieProp("beepOn").boolValue());
     assert(props.getMovieProp("soundEnabled").boolValue());
+    assert(props.getMovieProp("soundLevel").intValue() == 7);
+    assert(props.getMovieProp("soundKeepDevice").boolValue());
+    assert(props.getMovieProp("soundMixMedia").boolValue());
     assert(props.getMovieProp("unknownMovieProp").isVoid());
 
     DirectorFile emptyFile(ByteOrder::BigEndian, false, 0, ChunkType::RIFX);
@@ -9982,6 +9985,9 @@ void testMoviePropertiesFoundation() {
     assert(props.setMovieProp("floatPrecision", Datum::of(6)));
     assert(props.setMovieProp("beepOn", Datum::FALSE));
     assert(props.setMovieProp("soundEnabled", Datum::FALSE));
+    assert(props.setMovieProp("soundLevel", Datum::of(5)));
+    assert(props.setMovieProp("soundKeepDevice", Datum::FALSE));
+    assert(props.setMovieProp("soundMixMedia", Datum::FALSE));
     assert(props.setMovieProp("randomSeed", Datum::of(1234)));
     assert(props.setMovieProp("selStart", Datum::of(30)));
     assert(props.setMovieProp("selEnd", Datum::of(40)));
@@ -10005,6 +10011,9 @@ void testMoviePropertiesFoundation() {
     assert(props.getMovieProp("floatPrecision").intValue() == 6);
     assert(!props.getMovieProp("beepOn").boolValue());
     assert(!props.getMovieProp("soundEnabled").boolValue());
+    assert(props.getMovieProp("soundLevel").intValue() == 5);
+    assert(!props.getMovieProp("soundKeepDevice").boolValue());
+    assert(!props.getMovieProp("soundMixMedia").boolValue());
     assert(randomSeed == 1234);
     assert(input.selStart() == 30);
     assert(input.selEnd() == 40);
@@ -10021,6 +10030,23 @@ void testMoviePropertiesFoundation() {
     assert(!props.getMovieProp("soundEnabled").boolValue());
     assert(props.setMovieProp("soundEnabled", Datum::TRUE));
     assert(soundEnabled == 1);
+    int soundLevel = 7;
+    int soundKeepDevice = 1;
+    int soundMixMedia = 1;
+    props.setSoundLevelSupplier([&soundLevel]() { return soundLevel; });
+    props.setSoundLevelSetter([&soundLevel](int value) { soundLevel = value; });
+    props.setSoundKeepDeviceSupplier([&soundKeepDevice]() { return soundKeepDevice; });
+    props.setSoundKeepDeviceSetter([&soundKeepDevice](int value) { soundKeepDevice = value; });
+    props.setSoundMixMediaSupplier([&soundMixMedia]() { return soundMixMedia; });
+    props.setSoundMixMediaSetter([&soundMixMedia](int value) { soundMixMedia = value; });
+    assert(props.setMovieProp("soundLevel", Datum::of(99)));
+    assert(soundLevel == 7);
+    assert(props.setMovieProp("soundLevel", Datum::of(-5)));
+    assert(soundLevel == 0);
+    assert(props.setMovieProp("soundKeepDevice", Datum::TRUE));
+    assert(soundKeepDevice == 1);
+    assert(props.setMovieProp("soundMixMedia", Datum::TRUE));
+    assert(soundMixMedia == 1);
 
     assert(props.getStageProp("title").stringValue().empty());
     assert(props.setStageProp("title", Datum::of(std::string("Main Stage"))));
@@ -12580,6 +12606,15 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 137) {
             return std::string("soundEnabled");
         }
+        if (nameId == 138) {
+            return std::string("soundLevel");
+        }
+        if (nameId == 139) {
+            return std::string("soundKeepDevice");
+        }
+        if (nameId == 140) {
+            return std::string("soundMixMedia");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.variableSetListener = [&variableTraces](std::string_view type,
@@ -13588,6 +13623,9 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     objectPropertySoundManager.setVolume(4, 80);
     builtinContext.soundManager = &objectPropertySoundManager;
     assert(runObjectPropertyGet(Datum::soundRef(), 137).boolValue());
+    assert(runObjectPropertyGet(Datum::soundRef(), 138).intValue() == 7);
+    assert(runObjectPropertyGet(Datum::soundRef(), 139).boolValue());
+    assert(runObjectPropertyGet(Datum::soundRef(), 140).boolValue());
     assert(runObjectPropertyGet(Datum::soundRef(), 56).asSymbol()->name == "sound");
     assert(runObjectPropertyGet(Datum::soundChannel(4), 86).intValue() == 80);
     setObjectContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_OBJ_PROP, libreshockwave::lingo::code(Opcode::SET_OBJ_PROP), 86});
@@ -13606,6 +13644,26 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     setObjectContext.push(Datum::TRUE);
     assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
     assert(objectPropertySoundManager.isEnabled());
+    setObjectContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_OBJ_PROP, libreshockwave::lingo::code(Opcode::SET_OBJ_PROP), 138});
+    setObjectContext.push(Datum::soundRef());
+    setObjectContext.push(Datum::of(5));
+    assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
+    assert(objectPropertySoundManager.getSoundLevel() == 5);
+    assert(runObjectPropertyGet(Datum::soundRef(), 138).intValue() == 5);
+    setObjectContext.push(Datum::soundRef());
+    setObjectContext.push(Datum::of(99));
+    assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
+    assert(objectPropertySoundManager.getSoundLevel() == 7);
+    setObjectContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_OBJ_PROP, libreshockwave::lingo::code(Opcode::SET_OBJ_PROP), 139});
+    setObjectContext.push(Datum::soundRef());
+    setObjectContext.push(Datum::FALSE);
+    assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
+    assert(!objectPropertySoundManager.soundKeepDevice());
+    setObjectContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_OBJ_PROP, libreshockwave::lingo::code(Opcode::SET_OBJ_PROP), 140});
+    setObjectContext.push(Datum::soundRef());
+    setObjectContext.push(Datum::FALSE);
+    assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
+    assert(!objectPropertySoundManager.soundMixMedia());
     builtinContext.soundManager = nullptr;
 
     auto imageSetBitmap = std::make_shared<Bitmap>(1, 1, 32);
@@ -13805,11 +13863,32 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     SpriteProperties legacySpriteProps(&legacySpriteRegistry);
     SoundManager legacySoundManager;
     legacySoundManager.setVolume(2, 65);
+    legacyMovieProps.setSoundLevelSupplier([&legacySoundManager]() {
+        return legacySoundManager.getSoundLevel();
+    });
+    legacyMovieProps.setSoundLevelSetter([&legacySoundManager](int level) {
+        legacySoundManager.setSoundLevel(level);
+    });
+    legacyMovieProps.setSoundKeepDeviceSupplier([&legacySoundManager]() {
+        return legacySoundManager.soundKeepDevice() ? 1 : 0;
+    });
+    legacyMovieProps.setSoundKeepDeviceSetter([&legacySoundManager](int keepDevice) {
+        legacySoundManager.setSoundKeepDevice(keepDevice != 0);
+    });
+    legacyMovieProps.setSoundMixMediaSupplier([&legacySoundManager]() {
+        return legacySoundManager.soundMixMedia() ? 1 : 0;
+    });
+    legacyMovieProps.setSoundMixMediaSetter([&legacySoundManager](int mixMedia) {
+        legacySoundManager.setSoundMixMedia(mixMedia != 0);
+    });
     builtinContext.movieProperties = &legacyMovieProps;
     builtinContext.spriteProperties = &legacySpriteProps;
     builtinContext.soundManager = &legacySoundManager;
     assert(runLegacyGet(0x00, Datum::voidValue(), 0x00).intValue() == 4);
     assert(runLegacyGet(0x06, Datum::of(5), 0x0D).intValue() == 22);
+    assert(runLegacyGet(0x07, Datum::voidValue(), 0x1A).intValue() == 7);
+    assert(runLegacyGet(0x07, Datum::voidValue(), 0x27).boolValue());
+    assert(runLegacyGet(0x07, Datum::voidValue(), 0x28).boolValue());
     assert(runLegacyGet(0x0B, Datum::of(2), 0x01).intValue() == 65);
     builtinContext.castMemberCountSupplier = [](int castLib) {
         return castLib == 5 ? 7 : 0;
@@ -13833,6 +13912,19 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     legacySetContext.push(Datum::of(0x01));
     assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
     assert(legacySoundManager.getVolume(2) == 99);
+    legacySetContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET, libreshockwave::lingo::code(Opcode::SET), 0x07});
+    legacySetContext.push(Datum::of(5));
+    legacySetContext.push(Datum::of(0x1A));
+    assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
+    assert(legacySoundManager.getSoundLevel() == 5);
+    legacySetContext.push(Datum::FALSE);
+    legacySetContext.push(Datum::of(0x27));
+    assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
+    assert(!legacySoundManager.soundKeepDevice());
+    legacySetContext.push(Datum::FALSE);
+    legacySetContext.push(Datum::of(0x28));
+    assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
+    assert(!legacySoundManager.soundMixMedia());
     assert(legacySetScope.stackSize() == 0);
     builtinContext.movieProperties = nullptr;
     builtinContext.spriteProperties = nullptr;
@@ -23921,6 +24013,18 @@ void testSoundManagerFoundation() {
     assert(manager.backend() == nullptr);
     assert(manager.getVolume(1) == 255);
     assert(manager.getVolume(9) == 255);
+    assert(manager.getSoundLevel() == 7);
+    assert(manager.soundKeepDevice());
+    assert(manager.soundMixMedia());
+    manager.setSoundLevel(99);
+    assert(manager.getSoundLevel() == 7);
+    manager.setSoundLevel(-5);
+    assert(manager.getSoundLevel() == 0);
+    manager.setSoundLevel(7);
+    manager.setSoundKeepDevice(false);
+    assert(!manager.soundKeepDevice());
+    manager.setSoundMixMedia(false);
+    assert(!manager.soundMixMedia());
     manager.setVolume(2, -1);
     assert(manager.getVolume(2) == 0);
     manager.setVolume(2, 300);
@@ -23966,6 +24070,13 @@ void testSoundManagerFoundation() {
     assert(backend.lastVolume == 128);
     assert(manager.isPlaying(2));
     assert(manager.getElapsedTime(2) == 345);
+    manager.setSoundLevel(3);
+    assert(manager.getSoundLevel() == 3);
+    manager.setVolume(2, 128);
+    assert(manager.getVolume(2) == 128);
+    assert(backend.lastVolumeChannel == 2);
+    assert(backend.lastVolume == 54);
+    manager.setSoundLevel(7);
     manager.setEnabled(false);
     assert(!manager.isEnabled());
     assert(backend.stopAllCount == 1);

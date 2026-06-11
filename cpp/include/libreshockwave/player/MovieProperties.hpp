@@ -35,6 +35,12 @@ public:
     void setTempoSetter(IntConsumer setter);
     void setSoundEnabledSupplier(IntSupplier supplier);
     void setSoundEnabledSetter(IntConsumer setter);
+    void setSoundLevelSupplier(IntSupplier supplier);
+    void setSoundLevelSetter(IntConsumer setter);
+    void setSoundKeepDeviceSupplier(IntSupplier supplier);
+    void setSoundKeepDeviceSetter(IntConsumer setter);
+    void setSoundMixMediaSupplier(IntSupplier supplier);
+    void setSoundMixMediaSetter(IntConsumer setter);
     void setRandomSeedSupplier(IntSupplier supplier);
     void setRandomSeedSetter(IntConsumer setter);
     void setParamCountSupplier(IntSupplier supplier);
@@ -80,6 +86,12 @@ private:
     void setTempo(int tempo);
     [[nodiscard]] bool soundEnabled() const;
     void setSoundEnabled(bool enabled);
+    [[nodiscard]] int soundLevel() const;
+    void setSoundLevel(int level);
+    [[nodiscard]] bool soundKeepDevice() const;
+    void setSoundKeepDevice(bool keepDevice);
+    [[nodiscard]] bool soundMixMedia() const;
+    void setSoundMixMedia(bool mixMedia);
     [[nodiscard]] int randomSeed() const;
     void setRandomSeed(int seed);
     [[nodiscard]] int stageWidth(int fallback = 0) const;
@@ -115,6 +127,9 @@ private:
     bool tempoExplicit_{false};
     bool beepOn_{true};
     bool soundEnabled_{true};
+    int soundLevel_{7};
+    bool soundKeepDevice_{true};
+    bool soundMixMedia_{true};
     int randomSeed_{0};
     int stageBackgroundColor_{0};
 
@@ -126,6 +141,12 @@ private:
     IntConsumer tempoSetter_;
     IntSupplier soundEnabledSupplier_;
     IntConsumer soundEnabledSetter_;
+    IntSupplier soundLevelSupplier_;
+    IntConsumer soundLevelSetter_;
+    IntSupplier soundKeepDeviceSupplier_;
+    IntConsumer soundKeepDeviceSetter_;
+    IntSupplier soundMixMediaSupplier_;
+    IntConsumer soundMixMediaSetter_;
     IntSupplier randomSeedSupplier_;
     IntConsumer randomSeedSetter_;
     IntSupplier paramCountSupplier_;

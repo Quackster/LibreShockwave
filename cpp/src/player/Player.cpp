@@ -901,6 +901,24 @@ void Player::wireComponents() {
     movieProperties_.setSoundEnabledSetter([this](int enabled) {
         soundManager_.setEnabled(enabled != 0);
     });
+    movieProperties_.setSoundLevelSupplier([this] {
+        return soundManager_.getSoundLevel();
+    });
+    movieProperties_.setSoundLevelSetter([this](int level) {
+        soundManager_.setSoundLevel(level);
+    });
+    movieProperties_.setSoundKeepDeviceSupplier([this] {
+        return soundManager_.soundKeepDevice() ? 1 : 0;
+    });
+    movieProperties_.setSoundKeepDeviceSetter([this](int keepDevice) {
+        soundManager_.setSoundKeepDevice(keepDevice != 0);
+    });
+    movieProperties_.setSoundMixMediaSupplier([this] {
+        return soundManager_.soundMixMedia() ? 1 : 0;
+    });
+    movieProperties_.setSoundMixMediaSetter([this](int mixMedia) {
+        soundManager_.setSoundMixMedia(mixMedia != 0);
+    });
 
     inputHandler_.setCurrentFrameSupplier([this] {
         return currentFrame();

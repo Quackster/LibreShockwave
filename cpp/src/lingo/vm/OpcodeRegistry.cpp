@@ -882,12 +882,38 @@ Datum getObjectProperty(ExecutionContext& context, const Datum& object, std::str
                                          : Datum::voidValue();
     }
     if (object.asSoundRef() != nullptr) {
-        if (equalsIgnoreCase(propName, "soundEnabled")) {
-            return builtinContext != nullptr ? builtin::SoundBuiltins::soundEnabled(*builtinContext, {})
-                                             : Datum::TRUE;
-        }
         if (equalsIgnoreCase(propName, "ilk")) {
             return Datum::symbol("sound");
+        }
+        const bool isSoundProperty = equalsIgnoreCase(propName, "soundEnabled") ||
+                                     equalsIgnoreCase(propName, "soundLevel") ||
+                                     equalsIgnoreCase(propName, "soundKeepDevice") ||
+                                     equalsIgnoreCase(propName, "soundMixMedia");
+        if (!isSoundProperty) {
+            return Datum::voidValue();
+        }
+        if (builtinContext != nullptr && builtinContext->movieProperties != nullptr) {
+            return builtinContext->movieProperties->getMovieProp(propName);
+        }
+        if (builtinContext != nullptr && builtinContext->soundManager != nullptr) {
+            if (equalsIgnoreCase(propName, "soundEnabled")) {
+                return builtinContext->soundManager->isEnabled() ? Datum::TRUE : Datum::FALSE;
+            }
+            if (equalsIgnoreCase(propName, "soundLevel")) {
+                return Datum::of(builtinContext->soundManager->getSoundLevel());
+            }
+            if (equalsIgnoreCase(propName, "soundKeepDevice")) {
+                return builtinContext->soundManager->soundKeepDevice() ? Datum::TRUE : Datum::FALSE;
+            }
+            return builtinContext->soundManager->soundMixMedia() ? Datum::TRUE : Datum::FALSE;
+        }
+        if (equalsIgnoreCase(propName, "soundLevel")) {
+            return Datum::of(7);
+        }
+        if (equalsIgnoreCase(propName, "soundEnabled") ||
+            equalsIgnoreCase(propName, "soundKeepDevice") ||
+            equalsIgnoreCase(propName, "soundMixMedia")) {
+            return Datum::TRUE;
         }
         return Datum::voidValue();
     }
@@ -979,11 +1005,21 @@ void setObjectProperty(ExecutionContext& context, Datum& object, std::string_vie
         return;
     }
     if (object.asSoundRef() != nullptr) {
-        if (equalsIgnoreCase(propName, "soundEnabled")) {
-            if (builtinContext != nullptr && builtinContext->movieProperties != nullptr) {
-                (void)builtinContext->movieProperties->setMovieProp("soundEnabled", value);
-            } else if (builtinContext != nullptr && builtinContext->soundManager != nullptr) {
+        const bool isSoundProperty = equalsIgnoreCase(propName, "soundEnabled") ||
+                                     equalsIgnoreCase(propName, "soundLevel") ||
+                                     equalsIgnoreCase(propName, "soundKeepDevice") ||
+                                     equalsIgnoreCase(propName, "soundMixMedia");
+        if (isSoundProperty && builtinContext != nullptr && builtinContext->movieProperties != nullptr) {
+            (void)builtinContext->movieProperties->setMovieProp(propName, value);
+        } else if (isSoundProperty && builtinContext != nullptr && builtinContext->soundManager != nullptr) {
+            if (equalsIgnoreCase(propName, "soundEnabled")) {
                 builtinContext->soundManager->setEnabled(value.boolValue());
+            } else if (equalsIgnoreCase(propName, "soundLevel")) {
+                builtinContext->soundManager->setSoundLevel(value.intValue());
+            } else if (equalsIgnoreCase(propName, "soundKeepDevice")) {
+                builtinContext->soundManager->setSoundKeepDevice(value.boolValue());
+            } else {
+                builtinContext->soundManager->setSoundMixMedia(value.boolValue());
             }
         }
         return;
