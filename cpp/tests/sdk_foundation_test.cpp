@@ -72,6 +72,7 @@
 #include "libreshockwave/chunks/ScoreChunk.hpp"
 #include "libreshockwave/chunks/SoundChunk.hpp"
 #include "libreshockwave/chunks/TextChunk.hpp"
+#include "libreshockwave/editor/AppModels.hpp"
 #include "libreshockwave/editor/audio/EditorAudioModels.hpp"
 #include "libreshockwave/editor/debug/DebugBrowserModels.hpp"
 #include "libreshockwave/editor/debug/DebugDisplayItems.hpp"
@@ -282,6 +283,11 @@ using libreshockwave::chunks::ScriptNamesChunk;
 using libreshockwave::chunks::ScoreChunk;
 using libreshockwave::chunks::SoundChunk;
 using libreshockwave::chunks::TextChunk;
+using libreshockwave::editor::ExternalParamRow;
+using libreshockwave::editor::ExternalParamsTableModel;
+using libreshockwave::editor::PreferencesModel;
+using libreshockwave::editor::RecentProjectEntry;
+using libreshockwave::editor::StartScreenModel;
 using libreshockwave::editor::audio::AudioPlaybackController;
 using libreshockwave::editor::audio::EditorAudioBackend;
 using libreshockwave::editor::audio::EditorAudioClip;
@@ -1529,6 +1535,96 @@ public:
 
     std::vector<SelectionEvent> events;
 };
+
+void testEditorAppShellModels() {
+    PreferencesModel preferences;
+    assert(!preferences.lastOpenDirectory().has_value());
+    preferences.setLastOpenDirectory(std::string("/movies"));
+    assert(preferences.lastOpenDirectory().value() == "/movies");
+    preferences.clearLastOpenDirectory();
+    assert(!preferences.lastOpenDirectory().has_value());
+    preferences.setLastOpenDirectory(std::string("/movies"));
+
+    for (int index = 0; index < 12; ++index) {
+        preferences.addRecentProject("/movies/movie" + std::to_string(index) + ".dir");
+    }
+    assert(preferences.recentProjects().size() == PreferencesModel::MAX_RECENT_PROJECTS);
+    assert(preferences.recentProjects().front() == "/movies/movie11.dir");
+    assert(preferences.recentProjects().back() == "/movies/movie2.dir");
+    preferences.addRecentProject("/movies/movie5.dir");
+    assert(preferences.recentProjects().front() == "/movies/movie5.dir");
+    assert(std::count(preferences.recentProjects().begin(),
+                      preferences.recentProjects().end(),
+                      "/movies/movie5.dir") == 1);
+
+    preferences.setMovieParams("/movies/movie5.dir",
+                               {ExternalParamRow{"sw1", "site.url=http://example.test"},
+                                ExternalParamRow{"sw2", "connection.info.port=30101"}});
+    assert(preferences.movieParams("/missing.dir") == std::nullopt);
+    const auto movieParams = preferences.movieParams("/movies/movie5.dir");
+    assert(movieParams.has_value());
+    assert(movieParams->size() == 2);
+    assert((*movieParams)[0].key == "sw1");
+    const auto serializedPrefs = preferences.serializeJson();
+    assert(serializedPrefs.find("\"lastOpenDirectory\":\"/movies\"") != std::string::npos);
+    assert(serializedPrefs.find("\"recentProjects\"") != std::string::npos);
+    assert(serializedPrefs.find("\"movieParams\"") != std::string::npos);
+
+    PreferencesModel loadedPreferences;
+    loadedPreferences.deserializeJson(serializedPrefs);
+    assert(loadedPreferences.lastOpenDirectory().value() == "/movies");
+    assert(loadedPreferences.recentProjects().front() == "/movies/movie5.dir");
+    const auto loadedParams = loadedPreferences.movieParams("/movies/movie5.dir");
+    assert(loadedParams.has_value());
+    assert(loadedParams->size() == 2);
+    assert((*loadedParams)[1].value == "connection.info.port=30101");
+    loadedPreferences.setMovieParams("/movies/movie5.dir", {});
+    assert(!loadedPreferences.movieParams("/movies/movie5.dir").has_value());
+    loadedPreferences.clearRecentProjects();
+    assert(loadedPreferences.recentProjects().empty());
+
+    assert((StartScreenModel::directorFileExtensions() ==
+            std::vector<std::string>{"dir", "dxr", "dcr", "cct", "cst"}));
+    assert(!StartScreenModel::createNewMovieEnabled());
+    auto entry = StartScreenModel::makeRecentEntry("/tmp/Test Movie.dir", true);
+    assert(entry == (RecentProjectEntry{"/tmp/Test Movie.dir", "Test Movie.dir", "/tmp", true}));
+    const auto recentEntries = StartScreenModel::recentEntries(preferences, [](std::string_view path) {
+        return path.find("movie5") != std::string_view::npos;
+    });
+    assert(recentEntries.size() == PreferencesModel::MAX_RECENT_PROJECTS);
+    assert(recentEntries[0].exists);
+    assert(!recentEntries[1].exists);
+    assert(StartScreenModel::selectRecentPath(recentEntries, 0).value() == "/movies/movie5.dir");
+    assert(!StartScreenModel::selectRecentPath(recentEntries, 1).has_value());
+    assert(!StartScreenModel::selectRecentPath(recentEntries, 99).has_value());
+
+    ExternalParamsTableModel params({ExternalParamRow{" sw1 ", "first"},
+                                     ExternalParamRow{"", "ignored"},
+                                     ExternalParamRow{"sw1", "override"}});
+    assert(params.rowCount() == 3);
+    assert(params.columnCount() == 2);
+    assert(params.columnName(0) == "Key");
+    assert(params.columnName(1) == "Value");
+    assert(params.valueAt(0, 0) == " sw1 ");
+    assert(params.valueAt(0, 1) == "first");
+    assert(params.valueAt(99, 1).empty());
+    assert(params.valueAt(0, 99).empty());
+    assert(params.setValueAt(1, 0, "sw2"));
+    assert(!params.setValueAt(10, 0, "bad"));
+    params.addRow("sw3", "third");
+    assert(params.rowCount() == 4);
+    params.removeRows({1, 99, 1});
+    assert(params.rowCount() == 3);
+    const auto compactParams = params.toParams();
+    assert((compactParams == std::vector<ExternalParamRow>{ExternalParamRow{"sw1", "override"},
+                                                           ExternalParamRow{"sw3", "third"}}));
+    params.clear();
+    assert(params.rowCount() == 0);
+    params.loadHabboPreset();
+    assert(params.rowCount() == 5);
+    assert(params.rows()[0].key == "sw1");
+    assert(params.rows()[4].value.find("external.variables.txt") != std::string::npos);
+}
 
 void testEditorModelAndSelectionFoundation() {
     const CastMemberInfo bitmapInfo{7, "Door", nullptr, MemberType::Bitmap, "16x16"};
@@ -22153,6 +22249,7 @@ int main() {
     testFormatTypes();
     testUtilityFormatting();
     testEditorFormattingAndScriptHelpers();
+    testEditorAppShellModels();
     testEditorModelAndSelectionFoundation();
     testEditorAudioModels();
     testEditorDockingModels();

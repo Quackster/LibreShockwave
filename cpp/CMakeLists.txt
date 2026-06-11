@@ -16,6 +16,7 @@ add_custom_command(
 set_source_files_properties("${LIBRESHOCKWAVE_VOLTER_DATA_CPP}" PROPERTIES GENERATED TRUE)
 
 add_library(libreshockwave
+    src/editor/AppModels.cpp
     src/DirectorFile.cpp
     src/W3DFile.cpp
     src/audio/SoundConverter.cpp
