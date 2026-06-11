@@ -1,3 +1,20 @@
+set(LIBRESHOCKWAVE_VOLTER_DATA_CPP "${CMAKE_CURRENT_BINARY_DIR}/generated/src/fonts/volter/VolterData.cpp")
+set(LIBRESHOCKWAVE_VOLTER_RESOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../player-core/src/main/resources/fonts/volter")
+add_custom_command(
+    OUTPUT "${LIBRESHOCKWAVE_VOLTER_DATA_CPP}"
+    COMMAND "${CMAKE_COMMAND}"
+        "-DINPUT_REGULAR=${LIBRESHOCKWAVE_VOLTER_RESOURCE_DIR}/volter.ttf"
+        "-DINPUT_BOLD=${LIBRESHOCKWAVE_VOLTER_RESOURCE_DIR}/volter_bold.ttf"
+        "-DOUTPUT_FILE=${LIBRESHOCKWAVE_VOLTER_DATA_CPP}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/GenerateVolterData.cmake"
+    DEPENDS
+        "${LIBRESHOCKWAVE_VOLTER_RESOURCE_DIR}/volter.ttf"
+        "${LIBRESHOCKWAVE_VOLTER_RESOURCE_DIR}/volter_bold.ttf"
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/GenerateVolterData.cmake"
+    VERBATIM
+)
+set_source_files_properties("${LIBRESHOCKWAVE_VOLTER_DATA_CPP}" PROPERTIES GENERATED TRUE)
+
 add_library(libreshockwave
     src/DirectorFile.cpp
     src/W3DFile.cpp
@@ -46,6 +63,7 @@ add_library(libreshockwave
     src/font/Pfr1TtfConverter.cpp
     src/font/TtfBitmapRasterizer.cpp
     src/fonts/FontDataDecoder.cpp
+    "${LIBRESHOCKWAVE_VOLTER_DATA_CPP}"
     src/io/BinaryReader.cpp
     src/lingo/Datum.cpp
     src/lingo/LingoValueParser.cpp

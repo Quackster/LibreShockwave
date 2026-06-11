@@ -767,9 +767,10 @@ void testPfr1FontParserAndRegistry() {
     assert(FontRegistry::resolveFont("TinyPFR").value() == "tinypfr");
     assert(FontRegistry::resolveFont("Tiny Member").value() == "tiny member");
     assert(FontRegistry::getFirstRegisteredFont().value() == "tiny member");
-    assert(FontRegistry::getPreferredDirectorPixelFont().value() == "tiny member");
+    assert(FontRegistry::getPreferredDirectorPixelFont().value() == "Volter");
     FontRegistry::clear();
     assert(!FontRegistry::getTtfBytes("tiny member").has_value());
+    assert(FontRegistry::hasEmbeddedBoldVariant("Volter"));
 }
 
 void testBitmapFontAndFontRegistry() {
@@ -1042,6 +1043,17 @@ void testBitmapFontAndFontRegistry() {
     assert(countInk(pfrBDst) == 2);
 
     FontRegistry::clear();
+    assert(FontRegistry::hasEmbeddedBoldVariant("Volter"));
+    assert(FontRegistry::resolveFont("Volter_400_0").value() == "volter");
+    assert(FontRegistry::getPreferredDirectorPixelFont().value() == "Volter");
+    const auto defaultVolter = FontRegistry::getBitmapFont("Volter", 9);
+    assert(defaultVolter != nullptr);
+    assert(defaultVolter->getFontName() == "Volter");
+    assert(defaultVolter->getFontSize() == 9);
+    assert(defaultVolter->getCharWidth('H') > 0);
+    const auto defaultVolterBold = FontRegistry::getBitmapFont("Volter", 9, true, false);
+    assert(defaultVolterBold != nullptr);
+    assert(defaultVolterBold->getFontName() == "Volter");
     assert(FontRegistry::getBitmapFont("Tiny", 9) == nullptr);
     FontRegistry::registerBitmapFont("Tiny", 9, font);
     assert(FontRegistry::getBitmapFont("tiny", 9) == font);
@@ -1059,7 +1071,7 @@ void testBitmapFontAndFontRegistry() {
     FontRegistry::registerEmbeddedTtfFont("Embedded Verdana", verdanaBytes, verdanaBytes);
     assert(FontRegistry::hasEmbeddedBoldVariant("embedded verdana"));
     assert(FontRegistry::resolveFont("Embedded_Verdana_400_0").value() == "embedded verdana");
-    assert(FontRegistry::getPreferredDirectorPixelFont().value() == "Embedded Verdana");
+    assert(FontRegistry::getPreferredDirectorPixelFont().value() == "Volter");
     const auto embeddedVerdana = FontRegistry::getBitmapFont("Embedded Verdana", 9);
     assert(embeddedVerdana != nullptr);
     assert(embeddedVerdana->getFontName() == "Embedded Verdana");
@@ -1092,6 +1104,8 @@ void testBitmapFontAndFontRegistry() {
     FontRegistry::clear();
     assert(!FontRegistry::hasEmbeddedBoldVariant("embedded verdana"));
     assert(!FontRegistry::hasEmbeddedBoldVariant("sized verdana"));
+    assert(FontRegistry::hasEmbeddedBoldVariant("Volter"));
+    assert(FontRegistry::getPreferredDirectorPixelFont().value() == "Volter");
     MacFontBundle::clearTtfData();
     WindowsFontBundle::clearFontData();
 }
@@ -14193,7 +14207,7 @@ void testSpriteBakerFoundation() {
                                       false);
         auto bakedLegacyText = legacyTextBaker.bake(legacyTextSprite);
         assert(legacyTextRenderer.lastText == legacyText);
-        assert(legacyTextRenderer.lastFontName == "LegacyPixel");
+        assert(legacyTextRenderer.lastFontName == "Volter");
         assert(legacyTextRenderer.lastFontSize == 9);
         assert(legacyTextRenderer.lastFontStyle == "bold");
         assert(legacyTextRenderer.lastTextColor == static_cast<int>(0xFF445566U));

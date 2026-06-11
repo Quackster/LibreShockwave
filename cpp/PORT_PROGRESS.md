@@ -182,6 +182,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `fonts::FontDataDecoder` ports the Java generated-font helper used by embedded font classes.
 - Base64 font chunks are decoded into a fixed compressed buffer before inflation, matching the Java generated source contract.
 - zlib inflation returns decoded font bytes only when the exact expected uncompressed length is produced, otherwise it returns an empty vector.
+- The C++ build now embeds the bundled Volter regular/bold TTF resources and `FontRegistry` registers them on startup and after `clear()`, matching the Java default pixel-font fallback.
 
 ### Utility Formatting Helpers
 

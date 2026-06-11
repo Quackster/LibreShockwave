@@ -11,6 +11,7 @@
 
 #include "libreshockwave/font/Pfr1TtfConverter.hpp"
 #include "libreshockwave/font/TtfBitmapRasterizer.hpp"
+#include "libreshockwave/fonts/volter/Volter.hpp"
 #include "libreshockwave/player/cast/MacFontBundle.hpp"
 
 namespace libreshockwave::player::cast {
@@ -57,7 +58,7 @@ struct RegistryState {
     std::mutex mutex;
 };
 
-RegistryState& state() {
+RegistryState& stateRaw() {
     static RegistryState registry;
     return registry;
 }
@@ -123,6 +124,34 @@ std::string fontCacheKey(const std::string& fontName, int fontSize, bool bold, b
 std::string embeddedFontCacheKey(const std::string& fontName, int fontSize, bool bold, bool italic) {
     return lowerAscii(fontName) + ":" + std::to_string(fontSize) + ":embedded:" +
            std::string(bold ? "1" : "0") + ":" + (italic ? "1" : "0");
+}
+
+void seedDefaultEmbeddedFontsLocked(RegistryState& registry) {
+    const auto& regular = ::libreshockwave::fonts::volter::regularData();
+    if (regular.empty()) {
+        return;
+    }
+    const auto& bold = ::libreshockwave::fonts::volter::boldData();
+    const auto key = lowerAscii("Volter");
+    registry.embeddedTtfFonts[key][0] = EmbeddedTtfVariants{regular, bold, {}, {}};
+    registry.canonicalIndex[FontRegistry::canonicalFontName("Volter")] = key;
+    if (!registry.firstEmbeddedFont.has_value()) {
+        registry.firstEmbeddedFont = "Volter";
+    }
+}
+
+void ensureDefaultEmbeddedFonts() {
+    static std::once_flag once;
+    std::call_once(once, [] {
+        auto& registry = stateRaw();
+        std::lock_guard lock(registry.mutex);
+        seedDefaultEmbeddedFontsLocked(registry);
+    });
+}
+
+RegistryState& state() {
+    ensureDefaultEmbeddedFonts();
+    return stateRaw();
 }
 
 std::optional<EmbeddedTtfSelection> selectEmbeddedTtf(
@@ -464,6 +493,7 @@ void FontRegistry::clear() {
     registry.aliases.clear();
     registry.firstRegisteredFont.reset();
     registry.firstEmbeddedFont.reset();
+    seedDefaultEmbeddedFontsLocked(registry);
 }
 
 } // namespace libreshockwave::player::cast
