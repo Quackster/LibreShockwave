@@ -339,6 +339,7 @@ using libreshockwave::editor::gtk::GtkWorkbenchContentSpec;
 using libreshockwave::editor::gtk::GtkWorkbenchFocusActionSpec;
 using libreshockwave::editor::gtk::GtkWorkbenchPanelKind;
 using libreshockwave::editor::gtk::GtkWorkbenchPanelSpec;
+using libreshockwave::editor::gtk::GtkWorkbenchTabSpec;
 using libreshockwave::editor::castbrowser::CastThumbnailKind;
 using libreshockwave::editor::castbrowser::CastThumbnailPresentation;
 using libreshockwave::editor::castbrowser::CastViewMode;
@@ -2200,6 +2201,30 @@ void testEditorShellActionModels() {
     assert(gtkWorkbenchLayout.activePanel->panelId == "paint");
     assert(gtkWorkbenchLayout.activePanel->primaryText == "No bitmap selected");
     assert(gtkWorkbenchLayout.emptyText == "No editor panels available");
+    const auto gtkWorkbenchTabs = EditorGtkShellModel::workbenchTabs(gtkFrame, closedGtkContext);
+    assert(gtkWorkbenchTabs.size() == gtkWorkbench.size());
+    assert(gtkWorkbenchTabs[0] ==
+           (GtkWorkbenchTabSpec{
+               "stage",
+               GtkWorkbenchPanelKind::Stage,
+               "Stage",
+               false,
+               "workbench_stage",
+               "app.workbench_stage",
+               "panel_stage",
+               "app.panel_stage",
+           }));
+    assert(gtkWorkbenchTabs[7] ==
+           (GtkWorkbenchTabSpec{
+               "paint",
+               GtkWorkbenchPanelKind::Paint,
+               "Paint",
+               true,
+               "workbench_paint",
+               "app.workbench_paint",
+               "panel_paint",
+               "app.panel_paint",
+           }));
     assert(EditorGtkShellModel::workbenchContent(gtkFrame, closedGtkContext) ==
            (GtkWorkbenchContentSpec{
                true,
@@ -2240,6 +2265,23 @@ void testEditorShellActionModels() {
     assert(gtkState.workbenchLayout().activePanel.has_value());
     assert(gtkState.workbenchLayout().activePanel->panelId == "stage");
     assert(gtkState.workbenchLayout().activePanel->activationActionName == "workbench_stage");
+    auto gtkWorkbenchTabsState = gtkState.workbenchTabs();
+    assert(gtkWorkbenchTabsState.size() == gtkWorkbenchPanels.size());
+    assert(gtkWorkbenchTabsState.front() ==
+           (GtkWorkbenchTabSpec{
+               "stage",
+               GtkWorkbenchPanelKind::Stage,
+               "Stage",
+               true,
+               "workbench_stage",
+               "app.workbench_stage",
+               "panel_stage",
+               "app.panel_stage",
+           }));
+    assert(gtkWorkbenchTabsState[5].panelId == "message");
+    assert(!gtkWorkbenchTabsState[5].active);
+    assert(gtkWorkbenchTabsState[5].focusActionName == "workbench_message");
+    assert(gtkWorkbenchTabsState[5].toggleActionName == "panel_message");
     assert(gtkState.workbenchContent().hasPanel);
     assert(gtkState.workbenchContent().panelId == "stage");
     assert(gtkState.workbenchContent().title == "Stage");
@@ -2293,6 +2335,7 @@ void testEditorShellActionModels() {
     assert(gtkView.workbenchLayout.panels == gtkWorkbenchPanels);
     assert(gtkView.workbenchLayout.activePanel.has_value());
     assert(gtkView.workbenchLayout.activePanel->panelId == "stage");
+    assert(gtkView.workbenchTabs == gtkWorkbenchTabsState);
     assert(gtkView.workbenchContent == gtkState.workbenchContent());
     assert(gtkView.workbenchContent.panelId == "stage");
     assert(gtkView.workbenchFocusActions == shellWorkbenchFocusActions);
@@ -2321,6 +2364,12 @@ void testEditorShellActionModels() {
     assert(gtkView.workbenchPanels == gtkWorkbenchPanels);
     assert(gtkView.workbenchLayout.activePanel.has_value());
     assert(gtkView.workbenchLayout.activePanel->panelId == "message");
+    gtkWorkbenchTabsState = gtkState.workbenchTabs();
+    assert(gtkView.workbenchTabs == gtkWorkbenchTabsState);
+    assert(gtkWorkbenchTabsState[0].panelId == "stage");
+    assert(!gtkWorkbenchTabsState[0].active);
+    assert(gtkWorkbenchTabsState[5].panelId == "message");
+    assert(gtkWorkbenchTabsState[5].active);
     assert(gtkView.workbenchContent.hasPanel);
     assert(gtkView.workbenchContent.panelId == "message");
     assert(gtkView.workbenchContent.title == "Message");
@@ -2486,6 +2535,11 @@ void testEditorShellActionModels() {
     assert(gtkView.workbenchLayout.panels == gtkView.workbenchPanels);
     assert(gtkView.workbenchLayout.activePanel.has_value());
     assert(gtkView.workbenchLayout.activePanel->panelId == "message");
+    assert(gtkView.workbenchTabs == gtkState.workbenchTabs());
+    assert(gtkView.workbenchTabs[0].title == "Stage - Movie.dir");
+    assert(!gtkView.workbenchTabs[0].active);
+    assert(gtkView.workbenchTabs[5].panelId == "message");
+    assert(gtkView.workbenchTabs[5].active);
     assert(gtkView.workbenchContent.hasPanel);
     assert(gtkView.workbenchContent.panelId == "message");
     const auto* openedStageWorkbench = findWorkbenchPanel(gtkView.workbenchPanels, "stage");
@@ -2697,6 +2751,10 @@ void testEditorShellActionModels() {
     assert(paintWorkbench->detailedActivationActionName == "app.workbench_paint");
     assert(gtkView.workbenchLayout.activePanel.has_value());
     assert(gtkView.workbenchLayout.activePanel->panelId == "paint");
+    assert(gtkView.workbenchTabs == gtkState.workbenchTabs());
+    assert(gtkView.workbenchTabs[7].panelId == "paint");
+    assert(gtkView.workbenchTabs[7].active);
+    assert(gtkView.workbenchTabs[7].toggleActionName == "panel_paint");
     assert(gtkView.workbenchContent.hasPanel);
     assert(gtkView.workbenchContent.panelId == "paint");
     assert(gtkView.workbenchContent.primaryText == "No bitmap selected");
@@ -2744,6 +2802,10 @@ void testEditorShellActionModels() {
     assert(gtkView.panelRows[7].focusActionName == "workbench_paint");
     assert(!gtkView.panelRows[7].focusEnabled);
     assert(findWorkbenchPanel(gtkView.workbenchPanels, "paint") == nullptr);
+    assert(gtkView.workbenchTabs == gtkState.workbenchTabs());
+    assert(gtkView.workbenchTabs.size() == 7);
+    assert(gtkView.workbenchTabs[0].panelId == "stage");
+    assert(gtkView.workbenchTabs[0].active);
     paintFocusAction = findWorkbenchFocusAction(gtkView.workbenchFocusActions, "paint");
     assert(paintFocusAction != nullptr);
     assert(!paintFocusAction->enabled);

@@ -387,6 +387,28 @@ GtkWorkbenchLayoutSpec EditorGtkShellModel::workbenchLayout(const EditorFramePan
     return layout;
 }
 
+std::vector<GtkWorkbenchTabSpec> EditorGtkShellModel::workbenchTabs(const EditorFramePanelModel& frameModel,
+                                                                   const EditorContextModel& contextModel) {
+    const auto layout = workbenchLayout(frameModel, contextModel);
+    std::vector<GtkWorkbenchTabSpec> result;
+    result.reserve(layout.panels.size());
+    for (const auto& panel : layout.panels) {
+        const bool active = layout.activePanel.has_value() && layout.activePanel->panelId == panel.panelId;
+        const auto toggleAction = panelActionName(panel.panelId);
+        result.push_back(GtkWorkbenchTabSpec{
+            panel.panelId,
+            panel.kind,
+            panel.title,
+            active,
+            panel.activationActionName,
+            panel.detailedActivationActionName,
+            toggleAction,
+            appAction(toggleAction),
+        });
+    }
+    return result;
+}
+
 GtkWorkbenchContentSpec EditorGtkShellModel::workbenchContent(const EditorFramePanelModel& frameModel,
                                                              const EditorContextModel& contextModel) {
     const auto layout = workbenchLayout(frameModel, contextModel);
@@ -505,6 +527,10 @@ GtkWorkbenchLayoutSpec EditorGtkShellState::workbenchLayout() const {
     return EditorGtkShellModel::workbenchLayout(frameModel_, contextModel_);
 }
 
+std::vector<GtkWorkbenchTabSpec> EditorGtkShellState::workbenchTabs() const {
+    return EditorGtkShellModel::workbenchTabs(frameModel_, contextModel_);
+}
+
 GtkWorkbenchContentSpec EditorGtkShellState::workbenchContent() const {
     return EditorGtkShellModel::workbenchContent(frameModel_, contextModel_);
 }
@@ -536,6 +562,7 @@ GtkShellViewState EditorGtkShellState::viewState() const {
         panelRows(),
         workbenchPanels(),
         workbenchLayout(),
+        workbenchTabs(),
         workbenchContent(),
         workbenchFocusActions(),
     };
