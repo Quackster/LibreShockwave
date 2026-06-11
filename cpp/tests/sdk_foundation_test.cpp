@@ -74,6 +74,7 @@
 #include "libreshockwave/chunks/TextChunk.hpp"
 #include "libreshockwave/editor/AppModels.hpp"
 #include "libreshockwave/editor/EditorContextModels.hpp"
+#include "libreshockwave/editor/EditorFrameModels.hpp"
 #include "libreshockwave/editor/EditorShellModels.hpp"
 #include "libreshockwave/editor/audio/EditorAudioModels.hpp"
 #include "libreshockwave/editor/cast/CastBrowserModels.hpp"
@@ -301,6 +302,9 @@ using libreshockwave::editor::EditorContextModel;
 using libreshockwave::editor::EditorContextProperty;
 using libreshockwave::editor::EditorAccelerator;
 using libreshockwave::editor::EditorCommand;
+using libreshockwave::editor::EditorFramePanelModel;
+using libreshockwave::editor::EditorFramePanelState;
+using libreshockwave::editor::EditorOpenFileDialogModel;
 using libreshockwave::editor::EditorMenuItem;
 using libreshockwave::editor::EditorMenuModel;
 using libreshockwave::editor::EditorToolBarModel;
@@ -1874,6 +1878,87 @@ void testEditorContextModels() {
     assert(!reopenEvents[0].newPath.has_value());
     assert(!reopenEvents[1].oldPath.has_value());
     assert(reopenEvents[1].newPath.value() == "two.dir");
+}
+
+void testEditorFrameModels() {
+    EditorFramePanelModel frame;
+
+    assert((EditorFramePanelModel::creationOrder() ==
+            std::vector<std::string>{"stage",
+                                     "score",
+                                     "cast",
+                                     "property-inspector",
+                                     "script",
+                                     "message",
+                                     "tool-palette",
+                                     "paint",
+                                     "vector-shape",
+                                     "text",
+                                     "field",
+                                     "sound",
+                                     "color-palettes",
+                                     "bytecode-debugger"}));
+    assert(frame.panels().size() == EditorFramePanelModel::creationOrder().size());
+    assert(frame.hasPanel("stage"));
+    assert(!frame.hasPanel("missing"));
+    assert(frame.isPanelVisible("stage"));
+    assert(frame.isPanelVisible("message"));
+    assert(!frame.isPanelVisible("paint"));
+    assert(!frame.isPanelVisible("missing"));
+    assert(frame.panel("stage").value() ==
+           (EditorFramePanelState{"stage", PanelBounds{170, 10, 660, 500}, true, true, false, false}));
+    assert(frame.panel("paint").value() ==
+           (EditorFramePanelState{"paint", PanelBounds{0, 0, 500, 400}, false, false, false, false}));
+
+    const auto dialog = EditorFramePanelModel::openFileDialog("/movies");
+    assert((dialog == EditorOpenFileDialogModel{
+                          "Open Director File",
+                          "Director Files (*.dir, *.dxr, *.dcr, *.cct, *.cst)",
+                          {"dir", "dxr", "dcr", "cct", "cst"},
+                          std::optional<std::string>{"/movies"},
+                      }));
+    assert(!EditorFramePanelModel::openFileDialog(std::nullopt).currentDirectory.has_value());
+
+    const auto visibility = frame.panelVisibility();
+    assert((visibility.front() == std::pair<std::string, bool>{"stage", true}));
+    assert((visibility[7] == std::pair<std::string, bool>{"paint", false}));
+
+    assert(frame.showPanel("paint"));
+    assert(frame.isPanelVisible("paint"));
+    assert(frame.panel("paint")->selected);
+    assert(!frame.panel("stage")->selected);
+    assert(frame.iconifyPanelForTesting("paint"));
+    assert(frame.panel("paint")->iconified);
+    assert(frame.showPanel("paint"));
+    assert(!frame.panel("paint")->iconified);
+    assert(frame.panel("paint")->selected);
+    assert(!frame.showPanel("missing"));
+    assert(!frame.iconifyPanelForTesting("missing"));
+
+    assert(frame.togglePanel("sound", true));
+    assert(frame.isPanelVisible("sound"));
+    assert(frame.dockingLayout().isDocked("sound"));
+    assert(frame.panel("sound")->docked);
+    assert(frame.panel("sound")->selected);
+    assert(frame.togglePanel("sound", false));
+    assert(!frame.isPanelVisible("sound"));
+    assert(!frame.dockingLayout().isDocked("sound"));
+    assert(!frame.panel("sound")->docked);
+    assert(!frame.panel("sound")->selected);
+    assert(!frame.togglePanel("missing", true));
+
+    assert(frame.dockingLayout().dockCenter("script"));
+    assert(frame.isPanelVisible("script"));
+    assert(frame.panel("script")->docked);
+    assert(frame.showPanel("script"));
+    assert(frame.panel("script")->visible);
+
+    frame.resetLayout();
+    assert(!frame.dockingLayout().isDocked("script"));
+    assert(frame.isPanelVisible("stage"));
+    assert(!frame.isPanelVisible("paint"));
+    assert(frame.panel("stage")->selected);
+    assert(!frame.panel("paint")->selected);
 }
 
 void testEditorShellActionModels() {
@@ -23523,6 +23608,7 @@ int main() {
     testEditorFormattingAndScriptHelpers();
     testEditorAppShellModels();
     testEditorContextModels();
+    testEditorFrameModels();
     testEditorShellActionModels();
     testEditorCastBrowserModels();
     testEditorScoreViewModels();

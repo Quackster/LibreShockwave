@@ -18,6 +18,7 @@ set_source_files_properties("${LIBRESHOCKWAVE_VOLTER_DATA_CPP}" PROPERTIES GENER
 add_library(libreshockwave
     src/editor/AppModels.cpp
     src/editor/EditorContextModels.cpp
+    src/editor/EditorFrameModels.cpp
     src/editor/EditorShellModels.cpp
     src/DirectorFile.cpp
     src/W3DFile.cpp
