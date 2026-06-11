@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "libreshockwave/chunks/ScriptNamesChunk.hpp"
+#include "libreshockwave/util/StringUtils.hpp"
 
 namespace libreshockwave::editor::debug {
 namespace {
@@ -29,6 +30,21 @@ namespace {
 [[nodiscard]] bool endsWith(std::string_view value, std::string_view suffix) {
     return value.size() >= suffix.size() &&
            value.substr(value.size() - suffix.size()) == suffix;
+}
+
+[[nodiscard]] std::string currentInstructionMarker(const InstructionDisplayItem& item) {
+    return item.isCurrent ? "<font color='#DAA520'>\xE2\x96\xB6</font> " : "  ";
+}
+
+[[nodiscard]] std::string bytecodePrefix(const InstructionDisplayItem& item) {
+    std::ostringstream out;
+    out << '[' << std::setw(3) << item.offset << "] " << std::left << std::setw(14) << item.opcode;
+    if (item.argument != 0) {
+        out << ' ' << std::left << std::setw(4) << item.argument;
+    } else {
+        out << "     ";
+    }
+    return out.str();
 }
 
 } // namespace
@@ -118,6 +134,52 @@ std::string InstructionDisplayItem::toString() const {
         out << ' ' << annotation;
     }
     return out.str();
+}
+
+std::string BytecodeCellPresentation::breakpointMarker(const InstructionDisplayItem& item) {
+    if (!item.hasBreakpoint || !item.breakpoint.has_value()) {
+        if (item.hasBreakpoint) {
+            return "<font color='red'>\xE2\x97\x8F</font> ";
+        }
+        return "  ";
+    }
+
+    if (!item.breakpoint->enabled) {
+        return "<font color='gray'>\xE2\x97\x8B</font> ";
+    }
+    return "<font color='red'>\xE2\x97\x8F</font> ";
+}
+
+BytecodeLinePresentation BytecodeCellPresentation::line(const InstructionDisplayItem& item, bool selected) {
+    std::string html = "<html><pre style='margin:0;font-family:monospaced;'>";
+    if (item.lingoLine) {
+        html += item.offset >= 0 ? breakpointMarker(item) : "  ";
+        html += currentInstructionMarker(item);
+        if (!item.annotation.empty()) {
+            html += ::libreshockwave::util::escapeHtml(item.annotation);
+        }
+    } else {
+        html += breakpointMarker(item);
+        html += currentInstructionMarker(item);
+        html += bytecodePrefix(item);
+        if (!item.annotation.empty()) {
+            html += ' ';
+            if (item.isNavigableCall()) {
+                html += "<font color='blue'><u>" + ::libreshockwave::util::escapeHtml(item.annotation) +
+                        "</u></font>";
+            } else {
+                html += ::libreshockwave::util::escapeHtml(item.annotation);
+            }
+        }
+    }
+    html += "</pre></html>";
+
+    return BytecodeLinePresentation{
+        std::move(html),
+        item.isCurrent && !selected ? std::optional<DebugDisplayColor>{DebugDisplayColor{255, 255, 200}}
+                                    : std::nullopt,
+        item.isCurrent && !selected,
+    };
 }
 
 } // namespace libreshockwave::editor::debug

@@ -319,8 +319,11 @@ using libreshockwave::editor::castbrowser::ThumbnailPlacement;
 using libreshockwave::editor::debug::BytecodeListBuildOptions;
 using libreshockwave::editor::debug::BytecodeContextMenuItem;
 using libreshockwave::editor::debug::BytecodeListModel;
+using libreshockwave::editor::debug::BytecodeCellPresentation;
+using libreshockwave::editor::debug::BytecodeLinePresentation;
 using libreshockwave::editor::debug::DebugCommand;
 using libreshockwave::editor::debug::DebugCommandModels;
+using libreshockwave::editor::debug::DebugDisplayColor;
 using libreshockwave::editor::debug::DebugShortcut;
 using libreshockwave::editor::debug::DebugToolbarButton;
 using libreshockwave::editor::debug::DebugToolbarLayout;
@@ -2662,6 +2665,63 @@ void testEditorDebugDataModels() {
     InstructionDisplayItem malformedCall{10, 3, "OBJ_CALL", 0, "go()", false};
     malformedCall.navigable = true;
     assert(!malformedCall.isNavigableCall());
+
+    InstructionDisplayItem plainLine{8, 2, "PUSH_STR", 0, "<tag&value>", false};
+    assert(BytecodeCellPresentation::breakpointMarker(plainLine) == "  ");
+    assert((BytecodeCellPresentation::line(plainLine) ==
+            BytecodeLinePresentation{
+                "<html><pre style='margin:0;font-family:monospaced;'>  "
+                "  [  8] PUSH_STR            &lt;tag&amp;value&gt;</pre></html>",
+                std::nullopt,
+                false}));
+    plainLine.isCurrent = true;
+    assert((BytecodeCellPresentation::line(plainLine) ==
+            BytecodeLinePresentation{
+                "<html><pre style='margin:0;font-family:monospaced;'>  "
+                "<font color='#DAA520'>\xE2\x96\xB6</font> [  8] PUSH_STR            "
+                "&lt;tag&amp;value&gt;</pre></html>",
+                DebugDisplayColor{255, 255, 200},
+                true}));
+    assert(!BytecodeCellPresentation::line(plainLine, true).background.has_value());
+    assert(!BytecodeCellPresentation::line(plainLine, true).opaque);
+
+    InstructionDisplayItem legacyBreakpoint{2, 0, "PUSH_INT", 5, "", true};
+    assert(BytecodeCellPresentation::breakpointMarker(legacyBreakpoint) ==
+           "<font color='red'>\xE2\x97\x8F</font> ");
+    legacyBreakpoint.breakpoint = Breakpoint::simple(1, "go", 2).withEnabled(false);
+    assert(BytecodeCellPresentation::breakpointMarker(legacyBreakpoint) ==
+           "<font color='gray'>\xE2\x97\x8B</font> ");
+    legacyBreakpoint.breakpoint = Breakpoint::simple(1, "go", 2);
+    assert(BytecodeCellPresentation::breakpointMarker(legacyBreakpoint) ==
+           "<font color='red'>\xE2\x97\x8F</font> ");
+
+    auto linkedCall = callItem;
+    linkedCall.navigable = true;
+    assert((BytecodeCellPresentation::line(linkedCall) ==
+            BytecodeLinePresentation{
+                "<html><pre style='margin:0;font-family:monospaced;'>"
+                "<font color='red'>\xE2\x97\x8F</font>   [ 12] EXT_CALL       7    "
+                "<font color='blue'><u>&lt;go()&gt;</u></font></pre></html>",
+                std::nullopt,
+                false}));
+
+    InstructionDisplayItem lingoLine{-1, 0, "", 0, "on mouseUp <start>", false};
+    lingoLine.lingoLine = true;
+    assert((BytecodeCellPresentation::line(lingoLine) ==
+            BytecodeLinePresentation{
+                "<html><pre style='margin:0;font-family:monospaced;'>    on mouseUp &lt;start&gt;</pre></html>",
+                std::nullopt,
+                false}));
+    InstructionDisplayItem currentLingoLine{4, 0, "", 0, "put 1", true};
+    currentLingoLine.lingoLine = true;
+    currentLingoLine.isCurrent = true;
+    assert((BytecodeCellPresentation::line(currentLingoLine) ==
+            BytecodeLinePresentation{
+                "<html><pre style='margin:0;font-family:monospaced;'>"
+                "<font color='red'>\xE2\x97\x8F</font> <font color='#DAA520'>\xE2\x96\xB6</font> put 1"
+                "</pre></html>",
+                DebugDisplayColor{255, 255, 200},
+                true}));
 
     assert(DebugCommandModels::commandId(DebugCommand::StepInto) == "debug.stepInto");
     assert(DebugCommandModels::commandForActionName("debug.stepOver").value() == DebugCommand::StepOver);

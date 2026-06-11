@@ -71,4 +71,27 @@ struct InstructionDisplayItem {
     friend bool operator==(const InstructionDisplayItem&, const InstructionDisplayItem&) = default;
 };
 
+struct DebugDisplayColor {
+    int r{};
+    int g{};
+    int b{};
+
+    friend bool operator==(const DebugDisplayColor&, const DebugDisplayColor&) = default;
+};
+
+struct BytecodeLinePresentation {
+    std::string html;
+    std::optional<DebugDisplayColor> background;
+    bool opaque{false};
+
+    friend bool operator==(const BytecodeLinePresentation&, const BytecodeLinePresentation&) = default;
+};
+
+class BytecodeCellPresentation {
+public:
+    [[nodiscard]] static std::string breakpointMarker(const InstructionDisplayItem& item);
+    [[nodiscard]] static BytecodeLinePresentation line(const InstructionDisplayItem& item,
+                                                       bool selected = false);
+};
+
 } // namespace libreshockwave::editor::debug
