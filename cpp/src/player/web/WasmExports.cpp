@@ -343,6 +343,14 @@ void libreshockwave_wasm_step_backward() {
     state().runtime.stepBackward();
 }
 
+void libreshockwave_wasm_set_script_timeout_ms(int milliseconds) {
+    state().runtime.setScriptTimeoutMs(milliseconds);
+}
+
+int libreshockwave_wasm_get_script_timeout_ms() {
+    return state().runtime.scriptTimeoutMs();
+}
+
 void libreshockwave_wasm_set_debug_playback_enabled(int enabled) {
     ::libreshockwave::lingo::vm::DebugConfig::setDebugPlaybackEnabled(enabled != 0);
     if (auto* player = activePlayer()) {

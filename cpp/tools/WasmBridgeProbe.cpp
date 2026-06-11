@@ -555,7 +555,7 @@ BridgeProbeSummary probeFile(const fs::path& rawPath, const BridgeProbeOptions& 
     summary.renderable = loadedRenderable;
     summary.frame = libreshockwave_wasm_current_frame();
     summary.frameCount = libreshockwave_wasm_frame_count();
-    libreshockwave::player::web::wasmExportRuntime().setScriptTimeoutMs(options.scriptTimeoutMs);
+    libreshockwave_wasm_set_script_timeout_ms(options.scriptTimeoutMs);
 
     if (options.preloadCasts) {
         summary.preloadRequests = static_cast<std::size_t>(std::max(0, libreshockwave_wasm_preload_casts()));

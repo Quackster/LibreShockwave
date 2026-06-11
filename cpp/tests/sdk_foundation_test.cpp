@@ -22463,6 +22463,10 @@ void testWasmExportsFoundation() {
     assert(libreshockwave_wasm_tempo() == 18);
     libreshockwave_wasm_set_puppet_tempo(27);
     assert(libreshockwave_wasm_tempo() == 27);
+    assert(libreshockwave_wasm_get_script_timeout_ms() == 0);
+    libreshockwave_wasm_set_script_timeout_ms(321);
+    assert(libreshockwave_wasm_get_script_timeout_ms() == 321);
+    assert(runtime.player()->player()->vm().tickDeadlineMs() == 321);
     assert(libreshockwave_wasm_current_frame() >= 0);
     assert(libreshockwave_wasm_frame_count() >= 0);
     assert(libreshockwave_wasm_preload_casts() == 0);
@@ -22825,7 +22829,25 @@ void testWasmCppAdapterResourceFoundation() {
     const auto headerExports = parseHeaderExports(header);
     const auto listedExports = parseCmakeExportList(exportList);
     assert(listedExports == headerExports);
-    assert(adapterCExports == listedExports);
+
+    std::set<std::string> adapterOnlyExports;
+    std::set_difference(adapterCExports.begin(),
+                        adapterCExports.end(),
+                        listedExports.begin(),
+                        listedExports.end(),
+                        std::inserter(adapterOnlyExports, adapterOnlyExports.end()));
+    assert(adapterOnlyExports.empty());
+
+    std::set<std::string> abiOnlyExports;
+    std::set_difference(listedExports.begin(),
+                        listedExports.end(),
+                        adapterCExports.begin(),
+                        adapterCExports.end(),
+                        std::inserter(abiOnlyExports, abiOnlyExports.end()));
+    assert((abiOnlyExports == std::set<std::string>{
+        "_libreshockwave_wasm_get_script_timeout_ms",
+        "_libreshockwave_wasm_set_script_timeout_ms",
+    }));
 }
 
 void testTimeoutManagerFoundation() {

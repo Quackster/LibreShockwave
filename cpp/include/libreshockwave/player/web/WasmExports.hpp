@@ -35,6 +35,8 @@ LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_stop();
 LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_go_to_frame(int frame);
 LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_step_forward();
 LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_step_backward();
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_set_script_timeout_ms(int milliseconds);
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_script_timeout_ms();
 LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_set_debug_playback_enabled(int enabled);
 LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_add_trace_handler(int nameLen);
 LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_remove_trace_handler(int nameLen);
