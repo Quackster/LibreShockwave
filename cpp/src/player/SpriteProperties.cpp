@@ -69,6 +69,11 @@ bool isLegacySpriteRuntimeProp(std::string_view prop) {
     return defaultLegacySpriteProp(prop).has_value();
 }
 
+int castLibForPlainMemberAssignment(const sprite::SpriteState& sprite) {
+    const int castLib = sprite.effectiveCastLib();
+    return castLib > 0 ? castLib : 1;
+}
+
 lingo::Datum rgbColorDatum(int rgb) {
     return lingo::Datum::colorRef((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
 }
@@ -327,7 +332,7 @@ bool SpriteProperties::setSpriteProp(int spriteNum, std::string_view propName, c
             sprite->setDynamicMember(encodedCast, encodedMember);
             autoSizeSprite(*sprite, encodedCast, encodedMember, false);
         } else {
-            const int castLib = sprite->effectiveCastLib();
+            const int castLib = castLibForPlainMemberAssignment(*sprite);
             sprite->setDynamicMember(castLib, slot);
             autoSizeSprite(*sprite, castLib, slot, false);
         }
@@ -617,8 +622,9 @@ bool SpriteProperties::assignMember(sprite::SpriteState& sprite, const lingo::Da
         sprite.setDynamicMember(encodedCast, encodedMember);
         autoSizeSprite(sprite, encodedCast, encodedMember, viaSetMemberMethod);
     } else {
-        sprite.setDynamicMember(0, memberNum);
-        autoSizeSprite(sprite, 0, memberNum, viaSetMemberMethod);
+        const int castLib = castLibForPlainMemberAssignment(sprite);
+        sprite.setDynamicMember(castLib, memberNum);
+        autoSizeSprite(sprite, castLib, memberNum, viaSetMemberMethod);
     }
     return true;
 }

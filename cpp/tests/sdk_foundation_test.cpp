@@ -18296,6 +18296,10 @@ void testSpritePropertiesFoundation() {
     alternateBitmapInfo.bitmapWidth = 30;
     alternateBitmapInfo.bitmapHeight = 15;
     memberInfo[{2, 20}] = alternateBitmapInfo;
+    SpriteProperties::MemberInfo secondaryBitmapInfo = bitmapInfo;
+    secondaryBitmapInfo.bitmapWidth = 40;
+    secondaryBitmapInfo.bitmapHeight = 18;
+    memberInfo[{1, 21}] = secondaryBitmapInfo;
 
     SpriteProperties::MemberInfo runtimeInfo;
     runtimeInfo.width = 12;
@@ -18310,6 +18314,10 @@ void testSpritePropertiesFoundation() {
     namedInfo.bitmapWidth = 21;
     namedInfo.bitmapHeight = 22;
     memberInfo[{3, 31}] = namedInfo;
+    SpriteProperties::MemberInfo methodInfo;
+    methodInfo.width = 9;
+    methodInfo.height = 10;
+    memberInfo[{3, 42}] = methodInfo;
 
     props.setMemberInfoResolver([&memberInfo](int castLib, int memberNum) -> std::optional<SpriteProperties::MemberInfo> {
         auto found = memberInfo.find({castLib, memberNum});
@@ -18356,6 +18364,13 @@ void testSpritePropertiesFoundation() {
     assert(props.setSpriteProp(4, "memberNum", Datum::of(21)));
     assert(bitmapSprite->effectiveCastLib() == 1);
     assert(bitmapSprite->effectiveCastMember() == 21);
+    assert(props.setSpriteProp(15, "member", Datum::of(20)));
+    const auto primaryCastSprite = registry.get(15);
+    assert(primaryCastSprite != nullptr);
+    assert(primaryCastSprite->effectiveCastLib() == 1);
+    assert(primaryCastSprite->effectiveCastMember() == 20);
+    assert(primaryCastSprite->width() == 100);
+    assert(primaryCastSprite->height() == 50);
     assert(props.setSpriteProp(16, "castLibNum", Datum::of(3)));
     assert(props.getSpriteProp(16, "castLibNum").intValue() == 3);
     assert(props.setSpriteProp(16, "memberNum", Datum::of(31)));
@@ -18363,6 +18378,14 @@ void testSpritePropertiesFoundation() {
     assert(pendingCastSprite != nullptr);
     assert(pendingCastSprite->effectiveCastLib() == 3);
     assert(pendingCastSprite->effectiveCastMember() == 31);
+    assert(props.setSpriteProp(17, "castLibNum", Datum::of(2)));
+    assert(props.setSpriteProp(17, "member", Datum::of(30)));
+    const auto plainMemberSprite = registry.get(17);
+    assert(plainMemberSprite != nullptr);
+    assert(plainMemberSprite->effectiveCastLib() == 2);
+    assert(plainMemberSprite->effectiveCastMember() == 30);
+    assert(plainMemberSprite->width() == 12);
+    assert(plainMemberSprite->height() == 13);
 
     auto runtimeSprite = registry.getOrCreateDynamic(6);
     runtimeSprite->setWidth(5);
@@ -18374,8 +18397,13 @@ void testSpritePropertiesFoundation() {
     const auto methodMemberSprite = registry.get(19);
     assert(methodMemberSprite->effectiveCastLib() == 3);
     assert(methodMemberSprite->effectiveCastMember() == 41);
+    assert(props.callSpriteMethod(19, "setMember", {Datum::of(42)}).boolValue());
+    assert(methodMemberSprite->effectiveCastLib() == 3);
+    assert(methodMemberSprite->effectiveCastMember() == 42);
+    assert(methodMemberSprite->width() == 9);
+    assert(methodMemberSprite->height() == 10);
     assert(props.callSpriteMethod(19, "getMember", {}).asCastMemberRef()->castLib == 3);
-    assert(props.callSpriteMethod(19, "getMember", {}).asCastMemberRef()->memberNum() == 41);
+    assert(props.callSpriteMethod(19, "getMember", {}).asCastMemberRef()->memberNum() == 42);
     assert(props.callSpriteMethod(19, "setCursor", {Datum::of(17)}).boolValue());
     assert(props.callSpriteMethod(19, "getCursor", {}).intValue() == 17);
 
