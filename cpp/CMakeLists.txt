@@ -53,11 +53,13 @@ add_library(libreshockwave
     src/chunks/SoundChunk.cpp
     src/chunks/TextChunk.cpp
     src/editor/format/ChannelNames.cpp
+    src/editor/format/InstructionFormatter.cpp
     src/editor/format/PaletteDescriptions.cpp
     src/editor/model/BitmapKey.cpp
     src/editor/model/FileNode.cpp
     src/editor/model/MemberNodeData.cpp
     src/editor/model/ScoreCellData.cpp
+    src/editor/preview/PreviewFormatUtils.cpp
     src/editor/selection/SelectionEvent.cpp
     src/editor/selection/SelectionManager.cpp
     src/editor/score/FrameAppearanceFinder.cpp

@@ -71,6 +71,7 @@
 #include "libreshockwave/chunks/SoundChunk.hpp"
 #include "libreshockwave/chunks/TextChunk.hpp"
 #include "libreshockwave/editor/format/ChannelNames.hpp"
+#include "libreshockwave/editor/format/InstructionFormatter.hpp"
 #include "libreshockwave/editor/format/PaletteDescriptions.hpp"
 #include "libreshockwave/editor/model/BitmapKey.hpp"
 #include "libreshockwave/editor/model/CastMemberInfo.hpp"
@@ -79,6 +80,7 @@
 #include "libreshockwave/editor/model/FrameAppearance.hpp"
 #include "libreshockwave/editor/model/MemberNodeData.hpp"
 #include "libreshockwave/editor/model/ScoreCellData.hpp"
+#include "libreshockwave/editor/preview/PreviewFormatUtils.hpp"
 #include "libreshockwave/editor/selection/SelectionEvent.hpp"
 #include "libreshockwave/editor/selection/SelectionListener.hpp"
 #include "libreshockwave/editor/selection/SelectionManager.hpp"
@@ -264,6 +266,7 @@ using libreshockwave::chunks::ScoreChunk;
 using libreshockwave::chunks::SoundChunk;
 using libreshockwave::chunks::TextChunk;
 using libreshockwave::editor::format::ChannelNames;
+using libreshockwave::editor::format::InstructionFormatter;
 using libreshockwave::editor::format::PaletteDescriptions;
 using libreshockwave::editor::model::BitmapKey;
 using libreshockwave::editor::model::BitmapKeyHash;
@@ -273,6 +276,7 @@ using libreshockwave::editor::model::FileNode;
 using libreshockwave::editor::model::FrameAppearance;
 using libreshockwave::editor::model::MemberNodeData;
 using libreshockwave::editor::model::ScoreCellData;
+using libreshockwave::editor::preview::PreviewFormatUtils;
 using libreshockwave::editor::selection::SelectionEvent;
 using libreshockwave::editor::selection::SelectionListener;
 using libreshockwave::editor::selection::SelectionManager;
@@ -1271,6 +1275,56 @@ void testEditorFormattingAndScriptHelpers() {
     assert(PaletteDescriptions::get(41) == "Cast Member #42");
     assert(PaletteDescriptions::get(-999) == "Unknown (-999)");
 
+    ScriptNamesChunk editorNames(nullptr, ChunkId(121), {"zero", "alpha", "mouseUp", "color", "ParentScript"});
+    ScriptChunk editorScript(nullptr,
+                             ChunkId(122),
+                             ScriptChunkType::MovieScript,
+                             0,
+                             std::vector<ScriptChunk::Handler>{},
+                             {
+                                 ScriptChunk::LiteralEntry{1, 0, std::string("hello"), 0.0},
+                                 ScriptChunk::LiteralEntry{4, 0, 42, 0.0},
+                             },
+                             std::vector<ScriptChunk::PropertyEntry>{},
+                             std::vector<ScriptChunk::GlobalEntry>{},
+                             std::vector<std::uint8_t>{});
+    const ScriptChunk::Instruction pushCons{5, Opcode::PUSH_CONS, 0x44, 0};
+    assert(InstructionFormatter::format(pushCons, editorScript, &editorNames) ==
+           "[0005] pushCons         0 <str> \"hello\"");
+    assert(InstructionFormatter::format(ScriptChunk::Instruction{12, Opcode::RET, 0x01, 0},
+                                        editorScript,
+                                        &editorNames) == "[0012] ret             ");
+    assert(InstructionFormatter::formatArgument(ScriptChunk::Instruction{0, Opcode::PUSH_CONS, 0x44, 1},
+                                                editorScript,
+                                                &editorNames) == "1 <int> 42");
+    assert(InstructionFormatter::formatArgument(ScriptChunk::Instruction{0, Opcode::PUSH_CONS, 0x44, 99},
+                                                editorScript,
+                                                &editorNames) == "99");
+    assert(InstructionFormatter::formatArgument(ScriptChunk::Instruction{0, Opcode::PUSH_SYMB, 0x45, 2},
+                                                editorScript,
+                                                &editorNames) == "2 #mouseUp");
+    assert(InstructionFormatter::formatArgument(ScriptChunk::Instruction{0, Opcode::GET_GLOBAL, 0x49, 1},
+                                                editorScript,
+                                                &editorNames) == "1 (alpha)");
+    assert(InstructionFormatter::formatArgument(ScriptChunk::Instruction{0, Opcode::LOCAL_CALL, 0x56, 2},
+                                                editorScript,
+                                                &editorNames) == "2 [mouseUp]");
+    assert(InstructionFormatter::formatArgument(ScriptChunk::Instruction{0, Opcode::PUT, 0x59, 1},
+                                                editorScript,
+                                                &editorNames) == "1 (alpha)");
+    assert(InstructionFormatter::formatArgument(ScriptChunk::Instruction{0, Opcode::THE_BUILTIN, 0x66, 3},
+                                                editorScript,
+                                                &editorNames) == "3 the color");
+    assert(InstructionFormatter::formatArgument(ScriptChunk::Instruction{0, Opcode::NEW_OBJ, 0x73, 4},
+                                                editorScript,
+                                                &editorNames) == "4 new(ParentScript)");
+    assert(InstructionFormatter::formatArgument(ScriptChunk::Instruction{0, Opcode::PUSH_VAR_REF, 0x46, 1},
+                                                editorScript,
+                                                &editorNames) == "1 @alpha");
+    assert(InstructionFormatter::formatArgument(ScriptChunk::Instruction{0, Opcode::JMP, 0x53, 7},
+                                                editorScript,
+                                                &editorNames) == "7 -> offset 7");
+
     assert(ScoreColors::getColor("").value() == ScoreColors::UNKNOWN);
     assert(ScoreColors::getColor("bitmap").value() == ScoreColors::BITMAP);
     assert(ScoreColors::getColor("FILMLOOP").value() == ScoreColors::FILM_LOOP);
@@ -1308,6 +1362,36 @@ void testEditorFormattingAndScriptHelpers() {
     assert(javaCaseTokens[4].type == LingoTokenType::Identifier);
     assert(javaCaseTokens[6].type == LingoTokenType::Keyword);
     assert(javaCaseTokens[8].type == LingoTokenType::Identifier);
+
+    const CastMemberInfo previewInfo{7, "Door", nullptr, MemberType::Bitmap, "16x16"};
+    std::string headerText;
+    PreviewFormatUtils::appendMemberHeader(headerText, "BITMAP", previewInfo, true);
+    assert(headerText == "=== BITMAP: Door ===\n\nMember ID: 7\n\n");
+
+    std::string paletteText;
+    PreviewFormatUtils::appendPaletteInfo(paletteText, std::vector<std::uint32_t>{0x112233U, 0xABCDEFU});
+    assert(paletteText ==
+           "--- Palette Info ---\n"
+           "Color Count: 2\n"
+           "\n--- Colors ---\n"
+           "[  0] #112233 (R: 17 G: 34 B: 51)\n"
+           "[  1] #ABCDEF (R:171 G:205 B:239)\n");
+
+    FrameAppearanceFinder appearanceFinder;
+    const std::vector<FrameAppearance> previewAppearances{
+        FrameAppearance{1, 6, "Ch 1", "Start", 10, 20},
+        FrameAppearance{2, 6, "Ch 1", "", 11, 21},
+    };
+    std::string appearanceText;
+    PreviewFormatUtils::appendScoreAppearances(appearanceText, previewAppearances, appearanceFinder, true);
+    assert(appearanceText ==
+           "Frames 1-2 (Ch 1)\n"
+           "\nDetailed appearances:\n"
+           "  Frame 1, Ch 1 at (10, 20) [Start]\n"
+           "  Frame 2, Ch 1 at (11, 21)\n");
+    std::string emptyAppearanceText;
+    PreviewFormatUtils::appendScoreAppearances(emptyAppearanceText, {}, appearanceFinder, true);
+    assert(emptyAppearanceText == "Not used in score\n");
 }
 
 class CapturingSelectionListener : public SelectionListener {
