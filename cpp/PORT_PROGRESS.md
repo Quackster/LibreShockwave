@@ -49,7 +49,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `cast::StyledSpan` and `cast::XmedStyledText` helpers.
 - `cast::BitmapInfo` parser for D4/D5 and D6+ bitmap specific data.
 - `cast::TextInfo` parser for compact and D7+ text specific data.
-- `cast::XmedTextParser` foundation for Director text-Xtra XMED chunks, including text/font/color/alignment/dimension parsing, section `0004` style-run ranges, section `0006` style-record font/size resolution, section `0007` paragraph alignment records, and primary span font selection into `XmedStyledText`.
+- `cast::XmedTextParser` foundation for Director text-Xtra XMED chunks, including text/font/color/alignment/dimension parsing, section `0004` style-run ranges, Java-compatible section `0006` style-record font/size resolution and font-size tie selection, section `0007` paragraph alignment records, and primary span font selection into `XmedStyledText`.
 - `cast::ShapeInfo` parser and shape helpers.
 - `cast::FilmLoopInfo` parser and dimension/registration helpers.
 - `cast::Shockwave3DInfo` parser for basic camera, color, flag, and Pascal string metadata.
@@ -985,7 +985,7 @@ Result:
 - DirectorFile base path, score presence, external cast, and font lookup fallback tests passed through the same CTest executable.
 - Bitmap decoder RLE, scan-width, indexed, RGB555, 32-bit channel, and automatic dispatch tests passed through the same CTest executable.
 - DirectorFile BITD bitmap decode integration plus pluggable `ediM` JPEG/`ALFA` sidecar bitmap decode passed through the RIFX loader fixture in the same CTest executable.
-- XMED text parsing for multi-span style runs, underline ranges, referenced style-run font-size selection, per-span font records, paragraph alignment codes, and paragraph record counts passed through the same CTest executable.
+- XMED text parsing for multi-span style runs, underline ranges, referenced style-run font-size selection, close/wide font-size tie selection, per-span font records, paragraph alignment codes, and paragraph record counts passed through the same CTest executable.
 - W3D entry, typed resource, transform, texture format, and lookup tests passed through the same CTest executable.
 - Generated font Base64/zlib decode, wrong-length, and invalid-deflate tests passed through the same CTest executable.
 - File/path fallback utilities, shared string display/HTML escaping helpers, string chunk counting/extraction helpers, Java-compatible ImageMethodDispatcher/StringMethodDispatcher/ListMethodDispatcher/MemberRegistryMethodDispatcher/PropListMethodDispatcher/ScriptInstanceMethodDispatcher/SoundChannelMethodDispatcher receiver methods, and script formatting utilities passed through the same CTest executable.
@@ -1453,4 +1453,5 @@ Result:
 - `19305c39 Detach C++ GTK docked panes by drag`
 - `fdee541c Port C++ root-relative net fetches`
 - `5b753d63 Port C++ cursor frame fallback`
-- Current checkpoint commit message: `Port C++ external cast sound playback`
+- `abe1e357 Port C++ external cast sound playback`
+- Current checkpoint commit message: `Port C++ XMED font-size ties`

@@ -5,7 +5,6 @@
 #include <cctype>
 #include <cstdint>
 #include <exception>
-#include <map>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -269,7 +268,7 @@ std::array<int, 2> extractFontSizeAndStyle(const std::vector<std::uint8_t>& data
         return {referencedSize, 0};
     }
 
-    std::map<int, int> sizeCounts;
+    std::vector<std::pair<int, int>> sizeCounts;
     int firstSize = -1;
     for (std::size_t i = secStart; i + 6 < secEnd; ++i) {
         if (data[i] != 0x02) {
@@ -284,7 +283,14 @@ std::array<int, 2> extractFontSizeAndStyle(const std::vector<std::uint8_t>& data
         if (hex.size() >= 5 && hex.ends_with("0000") && j < secEnd && data[j] == 0x02) {
             const int size = parseHex(std::string_view(hex).substr(0, hex.size() - 4));
             if (size >= 6 && size <= 200) {
-                ++sizeCounts[size];
+                auto found = std::find_if(sizeCounts.begin(), sizeCounts.end(), [size](const auto& entry) {
+                    return entry.first == size;
+                });
+                if (found == sizeCounts.end()) {
+                    sizeCounts.emplace_back(size, 1);
+                } else {
+                    ++found->second;
+                }
                 if (firstSize < 0) {
                     firstSize = size;
                 }

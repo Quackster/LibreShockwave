@@ -21943,6 +21943,27 @@ void testCastMetadataTypes() {
         return data;
     };
     const auto xmedSpecific = textSpecificData(120, 20);
+    auto xmedWithFontSizes = [&appendAsciiBytes, &appendHex8](const std::vector<std::string>& sizes) {
+        std::vector<std::uint8_t> body;
+        for (const auto& size : sizes) {
+            body.push_back(2);
+            appendAsciiBytes(body, size);
+            body.push_back(2);
+            appendAsciiBytes(body, "0");
+        }
+
+        std::vector<std::uint8_t> xmed;
+        appendAsciiBytes(xmed, "0002");
+        xmed.push_back(0);
+        appendAsciiBytes(xmed, "4,Test");
+        xmed.push_back(3);
+        appendAsciiBytes(xmed, "0006");
+        appendHex8(xmed, body.size());
+        appendHex8(xmed, sizes.size());
+        xmed.insert(xmed.end(), body.begin(), body.end());
+        xmed.push_back(3);
+        return xmed;
+    };
 
     std::vector<std::uint8_t> styleRunXmed;
     appendAsciiBytes(styleRunXmed, "0002");
@@ -22004,6 +22025,16 @@ void testCastMetadataTypes() {
     auto referencedSize = XmedTextParser::parseStyled(referencedSizeXmed, xmedSpecific);
     assert(referencedSize.has_value());
     assert(referencedSize->fontSize == 9);
+
+    auto closeTieSize = XmedTextParser::parseStyled(
+        xmedWithFontSizes({"C0000", "C0000", "A0000", "A0000", "90000"}), xmedSpecific);
+    assert(closeTieSize.has_value());
+    assert(closeTieSize->fontSize == 10);
+
+    auto wideTieSize = XmedTextParser::parseStyled(
+        xmedWithFontSizes({"C0000", "C0000", "90000", "90000"}), xmedSpecific);
+    assert(wideTieSize.has_value());
+    assert(wideTieSize->fontSize == 12);
 
     auto appendFontEntry = [&appendAsciiBytes](std::vector<std::uint8_t>& data, const std::string& name) {
         data.push_back(0);
