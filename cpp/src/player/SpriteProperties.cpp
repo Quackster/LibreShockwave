@@ -184,11 +184,11 @@ bool SpriteProperties::setSpriteProp(int spriteNum, std::string_view propName, c
     registry_->bumpRevision();
 
     if (prop == "loch") {
-        sprite->setLocH(value.intValue());
+        setConstrainedLoc(*sprite, value.intValue(), sprite->locV(), true, false);
         return true;
     }
     if (prop == "locv") {
-        sprite->setLocV(value.intValue());
+        setConstrainedLoc(*sprite, sprite->locH(), value.intValue(), false, true);
         return true;
     }
     if (prop == "locz") {
@@ -200,8 +200,7 @@ bool SpriteProperties::setSpriteProp(int spriteNum, std::string_view propName, c
         if (point == nullptr) {
             return false;
         }
-        sprite->setLocH(point->x);
-        sprite->setLocV(point->y);
+        setConstrainedLoc(*sprite, point->x, point->y, true, true);
         return true;
     }
     if (prop == "rect") {
@@ -209,10 +208,9 @@ bool SpriteProperties::setSpriteProp(int spriteNum, std::string_view propName, c
         if (rect == nullptr) {
             return false;
         }
-        sprite->setLocH(rect->left);
-        sprite->setLocV(rect->top);
         sprite->setWidth(rect->width());
         sprite->setHeight(rect->height());
+        setConstrainedLoc(*sprite, rect->left, rect->top, true, true);
         return true;
     }
     if (prop == "visible") {
@@ -339,7 +337,11 @@ bool SpriteProperties::setSpriteProp(int spriteNum, std::string_view propName, c
         return true;
     }
     if (isLegacySpriteRuntimeProp(prop)) {
-        sprite->setLegacyProperty(normalizeLegacySpriteProp(prop), value);
+        const std::string legacyProp = normalizeLegacySpriteProp(prop);
+        sprite->setLegacyProperty(legacyProp, value);
+        if (legacyProp == "constraint") {
+            setConstrainedLoc(*sprite, sprite->locH(), sprite->locV(), false, false);
+        }
         return true;
     }
     if (prop == "type" || prop == "id") {
@@ -638,6 +640,53 @@ int SpriteProperties::scaleRegistrationOffset(int reg, int spriteSpan, int bitma
                                             static_cast<float>(bitmapSpan)));
     }
     return reg * spriteSpan / bitmapSpan;
+}
+
+int SpriteProperties::constraintChannel(const sprite::SpriteState& sprite) const {
+    const auto constraint = sprite.legacyProperty("constraint");
+    if (!constraint.has_value() || constraint->isVoid()) {
+        return 0;
+    }
+    return constraint->intValue();
+}
+
+std::pair<int, int> SpriteProperties::constrainLoc(const sprite::SpriteState& sprite,
+                                                   int locH,
+                                                   int locV) const {
+    if (registry_ == nullptr) {
+        return {locH, locV};
+    }
+
+    const int channel = constraintChannel(sprite);
+    if (channel <= 0) {
+        return {locH, locV};
+    }
+
+    const auto constraintSprite = registry_->get(channel);
+    if (constraintSprite == nullptr) {
+        return {locH, locV};
+    }
+
+    const auto bounds = resolveSpriteBounds(*constraintSprite);
+    const int minH = std::min(bounds.left, bounds.right);
+    const int maxH = std::max(bounds.left, bounds.right);
+    const int minV = std::min(bounds.top, bounds.bottom);
+    const int maxV = std::max(bounds.top, bounds.bottom);
+    return {std::clamp(locH, minH, maxH), std::clamp(locV, minV, maxV)};
+}
+
+void SpriteProperties::setConstrainedLoc(sprite::SpriteState& sprite,
+                                         int locH,
+                                         int locV,
+                                         bool updateH,
+                                         bool updateV) const {
+    const auto constrained = constrainLoc(sprite, locH, locV);
+    if (updateH || constrained.first != sprite.locH()) {
+        sprite.setLocH(constrained.first);
+    }
+    if (updateV || constrained.second != sprite.locV()) {
+        sprite.setLocV(constrained.second);
+    }
 }
 
 void SpriteProperties::applyEmptyMemberOverride(sprite::SpriteState& sprite) {

@@ -4,6 +4,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "libreshockwave/lingo/Datum.hpp"
@@ -72,6 +73,11 @@ private:
     [[nodiscard]] bool effectiveFlipH(const sprite::SpriteState& sprite) const;
     [[nodiscard]] int mirrorOffset(int reg, int span, bool flipped) const;
     [[nodiscard]] int scaleRegistrationOffset(int reg, int spriteSpan, int bitmapSpan) const;
+    [[nodiscard]] int constraintChannel(const sprite::SpriteState& sprite) const;
+    [[nodiscard]] std::pair<int, int> constrainLoc(const sprite::SpriteState& sprite,
+                                                   int locH,
+                                                   int locV) const;
+    void setConstrainedLoc(sprite::SpriteState& sprite, int locH, int locV, bool updateH, bool updateV) const;
 
     static void applyEmptyMemberOverride(sprite::SpriteState& sprite);
     static void resetReleasedEmptyChannel(sprite::SpriteState& sprite);

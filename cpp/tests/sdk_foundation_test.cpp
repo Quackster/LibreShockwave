@@ -18057,6 +18057,33 @@ void testSpritePropertiesFoundation() {
     assert(props.getSpriteProp(3, "tweened").boolValue());
     assert(props.getSpriteProp(3, "name").stringValue() == "runtime-sprite");
 
+    auto constraintSprite = registry.getOrCreateDynamic(12);
+    constraintSprite->setLocH(100);
+    constraintSprite->setLocV(50);
+    constraintSprite->setWidth(30);
+    constraintSprite->setHeight(20);
+    assert(props.setSpriteProp(3, "constraint", Datum::of(12)));
+    assert(sprite->locH() == 100);
+    assert(sprite->locV() == 50);
+    assert(props.setSpriteProp(3, "loc", Datum::intPoint(90, 45)));
+    assert(sprite->locH() == 100);
+    assert(sprite->locV() == 50);
+    assert(props.setSpriteProp(3, "locH", Datum::of(150)));
+    assert(sprite->locH() == 130);
+    assert(sprite->locV() == 50);
+    assert(props.setSpriteProp(3, "locV", Datum::of(90)));
+    assert(sprite->locH() == 130);
+    assert(sprite->locV() == 70);
+    assert(props.setSpriteProp(3, "rect", Datum::intRect(80, 40, 120, 90)));
+    assert(sprite->locH() == 100);
+    assert(sprite->locV() == 50);
+    assert(sprite->width() == 40);
+    assert(sprite->height() == 50);
+    assert(props.setSpriteProp(3, "constraint", Datum::of(0)));
+    assert(props.setSpriteProp(3, "loc", Datum::intPoint(80, 40)));
+    assert(sprite->locH() == 80);
+    assert(sprite->locV() == 40);
+
     assert(props.setSpriteProp(3, "rotation", Datum::of(180.0)));
     assert(props.setSpriteProp(3, "skew", Datum::of(180.0)));
     assert(props.setSpriteProp(3, "flipH", Datum::of(1)));
