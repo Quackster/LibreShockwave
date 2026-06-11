@@ -12,6 +12,7 @@
 #include "libreshockwave/lingo/decompiler/LingoDecompiler.hpp"
 #include "libreshockwave/lingo/vm/trace/InstructionAnnotator.hpp"
 #include "libreshockwave/player/cast/CastLibManager.hpp"
+#include "libreshockwave/player/debug/DebugSnapshot.hpp"
 #include "libreshockwave/util/FileUtil.hpp"
 
 namespace libreshockwave::editor::debug {
@@ -569,6 +570,53 @@ void BytecodeListModel::loadLingoView(const player::debug::BreakpointManager* br
         item.lingoLine = true;
         items_.push_back(std::move(item));
     }
+}
+
+BytecodeDebuggerWindowView BytecodeDebuggerWindowModel::initialView() {
+    return BytecodeDebuggerWindowView{
+        DEFAULT_WIDTH,
+        DEFAULT_HEIGHT,
+        SPLIT_RESIZE_WEIGHT,
+        CONTENT_GAP,
+        CONTENT_INSET,
+        closedHeader(),
+    };
+}
+
+BytecodeDebuggerHeaderView BytecodeDebuggerWindowModel::closedHeader() {
+    return BytecodeDebuggerHeaderView{"Status: Running", "Handler: -", false};
+}
+
+BytecodeDebuggerHeaderView BytecodeDebuggerWindowModel::browsingHeader(std::string_view handlerName,
+                                                                       std::string_view scriptDisplayName) {
+    return BytecodeDebuggerHeaderView{
+        "Status: Running",
+        "Handler: " + std::string(handlerName) + " (" + std::string(scriptDisplayName) + ")",
+        false,
+    };
+}
+
+BytecodeDebuggerHeaderView BytecodeDebuggerWindowModel::handlerNotFoundHeader(
+    std::string_view handlerName,
+    std::string_view currentHandlerText) {
+    return BytecodeDebuggerHeaderView{
+        "Handler '" + std::string(handlerName) + "' not found",
+        std::string(currentHandlerText),
+        false,
+    };
+}
+
+BytecodeDebuggerHeaderView BytecodeDebuggerWindowModel::pausedHeader(
+    const player::debug::DebugSnapshot& snapshot) {
+    return BytecodeDebuggerHeaderView{
+        "Status: PAUSED at offset " + std::to_string(snapshot.instructionOffset),
+        "Handler: " + snapshot.handlerName + " (" + snapshot.scriptName + ")",
+        true,
+    };
+}
+
+BytecodeDebuggerHeaderView BytecodeDebuggerWindowModel::resumedHeader(std::string_view currentHandlerText) {
+    return BytecodeDebuggerHeaderView{"Status: Running", std::string(currentHandlerText), false};
 }
 
 std::string scriptDisplayName(const std::shared_ptr<DirectorFile>& file,

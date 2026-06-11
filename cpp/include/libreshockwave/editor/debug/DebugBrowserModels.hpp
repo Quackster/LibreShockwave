@@ -22,6 +22,10 @@ namespace libreshockwave::player::cast {
 class CastLibManager;
 }
 
+namespace libreshockwave::player::debug {
+struct DebugSnapshot;
+}
+
 namespace libreshockwave::editor::debug {
 
 struct ScriptSource {
@@ -150,6 +154,44 @@ private:
     std::string currentHandlerName_;
     int currentInstructionIndex_{-1};
     int selectedRow_{-1};
+};
+
+struct BytecodeDebuggerHeaderView {
+    std::string statusText;
+    std::string handlerText;
+    bool stepButtonsEnabled{false};
+
+    friend bool operator==(const BytecodeDebuggerHeaderView&, const BytecodeDebuggerHeaderView&) = default;
+};
+
+struct BytecodeDebuggerWindowView {
+    int width{};
+    int height{};
+    double splitResizeWeight{};
+    int contentGap{};
+    int contentInset{};
+    BytecodeDebuggerHeaderView header;
+
+    friend bool operator==(const BytecodeDebuggerWindowView&, const BytecodeDebuggerWindowView&) = default;
+};
+
+class BytecodeDebuggerWindowModel {
+public:
+    static constexpr int DEFAULT_WIDTH = 600;
+    static constexpr int DEFAULT_HEIGHT = 700;
+    static constexpr double SPLIT_RESIZE_WEIGHT = 0.5;
+    static constexpr int CONTENT_GAP = 5;
+    static constexpr int CONTENT_INSET = 5;
+
+    [[nodiscard]] static BytecodeDebuggerWindowView initialView();
+    [[nodiscard]] static BytecodeDebuggerHeaderView closedHeader();
+    [[nodiscard]] static BytecodeDebuggerHeaderView browsingHeader(std::string_view handlerName,
+                                                                   std::string_view scriptDisplayName);
+    [[nodiscard]] static BytecodeDebuggerHeaderView handlerNotFoundHeader(
+        std::string_view handlerName,
+        std::string_view currentHandlerText = "Handler: -");
+    [[nodiscard]] static BytecodeDebuggerHeaderView pausedHeader(const player::debug::DebugSnapshot& snapshot);
+    [[nodiscard]] static BytecodeDebuggerHeaderView resumedHeader(std::string_view currentHandlerText);
 };
 
 [[nodiscard]] std::string scriptDisplayName(const std::shared_ptr<DirectorFile>& file,

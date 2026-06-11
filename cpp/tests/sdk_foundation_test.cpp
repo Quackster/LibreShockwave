@@ -334,6 +334,9 @@ using libreshockwave::editor::castbrowser::CastViewMode;
 using libreshockwave::editor::castbrowser::ThumbnailPlacement;
 using libreshockwave::editor::debug::BytecodeListBuildOptions;
 using libreshockwave::editor::debug::BytecodeContextMenuItem;
+using libreshockwave::editor::debug::BytecodeDebuggerHeaderView;
+using libreshockwave::editor::debug::BytecodeDebuggerWindowModel;
+using libreshockwave::editor::debug::BytecodeDebuggerWindowView;
 using libreshockwave::editor::debug::BytecodeListModel;
 using libreshockwave::editor::debug::BytecodeCellPresentation;
 using libreshockwave::editor::debug::BytecodeLinePresentation;
@@ -3348,6 +3351,7 @@ void testEditorDebugDataModels() {
     assert(DebugInspectionModels::formatReceiver(std::nullopt) == "(no receiver)");
 
     DebugSnapshot stackSnapshot;
+    stackSnapshot.scriptName = "Movie Script";
     stackSnapshot.handlerName = "mouseUp";
     stackSnapshot.instructionOffset = 12;
     stackSnapshot.stack = {Datum::of(1), Datum::of(std::string("top"))};
@@ -3367,6 +3371,32 @@ void testEditorDebugDataModels() {
     assert(detailedStackView.tabs[1].body == "[  0] 1\n[  1] \"top\"\n");
     assert(detailedStackView.tabs[2].body == "arg1 = 42\narg2 = \"#ready\"\n");
     assert(detailedStackView.tabs[3].body == "99");
+
+    assert((BytecodeDebuggerWindowModel::initialView() ==
+            BytecodeDebuggerWindowView{600,
+                                       700,
+                                       0.5,
+                                       5,
+                                       5,
+                                       BytecodeDebuggerHeaderView{"Status: Running", "Handler: -", false}}));
+    assert((BytecodeDebuggerWindowModel::closedHeader() ==
+            BytecodeDebuggerHeaderView{"Status: Running", "Handler: -", false}));
+    assert((BytecodeDebuggerWindowModel::browsingHeader("mouseUp", "\"Main\" (Movie Script)") ==
+            BytecodeDebuggerHeaderView{"Status: Running",
+                                       "Handler: mouseUp (\"Main\" (Movie Script))",
+                                       false}));
+    assert((BytecodeDebuggerWindowModel::handlerNotFoundHeader("go", "Handler: mouseUp (Movie Script)") ==
+            BytecodeDebuggerHeaderView{"Handler 'go' not found",
+                                       "Handler: mouseUp (Movie Script)",
+                                       false}));
+    assert((BytecodeDebuggerWindowModel::pausedHeader(stackSnapshot) ==
+            BytecodeDebuggerHeaderView{"Status: PAUSED at offset 12",
+                                       "Handler: mouseUp (Movie Script)",
+                                       true}));
+    assert((BytecodeDebuggerWindowModel::resumedHeader("Handler: mouseUp (Movie Script)") ==
+            BytecodeDebuggerHeaderView{"Status: Running",
+                                       "Handler: mouseUp (Movie Script)",
+                                       false}));
 
     ScriptNamesChunk detailsNames(nullptr,
                                   ChunkId(246),
