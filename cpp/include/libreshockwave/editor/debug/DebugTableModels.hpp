@@ -83,4 +83,19 @@ private:
     std::vector<TimeoutSnapshot> timeouts_;
 };
 
+class MoviePropertiesTableModel {
+public:
+    void setProperties(std::vector<std::pair<std::string, lingo::Datum>> properties);
+
+    [[nodiscard]] int rowCount() const;
+    [[nodiscard]] int columnCount() const;
+    [[nodiscard]] std::string columnName(int column) const;
+    [[nodiscard]] std::string valueAt(int row, int column) const;
+    [[nodiscard]] const lingo::Datum* datum(int row) const;
+    [[nodiscard]] std::string name(int row) const;
+
+private:
+    std::vector<std::pair<std::string, lingo::Datum>> properties_;
+};
+
 } // namespace libreshockwave::editor::debug

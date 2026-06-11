@@ -12,6 +12,7 @@ constexpr std::array<const char*, 3> STACK_COLUMNS{"#", "Type", "Value"};
 constexpr std::array<const char*, 3> VARIABLES_COLUMNS{"Name", "Type", "Value"};
 constexpr std::array<const char*, 3> WATCHES_COLUMNS{"Expression", "Type", "Value"};
 constexpr std::array<const char*, 5> TIMEOUT_COLUMNS{"Name", "Period (ms)", "Handler", "Target", "Persistent"};
+constexpr std::array<const char*, 2> MOVIE_PROPERTIES_COLUMNS{"Property", "Value"};
 
 template <std::size_t N>
 [[nodiscard]] std::string columnNameAt(const std::array<const char*, N>& columns, int column) {
@@ -213,6 +214,48 @@ const lingo::Datum* TimeoutTableModel::datum(int row) const {
 std::string TimeoutTableModel::name(int row) const {
     const auto* timeout = rowAt(timeouts_, row);
     return timeout ? timeout->name : std::string{};
+}
+
+void MoviePropertiesTableModel::setProperties(std::vector<std::pair<std::string, lingo::Datum>> properties) {
+    properties_ = std::move(properties);
+}
+
+int MoviePropertiesTableModel::rowCount() const {
+    return static_cast<int>(properties_.size());
+}
+
+int MoviePropertiesTableModel::columnCount() const {
+    return static_cast<int>(MOVIE_PROPERTIES_COLUMNS.size());
+}
+
+std::string MoviePropertiesTableModel::columnName(int column) const {
+    return columnNameAt(MOVIE_PROPERTIES_COLUMNS, column);
+}
+
+std::string MoviePropertiesTableModel::valueAt(int row, int column) const {
+    const auto* property = rowAt(properties_, row);
+    if (!property) {
+        return {};
+    }
+
+    switch (column) {
+        case 0:
+            return property->first;
+        case 1:
+            return lingo::vm::datum::format(property->second);
+        default:
+            return {};
+    }
+}
+
+const lingo::Datum* MoviePropertiesTableModel::datum(int row) const {
+    const auto* property = rowAt(properties_, row);
+    return property ? &property->second : nullptr;
+}
+
+std::string MoviePropertiesTableModel::name(int row) const {
+    const auto* property = rowAt(properties_, row);
+    return property ? property->first : std::string{};
 }
 
 } // namespace libreshockwave::editor::debug

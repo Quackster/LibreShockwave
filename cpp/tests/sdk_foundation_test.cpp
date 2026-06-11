@@ -326,7 +326,11 @@ using libreshockwave::editor::debug::DebugToolbarButton;
 using libreshockwave::editor::debug::DebugToolbarLayout;
 using libreshockwave::editor::debug::DatumDetailsView;
 using libreshockwave::editor::debug::DebugInspectionModels;
+using libreshockwave::editor::debug::DebugInspectionTable;
+using libreshockwave::editor::debug::DebugObjectSectionView;
 using libreshockwave::editor::debug::DebugSize;
+using libreshockwave::editor::debug::DebugStateTabsView;
+using libreshockwave::editor::debug::DebugTablePresentation;
 using libreshockwave::editor::debug::DebugTextAreaPresentation;
 using libreshockwave::editor::debug::DetailedStackTabView;
 using libreshockwave::editor::debug::DetailedStackView;
@@ -341,6 +345,10 @@ using libreshockwave::editor::debug::StackTableModel;
 using libreshockwave::editor::debug::TimeoutSnapshot;
 using libreshockwave::editor::debug::TimeoutTableModel;
 using libreshockwave::editor::debug::VariablesTableModel;
+using libreshockwave::editor::debug::MoviePropertiesTableModel;
+using libreshockwave::editor::debug::WatchPanelAction;
+using libreshockwave::editor::debug::WatchPanelButton;
+using libreshockwave::editor::debug::WatchPanelView;
 using libreshockwave::editor::debug::WatchesTableModel;
 using libreshockwave::editor::docking::DockEdge;
 using libreshockwave::editor::docking::DockingLayoutModel;
@@ -3019,6 +3027,128 @@ void testEditorDebugDataModels() {
     assert(timeoutModel.name(99).empty());
     assert(timeoutModel.datum(99) == nullptr);
     assert(timeoutModel.valueAt(99, 0).empty());
+
+    MoviePropertiesTableModel moviePropsModel;
+    moviePropsModel.setProperties({
+        {"movieName", Datum::of(std::string("Lobby"))},
+        {"frameRate", Datum::of(24)},
+    });
+    assert(moviePropsModel.columnCount() == 2);
+    assert(moviePropsModel.columnName(0) == "Property");
+    assert(moviePropsModel.columnName(1) == "Value");
+    assert(moviePropsModel.rowCount() == 2);
+    assert(moviePropsModel.name(0) == "movieName");
+    assert(moviePropsModel.valueAt(0, 0) == "movieName");
+    assert(moviePropsModel.valueAt(0, 1) == "\"Lobby\"");
+    assert(moviePropsModel.valueAt(1, 0) == "frameRate");
+    assert(moviePropsModel.valueAt(1, 1) == "24");
+    assert(moviePropsModel.datum(1) != nullptr);
+    assert(moviePropsModel.datum(1)->intValue() == 24);
+    assert(moviePropsModel.name(99).empty());
+    assert(moviePropsModel.datum(99) == nullptr);
+    assert(moviePropsModel.valueAt(99, 0).empty());
+
+    const auto stateTabs = DebugInspectionModels::stateTabsView();
+    assert((stateTabs.tabTitles == std::vector<std::string>{"Stack", "Locals", "Globals", "Watches", "Objects"}));
+    assert(stateTabs.tabPlacement == "top");
+    assert(stateTabs.objectsTabIndex == 4);
+    assert(DebugInspectionModels::isObjectsTabSelected(4));
+    assert(!DebugInspectionModels::isObjectsTabSelected(3));
+    assert(stateTabs.primaryTables.size() == 4);
+    assert((stateTabs.primaryTables[0] ==
+            DebugTablePresentation{DebugInspectionTable::Stack,
+                                   "Stack",
+                                   {"#", "Type", "Value"},
+                                   {40, 80, 200},
+                                   "Monospaced",
+                                   11,
+                                   DebugSize{0, 0},
+                                   true}));
+    assert((stateTabs.primaryTables[1] ==
+            DebugTablePresentation{DebugInspectionTable::Locals,
+                                   "Locals",
+                                   {"Name", "Type", "Value"},
+                                   {100, 80, 200},
+                                   "Monospaced",
+                                   11,
+                                   DebugSize{0, 0},
+                                   true}));
+    assert((stateTabs.primaryTables[3] ==
+            DebugTablePresentation{DebugInspectionTable::Watches,
+                                   "Watches",
+                                   {"Expression", "Type", "Value"},
+                                   {150, 60, 200},
+                                   "Monospaced",
+                                   11,
+                                   DebugSize{0, 0},
+                                   false}));
+    assert((stateTabs.objectSections ==
+            std::vector<DebugObjectSectionView>{
+                DebugObjectSectionView{ "Timeouts",
+                                        DebugTablePresentation{DebugInspectionTable::Timeouts,
+                                                               "Timeouts",
+                                                               {"Name", "Period (ms)", "Handler", "Target",
+                                                                "Persistent"},
+                                                               {},
+                                                               "Monospaced",
+                                                               11,
+                                                               DebugSize{0, 120},
+                                                               true}},
+                DebugObjectSectionView{ "Globals",
+                                        DebugTablePresentation{DebugInspectionTable::Globals,
+                                                               "Globals",
+                                                               {"Name", "Type", "Value"},
+                                                               {100, 80, 200},
+                                                               "Monospaced",
+                                                               11,
+                                                               DebugSize{0, 0},
+                                                               true}},
+                DebugObjectSectionView{ "Movie Properties",
+                                        DebugTablePresentation{DebugInspectionTable::MovieProperties,
+                                                               "Movie Properties",
+                                                               {"Property", "Value"},
+                                                               {},
+                                                               "Monospaced",
+                                                               11,
+                                                               DebugSize{0, 150},
+                                                               true}},
+            }));
+
+    assert((DebugInspectionModels::watchesPanelView(false) ==
+            WatchPanelView{DebugTablePresentation{DebugInspectionTable::Watches,
+                                                  "Watches",
+                                                  {"Expression", "Type", "Value"},
+                                                  {150, 60, 200},
+                                                  "Monospaced",
+                                                  11,
+                                                  DebugSize{0, 0},
+                                                  false},
+                           {WatchPanelButton{WatchPanelAction::Add, "+", "Add watch expression", true},
+                            WatchPanelButton{WatchPanelAction::Remove, "-", "Remove selected watch", false},
+                            WatchPanelButton{WatchPanelAction::Clear, "Clear", "Clear all watches", true}},
+                           "Add Watch",
+                           "Enter watch expression:",
+                           "Edit watch expression:"}));
+    assert(DebugInspectionModels::watchesPanelView(true).buttons[1].enabled);
+    assert(DebugInspectionModels::sanitizedWatchExpression("  the frame  ").value() == "the frame");
+    assert(!DebugInspectionModels::sanitizedWatchExpression(" \t\n ").has_value());
+    const std::vector<WatchExpression> watchRows{
+        WatchExpression::create("watch-a", "the frame"),
+        WatchExpression::create("watch-b", "the mouseH"),
+    };
+    assert(DebugInspectionModels::selectedWatchId(watchRows, 1).value() == "watch-b");
+    assert(!DebugInspectionModels::selectedWatchId(watchRows, -1).has_value());
+    assert(!DebugInspectionModels::selectedWatchId(watchRows, 2).has_value());
+    assert(DebugInspectionModels::datumDetailsTitleFor(DebugInspectionTable::Stack, "", 3).value() == "Stack[3]");
+    assert(DebugInspectionModels::datumDetailsTitleFor(DebugInspectionTable::Locals, "score", 0).value() ==
+           "Local: score");
+    assert(DebugInspectionModels::datumDetailsTitleFor(DebugInspectionTable::Globals, "gMovie", 0).value() ==
+           "Global: gMovie");
+    assert(DebugInspectionModels::datumDetailsTitleFor(DebugInspectionTable::Timeouts, "tick", 0).value() ==
+           "Timeout: tick");
+    assert(DebugInspectionModels::datumDetailsTitleFor(DebugInspectionTable::MovieProperties, "stageColor", 0)
+               .value() == "Movie: stageColor");
+    assert(!DebugInspectionModels::datumDetailsTitleFor(DebugInspectionTable::Watches, "the frame", 0).has_value());
 }
 
 void testEditorScoreDataHelpers() {

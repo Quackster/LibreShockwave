@@ -2,6 +2,7 @@
 
 #include <iomanip>
 #include <sstream>
+#include <cctype>
 #include <utility>
 
 #include "libreshockwave/lingo/vm/datum/DatumFormatter.hpp"
@@ -49,6 +50,71 @@ constexpr const char* SEPARATOR_LINE = "\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2
         std::move(statusText),
         detailedStackTabs({}, {}, {}, {}),
     };
+}
+
+[[nodiscard]] std::string trimAscii(std::string_view value) {
+    auto begin = value.begin();
+    while (begin != value.end() && std::isspace(static_cast<unsigned char>(*begin))) {
+        ++begin;
+    }
+    auto end = value.end();
+    while (end != begin && std::isspace(static_cast<unsigned char>(*(end - 1)))) {
+        --end;
+    }
+    return std::string(begin, end);
+}
+
+[[nodiscard]] DebugTablePresentation tablePresentation(DebugInspectionTable table,
+                                                       std::string title,
+                                                       std::vector<std::string> columns,
+                                                       std::vector<int> preferredColumnWidths,
+                                                       DebugSize preferredScrollSize = {},
+                                                       bool doubleClickOpensDatum = false) {
+    return DebugTablePresentation{
+        table,
+        std::move(title),
+        std::move(columns),
+        std::move(preferredColumnWidths),
+        "Monospaced",
+        11,
+        preferredScrollSize,
+        doubleClickOpensDatum,
+    };
+}
+
+[[nodiscard]] DebugTablePresentation stackTable() {
+    return tablePresentation(DebugInspectionTable::Stack, "Stack", {"#", "Type", "Value"}, {40, 80, 200}, {}, true);
+}
+
+[[nodiscard]] DebugTablePresentation variablesTable(DebugInspectionTable table, std::string title) {
+    return tablePresentation(table, std::move(title), {"Name", "Type", "Value"}, {100, 80, 200}, {}, true);
+}
+
+[[nodiscard]] DebugTablePresentation watchesTable() {
+    return tablePresentation(DebugInspectionTable::Watches,
+                             "Watches",
+                             {"Expression", "Type", "Value"},
+                             {150, 60, 200},
+                             {},
+                             false);
+}
+
+[[nodiscard]] DebugTablePresentation timeoutsTable() {
+    return tablePresentation(DebugInspectionTable::Timeouts,
+                             "Timeouts",
+                             {"Name", "Period (ms)", "Handler", "Target", "Persistent"},
+                             {},
+                             DebugSize{0, 120},
+                             true);
+}
+
+[[nodiscard]] DebugTablePresentation moviePropertiesTable() {
+    return tablePresentation(DebugInspectionTable::MovieProperties,
+                             "Movie Properties",
+                             {"Property", "Value"},
+                             {},
+                             DebugSize{0, 150},
+                             true);
 }
 
 } // namespace
@@ -143,6 +209,74 @@ std::string DebugInspectionModels::formatArguments(const std::vector<lingo::Datu
 
 std::string DebugInspectionModels::formatReceiver(const std::optional<lingo::Datum>& receiver) {
     return receiver.has_value() ? lingo::vm::datum::formatDetailed(*receiver, 0) : "(no receiver)";
+}
+
+DebugStateTabsView DebugInspectionModels::stateTabsView() {
+    return DebugStateTabsView{
+        "top",
+        {"Stack", "Locals", "Globals", "Watches", "Objects"},
+        4,
+        {stackTable(), variablesTable(DebugInspectionTable::Locals, "Locals"),
+         variablesTable(DebugInspectionTable::Globals, "Globals"), watchesTable()},
+        {DebugObjectSectionView{"Timeouts", timeoutsTable()},
+         DebugObjectSectionView{"Globals", variablesTable(DebugInspectionTable::Globals, "Globals")},
+         DebugObjectSectionView{"Movie Properties", moviePropertiesTable()}},
+    };
+}
+
+bool DebugInspectionModels::isObjectsTabSelected(int selectedTabIndex) {
+    return selectedTabIndex == stateTabsView().objectsTabIndex;
+}
+
+WatchPanelView DebugInspectionModels::watchesPanelView(bool hasSelection) {
+    return WatchPanelView{
+        watchesTable(),
+        {
+            WatchPanelButton{WatchPanelAction::Add, "+", "Add watch expression", true},
+            WatchPanelButton{WatchPanelAction::Remove, "-", "Remove selected watch", hasSelection},
+            WatchPanelButton{WatchPanelAction::Clear, "Clear", "Clear all watches", true},
+        },
+        "Add Watch",
+        "Enter watch expression:",
+        "Edit watch expression:",
+    };
+}
+
+std::optional<std::string> DebugInspectionModels::sanitizedWatchExpression(std::string_view expression) {
+    auto trimmed = trimAscii(expression);
+    if (trimmed.empty()) {
+        return std::nullopt;
+    }
+    return trimmed;
+}
+
+std::optional<std::string> DebugInspectionModels::selectedWatchId(
+    const std::vector<player::debug::WatchExpression>& watches,
+    int selectedRow) {
+    if (selectedRow < 0 || selectedRow >= static_cast<int>(watches.size())) {
+        return std::nullopt;
+    }
+    return watches[static_cast<std::size_t>(selectedRow)].id;
+}
+
+std::optional<std::string> DebugInspectionModels::datumDetailsTitleFor(DebugInspectionTable table,
+                                                                       std::string_view name,
+                                                                       int row) {
+    switch (table) {
+        case DebugInspectionTable::Stack:
+            return "Stack[" + std::to_string(row) + "]";
+        case DebugInspectionTable::Locals:
+            return "Local: " + std::string(name);
+        case DebugInspectionTable::Globals:
+            return "Global: " + std::string(name);
+        case DebugInspectionTable::Timeouts:
+            return "Timeout: " + std::string(name);
+        case DebugInspectionTable::MovieProperties:
+            return "Movie: " + std::string(name);
+        case DebugInspectionTable::Watches:
+            return std::nullopt;
+    }
+    return std::nullopt;
 }
 
 } // namespace libreshockwave::editor::debug
