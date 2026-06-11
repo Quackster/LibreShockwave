@@ -9883,6 +9883,9 @@ void testMoviePropertiesFoundation() {
     assert(props.getMovieProp("soundLevel").intValue() == 7);
     assert(props.getMovieProp("soundKeepDevice").boolValue());
     assert(props.getMovieProp("soundMixMedia").boolValue());
+    assert(props.getMovieProp("multiSound").boolValue());
+    assert(props.getMovieProp("netPresent").boolValue());
+    assert(props.getMovieProp("safePlayer").boolValue());
     assert(props.getMovieProp("unknownMovieProp").isVoid());
 
     DirectorFile emptyFile(ByteOrder::BigEndian, false, 0, ChunkType::RIFX);
@@ -9988,6 +9991,7 @@ void testMoviePropertiesFoundation() {
     assert(props.setMovieProp("soundLevel", Datum::of(5)));
     assert(props.setMovieProp("soundKeepDevice", Datum::FALSE));
     assert(props.setMovieProp("soundMixMedia", Datum::FALSE));
+    assert(props.setMovieProp("safePlayer", Datum::FALSE));
     assert(props.setMovieProp("randomSeed", Datum::of(1234)));
     assert(props.setMovieProp("selStart", Datum::of(30)));
     assert(props.setMovieProp("selEnd", Datum::of(40)));
@@ -10014,6 +10018,7 @@ void testMoviePropertiesFoundation() {
     assert(props.getMovieProp("soundLevel").intValue() == 5);
     assert(!props.getMovieProp("soundKeepDevice").boolValue());
     assert(!props.getMovieProp("soundMixMedia").boolValue());
+    assert(props.getMovieProp("safePlayer").boolValue());
     assert(randomSeed == 1234);
     assert(input.selStart() == 30);
     assert(input.selEnd() == 40);
@@ -12615,6 +12620,15 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 140) {
             return std::string("soundMixMedia");
         }
+        if (nameId == 141) {
+            return std::string("multiSound");
+        }
+        if (nameId == 142) {
+            return std::string("netPresent");
+        }
+        if (nameId == 143) {
+            return std::string("safePlayer");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.variableSetListener = [&variableTraces](std::string_view type,
@@ -13711,6 +13725,9 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     builtinContext.spriteProperties = &objectSpriteProps;
     assert(runObjectPropertyGet(Datum::movieRef(), 79).intValue() == 33);
     assert(runObjectPropertyGet(Datum::playerRef(), 79).intValue() == 33);
+    assert(runObjectPropertyGet(Datum::movieRef(), 141).boolValue());
+    assert(runObjectPropertyGet(Datum::playerRef(), 142).boolValue());
+    assert(runObjectPropertyGet(Datum::playerRef(), 143).boolValue());
     assert(runObjectPropertyGet(Datum::stageRef(), 81).intValue() == 0x224466);
     assert(runObjectPropertyGet(Datum::spriteRef(ChannelId(9)), 83).intValue() == 44);
     assert(runObjectPropertyGet(Datum::of(9), 83).intValue() == 44);
@@ -13886,7 +13903,10 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     builtinContext.soundManager = &legacySoundManager;
     assert(runLegacyGet(0x00, Datum::voidValue(), 0x00).intValue() == 4);
     assert(runLegacyGet(0x06, Datum::of(5), 0x0D).intValue() == 22);
+    assert(runLegacyGet(0x07, Datum::voidValue(), 0x14).boolValue());
     assert(runLegacyGet(0x07, Datum::voidValue(), 0x1A).intValue() == 7);
+    assert(runLegacyGet(0x07, Datum::voidValue(), 0x25).boolValue());
+    assert(runLegacyGet(0x07, Datum::voidValue(), 0x26).boolValue());
     assert(runLegacyGet(0x07, Datum::voidValue(), 0x27).boolValue());
     assert(runLegacyGet(0x07, Datum::voidValue(), 0x28).boolValue());
     assert(runLegacyGet(0x0B, Datum::of(2), 0x01).intValue() == 65);
@@ -13925,6 +13945,10 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     legacySetContext.push(Datum::of(0x28));
     assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
     assert(!legacySoundManager.soundMixMedia());
+    legacySetContext.push(Datum::FALSE);
+    legacySetContext.push(Datum::of(0x26));
+    assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
+    assert(legacyMovieProps.getMovieProp("safePlayer").boolValue());
     assert(legacySetScope.stackSize() == 0);
     builtinContext.movieProperties = nullptr;
     builtinContext.spriteProperties = nullptr;

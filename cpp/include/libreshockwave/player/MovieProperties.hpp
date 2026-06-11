@@ -130,6 +130,7 @@ private:
     int soundLevel_{7};
     bool soundKeepDevice_{true};
     bool soundMixMedia_{true};
+    bool safePlayer_{true};
     int randomSeed_{0};
     int stageBackgroundColor_{0};
 

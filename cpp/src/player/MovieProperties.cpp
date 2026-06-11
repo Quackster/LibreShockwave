@@ -227,6 +227,9 @@ lingo::Datum MovieProperties::getMovieProp(std::string_view propName) const {
     if (prop == "soundlevel") return lingo::Datum::of(soundLevel());
     if (prop == "soundkeepdevice") return lingo::Datum::of(soundKeepDevice() ? 1 : 0);
     if (prop == "soundmixmedia") return lingo::Datum::of(soundMixMedia() ? 1 : 0);
+    if (prop == "multisound") return lingo::Datum::TRUE;
+    if (prop == "netpresent") return lingo::Datum::TRUE;
+    if (prop == "safeplayer") return lingo::Datum::of(safePlayer_ ? 1 : 0);
     if (prop == "randomseed") return lingo::Datum::of(randomSeed());
     if (prop == "actorlist") return actorList_;
     if (prop == "framerate" || prop == "tempo" || prop == "frametempo") return lingo::Datum::of(tempo());
@@ -354,6 +357,12 @@ bool MovieProperties::setMovieProp(std::string_view propName, const lingo::Datum
     }
     if (prop == "soundmixmedia") {
         setSoundMixMedia(value.boolValue());
+        return true;
+    }
+    if (prop == "safeplayer") {
+        if (value.boolValue()) {
+            safePlayer_ = true;
+        }
         return true;
     }
     if (prop == "randomseed") {
