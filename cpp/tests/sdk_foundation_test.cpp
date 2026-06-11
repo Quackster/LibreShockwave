@@ -333,6 +333,7 @@ using libreshockwave::editor::gtk::EditorGtkShellModel;
 using libreshockwave::editor::gtk::EditorGtkShellState;
 using libreshockwave::editor::gtk::GtkActionActivation;
 using libreshockwave::editor::gtk::GtkActionAcceleratorSpec;
+using libreshockwave::editor::gtk::GtkMenuItemKind;
 using libreshockwave::editor::gtk::GtkPanelRowSpec;
 using libreshockwave::editor::gtk::GtkShellDialogKind;
 using libreshockwave::editor::gtk::GtkStartScreenRequest;
@@ -2218,6 +2219,40 @@ void testEditorShellActionModels() {
     assert(!paintFloatAction->stateful);
     assert(paintFloatAction->accelerators.empty());
 
+    const auto gtkMenus = EditorGtkShellModel::menuSpecs(menus, gtkFrame);
+    assert(gtkMenus.size() == menus.menus().size());
+    assert(gtkMenus[0].label == "File");
+    assert(gtkMenus[0].mnemonic == 'F');
+    assert(gtkMenus[0].items[0].kind == GtkMenuItemKind::Command);
+    assert(gtkMenus[0].items[0].label == "New Movie");
+    assert(gtkMenus[0].items[0].command == EditorCommand::NewMovie);
+    assert(!gtkMenus[0].items[0].enabled);
+    assert(gtkMenus[0].items[0].actionName == "newMovie");
+    assert(gtkMenus[0].items[0].detailedActionName == "app.newMovie");
+    assert((gtkMenus[0].items[0].accelerators == std::vector<std::string>{"<Control>N"}));
+    assert(gtkMenus[0].items[2].kind == GtkMenuItemKind::Separator);
+    assert(gtkMenus[0].items[2].actionName.empty());
+    assert(gtkMenus[0].items[3].label == "Open...");
+    assert(gtkMenus[0].items[3].actionName == "open");
+    assert(gtkMenus[0].items[3].detailedActionName == "app.open");
+    assert((gtkMenus[0].items[3].accelerators == std::vector<std::string>{"<Control>O"}));
+    assert(gtkMenus[0].items[13].kind == GtkMenuItemKind::Submenu);
+    assert(gtkMenus[0].items[13].label == "Preferences");
+    assert(gtkMenus[0].items[13].children[0].label == "General...");
+    assert(gtkMenus[0].items[13].children[0].actionName == "preferencesGeneral");
+    assert(!gtkMenus[0].items[13].children[0].enabled);
+    assert(gtkMenus[7].label == "Window");
+    assert(gtkMenus[7].mnemonic == 'W');
+    assert(gtkMenus[7].items[0].kind == GtkMenuItemKind::Check);
+    assert(gtkMenus[7].items[0].panelId == "stage");
+    assert(gtkMenus[7].items[0].checked);
+    assert(gtkMenus[7].items[0].actionName == "panel_stage");
+    assert(gtkMenus[7].items[0].detailedActionName == "app.panel_stage");
+    assert((gtkMenus[7].items[0].accelerators == std::vector<std::string>{"<Control>1"}));
+    assert(gtkMenus[7].items[7].kind == GtkMenuItemKind::Separator);
+    assert(gtkMenus[7].items[8].panelId == "paint");
+    assert(!gtkMenus[7].items[8].checked);
+
     const auto gtkToolbar = EditorGtkShellModel::toolbarItems(toolbar);
     assert(gtkToolbar.size() == toolbar.items().size());
     assert(gtkToolbar[0] == (GtkToolbarItemSpec{ToolbarItem::Kind::Button, "Rewind", "Rewind", "rewind", "app.rewind"}));
@@ -2266,6 +2301,8 @@ void testEditorShellActionModels() {
     assert(gtkRows[7].primaryActionName == "workbench_paint");
     assert(gtkRows[7].detailedPrimaryActionName == "app.workbench_paint");
     assert(gtkRows[7].primaryActionEnabled);
+    const auto visibleGtkMenus = EditorGtkShellModel::menuSpecs(menus, gtkFrame);
+    assert(visibleGtkMenus[7].items[8].checked);
     const auto visiblePaintWorkbenchAction =
         EditorGtkShellModel::actionSpec("workbench_paint", menus, toolbar, gtkFrame);
     assert(visiblePaintWorkbenchAction.has_value());
@@ -2400,6 +2437,7 @@ void testEditorShellActionModels() {
         return found == actions.end() ? nullptr : &*found;
     };
     assert(gtkState.menuModel().findMenu("File") != nullptr);
+    assert(gtkState.menuSpecs()[0].items[3].detailedActionName == "app.open");
     assert(gtkState.toolbarItems().front().detailedActionName == "app.rewind");
     assert(gtkState.actionSpec("panel_paint")->active == false);
     assert(gtkState.preferences().recentProjects().empty());

@@ -91,6 +91,54 @@ void collectMenuActions(const std::vector<EditorMenuItem>& items, std::map<std::
     }
 }
 
+GtkMenuItemKind menuItemKind(EditorMenuItem::Kind kind) {
+    switch (kind) {
+        case EditorMenuItem::Kind::Command:
+            return GtkMenuItemKind::Command;
+        case EditorMenuItem::Kind::Check:
+            return GtkMenuItemKind::Check;
+        case EditorMenuItem::Kind::Separator:
+            return GtkMenuItemKind::Separator;
+        case EditorMenuItem::Kind::Submenu:
+            return GtkMenuItemKind::Submenu;
+    }
+    return GtkMenuItemKind::Command;
+}
+
+std::vector<std::string> acceleratorStrings(const std::optional<EditorAccelerator>& accelerator) {
+    if (!accelerator.has_value()) {
+        return {};
+    }
+    return {gtkAccelerator(*accelerator)};
+}
+
+GtkMenuItemSpec menuItemSpec(const EditorMenuItem& item, const EditorFramePanelModel& frameModel) {
+    GtkMenuItemSpec spec;
+    spec.kind = menuItemKind(item.kind);
+    spec.label = item.label;
+    spec.command = item.command;
+    spec.panelId = item.panelId;
+    spec.enabled = item.enabled;
+    spec.checked = item.checked;
+    spec.accelerators = acceleratorStrings(item.accelerator);
+
+    if (!item.panelId.empty()) {
+        spec.enabled = item.enabled && frameModel.hasPanel(item.panelId);
+        spec.checked = frameModel.isPanelVisible(item.panelId);
+        spec.actionName = EditorGtkShellModel::panelActionName(item.panelId);
+        spec.detailedActionName = EditorGtkShellModel::appAction(spec.actionName);
+    } else if (item.command != EditorCommand::None) {
+        spec.actionName = EditorGtkShellModel::commandActionName(item.command);
+        spec.detailedActionName = EditorGtkShellModel::appAction(spec.actionName);
+    }
+
+    spec.children.reserve(item.children.size());
+    for (const auto& child : item.children) {
+        spec.children.push_back(menuItemSpec(child, frameModel));
+    }
+    return spec;
+}
+
 std::string panelTitle(std::string_view panelId) {
     const auto descriptor = panels::EditorPanelCatalog::descriptor(panelId);
     return descriptor.has_value() ? descriptor->title : std::string(panelId);
@@ -517,6 +565,23 @@ std::vector<GtkActionAcceleratorSpec> EditorGtkShellModel::actionAcceleratorSpec
     return actionAcceleratorSpecs(actionSpecs(menuModel, toolbarModel, frameModel));
 }
 
+std::vector<GtkMenuSpec> EditorGtkShellModel::menuSpecs(const EditorMenuModel& menuModel,
+                                                        const EditorFramePanelModel& frameModel) {
+    std::vector<GtkMenuSpec> result;
+    result.reserve(menuModel.menus().size());
+    for (const auto& menu : menuModel.menus()) {
+        GtkMenuSpec spec;
+        spec.label = menu.label;
+        spec.mnemonic = menu.mnemonic;
+        spec.items.reserve(menu.items.size());
+        for (const auto& item : menu.items) {
+            spec.items.push_back(menuItemSpec(item, frameModel));
+        }
+        result.push_back(std::move(spec));
+    }
+    return result;
+}
+
 std::vector<GtkToolbarItemSpec> EditorGtkShellModel::toolbarItems(const EditorToolBarModel& toolbarModel) {
     std::vector<GtkToolbarItemSpec> result;
     result.reserve(toolbarModel.items().size());
@@ -743,6 +808,10 @@ std::vector<GtkActionSpec> EditorGtkShellState::actionSpecs() const {
 
 std::vector<GtkActionAcceleratorSpec> EditorGtkShellState::actionAcceleratorSpecs() const {
     return EditorGtkShellModel::actionAcceleratorSpecs(actionSpecs());
+}
+
+std::vector<GtkMenuSpec> EditorGtkShellState::menuSpecs() const {
+    return EditorGtkShellModel::menuSpecs(menuModel_, frameModel_);
 }
 
 std::optional<GtkActionSpec> EditorGtkShellState::actionSpec(std::string_view name) const {

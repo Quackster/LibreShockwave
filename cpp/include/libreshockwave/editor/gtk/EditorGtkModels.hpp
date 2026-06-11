@@ -165,6 +165,36 @@ struct GtkActionAcceleratorSpec {
     friend bool operator==(const GtkActionAcceleratorSpec&, const GtkActionAcceleratorSpec&) = default;
 };
 
+enum class GtkMenuItemKind {
+    Command,
+    Check,
+    Separator,
+    Submenu
+};
+
+struct GtkMenuItemSpec {
+    GtkMenuItemKind kind{GtkMenuItemKind::Command};
+    std::string label;
+    EditorCommand command{EditorCommand::None};
+    std::string panelId;
+    bool enabled{true};
+    bool checked{false};
+    std::string actionName;
+    std::string detailedActionName;
+    std::vector<std::string> accelerators;
+    std::vector<GtkMenuItemSpec> children;
+
+    friend bool operator==(const GtkMenuItemSpec&, const GtkMenuItemSpec&) = default;
+};
+
+struct GtkMenuSpec {
+    std::string label;
+    char mnemonic{'\0'};
+    std::vector<GtkMenuItemSpec> items;
+
+    friend bool operator==(const GtkMenuSpec&, const GtkMenuSpec&) = default;
+};
+
 struct GtkToolbarItemSpec {
     ToolbarItem::Kind kind{ToolbarItem::Kind::Button};
     std::string label;
@@ -354,6 +384,8 @@ public:
         const EditorMenuModel& menuModel,
         const EditorToolBarModel& toolbarModel,
         const EditorFramePanelModel& frameModel);
+    [[nodiscard]] static std::vector<GtkMenuSpec> menuSpecs(const EditorMenuModel& menuModel,
+                                                           const EditorFramePanelModel& frameModel);
     [[nodiscard]] static std::optional<GtkActionSpec> actionSpec(std::string_view name,
                                                                  const EditorMenuModel& menuModel,
                                                                  const EditorToolBarModel& toolbarModel,
@@ -386,6 +418,7 @@ public:
 
     [[nodiscard]] std::vector<GtkActionSpec> actionSpecs() const;
     [[nodiscard]] std::vector<GtkActionAcceleratorSpec> actionAcceleratorSpecs() const;
+    [[nodiscard]] std::vector<GtkMenuSpec> menuSpecs() const;
     [[nodiscard]] std::optional<GtkActionSpec> actionSpec(std::string_view name) const;
     [[nodiscard]] std::vector<GtkToolbarItemSpec> toolbarItems() const;
     [[nodiscard]] std::vector<GtkPanelRowSpec> panelRows() const;
