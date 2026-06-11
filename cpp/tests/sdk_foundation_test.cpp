@@ -2162,6 +2162,12 @@ void testEditorShellActionModels() {
     assert(!gtkState.openMoviePath().has_value());
     assert(gtkState.viewState().statusMessage == "Open Director file requested");
 
+    auto playWithoutMovie = gtkState.activateAction("play");
+    assert(!playWithoutMovie.handled);
+    assert(playWithoutMovie.command == EditorCommand::Play);
+    assert(playWithoutMovie.contextEvents.empty());
+    assert(playWithoutMovie.statusMessage == "No movie loaded");
+
     auto openEvents = gtkState.openFile("/tmp/Movie.dir");
     assert(openEvents.size() == 1);
     assert(openEvents[0].property == EditorContextProperty::File);
@@ -2176,6 +2182,76 @@ void testEditorShellActionModels() {
     assert(gtkView.statusMessage == "Opened Movie.dir");
     assert(gtkView.openMoviePath.value() == "/tmp/Movie.dir");
     assert(!gtkView.playing);
+    assert(gtkView.currentFrame == 1);
+    assert(gtkView.toolbarItems[7].label == "Frame: 1");
+
+    auto playActivation = gtkState.activateAction("play");
+    assert(playActivation.handled);
+    assert(playActivation.command == EditorCommand::Play);
+    assert(playActivation.refreshView);
+    assert(playActivation.contextEvents.size() == 1);
+    assert(playActivation.contextEvents[0].property == EditorContextProperty::Playing);
+    assert(!playActivation.contextEvents[0].oldBool.value());
+    assert(playActivation.contextEvents[0].newBool.value());
+    assert(playActivation.statusMessage == "Playback started");
+    gtkView = gtkState.viewState();
+    assert(gtkView.playing);
+    assert(gtkView.statusMessage == "Playback started");
+
+    auto stopActivation = gtkState.activateAction("stop");
+    assert(stopActivation.handled);
+    assert(stopActivation.command == EditorCommand::Stop);
+    assert(stopActivation.refreshView);
+    assert(stopActivation.contextEvents.size() == 1);
+    assert(stopActivation.contextEvents[0].property == EditorContextProperty::Playing);
+    assert(!stopActivation.contextEvents[0].newBool.value());
+    assert(stopActivation.statusMessage == "Playback stopped");
+    assert(!gtkState.viewState().playing);
+
+    assert(gtkState.activateAction("play").handled);
+    auto stepForward = gtkState.activateAction("stepForward");
+    assert(stepForward.handled);
+    assert(stepForward.command == EditorCommand::StepForward);
+    assert(stepForward.refreshView);
+    assert(stepForward.contextEvents.size() == 1);
+    assert(stepForward.contextEvents[0].property == EditorContextProperty::Frame);
+    assert(stepForward.contextEvents[0].oldFrame.value() == 1);
+    assert(stepForward.contextEvents[0].newFrame.value() == 2);
+    assert(stepForward.statusMessage == "Stepped forward to frame 2");
+    gtkView = gtkState.viewState();
+    assert(gtkView.currentFrame == 2);
+    assert(gtkView.toolbarItems[7].label == "Frame: 2");
+
+    auto stepBackward = gtkState.activateAction("stepBackward");
+    assert(stepBackward.handled);
+    assert(stepBackward.command == EditorCommand::StepBackward);
+    assert(stepBackward.contextEvents.size() == 1);
+    assert(stepBackward.contextEvents[0].oldFrame.value() == 2);
+    assert(stepBackward.contextEvents[0].newFrame.value() == 1);
+    assert(stepBackward.statusMessage == "Stepped backward to frame 1");
+    assert(gtkState.viewState().toolbarItems[7].label == "Frame: 1");
+
+    stepBackward = gtkState.activateAction("stepBackward");
+    assert(!stepBackward.handled);
+    assert(stepBackward.contextEvents.empty());
+    assert(stepBackward.statusMessage == "Already at first frame");
+
+    assert(gtkState.activateAction("stepForward").handled);
+    auto rewindActivation = gtkState.activateAction("rewind");
+    assert(rewindActivation.handled);
+    assert(rewindActivation.command == EditorCommand::Rewind);
+    assert(rewindActivation.refreshView);
+    assert(rewindActivation.contextEvents.size() == 2);
+    assert(rewindActivation.contextEvents[0].property == EditorContextProperty::Frame);
+    assert(rewindActivation.contextEvents[0].oldFrame.value() == 2);
+    assert(rewindActivation.contextEvents[0].newFrame.value() == 1);
+    assert(rewindActivation.contextEvents[1].property == EditorContextProperty::Playing);
+    assert(!rewindActivation.contextEvents[1].newBool.value());
+    assert(rewindActivation.statusMessage == "Rewound to frame 1");
+    gtkView = gtkState.viewState();
+    assert(!gtkView.playing);
+    assert(gtkView.currentFrame == 1);
+    assert(gtkView.toolbarItems[7].label == "Frame: 1");
 
     openRequest = gtkState.activateAction("open");
     assert(openRequest.openFileDialog->currentDirectory.value() == "/tmp");

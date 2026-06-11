@@ -204,7 +204,13 @@ std::optional<GtkActionSpec> EditorGtkShellState::actionSpec(std::string_view na
 }
 
 std::vector<GtkToolbarItemSpec> EditorGtkShellState::toolbarItems() const {
-    return EditorGtkShellModel::toolbarItems(toolbarModel_);
+    auto items = EditorGtkShellModel::toolbarItems(toolbarModel_);
+    for (auto& item : items) {
+        if (item.kind == ToolbarItem::Kind::Label) {
+            item.label = "Frame: " + std::to_string(contextModel_.currentFrame());
+        }
+    }
+    return items;
 }
 
 std::vector<GtkPanelRowSpec> EditorGtkShellState::panelRows() const {
@@ -302,6 +308,63 @@ GtkActionActivation EditorGtkShellState::activateAction(std::string_view name) {
             result.refreshView = true;
             result.contextEvents = closeFile();
             result.statusMessage = statusMessage_;
+            return result;
+        case EditorCommand::Play:
+            if (auto event = contextModel_.play(); event.has_value()) {
+                result.handled = true;
+                result.refreshView = true;
+                result.contextEvents.push_back(*event);
+                result.statusMessage = "Playback started";
+            } else {
+                result.statusMessage = "No movie loaded";
+            }
+            statusMessage_ = result.statusMessage;
+            return result;
+        case EditorCommand::Stop:
+            if (auto event = contextModel_.stop(); event.has_value()) {
+                result.handled = true;
+                result.refreshView = true;
+                result.contextEvents.push_back(*event);
+                result.statusMessage = "Playback stopped";
+            } else {
+                result.statusMessage = "No movie loaded";
+            }
+            statusMessage_ = result.statusMessage;
+            return result;
+        case EditorCommand::Rewind:
+            result.contextEvents = contextModel_.rewind();
+            if (!result.contextEvents.empty()) {
+                result.handled = true;
+                result.refreshView = true;
+                result.statusMessage = "Rewound to frame 1";
+            } else {
+                result.statusMessage = "No movie loaded";
+            }
+            statusMessage_ = result.statusMessage;
+            return result;
+        case EditorCommand::StepForward:
+            if (contextModel_.hasFile()) {
+                if (auto event = contextModel_.setCurrentFrame(contextModel_.currentFrame() + 1); event.has_value()) {
+                    result.contextEvents.push_back(*event);
+                }
+                result.handled = true;
+                result.refreshView = true;
+                result.statusMessage = "Stepped forward to frame " + std::to_string(contextModel_.currentFrame());
+            } else {
+                result.statusMessage = "No movie loaded";
+            }
+            statusMessage_ = result.statusMessage;
+            return result;
+        case EditorCommand::StepBackward:
+            if (auto event = contextModel_.stepBackward(contextModel_.currentFrame()); event.has_value()) {
+                result.handled = true;
+                result.refreshView = true;
+                result.contextEvents.push_back(*event);
+                result.statusMessage = "Stepped backward to frame " + std::to_string(contextModel_.currentFrame());
+            } else {
+                result.statusMessage = contextModel_.hasFile() ? "Already at first frame" : "No movie loaded";
+            }
+            statusMessage_ = result.statusMessage;
             return result;
         case EditorCommand::Exit:
             result.handled = true;
