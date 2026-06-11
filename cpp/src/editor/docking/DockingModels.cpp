@@ -1,8 +1,10 @@
 #include "libreshockwave/editor/docking/DockingModels.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <iomanip>
 #include <sstream>
+#include <string>
 #include <utility>
 
 namespace libreshockwave::editor::docking {
@@ -10,6 +12,378 @@ namespace {
 
 std::string key(std::string_view value) {
     return std::string(value);
+}
+
+struct PersistedDockNode {
+    DockNodeKind kind{DockNodeKind::Center};
+    DockOrientation orientation{DockOrientation::Horizontal};
+    double fraction{0.5};
+    std::vector<std::string> tabs;
+    std::vector<std::string> centerTabs;
+    std::shared_ptr<PersistedDockNode> first;
+    std::shared_ptr<PersistedDockNode> second;
+};
+
+class LayoutJsonParser {
+public:
+    explicit LayoutJsonParser(std::string_view text) : text_(text) {}
+
+    std::shared_ptr<PersistedDockNode> parseNode() {
+        skipWhitespace();
+        if (!consume('{')) {
+            return nullptr;
+        }
+
+        auto node = std::make_shared<PersistedDockNode>();
+        bool sawType = false;
+        skipWhitespace();
+        while (!consume('}')) {
+            auto name = parseString();
+            if (!name.has_value() || !consume(':')) {
+                return nullptr;
+            }
+
+            if (*name == "type") {
+                auto type = parseString();
+                if (!type.has_value()) {
+                    return nullptr;
+                }
+                sawType = true;
+                if (*type == "split") {
+                    node->kind = DockNodeKind::Split;
+                } else if (*type == "leaf") {
+                    node->kind = DockNodeKind::Leaf;
+                } else if (*type == "center") {
+                    node->kind = DockNodeKind::Center;
+                } else {
+                    return nullptr;
+                }
+            } else if (*name == "orientation") {
+                auto orientation = parseString();
+                if (!orientation.has_value()) {
+                    return nullptr;
+                }
+                node->orientation = *orientation == "vertical" ? DockOrientation::Vertical
+                                                               : DockOrientation::Horizontal;
+            } else if (*name == "fraction") {
+                auto fraction = parseNumber();
+                if (!fraction.has_value()) {
+                    return nullptr;
+                }
+                node->fraction = *fraction;
+            } else if (*name == "tabs") {
+                auto tabs = parseStringArray();
+                if (!tabs.has_value()) {
+                    return nullptr;
+                }
+                node->tabs = std::move(*tabs);
+            } else if (*name == "centerTabs") {
+                auto tabs = parseStringArray();
+                if (!tabs.has_value()) {
+                    return nullptr;
+                }
+                node->centerTabs = std::move(*tabs);
+            } else if (*name == "first") {
+                node->first = parseNode();
+                if (!node->first) {
+                    return nullptr;
+                }
+            } else if (*name == "second") {
+                node->second = parseNode();
+                if (!node->second) {
+                    return nullptr;
+                }
+            } else if (!skipValue()) {
+                return nullptr;
+            }
+
+            skipWhitespace();
+            if (consume('}')) {
+                break;
+            }
+            if (!consume(',')) {
+                return nullptr;
+            }
+        }
+
+        if (!sawType) {
+            return nullptr;
+        }
+        if (node->kind == DockNodeKind::Split && (!node->first || !node->second)) {
+            return nullptr;
+        }
+        return node;
+    }
+
+    bool atEnd() {
+        skipWhitespace();
+        return position_ == text_.size();
+    }
+
+private:
+    void skipWhitespace() {
+        while (position_ < text_.size() &&
+               std::isspace(static_cast<unsigned char>(text_[position_]))) {
+            ++position_;
+        }
+    }
+
+    bool consume(char expected) {
+        skipWhitespace();
+        if (position_ >= text_.size() || text_[position_] != expected) {
+            return false;
+        }
+        ++position_;
+        return true;
+    }
+
+    std::optional<std::string> parseString() {
+        skipWhitespace();
+        if (position_ >= text_.size() || text_[position_] != '"') {
+            return std::nullopt;
+        }
+        ++position_;
+        std::string value;
+        while (position_ < text_.size()) {
+            const char ch = text_[position_++];
+            if (ch == '"') {
+                return value;
+            }
+            if (ch != '\\') {
+                value += ch;
+                continue;
+            }
+            if (position_ >= text_.size()) {
+                return std::nullopt;
+            }
+            const char escaped = text_[position_++];
+            switch (escaped) {
+                case '"': value += '"'; break;
+                case '\\': value += '\\'; break;
+                case 'n': value += '\n'; break;
+                case 'r': value += '\r'; break;
+                case 't': value += '\t'; break;
+                default: value += escaped; break;
+            }
+        }
+        return std::nullopt;
+    }
+
+    std::optional<double> parseNumber() {
+        skipWhitespace();
+        const auto start = position_;
+        if (position_ < text_.size() && (text_[position_] == '-' || text_[position_] == '+')) {
+            ++position_;
+        }
+        bool hasDigits = false;
+        while (position_ < text_.size() && std::isdigit(static_cast<unsigned char>(text_[position_]))) {
+            hasDigits = true;
+            ++position_;
+        }
+        if (position_ < text_.size() && text_[position_] == '.') {
+            ++position_;
+            while (position_ < text_.size() && std::isdigit(static_cast<unsigned char>(text_[position_]))) {
+                hasDigits = true;
+                ++position_;
+            }
+        }
+        if (!hasDigits) {
+            return std::nullopt;
+        }
+        if (position_ < text_.size() && (text_[position_] == 'e' || text_[position_] == 'E')) {
+            ++position_;
+            if (position_ < text_.size() && (text_[position_] == '-' || text_[position_] == '+')) {
+                ++position_;
+            }
+            bool hasExponentDigits = false;
+            while (position_ < text_.size() && std::isdigit(static_cast<unsigned char>(text_[position_]))) {
+                hasExponentDigits = true;
+                ++position_;
+            }
+            if (!hasExponentDigits) {
+                return std::nullopt;
+            }
+        }
+        try {
+            return std::stod(std::string(text_.substr(start, position_ - start)));
+        } catch (...) {
+            return std::nullopt;
+        }
+    }
+
+    std::optional<std::vector<std::string>> parseStringArray() {
+        if (!consume('[')) {
+            return std::nullopt;
+        }
+        std::vector<std::string> values;
+        skipWhitespace();
+        if (consume(']')) {
+            return values;
+        }
+        while (true) {
+            auto value = parseString();
+            if (!value.has_value()) {
+                return std::nullopt;
+            }
+            values.push_back(std::move(*value));
+            if (consume(']')) {
+                return values;
+            }
+            if (!consume(',')) {
+                return std::nullopt;
+            }
+        }
+    }
+
+    bool skipValue() {
+        skipWhitespace();
+        if (position_ >= text_.size()) {
+            return false;
+        }
+        if (text_[position_] == '"') {
+            return parseString().has_value();
+        }
+        if (text_[position_] == '{') {
+            return skipObject();
+        }
+        if (text_[position_] == '[') {
+            return skipArray();
+        }
+        if (text_[position_] == '-' || text_[position_] == '+' ||
+            std::isdigit(static_cast<unsigned char>(text_[position_]))) {
+            return parseNumber().has_value();
+        }
+        constexpr std::string_view trueValue = "true";
+        constexpr std::string_view falseValue = "false";
+        constexpr std::string_view nullValue = "null";
+        if (text_.substr(position_, trueValue.size()) == trueValue) {
+            position_ += trueValue.size();
+            return true;
+        }
+        if (text_.substr(position_, falseValue.size()) == falseValue) {
+            position_ += falseValue.size();
+            return true;
+        }
+        if (text_.substr(position_, nullValue.size()) == nullValue) {
+            position_ += nullValue.size();
+            return true;
+        }
+        return false;
+    }
+
+    bool skipObject() {
+        if (!consume('{')) {
+            return false;
+        }
+        skipWhitespace();
+        if (consume('}')) {
+            return true;
+        }
+        while (true) {
+            if (!parseString().has_value() || !consume(':') || !skipValue()) {
+                return false;
+            }
+            if (consume('}')) {
+                return true;
+            }
+            if (!consume(',')) {
+                return false;
+            }
+        }
+    }
+
+    bool skipArray() {
+        if (!consume('[')) {
+            return false;
+        }
+        skipWhitespace();
+        if (consume(']')) {
+            return true;
+        }
+        while (true) {
+            if (!skipValue()) {
+                return false;
+            }
+            if (consume(']')) {
+                return true;
+            }
+            if (!consume(',')) {
+                return false;
+            }
+        }
+    }
+
+    std::string_view text_;
+    std::size_t position_{0};
+};
+
+bool persistedContainsCenter(const PersistedDockNode& node) {
+    if (node.kind == DockNodeKind::Center) {
+        return true;
+    }
+    if (node.kind == DockNodeKind::Split) {
+        return (node.first && persistedContainsCenter(*node.first)) ||
+               (node.second && persistedContainsCenter(*node.second));
+    }
+    return false;
+}
+
+DockEdge persistedEdgeForSplit(const PersistedDockNode& node, bool centerInFirst) {
+    if (node.orientation == DockOrientation::Horizontal) {
+        return centerInFirst ? DockEdge::Right : DockEdge::Left;
+    }
+    return centerInFirst ? DockEdge::Bottom : DockEdge::Top;
+}
+
+void addDockSubtreeOperations(const PersistedDockNode& node,
+                              DockEdge edge,
+                              std::vector<DockReplayOperation>& operations) {
+    if (node.kind == DockNodeKind::Leaf) {
+        for (const auto& panelId : node.tabs) {
+            operations.push_back(DockReplayOperation{DockReplayAction::DockAtEdge, panelId, edge});
+        }
+        return;
+    }
+    if (node.kind == DockNodeKind::Split) {
+        if (node.first) {
+            addDockSubtreeOperations(*node.first, edge, operations);
+        }
+        if (node.second) {
+            addDockSubtreeOperations(*node.second, edge, operations);
+        }
+    }
+}
+
+void addReplayOperations(const PersistedDockNode& node,
+                         std::vector<DockReplayOperation>& operations,
+                         std::optional<DockEdge> parentEdge = std::nullopt) {
+    if (node.kind == DockNodeKind::Center) {
+        for (const auto& panelId : node.centerTabs) {
+            operations.push_back(DockReplayOperation{DockReplayAction::DockCenter, panelId, std::nullopt});
+        }
+        return;
+    }
+    if (node.kind == DockNodeKind::Leaf) {
+        if (parentEdge.has_value()) {
+            for (const auto& panelId : node.tabs) {
+                operations.push_back(DockReplayOperation{DockReplayAction::DockAtEdge, panelId, parentEdge});
+            }
+        }
+        return;
+    }
+    if (!node.first || !node.second) {
+        return;
+    }
+
+    const bool centerInFirst = persistedContainsCenter(*node.first);
+    const DockEdge edge = persistedEdgeForSplit(node, centerInFirst);
+    if (centerInFirst) {
+        addReplayOperations(*node.first, operations, parentEdge);
+        addDockSubtreeOperations(*node.second, edge, operations);
+    } else {
+        addDockSubtreeOperations(*node.first, edge, operations);
+        addReplayOperations(*node.second, operations, parentEdge);
+    }
 }
 
 } // namespace
@@ -573,6 +947,55 @@ std::string DockingLayoutModel::escapeJson(std::string_view value) {
         }
     }
     return escaped;
+}
+
+std::filesystem::path DockingLayoutPersistenceModel::layoutDirectory(const std::filesystem::path& homeDirectory) {
+    return homeDirectory / ".libreshockwave";
+}
+
+std::filesystem::path DockingLayoutPersistenceModel::layoutFile(const std::filesystem::path& homeDirectory) {
+    return layoutDirectory(homeDirectory) / "layout.json";
+}
+
+std::optional<std::vector<DockReplayOperation>> DockingLayoutPersistenceModel::replayOperations(
+    std::string_view json) {
+    LayoutJsonParser parser(json);
+    auto root = parser.parseNode();
+    if (!root || !parser.atEnd()) {
+        return std::nullopt;
+    }
+
+    std::vector<DockReplayOperation> operations{
+        DockReplayOperation{DockReplayAction::UndockAll, {}, std::nullopt},
+    };
+    addReplayOperations(*root, operations);
+    return operations;
+}
+
+bool DockingLayoutPersistenceModel::applySerializedLayout(DockingLayoutModel& layout, std::string_view json) {
+    auto operations = replayOperations(json);
+    if (!operations.has_value()) {
+        return false;
+    }
+
+    for (const auto& operation : *operations) {
+        switch (operation.action) {
+            case DockReplayAction::UndockAll:
+                layout.undockAll();
+                break;
+            case DockReplayAction::DockCenter:
+                if (!layout.dockCenter(operation.panelId)) {
+                    return false;
+                }
+                break;
+            case DockReplayAction::DockAtEdge:
+                if (!operation.edge.has_value() || !layout.dockAtEdge(operation.panelId, *operation.edge)) {
+                    return false;
+                }
+                break;
+        }
+    }
+    return true;
 }
 
 } // namespace libreshockwave::editor::docking

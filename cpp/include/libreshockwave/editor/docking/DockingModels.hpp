@@ -1,5 +1,6 @@
 #pragma once
 
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <string>
@@ -27,11 +28,25 @@ enum class DockEdge {
     Bottom
 };
 
+enum class DockReplayAction {
+    UndockAll,
+    DockCenter,
+    DockAtEdge
+};
+
 struct DockPanelTab {
     std::string panelId;
     std::string title;
 
     friend bool operator==(const DockPanelTab&, const DockPanelTab&) = default;
+};
+
+struct DockReplayOperation {
+    DockReplayAction action{DockReplayAction::UndockAll};
+    std::string panelId;
+    std::optional<DockEdge> edge;
+
+    friend bool operator==(const DockReplayOperation&, const DockReplayOperation&) = default;
 };
 
 struct DockNodeModel {
@@ -123,6 +138,14 @@ private:
     std::shared_ptr<DockNodeModel> center_;
     std::unordered_map<std::string, std::string> panelTitles_;
     std::unordered_map<std::string, PanelLocation> panelLocations_;
+};
+
+class DockingLayoutPersistenceModel {
+public:
+    [[nodiscard]] static std::filesystem::path layoutDirectory(const std::filesystem::path& homeDirectory);
+    [[nodiscard]] static std::filesystem::path layoutFile(const std::filesystem::path& homeDirectory);
+    [[nodiscard]] static std::optional<std::vector<DockReplayOperation>> replayOperations(std::string_view json);
+    [[nodiscard]] static bool applySerializedLayout(DockingLayoutModel& layout, std::string_view json);
 };
 
 } // namespace libreshockwave::editor::docking

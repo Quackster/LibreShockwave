@@ -360,6 +360,9 @@ using libreshockwave::editor::debug::WatchPanelButton;
 using libreshockwave::editor::debug::WatchPanelView;
 using libreshockwave::editor::debug::WatchesTableModel;
 using libreshockwave::editor::docking::DockEdge;
+using libreshockwave::editor::docking::DockReplayAction;
+using libreshockwave::editor::docking::DockReplayOperation;
+using libreshockwave::editor::docking::DockingLayoutPersistenceModel;
 using libreshockwave::editor::docking::DockingLayoutModel;
 using libreshockwave::editor::docking::DockNodeKind;
 using libreshockwave::editor::docking::DockNodeModel;
@@ -2876,6 +2879,89 @@ void testEditorDockingModels() {
     assert(layout.nodeForPanel("bytecode-debugger") != nullptr);
     assert(layout.center().tabs.empty());
     assert(DockingLayoutModel::containsCenter(layout.root()));
+
+    assert(DockingLayoutPersistenceModel::layoutDirectory("/home/alex") ==
+           std::filesystem::path("/home/alex/.libreshockwave"));
+    assert(DockingLayoutPersistenceModel::layoutFile("/home/alex") ==
+           std::filesystem::path("/home/alex/.libreshockwave/layout.json"));
+
+    const std::string javaStyleLayout =
+        "{\n"
+        "  \"type\": \"split\",\n"
+        "  \"orientation\": \"horizontal\",\n"
+        "  \"fraction\": 0.15,\n"
+        "  \"first\": { \"type\": \"leaf\", \"tabs\": [\"tool-palette\"] },\n"
+        "  \"second\": { \"type\": \"center\", \"centerTabs\": [\"script\", \"message\"] }\n"
+        "}";
+    auto replayOps = DockingLayoutPersistenceModel::replayOperations(javaStyleLayout);
+    assert(replayOps.has_value());
+    assert((replayOps.value() ==
+            std::vector<DockReplayOperation>{
+                DockReplayOperation{DockReplayAction::UndockAll, "", std::nullopt},
+                DockReplayOperation{DockReplayAction::DockAtEdge, "tool-palette", DockEdge::Left},
+                DockReplayOperation{DockReplayAction::DockCenter, "script", std::nullopt},
+                DockReplayOperation{DockReplayAction::DockCenter, "message", std::nullopt},
+            }));
+
+    layout.undockAll();
+    assert(DockingLayoutPersistenceModel::applySerializedLayout(layout, javaStyleLayout));
+    assert((layout.dockedPanelIds() == std::vector<std::string>{"message", "script", "tool-palette"}));
+    assert(layout.center().tabs.size() == 2);
+    assert(layout.center().tabs[0].panelId == "script");
+    assert(layout.center().tabs[1].panelId == "message");
+    assert(layout.nodeForPanel("tool-palette") != nullptr);
+    assert(layout.nodeForPanel("tool-palette")->kind == DockNodeKind::Leaf);
+
+    const std::string rightLayout =
+        "{\"type\":\"split\",\"orientation\":\"horizontal\",\"fraction\":0.85,"
+        "\"first\":{\"type\":\"center\",\"centerTabs\":[\"script\"]},"
+        "\"second\":{\"type\":\"leaf\",\"tabs\":[\"property-inspector\"]}}";
+    auto rightOps = DockingLayoutPersistenceModel::replayOperations(rightLayout);
+    assert(rightOps.has_value());
+    assert(rightOps->back() == (DockReplayOperation{
+                                   DockReplayAction::DockAtEdge,
+                                   "property-inspector",
+                                   DockEdge::Right,
+                               }));
+
+    const std::string topLayout =
+        "{\"type\":\"split\",\"orientation\":\"vertical\",\"fraction\":0.15,"
+        "\"first\":{\"type\":\"leaf\",\"tabs\":[\"score\"]},"
+        "\"second\":{\"type\":\"center\",\"centerTabs\":[\"script\"]}}";
+    auto topOps = DockingLayoutPersistenceModel::replayOperations(topLayout);
+    assert(topOps.has_value());
+    assert((*topOps)[1] == (DockReplayOperation{DockReplayAction::DockAtEdge, "score", DockEdge::Top}));
+
+    const std::string bottomLayout =
+        "{\"type\":\"split\",\"orientation\":\"vertical\",\"fraction\":0.70,"
+        "\"first\":{\"type\":\"center\",\"centerTabs\":[\"script\"]},"
+        "\"second\":{\"type\":\"leaf\",\"tabs\":[\"score\"]}}";
+    auto bottomOps = DockingLayoutPersistenceModel::replayOperations(bottomLayout);
+    assert(bottomOps.has_value());
+    assert(bottomOps->back() == (DockReplayOperation{DockReplayAction::DockAtEdge, "score", DockEdge::Bottom}));
+
+    assert(!DockingLayoutPersistenceModel::replayOperations("{bad").has_value());
+    assert(!DockingLayoutPersistenceModel::applySerializedLayout(layout, "{bad"));
+    assert(!DockingLayoutPersistenceModel::applySerializedLayout(
+        layout,
+        "{\"type\":\"center\",\"centerTabs\":[\"missing\"]}"));
+
+    layout.undockAll();
+    assert(layout.dockCenter("script"));
+    assert(layout.dockAtEdge("score", DockEdge::Bottom));
+    const auto serializedForReplay = layout.serializeLayout();
+    DockingLayoutModel replayedLayout;
+    for (const auto& [id, title] : std::vector<std::pair<std::string, std::string>>{
+             {"score", "Score"},
+             {"script", "Script"},
+         }) {
+        replayedLayout.registerPanel(id, title);
+    }
+    assert(DockingLayoutPersistenceModel::applySerializedLayout(replayedLayout, serializedForReplay));
+    assert((replayedLayout.dockedPanelIds() == std::vector<std::string>{"score", "script"}));
+    assert(replayedLayout.center().tabs.size() == 1);
+    assert(replayedLayout.center().tabs[0].panelId == "script");
+    assert(replayedLayout.nodeForPanel("score") != nullptr);
 
     layout.undockAll();
     assert(layout.dockedPanelIds().empty());
