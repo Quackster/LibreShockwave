@@ -22467,6 +22467,169 @@ void testWasmExportsFoundation() {
     runtime.shutdown();
 }
 
+void testWasmCppAdapterResourceFoundation() {
+    const auto repoRoot = std::filesystem::path(__FILE__).parent_path().parent_path().parent_path();
+    const auto adapterPath = repoRoot / "player-wasm" / "src" / "main" / "resources" / "web" /
+        "shockwave-cpp-wasm-adapter.js";
+    const auto workerPath = repoRoot / "player-wasm" / "src" / "main" / "resources" / "web" /
+        "shockwave-worker.js";
+
+    std::ifstream adapterFile(adapterPath);
+    assert(adapterFile.good());
+    const std::string adapter((std::istreambuf_iterator<char>(adapterFile)),
+                              std::istreambuf_iterator<char>());
+
+    std::ifstream workerFile(workerPath);
+    assert(workerFile.good());
+    const std::string worker((std::istreambuf_iterator<char>(workerFile)),
+                             std::istreambuf_iterator<char>());
+
+    const std::set<std::string> adapterNames{
+        "addTraceHandler",
+        "allocateBuffer",
+        "allocateNetBuffer",
+        "audioNotifyStopped",
+        "blur",
+        "clearExternalParams",
+        "clearTraceHandlers",
+        "cutSelectedText",
+        "deliverFetchError",
+        "deliverFetchResult",
+        "deliverFetchStatus",
+        "deliverJpegDecodeResult",
+        "drainAudioPending",
+        "drainMusPending",
+        "drainPendingFetches",
+        "getAudioBufferAddress",
+        "getAudioPendingAction",
+        "getAudioPendingChannel",
+        "getAudioPendingCount",
+        "getAudioPendingData",
+        "getAudioPendingFormat",
+        "getAudioPendingLoopCount",
+        "getAudioPendingVolume",
+        "getBootstrapDiagnostics",
+        "getCallStack",
+        "getCaretHeight",
+        "getCaretX",
+        "getCaretY",
+        "getCurrentFrame",
+        "getCursorBitmapAddress",
+        "getCursorBitmapHeight",
+        "getCursorBitmapLength",
+        "getCursorBitmapWidth",
+        "getCursorRegPointX",
+        "getCursorRegPointY",
+        "getCursorType",
+        "getDebugLog",
+        "getFrameCount",
+        "getLastError",
+        "getMusPendingCount",
+        "getMusPendingHost",
+        "getMusPendingInstanceId",
+        "getMusPendingPort",
+        "getMusPendingSendData",
+        "getMusPendingType",
+        "getNetBufferAddress",
+        "getPendingFetchCount",
+        "getPendingFetchFallbackCount",
+        "getPendingFetchFallbackUrl",
+        "getPendingFetchMethod",
+        "getPendingFetchPostData",
+        "getPendingFetchTaskId",
+        "getPendingFetchUrl",
+        "getPendingJpegDecodeCount",
+        "getPendingJpegDecodeData",
+        "getPendingJpegDecodeDataAddress",
+        "getPendingJpegDecodeId",
+        "getRenderBufferAddress",
+        "getSelectedTextLength",
+        "getSelectionRectCount",
+        "getSelectionRectH",
+        "getSelectionRectW",
+        "getSelectionRectX",
+        "getSelectionRectY",
+        "getSpriteCount",
+        "getStageHeight",
+        "getStageWidth",
+        "getStringBufferAddress",
+        "getStringBufferCapacity",
+        "getTempo",
+        "getVisibleTextDiagnostics",
+        "getWindowSpriteDiagnostics",
+        "goToFrame",
+        "isCaretVisible",
+        "keyDown",
+        "keyUp",
+        "loadMovie",
+        "mouseDown",
+        "mouseMove",
+        "mouseUp",
+        "musDeliverConnected",
+        "musDeliverDisconnected",
+        "musDeliverError",
+        "musDeliverMessage",
+        "pasteText",
+        "pause",
+        "play",
+        "preloadCasts",
+        "readNextGotoNetMovie",
+        "readNextGotoNetPage",
+        "removeTraceHandler",
+        "render",
+        "selectAll",
+        "setDebugPlaybackEnabled",
+        "setExternalParam",
+        "setInitialBuiltinSymbol",
+        "setMovieProperty",
+        "setPuppetTempo",
+        "stepBackward",
+        "stepForward",
+        "stop",
+        "tick",
+        "triggerTestError",
+        "updateCursorBitmap",
+    };
+
+    assert(adapter.find("LibreShockwaveCppWasmAdapter") != std::string::npos);
+    assert(adapter.find("libreshockwave_wasm_") != std::string::npos);
+    assert(adapter.find("requiredExports") != std::string::npos);
+    assert(adapter.find("fallbackExports") != std::string::npos);
+    assert(adapter.find("createExports") != std::string::npos);
+    assert(adapter.find("createEngine") != std::string::npos);
+    assert(adapter.find("missingRequiredExports") != std::string::npos);
+    assert(adapter.find("get_render_buffer_address") != std::string::npos);
+    assert(adapter.find("get_cursor_bitmap_address") != std::string::npos);
+    assert(adapter.find("get_selected_text_length") != std::string::npos);
+    assert(adapter.find("get_window_sprite_diagnostics") != std::string::npos);
+
+    for (const auto& name : adapterNames) {
+        assert(adapter.find(name) != std::string::npos);
+    }
+
+    auto isIdent = [](char ch) {
+        return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+            (ch >= '0' && ch <= '9') || ch == '_';
+    };
+
+    std::set<std::string> workerExportNames;
+    std::size_t pos = 0;
+    while ((pos = worker.find("exports.", pos)) != std::string::npos) {
+        pos += std::string_view("exports.").size();
+        const auto start = pos;
+        while (pos < worker.size() && isIdent(worker[pos])) {
+            ++pos;
+        }
+        if (pos > start) {
+            workerExportNames.insert(worker.substr(start, pos - start));
+        }
+    }
+    assert(!workerExportNames.empty());
+    for (const auto& name : workerExportNames) {
+        assert(adapterNames.count(name) == 1);
+    }
+}
+
 void testTimeoutManagerFoundation() {
     TimeoutManager manager;
     assert(manager.getTimeoutCount() == 0);
@@ -27357,6 +27520,7 @@ int main() {
     testWasmPlayerWrapperFoundation();
     testWasmRuntimeBridgeFoundation();
     testWasmExportsFoundation();
+    testWasmCppAdapterResourceFoundation();
     testTimeoutManagerFoundation();
     testPaletteAndColorRefs();
     testBitmapAlphaAndPaletteBehavior();

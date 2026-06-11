@@ -19,7 +19,7 @@ This file tracks the current state and remaining work only. Detailed chronologic
 - Rendering pipeline: stage renderer, sprite baker, render pipeline context/runner, software frame renderer, bitmap cache/ink processor, text renderer interface, and simple text renderer.
 - Dynamic/runtime member support: runtime bitmap/text/palette/script payloads, dynamic member creation/reuse/erase, runtime member media copying, imported bitmap media, runtime registration points, editable field state/overlay helpers, and dynamic bitmap/text rendering through the player pipeline.
 - Debug/editor foundations: debugger data/control models, breakpoint/watch/expression helpers, lifecycle diagnostics, GTK-neutral editor models, optional GTK shell scaffolding, menu/action/dialog/open-file/workbench/start-screen metadata, dock/floating pane state, and GTK4 action/menu/open-file scaffolding.
-- Browser/WASM foundations: C++ WASM player wrapper, runtime bridge, and prefixed native-testable C ABI export facade for movie loading, playback/input controls, navigation polling, external params, fetch/audio/Multiuser/JPEG queues, host result delivery, and last-error retrieval.
+- Browser/WASM foundations: C++ WASM player wrapper, runtime bridge, prefixed native-testable C ABI export facade, and browser-side export adapter for the worker's TeaVM-style method names, covering movie loading, playback/input controls, navigation polling, external params, fetch/audio/Multiuser/JPEG queues, host result delivery, and last-error retrieval.
 
 ## Verification
 
@@ -34,6 +34,6 @@ This file tracks the current state and remaining work only. Detailed chronologic
 - Detailed W3D geometry/material decoding and rendering integration.
 - Remaining Lingo decompiler, VM runtime value, dispatcher, and builtin parity gaps.
 - Remaining player core, rendering pipeline, input, networking, audio, cast management, and debugging parity gaps.
-- Browser JS shell binding, exact export-name compatibility, and Emscripten packaging around the C++ WASM export facade.
+- C++ browser runtime bootstrap, Emscripten packaging, and full render/cursor/debug export coverage around the C++ WASM export facade.
 - Editor replacement strategy in C++.
 - Port parity tests against current Java fixtures and integration scenarios.
