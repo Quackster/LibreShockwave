@@ -12,6 +12,13 @@
 namespace libreshockwave::editor::gtk {
 namespace {
 
+constexpr std::string_view TRACE_HANDLER_PROMPT =
+    "Enter handler names to trace (comma-separated), or clear to remove all:";
+constexpr std::string_view ABOUT_BODY =
+    "LibreShockwave Editor\n\n"
+    "A recreation of Macromedia Director MX 2004.\n\n"
+    "Part of the LibreShockwave project.";
+
 void collectMenuActions(const std::vector<EditorMenuItem>& items, std::map<std::string, GtkActionSpec>& specs) {
     for (const auto& item : items) {
         if (item.command != EditorCommand::None) {
@@ -309,6 +316,23 @@ GtkActionActivation EditorGtkShellState::activateAction(std::string_view name) {
             result.contextEvents = closeFile();
             result.statusMessage = statusMessage_;
             return result;
+        case EditorCommand::ExternalParameters:
+            result.handled = true;
+            result.refreshView = true;
+            result.dialogRequest = GtkShellDialogRequest{
+                GtkShellDialogKind::ExternalParameters,
+                "External Parameters",
+                "Set key-value pairs accessible via externalParamValue() in Lingo scripts.",
+                {},
+                {},
+                true,
+                false,
+                ExternalParamsTableModel{},
+                {},
+            };
+            result.statusMessage = "External parameters requested";
+            statusMessage_ = result.statusMessage;
+            return result;
         case EditorCommand::Play:
             if (auto event = contextModel_.play(); event.has_value()) {
                 result.handled = true;
@@ -364,6 +388,74 @@ GtkActionActivation EditorGtkShellState::activateAction(std::string_view name) {
             } else {
                 result.statusMessage = contextModel_.hasFile() ? "Already at first frame" : "No movie loaded";
             }
+            statusMessage_ = result.statusMessage;
+            return result;
+        case EditorCommand::DetailedStackWindow:
+            result.handled = true;
+            result.refreshView = true;
+            result.dialogRequest = GtkShellDialogRequest{
+                GtkShellDialogKind::DetailedStack,
+                "Detailed Stack View",
+                {},
+                {},
+                {},
+                false,
+                false,
+                ExternalParamsTableModel{},
+                contextModel_.isPlaying()
+                    ? debug::DebugInspectionModels::detailedStackRunningView()
+                    : debug::DebugInspectionModels::detailedStackInitialView(),
+            };
+            result.statusMessage = "Detailed stack window requested";
+            statusMessage_ = result.statusMessage;
+            return result;
+        case EditorCommand::TraceHandler:
+            result.handled = true;
+            result.refreshView = true;
+            if (!contextModel_.hasFile()) {
+                result.dialogRequest = GtkShellDialogRequest{
+                    GtkShellDialogKind::TraceHandler,
+                    "Trace Handler",
+                    "No movie loaded.",
+                    {},
+                    {},
+                    true,
+                    true,
+                    ExternalParamsTableModel{},
+                    {},
+                };
+                result.statusMessage = "No movie loaded";
+            } else {
+                result.dialogRequest = GtkShellDialogRequest{
+                    GtkShellDialogKind::TraceHandler,
+                    "Trace Handler",
+                    "Current: (none)",
+                    std::string(TRACE_HANDLER_PROMPT),
+                    {},
+                    true,
+                    false,
+                    ExternalParamsTableModel{},
+                    {},
+                };
+                result.statusMessage = "Trace handler dialog requested";
+            }
+            statusMessage_ = result.statusMessage;
+            return result;
+        case EditorCommand::About:
+            result.handled = true;
+            result.refreshView = true;
+            result.dialogRequest = GtkShellDialogRequest{
+                GtkShellDialogKind::About,
+                "About",
+                std::string(ABOUT_BODY),
+                {},
+                {},
+                true,
+                false,
+                ExternalParamsTableModel{},
+                {},
+            };
+            result.statusMessage = "About dialog requested";
             statusMessage_ = result.statusMessage;
             return result;
         case EditorCommand::Exit:

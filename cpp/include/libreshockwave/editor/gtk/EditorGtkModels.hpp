@@ -6,12 +6,35 @@
 #include <string_view>
 #include <vector>
 
+#include "libreshockwave/editor/AppModels.hpp"
 #include "libreshockwave/editor/EditorContextModels.hpp"
 #include "libreshockwave/editor/EditorFrameModels.hpp"
 #include "libreshockwave/editor/EditorShellModels.hpp"
+#include "libreshockwave/editor/debug/DebugInspectionModels.hpp"
 #include "libreshockwave/editor/panels/EditorPanelCatalog.hpp"
 
 namespace libreshockwave::editor::gtk {
+
+enum class GtkShellDialogKind {
+    ExternalParameters,
+    TraceHandler,
+    About,
+    DetailedStack
+};
+
+struct GtkShellDialogRequest {
+    GtkShellDialogKind kind{GtkShellDialogKind::About};
+    std::string title;
+    std::string message;
+    std::string prompt;
+    std::string currentValue;
+    bool modal{false};
+    bool warning{false};
+    ExternalParamsTableModel externalParams;
+    debug::DetailedStackView detailedStackView;
+
+    friend bool operator==(const GtkShellDialogRequest&, const GtkShellDialogRequest&) = default;
+};
 
 struct GtkActionSpec {
     std::string name;
@@ -60,6 +83,7 @@ struct GtkActionActivation {
     bool refreshView{false};
     std::optional<bool> active;
     std::optional<EditorOpenFileDialogModel> openFileDialog;
+    std::optional<GtkShellDialogRequest> dialogRequest;
     std::vector<EditorContextEvent> contextEvents;
     std::string statusMessage;
 

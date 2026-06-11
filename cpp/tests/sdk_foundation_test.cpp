@@ -333,6 +333,7 @@ using libreshockwave::editor::gtk::EditorGtkShellModel;
 using libreshockwave::editor::gtk::EditorGtkShellState;
 using libreshockwave::editor::gtk::GtkActionActivation;
 using libreshockwave::editor::gtk::GtkPanelRowSpec;
+using libreshockwave::editor::gtk::GtkShellDialogKind;
 using libreshockwave::editor::gtk::GtkToolbarItemSpec;
 using libreshockwave::editor::castbrowser::CastThumbnailKind;
 using libreshockwave::editor::castbrowser::CastThumbnailPresentation;
@@ -2168,6 +2169,47 @@ void testEditorShellActionModels() {
     assert(playWithoutMovie.contextEvents.empty());
     assert(playWithoutMovie.statusMessage == "No movie loaded");
 
+    auto aboutRequest = gtkState.activateAction("about");
+    assert(aboutRequest.handled);
+    assert(aboutRequest.command == EditorCommand::About);
+    assert(aboutRequest.refreshView);
+    assert(aboutRequest.dialogRequest.has_value());
+    assert(aboutRequest.dialogRequest->kind == GtkShellDialogKind::About);
+    assert(aboutRequest.dialogRequest->title == "About");
+    assert(aboutRequest.dialogRequest->message.find("LibreShockwave Editor") == 0);
+    assert(aboutRequest.dialogRequest->modal);
+    assert(!aboutRequest.dialogRequest->warning);
+    assert(aboutRequest.statusMessage == "About dialog requested");
+
+    auto traceWithoutMovie = gtkState.activateAction("traceHandler");
+    assert(traceWithoutMovie.handled);
+    assert(traceWithoutMovie.command == EditorCommand::TraceHandler);
+    assert(traceWithoutMovie.dialogRequest.has_value());
+    assert(traceWithoutMovie.dialogRequest->kind == GtkShellDialogKind::TraceHandler);
+    assert(traceWithoutMovie.dialogRequest->title == "Trace Handler");
+    assert(traceWithoutMovie.dialogRequest->message == "No movie loaded.");
+    assert(traceWithoutMovie.dialogRequest->warning);
+    assert(traceWithoutMovie.statusMessage == "No movie loaded");
+
+    auto externalParamsRequest = gtkState.activateAction("externalParameters");
+    assert(externalParamsRequest.handled);
+    assert(externalParamsRequest.command == EditorCommand::ExternalParameters);
+    assert(externalParamsRequest.dialogRequest.has_value());
+    assert(externalParamsRequest.dialogRequest->kind == GtkShellDialogKind::ExternalParameters);
+    assert(externalParamsRequest.dialogRequest->title == "External Parameters");
+    assert(externalParamsRequest.dialogRequest->externalParams.rowCount() == 0);
+    assert(externalParamsRequest.dialogRequest->modal);
+    assert(externalParamsRequest.statusMessage == "External parameters requested");
+
+    auto detailedStackInitial = gtkState.activateAction("detailedStackWindow");
+    assert(detailedStackInitial.handled);
+    assert(detailedStackInitial.command == EditorCommand::DetailedStackWindow);
+    assert(detailedStackInitial.dialogRequest.has_value());
+    assert(detailedStackInitial.dialogRequest->kind == GtkShellDialogKind::DetailedStack);
+    assert(detailedStackInitial.dialogRequest->title == "Detailed Stack View");
+    assert(detailedStackInitial.dialogRequest->detailedStackView.statusText == "Waiting for debugger pause...");
+    assert(detailedStackInitial.statusMessage == "Detailed stack window requested");
+
     auto openEvents = gtkState.openFile("/tmp/Movie.dir");
     assert(openEvents.size() == 1);
     assert(openEvents[0].property == EditorContextProperty::File);
@@ -2197,6 +2239,20 @@ void testEditorShellActionModels() {
     gtkView = gtkState.viewState();
     assert(gtkView.playing);
     assert(gtkView.statusMessage == "Playback started");
+
+    auto traceWithMovie = gtkState.activateAction("traceHandler");
+    assert(traceWithMovie.handled);
+    assert(traceWithMovie.dialogRequest.has_value());
+    assert(traceWithMovie.dialogRequest->kind == GtkShellDialogKind::TraceHandler);
+    assert(traceWithMovie.dialogRequest->prompt ==
+           "Enter handler names to trace (comma-separated), or clear to remove all:");
+    assert(traceWithMovie.dialogRequest->message == "Current: (none)");
+    assert(!traceWithMovie.dialogRequest->warning);
+    assert(traceWithMovie.statusMessage == "Trace handler dialog requested");
+
+    auto detailedStackRunning = gtkState.activateAction("detailedStackWindow");
+    assert(detailedStackRunning.dialogRequest.has_value());
+    assert(detailedStackRunning.dialogRequest->detailedStackView.statusText == "Running...");
 
     auto stopActivation = gtkState.activateAction("stop");
     assert(stopActivation.handled);
@@ -2290,6 +2346,7 @@ void testEditorShellActionModels() {
     assert(!missingActivation.refreshView);
     assert(!missingActivation.active.has_value());
     assert(!missingActivation.openFileDialog.has_value());
+    assert(!missingActivation.dialogRequest.has_value());
     assert(missingActivation.contextEvents.empty());
     assert(missingActivation.statusMessage == "Unknown action: missing");
     assert(gtkState.statusMessage() == "Unknown action: missing");

@@ -108,6 +108,9 @@ gtk_models::GtkActionActivation activateGtkAction(GSimpleAction* action, EditorG
     if (result.requestOpenFile && result.openFileDialog.has_value()) {
         g_print("LibreShockwave GTK editor open dialog: %s\n", result.openFileDialog->title.c_str());
     }
+    if (result.dialogRequest.has_value()) {
+        g_print("LibreShockwave GTK editor dialog: %s\n", result.dialogRequest->title.c_str());
+    }
     if (!result.statusMessage.empty()) {
         g_print("LibreShockwave GTK editor: %s\n", result.statusMessage.c_str());
     }
