@@ -36,6 +36,17 @@ struct GtkShellDialogRequest {
     friend bool operator==(const GtkShellDialogRequest&, const GtkShellDialogRequest&) = default;
 };
 
+struct GtkShellDialogResult {
+    GtkShellDialogKind kind{GtkShellDialogKind::About};
+    bool accepted{false};
+    bool changed{false};
+    std::string statusMessage;
+    std::vector<ExternalParamRow> externalParams;
+    std::vector<std::string> traceHandlers;
+
+    friend bool operator==(const GtkShellDialogResult&, const GtkShellDialogResult&) = default;
+};
+
 struct GtkActionSpec {
     std::string name;
     std::string detailedName;
@@ -136,6 +147,8 @@ public:
     [[nodiscard]] const EditorContextModel& contextModel() const;
     [[nodiscard]] const std::optional<std::string>& openMoviePath() const;
     [[nodiscard]] const std::string& statusMessage() const;
+    [[nodiscard]] const std::vector<ExternalParamRow>& externalParams() const;
+    [[nodiscard]] const std::vector<std::string>& traceHandlers() const;
 
     [[nodiscard]] std::vector<GtkActionSpec> actionSpecs() const;
     [[nodiscard]] std::optional<GtkActionSpec> actionSpec(std::string_view name) const;
@@ -147,6 +160,8 @@ public:
     std::vector<EditorContextEvent> openFile(std::string path);
     std::vector<EditorContextEvent> closeFile();
     GtkActionActivation activateAction(std::string_view name);
+    GtkShellDialogResult applyExternalParameters(std::vector<ExternalParamRow> rows);
+    GtkShellDialogResult applyTraceHandlerInput(std::string_view input);
 
 private:
     EditorMenuModel menuModel_;
@@ -155,6 +170,8 @@ private:
     EditorContextModel contextModel_;
     std::optional<std::string> lastOpenDirectory_;
     std::string statusMessage_;
+    std::vector<ExternalParamRow> externalParams_;
+    std::vector<std::string> traceHandlers_;
 };
 
 } // namespace libreshockwave::editor::gtk

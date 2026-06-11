@@ -2200,6 +2200,28 @@ void testEditorShellActionModels() {
     assert(externalParamsRequest.dialogRequest->externalParams.rowCount() == 0);
     assert(externalParamsRequest.dialogRequest->modal);
     assert(externalParamsRequest.statusMessage == "External parameters requested");
+    assert(gtkState.externalParams().empty());
+
+    auto paramsResult = gtkState.applyExternalParameters({
+        {" sw1 ", "alpha"},
+        {"", "ignored"},
+        {"sw1", "override"},
+        {"sw2", "beta"},
+    });
+    assert(paramsResult.kind == GtkShellDialogKind::ExternalParameters);
+    assert(paramsResult.accepted);
+    assert(paramsResult.changed);
+    assert((paramsResult.externalParams == std::vector<ExternalParamRow>{{"sw1", "override"}, {"sw2", "beta"}}));
+    assert(paramsResult.traceHandlers.empty());
+    assert(gtkState.externalParams() == paramsResult.externalParams);
+    assert(gtkState.statusMessage() == "External parameters updated");
+
+    externalParamsRequest = gtkState.activateAction("externalParameters");
+    assert(externalParamsRequest.dialogRequest->externalParams.rowCount() == 2);
+    assert(externalParamsRequest.dialogRequest->externalParams.valueAt(0, 0) == "sw1");
+    assert(externalParamsRequest.dialogRequest->externalParams.valueAt(0, 1) == "override");
+    assert(externalParamsRequest.dialogRequest->externalParams.valueAt(1, 0) == "sw2");
+    assert(externalParamsRequest.dialogRequest->externalParams.valueAt(1, 1) == "beta");
 
     auto detailedStackInitial = gtkState.activateAction("detailedStackWindow");
     assert(detailedStackInitial.handled);
@@ -2247,8 +2269,29 @@ void testEditorShellActionModels() {
     assert(traceWithMovie.dialogRequest->prompt ==
            "Enter handler names to trace (comma-separated), or clear to remove all:");
     assert(traceWithMovie.dialogRequest->message == "Current: (none)");
+    assert(traceWithMovie.dialogRequest->currentValue.empty());
     assert(!traceWithMovie.dialogRequest->warning);
     assert(traceWithMovie.statusMessage == "Trace handler dialog requested");
+
+    auto traceResult = gtkState.applyTraceHandlerInput(" startMovie, mouseUp ,, enterFrame ");
+    assert(traceResult.kind == GtkShellDialogKind::TraceHandler);
+    assert(traceResult.accepted);
+    assert(traceResult.changed);
+    assert(traceResult.externalParams.empty());
+    assert((traceResult.traceHandlers == std::vector<std::string>{"startMovie", "mouseUp", "enterFrame"}));
+    assert(gtkState.traceHandlers() == traceResult.traceHandlers);
+    assert(gtkState.statusMessage() == "Trace handlers updated: 3");
+
+    traceWithMovie = gtkState.activateAction("traceHandler");
+    assert(traceWithMovie.dialogRequest->message == "Current: startMovie, mouseUp, enterFrame");
+    assert(traceWithMovie.dialogRequest->currentValue == "startMovie, mouseUp, enterFrame");
+
+    auto clearTrace = gtkState.applyTraceHandlerInput(" , ");
+    assert(clearTrace.accepted);
+    assert(clearTrace.changed);
+    assert(clearTrace.traceHandlers.empty());
+    assert(gtkState.traceHandlers().empty());
+    assert(gtkState.statusMessage() == "Trace handlers cleared");
 
     auto detailedStackRunning = gtkState.activateAction("detailedStackWindow");
     assert(detailedStackRunning.dialogRequest.has_value());

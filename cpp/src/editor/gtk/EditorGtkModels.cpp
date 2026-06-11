@@ -55,6 +55,17 @@ std::optional<std::string> parentDirectory(std::string_view path) {
     return std::string(path.substr(0, slash));
 }
 
+std::string joinTraceHandlers(const std::vector<std::string>& handlers) {
+    std::string result;
+    for (const auto& handler : handlers) {
+        if (!result.empty()) {
+            result += ", ";
+        }
+        result += handler;
+    }
+    return result;
+}
+
 } // namespace
 
 std::string EditorGtkShellModel::sanitizeActionName(std::string_view value) {
@@ -202,6 +213,14 @@ const std::string& EditorGtkShellState::statusMessage() const {
     return statusMessage_;
 }
 
+const std::vector<ExternalParamRow>& EditorGtkShellState::externalParams() const {
+    return externalParams_;
+}
+
+const std::vector<std::string>& EditorGtkShellState::traceHandlers() const {
+    return traceHandlers_;
+}
+
 std::vector<GtkActionSpec> EditorGtkShellState::actionSpecs() const {
     return EditorGtkShellModel::actionSpecs(menuModel_, toolbarModel_, frameModel_);
 }
@@ -327,7 +346,7 @@ GtkActionActivation EditorGtkShellState::activateAction(std::string_view name) {
                 {},
                 true,
                 false,
-                ExternalParamsTableModel{},
+                ExternalParamsTableModel{externalParams_},
                 {},
             };
             result.statusMessage = "External parameters requested";
@@ -426,12 +445,13 @@ GtkActionActivation EditorGtkShellState::activateAction(std::string_view name) {
                 };
                 result.statusMessage = "No movie loaded";
             } else {
+                const auto currentHandlers = joinTraceHandlers(traceHandlers_);
                 result.dialogRequest = GtkShellDialogRequest{
                     GtkShellDialogKind::TraceHandler,
                     "Trace Handler",
-                    "Current: (none)",
+                    currentHandlers.empty() ? "Current: (none)" : "Current: " + currentHandlers,
                     std::string(TRACE_HANDLER_PROMPT),
-                    {},
+                    currentHandlers,
                     true,
                     false,
                     ExternalParamsTableModel{},
@@ -482,6 +502,40 @@ GtkActionActivation EditorGtkShellState::activateAction(std::string_view name) {
             statusMessage_ = result.statusMessage;
             return result;
     }
+}
+
+GtkShellDialogResult EditorGtkShellState::applyExternalParameters(std::vector<ExternalParamRow> rows) {
+    auto sanitized = ExternalParamsTableModel{std::move(rows)}.toParams();
+    const bool changed = sanitized != externalParams_;
+    externalParams_ = std::move(sanitized);
+    statusMessage_ = "External parameters updated";
+    return GtkShellDialogResult{
+        GtkShellDialogKind::ExternalParameters,
+        true,
+        changed,
+        statusMessage_,
+        externalParams_,
+        {},
+    };
+}
+
+GtkShellDialogResult EditorGtkShellState::applyTraceHandlerInput(std::string_view input) {
+    auto handlers = EditorMenuModel::traceHandlersFromInput(input);
+    const bool changed = handlers != traceHandlers_;
+    traceHandlers_ = std::move(handlers);
+    if (traceHandlers_.empty()) {
+        statusMessage_ = "Trace handlers cleared";
+    } else {
+        statusMessage_ = "Trace handlers updated: " + std::to_string(traceHandlers_.size());
+    }
+    return GtkShellDialogResult{
+        GtkShellDialogKind::TraceHandler,
+        true,
+        changed,
+        statusMessage_,
+        {},
+        traceHandlers_,
+    };
 }
 
 } // namespace libreshockwave::editor::gtk
