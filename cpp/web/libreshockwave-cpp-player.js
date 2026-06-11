@@ -65,6 +65,8 @@ var LibreShockwaveCppPlayer = (function() {
         this.loadedMovieUrl = null;
         this.audioCtx = null;
         this.audioChannels = {};
+        this.audioChannelTokens = {};
+        this.audioTokenSeq = 0;
         this._sharedFrameBuffer = null;
         this._sharedFrameControl = null;
         this._sharedFrameBytes = null;
@@ -843,9 +845,12 @@ var LibreShockwaveCppPlayer = (function() {
             }
         }
         var channel = message.channel;
+        var channelKey = String(channel);
         if (message.action === 'stop') {
+            this.audioChannelTokens[channelKey] = ++this.audioTokenSeq;
             if (this.audioChannels[channel]) {
                 try {
+                    this.audioChannels[channel].source.onended = null;
                     this.audioChannels[channel].source.stop();
                 } catch (e1) {}
                 this.audioChannels[channel] = null;
@@ -861,10 +866,14 @@ var LibreShockwaveCppPlayer = (function() {
         if (message.action !== 'play' || !message.data) {
             return;
         }
+        var token = ++this.audioTokenSeq;
+        this.audioChannelTokens[channelKey] = token;
         if (this.audioChannels[channel]) {
             try {
+                this.audioChannels[channel].source.onended = null;
                 this.audioChannels[channel].source.stop();
             } catch (e2) {}
+            this.audioChannels[channel] = null;
         }
         var self = this;
         var worker = this.worker;
@@ -872,6 +881,9 @@ var LibreShockwaveCppPlayer = (function() {
         var loopCount = message.loopCount || 1;
         var volume = (message.volume == null ? 255 : message.volume) / 255.0;
         this.audioCtx.decodeAudioData(audioData).then(function(buffer) {
+            if (self.audioChannelTokens[channelKey] !== token) {
+                return;
+            }
             var source = self.audioCtx.createBufferSource();
             var gain = self.audioCtx.createGain();
             source.buffer = buffer;
@@ -880,6 +892,9 @@ var LibreShockwaveCppPlayer = (function() {
             source.connect(gain);
             gain.connect(self.audioCtx.destination);
             source.onended = function() {
+                if (self.audioChannelTokens[channelKey] !== token) {
+                    return;
+                }
                 self.audioChannels[channel] = null;
                 if (worker) {
                     worker.postMessage({ type: 'audioStopped', channel: channel });
@@ -887,13 +902,16 @@ var LibreShockwaveCppPlayer = (function() {
             };
             if (loopCount > 1) {
                 setTimeout(function() {
+                    if (self.audioChannelTokens[channelKey] !== token) {
+                        return;
+                    }
                     try {
                         source.stop();
                     } catch (e3) {}
                 }, buffer.duration * loopCount * 1000);
             }
             source.start();
-            self.audioChannels[channel] = { source: source, gain: gain };
+            self.audioChannels[channel] = { source: source, gain: gain, token: token };
         }).catch(function() {});
     };
 

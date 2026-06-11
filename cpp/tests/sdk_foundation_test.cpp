@@ -23168,6 +23168,10 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(player.find("_handleAudio") != std::string::npos);
     assert(player.find("_handleGotoNetPage") != std::string::npos);
     assert(player.find("audioStopped") != std::string::npos);
+    assert(player.find("audioChannelTokens") != std::string::npos);
+    assert(player.find("audioTokenSeq") != std::string::npos);
+    assert(player.find("source.onended = null") != std::string::npos);
+    assert(player.find("self.audioChannelTokens[channelKey] !== token") != std::string::npos);
     assert(player.find("_compositeOverlayAndBlit") != std::string::npos);
     assert(player.find("_overlayCursor") != std::string::npos);
     assert(player.find("_overlaySelection") != std::string::npos);
