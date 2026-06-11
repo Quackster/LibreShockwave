@@ -4,6 +4,7 @@
 #include <cctype>
 #include <exception>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
@@ -67,6 +68,47 @@ bool endsWith(const std::string& value, const std::string& suffix) {
 
 lingo::Datum stringDatum(const std::string& value) {
     return lingo::Datum::of(value);
+}
+
+std::string shapeTypeSymbolName(libreshockwave::cast::ShapeType type) {
+    switch (type) {
+        case libreshockwave::cast::ShapeType::Rect: return "rect";
+        case libreshockwave::cast::ShapeType::OvalRect: return "roundRect";
+        case libreshockwave::cast::ShapeType::Oval: return "oval";
+        case libreshockwave::cast::ShapeType::Line: return "line";
+        case libreshockwave::cast::ShapeType::Unknown: return "unknown";
+    }
+    return "unknown";
+}
+
+std::optional<libreshockwave::cast::ShapeType> shapeTypeFromDatum(const lingo::Datum& value) {
+    using libreshockwave::cast::ShapeType;
+
+    if (value.isString() || value.isSymbol()) {
+        std::string name = lower(trim(value.stringValue()));
+        if (!name.empty() && name.front() == '#') {
+            name.erase(name.begin());
+        }
+        name.erase(std::remove_if(name.begin(), name.end(), [](unsigned char ch) {
+            return ch == '_' || ch == '-' || std::isspace(ch);
+        }), name.end());
+
+        if (name == "rect" || name == "rectangle") return ShapeType::Rect;
+        if (name == "roundrect" || name == "roundedrect" || name == "ovalrect") return ShapeType::OvalRect;
+        if (name == "oval" || name == "ellipse") return ShapeType::Oval;
+        if (name == "line") return ShapeType::Line;
+        if (!value.isString()) {
+            return std::nullopt;
+        }
+    }
+
+    if (value.isNumber() || value.isString()) {
+        const auto type = libreshockwave::cast::shapeTypeFromCode(value.intValue());
+        if (type != ShapeType::Unknown) {
+            return type;
+        }
+    }
+    return std::nullopt;
 }
 
 std::string directorMemberTypeName(const std::shared_ptr<libreshockwave::cast::CastMember>& member) {
@@ -703,6 +745,7 @@ lingo::Datum CastLib::getMemberProp(int memberNumber, const std::string& propNam
     }
     if (member->isShape()) {
         if (prop == "filled") return lingo::Datum::of(member->shapeFilled() ? 1 : 0);
+        if (prop == "shapetype") return lingo::Datum::symbol(shapeTypeSymbolName(member->shapeType()));
         if (prop == "linesize") return lingo::Datum::of(member->shapeLineSize());
         if (prop == "pattern") return lingo::Datum::of(member->shapePattern());
     }
@@ -889,6 +932,14 @@ bool CastLib::setMemberProp(int memberNumber, const std::string& propName, const
     if (member->isShape()) {
         if (prop == "filled") {
             member->setShapeFilled(value.boolValue());
+            return true;
+        }
+        if (prop == "shapetype") {
+            const auto type = shapeTypeFromDatum(value);
+            if (!type.has_value()) {
+                return false;
+            }
+            member->setShapeType(*type);
             return true;
         }
         if (prop == "linesize") {

@@ -69,6 +69,8 @@ public:
     void setRegPointState(int x, int y, bool pinnedToMember);
     [[nodiscard]] bool shapeFilled() const;
     void setShapeFilled(bool filled);
+    [[nodiscard]] ShapeType shapeType() const;
+    void setShapeType(ShapeType type);
     [[nodiscard]] int shapeLineSize() const;
     [[nodiscard]] bool hasRuntimeShapeLineSize() const;
     void setShapeLineSize(int lineSize);

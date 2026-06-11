@@ -139,6 +139,21 @@ void CastMember::setShapeFilled(bool filled) {
     shapeInfo_->fillType = filled ? 1 : 0;
 }
 
+ShapeType CastMember::shapeType() const {
+    if (!isShape()) {
+        return ShapeType::Unknown;
+    }
+    return shapeInfo_.has_value() ? shapeInfo_->shapeType : ShapeType::Rect;
+}
+
+void CastMember::setShapeType(ShapeType type) {
+    if (!isShape()) {
+        return;
+    }
+    ensureRuntimeShapeInfo();
+    shapeInfo_->shapeType = type == ShapeType::Unknown ? ShapeType::Rect : type;
+}
+
 int CastMember::shapeLineSize() const {
     if (runtimeShapeLineSize_.has_value()) {
         return *runtimeShapeLineSize_;

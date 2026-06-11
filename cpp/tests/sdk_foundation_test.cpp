@@ -21152,6 +21152,12 @@ void testSpriteBakerFoundation() {
     assert(mutableOutlineMember->shapePattern() == 2);
     auto lineSizedRuntimeShape = baker.bake(runtimeMemberShape);
     assert(lineSizedRuntimeShape.bakedBitmap()->getPixel(2, 2) == 0xFF778899U);
+    mutableOutlineMember->setShapeFilled(true);
+    mutableOutlineMember->setShapePattern(1);
+    mutableOutlineMember->setShapeType(ShapeType::Oval);
+    auto ovalRuntimeShape = baker.bake(runtimeMemberShape);
+    assert(ovalRuntimeShape.bakedBitmap()->getPixel(0, 0) == 0x00000000U);
+    assert(ovalRuntimeShape.bakedBitmap()->getPixel(3, 3) == 0xFF778899U);
 
     auto inkMember = std::make_shared<CastMemberChunk>(nullptr,
                                                        ChunkId(803),
@@ -28109,17 +28115,26 @@ void testCastLibManagerFoundation() {
     assert(newRuntime.asCastMemberRef()->memberNum() == 10003);
     assert(manager.getMemberProp(1, 10003, "type").asSymbol()->name == "shape");
     assert(manager.getMemberProp(1, 10003, "filled").intValue() == 1);
+    assert(manager.getMemberProp(1, 10003, "shapeType").asSymbol()->name == "rect");
     assert(manager.getMemberProp(1, 10003, "lineSize").intValue() == 1);
     assert(manager.getMemberProp(1, 10003, "pattern").intValue() == 1);
     assert(manager.setMemberProp(1, 10003, "filled", Datum::FALSE));
+    assert(manager.setMemberProp(1, 10003, "shapeType", Datum::symbol("oval")));
     assert(manager.setMemberProp(1, 10003, "lineSize", Datum::of(4)));
     assert(manager.setMemberProp(1, 10003, "pattern", Datum::of(2)));
     assert(manager.getMemberProp(1, 10003, "filled").intValue() == 0);
+    assert(manager.getMemberProp(1, 10003, "shapeType").asSymbol()->name == "oval");
     assert(manager.getMemberProp(1, 10003, "lineSize").intValue() == 4);
     assert(manager.getMemberProp(1, 10003, "pattern").intValue() == 2);
+    assert(manager.setMemberProp(1, 10003, "shapeType", Datum::of(std::string("round rect"))));
+    assert(manager.getMemberProp(1, 10003, "shapeType").asSymbol()->name == "roundRect");
+    assert(manager.setMemberProp(1, 10003, "shapeType", Datum::of(8)));
+    assert(manager.getMemberProp(1, 10003, "shapeType").asSymbol()->name == "line");
+    assert(!manager.setMemberProp(1, 10003, "shapeType", Datum::symbol("bogusShapeType")));
     auto runtimeShape = manager.resolveMember(1, 10003);
     assert(runtimeShape != nullptr);
     assert(!runtimeShape->shapeFilled());
+    assert(runtimeShape->shapeType() == ShapeType::Line);
     assert(runtimeShape->shapeLineSize() == 4);
     assert(runtimeShape->shapePattern() == 2);
     assert(manager.getMemberProp(1, 10003, "width").intValue() == 0);
