@@ -62,6 +62,13 @@ void appendUnique(std::vector<std::string>& result, const std::vector<std::strin
     }
 }
 
+std::uint32_t readContainerFourCC(io::BinaryReader& reader, io::ByteOrder endian) {
+    if (endian == io::ByteOrder::LittleEndian) {
+        return reader.readU32();
+    }
+    return reader.readFourCC();
+}
+
 } // namespace
 
 format::ChunkType DirectorChunkInfo::type() const {
@@ -730,7 +737,7 @@ std::shared_ptr<DirectorFile> DirectorFile::loadRIFX(io::BinaryReader& reader,
                                                      format::ChunkType movieType) {
     auto file = std::make_shared<DirectorFile>(endian, false, 0, movieType);
 
-    const auto imapFourCC = reader.readFourCC();
+    const auto imapFourCC = readContainerFourCC(reader, endian);
     if (format::chunkTypeFromFourCC(imapFourCC) != format::ChunkType::IMAP) {
         throw DirectorFileLoadError("Expected imap chunk, got " + io::BinaryReader::fourCCToString(imapFourCC));
     }
@@ -745,7 +752,7 @@ std::shared_ptr<DirectorFile> DirectorFile::loadRIFX(io::BinaryReader& reader,
     file->setVersion(imapDirectorVersion);
 
     reader.seek(static_cast<std::size_t>(mmapOffset));
-    const auto mmapFourCC = reader.readFourCC();
+    const auto mmapFourCC = readContainerFourCC(reader, endian);
     if (format::chunkTypeFromFourCC(mmapFourCC) != format::ChunkType::MMAP) {
         throw DirectorFileLoadError("Expected mmap chunk, got " + io::BinaryReader::fourCCToString(mmapFourCC));
     }
@@ -760,7 +767,7 @@ std::shared_ptr<DirectorFile> DirectorFile::loadRIFX(io::BinaryReader& reader,
     (void)reader.readI32();
 
     for (int index = 0; index < chunkCountUsed && reader.bytesLeft() >= 20; ++index) {
-        const auto fourcc = reader.readU32();
+        const auto fourcc = readContainerFourCC(reader, endian);
         const int length = reader.readI32();
         const int offset = reader.readI32();
         (void)reader.readI16();

@@ -25224,6 +25224,83 @@ void testDirectorFileRifxLoader() {
     assert(file->chunks().size() == 7);
 }
 
+void testDirectorFileXfirLoader() {
+    auto appendFourCC = [](std::vector<std::uint8_t>& data, const std::string& value, bool littleEndian) {
+        if (littleEndian) {
+            data.insert(data.end(), value.rbegin(), value.rend());
+        } else {
+            data.insert(data.end(), value.begin(), value.end());
+        }
+    };
+    auto appendI16Le = [](std::vector<std::uint8_t>& data, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data.push_back(static_cast<std::uint8_t>(raw & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((raw >> 8) & 0xFF));
+    };
+    auto appendI32Le = [](std::vector<std::uint8_t>& data, std::uint32_t value) {
+        data.push_back(static_cast<std::uint8_t>(value & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 16) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 24) & 0xFF));
+    };
+    auto putI16BeAt = [](std::vector<std::uint8_t>& data, int offset, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((raw >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>(raw & 0xFF);
+    };
+    auto putI32LeAt = [](std::vector<std::uint8_t>& data, int offset, std::uint32_t value) {
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>(value & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>((value >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 2)] = static_cast<std::uint8_t>((value >> 16) & 0xFF);
+        data[static_cast<std::size_t>(offset + 3)] = static_cast<std::uint8_t>((value >> 24) & 0xFF);
+    };
+
+    std::vector<std::uint8_t> configData(80, 0);
+    putI16BeAt(configData, 36, 0x04B1);
+
+    constexpr int mmapOffset = 32;
+    constexpr int mmapPayloadLength = 24 + 20;
+    constexpr int payloadStart = mmapOffset + 8 + mmapPayloadLength;
+    constexpr int configOffset = payloadStart - 8;
+
+    std::vector<std::uint8_t> fileData;
+    fileData.insert(fileData.end(), {'X', 'F', 'I', 'R'});
+    appendI32Le(fileData, 0);
+    appendFourCC(fileData, "MV93", true);
+    appendFourCC(fileData, "imap", true);
+    appendI32Le(fileData, 12);
+    appendI32Le(fileData, 1);
+    appendI32Le(fileData, mmapOffset);
+    appendI32Le(fileData, 0x04B1);
+    appendFourCC(fileData, "mmap", true);
+    appendI32Le(fileData, mmapPayloadLength);
+    appendI16Le(fileData, 24);
+    appendI16Le(fileData, 20);
+    appendI32Le(fileData, 1);
+    appendI32Le(fileData, 1);
+    appendI32Le(fileData, 0);
+    appendI32Le(fileData, 0);
+    appendI32Le(fileData, 0);
+    appendFourCC(fileData, "DRCF", true);
+    appendI32Le(fileData, static_cast<std::uint32_t>(configData.size()));
+    appendI32Le(fileData, configOffset);
+    appendI16Le(fileData, 0);
+    appendI16Le(fileData, 0);
+    appendI32Le(fileData, 0);
+    fileData.insert(fileData.end(), configData.begin(), configData.end());
+    putI32LeAt(fileData, 4, static_cast<std::uint32_t>(fileData.size() - 8));
+
+    auto file = DirectorFile::load(fileData);
+    assert(file->endian() == ByteOrder::LittleEndian);
+    assert(!file->isAfterburner());
+    assert(file->movieType() == ChunkType::MV93);
+    assert(file->version() == 0x04B1);
+    assert(file->chunkInfo().size() == 1);
+    assert(file->chunks().size() == 1);
+    assert(file->config().get() != nullptr);
+    assert(file->getChunkInfo(ChunkId(0))->type() == ChunkType::DRCF);
+}
+
 void testAfterburnerReader() {
 #ifdef LIBRESHOCKWAVE_HAVE_ZLIB
     auto appendFourCC = [](std::vector<std::uint8_t>& data, const std::string& value) {
@@ -27633,6 +27710,7 @@ int main() {
     testScriptChunkFileBackedHelpers();
     testScoreChunkParser();
     testDirectorFileRifxLoader();
+    testDirectorFileXfirLoader();
     testAfterburnerReader();
     testDirectorFileAfterburnerLoader();
     testDirectorFileRiffLoader();
