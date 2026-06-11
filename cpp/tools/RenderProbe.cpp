@@ -38,6 +38,7 @@ struct RenderProbeOptions {
     bool verbose = false;
     bool showCurrent = false;
     bool play = false;
+    bool preloadCasts = true;
     int ticks = 0;
     int scriptTimeoutMs = 1000;
     std::size_t maxFailures = 25;
@@ -48,6 +49,10 @@ struct RenderProbeOptions {
 struct RenderProbeSummary {
     std::size_t bytes = 0;
     std::size_t chunks = 0;
+    std::size_t externalCasts = 0;
+    std::size_t loadedExternalCasts = 0;
+    std::size_t fetchedExternalCasts = 0;
+    std::size_t externalCastRequests = 0;
     std::size_t sprites = 0;
     std::size_t bakedSprites = 0;
     std::size_t pixels = 0;
@@ -112,10 +117,12 @@ std::string usage(const char* argv0) {
     std::ostringstream out;
     out << "Usage: " << argv0
         << " [--allow-empty] [--max-failures N] [--progress-interval N] [--show-current]"
-        << " [--verbose] [--play] [--ticks N] [--script-timeout-ms N] <file-or-directory>...\n"
+        << " [--verbose] [--no-preload-casts] [--play] [--ticks N] [--script-timeout-ms N]"
+        << " <file-or-directory>...\n"
         << "Loads Director .cct/.cst/.dcr/.dir/.dxr files through the native C++ player renderer "
-        << "and reports frame-buffer statistics. By default scripts are not run; --play prepares "
-        << "the movie foundation, and --ticks N advances N playback ticks before rendering. "
+        << "and reports frame-buffer statistics. By default local external casts are preloaded from "
+        << "the movie directory but scripts are not run; --play prepares the movie foundation, "
+        << "and --ticks N advances N playback ticks before rendering. "
         << "Lifecycle script dispatch is capped by --script-timeout-ms when --play is active; use 0 to disable it.\n"
         << "If no paths are supplied, /var/html is used.";
     return out.str();
@@ -160,6 +167,10 @@ RenderProbeOptions parseOptions(int argc, char** argv) {
         }
         if (arg == "--play") {
             options.play = true;
+            continue;
+        }
+        if (arg == "--no-preload-casts") {
+            options.preloadCasts = false;
             continue;
         }
         if (arg == "--max-failures") {
@@ -296,6 +307,29 @@ std::size_t countBakedSprites(const std::vector<libreshockwave::player::render::
     }));
 }
 
+struct ExternalCastStats {
+    std::size_t externalCasts = 0;
+    std::size_t loadedExternalCasts = 0;
+    std::size_t fetchedExternalCasts = 0;
+};
+
+ExternalCastStats countExternalCastStats(libreshockwave::player::Player& player) {
+    ExternalCastStats stats;
+    for (const auto& [_, castLib] : player.castLibManager().castLibs()) {
+        if (!castLib || !castLib->isExternal()) {
+            continue;
+        }
+        ++stats.externalCasts;
+        if (castLib->isLoaded()) {
+            ++stats.loadedExternalCasts;
+        }
+        if (castLib->isFetched()) {
+            ++stats.fetchedExternalCasts;
+        }
+    }
+    return stats;
+}
+
 RenderProbeSummary probeFile(const fs::path& path, const RenderProbeOptions& options) {
     const auto data = readFile(path);
     if (!hasDirectorContainerHeader(data)) {
@@ -315,6 +349,11 @@ RenderProbeSummary probeFile(const fs::path& path, const RenderProbeOptions& opt
         }
         scriptErrors.push_back(std::move(error));
     });
+
+    int externalCastRequests = 0;
+    if (options.preloadCasts) {
+        externalCastRequests = player.preloadAllCasts();
+    }
 
     if (options.play) {
         player.vm().setTickDeadlineMs(options.scriptTimeoutMs);
@@ -344,9 +383,14 @@ RenderProbeSummary probeFile(const fs::path& path, const RenderProbeOptions& opt
         }
     }
 
+    const auto externalCastStats = countExternalCastStats(player);
     return RenderProbeSummary{
         data.size(),
         directorFile->chunks().size(),
+        externalCastStats.externalCasts,
+        externalCastStats.loadedExternalCasts,
+        externalCastStats.fetchedExternalCasts,
+        static_cast<std::size_t>(externalCastRequests),
         snapshot.sprites.size(),
         countBakedSprites(snapshot.sprites),
         bitmap.pixels().size(),
@@ -373,6 +417,10 @@ void printVerboseOk(const fs::path& path, const RenderProbeSummary& summary) {
               << " frame=" << summary.frame << '/' << summary.frameCount
               << " state=" << summary.playerState
               << " chunks=" << summary.chunks
+              << " externalCasts=" << summary.externalCasts
+              << " loadedExternalCasts=" << summary.loadedExternalCasts
+              << " fetchedExternalCasts=" << summary.fetchedExternalCasts
+              << " externalCastRequests=" << summary.externalCastRequests
               << " sprites=" << summary.sprites
               << " bakedSprites=" << summary.bakedSprites
               << " pixels=" << summary.pixels
@@ -398,6 +446,7 @@ int main(int argc, char** argv) {
         }
 
         std::cout << "Director render probe: files=" << files.size()
+                  << " preloadCasts=" << (options.preloadCasts ? "yes" : "no")
                   << " play=" << (options.play ? "yes" : "no")
                   << " ticks=" << options.ticks
                   << " scriptTimeoutMs=" << (options.play ? options.scriptTimeoutMs : 0)
@@ -408,6 +457,10 @@ int main(int argc, char** argv) {
         std::size_t failureCount = 0;
         std::size_t totalBytes = 0;
         std::size_t totalChunks = 0;
+        std::size_t totalExternalCasts = 0;
+        std::size_t totalLoadedExternalCasts = 0;
+        std::size_t totalFetchedExternalCasts = 0;
+        std::size_t totalExternalCastRequests = 0;
         std::size_t totalSprites = 0;
         std::size_t totalBakedSprites = 0;
         std::size_t totalPixels = 0;
@@ -427,6 +480,10 @@ int main(int argc, char** argv) {
                 ++okCount;
                 totalBytes += summary.bytes;
                 totalChunks += summary.chunks;
+                totalExternalCasts += summary.externalCasts;
+                totalLoadedExternalCasts += summary.loadedExternalCasts;
+                totalFetchedExternalCasts += summary.fetchedExternalCasts;
+                totalExternalCastRequests += summary.externalCastRequests;
                 totalSprites += summary.sprites;
                 totalBakedSprites += summary.bakedSprites;
                 totalPixels += summary.pixels;
@@ -459,6 +516,10 @@ int main(int argc, char** argv) {
                   << " failed=" << failureCount
                   << " bytes=" << totalBytes
                   << " chunks=" << totalChunks
+                  << " externalCasts=" << totalExternalCasts
+                  << " loadedExternalCasts=" << totalLoadedExternalCasts
+                  << " fetchedExternalCasts=" << totalFetchedExternalCasts
+                  << " externalCastRequests=" << totalExternalCastRequests
                   << " sprites=" << totalSprites
                   << " bakedSprites=" << totalBakedSprites
                   << " pixels=" << totalPixels
