@@ -1233,6 +1233,7 @@ void Player::wireComponents() {
 }
 
 void Player::prepareMovieFoundation() {
+    TickDeadlineGuard deadlineGuard(vm_);
     applyInitialBuiltinVariables();
     (void)preloadAllCasts();
     castLibManager_.preloadCasts(2);
