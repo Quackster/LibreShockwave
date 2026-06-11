@@ -881,6 +881,16 @@ Datum getObjectProperty(ExecutionContext& context, const Datum& object, std::str
         return builtinContext != nullptr ? builtin::TimeoutBuiltins::getProperty(*builtinContext, *timeout, propName)
                                          : Datum::voidValue();
     }
+    if (object.asSoundRef() != nullptr) {
+        if (equalsIgnoreCase(propName, "soundEnabled")) {
+            return builtinContext != nullptr ? builtin::SoundBuiltins::soundEnabled(*builtinContext, {})
+                                             : Datum::TRUE;
+        }
+        if (equalsIgnoreCase(propName, "ilk")) {
+            return Datum::symbol("sound");
+        }
+        return Datum::voidValue();
+    }
     if (const auto* soundChannel = object.asSoundChannel()) {
         return dispatch::SoundChannelMethodDispatcher::getProperty(builtinContext, *soundChannel, propName);
     }
@@ -965,6 +975,16 @@ void setObjectProperty(ExecutionContext& context, Datum& object, std::string_vie
     if (const auto* timeout = object.asTimeoutRef()) {
         if (builtinContext != nullptr) {
             (void)builtin::TimeoutBuiltins::setProperty(*builtinContext, *timeout, propName, std::move(value));
+        }
+        return;
+    }
+    if (object.asSoundRef() != nullptr) {
+        if (equalsIgnoreCase(propName, "soundEnabled")) {
+            if (builtinContext != nullptr && builtinContext->movieProperties != nullptr) {
+                (void)builtinContext->movieProperties->setMovieProp("soundEnabled", value);
+            } else if (builtinContext != nullptr && builtinContext->soundManager != nullptr) {
+                builtinContext->soundManager->setEnabled(value.boolValue());
+            }
         }
         return;
     }
@@ -5036,6 +5056,8 @@ bool getTopLevelProp(ExecutionContext& context) {
         context.push(Datum::playerRef());
     } else if (equalsIgnoreCase(propName, "_movie")) {
         context.push(Datum::movieRef());
+    } else if (equalsIgnoreCase(propName, "_sound")) {
+        context.push(Datum::soundRef());
     } else {
         context.push(Datum::voidValue());
     }

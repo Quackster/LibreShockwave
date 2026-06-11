@@ -378,6 +378,10 @@ Datum Datum::imageRef(std::shared_ptr<bitmap::Bitmap> bitmap,
     return Datum(ImageRef{std::move(bitmap), std::move(mutationCallback)});
 }
 
+Datum Datum::soundRef(int soundNum) {
+    return Datum(SoundRef{soundNum});
+}
+
 Datum Datum::soundChannel(int channel) {
     return Datum(SoundChannel{channel});
 }
@@ -557,6 +561,7 @@ const Datum::SpriteRef* Datum::asSpriteRef() const { return std::get_if<SpriteRe
 const Datum::ColorRef* Datum::asColorRef() const { return std::get_if<ColorRef>(&value_); }
 const Datum::Media* Datum::asMedia() const { return std::get_if<Media>(&value_); }
 const Datum::ImageRef* Datum::asImageRef() const { return std::get_if<ImageRef>(&value_); }
+const Datum::SoundRef* Datum::asSoundRef() const { return std::get_if<SoundRef>(&value_); }
 const Datum::SoundChannel* Datum::asSoundChannel() const { return std::get_if<SoundChannel>(&value_); }
 const Datum::Xtra* Datum::asXtra() const { return std::get_if<Xtra>(&value_); }
 const Datum::XtraInstance* Datum::asXtraInstance() const { return std::get_if<XtraInstance>(&value_); }

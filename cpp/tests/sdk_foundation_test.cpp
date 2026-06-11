@@ -6807,6 +6807,9 @@ void testLingoDatumTypes() {
     assert(script.asScriptRef()->memberRef.castLib == 4);
     const auto sprite = Datum::spriteRef(ChannelId(6));
     assert(sprite.asSpriteRef()->spriteNum() == 6);
+    const auto sound = Datum::soundRef(1);
+    assert(sound.asSoundRef() != nullptr);
+    assert(sound.asSoundRef()->soundNum == 1);
     assert(Datum::colorRef(1, 2, 3).asColorRef()->g == 2);
     const auto media = Datum::media(std::vector<std::uint8_t>{1, 2, 3});
     assert(media.type() == DatumType::Media);
@@ -11397,11 +11400,13 @@ void testBuiltinRegistryFoundation() {
     assert(registry.invoke("ilk", context, {Datum::castLibRef(CastLibId(1))}).asSymbol()->name == "castLib");
     assert(registry.invoke("ilk", context, {Datum::spriteRef(ChannelId(2))}).asSymbol()->name == "sprite");
     assert(registry.invoke("ilk", context, {Datum::stageRef()}).asSymbol()->name == "stage");
+    assert(registry.invoke("ilk", context, {Datum::soundRef()}).asSymbol()->name == "sound");
     assert(registry.invoke("ilk", context, {Datum::propList(), Datum::symbol("list")}).boolValue());
     assert(registry.invoke("ilk", context, {Datum::intPoint(1, 2), Datum::symbol("list")}).boolValue());
     assert(registry.invoke("ilk", context, {Datum::list(), Datum::symbol("linearList")}).boolValue());
     assert(registry.invoke("ilk", context, {Datum::of(1.5F), Datum::symbol("number")}).boolValue());
     assert(registry.invoke("ilk", context, {Datum::scriptInstance("child"), Datum::symbol("object")}).boolValue());
+    assert(registry.invoke("ilk", context, {Datum::soundRef(), Datum::symbol("object")}).boolValue());
     assert(registry.invoke("ilk", context, {Datum::colorRef(1, 2, 3), Datum::symbol("object")}) == Datum::FALSE);
     assert(registry.invoke("listp", context, {Datum::list()}).boolValue());
     assert(registry.invoke("listp", context, {Datum::propList()}).boolValue());
@@ -12395,6 +12400,9 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 77) {
             return std::string("_movie");
         }
+        if (nameId == 136) {
+            return std::string("_sound");
+        }
         if (nameId == 78) {
             return std::string("2");
         }
@@ -12568,6 +12576,9 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         }
         if (nameId == 135) {
             return std::string("paletteIndex");
+        }
+        if (nameId == 137) {
+            return std::string("soundEnabled");
         }
         return "#" + std::to_string(nameId);
     };
@@ -13576,6 +13587,8 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     SoundManager objectPropertySoundManager;
     objectPropertySoundManager.setVolume(4, 80);
     builtinContext.soundManager = &objectPropertySoundManager;
+    assert(runObjectPropertyGet(Datum::soundRef(), 137).boolValue());
+    assert(runObjectPropertyGet(Datum::soundRef(), 56).asSymbol()->name == "sound");
     assert(runObjectPropertyGet(Datum::soundChannel(4), 86).intValue() == 80);
     setObjectContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_OBJ_PROP, libreshockwave::lingo::code(Opcode::SET_OBJ_PROP), 86});
     setObjectContext.push(Datum::soundChannel(4));
@@ -13583,6 +13596,16 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
     assert(objectPropertySoundManager.getVolume(4) == 255);
     assert(runObjectPropertyGet(Datum::soundChannel(4), 86).intValue() == 255);
+    setObjectContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_OBJ_PROP, libreshockwave::lingo::code(Opcode::SET_OBJ_PROP), 137});
+    setObjectContext.push(Datum::soundRef());
+    setObjectContext.push(Datum::FALSE);
+    assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
+    assert(!objectPropertySoundManager.isEnabled());
+    assert(!runObjectPropertyGet(Datum::soundRef(), 137).boolValue());
+    setObjectContext.push(Datum::soundRef());
+    setObjectContext.push(Datum::TRUE);
+    assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
+    assert(objectPropertySoundManager.isEnabled());
     builtinContext.soundManager = nullptr;
 
     auto imageSetBitmap = std::make_shared<Bitmap>(1, 1, 32);
@@ -13730,6 +13753,11 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     topLevelContext.setInstruction(ScriptChunk::Instruction{0, Opcode::GET_TOP_LEVEL_PROP, libreshockwave::lingo::code(Opcode::GET_TOP_LEVEL_PROP), 77});
     assert(opcodeRegistry.execute(Opcode::GET_TOP_LEVEL_PROP, topLevelContext));
     assert(topLevelContext.pop().type() == DatumType::MovieRef);
+    topLevelContext.setInstruction(ScriptChunk::Instruction{0, Opcode::GET_TOP_LEVEL_PROP, libreshockwave::lingo::code(Opcode::GET_TOP_LEVEL_PROP), 136});
+    assert(opcodeRegistry.execute(Opcode::GET_TOP_LEVEL_PROP, topLevelContext));
+    const auto topLevelSound = topLevelContext.pop();
+    assert(topLevelSound.asSoundRef() != nullptr);
+    assert(topLevelSound.asSoundRef()->soundNum == 0);
 
     auto runLegacyGet = [&](int propertyType, Datum target, int propertyId) {
         Scope legacyGetScope(&script, handler, {});

@@ -356,6 +356,7 @@ public:
     [[nodiscard]] static Datum imageRef(std::shared_ptr<bitmap::Bitmap> bitmap);
     [[nodiscard]] static Datum imageRef(std::shared_ptr<bitmap::Bitmap> bitmap,
                                         std::function<void(bitmap::Bitmap&)> mutationCallback);
+    [[nodiscard]] static Datum soundRef(int soundNum = 0);
     [[nodiscard]] static Datum soundChannel(int channel);
     [[nodiscard]] static Datum xtra(std::string name);
     [[nodiscard]] static Datum xtraInstance(std::string xtraName, int instanceId);
@@ -398,6 +399,7 @@ public:
     [[nodiscard]] const ColorRef* asColorRef() const;
     [[nodiscard]] const Media* asMedia() const;
     [[nodiscard]] const ImageRef* asImageRef() const;
+    [[nodiscard]] const SoundRef* asSoundRef() const;
     [[nodiscard]] const SoundChannel* asSoundChannel() const;
     [[nodiscard]] const Xtra* asXtra() const;
     [[nodiscard]] const XtraInstance* asXtraInstance() const;

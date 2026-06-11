@@ -595,6 +595,7 @@ std::string ilkType(const Datum& datum) {
         case DatumType::CastMemberRef: return "member";
         case DatumType::CastLibRef: return "castLib";
         case DatumType::ScriptInstanceRef: return "instance";
+        case DatumType::SoundRef: return "sound";
         case DatumType::SoundChannel: return "instance";
         case DatumType::ScriptRef: return "script";
         case DatumType::Xtra: return "xtra";
@@ -2395,6 +2396,7 @@ Datum TypeBuiltins::ilk(BuiltinContext&, const std::vector<Datum>& args) {
     if (checkKey == "object" &&
         (typeKey == "instance" || typeKey == "member" || typeKey == "xtra" || typeKey == "xtrainstance" ||
          typeKey == "script" || typeKey == "castlib" || typeKey == "sprite" || typeKey == "stage" ||
+         typeKey == "sound" ||
          typeKey == "image")) {
         return Datum::TRUE;
     }
