@@ -234,6 +234,7 @@
 #include "libreshockwave/player/score/SpriteSpan.hpp"
 #include "libreshockwave/player/sprite/SpriteState.hpp"
 #include "libreshockwave/player/timeout/TimeoutManager.hpp"
+#include "libreshockwave/player/web/WasmPlayer.hpp"
 #include "libreshockwave/player/xtra/QueuedMultiuserBridge.hpp"
 #include "libreshockwave/player/xtra/SocketMultiuserBridge.hpp"
 #include "libreshockwave/util/AudioCodecUtils.hpp"
@@ -21782,6 +21783,195 @@ void testQueuedJpegDecoderFoundation() {
     DirectorFile::clearJpegDecodePending();
 }
 
+void testWasmPlayerWrapperFoundation() {
+    using libreshockwave::player::web::WasmPlayer;
+
+    assert(WasmPlayer::toMovieDirectory("") == "");
+    assert(WasmPlayer::toMovieDirectory("movie.dir") == "movie.dir");
+    assert(WasmPlayer::toMovieDirectory("https://example.invalid/movies/entry.dir?cache=1") ==
+           "https://example.invalid/movies/");
+    assert(WasmPlayer::toMovieDirectory("C:\\Movies\\entry.dir#chapter") == "C:\\Movies\\");
+
+    auto appendFourCC = [](std::vector<std::uint8_t>& data, std::string_view value) {
+        data.insert(data.end(), value.begin(), value.end());
+    };
+    auto appendI16 = [](std::vector<std::uint8_t>& data, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data.push_back(static_cast<std::uint8_t>((raw >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(raw & 0xFF));
+    };
+    auto appendI32 = [](std::vector<std::uint8_t>& data, std::uint32_t value) {
+        data.push_back(static_cast<std::uint8_t>((value >> 24) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 16) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(value & 0xFF));
+    };
+    auto putI16At = [](std::vector<std::uint8_t>& data, int offset, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((raw >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>(raw & 0xFF);
+    };
+    auto putI32At = [](std::vector<std::uint8_t>& data, int offset, std::uint32_t value) {
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((value >> 24) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>((value >> 16) & 0xFF);
+        data[static_cast<std::size_t>(offset + 2)] = static_cast<std::uint8_t>((value >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 3)] = static_cast<std::uint8_t>(value & 0xFF);
+    };
+    auto buildRifx = [&](const std::vector<std::pair<std::string, std::vector<std::uint8_t>>>& chunks) {
+        constexpr int mmapOffset = 32;
+        const int mmapPayloadLength = 24 + static_cast<int>(chunks.size()) * 20;
+        int payloadStart = mmapOffset + 8 + mmapPayloadLength;
+
+        std::vector<int> offsets;
+        offsets.reserve(chunks.size());
+        for (const auto& chunk : chunks) {
+            offsets.push_back(payloadStart - 8);
+            payloadStart += static_cast<int>(chunk.second.size());
+        }
+
+        std::vector<std::uint8_t> data;
+        appendFourCC(data, "RIFX");
+        appendI32(data, 0);
+        appendFourCC(data, "MV93");
+        appendFourCC(data, "imap");
+        appendI32(data, 12);
+        appendI32(data, 1);
+        appendI32(data, mmapOffset);
+        appendI32(data, 0x0207);
+        appendFourCC(data, "mmap");
+        appendI32(data, static_cast<std::uint32_t>(mmapPayloadLength));
+        appendI16(data, 24);
+        appendI16(data, 20);
+        appendI32(data, static_cast<std::uint32_t>(chunks.size()));
+        appendI32(data, static_cast<std::uint32_t>(chunks.size()));
+        appendI32(data, 0);
+        appendI32(data, 0);
+        appendI32(data, 0);
+        for (int index = 0; index < static_cast<int>(chunks.size()); ++index) {
+            appendI32(data, BinaryReader::fourCC(chunks[static_cast<std::size_t>(index)].first));
+            appendI32(data, static_cast<std::uint32_t>(chunks[static_cast<std::size_t>(index)].second.size()));
+            appendI32(data, static_cast<std::uint32_t>(offsets[static_cast<std::size_t>(index)]));
+            appendI16(data, 0);
+            appendI16(data, 0);
+            appendI32(data, 0);
+        }
+        for (const auto& chunk : chunks) {
+            data.insert(data.end(), chunk.second.begin(), chunk.second.end());
+        }
+        putI32At(data, 4, static_cast<std::uint32_t>(data.size() - 8));
+        return data;
+    };
+
+    std::vector<std::uint8_t> configData(80, 0);
+    putI16At(configData, 2, 0x0207);
+    putI16At(configData, 8, 240);
+    putI16At(configData, 10, 320);
+    putI16At(configData, 36, 0x0207);
+    putI16At(configData, 54, 30);
+    const auto movieData = buildRifx({{"DRCF", configData}});
+
+    WasmPlayer wrapper;
+    assert(wrapper.stageWidth() == 640);
+    assert(wrapper.stageHeight() == 480);
+    assert(wrapper.tempo() == 15);
+    assert(!wrapper.tick());
+    assert(!wrapper.loadMovie({0x00, 0x01}, "https://example.invalid/bad.dir"));
+    assert(wrapper.player() == nullptr);
+    assert(wrapper.netProvider() == nullptr);
+
+    std::vector<std::pair<std::string, std::string>> pageNavigations;
+    std::vector<std::string> movieNavigations;
+    std::vector<std::pair<std::string, std::string>> errors;
+    wrapper.setGotoNetPageCallback([&pageNavigations](const std::string& url, const std::string& target) {
+        pageNavigations.emplace_back(url, target);
+    });
+    wrapper.setGotoNetMovieCallback([&movieNavigations](const std::string& url) {
+        movieNavigations.push_back(url);
+    });
+    wrapper.setErrorListener([&errors](std::string_view message, std::string_view detail) {
+        errors.emplace_back(message, detail);
+    });
+
+    const std::string basePath = "https://example.invalid/movies/entry.dir?cache=1#ignored";
+    assert(wrapper.loadMovie(movieData, basePath, [](int, const std::string&) {
+        assert(false);
+    }));
+    assert(wrapper.file() != nullptr);
+    assert(wrapper.player() != nullptr);
+    assert(wrapper.netProvider() != nullptr);
+    assert(wrapper.audioBackend() != nullptr);
+    assert(wrapper.multiuserBridge() != nullptr);
+    assert(wrapper.jpegDecoder() != nullptr);
+    assert(wrapper.file()->basePath() == "https://example.invalid/movies/");
+    assert(wrapper.netProvider()->basePath() == basePath);
+    assert(wrapper.player()->builtinContext().netManager == wrapper.netProvider());
+    assert(wrapper.player()->soundManager().backend() == wrapper.audioBackend());
+    assert(wrapper.player()->xtraManager().isXtraRegistered("xmlparser"));
+    assert(wrapper.player()->xtraManager().isXtraRegistered("Multiusr"));
+    assert(wrapper.stageWidth() == 320);
+    assert(wrapper.stageHeight() == 240);
+    assert(wrapper.tempo() == 30);
+    wrapper.setPuppetTempo(42);
+    assert(wrapper.tempo() == 42);
+    assert(wrapper.currentFrame() >= 0);
+    assert(wrapper.frameCount() >= 0);
+    assert(wrapper.preloadCasts() == 0);
+    assert(!wrapper.tick());
+
+    wrapper.player()->movieProperties().gotoNetPage("https://example.invalid/page.html", "_blank");
+    assert(pageNavigations.size() == 1);
+    assert(pageNavigations[0].first == "https://example.invalid/page.html");
+    assert(pageNavigations[0].second == "_blank");
+    const int navigationTask = wrapper.player()->movieProperties().gotoNetMovie("next.dir");
+    assert(navigationTask == 1);
+    assert((movieNavigations == std::vector<std::string>{"next.dir"}));
+    assert(wrapper.netProvider()->getTaskUrl(navigationTask).value() ==
+           "https://example.invalid/movies/next.dir");
+    assert(!wrapper.netProvider()->netDone(navigationTask));
+    wrapper.netProvider()->completeMovieNavigationTasks();
+    assert(wrapper.netProvider()->netDone(navigationTask));
+
+    const int fetchTask = wrapper.netProvider()->preloadNetThing("asset.txt");
+    assert(fetchTask == 2);
+    assert(wrapper.netProvider()->pendingRequests().size() == 1);
+    assert(wrapper.netProvider()->getRequest(0)->url == "https://example.invalid/movies/asset.txt");
+    wrapper.netProvider()->onFetchComplete(fetchTask, {'O', 'K'});
+    assert(wrapper.netProvider()->netDone(fetchTask));
+    assert(wrapper.netProvider()->netTextResult(fetchTask) == "OK");
+    wrapper.netProvider()->drainPendingRequests();
+    assert(wrapper.netProvider()->pendingRequests().empty());
+
+    wrapper.audioBackend()->play(1, {'R', 'I', 'F', 'F'}, "wav", 1);
+    assert(wrapper.audioBackend()->pendingCount() == 1);
+    assert(wrapper.audioBackend()->getPending(0)->action == "play");
+
+    wrapper.multiuserBridge()->requestConnect(7, "multiuser.example", 1626, 0);
+    assert(wrapper.multiuserBridge()->pendingRequests().size() == 1);
+    assert(wrapper.multiuserBridge()->getRequest(0)->type == QueuedMultiuserBridge::REQ_CONNECT);
+
+    DirectorFile::clearJpegDecodePending();
+    const std::vector<std::uint8_t> jpegData{0xFF, 0xD8, 0x55, 0x66, 0xFF, 0xD9};
+    assert(!wrapper.jpegDecoder()->decode(jpegData).has_value());
+    assert(wrapper.jpegDecoder()->pendingCount() == 1);
+    assert(DirectorFile::consumeJpegDecodePending());
+
+    wrapper.player()->vm().fireTraceError("WASM error", "details");
+    assert(errors.size() == 1);
+    assert(errors[0].first == "WASM error");
+    assert(errors[0].second == "details");
+
+    assert(wrapper.castRevision() == 0);
+    wrapper.bumpCastRevision();
+    assert(wrapper.castRevision() == 1);
+
+    auto* previousPlayer = wrapper.player();
+    assert(!wrapper.loadMovie({0x00}, "bad.dir"));
+    assert(wrapper.player() == previousPlayer);
+    wrapper.shutdown();
+    DirectorFile::setJpegDecoder(DirectorFile::JpegDecoder{});
+    DirectorFile::clearJpegDecodePending();
+}
+
 void testTimeoutManagerFoundation() {
     TimeoutManager manager;
     assert(manager.getTimeoutCount() == 0);
@@ -26669,6 +26859,7 @@ int main() {
     testQueuedNetProviderFoundation();
     testQueuedAudioBackendFoundation();
     testQueuedJpegDecoderFoundation();
+    testWasmPlayerWrapperFoundation();
     testTimeoutManagerFoundation();
     testPaletteAndColorRefs();
     testBitmapAlphaAndPaletteBehavior();
