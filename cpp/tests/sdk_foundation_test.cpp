@@ -1951,6 +1951,21 @@ void testEditorFrameModels() {
     assert(frame.panel("paint").value() ==
            (EditorFramePanelState{"paint", PanelBounds{0, 0, 500, 400}, false, false, false, false}));
 
+    EditorFramePanelModel movingFrame;
+    assert(movingFrame.moveFloatingPanel("stage", 12, -5));
+    assert(movingFrame.panel("stage")->bounds == (PanelBounds{182, 5, 660, 500}));
+    assert(movingFrame.panel("stage")->selected);
+    assert(!movingFrame.moveFloatingPanel("paint", 3, 4));
+    assert(movingFrame.togglePanel("paint", true));
+    assert(!movingFrame.moveFloatingPanel("paint", 3, 4));
+    assert(movingFrame.floatPanel("paint"));
+    assert(movingFrame.moveFloatingPanel("paint", -10, 15));
+    assert(movingFrame.panel("paint")->bounds == (PanelBounds{-10, 15, 500, 400}));
+    assert(movingFrame.panel("paint")->selected);
+    assert(!movingFrame.panel("stage")->selected);
+    assert(!movingFrame.moveFloatingPanel("paint", 0, 0));
+    assert(!movingFrame.moveFloatingPanel("missing", 1, 1));
+
     const auto dialog = EditorFramePanelModel::openFileDialog("/movies");
     assert((dialog == EditorOpenFileDialogModel{
                           "Open Director File",
@@ -2918,6 +2933,25 @@ void testEditorShellActionModels() {
     assert(!floatHiddenPaint.panel->docked);
     assert(floatHiddenPaint.panel->selected);
     assert(floatHiddenGtkState.viewState().workbenchContent.panelId == "paint");
+    auto moveFloatingPaint = floatHiddenGtkState.moveFloatingPanel("paint", 9, 11);
+    assert(moveFloatingPaint.actionName == "workbench_move_paint");
+    assert(moveFloatingPaint.panelId == "paint");
+    assert(moveFloatingPaint.handled);
+    assert(!moveFloatingPaint.refreshActions);
+    assert(moveFloatingPaint.refreshPanels);
+    assert(moveFloatingPaint.refreshView);
+    assert(moveFloatingPaint.statusMessage == "Paint moved");
+    assert(moveFloatingPaint.panel.has_value());
+    assert(moveFloatingPaint.panel->bounds == (PanelBounds{9, 11, 500, 400}));
+    assert(floatHiddenGtkState.statusMessage() == "Paint moved");
+    assert(floatHiddenGtkState.viewState().workbenchContent.panelId == "paint");
+    assert(floatHiddenGtkState.viewState().workbenchLayout.activePanel->panelId == "paint");
+    const auto* movedFloatingPaint =
+        findWorkbenchPanel(floatHiddenGtkState.viewState().workbenchLayout.floatingPanels, "paint");
+    assert(movedFloatingPaint != nullptr);
+    assert(movedFloatingPaint->bounds == (PanelBounds{9, 11, 500, 400}));
+    auto zeroMovePaint = floatHiddenGtkState.moveFloatingPanel("paint", 0, 0);
+    assert(!zeroMovePaint.handled);
     auto missingFloatAction = floatHiddenGtkState.activateWorkbenchFloatAction("workbench_float_missing");
     assert(missingFloatAction.actionName == "workbench_float_missing");
     assert(!missingFloatAction.handled);
@@ -2936,6 +2970,12 @@ void testEditorShellActionModels() {
     assert(dockHiddenPaint.panel->docked);
     assert(dockHiddenPaint.panel->selected);
     assert(dockHiddenGtkState.viewState().workbenchContent.panelId == "paint");
+    auto moveDockedPaint = dockHiddenGtkState.moveFloatingPanel("paint", 3, 4);
+    assert(moveDockedPaint.actionName == "workbench_move_paint");
+    assert(moveDockedPaint.panelId == "paint");
+    assert(!moveDockedPaint.handled);
+    assert(dockHiddenGtkState.viewState().workbenchContent.panelId == "paint");
+    assert(dockHiddenGtkState.viewState().workbenchLayout.activePanel->bounds == (PanelBounds{0, 0, 500, 400}));
     auto missingDockAction = dockHiddenGtkState.activateWorkbenchDockAction("workbench_dock_right_missing");
     assert(missingDockAction.actionName == "workbench_dock_right_missing");
     assert(!missingDockAction.handled);

@@ -1576,6 +1576,31 @@ GtkWorkbenchPanelActivation EditorGtkShellState::floatWorkbenchPanel(std::string
     return result;
 }
 
+GtkWorkbenchPanelActivation EditorGtkShellState::moveFloatingPanel(std::string_view panelId, int deltaX, int deltaY) {
+    GtkWorkbenchPanelActivation result;
+    result.panelId = std::string(panelId);
+    result.actionName = "workbench_move_" + EditorGtkShellModel::sanitizeActionName(panelId);
+
+    if (!frameModel_.moveFloatingPanel(panelId, deltaX, deltaY)) {
+        return result;
+    }
+
+    result.handled = true;
+    result.refreshPanels = true;
+    result.refreshView = true;
+    result.statusMessage = panelTitle(panelId) + " moved";
+    statusMessage_ = result.statusMessage;
+
+    const auto panels = workbenchPanels();
+    const auto found = std::find_if(panels.begin(), panels.end(), [panelId](const GtkWorkbenchPanelSpec& panel) {
+        return panel.panelId == panelId;
+    });
+    if (found != panels.end()) {
+        result.panel = *found;
+    }
+    return result;
+}
+
 GtkWorkbenchPanelActivation EditorGtkShellState::dockWorkbenchPanel(std::string_view panelId,
                                                                     docking::DockEdge edge) {
     GtkWorkbenchPanelActivation result;

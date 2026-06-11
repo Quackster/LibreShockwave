@@ -1,3 +1,4 @@
+#include <cmath>
 #include <optional>
 #include <string>
 #include <utility>
@@ -29,6 +30,8 @@ struct EditorGtkState {
     GtkWidget* workbenchActions{nullptr};
     GtkWidget* statusLabel{nullptr};
 };
+
+void refreshGtkShell(EditorGtkState& state);
 
 void appendMenuItems(GMenu* menu, const std::vector<gtk_models::GtkMenuItemSpec>& items) {
     GMenu* section = g_menu_new();
@@ -187,10 +190,21 @@ void snapPanelDragToEdge(GtkGestureDrag* gesture, double offsetX, double offsetY
         workbenchPoint.y,
         gtk_widget_get_width(data->state->workbenchArea),
         gtk_widget_get_height(data->state->workbenchArea));
-    if (!edge.has_value()) {
+    if (edge.has_value()) {
+        activateDockAction(*data->state, data->panelId, *edge);
         return;
     }
-    activateDockAction(*data->state, data->panelId, *edge);
+
+    const auto deltaX = static_cast<int>(std::lround(offsetX));
+    const auto deltaY = static_cast<int>(std::lround(offsetY));
+    if (deltaX == 0 && deltaY == 0) {
+        return;
+    }
+
+    const auto moved = data->state->shellState.moveFloatingPanel(data->panelId, deltaX, deltaY);
+    if (moved.handled) {
+        refreshGtkShell(*data->state);
+    }
 }
 
 void addPanelDragSnap(GtkWidget* target, EditorGtkState& state, std::string panelId) {

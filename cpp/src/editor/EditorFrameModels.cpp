@@ -124,6 +124,25 @@ bool EditorFramePanelModel::floatPanel(std::string_view panelId) {
     return true;
 }
 
+bool EditorFramePanelModel::moveFloatingPanel(std::string_view panelId, int deltaX, int deltaY) {
+    const auto index = indexOf(panelId);
+    if (!index.has_value() || (deltaX == 0 && deltaY == 0)) {
+        return false;
+    }
+
+    auto& panel = panels_[*index];
+    if (!panel.visible || panel.iconified || dockingLayout_.isDocked(panelId)) {
+        return false;
+    }
+
+    panel.bounds.x += deltaX;
+    panel.bounds.y += deltaY;
+    panel.docked = false;
+    clearSelection();
+    panel.selected = true;
+    return true;
+}
+
 bool EditorFramePanelModel::dockPanelAtEdge(std::string_view panelId, docking::DockEdge edge) {
     const auto index = indexOf(panelId);
     if (!index.has_value()) {
