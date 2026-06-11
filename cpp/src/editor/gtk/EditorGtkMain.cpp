@@ -24,35 +24,46 @@ struct EditorGtkState {
     GtkWidget* statusLabel{nullptr};
 };
 
-void appendMenuItems(GMenu* menu, const std::vector<editor::EditorMenuItem>& items) {
+void appendMenuItems(GMenu* menu, const std::vector<gtk_models::GtkMenuItemSpec>& items) {
+    GMenu* section = g_menu_new();
+    bool hasSectionItems = false;
+    auto flushSection = [&]() {
+        if (!hasSectionItems) {
+            return;
+        }
+        g_menu_append_section(menu, nullptr, G_MENU_MODEL(section));
+        g_object_unref(section);
+        section = g_menu_new();
+        hasSectionItems = false;
+    };
+
     for (const auto& item : items) {
-        if (item.kind == editor::EditorMenuItem::Kind::Separator) {
+        if (item.kind == gtk_models::GtkMenuItemKind::Separator) {
+            flushSection();
             continue;
         }
 
-        if (item.kind == editor::EditorMenuItem::Kind::Submenu) {
+        if (item.kind == gtk_models::GtkMenuItemKind::Submenu) {
             GMenu* child = g_menu_new();
             appendMenuItems(child, item.children);
-            g_menu_append_submenu(menu, item.label.c_str(), G_MENU_MODEL(child));
+            g_menu_append_submenu(section, item.label.c_str(), G_MENU_MODEL(child));
             g_object_unref(child);
+            hasSectionItems = true;
             continue;
         }
 
-        std::string action;
-        if (!item.panelId.empty()) {
-            action = gtk_models::EditorGtkShellModel::appAction(
-                gtk_models::EditorGtkShellModel::panelActionName(item.panelId));
-        } else if (item.command != editor::EditorCommand::None) {
-            action = gtk_models::EditorGtkShellModel::appAction(
-                gtk_models::EditorGtkShellModel::commandActionName(item.command));
-        }
-        g_menu_append(menu, item.label.c_str(), action.empty() ? nullptr : action.c_str());
+        g_menu_append(section,
+                      item.label.c_str(),
+                      item.detailedActionName.empty() ? nullptr : item.detailedActionName.c_str());
+        hasSectionItems = true;
     }
+    flushSection();
+    g_object_unref(section);
 }
 
-GMenu* buildMenuModel(const editor::EditorMenuModel& menuModel) {
+GMenu* buildMenuModel(const std::vector<gtk_models::GtkMenuSpec>& menuSpecs) {
     GMenu* menuBar = g_menu_new();
-    for (const auto& menu : menuModel.menus()) {
+    for (const auto& menu : menuSpecs) {
         GMenu* submenu = g_menu_new();
         appendMenuItems(submenu, menu.items);
         g_menu_append_submenu(menuBar, menu.label.c_str(), G_MENU_MODEL(submenu));
@@ -235,7 +246,7 @@ void installActions(GtkApplication* app, EditorGtkState& state) {
 }
 
 GtkWidget* makeMenuBar(const gtk_models::EditorGtkShellState& shellState) {
-    GMenu* model = buildMenuModel(shellState.menuModel());
+    GMenu* model = buildMenuModel(shellState.menuSpecs());
     GtkWidget* menuBar = gtk_popover_menu_bar_new_from_model(G_MENU_MODEL(model));
     g_object_unref(model);
     return menuBar;
