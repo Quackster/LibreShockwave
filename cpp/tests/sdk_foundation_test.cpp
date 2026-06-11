@@ -2130,6 +2130,27 @@ void testEditorShellActionModels() {
     assert(gtkState.toolbarItems().front().detailedActionName == "app.rewind");
     assert(gtkState.actionSpec("panel_paint")->active == false);
 
+    auto gtkView = gtkState.viewState();
+    assert(gtkView.windowTitle == EditorPanelCatalog::closedFrameTitle());
+    assert(gtkView.windowWidth == 1280);
+    assert(gtkView.windowHeight == 900);
+    assert(gtkView.desktopBackgroundR == 58);
+    assert(gtkView.desktopBackgroundG == 68);
+    assert(gtkView.desktopBackgroundB == 75);
+    assert(gtkView.stageTitle == "Stage");
+    assert(gtkView.stagePlaceholderText == "No movie loaded");
+    assert(gtkView.statusMessage.empty());
+    assert(gtkView.actionSpecs == gtkState.actionSpecs());
+    assert(gtkView.toolbarItems == gtkState.toolbarItems());
+    assert(gtkView.panelRows == gtkState.panelRows());
+
+    gtkState.setOpenMoviePath("/tmp/Movie.dir");
+    assert(gtkState.openMoviePath().value() == "/tmp/Movie.dir");
+    assert(gtkState.viewState().windowTitle == "LibreShockwave Editor - Movie.dir");
+    gtkState.setOpenMoviePath(std::nullopt);
+    assert(!gtkState.openMoviePath().has_value());
+    assert(gtkState.viewState().windowTitle == EditorPanelCatalog::closedFrameTitle());
+
     auto missingActivation = gtkState.activateAction("missing");
     assert(missingActivation == (GtkActionActivation{
                                     "missing",
@@ -2142,12 +2163,15 @@ void testEditorShellActionModels() {
                                     std::nullopt,
                                     "Unknown action: missing",
                                 }));
+    assert(gtkState.statusMessage() == "Unknown action: missing");
+    assert(gtkState.viewState().statusMessage == "Unknown action: missing");
 
     auto disabledSave = gtkState.activateAction("save");
     assert(disabledSave.actionName == "save");
     assert(disabledSave.command == EditorCommand::Save);
     assert(!disabledSave.handled);
     assert(disabledSave.statusMessage == "Action disabled: save");
+    assert(gtkState.statusMessage() == "Action disabled: save");
 
     auto showPaint = gtkState.activateAction("panel_paint");
     assert(showPaint.handled);
@@ -2159,6 +2183,12 @@ void testEditorShellActionModels() {
     assert(showPaint.statusMessage == "Paint shown");
     assert(gtkState.actionSpec("panel_paint")->active);
     assert(gtkState.panelRows()[7].displayLabel == "Paint");
+    gtkView = gtkState.viewState();
+    assert(gtkView.statusMessage == "Paint shown");
+    assert(gtkView.actionSpecs == gtkState.actionSpecs());
+    assert(gtkView.panelRows[7].visible);
+    assert(gtkView.panelRows[7].docked);
+    assert(gtkView.panelRows[7].displayLabel == "Paint");
 
     auto hidePaint = gtkState.activateAction("panel_paint");
     assert(hidePaint.handled);
@@ -2166,6 +2196,7 @@ void testEditorShellActionModels() {
     assert(!hidePaint.active.value());
     assert(hidePaint.statusMessage == "Paint hidden");
     assert(!gtkState.actionSpec("panel_paint")->active);
+    assert(gtkState.viewState().panelRows[7].displayLabel == "Paint (hidden)");
 
     assert(gtkState.activateAction("panel_sound").active.value());
     auto resetLayout = gtkState.activateAction("resetLayout");
@@ -2175,12 +2206,17 @@ void testEditorShellActionModels() {
     assert(resetLayout.refreshPanels);
     assert(resetLayout.statusMessage == "Layout reset");
     assert(!gtkState.actionSpec("panel_sound")->active);
+    gtkView = gtkState.viewState();
+    assert(gtkView.statusMessage == "Layout reset");
+    assert(gtkView.panelRows[0].displayLabel == "Stage");
+    assert(gtkView.panelRows[11].displayLabel == "Sound (hidden)");
 
     auto exitActivation = gtkState.activateAction("exit");
     assert(exitActivation.handled);
     assert(exitActivation.command == EditorCommand::Exit);
     assert(exitActivation.requestQuit);
     assert(exitActivation.statusMessage == "Exit requested");
+    assert(gtkState.viewState().statusMessage == "Exit requested");
 }
 
 void testEditorCastBrowserModels() {

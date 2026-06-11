@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -60,6 +61,23 @@ struct GtkActionActivation {
     friend bool operator==(const GtkActionActivation&, const GtkActionActivation&) = default;
 };
 
+struct GtkShellViewState {
+    std::string windowTitle;
+    int windowWidth{0};
+    int windowHeight{0};
+    std::uint8_t desktopBackgroundR{0};
+    std::uint8_t desktopBackgroundG{0};
+    std::uint8_t desktopBackgroundB{0};
+    std::string stageTitle;
+    std::string stagePlaceholderText;
+    std::string statusMessage;
+    std::vector<GtkActionSpec> actionSpecs;
+    std::vector<GtkToolbarItemSpec> toolbarItems;
+    std::vector<GtkPanelRowSpec> panelRows;
+
+    friend bool operator==(const GtkShellViewState&, const GtkShellViewState&) = default;
+};
+
 class EditorGtkShellModel {
 public:
     [[nodiscard]] static std::string sanitizeActionName(std::string_view value);
@@ -83,18 +101,24 @@ public:
     [[nodiscard]] const EditorMenuModel& menuModel() const;
     [[nodiscard]] const EditorToolBarModel& toolbarModel() const;
     [[nodiscard]] const EditorFramePanelModel& frameModel() const;
+    [[nodiscard]] const std::optional<std::string>& openMoviePath() const;
+    [[nodiscard]] const std::string& statusMessage() const;
 
     [[nodiscard]] std::vector<GtkActionSpec> actionSpecs() const;
     [[nodiscard]] std::optional<GtkActionSpec> actionSpec(std::string_view name) const;
     [[nodiscard]] std::vector<GtkToolbarItemSpec> toolbarItems() const;
     [[nodiscard]] std::vector<GtkPanelRowSpec> panelRows() const;
+    [[nodiscard]] GtkShellViewState viewState() const;
 
+    void setOpenMoviePath(std::optional<std::string> path);
     GtkActionActivation activateAction(std::string_view name);
 
 private:
     EditorMenuModel menuModel_;
     EditorToolBarModel toolbarModel_;
     EditorFramePanelModel frameModel_;
+    std::optional<std::string> openMoviePath_;
+    std::string statusMessage_;
 };
 
 } // namespace libreshockwave::editor::gtk

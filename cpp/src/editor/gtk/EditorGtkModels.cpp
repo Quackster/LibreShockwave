@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <map>
+#include <optional>
 #include <utility>
 
 namespace libreshockwave::editor::gtk {
@@ -163,6 +164,14 @@ const EditorFramePanelModel& EditorGtkShellState::frameModel() const {
     return frameModel_;
 }
 
+const std::optional<std::string>& EditorGtkShellState::openMoviePath() const {
+    return openMoviePath_;
+}
+
+const std::string& EditorGtkShellState::statusMessage() const {
+    return statusMessage_;
+}
+
 std::vector<GtkActionSpec> EditorGtkShellState::actionSpecs() const {
     return EditorGtkShellModel::actionSpecs(menuModel_, toolbarModel_, frameModel_);
 }
@@ -179,6 +188,30 @@ std::vector<GtkPanelRowSpec> EditorGtkShellState::panelRows() const {
     return EditorGtkShellModel::panelRows(frameModel_);
 }
 
+GtkShellViewState EditorGtkShellState::viewState() const {
+    const auto defaults = panels::EditorPanelCatalog::frameDefaults();
+    return GtkShellViewState{
+        openMoviePath_.has_value()
+            ? panels::EditorPanelCatalog::frameTitleForPath(*openMoviePath_)
+            : panels::EditorPanelCatalog::closedFrameTitle(),
+        defaults.size.width,
+        defaults.size.height,
+        static_cast<std::uint8_t>(defaults.desktopBackgroundR),
+        static_cast<std::uint8_t>(defaults.desktopBackgroundG),
+        static_cast<std::uint8_t>(defaults.desktopBackgroundB),
+        "Stage",
+        "No movie loaded",
+        statusMessage_,
+        actionSpecs(),
+        toolbarItems(),
+        panelRows(),
+    };
+}
+
+void EditorGtkShellState::setOpenMoviePath(std::optional<std::string> path) {
+    openMoviePath_ = std::move(path);
+}
+
 GtkActionActivation EditorGtkShellState::activateAction(std::string_view name) {
     GtkActionActivation result;
     result.actionName = std::string(name);
@@ -186,6 +219,7 @@ GtkActionActivation EditorGtkShellState::activateAction(std::string_view name) {
     const auto spec = actionSpec(name);
     if (!spec.has_value()) {
         result.statusMessage = "Unknown action: " + result.actionName;
+        statusMessage_ = result.statusMessage;
         return result;
     }
 
@@ -193,6 +227,7 @@ GtkActionActivation EditorGtkShellState::activateAction(std::string_view name) {
     result.panelId = spec->panelId;
     if (!spec->enabled) {
         result.statusMessage = "Action disabled: " + result.actionName;
+        statusMessage_ = result.statusMessage;
         return result;
     }
 
@@ -203,6 +238,7 @@ GtkActionActivation EditorGtkShellState::activateAction(std::string_view name) {
         result.refreshPanels = result.handled;
         result.active = frameModel_.isPanelVisible(spec->panelId);
         result.statusMessage = panelTitle(spec->panelId) + (result.active.value_or(false) ? " shown" : " hidden");
+        statusMessage_ = result.statusMessage;
         return result;
     }
 
@@ -211,6 +247,7 @@ GtkActionActivation EditorGtkShellState::activateAction(std::string_view name) {
             result.handled = true;
             result.requestQuit = true;
             result.statusMessage = "Exit requested";
+            statusMessage_ = result.statusMessage;
             return result;
         case EditorCommand::ResetLayout:
             frameModel_.resetLayout();
@@ -218,12 +255,14 @@ GtkActionActivation EditorGtkShellState::activateAction(std::string_view name) {
             result.refreshActions = true;
             result.refreshPanels = true;
             result.statusMessage = "Layout reset";
+            statusMessage_ = result.statusMessage;
             return result;
         default:
             result.handled = spec->command != EditorCommand::None;
             result.statusMessage = result.handled
                 ? "Command activated: " + std::string(commandName(spec->command))
                 : "No command mapped: " + result.actionName;
+            statusMessage_ = result.statusMessage;
             return result;
     }
 }
