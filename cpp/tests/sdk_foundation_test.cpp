@@ -22960,6 +22960,15 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(player.find("getSelectedText") != std::string::npos);
     assert(player.find("cutSelectedText") != std::string::npos);
     assert(player.find("navigator.clipboard.writeText") != std::string::npos);
+    assert(player.find("setDebugLogsEnabled") != std::string::npos);
+    assert(player.find("setDebugPlaybackEnabled") != std::string::npos);
+    assert(player.find("addTraceHandler") != std::string::npos);
+    assert(player.find("clearTraceHandlers") != std::string::npos);
+    assert(player.find("getCallStack") != std::string::npos);
+    assert(player.find("getWindowSpriteDiagnostics") != std::string::npos);
+    assert(player.find("getRuntimeDiagnostics") != std::string::npos);
+    assert(player.find("triggerTestError") != std::string::npos);
+    assert(player.find("_requestDiagnostic") != std::string::npos);
 
     assert(worker.find("createLibreShockwaveCppWasm") != std::string::npos);
     assert(worker.find("libreshockwave-cpp-wasm.js") != std::string::npos);
@@ -22985,6 +22994,16 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(worker.find("cut_selected_text") != std::string::npos);
     assert(worker.find("select_all") != std::string::npos);
     assert(worker.find("_collectOverlayState") != std::string::npos);
+    assert(worker.find("set_debug_playback_enabled") != std::string::npos);
+    assert(worker.find("add_trace_handler") != std::string::npos);
+    assert(worker.find("get_debug_log") != std::string::npos);
+    assert(worker.find("get_call_stack") != std::string::npos);
+    assert(worker.find("get_window_sprite_diagnostics") != std::string::npos);
+    assert(worker.find("get_visible_text_diagnostics") != std::string::npos);
+    assert(worker.find("get_bootstrap_diagnostics") != std::string::npos);
+    assert(worker.find("trigger_test_error") != std::string::npos);
+    assert(worker.find("_flushDebugLog") != std::string::npos);
+    assert(worker.find("_postStringDiagnostic") != std::string::npos);
     assert(worker.find("postMessage({\n        type: 'frame'") != std::string::npos);
 
     const auto headerExports = parseHeaderExports(header);
@@ -23019,6 +23038,16 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(workerExports.count("_libreshockwave_wasm_paste_text") == 1);
     assert(workerExports.count("_libreshockwave_wasm_cut_selected_text") == 1);
     assert(workerExports.count("_libreshockwave_wasm_select_all") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_set_debug_playback_enabled") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_add_trace_handler") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_remove_trace_handler") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_clear_trace_handlers") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_get_debug_log") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_get_call_stack") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_get_window_sprite_diagnostics") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_get_visible_text_diagnostics") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_get_bootstrap_diagnostics") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_trigger_test_error") == 1);
 
     assert(cmake.find("LIBRESHOCKWAVE_CPP_WASM_WEB_ASSETS") != std::string::npos);
     assert(cmake.find("web/index.html") != std::string::npos);

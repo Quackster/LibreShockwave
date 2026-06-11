@@ -37,10 +37,16 @@ var LibreShockwaveCppPlayer = (function() {
         this.params = options.params || {};
         this.movieProperties = options.movieProperties || {};
         this.initialBuiltinSymbols = options.initialBuiltinSymbols || {};
+        this.debugLogsEnabled = !!options.debugLogsEnabled;
+        this.debugPlayback = !!options.debugPlayback;
+        this.traceHandlers = options.traceHandlers ? options.traceHandlers.slice(0) : [];
+        this.diagnosticSeq = 0;
+        this.diagnosticResolvers = {};
         this.onReady = options.onReady || null;
         this.onLoad = options.onLoad || null;
         this.onFrame = options.onFrame || null;
         this.onError = options.onError || null;
+        this.onDebugLog = options.onDebugLog || null;
         this.onGotoNetPage = options.onGotoNetPage || null;
         this.onGotoNetMovie = options.onGotoNetMovie || null;
         this.loadedMovieUrl = null;
@@ -73,7 +79,9 @@ var LibreShockwaveCppPlayer = (function() {
         this.worker.postMessage({
             type: 'init',
             basePath: this.basePath,
-            pageProtocol: location.protocol
+            pageProtocol: location.protocol,
+            debugLogsEnabled: this.debugLogsEnabled,
+            debugPlayback: this.debugPlayback
         });
     };
 
@@ -109,6 +117,25 @@ var LibreShockwaveCppPlayer = (function() {
             case 'cutText':
                 this._writeClipboardText(message.text || '');
                 break;
+            case 'debugLog':
+                if (this.onDebugLog) {
+                    this.onDebugLog(message.message || message.msg || '');
+                }
+                break;
+            case 'callStack':
+                this._resolveDiagnostic(message.requestId, message.callStack || '');
+                break;
+            case 'windowSpriteDiagnostics':
+            case 'visibleTextDiagnostics':
+            case 'bootstrapDiagnostics':
+                this._resolveDiagnostic(message.requestId, message.diagnostics || '');
+                break;
+            case 'runtimeDiagnostics':
+                this._resolveDiagnostic(message.requestId, message.diagnostics || {});
+                break;
+            case 'testError':
+                this._resolveDiagnostic(message.requestId, !!message.handled);
+                break;
             case 'error':
                 this._emitError(message.message || message.msg || 'C++ WASM runtime error');
                 break;
@@ -143,6 +170,27 @@ var LibreShockwaveCppPlayer = (function() {
             return;
         }
         navigator.clipboard.writeText(text).catch(function() {});
+    };
+
+    Player.prototype._requestDiagnostic = function(type) {
+        var self = this;
+        if (!this.worker || !this.ready) {
+            return Promise.resolve('');
+        }
+        var requestId = ++this.diagnosticSeq;
+        return new Promise(function(resolve) {
+            self.diagnosticResolvers[requestId] = resolve;
+            self.worker.postMessage({ type: type, requestId: requestId });
+        });
+    };
+
+    Player.prototype._resolveDiagnostic = function(requestId, value) {
+        var resolver = this.diagnosticResolvers[requestId];
+        if (!resolver) {
+            return;
+        }
+        delete this.diagnosticResolvers[requestId];
+        resolver(value);
     };
 
     Player.prototype._drawFrame = function(message) {
@@ -476,7 +524,9 @@ var LibreShockwaveCppPlayer = (function() {
             scriptTimeoutMs: loadOptions.scriptTimeoutMs == null ? this.scriptTimeoutMs : loadOptions.scriptTimeoutMs,
             params: loadOptions.params || this.params,
             movieProperties: loadOptions.movieProperties || this.movieProperties,
-            initialBuiltinSymbols: loadOptions.initialBuiltinSymbols || this.initialBuiltinSymbols
+            initialBuiltinSymbols: loadOptions.initialBuiltinSymbols || this.initialBuiltinSymbols,
+            debugPlayback: loadOptions.debugPlayback == null ? this.debugPlayback : !!loadOptions.debugPlayback,
+            traceHandlers: loadOptions.traceHandlers || this.traceHandlers
         }, [buffer]);
         if (loadOptions.autoplay !== false) {
             this.startTicks();
@@ -547,6 +597,71 @@ var LibreShockwaveCppPlayer = (function() {
     Player.prototype.setInitialBuiltinSymbol = function(key, value) {
         this.initialBuiltinSymbols[key] = value == null ? '' : String(value);
         this._post({ type: 'setInitialBuiltinSymbol', key: key, value: this.initialBuiltinSymbols[key] });
+    };
+
+    Player.prototype.setDebugLogsEnabled = function(enabled) {
+        this.debugLogsEnabled = !!enabled;
+        this._post({ type: 'setDebugLogsEnabled', enabled: this.debugLogsEnabled });
+    };
+
+    Player.prototype.setDebugPlaybackEnabled = function(enabled) {
+        this.debugPlayback = !!enabled;
+        this._post({ type: 'setDebugPlaybackEnabled', enabled: this.debugPlayback });
+    };
+
+    Player.prototype.addTraceHandler = function(name) {
+        var traceName = String(name || '');
+        if (!traceName) {
+            return;
+        }
+        if (this.traceHandlers.indexOf(traceName) === -1) {
+            this.traceHandlers.push(traceName);
+        }
+        this._post({ type: 'addTraceHandler', name: traceName });
+    };
+
+    Player.prototype.removeTraceHandler = function(name) {
+        var traceName = String(name || '');
+        var index = this.traceHandlers.indexOf(traceName);
+        if (index !== -1) {
+            this.traceHandlers.splice(index, 1);
+        }
+        this._post({ type: 'removeTraceHandler', name: traceName });
+    };
+
+    Player.prototype.clearTraceHandlers = function() {
+        this.traceHandlers = [];
+        this._post({ type: 'clearTraceHandlers' });
+    };
+
+    Player.prototype.getCallStack = function() {
+        return this._requestDiagnostic('getCallStack');
+    };
+
+    Player.prototype.getWindowSpriteDiagnostics = function() {
+        return this._requestDiagnostic('getWindowSpriteDiagnostics');
+    };
+
+    Player.prototype.getVisibleTextDiagnostics = function() {
+        return this._requestDiagnostic('getVisibleTextDiagnostics');
+    };
+
+    Player.prototype.getBootstrapDiagnostics = function() {
+        return this._requestDiagnostic('getBootstrapDiagnostics');
+    };
+
+    Player.prototype.getRuntimeDiagnostics = function() {
+        if (!this.worker || !this.ready) {
+            return Promise.resolve({});
+        }
+        return this._requestDiagnostic('getRuntimeDiagnostics');
+    };
+
+    Player.prototype.triggerTestError = function() {
+        if (!this.worker || !this.ready) {
+            return Promise.resolve(false);
+        }
+        return this._requestDiagnostic('triggerTestError');
     };
 
     Player.prototype._handleGotoNetPage = function(url, target) {

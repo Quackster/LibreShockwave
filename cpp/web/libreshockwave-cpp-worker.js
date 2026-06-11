@@ -7,6 +7,7 @@ var _basePath = '';
 var _ready = false;
 var _playing = false;
 var _pageProtocol = '';
+var _debugLogsEnabled = false;
 var _externalParams = {};
 var _jpegDecodeQueue = [];
 var _jpegDecodeInFlight = {};
@@ -35,6 +36,10 @@ var _requiredExports = {
     stepForward: 'step_forward',
     stepBackward: 'step_backward',
     setScriptTimeoutMs: 'set_script_timeout_ms',
+    setDebugPlaybackEnabled: 'set_debug_playback_enabled',
+    addTraceHandler: 'add_trace_handler',
+    removeTraceHandler: 'remove_trace_handler',
+    clearTraceHandlers: 'clear_trace_handlers',
     getStageWidth: 'stage_width',
     getStageHeight: 'stage_height',
     getFrameCount: 'frame_count',
@@ -64,6 +69,12 @@ var _requiredExports = {
     getSelectedTextLength: 'get_selected_text_length',
     cutSelectedText: 'cut_selected_text',
     selectAll: 'select_all',
+    getDebugLog: 'get_debug_log',
+    getCallStack: 'get_call_stack',
+    getWindowSpriteDiagnostics: 'get_window_sprite_diagnostics',
+    getVisibleTextDiagnostics: 'get_visible_text_diagnostics',
+    getBootstrapDiagnostics: 'get_bootstrap_diagnostics',
+    triggerTestError: 'trigger_test_error',
     getPendingFetchCount: 'get_pending_fetch_count',
     getPendingFetchTaskId: 'get_pending_fetch_task_id',
     getPendingFetchUrl: 'get_pending_fetch_url',
@@ -213,6 +224,47 @@ function _postLastError() {
     if (error) {
         self.postMessage({ type: 'error', message: error });
     }
+}
+
+function _readExportString(exportFn) {
+    var length = exportFn();
+    return length > 0 ? _readString(length) : '';
+}
+
+function _flushDebugLog() {
+    if (!_debugLogsEnabled || !_exports) {
+        return '';
+    }
+    var debugLog = _readExportString(_exports.getDebugLog);
+    if (debugLog) {
+        self.postMessage({ type: 'debugLog', message: debugLog, msg: debugLog });
+    }
+    return debugLog;
+}
+
+function _postStringDiagnostic(message, type, property, exportFn) {
+    var result = { type: type, requestId: message.requestId || 0 };
+    result[property] = _readExportString(exportFn);
+    self.postMessage(result);
+}
+
+function _runtimeDiagnostics() {
+    return {
+        ready: _ready,
+        playing: _playing,
+        params: Object.assign({}, _externalParams),
+        jpeg: {
+            queuedResults: _jpegDecodeQueue.length,
+            inFlight: Object.keys(_jpegDecodeInFlight).length
+        },
+        mus: {
+            sockets: Object.keys(_musSockets).length,
+            connectedEvents: Object.keys(_musConnected).length,
+            disconnectedEvents: Object.keys(_musDisconnected).length,
+            errorEvents: Object.keys(_musErrors).length,
+            inboundInstances: Object.keys(_musInbound).length
+        }
+    };
 }
 
 function _resolveUrl(url) {
@@ -739,6 +791,14 @@ async function _loadMovie(message) {
     if (message.scriptTimeoutMs != null) {
         _exports.setScriptTimeoutMs(message.scriptTimeoutMs | 0);
     }
+    if (message.debugPlayback != null) {
+        _exports.setDebugPlaybackEnabled(message.debugPlayback ? 1 : 0);
+    }
+    if (message.traceHandlers) {
+        for (var traceIndex = 0; traceIndex < message.traceHandlers.length; traceIndex++) {
+            _exports.addTraceHandler(_writeString(message.traceHandlers[traceIndex]));
+        }
+    }
     var key;
     if (message.params) {
         for (key in message.params) {
@@ -794,12 +854,14 @@ async function _tick() {
         await _driveHostQueues(8);
     }
     _postLastError();
+    _flushDebugLog();
     _postFrame();
 }
 
 async function _init(message) {
     _basePath = message.basePath || '';
     _pageProtocol = message.pageProtocol || '';
+    _debugLogsEnabled = !!message.debugLogsEnabled;
     importScripts(_resolveUrl('libreshockwave-cpp-wasm.js'));
     if (typeof createLibreShockwaveCppWasm !== 'function') {
         throw new Error('createLibreShockwaveCppWasm was not exported by libreshockwave-cpp-wasm.js');
@@ -813,6 +875,9 @@ async function _init(message) {
     _memory = _findMemory(_module);
     if (!_memory) {
         throw new Error('C++ WASM memory export was not found');
+    }
+    if (message.debugPlayback != null) {
+        _exports.setDebugPlaybackEnabled(message.debugPlayback ? 1 : 0);
     }
     _ready = true;
     self.postMessage({ type: 'ready' });
@@ -920,8 +985,63 @@ self.onmessage = function(event) {
             case 'audioStopped':
                 _exports.audioNotifyStopped(message.channel | 0);
                 break;
+            case 'setDebugLogsEnabled':
+                _debugLogsEnabled = !!message.enabled;
+                break;
+            case 'setDebugPlaybackEnabled':
+                _exports.setDebugPlaybackEnabled(message.enabled ? 1 : 0);
+                break;
+            case 'addTraceHandler':
+                _exports.addTraceHandler(_writeString(message.name || ''));
+                break;
+            case 'removeTraceHandler':
+                _exports.removeTraceHandler(_writeString(message.name || ''));
+                break;
+            case 'clearTraceHandlers':
+                _exports.clearTraceHandlers();
+                break;
+            case 'getCallStack':
+                _postStringDiagnostic(message, 'callStack', 'callStack', _exports.getCallStack);
+                break;
+            case 'getWindowSpriteDiagnostics':
+                _postStringDiagnostic(message,
+                                      'windowSpriteDiagnostics',
+                                      'diagnostics',
+                                      _exports.getWindowSpriteDiagnostics);
+                break;
+            case 'getVisibleTextDiagnostics':
+                _postStringDiagnostic(message,
+                                      'visibleTextDiagnostics',
+                                      'diagnostics',
+                                      _exports.getVisibleTextDiagnostics);
+                break;
+            case 'getBootstrapDiagnostics':
+                _postStringDiagnostic(message,
+                                      'bootstrapDiagnostics',
+                                      'diagnostics',
+                                      _exports.getBootstrapDiagnostics);
+                break;
+            case 'getRuntimeDiagnostics':
+                self.postMessage({
+                    type: 'runtimeDiagnostics',
+                    requestId: message.requestId || 0,
+                    diagnostics: _runtimeDiagnostics()
+                });
+                break;
+            case 'triggerTestError': {
+                var handled = _exports.triggerTestError();
+                _flushDebugLog();
+                _postFrame();
+                self.postMessage({
+                    type: 'testError',
+                    requestId: message.requestId || 0,
+                    handled: handled !== 0
+                });
+                break;
+            }
         }
         _postLastError();
+        _flushDebugLog();
     }).catch(function(error) {
         self.postMessage({ type: 'error', message: error && error.message ? error.message : String(error) });
     });
