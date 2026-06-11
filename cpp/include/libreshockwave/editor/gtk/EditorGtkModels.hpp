@@ -295,6 +295,8 @@ public:
     void setOpenMoviePath(std::optional<std::string> path);
     std::vector<EditorContextEvent> openFile(std::string path);
     std::vector<EditorContextEvent> closeFile();
+    GtkActionActivation acceptOpenFile(std::string path);
+    GtkActionActivation cancelOpenFile();
     GtkActionActivation openRecentProject(int index, StartScreenModel::ExistsCallback exists);
     GtkWorkbenchPanelActivation floatWorkbenchPanel(std::string_view panelId);
     GtkWorkbenchPanelActivation activateWorkbenchPanel(std::string_view panelId);
@@ -303,6 +305,7 @@ public:
     GtkActionActivation activateAction(std::string_view name);
     GtkShellDialogResult applyExternalParameters(std::vector<ExternalParamRow> rows);
     GtkShellDialogResult applyTraceHandlerInput(std::string_view input);
+    GtkShellDialogResult cancelDialog(GtkShellDialogKind kind);
 
 private:
     EditorMenuModel menuModel_;

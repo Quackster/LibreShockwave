@@ -69,6 +69,20 @@ std::string joinTraceHandlers(const std::vector<std::string>& handlers) {
     return result;
 }
 
+std::string dialogCancelStatus(GtkShellDialogKind kind) {
+    switch (kind) {
+        case GtkShellDialogKind::ExternalParameters:
+            return "External parameters cancelled";
+        case GtkShellDialogKind::TraceHandler:
+            return "Trace handler cancelled";
+        case GtkShellDialogKind::About:
+            return "About dialog closed";
+        case GtkShellDialogKind::DetailedStack:
+            return "Detailed stack window closed";
+    }
+    return "Dialog cancelled";
+}
+
 GtkWorkbenchPanelKind panelKind(std::string_view panelId) {
     if (panelId == "stage") {
         return GtkWorkbenchPanelKind::Stage;
@@ -654,6 +668,37 @@ std::vector<EditorContextEvent> EditorGtkShellState::closeFile() {
     return events;
 }
 
+GtkActionActivation EditorGtkShellState::acceptOpenFile(std::string path) {
+    GtkActionActivation result;
+    result.actionName = "open_accept";
+    result.command = EditorCommand::Open;
+    result.handled = true;
+    result.refreshView = true;
+    result.contextEvents = openFile(std::move(path));
+    result.statusMessage = statusMessage_;
+    return result;
+}
+
+GtkActionActivation EditorGtkShellState::cancelOpenFile() {
+    statusMessage_ = "Open cancelled";
+    return GtkActionActivation{
+        "open_cancel",
+        EditorCommand::Open,
+        {},
+        true,
+        false,
+        false,
+        false,
+        false,
+        true,
+        std::nullopt,
+        std::nullopt,
+        std::nullopt,
+        {},
+        statusMessage_,
+    };
+}
+
 GtkActionActivation EditorGtkShellState::openRecentProject(int index, StartScreenModel::ExistsCallback exists) {
     GtkActionActivation result;
     result.actionName = "open_recent";
@@ -1042,6 +1087,18 @@ GtkShellDialogResult EditorGtkShellState::applyTraceHandlerInput(std::string_vie
         statusMessage_,
         {},
         traceHandlers_,
+    };
+}
+
+GtkShellDialogResult EditorGtkShellState::cancelDialog(GtkShellDialogKind kind) {
+    statusMessage_ = dialogCancelStatus(kind);
+    return GtkShellDialogResult{
+        kind,
+        false,
+        false,
+        statusMessage_,
+        {},
+        {},
     };
 }
 

@@ -2544,6 +2544,32 @@ void testEditorShellActionModels() {
     assert(!gtkState.openMoviePath().has_value());
     assert(gtkState.viewState().statusMessage == "Open Director file requested");
 
+    EditorGtkShellState openDialogGtkState;
+    auto cancelledOpen = openDialogGtkState.cancelOpenFile();
+    assert(cancelledOpen.actionName == "open_cancel");
+    assert(cancelledOpen.command == EditorCommand::Open);
+    assert(cancelledOpen.handled);
+    assert(!cancelledOpen.requestOpenFile);
+    assert(cancelledOpen.refreshView);
+    assert(cancelledOpen.contextEvents.empty());
+    assert(cancelledOpen.statusMessage == "Open cancelled");
+    assert(openDialogGtkState.statusMessage() == "Open cancelled");
+    assert(!openDialogGtkState.openMoviePath().has_value());
+
+    auto acceptedOpen = openDialogGtkState.acceptOpenFile("/tmp/Accepted.dir");
+    assert(acceptedOpen.actionName == "open_accept");
+    assert(acceptedOpen.command == EditorCommand::Open);
+    assert(acceptedOpen.handled);
+    assert(!acceptedOpen.requestOpenFile);
+    assert(acceptedOpen.refreshView);
+    assert(acceptedOpen.contextEvents.size() == 1);
+    assert(acceptedOpen.contextEvents[0].property == EditorContextProperty::File);
+    assert(acceptedOpen.contextEvents[0].newPath.value() == "/tmp/Accepted.dir");
+    assert(acceptedOpen.statusMessage == "Opened Accepted.dir");
+    assert(openDialogGtkState.openMoviePath().value() == "/tmp/Accepted.dir");
+    assert(openDialogGtkState.preferences().lastOpenDirectory().value() == "/tmp");
+    assert(openDialogGtkState.preferences().recentProjects().front() == "/tmp/Accepted.dir");
+
     EditorGtkShellState seededGtkState;
     PreferencesModel seededPreferences;
     seededPreferences.setLastOpenDirectory("/seed");
@@ -2666,6 +2692,16 @@ void testEditorShellActionModels() {
     assert(gtkState.statusMessage() == "External parameters updated");
     assert(!gtkState.preferences().movieParams("/tmp/Movie.dir").has_value());
 
+    auto cancelledExternalParams = gtkState.cancelDialog(GtkShellDialogKind::ExternalParameters);
+    assert(cancelledExternalParams.kind == GtkShellDialogKind::ExternalParameters);
+    assert(!cancelledExternalParams.accepted);
+    assert(!cancelledExternalParams.changed);
+    assert(cancelledExternalParams.externalParams.empty());
+    assert(cancelledExternalParams.traceHandlers.empty());
+    assert(cancelledExternalParams.statusMessage == "External parameters cancelled");
+    assert(gtkState.externalParams() == paramsResult.externalParams);
+    assert(gtkState.statusMessage() == "External parameters cancelled");
+
     externalParamsRequest = gtkState.activateAction("externalParameters");
     assert(externalParamsRequest.dialogRequest->externalParams.rowCount() == 2);
     assert(externalParamsRequest.dialogRequest->externalParams.valueAt(0, 0) == "sw1");
@@ -2773,9 +2809,27 @@ void testEditorShellActionModels() {
     assert(gtkState.traceHandlers().empty());
     assert(gtkState.statusMessage() == "Trace handlers cleared");
 
+    auto cancelledTrace = gtkState.cancelDialog(GtkShellDialogKind::TraceHandler);
+    assert(cancelledTrace.kind == GtkShellDialogKind::TraceHandler);
+    assert(!cancelledTrace.accepted);
+    assert(!cancelledTrace.changed);
+    assert(cancelledTrace.statusMessage == "Trace handler cancelled");
+    assert(gtkState.traceHandlers().empty());
+    assert(gtkState.statusMessage() == "Trace handler cancelled");
+
     auto detailedStackRunning = gtkState.activateAction("detailedStackWindow");
     assert(detailedStackRunning.dialogRequest.has_value());
     assert(detailedStackRunning.dialogRequest->detailedStackView.statusText == "Running...");
+
+    auto closedAbout = gtkState.cancelDialog(GtkShellDialogKind::About);
+    assert(closedAbout.kind == GtkShellDialogKind::About);
+    assert(!closedAbout.accepted);
+    assert(closedAbout.statusMessage == "About dialog closed");
+
+    auto closedDetailedStack = gtkState.cancelDialog(GtkShellDialogKind::DetailedStack);
+    assert(closedDetailedStack.kind == GtkShellDialogKind::DetailedStack);
+    assert(!closedDetailedStack.accepted);
+    assert(closedDetailedStack.statusMessage == "Detailed stack window closed");
 
     auto stopActivation = gtkState.activateAction("stop");
     assert(stopActivation.handled);
