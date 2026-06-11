@@ -59,6 +59,10 @@ void InputHandler::setLegacyEventScriptDispatcher(LegacyEventScriptDispatcher di
     legacyEventScriptDispatcher_ = std::move(dispatcher);
 }
 
+void InputHandler::setSpriteLocationSetter(SpriteLocationSetter setter) {
+    spriteLocationSetter_ = std::move(setter);
+}
+
 int InputHandler::previousRolloverSprite() const {
     return previousRolloverSprite_;
 }
@@ -82,9 +86,10 @@ void InputHandler::onMouseMove(int stageX, int stageY) {
         return;
     }
     inputState_->setMousePosition(stageX, stageY);
+    updateMoveableSpriteDrag(stageX, stageY);
     inputState_->setRolloverSprite(hitTestExact(stageX, stageY));
 
-    if (inputState_->isMouseDown() && inputState_->keyboardFocusSprite() > 0) {
+    if (!moveableDrag_.has_value() && inputState_->isMouseDown() && inputState_->keyboardFocusSprite() > 0) {
         auto member = resolveSpriteMember(inputState_->keyboardFocusSprite());
         auto sprite = findHitSprite(inputState_->keyboardFocusSprite());
         if (member != nullptr && sprite.has_value() && member->editable()) {
@@ -117,6 +122,7 @@ void InputHandler::onMouseDown(int stageX, int stageY, bool rightButton) {
     inputState_->setClickOnSprite(hitTestExact(stageX, stageY));
     inputState_->setClickLoc(stageX, stageY);
     inputState_->updateDoubleClick(stageX, stageY);
+    beginMoveableSpriteDrag(stageX, stageY);
     inputState_->queueEvent(input::InputEvent::mouseDown(stageX, stageY));
 }
 
@@ -131,6 +137,8 @@ void InputHandler::onMouseUp(int stageX, int stageY, bool rightButton) {
         return;
     }
 
+    updateMoveableSpriteDrag(stageX, stageY);
+    endMoveableSpriteDrag();
     inputState_->setMouseDown(false);
     inputState_->queueEvent(input::InputEvent::mouseUp(stageX, stageY));
 }
@@ -142,6 +150,7 @@ void InputHandler::onBlur() {
     const int stageX = inputState_->mouseH();
     const int stageY = inputState_->mouseV();
     if (inputState_->isMouseDown()) {
+        endMoveableSpriteDrag();
         inputState_->setMouseDown(false);
         inputState_->queueEvent(input::InputEvent::mouseUp(stageX, stageY));
     }
@@ -619,6 +628,16 @@ int InputHandler::hitTestStage(int stageX, int stageY) const {
     return input::HitTester::hitTest(hitSprites(), stageX, stageY);
 }
 
+int InputHandler::hitTestMoveableSprite(int stageX, int stageY) const {
+    const auto hitChannels = input::HitTester::hitTestAll(hitSprites(), stageX, stageY, [](int) {
+        return false;
+    });
+    const auto found = std::ranges::find_if(hitChannels, [this](int channel) {
+        return isMoveableSprite(channel);
+    });
+    return found == hitChannels.end() ? 0 : *found;
+}
+
 std::optional<render::pipeline::RenderSprite> InputHandler::findHitSprite(int channel) const {
     auto sprites = hitSprites();
     auto found = std::find_if(sprites.begin(), sprites.end(), [channel](const auto& sprite) {
@@ -673,10 +692,78 @@ std::pair<int, int> InputHandler::clampedSelection(int selStart, int selEnd, int
     return {std::min(start, end), std::max(start, end)};
 }
 
+bool InputHandler::isMoveableSprite(int channel) const {
+    if (stageRenderer_ == nullptr || channel <= 0) {
+        return false;
+    }
+    const auto sprite = stageRenderer_->spriteRegistry().get(channel);
+    if (sprite == nullptr) {
+        return false;
+    }
+    const auto moveable = sprite->legacyProperty("moveablesprite");
+    return moveable.has_value() && moveable->boolValue();
+}
+
+bool InputHandler::setSpriteLoc(int channel, int locH, int locV) const {
+    if (channel <= 0) {
+        return false;
+    }
+    if (spriteLocationSetter_ && spriteLocationSetter_(channel, locH, locV)) {
+        return true;
+    }
+    if (stageRenderer_ == nullptr) {
+        return false;
+    }
+    const auto sprite = stageRenderer_->spriteRegistry().get(channel);
+    if (sprite == nullptr) {
+        return false;
+    }
+    sprite->setLocH(locH);
+    sprite->setLocV(locV);
+    return true;
+}
+
 void InputHandler::bumpSpriteRevision() {
     if (stageRenderer_ != nullptr) {
         stageRenderer_->spriteRegistry().bumpRevision();
     }
+}
+
+void InputHandler::beginMoveableSpriteDrag(int stageX, int stageY) {
+    moveableDrag_.reset();
+    if (stageRenderer_ == nullptr) {
+        return;
+    }
+
+    const int hitChannel = hitTestMoveableSprite(stageX, stageY);
+    if (hitChannel <= 0) {
+        return;
+    }
+
+    const auto sprite = stageRenderer_->spriteRegistry().get(hitChannel);
+    if (sprite == nullptr) {
+        return;
+    }
+
+    moveableDrag_ = MoveableDrag{hitChannel, stageX - sprite->locH(), stageY - sprite->locV()};
+}
+
+void InputHandler::updateMoveableSpriteDrag(int stageX, int stageY) {
+    if (!moveableDrag_.has_value() || stageRenderer_ == nullptr) {
+        return;
+    }
+    if (!inputState_->isMouseDown() || !isMoveableSprite(moveableDrag_->channel)) {
+        endMoveableSpriteDrag();
+        return;
+    }
+
+    if (setSpriteLoc(moveableDrag_->channel, stageX - moveableDrag_->offsetH, stageY - moveableDrag_->offsetV)) {
+        bumpSpriteRevision();
+    }
+}
+
+void InputHandler::endMoveableSpriteDrag() {
+    moveableDrag_.reset();
 }
 
 void InputHandler::autoFocusEditableField(int hitChannel, int stageX, int stageY) {

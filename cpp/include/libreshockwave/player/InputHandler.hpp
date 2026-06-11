@@ -72,6 +72,7 @@ public:
         bool passed{false};
     };
     using LegacyEventScriptDispatcher = std::function<LegacyEventScriptResult(PlayerEvent event)>;
+    using SpriteLocationSetter = std::function<bool(int channel, int locH, int locV)>;
 
     InputHandler(input::InputState* inputState = nullptr,
                  render::pipeline::StageRenderer* stageRenderer = nullptr,
@@ -86,6 +87,7 @@ public:
     void setCurrentFrameSupplier(CurrentFrameSupplier supplier);
     void setHitSpritesSupplier(HitSpritesSupplier supplier);
     void setLegacyEventScriptDispatcher(LegacyEventScriptDispatcher dispatcher);
+    void setSpriteLocationSetter(SpriteLocationSetter setter);
 
     [[nodiscard]] int previousRolloverSprite() const;
     [[nodiscard]] int hitTestExact(int stageX, int stageY) const;
@@ -115,16 +117,28 @@ private:
         std::shared_ptr<::libreshockwave::cast::CastMember> member;
     };
 
+    struct MoveableDrag {
+        int channel{0};
+        int offsetH{0};
+        int offsetV{0};
+    };
+
     [[nodiscard]] event::EventDispatcher* eventDispatcher() const;
     [[nodiscard]] std::vector<render::pipeline::RenderSprite> hitSprites() const;
     [[nodiscard]] int hitTestStage(int stageX, int stageY) const;
+    [[nodiscard]] int hitTestMoveableSprite(int stageX, int stageY) const;
     [[nodiscard]] std::vector<int> getInteractiveHits(int stageX, int stageY, bool forceBoundingBox) const;
     [[nodiscard]] std::shared_ptr<::libreshockwave::cast::CastMember> resolveSpriteMember(int channel) const;
     [[nodiscard]] std::optional<render::pipeline::RenderSprite> findHitSprite(int channel) const;
     [[nodiscard]] std::optional<FocusedField> focusedEditableField() const;
     [[nodiscard]] std::string memberText(const ::libreshockwave::cast::CastMember& member) const;
     [[nodiscard]] static std::pair<int, int> clampedSelection(int selStart, int selEnd, int textLength);
+    [[nodiscard]] bool isMoveableSprite(int channel) const;
+    [[nodiscard]] bool setSpriteLoc(int channel, int locH, int locV) const;
     void bumpSpriteRevision();
+    void beginMoveableSpriteDrag(int stageX, int stageY);
+    void updateMoveableSpriteDrag(int stageX, int stageY);
+    void endMoveableSpriteDrag();
     void autoFocusEditableField(int hitChannel, int stageX, int stageY);
     void handleEditableFieldInput(int channel, const std::string& keyChar);
     void tabToNextField(int currentChannel, bool reverse);
@@ -140,6 +154,8 @@ private:
     CurrentFrameSupplier currentFrameSupplier_;
     HitSpritesSupplier hitSpritesSupplier_;
     LegacyEventScriptDispatcher legacyEventScriptDispatcher_;
+    SpriteLocationSetter spriteLocationSetter_;
+    std::optional<MoveableDrag> moveableDrag_;
     int previousRolloverSprite_{0};
 };
 

@@ -992,6 +992,9 @@ void Player::wireComponents() {
     inputHandler_.setEventDispatcherSupplier([this] {
         return &eventDispatcher();
     });
+    inputHandler_.setSpriteLocationSetter([this](int channel, int locH, int locV) {
+        return spriteProperties_.setSpriteProp(channel, "loc", lingo::Datum::intPoint(locH, locV));
+    });
 
     auto& context = vm_.builtinContext();
     context.movieProperties = &movieProperties_;

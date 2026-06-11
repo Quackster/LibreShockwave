@@ -8558,6 +8558,60 @@ void testPlayerInputFoundation() {
     });
     assert(supplierHandler.hitTestExact(5, 5) == 2);
 
+    InputState dragState;
+    StageRenderer dragRenderer;
+    SpriteProperties dragSpriteProps(&dragRenderer.spriteRegistry());
+    InputHandler dragInput(&dragState, &dragRenderer);
+    dragInput.setSpriteLocationSetter([&dragSpriteProps](int channel, int locH, int locV) {
+        return dragSpriteProps.setSpriteProp(channel, "loc", Datum::intPoint(locH, locV));
+    });
+    auto dragSprite = dragRenderer.spriteRegistry().getOrCreateDynamic(5);
+    dragSprite->setLocH(20);
+    dragSprite->setLocV(30);
+    dragSprite->setWidth(10);
+    dragSprite->setHeight(10);
+    assert(dragSpriteProps.setSpriteProp(5, "moveableSprite", Datum::TRUE));
+    dragRenderer.setLastBakedSprites({
+        RenderSprite(5, 20, 30, 10, 10, 1, true, SpriteType::Shape, nullptr, nullptr, 0, 0, false, false, 0, 100, false, false, nullptr, false),
+    });
+    dragInput.onMouseDown(23, 34);
+    assert(dragState.clickOnSprite() == 0);
+    const int revisionBeforeDragMove = dragRenderer.spriteRegistry().revision();
+    dragInput.onMouseMove(33, 49);
+    assert(dragSprite->locH() == 30);
+    assert(dragSprite->locV() == 45);
+    assert(dragRenderer.spriteRegistry().revision() > revisionBeforeDragMove);
+    dragInput.onMouseUp(33, 49);
+    assert(!dragState.isMouseDown());
+
+    auto constraintTrack = dragRenderer.spriteRegistry().getOrCreateDynamic(9);
+    constraintTrack->setLocH(100);
+    constraintTrack->setLocV(50);
+    constraintTrack->setWidth(30);
+    constraintTrack->setHeight(20);
+    assert(dragSpriteProps.setSpriteProp(5, "constraint", Datum::of(9)));
+    assert(dragSpriteProps.setSpriteProp(5, "loc", Datum::intPoint(120, 60)));
+    dragRenderer.setLastBakedSprites({
+        RenderSprite(5, 120, 60, 10, 10, 1, true, SpriteType::Shape, nullptr, nullptr, 0, 0, false, false, 0, 100, false, false, nullptr, false),
+    });
+    dragInput.onMouseDown(123, 64);
+    dragInput.onMouseMove(200, 200);
+    assert(dragSprite->locH() == 130);
+    assert(dragSprite->locV() == 70);
+    dragInput.onMouseUp(200, 200);
+
+    assert(dragSpriteProps.setSpriteProp(5, "moveableSprite", Datum::FALSE));
+    assert(dragSpriteProps.setSpriteProp(5, "constraint", Datum::of(0)));
+    assert(dragSpriteProps.setSpriteProp(5, "loc", Datum::intPoint(10, 10)));
+    dragRenderer.setLastBakedSprites({
+        RenderSprite(5, 10, 10, 10, 10, 1, true, SpriteType::Shape, nullptr, nullptr, 0, 0, false, false, 0, 100, false, false, nullptr, false),
+    });
+    dragInput.onMouseDown(12, 12);
+    dragInput.onMouseMove(40, 40);
+    assert(dragSprite->locH() == 10);
+    assert(dragSprite->locV() == 10);
+    dragInput.onMouseUp(40, 40);
+
     CastLibManager editableManager(nullptr);
     auto editableCast = std::make_shared<CastLib>(1, nullptr, nullptr);
     editableManager.castLibs()[1] = editableCast;
