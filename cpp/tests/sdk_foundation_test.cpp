@@ -106,6 +106,7 @@
 #include "libreshockwave/editor/score/ScoreDataBuilder.hpp"
 #include "libreshockwave/editor/score/ScoreColors.hpp"
 #include "libreshockwave/editor/score/ScoreModel.hpp"
+#include "libreshockwave/editor/score/ScoreViewModels.hpp"
 #include "libreshockwave/editor/scanning/FileProcessor.hpp"
 #include "libreshockwave/editor/scanning/MemberResolver.hpp"
 #include "libreshockwave/editor/script/ScriptEditorModels.hpp"
@@ -360,7 +361,14 @@ using libreshockwave::editor::score::PlaybackHead;
 using libreshockwave::editor::score::ScoreDataBuilder;
 using libreshockwave::editor::score::ScoreColor;
 using libreshockwave::editor::score::ScoreColors;
+using libreshockwave::editor::score::ScoreColoredCell;
+using libreshockwave::editor::score::ScoreFrameLabel;
+using libreshockwave::editor::score::ScoreLine;
 using libreshockwave::editor::score::ScoreModel;
+using libreshockwave::editor::score::ScorePoint;
+using libreshockwave::editor::score::ScoreRect;
+using libreshockwave::editor::score::ScoreSize;
+using libreshockwave::editor::score::ScoreViewModels;
 using libreshockwave::editor::scanning::FileProcessor;
 using libreshockwave::editor::scanning::MemberResolver;
 using libreshockwave::editor::script::HandlerDropdownModel;
@@ -1827,6 +1835,106 @@ void testEditorCastBrowserModels() {
     assert(model.selectedMemberNums().empty());
     assert(model.statusText() == " 0 of 0 members");
     assert(!model.contextActions(std::nullopt).front().enabled);
+}
+
+void testEditorScoreViewModels() {
+    assert((ScoreViewModels::specialChannelNames() ==
+            std::vector<std::string>{"Tempo", "Palette", "Transition", "Sound 1", "Sound 2", "Script"}));
+
+    const auto noModelView = ScoreViewModels::panelView(nullptr, 1);
+    assert(noModelView.preferredSize == (ScoreSize{600, 200}));
+    assert(noModelView.emptyMessage == "No score data loaded");
+    assert(noModelView.verticalLines.empty());
+    assert(!noModelView.playbackHead.has_value());
+
+    ScoreModel model(7, 3);
+    model.setCellColor(0, 0, ScoreColors::SCRIPT);
+    model.setCellColor(2, 6, ScoreColors::BITMAP);
+    const auto panel = ScoreViewModels::panelView(&model, 3);
+    assert(panel.preferredSize == (ScoreSize{84, 62}));
+    assert(panel.emptyMessage.empty());
+    assert(panel.verticalLines.size() == 8);
+    assert(panel.verticalLines.front() == (ScoreLine{0, 20, 0, 62}));
+    assert(panel.verticalLines.back() == (ScoreLine{84, 20, 84, 62}));
+    assert(panel.horizontalLines.size() == 4);
+    assert(panel.horizontalLines.front() == (ScoreLine{0, 20, 84, 20}));
+    assert(panel.horizontalLines.back() == (ScoreLine{0, 62, 84, 62}));
+    assert((panel.frameLabels == std::vector<ScoreFrameLabel>{{1, "1", 2, 16}, {6, "6", 62, 16}}));
+    assert(panel.coloredCells.size() == 2);
+    assert(panel.coloredCells[0] == (ScoreColoredCell{0, 0, ScoreRect{1, 21, 11, 13}, ScoreColors::SCRIPT}));
+    assert(panel.coloredCells[1] == (ScoreColoredCell{2, 6, ScoreRect{73, 49, 11, 13}, ScoreColors::BITMAP}));
+    assert(panel.playbackHead.has_value());
+    assert(panel.playbackHead->frame == 3);
+    assert(panel.playbackHead->overlayBounds == (ScoreRect{24, 0, 12, 62}));
+    assert(panel.playbackHead->leadingLine == (ScoreLine{24, 0, 24, 62}));
+
+    ScoreModel emptyModel;
+    const auto emptyPanel = ScoreViewModels::panelView(&emptyModel, 1);
+    assert(emptyPanel.preferredSize == (ScoreSize{0, 20}));
+    assert(emptyPanel.verticalLines.size() == 1);
+    assert(emptyPanel.horizontalLines.size() == 1);
+    assert(emptyPanel.playbackHead->overlayBounds == (ScoreRect{0, 0, 12, 20}));
+
+    const auto header = ScoreViewModels::channelHeaderView(2);
+    assert(header.preferredSize == (ScoreSize{100, 132}));
+    assert(header.separatorY == 104);
+    assert(header.rows.size() == 8);
+    assert(header.rows[0].label == "Tempo");
+    assert(header.rows[0].bounds == (ScoreRect{0, 20, 100, 14}));
+    assert(header.rows[0].baselineY == 32);
+    assert(header.rows[0].special);
+    assert(header.rows[5].label == "Script");
+    assert(header.rows[5].baselineY == 102);
+    assert(header.rows[6].label == "1");
+    assert(header.rows[6].bounds == (ScoreRect{0, 104, 100, 14}));
+    assert(!header.rows[6].special);
+    assert(ScoreViewModels::channelHeaderView(-4).rows.size() == 6);
+
+    const auto markers = ScoreViewModels::markersBarView({{1, "Intro"}, {6, "Loop"}}, 0);
+    assert(markers.preferredSize == (ScoreSize{600, 20}));
+    assert(markers.markers.size() == 2);
+    assert(markers.markers[0].frame == 1);
+    assert(markers.markers[0].triangle == (std::array<ScorePoint, 3>{ScorePoint{0, 0}, ScorePoint{6, 0}, ScorePoint{0, 6}}));
+    assert(markers.markers[0].textX == 8);
+    assert(markers.markers[0].baselineY == 16);
+    assert(markers.markers[1].triangle[0] == (ScorePoint{60, 0}));
+    assert(markers.markers[1].textX == 68);
+
+    const auto emptyCell = ScoreViewModels::cellPresentation(std::nullopt, 7);
+    assert(emptyCell.text.empty());
+    assert(!emptyCell.tooltipHtml.has_value());
+    assert(emptyCell.background.value() == ScoreViewModels::EMPTY_BACKGROUND);
+    const auto selectedEmptyCell = ScoreViewModels::cellPresentation(std::nullopt, 7, true);
+    assert(!selectedEmptyCell.background.has_value());
+
+    const ScoreCellData cell{2, 13, 1, 5, 100, 200, 30, 40, "Door"};
+    const auto soundCell = ScoreViewModels::cellPresentation(cell, 3);
+    assert(soundCell.text == "Door");
+    assert(soundCell.tooltipHtml.value() == "<html>Sound<br>Cast: 2, Member: 13<br>Door</html>");
+    assert(soundCell.background.value() == ScoreViewModels::SPECIAL_CELL_BACKGROUND);
+    const auto spriteCell = ScoreViewModels::cellPresentation(cell, 6);
+    assert(spriteCell.tooltipHtml.value() ==
+           "<html>Door<br>Cast: 2, Member: 13<br>Type: 1, Ink: 5<br>Pos: (100, 200)<br>Size: 30x40</html>");
+    assert(spriteCell.background.value() == ScoreViewModels::SPRITE_CELL_BACKGROUND);
+    const auto selectedSpriteCell = ScoreViewModels::cellPresentation(cell, 6, true);
+    assert(!selectedSpriteCell.background.has_value());
+
+    assert(ScoreViewModels::colorForScoreCell(0, cell) == ScoreColors::SCRIPT);
+    assert(ScoreViewModels::colorForScoreCell(1, cell) == ScoreColors::PALETTE);
+    assert(ScoreViewModels::colorForScoreCell(2, cell) == ScoreColors::TRANSITION);
+    assert(ScoreViewModels::colorForScoreCell(4, cell) == ScoreColors::SOUND);
+    assert(ScoreViewModels::colorForScoreCell(5, cell) == ScoreColors::SCRIPT);
+    assert(ScoreViewModels::colorForScoreCell(6, cell) == ScoreColors::BITMAP);
+    assert(ScoreViewModels::colorForScoreCell(6, ScoreCellData{0, 0, 2, 0, 0, 0, 0, 0, ""}) ==
+           ScoreColors::SHAPE);
+    assert(ScoreViewModels::colorForScoreCell(6, ScoreCellData{0, 0, 7, 0, 0, 0, 0, 0, ""}) ==
+           ScoreColors::FIELD);
+    assert(ScoreViewModels::colorForScoreCell(6, ScoreCellData{0, 0, 99, 0, 0, 0, 0, 0, ""}) ==
+           ScoreColors::UNKNOWN);
+    assert(ScoreViewModels::loadStatus(12, 8) == "12 frames, 8 channels");
+    assert(ScoreViewModels::noScoreStatus() == "Score: No score data");
+    assert(ScoreViewModels::closedStatus() == "Frame: 1 | Channel: -");
+    assert(ScoreViewModels::frameStatus(7) == "Frame: 7");
 }
 
 void testEditorModelAndSelectionFoundation() {
@@ -22455,6 +22563,7 @@ int main() {
     testEditorAppShellModels();
     testEditorShellActionModels();
     testEditorCastBrowserModels();
+    testEditorScoreViewModels();
     testEditorModelAndSelectionFoundation();
     testEditorAudioModels();
     testEditorDockingModels();

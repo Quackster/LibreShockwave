@@ -82,6 +82,7 @@ add_library(libreshockwave
     src/editor/score/ScoreDataBuilder.cpp
     src/editor/score/ScoreColors.cpp
     src/editor/score/ScoreModel.cpp
+    src/editor/score/ScoreViewModels.cpp
     src/editor/scanning/FileProcessor.cpp
     src/editor/scanning/MemberResolver.cpp
     src/editor/script/LingoKeywords.cpp
