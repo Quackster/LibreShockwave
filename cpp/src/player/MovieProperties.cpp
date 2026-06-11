@@ -47,6 +47,27 @@ std::string monthName(int month) {
     return std::string(months[static_cast<std::size_t>(month)]);
 }
 
+std::string abbreviatedMonthName(int month) {
+    static constexpr std::array<std::string_view, 12> months{
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec"
+    };
+    if (month < 0 || month >= static_cast<int>(months.size())) {
+        return "";
+    }
+    return std::string(months[static_cast<std::size_t>(month)]);
+}
+
 std::string format12Hour(const std::tm& time, bool includeSeconds) {
     int hour = time.tm_hour % 12;
     if (hour == 0) {
@@ -205,8 +226,8 @@ lingo::Datum MovieProperties::getMovieProp(std::string_view propName) const {
     if (prop == "runmode") return stringDatum("Plugin");
     if (prop == "productversion") return stringDatum("10.1");
     if (prop == "environment") return stringDatum("Java");
-    if (prop == "date" || prop == "short date" || prop == "long date" ||
-        prop == "time" || prop == "short time" || prop == "long time") {
+    if (prop == "date" || prop == "short date" || prop == "abbr date" || prop == "long date" ||
+        prop == "time" || prop == "short time" || prop == "abbr time" || prop == "long time") {
         return dateTimeProp(prop);
     }
     if (prop == "timer" || prop == "ticks" || prop == "milliseconds") {
@@ -219,6 +240,11 @@ lingo::Datum MovieProperties::getMovieProp(std::string_view propName) const {
     if (prop == "tracescript") return lingo::Datum::of(traceScript_ ? 1 : 0);
     if (prop == "tracelogfile") return stringDatum(traceLogFile_);
     if (prop == "allowcustomcaching") return lingo::Datum::of(allowCustomCaching_ ? 1 : 0);
+    if (prop == "mousedownscript") return mouseDownScript_;
+    if (prop == "mouseupscript") return mouseUpScript_;
+    if (prop == "keydownscript") return keyDownScript_;
+    if (prop == "keyupscript") return keyUpScript_;
+    if (prop == "timeoutscript") return timeoutScript_;
     if (prop == "alerthook") return alertHook_;
     if (prop == "cursor") return cursor_;
     if (prop == "floatprecision") return lingo::Datum::of(floatPrecision_);
@@ -332,6 +358,26 @@ bool MovieProperties::setMovieProp(std::string_view propName, const lingo::Datum
     }
     if (prop == "allowcustomcaching") {
         allowCustomCaching_ = value.boolValue();
+        return true;
+    }
+    if (prop == "mousedownscript") {
+        mouseDownScript_ = value;
+        return true;
+    }
+    if (prop == "mouseupscript") {
+        mouseUpScript_ = value;
+        return true;
+    }
+    if (prop == "keydownscript") {
+        keyDownScript_ = value;
+        return true;
+    }
+    if (prop == "keyupscript") {
+        keyUpScript_ = value;
+        return true;
+    }
+    if (prop == "timeoutscript") {
+        timeoutScript_ = value;
         return true;
     }
     if (prop == "actorlist") {
@@ -740,6 +786,10 @@ lingo::Datum MovieProperties::dateTimeProp(std::string_view prop) const {
     }
     if (prop == "short date") {
         out << month << '/' << day << '/' << std::setw(2) << std::setfill('0') << (year % 100);
+        return stringDatum(out.str());
+    }
+    if (prop == "abbr date") {
+        out << abbreviatedMonthName(now.tm_mon) << ' ' << day << ", " << year;
         return stringDatum(out.str());
     }
     if (prop == "long date") {

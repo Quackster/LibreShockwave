@@ -118,6 +118,11 @@ private:
     bool traceScript_{false};
     std::string traceLogFile_;
     bool allowCustomCaching_{false};
+    lingo::Datum mouseDownScript_{lingo::Datum::of(std::string())};
+    lingo::Datum mouseUpScript_{lingo::Datum::of(std::string())};
+    lingo::Datum keyDownScript_{lingo::Datum::of(std::string())};
+    lingo::Datum keyUpScript_{lingo::Datum::of(std::string())};
+    lingo::Datum timeoutScript_{lingo::Datum::of(std::string())};
     lingo::Datum alertHook_{lingo::Datum::voidValue()};
     lingo::Datum cursor_{lingo::Datum::of(-1)};
     int floatPrecision_{4};
