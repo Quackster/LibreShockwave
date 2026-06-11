@@ -2126,6 +2126,11 @@ void testEditorShellActionModels() {
            "dialog_detailed_stack_close");
     assert(EditorGtkShellModel::openFileDialogActionName(GtkOpenFileDialogButtonRole::Accept) == "open_accept");
     assert(EditorGtkShellModel::openFileDialogActionName(GtkOpenFileDialogButtonRole::Cancel) == "open_cancel");
+    assert(EditorGtkShellModel::openFileDialogActionRole("open_accept").value() ==
+           GtkOpenFileDialogButtonRole::Accept);
+    assert(EditorGtkShellModel::openFileDialogActionRole("open_cancel").value() ==
+           GtkOpenFileDialogButtonRole::Cancel);
+    assert(!EditorGtkShellModel::openFileDialogActionRole("open_missing").has_value());
     assert(EditorGtkShellModel::appAction("open") == "app.open");
 
     const auto gtkActions = EditorGtkShellModel::actionSpecs(menus, toolbar, gtkFrame);
@@ -2765,7 +2770,29 @@ void testEditorShellActionModels() {
     assert(openDialogGtkState.statusMessage() == "Open cancelled");
     assert(!openDialogGtkState.openMoviePath().has_value());
 
-    auto acceptedOpen = openDialogGtkState.acceptOpenFile("/tmp/Accepted.dir");
+    auto missingOpenSelection = openDialogGtkState.activateOpenFileDialogAction("open_accept", std::nullopt);
+    assert(missingOpenSelection.actionName == "open_accept");
+    assert(missingOpenSelection.command == EditorCommand::Open);
+    assert(!missingOpenSelection.handled);
+    assert(missingOpenSelection.statusMessage == "Open file selection missing");
+    assert(openDialogGtkState.statusMessage() == "Open file selection missing");
+    assert(!openDialogGtkState.openMoviePath().has_value());
+
+    auto unknownOpenDialogAction = openDialogGtkState.activateOpenFileDialogAction("open_unknown", "/tmp/Ignored.dir");
+    assert(unknownOpenDialogAction.actionName == "open_unknown");
+    assert(unknownOpenDialogAction.command == EditorCommand::Open);
+    assert(!unknownOpenDialogAction.handled);
+    assert(unknownOpenDialogAction.statusMessage == "Unknown open-file dialog action: open_unknown");
+    assert(!openDialogGtkState.openMoviePath().has_value());
+
+    auto cancelledOpenFromAction = openDialogGtkState.activateOpenFileDialogAction("open_cancel", "/tmp/Ignored.dir");
+    assert(cancelledOpenFromAction.actionName == "open_cancel");
+    assert(cancelledOpenFromAction.command == EditorCommand::Open);
+    assert(cancelledOpenFromAction.handled);
+    assert(cancelledOpenFromAction.statusMessage == "Open cancelled");
+    assert(!openDialogGtkState.openMoviePath().has_value());
+
+    auto acceptedOpen = openDialogGtkState.activateOpenFileDialogAction("open_accept", "/tmp/Accepted.dir");
     assert(acceptedOpen.actionName == "open_accept");
     assert(acceptedOpen.command == EditorCommand::Open);
     assert(acceptedOpen.handled);

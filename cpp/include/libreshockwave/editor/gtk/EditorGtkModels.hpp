@@ -418,6 +418,8 @@ public:
     [[nodiscard]] static std::vector<GtkActionSpec> dialogActionSpecs(
         const GtkShellDialogPresentation& presentation);
     [[nodiscard]] static std::string openFileDialogActionName(GtkOpenFileDialogButtonRole role);
+    [[nodiscard]] static std::optional<GtkOpenFileDialogButtonRole> openFileDialogActionRole(
+        std::string_view actionName);
     [[nodiscard]] static GtkOpenFileDialogPresentation openFileDialogPresentation(
         const EditorOpenFileDialogModel& request);
     [[nodiscard]] static std::vector<GtkActionSpec> openFileDialogActionSpecs(
@@ -487,6 +489,8 @@ public:
     std::vector<EditorContextEvent> closeFile();
     GtkActionActivation acceptOpenFile(std::string path);
     GtkActionActivation cancelOpenFile();
+    GtkActionActivation activateOpenFileDialogAction(std::string_view actionName,
+                                                     std::optional<std::string> selectedPath);
     GtkActionActivation openRecentProject(int index, StartScreenModel::ExistsCallback exists);
     GtkActionActivation activateRecentProjectAction(std::string_view actionName, StartScreenModel::ExistsCallback exists);
     GtkWorkbenchPanelActivation floatWorkbenchPanel(std::string_view panelId);

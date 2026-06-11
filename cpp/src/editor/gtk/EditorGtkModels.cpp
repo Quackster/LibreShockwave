@@ -563,6 +563,17 @@ std::string EditorGtkShellModel::openFileDialogActionName(GtkOpenFileDialogButto
     return "open_" + openFileDialogButtonRoleActionSegment(role);
 }
 
+std::optional<GtkOpenFileDialogButtonRole> EditorGtkShellModel::openFileDialogActionRole(
+    std::string_view actionName) {
+    if (actionName == openFileDialogActionName(GtkOpenFileDialogButtonRole::Accept)) {
+        return GtkOpenFileDialogButtonRole::Accept;
+    }
+    if (actionName == openFileDialogActionName(GtkOpenFileDialogButtonRole::Cancel)) {
+        return GtkOpenFileDialogButtonRole::Cancel;
+    }
+    return std::nullopt;
+}
+
 GtkOpenFileDialogPresentation EditorGtkShellModel::openFileDialogPresentation(
     const EditorOpenFileDialogModel& request) {
     GtkOpenFileDialogPresentation presentation;
@@ -1187,6 +1198,38 @@ GtkActionActivation EditorGtkShellState::cancelOpenFile() {
         {},
         statusMessage_,
     };
+}
+
+GtkActionActivation EditorGtkShellState::activateOpenFileDialogAction(std::string_view actionName,
+                                                                      std::optional<std::string> selectedPath) {
+    const auto role = EditorGtkShellModel::openFileDialogActionRole(actionName);
+    if (!role.has_value()) {
+        statusMessage_ = "Unknown open-file dialog action: " + std::string(actionName);
+        GtkActionActivation result;
+        result.actionName = std::string(actionName);
+        result.command = EditorCommand::Open;
+        result.statusMessage = statusMessage_;
+        return result;
+    }
+
+    if (*role == GtkOpenFileDialogButtonRole::Cancel) {
+        auto result = cancelOpenFile();
+        result.actionName = std::string(actionName);
+        return result;
+    }
+
+    if (!selectedPath.has_value() || selectedPath->empty()) {
+        statusMessage_ = "Open file selection missing";
+        GtkActionActivation result;
+        result.actionName = std::string(actionName);
+        result.command = EditorCommand::Open;
+        result.statusMessage = statusMessage_;
+        return result;
+    }
+
+    auto result = acceptOpenFile(std::move(*selectedPath));
+    result.actionName = std::string(actionName);
+    return result;
 }
 
 GtkActionActivation EditorGtkShellState::openRecentProject(int index, StartScreenModel::ExistsCallback exists) {
