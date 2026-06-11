@@ -274,6 +274,23 @@ struct GtkPanelRowSpec {
     friend bool operator==(const GtkPanelRowSpec&, const GtkPanelRowSpec&) = default;
 };
 
+struct GtkPanelContextMenuItemSpec {
+    std::string label;
+    std::string actionName;
+    std::string detailedActionName;
+    bool enabled{false};
+
+    friend bool operator==(const GtkPanelContextMenuItemSpec&, const GtkPanelContextMenuItemSpec&) = default;
+};
+
+struct GtkPanelContextMenuSpec {
+    std::string panelId;
+    std::string title;
+    std::vector<GtkPanelContextMenuItemSpec> items;
+
+    friend bool operator==(const GtkPanelContextMenuSpec&, const GtkPanelContextMenuSpec&) = default;
+};
+
 struct GtkWorkbenchFocusActionSpec {
     std::string name;
     std::string detailedName;
@@ -459,12 +476,14 @@ public:
                                                                  const EditorFramePanelModel& frameModel);
     [[nodiscard]] static std::vector<GtkToolbarItemSpec> toolbarItems(const EditorToolBarModel& toolbarModel);
     [[nodiscard]] static std::vector<GtkPanelRowSpec> panelRows(const EditorFramePanelModel& frameModel);
+    [[nodiscard]] static GtkPanelContextMenuSpec panelContextMenu(const GtkPanelRowSpec& row);
     [[nodiscard]] static std::vector<GtkWorkbenchPanelSpec> workbenchPanels(const EditorFramePanelModel& frameModel,
                                                                            const EditorContextModel& contextModel);
     [[nodiscard]] static GtkWorkbenchLayoutSpec workbenchLayout(const EditorFramePanelModel& frameModel,
                                                                const EditorContextModel& contextModel);
     [[nodiscard]] static std::vector<GtkWorkbenchTabSpec> workbenchTabs(const EditorFramePanelModel& frameModel,
                                                                        const EditorContextModel& contextModel);
+    [[nodiscard]] static GtkPanelContextMenuSpec workbenchTabContextMenu(const GtkWorkbenchTabSpec& tab);
     [[nodiscard]] static GtkWorkbenchContentSpec workbenchContent(const EditorFramePanelModel& frameModel,
                                                                  const EditorContextModel& contextModel);
     [[nodiscard]] static std::vector<GtkWorkbenchFocusActionSpec> workbenchFocusActions(

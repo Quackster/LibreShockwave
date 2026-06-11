@@ -73,6 +73,65 @@ GMenu* buildMenuModel(const std::vector<gtk_models::GtkMenuSpec>& menuSpecs) {
     return menuBar;
 }
 
+GMenu* buildPanelContextMenuModel(const gtk_models::GtkPanelContextMenuSpec& spec) {
+    GMenu* menu = g_menu_new();
+    for (const auto& item : spec.items) {
+        if (item.detailedActionName.empty()) {
+            continue;
+        }
+        g_menu_append(menu, item.label.c_str(), item.detailedActionName.c_str());
+    }
+    return menu;
+}
+
+struct PanelContextMenuData {
+    GtkWidget* popover{nullptr};
+};
+
+void destroyPanelContextMenuData(gpointer userData, GClosure*) {
+    auto* data = static_cast<PanelContextMenuData*>(userData);
+    if (data->popover != nullptr) {
+        if (gtk_widget_get_parent(data->popover) != nullptr) {
+            gtk_widget_unparent(data->popover);
+        }
+        g_object_unref(data->popover);
+    }
+    delete data;
+}
+
+void showPanelContextMenu(GtkGestureClick*, int, double x, double y, gpointer userData) {
+    auto* data = static_cast<PanelContextMenuData*>(userData);
+    if (data->popover == nullptr) {
+        return;
+    }
+
+    const GdkRectangle point{static_cast<int>(x), static_cast<int>(y), 1, 1};
+    gtk_popover_set_pointing_to(GTK_POPOVER(data->popover), &point);
+    gtk_popover_popup(GTK_POPOVER(data->popover));
+}
+
+void addPanelContextMenu(GtkWidget* target, const gtk_models::GtkPanelContextMenuSpec& spec) {
+    GMenu* menu = buildPanelContextMenuModel(spec);
+    GtkWidget* popover = gtk_popover_menu_new_from_model(G_MENU_MODEL(menu));
+    g_object_unref(menu);
+    gtk_popover_set_autohide(GTK_POPOVER(popover), TRUE);
+    gtk_popover_set_has_arrow(GTK_POPOVER(popover), TRUE);
+    gtk_popover_set_position(GTK_POPOVER(popover), GTK_POS_BOTTOM);
+    gtk_widget_set_parent(popover, target);
+    g_object_ref(popover);
+
+    auto* data = new PanelContextMenuData{popover};
+    GtkGesture* gesture = gtk_gesture_click_new();
+    gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(gesture), GDK_BUTTON_SECONDARY);
+    g_signal_connect_data(gesture,
+                          "pressed",
+                          G_CALLBACK(showPanelContextMenu),
+                          data,
+                          destroyPanelContextMenuData,
+                          static_cast<GConnectFlags>(0));
+    gtk_widget_add_controller(target, GTK_EVENT_CONTROLLER(gesture));
+}
+
 void populatePanelList(GtkWidget* list, const std::vector<gtk_models::GtkPanelRowSpec>& rows) {
     while (GtkWidget* child = gtk_widget_get_first_child(list)) {
         gtk_list_box_remove(GTK_LIST_BOX(list), child);
@@ -90,6 +149,7 @@ void populatePanelList(GtkWidget* list, const std::vector<gtk_models::GtkPanelRo
         gtk_widget_set_margin_end(button, 4);
         gtk_widget_set_margin_top(button, 2);
         gtk_widget_set_margin_bottom(button, 2);
+        addPanelContextMenu(button, gtk_models::EditorGtkShellModel::panelContextMenu(row));
         gtk_list_box_append(GTK_LIST_BOX(list), button);
     }
 }
@@ -114,19 +174,25 @@ void populateWorkbenchTabs(GtkWidget* tabsBox, const std::vector<gtk_models::Gtk
 
     for (const auto& tab : tabs) {
         GtkWidget* tabBox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
+        const auto contextMenu = gtk_models::EditorGtkShellModel::workbenchTabContextMenu(tab);
+        addPanelContextMenu(tabBox, contextMenu);
+
         GtkWidget* focusButton = actionButton(tab.title.c_str(), tab.detailedFocusActionName);
         gtk_widget_set_tooltip_text(focusButton, tab.focusTooltip.c_str());
         if (tab.active) {
             gtk_widget_add_css_class(focusButton, "suggested-action");
         }
+        addPanelContextMenu(focusButton, contextMenu);
         gtk_box_append(GTK_BOX(tabBox), focusButton);
 
         GtkWidget* floatButton = actionButton(tab.floatLabel.c_str(), tab.detailedFloatActionName);
         gtk_widget_set_tooltip_text(floatButton, tab.floatTooltip.c_str());
+        addPanelContextMenu(floatButton, contextMenu);
         gtk_box_append(GTK_BOX(tabBox), floatButton);
 
         GtkWidget* hideButton = actionButton(tab.hideLabel.c_str(), tab.detailedToggleActionName);
         gtk_widget_set_tooltip_text(hideButton, tab.hideTooltip.c_str());
+        addPanelContextMenu(hideButton, contextMenu);
         gtk_box_append(GTK_BOX(tabBox), hideButton);
 
         gtk_box_append(GTK_BOX(tabsBox), tabBox);

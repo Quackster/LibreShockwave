@@ -267,6 +267,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `editor::gtk::GtkToolbarItemSpec` now carries GTK symbolic icon names and enabled state for toolbar buttons, labels, and separators, and the optional GTK scaffold renders icon buttons when metadata is available while preserving tested labels and tooltips.
 - With `gtk4-devel` installed, the optional `libreshockwave_editor_gtk` target now compiles and links locally; the GTK entrypoint includes LibreShockwave headers before GTK to avoid GLib `TRUE`/`FALSE` macro collisions with `lingo::Datum`.
 - The optional GTK scaffold now presents Open requests with native `GtkFileDialog`, applying the tested Director file filter/current-folder metadata and routing accept/cancel results back through `EditorGtkShellState::activateOpenFileDialogAction`.
+- `editor::gtk::GtkPanelContextMenuSpec` ports GTK-facing pane context menu metadata for Show/Focus, Float, and Hide entries, and the optional GTK scaffold now opens those tested action bindings from right-click popover menus on pane rows and workbench tabs.
 
 ### Bitmap Colorizer
 
@@ -1416,4 +1417,5 @@ Result:
 - `01f20735 Route C++ GTK dialog button actions`
 - `8e8a83e2 Bind C++ GTK workbench content actions`
 - `34f39ad6 Fix C++ GTK editor target build`
-- Current checkpoint commit message: `Wire C++ GTK native open dialog`
+- `b0c6194a Wire C++ GTK native open dialog`
+- Current checkpoint commit message: `Add C++ GTK pane context menus`

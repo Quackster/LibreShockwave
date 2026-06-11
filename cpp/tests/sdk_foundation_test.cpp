@@ -337,6 +337,8 @@ using libreshockwave::editor::gtk::GtkActionSpec;
 using libreshockwave::editor::gtk::GtkMenuItemKind;
 using libreshockwave::editor::gtk::GtkOpenFileDialogButtonRole;
 using libreshockwave::editor::gtk::GtkOpenFileDialogButtonSpec;
+using libreshockwave::editor::gtk::GtkPanelContextMenuItemSpec;
+using libreshockwave::editor::gtk::GtkPanelContextMenuSpec;
 using libreshockwave::editor::gtk::GtkPanelRowSpec;
 using libreshockwave::editor::gtk::GtkShellDialogActionBinding;
 using libreshockwave::editor::gtk::GtkShellDialogButtonRole;
@@ -2337,6 +2339,15 @@ void testEditorShellActionModels() {
     assert(gtkRows[7].primaryActionName == "panel_paint");
     assert(gtkRows[7].detailedPrimaryActionName == "app.panel_paint");
     assert(gtkRows[7].primaryActionEnabled);
+    assert(EditorGtkShellModel::panelContextMenu(gtkRows[7]) ==
+           (GtkPanelContextMenuSpec{
+               "paint",
+               "Paint",
+               std::vector<GtkPanelContextMenuItemSpec>{
+                   {"Show", "panel_paint", "app.panel_paint", true},
+                   {"Float", "workbench_float_paint", "app.workbench_float_paint", false},
+               },
+           }));
     assert(gtkFrame.togglePanel("paint", true));
     gtkRows = EditorGtkShellModel::panelRows(gtkFrame);
     assert(gtkRows[7].displayLabel == "Paint");
@@ -2346,6 +2357,16 @@ void testEditorShellActionModels() {
     assert(gtkRows[7].primaryActionName == "workbench_paint");
     assert(gtkRows[7].detailedPrimaryActionName == "app.workbench_paint");
     assert(gtkRows[7].primaryActionEnabled);
+    assert(EditorGtkShellModel::panelContextMenu(gtkRows[7]) ==
+           (GtkPanelContextMenuSpec{
+               "paint",
+               "Paint",
+               std::vector<GtkPanelContextMenuItemSpec>{
+                   {"Focus", "workbench_paint", "app.workbench_paint", true},
+                   {"Float", "workbench_float_paint", "app.workbench_float_paint", true},
+                   {"Hide", "panel_paint", "app.panel_paint", true},
+               },
+           }));
     const auto visibleGtkMenus = EditorGtkShellModel::menuSpecs(menus, gtkFrame);
     assert(visibleGtkMenus[7].items[8].checked);
     const auto visiblePaintWorkbenchAction =
@@ -2444,6 +2465,16 @@ void testEditorShellActionModels() {
                "Hide panel",
                "panel_paint",
                "app.panel_paint",
+           }));
+    assert(EditorGtkShellModel::workbenchTabContextMenu(gtkWorkbenchTabs[7]) ==
+           (GtkPanelContextMenuSpec{
+               "paint",
+               "Paint",
+               std::vector<GtkPanelContextMenuItemSpec>{
+                   {"Focus", "workbench_paint", "app.workbench_paint", true},
+                   {"Float", "workbench_float_paint", "app.workbench_float_paint", true},
+                   {"Hide", "panel_paint", "app.panel_paint", true},
+               },
            }));
     assert(EditorGtkShellModel::workbenchContent(gtkFrame, closedGtkContext) ==
            (GtkWorkbenchContentSpec{

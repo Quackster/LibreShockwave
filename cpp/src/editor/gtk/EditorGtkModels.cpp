@@ -924,6 +924,47 @@ std::vector<GtkPanelRowSpec> EditorGtkShellModel::panelRows(const EditorFramePan
     return result;
 }
 
+GtkPanelContextMenuSpec EditorGtkShellModel::panelContextMenu(const GtkPanelRowSpec& row) {
+    GtkPanelContextMenuSpec spec;
+    spec.panelId = row.panelId;
+    spec.title = row.title;
+
+    if (row.visible) {
+        spec.items.push_back(GtkPanelContextMenuItemSpec{
+            "Focus",
+            row.focusActionName,
+            row.detailedFocusActionName,
+            row.focusEnabled,
+        });
+    } else {
+        spec.items.push_back(GtkPanelContextMenuItemSpec{
+            "Show",
+            row.toggleActionName,
+            row.detailedToggleActionName,
+            row.primaryActionEnabled,
+        });
+    }
+
+    const auto floatAction = workbenchPanelFloatActionName(row.panelId);
+    spec.items.push_back(GtkPanelContextMenuItemSpec{
+        "Float",
+        floatAction,
+        appAction(floatAction),
+        row.focusEnabled,
+    });
+
+    if (row.visible) {
+        spec.items.push_back(GtkPanelContextMenuItemSpec{
+            "Hide",
+            row.toggleActionName,
+            row.detailedToggleActionName,
+            true,
+        });
+    }
+
+    return spec;
+}
+
 std::vector<GtkWorkbenchPanelSpec> EditorGtkShellModel::workbenchPanels(const EditorFramePanelModel& frameModel,
                                                                        const EditorContextModel& contextModel) {
     const auto rows = panelRows(frameModel);
@@ -995,6 +1036,33 @@ std::vector<GtkWorkbenchTabSpec> EditorGtkShellModel::workbenchTabs(const Editor
         });
     }
     return result;
+}
+
+GtkPanelContextMenuSpec EditorGtkShellModel::workbenchTabContextMenu(const GtkWorkbenchTabSpec& tab) {
+    GtkPanelContextMenuSpec spec;
+    spec.panelId = tab.panelId;
+    spec.title = tab.title;
+    spec.items = {
+        GtkPanelContextMenuItemSpec{
+            "Focus",
+            tab.focusActionName,
+            tab.detailedFocusActionName,
+            !tab.detailedFocusActionName.empty(),
+        },
+        GtkPanelContextMenuItemSpec{
+            tab.floatLabel,
+            tab.floatActionName,
+            tab.detailedFloatActionName,
+            !tab.detailedFloatActionName.empty(),
+        },
+        GtkPanelContextMenuItemSpec{
+            tab.hideLabel,
+            tab.toggleActionName,
+            tab.detailedToggleActionName,
+            !tab.detailedToggleActionName.empty(),
+        },
+    };
+    return spec;
 }
 
 GtkWorkbenchContentSpec EditorGtkShellModel::workbenchContent(const EditorFramePanelModel& frameModel,
