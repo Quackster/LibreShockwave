@@ -324,6 +324,45 @@ std::string EditorGtkShellModel::appAction(std::string_view actionName) {
     return "app." + std::string(actionName);
 }
 
+GtkShellDialogPresentation EditorGtkShellModel::dialogPresentation(const GtkShellDialogRequest& request) {
+    GtkShellDialogPresentation presentation;
+    presentation.kind = request.kind;
+    presentation.title = request.title;
+    presentation.bodyText = request.message;
+    presentation.inputLabel = request.prompt;
+    presentation.inputText = request.currentValue;
+    presentation.modal = request.modal;
+    presentation.warning = request.warning;
+
+    switch (request.kind) {
+        case GtkShellDialogKind::ExternalParameters:
+            presentation.hasExternalParamsTable = true;
+            presentation.externalParams = request.externalParams;
+            presentation.acceptLabel = "Apply";
+            presentation.cancelLabel = "Cancel";
+            break;
+        case GtkShellDialogKind::TraceHandler:
+            if (request.prompt.empty()) {
+                presentation.closeLabel = "OK";
+            } else {
+                presentation.hasTextInput = true;
+                presentation.acceptLabel = "Apply";
+                presentation.cancelLabel = "Cancel";
+            }
+            break;
+        case GtkShellDialogKind::About:
+            presentation.closeLabel = "OK";
+            break;
+        case GtkShellDialogKind::DetailedStack:
+            presentation.hasDetailedStackView = true;
+            presentation.detailedStackView = request.detailedStackView;
+            presentation.closeLabel = "Close";
+            break;
+    }
+
+    return presentation;
+}
+
 std::vector<GtkActionSpec> EditorGtkShellModel::actionSpecs(const EditorMenuModel& menuModel,
                                                             const EditorToolBarModel& toolbarModel,
                                                             const EditorFramePanelModel& frameModel) {

@@ -54,6 +54,26 @@ struct GtkShellDialogRequest {
     friend bool operator==(const GtkShellDialogRequest&, const GtkShellDialogRequest&) = default;
 };
 
+struct GtkShellDialogPresentation {
+    GtkShellDialogKind kind{GtkShellDialogKind::About};
+    std::string title;
+    std::string bodyText;
+    std::string inputLabel;
+    std::string inputText;
+    std::string acceptLabel;
+    std::string cancelLabel;
+    std::string closeLabel;
+    bool modal{false};
+    bool warning{false};
+    bool hasTextInput{false};
+    bool hasExternalParamsTable{false};
+    bool hasDetailedStackView{false};
+    ExternalParamsTableModel externalParams;
+    debug::DetailedStackView detailedStackView;
+
+    friend bool operator==(const GtkShellDialogPresentation&, const GtkShellDialogPresentation&) = default;
+};
+
 struct GtkShellDialogResult {
     GtkShellDialogKind kind{GtkShellDialogKind::About};
     bool accepted{false};
@@ -266,6 +286,7 @@ public:
     [[nodiscard]] static std::string workbenchPanelActionName(std::string_view panelId);
     [[nodiscard]] static std::string workbenchPanelFloatActionName(std::string_view panelId);
     [[nodiscard]] static std::string appAction(std::string_view actionName);
+    [[nodiscard]] static GtkShellDialogPresentation dialogPresentation(const GtkShellDialogRequest& request);
 
     [[nodiscard]] static std::vector<GtkActionSpec> actionSpecs(const EditorMenuModel& menuModel,
                                                                 const EditorToolBarModel& toolbarModel,

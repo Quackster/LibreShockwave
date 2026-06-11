@@ -2734,6 +2734,16 @@ void testEditorShellActionModels() {
     assert(aboutRequest.dialogRequest->modal);
     assert(!aboutRequest.dialogRequest->warning);
     assert(aboutRequest.statusMessage == "About dialog requested");
+    const auto aboutPresentation = EditorGtkShellModel::dialogPresentation(*aboutRequest.dialogRequest);
+    assert(aboutPresentation.kind == GtkShellDialogKind::About);
+    assert(aboutPresentation.title == "About");
+    assert(aboutPresentation.bodyText.find("LibreShockwave Editor") == 0);
+    assert(aboutPresentation.modal);
+    assert(!aboutPresentation.warning);
+    assert(!aboutPresentation.hasTextInput);
+    assert(!aboutPresentation.hasExternalParamsTable);
+    assert(!aboutPresentation.hasDetailedStackView);
+    assert(aboutPresentation.closeLabel == "OK");
 
     auto traceWithoutMovie = gtkState.activateAction("traceHandler");
     assert(traceWithoutMovie.handled);
@@ -2744,6 +2754,13 @@ void testEditorShellActionModels() {
     assert(traceWithoutMovie.dialogRequest->message == "No movie loaded.");
     assert(traceWithoutMovie.dialogRequest->warning);
     assert(traceWithoutMovie.statusMessage == "No movie loaded");
+    const auto traceWarningPresentation = EditorGtkShellModel::dialogPresentation(*traceWithoutMovie.dialogRequest);
+    assert(traceWarningPresentation.kind == GtkShellDialogKind::TraceHandler);
+    assert(traceWarningPresentation.bodyText == "No movie loaded.");
+    assert(traceWarningPresentation.modal);
+    assert(traceWarningPresentation.warning);
+    assert(!traceWarningPresentation.hasTextInput);
+    assert(traceWarningPresentation.closeLabel == "OK");
 
     auto externalParamsRequest = gtkState.activateAction("externalParameters");
     assert(externalParamsRequest.handled);
@@ -2755,6 +2772,18 @@ void testEditorShellActionModels() {
     assert(externalParamsRequest.dialogRequest->modal);
     assert(externalParamsRequest.statusMessage == "External parameters requested");
     assert(gtkState.externalParams().empty());
+    auto externalParamsPresentation = EditorGtkShellModel::dialogPresentation(*externalParamsRequest.dialogRequest);
+    assert(externalParamsPresentation.kind == GtkShellDialogKind::ExternalParameters);
+    assert(externalParamsPresentation.bodyText ==
+           "Set key-value pairs accessible via externalParamValue() in Lingo scripts.");
+    assert(externalParamsPresentation.modal);
+    assert(!externalParamsPresentation.warning);
+    assert(!externalParamsPresentation.hasTextInput);
+    assert(externalParamsPresentation.hasExternalParamsTable);
+    assert(!externalParamsPresentation.hasDetailedStackView);
+    assert(externalParamsPresentation.externalParams.rowCount() == 0);
+    assert(externalParamsPresentation.acceptLabel == "Apply");
+    assert(externalParamsPresentation.cancelLabel == "Cancel");
 
     auto paramsResult = gtkState.applyExternalParameters({
         {" sw1 ", "alpha"},
@@ -2787,6 +2816,12 @@ void testEditorShellActionModels() {
     assert(externalParamsRequest.dialogRequest->externalParams.valueAt(0, 1) == "override");
     assert(externalParamsRequest.dialogRequest->externalParams.valueAt(1, 0) == "sw2");
     assert(externalParamsRequest.dialogRequest->externalParams.valueAt(1, 1) == "beta");
+    externalParamsPresentation = EditorGtkShellModel::dialogPresentation(*externalParamsRequest.dialogRequest);
+    assert(externalParamsPresentation.externalParams.rowCount() == 2);
+    assert(externalParamsPresentation.externalParams.valueAt(0, 0) == "sw1");
+    assert(externalParamsPresentation.externalParams.valueAt(0, 1) == "override");
+    assert(externalParamsPresentation.externalParams.valueAt(1, 0) == "sw2");
+    assert(externalParamsPresentation.externalParams.valueAt(1, 1) == "beta");
 
     auto detailedStackInitial = gtkState.activateAction("detailedStackWindow");
     assert(detailedStackInitial.handled);
@@ -2796,6 +2831,17 @@ void testEditorShellActionModels() {
     assert(detailedStackInitial.dialogRequest->title == "Detailed Stack View");
     assert(detailedStackInitial.dialogRequest->detailedStackView.statusText == "Waiting for debugger pause...");
     assert(detailedStackInitial.statusMessage == "Detailed stack window requested");
+    const auto detailedStackPresentation =
+        EditorGtkShellModel::dialogPresentation(*detailedStackInitial.dialogRequest);
+    assert(detailedStackPresentation.kind == GtkShellDialogKind::DetailedStack);
+    assert(detailedStackPresentation.title == "Detailed Stack View");
+    assert(!detailedStackPresentation.modal);
+    assert(!detailedStackPresentation.warning);
+    assert(!detailedStackPresentation.hasTextInput);
+    assert(!detailedStackPresentation.hasExternalParamsTable);
+    assert(detailedStackPresentation.hasDetailedStackView);
+    assert(detailedStackPresentation.detailedStackView.statusText == "Waiting for debugger pause...");
+    assert(detailedStackPresentation.closeLabel == "Close");
 
     auto openEvents = gtkState.openFile("/tmp/Movie.dir");
     assert(openEvents.size() == 1);
@@ -2867,6 +2913,19 @@ void testEditorShellActionModels() {
     assert(traceWithMovie.dialogRequest->currentValue.empty());
     assert(!traceWithMovie.dialogRequest->warning);
     assert(traceWithMovie.statusMessage == "Trace handler dialog requested");
+    auto tracePresentation = EditorGtkShellModel::dialogPresentation(*traceWithMovie.dialogRequest);
+    assert(tracePresentation.kind == GtkShellDialogKind::TraceHandler);
+    assert(tracePresentation.bodyText == "Current: (none)");
+    assert(tracePresentation.inputLabel ==
+           "Enter handler names to trace (comma-separated), or clear to remove all:");
+    assert(tracePresentation.inputText.empty());
+    assert(tracePresentation.modal);
+    assert(!tracePresentation.warning);
+    assert(tracePresentation.hasTextInput);
+    assert(!tracePresentation.hasExternalParamsTable);
+    assert(!tracePresentation.hasDetailedStackView);
+    assert(tracePresentation.acceptLabel == "Apply");
+    assert(tracePresentation.cancelLabel == "Cancel");
 
     auto traceResult = gtkState.applyTraceHandlerInput(" startMovie, mouseUp ,, enterFrame ");
     assert(traceResult.kind == GtkShellDialogKind::TraceHandler);
@@ -2880,6 +2939,9 @@ void testEditorShellActionModels() {
     traceWithMovie = gtkState.activateAction("traceHandler");
     assert(traceWithMovie.dialogRequest->message == "Current: startMovie, mouseUp, enterFrame");
     assert(traceWithMovie.dialogRequest->currentValue == "startMovie, mouseUp, enterFrame");
+    tracePresentation = EditorGtkShellModel::dialogPresentation(*traceWithMovie.dialogRequest);
+    assert(tracePresentation.bodyText == "Current: startMovie, mouseUp, enterFrame");
+    assert(tracePresentation.inputText == "startMovie, mouseUp, enterFrame");
 
     auto clearTrace = gtkState.applyTraceHandlerInput(" , ");
     assert(clearTrace.accepted);
