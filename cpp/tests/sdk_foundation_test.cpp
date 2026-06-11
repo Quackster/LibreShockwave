@@ -79,6 +79,7 @@
 #include "libreshockwave/editor/debug/DebugBrowserModels.hpp"
 #include "libreshockwave/editor/debug/DebugCommandModels.hpp"
 #include "libreshockwave/editor/debug/DebugDisplayItems.hpp"
+#include "libreshockwave/editor/debug/DebugInspectionModels.hpp"
 #include "libreshockwave/editor/debug/DebugTableModels.hpp"
 #include "libreshockwave/editor/docking/DockingModels.hpp"
 #include "libreshockwave/editor/format/ChannelNames.hpp"
@@ -323,6 +324,12 @@ using libreshockwave::editor::debug::DebugCommandModels;
 using libreshockwave::editor::debug::DebugShortcut;
 using libreshockwave::editor::debug::DebugToolbarButton;
 using libreshockwave::editor::debug::DebugToolbarLayout;
+using libreshockwave::editor::debug::DatumDetailsView;
+using libreshockwave::editor::debug::DebugInspectionModels;
+using libreshockwave::editor::debug::DebugSize;
+using libreshockwave::editor::debug::DebugTextAreaPresentation;
+using libreshockwave::editor::debug::DetailedStackTabView;
+using libreshockwave::editor::debug::DetailedStackView;
 using libreshockwave::editor::debug::HandlerLocation;
 using libreshockwave::editor::debug::HandlerItem;
 using libreshockwave::editor::debug::HandlerNavigator;
@@ -2728,6 +2735,54 @@ void testEditorDebugDataModels() {
     assert(!missingContextPopup[1].enabled);
     assert(missingContextPopup[2].visible);
     assert(missingContextPopup[2].enabled);
+
+    const auto datumDetails = DebugInspectionModels::datumDetailsView(Datum::of(7), "Local: score");
+    assert((datumDetails == DatumDetailsView{"Datum Details: Local: score",
+                                             DebugSize{500, 400},
+                                             DebugTextAreaPresentation{"Monospaced", 12, false, true, true},
+                                             "Type: Int\n\nValue:\n7",
+                                             "Close",
+                                             false}));
+
+    const auto initialStackView = DebugInspectionModels::detailedStackInitialView();
+    assert(initialStackView.title == "Detailed Stack View");
+    assert(initialStackView.size == (DebugSize{500, 600}));
+    assert(initialStackView.statusText == "Waiting for debugger pause...");
+    assert(initialStackView.tabs.size() == 4);
+    assert((initialStackView.tabs[0] ==
+            DetailedStackTabView{"Call Stack", DebugTextAreaPresentation{"Monospaced", 12, false, false, false}, "",
+                                 false}));
+    assert(initialStackView.tabs[1].title == "VM Stack");
+    assert(initialStackView.tabs[1].scrollToEnd);
+    assert(initialStackView.tabs[3].title == "Receiver (me)");
+    assert(initialStackView.tabs[3].textArea.lineWrap);
+    assert(initialStackView.tabs[3].textArea.wrapStyleWord);
+    assert(DebugInspectionModels::detailedStackRunningView().statusText == "Running...");
+    assert(DebugInspectionModels::formatCallStack({}) == "(no call stack)");
+    assert(DebugInspectionModels::formatStackDetailed({}) == "(empty stack)");
+    assert(DebugInspectionModels::formatArguments({}) == "(no arguments)");
+    assert(DebugInspectionModels::formatReceiver(std::nullopt) == "(no receiver)");
+
+    DebugSnapshot stackSnapshot;
+    stackSnapshot.handlerName = "mouseUp";
+    stackSnapshot.instructionOffset = 12;
+    stackSnapshot.stack = {Datum::of(1), Datum::of(std::string("top"))};
+    stackSnapshot.arguments = {Datum::of(42), Datum::symbol("ready")};
+    stackSnapshot.receiver = Datum::of(99);
+    stackSnapshot.callStack = {
+        CallFrame{1, "Movie Script", "startMovie", {Datum::of(std::string("entry"))}, std::nullopt},
+        CallFrame{2, "Behavior Script", "mouseUp", {Datum::of(3), Datum::of(std::string("ok"))}, Datum::of(5)},
+    };
+    const auto detailedStackView = DebugInspectionModels::detailedStackView(stackSnapshot);
+    assert(detailedStackView.statusText == "Paused at: mouseUp (offset 12)");
+    assert(detailedStackView.tabs[0].body.find("Call Stack (2 frames):") == 0);
+    assert(detailedStackView.tabs[0].body.find("[0] mouseUp(3, \"ok\")") != std::string::npos);
+    assert(detailedStackView.tabs[0].body.find("     in: Behavior Script") != std::string::npos);
+    assert(detailedStackView.tabs[0].body.find("     me: 5") != std::string::npos);
+    assert(detailedStackView.tabs[0].body.find("[1] startMovie(\"entry\")") != std::string::npos);
+    assert(detailedStackView.tabs[1].body == "[  0] 1\n[  1] \"top\"\n");
+    assert(detailedStackView.tabs[2].body == "arg1 = 42\narg2 = \"#ready\"\n");
+    assert(detailedStackView.tabs[3].body == "99");
 
     auto browserNames = std::make_shared<ScriptNamesChunk>(
         nullptr,

@@ -59,6 +59,7 @@ add_library(libreshockwave
     src/editor/debug/DebugBrowserModels.cpp
     src/editor/debug/DebugCommandModels.cpp
     src/editor/debug/DebugDisplayItems.cpp
+    src/editor/debug/DebugInspectionModels.cpp
     src/editor/debug/DebugTableModels.cpp
     src/editor/docking/DockingModels.cpp
     src/editor/extraction/AssetExtractor.cpp
