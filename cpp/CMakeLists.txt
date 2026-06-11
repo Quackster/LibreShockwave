@@ -54,7 +54,15 @@ add_library(libreshockwave
     src/chunks/TextChunk.cpp
     src/editor/format/ChannelNames.cpp
     src/editor/format/PaletteDescriptions.cpp
+    src/editor/model/BitmapKey.cpp
+    src/editor/model/FileNode.cpp
+    src/editor/model/MemberNodeData.cpp
+    src/editor/model/ScoreCellData.cpp
+    src/editor/selection/SelectionEvent.cpp
+    src/editor/selection/SelectionManager.cpp
+    src/editor/score/PlaybackHead.cpp
     src/editor/score/ScoreColors.cpp
+    src/editor/score/ScoreModel.cpp
     src/editor/script/LingoKeywords.cpp
     src/editor/script/LingoTokenizer.cpp
     src/format/AfterburnerReader.cpp

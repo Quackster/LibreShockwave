@@ -72,7 +72,19 @@
 #include "libreshockwave/chunks/TextChunk.hpp"
 #include "libreshockwave/editor/format/ChannelNames.hpp"
 #include "libreshockwave/editor/format/PaletteDescriptions.hpp"
+#include "libreshockwave/editor/model/BitmapKey.hpp"
+#include "libreshockwave/editor/model/CastMemberInfo.hpp"
+#include "libreshockwave/editor/model/ExtractionTask.hpp"
+#include "libreshockwave/editor/model/FileNode.hpp"
+#include "libreshockwave/editor/model/FrameAppearance.hpp"
+#include "libreshockwave/editor/model/MemberNodeData.hpp"
+#include "libreshockwave/editor/model/ScoreCellData.hpp"
+#include "libreshockwave/editor/selection/SelectionEvent.hpp"
+#include "libreshockwave/editor/selection/SelectionListener.hpp"
+#include "libreshockwave/editor/selection/SelectionManager.hpp"
+#include "libreshockwave/editor/score/PlaybackHead.hpp"
 #include "libreshockwave/editor/score/ScoreColors.hpp"
+#include "libreshockwave/editor/score/ScoreModel.hpp"
 #include "libreshockwave/editor/script/LingoKeywords.hpp"
 #include "libreshockwave/editor/script/LingoTokenizer.hpp"
 #include "libreshockwave/format/ChunkInfo.hpp"
@@ -251,8 +263,22 @@ using libreshockwave::chunks::SoundChunk;
 using libreshockwave::chunks::TextChunk;
 using libreshockwave::editor::format::ChannelNames;
 using libreshockwave::editor::format::PaletteDescriptions;
+using libreshockwave::editor::model::BitmapKey;
+using libreshockwave::editor::model::BitmapKeyHash;
+using libreshockwave::editor::model::CastMemberInfo;
+using libreshockwave::editor::model::ExtractionTask;
+using libreshockwave::editor::model::FileNode;
+using libreshockwave::editor::model::FrameAppearance;
+using libreshockwave::editor::model::MemberNodeData;
+using libreshockwave::editor::model::ScoreCellData;
+using libreshockwave::editor::selection::SelectionEvent;
+using libreshockwave::editor::selection::SelectionListener;
+using libreshockwave::editor::selection::SelectionManager;
+using libreshockwave::editor::selection::SelectionType;
+using libreshockwave::editor::score::PlaybackHead;
 using libreshockwave::editor::score::ScoreColor;
 using libreshockwave::editor::score::ScoreColors;
+using libreshockwave::editor::score::ScoreModel;
 using libreshockwave::editor::script::LingoKeywords;
 using libreshockwave::editor::script::LingoTokenizer;
 using libreshockwave::editor::script::LingoTokenType;
@@ -1278,6 +1304,97 @@ void testEditorFormattingAndScriptHelpers() {
     assert(javaCaseTokens[4].type == LingoTokenType::Identifier);
     assert(javaCaseTokens[6].type == LingoTokenType::Keyword);
     assert(javaCaseTokens[8].type == LingoTokenType::Identifier);
+}
+
+class CapturingSelectionListener : public SelectionListener {
+public:
+    void selectionChanged(const SelectionEvent& event) override {
+        events.push_back(event);
+    }
+
+    std::vector<SelectionEvent> events;
+};
+
+void testEditorModelAndSelectionFoundation() {
+    const CastMemberInfo bitmapInfo{7, "Door", nullptr, MemberType::Bitmap, "16x16"};
+    const CastMemberInfo scriptInfo{8, "RoomScript", nullptr, MemberType::Script, "Movie Script [startMovie]"};
+    const CastMemberInfo emptyDetailsInfo{9, "Plain", nullptr, MemberType::Text, ""};
+
+    const BitmapKey key{"movie.dir", 7};
+    const BitmapKey sameKey{"movie.dir", 7};
+    const BitmapKey differentKey{"movie.dir", 8};
+    assert(key == sameKey);
+    assert(!(key == differentKey));
+    assert(BitmapKeyHash{}(key) == BitmapKeyHash{}(sameKey));
+
+    const ExtractionTask extraction{"movie.dir", bitmapInfo};
+    assert(extraction.filePath == "movie.dir");
+    assert(extraction.memberInfo == bitmapInfo);
+
+    const FileNode fileNode{"movie.dir", "Movie", {bitmapInfo, scriptInfo}};
+    assert(fileNode.toString() == "Movie (2 members)");
+    assert((FrameAppearance{3, 4, "Ch 4", "Lobby", 10, 20} ==
+            FrameAppearance{3, 4, "Ch 4", "Lobby", 10, 20}));
+
+    const ScoreCellData cell{1, 7, 1, 8, 10, 20, 30, 40, "Door"};
+    assert(cell.toString() == "Door");
+
+    const MemberNodeData bitmapNode{"movie.dir", bitmapInfo};
+    const MemberNodeData scriptNode{"movie.dir", scriptInfo};
+    const MemberNodeData textNode{"movie.dir", emptyDetailsInfo};
+    assert(bitmapNode.toString() == "#7 Door [bitmap] (16x16)");
+    assert(scriptNode.toString() == "#8 RoomScript - Movie Script [startMovie]");
+    assert(textNode.toString() == "#9 Plain [text]");
+
+    PlaybackHead playbackHead;
+    assert(playbackHead.frame() == 1);
+    playbackHead.setFrame(12);
+    assert(playbackHead.frame() == 12);
+    playbackHead.setFrame(-4);
+    assert(playbackHead.frame() == 1);
+
+    ScoreModel emptyModel;
+    assert(emptyModel.frameCount() == 0);
+    assert(emptyModel.channelCount() == 0);
+    assert(!emptyModel.cellColor(0, 0).has_value());
+    emptyModel.setCellColor(0, 0, ScoreColors::BITMAP);
+    assert(!emptyModel.cellColor(0, 0).has_value());
+
+    ScoreModel scoreModel(3, 2);
+    assert(scoreModel.frameCount() == 3);
+    assert(scoreModel.channelCount() == 2);
+    assert(!scoreModel.cellColor(1, 2).has_value());
+    scoreModel.setCellColor(1, 2, ScoreColors::BITMAP);
+    assert(scoreModel.cellColor(1, 2).value() == ScoreColors::BITMAP);
+    scoreModel.setCellColor(4, 2, ScoreColors::TEXT);
+    assert(!scoreModel.cellColor(4, 2).has_value());
+    scoreModel.setCellColor(1, 2, std::nullopt);
+    assert(!scoreModel.cellColor(1, 2).has_value());
+
+    assert(SelectionEvent::none() == (SelectionEvent{SelectionType::None, 0, 0, 0, 0}));
+    assert(SelectionEvent::sprite(3, 9) == (SelectionEvent{SelectionType::Sprite, 3, 9, 0, 0}));
+    assert(SelectionEvent::castMember(2, 7) == (SelectionEvent{SelectionType::CastMember, 0, 0, 2, 7}));
+    assert(SelectionEvent::frameSelection(11) == (SelectionEvent{SelectionType::Frame, 0, 11, 0, 0}));
+
+    SelectionManager manager;
+    CapturingSelectionListener first;
+    CapturingSelectionListener second;
+    manager.addListener(&first);
+    manager.addListener(&second);
+    manager.addListener(&first);
+    manager.select(SelectionEvent::sprite(4, 5));
+    assert(manager.currentSelection() == SelectionEvent::sprite(4, 5));
+    assert(first.events.size() == 2);
+    assert(second.events.size() == 1);
+    manager.removeListener(&first);
+    manager.clearSelection();
+    assert(manager.currentSelection() == SelectionEvent::none());
+    assert(first.events.size() == 3);
+    assert(second.events.size() == 2);
+    manager.removeListener(&first);
+    manager.select(SelectionEvent::castMember(1, 9));
+    assert(first.events.size() == 3);
+    assert(second.events.size() == 3);
 }
 
 void testLingoDatumTypes() {
@@ -20561,6 +20678,7 @@ int main() {
     testFormatTypes();
     testUtilityFormatting();
     testEditorFormattingAndScriptHelpers();
+    testEditorModelAndSelectionFoundation();
     testLingoDatumTypes();
     testLingoOpcodeHelpers();
     testLingoDecompilerNodeFoundation();
