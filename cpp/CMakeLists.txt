@@ -186,6 +186,7 @@ add_library(libreshockwave
     src/player/input/InputState.cpp
     src/player/net/NetManager.cpp
     src/player/net/NetTask.cpp
+    src/player/net/QueuedNetProvider.cpp
     src/player/debug/Breakpoint.cpp
     src/player/debug/BreakpointManager.cpp
     src/player/debug/DebugController.cpp

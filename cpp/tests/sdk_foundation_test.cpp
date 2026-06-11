@@ -210,6 +210,7 @@
 #include "libreshockwave/player/input/InputState.hpp"
 #include "libreshockwave/player/net/NetManager.hpp"
 #include "libreshockwave/player/net/NetTask.hpp"
+#include "libreshockwave/player/net/QueuedNetProvider.hpp"
 #include "libreshockwave/player/render/RenderConfig.hpp"
 #include "libreshockwave/player/render/RenderType.hpp"
 #include "libreshockwave/player/render/SpriteRegistry.hpp"
@@ -599,6 +600,7 @@ using libreshockwave::player::net::NetProvider;
 using libreshockwave::player::net::NetTask;
 using libreshockwave::player::net::NetTaskMethod;
 using libreshockwave::player::net::NetTaskState;
+using libreshockwave::player::net::QueuedNetProvider;
 using libreshockwave::player::render::RenderConfig;
 using libreshockwave::player::render::RenderType;
 using libreshockwave::player::render::SpriteRegistry;
@@ -21351,6 +21353,117 @@ void testNetManagerFoundation() {
     assert(resetTask == 1);
 }
 
+void testQueuedNetProviderFoundation() {
+    QueuedNetProvider provider("https://example.invalid/movies/entry.dcr");
+    assert(provider.basePath() == "https://example.invalid/movies/entry.dcr");
+    assert(provider.pendingRequests().empty());
+    assert(provider.getRequest(0) == nullptr);
+    assert(!provider.netDone());
+    assert(provider.getStreamStatus() == "Error");
+    assert(statusProp(provider.getStreamStatusDatum(), "state").stringValue() == "Error");
+
+    std::vector<std::string> completedUrls;
+    std::vector<int> completedSizes;
+    provider.setFetchCompleteCallback([&](const std::string& url, const std::vector<std::uint8_t>& data) {
+        completedUrls.push_back(url);
+        completedSizes.push_back(static_cast<int>(data.size()));
+    });
+
+    const int rootTask = provider.preloadNetThing("/gamedata/external_variables.txt?cache=1");
+    assert(rootTask == 1);
+    assert(!provider.netDone(rootTask));
+    assert(provider.getTaskUrl(rootTask).value() == "https://example.invalid/gamedata/external_variables.txt?cache=1");
+    assert(provider.pendingRequests().size() == 1);
+    assert(provider.getRequest(0)->taskId == rootTask);
+    assert(provider.getRequest(0)->method == "GET");
+    assert(provider.getRequest(0)->url == "https://example.invalid/gamedata/external_variables.txt?cache=1");
+    assert(provider.getRequest(0)->fallbacks.size() == 1);
+    auto loadingStatus = provider.getStreamStatusDatum(rootTask);
+    assert(statusProp(loadingStatus, "URL").stringValue() == "https://example.invalid/gamedata/external_variables.txt?cache=1");
+    assert(statusProp(loadingStatus, "state").stringValue() == "Loading");
+    assert(statusProp(loadingStatus, "bytesSoFar").intValue() == 1);
+    loadingStatus = provider.getStreamStatusDatum(rootTask);
+    assert(statusProp(loadingStatus, "bytesSoFar").intValue() == 2);
+
+    provider.drainPendingRequests();
+    assert(provider.pendingRequests().empty());
+    provider.onFetchComplete(rootTask, {'O', 'K'});
+    assert(provider.netDone(rootTask));
+    assert(provider.netError(rootTask) == 0);
+    assert(provider.netTextResult(rootTask) == "OK");
+    assert(provider.getStreamStatus(rootTask) == "Complete");
+    assert(completedUrls == std::vector<std::string>{"https://example.invalid/gamedata/external_variables.txt?cache=1"});
+    assert(completedSizes == std::vector<int>{2});
+    const auto completeStatus = provider.getStreamStatusDatum(
+        std::string_view("https://example.invalid/gamedata/external_variables.txt"));
+    assert(statusProp(completeStatus, "state").stringValue() == "Complete");
+    assert(statusProp(completeStatus, "bytesSoFar").intValue() == 2);
+    assert(statusProp(completeStatus, "bytesTotal").intValue() == 2);
+    assert(statusProp(completeStatus, "error").stringValue() == "OK");
+
+    const int rootCastTask = provider.preloadNetThing("https://example.invalid/room.cct");
+    assert(rootCastTask == 2);
+    assert(provider.pendingRequests().size() == 1);
+    const auto& rootCastRequest = provider.pendingRequests().back();
+    assert(rootCastRequest.url == "https://example.invalid/movies/room.cct");
+    assert((rootCastRequest.fallbacks == std::vector<std::string>{
+        "https://example.invalid/movies/room.cct",
+        "https://example.invalid/movies/room.cst",
+        "https://example.invalid/room.cct",
+        "https://example.invalid/room.cst",
+    }));
+    provider.onFetchComplete(rootCastTask, {'C', 'A', 'S', 'T'});
+    assert(provider.netTextResult(rootCastTask) == "CAST");
+
+    const int cachedCastTask = provider.preloadNetThing("ROOM.CST");
+    assert(cachedCastTask == 3);
+    assert(provider.netDone(cachedCastTask));
+    assert(provider.netTextResult(cachedCastTask) == "CAST");
+    assert(completedUrls.back() == "https://example.invalid/movies/ROOM.CST");
+
+    const int postTask = provider.postNetText("submit", "a=b");
+    assert(postTask == 4);
+    assert(provider.pendingRequests().back().taskId == postTask);
+    assert(provider.pendingRequests().back().method == "POST");
+    assert(provider.pendingRequests().back().url == "https://example.invalid/movies/submit");
+    assert(provider.pendingRequests().back().postData.value() == "a=b");
+    provider.onFetchStatusComplete(postTask, 12);
+    assert(provider.netDone(postTask));
+    assert(provider.netTextResult(postTask).empty());
+    const auto postStatus = provider.getStreamStatusDatum(postTask);
+    assert(statusProp(postStatus, "bytesSoFar").intValue() == 12);
+    assert(statusProp(postStatus, "bytesTotal").intValue() == 12);
+
+    const int failedTask = provider.preloadNetThing("missing.txt");
+    provider.onFetchError(failedTask, 503);
+    assert(provider.netDone(failedTask));
+    assert(provider.netError(failedTask) == 503);
+    assert(provider.getStreamStatus(failedTask) == "Error");
+    assert(statusProp(provider.getStreamStatusDatum(failedTask), "error").stringValue() == "503");
+
+    QueuedNetProvider satisfiedProvider("https://example.invalid/movie.dcr");
+    satisfiedProvider.setSatisfiedFetchPredicate([](std::string_view url) {
+        return url == "already.cct" || url == "https://example.invalid/already.cct";
+    });
+    const int satisfiedTask = satisfiedProvider.preloadNetThing("already.cct");
+    assert(satisfiedProvider.netDone(satisfiedTask));
+    assert(satisfiedProvider.pendingRequests().empty());
+
+    const int emptyTask = satisfiedProvider.preloadNetThing("");
+    assert(satisfiedProvider.netDone(emptyTask));
+    const int directoryTask = satisfiedProvider.preloadNetThing("https://example.invalid/assets/");
+    assert(satisfiedProvider.netDone(directoryTask));
+    assert(statusProp(satisfiedProvider.getStreamStatusDatum(
+               std::string_view("https://example.invalid/assets/")), "state").stringValue() == "Complete");
+
+    const int navigationTask = satisfiedProvider.beginMovieNavigation("next.dir");
+    assert(!satisfiedProvider.netDone(navigationTask));
+    satisfiedProvider.completeMovieNavigationTasks();
+    assert(satisfiedProvider.netDone(navigationTask));
+    assert(satisfiedProvider.netError(navigationTask) == 0);
+    assert(satisfiedProvider.getDebugStatus().find("pendingRequests=") != std::string::npos);
+}
+
 void testTimeoutManagerFoundation() {
     TimeoutManager manager;
     assert(manager.getTimeoutCount() == 0);
@@ -26234,6 +26347,7 @@ int main() {
     testSimpleTextRendererFoundation();
     testNetTaskFoundation();
     testNetManagerFoundation();
+    testQueuedNetProviderFoundation();
     testTimeoutManagerFoundation();
     testPaletteAndColorRefs();
     testBitmapAlphaAndPaletteBehavior();

@@ -650,6 +650,10 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Root-relative HTTP GETs expand against the configured HTTP `basePath` origin for provider-backed fetches and localHttpRoot filesystem loads while preserving the authored task URL for status callbacks.
 - Actual platform HTTP loading is exposed through an injectable fetch handler until the C++ platform networking backend is ported.
 
+### Queued Net Provider Foundation
+
+- `net::QueuedNetProvider` ports the Java WASM polling net provider as a platform-neutral C++ `NetProvider`, including queued GET/POST requests, host-delivered completion/error/status callbacks, movie-navigation task completion, satisfied-fetch short-circuiting, cast fallback URL expansion, cache-key lookup, and stream-status byte-count reporting while loading.
+
 ### Sound Manager Foundation
 
 - `audio::AudioBackend` ports the platform-neutral playback contract for 1-based Director sound channels.
@@ -1024,6 +1028,7 @@ Result:
 - TextRenderer split-line, character-line, line-start, wrapping, and default XMED delegation tests passed through the same CTest executable.
 - NetTask GET/POST construction, state transitions, result/error storage, stream status, and display formatting tests passed through the same CTest executable.
 - NetManager URL resolution, cache fallback, local basePath/localHttpRoot filesystem loading, root-relative HTTP request normalization, GET/POST registration, handler-backed completion/failure, latest-task lookup, stream-status prop lists, raw byte/text results, callbacks, shutdown, and clear tests passed through the same CTest executable.
+- QueuedNetProvider queued GET/POST registration, root-relative resolution, movie-directory cast fallbacks, host completion/error/status delivery, cache reuse, satisfied-fetch short-circuiting, directory-only completion, movie-navigation completion, pending-request draining, and stream-status prop-list byte-count reporting passed through the same CTest executable.
 - SoundManager channel validation, volume clamping, backend delegation, Lingo play argument parsing, resolver lookup, Player-installed CastLibManager resolver lookup, format detection, KEY-owned member lookup, and SoundChunk playable conversion tests passed through the same CTest executable.
 - TimeoutManager creation, property access/mutation, one-shot/persistent flags, timeout references, names/count, elapsed-time processing, one-shot removal-before-fire recreation, system-event script-instance target filtering, forget, and clear tests passed through the same CTest executable.
 - BitmapCache cache-keying, palette invalidation, non-native alpha coercion, indexed matte remap selection/application, and InkProcessor color remap/applyInk helpers, exact background-transparent keying, native-alpha background-border keying, native-alpha MATTE skip, 32-bit MATTE fallback preservation, MATTE palette fallback, duplicate-RGB explicit indexed MATTE selection, black/white default indexed MATTE fallback, indexed window-shadow MATTE selection, ADD/ADD_PIN flood-fill isolation, RGB ADD_PIN preservation, outlined-white body matte preservation, and DARKEN/LIGHTEN rectangular-media matte skipping passed through the same CTest executable.
@@ -1460,4 +1465,4 @@ Result:
 - `abe1e357 Port C++ external cast sound playback`
 - `b0e6e80d Port C++ XMED font-size ties`
 - `9a4467d9 Port C++ palette ID provider resolution`
-- Current checkpoint commit message: `Port C++ Director channel count fallback`
+- Current checkpoint commit message: `Port C++ queued net provider`
