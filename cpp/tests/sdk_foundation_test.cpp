@@ -93,6 +93,7 @@
 #include "libreshockwave/editor/model/MemberNodeData.hpp"
 #include "libreshockwave/editor/model/ScoreCellData.hpp"
 #include "libreshockwave/editor/panels/EditorPanelCatalog.hpp"
+#include "libreshockwave/editor/panels/EditorPanelModels.hpp"
 #include "libreshockwave/editor/extraction/AssetExtractor.hpp"
 #include "libreshockwave/editor/preview/GenericPreview.hpp"
 #include "libreshockwave/editor/preview/PalettePreview.hpp"
@@ -371,11 +372,18 @@ using libreshockwave::editor::model::MemberNodeData;
 using libreshockwave::editor::model::ScoreCellData;
 using libreshockwave::editor::panels::EditorFrameDefaults;
 using libreshockwave::editor::panels::EditorPanelCatalog;
+using libreshockwave::editor::panels::ColorPalettesModel;
+using libreshockwave::editor::panels::DisabledPanelAction;
+using libreshockwave::editor::panels::FieldEditorModel;
+using libreshockwave::editor::panels::FieldEditorState;
+using libreshockwave::editor::panels::MessageConsoleModel;
 using libreshockwave::editor::panels::PanelBounds;
 using libreshockwave::editor::panels::PanelCapabilities;
 using libreshockwave::editor::panels::PanelDescriptor;
 using libreshockwave::editor::panels::PanelPlacement;
 using libreshockwave::editor::panels::PanelSize;
+using libreshockwave::editor::panels::ToolPaletteModel;
+using libreshockwave::editor::panels::ToolPaletteTool;
 using libreshockwave::editor::extraction::AssetExtractor;
 using libreshockwave::editor::preview::GenericPreview;
 using libreshockwave::editor::preview::PalettePreview;
@@ -2111,6 +2119,48 @@ void testEditorPanelCatalogModels() {
     assert(layout.isDocked("tool-palette"));
     assert(layout.isDocked("bytecode-debugger"));
     assert(!layout.isDocked("stage"));
+}
+
+void testEditorPanelWindowModels() {
+    MessageConsoleModel console;
+    assert(console.output() == "Welcome to LibreShockwave Editor\n-- Type Lingo commands below\n\n");
+    assert(!console.executeCommand("   "));
+    assert(console.output() == MessageConsoleModel::welcomeText());
+    assert(console.executeCommand("  put 1  "));
+    assert(console.output() ==
+           "Welcome to LibreShockwave Editor\n-- Type Lingo commands below\n\n"
+           ">> put 1\n"
+           "-- (command execution not yet implemented)\n");
+    console.appendOutput("trace output");
+    assert(console.output().ends_with("trace output\n"));
+    console.reset();
+    assert(console.output() == MessageConsoleModel::welcomeText());
+
+    assert(ToolPaletteModel::columnCount() == 2);
+    const auto tools = ToolPaletteModel::tools();
+    assert(tools.size() == 14);
+    assert((tools.front() == ToolPaletteTool{"Arrow", 0, 0}));
+    assert((tools[1] == ToolPaletteTool{"Rotate", 0, 1}));
+    assert((tools[6] == ToolPaletteTool{"Round Rect", 3, 0}));
+    assert((tools.back() == ToolPaletteTool{"Color", 6, 1}));
+
+    assert(ColorPalettesModel::selectorLabel() == "Palette: ");
+    assert((ColorPalettesModel::paletteOptions() ==
+            std::vector<std::string>{"System - Win", "System - Mac", "Rainbow", "Grayscale", "Pastels", "Vivid",
+                                     "NTSC", "Metallic", "Web 216"}));
+    assert(ColorPalettesModel::placeholderText() == "Color Palettes - Not yet implemented");
+
+    assert((FieldEditorModel::toolbarActions() ==
+            std::vector<DisabledPanelAction>{DisabledPanelAction{"Wrap", "Wrap (not yet implemented)"},
+                                             DisabledPanelAction{"Scroll", "Scroll (not yet implemented)"}}));
+    assert((FieldEditorModel::emptyState() ==
+            FieldEditorState{"Field", "No field member selected", " Ready"}));
+    assert((FieldEditorModel::missingDataState() ==
+            FieldEditorState{"Field", "[Field data not found]", " No data"}));
+    assert((FieldEditorModel::loadedState("Greeting", 5, "Hello\r\nthere\r!") ==
+            FieldEditorState{"Field: Greeting", "Hello\nthere\n!", " Greeting  13 characters"}));
+    assert((FieldEditorModel::loadedState("", 12, "abc") ==
+            FieldEditorState{"Field: #12", "abc", " #12  3 characters"}));
 }
 
 void testEditorRendererModels() {
@@ -23110,6 +23160,7 @@ int main() {
     testEditorScoreViewModels();
     testEditorStageViewModels();
     testEditorPanelCatalogModels();
+    testEditorPanelWindowModels();
     testEditorRendererModels();
     testEditorModelAndSelectionFoundation();
     testEditorAudioModels();
