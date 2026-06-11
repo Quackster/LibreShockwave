@@ -265,6 +265,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `editor::gtk::GtkWorkbenchContentActionSpec` now also exposes stable GTK action names and detailed action names for disabled workbench content tools, and the optional GTK scaffold binds those buttons through the tested metadata.
 - The optional GTK scaffold now renders workbench tab buttons from `GtkWorkbenchTabSpec`, binding tab focus, float, and hide actions through the same tested action names used by the model layer.
 - `editor::gtk::GtkToolbarItemSpec` now carries GTK symbolic icon names and enabled state for toolbar buttons, labels, and separators, and the optional GTK scaffold renders icon buttons when metadata is available while preserving tested labels and tooltips.
+- With `gtk4-devel` installed, the optional `libreshockwave_editor_gtk` target now compiles and links locally; the GTK entrypoint includes LibreShockwave headers before GTK to avoid GLib `TRUE`/`FALSE` macro collisions with `lingo::Datum`.
 
 ### Bitmap Colorizer
 
@@ -1412,4 +1413,5 @@ Result:
 - `a0d20419 Port C++ GTK open-file button actions`
 - `7243bebc Route C++ GTK open-file dialog actions`
 - `01f20735 Route C++ GTK dialog button actions`
-- Current checkpoint commit message: `Bind C++ GTK workbench content actions`
+- `8e8a83e2 Bind C++ GTK workbench content actions`
+- Current checkpoint commit message: `Fix C++ GTK editor target build`

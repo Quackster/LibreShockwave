@@ -1,10 +1,10 @@
-#include <gtk/gtk.h>
-
 #include <string>
 #include <vector>
 
 #include "libreshockwave/editor/EditorShellModels.hpp"
 #include "libreshockwave/editor/gtk/EditorGtkModels.hpp"
+
+#include <gtk/gtk.h>
 
 namespace {
 
