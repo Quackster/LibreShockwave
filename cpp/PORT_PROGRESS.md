@@ -18,8 +18,8 @@ This file tracks the current state and remaining work only. Detailed chronologic
 - Runtime/player foundations: player facade, builtin context, VM event dispatch, sprite and movie properties, score navigation, input state/handler, hit testing, cursor manager, sprite registry/state, behavior instances, event dispatching, frame context, timeout manager, sound manager, net manager, queued browser-facing net/audio/JPEG/Multiuser bridges, and player-owned Xtra manager wiring.
 - Rendering pipeline: stage renderer, sprite baker, render pipeline context/runner, software frame renderer, bitmap cache/ink processor, text renderer interface, and simple text renderer.
 - Dynamic/runtime member support: runtime bitmap/text/palette/script payloads, dynamic member creation/reuse/erase, runtime member media copying, imported bitmap media, runtime registration points, editable field state/overlay helpers, and dynamic bitmap/text rendering through the player pipeline.
-- Debug/editor foundations: debugger data/control models, breakpoint/watch/expression helpers, lifecycle diagnostics, GTK-neutral editor models, optional GTK shell scaffolding, menu/action/dialog/open-file/workbench/start-screen metadata, dock/floating pane state, and GTK4 action/menu/open-file scaffolding.
-- Browser/WASM foundations: C++ WASM player wrapper, runtime bridge, prefixed native-testable C ABI export facade, browser-side export adapter for the worker's TeaVM-style method names, selectable `wasmRuntime: "cpp"` worker bootstrap, and conditional Emscripten CMake packaging, covering movie loading, frame rendering, cursor/caret/selection overlays, debug/trace controls, diagnostics, playback/input controls, navigation polling, external params, fetch/audio/Multiuser/JPEG queues, host result delivery, and last-error retrieval.
+- Debug/editor foundations: debugger data/control models, breakpoint/watch/expression helpers, lifecycle diagnostics, GTK-neutral editor models, optional GTK shell scaffolding, menu/action/dialog/open-file/workbench/start-screen metadata, dock/floating pane state, GTK4 right-click pane menus, drag-snap hooks, fixed-position floating pane rendering, and GTK4 action/menu/open-file scaffolding.
+- Browser/WASM foundations: C++ WASM player wrapper, runtime bridge, prefixed native-testable C ABI export facade, browser-side export adapter for the worker's TeaVM-style method names, and conditional Emscripten CMake packaging, covering movie loading, frame rendering, cursor/caret/selection overlays, debug/trace controls, diagnostics, playback/input controls, navigation polling, external params, fetch/audio/Multiuser/JPEG queues, host result delivery, and last-error retrieval.
 
 ## Verification
 
@@ -34,6 +34,6 @@ This file tracks the current state and remaining work only. Detailed chronologic
 - Detailed W3D geometry/material decoding and rendering integration.
 - Remaining Lingo decompiler, VM runtime value, dispatcher, and builtin parity gaps.
 - Remaining player core, rendering pipeline, input, networking, audio, cast management, and debugging parity gaps.
-- Emscripten-built C++ WASM browser verification and parity testing against the existing TeaVM web-player scenarios.
+- C++ browser runtime bootstrap, Emscripten-built C++ WASM browser verification, and parity testing against the existing TeaVM web-player scenarios.
 - Editor replacement strategy in C++.
 - Port parity tests against current Java fixtures and integration scenarios.

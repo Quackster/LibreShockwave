@@ -251,6 +251,18 @@ void clearBox(GtkWidget* box) {
     }
 }
 
+void clearContainer(GtkWidget* container) {
+    while (GtkWidget* child = gtk_widget_get_first_child(container)) {
+        if (GTK_IS_BOX(container)) {
+            gtk_box_remove(GTK_BOX(container), child);
+        } else if (GTK_IS_FIXED(container)) {
+            gtk_fixed_remove(GTK_FIXED(container), child);
+        } else {
+            gtk_widget_unparent(child);
+        }
+    }
+}
+
 GtkWidget* actionButton(const char* label, const std::string& detailedActionName, bool enabled = true) {
     GtkWidget* button = gtk_button_new_with_label(label);
     gtk_widget_set_sensitive(button, enabled && !detailedActionName.empty());
@@ -427,7 +439,7 @@ void populateWorkbenchDockArea(EditorGtkState& state,
 void populateWorkbenchFloatingArea(EditorGtkState& state,
                                    GtkWidget* floatingArea,
                                    const gtk_models::GtkWorkbenchLayoutSpec& layout) {
-    clearBox(floatingArea);
+    clearContainer(floatingArea);
     const bool hasFloatingPanels = !layout.floatingPanels.empty();
     gtk_widget_set_visible(floatingArea, hasFloatingPanels);
     if (!hasFloatingPanels) {
@@ -436,12 +448,17 @@ void populateWorkbenchFloatingArea(EditorGtkState& state,
 
     for (const auto& panel : layout.floatingPanels) {
         GtkWidget* frame = gtk_frame_new(panel.title.c_str());
+        const auto contextMenu =
+            gtk_models::EditorGtkShellModel::workbenchTabContextMenu(tabSpecForPanel(panel, panel.selected));
+        addPanelContextMenu(frame, contextMenu);
+        addPanelDragSnap(frame, state, panel.panelId);
         gtk_widget_set_size_request(frame,
                                     panel.bounds.width > 0 ? panel.bounds.width : -1,
                                     panel.bounds.height > 0 ? panel.bounds.height : -1);
-        gtk_widget_set_hexpand(frame, TRUE);
+        gtk_widget_set_hexpand(frame, FALSE);
+        gtk_widget_set_vexpand(frame, FALSE);
         gtk_frame_set_child(GTK_FRAME(frame), makeWorkbenchPanelContent(state, panel));
-        gtk_box_append(GTK_BOX(floatingArea), frame);
+        gtk_fixed_put(GTK_FIXED(floatingArea), frame, panel.bounds.x, panel.bounds.y);
     }
 }
 
@@ -691,8 +708,9 @@ GtkWidget* makeWorkbench(EditorGtkState& state) {
     populateWorkbenchDockArea(state, state.workbenchDockArea, view.workbenchLayout);
     gtk_box_append(GTK_BOX(workbenchBox), state.workbenchDockArea);
 
-    state.workbenchFloatingArea = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+    state.workbenchFloatingArea = gtk_fixed_new();
     gtk_widget_set_hexpand(state.workbenchFloatingArea, TRUE);
+    gtk_widget_set_vexpand(state.workbenchFloatingArea, TRUE);
     populateWorkbenchFloatingArea(state, state.workbenchFloatingArea, view.workbenchLayout);
     gtk_box_append(GTK_BOX(workbenchBox), state.workbenchFloatingArea);
 
