@@ -181,6 +181,7 @@ var LibreShockwaveCppPlayer = (function() {
                 break;
             case 'runtimeDiagnostics':
             case 'musWebSocketSelfTest':
+            case 'cxxSmusBridgeSelfTest':
                 this._resolveDiagnostic(message.requestId, message.diagnostics || {});
                 break;
             case 'testError':
@@ -749,6 +750,13 @@ var LibreShockwaveCppPlayer = (function() {
             return Promise.resolve({ ok: false, error: 'runtime not ready' });
         }
         return this._requestDiagnostic('runMusWebSocketSelfTest', options || {});
+    };
+
+    Player.prototype.runCxxSmusBridgeSelfTest = function(options) {
+        if (!this.worker || !this.ready) {
+            return Promise.resolve({ ok: false, error: 'runtime not ready' });
+        }
+        return this._requestDiagnostic('runCxxSmusBridgeSelfTest', options || {});
     };
 
     Player.prototype._handleGotoNetPage = function(url, target) {

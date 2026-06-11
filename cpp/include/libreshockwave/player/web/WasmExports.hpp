@@ -130,6 +130,18 @@ LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_mus_deliver_connected(int in
 LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_mus_deliver_disconnected(int instanceId);
 LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_mus_deliver_error(int instanceId, int errorCode);
 LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_mus_deliver_message(int instanceId, int dataLen);
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_debug_mus_request_connect(
+    int instanceId, int hostLen, int port, int mode);
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_debug_mus_request_send_text(
+    int instanceId, int senderLen, int subjectLen, int contentLen);
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_debug_mus_request_disconnect(int instanceId);
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_debug_mus_is_connected(int instanceId);
+LIBRESHOCKWAVE_WASM_EXPORT void libreshockwave_wasm_debug_mus_destroy_instance(int instanceId);
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_debug_mus_poll_message_count(int instanceId);
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_debug_mus_message_error(int index);
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_debug_mus_message_sender(int index);
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_debug_mus_message_subject(int index);
+LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_debug_mus_message_content(int index);
 
 LIBRESHOCKWAVE_WASM_EXPORT int libreshockwave_wasm_get_last_error();
 

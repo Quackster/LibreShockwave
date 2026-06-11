@@ -120,6 +120,16 @@ var _requiredExports = {
     musDeliverDisconnected: 'mus_deliver_disconnected',
     musDeliverError: 'mus_deliver_error',
     musDeliverMessage: 'mus_deliver_message',
+    debugMusRequestConnect: 'debug_mus_request_connect',
+    debugMusRequestSendText: 'debug_mus_request_send_text',
+    debugMusRequestDisconnect: 'debug_mus_request_disconnect',
+    debugMusIsConnected: 'debug_mus_is_connected',
+    debugMusDestroyInstance: 'debug_mus_destroy_instance',
+    debugMusPollMessageCount: 'debug_mus_poll_message_count',
+    debugMusMessageError: 'debug_mus_message_error',
+    debugMusMessageSender: 'debug_mus_message_sender',
+    debugMusMessageSubject: 'debug_mus_message_subject',
+    debugMusMessageContent: 'debug_mus_message_content',
     setExternalParam: 'set_external_param',
     clearExternalParams: 'clear_external_params',
     mouseMove: 'mouse_move',
@@ -251,6 +261,29 @@ function _writeBytes(bytes) {
     var length = Math.min(bytes.length, buffer.length);
     buffer.set(bytes.subarray(0, length), 0);
     return length;
+}
+
+function _writeStringSegments(values) {
+    var encoder = new TextEncoder();
+    var encoded = [];
+    var total = 0;
+    for (var i = 0; i < values.length; i++) {
+        var bytes = encoder.encode(values[i] == null ? '' : String(values[i]));
+        encoded.push(bytes);
+        total += bytes.length;
+    }
+    var buffer = _stringBufferView();
+    if (total > buffer.length) {
+        throw new Error('C++ WASM string buffer too small for Multiuser diagnostic payload');
+    }
+    var offset = 0;
+    var lengths = [];
+    for (var j = 0; j < encoded.length; j++) {
+        buffer.set(encoded[j], offset);
+        lengths.push(encoded[j].length);
+        offset += encoded[j].length;
+    }
+    return lengths;
 }
 
 function _hexPrefix(bytes, maxLength) {
@@ -789,6 +822,50 @@ function _pumpMusRequests() {
     return count;
 }
 
+function _debugMusRequestConnect(instanceId, host, port, mode) {
+    var hostLength = _writeString(host || '');
+    _exports.debugMusRequestConnect(instanceId, hostLength, port | 0, mode | 0);
+}
+
+function _debugMusRequestSendText(instanceId, sender, subject, content) {
+    var lengths = _writeStringSegments([sender || '', subject || '', content || '']);
+    _exports.debugMusRequestSendText(instanceId, lengths[0], lengths[1], lengths[2]);
+}
+
+function _debugMusPollMessages(instanceId) {
+    var count = _exports.debugMusPollMessageCount(instanceId);
+    var messages = [];
+    for (var i = 0; i < count; i++) {
+        messages.push({
+            errorCode: _exports.debugMusMessageError(i),
+            sender: _readString(_exports.debugMusMessageSender(i)),
+            subject: _readString(_exports.debugMusMessageSubject(i)),
+            content: _readString(_exports.debugMusMessageContent(i))
+        });
+    }
+    return messages;
+}
+
+function _findPendingMusRequest(instanceId, type) {
+    var count = _exports.getMusPendingCount();
+    for (var i = 0; i < count; i++) {
+        if (_exports.getMusPendingInstanceId(i) === instanceId &&
+                _exports.getMusPendingType(i) === type) {
+            var dataLength = type === 1 ? _exports.getMusPendingSendData(i) : 0;
+            var dataPrefix = dataLength > 0
+                ? _hexPrefix(_stringBufferView().subarray(0, dataLength), 16)
+                : '';
+            return {
+                index: i,
+                count: count,
+                dataLength: dataLength,
+                dataHexPrefix: dataPrefix
+            };
+        }
+    }
+    return { index: -1, count: count, dataLength: 0, dataHexPrefix: '' };
+}
+
 async function _runMusWebSocketSelfTest(message) {
     var timeoutMs = message.timeoutMs || 4000;
     var instanceId = message.instanceId || 0x5a1701;
@@ -922,6 +999,169 @@ async function _runMusWebSocketSelfTest(message) {
     } finally {
         _clearMusInstance(instanceId);
         _clearMusInstance(errorInstanceId);
+    }
+}
+
+async function _runCxxSmusBridgeSelfTest(message) {
+    var timeoutMs = message.timeoutMs || 4000;
+    var instanceId = message.instanceId || 0x5a2701;
+    var errorInstanceId = message.errorInstanceId || (instanceId + 1);
+    var host = message.host || '127.0.0.1';
+    var port = message.port | 0;
+    var errorHost = message.errorHost || host;
+    var errorPort = message.errorPort | 0;
+    var sender = message.sender || 'alice';
+    var subject = message.subject || 'CHAT';
+    var content = message.content == null ? 'hello-smus' : String(message.content);
+    var result = {
+        ok: false,
+        host: host,
+        port: port,
+        instanceId: instanceId,
+        connected: false,
+        cppConnected: false,
+        logonQueued: false,
+        logonSent: false,
+        smusSendQueued: false,
+        smusSendSent: false,
+        cppReceived: false,
+        disconnectRequested: false,
+        errorDelivered: false
+    };
+
+    if (!port) {
+        result.error = 'missing WebSocket port';
+        return result;
+    }
+
+    _clearMusInstance(instanceId);
+    _clearMusInstance(errorInstanceId);
+    _exports.debugMusDestroyInstance(instanceId);
+    _exports.debugMusDestroyInstance(errorInstanceId);
+
+    try {
+        _debugMusRequestConnect(instanceId, host, port, 0);
+        result.connectPending = _findPendingMusRequest(instanceId, 0);
+        _pumpMusRequests();
+
+        var openState = await _waitForMusState(instanceId, function() {
+            if (_hasQueuedMusEvent(_musConnected, instanceId)) {
+                return { type: 'connected' };
+            }
+            if (_hasQueuedMusEvent(_musErrors, instanceId)) {
+                return { type: 'error', code: _musErrors[instanceId] };
+            }
+            if (_hasQueuedMusEvent(_musDisconnected, instanceId)) {
+                return { type: 'disconnected' };
+            }
+            return null;
+        }, timeoutMs);
+        result.openState = openState ? openState.type : 'timeout';
+        if (!openState || openState.type !== 'connected') {
+            if (openState && openState.type === 'error') {
+                result.errorCode = openState.code;
+            }
+            return result;
+        }
+
+        result.connected = true;
+        _deliverMusEvents();
+        result.cppConnected = _exports.debugMusIsConnected(instanceId) === 1;
+        result.connectedMessages = _debugMusPollMessages(instanceId);
+
+        var logonPending = _findPendingMusRequest(instanceId, 1);
+        result.logonPending = logonPending;
+        result.logonQueued = logonPending.index >= 0 && logonPending.dataLength === 80 &&
+            logonPending.dataHexPrefix.indexOf('72 00') === 0;
+        _pumpMusRequests();
+        result.logonSent = result.logonQueued;
+
+        _debugMusRequestSendText(instanceId, sender, subject, content);
+        var sendPending = _findPendingMusRequest(instanceId, 1);
+        result.smusSendPending = sendPending;
+        result.smusSendQueued = sendPending.index >= 0 && sendPending.dataLength > 6 &&
+            sendPending.dataHexPrefix.indexOf('72 00') === 0;
+        _pumpMusRequests();
+        result.smusSendSent = result.smusSendQueued;
+
+        var receiveState = await _waitForMusState(instanceId, function() {
+            var inbound = _musInbound[instanceId];
+            if (inbound && inbound.length > 0) {
+                return { type: 'message' };
+            }
+            if (_hasQueuedMusEvent(_musErrors, instanceId)) {
+                return { type: 'error', code: _musErrors[instanceId] };
+            }
+            if (_hasQueuedMusEvent(_musDisconnected, instanceId)) {
+                return { type: 'disconnected' };
+            }
+            return null;
+        }, timeoutMs);
+        result.receiveState = receiveState ? receiveState.type : 'timeout';
+        if (receiveState && receiveState.type === 'message') {
+            _deliverMusEvents();
+            result.receivedMessages = _debugMusPollMessages(instanceId);
+            for (var i = 0; i < result.receivedMessages.length; i++) {
+                var received = result.receivedMessages[i];
+                if (received.errorCode === 0 && received.sender === sender &&
+                        received.subject === subject && received.content === content) {
+                    result.cppReceived = true;
+                    break;
+                }
+            }
+        } else if (receiveState && receiveState.type === 'error') {
+            result.receiveErrorCode = receiveState.code;
+        }
+
+        _exports.debugMusRequestDisconnect(instanceId);
+        result.disconnectRequested = true;
+        _pumpMusRequests();
+        result.cppConnectedAfterDisconnect = _exports.debugMusIsConnected(instanceId) === 1;
+        result.socketClosedAfterDisconnect = !_musSockets[instanceId];
+
+        if (errorPort) {
+            _debugMusRequestConnect(errorInstanceId, errorHost, errorPort, 0);
+            _pumpMusRequests();
+            var errorState = await _waitForMusState(errorInstanceId, function() {
+                if (_hasQueuedMusEvent(_musErrors, errorInstanceId)) {
+                    return { type: 'error', code: _musErrors[errorInstanceId] };
+                }
+                if (_hasQueuedMusEvent(_musConnected, errorInstanceId)) {
+                    return { type: 'connected' };
+                }
+                if (_hasQueuedMusEvent(_musDisconnected, errorInstanceId)) {
+                    return { type: 'disconnected' };
+                }
+                return null;
+            }, timeoutMs);
+            result.errorState = errorState ? errorState.type : 'timeout';
+            if (errorState && errorState.type === 'error') {
+                result.errorCode = errorState.code;
+                _deliverMusEvents();
+                result.errorMessages = _debugMusPollMessages(errorInstanceId);
+                result.errorDelivered = result.errorMessages.some(function(errorMessage) {
+                    return errorMessage.errorCode === errorState.code &&
+                        errorMessage.subject === 'ConnectionProblem';
+                });
+            }
+        } else {
+            result.errorDelivered = true;
+        }
+
+        result.ok = result.connected && result.cppConnected && result.logonQueued &&
+            result.logonSent && result.smusSendQueued && result.smusSendSent &&
+            result.cppReceived && result.disconnectRequested &&
+            result.socketClosedAfterDisconnect && !result.cppConnectedAfterDisconnect &&
+            result.errorDelivered;
+        return result;
+    } catch (e) {
+        result.exception = e && e.message ? e.message : String(e);
+        return result;
+    } finally {
+        _clearMusInstance(instanceId);
+        _clearMusInstance(errorInstanceId);
+        _exports.debugMusDestroyInstance(instanceId);
+        _exports.debugMusDestroyInstance(errorInstanceId);
     }
 }
 
@@ -1402,6 +1642,13 @@ self.onmessage = function(event) {
                     type: 'musWebSocketSelfTest',
                     requestId: message.requestId || 0,
                     diagnostics: await _runMusWebSocketSelfTest(message)
+                });
+                break;
+            case 'runCxxSmusBridgeSelfTest':
+                self.postMessage({
+                    type: 'cxxSmusBridgeSelfTest',
+                    requestId: message.requestId || 0,
+                    diagnostics: await _runCxxSmusBridgeSelfTest(message)
                 });
                 break;
             case 'triggerTestError': {

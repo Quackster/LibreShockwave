@@ -22704,6 +22704,59 @@ void testWasmExportsFoundation() {
     assert(musMessages[0].errorCode == 9);
     libreshockwave_wasm_mus_deliver_disconnected(55);
     assert(!runtime.player()->multiuserBridge()->isConnected(55));
+    libreshockwave_wasm_drain_mus_pending();
+
+    const std::string smusHost = "smus.local";
+    writeStringBuffer(smusHost);
+    libreshockwave_wasm_debug_mus_request_connect(66, static_cast<int>(smusHost.size()), 38101, 0);
+    assert(libreshockwave_wasm_get_mus_pending_count() == 1);
+    assert(libreshockwave_wasm_get_mus_pending_type(0) == QueuedMultiuserBridge::REQ_CONNECT);
+    assert(libreshockwave_wasm_get_mus_pending_instance_id(0) == 66);
+    musHostLen = libreshockwave_wasm_get_mus_pending_host(0);
+    assert(readStringBuffer(musHostLen) == smusHost);
+    assert(libreshockwave_wasm_get_mus_pending_port(0) == 38101);
+    libreshockwave_wasm_drain_mus_pending();
+    libreshockwave_wasm_mus_deliver_connected(66);
+    assert(libreshockwave_wasm_debug_mus_is_connected(66) == 1);
+    assert(libreshockwave_wasm_debug_mus_poll_message_count(66) == 1);
+    assert(readStringBuffer(libreshockwave_wasm_debug_mus_message_sender(0)) == "System");
+    assert(readStringBuffer(libreshockwave_wasm_debug_mus_message_subject(0)) == "ConnectToNetServer");
+    assert(libreshockwave_wasm_get_mus_pending_count() == 1);
+    assert(libreshockwave_wasm_get_mus_pending_type(0) == QueuedMultiuserBridge::REQ_SEND);
+    int smusLogonLen = libreshockwave_wasm_get_mus_pending_send_data(0);
+    assert(smusLogonLen == 80);
+    assert(stringBuffer[0] == 114);
+    assert(stringBuffer[1] == 0);
+    libreshockwave_wasm_drain_mus_pending();
+
+    const std::string sender = "bob";
+    const std::string subject = "CHAT";
+    const std::string content = "hello-smus";
+    writeStringBuffer(sender, 0);
+    writeStringBuffer(subject, static_cast<int>(sender.size()));
+    writeStringBuffer(content, static_cast<int>(sender.size() + subject.size()));
+    libreshockwave_wasm_debug_mus_request_send_text(66,
+                                                    static_cast<int>(sender.size()),
+                                                    static_cast<int>(subject.size()),
+                                                    static_cast<int>(content.size()));
+    assert(libreshockwave_wasm_get_mus_pending_count() == 1);
+    assert(libreshockwave_wasm_get_mus_pending_type(0) == QueuedMultiuserBridge::REQ_SEND);
+    int smusSendLen = libreshockwave_wasm_get_mus_pending_send_data(0);
+    assert(smusSendLen > 6);
+    assert(stringBuffer[0] == 114);
+    assert(stringBuffer[1] == 0);
+    libreshockwave_wasm_drain_mus_pending();
+    libreshockwave_wasm_mus_deliver_message(66, smusSendLen);
+    assert(libreshockwave_wasm_debug_mus_poll_message_count(66) == 1);
+    assert(libreshockwave_wasm_debug_mus_message_error(0) == 0);
+    assert(readStringBuffer(libreshockwave_wasm_debug_mus_message_sender(0)) == sender);
+    assert(readStringBuffer(libreshockwave_wasm_debug_mus_message_subject(0)) == subject);
+    assert(readStringBuffer(libreshockwave_wasm_debug_mus_message_content(0)) == content);
+    libreshockwave_wasm_debug_mus_request_disconnect(66);
+    assert(libreshockwave_wasm_get_mus_pending_count() == 1);
+    assert(!libreshockwave_wasm_debug_mus_is_connected(66));
+    libreshockwave_wasm_drain_mus_pending();
+    libreshockwave_wasm_debug_mus_destroy_instance(66);
 
     DirectorFile::clearJpegDecodePending();
     const std::vector<std::uint8_t> jpegData{0xFF, 0xD8, 0x45, 0x67, 0xFF, 0xD9};
@@ -22906,6 +22959,16 @@ void testWasmCppAdapterResourceFoundation() {
                         adapterCExports.end(),
                         std::inserter(abiOnlyExports, abiOnlyExports.end()));
     assert((abiOnlyExports == std::set<std::string>{
+        "_libreshockwave_wasm_debug_mus_destroy_instance",
+        "_libreshockwave_wasm_debug_mus_is_connected",
+        "_libreshockwave_wasm_debug_mus_message_content",
+        "_libreshockwave_wasm_debug_mus_message_error",
+        "_libreshockwave_wasm_debug_mus_message_sender",
+        "_libreshockwave_wasm_debug_mus_message_subject",
+        "_libreshockwave_wasm_debug_mus_poll_message_count",
+        "_libreshockwave_wasm_debug_mus_request_connect",
+        "_libreshockwave_wasm_debug_mus_request_disconnect",
+        "_libreshockwave_wasm_debug_mus_request_send_text",
         "_libreshockwave_wasm_get_script_timeout_ms",
         "_libreshockwave_wasm_set_script_timeout_ms",
     }));
@@ -23034,6 +23097,8 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(player.find("triggerTestError") != std::string::npos);
     assert(player.find("runMusWebSocketSelfTest") != std::string::npos);
     assert(player.find("musWebSocketSelfTest") != std::string::npos);
+    assert(player.find("runCxxSmusBridgeSelfTest") != std::string::npos);
+    assert(player.find("cxxSmusBridgeSelfTest") != std::string::npos);
     assert(player.find("_requestDiagnostic") != std::string::npos);
     assert(player.find("Object.assign({}, payload || {}, { type: type, requestId: requestId })") != std::string::npos);
     assert(player.find("fetchWithTimeout") != std::string::npos);
@@ -23066,6 +23131,12 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(worker.find("runMusWebSocketSelfTest") != std::string::npos);
     assert(worker.find("musWebSocketSelfTest") != std::string::npos);
     assert(worker.find("socket.send(payloadBytes.buffer.slice(0))") != std::string::npos);
+    assert(worker.find("_runCxxSmusBridgeSelfTest") != std::string::npos);
+    assert(worker.find("runCxxSmusBridgeSelfTest") != std::string::npos);
+    assert(worker.find("cxxSmusBridgeSelfTest") != std::string::npos);
+    assert(worker.find("debug_mus_request_connect") != std::string::npos);
+    assert(worker.find("debugMusPollMessageCount") != std::string::npos);
+    assert(worker.find("debugMusRequestSendText") != std::string::npos);
     assert(worker.find("read_next_goto_net_page") != std::string::npos);
     assert(worker.find("OffscreenCanvas") != std::string::npos);
     assert(worker.find("new WebSocket") != std::string::npos);
@@ -23132,6 +23203,9 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(workerExports.count("_libreshockwave_wasm_audio_notify_stopped") == 1);
     assert(workerExports.count("_libreshockwave_wasm_get_mus_pending_count") == 1);
     assert(workerExports.count("_libreshockwave_wasm_mus_deliver_message") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_debug_mus_request_connect") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_debug_mus_request_send_text") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_debug_mus_poll_message_count") == 1);
     assert(workerExports.count("_libreshockwave_wasm_read_next_goto_net_page") == 1);
     assert(workerExports.count("_libreshockwave_wasm_go_to_frame") == 1);
     assert(workerExports.count("_libreshockwave_wasm_get_cursor_type") == 1);

@@ -42,6 +42,7 @@ struct ExportState {
     std::optional<InputHandler::CaretInfo> caretInfo;
     std::vector<InputHandler::SelectionRect> selectionRects;
     std::string debugLog;
+    std::vector<lingo::xtra::MultiuserNetBridge::NetMessage> debugMusMessages;
 };
 
 ExportState& state() {
@@ -110,6 +111,22 @@ int writeBytes(const std::vector<std::uint8_t>& value) {
     return len;
 }
 
+std::string datumDebugString(const lingo::Datum& value) {
+    try {
+        return value.stringValue();
+    } catch (...) {
+        return value.typeString();
+    }
+}
+
+const lingo::xtra::MultiuserNetBridge::NetMessage* debugMusMessageAt(int index) {
+    const auto& messages = state().debugMusMessages;
+    if (index < 0 || index >= static_cast<int>(messages.size())) {
+        return nullptr;
+    }
+    return &messages[static_cast<std::size_t>(index)];
+}
+
 int packTwoLengths(int high, int low) {
     return ((high & 0xFFFF) << 16) | (low & 0xFFFF);
 }
@@ -121,6 +138,11 @@ Player* activePlayer() {
 
 WasmPlayer* activeWasmPlayer() {
     return state().runtime.player();
+}
+
+xtra::QueuedMultiuserBridge* activeMultiuserBridge() {
+    auto* wrapper = activeWasmPlayer();
+    return wrapper != nullptr ? wrapper->multiuserBridge() : nullptr;
 }
 
 std::vector<std::uint8_t> bitmapToRgba(const bitmap::Bitmap& bitmap, bool paletteWhiteTransparent) {
@@ -866,6 +888,74 @@ void libreshockwave_wasm_mus_deliver_error(int instanceId, int errorCode) {
 
 void libreshockwave_wasm_mus_deliver_message(int instanceId, int dataLen) {
     state().runtime.multiuserDeliverMessageBytes(instanceId, readBytes(state().stringBuffer, dataLen));
+}
+
+void libreshockwave_wasm_debug_mus_request_connect(int instanceId, int hostLen, int port, int mode) {
+    auto* bridge = activeMultiuserBridge();
+    if (bridge == nullptr) {
+        return;
+    }
+    bridge->requestConnect(instanceId, readString(state().stringBuffer, 0, hostLen), port, mode);
+}
+
+void libreshockwave_wasm_debug_mus_request_send_text(
+    int instanceId, int senderLen, int subjectLen, int contentLen) {
+    auto* bridge = activeMultiuserBridge();
+    if (bridge == nullptr) {
+        return;
+    }
+    const auto& buffer = state().stringBuffer;
+    const auto sender = readString(buffer, 0, senderLen);
+    const auto subject = readString(buffer, senderLen, subjectLen);
+    const auto content = readString(buffer, senderLen + subjectLen, contentLen);
+    bridge->requestSend(instanceId, sender, subject, Datum::of(content));
+}
+
+void libreshockwave_wasm_debug_mus_request_disconnect(int instanceId) {
+    auto* bridge = activeMultiuserBridge();
+    if (bridge != nullptr) {
+        bridge->requestDisconnect(instanceId);
+    }
+}
+
+int libreshockwave_wasm_debug_mus_is_connected(int instanceId) {
+    auto* bridge = activeMultiuserBridge();
+    return bridge != nullptr && bridge->isConnected(instanceId) ? 1 : 0;
+}
+
+void libreshockwave_wasm_debug_mus_destroy_instance(int instanceId) {
+    auto* bridge = activeMultiuserBridge();
+    if (bridge != nullptr) {
+        bridge->destroyInstance(instanceId);
+    }
+    state().debugMusMessages.clear();
+}
+
+int libreshockwave_wasm_debug_mus_poll_message_count(int instanceId) {
+    auto* bridge = activeMultiuserBridge();
+    state().debugMusMessages = bridge != nullptr ? bridge->pollMessages(instanceId) :
+        std::vector<libreshockwave::lingo::xtra::MultiuserNetBridge::NetMessage>{};
+    return static_cast<int>(state().debugMusMessages.size());
+}
+
+int libreshockwave_wasm_debug_mus_message_error(int index) {
+    const auto* message = debugMusMessageAt(index);
+    return message != nullptr ? message->errorCode : 0;
+}
+
+int libreshockwave_wasm_debug_mus_message_sender(int index) {
+    const auto* message = debugMusMessageAt(index);
+    return message != nullptr ? writeBytes(message->senderID) : 0;
+}
+
+int libreshockwave_wasm_debug_mus_message_subject(int index) {
+    const auto* message = debugMusMessageAt(index);
+    return message != nullptr ? writeBytes(message->subject) : 0;
+}
+
+int libreshockwave_wasm_debug_mus_message_content(int index) {
+    const auto* message = debugMusMessageAt(index);
+    return message != nullptr ? writeBytes(datumDebugString(message->content)) : 0;
 }
 
 int libreshockwave_wasm_get_last_error() {

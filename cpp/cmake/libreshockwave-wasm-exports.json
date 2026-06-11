@@ -104,5 +104,15 @@
   "_libreshockwave_wasm_mus_deliver_disconnected",
   "_libreshockwave_wasm_mus_deliver_error",
   "_libreshockwave_wasm_mus_deliver_message",
+  "_libreshockwave_wasm_debug_mus_request_connect",
+  "_libreshockwave_wasm_debug_mus_request_send_text",
+  "_libreshockwave_wasm_debug_mus_request_disconnect",
+  "_libreshockwave_wasm_debug_mus_is_connected",
+  "_libreshockwave_wasm_debug_mus_destroy_instance",
+  "_libreshockwave_wasm_debug_mus_poll_message_count",
+  "_libreshockwave_wasm_debug_mus_message_error",
+  "_libreshockwave_wasm_debug_mus_message_sender",
+  "_libreshockwave_wasm_debug_mus_message_subject",
+  "_libreshockwave_wasm_debug_mus_message_content",
   "_libreshockwave_wasm_get_last_error"
 ]
