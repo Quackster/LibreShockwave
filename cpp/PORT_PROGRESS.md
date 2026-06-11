@@ -207,6 +207,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `editor::preview::GenericPreview`, `PalettePreview`, `ScriptPreview`, `SoundPreview`, and `TextPreview` port Java's GTK-ready preview generation surface as UI-neutral text/swatch producers.
 - `editor::extraction::AssetExtractor` ports Java's editor asset extraction for sound, script, text/button, palette, and generic member data, with callback-based bitmap writing for a later GTK image export integration.
 - `editor::debug` ports Java's debugger combo-box display items, instruction display state, call-target extraction, and stack/variable/watch/timeout table models as GTK-neutral row/value helpers.
+- `editor::debug::DebugBrowserModels` ports Java's debugger handler navigation, script/handler filtering and silent selection behavior, bytecode instruction row construction, Lingo decompiler row mapping, breakpoint marker refresh, and navigable call-target detection for the future GTK debugger.
 
 ### Bitmap Colorizer
 
@@ -1278,4 +1279,5 @@ Result:
 - `a0e63b08 Port C++ editor scanning helpers`
 - `0ae8d835 Port C++ editor preview generators`
 - `8a0ff73d Port C++ editor asset extraction`
-- Current checkpoint commit message: `Port C++ editor debug data models`
+- `62bfdd39 Port C++ editor debug data models`
+- Current checkpoint commit message: `Port C++ editor debug browser models`

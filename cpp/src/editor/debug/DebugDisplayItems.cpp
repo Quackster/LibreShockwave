@@ -90,7 +90,9 @@ InstructionDisplayItem InstructionDisplayItem::fromInstruction(const player::deb
 }
 
 bool InstructionDisplayItem::isCallInstruction() const {
-    return opcode == "EXT_CALL" || opcode == "OBJ_CALL" || opcode == "LOCAL_CALL";
+    return opcode == "EXT_CALL" || opcode == "extCall" ||
+           opcode == "OBJ_CALL" || opcode == "objCall" ||
+           opcode == "LOCAL_CALL" || opcode == "localCall";
 }
 
 bool InstructionDisplayItem::isNavigableCall() const {

@@ -72,6 +72,7 @@
 #include "libreshockwave/chunks/ScoreChunk.hpp"
 #include "libreshockwave/chunks/SoundChunk.hpp"
 #include "libreshockwave/chunks/TextChunk.hpp"
+#include "libreshockwave/editor/debug/DebugBrowserModels.hpp"
 #include "libreshockwave/editor/debug/DebugDisplayItems.hpp"
 #include "libreshockwave/editor/debug/DebugTableModels.hpp"
 #include "libreshockwave/editor/format/ChannelNames.hpp"
@@ -277,8 +278,14 @@ using libreshockwave::chunks::ScriptNamesChunk;
 using libreshockwave::chunks::ScoreChunk;
 using libreshockwave::chunks::SoundChunk;
 using libreshockwave::chunks::TextChunk;
+using libreshockwave::editor::debug::BytecodeListBuildOptions;
+using libreshockwave::editor::debug::BytecodeListModel;
+using libreshockwave::editor::debug::HandlerLocation;
 using libreshockwave::editor::debug::HandlerItem;
+using libreshockwave::editor::debug::HandlerNavigator;
 using libreshockwave::editor::debug::InstructionDisplayItem;
+using libreshockwave::editor::debug::ScriptBrowserModel;
+using libreshockwave::editor::debug::ScriptSource;
 using libreshockwave::editor::debug::ScriptItem;
 using libreshockwave::editor::debug::StackTableModel;
 using libreshockwave::editor::debug::TimeoutSnapshot;
@@ -1572,6 +1579,149 @@ void testEditorDebugDataModels() {
     InstructionDisplayItem malformedCall{10, 3, "OBJ_CALL", 0, "go()", false};
     malformedCall.navigable = true;
     assert(!malformedCall.isNavigableCall());
+
+    auto browserNames = std::make_shared<ScriptNamesChunk>(
+        nullptr,
+        ChunkId(242),
+        std::vector<std::string>{"zero", "mouseUp", "go", "missing"});
+    ScriptChunk::Handler mainHandler{};
+    mainHandler.nameId = 1;
+    mainHandler.handlerVectorPos = 0;
+    mainHandler.bytecodeOffset = 0;
+    mainHandler.instructions = {
+        ScriptChunk::Instruction{0, Opcode::PUSH_INT8, static_cast<int>(Opcode::PUSH_INT8), 5},
+        ScriptChunk::Instruction{2, Opcode::EXT_CALL, static_cast<int>(Opcode::EXT_CALL), 2},
+        ScriptChunk::Instruction{4, Opcode::LOCAL_CALL, static_cast<int>(Opcode::LOCAL_CALL), 1},
+        ScriptChunk::Instruction{6, Opcode::RET, static_cast<int>(Opcode::RET), 0},
+    };
+    ScriptChunk::Handler targetHandler{};
+    targetHandler.nameId = 2;
+    targetHandler.handlerVectorPos = 1;
+    targetHandler.bytecodeOffset = 8;
+    targetHandler.instructions = {
+        ScriptChunk::Instruction{8, Opcode::RET, static_cast<int>(Opcode::RET), 0},
+    };
+    auto browserScript = std::make_shared<ScriptChunk>(nullptr,
+                                                       ChunkId(243),
+                                                       ScriptChunkType::MovieScript,
+                                                       0,
+                                                       std::vector<ScriptChunk::Handler>{mainHandler, targetHandler},
+                                                       std::vector<ScriptChunk::LiteralEntry>{},
+                                                       std::vector<ScriptChunk::PropertyEntry>{},
+                                                       std::vector<ScriptChunk::GlobalEntry>{},
+                                                       std::vector<std::uint8_t>{});
+    ScriptChunk::Handler otherHandler{};
+    otherHandler.nameId = 2;
+    otherHandler.handlerVectorPos = 0;
+    auto otherScript = std::make_shared<ScriptChunk>(nullptr,
+                                                     ChunkId(244),
+                                                     ScriptChunkType::Behavior,
+                                                     0,
+                                                     std::vector<ScriptChunk::Handler>{otherHandler},
+                                                     std::vector<ScriptChunk::LiteralEntry>{},
+                                                     std::vector<ScriptChunk::PropertyEntry>{},
+                                                     std::vector<ScriptChunk::GlobalEntry>{},
+                                                     std::vector<std::uint8_t>{});
+    auto emptyScript = std::make_shared<ScriptChunk>(nullptr,
+                                                     ChunkId(245),
+                                                     ScriptChunkType::Parent,
+                                                     0,
+                                                     std::vector<ScriptChunk::Handler>{},
+                                                     std::vector<ScriptChunk::LiteralEntry>{},
+                                                     std::vector<ScriptChunk::PropertyEntry>{},
+                                                     std::vector<ScriptChunk::GlobalEntry>{},
+                                                     std::vector<std::uint8_t>{});
+
+    const ScriptSource browserSource{browserScript, browserNames, "\"Main\" (Movie Script)", "main.dir", 0};
+    const ScriptSource otherSource{otherScript, browserNames, "\"Other\" (Behavior)", "external.cst", 1};
+    const ScriptSource emptySource{emptyScript, browserNames, "\"Empty\" (Parent)", "external.cst", 2};
+    HandlerNavigator navigator({browserSource, otherSource, emptySource});
+    auto foundHandler = navigator.findHandler(" GO ");
+    assert(foundHandler.found());
+    assert(foundHandler.script == browserScript);
+    assert(foundHandler.handlerName() == "go");
+    assert(foundHandler.scriptId() == 243);
+    assert(navigator.findHandlerInScript(243, "mouseUp").found());
+    assert(!navigator.findHandlerInScript(244, "mouseUp").found());
+    assert(navigator.findScriptById(244) == otherScript);
+    assert(navigator.findScriptById(999) == nullptr);
+
+    ScriptBrowserModel browserModel;
+    browserModel.setSources({browserSource, otherSource, emptySource});
+    assert(browserModel.sources().size() == 3);
+    assert(browserModel.allScriptItems().size() == 2);
+    assert(browserModel.scriptItems().size() == 2);
+    assert(browserModel.selectedScript() != nullptr);
+    assert(browserModel.selectedScript()->script == browserScript);
+    assert(browserModel.handlerItems().size() == 2);
+    assert(browserModel.selectedHandler() != nullptr);
+    assert(browserModel.selectedHandler()->displayName == "mouseUp");
+
+    auto scriptFilter = browserModel.filterScripts("other");
+    assert(scriptFilter.items.size() == 1);
+    assert(scriptFilter.selectedIndex == 0);
+    assert(browserModel.selectedScript()->script == otherScript);
+    assert(browserModel.handlerItems().size() == 1);
+    assert(browserModel.handlerItems()[0].displayName == "go");
+    scriptFilter = browserModel.filterScripts("", 243);
+    assert(scriptFilter.items.size() == 2);
+    assert(browserModel.selectedScript()->script == browserScript);
+    auto handlerFilter = browserModel.filterHandlers("go");
+    assert(handlerFilter.items.size() == 1);
+    assert(handlerFilter.selectedIndex == 0);
+    assert(browserModel.selectedHandler()->displayName == "go");
+    assert(browserModel.selectHandler("mouseUp"));
+    assert(browserModel.selectedHandler()->displayName == "mouseUp");
+    assert(browserModel.selectScriptById(244));
+    assert(browserModel.selectedScript()->script == otherScript);
+    assert(!browserModel.selectScriptById(999));
+    assert(browserModel.navigator().findHandler("go").found());
+    browserModel.clear();
+    assert(browserModel.scriptItems().empty());
+    assert(browserModel.selectedScript() == nullptr);
+
+    BreakpointManager browserBreakpoints;
+    const auto browserBreakpoint = browserBreakpoints.addBreakpoint(243, "mouseUp", 0);
+    assert(browserBreakpoint.offset == 0);
+    BytecodeListModel bytecodeModel;
+    bytecodeModel.loadHandler(
+        browserScript,
+        mainHandler,
+        browserNames,
+        BytecodeListBuildOptions{false, &browserBreakpoints, &navigator});
+    assert(!bytecodeModel.showLingoView());
+    assert(bytecodeModel.currentScriptId() == 243);
+    assert(bytecodeModel.currentHandlerName() == "mouseUp");
+    assert(bytecodeModel.items().size() == 4);
+    assert(bytecodeModel.items()[0].hasBreakpoint);
+    assert(bytecodeModel.items()[0].breakpoint.has_value());
+    assert(bytecodeModel.items()[1].opcode == "extCall");
+    assert(bytecodeModel.items()[1].isCallInstruction());
+    assert(bytecodeModel.items()[1].annotation == "<go()>");
+    assert(bytecodeModel.items()[1].navigable);
+    assert(bytecodeModel.items()[2].opcode == "localCall");
+    assert(bytecodeModel.items()[2].navigable);
+    assert(bytecodeModel.highlightCurrentInstruction(1) == 1);
+    assert(bytecodeModel.currentInstructionIndex() == 1);
+    assert(bytecodeModel.selectedRow() == 1);
+    assert(bytecodeModel.items()[1].isCurrent);
+    assert(!bytecodeModel.items()[0].isCurrent);
+    browserBreakpoints.clearAll();
+    bytecodeModel.refreshBreakpointMarkers(&browserBreakpoints);
+    assert(!bytecodeModel.items()[0].hasBreakpoint);
+    assert(!bytecodeModel.items()[0].breakpoint.has_value());
+    assert(bytecodeModel.highlightCurrentInstruction(99) == -1);
+
+    BytecodeListModel lingoListModel;
+    lingoListModel.loadHandler(
+        browserScript,
+        mainHandler,
+        browserNames,
+        BytecodeListBuildOptions{true, nullptr, &navigator});
+    assert(lingoListModel.showLingoView());
+    assert(!lingoListModel.items().empty());
+    assert(lingoListModel.items()[0].lingoLine);
+    assert(lingoListModel.items()[0].annotation.find("on ") != std::string::npos);
 
     StackTableModel stackModel;
     assert(stackModel.columnCount() == 3);
