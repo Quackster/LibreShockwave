@@ -72,6 +72,7 @@
 #include "libreshockwave/chunks/ScoreChunk.hpp"
 #include "libreshockwave/chunks/SoundChunk.hpp"
 #include "libreshockwave/chunks/TextChunk.hpp"
+#include "libreshockwave/editor/audio/EditorAudioModels.hpp"
 #include "libreshockwave/editor/debug/DebugBrowserModels.hpp"
 #include "libreshockwave/editor/debug/DebugDisplayItems.hpp"
 #include "libreshockwave/editor/debug/DebugTableModels.hpp"
@@ -280,6 +281,10 @@ using libreshockwave::chunks::ScriptNamesChunk;
 using libreshockwave::chunks::ScoreChunk;
 using libreshockwave::chunks::SoundChunk;
 using libreshockwave::chunks::TextChunk;
+using libreshockwave::editor::audio::AudioPlaybackController;
+using libreshockwave::editor::audio::EditorAudioBackend;
+using libreshockwave::editor::audio::EditorAudioClip;
+using libreshockwave::editor::audio::PlaybackState;
 using libreshockwave::editor::debug::BytecodeListBuildOptions;
 using libreshockwave::editor::debug::BytecodeListModel;
 using libreshockwave::editor::debug::HandlerLocation;
@@ -1679,6 +1684,165 @@ void testEditorModelAndSelectionFoundation() {
     manager.select(SelectionEvent::castMember(1, 9));
     assert(first.events.size() == 3);
     assert(second.events.size() == 3);
+}
+
+class FakeEditorAudioClip final : public EditorAudioClip {
+public:
+    explicit FakeEditorAudioClip(long long lengthMicros) : lengthMicros_(lengthMicros) {}
+
+    void start() override {
+        running_ = true;
+    }
+
+    void stop() override {
+        running_ = false;
+    }
+
+    void close() override {
+        closed_ = true;
+        running_ = false;
+    }
+
+    [[nodiscard]] bool isRunning() const override {
+        return running_;
+    }
+
+    [[nodiscard]] long long microsecondPosition() const override {
+        return positionMicros_;
+    }
+
+    [[nodiscard]] long long microsecondLength() const override {
+        return lengthMicros_;
+    }
+
+    void setMicrosecondPosition(long long position) override {
+        positionMicros_ = position;
+    }
+
+    [[nodiscard]] bool closed() const {
+        return closed_;
+    }
+
+private:
+    long long lengthMicros_{0};
+    long long positionMicros_{0};
+    bool running_{false};
+    bool closed_{false};
+};
+
+void testEditorAudioModels() {
+    EditorAudioBackend backend;
+    assert(EditorAudioBackend::MAX_CHANNELS == 8);
+    assert(backend.channelState(0) == nullptr);
+    assert(backend.channelState(9) == nullptr);
+    assert(backend.channelState(1) != nullptr);
+    assert(backend.channelState(1)->volume == 255);
+    assert(!backend.isPlaying(1));
+    backend.play(2, {'R', 'I', 'F', 'F'}, "wav", 0);
+    assert(backend.isPlaying(2));
+    assert(backend.channelState(2)->format == "wav");
+    assert(backend.channelState(2)->loopCount == 0);
+    assert((backend.channelState(2)->audioData == std::vector<std::uint8_t>{'R', 'I', 'F', 'F'}));
+    backend.setVolume(2, -10);
+    assert(backend.channelState(2)->volume == 0);
+    backend.setVolume(2, 300);
+    assert(backend.channelState(2)->volume == 255);
+    backend.setElapsedTimeForTesting(2, 1234);
+    assert(backend.getElapsedTime(2) == 1234);
+    backend.setElapsedTimeForTesting(2, -5);
+    assert(backend.getElapsedTime(2) == 0);
+    backend.stop(2);
+    assert(!backend.isPlaying(2));
+    assert(backend.channelState(2)->format.empty());
+    backend.play(3, {0xFF, 0xFB}, "mp3", 2);
+    assert(backend.isPlaying(3));
+    backend.stopAll();
+    assert(!backend.isPlaying(3));
+    backend.play(0, {'x'}, "wav", 1);
+    assert(!backend.isPlaying(0));
+
+    AudioPlaybackController controller;
+    std::vector<std::string> statuses;
+    std::vector<PlaybackState> states;
+    int stoppedCount = 0;
+    controller.setStatusCallback([&](std::string_view status) {
+        statuses.emplace_back(status);
+    });
+    controller.setOnStateChanged([&](const PlaybackState& state) {
+        states.push_back(state);
+    });
+    controller.setOnPlaybackStopped([&]() {
+        ++stoppedCount;
+    });
+
+    const CastMemberInfo soundInfo{7, "Doorbell", nullptr, MemberType::Sound, "sound"};
+    const MemberNodeData soundNode{"movie.dir", soundInfo};
+    controller.setCurrentMember(soundNode);
+    assert(controller.currentMember().has_value());
+    assert(!controller.play());
+    assert(statuses.back() == "No audio resolver configured");
+
+    std::vector<std::uint8_t> rawData(66, 0);
+    rawData[64] = 0x12;
+    rawData[65] = 0x34;
+    auto sound = std::make_shared<SoundChunk>(nullptr, ChunkId(246), 8000, 1, 16, 1, rawData, "raw_pcm");
+    bool resolverCalled = false;
+    controller.setSoundResolver([&](const MemberNodeData& member) {
+        resolverCalled = true;
+        assert(member == soundNode);
+        return sound;
+    });
+    assert(!controller.play());
+    assert(!resolverCalled);
+    assert(statuses.back() == "No audio clip factory configured");
+
+    FakeEditorAudioClip* activeClip = nullptr;
+    std::vector<std::uint8_t> clipAudioData;
+    std::string clipFormat;
+    controller.setClipFactory([&](const std::vector<std::uint8_t>& audioData, std::string_view format) {
+        clipAudioData = audioData;
+        clipFormat = std::string(format);
+        auto clip = std::make_unique<FakeEditorAudioClip>(2'000'000);
+        activeClip = clip.get();
+        return clip;
+    });
+
+    assert(controller.play());
+    assert(activeClip != nullptr);
+    assert(activeClip->isRunning());
+    assert(!clipAudioData.empty());
+    assert(clipFormat == "wav");
+    assert(controller.isPlaying());
+    assert(controller.getDurationMicros() == 2'000'000);
+    assert(controller.lastStatus() == "Playing: Doorbell");
+    assert(statuses.back() == "Playing: Doorbell");
+    assert(controller.lastState() == (PlaybackState{true, 0, "0.0s / 2.0s"}));
+
+    activeClip->setMicrosecondPosition(500'000);
+    controller.updatePlaybackPosition();
+    assert(controller.lastState() == (PlaybackState{true, 25, "0.5s / 2.0s"}));
+    assert(controller.seekTo(50));
+    assert(activeClip->microsecondPosition() == 1'000'000);
+    assert(controller.togglePause());
+    assert(!activeClip->isRunning());
+    assert(controller.togglePause());
+    assert(activeClip->isRunning());
+    controller.notifyPlaybackStopped();
+    assert(stoppedCount == 1);
+    assert(!activeClip->isRunning());
+    assert(controller.lastState() == (PlaybackState{false, 0, "0.0s / 2.0s"}));
+    assert(controller.seekTo(50));
+    controller.stop();
+    assert(!controller.isPlaying());
+    assert(controller.lastState() == (PlaybackState{false, 0, "0.0s / 0.0s"}));
+    assert(!controller.seekTo(50));
+    controller.dispose();
+
+    AudioPlaybackController emptyController;
+    assert(!emptyController.play());
+    assert(AudioPlaybackController::formatTimeLabel(1'250'000, 2'500'000) == "1.2s / 2.5s");
+    assert(AudioPlaybackController::progressPercent(500'000, 2'000'000) == 25);
+    assert(AudioPlaybackController::progressPercent(500'000, 0) == 0);
 }
 
 void testEditorDebugDataModels() {
@@ -21872,6 +22036,7 @@ int main() {
     testUtilityFormatting();
     testEditorFormattingAndScriptHelpers();
     testEditorModelAndSelectionFoundation();
+    testEditorAudioModels();
     testEditorDebugDataModels();
     testEditorScoreDataHelpers();
     testEditorScanningHelpers();
