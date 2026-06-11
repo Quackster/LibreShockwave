@@ -338,6 +338,7 @@ using libreshockwave::editor::gtk::GtkMenuItemKind;
 using libreshockwave::editor::gtk::GtkOpenFileDialogButtonRole;
 using libreshockwave::editor::gtk::GtkOpenFileDialogButtonSpec;
 using libreshockwave::editor::gtk::GtkPanelRowSpec;
+using libreshockwave::editor::gtk::GtkShellDialogActionBinding;
 using libreshockwave::editor::gtk::GtkShellDialogButtonRole;
 using libreshockwave::editor::gtk::GtkShellDialogButtonSpec;
 using libreshockwave::editor::gtk::GtkShellDialogKind;
@@ -2124,6 +2125,14 @@ void testEditorShellActionModels() {
     assert(EditorGtkShellModel::dialogActionName(GtkShellDialogKind::DetailedStack,
                                                  GtkShellDialogButtonRole::Close) ==
            "dialog_detailed_stack_close");
+    assert((EditorGtkShellModel::dialogActionBinding("dialog_external_parameters_accept").value() ==
+            GtkShellDialogActionBinding{GtkShellDialogKind::ExternalParameters, GtkShellDialogButtonRole::Accept}));
+    assert((EditorGtkShellModel::dialogActionBinding("dialog_trace_handler_cancel").value() ==
+            GtkShellDialogActionBinding{GtkShellDialogKind::TraceHandler, GtkShellDialogButtonRole::Cancel}));
+    assert((EditorGtkShellModel::dialogActionBinding("dialog_about_close").value() ==
+            GtkShellDialogActionBinding{GtkShellDialogKind::About, GtkShellDialogButtonRole::Close}));
+    assert(!EditorGtkShellModel::dialogActionBinding("dialog_about_accept").has_value());
+    assert(!EditorGtkShellModel::dialogActionBinding("dialog_missing_close").has_value());
     assert(EditorGtkShellModel::openFileDialogActionName(GtkOpenFileDialogButtonRole::Accept) == "open_accept");
     assert(EditorGtkShellModel::openFileDialogActionName(GtkOpenFileDialogButtonRole::Cancel) == "open_cancel");
     assert(EditorGtkShellModel::openFileDialogActionRole("open_accept").value() ==
@@ -3089,12 +3098,20 @@ void testEditorShellActionModels() {
     assert(externalParamsDialogActions[1].detailedName == "app.dialog_external_parameters_cancel");
     assert(externalParamsDialogActions[1].enabled);
 
-    auto paramsResult = gtkState.applyExternalParameters({
-        {" sw1 ", "alpha"},
-        {"", "ignored"},
-        {"sw1", "override"},
-        {"sw2", "beta"},
-    });
+    auto unknownDialogAction = gtkState.activateDialogAction("dialog_missing_close");
+    assert(!unknownDialogAction.accepted);
+    assert(!unknownDialogAction.changed);
+    assert(unknownDialogAction.statusMessage == "Unknown dialog action: dialog_missing_close");
+    assert(gtkState.statusMessage() == "Unknown dialog action: dialog_missing_close");
+
+    auto paramsResult = gtkState.activateDialogAction(
+        "dialog_external_parameters_accept",
+        {
+            {" sw1 ", "alpha"},
+            {"", "ignored"},
+            {"sw1", "override"},
+            {"sw2", "beta"},
+        });
     assert(paramsResult.kind == GtkShellDialogKind::ExternalParameters);
     assert(paramsResult.accepted);
     assert(paramsResult.changed);
@@ -3104,7 +3121,7 @@ void testEditorShellActionModels() {
     assert(gtkState.statusMessage() == "External parameters updated");
     assert(!gtkState.preferences().movieParams("/tmp/Movie.dir").has_value());
 
-    auto cancelledExternalParams = gtkState.cancelDialog(GtkShellDialogKind::ExternalParameters);
+    auto cancelledExternalParams = gtkState.activateDialogAction("dialog_external_parameters_cancel");
     assert(cancelledExternalParams.kind == GtkShellDialogKind::ExternalParameters);
     assert(!cancelledExternalParams.accepted);
     assert(!cancelledExternalParams.changed);
@@ -3245,7 +3262,10 @@ void testEditorShellActionModels() {
                        "Cancel",
                        "dialog_trace_handler_cancel");
 
-    auto traceResult = gtkState.applyTraceHandlerInput(" startMovie, mouseUp ,, enterFrame ");
+    auto traceResult = gtkState.activateDialogAction(
+        "dialog_trace_handler_accept",
+        {},
+        " startMovie, mouseUp ,, enterFrame ");
     assert(traceResult.kind == GtkShellDialogKind::TraceHandler);
     assert(traceResult.accepted);
     assert(traceResult.changed);
@@ -3268,7 +3288,7 @@ void testEditorShellActionModels() {
     assert(gtkState.traceHandlers().empty());
     assert(gtkState.statusMessage() == "Trace handlers cleared");
 
-    auto cancelledTrace = gtkState.cancelDialog(GtkShellDialogKind::TraceHandler);
+    auto cancelledTrace = gtkState.activateDialogAction("dialog_trace_handler_cancel");
     assert(cancelledTrace.kind == GtkShellDialogKind::TraceHandler);
     assert(!cancelledTrace.accepted);
     assert(!cancelledTrace.changed);
@@ -3280,12 +3300,12 @@ void testEditorShellActionModels() {
     assert(detailedStackRunning.dialogRequest.has_value());
     assert(detailedStackRunning.dialogRequest->detailedStackView.statusText == "Running...");
 
-    auto closedAbout = gtkState.cancelDialog(GtkShellDialogKind::About);
+    auto closedAbout = gtkState.activateDialogAction("dialog_about_close");
     assert(closedAbout.kind == GtkShellDialogKind::About);
     assert(!closedAbout.accepted);
     assert(closedAbout.statusMessage == "About dialog closed");
 
-    auto closedDetailedStack = gtkState.cancelDialog(GtkShellDialogKind::DetailedStack);
+    auto closedDetailedStack = gtkState.activateDialogAction("dialog_detailed_stack_close");
     assert(closedDetailedStack.kind == GtkShellDialogKind::DetailedStack);
     assert(!closedDetailedStack.accepted);
     assert(closedDetailedStack.statusMessage == "Detailed stack window closed");

@@ -75,6 +75,13 @@ struct GtkShellDialogButtonSpec {
     friend bool operator==(const GtkShellDialogButtonSpec&, const GtkShellDialogButtonSpec&) = default;
 };
 
+struct GtkShellDialogActionBinding {
+    GtkShellDialogKind kind{GtkShellDialogKind::About};
+    GtkShellDialogButtonRole role{GtkShellDialogButtonRole::Close};
+
+    friend bool operator==(const GtkShellDialogActionBinding&, const GtkShellDialogActionBinding&) = default;
+};
+
 struct GtkShellDialogPresentation {
     GtkShellDialogKind kind{GtkShellDialogKind::About};
     std::string title;
@@ -413,6 +420,8 @@ public:
     [[nodiscard]] static std::string recentProjectActionName(int index);
     [[nodiscard]] static std::optional<int> recentProjectActionIndex(std::string_view actionName);
     [[nodiscard]] static std::string dialogActionName(GtkShellDialogKind kind, GtkShellDialogButtonRole role);
+    [[nodiscard]] static std::optional<GtkShellDialogActionBinding> dialogActionBinding(
+        std::string_view actionName);
     [[nodiscard]] static std::string appAction(std::string_view actionName);
     [[nodiscard]] static GtkShellDialogPresentation dialogPresentation(const GtkShellDialogRequest& request);
     [[nodiscard]] static std::vector<GtkActionSpec> dialogActionSpecs(
@@ -501,6 +510,9 @@ public:
     GtkShellDialogResult applyExternalParameters(std::vector<ExternalParamRow> rows);
     GtkShellDialogResult applyTraceHandlerInput(std::string_view input);
     GtkShellDialogResult cancelDialog(GtkShellDialogKind kind);
+    GtkShellDialogResult activateDialogAction(std::string_view actionName,
+                                              std::vector<ExternalParamRow> externalParams = {},
+                                              std::string inputText = {});
 
 private:
     EditorMenuModel menuModel_;

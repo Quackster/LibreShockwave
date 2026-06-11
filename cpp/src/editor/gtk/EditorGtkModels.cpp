@@ -244,6 +244,19 @@ GtkShellDialogButtonSpec dialogButtonSpec(GtkShellDialogKind kind,
     };
 }
 
+bool dialogButtonRoleAvailable(GtkShellDialogKind kind, GtkShellDialogButtonRole role) {
+    switch (kind) {
+        case GtkShellDialogKind::ExternalParameters:
+            return role == GtkShellDialogButtonRole::Accept || role == GtkShellDialogButtonRole::Cancel;
+        case GtkShellDialogKind::TraceHandler:
+            return true;
+        case GtkShellDialogKind::About:
+        case GtkShellDialogKind::DetailedStack:
+            return role == GtkShellDialogButtonRole::Close;
+    }
+    return false;
+}
+
 std::string openFileDialogButtonRoleActionSegment(GtkOpenFileDialogButtonRole role) {
     switch (role) {
         case GtkOpenFileDialogButtonRole::Accept:
@@ -480,6 +493,25 @@ std::optional<int> EditorGtkShellModel::recentProjectActionIndex(std::string_vie
 
 std::string EditorGtkShellModel::dialogActionName(GtkShellDialogKind kind, GtkShellDialogButtonRole role) {
     return "dialog_" + dialogKindActionSegment(kind) + "_" + dialogButtonRoleActionSegment(role);
+}
+
+std::optional<GtkShellDialogActionBinding> EditorGtkShellModel::dialogActionBinding(std::string_view actionName) {
+    for (const auto kind : {GtkShellDialogKind::ExternalParameters,
+                           GtkShellDialogKind::TraceHandler,
+                           GtkShellDialogKind::About,
+                           GtkShellDialogKind::DetailedStack}) {
+        for (const auto role : {GtkShellDialogButtonRole::Accept,
+                               GtkShellDialogButtonRole::Cancel,
+                               GtkShellDialogButtonRole::Close}) {
+            if (!dialogButtonRoleAvailable(kind, role)) {
+                continue;
+            }
+            if (actionName == dialogActionName(kind, role)) {
+                return GtkShellDialogActionBinding{kind, role};
+            }
+        }
+    }
+    return std::nullopt;
 }
 
 std::string EditorGtkShellModel::appAction(std::string_view actionName) {
@@ -1643,6 +1675,56 @@ GtkShellDialogResult EditorGtkShellState::cancelDialog(GtkShellDialogKind kind) 
     statusMessage_ = dialogCancelStatus(kind);
     return GtkShellDialogResult{
         kind,
+        false,
+        false,
+        statusMessage_,
+        {},
+        {},
+    };
+}
+
+GtkShellDialogResult EditorGtkShellState::activateDialogAction(std::string_view actionName,
+                                                               std::vector<ExternalParamRow> externalParams,
+                                                               std::string inputText) {
+    const auto binding = EditorGtkShellModel::dialogActionBinding(actionName);
+    if (!binding.has_value()) {
+        statusMessage_ = "Unknown dialog action: " + std::string(actionName);
+        return GtkShellDialogResult{
+            GtkShellDialogKind::About,
+            false,
+            false,
+            statusMessage_,
+            {},
+            {},
+        };
+    }
+
+    if (binding->role == GtkShellDialogButtonRole::Cancel ||
+        binding->role == GtkShellDialogButtonRole::Close) {
+        return cancelDialog(binding->kind);
+    }
+
+    switch (binding->kind) {
+        case GtkShellDialogKind::ExternalParameters:
+            return applyExternalParameters(std::move(externalParams));
+        case GtkShellDialogKind::TraceHandler:
+            return applyTraceHandlerInput(inputText);
+        case GtkShellDialogKind::About:
+        case GtkShellDialogKind::DetailedStack:
+            statusMessage_ = "Dialog action not available: " + std::string(actionName);
+            return GtkShellDialogResult{
+                binding->kind,
+                false,
+                false,
+                statusMessage_,
+                {},
+                {},
+            };
+    }
+
+    statusMessage_ = "Unknown dialog action: " + std::string(actionName);
+    return GtkShellDialogResult{
+        GtkShellDialogKind::About,
         false,
         false,
         statusMessage_,
