@@ -68,6 +68,7 @@ add_library(libreshockwave
     src/editor/model/FileNode.cpp
     src/editor/model/MemberNodeData.cpp
     src/editor/model/ScoreCellData.cpp
+    src/editor/panels/EditorPanelCatalog.cpp
     src/editor/preview/GenericPreview.cpp
     src/editor/preview/PalettePreview.cpp
     src/editor/preview/PreviewFormatUtils.cpp

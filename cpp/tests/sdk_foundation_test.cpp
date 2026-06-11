@@ -90,6 +90,7 @@
 #include "libreshockwave/editor/model/FrameAppearance.hpp"
 #include "libreshockwave/editor/model/MemberNodeData.hpp"
 #include "libreshockwave/editor/model/ScoreCellData.hpp"
+#include "libreshockwave/editor/panels/EditorPanelCatalog.hpp"
 #include "libreshockwave/editor/extraction/AssetExtractor.hpp"
 #include "libreshockwave/editor/preview/GenericPreview.hpp"
 #include "libreshockwave/editor/preview/PalettePreview.hpp"
@@ -342,6 +343,13 @@ using libreshockwave::editor::model::FileNode;
 using libreshockwave::editor::model::FrameAppearance;
 using libreshockwave::editor::model::MemberNodeData;
 using libreshockwave::editor::model::ScoreCellData;
+using libreshockwave::editor::panels::EditorFrameDefaults;
+using libreshockwave::editor::panels::EditorPanelCatalog;
+using libreshockwave::editor::panels::PanelBounds;
+using libreshockwave::editor::panels::PanelCapabilities;
+using libreshockwave::editor::panels::PanelDescriptor;
+using libreshockwave::editor::panels::PanelPlacement;
+using libreshockwave::editor::panels::PanelSize;
 using libreshockwave::editor::extraction::AssetExtractor;
 using libreshockwave::editor::preview::GenericPreview;
 using libreshockwave::editor::preview::PalettePreview;
@@ -2006,6 +2014,71 @@ void testEditorStageViewModels() {
     assert(StageViewModel::titleForOpenedPath("/tmp/Movie.dir") == "Stage - Movie.dir");
     assert(StageViewModel::titleForOpenedPath("") == "Stage - Untitled");
     assert(StageViewModel::closedTitle() == "Stage");
+}
+
+void testEditorPanelCatalogModels() {
+    const PanelCapabilities normal{true, true, true, true};
+    const PanelCapabilities toolPaletteCaps{true, true, false, true};
+
+    const auto descriptors = EditorPanelCatalog::descriptors();
+    assert((descriptors == std::vector<PanelDescriptor>{
+                               PanelDescriptor{"stage", "Stage", normal, PanelSize{660, 500}},
+                               PanelDescriptor{"score", "Score", normal, PanelSize{700, 300}},
+                               PanelDescriptor{"cast", "Cast", normal, PanelSize{400, 350}},
+                               PanelDescriptor{"property-inspector", "Property Inspector", normal, PanelSize{280, 400}},
+                               PanelDescriptor{"script", "Script", normal, PanelSize{700, 500}},
+                               PanelDescriptor{"message", "Message", normal, PanelSize{450, 200}},
+                               PanelDescriptor{"tool-palette", "Tool Palette", toolPaletteCaps, PanelSize{160, 350}},
+                               PanelDescriptor{"paint", "Paint", normal, PanelSize{500, 400}},
+                               PanelDescriptor{"vector-shape", "Vector Shape", normal, PanelSize{450, 350}},
+                               PanelDescriptor{"text", "Text", normal, PanelSize{400, 300}},
+                               PanelDescriptor{"field", "Field", normal, PanelSize{350, 250}},
+                               PanelDescriptor{"sound", "Sound", normal, PanelSize{400, 250}},
+                               PanelDescriptor{"color-palettes", "Color Palettes", normal, PanelSize{350, 300}},
+                               PanelDescriptor{"bytecode-debugger", "Bytecode Debugger", normal, PanelSize{600, 700}},
+                           }));
+
+    assert(EditorPanelCatalog::isKnownPanel("stage"));
+    assert(!EditorPanelCatalog::isKnownPanel("missing"));
+    assert(EditorPanelCatalog::descriptor("tool-palette")->capabilities == toolPaletteCaps);
+    assert(!EditorPanelCatalog::descriptor("missing").has_value());
+
+    const auto placements = EditorPanelCatalog::defaultFloatingLayout();
+    assert(placements.size() == descriptors.size());
+    assert((placements[0] == PanelPlacement{"stage", PanelBounds{170, 10, 660, 500}, true, true}));
+    assert((placements[1] == PanelPlacement{"score", PanelBounds{170, 520, 700, 300}, true, false}));
+    assert((placements[2] == PanelPlacement{"cast", PanelBounds{880, 520, 400, 300}, true, false}));
+    assert((placements[3] == PanelPlacement{"property-inspector", PanelBounds{880, 10, 280, 400}, true, false}));
+    assert((placements[4] == PanelPlacement{"script", PanelBounds{170, 520, 500, 400}, true, false}));
+    assert((placements[5] == PanelPlacement{"message", PanelBounds{880, 420, 400, 200}, true, false}));
+    assert((placements[6] == PanelPlacement{"tool-palette", PanelBounds{5, 10, 160, 350}, true, false}));
+    assert((placements[7] == PanelPlacement{"paint", PanelBounds{0, 0, 500, 400}, false, false}));
+    assert((placements[13] == PanelPlacement{"bytecode-debugger", PanelBounds{0, 0, 600, 700}, false, false}));
+    assert(EditorPanelCatalog::defaultPlacement("sound")->bounds == (PanelBounds{0, 0, 400, 250}));
+    assert(!EditorPanelCatalog::defaultPlacement("missing").has_value());
+
+    assert((EditorPanelCatalog::defaultVisiblePanelIds() ==
+            std::vector<std::string>{"stage", "score", "cast", "property-inspector", "script", "message",
+                                     "tool-palette"}));
+    assert((EditorPanelCatalog::panelTitles().front() == std::pair<std::string, std::string>{"stage", "Stage"}));
+    assert((EditorPanelCatalog::panelTitles().back() ==
+            std::pair<std::string, std::string>{"bytecode-debugger", "Bytecode Debugger"}));
+    assert((EditorPanelCatalog::frameDefaults() == EditorFrameDefaults{PanelSize{1280, 900}, 58, 68, 75}));
+    assert(EditorPanelCatalog::closedFrameTitle() == "LibreShockwave Editor - Director MX 2004");
+    assert(EditorPanelCatalog::frameTitleForPath("/tmp/Movie.dir") == "LibreShockwave Editor - Movie.dir");
+    assert(EditorPanelCatalog::frameTitleForPath("") == EditorPanelCatalog::closedFrameTitle());
+
+    DockingLayoutModel layout;
+    for (const auto& [panelId, title] : EditorPanelCatalog::panelTitles()) {
+        layout.registerPanel(panelId, title);
+    }
+    assert(layout.hasRegisteredPanel("bytecode-debugger"));
+    assert(layout.panelTitle("property-inspector").value() == "Property Inspector");
+    layout.applyDefaultDockedLayout();
+    assert(layout.isDocked("score"));
+    assert(layout.isDocked("tool-palette"));
+    assert(layout.isDocked("bytecode-debugger"));
+    assert(!layout.isDocked("stage"));
 }
 
 void testEditorModelAndSelectionFoundation() {
@@ -22636,6 +22709,7 @@ int main() {
     testEditorCastBrowserModels();
     testEditorScoreViewModels();
     testEditorStageViewModels();
+    testEditorPanelCatalogModels();
     testEditorModelAndSelectionFoundation();
     testEditorAudioModels();
     testEditorDockingModels();
