@@ -1,16 +1,26 @@
 #include "libreshockwave/player/web/WasmExports.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "libreshockwave/bitmap/Bitmap.hpp"
+#include "libreshockwave/cast/CastMember.hpp"
+#include "libreshockwave/cast/MemberType.hpp"
+#include "libreshockwave/chunks/CastMemberChunk.hpp"
 #include "libreshockwave/lingo/Datum.hpp"
+#include "libreshockwave/lingo/vm/DebugConfig.hpp"
 #include "libreshockwave/player/Player.hpp"
+#include "libreshockwave/player/InputHandler.hpp"
 #include "libreshockwave/player/MovieProperties.hpp"
+#include "libreshockwave/player/render/pipeline/RenderSprite.hpp"
 
 namespace libreshockwave::player::web {
 namespace {
@@ -23,6 +33,15 @@ struct ExportState {
     std::vector<std::uint8_t> stringBuffer = std::vector<std::uint8_t>(DEFAULT_STRING_BUFFER_SIZE);
     std::vector<std::uint8_t> netBuffer;
     std::vector<std::uint8_t> audioBuffer;
+    std::vector<std::uint8_t> renderBuffer;
+    std::vector<std::uint8_t> cursorBuffer;
+    int cursorBitmapWidth{0};
+    int cursorBitmapHeight{0};
+    int cursorRegX{0};
+    int cursorRegY{0};
+    std::optional<InputHandler::CaretInfo> caretInfo;
+    std::vector<InputHandler::SelectionRect> selectionRects;
+    std::string debugLog;
 };
 
 ExportState& state() {
@@ -98,6 +117,116 @@ int packTwoLengths(int high, int low) {
 Player* activePlayer() {
     auto* wrapper = state().runtime.player();
     return wrapper != nullptr ? wrapper->player() : nullptr;
+}
+
+WasmPlayer* activeWasmPlayer() {
+    return state().runtime.player();
+}
+
+std::vector<std::uint8_t> bitmapToRgba(const bitmap::Bitmap& bitmap, bool paletteWhiteTransparent) {
+    std::vector<std::uint8_t> rgba;
+    rgba.resize(static_cast<std::size_t>(std::max(0, bitmap.width())) *
+                static_cast<std::size_t>(std::max(0, bitmap.height())) * 4U);
+    const auto& pixels = bitmap.pixels();
+    const std::size_t count = std::min(pixels.size(), rgba.size() / 4U);
+    for (std::size_t i = 0; i < count; ++i) {
+        const std::uint32_t pixel = pixels[i];
+        std::uint8_t a = static_cast<std::uint8_t>((pixel >> 24) & 0xFFU);
+        std::uint8_t r = static_cast<std::uint8_t>((pixel >> 16) & 0xFFU);
+        std::uint8_t g = static_cast<std::uint8_t>((pixel >> 8) & 0xFFU);
+        std::uint8_t b = static_cast<std::uint8_t>(pixel & 0xFFU);
+
+        if (paletteWhiteTransparent) {
+            if (r == 255 && g == 255 && b == 255) {
+                a = 0;
+                r = 0;
+                g = 0;
+                b = 0;
+            } else {
+                a = 255;
+            }
+        } else if (a == 0) {
+            r = 0;
+            g = 0;
+            b = 0;
+        }
+
+        const std::size_t offset = i * 4U;
+        rgba[offset] = r;
+        rgba[offset + 1U] = g;
+        rgba[offset + 2U] = b;
+        rgba[offset + 3U] = a;
+    }
+    return rgba;
+}
+
+std::string spriteDiagnostics(bool textOnly) {
+    auto* player = activePlayer();
+    if (player == nullptr) {
+        return "";
+    }
+
+    std::ostringstream out;
+    out << "state=" << name(player->state())
+        << " frame=" << player->currentFrame()
+        << " stage=" << player->stageRenderer().stageWidth() << "x" << player->stageRenderer().stageHeight()
+        << " sprites=" << player->stageRenderer().lastBakedSprites().size()
+        << '\n';
+
+    for (const auto& sprite : player->stageRenderer().lastBakedSprites()) {
+        if (textOnly && sprite.type() != render::pipeline::SpriteType::Text &&
+            sprite.type() != render::pipeline::SpriteType::Button) {
+            continue;
+        }
+
+        out << "ch=" << sprite.channel()
+            << " z=" << sprite.locZ()
+            << " loc=" << sprite.x() << ',' << sprite.y()
+            << ' ' << sprite.width() << 'x' << sprite.height()
+            << " type=" << render::pipeline::name(sprite.type())
+            << " ink=" << sprite.ink()
+            << " blend=" << sprite.blend()
+            << " fore=" << sprite.foreColor()
+            << " back=" << sprite.backColor()
+            << " member=" << sprite.memberName().value_or("")
+            << " visible=" << (sprite.isVisible() ? 1 : 0);
+
+        if (const auto& baked = sprite.bakedBitmap()) {
+            int transparent = 0;
+            int translucent = 0;
+            for (const auto pixel : baked->pixels()) {
+                const int alpha = static_cast<int>((pixel >> 24) & 0xFFU);
+                if (alpha == 0) {
+                    ++transparent;
+                } else if (alpha < 255) {
+                    ++translucent;
+                }
+            }
+            out << " baked=" << baked->width() << 'x' << baked->height()
+                << " depth=" << baked->bitDepth()
+                << " transparent=" << transparent
+                << " translucent=" << translucent;
+        }
+
+        if (const auto& castMember = sprite.castMember()) {
+            out << " castName=" << castMember->name()
+                << " castId=" << castMember->id().value()
+                << " castType=" << ::libreshockwave::cast::name(castMember->memberType());
+        }
+
+        if (const auto& dynamicMember = sprite.dynamicMember()) {
+            out << " dynName=" << dynamicMember->name()
+                << " dynNum=" << dynamicMember->memberNum()
+                << " dynType=" << ::libreshockwave::cast::name(dynamicMember->memberType());
+            const auto text = dynamicMember->textContent();
+            if (!text.empty()) {
+                out << " text=\"" << text << '"';
+            }
+        }
+
+        out << '\n';
+    }
+    return out.str();
 }
 
 } // namespace
@@ -214,6 +343,31 @@ void libreshockwave_wasm_step_backward() {
     state().runtime.stepBackward();
 }
 
+void libreshockwave_wasm_set_debug_playback_enabled(int enabled) {
+    ::libreshockwave::lingo::vm::DebugConfig::setDebugPlaybackEnabled(enabled != 0);
+    if (auto* player = activePlayer()) {
+        player->builtinContext().debugPlaybackEnabled = enabled != 0;
+    }
+}
+
+void libreshockwave_wasm_add_trace_handler(int nameLen) {
+    if (auto* player = activePlayer()) {
+        player->vm().addTraceHandler(readString(state().stringBuffer, 0, nameLen));
+    }
+}
+
+void libreshockwave_wasm_remove_trace_handler(int nameLen) {
+    if (auto* player = activePlayer()) {
+        player->vm().removeTraceHandler(readString(state().stringBuffer, 0, nameLen));
+    }
+}
+
+void libreshockwave_wasm_clear_trace_handlers() {
+    if (auto* player = activePlayer()) {
+        player->vm().clearTraceHandlers();
+    }
+}
+
 int libreshockwave_wasm_current_frame() {
     return state().runtime.currentFrame();
 }
@@ -236,6 +390,252 @@ int libreshockwave_wasm_stage_width() {
 
 int libreshockwave_wasm_stage_height() {
     return state().runtime.stageHeight();
+}
+
+int libreshockwave_wasm_render() {
+    auto* player = activePlayer();
+    if (player == nullptr) {
+        state().renderBuffer.clear();
+        return 0;
+    }
+    try {
+        const auto bitmap = player->frameSnapshot().renderFrame();
+        state().renderBuffer = bitmapToRgba(bitmap, false);
+        return static_cast<int>(state().renderBuffer.size());
+    } catch (const std::exception& error) {
+        state().renderBuffer.clear();
+        state().debugLog += std::string("[render] ") + error.what() + "\n";
+    } catch (...) {
+        state().renderBuffer.clear();
+        state().debugLog += "[render] unknown exception\n";
+    }
+    return 0;
+}
+
+std::uintptr_t libreshockwave_wasm_get_render_buffer_address() {
+    return addressOf(state().renderBuffer);
+}
+
+int libreshockwave_wasm_get_sprite_count() {
+    auto* player = activePlayer();
+    return player != nullptr ? static_cast<int>(player->stageRenderer().lastBakedSprites().size()) : 0;
+}
+
+int libreshockwave_wasm_get_cursor_type() {
+    auto* player = activePlayer();
+    if (player == nullptr) {
+        return 0;
+    }
+    try {
+        return player->cursorManager().getCursorAtMouse();
+    } catch (...) {
+        return 0;
+    }
+}
+
+int libreshockwave_wasm_update_cursor_bitmap() {
+    auto* player = activePlayer();
+    if (player == nullptr) {
+        state().cursorBuffer.clear();
+        state().cursorBitmapWidth = 0;
+        state().cursorBitmapHeight = 0;
+        state().cursorRegX = 0;
+        state().cursorRegY = 0;
+        return 0;
+    }
+    try {
+        const auto cursor = player->cursorManager().getCursorBitmap();
+        if (!cursor.has_value()) {
+            state().cursorBuffer.clear();
+            state().cursorBitmapWidth = 0;
+            state().cursorBitmapHeight = 0;
+            state().cursorRegX = 0;
+            state().cursorRegY = 0;
+            return 0;
+        }
+        state().cursorBitmapWidth = cursor->width();
+        state().cursorBitmapHeight = cursor->height();
+        const auto regPoint = player->cursorManager().getCursorRegPoint();
+        state().cursorRegX = regPoint.has_value() ? regPoint->at(0) : 0;
+        state().cursorRegY = regPoint.has_value() ? regPoint->at(1) : 0;
+        state().cursorBuffer = bitmapToRgba(*cursor, cursor->bitDepth() <= 8);
+        return state().cursorBuffer.empty() ? 0 : 1;
+    } catch (...) {
+        state().cursorBuffer.clear();
+        return 0;
+    }
+}
+
+int libreshockwave_wasm_get_cursor_bitmap_width() {
+    return state().cursorBitmapWidth;
+}
+
+int libreshockwave_wasm_get_cursor_bitmap_height() {
+    return state().cursorBitmapHeight;
+}
+
+int libreshockwave_wasm_get_cursor_bitmap_length() {
+    return static_cast<int>(state().cursorBuffer.size());
+}
+
+std::uintptr_t libreshockwave_wasm_get_cursor_bitmap_address() {
+    return addressOf(state().cursorBuffer);
+}
+
+int libreshockwave_wasm_get_cursor_reg_point_x() {
+    return state().cursorRegX;
+}
+
+int libreshockwave_wasm_get_cursor_reg_point_y() {
+    return state().cursorRegY;
+}
+
+int libreshockwave_wasm_is_caret_visible() {
+    auto* player = activePlayer();
+    state().caretInfo.reset();
+    if (player == nullptr) {
+        return 0;
+    }
+    state().caretInfo = player->inputHandler().getCaretInfo();
+    return state().caretInfo.has_value() ? 1 : 0;
+}
+
+int libreshockwave_wasm_get_caret_x() {
+    return state().caretInfo.has_value() ? state().caretInfo->x : 0;
+}
+
+int libreshockwave_wasm_get_caret_y() {
+    return state().caretInfo.has_value() ? state().caretInfo->y : 0;
+}
+
+int libreshockwave_wasm_get_caret_height() {
+    return state().caretInfo.has_value() ? state().caretInfo->height : 0;
+}
+
+int libreshockwave_wasm_get_selection_rect_count() {
+    auto* player = activePlayer();
+    state().selectionRects.clear();
+    if (player == nullptr) {
+        return 0;
+    }
+    state().selectionRects = player->inputHandler().getSelectionInfo();
+    return static_cast<int>(state().selectionRects.size());
+}
+
+const ::libreshockwave::player::InputHandler::SelectionRect* selectionRectAt(int index) {
+    if (index < 0 || static_cast<std::size_t>(index) >= state().selectionRects.size()) {
+        return nullptr;
+    }
+    return &state().selectionRects[static_cast<std::size_t>(index)];
+}
+
+int libreshockwave_wasm_get_selection_rect_x(int index) {
+    const auto* rect = selectionRectAt(index);
+    return rect != nullptr ? rect->x : 0;
+}
+
+int libreshockwave_wasm_get_selection_rect_y(int index) {
+    const auto* rect = selectionRectAt(index);
+    return rect != nullptr ? rect->y : 0;
+}
+
+int libreshockwave_wasm_get_selection_rect_w(int index) {
+    const auto* rect = selectionRectAt(index);
+    return rect != nullptr ? rect->width : 0;
+}
+
+int libreshockwave_wasm_get_selection_rect_h(int index) {
+    const auto* rect = selectionRectAt(index);
+    return rect != nullptr ? rect->height : 0;
+}
+
+void libreshockwave_wasm_paste_text(int textLen) {
+    if (auto* player = activePlayer()) {
+        player->inputHandler().onPasteText(readString(state().stringBuffer, 0, textLen));
+    }
+}
+
+int libreshockwave_wasm_get_selected_text_length() {
+    auto* player = activePlayer();
+    if (player == nullptr) {
+        return 0;
+    }
+    const auto text = player->inputHandler().getSelectedText();
+    return text.has_value() ? writeBytes(*text) : 0;
+}
+
+int libreshockwave_wasm_cut_selected_text() {
+    auto* player = activePlayer();
+    if (player == nullptr) {
+        return 0;
+    }
+    const auto text = player->inputHandler().cutSelectedText();
+    return text.has_value() ? writeBytes(*text) : 0;
+}
+
+void libreshockwave_wasm_select_all() {
+    if (auto* player = activePlayer()) {
+        player->inputHandler().selectAll();
+    }
+}
+
+int libreshockwave_wasm_get_debug_log() {
+    if (state().debugLog.empty()) {
+        return 0;
+    }
+    const auto log = std::move(state().debugLog);
+    state().debugLog.clear();
+    return writeBytes(log);
+}
+
+int libreshockwave_wasm_get_call_stack() {
+    auto* player = activePlayer();
+    return player != nullptr ? writeBytes(player->formatLingoCallStack()) : 0;
+}
+
+int libreshockwave_wasm_get_window_sprite_diagnostics() {
+    return writeBytes(spriteDiagnostics(false));
+}
+
+int libreshockwave_wasm_get_visible_text_diagnostics() {
+    return writeBytes(spriteDiagnostics(true));
+}
+
+int libreshockwave_wasm_get_bootstrap_diagnostics() {
+    auto* wrapper = activeWasmPlayer();
+    auto* player = activePlayer();
+    if (wrapper == nullptr || player == nullptr) {
+        return 0;
+    }
+    std::ostringstream out;
+    out << "state=" << name(player->state())
+        << " frame=" << player->currentFrame()
+        << " frameCount=" << player->frameCount()
+        << " stage=" << wrapper->stageWidth() << 'x' << wrapper->stageHeight()
+        << " castRevision=" << wrapper->castRevision()
+        << " pendingFetches=" << state().runtime.pendingFetchCount()
+        << " pendingAudio=" << state().runtime.audioPendingCount()
+        << " pendingMus=" << state().runtime.multiuserPendingCount()
+        << " pendingJpeg=" << state().runtime.pendingJpegDecodeCount()
+        << '\n';
+    return writeBytes(out.str());
+}
+
+int libreshockwave_wasm_trigger_test_error() {
+    auto* player = activePlayer();
+    if (player == nullptr) {
+        return 0;
+    }
+    try {
+        const bool handled = player->fireTestError("Script error: Test error triggered for dialog appearance check");
+        state().debugLog += std::string("[triggerTestError] handled=") + (handled ? "1\n" : "0\n");
+        return handled ? 1 : 0;
+    } catch (const std::exception& error) {
+        state().debugLog += std::string("[triggerTestError] ") + error.what() + "\n";
+    } catch (...) {
+        state().debugLog += "[triggerTestError] unknown exception\n";
+    }
+    return 0;
 }
 
 void libreshockwave_wasm_set_external_param(int keyLen, int valueLen) {
