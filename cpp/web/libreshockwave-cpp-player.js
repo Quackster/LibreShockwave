@@ -180,6 +180,7 @@ var LibreShockwaveCppPlayer = (function() {
                 this._resolveDiagnostic(message.requestId, message.diagnostics || '');
                 break;
             case 'runtimeDiagnostics':
+            case 'musWebSocketSelfTest':
                 this._resolveDiagnostic(message.requestId, message.diagnostics || {});
                 break;
             case 'testError':
@@ -228,7 +229,7 @@ var LibreShockwaveCppPlayer = (function() {
         navigator.clipboard.writeText(text).catch(function() {});
     };
 
-    Player.prototype._requestDiagnostic = function(type) {
+    Player.prototype._requestDiagnostic = function(type, payload) {
         var self = this;
         if (!this.worker || !this.ready) {
             return Promise.resolve('');
@@ -236,7 +237,7 @@ var LibreShockwaveCppPlayer = (function() {
         var requestId = ++this.diagnosticSeq;
         return new Promise(function(resolve) {
             self.diagnosticResolvers[requestId] = resolve;
-            self.worker.postMessage({ type: type, requestId: requestId });
+            self.worker.postMessage(Object.assign({}, payload || {}, { type: type, requestId: requestId }));
         });
     };
 
@@ -741,6 +742,13 @@ var LibreShockwaveCppPlayer = (function() {
             return Promise.resolve(false);
         }
         return this._requestDiagnostic('triggerTestError');
+    };
+
+    Player.prototype.runMusWebSocketSelfTest = function(options) {
+        if (!this.worker || !this.ready) {
+            return Promise.resolve({ ok: false, error: 'runtime not ready' });
+        }
+        return this._requestDiagnostic('runMusWebSocketSelfTest', options || {});
     };
 
     Player.prototype._handleGotoNetPage = function(url, target) {

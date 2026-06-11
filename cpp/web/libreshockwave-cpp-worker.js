@@ -377,6 +377,65 @@ function _binaryStringToBytes(value) {
     return bytes;
 }
 
+function _bytesToText(bytes) {
+    try {
+        return new TextDecoder().decode(bytes || new Uint8Array(0));
+    } catch (e) {
+        return '';
+    }
+}
+
+function _hasQueuedMusEvent(map, instanceId) {
+    return Object.prototype.hasOwnProperty.call(map, String(instanceId));
+}
+
+function _takeQueuedMusEvent(map, instanceId) {
+    var key = String(instanceId);
+    if (!Object.prototype.hasOwnProperty.call(map, key)) {
+        return null;
+    }
+    var value = map[key];
+    delete map[key];
+    return value;
+}
+
+function _clearMusInstance(instanceId) {
+    var socket = _musSockets[instanceId];
+    if (socket) {
+        socket.onopen = null;
+        socket.onmessage = null;
+        socket.onerror = null;
+        socket.onclose = null;
+        try {
+            socket.close();
+        } catch (e) {}
+    }
+    delete _musSockets[instanceId];
+    delete _musConnected[instanceId];
+    delete _musDisconnected[instanceId];
+    delete _musErrors[instanceId];
+    delete _musInbound[instanceId];
+}
+
+function _waitForMusState(instanceId, predicate, timeoutMs) {
+    var deadline = Date.now() + Math.max(1, timeoutMs | 0);
+    return new Promise(function(resolve) {
+        function poll() {
+            var state = predicate();
+            if (state) {
+                resolve(state);
+                return;
+            }
+            if (Date.now() >= deadline) {
+                resolve(null);
+                return;
+            }
+            setTimeout(poll, 10);
+        }
+        poll();
+    });
+}
+
 function _writeU32BE(bytes, offset, value) {
     bytes[offset] = (value >>> 24) & 0xff;
     bytes[offset + 1] = (value >>> 16) & 0xff;
@@ -728,6 +787,142 @@ function _pumpMusRequests() {
     }
     _exports.drainMusPending();
     return count;
+}
+
+async function _runMusWebSocketSelfTest(message) {
+    var timeoutMs = message.timeoutMs || 4000;
+    var instanceId = message.instanceId || 0x5a1701;
+    var errorInstanceId = message.errorInstanceId || (instanceId + 1);
+    var url = message.url || _buildMusWebSocketUrl(message.host || '127.0.0.1', message.port || 0);
+    var payload = message.payload == null ? 'client-ping' : String(message.payload);
+    var payloadBytes = new TextEncoder().encode(payload);
+    var result = {
+        ok: false,
+        url: url,
+        instanceId: instanceId,
+        payload: payload,
+        connected: false,
+        sent: false,
+        received: false,
+        disconnected: false,
+        errorDelivered: false
+    };
+
+    _clearMusInstance(instanceId);
+    _clearMusInstance(errorInstanceId);
+
+    try {
+        _musConnect(instanceId, url);
+        var openState = await _waitForMusState(instanceId, function() {
+            if (_hasQueuedMusEvent(_musConnected, instanceId)) {
+                return { type: 'connected' };
+            }
+            if (_hasQueuedMusEvent(_musErrors, instanceId)) {
+                return { type: 'error', code: _musErrors[instanceId] };
+            }
+            if (_hasQueuedMusEvent(_musDisconnected, instanceId)) {
+                return { type: 'disconnected' };
+            }
+            return null;
+        }, timeoutMs);
+
+        if (!openState || openState.type !== 'connected') {
+            result.openState = openState ? openState.type : 'timeout';
+            if (openState && openState.type === 'error') {
+                result.errorCode = openState.code;
+            }
+            return result;
+        }
+
+        _takeQueuedMusEvent(_musConnected, instanceId);
+        result.connected = true;
+        var socket = _musSockets[instanceId];
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+            result.openState = 'socket-not-open';
+            return result;
+        }
+
+        socket.send(payloadBytes.buffer.slice(0));
+        result.sent = true;
+
+        var receiveState = await _waitForMusState(instanceId, function() {
+            var inbound = _musInbound[instanceId];
+            if (inbound && inbound.length > 0) {
+                return { type: 'message' };
+            }
+            if (_hasQueuedMusEvent(_musErrors, instanceId)) {
+                return { type: 'error', code: _musErrors[instanceId] };
+            }
+            if (_hasQueuedMusEvent(_musDisconnected, instanceId)) {
+                return { type: 'disconnected' };
+            }
+            return null;
+        }, timeoutMs);
+
+        if (receiveState && receiveState.type === 'message') {
+            var messages = _takeQueuedMusEvent(_musInbound, instanceId) || [];
+            var first = messages.length > 0 ? messages[0] : new Uint8Array(0);
+            result.received = messages.length > 0;
+            result.receiveCount = messages.length;
+            result.receiveLength = first.length;
+            result.receiveText = _bytesToText(first);
+            result.receiveHexPrefix = _hexPrefix(first, 24);
+        } else {
+            result.receiveState = receiveState ? receiveState.type : 'timeout';
+            if (receiveState && receiveState.type === 'error') {
+                result.errorCode = receiveState.code;
+            }
+        }
+
+        socket = _musSockets[instanceId];
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.close(1000, 'self-test');
+        }
+        var closeState = await _waitForMusState(instanceId, function() {
+            if (_hasQueuedMusEvent(_musDisconnected, instanceId)) {
+                return { type: 'disconnected' };
+            }
+            return null;
+        }, timeoutMs);
+        result.disconnected = !!closeState || !!_takeQueuedMusEvent(_musDisconnected, instanceId);
+        _takeQueuedMusEvent(_musErrors, instanceId);
+
+        if (message.errorUrl) {
+            _musConnect(errorInstanceId, message.errorUrl);
+            var errorState = await _waitForMusState(errorInstanceId, function() {
+                if (_hasQueuedMusEvent(_musErrors, errorInstanceId)) {
+                    return { type: 'error', code: _musErrors[errorInstanceId] };
+                }
+                if (_hasQueuedMusEvent(_musConnected, errorInstanceId)) {
+                    return { type: 'connected' };
+                }
+                if (_hasQueuedMusEvent(_musDisconnected, errorInstanceId)) {
+                    return { type: 'disconnected' };
+                }
+                return null;
+            }, timeoutMs);
+            result.errorState = errorState ? errorState.type : 'timeout';
+            if (errorState && errorState.type === 'error') {
+                result.errorDelivered = true;
+                result.errorCode = errorState.code;
+                _takeQueuedMusEvent(_musErrors, errorInstanceId);
+            }
+            result.errorDisconnected = !!_takeQueuedMusEvent(_musDisconnected, errorInstanceId);
+            _takeQueuedMusEvent(_musConnected, errorInstanceId);
+        } else {
+            result.errorDelivered = true;
+        }
+
+        result.ok = result.connected && result.sent && result.received &&
+            result.disconnected && result.errorDelivered;
+        return result;
+    } catch (e) {
+        result.exception = e && e.message ? e.message : String(e);
+        return result;
+    } finally {
+        _clearMusInstance(instanceId);
+        _clearMusInstance(errorInstanceId);
+    }
 }
 
 function _drainNavigation() {
@@ -1200,6 +1395,13 @@ self.onmessage = function(event) {
                     type: 'runtimeDiagnostics',
                     requestId: message.requestId || 0,
                     diagnostics: _runtimeDiagnostics()
+                });
+                break;
+            case 'runMusWebSocketSelfTest':
+                self.postMessage({
+                    type: 'musWebSocketSelfTest',
+                    requestId: message.requestId || 0,
+                    diagnostics: await _runMusWebSocketSelfTest(message)
                 });
                 break;
             case 'triggerTestError': {

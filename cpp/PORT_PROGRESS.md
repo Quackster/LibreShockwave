@@ -35,7 +35,7 @@ This file tracks the current state and remaining work only. Detailed chronologic
 - Emscripten-built C++ WASM browser verification now loads `http://localhost/dcr0910/loader.dcr` in the generated C++ web player under headless Chromium with cross-origin isolation, zlib-enabled XFIR/Afterburner decompression, C++ exception catching, captured WASM memory, and SharedArrayBuffer frame transport. The browser follows `gotoNetMovie("habbo_entry.dcr")`, reaches the 151-frame Habbo entry movie at frame 33 with 99 visible sprites, reports no page/runtime errors, and renders the expected Habbo Hotel login splash with the yellow Habbo Hotel header, orange hotel building, and top-right "First time here?" and login panels visible.
 - Expected browser parity target: `http://localhost/dcr0910/loader.dcr` should continue to render the Habbo Hotel login splash shown in the provided reference screenshot.
 - Additional parity assets are already available under `/opt/git/v1_assets/`; these v1 assets are known to work correctly in the existing LibreShockwave Java implementation and should be used as a C++ runtime/player parity reference.
-- TODO: confirm the browser WebSocket -> JS bridge networking path works end to end too, including SMUS/Multiuser connection, send, receive, disconnect, and error delivery behavior.
+- Browser WebSocket -> JS bridge networking is verified with the generated C++ WASM web player under headless Chromium against a local WebSocket echo server. The `runMusWebSocketSelfTest` diagnostic confirms connection, binary send, receive, close/disconnect, and connection-error delivery through the same worker-side Multiuser socket queues used by normal playback. Native C++ bridge tests cover SMUS logon emission, SMUS frame pack/unpack, message/error/disconnect delivery, and queued C ABI delivery into the C++ Multiuser bridge.
 - `/var/html` is not present in the current environment; available local web fixtures are under `/var/www/html`.
 - Before saving C++ port slices, run the CMake build, CTest, `git diff --check`, and relevant fixture probes.
 
@@ -46,6 +46,6 @@ This file tracks the current state and remaining work only. Detailed chronologic
 - Remaining W3D shader/material variants, animation data, scene graph behavior, and rendering integration.
 - Remaining Lingo decompiler, VM runtime value, dispatcher, and builtin parity gaps.
 - Remaining player core, rendering pipeline, input, networking, audio, cast management, and debugging parity gaps.
-- Emscripten-built C++ WASM browser parity against the existing TeaVM web-player scenarios, including confirming WebSocket -> JS bridge networking parity for SMUS/Multiuser.
+- Emscripten-built C++ WASM browser parity against the existing TeaVM web-player scenarios, including fixture-driven SMUS/Multiuser parity beyond the standalone WebSocket bridge self-test.
 - Full `/var/html` `.cct`/`.dcr` read/handling verification once that requested fixture root exists or is mapped.
 - Port parity tests against current fixtures and integration scenarios.

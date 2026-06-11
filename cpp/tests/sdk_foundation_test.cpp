@@ -23032,7 +23032,10 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(player.find("getWindowSpriteDiagnostics") != std::string::npos);
     assert(player.find("getRuntimeDiagnostics") != std::string::npos);
     assert(player.find("triggerTestError") != std::string::npos);
+    assert(player.find("runMusWebSocketSelfTest") != std::string::npos);
+    assert(player.find("musWebSocketSelfTest") != std::string::npos);
     assert(player.find("_requestDiagnostic") != std::string::npos);
+    assert(player.find("Object.assign({}, payload || {}, { type: type, requestId: requestId })") != std::string::npos);
     assert(player.find("fetchWithTimeout") != std::string::npos);
     assert(player.find("_handleFetchRelay") != std::string::npos);
     assert(player.find("fetchRelayResult") != std::string::npos);
@@ -23059,6 +23062,10 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(worker.find("drain_audio_pending") != std::string::npos);
     assert(worker.find("get_mus_pending_count") != std::string::npos);
     assert(worker.find("mus_deliver_message") != std::string::npos);
+    assert(worker.find("_runMusWebSocketSelfTest") != std::string::npos);
+    assert(worker.find("runMusWebSocketSelfTest") != std::string::npos);
+    assert(worker.find("musWebSocketSelfTest") != std::string::npos);
+    assert(worker.find("socket.send(payloadBytes.buffer.slice(0))") != std::string::npos);
     assert(worker.find("read_next_goto_net_page") != std::string::npos);
     assert(worker.find("OffscreenCanvas") != std::string::npos);
     assert(worker.find("new WebSocket") != std::string::npos);
