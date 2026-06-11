@@ -103,18 +103,18 @@ void populateWorkbenchTabs(GtkWidget* tabsBox, const std::vector<gtk_models::Gtk
     for (const auto& tab : tabs) {
         GtkWidget* tabBox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
         GtkWidget* focusButton = actionButton(tab.title.c_str(), tab.detailedFocusActionName);
-        gtk_widget_set_tooltip_text(focusButton, tab.active ? "Active panel" : "Select panel");
+        gtk_widget_set_tooltip_text(focusButton, tab.focusTooltip.c_str());
         if (tab.active) {
             gtk_widget_add_css_class(focusButton, "suggested-action");
         }
         gtk_box_append(GTK_BOX(tabBox), focusButton);
 
-        GtkWidget* floatButton = actionButton("Float", tab.detailedFloatActionName);
-        gtk_widget_set_tooltip_text(floatButton, "Float panel");
+        GtkWidget* floatButton = actionButton(tab.floatLabel.c_str(), tab.detailedFloatActionName);
+        gtk_widget_set_tooltip_text(floatButton, tab.floatTooltip.c_str());
         gtk_box_append(GTK_BOX(tabBox), floatButton);
 
-        GtkWidget* hideButton = actionButton("Hide", tab.detailedToggleActionName);
-        gtk_widget_set_tooltip_text(hideButton, "Hide panel");
+        GtkWidget* hideButton = actionButton(tab.hideLabel.c_str(), tab.detailedToggleActionName);
+        gtk_widget_set_tooltip_text(hideButton, tab.hideTooltip.c_str());
         gtk_box_append(GTK_BOX(tabBox), hideButton);
 
         gtk_box_append(GTK_BOX(tabsBox), tabBox);

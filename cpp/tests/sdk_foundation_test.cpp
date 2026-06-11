@@ -2329,10 +2329,15 @@ void testEditorShellActionModels() {
                GtkWorkbenchPanelKind::Stage,
                "Stage",
                false,
+               "Select panel",
                "workbench_stage",
                "app.workbench_stage",
+               "Float",
+               "Float panel",
                "workbench_float_stage",
                "app.workbench_float_stage",
+               "Hide",
+               "Hide panel",
                "panel_stage",
                "app.panel_stage",
            }));
@@ -2342,10 +2347,15 @@ void testEditorShellActionModels() {
                GtkWorkbenchPanelKind::Paint,
                "Paint",
                true,
+               "Active panel",
                "workbench_paint",
                "app.workbench_paint",
+               "Float",
+               "Float panel",
                "workbench_float_paint",
                "app.workbench_float_paint",
+               "Hide",
+               "Hide panel",
                "panel_paint",
                "app.panel_paint",
            }));
@@ -2409,15 +2419,25 @@ void testEditorShellActionModels() {
                GtkWorkbenchPanelKind::Stage,
                "Stage",
                true,
+               "Active panel",
                "workbench_stage",
                "app.workbench_stage",
+               "Float",
+               "Float panel",
                "workbench_float_stage",
                "app.workbench_float_stage",
+               "Hide",
+               "Hide panel",
                "panel_stage",
                "app.panel_stage",
            }));
     assert(gtkWorkbenchTabsState[5].panelId == "message");
     assert(!gtkWorkbenchTabsState[5].active);
+    assert(gtkWorkbenchTabsState[5].focusTooltip == "Select panel");
+    assert(gtkWorkbenchTabsState[5].floatLabel == "Float");
+    assert(gtkWorkbenchTabsState[5].floatTooltip == "Float panel");
+    assert(gtkWorkbenchTabsState[5].hideLabel == "Hide");
+    assert(gtkWorkbenchTabsState[5].hideTooltip == "Hide panel");
     assert(gtkWorkbenchTabsState[5].focusActionName == "workbench_message");
     assert(gtkWorkbenchTabsState[5].floatActionName == "workbench_float_message");
     assert(gtkWorkbenchTabsState[5].toggleActionName == "panel_message");

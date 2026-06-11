@@ -252,10 +252,15 @@ struct GtkWorkbenchTabSpec {
     GtkWorkbenchPanelKind kind{GtkWorkbenchPanelKind::Generic};
     std::string title;
     bool active{false};
+    std::string focusTooltip;
     std::string focusActionName;
     std::string detailedFocusActionName;
+    std::string floatLabel;
+    std::string floatTooltip;
     std::string floatActionName;
     std::string detailedFloatActionName;
+    std::string hideLabel;
+    std::string hideTooltip;
     std::string toggleActionName;
     std::string detailedToggleActionName;
 
