@@ -19,6 +19,10 @@ var _musErrors = {};
 var _musInbound = {};
 var _fetchRelayCounter = 0;
 var _fetchRelayMap = {};
+var _sharedFrameBytes = null;
+var _sharedFrameControl = null;
+var _sharedFrameCapacity = 0;
+var _sharedFrameSeq = 0;
 
 var _requiredExports = {
     allocateBuffer: 'allocate_buffer',
@@ -268,6 +272,11 @@ function _runtimeDiagnostics() {
         },
         fetchRelay: {
             pending: Object.keys(_fetchRelayMap).length
+        },
+        sharedFrame: {
+            enabled: !!_sharedFrameBytes,
+            capacity: _sharedFrameCapacity,
+            sequence: _sharedFrameSeq
         }
     };
 }
@@ -796,7 +805,22 @@ function _postFrame() {
         return;
     }
     var overlay = _collectOverlayState();
-    var transfer = [frame.rgba.buffer];
+    var sharedFrame = false;
+    var sharedSeq = 0;
+    if (_sharedFrameBytes && _sharedFrameControl && frame.rgba.length <= _sharedFrameCapacity) {
+        _sharedFrameBytes.set(frame.rgba);
+        sharedSeq = ++_sharedFrameSeq;
+        Atomics.store(_sharedFrameControl, 0, sharedSeq);
+        Atomics.store(_sharedFrameControl, 1, frame.rgba.length);
+        Atomics.store(_sharedFrameControl, 2, frame.width);
+        Atomics.store(_sharedFrameControl, 3, frame.height);
+        Atomics.notify(_sharedFrameControl, 0, 1);
+        sharedFrame = true;
+    }
+    var transfer = [];
+    if (!sharedFrame) {
+        transfer.push(frame.rgba.buffer);
+    }
     if (overlay.cursorBitmap) {
         transfer.push(overlay.cursorBitmap.rgba.buffer);
     }
@@ -808,7 +832,9 @@ function _postFrame() {
         frameCount: frame.frameCount,
         tempo: frame.tempo,
         spriteCount: frame.spriteCount,
-        rgba: frame.rgba,
+        rgba: sharedFrame ? null : frame.rgba,
+        sharedFrame: sharedFrame,
+        sharedSeq: sharedSeq,
         cursorType: overlay.cursorType,
         cursorBitmap: overlay.cursorBitmap,
         caretInfo: overlay.caretInfo,
@@ -899,6 +925,11 @@ async function _init(message) {
     _basePath = message.basePath || '';
     _pageProtocol = message.pageProtocol || '';
     _debugLogsEnabled = !!message.debugLogsEnabled;
+    if (message.sharedFrameBuffer && message.sharedFrameControl && typeof Atomics === 'object') {
+        _sharedFrameBytes = new Uint8ClampedArray(message.sharedFrameBuffer);
+        _sharedFrameControl = new Int32Array(message.sharedFrameControl);
+        _sharedFrameCapacity = message.sharedFrameCapacity || _sharedFrameBytes.length;
+    }
     importScripts(_resolveUrl('libreshockwave-cpp-wasm.js'));
     if (typeof createLibreShockwaveCppWasm !== 'function') {
         throw new Error('createLibreShockwaveCppWasm was not exported by libreshockwave-cpp-wasm.js');

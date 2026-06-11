@@ -64,6 +64,10 @@ var LibreShockwaveCppPlayer = (function() {
         this.loadedMovieUrl = null;
         this.audioCtx = null;
         this.audioChannels = {};
+        this._sharedFrameBuffer = null;
+        this._sharedFrameControl = null;
+        this._sharedFrameBytes = null;
+        this._sharedFrameCapacity = 0;
         this.baseFrame = null;
         this.compositeData = null;
         this.cursorBitmap = null;
@@ -88,13 +92,36 @@ var LibreShockwaveCppPlayer = (function() {
         this.worker.onerror = function(event) {
             self._emitError(event.message || 'C++ WASM worker error');
         };
-        this.worker.postMessage({
+        var initMessage = {
             type: 'init',
             basePath: this.basePath,
             pageProtocol: location.protocol,
             debugLogsEnabled: this.debugLogsEnabled,
             debugPlayback: this.debugPlayback
-        });
+        };
+        this._initSharedFrameTransport(initMessage);
+        this.worker.postMessage(initMessage);
+    };
+
+    Player.prototype._initSharedFrameTransport = function(initMessage) {
+        this._sharedFrameBuffer = null;
+        this._sharedFrameControl = null;
+        this._sharedFrameBytes = null;
+        this._sharedFrameCapacity = 0;
+        if (this.options.sharedFrameBuffer === false ||
+                !window.crossOriginIsolated ||
+                typeof SharedArrayBuffer !== 'function' ||
+                typeof Atomics !== 'object') {
+            return;
+        }
+        var capacity = this.options.sharedFrameCapacity || 2048 * 2048 * 4;
+        this._sharedFrameBuffer = new SharedArrayBuffer(capacity);
+        this._sharedFrameControl = new Int32Array(new SharedArrayBuffer(16));
+        this._sharedFrameBytes = new Uint8ClampedArray(this._sharedFrameBuffer);
+        this._sharedFrameCapacity = capacity;
+        initMessage.sharedFrameBuffer = this._sharedFrameBuffer;
+        initMessage.sharedFrameControl = this._sharedFrameControl.buffer;
+        initMessage.sharedFrameCapacity = capacity;
     };
 
     Player.prototype._handleWorkerMessage = function(message) {
@@ -211,7 +238,7 @@ var LibreShockwaveCppPlayer = (function() {
     Player.prototype._drawFrame = function(message) {
         var width = message.width | 0;
         var height = message.height | 0;
-        if (width <= 0 || height <= 0 || !message.rgba) {
+        if (width <= 0 || height <= 0) {
             return;
         }
         if (this.canvas.width !== width) {
@@ -220,9 +247,22 @@ var LibreShockwaveCppPlayer = (function() {
         if (this.canvas.height !== height) {
             this.canvas.height = height;
         }
-        var rgba = message.rgba instanceof Uint8ClampedArray
-            ? message.rgba
-            : new Uint8ClampedArray(message.rgba);
+        var rgba = null;
+        if (message.sharedFrame && this._sharedFrameBytes && this._sharedFrameControl) {
+            var sharedLength = width * height * 4;
+            var sharedSeq = Atomics.load(this._sharedFrameControl, 0);
+            if (sharedSeq === message.sharedSeq && sharedLength <= this._sharedFrameCapacity) {
+                rgba = new Uint8ClampedArray(this._sharedFrameBuffer, 0, sharedLength);
+            }
+        }
+        if (!rgba && message.rgba) {
+            rgba = message.rgba instanceof Uint8ClampedArray
+                ? message.rgba
+                : new Uint8ClampedArray(message.rgba);
+        }
+        if (!rgba) {
+            return;
+        }
         this.baseFrame = new ImageData(rgba, width, height);
         this.cursorBitmap = message.cursorBitmap || null;
         this.caretInfo = message.caretInfo || null;

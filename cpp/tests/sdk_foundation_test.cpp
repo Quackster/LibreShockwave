@@ -22972,6 +22972,11 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(player.find("fetchWithTimeout") != std::string::npos);
     assert(player.find("_handleFetchRelay") != std::string::npos);
     assert(player.find("fetchRelayResult") != std::string::npos);
+    assert(player.find("_initSharedFrameTransport") != std::string::npos);
+    assert(player.find("window.crossOriginIsolated") != std::string::npos);
+    assert(player.find("new SharedArrayBuffer") != std::string::npos);
+    assert(player.find("sharedFrameCapacity") != std::string::npos);
+    assert(player.find("Atomics.load") != std::string::npos);
 
     assert(worker.find("createLibreShockwaveCppWasm") != std::string::npos);
     assert(worker.find("libreshockwave-cpp-wasm.js") != std::string::npos);
@@ -23011,6 +23016,11 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(worker.find("_relayFetch") != std::string::npos);
     assert(worker.find("fetchRelay") != std::string::npos);
     assert(worker.find("fetchRelayResult") != std::string::npos);
+    assert(worker.find("_sharedFrameBytes") != std::string::npos);
+    assert(worker.find("sharedFrameBuffer") != std::string::npos);
+    assert(worker.find("Atomics.store") != std::string::npos);
+    assert(worker.find("Atomics.notify") != std::string::npos);
+    assert(worker.find("sharedFrame: sharedFrame") != std::string::npos);
     assert(worker.find("postMessage({\n        type: 'frame'") != std::string::npos);
 
     const auto headerExports = parseHeaderExports(header);
