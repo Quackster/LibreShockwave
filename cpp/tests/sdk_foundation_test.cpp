@@ -235,6 +235,7 @@
 #include "libreshockwave/player/sprite/SpriteState.hpp"
 #include "libreshockwave/player/timeout/TimeoutManager.hpp"
 #include "libreshockwave/player/web/WasmPlayer.hpp"
+#include "libreshockwave/player/web/WasmRuntime.hpp"
 #include "libreshockwave/player/xtra/QueuedMultiuserBridge.hpp"
 #include "libreshockwave/player/xtra/SocketMultiuserBridge.hpp"
 #include "libreshockwave/util/AudioCodecUtils.hpp"
@@ -21972,6 +21973,244 @@ void testWasmPlayerWrapperFoundation() {
     DirectorFile::clearJpegDecodePending();
 }
 
+void testWasmRuntimeBridgeFoundation() {
+    using libreshockwave::player::web::WasmRuntime;
+
+    auto appendFourCC = [](std::vector<std::uint8_t>& data, std::string_view value) {
+        data.insert(data.end(), value.begin(), value.end());
+    };
+    auto appendI16 = [](std::vector<std::uint8_t>& data, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data.push_back(static_cast<std::uint8_t>((raw >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(raw & 0xFF));
+    };
+    auto appendI32 = [](std::vector<std::uint8_t>& data, std::uint32_t value) {
+        data.push_back(static_cast<std::uint8_t>((value >> 24) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 16) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(value & 0xFF));
+    };
+    auto putI16At = [](std::vector<std::uint8_t>& data, int offset, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((raw >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>(raw & 0xFF);
+    };
+    auto putI32At = [](std::vector<std::uint8_t>& data, int offset, std::uint32_t value) {
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((value >> 24) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>((value >> 16) & 0xFF);
+        data[static_cast<std::size_t>(offset + 2)] = static_cast<std::uint8_t>((value >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 3)] = static_cast<std::uint8_t>(value & 0xFF);
+    };
+    auto buildRifx = [&](const std::vector<std::pair<std::string, std::vector<std::uint8_t>>>& chunks) {
+        constexpr int mmapOffset = 32;
+        const int mmapPayloadLength = 24 + static_cast<int>(chunks.size()) * 20;
+        int payloadStart = mmapOffset + 8 + mmapPayloadLength;
+
+        std::vector<int> offsets;
+        offsets.reserve(chunks.size());
+        for (const auto& chunk : chunks) {
+            offsets.push_back(payloadStart - 8);
+            payloadStart += static_cast<int>(chunk.second.size());
+        }
+
+        std::vector<std::uint8_t> data;
+        appendFourCC(data, "RIFX");
+        appendI32(data, 0);
+        appendFourCC(data, "MV93");
+        appendFourCC(data, "imap");
+        appendI32(data, 12);
+        appendI32(data, 1);
+        appendI32(data, mmapOffset);
+        appendI32(data, 0x0207);
+        appendFourCC(data, "mmap");
+        appendI32(data, static_cast<std::uint32_t>(mmapPayloadLength));
+        appendI16(data, 24);
+        appendI16(data, 20);
+        appendI32(data, static_cast<std::uint32_t>(chunks.size()));
+        appendI32(data, static_cast<std::uint32_t>(chunks.size()));
+        appendI32(data, 0);
+        appendI32(data, 0);
+        appendI32(data, 0);
+        for (int index = 0; index < static_cast<int>(chunks.size()); ++index) {
+            appendI32(data, BinaryReader::fourCC(chunks[static_cast<std::size_t>(index)].first));
+            appendI32(data, static_cast<std::uint32_t>(chunks[static_cast<std::size_t>(index)].second.size()));
+            appendI32(data, static_cast<std::uint32_t>(offsets[static_cast<std::size_t>(index)]));
+            appendI16(data, 0);
+            appendI16(data, 0);
+            appendI32(data, 0);
+        }
+        for (const auto& chunk : chunks) {
+            data.insert(data.end(), chunk.second.begin(), chunk.second.end());
+        }
+        putI32At(data, 4, static_cast<std::uint32_t>(data.size() - 8));
+        return data;
+    };
+
+    std::vector<std::uint8_t> configData(80, 0);
+    putI16At(configData, 2, 0x0207);
+    putI16At(configData, 8, 180);
+    putI16At(configData, 10, 240);
+    putI16At(configData, 36, 0x0207);
+    putI16At(configData, 54, 20);
+    const auto movieData = buildRifx({{"DRCF", configData}});
+
+    WasmRuntime runtime;
+    assert(runtime.stageWidth() == 640);
+    assert(runtime.stageHeight() == 480);
+    assert(runtime.tempo() == 15);
+    assert(runtime.tick() == 0);
+    assert(runtime.loadMovie({0x00, 0x01}, "bad.dir") == 0);
+    assert(runtime.player() != nullptr);
+    assert(runtime.player()->player() == nullptr);
+
+    const int packedDimensions = runtime.loadMovie(movieData, "https://example.invalid/movies/entry.dir?cache=1");
+    assert(packedDimensions == ((240 << 16) | 180));
+    assert(runtime.player() != nullptr);
+    assert(runtime.player()->player() != nullptr);
+    assert(runtime.stageWidth() == 240);
+    assert(runtime.stageHeight() == 180);
+    assert(runtime.tempo() == 20);
+    runtime.setPuppetTempo(12);
+    assert(runtime.tempo() == 12);
+    assert(runtime.currentFrame() >= 0);
+    assert(runtime.frameCount() >= 0);
+    assert(runtime.preloadCasts() == 0);
+    assert(runtime.tick() == 0);
+
+    runtime.setExternalParam("sw1", "alpha");
+    runtime.setExternalParam("sw1", "beta");
+    runtime.setExternalParam("sw2", "gamma");
+    const auto& externalParams = runtime.player()->player()->externalParams();
+    assert(externalParams.size() == 2);
+    assert(externalParams[0].first == "sw1");
+    assert(externalParams[0].second == "beta");
+    assert(externalParams[1].first == "sw2");
+    runtime.clearExternalParams();
+    assert(runtime.player()->player()->externalParams().empty());
+
+    runtime.mouseMove(11, 22);
+    assert(runtime.player()->player()->inputState().mouseH() == 11);
+    assert(runtime.player()->player()->inputState().mouseV() == 22);
+    runtime.mouseDown(12, 23, 0);
+    assert(runtime.player()->player()->inputState().isMouseDown());
+    runtime.mouseUp(13, 24, 0);
+    assert(!runtime.player()->player()->inputState().isMouseDown());
+    runtime.keyDown(65, "a", 1 | 2);
+    assert(runtime.player()->player()->inputState().lastKey() == "a");
+    assert(runtime.player()->player()->inputState().isShiftDown());
+    assert(runtime.player()->player()->inputState().isControlDown());
+    runtime.keyUp(65, "a", 0);
+    assert(!runtime.player()->player()->inputState().isShiftDown());
+    assert(!runtime.player()->player()->inputState().isControlDown());
+    runtime.blur();
+    assert(!runtime.player()->player()->inputState().isMouseDown());
+    assert(!runtime.player()->player()->inputState().isRightMouseDown());
+
+    runtime.player()->player()->movieProperties().gotoNetPage("https://example.invalid/page.html", "_self");
+    assert(runtime.pendingGotoNetPageCount() == 1);
+    auto pageRequest = runtime.popNextGotoNetPage();
+    assert(pageRequest.has_value());
+    assert(pageRequest->url == "https://example.invalid/page.html");
+    assert(pageRequest->target == "_self");
+    assert(!runtime.popNextGotoNetPage().has_value());
+
+    const int navTask = runtime.player()->player()->movieProperties().gotoNetMovie("next.dir");
+    assert(navTask == 1);
+    assert(runtime.pendingGotoNetMovieCount() == 1);
+    auto movieRequest = runtime.popNextGotoNetMovie();
+    assert(movieRequest.has_value());
+    assert(movieRequest.value() == "next.dir");
+    assert(!runtime.popNextGotoNetMovie().has_value());
+
+    const int fetchTask = runtime.player()->netProvider()->preloadNetThing("asset.txt");
+    assert(fetchTask == 2);
+    assert(runtime.pendingFetchCount() == 1);
+    const auto* fetchRequest = runtime.pendingFetch(0);
+    assert(fetchRequest != nullptr);
+    assert(fetchRequest->taskId == fetchTask);
+    assert(fetchRequest->method == "GET");
+    assert(fetchRequest->url == "https://example.invalid/movies/asset.txt");
+    runtime.deliverFetchResult(fetchTask, {'O', 'K'});
+    assert(runtime.player()->netProvider()->netDone(fetchTask));
+    assert(runtime.player()->netProvider()->netTextResult(fetchTask) == "OK");
+    runtime.drainPendingFetches();
+    assert(runtime.pendingFetchCount() == 0);
+
+    const int statusTask = runtime.player()->netProvider()->preloadNetThing("status.bin");
+    runtime.deliverFetchStatus(statusTask, 99);
+    assert(runtime.player()->netProvider()->netDone(statusTask));
+    assert(runtime.player()->netProvider()->netTextResult(statusTask).empty());
+    assert(runtime.player()->netProvider()->getStreamStatusDatum(statusTask)
+               .propListValue()
+               .get(Datum::of(std::string("bytesSoFar")))
+               .intValue() == 99);
+    const int errorTask = runtime.player()->netProvider()->preloadNetThing("missing.bin");
+    runtime.deliverFetchError(errorTask, 404);
+    assert(runtime.player()->netProvider()->netDone(errorTask));
+    assert(runtime.player()->netProvider()->netError(errorTask) == 404);
+    runtime.drainPendingFetches();
+
+    runtime.player()->audioBackend()->play(1, {'R', 'I', 'F', 'F'}, "wav", 2);
+    assert(runtime.audioPendingCount() == 1);
+    const auto* audioCommand = runtime.audioPending(0);
+    assert(audioCommand != nullptr);
+    assert(audioCommand->action == "play");
+    assert(audioCommand->channelNum == 1);
+    assert(audioCommand->format.value() == "wav");
+    assert(audioCommand->loopCount == 2);
+    assert(audioCommand->audioData.value() == std::vector<std::uint8_t>({'R', 'I', 'F', 'F'}));
+    runtime.drainAudioPending();
+    assert(runtime.audioPendingCount() == 0);
+    runtime.audioNotifyStopped(1);
+    assert(!runtime.player()->audioBackend()->isPlaying(1));
+
+    runtime.player()->multiuserBridge()->requestConnect(44, "multiuser.example", 1626, 0);
+    assert(runtime.multiuserPendingCount() == 1);
+    const auto* musRequest = runtime.multiuserPending(0);
+    assert(musRequest != nullptr);
+    assert(musRequest->type == QueuedMultiuserBridge::REQ_CONNECT);
+    assert(musRequest->instanceId == 44);
+    assert(musRequest->host == "multiuser.example");
+    runtime.drainMultiuserPending();
+    assert(runtime.multiuserPendingCount() == 0);
+    runtime.multiuserDeliverConnected(44);
+    assert(runtime.player()->multiuserBridge()->isConnected(44));
+    runtime.multiuserDeliverMessageBytes(44, {'p', 'o', 'n', 'g'});
+    auto musMessages = runtime.player()->multiuserBridge()->pollMessages(44);
+    assert(musMessages.size() == 1);
+    runtime.multiuserDeliverError(44, 7);
+    musMessages = runtime.player()->multiuserBridge()->pollMessages(44);
+    assert(musMessages.size() == 1);
+    assert(musMessages[0].errorCode == 7);
+    runtime.multiuserDeliverDisconnected(44);
+    assert(!runtime.player()->multiuserBridge()->isConnected(44));
+
+    DirectorFile::clearJpegDecodePending();
+    const std::vector<std::uint8_t> jpegData{0xFF, 0xD8, 0x12, 0x34, 0xFF, 0xD9};
+    const int jpegId = QueuedJpegDecoder::idFor(jpegData);
+    assert(!runtime.player()->jpegDecoder()->decode(jpegData).has_value());
+    assert(runtime.pendingJpegDecodeCount() == 1);
+    assert(runtime.pendingJpegDecodeId(0) == jpegId);
+    assert(runtime.preparePendingJpegDecodeData(jpegId) == static_cast<int>(jpegData.size()));
+    assert(runtime.currentJpegDecodeData() != nullptr);
+    assert(*runtime.currentJpegDecodeData() == jpegData);
+    runtime.deliverJpegDecodeResult(jpegId, 1, 1, {0x10, 0x20, 0x30, 0x40});
+    auto decoded = runtime.player()->jpegDecoder()->decode(jpegData);
+    assert(decoded.has_value());
+    assert(decoded->getPixel(0, 0) == 0x40102030U);
+    DirectorFile::setJpegDecoder(DirectorFile::JpegDecoder{});
+    DirectorFile::clearJpegDecodePending();
+
+    assert(runtime.lastError().empty());
+    runtime.player()->player()->vm().fireTraceError("Runtime error", "details");
+    assert(runtime.lastError() == "Runtime error: details");
+    assert(runtime.takeLastError() == "Runtime error: details");
+    assert(runtime.lastError().empty());
+
+    runtime.drainGotoNetRequests();
+    runtime.shutdown();
+}
+
 void testTimeoutManagerFoundation() {
     TimeoutManager manager;
     assert(manager.getTimeoutCount() == 0);
@@ -26860,6 +27099,7 @@ int main() {
     testQueuedAudioBackendFoundation();
     testQueuedJpegDecoderFoundation();
     testWasmPlayerWrapperFoundation();
+    testWasmRuntimeBridgeFoundation();
     testTimeoutManagerFoundation();
     testPaletteAndColorRefs();
     testBitmapAlphaAndPaletteBehavior();

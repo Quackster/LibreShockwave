@@ -668,6 +668,11 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `player::web::WasmPlayer` ports the Java WASM player orchestration layer as a platform-neutral C++ wrapper around `Player`, `QueuedNetProvider`, `QueuedAudioBackend`, `QueuedMultiuserBridge`, and `QueuedJpegDecoder`.
 - The wrapper now loads Director movie bytes with Java-compatible base-path directory normalization, installs browser-facing net/audio/Multiuser/JPEG helpers, forwards `gotoNetPage`/`gotoNetMovie` callbacks, preserves host-driven movie-navigation task completion, exposes playback/tick/stage/tempo/cast-revision accessors, and leaves an existing loaded movie intact after a failed reload attempt.
 
+### WASM Runtime Bridge Foundation
+
+- `player::web::WasmRuntime` ports the first C++ browser-host bridge around `WasmPlayer`, including Java-compatible packed-dimension movie loading, old-movie shutdown/navigation completion on reload, playback/tick/step controls, external PARAM mutation, browser mouse/key event forwarding, and script-error capture.
+- The runtime exposes host-pollable queues for `gotoNetPage`, `gotoNetMovie`, fetch requests, audio commands, Multiuser requests, and JPEG decode requests, plus host delivery hooks for fetch data/status/error, audio stopped notifications, Multiuser connect/disconnect/error/message events, and decoded JPEG RGBA results.
+
 ### Sound Manager Foundation
 
 - `audio::AudioBackend` ports the platform-neutral playback contract for 1-based Director sound channels.
@@ -991,6 +996,7 @@ Result:
 - QueuedAudioBackend play/stop/stopAll/volume command queue, channel validation, pending drain, host stop notification, volume clamp, and elapsed-time fallback tests passed through the same CTest executable.
 - QueuedJpegDecoder CRC32 IDs, insertion-ordered pending queue, duplicate suppression, data preparation, delayed RGBA delivery, invalid-result removal, reset, and `DirectorFile::JpegDecoder` callback tests passed through the same CTest executable.
 - WasmPlayer wrapper load failure/success, base-path normalization, queued helper installation, gotoNetPage/gotoNetMovie callbacks, movie-navigation task completion, host fetch completion, queued audio/Multiuser/JPEG access, error listener forwarding, cast revision tracking, and failed-reload preservation tests passed through the same CTest executable.
+- WasmRuntime bridge packed-dimension loading, failed-load state reset, playback/tick defaults, external PARAM mutation, browser mouse/key forwarding, gotoNetPage/gotoNetMovie polling, fetch polling/delivery/status/error, audio polling/drain/stop notification, Multiuser polling/delivery, JPEG decode handoff, and script-error capture tests passed through the same CTest executable.
 - Chunk/audio foundation tests passed through the same CTest executable.
 - Cast metadata parser tests passed through the same CTest executable.
 - Compact chunk parser tests passed through the same CTest executable.
@@ -1137,6 +1143,6 @@ Result:
 - Detailed W3D geometry/material decoding and rendering integration.
 - Lingo decompiler, VM runtime values, dispatchers, and builtins.
 - Player core, rendering pipeline, input, networking, audio, cast management, and debugging.
-- WASM/web export glue and browser runtime integration around the C++ player wrapper.
+- Emscripten-facing C ABI exports and browser shell integration around the C++ WASM runtime bridge.
 - Editor replacement strategy in C++.
 - Port parity tests against current Java fixtures and integration scenarios.
