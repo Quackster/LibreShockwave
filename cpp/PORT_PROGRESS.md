@@ -89,6 +89,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `chunks::ScriptChunk` Lscr parser for script type, behavior flags, properties, globals, literals, handler metadata, and handler name tables.
 - Literal parsing covers string, inline int, float numeric value, and raw unknown literal payloads.
 - Handler bytecode instruction decoding normalizes multi-byte opcodes, preserves raw opcode bytes, decodes signed push-int arguments, and builds bytecode-offset lookup maps.
+- File-backed `ScriptChunk` helpers now mirror the Java convenience API for authoritative cast-member script type resolution, script display names, per-script Lnam name resolution, handler lookup, and property/global name lists while preserving explicit `ScriptNamesChunk` overloads.
 
 ### Score Chunk Parser
 
@@ -1088,7 +1089,7 @@ Result:
 ## Remaining Major Work
 
 - Higher-level media integration.
-- Remaining sound, renderer-side PFR anti-alias fidelity, platform font-family loading, text, score, and script chunk decoders.
+- Remaining sound, renderer-side PFR anti-alias fidelity, platform font-family loading, and text/score/script chunk decoder edge cases.
 - Detailed W3D geometry/material decoding and rendering integration.
 - Lingo decompiler, VM runtime values, dispatchers, and builtins.
 - Player core, rendering pipeline, input, networking, audio, cast management, and debugging.
@@ -1422,4 +1423,5 @@ Result:
 - `b0c6194a Wire C++ GTK native open dialog`
 - `65666e20 Add C++ GTK pane context menus`
 - `616e1f32 Wire C++ GTK tab drag docking`
-- Current checkpoint commit message: `Render C++ GTK docked workbench layout`
+- `77aa0d8a Render C++ GTK docked workbench layout`
+- Current checkpoint commit message: `Port C++ ScriptChunk file helpers`

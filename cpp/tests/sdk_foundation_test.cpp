@@ -22914,7 +22914,177 @@ void testScriptChunkParser() {
     assert(InstructionAnnotator::annotate(script,
                                           ScriptChunk::Instruction{0, Opcode::GET_LOCAL, 0x4C, 0},
                                           nullptr) == "<local0>");
+    assert(script.resolvedScriptType() == ScriptChunkType::Behavior);
+    assert(script.scriptName().empty());
+    assert(script.displayName() == "Behavior #34");
+    assert(script.getHandlerName(handler) == "handler#5");
+    assert(script.resolveName(9) == "#9");
+    assert(!script.findHandler("MOUSEUP").has_value());
+    assert(script.getPropertyNames().empty());
+    assert(script.getGlobalNames().empty());
     assert(scriptReader.order() == ByteOrder::LittleEndian);
+}
+
+void testScriptChunkFileBackedHelpers() {
+    auto appendFourCC = [](std::vector<std::uint8_t>& data, const std::string& value) {
+        data.insert(data.end(), value.begin(), value.end());
+    };
+    auto appendI16 = [](std::vector<std::uint8_t>& data, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data.push_back(static_cast<std::uint8_t>((raw >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(raw & 0xFF));
+    };
+    auto appendI32 = [](std::vector<std::uint8_t>& data, std::uint32_t value) {
+        data.push_back(static_cast<std::uint8_t>((value >> 24) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 16) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
+        data.push_back(static_cast<std::uint8_t>(value & 0xFF));
+    };
+    auto putI16At = [](std::vector<std::uint8_t>& data, int offset, int value) {
+        const auto raw = static_cast<std::uint16_t>(value);
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((raw >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>(raw & 0xFF);
+    };
+    auto putI32At = [](std::vector<std::uint8_t>& data, int offset, std::uint32_t value) {
+        data[static_cast<std::size_t>(offset)] = static_cast<std::uint8_t>((value >> 24) & 0xFF);
+        data[static_cast<std::size_t>(offset + 1)] = static_cast<std::uint8_t>((value >> 16) & 0xFF);
+        data[static_cast<std::size_t>(offset + 2)] = static_cast<std::uint8_t>((value >> 8) & 0xFF);
+        data[static_cast<std::size_t>(offset + 3)] = static_cast<std::uint8_t>(value & 0xFF);
+    };
+    auto appendPascal = [&](std::vector<std::uint8_t>& data, const std::string& value) {
+        data.push_back(static_cast<std::uint8_t>(value.size()));
+        data.insert(data.end(), value.begin(), value.end());
+    };
+    auto buildRifx = [&](const std::vector<std::pair<std::string, std::vector<std::uint8_t>>>& chunks) {
+        constexpr int mmapOffset = 32;
+        const int mmapPayloadLength = 24 + static_cast<int>(chunks.size()) * 20;
+        int payloadStart = mmapOffset + 8 + mmapPayloadLength;
+
+        std::vector<int> offsets;
+        offsets.reserve(chunks.size());
+        for (const auto& chunk : chunks) {
+            offsets.push_back(payloadStart - 8);
+            payloadStart += static_cast<int>(chunk.second.size());
+        }
+
+        std::vector<std::uint8_t> data;
+        appendFourCC(data, "RIFX");
+        appendI32(data, 0);
+        appendFourCC(data, "MV93");
+        appendFourCC(data, "imap");
+        appendI32(data, 12);
+        appendI32(data, 1);
+        appendI32(data, mmapOffset);
+        appendI32(data, 0x04B1);
+        appendFourCC(data, "mmap");
+        appendI32(data, static_cast<std::uint32_t>(mmapPayloadLength));
+        appendI16(data, 24);
+        appendI16(data, 20);
+        appendI32(data, static_cast<std::uint32_t>(chunks.size()));
+        appendI32(data, static_cast<std::uint32_t>(chunks.size()));
+        appendI32(data, 0);
+        appendI32(data, 0);
+        appendI32(data, 0);
+        for (int index = 0; index < static_cast<int>(chunks.size()); ++index) {
+            appendI32(data, BinaryReader::fourCC(chunks[static_cast<std::size_t>(index)].first));
+            appendI32(data, static_cast<std::uint32_t>(chunks[static_cast<std::size_t>(index)].second.size()));
+            appendI32(data, static_cast<std::uint32_t>(offsets[static_cast<std::size_t>(index)]));
+            appendI16(data, 0);
+            appendI16(data, 0);
+            appendI32(data, 0);
+        }
+        for (const auto& chunk : chunks) {
+            data.insert(data.end(), chunk.second.begin(), chunk.second.end());
+        }
+        putI32At(data, 4, static_cast<std::uint32_t>(data.size() - 8));
+        return data;
+    };
+    auto makeScriptCastData = [&](const std::string& name, int scriptId, int scriptTypeCode) {
+        std::vector<std::uint8_t> specificData;
+        appendI16(specificData, scriptTypeCode);
+
+        std::vector<std::uint8_t> info;
+        appendI32(info, 20);
+        appendI32(info, 0);
+        appendI32(info, 0);
+        appendI32(info, 0);
+        appendI32(info, static_cast<std::uint32_t>(scriptId));
+        appendI16(info, 3);
+        appendI32(info, 0);
+        appendI32(info, 0);
+        appendI32(info, static_cast<std::uint32_t>(name.size() + 1));
+        appendI32(info, static_cast<std::uint32_t>(name.size() + 1));
+        appendPascal(info, name);
+
+        std::vector<std::uint8_t> data;
+        appendI32(data, static_cast<std::uint32_t>(libreshockwave::cast::code(MemberType::Script)));
+        appendI32(data, static_cast<std::uint32_t>(info.size()));
+        appendI32(data, static_cast<std::uint32_t>(specificData.size()));
+        data.insert(data.end(), info.begin(), info.end());
+        data.insert(data.end(), specificData.begin(), specificData.end());
+        return data;
+    };
+
+    std::vector<std::uint8_t> configData(80, 0);
+    putI16At(configData, 36, 0x04B1);
+
+    std::vector<std::uint8_t> namesData(20, 0);
+    putI16At(namesData, 16, 20);
+    putI16At(namesData, 18, 2);
+    namesData.push_back(7);
+    namesData.insert(namesData.end(), {'m', 'o', 'u', 's', 'e', 'U', 'p'});
+    namesData.push_back(10);
+    namesData.insert(namesData.end(), {'s', 'h', 'a', 'r', 'e', 'd', 'N', 'a', 'm', 'e'});
+
+    std::vector<std::uint8_t> contextData;
+    appendI32(contextData, 0);
+    appendI32(contextData, 0);
+    appendI32(contextData, 1);
+    appendI32(contextData, 0);
+    appendI16(contextData, 42);
+    appendI16(contextData, 0);
+    appendI32(contextData, 0);
+    appendI32(contextData, 0);
+    appendI32(contextData, 0);
+    appendI32(contextData, 1);
+    appendI16(contextData, 1);
+    appendI16(contextData, 0);
+    appendI16(contextData, 0);
+    appendI32(contextData, 0);
+    appendI32(contextData, 3);
+    appendI16(contextData, 0);
+    appendI16(contextData, 0);
+
+    std::vector<std::uint8_t> scriptData(160, 0);
+    putI32At(scriptData, 8, static_cast<std::uint32_t>(scriptData.size()));
+    putI32At(scriptData, 12, static_cast<std::uint32_t>(scriptData.size()));
+    putI16At(scriptData, 16, 50);
+    putI16At(scriptData, 18, 0);
+    putI32At(scriptData, 38, 2);
+    putI16At(scriptData, 72, 1);
+    putI32At(scriptData, 74, 100);
+    putI16At(scriptData, 100, 0);
+    putI32At(scriptData, 104, 1);
+    putI32At(scriptData, 108, 150);
+    scriptData[150] = 0x01;
+
+    const auto fileData = buildRifx({{"DRCF", configData},
+                                     {"Lnam", namesData},
+                                     {"Lctx", contextData},
+                                     {"Lscr", scriptData},
+                                     {"CASt", makeScriptCastData("Script Cast", 1, 3)}});
+    auto file = DirectorFile::load(fileData);
+    assert(file->scripts().size() == 1);
+    const auto script = file->scripts().front();
+    assert(script->scriptType() == ScriptChunkType::Behavior);
+    assert(script->resolvedScriptType() == ScriptChunkType::MovieScript);
+    assert(script->scriptName() == "Script Cast");
+    assert(script->displayName() == "\"Script Cast\" (Movie Script)");
+    assert(script->handlers().size() == 1);
+    assert(script->getHandlerName(script->handlers().front()) == "mouseUp");
+    assert(script->resolveName(1) == "sharedName");
+    assert(script->findHandler("MOUSEUP").has_value());
+    assert(!script->findHandler("missing").has_value());
 }
 
 void testScoreChunkParser() {
@@ -25721,6 +25891,7 @@ int main() {
     testCastListAndMemberChunks();
     testScriptContextChunk();
     testScriptChunkParser();
+    testScriptChunkFileBackedHelpers();
     testScoreChunkParser();
     testDirectorFileRifxLoader();
     testAfterburnerReader();

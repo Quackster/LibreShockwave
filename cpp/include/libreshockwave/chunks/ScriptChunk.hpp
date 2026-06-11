@@ -96,11 +96,19 @@ public:
     [[nodiscard]] const std::vector<std::uint8_t>& rawBytecode() const;
     [[nodiscard]] bool hasProperties() const;
     [[nodiscard]] bool hasGlobals() const;
+    [[nodiscard]] ScriptChunkType resolvedScriptType() const;
+    [[nodiscard]] std::string scriptName() const;
+    [[nodiscard]] std::string displayName() const;
     [[nodiscard]] std::optional<Handler> findHandlerByNameId(int nameId) const;
+    [[nodiscard]] std::string getHandlerName(const Handler& handler) const;
     [[nodiscard]] std::string getHandlerName(const Handler& handler, const ScriptNamesChunk* names) const;
+    [[nodiscard]] std::string resolveName(int nameId) const;
     [[nodiscard]] std::string resolveName(int nameId, const ScriptNamesChunk* names) const;
+    [[nodiscard]] std::optional<Handler> findHandler(std::string_view name) const;
     [[nodiscard]] std::optional<Handler> findHandler(std::string_view name, const ScriptNamesChunk* names) const;
+    [[nodiscard]] std::vector<std::string> getPropertyNames() const;
     [[nodiscard]] std::vector<std::string> getPropertyNames(const ScriptNamesChunk* names) const;
+    [[nodiscard]] std::vector<std::string> getGlobalNames() const;
     [[nodiscard]] std::vector<std::string> getGlobalNames(const ScriptNamesChunk* names) const;
 
     [[nodiscard]] static ScriptChunk read(const DirectorFile* file,

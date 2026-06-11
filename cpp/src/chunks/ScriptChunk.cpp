@@ -5,11 +5,15 @@
 #include <cctype>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <sstream>
 #include <utility>
 
+#include "libreshockwave/DirectorFile.hpp"
+#include "libreshockwave/chunks/CastMemberChunk.hpp"
 #include "libreshockwave/io/BinaryReader.hpp"
 #include "libreshockwave/chunks/ScriptNamesChunk.hpp"
+#include "libreshockwave/format/ScriptFormatUtils.hpp"
 
 namespace libreshockwave::chunks {
 namespace {
@@ -73,6 +77,44 @@ bool equalsIgnoreCase(std::string_view lhs, std::string_view rhs) {
     return true;
 }
 
+ScriptChunkType scriptChunkTypeForCastMemberScriptType(CastMemberScriptType type) {
+    switch (type) {
+        case CastMemberScriptType::Score: return ScriptChunkType::Score;
+        case CastMemberScriptType::Behavior: return ScriptChunkType::Behavior;
+        case CastMemberScriptType::MovieScript: return ScriptChunkType::MovieScript;
+        case CastMemberScriptType::Parent: return ScriptChunkType::Parent;
+        case CastMemberScriptType::Unknown: return ScriptChunkType::Unknown;
+    }
+    return ScriptChunkType::Unknown;
+}
+
+std::shared_ptr<ScriptChunk> findScriptInFile(const ScriptChunk& script) {
+    const auto* file = script.file();
+    if (!file) {
+        return nullptr;
+    }
+
+    for (const auto& candidate : file->scripts()) {
+        if (candidate && candidate.get() == &script) {
+            return candidate;
+        }
+    }
+    for (const auto& candidate : file->scripts()) {
+        if (candidate && candidate->id().value() == script.id().value()) {
+            return candidate;
+        }
+    }
+    return nullptr;
+}
+
+std::shared_ptr<ScriptNamesChunk> scriptNamesFromFile(const ScriptChunk& script) {
+    auto* file = const_cast<DirectorFile*>(script.file());
+    if (!file) {
+        return nullptr;
+    }
+    return file->getScriptNamesForScript(findScriptInFile(script));
+}
+
 } // namespace
 
 ScriptChunkType scriptChunkTypeFromCode(int code) {
@@ -133,6 +175,32 @@ const std::vector<std::uint8_t>& ScriptChunk::rawBytecode() const { return rawBy
 bool ScriptChunk::hasProperties() const { return !properties_.empty(); }
 bool ScriptChunk::hasGlobals() const { return !globals_.empty(); }
 
+ScriptChunkType ScriptChunk::resolvedScriptType() const {
+    auto* file = const_cast<DirectorFile*>(file_);
+    const auto script = findScriptInFile(*this);
+    if (file && script) {
+        if (const auto castMemberType = file->getScriptType(script); castMemberType.has_value()) {
+            return scriptChunkTypeForCastMemberScriptType(castMemberType.value());
+        }
+    }
+    return scriptType_;
+}
+
+std::string ScriptChunk::scriptName() const {
+    auto* file = const_cast<DirectorFile*>(file_);
+    const auto script = findScriptInFile(*this);
+    return file && script ? file->getScriptName(script) : "";
+}
+
+std::string ScriptChunk::displayName() const {
+    const auto name = scriptName();
+    const auto typeName = format::getScriptTypeName(resolvedScriptType());
+    if (!name.empty()) {
+        return "\"" + name + "\" (" + typeName + ")";
+    }
+    return typeName + " #" + std::to_string(id_.value());
+}
+
 std::optional<ScriptChunk::Handler> ScriptChunk::findHandlerByNameId(int nameId) const {
     for (const auto& handler : handlers_) {
         if (handler.nameId == nameId) {
@@ -142,6 +210,10 @@ std::optional<ScriptChunk::Handler> ScriptChunk::findHandlerByNameId(int nameId)
     return std::nullopt;
 }
 
+std::string ScriptChunk::getHandlerName(const Handler& handler) const {
+    return getHandlerName(handler, scriptNamesFromFile(*this).get());
+}
+
 std::string ScriptChunk::getHandlerName(const Handler& handler, const ScriptNamesChunk* names) const {
     if (names) {
         return names->getName(handler.nameId);
@@ -149,11 +221,19 @@ std::string ScriptChunk::getHandlerName(const Handler& handler, const ScriptName
     return "handler#" + std::to_string(handler.nameId);
 }
 
+std::string ScriptChunk::resolveName(int nameId) const {
+    return resolveName(nameId, scriptNamesFromFile(*this).get());
+}
+
 std::string ScriptChunk::resolveName(int nameId, const ScriptNamesChunk* names) const {
     if (names) {
         return names->getName(nameId);
     }
     return "#" + std::to_string(nameId);
+}
+
+std::optional<ScriptChunk::Handler> ScriptChunk::findHandler(std::string_view name) const {
+    return findHandler(name, scriptNamesFromFile(*this).get());
 }
 
 std::optional<ScriptChunk::Handler> ScriptChunk::findHandler(std::string_view name, const ScriptNamesChunk* names) const {
@@ -168,6 +248,10 @@ std::optional<ScriptChunk::Handler> ScriptChunk::findHandler(std::string_view na
     return std::nullopt;
 }
 
+std::vector<std::string> ScriptChunk::getPropertyNames() const {
+    return getPropertyNames(scriptNamesFromFile(*this).get());
+}
+
 std::vector<std::string> ScriptChunk::getPropertyNames(const ScriptNamesChunk* names) const {
     std::vector<std::string> result;
     if (!names) {
@@ -178,6 +262,10 @@ std::vector<std::string> ScriptChunk::getPropertyNames(const ScriptNamesChunk* n
         result.push_back(names->getName(property.nameId));
     }
     return result;
+}
+
+std::vector<std::string> ScriptChunk::getGlobalNames() const {
+    return getGlobalNames(scriptNamesFromFile(*this).get());
 }
 
 std::vector<std::string> ScriptChunk::getGlobalNames(const ScriptNamesChunk* names) const {
