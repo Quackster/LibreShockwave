@@ -46,6 +46,20 @@ struct GtkPanelRowSpec {
     friend bool operator==(const GtkPanelRowSpec&, const GtkPanelRowSpec&) = default;
 };
 
+struct GtkActionActivation {
+    std::string actionName;
+    EditorCommand command{EditorCommand::None};
+    std::string panelId;
+    bool handled{false};
+    bool requestQuit{false};
+    bool refreshActions{false};
+    bool refreshPanels{false};
+    std::optional<bool> active;
+    std::string statusMessage;
+
+    friend bool operator==(const GtkActionActivation&, const GtkActionActivation&) = default;
+};
+
 class EditorGtkShellModel {
 public:
     [[nodiscard]] static std::string sanitizeActionName(std::string_view value);
@@ -62,6 +76,25 @@ public:
                                                                  const EditorFramePanelModel& frameModel);
     [[nodiscard]] static std::vector<GtkToolbarItemSpec> toolbarItems(const EditorToolBarModel& toolbarModel);
     [[nodiscard]] static std::vector<GtkPanelRowSpec> panelRows(const EditorFramePanelModel& frameModel);
+};
+
+class EditorGtkShellState {
+public:
+    [[nodiscard]] const EditorMenuModel& menuModel() const;
+    [[nodiscard]] const EditorToolBarModel& toolbarModel() const;
+    [[nodiscard]] const EditorFramePanelModel& frameModel() const;
+
+    [[nodiscard]] std::vector<GtkActionSpec> actionSpecs() const;
+    [[nodiscard]] std::optional<GtkActionSpec> actionSpec(std::string_view name) const;
+    [[nodiscard]] std::vector<GtkToolbarItemSpec> toolbarItems() const;
+    [[nodiscard]] std::vector<GtkPanelRowSpec> panelRows() const;
+
+    GtkActionActivation activateAction(std::string_view name);
+
+private:
+    EditorMenuModel menuModel_;
+    EditorToolBarModel toolbarModel_;
+    EditorFramePanelModel frameModel_;
 };
 
 } // namespace libreshockwave::editor::gtk

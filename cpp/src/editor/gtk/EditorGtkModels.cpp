@@ -23,6 +23,11 @@ void collectMenuActions(const std::vector<EditorMenuItem>& items, std::map<std::
     }
 }
 
+std::string panelTitle(std::string_view panelId) {
+    const auto descriptor = panels::EditorPanelCatalog::descriptor(panelId);
+    return descriptor.has_value() ? descriptor->title : std::string(panelId);
+}
+
 } // namespace
 
 std::string EditorGtkShellModel::sanitizeActionName(std::string_view value) {
@@ -144,6 +149,83 @@ std::vector<GtkPanelRowSpec> EditorGtkShellModel::panelRows(const EditorFramePan
         result.push_back(std::move(row));
     }
     return result;
+}
+
+const EditorMenuModel& EditorGtkShellState::menuModel() const {
+    return menuModel_;
+}
+
+const EditorToolBarModel& EditorGtkShellState::toolbarModel() const {
+    return toolbarModel_;
+}
+
+const EditorFramePanelModel& EditorGtkShellState::frameModel() const {
+    return frameModel_;
+}
+
+std::vector<GtkActionSpec> EditorGtkShellState::actionSpecs() const {
+    return EditorGtkShellModel::actionSpecs(menuModel_, toolbarModel_, frameModel_);
+}
+
+std::optional<GtkActionSpec> EditorGtkShellState::actionSpec(std::string_view name) const {
+    return EditorGtkShellModel::actionSpec(name, menuModel_, toolbarModel_, frameModel_);
+}
+
+std::vector<GtkToolbarItemSpec> EditorGtkShellState::toolbarItems() const {
+    return EditorGtkShellModel::toolbarItems(toolbarModel_);
+}
+
+std::vector<GtkPanelRowSpec> EditorGtkShellState::panelRows() const {
+    return EditorGtkShellModel::panelRows(frameModel_);
+}
+
+GtkActionActivation EditorGtkShellState::activateAction(std::string_view name) {
+    GtkActionActivation result;
+    result.actionName = std::string(name);
+
+    const auto spec = actionSpec(name);
+    if (!spec.has_value()) {
+        result.statusMessage = "Unknown action: " + result.actionName;
+        return result;
+    }
+
+    result.command = spec->command;
+    result.panelId = spec->panelId;
+    if (!spec->enabled) {
+        result.statusMessage = "Action disabled: " + result.actionName;
+        return result;
+    }
+
+    if (spec->stateful && !spec->panelId.empty()) {
+        const bool visible = !frameModel_.isPanelVisible(spec->panelId);
+        result.handled = frameModel_.togglePanel(spec->panelId, visible);
+        result.refreshActions = result.handled;
+        result.refreshPanels = result.handled;
+        result.active = frameModel_.isPanelVisible(spec->panelId);
+        result.statusMessage = panelTitle(spec->panelId) + (result.active.value_or(false) ? " shown" : " hidden");
+        return result;
+    }
+
+    switch (spec->command) {
+        case EditorCommand::Exit:
+            result.handled = true;
+            result.requestQuit = true;
+            result.statusMessage = "Exit requested";
+            return result;
+        case EditorCommand::ResetLayout:
+            frameModel_.resetLayout();
+            result.handled = true;
+            result.refreshActions = true;
+            result.refreshPanels = true;
+            result.statusMessage = "Layout reset";
+            return result;
+        default:
+            result.handled = spec->command != EditorCommand::None;
+            result.statusMessage = result.handled
+                ? "Command activated: " + std::string(commandName(spec->command))
+                : "No command mapped: " + result.actionName;
+            return result;
+    }
 }
 
 } // namespace libreshockwave::editor::gtk

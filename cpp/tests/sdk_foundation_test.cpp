@@ -330,6 +330,8 @@ using libreshockwave::editor::castbrowser::CastLibDescriptor;
 using libreshockwave::editor::castbrowser::CastLibEntry;
 using libreshockwave::editor::castbrowser::CastListRow;
 using libreshockwave::editor::gtk::EditorGtkShellModel;
+using libreshockwave::editor::gtk::EditorGtkShellState;
+using libreshockwave::editor::gtk::GtkActionActivation;
 using libreshockwave::editor::gtk::GtkPanelRowSpec;
 using libreshockwave::editor::gtk::GtkToolbarItemSpec;
 using libreshockwave::editor::castbrowser::CastThumbnailKind;
@@ -2122,6 +2124,63 @@ void testEditorShellActionModels() {
     assert(gtkRows[7].displayLabel == "Paint");
     assert(gtkRows[7].visible);
     assert(gtkRows[7].docked);
+
+    EditorGtkShellState gtkState;
+    assert(gtkState.menuModel().findMenu("File") != nullptr);
+    assert(gtkState.toolbarItems().front().detailedActionName == "app.rewind");
+    assert(gtkState.actionSpec("panel_paint")->active == false);
+
+    auto missingActivation = gtkState.activateAction("missing");
+    assert(missingActivation == (GtkActionActivation{
+                                    "missing",
+                                    EditorCommand::None,
+                                    "",
+                                    false,
+                                    false,
+                                    false,
+                                    false,
+                                    std::nullopt,
+                                    "Unknown action: missing",
+                                }));
+
+    auto disabledSave = gtkState.activateAction("save");
+    assert(disabledSave.actionName == "save");
+    assert(disabledSave.command == EditorCommand::Save);
+    assert(!disabledSave.handled);
+    assert(disabledSave.statusMessage == "Action disabled: save");
+
+    auto showPaint = gtkState.activateAction("panel_paint");
+    assert(showPaint.handled);
+    assert(showPaint.panelId == "paint");
+    assert(showPaint.refreshActions);
+    assert(showPaint.refreshPanels);
+    assert(showPaint.active.has_value());
+    assert(showPaint.active.value());
+    assert(showPaint.statusMessage == "Paint shown");
+    assert(gtkState.actionSpec("panel_paint")->active);
+    assert(gtkState.panelRows()[7].displayLabel == "Paint");
+
+    auto hidePaint = gtkState.activateAction("panel_paint");
+    assert(hidePaint.handled);
+    assert(hidePaint.active.has_value());
+    assert(!hidePaint.active.value());
+    assert(hidePaint.statusMessage == "Paint hidden");
+    assert(!gtkState.actionSpec("panel_paint")->active);
+
+    assert(gtkState.activateAction("panel_sound").active.value());
+    auto resetLayout = gtkState.activateAction("resetLayout");
+    assert(resetLayout.handled);
+    assert(resetLayout.command == EditorCommand::ResetLayout);
+    assert(resetLayout.refreshActions);
+    assert(resetLayout.refreshPanels);
+    assert(resetLayout.statusMessage == "Layout reset");
+    assert(!gtkState.actionSpec("panel_sound")->active);
+
+    auto exitActivation = gtkState.activateAction("exit");
+    assert(exitActivation.handled);
+    assert(exitActivation.command == EditorCommand::Exit);
+    assert(exitActivation.requestQuit);
+    assert(exitActivation.statusMessage == "Exit requested");
 }
 
 void testEditorCastBrowserModels() {
