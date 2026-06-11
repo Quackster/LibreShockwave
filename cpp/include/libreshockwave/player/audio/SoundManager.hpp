@@ -40,6 +40,8 @@ public:
     void setCastLibSourceFile(int castLib, DirectorFile* sourceFile);
     [[nodiscard]] DirectorFile* castLibSourceFile(int castLib) const;
 
+    void setEnabled(bool enabled);
+    [[nodiscard]] bool isEnabled() const;
     void play(int channelNum, const lingo::Datum& args);
     void stop(int channelNum);
     void stopAll();
@@ -70,6 +72,7 @@ private:
     [[nodiscard]] static PlayArgs extractPlayArgs(const lingo::Datum& args);
 
     AudioBackend* backend_{nullptr};
+    bool enabled_{true};
     std::array<int, MAX_CHANNELS + 1> volumes_{};
     std::unordered_map<int, DirectorFile*> castLibFiles_;
     AudioResolver resolver_;

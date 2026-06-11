@@ -61,8 +61,22 @@ DirectorFile* SoundManager::castLibSourceFile(int castLib) const {
     return found == castLibFiles_.end() ? nullptr : found->second;
 }
 
+void SoundManager::setEnabled(bool enabled) {
+    if (enabled_ == enabled) {
+        return;
+    }
+    enabled_ = enabled;
+    if (!enabled_) {
+        stopAll();
+    }
+}
+
+bool SoundManager::isEnabled() const {
+    return enabled_;
+}
+
 void SoundManager::play(int channelNum, const lingo::Datum& args) {
-    if (backend_ == nullptr || !isValidChannel(channelNum)) {
+    if (!enabled_ || backend_ == nullptr || !isValidChannel(channelNum)) {
         return;
     }
 
@@ -112,11 +126,11 @@ int SoundManager::getVolume(int channelNum) const {
 }
 
 bool SoundManager::isPlaying(int channelNum) const {
-    return backend_ != nullptr && isValidChannel(channelNum) && backend_->isPlaying(channelNum);
+    return enabled_ && backend_ != nullptr && isValidChannel(channelNum) && backend_->isPlaying(channelNum);
 }
 
 int SoundManager::getElapsedTime(int channelNum) const {
-    return backend_ != nullptr && isValidChannel(channelNum) ? backend_->getElapsedTime(channelNum) : 0;
+    return enabled_ && backend_ != nullptr && isValidChannel(channelNum) ? backend_->getElapsedTime(channelNum) : 0;
 }
 
 std::optional<std::vector<std::uint8_t>> SoundManager::resolveAudioData(const lingo::Datum& memberRef) const {

@@ -1655,7 +1655,13 @@ Datum SoundBuiltins::sound(BuiltinContext&, const std::vector<Datum>& args) {
     return Datum::soundChannel(channel);
 }
 
-Datum SoundBuiltins::soundEnabled(BuiltinContext&, const std::vector<Datum>&) {
+Datum SoundBuiltins::soundEnabled(BuiltinContext& context, const std::vector<Datum>&) {
+    if (context.movieProperties != nullptr) {
+        return boolDatum(context.movieProperties->getMovieProp("soundEnabled").boolValue());
+    }
+    if (context.soundManager != nullptr) {
+        return boolDatum(context.soundManager->isEnabled());
+    }
     return Datum::TRUE;
 }
 

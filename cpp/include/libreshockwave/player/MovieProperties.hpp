@@ -33,6 +33,8 @@ public:
     void setFrameCountSupplier(IntSupplier supplier);
     void setTempoSupplier(IntSupplier supplier);
     void setTempoSetter(IntConsumer setter);
+    void setSoundEnabledSupplier(IntSupplier supplier);
+    void setSoundEnabledSetter(IntConsumer setter);
     void setRandomSeedSupplier(IntSupplier supplier);
     void setRandomSeedSetter(IntConsumer setter);
     void setParamCountSupplier(IntSupplier supplier);
@@ -76,6 +78,8 @@ private:
     [[nodiscard]] int channelCount() const;
     [[nodiscard]] int tempo() const;
     void setTempo(int tempo);
+    [[nodiscard]] bool soundEnabled() const;
+    void setSoundEnabled(bool enabled);
     [[nodiscard]] int randomSeed() const;
     void setRandomSeed(int seed);
     [[nodiscard]] int stageWidth(int fallback = 0) const;
@@ -109,6 +113,8 @@ private:
     lingo::Datum actorList_{lingo::Datum::list()};
     int tempo_{15};
     bool tempoExplicit_{false};
+    bool beepOn_{true};
+    bool soundEnabled_{true};
     int randomSeed_{0};
     int stageBackgroundColor_{0};
 
@@ -118,6 +124,8 @@ private:
     IntSupplier frameCountSupplier_;
     IntSupplier tempoSupplier_;
     IntConsumer tempoSetter_;
+    IntSupplier soundEnabledSupplier_;
+    IntConsumer soundEnabledSetter_;
     IntSupplier randomSeedSupplier_;
     IntConsumer randomSeedSetter_;
     IntSupplier paramCountSupplier_;

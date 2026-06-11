@@ -95,6 +95,14 @@ void MovieProperties::setTempoSetter(IntConsumer setter) {
     tempoSetter_ = std::move(setter);
 }
 
+void MovieProperties::setSoundEnabledSupplier(IntSupplier supplier) {
+    soundEnabledSupplier_ = std::move(supplier);
+}
+
+void MovieProperties::setSoundEnabledSetter(IntConsumer setter) {
+    soundEnabledSetter_ = std::move(setter);
+}
+
 void MovieProperties::setRandomSeedSupplier(IntSupplier supplier) {
     randomSeedSupplier_ = std::move(supplier);
 }
@@ -190,6 +198,8 @@ lingo::Datum MovieProperties::getMovieProp(std::string_view propName) const {
     if (prop == "alerthook") return alertHook_;
     if (prop == "cursor") return cursor_;
     if (prop == "floatprecision") return lingo::Datum::of(floatPrecision_);
+    if (prop == "beepon") return lingo::Datum::of(beepOn_ ? 1 : 0);
+    if (prop == "soundenabled") return lingo::Datum::of(soundEnabled() ? 1 : 0);
     if (prop == "randomseed") return lingo::Datum::of(randomSeed());
     if (prop == "actorlist") return actorList_;
     if (prop == "framerate" || prop == "tempo" || prop == "frametempo") return lingo::Datum::of(tempo());
@@ -297,6 +307,14 @@ bool MovieProperties::setMovieProp(std::string_view propName, const lingo::Datum
     }
     if (prop == "floatprecision") {
         floatPrecision_ = value.intValue();
+        return true;
+    }
+    if (prop == "beepon") {
+        beepOn_ = value.boolValue();
+        return true;
+    }
+    if (prop == "soundenabled") {
+        setSoundEnabled(value.boolValue());
         return true;
     }
     if (prop == "randomseed") {
@@ -451,6 +469,17 @@ void MovieProperties::setTempo(int tempo) {
     tempoExplicit_ = true;
     if (tempoSetter_) {
         tempoSetter_(tempo);
+    }
+}
+
+bool MovieProperties::soundEnabled() const {
+    return soundEnabledSupplier_ ? soundEnabledSupplier_() != 0 : soundEnabled_;
+}
+
+void MovieProperties::setSoundEnabled(bool enabled) {
+    soundEnabled_ = enabled;
+    if (soundEnabledSetter_) {
+        soundEnabledSetter_(enabled ? 1 : 0);
     }
 }
 

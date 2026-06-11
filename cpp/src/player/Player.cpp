@@ -895,6 +895,12 @@ void Player::wireComponents() {
     movieProperties_.setXtraNamesSupplier([this] {
         return xtraManager_.registeredXtraNames();
     });
+    movieProperties_.setSoundEnabledSupplier([this] {
+        return soundManager_.isEnabled() ? 1 : 0;
+    });
+    movieProperties_.setSoundEnabledSetter([this](int enabled) {
+        soundManager_.setEnabled(enabled != 0);
+    });
 
     inputHandler_.setCurrentFrameSupplier([this] {
         return currentFrame();

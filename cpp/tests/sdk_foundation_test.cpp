@@ -9875,6 +9875,8 @@ void testMoviePropertiesFoundation() {
     assert(props.getMovieProp("colorDepth").intValue() == 32);
     assert(props.getMovieProp("fullColorPermit") == Datum::TRUE);
     assert(props.getMovieProp("perFrameHook").isVoid());
+    assert(props.getMovieProp("beepOn").boolValue());
+    assert(props.getMovieProp("soundEnabled").boolValue());
     assert(props.getMovieProp("unknownMovieProp").isVoid());
 
     DirectorFile emptyFile(ByteOrder::BigEndian, false, 0, ChunkType::RIFX);
@@ -9975,6 +9977,8 @@ void testMoviePropertiesFoundation() {
     assert(props.setMovieProp("alertHook", Datum::symbol("alertHandler")));
     assert(props.setMovieProp("cursor", Datum::of(4)));
     assert(props.setMovieProp("floatPrecision", Datum::of(6)));
+    assert(props.setMovieProp("beepOn", Datum::FALSE));
+    assert(props.setMovieProp("soundEnabled", Datum::FALSE));
     assert(props.setMovieProp("randomSeed", Datum::of(1234)));
     assert(props.setMovieProp("selStart", Datum::of(30)));
     assert(props.setMovieProp("selEnd", Datum::of(40)));
@@ -9996,6 +10000,8 @@ void testMoviePropertiesFoundation() {
     assert(props.setMovieProp("cursor", Datum::voidValue()));
     assert(props.getMovieProp("cursor").isVoid());
     assert(props.getMovieProp("floatPrecision").intValue() == 6);
+    assert(!props.getMovieProp("beepOn").boolValue());
+    assert(!props.getMovieProp("soundEnabled").boolValue());
     assert(randomSeed == 1234);
     assert(input.selStart() == 30);
     assert(input.selEnd() == 40);
@@ -10003,6 +10009,15 @@ void testMoviePropertiesFoundation() {
     assert(props.getItemDelimiter() == ';');
     props.setPuppetTempo(17);
     assert(props.puppetTempo() == 17);
+    int soundEnabled = 1;
+    props.setSoundEnabledSupplier([&soundEnabled]() { return soundEnabled; });
+    props.setSoundEnabledSetter([&soundEnabled](int value) { soundEnabled = value; });
+    assert(props.getMovieProp("soundEnabled").boolValue());
+    assert(props.setMovieProp("soundEnabled", Datum::FALSE));
+    assert(soundEnabled == 0);
+    assert(!props.getMovieProp("soundEnabled").boolValue());
+    assert(props.setMovieProp("soundEnabled", Datum::TRUE));
+    assert(soundEnabled == 1);
 
     assert(props.getStageProp("title").stringValue().empty());
     assert(props.setStageProp("title", Datum::of(std::string("Main Stage"))));
@@ -10929,6 +10944,10 @@ void testBuiltinRegistryFoundation() {
     assert(registry.contains("sound"));
     assert(registry.contains("soundEnabled"));
     assert(registry.invoke("soundEnabled", context).boolValue());
+    assert(builtinNavigationMovie.setMovieProp("soundEnabled", Datum::FALSE));
+    assert(!registry.invoke("soundEnabled", context).boolValue());
+    assert(builtinNavigationMovie.setMovieProp("soundEnabled", Datum::TRUE));
+    assert(registry.invoke("soundEnabled", context).boolValue());
     assert(registry.invoke("sound", context).isVoid());
     assert(registry.invoke("sound", context, {Datum::of(0)}).isVoid());
     assert(registry.invoke("sound", context, {Datum::of(9)}).isVoid());
@@ -11012,6 +11031,12 @@ void testBuiltinRegistryFoundation() {
         return std::optional<std::vector<std::uint8_t>>{{'R', 'I', 'F', 'F'}};
     });
     context.soundManager = &builtinSoundManager;
+    context.movieProperties = nullptr;
+    assert(registry.invoke("soundEnabled", context).boolValue());
+    builtinSoundManager.setEnabled(false);
+    assert(!registry.invoke("soundEnabled", context).boolValue());
+    builtinSoundManager.setEnabled(true);
+    context.movieProperties = &builtinNavigationMovie;
     builtinSoundBackend.elapsedTimes[2] = 37;
     assert(SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "volume", {Datum::of(123)}).isVoid());
     assert(builtinSoundManager.getVolume(2) == 123);
@@ -23913,6 +23938,16 @@ void testSoundManagerFoundation() {
     assert(backend.lastVolume == 128);
     assert(manager.isPlaying(2));
     assert(manager.getElapsedTime(2) == 345);
+    manager.setEnabled(false);
+    assert(!manager.isEnabled());
+    assert(backend.stopAllCount == 1);
+    assert(!manager.isPlaying(2));
+    assert(manager.getElapsedTime(2) == 0);
+    manager.play(2, Datum::castMemberRef(CastLibId(2), MemberId(5)));
+    assert(backend.playCount == 1);
+    backend.stopAllCount = 0;
+    manager.setEnabled(true);
+    assert(manager.isEnabled());
 
     auto args = Datum::propList();
     args.propListValue().put(Datum::symbol("member"), Datum::castMemberRef(CastLibId(2), MemberId(6)));
