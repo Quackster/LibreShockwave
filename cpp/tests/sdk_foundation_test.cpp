@@ -75,6 +75,7 @@
 #include "libreshockwave/editor/AppModels.hpp"
 #include "libreshockwave/editor/EditorShellModels.hpp"
 #include "libreshockwave/editor/audio/EditorAudioModels.hpp"
+#include "libreshockwave/editor/cast/CastBrowserModels.hpp"
 #include "libreshockwave/editor/debug/DebugBrowserModels.hpp"
 #include "libreshockwave/editor/debug/DebugDisplayItems.hpp"
 #include "libreshockwave/editor/debug/DebugTableModels.hpp"
@@ -300,6 +301,15 @@ using libreshockwave::editor::audio::AudioPlaybackController;
 using libreshockwave::editor::audio::EditorAudioBackend;
 using libreshockwave::editor::audio::EditorAudioClip;
 using libreshockwave::editor::audio::PlaybackState;
+using libreshockwave::editor::castbrowser::CastBrowserModel;
+using libreshockwave::editor::castbrowser::CastContextAction;
+using libreshockwave::editor::castbrowser::CastContextActionState;
+using libreshockwave::editor::castbrowser::CastGridCell;
+using libreshockwave::editor::castbrowser::CastLibDescriptor;
+using libreshockwave::editor::castbrowser::CastLibEntry;
+using libreshockwave::editor::castbrowser::CastListRow;
+using libreshockwave::editor::castbrowser::CastViewMode;
+using libreshockwave::editor::castbrowser::ThumbnailPlacement;
 using libreshockwave::editor::debug::BytecodeListBuildOptions;
 using libreshockwave::editor::debug::BytecodeListModel;
 using libreshockwave::editor::debug::HandlerLocation;
@@ -1707,6 +1717,116 @@ void testEditorShellActionModels() {
     assert(toolbar.items()[7].label == "Frame: 1");
     assert(EditorToolBarModel::frameLabel(7, 30) == "Frame: 7 / 30");
     assert(EditorToolBarModel::frameLabel(7) == "Frame: 1");
+}
+
+void testEditorCastBrowserModels() {
+    assert((CastBrowserModel::typeFilterItems() ==
+            std::vector<std::string>{"All Types", "Bitmap", "Script", "Sound", "Text", "Button",
+                                     "Shape", "Film Loop", "Palette", "Field", "Transition"}));
+
+    assert((CastBrowserModel::buildCastLibEntries({}) == std::vector<CastLibEntry>{{0, "Internal", false, true}}));
+    const auto entries = CastBrowserModel::buildCastLibEntries({CastLibDescriptor{3, "External Art", true, false},
+                                                                CastLibDescriptor{1, "", false, true}});
+    assert((entries == std::vector<CastLibEntry>{{1, "Cast 1", false, true},
+                                                {3, "External Art (not loaded)", true, false}}));
+
+    assert(CastBrowserModel::typeAbbreviation(MemberType::Bitmap) == "Bmp");
+    assert(CastBrowserModel::typeAbbreviation(MemberType::RichText) == "RTx");
+    assert(CastBrowserModel::typeAbbreviation(MemberType::Shockwave3D) == "3D");
+    assert(CastBrowserModel::typeAbbreviation(MemberType::Unknown) == "?");
+    assert(CastBrowserModel::editorPanelIdFor(MemberType::Picture).value() == "paint");
+    assert(CastBrowserModel::editorPanelIdFor(MemberType::RichText).value() == "text");
+    assert(CastBrowserModel::editorPanelIdFor(MemberType::Shape).value() == "vector-shape");
+    assert(!CastBrowserModel::editorPanelIdFor(MemberType::Palette).has_value());
+    assert((CastBrowserModel::thumbnailPlacement(320, 160, 48) == ThumbnailPlacement{48, 48, 24, 0, 12, true}));
+    assert((CastBrowserModel::thumbnailPlacement(10, 200, 48) == ThumbnailPlacement{48, 2, 48, 23, 0, true}));
+    assert(!CastBrowserModel::thumbnailPlacement(0, 10, 48).valid);
+
+    CastBrowserModel model;
+    assert(model.viewMode() == CastViewMode::Grid);
+    model.setViewMode(CastViewMode::List);
+    assert(model.viewMode() == CastViewMode::List);
+    model.setCastLibraries(entries);
+    assert(model.selectedCastLibNumber() == 1);
+    assert(model.selectCastLibNumber(3));
+    assert(model.selectedCastLibNumber() == 3);
+    assert(!model.selectCastLibNumber(99));
+    assert(model.selectedCastLibNumber() == 1);
+
+    model.setMembers({CastMemberInfo{7, "Door", nullptr, MemberType::Bitmap, "16x16 lobby"},
+                      CastMemberInfo{8, "RoomScript", nullptr, MemberType::Script, "Movie Script [startMovie]"},
+                      CastMemberInfo{9, "", nullptr, MemberType::Text, "body copy"},
+                      CastMemberInfo{10, "Theme", nullptr, MemberType::Palette, "Rainbow"},
+                      CastMemberInfo{11, "Reel", nullptr, MemberType::FilmLoop, "animated"}});
+    assert(model.statusText() == " 5 of 5 members");
+    assert((model.bitmapThumbnailRequests() == std::vector<int>{7}));
+
+    auto gridCells = model.gridCells();
+    assert(gridCells.size() == 5);
+    assert((gridCells[0] == CastGridCell{7, 0, "Door", "Bmp", false, true}));
+    assert(gridCells[2].nameLabel == "[Txt]");
+    assert(!gridCells[2].bitmapThumbnailPending);
+
+    const auto listRows = model.listRows();
+    assert(listRows.size() == 5);
+    assert((listRows[2] == CastListRow{9, "9: (unnamed) [text]", false}));
+
+    assert(model.selectSingleMember(8));
+    assert((model.selectedMemberNums() == std::vector<int>{8}));
+    assert(model.toggleSelectedMember(7));
+    assert((model.selectedMemberNums() == std::vector<int>{8, 7}));
+    assert(model.toggleSelectedMember(8));
+    assert((model.selectedMemberNums() == std::vector<int>{7}));
+    assert(!model.selectSingleMember(404));
+    model.syncSelectionFromRowIndices({0, 2, 99, -1, 0});
+    assert((model.selectedMemberNums() == std::vector<int>{7, 9}));
+
+    auto actions = model.contextActions(std::nullopt);
+    assert((actions == std::vector<CastContextActionState>{
+                           CastContextActionState{CastContextAction::ExportSelected,
+                                                  "Export All Selected (Ctrl+Shift+E)",
+                                                  true}}));
+    model.clearSelection();
+    assert((model.contextActions(std::nullopt) ==
+            std::vector<CastContextActionState>{CastContextActionState{CastContextAction::SelectAll,
+                                                                       "Select All (Ctrl+A)",
+                                                                       true}}));
+    actions = model.openContextForMember(8);
+    assert((model.selectedMemberNums() == std::vector<int>{8}));
+    assert(actions.size() == 3);
+    assert(actions[0].action == CastContextAction::Export);
+    assert(actions[1].action == CastContextAction::SelectAll);
+    assert(actions[2].action == CastContextAction::CopyName);
+
+    model.selectAllFilteredMembers();
+    auto selectedMembers = model.selectedMembersInFilterOrder();
+    assert(selectedMembers.size() == 5);
+    assert(selectedMembers.front().memberNum == 7);
+    assert(selectedMembers.back().memberNum == 11);
+
+    model.setSearchText(" script ");
+    assert(model.statusText() == " 1 of 5 members");
+    assert(model.filteredMembers().front().memberNum == 8);
+    assert((model.selectedMemberNums() == std::vector<int>{8}));
+    model.setSearchText(" ");
+    model.setTypeFilter("Bitmap");
+    assert(model.filteredMembers().size() == 1);
+    assert(model.filteredMembers().front().memberNum == 7);
+    assert(model.selectedMemberNums().empty());
+    model.setTypeFilter("All Types");
+    model.setSearchText("rain");
+    assert(model.filteredMembers().size() == 1);
+    assert(model.filteredMembers().front().memberNum == 10);
+    model.selectAllFilteredMembers();
+    assert((model.selectedMemberNums() == std::vector<int>{10}));
+
+    model.resetForNoMovie();
+    assert((model.castLibraries() == std::vector<CastLibEntry>{{0, "Internal", false, true}}));
+    assert(model.members().empty());
+    assert(model.filteredMembers().empty());
+    assert(model.selectedMemberNums().empty());
+    assert(model.statusText() == " 0 of 0 members");
+    assert(!model.contextActions(std::nullopt).front().enabled);
 }
 
 void testEditorModelAndSelectionFoundation() {
@@ -22334,6 +22454,7 @@ int main() {
     testEditorFormattingAndScriptHelpers();
     testEditorAppShellModels();
     testEditorShellActionModels();
+    testEditorCastBrowserModels();
     testEditorModelAndSelectionFoundation();
     testEditorAudioModels();
     testEditorDockingModels();

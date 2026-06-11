@@ -55,6 +55,7 @@ add_library(libreshockwave
     src/chunks/SoundChunk.cpp
     src/chunks/TextChunk.cpp
     src/editor/audio/EditorAudioModels.cpp
+    src/editor/cast/CastBrowserModels.cpp
     src/editor/debug/DebugBrowserModels.cpp
     src/editor/debug/DebugDisplayItems.cpp
     src/editor/debug/DebugTableModels.cpp
