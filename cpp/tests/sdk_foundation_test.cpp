@@ -18074,6 +18074,18 @@ void testSpritePropertiesFoundation() {
     assert(sprite->width() == 40);
     assert(sprite->height() == 50);
     assert(props.getSpriteProp(3, "rect") == Datum::intRect(1, 2, 41, 52));
+    assert(props.setSpriteProp(3, "left", Datum::of(6)));
+    assert(props.getSpriteProp(3, "rect") == Datum::intRect(6, 2, 41, 52));
+    assert(sprite->width() == 35);
+    assert(props.setSpriteProp(3, "top", Datum::of(7)));
+    assert(props.getSpriteProp(3, "rect") == Datum::intRect(6, 7, 41, 52));
+    assert(sprite->height() == 45);
+    assert(props.setSpriteProp(3, "right", Datum::of(50)));
+    assert(props.getSpriteProp(3, "rect") == Datum::intRect(6, 7, 50, 52));
+    assert(sprite->width() == 44);
+    assert(props.setSpriteProp(3, "bottom", Datum::of(70)));
+    assert(props.getSpriteProp(3, "rect") == Datum::intRect(6, 7, 50, 70));
+    assert(sprite->height() == 63);
 
     assert(props.setSpriteProp(3, "visible", Datum::of(0)));
     assert(!sprite->isVisible());

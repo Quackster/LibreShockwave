@@ -223,6 +223,38 @@ bool SpriteProperties::setSpriteProp(int spriteNum, std::string_view propName, c
         setConstrainedLoc(*sprite, rect->left, rect->top, true, true);
         return true;
     }
+    if (prop == "left") {
+        const int left = value.intValue();
+        const auto bounds = resolveSpriteBounds(*sprite);
+        sprite->setWidth(bounds.right - left);
+        const auto updated = resolveSpriteBounds(*sprite);
+        setConstrainedLoc(*sprite, sprite->locH() + left - updated.left, sprite->locV(), true, false);
+        return true;
+    }
+    if (prop == "top") {
+        const int top = value.intValue();
+        const auto bounds = resolveSpriteBounds(*sprite);
+        sprite->setHeight(bounds.bottom - top);
+        const auto updated = resolveSpriteBounds(*sprite);
+        setConstrainedLoc(*sprite, sprite->locH(), sprite->locV() + top - updated.top, false, true);
+        return true;
+    }
+    if (prop == "right") {
+        const int right = value.intValue();
+        const auto bounds = resolveSpriteBounds(*sprite);
+        sprite->setWidth(right - bounds.left);
+        const auto updated = resolveSpriteBounds(*sprite);
+        setConstrainedLoc(*sprite, sprite->locH() + bounds.left - updated.left, sprite->locV(), true, false);
+        return true;
+    }
+    if (prop == "bottom") {
+        const int bottom = value.intValue();
+        const auto bounds = resolveSpriteBounds(*sprite);
+        sprite->setHeight(bottom - bounds.top);
+        const auto updated = resolveSpriteBounds(*sprite);
+        setConstrainedLoc(*sprite, sprite->locH(), sprite->locV() + bounds.top - updated.top, false, true);
+        return true;
+    }
     if (prop == "visible") {
         sprite->setVisible(value.boolValue());
         return true;
