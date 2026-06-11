@@ -83,6 +83,8 @@ private:
     [[nodiscard]] std::shared_ptr<const ::libreshockwave::cast::CastMember> resolveCastMember(int castLib,
                                                                                               int memberNum) const;
     [[nodiscard]] bool hasAnyBehavior(const sprite::SpriteState& state) const;
+    [[nodiscard]] static RenderSprite applyLegacyRenderProperties(RenderSprite sprite,
+                                                                  const sprite::SpriteState& state);
     [[nodiscard]] SpriteType determineSpriteTypeFromMember(
         const std::shared_ptr<const chunks::CastMemberChunk>& member) const;
     [[nodiscard]] SpriteType determineSpriteTypeFromMember(

@@ -179,13 +179,14 @@ double RenderSprite::rotation() const { return rotation_; }
 double RenderSprite::skew() const { return skew_; }
 std::shared_ptr<const bitmap::Bitmap> RenderSprite::bakedBitmap() const { return bakedBitmap_; }
 bool RenderSprite::hasBehaviors() const { return hasBehaviors_; }
+std::optional<int> RenderSprite::shapeLineSize() const { return shapeLineSize_; }
 
 bool RenderSprite::hasDirectorHorizontalMirror() const {
     return normalizeTransformAngle(rotation_) == 180 && normalizeTransformAngle(skew_) == 180;
 }
 
 RenderSprite RenderSprite::withBakedBitmap(std::shared_ptr<const bitmap::Bitmap> baked) const {
-    return RenderSprite(channelId_.value(),
+    RenderSprite result(channelId_.value(),
                         x_,
                         y_,
                         width_,
@@ -207,12 +208,14 @@ RenderSprite RenderSprite::withBakedBitmap(std::shared_ptr<const bitmap::Bitmap>
                         skew_,
                         std::move(baked),
                         hasBehaviors_);
+    result.shapeLineSize_ = shapeLineSize_;
+    return result;
 }
 
 RenderSprite RenderSprite::withBakedBitmapAndSize(std::shared_ptr<const bitmap::Bitmap> baked,
                                                   int newWidth,
                                                   int newHeight) const {
-    return RenderSprite(channelId_.value(),
+    RenderSprite result(channelId_.value(),
                         x_,
                         y_,
                         newWidth,
@@ -234,6 +237,14 @@ RenderSprite RenderSprite::withBakedBitmapAndSize(std::shared_ptr<const bitmap::
                         skew_,
                         std::move(baked),
                         hasBehaviors_);
+    result.shapeLineSize_ = shapeLineSize_;
+    return result;
+}
+
+RenderSprite RenderSprite::withShapeLineSize(int lineSize) const {
+    RenderSprite result(*this);
+    result.shapeLineSize_ = lineSize;
+    return result;
 }
 
 int RenderSprite::castMemberId() const {

@@ -276,26 +276,28 @@ std::optional<RenderSprite> StageRenderer::createRenderSprite(int channel,
         ? state->backColor()
         : resolveScoreColor(data.resolvedBackColor(), data.isBackColorRGB());
 
-    return RenderSprite(channel,
-                        x,
-                        y,
-                        width,
-                        height,
-                        locZ,
-                        visible,
-                        type,
-                        member,
-                        dynamicMember,
-                        foreColor,
-                        backColor,
-                        state->hasForeColor(),
-                        state->hasBackColor(),
-                        state->ink(),
-                        state->blend(),
-                        state->isFlipH(),
-                        state->isFlipV(),
-                        nullptr,
-                        hasAnyBehavior(*state));
+    return applyLegacyRenderProperties(
+        RenderSprite(channel,
+                     x,
+                     y,
+                     width,
+                     height,
+                     locZ,
+                     visible,
+                     type,
+                     member,
+                     dynamicMember,
+                     foreColor,
+                     backColor,
+                     state->hasForeColor(),
+                     state->hasBackColor(),
+                     state->ink(),
+                     state->blend(),
+                     state->isFlipH(),
+                     state->isFlipV(),
+                     nullptr,
+                     hasAnyBehavior(*state)),
+        *state);
 }
 
 std::optional<RenderSprite> StageRenderer::createDynamicRenderSprite(const sprite::SpriteState& state) {
@@ -310,26 +312,28 @@ std::optional<RenderSprite> StageRenderer::createDynamicRenderSprite(const sprit
     if (castMember <= 0) {
         if (state.isPuppet() && state.hasBackColor() && pos.width > 0 && pos.height > 0) {
             const int fillColor = state.backColor();
-            return RenderSprite(state.channel(),
-                                pos.locH,
-                                rasterY(pos.locV),
-                                pos.width,
-                                pos.height,
-                                pos.locZ,
-                                true,
-                                SpriteType::Shape,
-                                nullptr,
-                                nullptr,
-                                fillColor,
-                                state.backColor(),
-                                true,
-                                state.hasBackColor(),
-                                0,
-                                state.blend(),
-                                state.isFlipH(),
-                                state.isFlipV(),
-                                nullptr,
-                                hasAnyBehavior(state));
+            return applyLegacyRenderProperties(
+                RenderSprite(state.channel(),
+                             pos.locH,
+                             rasterY(pos.locV),
+                             pos.width,
+                             pos.height,
+                             pos.locZ,
+                             true,
+                             SpriteType::Shape,
+                             nullptr,
+                             nullptr,
+                             fillColor,
+                             state.backColor(),
+                             true,
+                             state.hasBackColor(),
+                             0,
+                             state.blend(),
+                             state.isFlipH(),
+                             state.isFlipV(),
+                             nullptr,
+                             hasAnyBehavior(state)),
+                state);
         }
         return std::nullopt;
     }
@@ -380,28 +384,30 @@ std::optional<RenderSprite> StageRenderer::createDynamicRenderSprite(const sprit
     }
     y = rasterY(y);
 
-    return RenderSprite(state.channel(),
-                        x,
-                        y,
-                        width,
-                        height,
-                        pos.locZ,
-                        state.isVisible(),
-                        type,
-                        member,
-                        dynamicMember,
-                        state.foreColor(),
-                        state.backColor(),
-                        state.hasForeColor(),
-                        state.hasBackColor(),
-                        state.ink(),
-                        state.blend(),
-                        state.isFlipH(),
-                        state.isFlipV(),
-                        state.rotation(),
-                        state.skew(),
-                        nullptr,
-                        hasAnyBehavior(state));
+    return applyLegacyRenderProperties(
+        RenderSprite(state.channel(),
+                     x,
+                     y,
+                     width,
+                     height,
+                     pos.locZ,
+                     state.isVisible(),
+                     type,
+                     member,
+                     dynamicMember,
+                     state.foreColor(),
+                     state.backColor(),
+                     state.hasForeColor(),
+                     state.hasBackColor(),
+                     state.ink(),
+                     state.blend(),
+                     state.isFlipH(),
+                     state.isFlipV(),
+                     state.rotation(),
+                     state.skew(),
+                     nullptr,
+                     hasAnyBehavior(state)),
+        state);
 }
 
 std::shared_ptr<const ::libreshockwave::cast::CastMember> StageRenderer::resolveCastMember(int castLib,
@@ -414,6 +420,14 @@ std::shared_ptr<const ::libreshockwave::cast::CastMember> StageRenderer::resolve
 
 bool StageRenderer::hasAnyBehavior(const sprite::SpriteState& state) const {
     return state.hasScriptBehaviors() || spriteRegistry_.hasScoreBehaviorChannel(state.channel());
+}
+
+RenderSprite StageRenderer::applyLegacyRenderProperties(RenderSprite sprite, const sprite::SpriteState& state) {
+    if (auto lineSize = state.legacyProperty("linesize");
+        lineSize.has_value() && !lineSize->isVoid()) {
+        sprite = sprite.withShapeLineSize(std::max(0, lineSize->intValue()));
+    }
+    return sprite;
 }
 
 SpriteType StageRenderer::determineSpriteTypeFromMember(

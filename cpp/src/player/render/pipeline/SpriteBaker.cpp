@@ -59,6 +59,20 @@ bool shouldPreserveOutlinedWhiteBodyForScriptCanvas(const RenderSprite& sprite, 
             memberName->starts_with("chat_item_sing_background_"));
 }
 
+int shapeBorderStrokeCount(const RenderSprite& sprite, const ::libreshockwave::cast::ShapeInfo& shapeInfo) {
+    if (const auto lineSize = sprite.shapeLineSize()) {
+        return std::max(0, *lineSize);
+    }
+    return std::max(0, shapeInfo.lineThickness - 1);
+}
+
+int shapeLineStrokeCount(const RenderSprite& sprite, const ::libreshockwave::cast::ShapeInfo& shapeInfo) {
+    if (const auto lineSize = sprite.shapeLineSize()) {
+        return std::max(0, *lineSize);
+    }
+    return std::max(1, shapeInfo.lineThickness);
+}
+
 int channel(std::uint32_t argb, int shift) {
     return static_cast<int>((argb >> shift) & 0xFFU);
 }
@@ -867,7 +881,10 @@ bitmap::Bitmap SpriteBaker::drawShapeBitmap(const RenderSprite& sprite,
 void SpriteBaker::drawAuthoredShape(bitmap::Bitmap& bitmap,
                                     const RenderSprite& sprite,
                                     const ::libreshockwave::cast::ShapeInfo& shapeInfo) {
-    if (shapeInfo.isOutlineInvisible() && shapeInfo.shapeType != ::libreshockwave::cast::ShapeType::Line) {
+    const int borderStrokes = shapeBorderStrokeCount(sprite, shapeInfo);
+    if (!shapeInfo.isFilled() &&
+        shapeInfo.shapeType != ::libreshockwave::cast::ShapeType::Line &&
+        borderStrokes <= 0) {
         return;
     }
 
@@ -878,23 +895,37 @@ void SpriteBaker::drawAuthoredShape(bitmap::Bitmap& bitmap,
             if (shapeInfo.isFilled()) {
                 bitmap.fill(argb);
             } else {
-                const int strokes = std::max(0, shapeInfo.lineThickness - 1);
-                for (int i = 0; i < strokes; ++i) {
+                for (int i = 0; i < borderStrokes; ++i) {
                     drawRect(bitmap, i, i, bitmap.width() - (i * 2), bitmap.height() - (i * 2), argb);
                 }
             }
             break;
         case ::libreshockwave::cast::ShapeType::Oval:
-            drawOval(bitmap,
-                     bitmap.width() / 2,
-                     bitmap.height() / 2,
-                     std::max(0, bitmap.width() / 2),
-                     std::max(0, bitmap.height() / 2),
-                     argb,
-                     shapeInfo.isFilled());
+            if (shapeInfo.isFilled()) {
+                drawOval(bitmap,
+                         bitmap.width() / 2,
+                         bitmap.height() / 2,
+                         std::max(0, bitmap.width() / 2),
+                         std::max(0, bitmap.height() / 2),
+                         argb,
+                         true);
+            } else {
+                for (int i = 0; i < borderStrokes; ++i) {
+                    drawOval(bitmap,
+                             bitmap.width() / 2,
+                             bitmap.height() / 2,
+                             std::max(0, bitmap.width() / 2 - i),
+                             std::max(0, bitmap.height() / 2 - i),
+                             argb,
+                             false);
+                }
+            }
             break;
         case ::libreshockwave::cast::ShapeType::Line: {
-            const int strokes = std::max(1, shapeInfo.lineThickness);
+            const int strokes = shapeLineStrokeCount(sprite, shapeInfo);
+            if (strokes <= 0) {
+                return;
+            }
             const bool bottomToTop = shapeInfo.lineDirection == 6;
             const int startY = bottomToTop ? bitmap.height() - 1 : 0;
             const int endY = bottomToTop ? 0 : bitmap.height() - 1;

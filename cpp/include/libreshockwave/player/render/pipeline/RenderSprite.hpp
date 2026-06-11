@@ -115,11 +115,13 @@ public:
     [[nodiscard]] double skew() const;
     [[nodiscard]] std::shared_ptr<const bitmap::Bitmap> bakedBitmap() const;
     [[nodiscard]] bool hasBehaviors() const;
+    [[nodiscard]] std::optional<int> shapeLineSize() const;
     [[nodiscard]] bool hasDirectorHorizontalMirror() const;
     [[nodiscard]] RenderSprite withBakedBitmap(std::shared_ptr<const bitmap::Bitmap> baked) const;
     [[nodiscard]] RenderSprite withBakedBitmapAndSize(std::shared_ptr<const bitmap::Bitmap> baked,
                                                       int newWidth,
                                                       int newHeight) const;
+    [[nodiscard]] RenderSprite withShapeLineSize(int lineSize) const;
     [[nodiscard]] int castMemberId() const;
     [[nodiscard]] std::optional<std::string> memberName() const;
 
@@ -146,6 +148,7 @@ private:
     double skew_{0.0};
     std::shared_ptr<const bitmap::Bitmap> bakedBitmap_;
     bool hasBehaviors_{false};
+    std::optional<int> shapeLineSize_;
 };
 
 } // namespace libreshockwave::player::render::pipeline

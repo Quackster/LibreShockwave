@@ -19719,6 +19719,44 @@ void testStageRendererFoundation() {
     assert(StageRenderer::expandScoreRgb555(0x080808) == 0x080808);
     assert(StageRenderer::expandScoreRgb555(0xF8F8F8) == 0xFFFFFF);
 
+    StageRenderer lineSizeRenderer;
+    SpriteProperties lineSizeProps(&lineSizeRenderer.spriteRegistry());
+    auto lineSizeShapeChunk = std::make_shared<CastMemberChunk>(nullptr,
+                                                                ChunkId(812),
+                                                                MemberType::Shape,
+                                                                0,
+                                                                17,
+                                                                std::vector<std::uint8_t>{},
+                                                                std::vector<std::uint8_t>{
+                                                                    0x00, 0x01,
+                                                                    0x00, 0x00,
+                                                                    0x00, 0x00,
+                                                                    0x00, 0x06,
+                                                                    0x00, 0x06,
+                                                                    0x00, 0x00,
+                                                                    0x00, 0x00,
+                                                                    0x00, 0x02,
+                                                                    0x00
+                                                                },
+                                                                "outline-shape",
+                                                                0,
+                                                                0,
+                                                                0);
+    auto lineSizeShapeMember = std::make_shared<CastMember>(812, 1, 10003, lineSizeShapeChunk);
+    lineSizeRenderer.setCastMemberResolver([lineSizeShapeMember](int castLib,
+                                                                 int memberNum) -> std::shared_ptr<const CastMember> {
+        return castLib == 1 && memberNum == 10003 ? lineSizeShapeMember : nullptr;
+    });
+    auto lineSizeState = lineSizeRenderer.spriteRegistry().getOrCreateDynamic(33);
+    lineSizeState->setDynamicMember(1, 10003);
+    lineSizeState->setWidth(6);
+    lineSizeState->setHeight(6);
+    assert(lineSizeProps.setSpriteProp(33, "lineSize", Datum::of(3)));
+    const auto lineSizeSprites = lineSizeRenderer.getSpritesForFrame(1);
+    assert(lineSizeSprites.size() == 1);
+    assert(lineSizeSprites.front().shapeLineSize().has_value());
+    assert(*lineSizeSprites.front().shapeLineSize() == 3);
+
     StageRenderer regRenderer;
     auto mirroredMember = std::make_shared<CastMember>(1, 10001, MemberType::Bitmap);
     Bitmap mirroredBitmap(20, 40, 32);
@@ -21020,6 +21058,55 @@ void testSpriteBakerFoundation() {
     auto bakedAuthoredShape = baker.bake(authoredShape);
     assert(bakedAuthoredShape.bakedBitmap()->getPixel(0, 0) == 0xFF445566U);
     assert(bakedAuthoredShape.bakedBitmap()->getPixel(2, 1) == 0xFF445566U);
+
+    auto outlineShapeMember = std::make_shared<CastMemberChunk>(nullptr,
+                                                                ChunkId(804),
+                                                                MemberType::Shape,
+                                                                0,
+                                                                17,
+                                                                std::vector<std::uint8_t>{},
+                                                                std::vector<std::uint8_t>{
+                                                                    0x00, 0x01,
+                                                                    0x00, 0x00,
+                                                                    0x00, 0x00,
+                                                                    0x00, 0x06,
+                                                                    0x00, 0x06,
+                                                                    0x00, 0x00,
+                                                                    0x00, 0x00,
+                                                                    0x00, 0x02,
+                                                                    0x00
+                                                                },
+                                                                "outline-shape",
+                                                                0,
+                                                                0,
+                                                                0);
+    RenderSprite outlineShape(6,
+                              0,
+                              0,
+                              6,
+                              6,
+                              0,
+                              true,
+                              SpriteType::Shape,
+                              outlineShapeMember,
+                              nullptr,
+                              0x778899,
+                              0,
+                              true,
+                              false,
+                              0,
+                              100,
+                              false,
+                              false,
+                              nullptr,
+                              false);
+    auto bakedOutlineShape = baker.bake(outlineShape);
+    assert(bakedOutlineShape.bakedBitmap()->getPixel(0, 0) == 0xFF778899U);
+    assert(bakedOutlineShape.bakedBitmap()->getPixel(2, 2) == 0x00000000U);
+    auto thickOutlineShape = baker.bake(outlineShape.withShapeLineSize(3));
+    assert(thickOutlineShape.shapeLineSize().has_value());
+    assert(*thickOutlineShape.shapeLineSize() == 3);
+    assert(thickOutlineShape.bakedBitmap()->getPixel(2, 2) == 0xFF778899U);
 
     auto inkMember = std::make_shared<CastMemberChunk>(nullptr,
                                                        ChunkId(803),
