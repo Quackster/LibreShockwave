@@ -96,6 +96,7 @@
 #include "libreshockwave/editor/panels/EditorPanelCatalog.hpp"
 #include "libreshockwave/editor/panels/EditorPanelModels.hpp"
 #include "libreshockwave/editor/extraction/AssetExtractor.hpp"
+#include "libreshockwave/editor/extraction/ExportHandlerModels.hpp"
 #include "libreshockwave/editor/preview/GenericPreview.hpp"
 #include "libreshockwave/editor/preview/PalettePreview.hpp"
 #include "libreshockwave/editor/preview/PreviewFormatUtils.hpp"
@@ -398,6 +399,9 @@ using libreshockwave::editor::panels::ToolPaletteModel;
 using libreshockwave::editor::panels::ToolPaletteTool;
 using libreshockwave::editor::panels::VectorShapePanelModel;
 using libreshockwave::editor::extraction::AssetExtractor;
+using libreshockwave::editor::extraction::ExportAssetKind;
+using libreshockwave::editor::extraction::ExportFileChoice;
+using libreshockwave::editor::extraction::ExportHandlerModel;
 using libreshockwave::editor::preview::GenericPreview;
 using libreshockwave::editor::preview::PalettePreview;
 using libreshockwave::editor::preview::PreviewFormatUtils;
@@ -4069,6 +4073,61 @@ void testEditorScanningHelpers() {
     AssetExtractor extractor;
     assert(AssetExtractor::sanitizeFileName("Odd Name!*") == "Odd_Name__");
     assert(AssetExtractor::resolveUnique(outputDir, "asset", ".bin").filename() == "asset.bin");
+
+    assert(ExportHandlerModel::safeDefaultName("Odd Name!*", MemberType::Bitmap, 7) == "Odd_Name__");
+    assert(ExportHandlerModel::safeDefaultName("", MemberType::Sound, 8) == "sound_8");
+    assert(ExportHandlerModel::supports(MemberType::Bitmap));
+    assert(ExportHandlerModel::supports(MemberType::Sound));
+    assert(!ExportHandlerModel::supports(MemberType::Script));
+    assert((ExportHandlerModel::fileChoice("Backdrop", MemberType::Bitmap, 3) ==
+            ExportFileChoice{ExportAssetKind::Bitmap,
+                             MemberType::Bitmap,
+                             "Backdrop",
+                             "Backdrop.png",
+                             ".png",
+                             "PNG Image",
+                             true,
+                             false}));
+    assert((ExportHandlerModel::fileChoice("Theme Tune", MemberType::Sound, 4, true) ==
+            ExportFileChoice{ExportAssetKind::Sound,
+                             MemberType::Sound,
+                             "Theme_Tune",
+                             "Theme_Tune.mp3",
+                             ".mp3",
+                             "MP3 Audio",
+                             true,
+                             true}));
+    assert((ExportHandlerModel::fileChoice("", MemberType::Sound, 5, false) ==
+            ExportFileChoice{ExportAssetKind::Sound,
+                             MemberType::Sound,
+                             "sound_5",
+                             "sound_5.wav",
+                             ".wav",
+                             "WAV Audio",
+                             true,
+                             false}));
+    assert((ExportHandlerModel::fileChoice("Script", MemberType::Script, 9) ==
+            ExportFileChoice{ExportAssetKind::Unsupported,
+                             MemberType::Script,
+                             "Script",
+                             "",
+                             "",
+                             "",
+                             false,
+                             false}));
+    assert(ExportHandlerModel::withRequiredExtension("/tmp/image", ".png") == std::filesystem::path("/tmp/image.png"));
+    assert(ExportHandlerModel::withRequiredExtension("/tmp/image.PNG", ".png") ==
+           std::filesystem::path("/tmp/image.PNG"));
+    assert(ExportHandlerModel::withRequiredExtension("/tmp/archive.png/image", ".png") ==
+           std::filesystem::path("/tmp/archive.png/image.png"));
+    assert(ExportHandlerModel::unsupportedStatus(MemberType::Script) ==
+           "Export not supported for script members");
+    assert(ExportHandlerModel::bitmapExportedStatus("Backdrop.png") == "Exported bitmap to: Backdrop.png");
+    assert(ExportHandlerModel::soundExportedStatus("Theme.mp3") == "Exported sound to: Theme.mp3");
+    assert(ExportHandlerModel::bitmapDecodeFailedStatus() == "Failed to decode bitmap");
+    assert(ExportHandlerModel::soundDataMissingStatus() == "Sound data not found");
+    assert(ExportHandlerModel::soundExportFailedStatus() == "Failed to export sound");
+    assert(ExportHandlerModel::exportErrorStatus("disk full") == "Export error: disk full");
 
     assert(extractor.extract(*file, soundInfo, outputDir));
     const auto soundBytes = readBytes(outputDir / "SoundMember.wav");
