@@ -141,6 +141,19 @@ void SpriteState::setScriptInstanceList(std::vector<lingo::Datum> list) {
     scriptInstanceList_ = std::move(list);
 }
 
+std::optional<lingo::Datum> SpriteState::legacyProperty(std::string_view name) const {
+    const auto found = legacyProperties_.find(std::string(name));
+    return found == legacyProperties_.end() ? std::nullopt : std::optional<lingo::Datum>(found->second);
+}
+
+void SpriteState::setLegacyProperty(std::string name, lingo::Datum value) {
+    legacyProperties_[std::move(name)] = std::move(value);
+}
+
+void SpriteState::clearLegacyProperties() {
+    legacyProperties_.clear();
+}
+
 SpriteState::PositionSnapshot SpriteState::snapshotPosition() const {
     return PositionSnapshot{locH_, locV_, locZ_, width_, height_};
 }
@@ -318,6 +331,7 @@ void SpriteState::rebindToScore(chunks::ScoreChunk::ChannelData data) {
     cursorMemberNum_ = 0;
     cursorMaskNum_ = 0;
     scriptInstanceList_.clear();
+    legacyProperties_.clear();
     dynamicCastLib_ = -1;
     dynamicCastMember_ = -1;
     hasDynamicMember_ = false;

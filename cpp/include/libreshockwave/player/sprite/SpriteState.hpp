@@ -1,6 +1,9 @@
 #pragma once
 
 #include <optional>
+#include <string>
+#include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "libreshockwave/chunks/ScoreChunk.hpp"
@@ -78,6 +81,9 @@ public:
     [[nodiscard]] std::vector<lingo::Datum>& scriptInstanceList();
     [[nodiscard]] bool hasScriptBehaviors() const;
     void setScriptInstanceList(std::vector<lingo::Datum> list);
+    [[nodiscard]] std::optional<lingo::Datum> legacyProperty(std::string_view name) const;
+    void setLegacyProperty(std::string name, lingo::Datum value);
+    void clearLegacyProperties();
 
     [[nodiscard]] PositionSnapshot snapshotPosition() const;
 
@@ -140,6 +146,7 @@ private:
     int cursorMemberNum_{0};
     int cursorMaskNum_{0};
     std::vector<lingo::Datum> scriptInstanceList_;
+    std::unordered_map<std::string, lingo::Datum> legacyProperties_;
     int dynamicCastLib_{-1};
     int dynamicCastMember_{-1};
     bool hasDynamicMember_{false};

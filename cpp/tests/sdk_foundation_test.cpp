@@ -17970,6 +17970,21 @@ void testSpritePropertiesFoundation() {
     assert(props.getSpriteProp(7, "type").intValue() == 0);
     assert(props.getSpriteProp(7, "member").isVoid());
     assert(props.getSpriteProp(7, "ilk").asSymbol()->name == "sprite");
+    assert(props.getSpriteProp(7, "constraint").intValue() == 0);
+    assert(props.getSpriteProp(7, "immediate").intValue() == 0);
+    assert(props.getSpriteProp(7, "lineSize").intValue() == 1);
+    assert(props.getSpriteProp(7, "movieRate").intValue() == 0);
+    assert(props.getSpriteProp(7, "movieTime").intValue() == 0);
+    assert(props.getSpriteProp(7, "pattern").intValue() == 1);
+    assert(props.getSpriteProp(7, "startTime").intValue() == 0);
+    assert(props.getSpriteProp(7, "stopTime").intValue() == 0);
+    assert(props.getSpriteProp(7, "volume").intValue() == 256);
+    assert(props.getSpriteProp(7, "scoreColor").intValue() == 0);
+    assert(props.getSpriteProp(7, "moveableSprite").intValue() == 0);
+    assert(props.getSpriteProp(7, "editableText").intValue() == 0);
+    assert(props.getSpriteProp(7, "mostRecentCuePoint").intValue() == 0);
+    assert(props.getSpriteProp(7, "tweened").intValue() == 0);
+    assert(props.getSpriteProp(7, "name").stringValue().empty());
     const auto* missingLoc = props.getSpriteProp(7, "loc").asIntPoint();
     assert(missingLoc != nullptr && missingLoc->x == 0 && missingLoc->y == 0);
     const auto* missingRect = props.getSpriteProp(7, "rect").asIntRect();
@@ -18002,10 +18017,45 @@ void testSpritePropertiesFoundation() {
     assert(props.setSpriteProp(3, "trails", Datum::of(4)));
     assert(props.setSpriteProp(3, "color", Datum::colorRef(1, 2, 3)));
     assert(props.setSpriteProp(3, "bgColor", Datum::of(0xAABBCC)));
+    assert(props.setSpriteProp(3, "constraint", Datum::of(12)));
+    assert(props.setSpriteProp(3, "immediate", Datum::TRUE));
+    assert(props.setSpriteProp(3, "lineSize", Datum::of(6)));
+    assert(props.setSpriteProp(3, "movieRate", Datum::of(3)));
+    assert(props.setSpriteProp(3, "currentTime", Datum::of(120)));
+    assert(props.setSpriteProp(3, "pattern", Datum::of(57)));
+    assert(props.setSpriteProp(3, "startTime", Datum::of(10)));
+    assert(props.setSpriteProp(3, "stopTime", Datum::of(900)));
+    assert(props.setSpriteProp(3, "volume", Datum::of(144)));
+    assert(props.setSpriteProp(3, "scoreColor", Datum::of(4)));
+    assert(props.setSpriteProp(3, "moveable", Datum::TRUE));
+    assert(props.setSpriteProp(3, "editableText", Datum::TRUE));
+    assert(props.setSpriteProp(3, "mostRecentCuePoint", Datum::of(2)));
+    assert(props.setSpriteProp(3, "tweened", Datum::TRUE));
+    assert(props.setSpriteProp(3, "name", Datum::of(std::string("runtime-sprite"))));
     assert(sprite->stretch() == 3);
     assert(sprite->trails() == 4);
     assert(sprite->foreColor() == 0x010203);
     assert(sprite->backColor() == 0xAABBCC);
+    assert(props.getSpriteProp(3, "constraint").intValue() == 12);
+    assert(props.getSpriteProp(3, "immediate").boolValue());
+    assert(props.getSpriteProp(3, "lineSize").intValue() == 6);
+    assert(props.getSpriteProp(3, "movieRate").intValue() == 3);
+    assert(props.getSpriteProp(3, "movieTime").intValue() == 120);
+    assert(props.getSpriteProp(3, "currentTime").intValue() == 120);
+    assert(props.setSpriteProp(3, "movieTime", Datum::of(240)));
+    assert(props.getSpriteProp(3, "currentTime").intValue() == 240);
+    assert(props.getSpriteProp(3, "pattern").intValue() == 57);
+    assert(props.getSpriteProp(3, "startTime").intValue() == 10);
+    assert(props.getSpriteProp(3, "stopTime").intValue() == 900);
+    assert(props.getSpriteProp(3, "volume").intValue() == 144);
+    assert(props.getSpriteProp(3, "scoreColor").intValue() == 4);
+    assert(props.getSpriteProp(3, "moveableSprite").boolValue());
+    assert(props.getSpriteProp(3, "moveable").boolValue());
+    assert(props.getSpriteProp(3, "editableText").boolValue());
+    assert(props.getSpriteProp(3, "editable").boolValue());
+    assert(props.getSpriteProp(3, "mostRecentCuePoint").intValue() == 2);
+    assert(props.getSpriteProp(3, "tweened").boolValue());
+    assert(props.getSpriteProp(3, "name").stringValue() == "runtime-sprite");
 
     assert(props.setSpriteProp(3, "rotation", Datum::of(180.0)));
     assert(props.setSpriteProp(3, "skew", Datum::of(180.0)));
@@ -18213,6 +18263,7 @@ void testSpritePropertiesFoundation() {
     assert(imageSetterCalled);
 
     assert(props.setSpriteProp(7, "moveable", Datum::of(1)));
+    assert(props.getSpriteProp(7, "moveableSprite").boolValue());
     assert(!props.setSpriteProp(7, "unknownSpriteProperty", Datum::of(1)));
 }
 

@@ -29,6 +29,46 @@ int normalizeTransformAngle(double angle) {
     return normalized;
 }
 
+std::string normalizeLegacySpriteProp(std::string_view prop) {
+    const std::string lower = lowerProp(prop);
+    if (lower == "moveable") return "moveablesprite";
+    if (lower == "editable") return "editabletext";
+    if (lower == "currenttime") return "movietime";
+    return lower;
+}
+
+std::optional<lingo::Datum> defaultLegacySpriteProp(std::string_view prop) {
+    const std::string normalized = normalizeLegacySpriteProp(prop);
+    if (normalized == "constraint" ||
+        normalized == "immediate" ||
+        normalized == "movierate" ||
+        normalized == "movietime" ||
+        normalized == "scorecolor" ||
+        normalized == "scriptnum" ||
+        normalized == "starttime" ||
+        normalized == "stoptime" ||
+        normalized == "mostrecentcuepoint" ||
+        normalized == "tweened" ||
+        normalized == "moveablesprite" ||
+        normalized == "editabletext") {
+        return lingo::Datum::of(0);
+    }
+    if (normalized == "linesize" || normalized == "pattern") {
+        return lingo::Datum::of(1);
+    }
+    if (normalized == "volume") {
+        return lingo::Datum::of(256);
+    }
+    if (normalized == "name") {
+        return lingo::Datum::of(std::string());
+    }
+    return std::nullopt;
+}
+
+bool isLegacySpriteRuntimeProp(std::string_view prop) {
+    return defaultLegacySpriteProp(prop).has_value();
+}
+
 } // namespace
 
 SpriteProperties::SpriteProperties(render::SpriteRegistry* registry)
@@ -121,11 +161,16 @@ lingo::Datum SpriteProperties::getSpriteProp(int spriteNum, std::string_view pro
     if (prop == "skew") return lingo::Datum::of(sprite->skew());
     if (prop == "fliph") return lingo::Datum::of(sprite->isFlipH() ? 1 : 0);
     if (prop == "flipv") return lingo::Datum::of(sprite->isFlipV() ? 1 : 0);
-    if (prop == "moveable" || prop == "moveablesprite") return lingo::Datum::of(0);
-    if (prop == "editable" || prop == "editabletext") return lingo::Datum::of(0);
     if (prop == "trails") return lingo::Datum::of(sprite->trails());
     if (prop == "cursor") return lingo::Datum::of(sprite->cursor());
     if (prop == "scriptinstancelist") return lingo::Datum::list(sprite->scriptInstanceList());
+    const std::string legacyProp = normalizeLegacySpriteProp(prop);
+    if (auto stored = sprite->legacyProperty(legacyProp)) {
+        return *stored;
+    }
+    if (auto legacyDefault = defaultLegacySpriteProp(legacyProp)) {
+        return *legacyDefault;
+    }
     return lingo::Datum::voidValue();
 }
 
@@ -293,10 +338,11 @@ bool SpriteProperties::setSpriteProp(int spriteNum, std::string_view propName, c
         }
         return true;
     }
-    if (prop == "moveable" || prop == "moveablesprite" ||
-        prop == "editable" || prop == "editabletext" ||
-        prop == "tweened" || prop == "constraint" ||
-        prop == "scriptnum" || prop == "type" || prop == "id") {
+    if (isLegacySpriteRuntimeProp(prop)) {
+        sprite->setLegacyProperty(normalizeLegacySpriteProp(prop), value);
+        return true;
+    }
+    if (prop == "type" || prop == "id") {
         return true;
     }
     return false;
@@ -474,6 +520,7 @@ lingo::Datum SpriteProperties::defaultProp(int spriteNum, std::string_view prop)
     if (prop == "type") return lingo::Datum::of(0);
     if (prop == "member") return lingo::Datum::voidValue();
     if (prop == "ilk") return lingo::Datum::symbol("sprite");
+    if (auto legacyDefault = defaultLegacySpriteProp(prop)) return *legacyDefault;
     return lingo::Datum::voidValue();
 }
 
