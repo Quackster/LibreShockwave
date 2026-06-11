@@ -834,6 +834,24 @@ void Player::wireComponents() {
         return std::nullopt;
     });
 
+    soundManager_.setAudioResolver([this](const lingo::Datum::CastMemberRef& ref)
+        -> std::optional<std::vector<std::uint8_t>> {
+        auto castLib = castLibManager_.getCastLib(ref.castLib);
+        if (!castLib) {
+            return std::nullopt;
+        }
+        auto sourceFile = castLib->sourceFile();
+        if (!sourceFile) {
+            return std::nullopt;
+        }
+        auto member = castLib->findMemberByNumber(ref.memberNum());
+        if (!member) {
+            return std::nullopt;
+        }
+        auto sound = audio::SoundManager::findSoundForMember(*sourceFile, member);
+        return sound ? audio::SoundManager::convertSoundToPlayable(*sound) : std::nullopt;
+    });
+
     cursorManager_.setSpriteProvider([this] {
         auto sprites = stageRenderer_.lastBakedSprites();
         if (sprites.empty()) {

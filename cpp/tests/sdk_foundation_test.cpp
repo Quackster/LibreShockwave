@@ -24221,11 +24221,11 @@ void testCastLibManagerFoundation() {
     appendCastListItem(castListItems, castListOffsets, pascalItem("Internal"));
     appendCastListItem(castListItems, castListOffsets, {});
     appendCastListItem(castListItems, castListOffsets, preloadItem(0));
-    appendCastListItem(castListItems, castListOffsets, memberRangeItem(1, 3, 1));
+    appendCastListItem(castListItems, castListOffsets, memberRangeItem(1, 4, 1));
     appendCastListItem(castListItems, castListOffsets, pascalItem("External"));
     appendCastListItem(castListItems, castListOffsets, pascalItem("casts/ext.cct"));
     appendCastListItem(castListItems, castListOffsets, preloadItem(2));
-    appendCastListItem(castListItems, castListOffsets, memberRangeItem(1, 2, 2));
+    appendCastListItem(castListItems, castListOffsets, memberRangeItem(1, 4, 2));
 
     std::vector<std::uint8_t> castListData;
     appendI32(castListData, 12);
@@ -24244,6 +24244,7 @@ void testCastLibManagerFoundation() {
     appendI32(castData, 0);
     appendI32(castData, 3);
     appendI32(castData, 4);
+    appendI32(castData, 5);
 
     auto makeMemberData = [&](MemberType type,
                               const std::string& name,
@@ -24287,16 +24288,25 @@ void testCastLibManagerFoundation() {
 
     const auto heroMemberData = makeMemberData(MemberType::Bitmap, "Hero", 0, bitmapSpecific);
     const auto sourceDoorMemberData = makeMemberData(MemberType::Script, "s_Door", 1, {0x00, 0x02});
+    const auto soundMemberData = makeMemberData(MemberType::Sound, "Tone", 0, {});
     std::vector<std::uint8_t> keyData;
     appendI16(keyData, 12);
     appendI16(keyData, 12);
-    appendI32(keyData, 1);
-    appendI32(keyData, 1);
-    appendI32(keyData, 6);
+    appendI32(keyData, 2);
+    appendI32(keyData, 2);
+    appendI32(keyData, 7);
     appendI32(keyData, 3);
     appendI32(keyData, BinaryReader::fourCC("BITD"));
+    appendI32(keyData, 8);
+    appendI32(keyData, 5);
+    appendI32(keyData, BinaryReader::fourCC("snd "));
     std::vector<std::uint8_t> bitdData(24 * 16, 0);
     bitdData[1] = 1;
+    std::vector<std::uint8_t> soundChunkData(66, 0);
+    soundChunkData[0x16] = 0x56;
+    soundChunkData[0x17] = 0x22;
+    soundChunkData[64] = 0x12;
+    soundChunkData[65] = 0x34;
 
     auto buildRifx = [&](const std::vector<std::pair<std::string, std::vector<std::uint8_t>>>& chunks) {
         constexpr int mmapOffset = 32;
@@ -24349,11 +24359,13 @@ void testCastLibManagerFoundation() {
         {"CAS*", castData},
         {"CASt", heroMemberData},
         {"CASt", sourceDoorMemberData},
+        {"CASt", soundMemberData},
         {"KEY*", keyData},
         {"BITD", bitdData},
+        {"snd ", soundChunkData},
     }));
     assert(file->casts().size() == 1);
-    assert(file->castMembers().size() == 2);
+    assert(file->castMembers().size() == 3);
     assert(file->castList()->entries().size() == 2);
 
     int requestedCast = 0;
@@ -24375,8 +24387,8 @@ void testCastLibManagerFoundation() {
     auto internal = manager.getCastLib(1);
     assert(internal != nullptr);
     assert(internal->isLoaded());
-    assert(internal->memberCount() == 3);
-    assert(manager.getMemberCount(1) == 3);
+    assert(internal->memberCount() == 4);
+    assert(manager.getMemberCount(1) == 4);
     assert(!manager.memberExists(1, 1));
     assert(manager.memberExists(1, 2));
     assert(manager.isRegistryVisibleMember(1, 2));
@@ -24403,7 +24415,7 @@ void testCastLibManagerFoundation() {
     assert(manager.findRuntimeMember(heroChunk)->memberNum() == 2);
 
     assert(manager.getCastLibProp(1, "number").intValue() == 1);
-    assert(manager.getCastLibProp(1, "number of castMembers").intValue() == 3);
+    assert(manager.getCastLibProp(1, "number of castMembers").intValue() == 4);
     assert(manager.getCastLibProp(1, "loaded").boolValue());
     assert(manager.getMemberProp(1, 2, "name").stringValue() == "Hero");
     assert(manager.getMemberProp(1, 2, "number").intValue() == SlotId::of(1, 2).value());
@@ -24617,8 +24629,8 @@ void testCastLibManagerFoundation() {
     assert(createdRuntimeRef->castLib == 1);
     assert(createdRuntimeRef->memberNum() == 10000);
     assert(manager.memberExists(1, 10000));
-    assert(manager.getMemberCount(1) == 3);
-    assert(context.castMemberCountSupplier(1) == 3);
+    assert(manager.getMemberCount(1) == 4);
+    assert(context.castMemberCountSupplier(1) == 4);
     assert(context.castMemberCountSupplier(99) == 0);
     assert(manager.getMemberProp(1, 10000, "type").asSymbol()->name == "bitmap");
     assert(manager.getMemberProp(1, 10000, "name").stringValue().empty());
@@ -25393,8 +25405,10 @@ void testCastLibManagerFoundation() {
         {"CAS*", castData},
         {"CASt", heroMemberData},
         {"CASt", sourceDoorMemberData},
+        {"CASt", soundMemberData},
         {"KEY*", keyData},
         {"BITD", bitdData},
+        {"snd ", soundChunkData},
     });
     Player externalPlayer(file);
     RecordingExternalCastLoadHandler externalLoadHandler;
@@ -25436,6 +25450,14 @@ void testCastLibManagerFoundation() {
         ExternalCastLoadEvent{2, "casts/ext.cct"}
     }));
     assert(compatibilityCastLoadNotifications == 1);
+    RecordingAudioBackend externalSoundBackend;
+    externalPlayer.setAudioBackend(&externalSoundBackend);
+    externalPlayer.soundManager().play(5, Datum::castMemberRef(CastLibId(2), MemberId(4)));
+    assert(externalSoundBackend.playCount == 1);
+    assert(externalSoundBackend.lastPlayChannel == 5);
+    assert(externalSoundBackend.lastFormat == "wav");
+    assert(externalSoundBackend.lastLoopCount == 1);
+    assert(externalSoundBackend.lastVolume == 255);
 
     Player fetchPlayer(file);
     RecordingExternalCastLoadHandler fetchLoadHandler;
