@@ -414,7 +414,7 @@ void populateWorkbenchFloatingArea(EditorGtkState& state,
                                    GtkWidget* floatingArea,
                                    const gtk_models::GtkWorkbenchLayoutSpec& layout) {
     clearBox(floatingArea);
-    const bool hasFloatingPanels = layout.hasDockedLayout && !layout.floatingPanels.empty();
+    const bool hasFloatingPanels = !layout.floatingPanels.empty();
     gtk_widget_set_visible(floatingArea, hasFloatingPanels);
     if (!hasFloatingPanels) {
         return;
@@ -475,7 +475,8 @@ void refreshGtkShell(EditorGtkState& state) {
     if (state.workbenchFloatingArea != nullptr) {
         populateWorkbenchFloatingArea(state, state.workbenchFloatingArea, view.workbenchLayout);
     }
-    const bool showFallbackContent = !view.workbenchLayout.hasDockedLayout;
+    const bool showFallbackContent =
+        !view.workbenchLayout.hasDockedLayout && view.workbenchLayout.floatingPanels.empty();
     if (state.workbenchTitleLabel != nullptr) {
         gtk_widget_set_visible(state.workbenchTitleLabel, showFallbackContent);
         gtk_label_set_text(GTK_LABEL(state.workbenchTitleLabel), view.workbenchContent.title.c_str());
@@ -678,9 +679,12 @@ GtkWidget* makeWorkbench(EditorGtkState& state) {
     populateWorkbenchFloatingArea(state, state.workbenchFloatingArea, view.workbenchLayout);
     gtk_box_append(GTK_BOX(workbenchBox), state.workbenchFloatingArea);
 
+    const bool showFallbackContent =
+        !view.workbenchLayout.hasDockedLayout && view.workbenchLayout.floatingPanels.empty();
+
     state.workbenchTitleLabel = gtk_label_new(view.workbenchContent.title.c_str());
     gtk_label_set_xalign(GTK_LABEL(state.workbenchTitleLabel), 0.0F);
-    gtk_widget_set_visible(state.workbenchTitleLabel, !view.workbenchLayout.hasDockedLayout);
+    gtk_widget_set_visible(state.workbenchTitleLabel, showFallbackContent);
     gtk_box_append(GTK_BOX(workbenchBox), state.workbenchTitleLabel);
 
     state.workbenchPrimaryLabel = gtk_label_new(view.workbenchContent.primaryText.c_str());
@@ -689,17 +693,17 @@ GtkWidget* makeWorkbench(EditorGtkState& state) {
     gtk_label_set_wrap(GTK_LABEL(state.workbenchPrimaryLabel), TRUE);
     gtk_widget_set_hexpand(state.workbenchPrimaryLabel, TRUE);
     gtk_widget_set_vexpand(state.workbenchPrimaryLabel, TRUE);
-    gtk_widget_set_visible(state.workbenchPrimaryLabel, !view.workbenchLayout.hasDockedLayout);
+    gtk_widget_set_visible(state.workbenchPrimaryLabel, showFallbackContent);
     gtk_box_append(GTK_BOX(workbenchBox), state.workbenchPrimaryLabel);
 
     state.workbenchActions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
     populateWorkbenchActions(state.workbenchActions, view.workbenchContent.actionSpecs);
-    gtk_widget_set_visible(state.workbenchActions, !view.workbenchLayout.hasDockedLayout);
+    gtk_widget_set_visible(state.workbenchActions, showFallbackContent);
     gtk_box_append(GTK_BOX(workbenchBox), state.workbenchActions);
 
     state.workbenchStatusLabel = gtk_label_new(view.workbenchContent.statusText.c_str());
     gtk_label_set_xalign(GTK_LABEL(state.workbenchStatusLabel), 0.0F);
-    gtk_widget_set_visible(state.workbenchStatusLabel, !view.workbenchLayout.hasDockedLayout);
+    gtk_widget_set_visible(state.workbenchStatusLabel, showFallbackContent);
     gtk_box_append(GTK_BOX(workbenchBox), state.workbenchStatusLabel);
 
     gtk_paned_set_end_child(GTK_PANED(paned), workbenchBox);

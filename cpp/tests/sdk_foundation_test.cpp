@@ -2632,12 +2632,16 @@ void testEditorShellActionModels() {
     assert(gtkWorkbenchPanels.front().kind == GtkWorkbenchPanelKind::Stage);
     assert(gtkWorkbenchPanels.front().activationActionName == "workbench_stage");
     assert(gtkWorkbenchPanels.front().detailedActivationActionName == "app.workbench_stage");
-    assert(gtkState.workbenchLayout().activePanel.has_value());
-    assert(gtkState.workbenchLayout().activePanel->panelId == "stage");
-    assert(gtkState.workbenchLayout().activePanel->activationActionName == "workbench_stage");
-    assert(!gtkState.workbenchLayout().hasDockedLayout);
-    assert(gtkState.workbenchLayout().dockRoot.kind == DockNodeKind::Center);
-    assert(gtkState.workbenchLayout().dockRoot.panels.empty());
+    const auto initialWorkbenchLayout = gtkState.workbenchLayout();
+    assert(initialWorkbenchLayout.activePanel.has_value());
+    assert(initialWorkbenchLayout.activePanel->panelId == "stage");
+    assert(initialWorkbenchLayout.activePanel->activationActionName == "workbench_stage");
+    assert(!initialWorkbenchLayout.hasDockedLayout);
+    assert(initialWorkbenchLayout.dockRoot.kind == DockNodeKind::Center);
+    assert(initialWorkbenchLayout.dockRoot.panels.empty());
+    assert(initialWorkbenchLayout.floatingPanels.size() == gtkWorkbenchPanels.size());
+    assert(findWorkbenchPanel(initialWorkbenchLayout.floatingPanels, "stage") != nullptr);
+    assert(findWorkbenchPanel(initialWorkbenchLayout.floatingPanels, "paint") == nullptr);
     auto gtkWorkbenchTabsState = gtkState.workbenchTabs();
     assert(gtkWorkbenchTabsState.size() == gtkWorkbenchPanels.size());
     assert(gtkWorkbenchTabsState.front() ==
@@ -3749,6 +3753,10 @@ void testEditorShellActionModels() {
     assert(gtkView.workbenchTabs[7].panelId == "paint");
     assert(gtkView.workbenchTabs[7].active);
     assert(gtkView.workbenchContent.panelId == "paint");
+    assert(!gtkView.workbenchLayout.hasDockedLayout);
+    assert(gtkView.workbenchLayout.floatingPanels.size() == gtkView.workbenchPanels.size());
+    assert(findWorkbenchPanel(gtkView.workbenchLayout.floatingPanels, "paint") != nullptr);
+    assert(findWorkbenchPanel(gtkView.workbenchLayout.floatingPanels, "message") != nullptr);
 
     EditorGtkShellState mixedFloatingState;
     assert(mixedFloatingState.activateAction("panel_paint").handled);
