@@ -77,6 +77,7 @@ add_library(libreshockwave
     src/editor/panels/EditorPanelModels.cpp
     src/editor/preview/GenericPreview.cpp
     src/editor/preview/PalettePreview.cpp
+    src/editor/preview/PreviewContextModels.cpp
     src/editor/preview/PreviewFormatUtils.cpp
     src/editor/preview/ScriptPreview.cpp
     src/editor/preview/SoundPreview.cpp

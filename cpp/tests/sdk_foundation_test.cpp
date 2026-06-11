@@ -100,6 +100,7 @@
 #include "libreshockwave/editor/extraction/ExportHandlerModels.hpp"
 #include "libreshockwave/editor/preview/GenericPreview.hpp"
 #include "libreshockwave/editor/preview/PalettePreview.hpp"
+#include "libreshockwave/editor/preview/PreviewContextModels.hpp"
 #include "libreshockwave/editor/preview/PreviewFormatUtils.hpp"
 #include "libreshockwave/editor/preview/ScriptPreview.hpp"
 #include "libreshockwave/editor/preview/SoundPreview.hpp"
@@ -411,7 +412,9 @@ using libreshockwave::editor::extraction::ExportFileChoice;
 using libreshockwave::editor::extraction::ExportHandlerModel;
 using libreshockwave::editor::preview::GenericPreview;
 using libreshockwave::editor::preview::PalettePreview;
+using libreshockwave::editor::preview::PreviewContextModel;
 using libreshockwave::editor::preview::PreviewFormatUtils;
+using libreshockwave::editor::preview::PreviewTextState;
 using libreshockwave::editor::preview::ScriptPreview;
 using libreshockwave::editor::preview::SoundPreview;
 using libreshockwave::editor::preview::TextPreview;
@@ -4227,6 +4230,23 @@ void testEditorScanningHelpers() {
     const auto textPreviewText = textPreview.format(*file, textInfo);
     assert(textPreviewText.find("=== TEXT: TextMember ===") != std::string::npos);
     assert(textPreviewText.find("--- Text Content ---\nHello\nWorld") != std::string::npos);
+
+    PreviewContextModel previewContext(file.get(), MemberNodeData{"/movies/Movie.dir", textInfo});
+    assert(previewContext.dirFile() == file.get());
+    assert(previewContext.memberData().filePath == "/movies/Movie.dir");
+    assert(previewContext.memberData().memberInfo.memberNum == 13);
+    assert(previewContext.statusText().empty());
+    assert(previewContext.detailsText().empty());
+    assert(previewContext.detailsCaretPosition() == 0);
+    previewContext.setStatus("Ready");
+    previewContext.setDetailsText("line 1\nline 2");
+    assert(previewContext.statusText() == "Ready");
+    assert(previewContext.detailsText() == "line 1\nline 2");
+    assert(previewContext.detailsCaretPosition() == 0);
+    previewContext.setDetailsCaretPosition(8);
+    assert(previewContext.detailsCaretPosition() == 8);
+    previewContext.setDetailsText("replacement");
+    assert((previewContext.textState() == PreviewTextState{"Ready", "replacement", 0}));
 
     auto readBytes = [](const std::filesystem::path& path) {
         std::ifstream in(path, std::ios::binary);
