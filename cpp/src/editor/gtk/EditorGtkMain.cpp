@@ -1,3 +1,4 @@
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -205,11 +206,73 @@ void refreshGtkShell(EditorGtkState& state) {
     }
 }
 
+void openFileDialogFinished(GObject* sourceObject, GAsyncResult* result, gpointer userData) {
+    auto* state = static_cast<EditorGtkState*>(userData);
+    GError* error = nullptr;
+    GFile* file = gtk_file_dialog_open_finish(GTK_FILE_DIALOG(sourceObject), result, &error);
+
+    gtk_models::GtkActionActivation activation;
+    if (file == nullptr) {
+        if (error != nullptr && !g_error_matches(error, GTK_DIALOG_ERROR, GTK_DIALOG_ERROR_DISMISSED)) {
+            g_print("LibreShockwave GTK editor open dialog failed: %s\n", error->message);
+        }
+        activation = state->shellState.activateOpenFileDialogAction("open_cancel", std::nullopt);
+        g_clear_error(&error);
+    } else {
+        char* path = g_file_get_path(file);
+        if (path != nullptr) {
+            activation = state->shellState.activateOpenFileDialogAction(
+                "open_accept",
+                std::optional<std::string>{path});
+            g_free(path);
+        } else {
+            activation = state->shellState.activateOpenFileDialogAction("open_accept", std::nullopt);
+        }
+        g_object_unref(file);
+    }
+
+    if (!activation.statusMessage.empty()) {
+        g_print("LibreShockwave GTK editor: %s\n", activation.statusMessage.c_str());
+    }
+    refreshGtkShell(*state);
+}
+
+void presentOpenFileDialog(EditorGtkState& state, const editor::EditorOpenFileDialogModel& request) {
+    const auto presentation = gtk_models::EditorGtkShellModel::openFileDialogPresentation(request);
+    GtkFileDialog* dialog = gtk_file_dialog_new();
+    gtk_file_dialog_set_title(dialog, presentation.title.c_str());
+    gtk_file_dialog_set_modal(dialog, presentation.modal);
+    gtk_file_dialog_set_accept_label(dialog, presentation.acceptLabel.c_str());
+
+    if (presentation.currentDirectory.has_value()) {
+        GFile* folder = g_file_new_for_path(presentation.currentDirectory->c_str());
+        gtk_file_dialog_set_initial_folder(dialog, folder);
+        g_object_unref(folder);
+    }
+
+    if (!presentation.filter.extensions.empty()) {
+        GListStore* filters = g_list_store_new(GTK_TYPE_FILE_FILTER);
+        GtkFileFilter* directorFilter = gtk_file_filter_new();
+        gtk_file_filter_set_name(directorFilter, presentation.filter.label.c_str());
+        for (const auto& extension : presentation.filter.extensions) {
+            gtk_file_filter_add_suffix(directorFilter, extension.c_str());
+        }
+        g_list_store_append(filters, directorFilter);
+        gtk_file_dialog_set_filters(dialog, G_LIST_MODEL(filters));
+        gtk_file_dialog_set_default_filter(dialog, directorFilter);
+        g_object_unref(directorFilter);
+        g_object_unref(filters);
+    }
+
+    gtk_file_dialog_open(dialog, state.window, nullptr, openFileDialogFinished, &state);
+    g_object_unref(dialog);
+}
+
 gtk_models::GtkActionActivation activateGtkAction(GSimpleAction* action, EditorGtkState* state) {
     const char* name = g_action_get_name(G_ACTION(action));
     auto result = state->shellState.activateAction(name != nullptr ? name : "");
     if (result.requestOpenFile && result.openFileDialog.has_value()) {
-        g_print("LibreShockwave GTK editor open dialog: %s\n", result.openFileDialog->title.c_str());
+        presentOpenFileDialog(*state, *result.openFileDialog);
     }
     if (result.dialogRequest.has_value()) {
         g_print("LibreShockwave GTK editor dialog: %s\n", result.dialogRequest->title.c_str());
