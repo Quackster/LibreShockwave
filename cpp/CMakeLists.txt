@@ -292,6 +292,12 @@ else()
 endif()
 
 if(EMSCRIPTEN)
+    set(LIBRESHOCKWAVE_CPP_WASM_WEB_ASSETS
+        "${CMAKE_CURRENT_SOURCE_DIR}/web/index.html"
+        "${CMAKE_CURRENT_SOURCE_DIR}/web/libreshockwave-cpp-player.js"
+        "${CMAKE_CURRENT_SOURCE_DIR}/web/libreshockwave-cpp-worker.js"
+    )
+
     add_executable(libreshockwave_cpp_wasm
         src/player/web/WasmModule.cpp
     )
@@ -314,6 +320,19 @@ if(EMSCRIPTEN)
         "-sALLOW_MEMORY_GROWTH=1"
         "-sEXPORTED_FUNCTIONS=@${CMAKE_CURRENT_SOURCE_DIR}/cmake/libreshockwave-wasm-exports.json"
     )
+
+    foreach(LIBRESHOCKWAVE_CPP_WASM_WEB_ASSET IN LISTS LIBRESHOCKWAVE_CPP_WASM_WEB_ASSETS)
+        get_filename_component(LIBRESHOCKWAVE_CPP_WASM_WEB_ASSET_NAME
+            "${LIBRESHOCKWAVE_CPP_WASM_WEB_ASSET}"
+            NAME
+        )
+        add_custom_command(TARGET libreshockwave_cpp_wasm POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                "${LIBRESHOCKWAVE_CPP_WASM_WEB_ASSET}"
+                "$<TARGET_FILE_DIR:libreshockwave_cpp_wasm>/${LIBRESHOCKWAVE_CPP_WASM_WEB_ASSET_NAME}"
+            VERBATIM
+        )
+    endforeach()
 endif()
 
 if(BUILD_TESTING)

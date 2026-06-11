@@ -22850,6 +22850,140 @@ void testWasmCppAdapterResourceFoundation() {
     }));
 }
 
+void testCppWasmBrowserBootstrapResourceFoundation() {
+    const auto repoRoot = std::filesystem::path(__FILE__).parent_path().parent_path().parent_path();
+    const auto playerPath = repoRoot / "cpp" / "web" / "libreshockwave-cpp-player.js";
+    const auto workerPath = repoRoot / "cpp" / "web" / "libreshockwave-cpp-worker.js";
+    const auto indexPath = repoRoot / "cpp" / "web" / "index.html";
+    const auto cmakePath = repoRoot / "cpp" / "CMakeLists.txt";
+    const auto headerPath = repoRoot / "cpp" / "include" / "libreshockwave" / "player" / "web" /
+        "WasmExports.hpp";
+
+    auto readTextFile = [](const std::filesystem::path& path) {
+        std::ifstream file(path);
+        assert(file.good());
+        return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    };
+
+    const std::string player = readTextFile(playerPath);
+    const std::string worker = readTextFile(workerPath);
+    const std::string index = readTextFile(indexPath);
+    const std::string cmake = readTextFile(cmakePath);
+    const std::string header = readTextFile(headerPath);
+
+    auto isIdent = [](char ch) {
+        return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+            (ch >= '0' && ch <= '9') || ch == '_';
+    };
+
+    auto parseHeaderExports = [&isIdent](const std::string& source) {
+        std::set<std::string> exports;
+        const auto marker = std::string_view("LIBRESHOCKWAVE_WASM_EXPORT");
+        std::size_t pos = 0;
+        while ((pos = source.find(marker, pos)) != std::string::npos) {
+            pos += marker.size();
+            const auto lineEnd = source.find('\n', pos);
+            const auto openParen = source.find('(', pos);
+            if (openParen == std::string::npos || (lineEnd != std::string::npos && openParen > lineEnd)) {
+                continue;
+            }
+            auto nameEnd = openParen;
+            while (nameEnd > pos && std::isspace(static_cast<unsigned char>(source[nameEnd - 1]))) {
+                --nameEnd;
+            }
+            auto nameStart = nameEnd;
+            while (nameStart > pos && isIdent(source[nameStart - 1])) {
+                --nameStart;
+            }
+            const auto exportName = source.substr(nameStart, nameEnd - nameStart);
+            if (exportName.starts_with("libreshockwave_wasm_")) {
+                exports.insert("_" + exportName);
+            }
+        }
+        assert(!exports.empty());
+        return exports;
+    };
+
+    auto parseWorkerRequiredExports = [&isIdent](const std::string& source) {
+        std::set<std::string> exports;
+        const auto marker = std::string_view("var _requiredExports");
+        auto pos = source.find(marker);
+        assert(pos != std::string::npos);
+        pos = source.find('{', pos);
+        assert(pos != std::string::npos);
+        const auto end = source.find("};", pos);
+        assert(end != std::string::npos);
+        while (pos < end) {
+            while (pos < end && !isIdent(source[pos])) {
+                ++pos;
+            }
+            if (pos >= end) {
+                break;
+            }
+            while (pos < end && isIdent(source[pos])) {
+                ++pos;
+            }
+            const auto suffixStartQuote = source.find('\'', pos);
+            assert(suffixStartQuote != std::string::npos && suffixStartQuote < end);
+            const auto suffixEndQuote = source.find('\'', suffixStartQuote + 1);
+            assert(suffixEndQuote != std::string::npos && suffixEndQuote < end);
+            exports.insert("_libreshockwave_wasm_" +
+                           source.substr(suffixStartQuote + 1, suffixEndQuote - suffixStartQuote - 1));
+            pos = suffixEndQuote + 1;
+        }
+        assert(!exports.empty());
+        return exports;
+    };
+
+    assert(index.find("libreshockwave-cpp-player.js") != std::string::npos);
+    assert(index.find("LibreShockwaveCppPlayer.create") != std::string::npos);
+    assert(index.find("<canvas id=\"stage\"") != std::string::npos);
+    assert(index.find("window.__libreshockwaveCppLastFrame") != std::string::npos);
+
+    assert(player.find("LibreShockwaveCppPlayer") != std::string::npos);
+    assert(player.find("new Worker") != std::string::npos);
+    assert(player.find("libreshockwave-cpp-worker.js") != std::string::npos);
+    assert(player.find("putImageData") != std::string::npos);
+    assert(player.find("loadBytes") != std::string::npos);
+    assert(player.find("stepForward") != std::string::npos);
+
+    assert(worker.find("createLibreShockwaveCppWasm") != std::string::npos);
+    assert(worker.find("libreshockwave-cpp-wasm.js") != std::string::npos);
+    assert(worker.find("libreshockwave_wasm_") != std::string::npos);
+    assert(worker.find("get_render_buffer_address") != std::string::npos);
+    assert(worker.find("deliver_fetch_result") != std::string::npos);
+    assert(worker.find("set_script_timeout_ms") != std::string::npos);
+    assert(worker.find("postMessage({\n        type: 'frame'") != std::string::npos);
+
+    const auto headerExports = parseHeaderExports(header);
+    const auto workerExports = parseWorkerRequiredExports(worker);
+    std::set<std::string> workerOnlyExports;
+    std::set_difference(workerExports.begin(),
+                        workerExports.end(),
+                        headerExports.begin(),
+                        headerExports.end(),
+                        std::inserter(workerOnlyExports, workerOnlyExports.end()));
+    assert(workerOnlyExports.empty());
+
+    assert(workerExports.count("_libreshockwave_wasm_load_movie") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_render") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_get_pending_fetch_count") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_deliver_fetch_result") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_set_script_timeout_ms") == 1);
+
+    assert(cmake.find("LIBRESHOCKWAVE_CPP_WASM_WEB_ASSETS") != std::string::npos);
+    assert(cmake.find("web/index.html") != std::string::npos);
+    assert(cmake.find("web/libreshockwave-cpp-player.js") != std::string::npos);
+    assert(cmake.find("web/libreshockwave-cpp-worker.js") != std::string::npos);
+    assert(cmake.find("copy_if_different") != std::string::npos);
+
+    for (const auto* source : {&player, &worker, &index}) {
+        assert(source->find("player-wasm") == std::string::npos);
+        assert(source->find("TeaVM") == std::string::npos);
+        assert(source->find("Gradle") == std::string::npos);
+    }
+}
+
 void testTimeoutManagerFoundation() {
     TimeoutManager manager;
     assert(manager.getTimeoutCount() == 0);
@@ -27907,6 +28041,7 @@ int main() {
     testWasmRuntimeBridgeFoundation();
     testWasmExportsFoundation();
     testWasmCppAdapterResourceFoundation();
+    testCppWasmBrowserBootstrapResourceFoundation();
     testTimeoutManagerFoundation();
     testPaletteAndColorRefs();
     testBitmapAlphaAndPaletteBehavior();

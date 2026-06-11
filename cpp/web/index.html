@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>LibreShockwave C++ WASM Player</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: #d7dde3;
+            color: #1f2933;
+            font: 12px Verdana, Arial, Helvetica, sans-serif;
+        }
+
+        main {
+            width: min(1080px, calc(100% - 24px));
+            margin: 12px auto;
+            border: 1px solid #8c99a6;
+            background: #f5f7f9;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 8px 10px;
+            background: #245b89;
+            color: white;
+            font-weight: bold;
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: auto 1fr auto auto auto;
+            gap: 8px;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #bcc7d1;
+            background: #edf2f6;
+        }
+
+        label {
+            font-weight: bold;
+        }
+
+        input {
+            min-width: 0;
+            height: 28px;
+            padding: 4px 7px;
+            border: 1px solid #8c99a6;
+            font: inherit;
+        }
+
+        button {
+            height: 28px;
+            border: 1px solid #2a5580;
+            background: #336699;
+            color: white;
+            font: inherit;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button.secondary {
+            border-color: #9aa1a8;
+            background: #e6ebef;
+            color: #1f2933;
+            font-weight: normal;
+        }
+
+        .stage {
+            display: flex;
+            justify-content: center;
+            padding: 14px;
+            background: #c9d2da;
+            overflow: auto;
+        }
+
+        canvas {
+            display: block;
+            width: min(100%, 960px);
+            height: auto;
+            background: black;
+            border: 1px solid #111820;
+        }
+
+        .status {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            min-height: 30px;
+            padding: 7px 10px;
+            border-top: 1px solid #bcc7d1;
+            background: #f7f7f7;
+        }
+
+        @media (max-width: 760px) {
+            main {
+                width: 100%;
+                margin: 0;
+                border-left: 0;
+                border-right: 0;
+            }
+
+            .controls {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .controls label,
+            .controls input {
+                grid-column: 1 / -1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <header>
+            <span>LibreShockwave C++ WASM Player</span>
+            <span id="runtime-state">idle</span>
+        </header>
+        <section class="controls">
+            <label for="movie-url">Movie URL</label>
+            <input id="movie-url" type="text" value="/dcr0910/loader.dcr">
+            <button id="load-button" type="button">Load</button>
+            <button id="play-button" type="button" class="secondary">Play</button>
+            <button id="step-button" type="button" class="secondary">Step</button>
+        </section>
+        <section class="stage">
+            <canvas id="stage" width="640" height="480"></canvas>
+        </section>
+        <section class="status">
+            <span id="status">Waiting for C++ WASM runtime.</span>
+            <span id="frame-info"></span>
+        </section>
+    </main>
+
+    <script src="libreshockwave-cpp-player.js"></script>
+    <script>
+        (function() {
+            var status = document.getElementById('status');
+            var frameInfo = document.getElementById('frame-info');
+            var runtimeState = document.getElementById('runtime-state');
+            var urlInput = document.getElementById('movie-url');
+
+            var player = LibreShockwaveCppPlayer.create('stage', {
+                onReady: function() {
+                    runtimeState.textContent = 'ready';
+                    status.textContent = 'Runtime ready.';
+                },
+                onLoad: function(info) {
+                    status.textContent = 'Loaded ' + info.width + 'x' + info.height + '.';
+                },
+                onFrame: function(frame) {
+                    runtimeState.textContent = 'rendering';
+                    frameInfo.textContent = 'frame ' + frame.frame + ' / ' + frame.frameCount +
+                        ', sprites ' + frame.spriteCount;
+                    window.__libreshockwaveCppLastFrame = frame;
+                },
+                onError: function(message) {
+                    runtimeState.textContent = 'error';
+                    status.textContent = message;
+                    window.__libreshockwaveCppLastError = message;
+                }
+            });
+
+            document.getElementById('load-button').addEventListener('click', function() {
+                runtimeState.textContent = 'loading';
+                status.textContent = 'Loading movie...';
+                player.load(urlInput.value);
+            });
+            document.getElementById('play-button').addEventListener('click', function() {
+                player.play();
+            });
+            document.getElementById('step-button').addEventListener('click', function() {
+                player.stepForward();
+            });
+
+            var params = new URLSearchParams(location.search);
+            if (params.has('movie')) {
+                urlInput.value = params.get('movie');
+                document.getElementById('load-button').click();
+            }
+        })();
+    </script>
+</body>
+</html>
