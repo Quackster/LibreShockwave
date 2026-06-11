@@ -53,6 +53,10 @@ namespace libreshockwave::player::debug {
 class DebugControllerApi;
 }
 
+namespace libreshockwave::player::render::output {
+class SimpleTextRenderer;
+}
+
 namespace libreshockwave::player {
 
 class ExternalCastLoadHandler;
@@ -196,6 +200,7 @@ private:
     audio::SoundManager soundManager_;
     render::pipeline::BitmapCache bitmapCache_;
     render::pipeline::SpriteBaker spriteBaker_;
+    std::unique_ptr<render::output::SimpleTextRenderer> defaultTextRenderer_;
     render::pipeline::FrameRenderPipeline frameRenderPipeline_;
     input::InputState inputState_;
     BitmapResolver bitmapResolver_;

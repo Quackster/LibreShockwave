@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -16,6 +17,8 @@
 
 #include "libreshockwave/DirectorFile.hpp"
 #include "libreshockwave/bitmap/Bitmap.hpp"
+#include "libreshockwave/cast/MemberType.hpp"
+#include "libreshockwave/chunks/CastMemberChunk.hpp"
 #include "libreshockwave/format/ChunkType.hpp"
 #include "libreshockwave/player/Player.hpp"
 #include "libreshockwave/player/PlayerState.hpp"
@@ -64,6 +67,8 @@ struct RenderProbeSummary {
     std::size_t framesWithBakedSprites = 0;
     std::size_t framesWithNonBackgroundPixels = 0;
     int firstNonBackgroundFrame = 0;
+    std::map<std::string, std::size_t> unbakedSpriteTypes;
+    std::map<std::string, std::size_t> unbakedMemberTypes;
     int stageWidth = 0;
     int stageHeight = 0;
     int frame = 0;
@@ -348,6 +353,46 @@ BitmapStats measureBitmap(const libreshockwave::player::render::pipeline::FrameS
     return stats;
 }
 
+std::string memberTypeName(const libreshockwave::player::render::pipeline::RenderSprite& sprite) {
+    if (const auto member = sprite.castMember()) {
+        return std::string(libreshockwave::cast::name(member->memberType()));
+    }
+    if (sprite.dynamicMember() != nullptr) {
+        return "dynamic";
+    }
+    return "missing";
+}
+
+void accumulateUnbakedSpriteStats(const libreshockwave::player::render::pipeline::FrameSnapshot& snapshot,
+                                  std::map<std::string, std::size_t>& spriteTypes,
+                                  std::map<std::string, std::size_t>& memberTypes) {
+    for (const auto& sprite : snapshot.sprites) {
+        if (sprite.bakedBitmap() != nullptr) {
+            continue;
+        }
+        ++spriteTypes[std::string(libreshockwave::player::render::pipeline::name(sprite.type()))];
+        ++memberTypes[memberTypeName(sprite)];
+    }
+}
+
+std::string formatCounts(const std::map<std::string, std::size_t>& counts) {
+    if (counts.empty()) {
+        return "{}";
+    }
+    std::ostringstream out;
+    out << '{';
+    bool first = true;
+    for (const auto& [name, count] : counts) {
+        if (!first) {
+            out << ',';
+        }
+        first = false;
+        out << name << ':' << count;
+    }
+    out << '}';
+    return out.str();
+}
+
 struct ExternalCastStats {
     std::size_t externalCasts = 0;
     std::size_t loadedExternalCasts = 0;
@@ -418,6 +463,9 @@ RenderProbeSummary probeFile(const fs::path& path, const RenderProbeOptions& opt
     std::size_t framesWithBakedSprites = 0;
     std::size_t framesWithNonBackgroundPixels = 0;
     int firstNonBackgroundFrame = 0;
+    std::map<std::string, std::size_t> unbakedSpriteTypes;
+    std::map<std::string, std::size_t> unbakedMemberTypes;
+    accumulateUnbakedSpriteStats(snapshot, unbakedSpriteTypes, unbakedMemberTypes);
     if (options.scanFrames > 0 && player.frameCount() > 0) {
         const int framesToScan = std::min(options.scanFrames, player.frameCount());
         for (int frame = 1; frame <= framesToScan; ++frame) {
@@ -434,6 +482,7 @@ RenderProbeSummary probeFile(const fs::path& path, const RenderProbeOptions& opt
             if (countBakedSprites(scanSnapshot.sprites) > 0) {
                 ++framesWithBakedSprites;
             }
+            accumulateUnbakedSpriteStats(scanSnapshot, unbakedSpriteTypes, unbakedMemberTypes);
             if (measureBitmap(scanSnapshot, scanBitmap).nonBackgroundPixels > 0) {
                 ++framesWithNonBackgroundPixels;
                 if (firstNonBackgroundFrame == 0) {
@@ -461,6 +510,8 @@ RenderProbeSummary probeFile(const fs::path& path, const RenderProbeOptions& opt
         framesWithBakedSprites,
         framesWithNonBackgroundPixels,
         firstNonBackgroundFrame,
+        std::move(unbakedSpriteTypes),
+        std::move(unbakedMemberTypes),
         snapshot.stageWidth,
         snapshot.stageHeight,
         player.currentFrame(),
@@ -496,6 +547,8 @@ void printVerboseOk(const fs::path& path, const RenderProbeSummary& summary) {
               << " framesWithBakedSprites=" << summary.framesWithBakedSprites
               << " framesWithNonBackgroundPixels=" << summary.framesWithNonBackgroundPixels
               << " firstNonBackgroundFrame=" << summary.firstNonBackgroundFrame
+              << " unbakedSpriteTypes=" << formatCounts(summary.unbakedSpriteTypes)
+              << " unbakedMemberTypes=" << formatCounts(summary.unbakedMemberTypes)
               << " scriptErrors=" << summary.scriptErrors.size()
               << '\n';
 
@@ -544,8 +597,23 @@ int main(int argc, char** argv) {
         std::size_t filesWithNonBackgroundScannedFrames = 0;
         std::size_t totalScriptErrors = 0;
 
+        const auto printProgress = [&](std::size_t processedCount) {
+            if (options.verbose || options.progressInterval == 0) {
+                return;
+            }
+            if (processedCount % options.progressInterval != 0 && processedCount != files.size()) {
+                return;
+            }
+            std::cout << "PROGRESS " << processedCount << '/' << files.size()
+                      << " ok=" << okCount
+                      << " skipped=" << skippedCount
+                      << " failed=" << failureCount
+                      << '\n' << std::flush;
+        };
+
         for (std::size_t fileIndex = 0; fileIndex < files.size(); ++fileIndex) {
             const auto& file = files[fileIndex];
+            bool stopAfterFile = false;
             if (options.showCurrent || options.verbose) {
                 std::cout << "RENDER " << (fileIndex + 1) << '/' << files.size() << ' '
                           << pathString(file) << '\n' << std::flush;
@@ -576,8 +644,6 @@ int main(int argc, char** argv) {
 
                 if (options.verbose) {
                     printVerboseOk(file, summary);
-                } else if (options.progressInterval != 0 && okCount % options.progressInterval == 0) {
-                    std::cout << "OK " << okCount << '/' << files.size() << '\n' << std::flush;
                 }
             } catch (const SkippedFile& skipped) {
                 ++skippedCount;
@@ -589,8 +655,13 @@ int main(int argc, char** argv) {
                 std::cerr << "FAIL " << pathString(file) << ": " << error.what() << '\n';
                 if (options.maxFailures != 0 && failureCount >= options.maxFailures) {
                     std::cerr << "Stopping after " << failureCount << " failures.\n";
-                    break;
+                    stopAfterFile = true;
                 }
+            }
+
+            printProgress(fileIndex + 1);
+            if (stopAfterFile) {
+                break;
             }
         }
 

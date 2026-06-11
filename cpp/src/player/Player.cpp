@@ -25,6 +25,7 @@
 #include "libreshockwave/player/debug/DebugControllerApi.hpp"
 #include "libreshockwave/player/debug/LifecycleDiagnostics.hpp"
 #include "libreshockwave/player/event/EventDispatcher.hpp"
+#include "libreshockwave/player/render/output/SimpleTextRenderer.hpp"
 #include "libreshockwave/player/score/ScoreNavigator.hpp"
 #include "libreshockwave/util/FileUtil.hpp"
 
@@ -139,6 +140,7 @@ Player::Player(std::shared_ptr<DirectorFile> file, bool registerSocketMultiuserX
       soundManager_(file_.get()),
       bitmapCache_(),
       spriteBaker_(&bitmapCache_),
+      defaultTextRenderer_(std::make_unique<render::output::SimpleTextRenderer>()),
       frameRenderPipeline_(&stageRenderer_, &spriteBaker_),
       inputState_(),
       bitmapResolver_(file_, &castLibManager_, &frameContext_),
@@ -154,6 +156,7 @@ Player::Player(std::shared_ptr<DirectorFile> file, bool registerSocketMultiuserX
     playerTraceListener_ = std::make_shared<PlayerTraceListener>(*this);
     vm_.setTraceListener(playerTraceListener_);
     wireComponents();
+    setTextRenderer(defaultTextRenderer_.get());
 }
 
 Player::Player(std::shared_ptr<DirectorFile> file, net::NetProvider* netProvider)

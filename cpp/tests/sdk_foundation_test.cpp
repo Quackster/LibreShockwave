@@ -27103,6 +27103,33 @@ void testCastLibManagerFoundation() {
     assert(reusedPlayerRuntime.asCastMemberRef() != nullptr);
     assert(reusedPlayerRuntime.asCastMemberRef()->memberNum() == playerRuntimeRef->memberNum());
 
+    const auto defaultTextMember = player.builtinRegistry()
+        .invoke("new", player.builtinContext(), {Datum::symbol("text"), Datum::castLibRef(CastLibId(1))});
+    const auto* defaultTextRef = defaultTextMember.asCastMemberRef();
+    assert(defaultTextRef != nullptr);
+    assert(player.castLibManager().setMemberProp(defaultTextRef->castLib,
+                                                 defaultTextRef->memberNum(),
+                                                 "text",
+                                                 Datum::of(std::string("Default text"))));
+    assert(player.spriteProperties().setSpriteProp(8, "loc", Datum::intPoint(9, 10)));
+    assert(player.spriteProperties().setSpriteProp(8, "bgColor", Datum::of(0xFFFFFF)));
+    assert(player.spriteProperties().setSpriteProp(8, "member", defaultTextMember));
+    const auto defaultTextSnapshot = player.frameSnapshot();
+    const RenderSprite* defaultTextSprite = nullptr;
+    for (const auto& sprite : defaultTextSnapshot.sprites) {
+        if (sprite.channel() == 8) {
+            defaultTextSprite = &sprite;
+            break;
+        }
+    }
+    assert(defaultTextSprite != nullptr);
+    assert(defaultTextSprite->type() == SpriteType::Text);
+    assert(defaultTextSprite->bakedBitmap() != nullptr);
+    assert(defaultTextSprite->bakedBitmap()->width() > 0);
+    assert(defaultTextSprite->bakedBitmap()->height() > 0);
+    const auto renderedDefaultTextFrame = defaultTextSnapshot.renderFrame();
+    assert(renderedDefaultTextFrame.getPixel(9, 10) == 0xFFFFFFFFU);
+
     ManagerMethodTextRenderer playerTextRenderer;
     player.setTextRenderer(&playerTextRenderer);
     const auto playerTextMember = player.builtinRegistry()

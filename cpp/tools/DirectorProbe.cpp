@@ -318,8 +318,23 @@ int main(int argc, char** argv) {
         std::size_t totalScripts = 0;
         std::size_t totalScoreRows = 0;
 
+        const auto printProgress = [&](std::size_t processedCount) {
+            if (options.verbose || options.progressInterval == 0) {
+                return;
+            }
+            if (processedCount % options.progressInterval != 0 && processedCount != files.size()) {
+                return;
+            }
+            std::cout << "PROGRESS " << processedCount << '/' << files.size()
+                      << " ok=" << okCount
+                      << " skipped=" << skippedCount
+                      << " failed=" << failureCount
+                      << '\n' << std::flush;
+        };
+
         for (std::size_t fileIndex = 0; fileIndex < files.size(); ++fileIndex) {
             const auto& file = files[fileIndex];
+            bool stopAfterFile = false;
             if (options.showCurrent || options.verbose) {
                 std::cout << "PROBE " << (fileIndex + 1) << '/' << files.size() << ' '
                           << pathString(file) << '\n' << std::flush;
@@ -337,8 +352,6 @@ int main(int argc, char** argv) {
 
                 if (options.verbose) {
                     printVerboseOk(file, summary);
-                } else if (options.progressInterval != 0 && okCount % options.progressInterval == 0) {
-                    std::cout << "OK " << okCount << '/' << files.size() << '\n' << std::flush;
                 }
             } catch (const SkippedFile& skipped) {
                 ++skippedCount;
@@ -350,8 +363,13 @@ int main(int argc, char** argv) {
                 std::cerr << "FAIL " << pathString(file) << ": " << error.what() << '\n';
                 if (options.maxFailures != 0 && failureCount >= options.maxFailures) {
                     std::cerr << "Stopping after " << failureCount << " failures.\n";
-                    break;
+                    stopAfterFile = true;
                 }
+            }
+
+            printProgress(fileIndex + 1);
+            if (stopAfterFile) {
+                break;
             }
         }
 
