@@ -9879,6 +9879,10 @@ void testMoviePropertiesFoundation() {
     assert(props.getMovieProp("fullColorPermit") == Datum::TRUE);
     assert(props.getMovieProp("perFrameHook").isVoid());
     assert(props.getMovieProp("beepOn").boolValue());
+    assert(props.getMovieProp("buttonStyle").intValue() == 0);
+    assert(!props.getMovieProp("centerStage").boolValue());
+    assert(!props.getMovieProp("fixStageSize").boolValue());
+    assert(!props.getMovieProp("imageDirect").boolValue());
     assert(props.getMovieProp("soundEnabled").boolValue());
     assert(props.getMovieProp("soundLevel").intValue() == 7);
     assert(props.getMovieProp("soundKeepDevice").boolValue());
@@ -9886,6 +9890,9 @@ void testMoviePropertiesFoundation() {
     assert(props.getMovieProp("multiSound").boolValue());
     assert(props.getMovieProp("netPresent").boolValue());
     assert(props.getMovieProp("safePlayer").boolValue());
+    assert(props.getMovieProp("preLoadRAM").intValue() == 0);
+    assert(!props.getMovieProp("quickTimePresent").boolValue());
+    assert(!props.getMovieProp("videoForWindowsPresent").boolValue());
     assert(props.getMovieProp("unknownMovieProp").isVoid());
 
     DirectorFile emptyFile(ByteOrder::BigEndian, false, 0, ChunkType::RIFX);
@@ -9987,11 +9994,16 @@ void testMoviePropertiesFoundation() {
     assert(props.setMovieProp("cursor", Datum::of(4)));
     assert(props.setMovieProp("floatPrecision", Datum::of(6)));
     assert(props.setMovieProp("beepOn", Datum::FALSE));
+    assert(props.setMovieProp("buttonStyle", Datum::of(1)));
+    assert(props.setMovieProp("centerStage", Datum::TRUE));
+    assert(props.setMovieProp("fixStageSize", Datum::TRUE));
+    assert(props.setMovieProp("imageDirect", Datum::TRUE));
     assert(props.setMovieProp("soundEnabled", Datum::FALSE));
     assert(props.setMovieProp("soundLevel", Datum::of(5)));
     assert(props.setMovieProp("soundKeepDevice", Datum::FALSE));
     assert(props.setMovieProp("soundMixMedia", Datum::FALSE));
     assert(props.setMovieProp("safePlayer", Datum::FALSE));
+    assert(props.setMovieProp("preLoadRAM", Datum::of(600)));
     assert(props.setMovieProp("randomSeed", Datum::of(1234)));
     assert(props.setMovieProp("selStart", Datum::of(30)));
     assert(props.setMovieProp("selEnd", Datum::of(40)));
@@ -10014,11 +10026,18 @@ void testMoviePropertiesFoundation() {
     assert(props.getMovieProp("cursor").isVoid());
     assert(props.getMovieProp("floatPrecision").intValue() == 6);
     assert(!props.getMovieProp("beepOn").boolValue());
+    assert(props.getMovieProp("buttonStyle").intValue() == 1);
+    assert(props.getMovieProp("centerStage").boolValue());
+    assert(props.getMovieProp("fixStageSize").boolValue());
+    assert(props.getMovieProp("imageDirect").boolValue());
     assert(!props.getMovieProp("soundEnabled").boolValue());
     assert(props.getMovieProp("soundLevel").intValue() == 5);
     assert(!props.getMovieProp("soundKeepDevice").boolValue());
     assert(!props.getMovieProp("soundMixMedia").boolValue());
     assert(props.getMovieProp("safePlayer").boolValue());
+    assert(props.getMovieProp("preLoadRAM").intValue() == 600);
+    assert(props.setMovieProp("preLoadRAM", Datum::of(-1)));
+    assert(props.getMovieProp("preLoadRAM").intValue() == 0);
     assert(randomSeed == 1234);
     assert(input.selStart() == 30);
     assert(input.selEnd() == 40);
@@ -12629,6 +12648,21 @@ void testLingoVmScopeAndExecutionContextFoundation() {
         if (nameId == 143) {
             return std::string("safePlayer");
         }
+        if (nameId == 144) {
+            return std::string("centerStage");
+        }
+        if (nameId == 145) {
+            return std::string("buttonStyle");
+        }
+        if (nameId == 146) {
+            return std::string("preLoadRAM");
+        }
+        if (nameId == 147) {
+            return std::string("quickTimePresent");
+        }
+        if (nameId == 148) {
+            return std::string("videoForWindowsPresent");
+        }
         return "#" + std::to_string(nameId);
     };
     callbacks.variableSetListener = [&variableTraces](std::string_view type,
@@ -13728,6 +13762,11 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     assert(runObjectPropertyGet(Datum::movieRef(), 141).boolValue());
     assert(runObjectPropertyGet(Datum::playerRef(), 142).boolValue());
     assert(runObjectPropertyGet(Datum::playerRef(), 143).boolValue());
+    assert(!runObjectPropertyGet(Datum::movieRef(), 144).boolValue());
+    assert(runObjectPropertyGet(Datum::movieRef(), 145).intValue() == 0);
+    assert(runObjectPropertyGet(Datum::movieRef(), 146).intValue() == 0);
+    assert(!runObjectPropertyGet(Datum::playerRef(), 147).boolValue());
+    assert(!runObjectPropertyGet(Datum::playerRef(), 148).boolValue());
     assert(runObjectPropertyGet(Datum::stageRef(), 81).intValue() == 0x224466);
     assert(runObjectPropertyGet(Datum::spriteRef(ChannelId(9)), 83).intValue() == 44);
     assert(runObjectPropertyGet(Datum::of(9), 83).intValue() == 44);
@@ -13736,6 +13775,21 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     setObjectContext.push(Datum::of(std::string("|")));
     assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
     assert(objectMovieProps.getMovieProp("itemDelimiter").stringValue() == "|");
+    setObjectContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_OBJ_PROP, libreshockwave::lingo::code(Opcode::SET_OBJ_PROP), 144});
+    setObjectContext.push(Datum::movieRef());
+    setObjectContext.push(Datum::TRUE);
+    assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
+    assert(objectMovieProps.getMovieProp("centerStage").boolValue());
+    setObjectContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_OBJ_PROP, libreshockwave::lingo::code(Opcode::SET_OBJ_PROP), 145});
+    setObjectContext.push(Datum::movieRef());
+    setObjectContext.push(Datum::of(2));
+    assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
+    assert(objectMovieProps.getMovieProp("buttonStyle").intValue() == 2);
+    setObjectContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_OBJ_PROP, libreshockwave::lingo::code(Opcode::SET_OBJ_PROP), 146});
+    setObjectContext.push(Datum::movieRef());
+    setObjectContext.push(Datum::of(512));
+    assert(opcodeRegistry.execute(Opcode::SET_OBJ_PROP, setObjectContext));
+    assert(objectMovieProps.getMovieProp("preLoadRAM").intValue() == 512);
     setObjectContext.setInstruction(ScriptChunk::Instruction{0, Opcode::SET_OBJ_PROP, libreshockwave::lingo::code(Opcode::SET_OBJ_PROP), 82});
     setObjectContext.push(Datum::stageRef());
     setObjectContext.push(Datum::of(std::string("Main Stage")));
@@ -13903,8 +13957,15 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     builtinContext.soundManager = &legacySoundManager;
     assert(runLegacyGet(0x00, Datum::voidValue(), 0x00).intValue() == 4);
     assert(runLegacyGet(0x06, Datum::of(5), 0x0D).intValue() == 22);
+    assert(runLegacyGet(0x07, Datum::voidValue(), 0x02).intValue() == 0);
+    assert(!runLegacyGet(0x07, Datum::voidValue(), 0x03).boolValue());
+    assert(!runLegacyGet(0x07, Datum::voidValue(), 0x09).boolValue());
+    assert(!runLegacyGet(0x07, Datum::voidValue(), 0x0B).boolValue());
     assert(runLegacyGet(0x07, Datum::voidValue(), 0x14).boolValue());
+    assert(!runLegacyGet(0x07, Datum::voidValue(), 0x16).boolValue());
     assert(runLegacyGet(0x07, Datum::voidValue(), 0x1A).intValue() == 7);
+    assert(runLegacyGet(0x07, Datum::voidValue(), 0x23).intValue() == 0);
+    assert(!runLegacyGet(0x07, Datum::voidValue(), 0x24).boolValue());
     assert(runLegacyGet(0x07, Datum::voidValue(), 0x25).boolValue());
     assert(runLegacyGet(0x07, Datum::voidValue(), 0x26).boolValue());
     assert(runLegacyGet(0x07, Datum::voidValue(), 0x27).boolValue());
@@ -13937,6 +13998,26 @@ void testLingoVmScopeAndExecutionContextFoundation() {
     legacySetContext.push(Datum::of(0x1A));
     assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
     assert(legacySoundManager.getSoundLevel() == 5);
+    legacySetContext.push(Datum::of(3));
+    legacySetContext.push(Datum::of(0x02));
+    assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
+    assert(legacyMovieProps.getMovieProp("buttonStyle").intValue() == 3);
+    legacySetContext.push(Datum::TRUE);
+    legacySetContext.push(Datum::of(0x03));
+    assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
+    assert(legacyMovieProps.getMovieProp("centerStage").boolValue());
+    legacySetContext.push(Datum::TRUE);
+    legacySetContext.push(Datum::of(0x09));
+    assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
+    assert(legacyMovieProps.getMovieProp("fixStageSize").boolValue());
+    legacySetContext.push(Datum::TRUE);
+    legacySetContext.push(Datum::of(0x0B));
+    assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
+    assert(legacyMovieProps.getMovieProp("imageDirect").boolValue());
+    legacySetContext.push(Datum::of(2048));
+    legacySetContext.push(Datum::of(0x23));
+    assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));
+    assert(legacyMovieProps.getMovieProp("preLoadRAM").intValue() == 2048);
     legacySetContext.push(Datum::FALSE);
     legacySetContext.push(Datum::of(0x27));
     assert(opcodeRegistry.execute(Opcode::SET, legacySetContext));

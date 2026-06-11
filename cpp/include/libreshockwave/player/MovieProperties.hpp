@@ -126,11 +126,16 @@ private:
     int tempo_{15};
     bool tempoExplicit_{false};
     bool beepOn_{true};
+    int buttonStyle_{0};
+    bool centerStage_{false};
+    bool fixStageSize_{false};
+    bool imageDirect_{false};
     bool soundEnabled_{true};
     int soundLevel_{7};
     bool soundKeepDevice_{true};
     bool soundMixMedia_{true};
     bool safePlayer_{true};
+    int preLoadRAM_{0};
     int randomSeed_{0};
     int stageBackgroundColor_{0};
 

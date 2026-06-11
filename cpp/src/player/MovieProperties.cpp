@@ -223,6 +223,10 @@ lingo::Datum MovieProperties::getMovieProp(std::string_view propName) const {
     if (prop == "cursor") return cursor_;
     if (prop == "floatprecision") return lingo::Datum::of(floatPrecision_);
     if (prop == "beepon") return lingo::Datum::of(beepOn_ ? 1 : 0);
+    if (prop == "buttonstyle") return lingo::Datum::of(buttonStyle_);
+    if (prop == "centerstage") return lingo::Datum::of(centerStage_ ? 1 : 0);
+    if (prop == "fixstagesize") return lingo::Datum::of(fixStageSize_ ? 1 : 0);
+    if (prop == "imagedirect") return lingo::Datum::of(imageDirect_ ? 1 : 0);
     if (prop == "soundenabled") return lingo::Datum::of(soundEnabled() ? 1 : 0);
     if (prop == "soundlevel") return lingo::Datum::of(soundLevel());
     if (prop == "soundkeepdevice") return lingo::Datum::of(soundKeepDevice() ? 1 : 0);
@@ -230,6 +234,8 @@ lingo::Datum MovieProperties::getMovieProp(std::string_view propName) const {
     if (prop == "multisound") return lingo::Datum::TRUE;
     if (prop == "netpresent") return lingo::Datum::TRUE;
     if (prop == "safeplayer") return lingo::Datum::of(safePlayer_ ? 1 : 0);
+    if (prop == "preloadram") return lingo::Datum::of(preLoadRAM_);
+    if (prop == "quicktimepresent" || prop == "videoforwindowspresent") return lingo::Datum::FALSE;
     if (prop == "randomseed") return lingo::Datum::of(randomSeed());
     if (prop == "actorlist") return actorList_;
     if (prop == "framerate" || prop == "tempo" || prop == "frametempo") return lingo::Datum::of(tempo());
@@ -343,6 +349,22 @@ bool MovieProperties::setMovieProp(std::string_view propName, const lingo::Datum
         beepOn_ = value.boolValue();
         return true;
     }
+    if (prop == "buttonstyle") {
+        buttonStyle_ = value.intValue();
+        return true;
+    }
+    if (prop == "centerstage") {
+        centerStage_ = value.boolValue();
+        return true;
+    }
+    if (prop == "fixstagesize") {
+        fixStageSize_ = value.boolValue();
+        return true;
+    }
+    if (prop == "imagedirect") {
+        imageDirect_ = value.boolValue();
+        return true;
+    }
     if (prop == "soundenabled") {
         setSoundEnabled(value.boolValue());
         return true;
@@ -363,6 +385,10 @@ bool MovieProperties::setMovieProp(std::string_view propName, const lingo::Datum
         if (value.boolValue()) {
             safePlayer_ = true;
         }
+        return true;
+    }
+    if (prop == "preloadram") {
+        preLoadRAM_ = std::max(0, value.intValue());
         return true;
     }
     if (prop == "randomseed") {
