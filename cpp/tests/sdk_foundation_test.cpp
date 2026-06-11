@@ -2710,6 +2710,43 @@ void testEditorShellActionModels() {
         EditorGtkShellModel::openFileDialogPresentation(startScreen.openFileDialog);
     assert(startScreenOpenPresentation.currentDirectory.value() == "/movies");
     assert(startScreenOpenPresentation.acceptLabel == "Open");
+    const auto startScreenPresentation = EditorGtkShellModel::startScreenPresentation(startScreen);
+    assert(startScreenPresentation.title == "LibreShockwave Editor");
+    assert(startScreenPresentation.subtitle == "Director MX 2004");
+    assert(startScreenPresentation.recentProjectsLabel == "Recent Projects:");
+    assert(startScreenPresentation.emptyRecentsMessage == "No recent projects. Open a movie to get started.");
+    assert(startScreenPresentation.hasRecentProjects);
+    assert(startScreenPresentation.openMovieButtonLabel == "Open Movie...");
+    assert(startScreenPresentation.createNewMovieButtonLabel == "Create New Movie");
+    assert(!startScreenPresentation.createNewMovieEnabled);
+    assert(startScreenPresentation.openFileDialog.currentDirectory.value() == "/movies");
+    assert(startScreenPresentation.recentProjects.size() == 2);
+    assert(startScreenPresentation.recentProjects[0].index == 0);
+    assert(startScreenPresentation.recentProjects[0].path == "/movies/Existing.dir");
+    assert(startScreenPresentation.recentProjects[0].title == "Existing.dir");
+    assert(startScreenPresentation.recentProjects[0].subtitle == "/movies");
+    assert(startScreenPresentation.recentProjects[0].exists);
+    assert(startScreenPresentation.recentProjects[0].enabled);
+    assert(startScreenPresentation.recentProjects[0].actionName == "open_recent");
+    assert(startScreenPresentation.recentProjects[0].disabledReason.empty());
+    assert(startScreenPresentation.recentProjects[1].index == 1);
+    assert(startScreenPresentation.recentProjects[1].path == "/movies/Missing.dir");
+    assert(startScreenPresentation.recentProjects[1].title == "Missing.dir");
+    assert(startScreenPresentation.recentProjects[1].subtitle == "/movies (missing)");
+    assert(!startScreenPresentation.recentProjects[1].exists);
+    assert(!startScreenPresentation.recentProjects[1].enabled);
+    assert(startScreenPresentation.recentProjects[1].actionName == "open_recent");
+    assert(startScreenPresentation.recentProjects[1].disabledReason == "File not found: /movies/Missing.dir");
+
+    EditorGtkShellState emptyStartScreenGtkState;
+    const auto emptyStartScreen = emptyStartScreenGtkState.startScreen([](std::string_view) {
+        return false;
+    });
+    const auto emptyStartScreenPresentation = EditorGtkShellModel::startScreenPresentation(emptyStartScreen);
+    assert(!emptyStartScreenPresentation.hasRecentProjects);
+    assert(emptyStartScreenPresentation.recentProjects.empty());
+    assert(emptyStartScreenPresentation.emptyRecentsMessage == "No recent projects. Open a movie to get started.");
+    assert(emptyStartScreenPresentation.openMovieButtonLabel == "Open Movie...");
 
     auto missingRecent = startScreenGtkState.openRecentProject(1, recentExists);
     assert(missingRecent.actionName == "open_recent");

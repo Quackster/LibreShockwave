@@ -21,6 +21,7 @@ constexpr std::string_view ABOUT_BODY =
     "LibreShockwave Editor\n\n"
     "A recreation of Macromedia Director MX 2004.\n\n"
     "Part of the LibreShockwave project.";
+constexpr std::string_view OPEN_RECENT_ACTION_NAME = "open_recent";
 
 std::string gtkAcceleratorKey(std::string_view key) {
     if (key == "DELETE") {
@@ -376,6 +377,42 @@ GtkOpenFileDialogPresentation EditorGtkShellModel::openFileDialogPresentation(
     presentation.currentDirectory = request.currentDirectory;
     presentation.acceptLabel = "Open";
     presentation.cancelLabel = "Cancel";
+    return presentation;
+}
+
+GtkStartScreenPresentation EditorGtkShellModel::startScreenPresentation(const GtkStartScreenRequest& request) {
+    GtkStartScreenPresentation presentation;
+    presentation.title = request.title;
+    presentation.subtitle = request.subtitle;
+    presentation.recentProjectsLabel = "Recent Projects:";
+    presentation.emptyRecentsMessage = request.emptyRecentsMessage;
+    presentation.hasRecentProjects = !request.recentProjects.empty();
+    presentation.openMovieButtonLabel = "Open Movie...";
+    presentation.createNewMovieButtonLabel = "Create New Movie";
+    presentation.createNewMovieEnabled = request.createNewMovieEnabled;
+    presentation.openFileDialog = openFileDialogPresentation(request.openFileDialog);
+
+    presentation.recentProjects.reserve(request.recentProjects.size());
+    for (std::size_t index = 0; index < request.recentProjects.size(); ++index) {
+        const auto& recent = request.recentProjects[index];
+        GtkRecentProjectRowSpec row;
+        row.index = static_cast<int>(index);
+        row.path = recent.path;
+        row.title = recent.fileName.empty() ? recent.path : recent.fileName;
+        row.subtitle = recent.parentDirectory;
+        row.exists = recent.exists;
+        row.enabled = recent.exists;
+        row.actionName = std::string(OPEN_RECENT_ACTION_NAME);
+        if (!recent.exists) {
+            if (!row.subtitle.empty()) {
+                row.subtitle += " ";
+            }
+            row.subtitle += "(missing)";
+            row.disabledReason = "File not found: " + recent.path;
+        }
+        presentation.recentProjects.push_back(std::move(row));
+    }
+
     return presentation;
 }
 

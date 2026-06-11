@@ -106,6 +106,19 @@ struct GtkOpenFileDialogPresentation {
     friend bool operator==(const GtkOpenFileDialogPresentation&, const GtkOpenFileDialogPresentation&) = default;
 };
 
+struct GtkRecentProjectRowSpec {
+    int index{0};
+    std::string path;
+    std::string title;
+    std::string subtitle;
+    bool exists{false};
+    bool enabled{false};
+    std::string actionName;
+    std::string disabledReason;
+
+    friend bool operator==(const GtkRecentProjectRowSpec&, const GtkRecentProjectRowSpec&) = default;
+};
+
 struct GtkStartScreenRequest {
     std::string title;
     std::string subtitle;
@@ -115,6 +128,21 @@ struct GtkStartScreenRequest {
     EditorOpenFileDialogModel openFileDialog;
 
     friend bool operator==(const GtkStartScreenRequest&, const GtkStartScreenRequest&) = default;
+};
+
+struct GtkStartScreenPresentation {
+    std::string title;
+    std::string subtitle;
+    std::string recentProjectsLabel;
+    std::string emptyRecentsMessage;
+    bool hasRecentProjects{false};
+    std::vector<GtkRecentProjectRowSpec> recentProjects;
+    std::string openMovieButtonLabel;
+    std::string createNewMovieButtonLabel;
+    bool createNewMovieEnabled{false};
+    GtkOpenFileDialogPresentation openFileDialog;
+
+    friend bool operator==(const GtkStartScreenPresentation&, const GtkStartScreenPresentation&) = default;
 };
 
 struct GtkActionSpec {
@@ -310,6 +338,7 @@ public:
     [[nodiscard]] static GtkShellDialogPresentation dialogPresentation(const GtkShellDialogRequest& request);
     [[nodiscard]] static GtkOpenFileDialogPresentation openFileDialogPresentation(
         const EditorOpenFileDialogModel& request);
+    [[nodiscard]] static GtkStartScreenPresentation startScreenPresentation(const GtkStartScreenRequest& request);
 
     [[nodiscard]] static std::vector<GtkActionSpec> actionSpecs(const EditorMenuModel& menuModel,
                                                                 const EditorToolBarModel& toolbarModel,
