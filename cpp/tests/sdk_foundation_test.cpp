@@ -322,6 +322,9 @@ using libreshockwave::editor::castbrowser::CastBrowserModel;
 using libreshockwave::editor::castbrowser::CastContextAction;
 using libreshockwave::editor::castbrowser::CastContextActionState;
 using libreshockwave::editor::castbrowser::CastGridCell;
+using libreshockwave::editor::castbrowser::CastGridCellBounds;
+using libreshockwave::editor::castbrowser::CastGridInsets;
+using libreshockwave::editor::castbrowser::CastGridLayout;
 using libreshockwave::editor::castbrowser::CastLibDescriptor;
 using libreshockwave::editor::castbrowser::CastLibEntry;
 using libreshockwave::editor::castbrowser::CastListRow;
@@ -2061,6 +2064,35 @@ void testEditorCastBrowserModels() {
     assert((CastBrowserModel::thumbnailPlacement(320, 160, 48) == ThumbnailPlacement{48, 48, 24, 0, 12, true}));
     assert((CastBrowserModel::thumbnailPlacement(10, 200, 48) == ThumbnailPlacement{48, 2, 48, 23, 0, true}));
     assert(!CastBrowserModel::thumbnailPlacement(0, 10, 48).valid);
+    assert((CastBrowserModel::gridLayout(0, 0) ==
+            CastGridLayout{400, 8, {}, true, false, 84}));
+    assert((CastBrowserModel::gridLayout(5, 160) ==
+            CastGridLayout{160,
+                           256,
+                           {CastGridCellBounds{0, 4, 4, 72, 80},
+                            CastGridCellBounds{1, 80, 4, 72, 80},
+                            CastGridCellBounds{2, 4, 88, 72, 80},
+                            CastGridCellBounds{3, 80, 88, 72, 80},
+                            CastGridCellBounds{4, 4, 172, 72, 80}},
+                           true,
+                           false,
+                           84}));
+    assert((CastBrowserModel::gridLayout(3, 190, CastGridInsets{2, 10, 3, 5}) ==
+            CastGridLayout{190,
+                           177,
+                           {CastGridCellBounds{0, 14, 6, 72, 80},
+                            CastGridCellBounds{1, 90, 6, 72, 80},
+                            CastGridCellBounds{2, 14, 90, 72, 80}},
+                           true,
+                           false,
+                           84}));
+    assert(CastBrowserModel::scrollBlockIncrement(120, 240, true) == 240);
+    assert(CastBrowserModel::scrollBlockIncrement(120, 240, false) == 120);
+    assert(CastBrowserModel::shouldPreserveListSelection(true, false, true, 2));
+    assert(CastBrowserModel::shouldPreserveListSelection(false, true, true, 2));
+    assert(!CastBrowserModel::shouldPreserveListSelection(false, false, true, 2));
+    assert(!CastBrowserModel::shouldPreserveListSelection(true, false, false, 2));
+    assert(!CastBrowserModel::shouldPreserveListSelection(true, false, true, 1));
 
     CastBrowserModel model;
     assert(model.viewMode() == CastViewMode::Grid);

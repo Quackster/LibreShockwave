@@ -106,6 +106,48 @@ ThumbnailPlacement CastBrowserModel::thumbnailPlacement(int sourceWidth, int sou
                               true};
 }
 
+CastGridLayout CastBrowserModel::gridLayout(std::size_t cellCount, int viewportWidth, CastGridInsets insets) {
+    const int layoutWidth = viewportWidth > 0 ? viewportWidth : DEFAULT_GRID_WIDTH;
+    const int rightLimit = layoutWidth - insets.right;
+
+    CastGridLayout layout;
+    layout.width = layoutWidth;
+    layout.tracksViewportWidth = true;
+    layout.tracksViewportHeight = false;
+    layout.scrollUnitIncrement = CELL_HEIGHT + CELL_GAP;
+    layout.cells.reserve(cellCount);
+
+    int x = insets.left + CELL_GAP;
+    int y = insets.top + CELL_GAP;
+    int rowHeight = 0;
+    for (std::size_t index = 0; index < cellCount; ++index) {
+        if (x + CELL_WIDTH + CELL_GAP > rightLimit && x > insets.left + CELL_GAP) {
+            x = insets.left + CELL_GAP;
+            y += rowHeight + CELL_GAP;
+            rowHeight = 0;
+        }
+
+        layout.cells.push_back(
+            CastGridCellBounds{static_cast<int>(index), x, y, CELL_WIDTH, CELL_HEIGHT});
+        x += CELL_WIDTH + CELL_GAP;
+        rowHeight = std::max(rowHeight, CELL_HEIGHT);
+    }
+
+    layout.height = y + rowHeight + CELL_GAP + insets.bottom;
+    return layout;
+}
+
+int CastBrowserModel::scrollBlockIncrement(int visibleWidth, int visibleHeight, bool vertical) {
+    return vertical ? visibleHeight : visibleWidth;
+}
+
+bool CastBrowserModel::shouldPreserveListSelection(bool rightButton,
+                                                   bool popupTrigger,
+                                                   bool pointerOnSelectedRow,
+                                                   int selectedRowCount) {
+    return (rightButton || popupTrigger) && pointerOnSelectedRow && selectedRowCount > 1;
+}
+
 CastViewMode CastBrowserModel::viewMode() const {
     return viewMode_;
 }

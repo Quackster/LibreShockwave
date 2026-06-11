@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -78,12 +79,43 @@ struct ThumbnailPlacement {
     friend bool operator==(const ThumbnailPlacement&, const ThumbnailPlacement&) = default;
 };
 
+struct CastGridInsets {
+    int top{};
+    int left{};
+    int bottom{};
+    int right{};
+
+    friend bool operator==(const CastGridInsets&, const CastGridInsets&) = default;
+};
+
+struct CastGridCellBounds {
+    int memberIndex{};
+    int x{};
+    int y{};
+    int width{};
+    int height{};
+
+    friend bool operator==(const CastGridCellBounds&, const CastGridCellBounds&) = default;
+};
+
+struct CastGridLayout {
+    int width{};
+    int height{};
+    std::vector<CastGridCellBounds> cells;
+    bool tracksViewportWidth{true};
+    bool tracksViewportHeight{false};
+    int scrollUnitIncrement{};
+
+    friend bool operator==(const CastGridLayout&, const CastGridLayout&) = default;
+};
+
 class CastBrowserModel {
 public:
     static constexpr int CELL_WIDTH = 72;
     static constexpr int CELL_HEIGHT = 80;
     static constexpr int CELL_GAP = 4;
     static constexpr int DEFAULT_THUMB_SIZE = 48;
+    static constexpr int DEFAULT_GRID_WIDTH = 400;
 
     [[nodiscard]] static std::vector<std::string> typeFilterItems();
     [[nodiscard]] static std::vector<CastLibEntry> buildCastLibEntries(
@@ -93,6 +125,14 @@ public:
     [[nodiscard]] static ThumbnailPlacement thumbnailPlacement(int sourceWidth,
                                                                int sourceHeight,
                                                                int thumbSize = DEFAULT_THUMB_SIZE);
+    [[nodiscard]] static CastGridLayout gridLayout(std::size_t cellCount,
+                                                   int viewportWidth,
+                                                   CastGridInsets insets = {});
+    [[nodiscard]] static int scrollBlockIncrement(int visibleWidth, int visibleHeight, bool vertical);
+    [[nodiscard]] static bool shouldPreserveListSelection(bool rightButton,
+                                                          bool popupTrigger,
+                                                          bool pointerOnSelectedRow,
+                                                          int selectedRowCount);
 
     [[nodiscard]] CastViewMode viewMode() const;
     void setViewMode(CastViewMode mode);
