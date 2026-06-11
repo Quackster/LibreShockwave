@@ -7,12 +7,67 @@
 
 namespace libreshockwave::editor::panels {
 
+struct PanelWindowSize {
+    int width{};
+    int height{};
+
+    friend bool operator==(const PanelWindowSize&, const PanelWindowSize&) = default;
+};
+
+struct MessageConsoleView {
+    PanelWindowSize size;
+    std::string rootLayout;
+    std::string outputPosition;
+    std::string inputPosition;
+    std::string fontFamily;
+    int fontSize{};
+    bool outputEditable{false};
+
+    friend bool operator==(const MessageConsoleView&, const MessageConsoleView&) = default;
+};
+
 struct ToolPaletteTool {
     std::string label;
     int row{};
     int column{};
 
     friend bool operator==(const ToolPaletteTool&, const ToolPaletteTool&) = default;
+};
+
+struct ToolPaletteView {
+    PanelWindowSize size;
+    int columnCount{};
+    int horizontalGap{};
+    int verticalGap{};
+    int borderTop{};
+    int borderLeft{};
+    int borderBottom{};
+    int borderRight{};
+    float buttonFontSize{};
+    int buttonMarginTop{};
+    int buttonMarginLeft{};
+    int buttonMarginBottom{};
+    int buttonMarginRight{};
+    bool scrollable{false};
+    std::vector<ToolPaletteTool> tools;
+
+    friend bool operator==(const ToolPaletteView&, const ToolPaletteView&) = default;
+};
+
+struct ColorPalettesView {
+    PanelWindowSize size;
+    std::string rootLayout;
+    std::string selectorPanelLayout;
+    std::string selectorPanelAlignment;
+    std::string selectorPosition;
+    std::string gridPosition;
+    std::string gridBackground;
+    std::string placeholderAlignment;
+    std::string selectorLabel;
+    std::vector<std::string> paletteOptions;
+    std::string placeholderText;
+
+    friend bool operator==(const ColorPalettesView&, const ColorPalettesView&) = default;
 };
 
 struct DisabledPanelAction {
@@ -90,6 +145,7 @@ public:
     [[nodiscard]] static std::string welcomeText();
     [[nodiscard]] static std::string commandPromptLine(std::string_view command);
     [[nodiscard]] static std::string notImplementedLine();
+    [[nodiscard]] static MessageConsoleView view();
 
 private:
     std::string output_;
@@ -99,6 +155,7 @@ class ToolPaletteModel {
 public:
     [[nodiscard]] static int columnCount();
     [[nodiscard]] static std::vector<ToolPaletteTool> tools();
+    [[nodiscard]] static ToolPaletteView view();
 };
 
 class ColorPalettesModel {
@@ -106,6 +163,7 @@ public:
     [[nodiscard]] static std::vector<std::string> paletteOptions();
     [[nodiscard]] static std::string selectorLabel();
     [[nodiscard]] static std::string placeholderText();
+    [[nodiscard]] static ColorPalettesView view();
 };
 
 class FieldEditorModel {

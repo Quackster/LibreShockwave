@@ -401,15 +401,18 @@ using libreshockwave::editor::model::ScoreCellData;
 using libreshockwave::editor::panels::EditorFrameDefaults;
 using libreshockwave::editor::panels::EditorPanelCatalog;
 using libreshockwave::editor::panels::ColorPalettesModel;
+using libreshockwave::editor::panels::ColorPalettesView;
 using libreshockwave::editor::panels::DisabledPanelAction;
 using libreshockwave::editor::panels::FieldEditorModel;
 using libreshockwave::editor::panels::FieldEditorState;
 using libreshockwave::editor::panels::MessageConsoleModel;
+using libreshockwave::editor::panels::MessageConsoleView;
 using libreshockwave::editor::panels::PanelBounds;
 using libreshockwave::editor::panels::PanelCapabilities;
 using libreshockwave::editor::panels::PanelDescriptor;
 using libreshockwave::editor::panels::PanelPlacement;
 using libreshockwave::editor::panels::PanelSize;
+using libreshockwave::editor::panels::PanelWindowSize;
 using libreshockwave::editor::panels::PaintPanelModel;
 using libreshockwave::editor::panels::PaintPanelState;
 using libreshockwave::editor::panels::SoundPanelInfo;
@@ -420,6 +423,7 @@ using libreshockwave::editor::panels::TextEditorState;
 using libreshockwave::editor::panels::TextEditorToolbar;
 using libreshockwave::editor::panels::ToolPaletteModel;
 using libreshockwave::editor::panels::ToolPaletteTool;
+using libreshockwave::editor::panels::ToolPaletteView;
 using libreshockwave::editor::panels::VectorShapePanelModel;
 using libreshockwave::editor::extraction::AssetExtractor;
 using libreshockwave::editor::extraction::ExportAssetKind;
@@ -2463,6 +2467,8 @@ void testEditorPanelWindowModels() {
     assert(console.output().ends_with("trace output\n"));
     console.reset();
     assert(console.output() == MessageConsoleModel::welcomeText());
+    assert((MessageConsoleModel::view() ==
+            MessageConsoleView{PanelWindowSize{450, 200}, "border", "center", "south", "Monospaced", 12, false}));
 
     assert(ToolPaletteModel::columnCount() == 2);
     const auto tools = ToolPaletteModel::tools();
@@ -2471,12 +2477,48 @@ void testEditorPanelWindowModels() {
     assert((tools[1] == ToolPaletteTool{"Rotate", 0, 1}));
     assert((tools[6] == ToolPaletteTool{"Round Rect", 3, 0}));
     assert((tools.back() == ToolPaletteTool{"Color", 6, 1}));
+    assert((ToolPaletteModel::view() ==
+            ToolPaletteView{PanelWindowSize{160, 350},
+                            2,
+                            2,
+                            2,
+                            4,
+                            4,
+                            4,
+                            4,
+                            9.0F,
+                            2,
+                            2,
+                            2,
+                            2,
+                            true,
+                            tools}));
 
     assert(ColorPalettesModel::selectorLabel() == "Palette: ");
     assert((ColorPalettesModel::paletteOptions() ==
             std::vector<std::string>{"System - Win", "System - Mac", "Rainbow", "Grayscale", "Pastels", "Vivid",
                                      "NTSC", "Metallic", "Web 216"}));
     assert(ColorPalettesModel::placeholderText() == "Color Palettes - Not yet implemented");
+    assert((ColorPalettesModel::view() ==
+            ColorPalettesView{PanelWindowSize{350, 300},
+                              "border",
+                              "flow",
+                              "left",
+                              "north",
+                              "center",
+                              "white",
+                              "center",
+                              "Palette: ",
+                              {"System - Win",
+                               "System - Mac",
+                               "Rainbow",
+                               "Grayscale",
+                               "Pastels",
+                               "Vivid",
+                               "NTSC",
+                               "Metallic",
+                               "Web 216"},
+                              "Color Palettes - Not yet implemented"}));
 
     assert((FieldEditorModel::toolbarActions() ==
             std::vector<DisabledPanelAction>{DisabledPanelAction{"Wrap", "Wrap (not yet implemented)"},

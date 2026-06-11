@@ -109,6 +109,18 @@ std::string MessageConsoleModel::notImplementedLine() {
     return "-- (command execution not yet implemented)\n";
 }
 
+MessageConsoleView MessageConsoleModel::view() {
+    return MessageConsoleView{
+        PanelWindowSize{450, 200},
+        "border",
+        "center",
+        "south",
+        "Monospaced",
+        12,
+        false,
+    };
+}
+
 int ToolPaletteModel::columnCount() {
     return 2;
 }
@@ -141,6 +153,26 @@ std::vector<ToolPaletteTool> ToolPaletteModel::tools() {
     return tools;
 }
 
+ToolPaletteView ToolPaletteModel::view() {
+    return ToolPaletteView{
+        PanelWindowSize{160, 350},
+        columnCount(),
+        2,
+        2,
+        4,
+        4,
+        4,
+        4,
+        9.0F,
+        2,
+        2,
+        2,
+        2,
+        true,
+        tools(),
+    };
+}
+
 std::vector<std::string> ColorPalettesModel::paletteOptions() {
     return {
         "System - Win",
@@ -161,6 +193,22 @@ std::string ColorPalettesModel::selectorLabel() {
 
 std::string ColorPalettesModel::placeholderText() {
     return "Color Palettes - Not yet implemented";
+}
+
+ColorPalettesView ColorPalettesModel::view() {
+    return ColorPalettesView{
+        PanelWindowSize{350, 300},
+        "border",
+        "flow",
+        "left",
+        "north",
+        "center",
+        "white",
+        "center",
+        selectorLabel(),
+        paletteOptions(),
+        placeholderText(),
+    };
 }
 
 std::vector<DisabledPanelAction> FieldEditorModel::toolbarActions() {
