@@ -22,6 +22,12 @@ enum class GtkShellDialogKind {
     DetailedStack
 };
 
+enum class GtkShellDialogButtonRole {
+    Accept,
+    Cancel,
+    Close
+};
+
 enum class GtkWorkbenchPanelKind {
     Stage,
     Score,
@@ -54,6 +60,16 @@ struct GtkShellDialogRequest {
     friend bool operator==(const GtkShellDialogRequest&, const GtkShellDialogRequest&) = default;
 };
 
+struct GtkShellDialogButtonSpec {
+    GtkShellDialogButtonRole role{GtkShellDialogButtonRole::Close};
+    std::string label;
+    std::string actionName;
+    std::string detailedActionName;
+    bool enabled{true};
+
+    friend bool operator==(const GtkShellDialogButtonSpec&, const GtkShellDialogButtonSpec&) = default;
+};
+
 struct GtkShellDialogPresentation {
     GtkShellDialogKind kind{GtkShellDialogKind::About};
     std::string title;
@@ -63,6 +79,7 @@ struct GtkShellDialogPresentation {
     std::string acceptLabel;
     std::string cancelLabel;
     std::string closeLabel;
+    std::vector<GtkShellDialogButtonSpec> buttons;
     bool modal{false};
     bool warning{false};
     bool hasTextInput{false};
@@ -379,8 +396,11 @@ public:
     [[nodiscard]] static std::string workbenchPanelFloatActionName(std::string_view panelId);
     [[nodiscard]] static std::string recentProjectActionName(int index);
     [[nodiscard]] static std::optional<int> recentProjectActionIndex(std::string_view actionName);
+    [[nodiscard]] static std::string dialogActionName(GtkShellDialogKind kind, GtkShellDialogButtonRole role);
     [[nodiscard]] static std::string appAction(std::string_view actionName);
     [[nodiscard]] static GtkShellDialogPresentation dialogPresentation(const GtkShellDialogRequest& request);
+    [[nodiscard]] static std::vector<GtkActionSpec> dialogActionSpecs(
+        const GtkShellDialogPresentation& presentation);
     [[nodiscard]] static GtkOpenFileDialogPresentation openFileDialogPresentation(
         const EditorOpenFileDialogModel& request);
     [[nodiscard]] static GtkStartScreenPresentation startScreenPresentation(const GtkStartScreenRequest& request);

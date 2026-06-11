@@ -205,6 +205,45 @@ std::string dialogCancelStatus(GtkShellDialogKind kind) {
     return "Dialog cancelled";
 }
 
+std::string dialogKindActionSegment(GtkShellDialogKind kind) {
+    switch (kind) {
+        case GtkShellDialogKind::ExternalParameters:
+            return "external_parameters";
+        case GtkShellDialogKind::TraceHandler:
+            return "trace_handler";
+        case GtkShellDialogKind::About:
+            return "about";
+        case GtkShellDialogKind::DetailedStack:
+            return "detailed_stack";
+    }
+    return "dialog";
+}
+
+std::string dialogButtonRoleActionSegment(GtkShellDialogButtonRole role) {
+    switch (role) {
+        case GtkShellDialogButtonRole::Accept:
+            return "accept";
+        case GtkShellDialogButtonRole::Cancel:
+            return "cancel";
+        case GtkShellDialogButtonRole::Close:
+            return "close";
+    }
+    return "button";
+}
+
+GtkShellDialogButtonSpec dialogButtonSpec(GtkShellDialogKind kind,
+                                          GtkShellDialogButtonRole role,
+                                          std::string label) {
+    auto actionName = EditorGtkShellModel::dialogActionName(kind, role);
+    return GtkShellDialogButtonSpec{
+        role,
+        std::move(label),
+        actionName,
+        EditorGtkShellModel::appAction(actionName),
+        true,
+    };
+}
+
 GtkWorkbenchPanelKind panelKind(std::string_view panelId) {
     if (panelId == "stage") {
         return GtkWorkbenchPanelKind::Stage;
@@ -417,6 +456,10 @@ std::optional<int> EditorGtkShellModel::recentProjectActionIndex(std::string_vie
     return parseNonNegativeIndex(actionName.substr(OPEN_RECENT_ACTION_PREFIX.size()));
 }
 
+std::string EditorGtkShellModel::dialogActionName(GtkShellDialogKind kind, GtkShellDialogButtonRole role) {
+    return "dialog_" + dialogKindActionSegment(kind) + "_" + dialogButtonRoleActionSegment(role);
+}
+
 std::string EditorGtkShellModel::appAction(std::string_view actionName) {
     return "app." + std::string(actionName);
 }
@@ -456,8 +499,42 @@ GtkShellDialogPresentation EditorGtkShellModel::dialogPresentation(const GtkShel
             presentation.closeLabel = "Close";
             break;
     }
+    if (!presentation.acceptLabel.empty()) {
+        presentation.buttons.push_back(dialogButtonSpec(request.kind,
+                                                        GtkShellDialogButtonRole::Accept,
+                                                        presentation.acceptLabel));
+    }
+    if (!presentation.cancelLabel.empty()) {
+        presentation.buttons.push_back(dialogButtonSpec(request.kind,
+                                                        GtkShellDialogButtonRole::Cancel,
+                                                        presentation.cancelLabel));
+    }
+    if (!presentation.closeLabel.empty()) {
+        presentation.buttons.push_back(dialogButtonSpec(request.kind,
+                                                        GtkShellDialogButtonRole::Close,
+                                                        presentation.closeLabel));
+    }
 
     return presentation;
+}
+
+std::vector<GtkActionSpec> EditorGtkShellModel::dialogActionSpecs(
+    const GtkShellDialogPresentation& presentation) {
+    std::vector<GtkActionSpec> result;
+    result.reserve(presentation.buttons.size());
+    for (const auto& button : presentation.buttons) {
+        result.push_back(GtkActionSpec{
+            button.actionName,
+            button.detailedActionName,
+            EditorCommand::None,
+            {},
+            button.enabled,
+            false,
+            false,
+            {},
+        });
+    }
+    return result;
 }
 
 GtkOpenFileDialogPresentation EditorGtkShellModel::openFileDialogPresentation(

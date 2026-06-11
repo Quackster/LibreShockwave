@@ -336,6 +336,8 @@ using libreshockwave::editor::gtk::GtkActionAcceleratorSpec;
 using libreshockwave::editor::gtk::GtkActionSpec;
 using libreshockwave::editor::gtk::GtkMenuItemKind;
 using libreshockwave::editor::gtk::GtkPanelRowSpec;
+using libreshockwave::editor::gtk::GtkShellDialogButtonRole;
+using libreshockwave::editor::gtk::GtkShellDialogButtonSpec;
 using libreshockwave::editor::gtk::GtkShellDialogKind;
 using libreshockwave::editor::gtk::GtkStartScreenRequest;
 using libreshockwave::editor::gtk::GtkToolbarItemSpec;
@@ -2114,6 +2116,12 @@ void testEditorShellActionModels() {
     assert(EditorGtkShellModel::workbenchPanelActionName("property-inspector") == "workbench_property_inspector");
     assert(EditorGtkShellModel::workbenchPanelFloatActionName("property-inspector") ==
            "workbench_float_property_inspector");
+    assert(EditorGtkShellModel::dialogActionName(GtkShellDialogKind::ExternalParameters,
+                                                 GtkShellDialogButtonRole::Accept) ==
+           "dialog_external_parameters_accept");
+    assert(EditorGtkShellModel::dialogActionName(GtkShellDialogKind::DetailedStack,
+                                                 GtkShellDialogButtonRole::Close) ==
+           "dialog_detailed_stack_close");
     assert(EditorGtkShellModel::appAction("open") == "app.open");
 
     const auto gtkActions = EditorGtkShellModel::actionSpecs(menus, toolbar, gtkFrame);
@@ -2909,6 +2917,16 @@ void testEditorShellActionModels() {
     assert(playWithoutMovie.command == EditorCommand::Play);
     assert(playWithoutMovie.contextEvents.empty());
     assert(playWithoutMovie.statusMessage == "No movie loaded");
+    auto assertDialogButton = [](const GtkShellDialogButtonSpec& button,
+                                 GtkShellDialogButtonRole role,
+                                 std::string_view label,
+                                 std::string_view actionName) {
+        assert(button.role == role);
+        assert(button.label == label);
+        assert(button.actionName == actionName);
+        assert(button.detailedActionName == EditorGtkShellModel::appAction(actionName));
+        assert(button.enabled);
+    };
 
     auto aboutRequest = gtkState.activateAction("about");
     assert(aboutRequest.handled);
@@ -2931,6 +2949,22 @@ void testEditorShellActionModels() {
     assert(!aboutPresentation.hasExternalParamsTable);
     assert(!aboutPresentation.hasDetailedStackView);
     assert(aboutPresentation.closeLabel == "OK");
+    assert(aboutPresentation.buttons.size() == 1);
+    assertDialogButton(aboutPresentation.buttons[0],
+                       GtkShellDialogButtonRole::Close,
+                       "OK",
+                       "dialog_about_close");
+    assert((EditorGtkShellModel::dialogActionSpecs(aboutPresentation) ==
+            std::vector<GtkActionSpec>{GtkActionSpec{
+                "dialog_about_close",
+                "app.dialog_about_close",
+                EditorCommand::None,
+                {},
+                true,
+                false,
+                false,
+                {},
+            }}));
 
     auto traceWithoutMovie = gtkState.activateAction("traceHandler");
     assert(traceWithoutMovie.handled);
@@ -2948,6 +2982,11 @@ void testEditorShellActionModels() {
     assert(traceWarningPresentation.warning);
     assert(!traceWarningPresentation.hasTextInput);
     assert(traceWarningPresentation.closeLabel == "OK");
+    assert(traceWarningPresentation.buttons.size() == 1);
+    assertDialogButton(traceWarningPresentation.buttons[0],
+                       GtkShellDialogButtonRole::Close,
+                       "OK",
+                       "dialog_trace_handler_close");
 
     auto externalParamsRequest = gtkState.activateAction("externalParameters");
     assert(externalParamsRequest.handled);
@@ -2971,6 +3010,23 @@ void testEditorShellActionModels() {
     assert(externalParamsPresentation.externalParams.rowCount() == 0);
     assert(externalParamsPresentation.acceptLabel == "Apply");
     assert(externalParamsPresentation.cancelLabel == "Cancel");
+    assert(externalParamsPresentation.buttons.size() == 2);
+    assertDialogButton(externalParamsPresentation.buttons[0],
+                       GtkShellDialogButtonRole::Accept,
+                       "Apply",
+                       "dialog_external_parameters_accept");
+    assertDialogButton(externalParamsPresentation.buttons[1],
+                       GtkShellDialogButtonRole::Cancel,
+                       "Cancel",
+                       "dialog_external_parameters_cancel");
+    const auto externalParamsDialogActions = EditorGtkShellModel::dialogActionSpecs(externalParamsPresentation);
+    assert(externalParamsDialogActions.size() == 2);
+    assert(externalParamsDialogActions[0].name == "dialog_external_parameters_accept");
+    assert(externalParamsDialogActions[0].detailedName == "app.dialog_external_parameters_accept");
+    assert(externalParamsDialogActions[0].enabled);
+    assert(externalParamsDialogActions[1].name == "dialog_external_parameters_cancel");
+    assert(externalParamsDialogActions[1].detailedName == "app.dialog_external_parameters_cancel");
+    assert(externalParamsDialogActions[1].enabled);
 
     auto paramsResult = gtkState.applyExternalParameters({
         {" sw1 ", "alpha"},
@@ -3029,6 +3085,11 @@ void testEditorShellActionModels() {
     assert(detailedStackPresentation.hasDetailedStackView);
     assert(detailedStackPresentation.detailedStackView.statusText == "Waiting for debugger pause...");
     assert(detailedStackPresentation.closeLabel == "Close");
+    assert(detailedStackPresentation.buttons.size() == 1);
+    assertDialogButton(detailedStackPresentation.buttons[0],
+                       GtkShellDialogButtonRole::Close,
+                       "Close",
+                       "dialog_detailed_stack_close");
 
     auto openEvents = gtkState.openFile("/tmp/Movie.dir");
     assert(openEvents.size() == 1);
@@ -3113,6 +3174,15 @@ void testEditorShellActionModels() {
     assert(!tracePresentation.hasDetailedStackView);
     assert(tracePresentation.acceptLabel == "Apply");
     assert(tracePresentation.cancelLabel == "Cancel");
+    assert(tracePresentation.buttons.size() == 2);
+    assertDialogButton(tracePresentation.buttons[0],
+                       GtkShellDialogButtonRole::Accept,
+                       "Apply",
+                       "dialog_trace_handler_accept");
+    assertDialogButton(tracePresentation.buttons[1],
+                       GtkShellDialogButtonRole::Cancel,
+                       "Cancel",
+                       "dialog_trace_handler_cancel");
 
     auto traceResult = gtkState.applyTraceHandlerInput(" startMovie, mouseUp ,, enterFrame ");
     assert(traceResult.kind == GtkShellDialogKind::TraceHandler);
