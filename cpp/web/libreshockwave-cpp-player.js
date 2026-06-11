@@ -34,10 +34,18 @@ var LibreShockwaveCppPlayer = (function() {
         this.timer = null;
         this.tickMs = options.tickMs || 33;
         this.scriptTimeoutMs = options.scriptTimeoutMs == null ? 1000 : options.scriptTimeoutMs;
+        this.params = options.params || {};
+        this.movieProperties = options.movieProperties || {};
+        this.initialBuiltinSymbols = options.initialBuiltinSymbols || {};
         this.onReady = options.onReady || null;
         this.onLoad = options.onLoad || null;
         this.onFrame = options.onFrame || null;
         this.onError = options.onError || null;
+        this.onGotoNetPage = options.onGotoNetPage || null;
+        this.onGotoNetMovie = options.onGotoNetMovie || null;
+        this.loadedMovieUrl = null;
+        this.audioCtx = null;
+        this.audioChannels = {};
         this._initWorker();
         this._initInput();
     }
@@ -51,7 +59,11 @@ var LibreShockwaveCppPlayer = (function() {
         this.worker.onerror = function(event) {
             self._emitError(event.message || 'C++ WASM worker error');
         };
-        this.worker.postMessage({ type: 'init', basePath: this.basePath });
+        this.worker.postMessage({
+            type: 'init',
+            basePath: this.basePath,
+            pageProtocol: location.protocol
+        });
     };
 
     Player.prototype._handleWorkerMessage = function(message) {
@@ -72,6 +84,15 @@ var LibreShockwaveCppPlayer = (function() {
                 break;
             case 'frame':
                 this._drawFrame(message);
+                break;
+            case 'audio':
+                this._handleAudio(message);
+                break;
+            case 'gotoNetPage':
+                this._handleGotoNetPage(message.url, message.target);
+                break;
+            case 'gotoNetMovie':
+                this._handleGotoNetMovie(message.url);
                 break;
             case 'error':
                 this._emitError(message.message || message.msg || 'C++ WASM runtime error');
@@ -209,6 +230,7 @@ var LibreShockwaveCppPlayer = (function() {
             return response.arrayBuffer();
         }).then(function(bytes) {
             var basePath = loadOptions.basePath || new URL('.', new URL(url, document.baseURI)).href;
+            self.loadedMovieUrl = new URL(url, document.baseURI).href;
             self.loadBytes(bytes, basePath, loadOptions);
         }).catch(function(error) {
             self._emitError(error && error.message ? error.message : String(error));
@@ -223,7 +245,10 @@ var LibreShockwaveCppPlayer = (function() {
             data: buffer,
             basePath: basePath || this.basePath,
             autoplay: loadOptions.autoplay !== false,
-            scriptTimeoutMs: loadOptions.scriptTimeoutMs == null ? this.scriptTimeoutMs : loadOptions.scriptTimeoutMs
+            scriptTimeoutMs: loadOptions.scriptTimeoutMs == null ? this.scriptTimeoutMs : loadOptions.scriptTimeoutMs,
+            params: loadOptions.params || this.params,
+            movieProperties: loadOptions.movieProperties || this.movieProperties,
+            initialBuiltinSymbols: loadOptions.initialBuiltinSymbols || this.initialBuiltinSymbols
         }, [buffer]);
         if (loadOptions.autoplay !== false) {
             this.startTicks();
@@ -270,6 +295,119 @@ var LibreShockwaveCppPlayer = (function() {
 
     Player.prototype.stepBackward = function() {
         this._post({ type: 'stepBackward' });
+    };
+
+    Player.prototype.goToFrame = function(frame) {
+        this._post({ type: 'goToFrame', frame: frame | 0 });
+    };
+
+    Player.prototype.setParam = function(key, value) {
+        this.params[key] = value == null ? '' : String(value);
+        this._post({ type: 'setParam', key: key, value: this.params[key] });
+    };
+
+    Player.prototype.clearParams = function() {
+        this.params = {};
+        this._post({ type: 'clearParams' });
+    };
+
+    Player.prototype.setMovieProperty = function(key, value) {
+        this.movieProperties[key] = value == null ? '' : String(value);
+        this._post({ type: 'setMovieProperty', key: key, value: this.movieProperties[key] });
+    };
+
+    Player.prototype.setInitialBuiltinSymbol = function(key, value) {
+        this.initialBuiltinSymbols[key] = value == null ? '' : String(value);
+        this._post({ type: 'setInitialBuiltinSymbol', key: key, value: this.initialBuiltinSymbols[key] });
+    };
+
+    Player.prototype._handleGotoNetPage = function(url, target) {
+        if (this.onGotoNetPage) {
+            this.onGotoNetPage(url, target || '');
+            return;
+        }
+        if (!url) {
+            return;
+        }
+        var normalizedTarget = target || '_self';
+        if (normalizedTarget === '_blank' || normalizedTarget === 'new') {
+            window.open(url, '_blank', 'noopener');
+        } else {
+            window.location.assign(url);
+        }
+    };
+
+    Player.prototype._handleGotoNetMovie = function(url) {
+        if (this.onGotoNetMovie) {
+            this.onGotoNetMovie(url);
+            return;
+        }
+        if (url) {
+            this.load(new URL(url, this.loadedMovieUrl || document.baseURI).href);
+        }
+    };
+
+    Player.prototype._handleAudio = function(message) {
+        if (!this.audioCtx) {
+            try {
+                this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            } catch (e) {
+                return;
+            }
+        }
+        var channel = message.channel;
+        if (message.action === 'stop') {
+            if (this.audioChannels[channel]) {
+                try {
+                    this.audioChannels[channel].source.stop();
+                } catch (e1) {}
+                this.audioChannels[channel] = null;
+            }
+            return;
+        }
+        if (message.action === 'volume') {
+            if (this.audioChannels[channel] && this.audioChannels[channel].gain) {
+                this.audioChannels[channel].gain.gain.value = (message.volume || 0) / 255.0;
+            }
+            return;
+        }
+        if (message.action !== 'play' || !message.data) {
+            return;
+        }
+        if (this.audioChannels[channel]) {
+            try {
+                this.audioChannels[channel].source.stop();
+            } catch (e2) {}
+        }
+        var self = this;
+        var worker = this.worker;
+        var audioData = message.data.slice ? message.data.slice(0) : message.data;
+        var loopCount = message.loopCount || 1;
+        var volume = (message.volume == null ? 255 : message.volume) / 255.0;
+        this.audioCtx.decodeAudioData(audioData).then(function(buffer) {
+            var source = self.audioCtx.createBufferSource();
+            var gain = self.audioCtx.createGain();
+            source.buffer = buffer;
+            source.loop = loopCount === 0 || loopCount > 1;
+            gain.gain.value = volume;
+            source.connect(gain);
+            gain.connect(self.audioCtx.destination);
+            source.onended = function() {
+                self.audioChannels[channel] = null;
+                if (worker) {
+                    worker.postMessage({ type: 'audioStopped', channel: channel });
+                }
+            };
+            if (loopCount > 1) {
+                setTimeout(function() {
+                    try {
+                        source.stop();
+                    } catch (e3) {}
+                }, buffer.duration * loopCount * 1000);
+            }
+            source.start();
+            self.audioChannels[channel] = { source: source, gain: gain };
+        }).catch(function() {});
     };
 
     return {

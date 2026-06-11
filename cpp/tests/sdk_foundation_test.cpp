@@ -22946,6 +22946,12 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(player.find("putImageData") != std::string::npos);
     assert(player.find("loadBytes") != std::string::npos);
     assert(player.find("stepForward") != std::string::npos);
+    assert(player.find("goToFrame") != std::string::npos);
+    assert(player.find("setParam") != std::string::npos);
+    assert(player.find("setMovieProperty") != std::string::npos);
+    assert(player.find("_handleAudio") != std::string::npos);
+    assert(player.find("_handleGotoNetPage") != std::string::npos);
+    assert(player.find("audioStopped") != std::string::npos);
 
     assert(worker.find("createLibreShockwaveCppWasm") != std::string::npos);
     assert(worker.find("libreshockwave-cpp-wasm.js") != std::string::npos);
@@ -22953,6 +22959,16 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(worker.find("get_render_buffer_address") != std::string::npos);
     assert(worker.find("deliver_fetch_result") != std::string::npos);
     assert(worker.find("set_script_timeout_ms") != std::string::npos);
+    assert(worker.find("set_external_param") != std::string::npos);
+    assert(worker.find("get_pending_jpeg_decode_count") != std::string::npos);
+    assert(worker.find("deliver_jpeg_decode_result") != std::string::npos);
+    assert(worker.find("get_audio_pending_count") != std::string::npos);
+    assert(worker.find("drain_audio_pending") != std::string::npos);
+    assert(worker.find("get_mus_pending_count") != std::string::npos);
+    assert(worker.find("mus_deliver_message") != std::string::npos);
+    assert(worker.find("read_next_goto_net_page") != std::string::npos);
+    assert(worker.find("OffscreenCanvas") != std::string::npos);
+    assert(worker.find("new WebSocket") != std::string::npos);
     assert(worker.find("postMessage({\n        type: 'frame'") != std::string::npos);
 
     const auto headerExports = parseHeaderExports(header);
@@ -22970,6 +22986,15 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(workerExports.count("_libreshockwave_wasm_get_pending_fetch_count") == 1);
     assert(workerExports.count("_libreshockwave_wasm_deliver_fetch_result") == 1);
     assert(workerExports.count("_libreshockwave_wasm_set_script_timeout_ms") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_set_external_param") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_get_pending_jpeg_decode_count") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_deliver_jpeg_decode_result") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_get_audio_pending_count") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_audio_notify_stopped") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_get_mus_pending_count") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_mus_deliver_message") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_read_next_goto_net_page") == 1);
+    assert(workerExports.count("_libreshockwave_wasm_go_to_frame") == 1);
 
     assert(cmake.find("LIBRESHOCKWAVE_CPP_WASM_WEB_ASSETS") != std::string::npos);
     assert(cmake.find("web/index.html") != std::string::npos);

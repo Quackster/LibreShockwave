@@ -6,17 +6,32 @@ var _memory = null;
 var _basePath = '';
 var _ready = false;
 var _playing = false;
+var _pageProtocol = '';
+var _externalParams = {};
+var _jpegDecodeQueue = [];
+var _jpegDecodeInFlight = {};
+var _jpegDecodeSeq = 0;
+var _musSockets = {};
+var _musConnected = {};
+var _musDisconnected = {};
+var _musErrors = {};
+var _musInbound = {};
 
 var _requiredExports = {
     allocateBuffer: 'allocate_buffer',
     getStringBufferAddress: 'get_string_buffer_address',
     getStringBufferCapacity: 'get_string_buffer_capacity',
     loadMovie: 'load_movie',
+    setInitialBuiltinSymbol: 'set_initial_builtin_symbol',
+    setMovieProperty: 'set_movie_property',
+    readNextGotoNetPage: 'read_next_goto_net_page',
+    readNextGotoNetMovie: 'read_next_goto_net_movie',
     preloadCasts: 'preload_casts',
     play: 'play',
     tick: 'tick',
     pause: 'pause',
     stop: 'stop',
+    goToFrame: 'go_to_frame',
     stepForward: 'step_forward',
     stepBackward: 'step_backward',
     setScriptTimeoutMs: 'set_script_timeout_ms',
@@ -31,12 +46,42 @@ var _requiredExports = {
     getPendingFetchCount: 'get_pending_fetch_count',
     getPendingFetchTaskId: 'get_pending_fetch_task_id',
     getPendingFetchUrl: 'get_pending_fetch_url',
+    getPendingFetchMethod: 'get_pending_fetch_method',
+    getPendingFetchPostData: 'get_pending_fetch_post_data',
     getPendingFetchFallbackCount: 'get_pending_fetch_fallback_count',
     getPendingFetchFallbackUrl: 'get_pending_fetch_fallback_url',
     drainPendingFetches: 'drain_pending_fetches',
     allocateNetBuffer: 'allocate_net_buffer',
     deliverFetchResult: 'deliver_fetch_result',
     deliverFetchError: 'deliver_fetch_error',
+    getPendingJpegDecodeCount: 'get_pending_jpeg_decode_count',
+    getPendingJpegDecodeId: 'get_pending_jpeg_decode_id',
+    getPendingJpegDecodeData: 'get_pending_jpeg_decode_data',
+    getPendingJpegDecodeDataAddress: 'get_pending_jpeg_decode_data_address',
+    deliverJpegDecodeResult: 'deliver_jpeg_decode_result',
+    getAudioPendingCount: 'get_audio_pending_count',
+    getAudioPendingAction: 'get_audio_pending_action',
+    getAudioPendingChannel: 'get_audio_pending_channel',
+    getAudioPendingFormat: 'get_audio_pending_format',
+    getAudioPendingLoopCount: 'get_audio_pending_loop_count',
+    getAudioPendingVolume: 'get_audio_pending_volume',
+    getAudioPendingData: 'get_audio_pending_data',
+    getAudioBufferAddress: 'get_audio_buffer_address',
+    drainAudioPending: 'drain_audio_pending',
+    audioNotifyStopped: 'audio_notify_stopped',
+    getMusPendingCount: 'get_mus_pending_count',
+    getMusPendingType: 'get_mus_pending_type',
+    getMusPendingInstanceId: 'get_mus_pending_instance_id',
+    getMusPendingHost: 'get_mus_pending_host',
+    getMusPendingPort: 'get_mus_pending_port',
+    getMusPendingSendData: 'get_mus_pending_send_data',
+    drainMusPending: 'drain_mus_pending',
+    musDeliverConnected: 'mus_deliver_connected',
+    musDeliverDisconnected: 'mus_deliver_disconnected',
+    musDeliverError: 'mus_deliver_error',
+    musDeliverMessage: 'mus_deliver_message',
+    setExternalParam: 'set_external_param',
+    clearExternalParams: 'clear_external_params',
     mouseMove: 'mouse_move',
     mouseDown: 'mouse_down',
     mouseUp: 'mouse_up',
@@ -119,6 +164,13 @@ function _writeString(value) {
     return length;
 }
 
+function _writeBytes(bytes) {
+    var buffer = _stringBufferView();
+    var length = Math.min(bytes.length, buffer.length);
+    buffer.set(bytes.subarray(0, length), 0);
+    return length;
+}
+
 function _readString(length) {
     if (length <= 0) {
         return '';
@@ -146,15 +198,96 @@ function _resolveUrl(url) {
     return new URL(url || '', _basePath || self.location.href).href;
 }
 
-async function _fetchFirst(urls) {
+function _binaryStringToBytes(value) {
+    var bytes = new Uint8Array(value.length);
+    for (var i = 0; i < value.length; i++) {
+        bytes[i] = value.charCodeAt(i) & 0xff;
+    }
+    return bytes;
+}
+
+function _writeU32BE(bytes, offset, value) {
+    bytes[offset] = (value >>> 24) & 0xff;
+    bytes[offset + 1] = (value >>> 16) & 0xff;
+    bytes[offset + 2] = (value >>> 8) & 0xff;
+    bytes[offset + 3] = value & 0xff;
+}
+
+function _isImportableImageUrl(url) {
+    if (!url) {
+        return false;
+    }
+    var lower = String(url).toLowerCase();
+    var query = lower.indexOf('?');
+    if (query >= 0) {
+        lower = lower.substring(0, query);
+    }
+    return lower.endsWith('.gif') || lower.endsWith('.png') ||
+        lower.endsWith('.jpg') || lower.endsWith('.jpeg');
+}
+
+async function _decodeImageForImport(arrayBuffer, url) {
+    if (!_isImportableImageUrl(url) ||
+            typeof createImageBitmap !== 'function' ||
+            typeof OffscreenCanvas === 'undefined') {
+        return arrayBuffer;
+    }
+    try {
+        var bitmap = await createImageBitmap(new Blob([arrayBuffer]));
+        var canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(bitmap, 0, 0);
+        if (bitmap.close) {
+            bitmap.close();
+        }
+        var rgba = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+        var out = new Uint8Array(12 + rgba.length);
+        out[0] = 0x4c;
+        out[1] = 0x53;
+        out[2] = 0x57;
+        out[3] = 0x49;
+        _writeU32BE(out, 4, canvas.width);
+        _writeU32BE(out, 8, canvas.height);
+        out.set(rgba, 12);
+        return out.buffer;
+    } catch (e) {
+        return arrayBuffer;
+    }
+}
+
+async function _decodeImageToRgba(arrayBuffer) {
+    if (typeof createImageBitmap !== 'function' || typeof OffscreenCanvas === 'undefined') {
+        return null;
+    }
+    var bitmap = await createImageBitmap(new Blob([arrayBuffer], { type: 'image/jpeg' }));
+    var canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    var ctx = canvas.getContext('2d');
+    ctx.drawImage(bitmap, 0, 0);
+    if (bitmap.close) {
+        bitmap.close();
+    }
+    var rgba = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    var copy = new Uint8Array(rgba.length);
+    copy.set(rgba);
+    return { width: canvas.width, height: canvas.height, data: copy };
+}
+
+async function _fetchFirst(urls, method, postData) {
     var lastStatus = 0;
     for (var i = 0; i < urls.length; i++) {
         var url = _resolveUrl(urls[i]);
         try {
-            var response = await fetch(url);
+            var options = {};
+            if (method === 'POST') {
+                options.method = 'POST';
+                options.body = postData || null;
+                options.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
+            }
+            var response = await fetch(url, options);
             lastStatus = response.status || 0;
             if (response.ok) {
-                return { data: await response.arrayBuffer(), url: url };
+                var data = await response.arrayBuffer();
+                return { data: await _decodeImageForImport(data, url), url: url };
             }
         } catch (e) {
             lastStatus = 0;
@@ -176,15 +309,20 @@ async function _drainFetches(maxRounds) {
             var taskId = _exports.getPendingFetchTaskId(i);
             var urlLen = _exports.getPendingFetchUrl(i);
             var urls = [_readString(urlLen)];
+            var method = _exports.getPendingFetchMethod(i) === 1 ? 'POST' : 'GET';
+            var postData = '';
+            if (method === 'POST') {
+                postData = _readString(_exports.getPendingFetchPostData(i));
+            }
             var fallbackCount = _exports.getPendingFetchFallbackCount(i);
             for (var f = 0; f < fallbackCount; f++) {
                 urls.push(_readString(_exports.getPendingFetchFallbackUrl(i, f)));
             }
-            requests.push({ taskId: taskId, urls: urls });
+            requests.push({ taskId: taskId, urls: urls, method: method, postData: postData });
         }
         _exports.drainPendingFetches();
         for (var r = 0; r < requests.length; r++) {
-            var result = await _fetchFirst(requests[r].urls);
+            var result = await _fetchFirst(requests[r].urls, requests[r].method, requests[r].postData);
             if (result.error) {
                 _exports.deliverFetchError(requests[r].taskId, result.status);
                 failed++;
@@ -198,6 +336,274 @@ async function _drainFetches(maxRounds) {
         }
     }
     return { delivered: delivered, failed: failed };
+}
+
+function _deliverJpegDecodeResults() {
+    var delivered = 0;
+    while (_jpegDecodeQueue.length > 0) {
+        var item = _jpegDecodeQueue.shift();
+        if (item.data.length > 0) {
+            var addr = _exports.allocateNetBuffer(item.data.length);
+            new Uint8Array(_mem(), addr, item.data.length).set(item.data);
+        }
+        _exports.deliverJpegDecodeResult(item.id, item.width, item.height, item.data.length);
+        delivered++;
+    }
+    return delivered;
+}
+
+function _pumpJpegDecodeRequests() {
+    var count = _exports.getPendingJpegDecodeCount();
+    if (count <= 0) {
+        return 0;
+    }
+    var seq = _jpegDecodeSeq;
+    var started = 0;
+    for (var i = 0; i < count; i++) {
+        var id = _exports.getPendingJpegDecodeId(i);
+        if (!id || _jpegDecodeInFlight[id]) {
+            continue;
+        }
+        var length = _exports.getPendingJpegDecodeData(id);
+        var addr = _exports.getPendingJpegDecodeDataAddress();
+        if (length <= 0 || addr === 0) {
+            continue;
+        }
+        var bytes = new Uint8Array(length);
+        bytes.set(new Uint8Array(_mem(), addr, length));
+        _jpegDecodeInFlight[id] = true;
+        started++;
+        (function(decodeId, data) {
+            _decodeImageToRgba(data.buffer).then(function(decoded) {
+                if (seq !== _jpegDecodeSeq) {
+                    return;
+                }
+                if (decoded) {
+                    _jpegDecodeQueue.push({
+                        id: decodeId,
+                        width: decoded.width,
+                        height: decoded.height,
+                        data: decoded.data
+                    });
+                } else {
+                    _jpegDecodeQueue.push({ id: decodeId, width: 0, height: 0, data: new Uint8Array(0) });
+                }
+            }).catch(function() {
+                if (seq !== _jpegDecodeSeq) {
+                    return;
+                }
+                _jpegDecodeQueue.push({ id: decodeId, width: 0, height: 0, data: new Uint8Array(0) });
+            }).finally(function() {
+                if (seq === _jpegDecodeSeq) {
+                    delete _jpegDecodeInFlight[decodeId];
+                }
+            });
+        })(id, bytes);
+    }
+    return started;
+}
+
+function _pumpAudioCommands() {
+    var count = _exports.getAudioPendingCount();
+    if (count <= 0) {
+        return 0;
+    }
+    for (var i = 0; i < count; i++) {
+        var action = _readString(_exports.getAudioPendingAction(i));
+        var channel = _exports.getAudioPendingChannel(i);
+        if (action === 'play') {
+            var format = _readString(_exports.getAudioPendingFormat(i));
+            var loopCount = _exports.getAudioPendingLoopCount(i);
+            var volume = _exports.getAudioPendingVolume(i);
+            var dataLen = _exports.getAudioPendingData(i);
+            if (dataLen > 0) {
+                var dataAddr = _exports.getAudioBufferAddress();
+                var audioData = new Uint8Array(dataLen);
+                audioData.set(new Uint8Array(_mem(), dataAddr, dataLen));
+                self.postMessage({
+                    type: 'audio',
+                    action: 'play',
+                    channel: channel,
+                    format: format,
+                    loopCount: loopCount,
+                    volume: volume,
+                    data: audioData.buffer
+                }, [audioData.buffer]);
+            }
+        } else if (action === 'stop') {
+            self.postMessage({ type: 'audio', action: 'stop', channel: channel });
+        } else if (action === 'volume') {
+            self.postMessage({
+                type: 'audio',
+                action: 'volume',
+                channel: channel,
+                volume: _exports.getAudioPendingVolume(i)
+            });
+        }
+    }
+    _exports.drainAudioPending();
+    return count;
+}
+
+function _buildMusWebSocketUrl(host, port) {
+    var forcedMode = String(_externalParams['websocket.mode'] || '').toLowerCase();
+    var secure = forcedMode === 'wss' || (!forcedMode && (_pageProtocol === 'https:' || String(port) === '443'));
+    if (forcedMode === 'ws') {
+        secure = false;
+    }
+    return (secure ? 'wss' : 'ws') + '://' + host + ':' + port;
+}
+
+function _musConnect(instanceId, url) {
+    if (_musSockets[instanceId]) {
+        _musSockets[instanceId].onclose = null;
+        _musSockets[instanceId].close();
+    }
+    var socket;
+    try {
+        socket = new WebSocket(url);
+    } catch (e) {
+        _musErrors[instanceId] = -3;
+        return;
+    }
+    socket.binaryType = 'arraybuffer';
+    _musSockets[instanceId] = socket;
+    socket.onopen = function() {
+        _musConnected[instanceId] = true;
+    };
+    socket.onmessage = function(event) {
+        if (!_musInbound[instanceId]) {
+            _musInbound[instanceId] = [];
+        }
+        _musInbound[instanceId].push(typeof event.data === 'string'
+            ? _binaryStringToBytes(event.data)
+            : new Uint8Array(event.data));
+    };
+    socket.onerror = function() {
+        _musErrors[instanceId] = -2;
+    };
+    socket.onclose = function() {
+        _musDisconnected[instanceId] = true;
+        delete _musSockets[instanceId];
+    };
+}
+
+function _deliverMusEvents() {
+    for (var id in _musConnected) {
+        _exports.musDeliverConnected(parseInt(id, 10));
+    }
+    _musConnected = {};
+
+    for (var errorId in _musErrors) {
+        _exports.musDeliverError(parseInt(errorId, 10), _musErrors[errorId]);
+    }
+    _musErrors = {};
+
+    for (var inboundId in _musInbound) {
+        var instanceId = parseInt(inboundId, 10);
+        var messages = _musInbound[inboundId];
+        for (var i = 0; i < messages.length; i++) {
+            var length = _writeBytes(messages[i]);
+            _exports.musDeliverMessage(instanceId, length);
+        }
+    }
+    _musInbound = {};
+
+    for (var disconnectedId in _musDisconnected) {
+        _exports.musDeliverDisconnected(parseInt(disconnectedId, 10));
+    }
+    _musDisconnected = {};
+}
+
+function _pumpMusRequests() {
+    var count = _exports.getMusPendingCount();
+    if (count <= 0) {
+        return 0;
+    }
+    for (var i = 0; i < count; i++) {
+        var type = _exports.getMusPendingType(i);
+        var instanceId = _exports.getMusPendingInstanceId(i);
+        if (type === 0) {
+            var host = _readString(_exports.getMusPendingHost(i));
+            var port = _exports.getMusPendingPort(i);
+            _musConnect(instanceId, _buildMusWebSocketUrl(host, port));
+        } else if (type === 1) {
+            var dataLen = _exports.getMusPendingSendData(i);
+            var data = new Uint8Array(_stringBufferView().subarray(0, dataLen));
+            var socket = _musSockets[instanceId];
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(data.buffer);
+            }
+        } else if (type === 2) {
+            var existing = _musSockets[instanceId];
+            if (existing) {
+                existing.onclose = null;
+                existing.close();
+                delete _musSockets[instanceId];
+            }
+        }
+    }
+    _exports.drainMusPending();
+    return count;
+}
+
+function _drainNavigation() {
+    while (true) {
+        var packedPage = _exports.readNextGotoNetPage();
+        if (!packedPage) {
+            break;
+        }
+        var urlLen = (packedPage >>> 16) & 0xffff;
+        var targetLen = packedPage & 0xffff;
+        var buffer = _stringBufferView();
+        var url = new TextDecoder().decode(buffer.subarray(0, urlLen));
+        var target = new TextDecoder().decode(buffer.subarray(urlLen, urlLen + targetLen));
+        self.postMessage({ type: 'gotoNetPage', url: url, target: target });
+    }
+    while (true) {
+        var movieLen = _exports.readNextGotoNetMovie();
+        if (!movieLen) {
+            break;
+        }
+        self.postMessage({ type: 'gotoNetMovie', url: _readString(movieLen) });
+    }
+}
+
+function _writeKeyValue(key, value) {
+    var keyBytes = new TextEncoder().encode(key || '');
+    var valueBytes = new TextEncoder().encode(value == null ? '' : String(value));
+    var buffer = _stringBufferView();
+    var keyLength = Math.min(keyBytes.length, buffer.length);
+    buffer.set(keyBytes.subarray(0, keyLength), 0);
+    var valueLength = Math.min(valueBytes.length, Math.max(0, buffer.length - keyLength));
+    buffer.set(valueBytes.subarray(0, valueLength), keyLength);
+    return { keyLength: keyLength, valueLength: valueLength };
+}
+
+function _setExternalParam(key, value) {
+    _externalParams[key] = value == null ? '' : String(value);
+    var lengths = _writeKeyValue(key, value);
+    _exports.setExternalParam(lengths.keyLength, lengths.valueLength);
+}
+
+function _setMovieProperty(key, value) {
+    var lengths = _writeKeyValue(key, value);
+    _exports.setMovieProperty(lengths.keyLength, lengths.valueLength);
+}
+
+function _setInitialBuiltinSymbol(key, value) {
+    var lengths = _writeKeyValue(key, value);
+    _exports.setInitialBuiltinSymbol(lengths.keyLength, lengths.valueLength);
+}
+
+async function _driveHostQueues(fetchRounds) {
+    _deliverMusEvents();
+    _deliverJpegDecodeResults();
+    await _drainFetches(fetchRounds);
+    _pumpMusRequests();
+    _pumpAudioCommands();
+    _pumpJpegDecodeRequests();
+    _drainNavigation();
 }
 
 function _renderFrame() {
@@ -243,6 +649,9 @@ function _postFrame() {
 }
 
 async function _loadMovie(message) {
+    _jpegDecodeSeq++;
+    _jpegDecodeQueue = [];
+    _jpegDecodeInFlight = {};
     var movieBytes = new Uint8Array(message.data || new ArrayBuffer(0));
     var basePathLength = _writeString(message.basePath || _basePath);
     var movieAddr = _exports.allocateBuffer(movieBytes.length);
@@ -251,9 +660,28 @@ async function _loadMovie(message) {
     if (message.scriptTimeoutMs != null) {
         _exports.setScriptTimeoutMs(message.scriptTimeoutMs | 0);
     }
-    await _drainFetches(32);
+    var key;
+    if (message.params) {
+        for (key in message.params) {
+            _setExternalParam(key, message.params[key]);
+        }
+    }
+    for (key in _externalParams) {
+        _setExternalParam(key, _externalParams[key]);
+    }
+    if (message.movieProperties) {
+        for (key in message.movieProperties) {
+            _setMovieProperty(key, message.movieProperties[key]);
+        }
+    }
+    if (message.initialBuiltinSymbols) {
+        for (key in message.initialBuiltinSymbols) {
+            _setInitialBuiltinSymbol(key, message.initialBuiltinSymbols[key]);
+        }
+    }
+    await _driveHostQueues(32);
     _exports.preloadCasts();
-    await _drainFetches(32);
+    await _driveHostQueues(32);
     if (!packedStage) {
         var loadError = _readLastError() || 'C++ WASM movie load failed';
         self.postMessage({ type: 'error', message: loadError });
@@ -272,7 +700,7 @@ async function _loadMovie(message) {
     if (message.autoplay !== false) {
         _playing = true;
         _exports.play();
-        await _drainFetches(32);
+        await _driveHostQueues(32);
         _postFrame();
     }
 }
@@ -281,9 +709,10 @@ async function _tick() {
     if (!_ready) {
         return;
     }
+    await _driveHostQueues(8);
     if (_playing) {
         _exports.tick();
-        await _drainFetches(8);
+        await _driveHostQueues(8);
     }
     _postLastError();
     _postFrame();
@@ -291,6 +720,7 @@ async function _tick() {
 
 async function _init(message) {
     _basePath = message.basePath || '';
+    _pageProtocol = message.pageProtocol || '';
     importScripts(_resolveUrl('libreshockwave-cpp-wasm.js'));
     if (typeof createLibreShockwaveCppWasm !== 'function') {
         throw new Error('createLibreShockwaveCppWasm was not exported by libreshockwave-cpp-wasm.js');
@@ -322,7 +752,7 @@ self.onmessage = function(event) {
             case 'play':
                 _playing = true;
                 _exports.play();
-                await _drainFetches(8);
+                await _driveHostQueues(8);
                 _postFrame();
                 break;
             case 'pause':
@@ -334,9 +764,14 @@ self.onmessage = function(event) {
                 _exports.stop();
                 _postFrame();
                 break;
+            case 'goToFrame':
+                _exports.goToFrame(message.frame | 0);
+                await _driveHostQueues(8);
+                _postFrame();
+                break;
             case 'stepForward':
                 _exports.stepForward();
-                await _drainFetches(8);
+                await _driveHostQueues(8);
                 _postFrame();
                 break;
             case 'stepBackward':
@@ -367,6 +802,22 @@ self.onmessage = function(event) {
             }
             case 'blur':
                 _exports.blur();
+                break;
+            case 'setParam':
+                _setExternalParam(message.key || '', message.value == null ? '' : String(message.value));
+                break;
+            case 'clearParams':
+                _externalParams = {};
+                _exports.clearExternalParams();
+                break;
+            case 'setMovieProperty':
+                _setMovieProperty(message.key || '', message.value == null ? '' : String(message.value));
+                break;
+            case 'setInitialBuiltinSymbol':
+                _setInitialBuiltinSymbol(message.key || '', message.value == null ? '' : String(message.value));
+                break;
+            case 'audioStopped':
+                _exports.audioNotifyStopped(message.channel | 0);
                 break;
         }
         _postLastError();
