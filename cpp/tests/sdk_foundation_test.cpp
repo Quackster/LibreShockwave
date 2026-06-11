@@ -335,6 +335,7 @@ using libreshockwave::editor::gtk::GtkActionActivation;
 using libreshockwave::editor::gtk::GtkPanelRowSpec;
 using libreshockwave::editor::gtk::GtkShellDialogKind;
 using libreshockwave::editor::gtk::GtkToolbarItemSpec;
+using libreshockwave::editor::gtk::GtkWorkbenchContentSpec;
 using libreshockwave::editor::gtk::GtkWorkbenchFocusActionSpec;
 using libreshockwave::editor::gtk::GtkWorkbenchPanelKind;
 using libreshockwave::editor::gtk::GtkWorkbenchPanelSpec;
@@ -2199,6 +2200,18 @@ void testEditorShellActionModels() {
     assert(gtkWorkbenchLayout.activePanel->panelId == "paint");
     assert(gtkWorkbenchLayout.activePanel->primaryText == "No bitmap selected");
     assert(gtkWorkbenchLayout.emptyText == "No editor panels available");
+    assert(EditorGtkShellModel::workbenchContent(gtkFrame, closedGtkContext) ==
+           (GtkWorkbenchContentSpec{
+               true,
+               "paint",
+               GtkWorkbenchPanelKind::Paint,
+               "Paint",
+               "No bitmap selected",
+               " Ready",
+               std::vector<std::string>{"Pencil", "Brush", "Eraser", "Fill", "Line", "Rect", "Oval", "Select", "Lasso"},
+               "workbench_paint",
+               "app.workbench_paint",
+           }));
 
     EditorGtkShellState gtkState;
     auto findWorkbenchPanel = [](const std::vector<GtkWorkbenchPanelSpec>& panels,
@@ -2227,6 +2240,12 @@ void testEditorShellActionModels() {
     assert(gtkState.workbenchLayout().activePanel.has_value());
     assert(gtkState.workbenchLayout().activePanel->panelId == "stage");
     assert(gtkState.workbenchLayout().activePanel->activationActionName == "workbench_stage");
+    assert(gtkState.workbenchContent().hasPanel);
+    assert(gtkState.workbenchContent().panelId == "stage");
+    assert(gtkState.workbenchContent().title == "Stage");
+    assert(gtkState.workbenchContent().primaryText == "No movie loaded");
+    assert(gtkState.workbenchContent().statusText == "Frame: 1");
+    assert(gtkState.workbenchContent().focusActionName == "workbench_stage");
     assert(gtkWorkbenchPanels.front().primaryText == "No movie loaded");
     assert(gtkWorkbenchPanels.front().statusText == "Frame: 1");
     const auto* messageWorkbench = findWorkbenchPanel(gtkWorkbenchPanels, "message");
@@ -2274,6 +2293,8 @@ void testEditorShellActionModels() {
     assert(gtkView.workbenchLayout.panels == gtkWorkbenchPanels);
     assert(gtkView.workbenchLayout.activePanel.has_value());
     assert(gtkView.workbenchLayout.activePanel->panelId == "stage");
+    assert(gtkView.workbenchContent == gtkState.workbenchContent());
+    assert(gtkView.workbenchContent.panelId == "stage");
     assert(gtkView.workbenchFocusActions == shellWorkbenchFocusActions);
 
     auto focusMessage = gtkState.activateWorkbenchAction("workbench_message");
@@ -2300,6 +2321,11 @@ void testEditorShellActionModels() {
     assert(gtkView.workbenchPanels == gtkWorkbenchPanels);
     assert(gtkView.workbenchLayout.activePanel.has_value());
     assert(gtkView.workbenchLayout.activePanel->panelId == "message");
+    assert(gtkView.workbenchContent.hasPanel);
+    assert(gtkView.workbenchContent.panelId == "message");
+    assert(gtkView.workbenchContent.title == "Message");
+    assert(gtkView.workbenchContent.primaryText.find("Welcome to LibreShockwave Editor") == 0);
+    assert(gtkView.workbenchContent.focusActionName == "workbench_message");
     shellWorkbenchFocusActions = gtkState.workbenchFocusActions();
     const auto* messageFocusAction = findWorkbenchFocusAction(shellWorkbenchFocusActions, "message");
     assert(messageFocusAction != nullptr);
@@ -2460,6 +2486,8 @@ void testEditorShellActionModels() {
     assert(gtkView.workbenchLayout.panels == gtkView.workbenchPanels);
     assert(gtkView.workbenchLayout.activePanel.has_value());
     assert(gtkView.workbenchLayout.activePanel->panelId == "message");
+    assert(gtkView.workbenchContent.hasPanel);
+    assert(gtkView.workbenchContent.panelId == "message");
     const auto* openedStageWorkbench = findWorkbenchPanel(gtkView.workbenchPanels, "stage");
     assert(openedStageWorkbench != nullptr);
     assert(openedStageWorkbench->title == "Stage - Movie.dir");
@@ -2669,6 +2697,11 @@ void testEditorShellActionModels() {
     assert(paintWorkbench->detailedActivationActionName == "app.workbench_paint");
     assert(gtkView.workbenchLayout.activePanel.has_value());
     assert(gtkView.workbenchLayout.activePanel->panelId == "paint");
+    assert(gtkView.workbenchContent.hasPanel);
+    assert(gtkView.workbenchContent.panelId == "paint");
+    assert(gtkView.workbenchContent.primaryText == "No bitmap selected");
+    assert(gtkView.workbenchContent.statusText == " Ready");
+    assert(gtkView.workbenchContent.actionLabels.size() == 9);
     paintFocusAction = findWorkbenchFocusAction(gtkView.workbenchFocusActions, "paint");
     assert(paintFocusAction != nullptr);
     assert(paintFocusAction->enabled);
@@ -2715,6 +2748,12 @@ void testEditorShellActionModels() {
     assert(paintFocusAction != nullptr);
     assert(!paintFocusAction->enabled);
     assert(!paintFocusAction->active);
+    stageFocusAction = findWorkbenchFocusAction(gtkView.workbenchFocusActions, "stage");
+    assert(stageFocusAction != nullptr);
+    assert(stageFocusAction->enabled);
+    assert(stageFocusAction->active);
+    assert(gtkView.workbenchContent.hasPanel);
+    assert(gtkView.workbenchContent.panelId == "stage");
 
     assert(gtkState.activateAction("panel_sound").active.value());
     auto resetLayout = gtkState.activateAction("resetLayout");

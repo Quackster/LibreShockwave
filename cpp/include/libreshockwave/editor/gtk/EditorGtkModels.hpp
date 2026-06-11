@@ -132,6 +132,20 @@ struct GtkWorkbenchPanelSpec {
     friend bool operator==(const GtkWorkbenchPanelSpec&, const GtkWorkbenchPanelSpec&) = default;
 };
 
+struct GtkWorkbenchContentSpec {
+    bool hasPanel{false};
+    std::string panelId;
+    GtkWorkbenchPanelKind kind{GtkWorkbenchPanelKind::Generic};
+    std::string title;
+    std::string primaryText;
+    std::string statusText;
+    std::vector<std::string> actionLabels;
+    std::string focusActionName;
+    std::string detailedFocusActionName;
+
+    friend bool operator==(const GtkWorkbenchContentSpec&, const GtkWorkbenchContentSpec&) = default;
+};
+
 struct GtkWorkbenchLayoutSpec {
     std::vector<GtkWorkbenchPanelSpec> panels;
     std::optional<GtkWorkbenchPanelSpec> activePanel;
@@ -190,6 +204,7 @@ struct GtkShellViewState {
     std::vector<GtkPanelRowSpec> panelRows;
     std::vector<GtkWorkbenchPanelSpec> workbenchPanels;
     GtkWorkbenchLayoutSpec workbenchLayout;
+    GtkWorkbenchContentSpec workbenchContent;
     std::vector<GtkWorkbenchFocusActionSpec> workbenchFocusActions;
 
     friend bool operator==(const GtkShellViewState&, const GtkShellViewState&) = default;
@@ -216,6 +231,8 @@ public:
                                                                            const EditorContextModel& contextModel);
     [[nodiscard]] static GtkWorkbenchLayoutSpec workbenchLayout(const EditorFramePanelModel& frameModel,
                                                                const EditorContextModel& contextModel);
+    [[nodiscard]] static GtkWorkbenchContentSpec workbenchContent(const EditorFramePanelModel& frameModel,
+                                                                 const EditorContextModel& contextModel);
     [[nodiscard]] static std::vector<GtkWorkbenchFocusActionSpec> workbenchFocusActions(
         const EditorFramePanelModel& frameModel);
 };
@@ -238,6 +255,7 @@ public:
     [[nodiscard]] std::vector<GtkPanelRowSpec> panelRows() const;
     [[nodiscard]] std::vector<GtkWorkbenchPanelSpec> workbenchPanels() const;
     [[nodiscard]] GtkWorkbenchLayoutSpec workbenchLayout() const;
+    [[nodiscard]] GtkWorkbenchContentSpec workbenchContent() const;
     [[nodiscard]] std::vector<GtkWorkbenchFocusActionSpec> workbenchFocusActions() const;
     [[nodiscard]] GtkShellViewState viewState() const;
 

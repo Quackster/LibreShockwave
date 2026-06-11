@@ -387,9 +387,42 @@ GtkWorkbenchLayoutSpec EditorGtkShellModel::workbenchLayout(const EditorFramePan
     return layout;
 }
 
+GtkWorkbenchContentSpec EditorGtkShellModel::workbenchContent(const EditorFramePanelModel& frameModel,
+                                                             const EditorContextModel& contextModel) {
+    const auto layout = workbenchLayout(frameModel, contextModel);
+    GtkWorkbenchContentSpec content;
+    if (!layout.activePanel.has_value()) {
+        content.title = layout.emptyText;
+        content.primaryText = layout.emptyText;
+        return content;
+    }
+
+    const auto& panel = *layout.activePanel;
+    content.hasPanel = true;
+    content.panelId = panel.panelId;
+    content.kind = panel.kind;
+    content.title = panel.title;
+    content.primaryText = panel.primaryText;
+    content.statusText = panel.statusText;
+    content.actionLabels = panel.actionLabels;
+    content.focusActionName = panel.activationActionName;
+    content.detailedFocusActionName = panel.detailedActivationActionName;
+    return content;
+}
+
 std::vector<GtkWorkbenchFocusActionSpec> EditorGtkShellModel::workbenchFocusActions(
     const EditorFramePanelModel& frameModel) {
     const auto rows = panelRows(frameModel);
+    auto active = std::find_if(rows.begin(), rows.end(), [](const GtkPanelRowSpec& row) {
+        return row.visible && !row.iconified && row.selected;
+    });
+    if (active == rows.end()) {
+        active = std::find_if(rows.begin(), rows.end(), [](const GtkPanelRowSpec& row) {
+            return row.visible && !row.iconified;
+        });
+    }
+    const std::string activePanelId = active == rows.end() ? std::string{} : active->panelId;
+
     std::vector<GtkWorkbenchFocusActionSpec> result;
     result.reserve(rows.size());
     for (const auto& row : rows) {
@@ -400,7 +433,7 @@ std::vector<GtkWorkbenchFocusActionSpec> EditorGtkShellModel::workbenchFocusActi
             appAction(name),
             row.panelId,
             enabled,
-            enabled && row.selected,
+            enabled && row.panelId == activePanelId,
         });
     }
     return result;
@@ -472,6 +505,10 @@ GtkWorkbenchLayoutSpec EditorGtkShellState::workbenchLayout() const {
     return EditorGtkShellModel::workbenchLayout(frameModel_, contextModel_);
 }
 
+GtkWorkbenchContentSpec EditorGtkShellState::workbenchContent() const {
+    return EditorGtkShellModel::workbenchContent(frameModel_, contextModel_);
+}
+
 std::vector<GtkWorkbenchFocusActionSpec> EditorGtkShellState::workbenchFocusActions() const {
     return EditorGtkShellModel::workbenchFocusActions(frameModel_);
 }
@@ -499,6 +536,7 @@ GtkShellViewState EditorGtkShellState::viewState() const {
         panelRows(),
         workbenchPanels(),
         workbenchLayout(),
+        workbenchContent(),
         workbenchFocusActions(),
     };
 }
