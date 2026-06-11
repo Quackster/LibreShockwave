@@ -351,6 +351,10 @@ using libreshockwave::editor::debug::DebugTablePresentation;
 using libreshockwave::editor::debug::DebugTextAreaPresentation;
 using libreshockwave::editor::debug::DetailedStackTabView;
 using libreshockwave::editor::debug::DetailedStackView;
+using libreshockwave::editor::debug::HandlerDetailsBytecodeRow;
+using libreshockwave::editor::debug::HandlerDetailsLiteralRow;
+using libreshockwave::editor::debug::HandlerDetailsNameRow;
+using libreshockwave::editor::debug::HandlerDetailsTab;
 using libreshockwave::editor::debug::HandlerLocation;
 using libreshockwave::editor::debug::HandlerItem;
 using libreshockwave::editor::debug::HandlerNavigator;
@@ -3333,6 +3337,89 @@ void testEditorDebugDataModels() {
     assert(detailedStackView.tabs[1].body == "[  0] 1\n[  1] \"top\"\n");
     assert(detailedStackView.tabs[2].body == "arg1 = 42\narg2 = \"#ready\"\n");
     assert(detailedStackView.tabs[3].body == "99");
+
+    ScriptNamesChunk detailsNames(nullptr,
+                                  ChunkId(246),
+                                  {"zero", "mouseUp", "argOne", "argTwo", "localOne", "propOne", "globalOne", "go"});
+    ScriptChunk::Handler detailsHandler{};
+    detailsHandler.nameId = 1;
+    detailsHandler.handlerVectorPos = 3;
+    detailsHandler.bytecodeLength = 6;
+    detailsHandler.bytecodeOffset = 100;
+    detailsHandler.argCount = 2;
+    detailsHandler.localCount = 1;
+    detailsHandler.globalsCount = 1;
+    detailsHandler.argNameIds = {2, 3};
+    detailsHandler.localNameIds = {4};
+    detailsHandler.instructions = {
+        ScriptChunk::Instruction{0, Opcode::PUSH_INT8, static_cast<int>(Opcode::PUSH_INT8), 5},
+        ScriptChunk::Instruction{2, Opcode::EXT_CALL, static_cast<int>(Opcode::EXT_CALL), 7},
+        ScriptChunk::Instruction{4, Opcode::RET, static_cast<int>(Opcode::RET), 0},
+    };
+    auto detailsScript = std::make_shared<ScriptChunk>(
+        nullptr,
+        ChunkId(247),
+        ScriptChunkType::MovieScript,
+        0,
+        std::vector<ScriptChunk::Handler>{detailsHandler},
+        std::vector<ScriptChunk::LiteralEntry>{
+            ScriptChunk::LiteralEntry{1, 0, std::string("hello\n\"world\""), 0.0},
+            ScriptChunk::LiteralEntry{4, 0, 42, 0.0},
+            ScriptChunk::LiteralEntry{12, 0, std::vector<std::uint8_t>{0x01, 0x02, 0xAB}, 0.0},
+        },
+        std::vector<ScriptChunk::PropertyEntry>{ScriptChunk::PropertyEntry{5}},
+        std::vector<ScriptChunk::GlobalEntry>{ScriptChunk::GlobalEntry{6}},
+        std::vector<std::uint8_t>{});
+    const auto handlerDetails = DebugInspectionModels::handlerDetailsView(
+        *detailsScript,
+        detailsScript->handlers()[0],
+        &detailsNames,
+        "\"Details\" (MOVIE_SCRIPT)");
+    assert(handlerDetails.title == "Handler: mouseUp");
+    assert(handlerDetails.size == (DebugSize{600, 500}));
+    assert((handlerDetails.tabs == std::vector<HandlerDetailsTab>{HandlerDetailsTab::Overview,
+                                                                  HandlerDetailsTab::Bytecode,
+                                                                  HandlerDetailsTab::Literals,
+                                                                  HandlerDetailsTab::Properties,
+                                                                  HandlerDetailsTab::Globals}));
+    assert((handlerDetails.tabTitles ==
+            std::vector<std::string>{"Overview", "Bytecode", "Literals", "Properties", "Globals"}));
+    assert(handlerDetails.overviewHtml.find("<h3>mouseUp</h3>") != std::string::npos);
+    assert(handlerDetails.overviewHtml.find("<b>Script Type:</b> MOVIE_SCRIPT<br>") != std::string::npos);
+    assert(handlerDetails.overviewHtml.find("<b>Arguments (2):</b><br><ul><li>argOne</li><li>argTwo</li></ul>") !=
+           std::string::npos);
+    assert(handlerDetails.overviewHtml.find("<b>Local Variables (1):</b><br><ul><li>localOne</li></ul>") !=
+           std::string::npos);
+    assert(handlerDetails.overviewHtml.find("<b>Globals Used:</b> 1<br>") != std::string::npos);
+    assert(handlerDetails.bytecodeRows.size() == 3);
+    assert((handlerDetails.bytecodeRows[0] ==
+            HandlerDetailsBytecodeRow{0, "pushInt8", std::optional<int>(5), "<5>",
+                                      "[  0] pushInt8       5    <5>"}));
+    assert(handlerDetails.bytecodeRows[1].offset == 2);
+    assert(handlerDetails.bytecodeRows[1].opcode == "extCall");
+    assert(handlerDetails.bytecodeRows[1].argument.value() == 7);
+    assert(handlerDetails.bytecodeRows[1].annotation == "<go()>");
+    assert(!handlerDetails.bytecodeRows[2].argument.has_value());
+    assert(handlerDetails.bytecodeRows[2].displayText.find("[  4] ret") == 0);
+    assert((handlerDetails.literalRows == std::vector<HandlerDetailsLiteralRow>{
+                                             HandlerDetailsLiteralRow{0, "String", "\"hello\\n\\\"world\\\"\""},
+                                             HandlerDetailsLiteralRow{1, "Int", "42"},
+                                             HandlerDetailsLiteralRow{2, "Type 12", "bytes[01 02 AB]"},
+                                         }));
+    assert((handlerDetails.propertyRows ==
+            std::vector<HandlerDetailsNameRow>{HandlerDetailsNameRow{0, "propOne", "[0] propOne"}}));
+    assert((handlerDetails.globalRows ==
+            std::vector<HandlerDetailsNameRow>{HandlerDetailsNameRow{0, "globalOne", "[0] globalOne"}}));
+    assert(handlerDetails.closeButtonLabel == "Close");
+    assert(!handlerDetails.modal);
+
+    const auto foundDetails =
+        DebugInspectionModels::findHandlerDetailsView({nullptr, detailsScript}, &detailsNames, "MOUSEUP");
+    assert(foundDetails.has_value());
+    assert(foundDetails->title == "Handler: mouseUp");
+    assert(!DebugInspectionModels::findHandlerDetailsView({detailsScript}, &detailsNames, "missing").has_value());
+    const auto bareHandlerDetails = DebugInspectionModels::handlerDetailsView(*script, handler, &names);
+    assert((bareHandlerDetails.tabTitles == std::vector<std::string>{"Overview", "Bytecode"}));
 
     auto browserNames = std::make_shared<ScriptNamesChunk>(
         nullptr,

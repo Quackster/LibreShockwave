@@ -1,13 +1,19 @@
 #pragma once
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "libreshockwave/chunks/ScriptChunk.hpp"
 #include "libreshockwave/lingo/Datum.hpp"
 #include "libreshockwave/player/debug/WatchExpression.hpp"
 #include "libreshockwave/player/debug/DebugSnapshot.hpp"
+
+namespace libreshockwave::chunks {
+class ScriptNamesChunk;
+} // namespace libreshockwave::chunks
 
 namespace libreshockwave::editor::debug {
 
@@ -121,6 +127,56 @@ struct WatchPanelView {
     friend bool operator==(const WatchPanelView&, const WatchPanelView&) = default;
 };
 
+enum class HandlerDetailsTab {
+    Overview,
+    Bytecode,
+    Literals,
+    Properties,
+    Globals
+};
+
+struct HandlerDetailsBytecodeRow {
+    int offset{};
+    std::string opcode;
+    std::optional<int> argument;
+    std::string annotation;
+    std::string displayText;
+
+    friend bool operator==(const HandlerDetailsBytecodeRow&, const HandlerDetailsBytecodeRow&) = default;
+};
+
+struct HandlerDetailsLiteralRow {
+    int index{};
+    std::string type;
+    std::string value;
+
+    friend bool operator==(const HandlerDetailsLiteralRow&, const HandlerDetailsLiteralRow&) = default;
+};
+
+struct HandlerDetailsNameRow {
+    int index{};
+    std::string name;
+    std::string displayText;
+
+    friend bool operator==(const HandlerDetailsNameRow&, const HandlerDetailsNameRow&) = default;
+};
+
+struct HandlerDetailsView {
+    std::string title;
+    DebugSize size;
+    std::vector<HandlerDetailsTab> tabs;
+    std::vector<std::string> tabTitles;
+    std::string overviewHtml;
+    std::vector<HandlerDetailsBytecodeRow> bytecodeRows;
+    std::vector<HandlerDetailsLiteralRow> literalRows;
+    std::vector<HandlerDetailsNameRow> propertyRows;
+    std::vector<HandlerDetailsNameRow> globalRows;
+    std::string closeButtonLabel;
+    bool modal{false};
+
+    friend bool operator==(const HandlerDetailsView&, const HandlerDetailsView&) = default;
+};
+
 class DebugInspectionModels {
 public:
     [[nodiscard]] static DatumDetailsView datumDetailsView(const lingo::Datum& datum, std::string_view title);
@@ -144,6 +200,15 @@ public:
     [[nodiscard]] static std::optional<std::string> datumDetailsTitleFor(DebugInspectionTable table,
                                                                          std::string_view name,
                                                                          int row);
+    [[nodiscard]] static HandlerDetailsView handlerDetailsView(
+        const chunks::ScriptChunk& script,
+        const chunks::ScriptChunk::Handler& handler,
+        const chunks::ScriptNamesChunk* names = nullptr,
+        std::string_view scriptDisplayName = {});
+    [[nodiscard]] static std::optional<HandlerDetailsView> findHandlerDetailsView(
+        const std::vector<std::shared_ptr<chunks::ScriptChunk>>& scripts,
+        const chunks::ScriptNamesChunk* names,
+        std::string_view handlerName);
 };
 
 } // namespace libreshockwave::editor::debug

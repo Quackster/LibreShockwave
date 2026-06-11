@@ -1,17 +1,23 @@
 #include "libreshockwave/editor/debug/DebugInspectionModels.hpp"
 
+#include <cstdint>
 #include <iomanip>
 #include <sstream>
 #include <cctype>
 #include <utility>
+#include <variant>
 
+#include "libreshockwave/lingo/Opcode.hpp"
+#include "libreshockwave/lingo/vm/trace/InstructionAnnotator.hpp"
 #include "libreshockwave/lingo/vm/datum/DatumFormatter.hpp"
+#include "libreshockwave/util/StringUtils.hpp"
 
 namespace libreshockwave::editor::debug {
 namespace {
 
 constexpr DebugSize DATUM_DETAILS_SIZE{500, 400};
 constexpr DebugSize DETAILED_STACK_SIZE{500, 600};
+constexpr DebugSize HANDLER_DETAILS_SIZE{600, 500};
 constexpr const char* DETAILED_STACK_TITLE = "Detailed Stack View";
 constexpr const char* WAITING_STATUS = "Waiting for debugger pause...";
 constexpr const char* RUNNING_STATUS = "Running...";
@@ -115,6 +121,205 @@ constexpr const char* SEPARATOR_LINE = "\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2
                              {},
                              DebugSize{0, 150},
                              true);
+}
+
+[[nodiscard]] const char* handlerDetailsScriptTypeName(chunks::ScriptChunkType scriptType) {
+    switch (scriptType) {
+        case chunks::ScriptChunkType::Score:
+            return "SCORE";
+        case chunks::ScriptChunkType::Behavior:
+            return "BEHAVIOR";
+        case chunks::ScriptChunkType::MovieScript:
+            return "MOVIE_SCRIPT";
+        case chunks::ScriptChunkType::Parent:
+            return "PARENT";
+        case chunks::ScriptChunkType::Unknown:
+            return "UNKNOWN";
+    }
+    return "UNKNOWN";
+}
+
+[[nodiscard]] std::string handlerDetailsScriptDisplayName(const chunks::ScriptChunk& script,
+                                                          std::string_view overrideName) {
+    if (!overrideName.empty()) {
+        return std::string(overrideName);
+    }
+    return std::string(handlerDetailsScriptTypeName(script.scriptType())) + " #" + std::to_string(script.id().value());
+}
+
+[[nodiscard]] std::string literalTypeNameForDetails(int type) {
+    switch (type) {
+        case 1:
+            return "String";
+        case 4:
+            return "Int";
+        case 9:
+            return "Float";
+        default:
+            return "Type " + std::to_string(type);
+    }
+}
+
+[[nodiscard]] std::string escapedLiteralString(std::string_view value) {
+    std::string result;
+    for (const char ch : value) {
+        switch (ch) {
+            case '\\':
+                result += "\\\\";
+                break;
+            case '"':
+                result += "\\\"";
+                break;
+            case '\n':
+                result += "\\n";
+                break;
+            case '\r':
+                result += "\\r";
+                break;
+            default:
+                result.push_back(ch);
+                break;
+        }
+    }
+    return result;
+}
+
+[[nodiscard]] std::string literalValueForDetails(const chunks::ScriptChunk::LiteralEntry& literal) {
+    if (const auto* value = std::get_if<std::string>(&literal.value)) {
+        return "\"" + escapedLiteralString(*value) + "\"";
+    }
+    if (const auto* value = std::get_if<int>(&literal.value)) {
+        return std::to_string(*value);
+    }
+    if (const auto* bytes = std::get_if<std::vector<std::uint8_t>>(&literal.value)) {
+        if (bytes->size() <= 20) {
+            std::ostringstream out;
+            out << "bytes[";
+            for (std::size_t index = 0; index < bytes->size(); ++index) {
+                if (index > 0) {
+                    out << ' ';
+                }
+                out << std::uppercase << std::hex << std::setw(2) << std::setfill('0')
+                    << static_cast<int>((*bytes)[index] & 0xFF);
+            }
+            out << ']';
+            return out.str();
+        }
+        return "bytes[" + std::to_string(bytes->size()) + "]";
+    }
+    return "(null)";
+}
+
+[[nodiscard]] std::string bytecodeDisplayText(const chunks::ScriptChunk::Instruction& instruction,
+                                              std::string_view opcode,
+                                              const std::optional<int>& argument,
+                                              std::string_view annotation) {
+    std::ostringstream out;
+    out << '[' << std::setw(3) << instruction.offset << "] " << std::left << std::setw(14) << opcode;
+    if (argument.has_value()) {
+        out << ' ' << std::left << std::setw(4) << *argument;
+    } else {
+        out << "     ";
+    }
+    if (!annotation.empty()) {
+        out << ' ' << annotation;
+    }
+    return out.str();
+}
+
+[[nodiscard]] std::vector<HandlerDetailsBytecodeRow> handlerDetailsBytecodeRows(
+    const chunks::ScriptChunk& script,
+    const chunks::ScriptChunk::Handler& handler,
+    const chunks::ScriptNamesChunk* names) {
+    std::vector<HandlerDetailsBytecodeRow> rows;
+    rows.reserve(handler.instructions.size());
+    for (const auto& instruction : handler.instructions) {
+        std::optional<int> argument;
+        if (instruction.argument != 0 || instruction.rawOpcode >= 0x40) {
+            argument = instruction.argument;
+        }
+        const std::string opcode(lingo::mnemonic(instruction.opcode));
+        const std::string annotation =
+            lingo::vm::trace::InstructionAnnotator::annotate(script, &handler, instruction, names, true);
+        rows.push_back(HandlerDetailsBytecodeRow{
+            instruction.offset,
+            opcode,
+            argument,
+            annotation,
+            bytecodeDisplayText(instruction, opcode, argument, annotation),
+        });
+    }
+    return rows;
+}
+
+[[nodiscard]] std::vector<HandlerDetailsLiteralRow> handlerDetailsLiteralRows(
+    const std::vector<chunks::ScriptChunk::LiteralEntry>& literals) {
+    std::vector<HandlerDetailsLiteralRow> rows;
+    rows.reserve(literals.size());
+    for (std::size_t index = 0; index < literals.size(); ++index) {
+        rows.push_back(HandlerDetailsLiteralRow{
+            static_cast<int>(index),
+            literalTypeNameForDetails(literals[index].type),
+            literalValueForDetails(literals[index]),
+        });
+    }
+    return rows;
+}
+
+[[nodiscard]] std::vector<HandlerDetailsNameRow> handlerDetailsNameRows(const std::vector<std::string>& names) {
+    std::vector<HandlerDetailsNameRow> rows;
+    rows.reserve(names.size());
+    for (std::size_t index = 0; index < names.size(); ++index) {
+        rows.push_back(HandlerDetailsNameRow{
+            static_cast<int>(index),
+            names[index],
+            "[" + std::to_string(index) + "] " + names[index],
+        });
+    }
+    return rows;
+}
+
+[[nodiscard]] std::string handlerDetailsOverviewHtml(const chunks::ScriptChunk& script,
+                                                     const chunks::ScriptChunk::Handler& handler,
+                                                     const chunks::ScriptNamesChunk* names,
+                                                     std::string_view scriptDisplayName) {
+    const std::string handlerName = script.getHandlerName(handler, names);
+    std::string out;
+    out += "<html><body style='font-family: monospace; font-size: 11px;'>";
+    out += "<h3>" + util::escapeHtml(handlerName) + "</h3>";
+    out += "<b>Script:</b> " + util::escapeHtml(handlerDetailsScriptDisplayName(script, scriptDisplayName)) + "<br>";
+    out += "<b>Script Type:</b> ";
+    out += handlerDetailsScriptTypeName(script.scriptType());
+    out += "<br>";
+    out += "<b>Script ID:</b> " + std::to_string(script.id().value()) + "<br><br>";
+    out += "<b>Bytecode Length:</b> " + std::to_string(handler.bytecodeLength) + " bytes<br>";
+    out += "<b>Instruction Count:</b> " + std::to_string(handler.instructions.size()) + "<br><br>";
+
+    out += "<b>Arguments (" + std::to_string(handler.argCount) + "):</b><br>";
+    if (handler.argCount > 0) {
+        out += "<ul>";
+        for (const int nameId : handler.argNameIds) {
+            out += "<li>" + util::escapeHtml(script.resolveName(nameId, names)) + "</li>";
+        }
+        out += "</ul>";
+    } else {
+        out += "&nbsp;&nbsp;(none)<br>";
+    }
+
+    out += "<b>Local Variables (" + std::to_string(handler.localCount) + "):</b><br>";
+    if (handler.localCount > 0) {
+        out += "<ul>";
+        for (const int nameId : handler.localNameIds) {
+            out += "<li>" + util::escapeHtml(script.resolveName(nameId, names)) + "</li>";
+        }
+        out += "</ul>";
+    } else {
+        out += "&nbsp;&nbsp;(none)<br>";
+    }
+
+    out += "<b>Globals Used:</b> " + std::to_string(handler.globalsCount) + "<br>";
+    out += "</body></html>";
+    return out;
 }
 
 } // namespace
@@ -275,6 +480,56 @@ std::optional<std::string> DebugInspectionModels::datumDetailsTitleFor(DebugInsp
             return "Movie: " + std::string(name);
         case DebugInspectionTable::Watches:
             return std::nullopt;
+    }
+    return std::nullopt;
+}
+
+HandlerDetailsView DebugInspectionModels::handlerDetailsView(const chunks::ScriptChunk& script,
+                                                             const chunks::ScriptChunk::Handler& handler,
+                                                             const chunks::ScriptNamesChunk* names,
+                                                             std::string_view scriptDisplayName) {
+    std::vector<HandlerDetailsTab> tabs{HandlerDetailsTab::Overview, HandlerDetailsTab::Bytecode};
+    std::vector<std::string> tabTitles{"Overview", "Bytecode"};
+    if (!script.literals().empty()) {
+        tabs.push_back(HandlerDetailsTab::Literals);
+        tabTitles.push_back("Literals");
+    }
+    if (!script.properties().empty()) {
+        tabs.push_back(HandlerDetailsTab::Properties);
+        tabTitles.push_back("Properties");
+    }
+    if (!script.globals().empty()) {
+        tabs.push_back(HandlerDetailsTab::Globals);
+        tabTitles.push_back("Globals");
+    }
+
+    return HandlerDetailsView{
+        "Handler: " + script.getHandlerName(handler, names),
+        HANDLER_DETAILS_SIZE,
+        std::move(tabs),
+        std::move(tabTitles),
+        handlerDetailsOverviewHtml(script, handler, names, scriptDisplayName),
+        handlerDetailsBytecodeRows(script, handler, names),
+        handlerDetailsLiteralRows(script.literals()),
+        handlerDetailsNameRows(script.getPropertyNames(names)),
+        handlerDetailsNameRows(script.getGlobalNames(names)),
+        "Close",
+        false,
+    };
+}
+
+std::optional<HandlerDetailsView> DebugInspectionModels::findHandlerDetailsView(
+    const std::vector<std::shared_ptr<chunks::ScriptChunk>>& scripts,
+    const chunks::ScriptNamesChunk* names,
+    std::string_view handlerName) {
+    for (const auto& script : scripts) {
+        if (script == nullptr) {
+            continue;
+        }
+        auto handler = script->findHandler(handlerName, names);
+        if (handler.has_value()) {
+            return handlerDetailsView(*script, *handler, names);
+        }
     }
     return std::nullopt;
 }
