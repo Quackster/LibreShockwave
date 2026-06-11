@@ -382,8 +382,17 @@ using libreshockwave::editor::panels::PanelCapabilities;
 using libreshockwave::editor::panels::PanelDescriptor;
 using libreshockwave::editor::panels::PanelPlacement;
 using libreshockwave::editor::panels::PanelSize;
+using libreshockwave::editor::panels::PaintPanelModel;
+using libreshockwave::editor::panels::PaintPanelState;
+using libreshockwave::editor::panels::SoundPanelInfo;
+using libreshockwave::editor::panels::SoundPanelModel;
+using libreshockwave::editor::panels::SoundPanelState;
+using libreshockwave::editor::panels::TextEditorPanelModel;
+using libreshockwave::editor::panels::TextEditorState;
+using libreshockwave::editor::panels::TextEditorToolbar;
 using libreshockwave::editor::panels::ToolPaletteModel;
 using libreshockwave::editor::panels::ToolPaletteTool;
+using libreshockwave::editor::panels::VectorShapePanelModel;
 using libreshockwave::editor::extraction::AssetExtractor;
 using libreshockwave::editor::preview::GenericPreview;
 using libreshockwave::editor::preview::PalettePreview;
@@ -2161,6 +2170,67 @@ void testEditorPanelWindowModels() {
             FieldEditorState{"Field: Greeting", "Hello\nthere\n!", " Greeting  13 characters"}));
     assert((FieldEditorModel::loadedState("", 12, "abc") ==
             FieldEditorState{"Field: #12", "abc", " #12  3 characters"}));
+
+    assert((PaintPanelModel::toolbarActions() ==
+            std::vector<DisabledPanelAction>{DisabledPanelAction{"Pencil", "Pencil (not yet implemented)"},
+                                             DisabledPanelAction{"Brush", "Brush (not yet implemented)"},
+                                             DisabledPanelAction{"Eraser", "Eraser (not yet implemented)"},
+                                             DisabledPanelAction{"Fill", "Fill (not yet implemented)"},
+                                             DisabledPanelAction{"Line", "Line (not yet implemented)"},
+                                             DisabledPanelAction{"Rect", "Rect (not yet implemented)"},
+                                             DisabledPanelAction{"Oval", "Oval (not yet implemented)"},
+                                             DisabledPanelAction{"Select", "Select (not yet implemented)"},
+                                             DisabledPanelAction{"Lasso", "Lasso (not yet implemented)"}}));
+    assert((PaintPanelModel::emptyState() ==
+            PaintPanelState{"Paint", "No bitmap selected", " Ready", false}));
+    assert((PaintPanelModel::decodeFailedState() ==
+            PaintPanelState{"Paint", "Failed to decode bitmap", " Error", false}));
+    assert((PaintPanelModel::loadedState("Backdrop", 3, 320, 200, 8) ==
+            PaintPanelState{"Paint: Backdrop", "", " Backdrop  320x200  8-bit", true}));
+    assert((PaintPanelModel::loadedState("", 9, 16, 16, 32) ==
+            PaintPanelState{"Paint: #9", "", " #9  16x16  32-bit", true}));
+
+    assert((VectorShapePanelModel::toolbarActions() ==
+            std::vector<std::string>{"Pen", "Line", "Rect", "Ellipse", "Select"}));
+    assert(VectorShapePanelModel::placeholderText() == "Vector Shape Editor - Not yet implemented");
+
+    assert((TextEditorPanelModel::toolbar() ==
+            TextEditorToolbar{
+                {DisabledPanelAction{"B", "B (not yet implemented)"},
+                 DisabledPanelAction{"I", "I (not yet implemented)"},
+                 DisabledPanelAction{"U", "U (not yet implemented)"}},
+                {"Arial", "Times New Roman", "Courier New"},
+                {"12", "14", "16", "18", "24", "36"},
+            }));
+    assert((TextEditorPanelModel::emptyState() ==
+            TextEditorState{"Text", "No text member selected", " Ready"}));
+    assert((TextEditorPanelModel::missingDataState() ==
+            TextEditorState{"Text", "[Text data not found]", " No data"}));
+    assert((TextEditorPanelModel::loadedState("Body", 4, "Line 1\rLine 2", 2) ==
+            TextEditorState{"Text: Body", "Line 1\nLine 2", " Body  2 formatting run(s)"}));
+
+    const SoundPanelInfo soundInfo{true, 44100, 16, 2, 1.25, 1234};
+    assert((SoundPanelModel::emptyState() ==
+            SoundPanelState{"Sound", "No sound member selected", " Ready", false, false, 0, "0.0s / 0.0s"}));
+    assert((SoundPanelModel::missingDataState("", 6) ==
+            SoundPanelState{"Sound: #6", "[Sound data not found]", " No data", false, false, 0, "0.0s / 0.0s"}));
+    assert((SoundPanelModel::loadedState("Theme", 6, soundInfo) ==
+            SoundPanelState{"Sound: Theme",
+                            "Codec: MP3\n"
+                            "Sample Rate: 44100 Hz\n"
+                            "Bits Per Sample: 16\n"
+                            "Channels: Stereo\n"
+                            "Duration: 1.25 seconds\n"
+                            "Audio Data Size: 1234 bytes\n",
+                            " Theme",
+                            true,
+                            false,
+                            0,
+                            "0.0s / 1.2s"}));
+    assert((SoundPanelModel::playingState("Theme", 6, 42, "0.4s / 1.2s") ==
+            SoundPanelState{"Sound: Theme", "", " Playing...", false, true, 42, "0.4s / 1.2s"}));
+    assert((SoundPanelModel::stoppedState("Theme", 6) ==
+            SoundPanelState{"Sound: Theme", "", " Stopped", true, false, 0, "0.0s / 0.0s"}));
 }
 
 void testEditorRendererModels() {

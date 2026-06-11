@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -27,6 +28,54 @@ struct FieldEditorState {
     std::string status;
 
     friend bool operator==(const FieldEditorState&, const FieldEditorState&) = default;
+};
+
+struct PaintPanelState {
+    std::string title;
+    std::string imageText;
+    std::string status;
+    bool hasImage{false};
+
+    friend bool operator==(const PaintPanelState&, const PaintPanelState&) = default;
+};
+
+struct TextEditorToolbar {
+    std::vector<DisabledPanelAction> styleButtons;
+    std::vector<std::string> fontOptions;
+    std::vector<std::string> sizeOptions;
+
+    friend bool operator==(const TextEditorToolbar&, const TextEditorToolbar&) = default;
+};
+
+struct TextEditorState {
+    std::string title;
+    std::string text;
+    std::string status;
+
+    friend bool operator==(const TextEditorState&, const TextEditorState&) = default;
+};
+
+struct SoundPanelInfo {
+    bool mp3{false};
+    int sampleRate{};
+    int bitsPerSample{};
+    int channelCount{};
+    double durationSeconds{};
+    std::size_t audioDataSize{};
+
+    friend bool operator==(const SoundPanelInfo&, const SoundPanelInfo&) = default;
+};
+
+struct SoundPanelState {
+    std::string title;
+    std::string infoText;
+    std::string status;
+    bool playEnabled{false};
+    bool stopEnabled{false};
+    int progressPercent{};
+    std::string timeLabel;
+
+    friend bool operator==(const SoundPanelState&, const SoundPanelState&) = default;
 };
 
 class MessageConsoleModel {
@@ -67,6 +116,49 @@ public:
     [[nodiscard]] static FieldEditorState loadedState(std::string_view memberName,
                                                       int memberNumber,
                                                       std::string_view text);
+};
+
+class PaintPanelModel {
+public:
+    [[nodiscard]] static std::vector<DisabledPanelAction> toolbarActions();
+    [[nodiscard]] static PaintPanelState emptyState();
+    [[nodiscard]] static PaintPanelState decodeFailedState();
+    [[nodiscard]] static PaintPanelState loadedState(std::string_view memberName,
+                                                     int memberNumber,
+                                                     int width,
+                                                     int height,
+                                                     int bitDepth);
+};
+
+class VectorShapePanelModel {
+public:
+    [[nodiscard]] static std::vector<std::string> toolbarActions();
+    [[nodiscard]] static std::string placeholderText();
+};
+
+class TextEditorPanelModel {
+public:
+    [[nodiscard]] static TextEditorToolbar toolbar();
+    [[nodiscard]] static TextEditorState emptyState();
+    [[nodiscard]] static TextEditorState missingDataState();
+    [[nodiscard]] static TextEditorState loadedState(std::string_view memberName,
+                                                     int memberNumber,
+                                                     std::string_view text,
+                                                     std::size_t formattingRunCount);
+};
+
+class SoundPanelModel {
+public:
+    [[nodiscard]] static SoundPanelState emptyState();
+    [[nodiscard]] static SoundPanelState missingDataState(std::string_view memberName, int memberNumber);
+    [[nodiscard]] static SoundPanelState loadedState(std::string_view memberName,
+                                                     int memberNumber,
+                                                     const SoundPanelInfo& info);
+    [[nodiscard]] static SoundPanelState playingState(std::string_view memberName,
+                                                      int memberNumber,
+                                                      int progressPercent,
+                                                      std::string_view timeLabel);
+    [[nodiscard]] static SoundPanelState stoppedState(std::string_view memberName, int memberNumber);
 };
 
 } // namespace libreshockwave::editor::panels
