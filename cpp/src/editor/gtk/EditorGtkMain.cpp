@@ -270,8 +270,11 @@ GtkWidget* makeToolbar(const gtk_models::EditorGtkShellState& shellState) {
             continue;
         }
 
-        GtkWidget* button = gtk_button_new_with_label(item.label.c_str());
+        GtkWidget* button = item.iconName.empty()
+            ? gtk_button_new_with_label(item.label.c_str())
+            : gtk_button_new_from_icon_name(item.iconName.c_str());
         gtk_widget_set_tooltip_text(button, item.tooltip.c_str());
+        gtk_widget_set_sensitive(button, item.enabled && !item.detailedActionName.empty());
         if (!item.detailedActionName.empty()) {
             gtk_actionable_set_action_name(GTK_ACTIONABLE(button), item.detailedActionName.c_str());
         }

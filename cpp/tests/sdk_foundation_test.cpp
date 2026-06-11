@@ -2255,11 +2255,27 @@ void testEditorShellActionModels() {
 
     const auto gtkToolbar = EditorGtkShellModel::toolbarItems(toolbar);
     assert(gtkToolbar.size() == toolbar.items().size());
-    assert(gtkToolbar[0] == (GtkToolbarItemSpec{ToolbarItem::Kind::Button, "Rewind", "Rewind", "rewind", "app.rewind"}));
+    assert(gtkToolbar[0] == (GtkToolbarItemSpec{
+                                ToolbarItem::Kind::Button,
+                                "Rewind",
+                                "Rewind",
+                                "media-seek-backward-symbolic",
+                                "rewind",
+                                "app.rewind",
+                                true,
+                            }));
+    assert(gtkToolbar[1].iconName == "media-playback-stop-symbolic");
+    assert(gtkToolbar[2].iconName == "media-playback-start-symbolic");
     assert(gtkToolbar[3].kind == ToolbarItem::Kind::Separator);
+    assert(gtkToolbar[3].iconName.empty());
     assert(gtkToolbar[3].detailedActionName.empty());
+    assert(!gtkToolbar[3].enabled);
+    assert(gtkToolbar[4].iconName == "go-previous-symbolic");
+    assert(gtkToolbar[5].iconName == "go-next-symbolic");
     assert(gtkToolbar[7].kind == ToolbarItem::Kind::Label);
     assert(gtkToolbar[7].label == "Frame: 1");
+    assert(gtkToolbar[7].iconName.empty());
+    assert(gtkToolbar[7].enabled);
 
     auto gtkRows = EditorGtkShellModel::panelRows(gtkFrame);
     assert(gtkRows.size() == EditorFramePanelModel::creationOrder().size());
@@ -2439,6 +2455,8 @@ void testEditorShellActionModels() {
     assert(gtkState.menuModel().findMenu("File") != nullptr);
     assert(gtkState.menuSpecs()[0].items[3].detailedActionName == "app.open");
     assert(gtkState.toolbarItems().front().detailedActionName == "app.rewind");
+    assert(gtkState.toolbarItems().front().iconName == "media-seek-backward-symbolic");
+    assert(gtkState.toolbarItems().front().enabled);
     assert(gtkState.actionSpec("panel_paint")->active == false);
     assert(gtkState.preferences().recentProjects().empty());
     auto gtkWorkbenchPanels = gtkState.workbenchPanels();

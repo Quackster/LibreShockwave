@@ -258,6 +258,23 @@ std::vector<std::string> toolLabels(const std::vector<panels::ToolPaletteTool>& 
     return result;
 }
 
+std::string toolbarIconName(EditorCommand command) {
+    switch (command) {
+        case EditorCommand::Rewind:
+            return "media-seek-backward-symbolic";
+        case EditorCommand::Stop:
+            return "media-playback-stop-symbolic";
+        case EditorCommand::Play:
+            return "media-playback-start-symbolic";
+        case EditorCommand::StepBackward:
+            return "go-previous-symbolic";
+        case EditorCommand::StepForward:
+            return "go-next-symbolic";
+        default:
+            return {};
+    }
+}
+
 void populateWorkbenchContent(GtkWorkbenchPanelSpec& spec, const EditorContextModel& contextModel) {
     const auto& currentPath = contextModel.currentPath();
     switch (spec.kind) {
@@ -590,6 +607,8 @@ std::vector<GtkToolbarItemSpec> EditorGtkShellModel::toolbarItems(const EditorTo
         spec.kind = item.kind;
         spec.label = item.label;
         spec.tooltip = item.tooltip;
+        spec.iconName = toolbarIconName(item.command);
+        spec.enabled = item.kind != ToolbarItem::Kind::Separator;
         if (item.command != EditorCommand::None) {
             spec.actionName = commandActionName(item.command);
             spec.detailedActionName = appAction(spec.actionName);

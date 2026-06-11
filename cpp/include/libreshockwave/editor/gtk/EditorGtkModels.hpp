@@ -199,8 +199,10 @@ struct GtkToolbarItemSpec {
     ToolbarItem::Kind kind{ToolbarItem::Kind::Button};
     std::string label;
     std::string tooltip;
+    std::string iconName;
     std::string actionName;
     std::string detailedActionName;
+    bool enabled{true};
 
     friend bool operator==(const GtkToolbarItemSpec&, const GtkToolbarItemSpec&) = default;
 };
