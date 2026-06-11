@@ -460,6 +460,15 @@ std::vector<GtkPanelRowSpec> EditorGtkShellModel::panelRows(const EditorFramePan
             row.displayLabel += " (hidden)";
         }
         row.focusEnabled = row.visible && !row.iconified;
+        if (row.focusEnabled) {
+            row.primaryActionName = row.focusActionName;
+            row.detailedPrimaryActionName = row.detailedFocusActionName;
+            row.primaryActionEnabled = true;
+        } else if (!row.visible) {
+            row.primaryActionName = row.toggleActionName;
+            row.detailedPrimaryActionName = row.detailedToggleActionName;
+            row.primaryActionEnabled = true;
+        }
         result.push_back(std::move(row));
     }
     return result;

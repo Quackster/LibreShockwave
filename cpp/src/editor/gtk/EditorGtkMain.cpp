@@ -62,13 +62,18 @@ void populatePanelList(GtkWidget* list, const std::vector<gtk_models::GtkPanelRo
     }
 
     for (const auto& row : rows) {
-        GtkWidget* label = gtk_label_new(row.displayLabel.c_str());
+        GtkWidget* button = gtk_button_new_with_label(row.displayLabel.c_str());
+        gtk_widget_set_sensitive(button, row.primaryActionEnabled);
+        if (row.primaryActionEnabled && !row.detailedPrimaryActionName.empty()) {
+            gtk_actionable_set_action_name(GTK_ACTIONABLE(button), row.detailedPrimaryActionName.c_str());
+        }
+        GtkWidget* label = gtk_button_get_child(GTK_BUTTON(button));
         gtk_label_set_xalign(GTK_LABEL(label), 0.0F);
-        gtk_widget_set_margin_start(label, 8);
-        gtk_widget_set_margin_end(label, 8);
-        gtk_widget_set_margin_top(label, 5);
-        gtk_widget_set_margin_bottom(label, 5);
-        gtk_list_box_append(GTK_LIST_BOX(list), label);
+        gtk_widget_set_margin_start(button, 4);
+        gtk_widget_set_margin_end(button, 4);
+        gtk_widget_set_margin_top(button, 2);
+        gtk_widget_set_margin_bottom(button, 2);
+        gtk_list_box_append(GTK_LIST_BOX(list), button);
     }
 }
 

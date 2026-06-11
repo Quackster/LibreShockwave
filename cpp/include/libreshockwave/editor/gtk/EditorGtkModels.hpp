@@ -120,6 +120,9 @@ struct GtkPanelRowSpec {
     std::string focusActionName;
     std::string detailedFocusActionName;
     bool focusEnabled{false};
+    std::string primaryActionName;
+    std::string detailedPrimaryActionName;
+    bool primaryActionEnabled{false};
 
     friend bool operator==(const GtkPanelRowSpec&, const GtkPanelRowSpec&) = default;
 };
