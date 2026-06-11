@@ -2140,29 +2140,82 @@ void testEditorShellActionModels() {
     assert(gtkView.stageTitle == "Stage");
     assert(gtkView.stagePlaceholderText == "No movie loaded");
     assert(gtkView.statusMessage.empty());
+    assert(!gtkView.openMoviePath.has_value());
+    assert(!gtkView.playing);
+    assert(gtkView.currentFrame == 1);
     assert(gtkView.actionSpecs == gtkState.actionSpecs());
     assert(gtkView.toolbarItems == gtkState.toolbarItems());
     assert(gtkView.panelRows == gtkState.panelRows());
 
+    auto openRequest = gtkState.activateAction("open");
+    assert(openRequest.handled);
+    assert(openRequest.command == EditorCommand::Open);
+    assert(openRequest.requestOpenFile);
+    assert(openRequest.refreshView);
+    assert(openRequest.contextEvents.empty());
+    assert(openRequest.openFileDialog.has_value());
+    assert(openRequest.openFileDialog->title == "Open Director File");
+    assert(openRequest.openFileDialog->filterLabel == "Director Files (*.dir, *.dxr, *.dcr, *.cct, *.cst)");
+    assert((openRequest.openFileDialog->extensions == std::vector<std::string>{"dir", "dxr", "dcr", "cct", "cst"}));
+    assert(!openRequest.openFileDialog->currentDirectory.has_value());
+    assert(openRequest.statusMessage == "Open Director file requested");
+    assert(!gtkState.openMoviePath().has_value());
+    assert(gtkState.viewState().statusMessage == "Open Director file requested");
+
+    auto openEvents = gtkState.openFile("/tmp/Movie.dir");
+    assert(openEvents.size() == 1);
+    assert(openEvents[0].property == EditorContextProperty::File);
+    assert(!openEvents[0].oldPath.has_value());
+    assert(openEvents[0].newPath.value() == "/tmp/Movie.dir");
+    assert(gtkState.contextModel().hasFile());
+    assert(gtkState.openMoviePath().value() == "/tmp/Movie.dir");
+    assert(gtkState.statusMessage() == "Opened Movie.dir");
+    gtkView = gtkState.viewState();
+    assert(gtkView.windowTitle == "LibreShockwave Editor - Movie.dir");
+    assert(gtkView.stagePlaceholderText == "Movie loaded: Movie.dir");
+    assert(gtkView.statusMessage == "Opened Movie.dir");
+    assert(gtkView.openMoviePath.value() == "/tmp/Movie.dir");
+    assert(!gtkView.playing);
+
+    openRequest = gtkState.activateAction("open");
+    assert(openRequest.openFileDialog->currentDirectory.value() == "/tmp");
+
+    auto closeActivation = gtkState.activateAction("close");
+    assert(closeActivation.handled);
+    assert(closeActivation.command == EditorCommand::Close);
+    assert(closeActivation.refreshView);
+    assert(closeActivation.contextEvents.size() == 1);
+    assert(closeActivation.contextEvents[0].oldPath.value() == "/tmp/Movie.dir");
+    assert(!closeActivation.contextEvents[0].newPath.has_value());
+    assert(closeActivation.statusMessage == "Closed Movie.dir");
+    assert(!gtkState.contextModel().hasFile());
+    assert(!gtkState.openMoviePath().has_value());
+    assert(gtkState.viewState().windowTitle == EditorPanelCatalog::closedFrameTitle());
+    assert(gtkState.viewState().stagePlaceholderText == "No movie loaded");
+
     gtkState.setOpenMoviePath("/tmp/Movie.dir");
     assert(gtkState.openMoviePath().value() == "/tmp/Movie.dir");
     assert(gtkState.viewState().windowTitle == "LibreShockwave Editor - Movie.dir");
+    assert(gtkState.statusMessage() == "Opened Movie.dir");
     gtkState.setOpenMoviePath(std::nullopt);
     assert(!gtkState.openMoviePath().has_value());
     assert(gtkState.viewState().windowTitle == EditorPanelCatalog::closedFrameTitle());
+    assert(gtkState.statusMessage() == "Closed Movie.dir");
 
     auto missingActivation = gtkState.activateAction("missing");
-    assert(missingActivation == (GtkActionActivation{
-                                    "missing",
-                                    EditorCommand::None,
-                                    "",
-                                    false,
-                                    false,
-                                    false,
-                                    false,
-                                    std::nullopt,
-                                    "Unknown action: missing",
-                                }));
+    assert(missingActivation.actionName == "missing");
+    assert(missingActivation.command == EditorCommand::None);
+    assert(missingActivation.panelId.empty());
+    assert(!missingActivation.handled);
+    assert(!missingActivation.requestQuit);
+    assert(!missingActivation.requestOpenFile);
+    assert(!missingActivation.refreshActions);
+    assert(!missingActivation.refreshPanels);
+    assert(!missingActivation.refreshView);
+    assert(!missingActivation.active.has_value());
+    assert(!missingActivation.openFileDialog.has_value());
+    assert(missingActivation.contextEvents.empty());
+    assert(missingActivation.statusMessage == "Unknown action: missing");
     assert(gtkState.statusMessage() == "Unknown action: missing");
     assert(gtkState.viewState().statusMessage == "Unknown action: missing");
 
@@ -2178,6 +2231,7 @@ void testEditorShellActionModels() {
     assert(showPaint.panelId == "paint");
     assert(showPaint.refreshActions);
     assert(showPaint.refreshPanels);
+    assert(showPaint.refreshView);
     assert(showPaint.active.has_value());
     assert(showPaint.active.value());
     assert(showPaint.statusMessage == "Paint shown");
@@ -2204,6 +2258,7 @@ void testEditorShellActionModels() {
     assert(resetLayout.command == EditorCommand::ResetLayout);
     assert(resetLayout.refreshActions);
     assert(resetLayout.refreshPanels);
+    assert(resetLayout.refreshView);
     assert(resetLayout.statusMessage == "Layout reset");
     assert(!gtkState.actionSpec("panel_sound")->active);
     gtkView = gtkState.viewState();
@@ -2215,6 +2270,7 @@ void testEditorShellActionModels() {
     assert(exitActivation.handled);
     assert(exitActivation.command == EditorCommand::Exit);
     assert(exitActivation.requestQuit);
+    assert(exitActivation.refreshView);
     assert(exitActivation.statusMessage == "Exit requested");
     assert(gtkState.viewState().statusMessage == "Exit requested");
 }

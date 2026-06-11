@@ -105,6 +105,9 @@ void refreshGtkShell(EditorGtkState& state) {
 gtk_models::GtkActionActivation activateGtkAction(GSimpleAction* action, EditorGtkState* state) {
     const char* name = g_action_get_name(G_ACTION(action));
     auto result = state->shellState.activateAction(name != nullptr ? name : "");
+    if (result.requestOpenFile && result.openFileDialog.has_value()) {
+        g_print("LibreShockwave GTK editor open dialog: %s\n", result.openFileDialog->title.c_str());
+    }
     if (!result.statusMessage.empty()) {
         g_print("LibreShockwave GTK editor: %s\n", result.statusMessage.c_str());
     }
@@ -235,6 +238,9 @@ void activate(GtkApplication* app, gpointer userData) {
 
 int main(int argc, char** argv) {
     EditorGtkState state;
+    if (argc > 1 && argv[1] != nullptr) {
+        (void)state.shellState.openFile(argv[1]);
+    }
     GtkApplication* app = gtk_application_new("org.libreshockwave.Editor", G_APPLICATION_DEFAULT_FLAGS);
     state.app = app;
     installActions(app, state);

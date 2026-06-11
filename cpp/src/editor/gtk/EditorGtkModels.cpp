@@ -4,7 +4,10 @@
 #include <cctype>
 #include <map>
 #include <optional>
+#include <string>
 #include <utility>
+
+#include "libreshockwave/util/FileUtil.hpp"
 
 namespace libreshockwave::editor::gtk {
 namespace {
@@ -27,6 +30,22 @@ void collectMenuActions(const std::vector<EditorMenuItem>& items, std::map<std::
 std::string panelTitle(std::string_view panelId) {
     const auto descriptor = panels::EditorPanelCatalog::descriptor(panelId);
     return descriptor.has_value() ? descriptor->title : std::string(panelId);
+}
+
+std::string displayFileName(std::string_view path) {
+    const auto fileName = util::getFileName(path);
+    return fileName.empty() ? std::string(path) : fileName;
+}
+
+std::optional<std::string> parentDirectory(std::string_view path) {
+    const auto slash = path.find_last_of("/\\");
+    if (slash == std::string_view::npos) {
+        return std::nullopt;
+    }
+    if (slash == 0) {
+        return std::string(path.substr(0, 1));
+    }
+    return std::string(path.substr(0, slash));
 }
 
 } // namespace
@@ -164,8 +183,12 @@ const EditorFramePanelModel& EditorGtkShellState::frameModel() const {
     return frameModel_;
 }
 
+const EditorContextModel& EditorGtkShellState::contextModel() const {
+    return contextModel_;
+}
+
 const std::optional<std::string>& EditorGtkShellState::openMoviePath() const {
-    return openMoviePath_;
+    return contextModel_.currentPath();
 }
 
 const std::string& EditorGtkShellState::statusMessage() const {
@@ -190,9 +213,10 @@ std::vector<GtkPanelRowSpec> EditorGtkShellState::panelRows() const {
 
 GtkShellViewState EditorGtkShellState::viewState() const {
     const auto defaults = panels::EditorPanelCatalog::frameDefaults();
+    const auto& currentPath = contextModel_.currentPath();
     return GtkShellViewState{
-        openMoviePath_.has_value()
-            ? panels::EditorPanelCatalog::frameTitleForPath(*openMoviePath_)
+        currentPath.has_value()
+            ? panels::EditorPanelCatalog::frameTitleForPath(*currentPath)
             : panels::EditorPanelCatalog::closedFrameTitle(),
         defaults.size.width,
         defaults.size.height,
@@ -200,8 +224,11 @@ GtkShellViewState EditorGtkShellState::viewState() const {
         static_cast<std::uint8_t>(defaults.desktopBackgroundG),
         static_cast<std::uint8_t>(defaults.desktopBackgroundB),
         "Stage",
-        "No movie loaded",
+        currentPath.has_value() ? "Movie loaded: " + displayFileName(*currentPath) : "No movie loaded",
         statusMessage_,
+        currentPath,
+        contextModel_.isPlaying(),
+        contextModel_.currentFrame(),
         actionSpecs(),
         toolbarItems(),
         panelRows(),
@@ -209,7 +236,25 @@ GtkShellViewState EditorGtkShellState::viewState() const {
 }
 
 void EditorGtkShellState::setOpenMoviePath(std::optional<std::string> path) {
-    openMoviePath_ = std::move(path);
+    if (path.has_value()) {
+        (void)openFile(std::move(*path));
+    } else {
+        (void)closeFile();
+    }
+}
+
+std::vector<EditorContextEvent> EditorGtkShellState::openFile(std::string path) {
+    lastOpenDirectory_ = parentDirectory(path);
+    auto events = contextModel_.openFile(std::move(path));
+    statusMessage_ = "Opened " + displayFileName(*contextModel_.currentPath());
+    return events;
+}
+
+std::vector<EditorContextEvent> EditorGtkShellState::closeFile() {
+    const auto oldPath = contextModel_.currentPath();
+    auto events = contextModel_.closeFile();
+    statusMessage_ = oldPath.has_value() ? "Closed " + displayFileName(*oldPath) : "No movie loaded";
+    return events;
 }
 
 GtkActionActivation EditorGtkShellState::activateAction(std::string_view name) {
@@ -236,6 +281,7 @@ GtkActionActivation EditorGtkShellState::activateAction(std::string_view name) {
         result.handled = frameModel_.togglePanel(spec->panelId, visible);
         result.refreshActions = result.handled;
         result.refreshPanels = result.handled;
+        result.refreshView = result.handled;
         result.active = frameModel_.isPanelVisible(spec->panelId);
         result.statusMessage = panelTitle(spec->panelId) + (result.active.value_or(false) ? " shown" : " hidden");
         statusMessage_ = result.statusMessage;
@@ -243,9 +289,24 @@ GtkActionActivation EditorGtkShellState::activateAction(std::string_view name) {
     }
 
     switch (spec->command) {
+        case EditorCommand::Open:
+            result.handled = true;
+            result.requestOpenFile = true;
+            result.refreshView = true;
+            result.openFileDialog = EditorFramePanelModel::openFileDialog(lastOpenDirectory_);
+            result.statusMessage = "Open Director file requested";
+            statusMessage_ = result.statusMessage;
+            return result;
+        case EditorCommand::Close:
+            result.handled = true;
+            result.refreshView = true;
+            result.contextEvents = closeFile();
+            result.statusMessage = statusMessage_;
+            return result;
         case EditorCommand::Exit:
             result.handled = true;
             result.requestQuit = true;
+            result.refreshView = true;
             result.statusMessage = "Exit requested";
             statusMessage_ = result.statusMessage;
             return result;
@@ -254,6 +315,7 @@ GtkActionActivation EditorGtkShellState::activateAction(std::string_view name) {
             result.handled = true;
             result.refreshActions = true;
             result.refreshPanels = true;
+            result.refreshView = true;
             result.statusMessage = "Layout reset";
             statusMessage_ = result.statusMessage;
             return result;

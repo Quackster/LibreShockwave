@@ -6,6 +6,7 @@
 #include <string_view>
 #include <vector>
 
+#include "libreshockwave/editor/EditorContextModels.hpp"
 #include "libreshockwave/editor/EditorFrameModels.hpp"
 #include "libreshockwave/editor/EditorShellModels.hpp"
 #include "libreshockwave/editor/panels/EditorPanelCatalog.hpp"
@@ -53,9 +54,13 @@ struct GtkActionActivation {
     std::string panelId;
     bool handled{false};
     bool requestQuit{false};
+    bool requestOpenFile{false};
     bool refreshActions{false};
     bool refreshPanels{false};
+    bool refreshView{false};
     std::optional<bool> active;
+    std::optional<EditorOpenFileDialogModel> openFileDialog;
+    std::vector<EditorContextEvent> contextEvents;
     std::string statusMessage;
 
     friend bool operator==(const GtkActionActivation&, const GtkActionActivation&) = default;
@@ -71,6 +76,9 @@ struct GtkShellViewState {
     std::string stageTitle;
     std::string stagePlaceholderText;
     std::string statusMessage;
+    std::optional<std::string> openMoviePath;
+    bool playing{false};
+    int currentFrame{1};
     std::vector<GtkActionSpec> actionSpecs;
     std::vector<GtkToolbarItemSpec> toolbarItems;
     std::vector<GtkPanelRowSpec> panelRows;
@@ -101,6 +109,7 @@ public:
     [[nodiscard]] const EditorMenuModel& menuModel() const;
     [[nodiscard]] const EditorToolBarModel& toolbarModel() const;
     [[nodiscard]] const EditorFramePanelModel& frameModel() const;
+    [[nodiscard]] const EditorContextModel& contextModel() const;
     [[nodiscard]] const std::optional<std::string>& openMoviePath() const;
     [[nodiscard]] const std::string& statusMessage() const;
 
@@ -111,13 +120,16 @@ public:
     [[nodiscard]] GtkShellViewState viewState() const;
 
     void setOpenMoviePath(std::optional<std::string> path);
+    std::vector<EditorContextEvent> openFile(std::string path);
+    std::vector<EditorContextEvent> closeFile();
     GtkActionActivation activateAction(std::string_view name);
 
 private:
     EditorMenuModel menuModel_;
     EditorToolBarModel toolbarModel_;
     EditorFramePanelModel frameModel_;
-    std::optional<std::string> openMoviePath_;
+    EditorContextModel contextModel_;
+    std::optional<std::string> lastOpenDirectory_;
     std::string statusMessage_;
 };
 
