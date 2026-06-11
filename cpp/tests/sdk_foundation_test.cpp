@@ -13,6 +13,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <optional>
@@ -81,6 +82,7 @@
 #include "libreshockwave/editor/model/FrameAppearance.hpp"
 #include "libreshockwave/editor/model/MemberNodeData.hpp"
 #include "libreshockwave/editor/model/ScoreCellData.hpp"
+#include "libreshockwave/editor/extraction/AssetExtractor.hpp"
 #include "libreshockwave/editor/preview/GenericPreview.hpp"
 #include "libreshockwave/editor/preview/PalettePreview.hpp"
 #include "libreshockwave/editor/preview/PreviewFormatUtils.hpp"
@@ -284,6 +286,7 @@ using libreshockwave::editor::model::FileNode;
 using libreshockwave::editor::model::FrameAppearance;
 using libreshockwave::editor::model::MemberNodeData;
 using libreshockwave::editor::model::ScoreCellData;
+using libreshockwave::editor::extraction::AssetExtractor;
 using libreshockwave::editor::preview::GenericPreview;
 using libreshockwave::editor::preview::PalettePreview;
 using libreshockwave::editor::preview::PreviewFormatUtils;
@@ -2069,6 +2072,47 @@ void testEditorScanningHelpers() {
     const auto textPreviewText = textPreview.format(*file, textInfo);
     assert(textPreviewText.find("=== TEXT: TextMember ===") != std::string::npos);
     assert(textPreviewText.find("--- Text Content ---\nHello\nWorld") != std::string::npos);
+
+    auto readBytes = [](const std::filesystem::path& path) {
+        std::ifstream in(path, std::ios::binary);
+        return std::vector<std::uint8_t>(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    };
+    auto readText = [](const std::filesystem::path& path) {
+        std::ifstream in(path, std::ios::binary);
+        return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    };
+
+    const auto outputDir = std::filesystem::temp_directory_path() /
+                           ("libreshockwave_asset_extractor_" + std::to_string(::getpid()));
+    std::filesystem::remove_all(outputDir);
+
+    AssetExtractor extractor;
+    assert(AssetExtractor::sanitizeFileName("Odd Name!*") == "Odd_Name__");
+    assert(AssetExtractor::resolveUnique(outputDir, "asset", ".bin").filename() == "asset.bin");
+
+    assert(extractor.extract(*file, soundInfo, outputDir));
+    const auto soundBytes = readBytes(outputDir / "SoundMember.wav");
+    assert(soundBytes.size() >= 44);
+    assert(soundBytes[0] == 'R' && soundBytes[1] == 'I' && soundBytes[2] == 'F' && soundBytes[3] == 'F');
+
+    assert(extractor.extract(*file, textInfo, outputDir));
+    assert(readText(outputDir / "TextMember.txt") == "Hello\nWorld");
+    assert(extractor.extract(*file, textInfo, outputDir));
+    assert(std::filesystem::exists(outputDir / "TextMember_1.txt"));
+
+    assert(extractor.extract(*file, paletteInfo, outputDir));
+    assert(readText(outputDir / "PaletteMember.pal") ==
+           "JASC-PAL\n0100\n2\n0 17 34\n51 68 85\n");
+
+    assert(extractor.extract(*file, scriptInfo, outputDir));
+    const auto scriptFile = readText(outputDir / "ScriptMember.ls");
+    assert(scriptFile.find("-- Script: ScriptMember") != std::string::npos);
+    assert(scriptFile.find("-- Type: Script") != std::string::npos);
+
+    assert(extractor.extract(*file, shapeInfo, outputDir));
+    assert(readBytes(outputDir / "ShapeMember.bin") == shapeInfo.member->specificData());
+
+    std::filesystem::remove_all(outputDir);
 }
 
 void testLingoDatumTypes() {
