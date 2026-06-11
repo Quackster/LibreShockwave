@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <limits>
 #include <map>
 #include <optional>
 #include <string>
@@ -21,7 +22,7 @@ constexpr std::string_view ABOUT_BODY =
     "LibreShockwave Editor\n\n"
     "A recreation of Macromedia Director MX 2004.\n\n"
     "Part of the LibreShockwave project.";
-constexpr std::string_view OPEN_RECENT_ACTION_NAME = "open_recent";
+constexpr std::string_view OPEN_RECENT_ACTION_PREFIX = "open_recent_";
 
 std::string gtkAcceleratorKey(std::string_view key) {
     if (key == "DELETE") {
@@ -167,6 +168,25 @@ std::string joinTraceHandlers(const std::vector<std::string>& handlers) {
             result += ", ";
         }
         result += handler;
+    }
+    return result;
+}
+
+std::optional<int> parseNonNegativeIndex(std::string_view value) {
+    if (value.empty()) {
+        return std::nullopt;
+    }
+
+    int result = 0;
+    for (const char c : value) {
+        if (std::isdigit(static_cast<unsigned char>(c)) == 0) {
+            return std::nullopt;
+        }
+        const int digit = c - '0';
+        if (result > (std::numeric_limits<int>::max() - digit) / 10) {
+            return std::nullopt;
+        }
+        result = result * 10 + digit;
     }
     return result;
 }
@@ -386,6 +406,17 @@ std::string EditorGtkShellModel::workbenchPanelFloatActionName(std::string_view 
     return "workbench_float_" + sanitizeActionName(panelId);
 }
 
+std::string EditorGtkShellModel::recentProjectActionName(int index) {
+    return std::string(OPEN_RECENT_ACTION_PREFIX) + std::to_string(index);
+}
+
+std::optional<int> EditorGtkShellModel::recentProjectActionIndex(std::string_view actionName) {
+    if (!actionName.starts_with(OPEN_RECENT_ACTION_PREFIX)) {
+        return std::nullopt;
+    }
+    return parseNonNegativeIndex(actionName.substr(OPEN_RECENT_ACTION_PREFIX.size()));
+}
+
 std::string EditorGtkShellModel::appAction(std::string_view actionName) {
     return "app." + std::string(actionName);
 }
@@ -467,7 +498,8 @@ GtkStartScreenPresentation EditorGtkShellModel::startScreenPresentation(const Gt
         row.subtitle = recent.parentDirectory;
         row.exists = recent.exists;
         row.enabled = recent.exists;
-        row.actionName = std::string(OPEN_RECENT_ACTION_NAME);
+        row.actionName = recentProjectActionName(row.index);
+        row.detailedActionName = appAction(row.actionName);
         if (!recent.exists) {
             if (!row.subtitle.empty()) {
                 row.subtitle += " ";
@@ -987,7 +1019,7 @@ GtkActionActivation EditorGtkShellState::cancelOpenFile() {
 
 GtkActionActivation EditorGtkShellState::openRecentProject(int index, StartScreenModel::ExistsCallback exists) {
     GtkActionActivation result;
-    result.actionName = "open_recent";
+    result.actionName = EditorGtkShellModel::recentProjectActionName(index);
 
     const auto entries = StartScreenModel::recentEntries(preferences_, std::move(exists));
     if (index < 0 || static_cast<std::size_t>(index) >= entries.size()) {
@@ -1012,6 +1044,22 @@ GtkActionActivation EditorGtkShellState::openRecentProject(int index, StartScree
     result.refreshView = true;
     result.contextEvents = openFile(*selectedPath);
     result.statusMessage = statusMessage_;
+    return result;
+}
+
+GtkActionActivation EditorGtkShellState::activateRecentProjectAction(std::string_view actionName,
+                                                                     StartScreenModel::ExistsCallback exists) {
+    const auto index = EditorGtkShellModel::recentProjectActionIndex(actionName);
+    if (!index.has_value()) {
+        statusMessage_ = "Unknown recent project action: " + std::string(actionName);
+        GtkActionActivation result;
+        result.actionName = std::string(actionName);
+        result.statusMessage = statusMessage_;
+        return result;
+    }
+
+    auto result = openRecentProject(*index, std::move(exists));
+    result.actionName = std::string(actionName);
     return result;
 }
 

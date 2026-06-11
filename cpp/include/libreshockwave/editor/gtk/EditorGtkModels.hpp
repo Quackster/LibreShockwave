@@ -114,6 +114,7 @@ struct GtkRecentProjectRowSpec {
     bool exists{false};
     bool enabled{false};
     std::string actionName;
+    std::string detailedActionName;
     std::string disabledReason;
 
     friend bool operator==(const GtkRecentProjectRowSpec&, const GtkRecentProjectRowSpec&) = default;
@@ -371,6 +372,8 @@ public:
     [[nodiscard]] static std::string panelActionName(std::string_view panelId);
     [[nodiscard]] static std::string workbenchPanelActionName(std::string_view panelId);
     [[nodiscard]] static std::string workbenchPanelFloatActionName(std::string_view panelId);
+    [[nodiscard]] static std::string recentProjectActionName(int index);
+    [[nodiscard]] static std::optional<int> recentProjectActionIndex(std::string_view actionName);
     [[nodiscard]] static std::string appAction(std::string_view actionName);
     [[nodiscard]] static GtkShellDialogPresentation dialogPresentation(const GtkShellDialogRequest& request);
     [[nodiscard]] static GtkOpenFileDialogPresentation openFileDialogPresentation(
@@ -439,6 +442,7 @@ public:
     GtkActionActivation acceptOpenFile(std::string path);
     GtkActionActivation cancelOpenFile();
     GtkActionActivation openRecentProject(int index, StartScreenModel::ExistsCallback exists);
+    GtkActionActivation activateRecentProjectAction(std::string_view actionName, StartScreenModel::ExistsCallback exists);
     GtkWorkbenchPanelActivation floatWorkbenchPanel(std::string_view panelId);
     GtkWorkbenchPanelActivation activateWorkbenchPanel(std::string_view panelId);
     GtkWorkbenchPanelActivation activateWorkbenchAction(std::string_view actionName);

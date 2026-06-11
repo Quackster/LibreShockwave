@@ -2754,6 +2754,13 @@ void testEditorShellActionModels() {
     assert((seededGtkState.externalParams() ==
             std::vector<ExternalParamRow>{ExternalParamRow{"swSeed", "from-preferences"}}));
     assert(seededGtkState.preferences().recentProjects().front() == "/seed/Movie.dir");
+    assert(EditorGtkShellModel::recentProjectActionName(0) == "open_recent_0");
+    assert(EditorGtkShellModel::recentProjectActionName(12) == "open_recent_12");
+    assert(EditorGtkShellModel::recentProjectActionIndex("open_recent_0").value() == 0);
+    assert(EditorGtkShellModel::recentProjectActionIndex("open_recent_12").value() == 12);
+    assert(!EditorGtkShellModel::recentProjectActionIndex("open_recent").has_value());
+    assert(!EditorGtkShellModel::recentProjectActionIndex("open_recent_").has_value());
+    assert(!EditorGtkShellModel::recentProjectActionIndex("open_recent_missing").has_value());
 
     EditorGtkShellState startScreenGtkState;
     PreferencesModel startScreenPreferences;
@@ -2803,7 +2810,8 @@ void testEditorShellActionModels() {
     assert(startScreenPresentation.recentProjects[0].subtitle == "/movies");
     assert(startScreenPresentation.recentProjects[0].exists);
     assert(startScreenPresentation.recentProjects[0].enabled);
-    assert(startScreenPresentation.recentProjects[0].actionName == "open_recent");
+    assert(startScreenPresentation.recentProjects[0].actionName == "open_recent_0");
+    assert(startScreenPresentation.recentProjects[0].detailedActionName == "app.open_recent_0");
     assert(startScreenPresentation.recentProjects[0].disabledReason.empty());
     assert(startScreenPresentation.recentProjects[1].index == 1);
     assert(startScreenPresentation.recentProjects[1].path == "/movies/Missing.dir");
@@ -2811,7 +2819,8 @@ void testEditorShellActionModels() {
     assert(startScreenPresentation.recentProjects[1].subtitle == "/movies (missing)");
     assert(!startScreenPresentation.recentProjects[1].exists);
     assert(!startScreenPresentation.recentProjects[1].enabled);
-    assert(startScreenPresentation.recentProjects[1].actionName == "open_recent");
+    assert(startScreenPresentation.recentProjects[1].actionName == "open_recent_1");
+    assert(startScreenPresentation.recentProjects[1].detailedActionName == "app.open_recent_1");
     assert(startScreenPresentation.recentProjects[1].disabledReason == "File not found: /movies/Missing.dir");
 
     EditorGtkShellState emptyStartScreenGtkState;
@@ -2825,18 +2834,26 @@ void testEditorShellActionModels() {
     assert(emptyStartScreenPresentation.openMovieButtonLabel == "Open Movie...");
 
     auto missingRecent = startScreenGtkState.openRecentProject(1, recentExists);
-    assert(missingRecent.actionName == "open_recent");
+    assert(missingRecent.actionName == "open_recent_1");
     assert(!missingRecent.handled);
     assert(missingRecent.contextEvents.empty());
     assert(missingRecent.statusMessage == "Recent project not found: /movies/Missing.dir");
     assert(!startScreenGtkState.openMoviePath().has_value());
 
     auto invalidRecent = startScreenGtkState.openRecentProject(5, recentExists);
+    assert(invalidRecent.actionName == "open_recent_5");
     assert(!invalidRecent.handled);
     assert(invalidRecent.statusMessage == "Recent project not available");
 
-    auto openedRecent = startScreenGtkState.openRecentProject(0, recentExists);
-    assert(openedRecent.actionName == "open_recent");
+    auto invalidRecentAction = startScreenGtkState.activateRecentProjectAction("open_recent_bad", recentExists);
+    assert(invalidRecentAction.actionName == "open_recent_bad");
+    assert(!invalidRecentAction.handled);
+    assert(invalidRecentAction.statusMessage == "Unknown recent project action: open_recent_bad");
+
+    auto openedRecent = startScreenGtkState.activateRecentProjectAction(
+        startScreenPresentation.recentProjects[0].actionName,
+        recentExists);
+    assert(openedRecent.actionName == "open_recent_0");
     assert(openedRecent.handled);
     assert(openedRecent.refreshView);
     assert(openedRecent.contextEvents.size() == 1);
