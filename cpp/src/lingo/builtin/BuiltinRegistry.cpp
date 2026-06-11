@@ -1635,8 +1635,13 @@ Datum ImageBuiltins::importFileInto(BuiltinContext& context, const std::vector<D
 }
 
 void SoundBuiltins::registerBuiltins(BuiltinRegistry& registry) {
+    registry.registerBuiltin("beep", SoundBuiltins::beep);
     registry.registerBuiltin("sound", SoundBuiltins::sound);
     registry.registerBuiltin("soundenabled", SoundBuiltins::soundEnabled);
+}
+
+Datum SoundBuiltins::beep(BuiltinContext&, const std::vector<Datum>&) {
+    return Datum::voidValue();
 }
 
 Datum SoundBuiltins::sound(BuiltinContext&, const std::vector<Datum>& args) {

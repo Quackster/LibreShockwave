@@ -292,6 +292,7 @@ public:
 class SoundBuiltins {
 public:
     static void registerBuiltins(BuiltinRegistry& registry);
+    [[nodiscard]] static Datum beep(BuiltinContext& context, const std::vector<Datum>& args);
     [[nodiscard]] static Datum sound(BuiltinContext& context, const std::vector<Datum>& args);
     [[nodiscard]] static Datum soundEnabled(BuiltinContext& context, const std::vector<Datum>& args);
     [[nodiscard]] static Datum handleMethod(BuiltinContext& context,

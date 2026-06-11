@@ -10923,6 +10923,9 @@ void testBuiltinRegistryFoundation() {
                              Datum::of(std::string("media/a.png"))}).boolValue());
     context.importFileIntoHandler = nullptr;
 
+    assert(registry.contains("beep"));
+    assert(registry.invoke("beep", context).isVoid());
+    assert(registry.invoke("beep", context, {Datum::of(2)}).isVoid());
     assert(registry.contains("sound"));
     assert(registry.contains("soundEnabled"));
     assert(registry.invoke("soundEnabled", context).boolValue());
