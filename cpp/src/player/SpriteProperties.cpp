@@ -73,6 +73,10 @@ lingo::Datum rgbColorDatum(int rgb) {
     return lingo::Datum::colorRef((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
 }
 
+lingo::Datum normalizedColorDatum(const lingo::Datum& value, int rgb) {
+    return value.asColorRef() != nullptr ? value : rgbColorDatum(rgb);
+}
+
 } // namespace
 
 SpriteProperties::SpriteProperties(render::SpriteRegistry* registry)
@@ -133,8 +137,8 @@ lingo::Datum SpriteProperties::getSpriteProp(int spriteNum, std::string_view pro
     if (prop == "stretch") return lingo::Datum::of(sprite->stretch());
     if (prop == "forecolor") return lingo::Datum::of(sprite->foreColor());
     if (prop == "backcolor") return lingo::Datum::of(sprite->backColor());
-    if (prop == "color") return rgbColorDatum(sprite->foreColor());
-    if (prop == "bgcolor") return rgbColorDatum(sprite->backColor());
+    if (prop == "color") return sprite->colorDatum().value_or(rgbColorDatum(sprite->foreColor()));
+    if (prop == "bgcolor") return sprite->bgColorDatum().value_or(rgbColorDatum(sprite->backColor()));
     if (prop == "left") return lingo::Datum::of(resolveSpriteBounds(*sprite).left);
     if (prop == "top") return lingo::Datum::of(resolveSpriteBounds(*sprite).top);
     if (prop == "right") return lingo::Datum::of(resolveSpriteBounds(*sprite).right);
@@ -298,10 +302,14 @@ bool SpriteProperties::setSpriteProp(int spriteNum, std::string_view propName, c
         return true;
     }
     if (prop == "color") {
-        return setColorValue(value, [sprite](int color) { sprite->setForeColor(color); });
+        return setColorValue(value, [sprite, value](int color) {
+            sprite->setColorDatum(color, normalizedColorDatum(value, color));
+        });
     }
     if (prop == "bgcolor") {
-        return setColorValue(value, [sprite](int color) { sprite->setBackColor(color); });
+        return setColorValue(value, [sprite, value](int color) {
+            sprite->setBgColorDatum(color, normalizedColorDatum(value, color));
+        });
     }
     if (prop == "rotation") {
         sprite->setRotation(value.floatValue());

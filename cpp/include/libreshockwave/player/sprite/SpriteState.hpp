@@ -43,6 +43,8 @@ public:
     [[nodiscard]] int stretch() const;
     [[nodiscard]] int foreColor() const;
     [[nodiscard]] int backColor() const;
+    [[nodiscard]] const std::optional<lingo::Datum>& colorDatum() const;
+    [[nodiscard]] const std::optional<lingo::Datum>& bgColorDatum() const;
     [[nodiscard]] bool hasForeColor() const;
     [[nodiscard]] bool hasBackColor() const;
 
@@ -60,6 +62,8 @@ public:
     void setStretch(int stretch);
     void setForeColor(int foreColor);
     void setBackColor(int backColor);
+    void setColorDatum(int foreColor, lingo::Datum color);
+    void setBgColorDatum(int backColor, lingo::Datum color);
 
     [[nodiscard]] bool isFlipH() const;
     [[nodiscard]] bool isFlipV() const;
@@ -125,6 +129,8 @@ private:
     int stretch_{0};
     int foreColor_{0};
     int backColor_{0xFFFFFF};
+    std::optional<lingo::Datum> colorDatum_;
+    std::optional<lingo::Datum> bgColorDatum_;
     bool hasForeColor_{false};
     bool hasBackColor_{false};
     bool hasSizeChanged_{false};

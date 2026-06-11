@@ -18135,6 +18135,26 @@ void testSpritePropertiesFoundation() {
     assert(props.getSpriteProp(3, "mostRecentCuePoint").intValue() == 2);
     assert(props.getSpriteProp(3, "tweened").boolValue());
     assert(props.getSpriteProp(3, "name").stringValue() == "runtime-sprite");
+    assert(props.setSpriteProp(14, "color", Datum::paletteIndexColor(45)));
+    auto paletteColorSprite = registry.get(14);
+    assert(paletteColorSprite != nullptr);
+    assert(paletteColorSprite->foreColor() == 0x2D2D2D);
+    const auto* paletteSpriteColor = props.getSpriteProp(14, "color").asColorRef();
+    assert(paletteSpriteColor != nullptr);
+    assert(paletteSpriteColor->paletteIndex.has_value());
+    assert(paletteSpriteColor->paletteIndex.value() == 45);
+    assert(props.setSpriteProp(14, "bgColor", Datum::paletteIndexColor(46)));
+    const auto* paletteSpriteBgColor = props.getSpriteProp(14, "bgColor").asColorRef();
+    assert(paletteSpriteBgColor != nullptr);
+    assert(paletteSpriteBgColor->paletteIndex.has_value());
+    assert(paletteSpriteBgColor->paletteIndex.value() == 46);
+    assert(props.setSpriteProp(14, "foreColor", Datum::of(0x112233)));
+    const auto* resetSpriteColor = props.getSpriteProp(14, "color").asColorRef();
+    assert(resetSpriteColor != nullptr);
+    assert(!resetSpriteColor->paletteIndex.has_value());
+    assert(resetSpriteColor->r == 0x11);
+    assert(resetSpriteColor->g == 0x22);
+    assert(resetSpriteColor->b == 0x33);
 
     auto constraintSprite = registry.getOrCreateDynamic(12);
     constraintSprite->setLocH(100);

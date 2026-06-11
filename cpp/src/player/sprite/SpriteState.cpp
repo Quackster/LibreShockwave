@@ -31,6 +31,8 @@ int SpriteState::trails() const { return trails_; }
 int SpriteState::stretch() const { return stretch_; }
 int SpriteState::foreColor() const { return foreColor_; }
 int SpriteState::backColor() const { return backColor_; }
+const std::optional<lingo::Datum>& SpriteState::colorDatum() const { return colorDatum_; }
+const std::optional<lingo::Datum>& SpriteState::bgColorDatum() const { return bgColorDatum_; }
 bool SpriteState::hasForeColor() const { return hasForeColor_; }
 bool SpriteState::hasBackColor() const { return hasBackColor_; }
 
@@ -89,11 +91,25 @@ void SpriteState::setStretch(int stretch) {
 
 void SpriteState::setForeColor(int foreColor) {
     foreColor_ = foreColor;
+    colorDatum_.reset();
     hasForeColor_ = true;
 }
 
 void SpriteState::setBackColor(int backColor) {
     backColor_ = backColor;
+    bgColorDatum_.reset();
+    hasBackColor_ = true;
+}
+
+void SpriteState::setColorDatum(int foreColor, lingo::Datum color) {
+    foreColor_ = foreColor;
+    colorDatum_ = std::move(color);
+    hasForeColor_ = true;
+}
+
+void SpriteState::setBgColorDatum(int backColor, lingo::Datum color) {
+    backColor_ = backColor;
+    bgColorDatum_ = std::move(color);
     hasBackColor_ = true;
 }
 
@@ -310,6 +326,8 @@ void SpriteState::rebindToScore(chunks::ScoreChunk::ChannelData data) {
     stretch_ = data.stretch;
     foreColor_ = data.resolvedForeColor();
     backColor_ = data.resolvedBackColor();
+    colorDatum_.reset();
+    bgColorDatum_.reset();
     hasForeColor_ = false;
     hasBackColor_ = false;
     hasSizeChanged_ = false;
