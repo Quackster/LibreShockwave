@@ -82,7 +82,10 @@ private:
     [[nodiscard]] NetTask& createGetTask(std::string url);
     [[nodiscard]] NetTask& createPostTask(std::string url, std::string postData);
     void executeTask(NetTask& task, bool useCache);
-    void completeTask(NetTask& task, std::vector<std::uint8_t> data, bool cacheResult);
+    void completeTask(NetTask& task,
+                      std::vector<std::uint8_t> data,
+                      bool cacheResult,
+                      std::string_view cacheUrl);
     void notifyCompletion(const std::string& url, const std::vector<std::uint8_t>& data) const;
 
     std::unordered_map<int, NetTask> tasks_;

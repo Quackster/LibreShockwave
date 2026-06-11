@@ -642,6 +642,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 
 - `net::NetManager` ports task ID allocation, latest-task lookup, GET/POST task registration, cache hits, local basePath/localHttpRoot filesystem loading with Java-style extension fallbacks, completion callbacks, task byte/text/error/status accessors, and Java-compatible stream-status prop-list payloads.
 - URL resolution, origin/path extraction, cache key calculation, URL-based stream-status lookup, and `.cct`/`.cst` cache fallback matching are available in C++.
+- Root-relative HTTP GETs expand against the configured HTTP `basePath` origin for provider-backed fetches and localHttpRoot filesystem loads while preserving the authored task URL for status callbacks.
 - Actual platform HTTP loading is exposed through an injectable fetch handler until the C++ platform networking backend is ported.
 
 ### Sound Manager Foundation
@@ -1016,7 +1017,7 @@ Result:
 - FrameRenderPipeline step ordering, snapshot return, null-step rejection, and missing-snapshot failure tests passed through the same CTest executable.
 - TextRenderer split-line, character-line, line-start, wrapping, and default XMED delegation tests passed through the same CTest executable.
 - NetTask GET/POST construction, state transitions, result/error storage, stream status, and display formatting tests passed through the same CTest executable.
-- NetManager URL resolution, cache fallback, local basePath/localHttpRoot filesystem loading, GET/POST registration, handler-backed completion/failure, latest-task lookup, stream-status prop lists, raw byte/text results, callbacks, shutdown, and clear tests passed through the same CTest executable.
+- NetManager URL resolution, cache fallback, local basePath/localHttpRoot filesystem loading, root-relative HTTP request normalization, GET/POST registration, handler-backed completion/failure, latest-task lookup, stream-status prop lists, raw byte/text results, callbacks, shutdown, and clear tests passed through the same CTest executable.
 - SoundManager channel validation, volume clamping, backend delegation, Lingo play argument parsing, resolver lookup, format detection, KEY-owned member lookup, and SoundChunk playable conversion tests passed through the same CTest executable.
 - TimeoutManager creation, property access/mutation, one-shot/persistent flags, timeout references, names/count, elapsed-time processing, one-shot removal-before-fire recreation, system-event script-instance target filtering, forget, and clear tests passed through the same CTest executable.
 - BitmapCache cache-keying, palette invalidation, non-native alpha coercion, indexed matte remap selection/application, and InkProcessor color remap/applyInk helpers, exact background-transparent keying, native-alpha background-border keying, native-alpha MATTE skip, 32-bit MATTE fallback preservation, MATTE palette fallback, duplicate-RGB explicit indexed MATTE selection, black/white default indexed MATTE fallback, indexed window-shadow MATTE selection, ADD/ADD_PIN flood-fill isolation, RGB ADD_PIN preservation, outlined-white body matte preservation, and DARKEN/LIGHTEN rectangular-media matte skipping passed through the same CTest executable.
@@ -1447,4 +1448,5 @@ Result:
 - `4fb7ce3f Render C++ GTK all-floating pane bodies`
 - `6876a30f Size C++ GTK floating pane bodies`
 - `bdd24288 Move C++ GTK floating panes by drag`
-- Current checkpoint commit message: `Detach C++ GTK docked panes by drag`
+- `19305c39 Detach C++ GTK docked panes by drag`
+- Current checkpoint commit message: `Port C++ root-relative net fetches`

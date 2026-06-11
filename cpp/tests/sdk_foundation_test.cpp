@@ -21121,6 +21121,11 @@ void testNetManagerFoundation() {
         if (task.originalUrl() == "missing") {
             return NetManager::LoadResult::failure(-7, "bad url");
         }
+        if (task.originalUrl() == "http://example.invalid/gamedata/root.txt?cache=1") {
+            assert(task.method() == NetTaskMethod::Get);
+            assert(task.url() == "root.txt");
+            return NetManager::LoadResult::success(std::vector<std::uint8_t>{'R', 'T'});
+        }
         assert(task.method() == NetTaskMethod::Get);
         assert(task.url() == "movie.dir");
         return NetManager::LoadResult::success(std::vector<std::uint8_t>{'O', 'K'});
@@ -21150,16 +21155,30 @@ void testNetManagerFoundation() {
     assert(statusProp(manager.getStreamStatusDatum(std::string_view("movie.dir")), "state").stringValue() == "Complete");
     assert(statusProp(manager.getStreamStatusDatum(std::string_view("http://example.invalid/path/movie.dir")), "state").stringValue() == "Complete");
 
-    const int postTaskId = manager.postNetText("submit", "a=b");
-    assert(postTaskId == 3);
+    const int rootRelativeTaskId = manager.preloadNetThing("/gamedata/root.txt?cache=1");
+    assert(rootRelativeTaskId == 3);
     assert(fetchCount == 2);
+    const auto* rootRelativeTask = manager.getTask(rootRelativeTaskId);
+    assert(rootRelativeTask != nullptr);
+    assert(rootRelativeTask->originalUrl() == "/gamedata/root.txt?cache=1");
+    assert(rootRelativeTask->url() == "root.txt");
+    assert(rootRelativeTask->state() == NetTaskState::Completed);
+    assert(manager.netTextResult(rootRelativeTaskId) == "RT");
+    assert(manager.getCachedData("root.txt").value() == std::vector<std::uint8_t>({'R', 'T'}));
+    assert(completedUrls.back() == "/gamedata/root.txt?cache=1");
+    assert(statusProp(manager.getStreamStatusDatum(
+               std::string_view("http://example.invalid/gamedata/root.txt")), "state").stringValue() == "Complete");
+
+    const int postTaskId = manager.postNetText("submit", "a=b");
+    assert(postTaskId == 4);
+    assert(fetchCount == 3);
     assert(manager.getTask(postTaskId)->method() == NetTaskMethod::Post);
     assert(manager.netTextResult(postTaskId) == "POST");
     assert(manager.getCachedData("submit").value() == std::vector<std::uint8_t>({'P', 'O', 'S', 'T'}));
 
     const int failedTaskId = manager.preloadNetThing("missing");
-    assert(failedTaskId == 4);
-    assert(fetchCount == 3);
+    assert(failedTaskId == 5);
+    assert(fetchCount == 4);
     assert(manager.netDone());
     assert(manager.netError() == -7);
     assert(manager.netTextResult().empty());

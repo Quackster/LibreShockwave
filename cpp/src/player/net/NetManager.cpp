@@ -33,6 +33,14 @@ bool isLocalHttpUrl(std::string_view value) {
     return startsWith(value, "http://localhost") || startsWith(value, "http://127.0.0.1");
 }
 
+std::string rootRelativeHttpUrl(std::string_view url, std::string_view basePath) {
+    if (!startsWith(url, "/") || !isHttpUrl(basePath)) {
+        return std::string(url);
+    }
+    const auto origin = NetManager::extractOrigin(basePath);
+    return origin.empty() ? std::string(url) : origin + std::string(url);
+}
+
 void putProp(lingo::Datum& propList, std::string key, lingo::Datum value) {
     propList.propListValue().put(lingo::Datum::of(std::move(key)), std::move(value));
 }
@@ -406,16 +414,12 @@ void NetManager::executeTask(NetTask& task, bool useCache) {
     if (fetchHandler_ == nullptr) {
         if (task.method() == NetTaskMethod::Get) {
             std::optional<std::vector<std::uint8_t>> localData;
+            std::string cacheUrl = task.originalUrl();
 
             if (!localHttpRoot_.empty()) {
-                std::string httpUrl = task.originalUrl();
-                if (startsWith(httpUrl, "/") && isHttpUrl(basePath_)) {
-                    const auto origin = extractOrigin(basePath_);
-                    if (!origin.empty()) {
-                        httpUrl = origin + httpUrl;
-                    }
-                }
+                std::string httpUrl = rootRelativeHttpUrl(task.originalUrl(), basePath_);
                 if (isLocalHttpUrl(httpUrl)) {
+                    cacheUrl = httpUrl;
                     auto urlPath = extractUrlPath(httpUrl);
                     if (!urlPath.empty()) {
                         if (urlPath.front() == '/') {
@@ -435,7 +439,7 @@ void NetManager::executeTask(NetTask& task, bool useCache) {
             }
 
             if (localData.has_value()) {
-                completeTask(task, std::move(*localData), useCache);
+                completeTask(task, std::move(*localData), useCache, cacheUrl);
                 return;
             }
         }
@@ -443,19 +447,36 @@ void NetManager::executeTask(NetTask& task, bool useCache) {
         return;
     }
 
-    auto result = fetchHandler_(task);
+    const NetTask* requestTask = &task;
+    std::optional<NetTask> normalizedRequestTask;
+    if (task.method() == NetTaskMethod::Get) {
+        const auto requestUrl = rootRelativeHttpUrl(task.originalUrl(), basePath_);
+        if (requestUrl != task.originalUrl()) {
+            normalizedRequestTask.emplace(task.taskId(),
+                                          requestUrl,
+                                          resolveUrl(requestUrl),
+                                          task.method(),
+                                          task.postData());
+            requestTask = &*normalizedRequestTask;
+        }
+    }
+
+    auto result = fetchHandler_(*requestTask);
     if (!result.data.has_value()) {
         task.fail(result.errorCode != 0 ? result.errorCode : 404,
                   result.errorMessage.empty() ? "Load returned no data" : result.errorMessage);
         return;
     }
 
-    completeTask(task, std::move(*result.data), useCache);
+    completeTask(task, std::move(*result.data), useCache, requestTask->originalUrl());
 }
 
-void NetManager::completeTask(NetTask& task, std::vector<std::uint8_t> data, bool cacheResult) {
+void NetManager::completeTask(NetTask& task,
+                              std::vector<std::uint8_t> data,
+                              bool cacheResult,
+                              std::string_view cacheUrl) {
     if (cacheResult) {
-        urlCache_[cacheKeyForUrl(task.originalUrl())] = data;
+        urlCache_[cacheKeyForUrl(cacheUrl.empty() ? task.originalUrl() : cacheUrl)] = data;
     }
     task.complete(std::move(data));
     if (task.result().has_value()) {
