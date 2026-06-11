@@ -23,6 +23,7 @@ var _sharedFrameBytes = null;
 var _sharedFrameControl = null;
 var _sharedFrameCapacity = 0;
 var _sharedFrameSeq = 0;
+var _activeLoadSeq = 0;
 
 var _requiredExports = {
     allocateBuffer: 'allocate_buffer',
@@ -258,6 +259,7 @@ function _runtimeDiagnostics() {
     return {
         ready: _ready,
         playing: _playing,
+        loadSeq: _activeLoadSeq,
         params: Object.assign({}, _externalParams),
         jpeg: {
             queuedResults: _jpegDecodeQueue.length,
@@ -279,6 +281,10 @@ function _runtimeDiagnostics() {
             sequence: _sharedFrameSeq
         }
     };
+}
+
+function _isStaleLoad(loadSeq) {
+    return !!loadSeq && loadSeq !== _activeLoadSeq;
 }
 
 function _resolveUrl(url) {
@@ -415,10 +421,13 @@ async function _fetchFirst(urls, method, postData) {
     return { error: true, status: lastStatus || 404 };
 }
 
-async function _drainFetches(maxRounds) {
+async function _drainFetches(maxRounds, loadSeq) {
     var delivered = 0;
     var failed = 0;
     for (var round = 0; round < maxRounds; round++) {
+        if (_isStaleLoad(loadSeq)) {
+            break;
+        }
         var count = _exports.getPendingFetchCount();
         if (count <= 0) {
             break;
@@ -442,6 +451,9 @@ async function _drainFetches(maxRounds) {
         _exports.drainPendingFetches();
         for (var r = 0; r < requests.length; r++) {
             var result = await _fetchFirst(requests[r].urls, requests[r].method, requests[r].postData);
+            if (_isStaleLoad(loadSeq)) {
+                return { delivered: delivered, failed: failed };
+            }
             if (result.error) {
                 _exports.deliverFetchError(requests[r].taskId, result.status);
                 failed++;
@@ -715,10 +727,16 @@ function _setInitialBuiltinSymbol(key, value) {
     _exports.setInitialBuiltinSymbol(lengths.keyLength, lengths.valueLength);
 }
 
-async function _driveHostQueues(fetchRounds) {
+async function _driveHostQueues(fetchRounds, loadSeq) {
+    if (_isStaleLoad(loadSeq)) {
+        return;
+    }
     _deliverMusEvents();
     _deliverJpegDecodeResults();
-    await _drainFetches(fetchRounds);
+    await _drainFetches(fetchRounds, loadSeq);
+    if (_isStaleLoad(loadSeq)) {
+        return;
+    }
     _pumpMusRequests();
     _pumpAudioCommands();
     _pumpJpegDecodeRequests();
@@ -799,7 +817,10 @@ function _collectOverlayState() {
     };
 }
 
-function _postFrame() {
+function _postFrame(loadSeq) {
+    if (_isStaleLoad(loadSeq)) {
+        return;
+    }
     var frame = _renderFrame();
     if (!frame) {
         return;
@@ -832,6 +853,7 @@ function _postFrame() {
         frameCount: frame.frameCount,
         tempo: frame.tempo,
         spriteCount: frame.spriteCount,
+        loadSeq: loadSeq || _activeLoadSeq,
         rgba: sharedFrame ? null : frame.rgba,
         sharedFrame: sharedFrame,
         sharedSeq: sharedSeq,
@@ -843,6 +865,8 @@ function _postFrame() {
 }
 
 async function _loadMovie(message) {
+    var loadSeq = message.loadSeq || (_activeLoadSeq + 1);
+    _activeLoadSeq = loadSeq;
     _jpegDecodeSeq++;
     _jpegDecodeQueue = [];
     _jpegDecodeInFlight = {};
@@ -881,29 +905,36 @@ async function _loadMovie(message) {
             _setInitialBuiltinSymbol(key, message.initialBuiltinSymbols[key]);
         }
     }
-    await _driveHostQueues(32);
+    await _driveHostQueues(32, loadSeq);
+    if (_isStaleLoad(loadSeq)) {
+        return;
+    }
     _exports.preloadCasts();
-    await _driveHostQueues(32);
+    await _driveHostQueues(32, loadSeq);
+    if (_isStaleLoad(loadSeq)) {
+        return;
+    }
     if (!packedStage) {
         var loadError = _readLastError() || 'C++ WASM movie load failed';
-        self.postMessage({ type: 'error', message: loadError });
+        self.postMessage({ type: 'error', message: loadError, loadSeq: loadSeq });
         return;
     }
     var width = (packedStage >>> 16) & 0xffff;
     var height = packedStage & 0xffff;
     self.postMessage({
         type: 'loaded',
+        loadSeq: loadSeq,
         width: width,
         height: height,
         frameCount: _exports.getFrameCount(),
         tempo: _exports.getTempo()
     });
-    _postFrame();
+    _postFrame(loadSeq);
     if (message.autoplay !== false) {
         _playing = true;
         _exports.play();
-        await _driveHostQueues(32);
-        _postFrame();
+        await _driveHostQueues(32, loadSeq);
+        _postFrame(loadSeq);
     }
 }
 

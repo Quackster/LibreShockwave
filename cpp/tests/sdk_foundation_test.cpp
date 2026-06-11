@@ -22973,6 +22973,9 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(player.find("_handleFetchRelay") != std::string::npos);
     assert(player.find("fetchRelayResult") != std::string::npos);
     assert(player.find("_initSharedFrameTransport") != std::string::npos);
+    assert(player.find("this.loadSeq") != std::string::npos);
+    assert(player.find("_isStaleLoadMessage") != std::string::npos);
+    assert(player.find("Object.assign({}, options || {}, { loadSeq: loadSeq })") != std::string::npos);
     assert(player.find("window.crossOriginIsolated") != std::string::npos);
     assert(player.find("new SharedArrayBuffer") != std::string::npos);
     assert(player.find("sharedFrameCapacity") != std::string::npos);
@@ -23021,6 +23024,10 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(worker.find("Atomics.store") != std::string::npos);
     assert(worker.find("Atomics.notify") != std::string::npos);
     assert(worker.find("sharedFrame: sharedFrame") != std::string::npos);
+    assert(worker.find("_activeLoadSeq") != std::string::npos);
+    assert(worker.find("_isStaleLoad") != std::string::npos);
+    assert(worker.find("_drainFetches(maxRounds, loadSeq)") != std::string::npos);
+    assert(worker.find("loadSeq: loadSeq || _activeLoadSeq") != std::string::npos);
     assert(worker.find("postMessage({\n        type: 'frame'") != std::string::npos);
 
     const auto headerExports = parseHeaderExports(header);

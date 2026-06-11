@@ -42,6 +42,7 @@ var LibreShockwaveCppPlayer = (function() {
         this.ready = false;
         this.pending = [];
         this.playing = false;
+        this.loadSeq = 0;
         this.lastFrame = null;
         this.timer = null;
         this.tickMs = options.tickMs || 33;
@@ -134,6 +135,9 @@ var LibreShockwaveCppPlayer = (function() {
                 }
                 break;
             case 'loaded':
+                if (this._isStaleLoadMessage(message)) {
+                    break;
+                }
                 this.canvas.width = message.width || this.canvas.width;
                 this.canvas.height = message.height || this.canvas.height;
                 if (this.onLoad) {
@@ -141,6 +145,9 @@ var LibreShockwaveCppPlayer = (function() {
                 }
                 break;
             case 'frame':
+                if (this._isStaleLoadMessage(message)) {
+                    break;
+                }
                 this._drawFrame(message);
                 break;
             case 'audio':
@@ -179,6 +186,9 @@ var LibreShockwaveCppPlayer = (function() {
                 this._resolveDiagnostic(message.requestId, !!message.handled);
                 break;
             case 'error':
+                if (this._isStaleLoadMessage(message)) {
+                    break;
+                }
                 this._emitError(message.message || message.msg || 'C++ WASM runtime error');
                 break;
         }
@@ -205,6 +215,10 @@ var LibreShockwaveCppPlayer = (function() {
         } else {
             console.error('[LibreShockwave C++] ' + message);
         }
+    };
+
+    Player.prototype._isStaleLoadMessage = function(message) {
+        return message.loadSeq && message.loadSeq !== this.loadSeq;
     };
 
     Player.prototype._writeClipboardText = function(text) {
@@ -553,26 +567,35 @@ var LibreShockwaveCppPlayer = (function() {
 
     Player.prototype.load = function(url, options) {
         var self = this;
-        var loadOptions = options || {};
+        var loadSeq = ++this.loadSeq;
+        var loadOptions = Object.assign({}, options || {}, { loadSeq: loadSeq });
         return fetch(url).then(function(response) {
             if (!response.ok) {
                 throw new Error('Movie fetch failed: HTTP ' + response.status);
             }
             return response.arrayBuffer();
         }).then(function(bytes) {
+            if (loadSeq !== self.loadSeq) {
+                return;
+            }
             var basePath = loadOptions.basePath || new URL('.', new URL(url, document.baseURI)).href;
             self.loadedMovieUrl = new URL(url, document.baseURI).href;
             self.loadBytes(bytes, basePath, loadOptions);
         }).catch(function(error) {
+            if (loadSeq !== self.loadSeq) {
+                return;
+            }
             self._emitError(error && error.message ? error.message : String(error));
         });
     };
 
     Player.prototype.loadBytes = function(bytes, basePath, options) {
         var loadOptions = options || {};
+        var loadSeq = loadOptions.loadSeq || ++this.loadSeq;
         var buffer = bytes instanceof ArrayBuffer ? bytes : bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
         this._post({
             type: 'loadMovie',
+            loadSeq: loadSeq,
             data: buffer,
             basePath: basePath || this.basePath,
             autoplay: loadOptions.autoplay !== false,
