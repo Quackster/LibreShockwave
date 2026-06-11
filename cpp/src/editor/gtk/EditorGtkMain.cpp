@@ -16,6 +16,7 @@ struct EditorGtkState {
     GtkApplication* app{nullptr};
     GtkWindow* window{nullptr};
     GtkWidget* panelList{nullptr};
+    GtkWidget* workbenchTabs{nullptr};
     GtkWidget* workbenchTitleLabel{nullptr};
     GtkWidget* workbenchPrimaryLabel{nullptr};
     GtkWidget* workbenchStatusLabel{nullptr};
@@ -81,11 +82,48 @@ void populatePanelList(GtkWidget* list, const std::vector<gtk_models::GtkPanelRo
     }
 }
 
+void clearBox(GtkWidget* box) {
+    while (GtkWidget* child = gtk_widget_get_first_child(box)) {
+        gtk_box_remove(GTK_BOX(box), child);
+    }
+}
+
+GtkWidget* actionButton(const char* label, const std::string& detailedActionName, bool enabled = true) {
+    GtkWidget* button = gtk_button_new_with_label(label);
+    gtk_widget_set_sensitive(button, enabled && !detailedActionName.empty());
+    if (!detailedActionName.empty()) {
+        gtk_actionable_set_action_name(GTK_ACTIONABLE(button), detailedActionName.c_str());
+    }
+    return button;
+}
+
+void populateWorkbenchTabs(GtkWidget* tabsBox, const std::vector<gtk_models::GtkWorkbenchTabSpec>& tabs) {
+    clearBox(tabsBox);
+
+    for (const auto& tab : tabs) {
+        GtkWidget* tabBox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
+        GtkWidget* focusButton = actionButton(tab.title.c_str(), tab.detailedFocusActionName);
+        gtk_widget_set_tooltip_text(focusButton, tab.active ? "Active panel" : "Select panel");
+        if (tab.active) {
+            gtk_widget_add_css_class(focusButton, "suggested-action");
+        }
+        gtk_box_append(GTK_BOX(tabBox), focusButton);
+
+        GtkWidget* floatButton = actionButton("Float", tab.detailedFloatActionName);
+        gtk_widget_set_tooltip_text(floatButton, "Float panel");
+        gtk_box_append(GTK_BOX(tabBox), floatButton);
+
+        GtkWidget* hideButton = actionButton("Hide", tab.detailedToggleActionName);
+        gtk_widget_set_tooltip_text(hideButton, "Hide panel");
+        gtk_box_append(GTK_BOX(tabBox), hideButton);
+
+        gtk_box_append(GTK_BOX(tabsBox), tabBox);
+    }
+}
+
 void populateWorkbenchActions(GtkWidget* actionsBox,
                               const std::vector<gtk_models::GtkWorkbenchContentActionSpec>& actions) {
-    while (GtkWidget* child = gtk_widget_get_first_child(actionsBox)) {
-        gtk_box_remove(GTK_BOX(actionsBox), child);
-    }
+    clearBox(actionsBox);
 
     for (const auto& action : actions) {
         GtkWidget* button = gtk_button_new_with_label(action.label.c_str());
@@ -132,6 +170,9 @@ void refreshGtkShell(EditorGtkState& state) {
     }
     if (state.panelList != nullptr) {
         populatePanelList(state.panelList, view.panelRows);
+    }
+    if (state.workbenchTabs != nullptr) {
+        populateWorkbenchTabs(state.workbenchTabs, view.workbenchTabs);
     }
     if (state.workbenchTitleLabel != nullptr) {
         gtk_label_set_text(GTK_LABEL(state.workbenchTitleLabel), view.workbenchContent.title.c_str());
@@ -249,6 +290,10 @@ GtkWidget* makeWorkbench(EditorGtkState& state) {
     gtk_widget_set_margin_end(workbenchBox, 10);
     gtk_widget_set_margin_top(workbenchBox, 10);
     gtk_widget_set_margin_bottom(workbenchBox, 10);
+
+    state.workbenchTabs = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
+    populateWorkbenchTabs(state.workbenchTabs, view.workbenchTabs);
+    gtk_box_append(GTK_BOX(workbenchBox), state.workbenchTabs);
 
     state.workbenchTitleLabel = gtk_label_new(view.workbenchContent.title.c_str());
     gtk_label_set_xalign(GTK_LABEL(state.workbenchTitleLabel), 0.0F);
