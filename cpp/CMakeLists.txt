@@ -52,6 +52,8 @@ add_library(libreshockwave
     src/chunks/ScoreChunk.cpp
     src/chunks/SoundChunk.cpp
     src/chunks/TextChunk.cpp
+    src/editor/debug/DebugDisplayItems.cpp
+    src/editor/debug/DebugTableModels.cpp
     src/editor/extraction/AssetExtractor.cpp
     src/editor/format/ChannelNames.cpp
     src/editor/format/InstructionFormatter.cpp

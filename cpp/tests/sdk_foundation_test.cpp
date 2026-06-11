@@ -72,6 +72,8 @@
 #include "libreshockwave/chunks/ScoreChunk.hpp"
 #include "libreshockwave/chunks/SoundChunk.hpp"
 #include "libreshockwave/chunks/TextChunk.hpp"
+#include "libreshockwave/editor/debug/DebugDisplayItems.hpp"
+#include "libreshockwave/editor/debug/DebugTableModels.hpp"
 #include "libreshockwave/editor/format/ChannelNames.hpp"
 #include "libreshockwave/editor/format/InstructionFormatter.hpp"
 #include "libreshockwave/editor/format/PaletteDescriptions.hpp"
@@ -275,6 +277,14 @@ using libreshockwave::chunks::ScriptNamesChunk;
 using libreshockwave::chunks::ScoreChunk;
 using libreshockwave::chunks::SoundChunk;
 using libreshockwave::chunks::TextChunk;
+using libreshockwave::editor::debug::HandlerItem;
+using libreshockwave::editor::debug::InstructionDisplayItem;
+using libreshockwave::editor::debug::ScriptItem;
+using libreshockwave::editor::debug::StackTableModel;
+using libreshockwave::editor::debug::TimeoutSnapshot;
+using libreshockwave::editor::debug::TimeoutTableModel;
+using libreshockwave::editor::debug::VariablesTableModel;
+using libreshockwave::editor::debug::WatchesTableModel;
 using libreshockwave::editor::format::ChannelNames;
 using libreshockwave::editor::format::InstructionFormatter;
 using libreshockwave::editor::format::PaletteDescriptions;
@@ -1501,6 +1511,160 @@ void testEditorModelAndSelectionFoundation() {
     manager.select(SelectionEvent::castMember(1, 9));
     assert(first.events.size() == 3);
     assert(second.events.size() == 3);
+}
+
+void testEditorDebugDataModels() {
+    auto script = std::make_shared<ScriptChunk>(nullptr,
+                                                ChunkId(240),
+                                                ScriptChunkType::MovieScript,
+                                                0,
+                                                std::vector<ScriptChunk::Handler>{},
+                                                std::vector<ScriptChunk::LiteralEntry>{},
+                                                std::vector<ScriptChunk::PropertyEntry>{},
+                                                std::vector<ScriptChunk::GlobalEntry>{},
+                                                std::vector<std::uint8_t>{});
+    ScriptNamesChunk names(nullptr, ChunkId(241), {"zero", "mouseUp"});
+    ScriptChunk::Handler handler{};
+    handler.nameId = 1;
+
+    const auto handlerItem = HandlerItem::fromScript(script, handler, &names);
+    assert(handlerItem.toString() == "mouseUp");
+    assert(handlerItem.matchesFilter(""));
+    assert(handlerItem.matchesFilter("mouse"));
+    assert(handlerItem.matchesFilter("UP"));
+    assert(!handlerItem.matchesFilter("start"));
+
+    const ScriptItem scriptItem(script, "Main Script", "Internal Cast", 2);
+    assert(scriptItem.toString() == "Main Script (Internal Cast)");
+    assert(scriptItem.matchesFilter("main"));
+    assert(scriptItem.matchesFilter("CAST"));
+    assert(!scriptItem.matchesFilter("external"));
+    const ScriptItem sourceLessScript(script, "Parent Script", "", 3);
+    assert(sourceLessScript.toString() == "Parent Script");
+
+    auto callItem = InstructionDisplayItem::fromInstruction(
+        libreshockwave::player::debug::InstructionDisplay{12, 3, "EXT_CALL", 7, "<go()>", true});
+    assert(callItem.offset == 12);
+    assert(callItem.index == 3);
+    assert(callItem.opcode == "EXT_CALL");
+    assert(callItem.argument == 7);
+    assert(callItem.annotation == "<go()>");
+    assert(callItem.hasBreakpoint);
+    assert(callItem.isCallInstruction());
+    assert(callItem.getCallTargetName().has_value());
+    assert(callItem.getCallTargetName().value() == "go");
+    assert(!callItem.isNavigableCall());
+    callItem.navigable = true;
+    assert(callItem.isNavigableCall());
+    callItem.breakpoint = Breakpoint::simple(1, "go", 12);
+    assert(callItem.breakpoint.has_value());
+    assert(callItem.toString().find("[ 12] EXT_CALL") == 0);
+    assert(callItem.toString().find("7") != std::string::npos);
+    assert(callItem.toString().find("<go()>") != std::string::npos);
+
+    InstructionDisplayItem localCall{4, 1, "LOCAL_CALL", 0, "<localHandler()>", false};
+    assert(localCall.isCallInstruction());
+    assert(localCall.getCallTargetName().value() == "localHandler");
+    assert(localCall.toString().find("[  4] LOCAL_CALL") == 0);
+    InstructionDisplayItem notCall{8, 2, "PUSH_INT", 0, "plain", false};
+    assert(!notCall.isCallInstruction());
+    assert(!notCall.getCallTargetName().has_value());
+    InstructionDisplayItem malformedCall{10, 3, "OBJ_CALL", 0, "go()", false};
+    malformedCall.navigable = true;
+    assert(!malformedCall.isNavigableCall());
+
+    StackTableModel stackModel;
+    assert(stackModel.columnCount() == 3);
+    assert(stackModel.columnName(0) == "#");
+    assert(stackModel.columnName(1) == "Type");
+    assert(stackModel.columnName(2) == "Value");
+    stackModel.setStack({Datum::of(7), Datum::of(std::string("hello"))});
+    assert(stackModel.rowCount() == 2);
+    assert(stackModel.valueAt(0, 0) == "0");
+    assert(stackModel.valueAt(0, 1) == "Int");
+    assert(stackModel.valueAt(0, 2) == "7");
+    assert(stackModel.valueAt(1, 1) == "Str");
+    assert(stackModel.valueAt(1, 2) == "\"hello\"");
+    assert(stackModel.datum(0) != nullptr);
+    assert(stackModel.datum(0)->intValue() == 7);
+    assert(stackModel.valueAt(-1, 0).empty());
+    assert(stackModel.valueAt(99, 0).empty());
+    assert(stackModel.valueAt(0, 99).empty());
+    assert(stackModel.datum(99) == nullptr);
+
+    VariablesTableModel variablesModel;
+    variablesModel.setVariables(std::map<std::string, Datum>{
+        {"beta", Datum::of(2)},
+        {"alpha", Datum::of(std::string("x"))},
+    });
+    assert(variablesModel.columnCount() == 3);
+    assert(variablesModel.columnName(0) == "Name");
+    assert(variablesModel.rowCount() == 2);
+    assert(variablesModel.name(0) == "alpha");
+    assert(variablesModel.valueAt(0, 0) == "alpha");
+    assert(variablesModel.valueAt(0, 1) == "Str");
+    assert(variablesModel.valueAt(0, 2) == "\"x\"");
+    assert(variablesModel.name(1) == "beta");
+    assert(variablesModel.datum(1) != nullptr);
+    assert(variablesModel.datum(1)->intValue() == 2);
+    variablesModel.setVariables(std::vector<std::pair<std::string, Datum>>{
+        {"first", Datum::of(11)},
+        {"second", Datum::symbol("ready")},
+    });
+    assert(variablesModel.name(0) == "first");
+    assert(variablesModel.valueAt(1, 1) == "Symbol");
+    assert(variablesModel.valueAt(1, 2) == "#ready");
+    assert(variablesModel.name(99).empty());
+    assert(variablesModel.datum(99) == nullptr);
+
+    WatchesTableModel watchesModel;
+    watchesModel.setWatches({
+        libreshockwave::player::debug::WatchExpression::create("watch-1", "the mouseH").withValue(Datum::of(12)),
+        libreshockwave::player::debug::WatchExpression::create("watch-2", "missing").withError("Undefined"),
+    });
+    assert(watchesModel.columnName(0) == "Expression");
+    assert(watchesModel.columnName(1) == "Type");
+    assert(watchesModel.columnName(2) == "Value");
+    assert(watchesModel.rowCount() == 2);
+    assert(watchesModel.valueAt(0, 0) == "the mouseH");
+    assert(watchesModel.valueAt(0, 1) == "int");
+    assert(watchesModel.valueAt(0, 2) == "12");
+    assert(watchesModel.valueAt(1, 1) == "Error");
+    assert(watchesModel.valueAt(1, 2) == "<Undefined>");
+    assert(watchesModel.watch(0) != nullptr);
+    assert(watchesModel.watch(99) == nullptr);
+
+    TimeoutTableModel timeoutModel;
+    timeoutModel.setTimeouts({TimeoutSnapshot{"pulse", 1000, "tick", Datum::of(5), true}});
+    assert(timeoutModel.columnCount() == 5);
+    assert(timeoutModel.columnName(0) == "Name");
+    assert(timeoutModel.columnName(1) == "Period (ms)");
+    assert(timeoutModel.columnName(2) == "Handler");
+    assert(timeoutModel.columnName(3) == "Target");
+    assert(timeoutModel.columnName(4) == "Persistent");
+    assert(timeoutModel.rowCount() == 1);
+    assert(timeoutModel.name(0) == "pulse");
+    assert(timeoutModel.valueAt(0, 0) == "pulse");
+    assert(timeoutModel.valueAt(0, 1) == "1000");
+    assert(timeoutModel.valueAt(0, 2) == "tick");
+    assert(timeoutModel.valueAt(0, 3) == "5");
+    assert(timeoutModel.valueAt(0, 4) == "Yes");
+    assert(timeoutModel.datum(0) != nullptr);
+    assert(timeoutModel.datum(0)->intValue() == 5);
+
+    timeoutModel.setTimeoutEntries({
+        libreshockwave::player::timeout::TimeoutEntry{
+            "once", 250, "go", Datum::of(std::string("stage")), false, true, 123
+        },
+    });
+    assert(timeoutModel.rowCount() == 1);
+    assert(timeoutModel.name(0) == "once");
+    assert(timeoutModel.valueAt(0, 1) == "250");
+    assert(timeoutModel.valueAt(0, 3) == "\"stage\"");
+    assert(timeoutModel.valueAt(0, 4) == "No");
+    assert(timeoutModel.name(99).empty());
+    assert(timeoutModel.datum(99) == nullptr);
+    assert(timeoutModel.valueAt(99, 0).empty());
 }
 
 void testEditorScoreDataHelpers() {
@@ -21397,6 +21561,7 @@ int main() {
     testUtilityFormatting();
     testEditorFormattingAndScriptHelpers();
     testEditorModelAndSelectionFoundation();
+    testEditorDebugDataModels();
     testEditorScoreDataHelpers();
     testEditorScanningHelpers();
     testLingoDatumTypes();
