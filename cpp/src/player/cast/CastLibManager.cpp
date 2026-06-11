@@ -950,6 +950,15 @@ std::shared_ptr<const bitmap::Palette> CastLibManager::resolvePaletteByName(cons
     return nullptr;
 }
 
+int CastLibManager::getScriptChunkId(int castLibNumber, int memberNumber) {
+    auto castLib = getCastLib(castLibNumber);
+    if (!castLib || !castLib->isLoaded()) {
+        return -1;
+    }
+    auto script = castLib->getScript(memberNumber);
+    return script ? script->id().value() : -1;
+}
+
 lingo::Datum CastLibManager::createMember(int castLibNumber, const std::string& memberType) {
     auto castLib = getCastLib(castLibNumber);
     if (!castLib) {
@@ -1291,6 +1300,9 @@ void CastLibManager::installBuiltinCallbacks(lingo::builtin::BuiltinContext& con
     };
     context.fieldSetter = [this](const lingo::Datum& identifier, int castLib, const std::string& value) {
         setFieldValue(identifier, castLib, value);
+    };
+    context.scriptChunkIdResolver = [this](int castLib, int memberNum) {
+        return getScriptChunkId(castLib, memberNum);
     };
     context.importFileIntoHandler = [this](const lingo::Datum::CastMemberRef& ref,
                                            const std::string& url,

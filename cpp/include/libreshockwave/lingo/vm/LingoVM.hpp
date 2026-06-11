@@ -146,6 +146,8 @@ private:
     [[nodiscard]] std::string resolveName(const chunks::ScriptChunk& script, int nameId) const;
     [[nodiscard]] std::string handlerName(const chunks::ScriptChunk& script,
                                           const chunks::ScriptChunk::Handler& handler) const;
+    [[nodiscard]] Datum callAncestor(const std::vector<Datum>& args);
+    [[nodiscard]] Datum findAncestorForCall(const Datum::ScriptInstanceRef& instance) const;
     [[nodiscard]] std::string scriptDisplayName(const chunks::ScriptChunk& script) const;
     [[nodiscard]] TraceListener::HandlerInfo buildHandlerInfo(
         const chunks::ScriptChunk& script,

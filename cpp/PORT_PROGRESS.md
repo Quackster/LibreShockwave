@@ -568,8 +568,9 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `value` now passes VM-backed identifier resolution into nested list/proplist literal parsing so globals and zero-argument handlers embedded inside parsed values match Java's parser fallback.
 - `script` now resolves direct cast-member refs, strings, symbols, raw member numbers, encoded slot numbers, and cast-library scoped lookups through C++ provider hooks before falling back to the generic script resolver.
 - `script` list-candidate lookup now mirrors Java by evaluating each candidate as an unscoped standalone identifier even when the outer call has a cast-library scope argument.
-- `callAncestor` now rejects non-instance `me` arguments and fans out over list targets, invoking the ancestor callback only for script-instance entries and returning the last result like Java.
-- VM/provider-dependent script resolution and provider-owned `callAncestor` handler lookup remain exposed through callback hooks until the C++ Lingo VM runtime is ported.
+- `callAncestor` now rejects non-instance `me` arguments and fans out over list targets, invoking ancestor dispatch only for script-instance entries and returning the last result like Java.
+- `lingo::vm::LingoVM` now wires provider-owned `callAncestor` dispatch through script handler and script chunk-ID callbacks, preserving the original receiver while nested ancestor calls advance from the currently executing ancestor script to the next ancestor.
+- VM/provider-dependent script resolution for broader cast/runtime integration remains exposed through callback hooks until the remaining C++ Player runtime slices are ported.
 
 ### Score Navigation Foundation
 
@@ -818,6 +819,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Script-instance object calls now port Java's numeric `closeThread` defer path, queuing the call through the VM task boundary only while a handler is active and no deferred flush is already in progress.
 - `call(...)` now snapshots Java message-struct prop-list arguments per target dispatch, deep-copying nested content while preserving connection script-instance references and leaving non-message prop lists forwarded by reference.
 - Script-instance object calls now resolve provider-owned direct and ancestor script-ref handlers through the player script-member resolver before registry/property fallback, including `handler(#name)` checks, and no longer fall through to the current script's local handler table when a provider-owned instance handler is absent; broader cast/VM runtime integration still remains deferred to later slices.
+- Provider-backed `callAncestor` now resolves script member refs to `Lscr` chunk IDs through `CastLibManager`, finds ancestor handlers through the existing script handler callback, and executes the located handler with the original `me` receiver.
 
 ### Lingo VM AlertHook Foundation
 
@@ -1090,7 +1092,7 @@ Result:
 - Lingo VM-backed nested `value(...)` list/proplist global identifier resolution passed through the same CTest executable.
 - Lingo VM expression-string parsing for strict numbers, symbols, quoted strings, lists, proplists, and VM global fallback passed through the same CTest executable.
 - Lingo VM trace listener handler enter/exit, optional instruction tracing, stack/global snapshots, reusable TracingHelper payload building, shared instruction annotations, local/param/global/script-instance-property variable-set callbacks, error callbacks, and trace argument formatting passed through the same CTest executable.
-- Lingo VM deferred script-instance call ordering, automatic outer-handler flush, deferred task explicit flushing, flush-state guards, Player call-target provider wiring, and numeric `closeThread` task deferral passed through the same CTest executable.
+- Lingo VM deferred script-instance call ordering, automatic outer-handler flush, deferred task explicit flushing, flush-state guards, Player call-target provider wiring, numeric `closeThread` task deferral, and nested provider-backed `callAncestor` dispatch passed through the same CTest executable.
 - Lingo VM AlertHookHandler skip/depth diagnostics, guarded hook invocation, alertHook manual firing, `alert()` suppression, script-error suppression/rethrow behavior, and Player no-hook fallback passed through the same CTest executable.
 - Lingo Datum deep-copy behavior, DatumFormatter scalar/brief/expanded/detailed/recursive output, AncestorChainWalker property/depth traversal, `call(...)` message-struct argument snapshots, non-message prop-list forwarding, and per-target call snapshot freshness passed through the same CTest executable.
 - Player-owned LingoVM builtin delegation, file-backed dispatcher movie-script discovery/bytecode invocation, direct and sprite `call(...)` target return propagation, startup movie-script frame lifecycle and timeout-target dispatch, Player initial builtin variable defaults, actorList frame-event dispatch, elapsed timeout target/global dispatch, per-frame update-provider target dispatch, Player-backed external PARAM builtins, `stopMovie` timeout/movie dispatch, VM preference storage, and Player-wired stage-image mutation invalidation passed through the same CTest executable.
@@ -1456,4 +1458,5 @@ Result:
 - `5b753d63 Port C++ cursor frame fallback`
 - `abe1e357 Port C++ external cast sound playback`
 - `b0e6e80d Port C++ XMED font-size ties`
-- Current checkpoint commit message: `Port C++ palette ID provider resolution`
+- `9a4467d9 Port C++ palette ID provider resolution`
+- Current checkpoint commit message: `Port C++ callAncestor provider dispatch`

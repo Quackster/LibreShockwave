@@ -18,6 +18,7 @@
 #include "libreshockwave/lingo/vm/DebugConfig.hpp"
 #include "libreshockwave/lingo/vm/trace/ConsoleTracePrinter.hpp"
 #include "libreshockwave/lingo/vm/trace/TracingHelper.hpp"
+#include "libreshockwave/lingo/vm/util/AncestorChainWalker.hpp"
 
 namespace libreshockwave::lingo::vm {
 namespace {
@@ -119,6 +120,10 @@ std::optional<int> parseInitialRandomSeed(const char* rawValue) {
     return static_cast<int>(parsed);
 }
 
+Datum scriptInstanceOrVoid(std::shared_ptr<Datum::ScriptInstanceRef> instance) {
+    return instance ? Datum::scriptInstanceRef(std::move(instance)) : Datum::voidValue();
+}
+
 } // namespace
 
 std::function<void()> LingoVM::gcCallback_;
@@ -177,6 +182,9 @@ LingoVM::LingoVM(DirectorFile* file)
             }
         });
         return true;
+    };
+    builtinContext_.ancestorCallHandler = [this](const std::vector<Datum>& args) {
+        return callAncestor(args);
     };
     registerRuntimeBuiltins();
 }
@@ -386,6 +394,63 @@ Scope* LingoVM::currentScope() {
 
 const Scope* LingoVM::currentScope() const {
     return callStack_.empty() ? nullptr : &callStack_.back();
+}
+
+Datum LingoVM::findAncestorForCall(const Datum::ScriptInstanceRef& instance) const {
+    const Scope* scope = currentScope();
+    if (scope == nullptr || scope->script() == nullptr || !builtinContext_.scriptChunkIdResolver) {
+        return scriptInstanceOrVoid(instance.ancestor());
+    }
+
+    const int currentScriptId = scope->script()->id().value();
+    const auto* current = &instance;
+    for (int depth = 0; current != nullptr && depth < util::MAX_ANCESTOR_DEPTH; ++depth) {
+        if (const auto& scriptRef = current->scriptRef(); scriptRef.has_value()) {
+            const int castLib = scriptRef->castLib > 0 ? scriptRef->castLib : 1;
+            const int scriptChunkId = builtinContext_.scriptChunkIdResolver(castLib, scriptRef->memberNum());
+            if (scriptChunkId == currentScriptId) {
+                return scriptInstanceOrVoid(current->ancestor());
+            }
+        }
+
+        auto ancestor = current->ancestor();
+        current = ancestor ? ancestor.get() : nullptr;
+    }
+
+    return scriptInstanceOrVoid(instance.ancestor());
+}
+
+Datum LingoVM::callAncestor(const std::vector<Datum>& args) {
+    if (args.size() < 2 || args[1].type() != DatumType::ScriptInstanceRef || !builtinContext_.scriptHandlerFinder) {
+        return Datum::voidValue();
+    }
+
+    const std::string handlerName = args[0].asSymbol() != nullptr ? args[0].asSymbol()->name : args[0].stringValue();
+    Datum ancestor = findAncestorForCall(args[1].scriptInstanceValue());
+    if (ancestor.type() != DatumType::ScriptInstanceRef) {
+        return Datum::voidValue();
+    }
+
+    std::vector<Datum> callArgs;
+    callArgs.reserve(args.size() > 2 ? args.size() - 2 : 0);
+    callArgs.insert(callArgs.end(), args.begin() + 2, args.end());
+
+    const auto* current = &ancestor.scriptInstanceValue();
+    for (int depth = 0; current != nullptr && depth < util::MAX_ANCESTOR_DEPTH; ++depth) {
+        if (const auto& scriptRef = current->scriptRef(); scriptRef.has_value()) {
+            const int castLib = scriptRef->castLib > 0 ? scriptRef->castLib : 1;
+            const int memberNum = scriptRef->memberNum();
+            auto location = builtinContext_.scriptHandlerFinder(castLib, memberNum, handlerName);
+            if (location.has_value() && location->script != nullptr) {
+                return executeHandler(*location->script, location->handler, callArgs, args[1]);
+            }
+        }
+
+        auto next = current->ancestor();
+        current = next ? next.get() : nullptr;
+    }
+
+    return Datum::voidValue();
 }
 
 std::vector<LingoVM::CallStackFrame> LingoVM::callStack() const {

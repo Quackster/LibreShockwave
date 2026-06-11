@@ -15726,6 +15726,99 @@ void testLingoVmRuntimeFoundation() {
     assert(vm.executeHandler(script, returnHandler).intValue() == 42);
     assert(vm.callStackDepth() == 0);
 
+    auto childAncestorHandler = makeHandler(6, {{Opcode::PUSH_ZERO, 0}, {Opcode::RET, 0}});
+    auto parentAncestorHandler = makeHandler(7, {{Opcode::PUSH_ZERO, 0}, {Opcode::RET, 0}});
+    auto grandAncestorHandler = makeHandler(8, {{Opcode::GET_PARAM, 0}, {Opcode::RET, 0}}, 0, {9});
+    ScriptChunk childCallAncestorScript(nullptr,
+                                        ChunkId(970),
+                                        ScriptChunkType::Parent,
+                                        0,
+                                        {childAncestorHandler},
+                                        {},
+                                        {},
+                                        {},
+                                        {});
+    ScriptChunk parentCallAncestorScript(nullptr,
+                                         ChunkId(971),
+                                         ScriptChunkType::Parent,
+                                         0,
+                                         {parentAncestorHandler},
+                                         {},
+                                         {},
+                                         {},
+                                         {});
+    ScriptChunk grandCallAncestorScript(nullptr,
+                                        ChunkId(972),
+                                        ScriptChunkType::Parent,
+                                        0,
+                                        {grandAncestorHandler},
+                                        {},
+                                        {},
+                                        {},
+                                        {});
+    Datum childInstance = Datum::scriptInstance("child", Datum::CastMemberRef{1, 10});
+    Datum parentInstance = Datum::scriptInstance("parent", Datum::CastMemberRef{2, 20});
+    Datum grandInstance = Datum::scriptInstance("grand", Datum::CastMemberRef{3, 30});
+    parentInstance.scriptInstanceValue().setAncestor(grandInstance.scriptInstancePtr());
+    childInstance.scriptInstanceValue().setAncestor(parentInstance.scriptInstancePtr());
+
+    LingoVM ancestorVm;
+    std::vector<std::pair<int, int>> scriptIdLookups;
+    ancestorVm.builtinContext().scriptChunkIdResolver = [&scriptIdLookups](int castLib, int memberNum) {
+        scriptIdLookups.emplace_back(castLib, memberNum);
+        if (castLib == 1 && memberNum == 10) {
+            return 970;
+        }
+        if (castLib == 2 && memberNum == 20) {
+            return 971;
+        }
+        if (castLib == 3 && memberNum == 30) {
+            return 972;
+        }
+        return -1;
+    };
+    std::vector<std::pair<int, int>> ancestorHandlerLookups;
+    ancestorVm.builtinContext().scriptHandlerFinder =
+        [&ancestorHandlerLookups, &parentCallAncestorScript, parentAncestorHandler, &grandCallAncestorScript, grandAncestorHandler](
+            int castLib,
+            int memberNum,
+            const std::string& handlerName)
+            -> std::optional<BuiltinContext::ScriptHandlerLocation> {
+        ancestorHandlerLookups.emplace_back(castLib, memberNum);
+        if (handlerName == "handle" && castLib == 2 && memberNum == 20) {
+            return BuiltinContext::ScriptHandlerLocation{&parentCallAncestorScript, parentAncestorHandler};
+        }
+        if (handlerName == "handle" && castLib == 3 && memberNum == 30) {
+            return BuiltinContext::ScriptHandlerLocation{&grandCallAncestorScript, grandAncestorHandler};
+        }
+        return std::nullopt;
+    };
+    int callAncestorOpcodeCalls = 0;
+    ancestorVm.opcodeRegistry().registerHandler(Opcode::PUSH_ZERO, [&](ExecutionContext& context) {
+        ++callAncestorOpcodeCalls;
+        const auto* activeScope = ancestorVm.currentScope();
+        assert(activeScope != nullptr);
+        assert(activeScope->receiver() == childInstance);
+        const int scriptId = activeScope->script()->id().value();
+        const auto displayArgs = activeScope->displayArguments();
+        if (scriptId == 970) {
+            assert(displayArgs.empty());
+        } else {
+            assert(scriptId == 971);
+            assert(displayArgs.size() == 1);
+            assert(displayArgs.front().intValue() == 970);
+        }
+        context.push(ancestorVm.builtinRegistry().invoke(
+            "callAncestor",
+            ancestorVm.builtinContext(),
+            {Datum::symbol("handle"), activeScope->receiver(), Datum::of(scriptId)}));
+        return true;
+    });
+    assert(ancestorVm.executeHandler(childCallAncestorScript, childAncestorHandler, {}, childInstance).intValue() == 971);
+    assert(callAncestorOpcodeCalls == 2);
+    assert((scriptIdLookups == std::vector<std::pair<int, int>>{{1, 10}, {1, 10}, {2, 20}}));
+    assert((ancestorHandlerLookups == std::vector<std::pair<int, int>>{{2, 20}, {3, 30}}));
+
     LingoVM implicitReceiverVm;
     const auto implicitReceiver = Datum::scriptInstance("implicit");
     implicitReceiverVm.opcodeRegistry().registerHandler(

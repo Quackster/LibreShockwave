@@ -85,6 +85,7 @@ struct BuiltinContext {
         int castLib,
         int memberNum,
         const std::string& handlerName)>;
+    using ScriptChunkIdResolver = std::function<int(int castLib, int memberNum)>;
     using ScriptPropertyNamesResolver = std::function<std::vector<std::string>(int castLib, int memberNum)>;
     using AncestorCallHandler = std::function<Datum(const std::vector<Datum>& args)>;
     using RandomIntHandler = std::function<int(int max)>;
@@ -142,6 +143,7 @@ struct BuiltinContext {
     ValueEvaluator valueEvaluator;
     ScriptResolver scriptResolver;
     ScriptHandlerFinder scriptHandlerFinder;
+    ScriptChunkIdResolver scriptChunkIdResolver;
     ScriptPropertyNamesResolver scriptPropertyNamesResolver;
     AncestorCallHandler ancestorCallHandler;
     RandomIntHandler randomIntHandler;
