@@ -19752,15 +19752,21 @@ void testStageRendererFoundation() {
     lineSizeState->setWidth(6);
     lineSizeState->setHeight(6);
     lineSizeShapeMember->setShapeLineSize(2);
+    lineSizeShapeMember->setShapePattern(2);
     const auto memberLineSizeSprites = lineSizeRenderer.getSpritesForFrame(1);
     assert(memberLineSizeSprites.size() == 1);
     assert(memberLineSizeSprites.front().shapeLineSize().has_value());
     assert(*memberLineSizeSprites.front().shapeLineSize() == 2);
+    assert(memberLineSizeSprites.front().shapePattern().has_value());
+    assert(*memberLineSizeSprites.front().shapePattern() == 2);
     assert(lineSizeProps.setSpriteProp(33, "lineSize", Datum::of(3)));
+    assert(lineSizeProps.setSpriteProp(33, "pattern", Datum::of(4)));
     const auto spriteLineSizeSprites = lineSizeRenderer.getSpritesForFrame(1);
     assert(spriteLineSizeSprites.size() == 1);
     assert(spriteLineSizeSprites.front().shapeLineSize().has_value());
     assert(*spriteLineSizeSprites.front().shapeLineSize() == 3);
+    assert(spriteLineSizeSprites.front().shapePattern().has_value());
+    assert(*spriteLineSizeSprites.front().shapePattern() == 4);
 
     StageRenderer regRenderer;
     auto mirroredMember = std::make_shared<CastMember>(1, 10001, MemberType::Bitmap);
@@ -21115,6 +21121,7 @@ void testSpriteBakerFoundation() {
 
     auto mutableOutlineMember = std::make_shared<CastMember>(804, 1, 10004, outlineShapeMember);
     mutableOutlineMember->setShapeFilled(true);
+    mutableOutlineMember->setShapePattern(2);
     RenderSprite runtimeMemberShape(7,
                                     0,
                                     0,
@@ -21126,9 +21133,9 @@ void testSpriteBakerFoundation() {
                                     outlineShapeMember,
                                     mutableOutlineMember,
                                     0x778899,
-                                    0,
+                                    0x112233,
                                     true,
-                                    false,
+                                    true,
                                     0,
                                     100,
                                     false,
@@ -21136,10 +21143,13 @@ void testSpriteBakerFoundation() {
                                     nullptr,
                                     false);
     auto filledRuntimeShape = baker.bake(runtimeMemberShape);
+    assert(filledRuntimeShape.bakedBitmap()->getPixel(0, 0) == 0xFF778899U);
+    assert(filledRuntimeShape.bakedBitmap()->getPixel(1, 0) == 0xFF112233U);
     assert(filledRuntimeShape.bakedBitmap()->getPixel(2, 2) == 0xFF778899U);
     mutableOutlineMember->setShapeFilled(false);
     mutableOutlineMember->setShapeLineSize(3);
     assert(mutableOutlineMember->hasRuntimeShapeLineSize());
+    assert(mutableOutlineMember->shapePattern() == 2);
     auto lineSizedRuntimeShape = baker.bake(runtimeMemberShape);
     assert(lineSizedRuntimeShape.bakedBitmap()->getPixel(2, 2) == 0xFF778899U);
 
@@ -28100,14 +28110,18 @@ void testCastLibManagerFoundation() {
     assert(manager.getMemberProp(1, 10003, "type").asSymbol()->name == "shape");
     assert(manager.getMemberProp(1, 10003, "filled").intValue() == 1);
     assert(manager.getMemberProp(1, 10003, "lineSize").intValue() == 1);
+    assert(manager.getMemberProp(1, 10003, "pattern").intValue() == 1);
     assert(manager.setMemberProp(1, 10003, "filled", Datum::FALSE));
     assert(manager.setMemberProp(1, 10003, "lineSize", Datum::of(4)));
+    assert(manager.setMemberProp(1, 10003, "pattern", Datum::of(2)));
     assert(manager.getMemberProp(1, 10003, "filled").intValue() == 0);
     assert(manager.getMemberProp(1, 10003, "lineSize").intValue() == 4);
+    assert(manager.getMemberProp(1, 10003, "pattern").intValue() == 2);
     auto runtimeShape = manager.resolveMember(1, 10003);
     assert(runtimeShape != nullptr);
     assert(!runtimeShape->shapeFilled());
     assert(runtimeShape->shapeLineSize() == 4);
+    assert(runtimeShape->shapePattern() == 2);
 
     const auto copiedRuntimeField = manager.createMember(1, "text");
     const auto* copiedRuntimeFieldRef = copiedRuntimeField.asCastMemberRef();

@@ -72,6 +72,8 @@ public:
     [[nodiscard]] int shapeLineSize() const;
     [[nodiscard]] bool hasRuntimeShapeLineSize() const;
     void setShapeLineSize(int lineSize);
+    [[nodiscard]] int shapePattern() const;
+    void setShapePattern(int pattern);
     [[nodiscard]] bool hasDynamicText() const;
     [[nodiscard]] std::string textContent() const;
     void setDynamicText(std::string text);
@@ -145,6 +147,7 @@ private:
     std::optional<BitmapInfo> bitmapInfo_;
     std::optional<ShapeInfo> shapeInfo_;
     std::optional<int> runtimeShapeLineSize_;
+    int shapePattern_{1};
     std::optional<FilmLoopInfo> filmLoopInfo_;
     std::optional<ScriptType> scriptType_;
     std::optional<Shockwave3DInfo> shockwave3DInfo_;

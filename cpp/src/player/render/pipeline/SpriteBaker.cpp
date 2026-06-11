@@ -81,6 +81,49 @@ int shapeLineStrokeCount(const RenderSprite& sprite, const ::libreshockwave::cas
     return std::max(1, shapeInfo.lineThickness);
 }
 
+int normalizedShapePattern(const RenderSprite& sprite) {
+    int pattern = sprite.shapePattern().value_or(1);
+    if (!sprite.shapePattern().has_value()) {
+        if (const auto dynamic = sprite.dynamicMember(); dynamic != nullptr && dynamic->isShape()) {
+            pattern = dynamic->shapePattern();
+        }
+    }
+    if (pattern <= 1) {
+        return 1;
+    }
+    return ((pattern - 1) % 8) + 1;
+}
+
+bool shapePatternOn(int pattern, int x, int y) {
+    switch (pattern) {
+        case 1: return true;
+        case 2: return ((x + y) & 1) == 0;
+        case 3: return (y & 1) == 0;
+        case 4: return (x & 1) == 0;
+        case 5: return ((x + y) & 3) == 0;
+        case 6: return ((x - y) & 3) == 0;
+        case 7: return (x & 3) == 0 || (y & 3) == 0;
+        case 8: return ((x + y) & 2) == 0;
+        default: return true;
+    }
+}
+
+std::uint32_t shapePaintArgb(const RenderSprite& sprite, int x, int y) {
+    const int pattern = normalizedShapePattern(sprite);
+    if (pattern <= 1 || shapePatternOn(pattern, x, y)) {
+        return opaqueArgb(sprite.foreColor());
+    }
+    return sprite.hasBackColor() ? opaqueArgb(sprite.backColor()) : 0;
+}
+
+void paintShapePixel(bitmap::Bitmap& bitmap, const RenderSprite& sprite, int x, int y) {
+    const auto argb = shapePaintArgb(sprite, x, y);
+    if ((argb >> 24U) == 0) {
+        return;
+    }
+    bitmap.setPixel(x, y, argb);
+}
+
 int channel(std::uint32_t argb, int shift) {
     return static_cast<int>((argb >> shift) & 0xFFU);
 }
@@ -875,7 +918,7 @@ bitmap::Bitmap SpriteBaker::drawShapeBitmap(const RenderSprite& sprite,
     bitmap::Bitmap bitmap(width, height, 32);
 
     if (shapeInfo == nullptr) {
-        fillSolidShape(bitmap, sprite.foreColor());
+        fillSolidShape(bitmap, sprite);
     } else {
         drawAuthoredShape(bitmap, sprite, *shapeInfo);
     }
@@ -896,15 +939,14 @@ void SpriteBaker::drawAuthoredShape(bitmap::Bitmap& bitmap,
         return;
     }
 
-    const std::uint32_t argb = opaqueArgb(sprite.foreColor());
     switch (shapeInfo.shapeType) {
         case ::libreshockwave::cast::ShapeType::Rect:
         case ::libreshockwave::cast::ShapeType::OvalRect:
             if (shapeInfo.isFilled()) {
-                bitmap.fill(argb);
+                fillSolidShape(bitmap, sprite);
             } else {
                 for (int i = 0; i < borderStrokes; ++i) {
-                    drawRect(bitmap, i, i, bitmap.width() - (i * 2), bitmap.height() - (i * 2), argb);
+                    drawRect(bitmap, i, i, bitmap.width() - (i * 2), bitmap.height() - (i * 2), sprite);
                 }
             }
             break;
@@ -915,7 +957,7 @@ void SpriteBaker::drawAuthoredShape(bitmap::Bitmap& bitmap,
                          bitmap.height() / 2,
                          std::max(0, bitmap.width() / 2),
                          std::max(0, bitmap.height() / 2),
-                         argb,
+                         sprite,
                          true);
             } else {
                 for (int i = 0; i < borderStrokes; ++i) {
@@ -924,7 +966,7 @@ void SpriteBaker::drawAuthoredShape(bitmap::Bitmap& bitmap,
                              bitmap.height() / 2,
                              std::max(0, bitmap.width() / 2 - i),
                              std::max(0, bitmap.height() / 2 - i),
-                             argb,
+                             sprite,
                              false);
                 }
             }
@@ -941,33 +983,41 @@ void SpriteBaker::drawAuthoredShape(bitmap::Bitmap& bitmap,
                 drawLine(bitmap,
                          0,
                          std::clamp(startY - i, 0, std::max(0, bitmap.height() - 1)),
-                         std::max(0, bitmap.width() - 1),
-                         std::clamp(endY - i, 0, std::max(0, bitmap.height() - 1)),
-                         argb);
+                        std::max(0, bitmap.width() - 1),
+                        std::clamp(endY - i, 0, std::max(0, bitmap.height() - 1)),
+                         sprite);
             }
             break;
         }
         case ::libreshockwave::cast::ShapeType::Unknown:
-            fillSolidShape(bitmap, sprite.foreColor());
+            fillSolidShape(bitmap, sprite);
             break;
     }
 }
 
-void SpriteBaker::fillSolidShape(bitmap::Bitmap& bitmap, int rgb) {
-    bitmap.fill(opaqueArgb(rgb));
+void SpriteBaker::fillSolidShape(bitmap::Bitmap& bitmap, const RenderSprite& sprite) {
+    if (normalizedShapePattern(sprite) <= 1) {
+        bitmap.fill(opaqueArgb(sprite.foreColor()));
+        return;
+    }
+    for (int y = 0; y < bitmap.height(); ++y) {
+        for (int x = 0; x < bitmap.width(); ++x) {
+            paintShapePixel(bitmap, sprite, x, y);
+        }
+    }
 }
 
-void SpriteBaker::drawRect(bitmap::Bitmap& bitmap, int x, int y, int width, int height, std::uint32_t argb) {
+void SpriteBaker::drawRect(bitmap::Bitmap& bitmap, int x, int y, int width, int height, const RenderSprite& sprite) {
     if (width <= 0 || height <= 0) {
         return;
     }
     for (int px = x; px < x + width; ++px) {
-        bitmap.setPixel(px, y, argb);
-        bitmap.setPixel(px, y + height - 1, argb);
+        paintShapePixel(bitmap, sprite, px, y);
+        paintShapePixel(bitmap, sprite, px, y + height - 1);
     }
     for (int py = y; py < y + height; ++py) {
-        bitmap.setPixel(x, py, argb);
-        bitmap.setPixel(x + width - 1, py, argb);
+        paintShapePixel(bitmap, sprite, x, py);
+        paintShapePixel(bitmap, sprite, x + width - 1, py);
     }
 }
 
@@ -976,7 +1026,7 @@ void SpriteBaker::drawOval(bitmap::Bitmap& bitmap,
                            int cy,
                            int rx,
                            int ry,
-                           std::uint32_t argb,
+                           const RenderSprite& sprite,
                            bool filled) {
     if (rx <= 0 || ry <= 0) {
         return;
@@ -988,13 +1038,13 @@ void SpriteBaker::drawOval(bitmap::Bitmap& bitmap,
             const double ny = (static_cast<double>(y) + 0.5 - static_cast<double>(cy)) / static_cast<double>(ry);
             const double value = (nx * nx) + (ny * ny);
             if ((filled && value <= 1.0) || (!filled && value >= 0.75 && value <= 1.15)) {
-                bitmap.setPixel(x, y, argb);
+                paintShapePixel(bitmap, sprite, x, y);
             }
         }
     }
 }
 
-void SpriteBaker::drawLine(bitmap::Bitmap& bitmap, int x0, int y0, int x1, int y1, std::uint32_t argb) {
+void SpriteBaker::drawLine(bitmap::Bitmap& bitmap, int x0, int y0, int x1, int y1, const RenderSprite& sprite) {
     const int dx = std::abs(x1 - x0);
     const int sx = x0 < x1 ? 1 : -1;
     const int dy = -std::abs(y1 - y0);
@@ -1002,7 +1052,7 @@ void SpriteBaker::drawLine(bitmap::Bitmap& bitmap, int x0, int y0, int x1, int y
     int error = dx + dy;
 
     while (true) {
-        bitmap.setPixel(x0, y0, argb);
+        paintShapePixel(bitmap, sprite, x0, y0);
         if (x0 == x1 && y0 == y1) {
             break;
         }

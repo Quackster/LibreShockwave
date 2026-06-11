@@ -704,6 +704,7 @@ lingo::Datum CastLib::getMemberProp(int memberNumber, const std::string& propNam
     if (member->isShape()) {
         if (prop == "filled") return lingo::Datum::of(member->shapeFilled() ? 1 : 0);
         if (prop == "linesize") return lingo::Datum::of(member->shapeLineSize());
+        if (prop == "pattern") return lingo::Datum::of(member->shapePattern());
     }
     if (member->isScript()) {
         if (prop == "text") return stringDatum("");
@@ -892,6 +893,10 @@ bool CastLib::setMemberProp(int memberNumber, const std::string& propName, const
         }
         if (prop == "linesize") {
             member->setShapeLineSize(value.intValue());
+            return true;
+        }
+        if (prop == "pattern") {
+            member->setShapePattern(value.intValue());
             return true;
         }
     }

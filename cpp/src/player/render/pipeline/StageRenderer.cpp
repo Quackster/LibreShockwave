@@ -427,9 +427,16 @@ RenderSprite StageRenderer::applyLegacyRenderProperties(RenderSprite sprite, con
         dynamic != nullptr && dynamic->isShape() && dynamic->hasRuntimeShapeLineSize()) {
         sprite = sprite.withShapeLineSize(dynamic->shapeLineSize());
     }
+    if (const auto dynamic = sprite.dynamicMember(); dynamic != nullptr && dynamic->isShape()) {
+        sprite = sprite.withShapePattern(dynamic->shapePattern());
+    }
     if (auto lineSize = state.legacyProperty("linesize");
         lineSize.has_value() && !lineSize->isVoid()) {
         sprite = sprite.withShapeLineSize(std::max(0, lineSize->intValue()));
+    }
+    if (auto pattern = state.legacyProperty("pattern");
+        pattern.has_value() && !pattern->isVoid()) {
+        sprite = sprite.withShapePattern(pattern->intValue());
     }
     return sprite;
 }

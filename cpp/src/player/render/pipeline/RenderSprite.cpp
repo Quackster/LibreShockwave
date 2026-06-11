@@ -1,5 +1,6 @@
 #include "libreshockwave/player/render/pipeline/RenderSprite.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 #include <utility>
@@ -180,6 +181,7 @@ double RenderSprite::skew() const { return skew_; }
 std::shared_ptr<const bitmap::Bitmap> RenderSprite::bakedBitmap() const { return bakedBitmap_; }
 bool RenderSprite::hasBehaviors() const { return hasBehaviors_; }
 std::optional<int> RenderSprite::shapeLineSize() const { return shapeLineSize_; }
+std::optional<int> RenderSprite::shapePattern() const { return shapePattern_; }
 
 bool RenderSprite::hasDirectorHorizontalMirror() const {
     return normalizeTransformAngle(rotation_) == 180 && normalizeTransformAngle(skew_) == 180;
@@ -209,6 +211,7 @@ RenderSprite RenderSprite::withBakedBitmap(std::shared_ptr<const bitmap::Bitmap>
                         std::move(baked),
                         hasBehaviors_);
     result.shapeLineSize_ = shapeLineSize_;
+    result.shapePattern_ = shapePattern_;
     return result;
 }
 
@@ -238,12 +241,19 @@ RenderSprite RenderSprite::withBakedBitmapAndSize(std::shared_ptr<const bitmap::
                         std::move(baked),
                         hasBehaviors_);
     result.shapeLineSize_ = shapeLineSize_;
+    result.shapePattern_ = shapePattern_;
     return result;
 }
 
 RenderSprite RenderSprite::withShapeLineSize(int lineSize) const {
     RenderSprite result(*this);
     result.shapeLineSize_ = lineSize;
+    return result;
+}
+
+RenderSprite RenderSprite::withShapePattern(int pattern) const {
+    RenderSprite result(*this);
+    result.shapePattern_ = std::max(1, pattern);
     return result;
 }
 

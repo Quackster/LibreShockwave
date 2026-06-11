@@ -160,6 +160,17 @@ void CastMember::setShapeLineSize(int lineSize) {
     runtimeShapeLineSize_ = std::max(0, lineSize);
 }
 
+int CastMember::shapePattern() const {
+    return isShape() ? shapePattern_ : 1;
+}
+
+void CastMember::setShapePattern(int pattern) {
+    if (!isShape()) {
+        return;
+    }
+    shapePattern_ = std::max(1, pattern);
+}
+
 std::shared_ptr<bitmap::Bitmap> CastMember::runtimeBitmap() const {
     return runtimeBitmap_;
 }
@@ -384,6 +395,7 @@ void CastMember::resetRuntimePayload() {
     bitmapInfo_.reset();
     shapeInfo_.reset();
     runtimeShapeLineSize_.reset();
+    shapePattern_ = 1;
     filmLoopInfo_.reset();
     scriptType_.reset();
     shockwave3DInfo_.reset();
