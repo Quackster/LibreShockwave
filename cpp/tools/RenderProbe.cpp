@@ -40,6 +40,7 @@ struct RenderProbeOptions {
     bool play = false;
     bool preloadCasts = true;
     int ticks = 0;
+    int scanFrames = 0;
     int scriptTimeoutMs = 1000;
     std::size_t maxFailures = 25;
     std::size_t progressInterval = 250;
@@ -58,6 +59,11 @@ struct RenderProbeSummary {
     std::size_t pixels = 0;
     std::size_t nonBackgroundPixels = 0;
     std::size_t transparentPixels = 0;
+    std::size_t scannedFrames = 0;
+    std::size_t framesWithSprites = 0;
+    std::size_t framesWithBakedSprites = 0;
+    std::size_t framesWithNonBackgroundPixels = 0;
+    int firstNonBackgroundFrame = 0;
     int stageWidth = 0;
     int stageHeight = 0;
     int frame = 0;
@@ -118,11 +124,12 @@ std::string usage(const char* argv0) {
     out << "Usage: " << argv0
         << " [--allow-empty] [--max-failures N] [--progress-interval N] [--show-current]"
         << " [--verbose] [--no-preload-casts] [--play] [--ticks N] [--script-timeout-ms N]"
-        << " <file-or-directory>...\n"
+        << " [--scan-frames N] <file-or-directory>...\n"
         << "Loads Director .cct/.cst/.dcr/.dir/.dxr files through the native C++ player renderer "
         << "and reports frame-buffer statistics. By default local external casts are preloaded from "
         << "the movie directory but scripts are not run; --play prepares the movie foundation, "
         << "and --ticks N advances N playback ticks before rendering. "
+        << "--scan-frames N also renders up to N score frames and reports nonblank frame coverage. "
         << "Lifecycle script dispatch is capped by --script-timeout-ms when --play is active; use 0 to disable it.\n"
         << "If no paths are supplied, /var/html is used.";
     return out.str();
@@ -209,6 +216,18 @@ RenderProbeOptions parseOptions(int argc, char** argv) {
         if (arg.starts_with(ticksPrefix)) {
             options.ticks = parseNonNegativeInt(arg.substr(ticksPrefix.size()), "--ticks");
             options.play = true;
+            continue;
+        }
+        if (arg == "--scan-frames") {
+            if (index + 1 >= argc) {
+                throw std::runtime_error("--scan-frames requires a value");
+            }
+            options.scanFrames = parseNonNegativeInt(argv[++index], "--scan-frames");
+            continue;
+        }
+        constexpr std::string_view scanFramesPrefix = "--scan-frames=";
+        if (arg.starts_with(scanFramesPrefix)) {
+            options.scanFrames = parseNonNegativeInt(arg.substr(scanFramesPrefix.size()), "--scan-frames");
             continue;
         }
         if (arg == "--script-timeout-ms") {
@@ -307,6 +326,28 @@ std::size_t countBakedSprites(const std::vector<libreshockwave::player::render::
     }));
 }
 
+struct BitmapStats {
+    std::size_t pixels = 0;
+    std::size_t nonBackgroundPixels = 0;
+    std::size_t transparentPixels = 0;
+};
+
+BitmapStats measureBitmap(const libreshockwave::player::render::pipeline::FrameSnapshot& snapshot,
+                          const libreshockwave::bitmap::Bitmap& bitmap) {
+    const std::uint32_t background = 0xFF000000U | static_cast<std::uint32_t>(snapshot.backgroundColor & 0xFFFFFF);
+    BitmapStats stats;
+    stats.pixels = bitmap.pixels().size();
+    for (const auto pixel : bitmap.pixels()) {
+        if ((pixel >> 24) == 0) {
+            ++stats.transparentPixels;
+        }
+        if (pixel != background) {
+            ++stats.nonBackgroundPixels;
+        }
+    }
+    return stats;
+}
+
 struct ExternalCastStats {
     std::size_t externalCasts = 0;
     std::size_t loadedExternalCasts = 0;
@@ -371,15 +412,34 @@ RenderProbeSummary probeFile(const fs::path& path, const RenderProbeOptions& opt
         throw std::runtime_error("Rendered bitmap dimensions do not match frame snapshot");
     }
 
-    const std::uint32_t background = 0xFF000000U | static_cast<std::uint32_t>(snapshot.backgroundColor & 0xFFFFFF);
-    std::size_t nonBackgroundPixels = 0;
-    std::size_t transparentPixels = 0;
-    for (const auto pixel : bitmap.pixels()) {
-        if ((pixel >> 24) == 0) {
-            ++transparentPixels;
-        }
-        if (pixel != background) {
-            ++nonBackgroundPixels;
+    const auto initialBitmapStats = measureBitmap(snapshot, bitmap);
+    std::size_t scannedFrames = 0;
+    std::size_t framesWithSprites = 0;
+    std::size_t framesWithBakedSprites = 0;
+    std::size_t framesWithNonBackgroundPixels = 0;
+    int firstNonBackgroundFrame = 0;
+    if (options.scanFrames > 0 && player.frameCount() > 0) {
+        const int framesToScan = std::min(options.scanFrames, player.frameCount());
+        for (int frame = 1; frame <= framesToScan; ++frame) {
+            const auto scanSnapshot = player.frameRenderPipeline().renderFrame(frame);
+            const auto scanBitmap = scanSnapshot.renderFrame();
+            if (scanBitmap.width() != scanSnapshot.stageWidth || scanBitmap.height() != scanSnapshot.stageHeight) {
+                throw std::runtime_error("Rendered scanned bitmap dimensions do not match frame snapshot");
+            }
+
+            ++scannedFrames;
+            if (!scanSnapshot.sprites.empty()) {
+                ++framesWithSprites;
+            }
+            if (countBakedSprites(scanSnapshot.sprites) > 0) {
+                ++framesWithBakedSprites;
+            }
+            if (measureBitmap(scanSnapshot, scanBitmap).nonBackgroundPixels > 0) {
+                ++framesWithNonBackgroundPixels;
+                if (firstNonBackgroundFrame == 0) {
+                    firstNonBackgroundFrame = frame;
+                }
+            }
         }
     }
 
@@ -393,9 +453,14 @@ RenderProbeSummary probeFile(const fs::path& path, const RenderProbeOptions& opt
         static_cast<std::size_t>(externalCastRequests),
         snapshot.sprites.size(),
         countBakedSprites(snapshot.sprites),
-        bitmap.pixels().size(),
-        nonBackgroundPixels,
-        transparentPixels,
+        initialBitmapStats.pixels,
+        initialBitmapStats.nonBackgroundPixels,
+        initialBitmapStats.transparentPixels,
+        scannedFrames,
+        framesWithSprites,
+        framesWithBakedSprites,
+        framesWithNonBackgroundPixels,
+        firstNonBackgroundFrame,
         snapshot.stageWidth,
         snapshot.stageHeight,
         player.currentFrame(),
@@ -426,6 +491,11 @@ void printVerboseOk(const fs::path& path, const RenderProbeSummary& summary) {
               << " pixels=" << summary.pixels
               << " nonBackgroundPixels=" << summary.nonBackgroundPixels
               << " transparentPixels=" << summary.transparentPixels
+              << " scannedFrames=" << summary.scannedFrames
+              << " framesWithSprites=" << summary.framesWithSprites
+              << " framesWithBakedSprites=" << summary.framesWithBakedSprites
+              << " framesWithNonBackgroundPixels=" << summary.framesWithNonBackgroundPixels
+              << " firstNonBackgroundFrame=" << summary.firstNonBackgroundFrame
               << " scriptErrors=" << summary.scriptErrors.size()
               << '\n';
 
@@ -449,6 +519,7 @@ int main(int argc, char** argv) {
                   << " preloadCasts=" << (options.preloadCasts ? "yes" : "no")
                   << " play=" << (options.play ? "yes" : "no")
                   << " ticks=" << options.ticks
+                  << " scanFrames=" << options.scanFrames
                   << " scriptTimeoutMs=" << (options.play ? options.scriptTimeoutMs : 0)
                   << '\n' << std::flush;
 
@@ -466,6 +537,11 @@ int main(int argc, char** argv) {
         std::size_t totalPixels = 0;
         std::size_t totalNonBackgroundPixels = 0;
         std::size_t totalTransparentPixels = 0;
+        std::size_t totalScannedFrames = 0;
+        std::size_t totalFramesWithSprites = 0;
+        std::size_t totalFramesWithBakedSprites = 0;
+        std::size_t totalFramesWithNonBackgroundPixels = 0;
+        std::size_t filesWithNonBackgroundScannedFrames = 0;
         std::size_t totalScriptErrors = 0;
 
         for (std::size_t fileIndex = 0; fileIndex < files.size(); ++fileIndex) {
@@ -489,6 +565,13 @@ int main(int argc, char** argv) {
                 totalPixels += summary.pixels;
                 totalNonBackgroundPixels += summary.nonBackgroundPixels;
                 totalTransparentPixels += summary.transparentPixels;
+                totalScannedFrames += summary.scannedFrames;
+                totalFramesWithSprites += summary.framesWithSprites;
+                totalFramesWithBakedSprites += summary.framesWithBakedSprites;
+                totalFramesWithNonBackgroundPixels += summary.framesWithNonBackgroundPixels;
+                if (summary.firstNonBackgroundFrame > 0) {
+                    ++filesWithNonBackgroundScannedFrames;
+                }
                 totalScriptErrors += summary.scriptErrors.size();
 
                 if (options.verbose) {
@@ -525,6 +608,11 @@ int main(int argc, char** argv) {
                   << " pixels=" << totalPixels
                   << " nonBackgroundPixels=" << totalNonBackgroundPixels
                   << " transparentPixels=" << totalTransparentPixels
+                  << " scannedFrames=" << totalScannedFrames
+                  << " framesWithSprites=" << totalFramesWithSprites
+                  << " framesWithBakedSprites=" << totalFramesWithBakedSprites
+                  << " framesWithNonBackgroundPixels=" << totalFramesWithNonBackgroundPixels
+                  << " filesWithNonBackgroundScannedFrames=" << filesWithNonBackgroundScannedFrames
                   << " scriptErrors=" << totalScriptErrors
                   << '\n';
 
