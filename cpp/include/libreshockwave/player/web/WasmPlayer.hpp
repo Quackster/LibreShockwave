@@ -62,6 +62,8 @@ public:
     void stop();
     void goToFrame(int frame);
     void stepFrame();
+    void setScriptTimeoutMs(int milliseconds);
+    [[nodiscard]] int scriptTimeoutMs() const;
 
     [[nodiscard]] int currentFrame() const;
     [[nodiscard]] int frameCount() const;

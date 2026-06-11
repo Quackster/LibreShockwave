@@ -137,14 +137,30 @@ void WasmRuntime::stop() {
 }
 
 void WasmRuntime::goToFrame(int frame) {
-    if (player_) {
+    if (!player_) {
+        return;
+    }
+    try {
+        lastError_.clear();
         player_->goToFrame(frame);
+    } catch (const std::exception& error) {
+        captureError("goToFrame", error);
+    } catch (...) {
+        captureUnknownError("goToFrame");
     }
 }
 
 void WasmRuntime::stepForward() {
-    if (player_) {
+    if (!player_) {
+        return;
+    }
+    try {
+        lastError_.clear();
         player_->stepFrame();
+    } catch (const std::exception& error) {
+        captureError("stepForward", error);
+    } catch (...) {
+        captureUnknownError("stepForward");
     }
 }
 
@@ -154,8 +170,18 @@ void WasmRuntime::stepBackward() {
     }
     const int frame = player_->currentFrame();
     if (frame > 1) {
-        player_->goToFrame(frame - 1);
+        goToFrame(frame - 1);
     }
+}
+
+void WasmRuntime::setScriptTimeoutMs(int milliseconds) {
+    if (player_) {
+        player_->setScriptTimeoutMs(milliseconds);
+    }
+}
+
+int WasmRuntime::scriptTimeoutMs() const {
+    return player_ != nullptr ? player_->scriptTimeoutMs() : 0;
 }
 
 int WasmRuntime::currentFrame() const {

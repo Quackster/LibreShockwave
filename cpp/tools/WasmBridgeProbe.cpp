@@ -38,6 +38,7 @@ struct BridgeProbeOptions {
     bool preloadCasts = true;
     int ticks = 0;
     int scanFrames = 0;
+    int scriptTimeoutMs = 1000;
     std::size_t maxFailures = 25;
     std::size_t progressInterval = 250;
     std::vector<fs::path> roots;
@@ -74,6 +75,7 @@ struct BridgeProbeSummary {
     int frame = 0;
     int frameCount = 0;
     bool renderable = false;
+    std::vector<std::string> scriptErrors;
 };
 
 class SkippedFile : public std::runtime_error {
@@ -124,7 +126,8 @@ std::string usage(const char* argv0) {
     std::ostringstream out;
     out << "Usage: " << argv0
         << " [--allow-empty] [--max-failures N] [--progress-interval N] [--show-current]"
-        << " [--verbose] [--no-preload-casts] [--play] [--ticks N] [--scan-frames N]"
+        << " [--verbose] [--no-preload-casts] [--play] [--ticks N] [--script-timeout-ms N]"
+        << " [--scan-frames N]"
         << " <file-or-directory>...\n"
         << "Loads Director files through the native C++ WASM C ABI exports, optionally satisfies pending "
         << "host fetches from local sidecar files, renders through libreshockwave_wasm_render(), and reports "
@@ -214,6 +217,19 @@ BridgeProbeOptions parseOptions(int argc, char** argv) {
         if (arg.starts_with(ticksPrefix)) {
             options.ticks = parseNonNegativeInt(arg.substr(ticksPrefix.size()), "--ticks");
             options.play = true;
+            continue;
+        }
+        if (arg == "--script-timeout-ms") {
+            if (index + 1 >= argc) {
+                throw std::runtime_error("--script-timeout-ms requires a value");
+            }
+            options.scriptTimeoutMs = parseNonNegativeInt(argv[++index], "--script-timeout-ms");
+            continue;
+        }
+        constexpr std::string_view scriptTimeoutPrefix = "--script-timeout-ms=";
+        if (arg.starts_with(scriptTimeoutPrefix)) {
+            options.scriptTimeoutMs = parseNonNegativeInt(arg.substr(scriptTimeoutPrefix.size()),
+                                                          "--script-timeout-ms");
             continue;
         }
         if (arg == "--scan-frames") {
@@ -315,6 +331,11 @@ std::string readStringBuffer(int length) {
     }
     const auto* buffer = reinterpret_cast<const char*>(stringBuffer());
     return buffer == nullptr ? "" : std::string(buffer, static_cast<std::size_t>(length));
+}
+
+std::string takeLastError() {
+    const int length = libreshockwave_wasm_get_last_error();
+    return readStringBuffer(length);
 }
 
 void writeStringBuffer(std::string_view value) {
@@ -534,6 +555,7 @@ BridgeProbeSummary probeFile(const fs::path& rawPath, const BridgeProbeOptions& 
     summary.renderable = loadedRenderable;
     summary.frame = libreshockwave_wasm_current_frame();
     summary.frameCount = libreshockwave_wasm_frame_count();
+    libreshockwave::player::web::wasmExportRuntime().setScriptTimeoutMs(options.scriptTimeoutMs);
 
     if (options.preloadCasts) {
         summary.preloadRequests = static_cast<std::size_t>(std::max(0, libreshockwave_wasm_preload_casts()));
@@ -542,9 +564,15 @@ BridgeProbeSummary probeFile(const fs::path& rawPath, const BridgeProbeOptions& 
 
     if (options.play) {
         libreshockwave_wasm_play();
+        if (auto error = takeLastError(); !error.empty()) {
+            summary.scriptErrors.push_back(std::move(error));
+        }
         for (int tick = 0; tick < options.ticks; ++tick) {
             if (libreshockwave_wasm_tick() == 0) {
                 break;
+            }
+            if (auto error = takeLastError(); !error.empty()) {
+                summary.scriptErrors.push_back(std::move(error));
             }
         }
     }
@@ -568,6 +596,9 @@ BridgeProbeSummary probeFile(const fs::path& rawPath, const BridgeProbeOptions& 
         const int framesToScan = std::min(options.scanFrames, summary.frameCount);
         for (int frameIndex = 1; frameIndex <= framesToScan; ++frameIndex) {
             libreshockwave_wasm_step_forward();
+            if (auto error = takeLastError(); !error.empty()) {
+                summary.scriptErrors.push_back(std::move(error));
+            }
             const int scanBytes = libreshockwave_wasm_render();
             if (scanBytes != summary.stageWidth * summary.stageHeight * 4) {
                 throw std::runtime_error("WASM bridge scanned render size does not match stage dimensions");
@@ -608,7 +639,12 @@ void printVerboseOk(const fs::path& path, const BridgeProbeSummary& summary) {
               << " framesWithSprites=" << summary.framesWithSprites
               << " framesWithNonBlackPixels=" << summary.framesWithNonBlackPixels
               << " firstNonBlackFrame=" << summary.firstNonBlackFrame
+              << " scriptErrors=" << summary.scriptErrors.size()
               << '\n';
+
+    for (const auto& error : summary.scriptErrors) {
+        std::cout << "SCRIPT_ERROR " << pathString(path) << ": " << error << '\n';
+    }
 }
 
 } // namespace
@@ -627,6 +663,7 @@ int main(int argc, char** argv) {
                   << " play=" << (options.play ? "yes" : "no")
                   << " ticks=" << options.ticks
                   << " scanFrames=" << options.scanFrames
+                  << " scriptTimeoutMs=" << (options.play || options.scanFrames > 0 ? options.scriptTimeoutMs : 0)
                   << '\n' << std::flush;
 
         std::size_t okCount = 0;
@@ -647,6 +684,7 @@ int main(int argc, char** argv) {
         std::size_t totalFramesWithSprites = 0;
         std::size_t totalFramesWithNonBlackPixels = 0;
         std::size_t filesWithNonBlackScannedFrames = 0;
+        std::size_t totalScriptErrors = 0;
 
         const auto printProgress = [&](std::size_t processedCount) {
             if (options.verbose || options.progressInterval == 0) {
@@ -690,6 +728,7 @@ int main(int argc, char** argv) {
                 if (summary.firstNonBlackFrame > 0) {
                     ++filesWithNonBlackScannedFrames;
                 }
+                totalScriptErrors += summary.scriptErrors.size();
 
                 if (options.verbose) {
                     printVerboseOk(file, summary);
@@ -732,6 +771,7 @@ int main(int argc, char** argv) {
                   << " framesWithSprites=" << totalFramesWithSprites
                   << " framesWithNonBlackPixels=" << totalFramesWithNonBlackPixels
                   << " filesWithNonBlackScannedFrames=" << filesWithNonBlackScannedFrames
+                  << " scriptErrors=" << totalScriptErrors
                   << '\n';
 
         if (okCount == 0 && !files.empty() && failureCount == 0 && !options.allowEmpty) {

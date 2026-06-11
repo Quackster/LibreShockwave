@@ -104,10 +104,7 @@ bool WasmPlayer::tick() {
     if (player_->state() == PlayerState::Paused) {
         return true;
     }
-    try {
-        (void)player_->tick();
-    } catch (...) {
-    }
+    (void)player_->tick();
     return true;
 }
 
@@ -143,6 +140,16 @@ void WasmPlayer::stepFrame() {
     if (player_) {
         player_->stepFrame();
     }
+}
+
+void WasmPlayer::setScriptTimeoutMs(int milliseconds) {
+    if (player_) {
+        player_->vm().setTickDeadlineMs(milliseconds);
+    }
+}
+
+int WasmPlayer::scriptTimeoutMs() const {
+    return player_ != nullptr ? static_cast<int>(player_->vm().tickDeadlineMs()) : 0;
 }
 
 int WasmPlayer::currentFrame() const {

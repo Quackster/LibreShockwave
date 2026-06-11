@@ -21938,6 +21938,10 @@ void testWasmPlayerWrapperFoundation() {
     assert(wrapper.stageWidth() == 320);
     assert(wrapper.stageHeight() == 240);
     assert(wrapper.tempo() == 30);
+    assert(wrapper.scriptTimeoutMs() == 0);
+    wrapper.setScriptTimeoutMs(345);
+    assert(wrapper.scriptTimeoutMs() == 345);
+    assert(wrapper.player()->vm().tickDeadlineMs() == 345);
     wrapper.setPuppetTempo(42);
     assert(wrapper.tempo() == 42);
     assert(wrapper.currentFrame() >= 0);
@@ -22096,6 +22100,10 @@ void testWasmRuntimeBridgeFoundation() {
     assert(runtime.stageWidth() == 240);
     assert(runtime.stageHeight() == 180);
     assert(runtime.tempo() == 20);
+    assert(runtime.scriptTimeoutMs() == 0);
+    runtime.setScriptTimeoutMs(456);
+    assert(runtime.scriptTimeoutMs() == 456);
+    assert(runtime.player()->player()->vm().tickDeadlineMs() == 456);
     runtime.setPuppetTempo(12);
     assert(runtime.tempo() == 12);
     assert(runtime.currentFrame() >= 0);
