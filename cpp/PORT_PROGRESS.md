@@ -185,6 +185,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - Base64 font chunks are decoded into a fixed compressed buffer before inflation, matching the Java generated source contract.
 - zlib inflation returns decoded font bytes only when the exact expected uncompressed length is produced, otherwise it returns an empty vector.
 - The C++ build now embeds the bundled Volter regular/bold TTF resources and `FontRegistry` registers them on startup and after `clear()`, matching the Java default pixel-font fallback.
+- The C++ build now generates and embeds the bundled Mac and Windows platform TTF resources, with `MacFontBundle`, `WindowsFontBundle`, and `FontRegistry` resolving them automatically while preserving runtime override registration hooks.
 
 ### Utility Formatting Helpers
 
@@ -307,8 +308,8 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `font::BitmapFont::fromPfr1` ports Java's direct PFR bitmap-font rasterization path, including target-size scaling, matrix-aware outline scanline fill with cubic curve flattening, overflow glyph cells, embedded bitmap-glyph copy, lowercase fallback cell copying, and PFR ascent/line-height metrics.
 - `font::Pfr1TtfConverter` ports the Java minimal TrueType table writer for parsed PFR1 outlines, including `cmap`, `glyf`, `head`, `hhea`, `hmtx`, `loca`, `maxp`, `name`, `OS/2`, and `post` table construction.
 - `font::TtfBitmapRasterizer` ports Java's pure TrueType table parser and bitmap rasterizer for simple glyph outlines, including `cmap` format 4 parsing, `loca`/`glyf` glyph decoding, repeated flags, quadratic-curve flattening, overflow glyph cells, metrics, and blank-font rejection for PFR fallback.
-- `player::cast::FontRegistry` ports prebuilt bitmap-font cache lookup, PFR1 font registration, converted PFR-to-TTF byte caching, pure TTF bitmap rasterization/cache population, direct PFR bitmap-font rasterization fallback, size-aware embedded TTF family registration/fallback, Director font aliases, canonical font-name normalization, and basic alias resolution for the future C++ simple text renderer path.
-- Renderer-side PFR anti-alias fidelity, platform text shaping, and automatic bundled platform font asset installation remain deferred to later font-rendering slices.
+- `player::cast::FontRegistry` ports prebuilt bitmap-font cache lookup, PFR1 font registration, converted PFR-to-TTF byte caching, pure TTF bitmap rasterization/cache population, direct PFR bitmap-font rasterization fallback, size-aware embedded TTF family registration/fallback, Director font aliases, canonical font-name normalization, Windows/Mac platform bundle fallback, and basic alias resolution for the future C++ simple text renderer path.
+- Renderer-side PFR anti-alias fidelity and platform text shaping remain deferred to later font-rendering slices.
 
 ### Sound Converter
 
@@ -982,7 +983,7 @@ Result:
 - BitmapColorizer 32-bit, indexed, foreground-only, packed-index, and ink predicate tests passed through the same CTest executable.
 - GTK dialog button action names now route back into tested Apply/Cancel/Close result behavior for External Parameters, Trace Handler, About, and Detailed Stack dialog presentations.
 - PfrBitReader byte, signed, skip, alignment, bit-buffer, and partial-EOF tests passed through the same CTest executable.
-- BitmapFont glyph drawing, overflow metrics, BDF parsing, direct PFR outline/bitmap/curve glyph rasterization, PFR1 metadata/character-record/simple/compound/curve-outline parsing, PFR-to-TTF table generation/cache registration, pure TTF bitmap rasterization with the bundled Verdana fixture, FontRegistry prebuilt-cache/PFR-registration/rasterization/size-aware embedded-TTF/alias/Mac fallback behavior, Mac/Windows platform font bundle selection and caching, and SimpleTextRenderer bitmap-font/built-in-fallback/wrapping/underline/caret/XMED per-span/styled-underline rendering behavior passed through the same CTest executable.
+- BitmapFont glyph drawing, overflow metrics, BDF parsing, direct PFR outline/bitmap/curve glyph rasterization, PFR1 metadata/character-record/simple/compound/curve-outline parsing, PFR-to-TTF table generation/cache registration, pure TTF bitmap rasterization with the bundled Verdana fixture, FontRegistry prebuilt-cache/PFR-registration/rasterization/size-aware embedded-TTF/alias/Windows-first/Mac fallback behavior, bundled Mac/Windows platform font selection and caching, and SimpleTextRenderer bitmap-font/built-in-fallback/wrapping/underline/caret/XMED per-span/styled-underline rendering behavior passed through the same CTest executable.
 - SoundConverter WAV layout, SoundChunk header stripping, signed/endianness conversion, MP3 extraction, IMA ADPCM, and duration tests passed through the same CTest executable.
 - CastMember bitmap, script, shape, dimension, type-check, raw chunk, and display string tests passed through the same CTest executable.
 - CastLib and CastLibManager lazy MCsL/CAS* initialization, member count/name lookup, source-prefixed lookup fallback, member metadata properties, registry filtering, builtin callback installation, external-cache keys, pending external-load bookkeeping, Player external-cast preload queuing, public provider fetch handoff, fetch-completion hydration, cached and callback-backed fileName reloads, and Player external-cast cached-load callbacks passed through the same CTest executable.
@@ -1089,7 +1090,7 @@ Result:
 ## Remaining Major Work
 
 - Higher-level media integration.
-- Remaining sound, renderer-side PFR anti-alias fidelity, platform font-family loading, and text/score/script chunk decoder edge cases.
+- Remaining sound, renderer-side PFR anti-alias fidelity, platform text shaping, and text/score/script chunk decoder edge cases.
 - Detailed W3D geometry/material decoding and rendering integration.
 - Lingo decompiler, VM runtime values, dispatchers, and builtins.
 - Player core, rendering pipeline, input, networking, audio, cast management, and debugging.
@@ -1424,4 +1425,5 @@ Result:
 - `65666e20 Add C++ GTK pane context menus`
 - `616e1f32 Wire C++ GTK tab drag docking`
 - `77aa0d8a Render C++ GTK docked workbench layout`
-- Current checkpoint commit message: `Port C++ ScriptChunk file helpers`
+- `950b549d Port C++ ScriptChunk file helpers`
+- Current checkpoint commit message: `Embed C++ platform font bundles`

@@ -13,6 +13,7 @@
 #include "libreshockwave/font/TtfBitmapRasterizer.hpp"
 #include "libreshockwave/fonts/volter/Volter.hpp"
 #include "libreshockwave/player/cast/MacFontBundle.hpp"
+#include "libreshockwave/player/cast/WindowsFontBundle.hpp"
 
 namespace libreshockwave::player::cast {
 namespace {
@@ -331,6 +332,9 @@ std::shared_ptr<font::BitmapFont> FontRegistry::getBitmapFont(const std::string&
                 return rasterized;
             }
         }
+    }
+    if (auto windowsFont = WindowsFontBundle::getFont(fontName, fontSize, bold, italic); windowsFont != nullptr) {
+        return windowsFont;
     }
     if (auto macFont = MacFontBundle::getFont(fontName, fontSize, bold, italic); macFont != nullptr) {
         return macFont;

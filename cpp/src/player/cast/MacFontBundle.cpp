@@ -11,6 +11,7 @@
 #include <unordered_map>
 
 #include "libreshockwave/font/TtfBitmapRasterizer.hpp"
+#include "libreshockwave/fonts/PlatformFonts.hpp"
 #include "libreshockwave/player/cast/FontRegistry.hpp"
 
 namespace libreshockwave::player::cast {
@@ -105,18 +106,22 @@ std::string dataKey(const std::string& filePrefix, int size) {
 std::shared_ptr<font::BitmapFont> loadTtf(const std::string& filePrefix,
                                           int size,
                                           const std::string& familyKey) {
+    const auto key = dataKey(filePrefix, size);
     std::vector<std::uint8_t> bytes;
     {
         auto& bundle = state();
         std::lock_guard lock(bundle.mutex);
-        if (const auto it = bundle.ttfData.find(dataKey(filePrefix, size)); it != bundle.ttfData.end()) {
+        if (const auto it = bundle.ttfData.find(key); it != bundle.ttfData.end()) {
             bytes = it->second;
         }
     }
-    if (bytes.empty()) {
-        return nullptr;
+    if (!bytes.empty()) {
+        return font::TtfBitmapRasterizer::rasterize(bytes, size, familyKey);
     }
-    return font::TtfBitmapRasterizer::rasterize(bytes, size, familyKey);
+    if (const auto* bundledBytes = fonts::platform::macFontData(key); bundledBytes != nullptr) {
+        return font::TtfBitmapRasterizer::rasterize(*bundledBytes, size, familyKey);
+    }
+    return nullptr;
 }
 
 } // namespace

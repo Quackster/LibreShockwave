@@ -15,6 +15,26 @@ add_custom_command(
 )
 set_source_files_properties("${LIBRESHOCKWAVE_VOLTER_DATA_CPP}" PROPERTIES GENERATED TRUE)
 
+set(LIBRESHOCKWAVE_PLATFORM_FONT_DATA_CPP "${CMAKE_CURRENT_BINARY_DIR}/generated/src/fonts/PlatformFontData.cpp")
+set(LIBRESHOCKWAVE_PLATFORM_FONT_RESOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../player-core/src/main/resources/fonts")
+file(GLOB LIBRESHOCKWAVE_PLATFORM_FONT_FILES CONFIGURE_DEPENDS
+    "${LIBRESHOCKWAVE_PLATFORM_FONT_RESOURCE_DIR}/mac/*.ttf"
+    "${LIBRESHOCKWAVE_PLATFORM_FONT_RESOURCE_DIR}/windows/*.ttf"
+)
+add_custom_command(
+    OUTPUT "${LIBRESHOCKWAVE_PLATFORM_FONT_DATA_CPP}"
+    COMMAND "${CMAKE_COMMAND}"
+        "-DMAC_FONT_DIR=${LIBRESHOCKWAVE_PLATFORM_FONT_RESOURCE_DIR}/mac"
+        "-DWINDOWS_FONT_DIR=${LIBRESHOCKWAVE_PLATFORM_FONT_RESOURCE_DIR}/windows"
+        "-DOUTPUT_FILE=${LIBRESHOCKWAVE_PLATFORM_FONT_DATA_CPP}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/GeneratePlatformFontData.cmake"
+    DEPENDS
+        ${LIBRESHOCKWAVE_PLATFORM_FONT_FILES}
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/GeneratePlatformFontData.cmake"
+    VERBATIM
+)
+set_source_files_properties("${LIBRESHOCKWAVE_PLATFORM_FONT_DATA_CPP}" PROPERTIES GENERATED TRUE)
+
 add_library(libreshockwave
     src/editor/AppModels.cpp
     src/editor/EditorContextModels.cpp
@@ -111,6 +131,7 @@ add_library(libreshockwave
     src/font/TtfBitmapRasterizer.cpp
     src/fonts/FontDataDecoder.cpp
     "${LIBRESHOCKWAVE_VOLTER_DATA_CPP}"
+    "${LIBRESHOCKWAVE_PLATFORM_FONT_DATA_CPP}"
     src/io/BinaryReader.cpp
     src/lingo/Datum.cpp
     src/lingo/LingoValueParser.cpp
