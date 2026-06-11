@@ -8678,6 +8678,7 @@ void testPlayerInputFoundation() {
     editableManager.setTextRenderer(&editableTextRenderer);
 
     StageRenderer editableRenderer;
+    SpriteProperties editableSpriteProps(&editableRenderer.spriteRegistry());
     EventDispatcher editableDispatcher;
     editableDispatcher.setSpriteRegistry(&editableRenderer.spriteRegistry());
     auto editableSprite = editableRenderer.spriteRegistry().getOrCreateDynamic(12);
@@ -8822,6 +8823,20 @@ void testPlayerInputFoundation() {
     assert(editableInput.processInputEvents());
     assert(editableState.keyboardFocusSprite() == 12);
 
+    assert(editableSpriteProps.setSpriteProp(14, "editableText", Datum::TRUE));
+    editableInput.onMouseDown(55, 105);
+    assert(editableInput.processInputEvents());
+    assert(editableState.keyboardFocusSprite() == 14);
+    assert(editableState.selStart() == 0);
+    assert(editableState.selEnd() == 0);
+    editableInput.onKeyDown(0, "Q", false, false, false);
+    assert(editableInput.processInputEvents());
+    assert(nonEditableField->textContent() == "Qlocked");
+    assert(editableState.selStart() == 1);
+    assert(editableState.selEnd() == 1);
+    assert(editableInput.getSelectedText().has_value());
+    assert(*editableInput.getSelectedText() == "Qlocked");
+    assert(editableSpriteProps.setSpriteProp(14, "editable", Datum::FALSE));
     editableInput.onMouseDown(55, 105);
     assert(editableInput.processInputEvents());
     assert(editableState.keyboardFocusSprite() == 0);
