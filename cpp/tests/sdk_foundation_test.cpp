@@ -15913,6 +15913,24 @@ void testLingoVmRuntimeFoundation() {
     assert(vm.executeHandler(script, returnHandler).intValue() == 42);
     assert(vm.callStackDepth() == 0);
 
+    auto scaledLocalHandler = makeHandler(6, {
+        {Opcode::PUSH_INT8, 42},
+        {Opcode::SET_LOCAL, 8},
+        {Opcode::GET_LOCAL, 8},
+        {Opcode::RET, 0}
+    }, 2);
+    DirectorFile director8File(ByteOrder::BigEndian, false, 800, ChunkType::MV93);
+    ScriptChunk director8Script(&director8File,
+                                ChunkId(961),
+                                ScriptChunkType::MovieScript,
+                                0,
+                                {scaledLocalHandler},
+                                {},
+                                {},
+                                {},
+                                {});
+    assert(vm.executeHandler(director8Script, scaledLocalHandler).intValue() == 42);
+
     auto childAncestorHandler = makeHandler(6, {{Opcode::PUSH_ZERO, 0}, {Opcode::RET, 0}});
     auto parentAncestorHandler = makeHandler(7, {{Opcode::PUSH_ZERO, 0}, {Opcode::RET, 0}});
     auto grandAncestorHandler = makeHandler(8, {{Opcode::GET_PARAM, 0}, {Opcode::RET, 0}}, 0, {9});
@@ -25204,6 +25222,8 @@ void testScriptChunkFileBackedHelpers() {
     assert(script->getHandlerName(script->handlers().front()) == "mouseUp");
     assert(script->resolveName(1) == "sharedName");
     assert(script->findHandler("MOUSEUP").has_value());
+    LingoVM fileBackedVm(file.get());
+    assert(fileBackedVm.findHandler("MOUSEUP").has_value());
     assert(!script->findHandler("missing").has_value());
 }
 

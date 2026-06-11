@@ -215,7 +215,7 @@ void EventDispatcher::dispatchToMovieScripts(std::string_view handlerName, const
     }
 
     for (const auto& movie : scripts) {
-        if (!movie.script || movie.script->scriptType() != chunks::ScriptChunkType::MovieScript) {
+        if (!movie.script || movie.script->resolvedScriptType() != chunks::ScriptChunkType::MovieScript) {
             continue;
         }
 

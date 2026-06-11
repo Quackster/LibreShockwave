@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <optional>
 #include <sstream>
@@ -41,6 +42,7 @@ struct BridgeProbeOptions {
     int scriptTimeoutMs = 1000;
     std::size_t maxFailures = 25;
     std::size_t progressInterval = 250;
+    std::vector<std::string> traceHandlers;
     std::vector<fs::path> roots;
 };
 
@@ -57,10 +59,18 @@ struct FetchDeliveryStats {
     std::size_t deliveredBytes = 0;
 };
 
+struct NavigationStats {
+    std::size_t gotoNetPages = 0;
+    std::size_t gotoNetMovies = 0;
+    std::vector<std::string> pageUrls;
+    std::vector<std::string> movieUrls;
+};
+
 struct BridgeProbeSummary {
     std::size_t bytes = 0;
     std::size_t preloadRequests = 0;
     FetchDeliveryStats fetches;
+    NavigationStats navigation;
     std::size_t renderBytes = 0;
     std::size_t sprites = 0;
     std::size_t pixels = 0;
@@ -127,7 +137,7 @@ std::string usage(const char* argv0) {
     out << "Usage: " << argv0
         << " [--allow-empty] [--max-failures N] [--progress-interval N] [--show-current]"
         << " [--verbose] [--no-preload-casts] [--play] [--ticks N] [--script-timeout-ms N]"
-        << " [--scan-frames N]"
+        << " [--scan-frames N] [--trace-handler NAME]"
         << " <file-or-directory>...\n"
         << "Loads Director files through the native C++ WASM C ABI exports, optionally satisfies pending "
         << "host fetches from local sidecar files, renders through libreshockwave_wasm_render(), and reports "
@@ -230,6 +240,18 @@ BridgeProbeOptions parseOptions(int argc, char** argv) {
         if (arg.starts_with(scriptTimeoutPrefix)) {
             options.scriptTimeoutMs = parseNonNegativeInt(arg.substr(scriptTimeoutPrefix.size()),
                                                           "--script-timeout-ms");
+            continue;
+        }
+        if (arg == "--trace-handler") {
+            if (index + 1 >= argc) {
+                throw std::runtime_error("--trace-handler requires a value");
+            }
+            options.traceHandlers.emplace_back(argv[++index]);
+            continue;
+        }
+        constexpr std::string_view traceHandlerPrefix = "--trace-handler=";
+        if (arg.starts_with(traceHandlerPrefix)) {
+            options.traceHandlers.emplace_back(arg.substr(traceHandlerPrefix.size()));
             continue;
         }
         if (arg == "--scan-frames") {
@@ -348,6 +370,14 @@ void writeStringBuffer(std::string_view value) {
     }
     if (!value.empty()) {
         std::memcpy(buffer, value.data(), value.size());
+    }
+}
+
+void installTraceHandlers(const std::vector<std::string>& handlers) {
+    libreshockwave_wasm_clear_trace_handlers();
+    for (const auto& handler : handlers) {
+        writeStringBuffer(handler);
+        libreshockwave_wasm_add_trace_handler(static_cast<int>(handler.size()));
     }
 }
 
@@ -495,6 +525,57 @@ FetchDeliveryStats deliverPendingFetches(const fs::path& movieDir) {
     return stats;
 }
 
+void addFetchStats(FetchDeliveryStats& target, const FetchDeliveryStats& source) {
+    target.pendingFetches += source.pendingFetches;
+    target.deliveredFetches += source.deliveredFetches;
+    target.failedFetches += source.failedFetches;
+    target.deliveredBytes += source.deliveredBytes;
+}
+
+NavigationStats drainNavigationRequests() {
+    NavigationStats stats;
+    while (true) {
+        const int packedPage = libreshockwave_wasm_read_next_goto_net_page();
+        if (packedPage == 0) {
+            break;
+        }
+        const int urlLen = (packedPage >> 16) & 0xFFFF;
+        const int targetLen = packedPage & 0xFFFF;
+        const auto* buffer = reinterpret_cast<const char*>(stringBuffer());
+        std::string url;
+        if (buffer != nullptr && urlLen > 0) {
+            url.assign(buffer, static_cast<std::size_t>(urlLen));
+        }
+        std::string target;
+        if (buffer != nullptr && targetLen > 0) {
+            target.assign(buffer + urlLen, static_cast<std::size_t>(targetLen));
+        }
+        ++stats.gotoNetPages;
+        stats.pageUrls.push_back(target.empty() ? url : url + " target=" + target);
+    }
+
+    while (true) {
+        const int movieLen = libreshockwave_wasm_read_next_goto_net_movie();
+        if (movieLen <= 0) {
+            break;
+        }
+        ++stats.gotoNetMovies;
+        stats.movieUrls.push_back(readStringBuffer(movieLen));
+    }
+    return stats;
+}
+
+void addNavigationStats(NavigationStats& target, NavigationStats source) {
+    target.gotoNetPages += source.gotoNetPages;
+    target.gotoNetMovies += source.gotoNetMovies;
+    target.pageUrls.insert(target.pageUrls.end(),
+                           std::make_move_iterator(source.pageUrls.begin()),
+                           std::make_move_iterator(source.pageUrls.end()));
+    target.movieUrls.insert(target.movieUrls.end(),
+                            std::make_move_iterator(source.movieUrls.begin()),
+                            std::make_move_iterator(source.movieUrls.end()));
+}
+
 RgbaStats measureRgba(std::uintptr_t address, int byteLength) {
     RgbaStats stats;
     if (address == 0 || byteLength <= 0) {
@@ -556,14 +637,22 @@ BridgeProbeSummary probeFile(const fs::path& rawPath, const BridgeProbeOptions& 
     summary.frame = libreshockwave_wasm_current_frame();
     summary.frameCount = libreshockwave_wasm_frame_count();
     libreshockwave_wasm_set_script_timeout_ms(options.scriptTimeoutMs);
+    installTraceHandlers(options.traceHandlers);
 
+    const auto pumpHostQueues = [&] {
+        addFetchStats(summary.fetches, deliverPendingFetches(path.parent_path()));
+        addNavigationStats(summary.navigation, drainNavigationRequests());
+    };
+
+    pumpHostQueues();
     if (options.preloadCasts) {
         summary.preloadRequests = static_cast<std::size_t>(std::max(0, libreshockwave_wasm_preload_casts()));
-        summary.fetches = deliverPendingFetches(path.parent_path());
+        pumpHostQueues();
     }
 
     if (options.play) {
         libreshockwave_wasm_play();
+        pumpHostQueues();
         if (auto error = takeLastError(); !error.empty()) {
             summary.scriptErrors.push_back(std::move(error));
         }
@@ -571,6 +660,7 @@ BridgeProbeSummary probeFile(const fs::path& rawPath, const BridgeProbeOptions& 
             if (libreshockwave_wasm_tick() == 0) {
                 break;
             }
+            pumpHostQueues();
             if (auto error = takeLastError(); !error.empty()) {
                 summary.scriptErrors.push_back(std::move(error));
             }
@@ -596,6 +686,7 @@ BridgeProbeSummary probeFile(const fs::path& rawPath, const BridgeProbeOptions& 
         const int framesToScan = std::min(options.scanFrames, summary.frameCount);
         for (int frameIndex = 1; frameIndex <= framesToScan; ++frameIndex) {
             libreshockwave_wasm_step_forward();
+            pumpHostQueues();
             if (auto error = takeLastError(); !error.empty()) {
                 summary.scriptErrors.push_back(std::move(error));
             }
@@ -630,6 +721,8 @@ void printVerboseOk(const fs::path& path, const BridgeProbeSummary& summary) {
               << " deliveredFetches=" << summary.fetches.deliveredFetches
               << " failedFetches=" << summary.fetches.failedFetches
               << " deliveredBytes=" << summary.fetches.deliveredBytes
+              << " gotoNetPages=" << summary.navigation.gotoNetPages
+              << " gotoNetMovies=" << summary.navigation.gotoNetMovies
               << " renderBytes=" << summary.renderBytes
               << " sprites=" << summary.sprites
               << " pixels=" << summary.pixels
@@ -644,6 +737,12 @@ void printVerboseOk(const fs::path& path, const BridgeProbeSummary& summary) {
 
     for (const auto& error : summary.scriptErrors) {
         std::cout << "SCRIPT_ERROR " << pathString(path) << ": " << error << '\n';
+    }
+    for (const auto& url : summary.navigation.pageUrls) {
+        std::cout << "GOTO_NET_PAGE " << pathString(path) << ": " << url << '\n';
+    }
+    for (const auto& url : summary.navigation.movieUrls) {
+        std::cout << "GOTO_NET_MOVIE " << pathString(path) << ": " << url << '\n';
     }
 }
 
@@ -675,6 +774,8 @@ int main(int argc, char** argv) {
         std::size_t totalDeliveredFetches = 0;
         std::size_t totalFailedFetches = 0;
         std::size_t totalDeliveredBytes = 0;
+        std::size_t totalGotoNetPages = 0;
+        std::size_t totalGotoNetMovies = 0;
         std::size_t totalRenderBytes = 0;
         std::size_t totalSprites = 0;
         std::size_t totalPixels = 0;
@@ -717,6 +818,8 @@ int main(int argc, char** argv) {
                 totalDeliveredFetches += summary.fetches.deliveredFetches;
                 totalFailedFetches += summary.fetches.failedFetches;
                 totalDeliveredBytes += summary.fetches.deliveredBytes;
+                totalGotoNetPages += summary.navigation.gotoNetPages;
+                totalGotoNetMovies += summary.navigation.gotoNetMovies;
                 totalRenderBytes += summary.renderBytes;
                 totalSprites += summary.sprites;
                 totalPixels += summary.pixels;
@@ -762,6 +865,8 @@ int main(int argc, char** argv) {
                   << " deliveredFetches=" << totalDeliveredFetches
                   << " failedFetches=" << totalFailedFetches
                   << " deliveredBytes=" << totalDeliveredBytes
+                  << " gotoNetPages=" << totalGotoNetPages
+                  << " gotoNetMovies=" << totalGotoNetMovies
                   << " renderBytes=" << totalRenderBytes
                   << " sprites=" << totalSprites
                   << " pixels=" << totalPixels

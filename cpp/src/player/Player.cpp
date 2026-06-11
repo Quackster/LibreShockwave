@@ -396,7 +396,7 @@ void Player::dumpScriptInfo(std::ostream& out) const {
                 break;
         }
 
-        if (script->scriptType() == chunks::ScriptChunkType::MovieScript) {
+        if (script->resolvedScriptType() == chunks::ScriptChunkType::MovieScript) {
             auto names = file_->getScriptNamesForScript(script);
             out << "[Player] Movie script #" << script->id().value() << " handlers:\n";
             for (const auto& handler : script->handlers()) {
@@ -1140,7 +1140,7 @@ void Player::wireComponents() {
         if (file_ != nullptr) {
             targets.reserve(file_->scripts().size());
             for (const auto& script : file_->scripts()) {
-                if (!script || script->scriptType() != chunks::ScriptChunkType::MovieScript) {
+                if (!script || script->resolvedScriptType() != chunks::ScriptChunkType::MovieScript) {
                     continue;
                 }
                 targets.push_back(event::EventDispatcher::MovieScriptTarget{
@@ -1157,7 +1157,7 @@ void Player::wireComponents() {
             const auto source = castLib->sourceFile();
             const auto defaultNames = castLib->scriptNames();
             for (const auto& script : castLib->allScripts()) {
-                if (!script || script->scriptType() != chunks::ScriptChunkType::MovieScript) {
+                if (!script || script->resolvedScriptType() != chunks::ScriptChunkType::MovieScript) {
                     continue;
                 }
                 targets.push_back(event::EventDispatcher::MovieScriptTarget{

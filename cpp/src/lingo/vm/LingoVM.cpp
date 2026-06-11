@@ -52,6 +52,14 @@ std::string lower(std::string_view value) {
     return result;
 }
 
+int variableMultiplierForScript(const chunks::ScriptChunk& script) {
+    const auto* file = script.file();
+    if (file == nullptr || file->isCapitalX()) {
+        return 1;
+    }
+    return file->version() >= 500 ? 8 : 6;
+}
+
 std::string_view trimView(std::string_view value) {
     while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front()))) {
         value.remove_prefix(1);
@@ -542,7 +550,7 @@ std::optional<HandlerRef> LingoVM::findHandler(std::string_view handlerNameValue
 
     if (file_ != nullptr) {
         for (const auto& script : file_->scripts()) {
-            if (!script || !isGlobalHandlerScriptType(script->scriptType())) {
+            if (!script || !isGlobalHandlerScriptType(script->resolvedScriptType())) {
                 continue;
             }
             if (auto handler = findHandler(*script, handlerNameValue)) {
@@ -701,7 +709,12 @@ Datum LingoVM::executeHandler(const chunks::ScriptChunk& script,
         }
         if (const auto* first = scope.currentInstruction()) {
             auto callbacks = callbacksFor(script);
-            ExecutionContext context(scope, *first, &builtinRegistry_, &builtinContext_, std::move(callbacks));
+            ExecutionContext context(scope,
+                                     *first,
+                                     &builtinRegistry_,
+                                     &builtinContext_,
+                                     std::move(callbacks),
+                                     variableMultiplierForScript(script));
             int steps = 0;
             const std::int64_t startTime = currentTimeMillis();
             std::int64_t lastGcTime = startTime;
