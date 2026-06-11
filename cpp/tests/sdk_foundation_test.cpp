@@ -335,6 +335,8 @@ using libreshockwave::editor::gtk::GtkActionActivation;
 using libreshockwave::editor::gtk::GtkActionAcceleratorSpec;
 using libreshockwave::editor::gtk::GtkActionSpec;
 using libreshockwave::editor::gtk::GtkMenuItemKind;
+using libreshockwave::editor::gtk::GtkOpenFileDialogButtonRole;
+using libreshockwave::editor::gtk::GtkOpenFileDialogButtonSpec;
 using libreshockwave::editor::gtk::GtkPanelRowSpec;
 using libreshockwave::editor::gtk::GtkShellDialogButtonRole;
 using libreshockwave::editor::gtk::GtkShellDialogButtonSpec;
@@ -2122,6 +2124,8 @@ void testEditorShellActionModels() {
     assert(EditorGtkShellModel::dialogActionName(GtkShellDialogKind::DetailedStack,
                                                  GtkShellDialogButtonRole::Close) ==
            "dialog_detailed_stack_close");
+    assert(EditorGtkShellModel::openFileDialogActionName(GtkOpenFileDialogButtonRole::Accept) == "open_accept");
+    assert(EditorGtkShellModel::openFileDialogActionName(GtkOpenFileDialogButtonRole::Cancel) == "open_cancel");
     assert(EditorGtkShellModel::appAction("open") == "app.open");
 
     const auto gtkActions = EditorGtkShellModel::actionSpecs(menus, toolbar, gtkFrame);
@@ -2716,6 +2720,35 @@ void testEditorShellActionModels() {
     assert(!openPresentation.currentDirectory.has_value());
     assert(openPresentation.acceptLabel == "Open");
     assert(openPresentation.cancelLabel == "Cancel");
+    auto assertOpenFileButton = [](const GtkOpenFileDialogButtonSpec& button,
+                                   GtkOpenFileDialogButtonRole role,
+                                   std::string_view label,
+                                   std::string_view actionName) {
+        assert(button.role == role);
+        assert(button.label == label);
+        assert(button.actionName == actionName);
+        assert(button.detailedActionName == EditorGtkShellModel::appAction(actionName));
+        assert(button.enabled);
+    };
+    assert(openPresentation.buttons.size() == 2);
+    assertOpenFileButton(openPresentation.buttons[0],
+                         GtkOpenFileDialogButtonRole::Accept,
+                         "Open",
+                         "open_accept");
+    assertOpenFileButton(openPresentation.buttons[1],
+                         GtkOpenFileDialogButtonRole::Cancel,
+                         "Cancel",
+                         "open_cancel");
+    const auto openDialogActions = EditorGtkShellModel::openFileDialogActionSpecs(openPresentation);
+    assert(openDialogActions.size() == 2);
+    assert(openDialogActions[0].name == "open_accept");
+    assert(openDialogActions[0].detailedName == "app.open_accept");
+    assert(openDialogActions[0].command == EditorCommand::Open);
+    assert(openDialogActions[0].enabled);
+    assert(openDialogActions[1].name == "open_cancel");
+    assert(openDialogActions[1].detailedName == "app.open_cancel");
+    assert(openDialogActions[1].command == EditorCommand::Open);
+    assert(openDialogActions[1].enabled);
     assert(openPresentation.modal);
     assert(!openPresentation.selectMultiple);
     assert(openPresentation.mustExist);
@@ -2758,6 +2791,7 @@ void testEditorShellActionModels() {
     assert(seededOpenPresentation.currentDirectory.value() == "/seed");
     assert((seededOpenPresentation.filter.patterns ==
             std::vector<std::string>{"*.dir", "*.dxr", "*.dcr", "*.cct", "*.cst"}));
+    assert(seededOpenPresentation.buttons == openPresentation.buttons);
     auto seededOpenEvents = seededGtkState.openFile("/seed/Movie.dir");
     assert(seededOpenEvents.size() == 1);
     assert((seededGtkState.externalParams() ==

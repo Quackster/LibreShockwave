@@ -28,6 +28,11 @@ enum class GtkShellDialogButtonRole {
     Close
 };
 
+enum class GtkOpenFileDialogButtonRole {
+    Accept,
+    Cancel
+};
+
 enum class GtkWorkbenchPanelKind {
     Stage,
     Score,
@@ -110,12 +115,23 @@ struct GtkOpenFileFilterSpec {
     friend bool operator==(const GtkOpenFileFilterSpec&, const GtkOpenFileFilterSpec&) = default;
 };
 
+struct GtkOpenFileDialogButtonSpec {
+    GtkOpenFileDialogButtonRole role{GtkOpenFileDialogButtonRole::Accept};
+    std::string label;
+    std::string actionName;
+    std::string detailedActionName;
+    bool enabled{true};
+
+    friend bool operator==(const GtkOpenFileDialogButtonSpec&, const GtkOpenFileDialogButtonSpec&) = default;
+};
+
 struct GtkOpenFileDialogPresentation {
     std::string title;
     GtkOpenFileFilterSpec filter;
     std::optional<std::string> currentDirectory;
     std::string acceptLabel;
     std::string cancelLabel;
+    std::vector<GtkOpenFileDialogButtonSpec> buttons;
     bool modal{true};
     bool selectMultiple{false};
     bool mustExist{true};
@@ -401,8 +417,11 @@ public:
     [[nodiscard]] static GtkShellDialogPresentation dialogPresentation(const GtkShellDialogRequest& request);
     [[nodiscard]] static std::vector<GtkActionSpec> dialogActionSpecs(
         const GtkShellDialogPresentation& presentation);
+    [[nodiscard]] static std::string openFileDialogActionName(GtkOpenFileDialogButtonRole role);
     [[nodiscard]] static GtkOpenFileDialogPresentation openFileDialogPresentation(
         const EditorOpenFileDialogModel& request);
+    [[nodiscard]] static std::vector<GtkActionSpec> openFileDialogActionSpecs(
+        const GtkOpenFileDialogPresentation& presentation);
     [[nodiscard]] static GtkStartScreenPresentation startScreenPresentation(const GtkStartScreenRequest& request);
     [[nodiscard]] static std::vector<GtkActionSpec> startScreenActionSpecs(
         const GtkStartScreenPresentation& presentation);

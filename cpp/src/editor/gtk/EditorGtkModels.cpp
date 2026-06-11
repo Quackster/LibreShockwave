@@ -244,6 +244,28 @@ GtkShellDialogButtonSpec dialogButtonSpec(GtkShellDialogKind kind,
     };
 }
 
+std::string openFileDialogButtonRoleActionSegment(GtkOpenFileDialogButtonRole role) {
+    switch (role) {
+        case GtkOpenFileDialogButtonRole::Accept:
+            return "accept";
+        case GtkOpenFileDialogButtonRole::Cancel:
+            return "cancel";
+    }
+    return "button";
+}
+
+GtkOpenFileDialogButtonSpec openFileDialogButtonSpec(GtkOpenFileDialogButtonRole role,
+                                                     std::string label) {
+    auto actionName = EditorGtkShellModel::openFileDialogActionName(role);
+    return GtkOpenFileDialogButtonSpec{
+        role,
+        std::move(label),
+        actionName,
+        EditorGtkShellModel::appAction(actionName),
+        true,
+    };
+}
+
 GtkWorkbenchPanelKind panelKind(std::string_view panelId) {
     if (panelId == "stage") {
         return GtkWorkbenchPanelKind::Stage;
@@ -537,6 +559,10 @@ std::vector<GtkActionSpec> EditorGtkShellModel::dialogActionSpecs(
     return result;
 }
 
+std::string EditorGtkShellModel::openFileDialogActionName(GtkOpenFileDialogButtonRole role) {
+    return "open_" + openFileDialogButtonRoleActionSegment(role);
+}
+
 GtkOpenFileDialogPresentation EditorGtkShellModel::openFileDialogPresentation(
     const EditorOpenFileDialogModel& request) {
     GtkOpenFileDialogPresentation presentation;
@@ -550,7 +576,30 @@ GtkOpenFileDialogPresentation EditorGtkShellModel::openFileDialogPresentation(
     presentation.currentDirectory = request.currentDirectory;
     presentation.acceptLabel = "Open";
     presentation.cancelLabel = "Cancel";
+    presentation.buttons.push_back(openFileDialogButtonSpec(GtkOpenFileDialogButtonRole::Accept,
+                                                            presentation.acceptLabel));
+    presentation.buttons.push_back(openFileDialogButtonSpec(GtkOpenFileDialogButtonRole::Cancel,
+                                                            presentation.cancelLabel));
     return presentation;
+}
+
+std::vector<GtkActionSpec> EditorGtkShellModel::openFileDialogActionSpecs(
+    const GtkOpenFileDialogPresentation& presentation) {
+    std::vector<GtkActionSpec> result;
+    result.reserve(presentation.buttons.size());
+    for (const auto& button : presentation.buttons) {
+        result.push_back(GtkActionSpec{
+            button.actionName,
+            button.detailedActionName,
+            EditorCommand::Open,
+            {},
+            button.enabled,
+            false,
+            false,
+            {},
+        });
+    }
+    return result;
 }
 
 GtkStartScreenPresentation EditorGtkShellModel::startScreenPresentation(const GtkStartScreenRequest& request) {
