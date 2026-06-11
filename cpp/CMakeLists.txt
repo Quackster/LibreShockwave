@@ -69,6 +69,7 @@ add_library(libreshockwave
     src/editor/preview/ScriptPreview.cpp
     src/editor/preview/SoundPreview.cpp
     src/editor/preview/TextPreview.cpp
+    src/editor/property/PropertyInspectorModels.cpp
     src/editor/selection/SelectionEvent.cpp
     src/editor/selection/SelectionManager.cpp
     src/editor/score/FrameAppearanceFinder.cpp

@@ -92,6 +92,7 @@
 #include "libreshockwave/editor/preview/ScriptPreview.hpp"
 #include "libreshockwave/editor/preview/SoundPreview.hpp"
 #include "libreshockwave/editor/preview/TextPreview.hpp"
+#include "libreshockwave/editor/property/PropertyInspectorModels.hpp"
 #include "libreshockwave/editor/selection/SelectionEvent.hpp"
 #include "libreshockwave/editor/selection/SelectionListener.hpp"
 #include "libreshockwave/editor/selection/SelectionManager.hpp"
@@ -310,6 +311,10 @@ using libreshockwave::editor::preview::PreviewFormatUtils;
 using libreshockwave::editor::preview::ScriptPreview;
 using libreshockwave::editor::preview::SoundPreview;
 using libreshockwave::editor::preview::TextPreview;
+using libreshockwave::editor::property::BehaviorListModel;
+using libreshockwave::editor::property::PropertyGridModel;
+using libreshockwave::editor::property::PropertyInspectorModel;
+using libreshockwave::editor::property::PropertyInspectorTab;
 using libreshockwave::editor::selection::SelectionEvent;
 using libreshockwave::editor::selection::SelectionListener;
 using libreshockwave::editor::selection::SelectionManager;
@@ -1493,6 +1498,86 @@ void testEditorModelAndSelectionFoundation() {
     assert(!scoreModel.cellColor(4, 2).has_value());
     scoreModel.setCellColor(1, 2, std::nullopt);
     assert(!scoreModel.cellColor(1, 2).has_value());
+
+    PropertyGridModel spriteProperties = PropertyInspectorModel::makeSpriteTab();
+    assert((spriteProperties.labels() ==
+            std::vector<std::string>{"Sprite:",
+                                     "Member:",
+                                     "X (locH):",
+                                     "Y (locV):",
+                                     "Width:",
+                                     "Height:",
+                                     "Ink:",
+                                     "Blend:",
+                                     "locZ:",
+                                     "Visible:",
+                                     "Moveable:",
+                                     "Editable:"}));
+    assert(spriteProperties.rowCount() == 12);
+    assert(spriteProperties.row(0) != nullptr);
+    assert(spriteProperties.row(0)->value == "-");
+    assert(!spriteProperties.row(0)->editable);
+    assert(spriteProperties.findRow("Width:") != nullptr);
+    assert(spriteProperties.setValue("Width:", "320"));
+    assert(spriteProperties.findRow("Width:")->value == "320");
+    assert(spriteProperties.setValueAt(3, "200"));
+    assert(spriteProperties.row(3)->value == "200");
+    assert(!spriteProperties.setValue("Missing:", "value"));
+    assert(!spriteProperties.setValueAt(99, "value"));
+    spriteProperties.resetValues();
+    assert(spriteProperties.findRow("Width:")->value == "-");
+
+    assert((PropertyInspectorModel::makeMemberTab().labels() ==
+            std::vector<std::string>{"Name:", "Number:", "Cast:", "Type:", "Size:", "Modified:", "Comments:"}));
+    assert((PropertyInspectorModel::makeMovieTab().labels() ==
+            std::vector<std::string>{"Movie Name:",
+                                     "Stage Width:",
+                                     "Stage Height:",
+                                     "Stage Color:",
+                                     "Palette:",
+                                     "Tempo:",
+                                     "Total Frames:",
+                                     "Total Casts:",
+                                     "Copyright:"}));
+    assert((PropertyInspectorModel::tabOrder() ==
+            std::vector<PropertyInspectorTab>{PropertyInspectorTab::Sprite,
+                                              PropertyInspectorTab::Member,
+                                              PropertyInspectorTab::Behavior,
+                                              PropertyInspectorTab::Movie}));
+    assert(PropertyInspectorModel::tabName(PropertyInspectorTab::Sprite) == "Sprite");
+    assert(PropertyInspectorModel::tabName(PropertyInspectorTab::Member) == "Member");
+    assert(PropertyInspectorModel::tabName(PropertyInspectorTab::Behavior) == "Behavior");
+    assert(PropertyInspectorModel::tabName(PropertyInspectorTab::Movie) == "Movie");
+
+    BehaviorListModel behaviorList;
+    assert(BehaviorListModel::defaultPlaceholder() == "(Select a sprite to see its behaviors)");
+    assert(behaviorList.items().size() == 1);
+    assert(behaviorList.items()[0] == "(Select a sprite to see its behaviors)");
+    assert(!behaviorList.canAdd());
+    assert(!behaviorList.canRemove());
+    behaviorList.setActionsEnabled(true, true);
+    behaviorList.setBehaviors({"Mouse", "Frame"});
+    assert((behaviorList.items() == std::vector<std::string>{"Mouse", "Frame"}));
+    assert(behaviorList.canAdd());
+    assert(behaviorList.canRemove());
+    behaviorList.clearToPlaceholder("No behaviors");
+    assert((behaviorList.items() == std::vector<std::string>{"No behaviors"}));
+    assert(!behaviorList.canAdd());
+    assert(!behaviorList.canRemove());
+
+    PropertyInspectorModel propertyInspector;
+    assert(propertyInspector.activeTab() == PropertyInspectorTab::Sprite);
+    assert(propertyInspector.spriteTab().rowCount() == 12);
+    assert(propertyInspector.memberTab().rowCount() == 7);
+    assert(propertyInspector.movieTab().rowCount() == 9);
+    assert(propertyInspector.behaviorTab().items()[0] == "(Select a sprite to see its behaviors)");
+    propertyInspector.setActiveTab(PropertyInspectorTab::Movie);
+    propertyInspector.handleSelectionChanged(SelectionEvent::sprite(3, 9));
+    assert(propertyInspector.activeTab() == PropertyInspectorTab::Sprite);
+    propertyInspector.handleSelectionChanged(SelectionEvent::castMember(1, 7));
+    assert(propertyInspector.activeTab() == PropertyInspectorTab::Member);
+    propertyInspector.handleSelectionChanged(SelectionEvent::frameSelection(4));
+    assert(propertyInspector.activeTab() == PropertyInspectorTab::Member);
 
     assert(SelectionEvent::none() == (SelectionEvent{SelectionType::None, 0, 0, 0, 0}));
     assert(SelectionEvent::sprite(3, 9) == (SelectionEvent{SelectionType::Sprite, 3, 9, 0, 0}));

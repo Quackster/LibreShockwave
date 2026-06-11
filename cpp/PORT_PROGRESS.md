@@ -208,6 +208,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `editor::extraction::AssetExtractor` ports Java's editor asset extraction for sound, script, text/button, palette, and generic member data, with callback-based bitmap writing for a later GTK image export integration.
 - `editor::debug` ports Java's debugger combo-box display items, instruction display state, call-target extraction, and stack/variable/watch/timeout table models as GTK-neutral row/value helpers.
 - `editor::debug::DebugBrowserModels` ports Java's debugger handler navigation, script/handler filtering and silent selection behavior, bytecode instruction row construction, Lingo decompiler row mapping, breakpoint marker refresh, and navigable call-target detection for the future GTK debugger.
+- `editor::property::PropertyInspectorModels` ports Java's property-inspector tab labels, read-only grid row state, behavior-list placeholder/action state, tab order/names, and selection-driven active-tab routing as GTK-neutral models.
 
 ### Bitmap Colorizer
 
@@ -912,7 +913,7 @@ Result:
 - W3D entry, typed resource, transform, texture format, and lookup tests passed through the same CTest executable.
 - Generated font Base64/zlib decode, wrong-length, and invalid-deflate tests passed through the same CTest executable.
 - File/path fallback utilities, shared string display/HTML escaping helpers, string chunk counting/extraction helpers, Java-compatible ImageMethodDispatcher/StringMethodDispatcher/ListMethodDispatcher/MemberRegistryMethodDispatcher/PropListMethodDispatcher/ScriptInstanceMethodDispatcher/SoundChannelMethodDispatcher receiver methods, and script formatting utilities passed through the same CTest executable.
-- Editor channel-name formatting, palette descriptions, bytecode instruction formatting, preview text formatting, palette/script/sound/text/generic preview generation, sound/script/text/palette/generic asset extraction, score color lookup, model record display strings, selection manager notifications, playback-head clamping, score model color storage, score appearance formatting, score-grid/frame-label/frame-script display helpers, member association/detail scanning, Lingo keyword tables, and Lingo tokenizer behavior passed through the same CTest executable.
+- Editor channel-name formatting, palette descriptions, bytecode instruction formatting, preview text formatting, palette/script/sound/text/generic preview generation, sound/script/text/palette/generic asset extraction, property-inspector row models, score color lookup, model record display strings, selection manager notifications, playback-head clamping, score model color storage, score appearance formatting, score-grid/frame-label/frame-script display helpers, member association/detail scanning, Lingo keyword tables, and Lingo tokenizer behavior passed through the same CTest executable.
 - BitmapColorizer 32-bit, indexed, foreground-only, packed-index, and ink predicate tests passed through the same CTest executable.
 - PfrBitReader byte, signed, skip, alignment, bit-buffer, and partial-EOF tests passed through the same CTest executable.
 - BitmapFont glyph drawing, overflow metrics, BDF parsing, direct PFR outline/bitmap/curve glyph rasterization, PFR1 metadata/character-record/simple/compound/curve-outline parsing, PFR-to-TTF table generation/cache registration, pure TTF bitmap rasterization with the bundled Verdana fixture, FontRegistry prebuilt-cache/PFR-registration/rasterization/size-aware embedded-TTF/alias/Mac fallback behavior, Mac/Windows platform font bundle selection and caching, and SimpleTextRenderer bitmap-font/built-in-fallback/wrapping/underline/caret/XMED per-span/styled-underline rendering behavior passed through the same CTest executable.
@@ -1280,4 +1281,5 @@ Result:
 - `0ae8d835 Port C++ editor preview generators`
 - `8a0ff73d Port C++ editor asset extraction`
 - `62bfdd39 Port C++ editor debug data models`
-- Current checkpoint commit message: `Port C++ editor debug browser models`
+- `700d0c47 Port C++ editor debug browser models`
+- Current checkpoint commit message: `Port C++ editor property inspector models`
