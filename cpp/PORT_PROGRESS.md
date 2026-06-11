@@ -48,6 +48,6 @@ This file tracks the current state and remaining work only. Detailed chronologic
 - Remaining Lingo decompiler, VM runtime value, dispatcher, and builtin parity gaps.
 - Remaining player core, rendering pipeline, input, networking, audio, cast management, and debugging parity gaps.
 - Emscripten-built C++ WASM browser parity against the existing TeaVM web-player scenarios, including additional real fixture-scripted SMUS/Multiuser gameplay/server parity beyond the verified bridge and FUSE `Logon`/`sendFuseMsg` coverage.
-- Confirm the end-to-end WebSocket -> JS bridge networking path and SMUS behavior against real playback/server scenarios, beyond the current diagnostic bridge coverage.
+- Confirm the end-to-end WebSocket -> JS bridge networking path works in real playback/server scenarios, including SMUS behavior beyond the current diagnostic bridge coverage.
 - Full `/var/html` `.cct`/`.dcr` read/handling verification once that requested fixture root exists or is mapped.
 - Port parity tests against current fixtures and integration scenarios.
