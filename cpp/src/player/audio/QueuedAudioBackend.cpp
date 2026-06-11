@@ -1,7 +1,9 @@
 #include "libreshockwave/player/audio/QueuedAudioBackend.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
+#include <limits>
 #include <utility>
 
 namespace libreshockwave::player::audio {
@@ -11,6 +13,7 @@ QueuedAudioBackend::QueuedAudioBackend() {
     for (int channel = 1; channel <= MAX_CHANNELS; ++channel) {
         volumes_[static_cast<std::size_t>(channel)] = 255;
     }
+    timeProvider_ = defaultNowMs;
 }
 
 void QueuedAudioBackend::play(int channelNum,
@@ -29,6 +32,7 @@ void QueuedAudioBackend::play(int channelNum,
     command.loopCount = loopCount;
     command.volume = volumes_[static_cast<std::size_t>(channelNum)];
     pendingCommands_.push_back(std::move(command));
+    resetElapsed(channelNum);
     playing_[static_cast<std::size_t>(channelNum)] = true;
 }
 
@@ -41,7 +45,7 @@ void QueuedAudioBackend::stop(int channelNum) {
     command.action = "stop";
     command.channelNum = channelNum;
     pendingCommands_.push_back(std::move(command));
-    playing_[static_cast<std::size_t>(channelNum)] = false;
+    stopElapsed(channelNum);
 }
 
 void QueuedAudioBackend::stopAll() {
@@ -70,8 +74,19 @@ bool QueuedAudioBackend::isPlaying(int channelNum) const {
 }
 
 int QueuedAudioBackend::getElapsedTime(int channelNum) const {
-    (void)channelNum;
-    return 0;
+    if (!isValidChannel(channelNum)) {
+        return 0;
+    }
+
+    const auto index = static_cast<std::size_t>(channelNum);
+    std::int64_t elapsed = elapsedMs_[index];
+    if (playing_[index]) {
+        elapsed += std::max<std::int64_t>(0, timeProvider_() - startedAtMs_[index]);
+    }
+    if (elapsed > static_cast<std::int64_t>(std::numeric_limits<int>::max())) {
+        return std::numeric_limits<int>::max();
+    }
+    return static_cast<int>(elapsed);
 }
 
 int QueuedAudioBackend::pendingCount() const {
@@ -95,7 +110,7 @@ void QueuedAudioBackend::drainPending() {
 
 void QueuedAudioBackend::notifyStopped(int channelNum) {
     if (isValidChannel(channelNum)) {
-        playing_[static_cast<std::size_t>(channelNum)] = false;
+        stopElapsed(channelNum);
     }
 }
 
@@ -105,6 +120,36 @@ int QueuedAudioBackend::volume(int channelNum) const {
 
 bool QueuedAudioBackend::isValidChannel(int channelNum) {
     return channelNum >= 1 && channelNum <= MAX_CHANNELS;
+}
+
+void QueuedAudioBackend::setTimeProvider(TimeProvider provider) {
+    timeProvider_ = provider ? std::move(provider) : TimeProvider(defaultNowMs);
+}
+
+std::int64_t QueuedAudioBackend::defaultNowMs() {
+    const auto now = std::chrono::steady_clock::now().time_since_epoch();
+    return std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
+}
+
+void QueuedAudioBackend::resetElapsed(int channelNum) {
+    if (!isValidChannel(channelNum)) {
+        return;
+    }
+    const auto index = static_cast<std::size_t>(channelNum);
+    elapsedMs_[index] = 0;
+    startedAtMs_[index] = timeProvider_();
+}
+
+void QueuedAudioBackend::stopElapsed(int channelNum) {
+    if (!isValidChannel(channelNum)) {
+        return;
+    }
+    const auto index = static_cast<std::size_t>(channelNum);
+    if (playing_[index]) {
+        elapsedMs_[index] += std::max<std::int64_t>(0, timeProvider_() - startedAtMs_[index]);
+    }
+    playing_[index] = false;
+    startedAtMs_[index] = 0;
 }
 
 } // namespace libreshockwave::player::audio

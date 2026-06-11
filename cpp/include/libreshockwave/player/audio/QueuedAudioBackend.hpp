@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -14,6 +15,7 @@ namespace libreshockwave::player::audio {
 class QueuedAudioBackend final : public AudioBackend {
 public:
     static constexpr int MAX_CHANNELS = 8;
+    using TimeProvider = std::function<std::int64_t()>;
 
     struct SoundCommand {
         std::string action;
@@ -42,13 +44,20 @@ public:
     void drainPending();
     void notifyStopped(int channelNum);
     [[nodiscard]] int volume(int channelNum) const;
+    void setTimeProvider(TimeProvider provider);
 
 private:
     [[nodiscard]] static bool isValidChannel(int channelNum);
+    [[nodiscard]] static std::int64_t defaultNowMs();
+    void resetElapsed(int channelNum);
+    void stopElapsed(int channelNum);
 
     std::vector<SoundCommand> pendingCommands_;
     std::array<bool, MAX_CHANNELS + 1> playing_{};
     std::array<int, MAX_CHANNELS + 1> volumes_{};
+    std::array<std::int64_t, MAX_CHANNELS + 1> startedAtMs_{};
+    std::array<std::int64_t, MAX_CHANNELS + 1> elapsedMs_{};
+    TimeProvider timeProvider_;
 };
 
 } // namespace libreshockwave::player::audio

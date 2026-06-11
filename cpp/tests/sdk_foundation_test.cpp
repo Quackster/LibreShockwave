@@ -21757,6 +21757,8 @@ void testQueuedNetProviderFoundation() {
 
 void testQueuedAudioBackendFoundation() {
     QueuedAudioBackend backend;
+    std::int64_t fakeAudioNow = 1000;
+    backend.setTimeProvider([&fakeAudioNow] { return fakeAudioNow; });
     assert(QueuedAudioBackend::MAX_CHANNELS == 8);
     assert(backend.pendingCommands().empty());
     assert(backend.pendingCount() == 0);
@@ -21784,6 +21786,8 @@ void testQueuedAudioBackendFoundation() {
     assert(play->format.value() == "wav");
     assert(play->loopCount == 2);
     assert(play->volume == 255);
+    fakeAudioNow += 125;
+    assert(backend.getElapsedTime(1) == 125);
 
     backend.setVolume(1, 300);
     assert(backend.volume(1) == 255);
@@ -21808,9 +21812,14 @@ void testQueuedAudioBackendFoundation() {
     assert(quietPlay->format.value() == "mp3");
     assert(quietPlay->loopCount == 0);
     assert(quietPlay->volume == 0);
+    assert(backend.getElapsedTime(1) == 0);
+    fakeAudioNow += 45;
+    assert(backend.getElapsedTime(1) == 45);
 
     backend.notifyStopped(1);
     assert(!backend.isPlaying(1));
+    fakeAudioNow += 40;
+    assert(backend.getElapsedTime(1) == 45);
     backend.notifyStopped(9);
 
     backend.stop(1);
