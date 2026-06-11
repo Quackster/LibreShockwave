@@ -273,6 +273,7 @@ Started. The Java/Gradle project remains the authoritative implementation for mo
 - `editor::gtk` now exposes tested per-edge workbench dock actions and routes GTK tab primary-button drag releases through side snap zones into the same dock-at-edge frame model behavior used by the C++ docking layout.
 - `editor::gtk::GtkWorkbenchDockNodeSpec` now ports the recursive dock layout tree for GTK, and the optional GTK scaffold renders docked panes as nested `GtkPaned` workbench nodes while preserving the existing floating-pane fallback.
 - `editor::gtk::GtkPanelContextMenuSpec` now exposes dock-edge workbench actions on pane rows and workbench tabs, and hidden panes can be shown, floated, or docked through the same installable GTK action layer used by right-click menus.
+- `editor::gtk::EditorGtkShellModel` now owns the tested workbench snap-zone calculation, and the optional GTK scaffold attaches drag-snap docking to sidebar pane rows, workbench tabs, and rendered docked pane content.
 
 ### Bitmap Colorizer
 
@@ -984,6 +985,7 @@ Result:
 - BitmapColorizer 32-bit, indexed, foreground-only, packed-index, and ink predicate tests passed through the same CTest executable.
 - GTK dialog button action names now route back into tested Apply/Cancel/Close result behavior for External Parameters, Trace Handler, About, and Detailed Stack dialog presentations.
 - GTK pane context menus now cover dock-edge entries for rows and tabs, and hidden-panel float/dock activation routes through the same generic GTK action dispatcher as native right-click menu actions.
+- GTK workbench snap-zone detection now has model coverage for all four edges and invalid geometry, and the native scaffold wires those tested snap actions to pane rows, tabs, and docked pane bodies.
 - PfrBitReader byte, signed, skip, alignment, bit-buffer, and partial-EOF tests passed through the same CTest executable.
 - BitmapFont glyph drawing, overflow metrics, BDF parsing, direct PFR outline/bitmap/curve glyph rasterization, PFR1 metadata/character-record/simple/compound/curve-outline parsing, PFR-to-TTF table generation/cache registration, pure TTF bitmap rasterization with the bundled Verdana fixture, FontRegistry prebuilt-cache/PFR-registration/rasterization/size-aware embedded-TTF/alias/Windows-first/Mac fallback behavior, bundled Mac/Windows platform font selection and caching, and SimpleTextRenderer bitmap-font/built-in-fallback/wrapping/underline/caret/XMED per-span/styled-underline rendering behavior passed through the same CTest executable.
 - SoundConverter WAV layout, SoundChunk header stripping, signed/endianness conversion, MP3 extraction, IMA ADPCM, and duration tests passed through the same CTest executable.
@@ -1429,4 +1431,5 @@ Result:
 - `77aa0d8a Render C++ GTK docked workbench layout`
 - `950b549d Port C++ ScriptChunk file helpers`
 - `36ac2214 Embed C++ platform font bundles`
-- Current checkpoint commit message: `Expose C++ GTK pane dock context actions`
+- `e01ccb07 Expose C++ GTK pane dock context actions`
+- Current checkpoint commit message: `Wire C++ GTK pane body drag docking`

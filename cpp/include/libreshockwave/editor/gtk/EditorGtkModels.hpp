@@ -451,6 +451,11 @@ public:
     [[nodiscard]] static std::string workbenchPanelFloatActionName(std::string_view panelId);
     [[nodiscard]] static std::string workbenchPanelDockActionName(std::string_view panelId,
                                                                   docking::DockEdge edge);
+    [[nodiscard]] static std::optional<docking::DockEdge> workbenchSnapEdgeForPoint(float x,
+                                                                                   float y,
+                                                                                   int width,
+                                                                                   int height,
+                                                                                   float snapMargin = 72.0F);
     [[nodiscard]] static std::string workbenchContentActionName(std::string_view panelId,
                                                                 int index,
                                                                 std::string_view label);

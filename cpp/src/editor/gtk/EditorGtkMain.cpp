@@ -136,36 +136,6 @@ void addPanelContextMenu(GtkWidget* target, const gtk_models::GtkPanelContextMen
     gtk_widget_add_controller(target, GTK_EVENT_CONTROLLER(gesture));
 }
 
-std::optional<docking::DockEdge> snapEdgeForPoint(float x, float y, int width, int height) {
-    if (width <= 0 || height <= 0) {
-        return std::nullopt;
-    }
-
-    constexpr float snapMargin = 72.0F;
-    if (x < -snapMargin || x > static_cast<float>(width) + snapMargin ||
-        y < -snapMargin || y > static_cast<float>(height) + snapMargin) {
-        return std::nullopt;
-    }
-
-    float bestDistance = snapMargin + 1.0F;
-    std::optional<docking::DockEdge> bestEdge;
-    auto consider = [&](float distance, docking::DockEdge edge) {
-        if (distance < bestDistance) {
-            bestDistance = distance;
-            bestEdge = edge;
-        }
-    };
-
-    consider(x, docking::DockEdge::Left);
-    consider(static_cast<float>(width) - x, docking::DockEdge::Right);
-    consider(y, docking::DockEdge::Top);
-    consider(static_cast<float>(height) - y, docking::DockEdge::Bottom);
-    if (bestDistance > snapMargin) {
-        return std::nullopt;
-    }
-    return bestEdge;
-}
-
 struct PanelDragData {
     EditorGtkState* state{nullptr};
     std::string panelId;
@@ -211,10 +181,11 @@ void snapPanelDragToEdge(GtkGestureDrag* gesture, double offsetX, double offsetY
         return;
     }
 
-    const auto edge = snapEdgeForPoint(workbenchPoint.x,
-                                       workbenchPoint.y,
-                                       gtk_widget_get_width(data->state->workbenchArea),
-                                       gtk_widget_get_height(data->state->workbenchArea));
+    const auto edge = gtk_models::EditorGtkShellModel::workbenchSnapEdgeForPoint(
+        workbenchPoint.x,
+        workbenchPoint.y,
+        gtk_widget_get_width(data->state->workbenchArea),
+        gtk_widget_get_height(data->state->workbenchArea));
     if (!edge.has_value()) {
         return;
     }
@@ -234,7 +205,9 @@ void addPanelDragSnap(GtkWidget* target, EditorGtkState& state, std::string pane
     gtk_widget_add_controller(target, GTK_EVENT_CONTROLLER(gesture));
 }
 
-void populatePanelList(GtkWidget* list, const std::vector<gtk_models::GtkPanelRowSpec>& rows) {
+void populatePanelList(EditorGtkState& state,
+                       GtkWidget* list,
+                       const std::vector<gtk_models::GtkPanelRowSpec>& rows) {
     while (GtkWidget* child = gtk_widget_get_first_child(list)) {
         gtk_list_box_remove(GTK_LIST_BOX(list), child);
     }
@@ -252,6 +225,7 @@ void populatePanelList(GtkWidget* list, const std::vector<gtk_models::GtkPanelRo
         gtk_widget_set_margin_top(button, 2);
         gtk_widget_set_margin_bottom(button, 2);
         addPanelContextMenu(button, gtk_models::EditorGtkShellModel::panelContextMenu(row));
+        addPanelDragSnap(button, state, row.panelId);
         gtk_list_box_append(GTK_LIST_BOX(list), button);
     }
 }
@@ -353,12 +327,16 @@ std::vector<gtk_models::GtkWorkbenchTabSpec> tabSpecsForDockNode(
     return tabs;
 }
 
-GtkWidget* makeWorkbenchPanelContent(const gtk_models::GtkWorkbenchPanelSpec& panel) {
+GtkWidget* makeWorkbenchPanelContent(EditorGtkState& state, const gtk_models::GtkWorkbenchPanelSpec& panel) {
     GtkWidget* box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
     gtk_widget_set_margin_start(box, 6);
     gtk_widget_set_margin_end(box, 6);
     gtk_widget_set_margin_top(box, 6);
     gtk_widget_set_margin_bottom(box, 6);
+    const auto contextMenu =
+        gtk_models::EditorGtkShellModel::workbenchTabContextMenu(tabSpecForPanel(panel, panel.selected));
+    addPanelContextMenu(box, contextMenu);
+    addPanelDragSnap(box, state, panel.panelId);
 
     GtkWidget* title = gtk_label_new(panel.title.c_str());
     gtk_label_set_xalign(GTK_LABEL(title), 0.0F);
@@ -406,7 +384,7 @@ GtkWidget* makeDockNodeWidget(EditorGtkState& state, const gtk_models::GtkWorkbe
     gtk_box_append(GTK_BOX(box), tabsBox);
 
     if (node.activePanel.has_value()) {
-        gtk_box_append(GTK_BOX(box), makeWorkbenchPanelContent(*node.activePanel));
+        gtk_box_append(GTK_BOX(box), makeWorkbenchPanelContent(state, *node.activePanel));
     } else {
         GtkWidget* empty = gtk_label_new("No docked panels");
         gtk_label_set_xalign(GTK_LABEL(empty), 0.0F);
@@ -467,7 +445,7 @@ void refreshGtkShell(EditorGtkState& state) {
         gtk_window_set_title(state.window, view.windowTitle.c_str());
     }
     if (state.panelList != nullptr) {
-        populatePanelList(state.panelList, view.panelRows);
+        populatePanelList(state, state.panelList, view.panelRows);
     }
     if (state.workbenchTabs != nullptr) {
         populateWorkbenchTabs(state, state.workbenchTabs, view.workbenchTabs);
@@ -643,7 +621,7 @@ GtkWidget* makeToolbar(const gtk_models::EditorGtkShellState& shellState) {
 GtkWidget* makePanelList(EditorGtkState& state) {
     GtkWidget* list = gtk_list_box_new();
     state.panelList = list;
-    populatePanelList(list, state.shellState.viewState().panelRows);
+    populatePanelList(state, list, state.shellState.viewState().panelRows);
     return list;
 }
 

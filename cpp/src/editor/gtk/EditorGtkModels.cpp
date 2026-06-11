@@ -586,6 +586,39 @@ std::string EditorGtkShellModel::workbenchPanelDockActionName(std::string_view p
     return "workbench_dock_" + std::string(dockEdgeActionToken(edge)) + "_" + sanitizeActionName(panelId);
 }
 
+std::optional<docking::DockEdge> EditorGtkShellModel::workbenchSnapEdgeForPoint(float x,
+                                                                                float y,
+                                                                                int width,
+                                                                                int height,
+                                                                                float snapMargin) {
+    if (width <= 0 || height <= 0 || snapMargin < 0.0F) {
+        return std::nullopt;
+    }
+
+    if (x < -snapMargin || x > static_cast<float>(width) + snapMargin ||
+        y < -snapMargin || y > static_cast<float>(height) + snapMargin) {
+        return std::nullopt;
+    }
+
+    float bestDistance = snapMargin + 1.0F;
+    std::optional<docking::DockEdge> bestEdge;
+    auto consider = [&](float distance, docking::DockEdge edge) {
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            bestEdge = edge;
+        }
+    };
+
+    consider(x, docking::DockEdge::Left);
+    consider(static_cast<float>(width) - x, docking::DockEdge::Right);
+    consider(y, docking::DockEdge::Top);
+    consider(static_cast<float>(height) - y, docking::DockEdge::Bottom);
+    if (bestDistance > snapMargin) {
+        return std::nullopt;
+    }
+    return bestEdge;
+}
+
 std::string EditorGtkShellModel::workbenchContentActionName(std::string_view panelId,
                                                            int index,
                                                            std::string_view label) {

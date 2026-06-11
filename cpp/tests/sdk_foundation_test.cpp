@@ -2127,6 +2127,21 @@ void testEditorShellActionModels() {
            "workbench_dock_left_property_inspector");
     assert(EditorGtkShellModel::workbenchPanelDockActionName("property-inspector", DockEdge::Bottom) ==
            "workbench_dock_bottom_property_inspector");
+    const auto snapLeft = EditorGtkShellModel::workbenchSnapEdgeForPoint(12.0F, 160.0F, 640, 480);
+    assert(snapLeft.has_value());
+    assert(*snapLeft == DockEdge::Left);
+    const auto snapRight = EditorGtkShellModel::workbenchSnapEdgeForPoint(620.0F, 160.0F, 640, 480);
+    assert(snapRight.has_value());
+    assert(*snapRight == DockEdge::Right);
+    const auto snapTop = EditorGtkShellModel::workbenchSnapEdgeForPoint(320.0F, 72.0F, 640, 480);
+    assert(snapTop.has_value());
+    assert(*snapTop == DockEdge::Top);
+    const auto snapBottom = EditorGtkShellModel::workbenchSnapEdgeForPoint(320.0F, 430.0F, 640, 480);
+    assert(snapBottom.has_value());
+    assert(*snapBottom == DockEdge::Bottom);
+    assert(!EditorGtkShellModel::workbenchSnapEdgeForPoint(320.0F, 240.0F, 640, 480).has_value());
+    assert(!EditorGtkShellModel::workbenchSnapEdgeForPoint(-73.0F, 100.0F, 640, 480).has_value());
+    assert(!EditorGtkShellModel::workbenchSnapEdgeForPoint(1.0F, 1.0F, 0, 480).has_value());
     assert(EditorGtkShellModel::workbenchContentActionName("property-inspector", 2, "Round Rect") ==
            "workbench_content_property_inspector_2_Round_Rect");
     assert(EditorGtkShellModel::dialogActionName(GtkShellDialogKind::ExternalParameters,
