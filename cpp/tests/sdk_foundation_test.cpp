@@ -2491,6 +2491,11 @@ void testEditorShellActionModels() {
                        [](const GtkWorkbenchPanelSpec& panel) {
                            return panel.panelId == "stage" && !panel.docked;
                        }));
+    assert(std::any_of(gtkWorkbenchLayout.floatingPanels.begin(),
+                       gtkWorkbenchLayout.floatingPanels.end(),
+                       [](const GtkWorkbenchPanelSpec& panel) {
+                           return panel.panelId == "stage" && panel.bounds == PanelBounds{170, 10, 660, 500};
+                       }));
     assert(gtkWorkbenchLayout.emptyText == "No editor panels available");
     const auto gtkWorkbenchTabs = EditorGtkShellModel::workbenchTabs(gtkFrame, closedGtkContext);
     assert(gtkWorkbenchTabs.size() == gtkWorkbench.size());
@@ -2640,7 +2645,9 @@ void testEditorShellActionModels() {
     assert(initialWorkbenchLayout.dockRoot.kind == DockNodeKind::Center);
     assert(initialWorkbenchLayout.dockRoot.panels.empty());
     assert(initialWorkbenchLayout.floatingPanels.size() == gtkWorkbenchPanels.size());
-    assert(findWorkbenchPanel(initialWorkbenchLayout.floatingPanels, "stage") != nullptr);
+    const auto* initialFloatingStage = findWorkbenchPanel(initialWorkbenchLayout.floatingPanels, "stage");
+    assert(initialFloatingStage != nullptr);
+    assert(initialFloatingStage->bounds == (PanelBounds{170, 10, 660, 500}));
     assert(findWorkbenchPanel(initialWorkbenchLayout.floatingPanels, "paint") == nullptr);
     auto gtkWorkbenchTabsState = gtkState.workbenchTabs();
     assert(gtkWorkbenchTabsState.size() == gtkWorkbenchPanels.size());
@@ -3755,7 +3762,9 @@ void testEditorShellActionModels() {
     assert(gtkView.workbenchContent.panelId == "paint");
     assert(!gtkView.workbenchLayout.hasDockedLayout);
     assert(gtkView.workbenchLayout.floatingPanels.size() == gtkView.workbenchPanels.size());
-    assert(findWorkbenchPanel(gtkView.workbenchLayout.floatingPanels, "paint") != nullptr);
+    const auto* floatingPaint = findWorkbenchPanel(gtkView.workbenchLayout.floatingPanels, "paint");
+    assert(floatingPaint != nullptr);
+    assert(floatingPaint->bounds == (PanelBounds{0, 0, 500, 400}));
     assert(findWorkbenchPanel(gtkView.workbenchLayout.floatingPanels, "message") != nullptr);
 
     EditorGtkShellState mixedFloatingState;

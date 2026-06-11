@@ -422,6 +422,9 @@ void populateWorkbenchFloatingArea(EditorGtkState& state,
 
     for (const auto& panel : layout.floatingPanels) {
         GtkWidget* frame = gtk_frame_new(panel.title.c_str());
+        gtk_widget_set_size_request(frame,
+                                    panel.bounds.width > 0 ? panel.bounds.width : -1,
+                                    panel.bounds.height > 0 ? panel.bounds.height : -1);
         gtk_widget_set_hexpand(frame, TRUE);
         gtk_frame_set_child(GTK_FRAME(frame), makeWorkbenchPanelContent(state, panel));
         gtk_box_append(GTK_BOX(floatingArea), frame);
