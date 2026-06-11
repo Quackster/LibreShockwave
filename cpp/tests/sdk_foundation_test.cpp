@@ -333,6 +333,7 @@ using libreshockwave::editor::gtk::EditorGtkShellModel;
 using libreshockwave::editor::gtk::EditorGtkShellState;
 using libreshockwave::editor::gtk::GtkActionActivation;
 using libreshockwave::editor::gtk::GtkActionAcceleratorSpec;
+using libreshockwave::editor::gtk::GtkActionSpec;
 using libreshockwave::editor::gtk::GtkMenuItemKind;
 using libreshockwave::editor::gtk::GtkPanelRowSpec;
 using libreshockwave::editor::gtk::GtkShellDialogKind;
@@ -2800,7 +2801,12 @@ void testEditorShellActionModels() {
     assert(startScreenPresentation.emptyRecentsMessage == "No recent projects. Open a movie to get started.");
     assert(startScreenPresentation.hasRecentProjects);
     assert(startScreenPresentation.openMovieButtonLabel == "Open Movie...");
+    assert(startScreenPresentation.openMovieActionName == "open");
+    assert(startScreenPresentation.detailedOpenMovieActionName == "app.open");
     assert(startScreenPresentation.createNewMovieButtonLabel == "Create New Movie");
+    assert(startScreenPresentation.createNewMovieActionName == "newMovie");
+    assert(startScreenPresentation.detailedCreateNewMovieActionName == "app.newMovie");
+    assert(startScreenPresentation.createNewMovieTooltip == "Not yet available");
     assert(!startScreenPresentation.createNewMovieEnabled);
     assert(startScreenPresentation.openFileDialog.currentDirectory.value() == "/movies");
     assert(startScreenPresentation.recentProjects.size() == 2);
@@ -2822,6 +2828,35 @@ void testEditorShellActionModels() {
     assert(startScreenPresentation.recentProjects[1].actionName == "open_recent_1");
     assert(startScreenPresentation.recentProjects[1].detailedActionName == "app.open_recent_1");
     assert(startScreenPresentation.recentProjects[1].disabledReason == "File not found: /movies/Missing.dir");
+    const auto startScreenActionSpecs = EditorGtkShellModel::startScreenActionSpecs(startScreenPresentation);
+    auto findStartScreenAction = [](const std::vector<GtkActionSpec>& actions,
+                                    std::string_view name) -> const GtkActionSpec* {
+        const auto found = std::find_if(actions.begin(), actions.end(), [name](const GtkActionSpec& action) {
+            return action.name == name;
+        });
+        return found == actions.end() ? nullptr : &*found;
+    };
+    assert(startScreenActionSpecs.size() == 4);
+    const auto* startOpenAction = findStartScreenAction(startScreenActionSpecs, "open");
+    assert(startOpenAction != nullptr);
+    assert(startOpenAction->detailedName == "app.open");
+    assert(startOpenAction->command == EditorCommand::Open);
+    assert(startOpenAction->enabled);
+    const auto* startCreateAction = findStartScreenAction(startScreenActionSpecs, "newMovie");
+    assert(startCreateAction != nullptr);
+    assert(startCreateAction->detailedName == "app.newMovie");
+    assert(startCreateAction->command == EditorCommand::NewMovie);
+    assert(!startCreateAction->enabled);
+    const auto* startRecentAction = findStartScreenAction(startScreenActionSpecs, "open_recent_0");
+    assert(startRecentAction != nullptr);
+    assert(startRecentAction->detailedName == "app.open_recent_0");
+    assert(startRecentAction->command == EditorCommand::Open);
+    assert(startRecentAction->enabled);
+    const auto* missingRecentAction = findStartScreenAction(startScreenActionSpecs, "open_recent_1");
+    assert(missingRecentAction != nullptr);
+    assert(missingRecentAction->detailedName == "app.open_recent_1");
+    assert(missingRecentAction->command == EditorCommand::Open);
+    assert(!missingRecentAction->enabled);
 
     EditorGtkShellState emptyStartScreenGtkState;
     const auto emptyStartScreen = emptyStartScreenGtkState.startScreen([](std::string_view) {
@@ -2832,6 +2867,7 @@ void testEditorShellActionModels() {
     assert(emptyStartScreenPresentation.recentProjects.empty());
     assert(emptyStartScreenPresentation.emptyRecentsMessage == "No recent projects. Open a movie to get started.");
     assert(emptyStartScreenPresentation.openMovieButtonLabel == "Open Movie...");
+    assert(EditorGtkShellModel::startScreenActionSpecs(emptyStartScreenPresentation).size() == 2);
 
     auto missingRecent = startScreenGtkState.openRecentProject(1, recentExists);
     assert(missingRecent.actionName == "open_recent_1");

@@ -484,7 +484,12 @@ GtkStartScreenPresentation EditorGtkShellModel::startScreenPresentation(const Gt
     presentation.emptyRecentsMessage = request.emptyRecentsMessage;
     presentation.hasRecentProjects = !request.recentProjects.empty();
     presentation.openMovieButtonLabel = "Open Movie...";
+    presentation.openMovieActionName = commandActionName(EditorCommand::Open);
+    presentation.detailedOpenMovieActionName = appAction(presentation.openMovieActionName);
     presentation.createNewMovieButtonLabel = "Create New Movie";
+    presentation.createNewMovieActionName = commandActionName(EditorCommand::NewMovie);
+    presentation.detailedCreateNewMovieActionName = appAction(presentation.createNewMovieActionName);
+    presentation.createNewMovieTooltip = request.createNewMovieEnabled ? "" : "Not yet available";
     presentation.createNewMovieEnabled = request.createNewMovieEnabled;
     presentation.openFileDialog = openFileDialogPresentation(request.openFileDialog);
 
@@ -511,6 +516,47 @@ GtkStartScreenPresentation EditorGtkShellModel::startScreenPresentation(const Gt
     }
 
     return presentation;
+}
+
+std::vector<GtkActionSpec> EditorGtkShellModel::startScreenActionSpecs(
+    const GtkStartScreenPresentation& presentation) {
+    std::vector<GtkActionSpec> result;
+    result.reserve(presentation.recentProjects.size() + 2);
+
+    result.push_back(GtkActionSpec{
+        presentation.openMovieActionName,
+        presentation.detailedOpenMovieActionName,
+        EditorCommand::Open,
+        {},
+        true,
+        false,
+        false,
+        {},
+    });
+    result.push_back(GtkActionSpec{
+        presentation.createNewMovieActionName,
+        presentation.detailedCreateNewMovieActionName,
+        EditorCommand::NewMovie,
+        {},
+        presentation.createNewMovieEnabled,
+        false,
+        false,
+        {},
+    });
+    for (const auto& recent : presentation.recentProjects) {
+        result.push_back(GtkActionSpec{
+            recent.actionName,
+            recent.detailedActionName,
+            EditorCommand::Open,
+            {},
+            recent.enabled,
+            false,
+            false,
+            {},
+        });
+    }
+
+    return result;
 }
 
 std::vector<GtkActionSpec> EditorGtkShellModel::actionSpecs(const EditorMenuModel& menuModel,

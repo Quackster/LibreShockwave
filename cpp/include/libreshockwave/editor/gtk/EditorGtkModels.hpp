@@ -139,7 +139,12 @@ struct GtkStartScreenPresentation {
     bool hasRecentProjects{false};
     std::vector<GtkRecentProjectRowSpec> recentProjects;
     std::string openMovieButtonLabel;
+    std::string openMovieActionName;
+    std::string detailedOpenMovieActionName;
     std::string createNewMovieButtonLabel;
+    std::string createNewMovieActionName;
+    std::string detailedCreateNewMovieActionName;
+    std::string createNewMovieTooltip;
     bool createNewMovieEnabled{false};
     GtkOpenFileDialogPresentation openFileDialog;
 
@@ -379,6 +384,8 @@ public:
     [[nodiscard]] static GtkOpenFileDialogPresentation openFileDialogPresentation(
         const EditorOpenFileDialogModel& request);
     [[nodiscard]] static GtkStartScreenPresentation startScreenPresentation(const GtkStartScreenRequest& request);
+    [[nodiscard]] static std::vector<GtkActionSpec> startScreenActionSpecs(
+        const GtkStartScreenPresentation& presentation);
 
     [[nodiscard]] static std::vector<GtkActionSpec> actionSpecs(const EditorMenuModel& menuModel,
                                                                 const EditorToolBarModel& toolbarModel,
