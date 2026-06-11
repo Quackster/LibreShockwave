@@ -2137,15 +2137,26 @@ void testEditorShellActionModels() {
                              true,
                              false,
                              false,
+                             "panel_stage",
+                             "app.panel_stage",
+                             "workbench_stage",
+                             "app.workbench_stage",
+                             true,
                          }));
     assert(gtkRows[7].panelId == "paint");
     assert(gtkRows[7].displayLabel == "Paint (hidden)");
+    assert(gtkRows[7].toggleActionName == "panel_paint");
+    assert(gtkRows[7].detailedToggleActionName == "app.panel_paint");
+    assert(gtkRows[7].focusActionName == "workbench_paint");
+    assert(gtkRows[7].detailedFocusActionName == "app.workbench_paint");
     assert(!gtkRows[7].visible);
+    assert(!gtkRows[7].focusEnabled);
     assert(gtkFrame.togglePanel("paint", true));
     gtkRows = EditorGtkShellModel::panelRows(gtkFrame);
     assert(gtkRows[7].displayLabel == "Paint");
     assert(gtkRows[7].visible);
     assert(gtkRows[7].docked);
+    assert(gtkRows[7].focusEnabled);
     const auto staticWorkbenchFocusActions = EditorGtkShellModel::workbenchFocusActions(gtkFrame);
     assert(staticWorkbenchFocusActions.size() == EditorFramePanelModel::creationOrder().size());
     assert(staticWorkbenchFocusActions[0] ==
@@ -2644,6 +2655,11 @@ void testEditorShellActionModels() {
     assert(gtkView.panelRows[7].visible);
     assert(gtkView.panelRows[7].docked);
     assert(gtkView.panelRows[7].displayLabel == "Paint");
+    assert(gtkView.panelRows[7].toggleActionName == "panel_paint");
+    assert(gtkView.panelRows[7].detailedToggleActionName == "app.panel_paint");
+    assert(gtkView.panelRows[7].focusActionName == "workbench_paint");
+    assert(gtkView.panelRows[7].detailedFocusActionName == "app.workbench_paint");
+    assert(gtkView.panelRows[7].focusEnabled);
     const auto* paintWorkbench = findWorkbenchPanel(gtkView.workbenchPanels, "paint");
     assert(paintWorkbench != nullptr);
     assert(paintWorkbench->kind == GtkWorkbenchPanelKind::Paint);
@@ -2691,6 +2707,9 @@ void testEditorShellActionModels() {
     assert(!gtkState.actionSpec("panel_paint")->active);
     gtkView = gtkState.viewState();
     assert(gtkView.panelRows[7].displayLabel == "Paint (hidden)");
+    assert(gtkView.panelRows[7].toggleActionName == "panel_paint");
+    assert(gtkView.panelRows[7].focusActionName == "workbench_paint");
+    assert(!gtkView.panelRows[7].focusEnabled);
     assert(findWorkbenchPanel(gtkView.workbenchPanels, "paint") == nullptr);
     paintFocusAction = findWorkbenchFocusAction(gtkView.workbenchFocusActions, "paint");
     assert(paintFocusAction != nullptr);

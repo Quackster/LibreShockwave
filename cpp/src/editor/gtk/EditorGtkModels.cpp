@@ -323,6 +323,10 @@ std::vector<GtkPanelRowSpec> EditorGtkShellModel::panelRows(const EditorFramePan
         row.panelId = descriptor.panelId;
         row.title = descriptor.title;
         row.displayLabel = descriptor.title;
+        row.toggleActionName = panelActionName(descriptor.panelId);
+        row.detailedToggleActionName = appAction(row.toggleActionName);
+        row.focusActionName = workbenchPanelActionName(descriptor.panelId);
+        row.detailedFocusActionName = appAction(row.focusActionName);
         if (panel.has_value()) {
             row.bounds = panel->bounds;
             row.visible = panel->visible;
@@ -335,6 +339,7 @@ std::vector<GtkPanelRowSpec> EditorGtkShellModel::panelRows(const EditorFramePan
         if (!row.visible) {
             row.displayLabel += " (hidden)";
         }
+        row.focusEnabled = row.visible && !row.iconified;
         result.push_back(std::move(row));
     }
     return result;

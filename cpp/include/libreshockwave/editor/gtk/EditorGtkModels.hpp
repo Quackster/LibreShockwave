@@ -96,6 +96,11 @@ struct GtkPanelRowSpec {
     bool selected{false};
     bool iconified{false};
     bool docked{false};
+    std::string toggleActionName;
+    std::string detailedToggleActionName;
+    std::string focusActionName;
+    std::string detailedFocusActionName;
+    bool focusEnabled{false};
 
     friend bool operator==(const GtkPanelRowSpec&, const GtkPanelRowSpec&) = default;
 };
