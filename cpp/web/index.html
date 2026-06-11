@@ -147,8 +147,19 @@
             var frameInfo = document.getElementById('frame-info');
             var runtimeState = document.getElementById('runtime-state');
             var urlInput = document.getElementById('movie-url');
+            var params = new URLSearchParams(location.search);
+            var externalParams = {};
+
+            params.forEach(function(value, key) {
+                if (key.indexOf('param.') === 0 && key.length > 6) {
+                    externalParams[key.substring(6)] = value;
+                } else if (/^sw\d+$/i.test(key) || key === 'swText') {
+                    externalParams[key] = value;
+                }
+            });
 
             var player = LibreShockwaveCppPlayer.create('stage', {
+                params: externalParams,
                 onReady: function() {
                     runtimeState.textContent = 'ready';
                     status.textContent = 'Runtime ready.';
@@ -181,7 +192,6 @@
                 player.stepForward();
             });
 
-            var params = new URLSearchParams(location.search);
             if (params.has('movie')) {
                 urlInput.value = params.get('movie');
                 document.getElementById('load-button').click();

@@ -266,7 +266,8 @@ var LibreShockwaveCppPlayer = (function() {
             var sharedLength = width * height * 4;
             var sharedSeq = Atomics.load(this._sharedFrameControl, 0);
             if (sharedSeq === message.sharedSeq && sharedLength <= this._sharedFrameCapacity) {
-                rgba = new Uint8ClampedArray(this._sharedFrameBuffer, 0, sharedLength);
+                rgba = new Uint8ClampedArray(sharedLength);
+                rgba.set(new Uint8ClampedArray(this._sharedFrameBuffer, 0, sharedLength));
             }
         }
         if (!rgba && message.rgba) {

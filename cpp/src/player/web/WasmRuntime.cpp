@@ -24,42 +24,53 @@ WasmRuntime::~WasmRuntime() = default;
 
 int WasmRuntime::loadMovie(const std::vector<std::uint8_t>& data, std::string basePath) {
     lastError_.clear();
-    if (player_) {
-        if (auto* net = player_->netProvider()) {
-            net->completeMovieNavigationTasks();
-        }
-        player_->shutdown();
-    }
-    resetHostQueues();
-
-    auto nextPlayer = std::make_unique<WasmPlayer>();
-    auto* rawPlayer = nextPlayer.get();
-    nextPlayer->setGotoNetPageCallback([this](const std::string& url, const std::string& target) {
-        pendingGotoNetPages_.push_back(GotoNetPageRequest{url, target});
-    });
-    nextPlayer->setGotoNetMovieCallback([this](const std::string& url) {
-        pendingGotoNetMovies_.push_back(url);
-    });
-    nextPlayer->setErrorListener([this](std::string_view message, std::string_view detail) {
-        lastError_ = std::string(message);
-        if (!detail.empty()) {
-            if (!lastError_.empty()) {
-                lastError_ += ": ";
+    try {
+        if (player_) {
+            if (auto* net = player_->netProvider()) {
+                net->completeMovieNavigationTasks();
             }
-            lastError_ += std::string(detail);
+            player_->shutdown();
         }
-    });
+        resetHostQueues();
 
-    const bool loaded = nextPlayer->loadMovie(data,
-                                              std::move(basePath),
-                                              [this, rawPlayer](int castLibNumber, const std::string& fileName) {
-                                                  tryLoadCachedCastData(*rawPlayer, castLibNumber, fileName);
-                                              });
-    player_ = std::move(nextPlayer);
-    if (!loaded || player_->player() == nullptr) {
-        return 0;
+        auto nextPlayer = std::make_unique<WasmPlayer>();
+        auto* rawPlayer = nextPlayer.get();
+        nextPlayer->setGotoNetPageCallback([this](const std::string& url, const std::string& target) {
+            pendingGotoNetPages_.push_back(GotoNetPageRequest{url, target});
+        });
+        nextPlayer->setGotoNetMovieCallback([this](const std::string& url) {
+            pendingGotoNetMovies_.push_back(url);
+        });
+        nextPlayer->setErrorListener([this](std::string_view message, std::string_view detail) {
+            lastError_ = std::string(message);
+            if (!detail.empty()) {
+                if (!lastError_.empty()) {
+                    lastError_ += ": ";
+                }
+                lastError_ += std::string(detail);
+            }
+        });
+
+        const bool loaded = nextPlayer->loadMovie(data,
+                                                  std::move(basePath),
+                                                  [this, rawPlayer](int castLibNumber, const std::string& fileName) {
+                                                      tryLoadCachedCastData(*rawPlayer, castLibNumber, fileName);
+                                                  });
+        player_ = std::move(nextPlayer);
+        if (!loaded || player_->player() == nullptr) {
+            return 0;
+        }
+        return packDimensions(player_->stageWidth(), player_->stageHeight());
+    } catch (const std::exception& error) {
+        player_.reset();
+        resetHostQueues();
+        captureError("loadMovie", error);
+    } catch (...) {
+        player_.reset();
+        resetHostQueues();
+        captureUnknownError("loadMovie");
     }
-    return packDimensions(player_->stageWidth(), player_->stageHeight());
+    return 0;
 }
 
 void WasmRuntime::shutdown() {

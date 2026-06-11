@@ -245,6 +245,12 @@ target_include_directories(libreshockwave
 
 target_compile_features(libreshockwave PUBLIC cxx_std_20)
 
+if(EMSCRIPTEN)
+    target_compile_options(libreshockwave PUBLIC "-fexceptions" "-sUSE_ZLIB=1")
+    target_compile_definitions(libreshockwave PUBLIC LIBRESHOCKWAVE_HAVE_ZLIB=1)
+    target_link_options(libreshockwave INTERFACE "-fexceptions" "-sUSE_ZLIB=1")
+endif()
+
 add_executable(libreshockwave_probe
     tools/DirectorProbe.cpp
 )
@@ -321,18 +327,33 @@ if(EMSCRIPTEN)
         "-sEXPORTED_FUNCTIONS=@${CMAKE_CURRENT_SOURCE_DIR}/cmake/libreshockwave-wasm-exports.json"
     )
 
+    set(LIBRESHOCKWAVE_CPP_WASM_WEB_OUTPUTS)
     foreach(LIBRESHOCKWAVE_CPP_WASM_WEB_ASSET IN LISTS LIBRESHOCKWAVE_CPP_WASM_WEB_ASSETS)
         get_filename_component(LIBRESHOCKWAVE_CPP_WASM_WEB_ASSET_NAME
             "${LIBRESHOCKWAVE_CPP_WASM_WEB_ASSET}"
             NAME
         )
-        add_custom_command(TARGET libreshockwave_cpp_wasm POST_BUILD
+        set(LIBRESHOCKWAVE_CPP_WASM_WEB_ASSET_OUTPUT
+            "${CMAKE_CURRENT_BINARY_DIR}/wasm-dist/${LIBRESHOCKWAVE_CPP_WASM_WEB_ASSET_NAME}"
+        )
+        add_custom_command(
+            OUTPUT "${LIBRESHOCKWAVE_CPP_WASM_WEB_ASSET_OUTPUT}"
+            COMMAND "${CMAKE_COMMAND}" -E make_directory
+                "${CMAKE_CURRENT_BINARY_DIR}/wasm-dist"
             COMMAND "${CMAKE_COMMAND}" -E copy_if_different
                 "${LIBRESHOCKWAVE_CPP_WASM_WEB_ASSET}"
-                "$<TARGET_FILE_DIR:libreshockwave_cpp_wasm>/${LIBRESHOCKWAVE_CPP_WASM_WEB_ASSET_NAME}"
+                "${LIBRESHOCKWAVE_CPP_WASM_WEB_ASSET_OUTPUT}"
+            DEPENDS "${LIBRESHOCKWAVE_CPP_WASM_WEB_ASSET}"
             VERBATIM
         )
+        list(APPEND LIBRESHOCKWAVE_CPP_WASM_WEB_OUTPUTS
+            "${LIBRESHOCKWAVE_CPP_WASM_WEB_ASSET_OUTPUT}"
+        )
     endforeach()
+    add_custom_target(libreshockwave_cpp_wasm_web_assets
+        DEPENDS ${LIBRESHOCKWAVE_CPP_WASM_WEB_OUTPUTS}
+    )
+    add_dependencies(libreshockwave_cpp_wasm libreshockwave_cpp_wasm_web_assets)
 endif()
 
 if(BUILD_TESTING)

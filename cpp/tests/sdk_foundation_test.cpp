@@ -22090,6 +22090,7 @@ void testWasmRuntimeBridgeFoundation() {
     assert(runtime.tempo() == 15);
     assert(runtime.tick() == 0);
     assert(runtime.loadMovie({0x00, 0x01}, "bad.dir") == 0);
+    assert(runtime.lastError().find("Movie load failed") != std::string::npos);
     assert(runtime.player() != nullptr);
     assert(runtime.player()->player() == nullptr);
 
@@ -22939,6 +22940,9 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(index.find("LibreShockwaveCppPlayer.create") != std::string::npos);
     assert(index.find("<canvas id=\"stage\"") != std::string::npos);
     assert(index.find("window.__libreshockwaveCppLastFrame") != std::string::npos);
+    assert(index.find("externalParams") != std::string::npos);
+    assert(index.find("key.indexOf('param.') === 0") != std::string::npos);
+    assert(index.find("/^sw\\d+$/i.test(key) || key === 'swText'") != std::string::npos);
 
     assert(player.find("LibreShockwaveCppPlayer") != std::string::npos);
     assert(player.find("new Worker") != std::string::npos);
@@ -22980,6 +22984,7 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(player.find("new SharedArrayBuffer") != std::string::npos);
     assert(player.find("sharedFrameCapacity") != std::string::npos);
     assert(player.find("Atomics.load") != std::string::npos);
+    assert(player.find("rgba.set(new Uint8ClampedArray(this._sharedFrameBuffer") != std::string::npos);
 
     assert(worker.find("createLibreShockwaveCppWasm") != std::string::npos);
     assert(worker.find("libreshockwave-cpp-wasm.js") != std::string::npos);
@@ -23024,6 +23029,14 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(worker.find("Atomics.store") != std::string::npos);
     assert(worker.find("Atomics.notify") != std::string::npos);
     assert(worker.find("sharedFrame: sharedFrame") != std::string::npos);
+    assert(worker.find("_capturedWasmMemory") != std::string::npos);
+    assert(worker.find("_findExportedMemory") != std::string::npos);
+    assert(worker.find("new WebAssembly.Module") != std::string::npos);
+    assert(worker.find("instantiateWasm: _instantiateWasm") != std::string::npos);
+    assert(worker.find("roots[r].HEAPU8") != std::string::npos);
+    assert(worker.find("_hexPrefix") != std::string::npos);
+    assert(worker.find("C++ WASM movie load failed; bytes=") != std::string::npos);
+    assert(worker.find("C++ WASM render failed: ") != std::string::npos);
     assert(worker.find("_activeLoadSeq") != std::string::npos);
     assert(worker.find("_isStaleLoad") != std::string::npos);
     assert(worker.find("_drainFetches(maxRounds, loadSeq)") != std::string::npos);

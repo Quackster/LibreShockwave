@@ -3,6 +3,7 @@
 var _module = null;
 var _exports = null;
 var _memory = null;
+var _capturedWasmMemory = null;
 var _basePath = '';
 var _ready = false;
 var _playing = false;
@@ -160,7 +161,23 @@ function _findExport(source, suffix) {
     return null;
 }
 
+function _findExportedMemory(exports) {
+    if (!exports) {
+        return null;
+    }
+    for (var name in exports) {
+        var value = exports[name];
+        if (value && value.buffer && value.buffer instanceof ArrayBuffer) {
+            return value;
+        }
+    }
+    return null;
+}
+
 function _findMemory(source) {
+    if (_capturedWasmMemory && _capturedWasmMemory.buffer) {
+        return _capturedWasmMemory;
+    }
     var roots = _exportRoots(source);
     for (var r = 0; r < roots.length; r++) {
         if (roots[r].memory && roots[r].memory.buffer) {
@@ -169,8 +186,34 @@ function _findMemory(source) {
         if (roots[r].wasmMemory && roots[r].wasmMemory.buffer) {
             return roots[r].wasmMemory;
         }
+        if (roots[r].HEAPU8 && roots[r].HEAPU8.buffer) {
+            return {
+                get buffer() {
+                    return roots[r].HEAPU8.buffer;
+                }
+            };
+        }
     }
     return null;
+}
+
+function _loadWasmBinary(path) {
+    var request = new XMLHttpRequest();
+    request.open('GET', _resolveUrl(path), false);
+    request.responseType = 'arraybuffer';
+    request.send(null);
+    if (request.status < 200 || request.status >= 300) {
+        throw new Error('Failed to load C++ WASM binary: ' + path + ' status=' + request.status);
+    }
+    return new Uint8Array(request.response);
+}
+
+function _instantiateWasm(imports, receiveInstance) {
+    var module = new WebAssembly.Module(_loadWasmBinary('libreshockwave-cpp-wasm.wasm'));
+    var instance = new WebAssembly.Instance(module, imports);
+    _capturedWasmMemory = _findExportedMemory(instance.exports);
+    receiveInstance(instance, module);
+    return instance.exports;
 }
 
 function _createExports(source) {
@@ -208,6 +251,15 @@ function _writeBytes(bytes) {
     var length = Math.min(bytes.length, buffer.length);
     buffer.set(bytes.subarray(0, length), 0);
     return length;
+}
+
+function _hexPrefix(bytes, maxLength) {
+    var parts = [];
+    var count = Math.min(bytes ? bytes.length : 0, maxLength);
+    for (var i = 0; i < count; i++) {
+        parts.push(bytes[i].toString(16).padStart(2, '0'));
+    }
+    return parts.join(' ');
 }
 
 function _readString(length) {
@@ -746,7 +798,12 @@ async function _driveHostQueues(fetchRounds, loadSeq) {
 function _renderFrame() {
     var length = _exports.render();
     if (length <= 0) {
-        _postLastError();
+        var renderError = _readExportString(_exports.getDebugLog);
+        if (renderError) {
+            self.postMessage({ type: 'error', message: 'C++ WASM render failed: ' + renderError.trim() });
+        } else {
+            _postLastError();
+        }
         return null;
     }
     var width = _exports.getStageWidth();
@@ -874,6 +931,7 @@ async function _loadMovie(message) {
     var basePathLength = _writeString(message.basePath || _basePath);
     var movieAddr = _exports.allocateBuffer(movieBytes.length);
     new Uint8Array(_mem(), movieAddr, movieBytes.length).set(movieBytes);
+    var copiedMoviePrefix = new Uint8Array(_mem(), movieAddr, Math.min(movieBytes.length, 16));
     var packedStage = _exports.loadMovie(movieBytes.length, basePathLength);
     if (message.scriptTimeoutMs != null) {
         _exports.setScriptTimeoutMs(message.scriptTimeoutMs | 0);
@@ -915,7 +973,10 @@ async function _loadMovie(message) {
         return;
     }
     if (!packedStage) {
-        var loadError = _readLastError() || 'C++ WASM movie load failed';
+        var loadError = _readLastError() || ('C++ WASM movie load failed; bytes=' + movieBytes.length +
+            ' addr=' + movieAddr +
+            ' source=' + _hexPrefix(movieBytes, 16) +
+            ' wasm=' + _hexPrefix(copiedMoviePrefix, 16));
         self.postMessage({ type: 'error', message: loadError, loadSeq: loadSeq });
         return;
     }
@@ -968,7 +1029,8 @@ async function _init(message) {
     _module = await createLibreShockwaveCppWasm({
         locateFile: function(path) {
             return _resolveUrl(path);
-        }
+        },
+        instantiateWasm: _instantiateWasm
     });
     _exports = _createExports(_module);
     _memory = _findMemory(_module);

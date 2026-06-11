@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <exception>
 #include <utility>
 
 #include "libreshockwave/DirectorFile.hpp"
@@ -37,7 +38,15 @@ bool WasmPlayer::loadMovie(const std::vector<std::uint8_t>& data,
     std::shared_ptr<DirectorFile> loadedFile;
     try {
         loadedFile = DirectorFile::load(data);
+    } catch (const std::exception& error) {
+        if (errorListener_) {
+            errorListener_("Movie load failed", error.what());
+        }
+        return false;
     } catch (...) {
+        if (errorListener_) {
+            errorListener_("Movie load failed", "unknown exception");
+        }
         return false;
     }
     if (loadedFile == nullptr) {
