@@ -433,6 +433,7 @@ using libreshockwave::editor::model::ScoreCellData;
 using libreshockwave::editor::panels::EditorFrameDefaults;
 using libreshockwave::editor::panels::EditorPanelCatalog;
 using libreshockwave::editor::panels::ColorPalettesModel;
+using libreshockwave::editor::panels::ColorPaletteSwatch;
 using libreshockwave::editor::panels::ColorPalettesView;
 using libreshockwave::editor::panels::DisabledPanelAction;
 using libreshockwave::editor::panels::FieldEditorModel;
@@ -2636,6 +2637,20 @@ void testEditorShellActionModels() {
                "app.workbench_paint",
            }));
 
+    EditorFramePanelModel colorPaletteFrame;
+    assert(colorPaletteFrame.togglePanel("color-palettes", true));
+    const auto colorPaletteWorkbench = EditorGtkShellModel::workbenchPanels(colorPaletteFrame, closedGtkContext);
+    const auto colorPaletteWorkbenchPanel =
+        std::find_if(colorPaletteWorkbench.begin(),
+                     colorPaletteWorkbench.end(),
+                     [](const GtkWorkbenchPanelSpec& panel) {
+                         return panel.panelId == "color-palettes";
+                     });
+    assert(colorPaletteWorkbenchPanel != colorPaletteWorkbench.end());
+    assert(colorPaletteWorkbenchPanel->primaryText == ColorPalettesModel::previewText());
+    assert(colorPaletteWorkbenchPanel->statusText == ColorPalettesModel::statusText());
+    assert(colorPaletteWorkbenchPanel->actionLabels == ColorPalettesModel::paletteOptions());
+
     EditorGtkShellState gtkState;
     auto findWorkbenchPanel = [](const std::vector<GtkWorkbenchPanelSpec>& panels,
                                  std::string_view panelId) -> const GtkWorkbenchPanelSpec* {
@@ -4358,29 +4373,39 @@ void testEditorPanelWindowModels() {
 
     assert(ColorPalettesModel::selectorLabel() == "Palette: ");
     assert((ColorPalettesModel::paletteOptions() ==
-            std::vector<std::string>{"System - Win", "System - Mac", "Rainbow", "Grayscale", "Pastels", "Vivid",
-                                     "NTSC", "Metallic", "Web 216"}));
-    assert(ColorPalettesModel::placeholderText() == "Color Palettes - Not yet implemented");
-    assert((ColorPalettesModel::view() ==
-            ColorPalettesView{PanelWindowSize{350, 300},
-                              "border",
-                              "flow",
-                              "left",
-                              "north",
-                              "center",
-                              "white",
-                              "center",
-                              "Palette: ",
-                              {"System - Win",
-                               "System - Mac",
-                               "Rainbow",
-                               "Grayscale",
-                               "Pastels",
-                               "Vivid",
-                               "NTSC",
-                               "Metallic",
-                               "Web 216"},
-                              "Color Palettes - Not yet implemented"}));
+            std::vector<std::string>{"System - Windows", "System - Mac", "Rainbow", "Grayscale", "Metallic"}));
+    assert(ColorPalettesModel::selectedPaletteName() == "System - Windows");
+    assert(ColorPalettesModel::selectedPaletteColorCount() == 256);
+    assert(ColorPalettesModel::previewColumnCount() == 8);
+    const auto previewSwatches = ColorPalettesModel::previewSwatches(10);
+    assert(previewSwatches.size() == 10);
+    assert((previewSwatches[0] == ColorPaletteSwatch{0, 0xFFFFFFU, "#FFFFFF"}));
+    assert((previewSwatches[1] == ColorPaletteSwatch{1, 0x00FFFFU, "#00FFFF"}));
+    assert((previewSwatches[6] == ColorPaletteSwatch{6, 0xFF0000U, "#FF0000"}));
+    assert((previewSwatches[9] == ColorPaletteSwatch{9, 0xFFFBF0U, "#FFFBF0"}));
+    assert(ColorPalettesModel::previewText() ==
+           "System - Windows\n"
+           "256 colors\n"
+           "Preview: #FFFFFF #00FFFF #FF00FF #0000FF #FFFF00 #00FF00 #FF0000 #808080");
+    assert(ColorPalettesModel::statusText() == " System - Windows  256 colors");
+    const auto colorPaletteView = ColorPalettesModel::view();
+    assert((colorPaletteView.size == PanelWindowSize{350, 300}));
+    assert(colorPaletteView.rootLayout == "border");
+    assert(colorPaletteView.selectorPanelLayout == "flow");
+    assert(colorPaletteView.selectorPanelAlignment == "left");
+    assert(colorPaletteView.selectorPosition == "north");
+    assert(colorPaletteView.gridPosition == "center");
+    assert(colorPaletteView.gridBackground == "white");
+    assert(colorPaletteView.placeholderAlignment == "center");
+    assert(colorPaletteView.selectorLabel == "Palette: ");
+    assert(colorPaletteView.paletteOptions == ColorPalettesModel::paletteOptions());
+    assert(colorPaletteView.selectedPaletteName == "System - Windows");
+    assert(colorPaletteView.selectedPaletteColorCount == 256);
+    assert(colorPaletteView.previewColumnCount == 8);
+    assert(colorPaletteView.previewSwatches.size() == 32);
+    assert(colorPaletteView.previewSwatches.front() == (ColorPaletteSwatch{0, 0xFFFFFFU, "#FFFFFF"}));
+    assert(colorPaletteView.previewText == ColorPalettesModel::previewText());
+    assert(colorPaletteView.statusText == ColorPalettesModel::statusText());
 
     assert((FieldEditorModel::toolbarActions() ==
             std::vector<DisabledPanelAction>{DisabledPanelAction{"Wrap", "Wrap (not yet implemented)"},
@@ -24939,6 +24964,68 @@ void testScoreChunkParser() {
     assert(interval.secondary->memberId()->value() == 12);
     assert(interval.secondary->unk0 == 99);
     assert(scoreReader.order() == ByteOrder::LittleEndian);
+
+    constexpr int largeFrameCount = 300;
+    constexpr int largeChannelCount = 96;
+    constexpr int largeSpriteChannel = 12;
+    std::vector<std::uint8_t> largeFrameEntry;
+    appendI32(largeFrameEntry, 0);
+    appendI32(largeFrameEntry, 0);
+    appendI32(largeFrameEntry, largeFrameCount);
+    appendI16(largeFrameEntry, 14);
+    appendI16(largeFrameEntry, 28);
+    appendI16(largeFrameEntry, largeChannelCount);
+    appendI16(largeFrameEntry, 0);
+
+    std::vector<std::uint8_t> largeSprite(28, 0);
+    largeSprite[0] = 1;
+    largeSprite[4] = 0;
+    largeSprite[5] = 1;
+    largeSprite[6] = 0;
+    largeSprite[7] = 27;
+    largeSprite[12] = 0;
+    largeSprite[13] = 40;
+    largeSprite[14] = 0;
+    largeSprite[15] = 52;
+    largeSprite[16] = 0;
+    largeSprite[17] = 18;
+    largeSprite[18] = 0;
+    largeSprite[19] = 24;
+
+    std::vector<std::uint8_t> largeFrame0;
+    appendDelta(largeFrame0, largeSpriteChannel * 28, largeSprite);
+    appendI16(largeFrameEntry, static_cast<int>(largeFrame0.size()) + 2);
+    largeFrameEntry.insert(largeFrameEntry.end(), largeFrame0.begin(), largeFrame0.end());
+    for (int frame = 1; frame < largeFrameCount; ++frame) {
+        appendI16(largeFrameEntry, 2);
+    }
+
+    std::vector<std::uint8_t> largeScoreData;
+    appendI32(largeScoreData, static_cast<std::uint32_t>(largeFrameEntry.size()));
+    appendI32(largeScoreData, 0);
+    appendI32(largeScoreData, 0);
+    appendI32(largeScoreData, 1);
+    appendI32(largeScoreData, 0);
+    appendI32(largeScoreData, static_cast<std::uint32_t>(largeFrameEntry.size()));
+    appendI32(largeScoreData, 0);
+    appendI32(largeScoreData, static_cast<std::uint32_t>(largeFrameEntry.size()));
+    largeScoreData.insert(largeScoreData.end(), largeFrameEntry.begin(), largeFrameEntry.end());
+
+    BinaryReader largeScoreReader(largeScoreData, ByteOrder::LittleEndian);
+    ScoreChunk largeScore = ScoreChunk::read(nullptr, largeScoreReader, ChunkId(36), 0x4B1);
+    assert(largeScore.getFrameCount() == largeFrameCount);
+    assert(largeScore.getChannelCount() == largeChannelCount);
+    assert(largeScore.getRawChannelData().size() ==
+           static_cast<std::size_t>(largeFrameCount * largeChannelCount * 28));
+    assert(largeScore.frameData().frameChannelData.size() == static_cast<std::size_t>(largeFrameCount));
+    const auto& lastLargeEntry = largeScore.frameData().frameChannelData.back();
+    assert(lastLargeEntry.frameIndex.value() == largeFrameCount - 1);
+    assert(lastLargeEntry.channelIndex.value() == largeSpriteChannel);
+    assert(lastLargeEntry.data.castLib == 1);
+    assert(lastLargeEntry.data.castMember == 27);
+    assert(lastLargeEntry.data.posY == 40);
+    assert(lastLargeEntry.data.posX == 52);
+    assert(largeScoreReader.order() == ByteOrder::LittleEndian);
 }
 
 void testDirectorFileRifxLoader() {

@@ -529,7 +529,8 @@ void populateWorkbenchContent(GtkWorkbenchPanelSpec& spec, const EditorContextMo
         }
         case GtkWorkbenchPanelKind::ColorPalettes: {
             const auto view = panels::ColorPalettesModel::view();
-            spec.primaryText = view.placeholderText;
+            spec.primaryText = view.previewText;
+            spec.statusText = view.statusText;
             spec.actionLabels = view.paletteOptions;
             break;
         }

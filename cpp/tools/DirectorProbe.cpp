@@ -33,7 +33,9 @@ constexpr std::array<std::string_view, 5> kDirectorExtensions{
 struct ProbeOptions {
     bool allowEmpty = false;
     bool verbose = false;
+    bool showCurrent = false;
     std::size_t maxFailures = 25;
+    std::size_t progressInterval = 500;
     std::vector<fs::path> roots;
 };
 
@@ -101,7 +103,9 @@ bool hasDirectorContainerHeader(const std::vector<std::uint8_t>& data) {
 
 std::string usage(const char* argv0) {
     std::ostringstream out;
-    out << "Usage: " << argv0 << " [--allow-empty] [--max-failures N] [--verbose] <file-or-directory>...\n"
+    out << "Usage: " << argv0
+        << " [--allow-empty] [--max-failures N] [--progress-interval N] [--show-current] [--verbose]"
+        << " <file-or-directory>...\n"
         << "Scans Director .cct/.cst/.dcr/.dir/.dxr files through the native C++ loader, editor member scan, "
         << "and score model builder.\n"
         << "If no paths are supplied, /var/html is used.";
@@ -133,6 +137,10 @@ ProbeOptions parseOptions(int argc, char** argv) {
             options.verbose = true;
             continue;
         }
+        if (arg == "--show-current") {
+            options.showCurrent = true;
+            continue;
+        }
         if (arg == "--max-failures") {
             if (index + 1 >= argc) {
                 throw std::runtime_error("--max-failures requires a value");
@@ -143,6 +151,18 @@ ProbeOptions parseOptions(int argc, char** argv) {
         constexpr std::string_view maxFailuresPrefix = "--max-failures=";
         if (arg.starts_with(maxFailuresPrefix)) {
             options.maxFailures = parseSize(arg.substr(maxFailuresPrefix.size()), "--max-failures");
+            continue;
+        }
+        if (arg == "--progress-interval") {
+            if (index + 1 >= argc) {
+                throw std::runtime_error("--progress-interval requires a value");
+            }
+            options.progressInterval = parseSize(argv[++index], "--progress-interval");
+            continue;
+        }
+        constexpr std::string_view progressIntervalPrefix = "--progress-interval=";
+        if (arg.starts_with(progressIntervalPrefix)) {
+            options.progressInterval = parseSize(arg.substr(progressIntervalPrefix.size()), "--progress-interval");
             continue;
         }
         if (arg.starts_with("-")) {
@@ -298,7 +318,13 @@ int main(int argc, char** argv) {
         std::size_t totalScripts = 0;
         std::size_t totalScoreRows = 0;
 
-        for (const auto& file : files) {
+        for (std::size_t fileIndex = 0; fileIndex < files.size(); ++fileIndex) {
+            const auto& file = files[fileIndex];
+            if (options.showCurrent || options.verbose) {
+                std::cout << "PROBE " << (fileIndex + 1) << '/' << files.size() << ' '
+                          << pathString(file) << '\n' << std::flush;
+            }
+
             try {
                 const auto summary = probeFile(file);
                 ++okCount;
@@ -311,13 +337,13 @@ int main(int argc, char** argv) {
 
                 if (options.verbose) {
                     printVerboseOk(file, summary);
-                } else if (okCount % 500 == 0) {
-                    std::cout << "OK " << okCount << '/' << files.size() << '\n';
+                } else if (options.progressInterval != 0 && okCount % options.progressInterval == 0) {
+                    std::cout << "OK " << okCount << '/' << files.size() << '\n' << std::flush;
                 }
             } catch (const SkippedFile& skipped) {
                 ++skippedCount;
                 if (options.verbose) {
-                    std::cout << "SKIP " << pathString(file) << ": " << skipped.what() << '\n';
+                    std::cout << "SKIP " << pathString(file) << ": " << skipped.what() << '\n' << std::flush;
                 }
             } catch (const std::exception& error) {
                 ++failureCount;

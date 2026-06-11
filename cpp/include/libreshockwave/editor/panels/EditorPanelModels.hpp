@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -54,6 +55,14 @@ struct ToolPaletteView {
     friend bool operator==(const ToolPaletteView&, const ToolPaletteView&) = default;
 };
 
+struct ColorPaletteSwatch {
+    int index{};
+    std::uint32_t rgb{};
+    std::string hex;
+
+    friend bool operator==(const ColorPaletteSwatch&, const ColorPaletteSwatch&) = default;
+};
+
 struct ColorPalettesView {
     PanelWindowSize size;
     std::string rootLayout;
@@ -65,7 +74,12 @@ struct ColorPalettesView {
     std::string placeholderAlignment;
     std::string selectorLabel;
     std::vector<std::string> paletteOptions;
-    std::string placeholderText;
+    std::string selectedPaletteName;
+    int selectedPaletteColorCount{};
+    int previewColumnCount{};
+    std::vector<ColorPaletteSwatch> previewSwatches;
+    std::string previewText;
+    std::string statusText;
 
     friend bool operator==(const ColorPalettesView&, const ColorPalettesView&) = default;
 };
@@ -162,7 +176,12 @@ class ColorPalettesModel {
 public:
     [[nodiscard]] static std::vector<std::string> paletteOptions();
     [[nodiscard]] static std::string selectorLabel();
-    [[nodiscard]] static std::string placeholderText();
+    [[nodiscard]] static std::string selectedPaletteName();
+    [[nodiscard]] static int selectedPaletteColorCount();
+    [[nodiscard]] static int previewColumnCount();
+    [[nodiscard]] static std::vector<ColorPaletteSwatch> previewSwatches(std::size_t maxSwatches = 32);
+    [[nodiscard]] static std::string previewText();
+    [[nodiscard]] static std::string statusText();
     [[nodiscard]] static ColorPalettesView view();
 };
 

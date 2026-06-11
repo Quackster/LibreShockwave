@@ -1,10 +1,13 @@
 #include "libreshockwave/editor/panels/EditorPanelModels.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <iomanip>
 #include <sstream>
 #include <string>
 #include <utility>
+
+#include "libreshockwave/bitmap/Palette.hpp"
 
 namespace libreshockwave::editor::panels {
 namespace {
@@ -57,6 +60,26 @@ std::string formatFixed(double value, int precision) {
     std::ostringstream out;
     out << std::fixed << std::setprecision(precision) << value;
     return out.str();
+}
+
+std::string formatHexColor(std::uint32_t rgb) {
+    std::ostringstream out;
+    out << '#' << std::uppercase << std::hex << std::setw(6) << std::setfill('0') << (rgb & 0xFFFFFFU);
+    return out.str();
+}
+
+std::vector<const bitmap::Palette*> builtInEditorPalettes() {
+    return {
+        &bitmap::Palette::systemWinPalette(),
+        &bitmap::Palette::systemMacPalette(),
+        &bitmap::Palette::rainbowPalette(),
+        &bitmap::Palette::grayscalePalette(),
+        &bitmap::Palette::metallicPalette(),
+    };
+}
+
+const bitmap::Palette& selectedEditorPalette() {
+    return *builtInEditorPalettes().front();
 }
 
 std::string soundInfoText(const SoundPanelInfo& info) {
@@ -174,25 +197,60 @@ ToolPaletteView ToolPaletteModel::view() {
 }
 
 std::vector<std::string> ColorPalettesModel::paletteOptions() {
-    return {
-        "System - Win",
-        "System - Mac",
-        "Rainbow",
-        "Grayscale",
-        "Pastels",
-        "Vivid",
-        "NTSC",
-        "Metallic",
-        "Web 216",
-    };
+    const auto palettes = builtInEditorPalettes();
+    std::vector<std::string> options;
+    options.reserve(palettes.size());
+    for (const auto* palette : palettes) {
+        options.push_back(palette->name());
+    }
+    return options;
 }
 
 std::string ColorPalettesModel::selectorLabel() {
     return "Palette: ";
 }
 
-std::string ColorPalettesModel::placeholderText() {
-    return "Color Palettes - Not yet implemented";
+std::string ColorPalettesModel::selectedPaletteName() {
+    return selectedEditorPalette().name();
+}
+
+int ColorPalettesModel::selectedPaletteColorCount() {
+    return selectedEditorPalette().size();
+}
+
+int ColorPalettesModel::previewColumnCount() {
+    return 8;
+}
+
+std::vector<ColorPaletteSwatch> ColorPalettesModel::previewSwatches(std::size_t maxSwatches) {
+    const auto& palette = selectedEditorPalette();
+    const auto count = std::min<std::size_t>(maxSwatches, static_cast<std::size_t>(palette.size()));
+    std::vector<ColorPaletteSwatch> swatches;
+    swatches.reserve(count);
+    for (std::size_t index = 0; index < count; ++index) {
+        const auto rgb = palette.getColor(static_cast<int>(index));
+        swatches.push_back(ColorPaletteSwatch{
+            static_cast<int>(index),
+            rgb,
+            formatHexColor(rgb),
+        });
+    }
+    return swatches;
+}
+
+std::string ColorPalettesModel::previewText() {
+    std::string text = selectedPaletteName() + "\n";
+    text += std::to_string(selectedPaletteColorCount()) + " colors\n";
+    const auto swatches = previewSwatches(8);
+    text += "Preview:";
+    for (const auto& swatch : swatches) {
+        text += " " + swatch.hex;
+    }
+    return text;
+}
+
+std::string ColorPalettesModel::statusText() {
+    return " " + selectedPaletteName() + "  " + std::to_string(selectedPaletteColorCount()) + " colors";
 }
 
 ColorPalettesView ColorPalettesModel::view() {
@@ -207,7 +265,12 @@ ColorPalettesView ColorPalettesModel::view() {
         "center",
         selectorLabel(),
         paletteOptions(),
-        placeholderText(),
+        selectedPaletteName(),
+        selectedPaletteColorCount(),
+        previewColumnCount(),
+        previewSwatches(),
+        previewText(),
+        statusText(),
     };
 }
 

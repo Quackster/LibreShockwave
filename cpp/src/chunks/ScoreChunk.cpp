@@ -62,6 +62,65 @@ ScoreChunk::FrameIntervalSecondary readSecondaryInterval(io::BinaryReader& reade
     };
 }
 
+std::uint8_t readU8At(const std::vector<std::uint8_t>& data, std::size_t offset) {
+    return data[offset];
+}
+
+std::uint16_t readU16At(const std::vector<std::uint8_t>& data, std::size_t offset) {
+    return static_cast<std::uint16_t>((static_cast<std::uint16_t>(data[offset]) << 8) |
+                                      static_cast<std::uint16_t>(data[offset + 1]));
+}
+
+std::int16_t readI16At(const std::vector<std::uint8_t>& data, std::size_t offset) {
+    return static_cast<std::int16_t>(readU16At(data, offset));
+}
+
+ScoreChunk::ChannelData readChannelDataAt(const std::vector<std::uint8_t>& data,
+                                          std::size_t offset,
+                                          int spriteRecordSize) {
+    const int spriteType = readU8At(data, offset);
+    const int inkByte = readU8At(data, offset + 1);
+    const int ink = inkByte & 0x3F;
+    const int trails = (inkByte >> 6) & 0x1;
+    const int stretch = (inkByte >> 7) & 0x1;
+    const int foreColor = readU8At(data, offset + 2);
+    const int backColor = readU8At(data, offset + 3);
+    const int castLib = readU16At(data, offset + 4);
+    const int castMember = readU16At(data, offset + 6);
+    const int unk1 = readU16At(data, offset + 8);
+    const int unk2 = readU16At(data, offset + 10);
+    const int posY = readI16At(data, offset + 12);
+    const int posX = readI16At(data, offset + 14);
+    const int height = readU16At(data, offset + 16);
+    const int width = readU16At(data, offset + 18);
+
+    int colorFlag = 0;
+    int blendByte = 0;
+    int thicknessFlags = 0;
+    int foreColorG = 0;
+    int backColorG = 0;
+    int foreColorB = 0;
+    int backColorB = 0;
+
+    if (spriteRecordSize >= 24) {
+        const int unk3 = readU8At(data, offset + 20);
+        colorFlag = (unk3 & 0xF0) >> 4;
+        blendByte = readU8At(data, offset + 21);
+        thicknessFlags = readU8At(data, offset + 22);
+    }
+
+    if (spriteRecordSize >= 28) {
+        foreColorG = readU8At(data, offset + 24);
+        backColorG = readU8At(data, offset + 25);
+        foreColorB = readU8At(data, offset + 26);
+        backColorB = readU8At(data, offset + 27);
+    }
+
+    return ScoreChunk::ChannelData{spriteType, ink, trails, stretch, foreColor, backColor, castLib, castMember,
+                                   unk1, unk2, posY, posX, height, width, colorFlag, blendByte,
+                                   thicknessFlags, foreColorG, backColorG, foreColorB, backColorB};
+}
+
 ScoreChunk::ScoreFrameData parseFrameData(const std::vector<std::uint8_t>& data) {
     io::BinaryReader reader(data, io::ByteOrder::BigEndian);
     if (reader.bytesLeft() < 20) {
@@ -152,9 +211,7 @@ ScoreChunk::ScoreFrameData parseFrameData(const std::vector<std::uint8_t>& data)
                 if (pos + 24 > channelData.size()) {
                     break;
                 }
-                io::BinaryReader channelReader(channelData, io::ByteOrder::BigEndian);
-                channelReader.seek(pos);
-                auto channel = ScoreChunk::ChannelData::read(channelReader, spriteRecordSize);
+                auto channel = readChannelDataAt(channelData, pos, spriteRecordSize);
                 if (!channel.isEmpty()) {
                     frameChannelEntries.push_back(ScoreChunk::FrameChannelEntry{id::FrameIndex(frame), id::ChannelId(sprite + 6), channel});
                 }
@@ -182,9 +239,7 @@ ScoreChunk::ScoreFrameData parseFrameData(const std::vector<std::uint8_t>& data)
                         }
                     }
                 } else if (pos + 24 <= channelData.size()) {
-                    io::BinaryReader channelReader(channelData, io::ByteOrder::BigEndian);
-                    channelReader.seek(pos);
-                    auto channel = ScoreChunk::ChannelData::read(channelReader, spriteRecordSize);
+                    auto channel = readChannelDataAt(channelData, pos, spriteRecordSize);
                     if (!channel.isEmpty()) {
                         frameChannelEntries.push_back(ScoreChunk::FrameChannelEntry{id::FrameIndex(frame), id::ChannelId(channelIndex), channel});
                     }
