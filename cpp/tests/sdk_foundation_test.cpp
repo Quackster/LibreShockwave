@@ -81,7 +81,12 @@
 #include "libreshockwave/editor/model/FrameAppearance.hpp"
 #include "libreshockwave/editor/model/MemberNodeData.hpp"
 #include "libreshockwave/editor/model/ScoreCellData.hpp"
+#include "libreshockwave/editor/preview/GenericPreview.hpp"
+#include "libreshockwave/editor/preview/PalettePreview.hpp"
 #include "libreshockwave/editor/preview/PreviewFormatUtils.hpp"
+#include "libreshockwave/editor/preview/ScriptPreview.hpp"
+#include "libreshockwave/editor/preview/SoundPreview.hpp"
+#include "libreshockwave/editor/preview/TextPreview.hpp"
 #include "libreshockwave/editor/selection/SelectionEvent.hpp"
 #include "libreshockwave/editor/selection/SelectionListener.hpp"
 #include "libreshockwave/editor/selection/SelectionManager.hpp"
@@ -279,7 +284,12 @@ using libreshockwave::editor::model::FileNode;
 using libreshockwave::editor::model::FrameAppearance;
 using libreshockwave::editor::model::MemberNodeData;
 using libreshockwave::editor::model::ScoreCellData;
+using libreshockwave::editor::preview::GenericPreview;
+using libreshockwave::editor::preview::PalettePreview;
 using libreshockwave::editor::preview::PreviewFormatUtils;
+using libreshockwave::editor::preview::ScriptPreview;
+using libreshockwave::editor::preview::SoundPreview;
+using libreshockwave::editor::preview::TextPreview;
 using libreshockwave::editor::selection::SelectionEvent;
 using libreshockwave::editor::selection::SelectionListener;
 using libreshockwave::editor::selection::SelectionManager;
@@ -2010,6 +2020,55 @@ void testEditorScanningHelpers() {
     assert(std::none_of(members.begin(), members.end(), [](const CastMemberInfo& info) {
         return info.memberNum == 16;
     }));
+
+    const auto paletteInfo = *std::find_if(members.begin(), members.end(), [](const CastMemberInfo& info) {
+        return info.memberNum == 11;
+    });
+    const auto scriptInfo = *std::find_if(members.begin(), members.end(), [](const CastMemberInfo& info) {
+        return info.memberNum == 7;
+    });
+    const auto shapeInfo = *std::find_if(members.begin(), members.end(), [](const CastMemberInfo& info) {
+        return info.memberNum == 5;
+    });
+    const auto soundInfo = *std::find_if(members.begin(), members.end(), [](const CastMemberInfo& info) {
+        return info.memberNum == 9;
+    });
+    const auto textInfo = *std::find_if(members.begin(), members.end(), [](const CastMemberInfo& info) {
+        return info.memberNum == 13;
+    });
+
+    PalettePreview palettePreview;
+    const auto swatch = palettePreview.generateSwatch(*file, paletteInfo);
+    assert(swatch.has_value());
+    assert(swatch->colorCount == 2);
+    assert(swatch->swatchImage.width() == 256);
+    assert(swatch->swatchImage.height() == 16);
+    const auto paletteText = palettePreview.format(*file, paletteInfo);
+    assert(paletteText.find("=== PALETTE: PaletteMember ===") != std::string::npos);
+    assert(paletteText.find("Color Count: 2") != std::string::npos);
+
+    ScriptPreview scriptPreview;
+    const auto scriptText = scriptPreview.format(*file, scriptInfo);
+    assert(scriptText.find("Script Type: Script") != std::string::npos);
+    assert(scriptText.find("--- HANDLERS (0) ---") != std::string::npos);
+
+    GenericPreview genericPreview;
+    const auto genericText = genericPreview.format(*file, shapeInfo);
+    assert(genericText.find("=== SHAPE: ShapeMember ===") != std::string::npos);
+    assert(genericText.find("--- Shape Info ---") != std::string::npos);
+    assert(genericText.find("Dimensions: 34x12") != std::string::npos);
+
+    SoundPreview soundPreview;
+    assert(soundPreview.isPlayable(*file, soundInfo));
+    const auto soundText = soundPreview.format(*file, soundInfo);
+    assert(soundText.find("Codec: PCM (16-bit)") != std::string::npos);
+    assert(soundText.find("Sample Rate: 22050 Hz") != std::string::npos);
+    assert(soundText.find("--- Score Appearances ---") != std::string::npos);
+
+    TextPreview textPreview;
+    const auto textPreviewText = textPreview.format(*file, textInfo);
+    assert(textPreviewText.find("=== TEXT: TextMember ===") != std::string::npos);
+    assert(textPreviewText.find("--- Text Content ---\nHello\nWorld") != std::string::npos);
 }
 
 void testLingoDatumTypes() {

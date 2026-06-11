@@ -59,7 +59,12 @@ add_library(libreshockwave
     src/editor/model/FileNode.cpp
     src/editor/model/MemberNodeData.cpp
     src/editor/model/ScoreCellData.cpp
+    src/editor/preview/GenericPreview.cpp
+    src/editor/preview/PalettePreview.cpp
     src/editor/preview/PreviewFormatUtils.cpp
+    src/editor/preview/ScriptPreview.cpp
+    src/editor/preview/SoundPreview.cpp
+    src/editor/preview/TextPreview.cpp
     src/editor/selection/SelectionEvent.cpp
     src/editor/selection/SelectionManager.cpp
     src/editor/score/FrameAppearanceFinder.cpp
