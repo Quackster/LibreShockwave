@@ -17,6 +17,8 @@ var _musConnected = {};
 var _musDisconnected = {};
 var _musErrors = {};
 var _musInbound = {};
+var _fetchRelayCounter = 0;
+var _fetchRelayMap = {};
 
 var _requiredExports = {
     allocateBuffer: 'allocate_buffer',
@@ -263,12 +265,41 @@ function _runtimeDiagnostics() {
             disconnectedEvents: Object.keys(_musDisconnected).length,
             errorEvents: Object.keys(_musErrors).length,
             inboundInstances: Object.keys(_musInbound).length
+        },
+        fetchRelay: {
+            pending: Object.keys(_fetchRelayMap).length
         }
     };
 }
 
 function _resolveUrl(url) {
     return new URL(url || '', _basePath || self.location.href).href;
+}
+
+function _isCrossOrigin(url) {
+    try {
+        return new URL(url, self.location.href).origin !== self.location.origin;
+    } catch (e) {
+        return false;
+    }
+}
+
+function _relayFetch(url, method, postData) {
+    return new Promise(function(resolve, reject) {
+        var relayId = ++_fetchRelayCounter;
+        _fetchRelayMap[relayId] = {
+            url: url,
+            resolve: resolve,
+            reject: reject
+        };
+        self.postMessage({
+            type: 'fetchRelay',
+            relayId: relayId,
+            url: url,
+            method: method || 'GET',
+            postData: postData || null
+        });
+    });
 }
 
 function _binaryStringToBytes(value) {
@@ -350,20 +381,26 @@ async function _fetchFirst(urls, method, postData) {
     for (var i = 0; i < urls.length; i++) {
         var url = _resolveUrl(urls[i]);
         try {
-            var options = {};
-            if (method === 'POST') {
-                options.method = 'POST';
-                options.body = postData || null;
-                options.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
+            var data;
+            if (_isCrossOrigin(url)) {
+                data = await _relayFetch(url, method, postData);
+            } else {
+                var options = {};
+                if (method === 'POST') {
+                    options.method = 'POST';
+                    options.body = postData || null;
+                    options.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
+                }
+                var response = await fetch(url, options);
+                lastStatus = response.status || 0;
+                if (!response.ok) {
+                    continue;
+                }
+                data = await response.arrayBuffer();
             }
-            var response = await fetch(url, options);
-            lastStatus = response.status || 0;
-            if (response.ok) {
-                var data = await response.arrayBuffer();
-                return { data: await _decodeImageForImport(data, url), url: url };
-            }
+            return { data: await _decodeImageForImport(data, url), url: url };
         } catch (e) {
-            lastStatus = 0;
+            lastStatus = e && e.status ? e.status : 0;
         }
     }
     return { error: true, status: lastStatus || 404 };
@@ -893,6 +930,19 @@ self.onmessage = function(event) {
             case 'loadMovie':
                 await _loadMovie(message);
                 break;
+            case 'fetchRelayResult': {
+                var relay = _fetchRelayMap[message.relayId];
+                if (!relay) {
+                    break;
+                }
+                delete _fetchRelayMap[message.relayId];
+                if (message.error) {
+                    relay.reject({ status: message.status || 0 });
+                } else {
+                    relay.resolve(message.data);
+                }
+                break;
+            }
             case 'play':
                 _playing = true;
                 _exports.play();

@@ -22969,6 +22969,9 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(player.find("getRuntimeDiagnostics") != std::string::npos);
     assert(player.find("triggerTestError") != std::string::npos);
     assert(player.find("_requestDiagnostic") != std::string::npos);
+    assert(player.find("fetchWithTimeout") != std::string::npos);
+    assert(player.find("_handleFetchRelay") != std::string::npos);
+    assert(player.find("fetchRelayResult") != std::string::npos);
 
     assert(worker.find("createLibreShockwaveCppWasm") != std::string::npos);
     assert(worker.find("libreshockwave-cpp-wasm.js") != std::string::npos);
@@ -23004,6 +23007,10 @@ void testCppWasmBrowserBootstrapResourceFoundation() {
     assert(worker.find("trigger_test_error") != std::string::npos);
     assert(worker.find("_flushDebugLog") != std::string::npos);
     assert(worker.find("_postStringDiagnostic") != std::string::npos);
+    assert(worker.find("_isCrossOrigin") != std::string::npos);
+    assert(worker.find("_relayFetch") != std::string::npos);
+    assert(worker.find("fetchRelay") != std::string::npos);
+    assert(worker.find("fetchRelayResult") != std::string::npos);
     assert(worker.find("postMessage({\n        type: 'frame'") != std::string::npos);
 
     const auto headerExports = parseHeaderExports(header);

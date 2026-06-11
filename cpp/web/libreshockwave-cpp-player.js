@@ -3,8 +3,8 @@
 var LibreShockwaveCppPlayer = (function() {
     var _autoBasePath = '';
 
-    (function() {
-        var scripts = document.getElementsByTagName('script');
+(function() {
+    var scripts = document.getElementsByTagName('script');
         for (var i = scripts.length - 1; i >= 0; i--) {
             var src = scripts[i].src || '';
             if (src.indexOf('libreshockwave-cpp-player.js') !== -1) {
@@ -13,6 +13,18 @@ var LibreShockwaveCppPlayer = (function() {
             }
         }
     })();
+
+    function fetchWithTimeout(url, options, timeoutMs) {
+        var controller = new AbortController();
+        var timer = setTimeout(function() {
+            controller.abort();
+        }, timeoutMs || 30000);
+        var requestOptions = options || {};
+        requestOptions.signal = controller.signal;
+        return fetch(url, requestOptions).finally(function() {
+            clearTimeout(timer);
+        });
+    }
 
     function create(canvas, options) {
         return new Player(canvas, options || {});
@@ -112,6 +124,9 @@ var LibreShockwaveCppPlayer = (function() {
                 break;
             case 'gotoNetMovie':
                 this._handleGotoNetMovie(message.url);
+                break;
+            case 'fetchRelay':
+                this._handleFetchRelay(message);
                 break;
             case 'selectedText':
             case 'cutText':
@@ -688,6 +703,42 @@ var LibreShockwaveCppPlayer = (function() {
         if (url) {
             this.load(new URL(url, this.loadedMovieUrl || document.baseURI).href);
         }
+    };
+
+    Player.prototype._handleFetchRelay = function(message) {
+        var worker = this.worker;
+        var options = {};
+        if (message.method === 'POST') {
+            options.method = 'POST';
+            options.body = message.postData || null;
+            options.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
+        }
+        fetchWithTimeout(message.url, options, 30000)
+            .then(function(response) {
+                if (!response.ok) {
+                    throw { status: response.status };
+                }
+                return response.arrayBuffer();
+            })
+            .then(function(buffer) {
+                if (worker) {
+                    worker.postMessage({
+                        type: 'fetchRelayResult',
+                        relayId: message.relayId,
+                        data: buffer
+                    }, [buffer]);
+                }
+            })
+            .catch(function(error) {
+                if (worker) {
+                    worker.postMessage({
+                        type: 'fetchRelayResult',
+                        relayId: message.relayId,
+                        error: true,
+                        status: error && error.status ? error.status : 0
+                    });
+                }
+            });
     };
 
     Player.prototype._handleAudio = function(message) {
