@@ -143,6 +143,9 @@ void addPanelContextMenu(GtkWidget* target, const gtk_models::GtkPanelContextMen
 struct PanelDragData {
     EditorGtkState* state{nullptr};
     std::string panelId;
+    int lastOffsetX{0};
+    int lastOffsetY{0};
+    bool movedDuringDrag{false};
 };
 
 void destroyPanelDragData(gpointer userData, GClosure*) {
@@ -159,6 +162,70 @@ void activateDockAction(EditorGtkState& state, std::string_view panelId, docking
         return;
     }
     g_action_activate(action, nullptr);
+}
+
+GtkWidget* floatingPanelWidgetForSource(GtkWidget* source, const EditorGtkState& state) {
+    if (source == nullptr || state.workbenchFloatingArea == nullptr) {
+        return nullptr;
+    }
+
+    GtkWidget* current = source;
+    while (current != nullptr) {
+        GtkWidget* parent = gtk_widget_get_parent(current);
+        if (parent == state.workbenchFloatingArea) {
+            return current;
+        }
+        current = parent;
+    }
+    return nullptr;
+}
+
+void beginPanelDrag(GtkGestureDrag*, double, double, gpointer userData) {
+    auto* data = static_cast<PanelDragData*>(userData);
+    if (data == nullptr) {
+        return;
+    }
+    data->lastOffsetX = 0;
+    data->lastOffsetY = 0;
+    data->movedDuringDrag = false;
+}
+
+void updateFloatingPanelDrag(GtkGestureDrag* gesture, double offsetX, double offsetY, gpointer userData) {
+    auto* data = static_cast<PanelDragData*>(userData);
+    if (data == nullptr || data->state == nullptr) {
+        return;
+    }
+
+    GtkWidget* source = gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(gesture));
+    GtkWidget* floatingWidget = floatingPanelWidgetForSource(source, *data->state);
+    if (floatingWidget == nullptr) {
+        return;
+    }
+
+    const auto currentOffsetX = static_cast<int>(std::lround(offsetX));
+    const auto currentOffsetY = static_cast<int>(std::lround(offsetY));
+    const int deltaX = currentOffsetX - data->lastOffsetX;
+    const int deltaY = currentOffsetY - data->lastOffsetY;
+    if (deltaX == 0 && deltaY == 0) {
+        return;
+    }
+
+    data->lastOffsetX = currentOffsetX;
+    data->lastOffsetY = currentOffsetY;
+
+    const auto moved = data->state->shellState.moveFloatingPanel(data->panelId, deltaX, deltaY);
+    if (!moved.handled || !moved.panel.has_value() || data->state->workbenchFloatingArea == nullptr) {
+        return;
+    }
+
+    data->movedDuringDrag = true;
+    gtk_fixed_move(GTK_FIXED(data->state->workbenchFloatingArea),
+                   floatingWidget,
+                   moved.panel->bounds.x,
+                   moved.panel->bounds.y);
+    if (data->state->statusLabel != nullptr) {
+        gtk_label_set_text(GTK_LABEL(data->state->statusLabel), moved.statusMessage.c_str());
+    }
 }
 
 void snapPanelDragToEdge(GtkGestureDrag* gesture, double offsetX, double offsetY, gpointer userData) {
@@ -178,8 +245,9 @@ void snapPanelDragToEdge(GtkGestureDrag* gesture, double offsetX, double offsetY
         return;
     }
 
-    const graphene_point_t sourcePoint{static_cast<float>(startX + offsetX),
-                                       static_cast<float>(startY + offsetY)};
+    const double finalX = data->movedDuringDrag ? startX : startX + offsetX;
+    const double finalY = data->movedDuringDrag ? startY : startY + offsetY;
+    const graphene_point_t sourcePoint{static_cast<float>(finalX), static_cast<float>(finalY)};
     graphene_point_t workbenchPoint{0.0F, 0.0F};
     if (!gtk_widget_compute_point(source, data->state->workbenchArea, &sourcePoint, &workbenchPoint)) {
         return;
@@ -192,6 +260,14 @@ void snapPanelDragToEdge(GtkGestureDrag* gesture, double offsetX, double offsetY
         gtk_widget_get_height(data->state->workbenchArea));
     if (edge.has_value()) {
         activateDockAction(*data->state, data->panelId, *edge);
+        return;
+    }
+
+    if (data->movedDuringDrag) {
+        refreshGtkShell(*data->state);
+        data->lastOffsetX = 0;
+        data->lastOffsetY = 0;
+        data->movedDuringDrag = false;
         return;
     }
 
@@ -211,6 +287,14 @@ void addPanelDragSnap(GtkWidget* target, EditorGtkState& state, std::string pane
     auto* data = new PanelDragData{&state, std::move(panelId)};
     GtkGesture* gesture = gtk_gesture_drag_new();
     gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(gesture), GDK_BUTTON_PRIMARY);
+    g_signal_connect(gesture,
+                     "drag-begin",
+                     G_CALLBACK(beginPanelDrag),
+                     data);
+    g_signal_connect(gesture,
+                     "drag-update",
+                     G_CALLBACK(updateFloatingPanelDrag),
+                     data);
     g_signal_connect_data(gesture,
                           "drag-end",
                           G_CALLBACK(snapPanelDragToEdge),
