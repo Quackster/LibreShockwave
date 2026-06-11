@@ -92,6 +92,15 @@ struct DebugObjectSectionView {
     friend bool operator==(const DebugObjectSectionView&, const DebugObjectSectionView&) = default;
 };
 
+struct DebugObjectsPanelView {
+    std::string rootLayout;
+    std::string sectionAxis;
+    bool outerScrollPane{false};
+    std::vector<DebugObjectSectionView> sections;
+
+    friend bool operator==(const DebugObjectsPanelView&, const DebugObjectsPanelView&) = default;
+};
+
 struct DebugStateTabsView {
     std::string tabPlacement;
     std::vector<std::string> tabTitles;
@@ -191,6 +200,7 @@ public:
     [[nodiscard]] static std::string formatReceiver(const std::optional<lingo::Datum>& receiver);
 
     [[nodiscard]] static DebugStateTabsView stateTabsView();
+    [[nodiscard]] static DebugObjectsPanelView objectsPanelView();
     [[nodiscard]] static bool isObjectsTabSelected(int selectedTabIndex);
     [[nodiscard]] static WatchPanelView watchesPanelView(bool hasSelection);
     [[nodiscard]] static std::optional<std::string> sanitizedWatchExpression(std::string_view expression);

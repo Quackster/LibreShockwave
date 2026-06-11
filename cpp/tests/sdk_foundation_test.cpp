@@ -351,6 +351,7 @@ using libreshockwave::editor::debug::DebugObjectsSnapshotBuilder;
 using libreshockwave::editor::debug::DebugInspectionModels;
 using libreshockwave::editor::debug::DebugInspectionTable;
 using libreshockwave::editor::debug::DebugObjectSectionView;
+using libreshockwave::editor::debug::DebugObjectsPanelView;
 using libreshockwave::editor::debug::DebugSize;
 using libreshockwave::editor::debug::DebugStateTabsView;
 using libreshockwave::editor::debug::DebugTablePresentation;
@@ -3861,7 +3862,7 @@ void testEditorDebugDataModels() {
                                                                {100, 80, 200},
                                                                "Monospaced",
                                                                11,
-                                                               DebugSize{0, 0},
+                                                               DebugSize{0, 150},
                                                                true}},
                 DebugObjectSectionView{ "Movie Properties",
                                         DebugTablePresentation{DebugInspectionTable::MovieProperties,
@@ -3873,6 +3874,8 @@ void testEditorDebugDataModels() {
                                                                DebugSize{0, 150},
                                                                true}},
             }));
+    assert((DebugInspectionModels::objectsPanelView() ==
+            DebugObjectsPanelView{"border", "vertical", true, stateTabs.objectSections}));
 
     assert((DebugInspectionModels::watchesPanelView(false) ==
             WatchPanelView{DebugTablePresentation{DebugInspectionTable::Watches,

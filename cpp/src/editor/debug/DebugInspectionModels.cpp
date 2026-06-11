@@ -96,6 +96,15 @@ constexpr const char* SEPARATOR_LINE = "\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2
     return tablePresentation(table, std::move(title), {"Name", "Type", "Value"}, {100, 80, 200}, {}, true);
 }
 
+[[nodiscard]] DebugTablePresentation objectGlobalsTable() {
+    return tablePresentation(DebugInspectionTable::Globals,
+                             "Globals",
+                             {"Name", "Type", "Value"},
+                             {100, 80, 200},
+                             DebugSize{0, 150},
+                             true);
+}
+
 [[nodiscard]] DebugTablePresentation watchesTable() {
     return tablePresentation(DebugInspectionTable::Watches,
                              "Watches",
@@ -121,6 +130,14 @@ constexpr const char* SEPARATOR_LINE = "\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2
                              {},
                              DebugSize{0, 150},
                              true);
+}
+
+[[nodiscard]] std::vector<DebugObjectSectionView> objectSections() {
+    return {
+        DebugObjectSectionView{"Timeouts", timeoutsTable()},
+        DebugObjectSectionView{"Globals", objectGlobalsTable()},
+        DebugObjectSectionView{"Movie Properties", moviePropertiesTable()},
+    };
 }
 
 [[nodiscard]] const char* handlerDetailsScriptTypeName(chunks::ScriptChunkType scriptType) {
@@ -423,10 +440,12 @@ DebugStateTabsView DebugInspectionModels::stateTabsView() {
         4,
         {stackTable(), variablesTable(DebugInspectionTable::Locals, "Locals"),
          variablesTable(DebugInspectionTable::Globals, "Globals"), watchesTable()},
-        {DebugObjectSectionView{"Timeouts", timeoutsTable()},
-         DebugObjectSectionView{"Globals", variablesTable(DebugInspectionTable::Globals, "Globals")},
-         DebugObjectSectionView{"Movie Properties", moviePropertiesTable()}},
+        objectSections(),
     };
+}
+
+DebugObjectsPanelView DebugInspectionModels::objectsPanelView() {
+    return DebugObjectsPanelView{"border", "vertical", true, objectSections()};
 }
 
 bool DebugInspectionModels::isObjectsTabSelected(int selectedTabIndex) {
