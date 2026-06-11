@@ -102,6 +102,37 @@ bool EditorFramePanelModel::showPanel(std::string_view panelId) {
     return true;
 }
 
+bool EditorFramePanelModel::selectPanel(std::string_view panelId) {
+    const auto index = indexOf(panelId);
+    if (!index.has_value()) {
+        return false;
+    }
+
+    auto& panel = panels_[*index];
+    if (panel.iconified) {
+        return false;
+    }
+
+    if (dockingLayout_.isDocked(panelId)) {
+        if (!dockingLayout_.selectPanel(panelId)) {
+            return false;
+        }
+        clearSelection();
+        panel.docked = true;
+        panel.visible = true;
+        panel.selected = true;
+        return true;
+    }
+
+    if (!panel.visible) {
+        return false;
+    }
+
+    clearSelection();
+    panel.selected = true;
+    return true;
+}
+
 bool EditorFramePanelModel::iconifyPanelForTesting(std::string_view panelId) {
     const auto index = indexOf(panelId);
     if (!index.has_value()) {

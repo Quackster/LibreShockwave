@@ -1954,16 +1954,25 @@ void testEditorFrameModels() {
     assert((visibility.front() == std::pair<std::string, bool>{"stage", true}));
     assert((visibility[7] == std::pair<std::string, bool>{"paint", false}));
 
+    assert(frame.selectPanel("message"));
+    assert(frame.panel("message")->selected);
+    assert(!frame.panel("stage")->selected);
+    assert(!frame.selectPanel("paint"));
+    assert(!frame.panel("paint")->selected);
+
     assert(frame.showPanel("paint"));
     assert(frame.isPanelVisible("paint"));
     assert(frame.panel("paint")->selected);
     assert(!frame.panel("stage")->selected);
     assert(frame.iconifyPanelForTesting("paint"));
     assert(frame.panel("paint")->iconified);
+    assert(!frame.selectPanel("paint"));
+    assert(!frame.panel("paint")->selected);
     assert(frame.showPanel("paint"));
     assert(!frame.panel("paint")->iconified);
     assert(frame.panel("paint")->selected);
     assert(!frame.showPanel("missing"));
+    assert(!frame.selectPanel("missing"));
     assert(!frame.iconifyPanelForTesting("missing"));
 
     assert(frame.togglePanel("sound", true));
@@ -1971,6 +1980,13 @@ void testEditorFrameModels() {
     assert(frame.dockingLayout().isDocked("sound"));
     assert(frame.panel("sound")->docked);
     assert(frame.panel("sound")->selected);
+    assert(frame.togglePanel("script", true));
+    assert(frame.dockingLayout().center().selectedTab()->panelId == "script");
+    assert(frame.selectPanel("sound"));
+    assert(frame.dockingLayout().center().selectedTab()->panelId == "sound");
+    assert(frame.panel("sound")->selected);
+    assert(!frame.panel("script")->selected);
+    assert(frame.togglePanel("script", false));
     assert(frame.togglePanel("sound", false));
     assert(!frame.isPanelVisible("sound"));
     assert(!frame.dockingLayout().isDocked("sound"));
@@ -1990,6 +2006,7 @@ void testEditorFrameModels() {
     assert(!frame.isPanelVisible("paint"));
     assert(frame.panel("stage")->selected);
     assert(!frame.panel("paint")->selected);
+    assert(!frame.selectPanel("paint"));
 }
 
 void testEditorShellActionModels() {
@@ -2198,6 +2215,38 @@ void testEditorShellActionModels() {
     assert(gtkView.toolbarItems == gtkState.toolbarItems());
     assert(gtkView.panelRows == gtkState.panelRows());
     assert(gtkView.workbenchPanels == gtkWorkbenchPanels);
+
+    auto focusMessage = gtkState.activateWorkbenchPanel("message");
+    assert(focusMessage.panelId == "message");
+    assert(focusMessage.handled);
+    assert(!focusMessage.refreshActions);
+    assert(focusMessage.refreshPanels);
+    assert(focusMessage.refreshView);
+    assert(focusMessage.statusMessage == "Message selected");
+    assert(focusMessage.panel.has_value());
+    assert(focusMessage.panel->panelId == "message");
+    assert(focusMessage.panel->selected);
+    assert(gtkState.statusMessage() == "Message selected");
+    gtkWorkbenchPanels = gtkState.workbenchPanels();
+    const auto* focusedMessageWorkbench = findWorkbenchPanel(gtkWorkbenchPanels, "message");
+    const auto* focusedStageWorkbench = findWorkbenchPanel(gtkWorkbenchPanels, "stage");
+    assert(focusedMessageWorkbench != nullptr);
+    assert(focusedMessageWorkbench->selected);
+    assert(focusedStageWorkbench != nullptr);
+    assert(!focusedStageWorkbench->selected);
+    gtkView = gtkState.viewState();
+    assert(gtkView.statusMessage == "Message selected");
+    assert(gtkView.workbenchPanels == gtkWorkbenchPanels);
+
+    auto focusHiddenPaint = gtkState.activateWorkbenchPanel("paint");
+    assert(focusHiddenPaint.panelId == "paint");
+    assert(!focusHiddenPaint.handled);
+    assert(!focusHiddenPaint.refreshActions);
+    assert(!focusHiddenPaint.refreshPanels);
+    assert(!focusHiddenPaint.refreshView);
+    assert(focusHiddenPaint.statusMessage == "Panel not available: paint");
+    assert(!focusHiddenPaint.panel.has_value());
+    assert(gtkState.statusMessage() == "Panel not available: paint");
 
     auto openRequest = gtkState.activateAction("open");
     assert(openRequest.handled);
@@ -2525,6 +2574,23 @@ void testEditorShellActionModels() {
     assert(paintWorkbench->primaryText == "No bitmap selected");
     assert(paintWorkbench->statusText == " Ready");
     assert(paintWorkbench->actionLabels.size() == 9);
+
+    auto focusPaint = gtkState.activateWorkbenchPanel("paint");
+    assert(focusPaint.handled);
+    assert(focusPaint.panelId == "paint");
+    assert(!focusPaint.refreshActions);
+    assert(focusPaint.refreshPanels);
+    assert(focusPaint.refreshView);
+    assert(focusPaint.statusMessage == "Paint selected");
+    assert(focusPaint.panel.has_value());
+    assert(focusPaint.panel->docked);
+    assert(focusPaint.panel->selected);
+    assert(gtkState.statusMessage() == "Paint selected");
+    gtkView = gtkState.viewState();
+    paintWorkbench = findWorkbenchPanel(gtkView.workbenchPanels, "paint");
+    assert(paintWorkbench != nullptr);
+    assert(paintWorkbench->selected);
+    assert(gtkView.statusMessage == "Paint selected");
 
     auto hidePaint = gtkState.activateAction("panel_paint");
     assert(hidePaint.handled);

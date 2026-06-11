@@ -489,6 +489,32 @@ std::vector<EditorContextEvent> EditorGtkShellState::closeFile() {
     return events;
 }
 
+GtkWorkbenchPanelActivation EditorGtkShellState::activateWorkbenchPanel(std::string_view panelId) {
+    GtkWorkbenchPanelActivation result;
+    result.panelId = std::string(panelId);
+
+    if (!frameModel_.selectPanel(panelId)) {
+        result.statusMessage = "Panel not available: " + result.panelId;
+        statusMessage_ = result.statusMessage;
+        return result;
+    }
+
+    result.handled = true;
+    result.refreshPanels = true;
+    result.refreshView = true;
+    result.statusMessage = panelTitle(panelId) + " selected";
+    statusMessage_ = result.statusMessage;
+
+    const auto panels = workbenchPanels();
+    const auto found = std::find_if(panels.begin(), panels.end(), [panelId](const GtkWorkbenchPanelSpec& panel) {
+        return panel.panelId == panelId;
+    });
+    if (found != panels.end()) {
+        result.panel = *found;
+    }
+    return result;
+}
+
 GtkActionActivation EditorGtkShellState::activateAction(std::string_view name) {
     GtkActionActivation result;
     result.actionName = std::string(name);

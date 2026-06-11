@@ -115,6 +115,18 @@ struct GtkWorkbenchPanelSpec {
     friend bool operator==(const GtkWorkbenchPanelSpec&, const GtkWorkbenchPanelSpec&) = default;
 };
 
+struct GtkWorkbenchPanelActivation {
+    std::string panelId;
+    bool handled{false};
+    bool refreshActions{false};
+    bool refreshPanels{false};
+    bool refreshView{false};
+    std::string statusMessage;
+    std::optional<GtkWorkbenchPanelSpec> panel;
+
+    friend bool operator==(const GtkWorkbenchPanelActivation&, const GtkWorkbenchPanelActivation&) = default;
+};
+
 struct GtkActionActivation {
     std::string actionName;
     EditorCommand command{EditorCommand::None};
@@ -198,6 +210,7 @@ public:
     void setOpenMoviePath(std::optional<std::string> path);
     std::vector<EditorContextEvent> openFile(std::string path);
     std::vector<EditorContextEvent> closeFile();
+    GtkWorkbenchPanelActivation activateWorkbenchPanel(std::string_view panelId);
     GtkActionActivation activateAction(std::string_view name);
     GtkShellDialogResult applyExternalParameters(std::vector<ExternalParamRow> rows);
     GtkShellDialogResult applyTraceHandlerInput(std::string_view input);
