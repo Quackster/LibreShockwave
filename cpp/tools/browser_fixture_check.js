@@ -272,15 +272,18 @@ async function main() {
     const fixtureWsPort = fixtureWss.address().port;
     const smusWsPort = smusWss.address().port;
     const fixtureReceived = [];
+    const fixtureHelloInbound = 'HELLO##';
+    const fixtureInboundMessages = [inboundExpected, fixtureHelloInbound];
+    const fixtureInboundReplies = [inboundReplyExpected, 'VERSIONCHECK'];
     const smusReceived = [];
     fixtureWss.on('connection', socket => {
-        let sentInbound = false;
+        let nextInbound = 0;
         socket.on('message', data => {
             const text = Buffer.from(data).toString('binary');
             fixtureReceived.push(text);
-            if (!sentInbound) {
-                sentInbound = true;
-                socket.send(inboundExpected);
+            if (nextInbound < fixtureInboundMessages.length) {
+                socket.send(fixtureInboundMessages[nextInbound]);
+                nextInbound += 1;
             }
         });
     });
@@ -317,6 +320,8 @@ async function main() {
             message: inboundReplyExpected,
             inboundExpected,
             inboundReplyExpected,
+            inboundMessages: fixtureInboundMessages,
+            inboundReplies: fixtureInboundReplies,
             requireInbound: true,
             timeoutMs: Math.min(timeoutMs, 10000),
         });
@@ -357,8 +362,12 @@ async function main() {
                 connected: multiuser.connected,
                 scriptSendSent: multiuser.scriptSendSent,
                 inboundReceived: multiuser.inboundReceived,
+                inboundReceivedCount: multiuser.inboundReceivedCount,
                 handlerTickedAfterInbound: multiuser.handlerTickedAfterInbound,
                 inboundReplySent: multiuser.inboundReplySent,
+                inboundReplySentCount: multiuser.inboundReplySentCount,
+                inboundSequenceComplete: multiuser.inboundSequenceComplete,
+                connectionOkThroughoutInbound: multiuser.connectionOkThroughoutInbound,
                 inboundHandled: multiuser.inboundHandled,
             },
             smus: {

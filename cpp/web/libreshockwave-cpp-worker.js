@@ -1305,7 +1305,14 @@ async function _runFixtureMultiuserScriptSelfTest(message) {
     var sendMessage = message.message || 'STATUSOK';
     var inboundExpected = message.inboundExpected == null ? '' : String(message.inboundExpected);
     var inboundReplyExpected = message.inboundReplyExpected == null ? '' : String(message.inboundReplyExpected);
-    var requireInbound = message.requireInbound === true || !!inboundExpected || !!inboundReplyExpected;
+    var inboundSequence = Array.isArray(message.inboundMessages) && message.inboundMessages.length > 0
+        ? message.inboundMessages.map(function(value) { return value == null ? '' : String(value); })
+        : (inboundExpected || inboundReplyExpected || message.requireInbound === true ? [inboundExpected] : []);
+    var inboundReplySequence = Array.isArray(message.inboundReplies) && message.inboundReplies.length > 0
+        ? message.inboundReplies.map(function(value) { return value == null ? '' : String(value); })
+        : inboundSequence.map(function() { return inboundReplyExpected; });
+    var requireInbound = message.requireInbound === true || inboundSequence.length > 0 ||
+        !!inboundExpected || !!inboundReplyExpected;
     var result = {
         ok: false,
         host: host,
@@ -1314,6 +1321,8 @@ async function _runFixtureMultiuserScriptSelfTest(message) {
         sendHandler: 'sendFuseMsg',
         inboundExpected: inboundExpected,
         inboundReplyExpected: inboundReplyExpected,
+        inboundSequence: inboundSequence,
+        inboundReplySequence: inboundReplySequence,
         logonCalled: false,
         connected: false,
         callbackTicked: false,
@@ -1326,7 +1335,11 @@ async function _runFixtureMultiuserScriptSelfTest(message) {
         lastContentMatched: false,
         inboundReplyQueued: false,
         inboundReplySent: false,
-        inboundHandled: false
+        inboundHandled: false,
+        inboundReceivedCount: 0,
+        inboundReplySentCount: 0,
+        inboundSequenceComplete: false,
+        connectionOkThroughoutInbound: true
     };
 
     if (!port) {
@@ -1389,44 +1402,106 @@ async function _runFixtureMultiuserScriptSelfTest(message) {
         result.scriptSendSent = result.scriptSendQueued;
 
         if (requireInbound) {
-            var inboundState = await _waitForMusState(instanceId, function() {
-                var inbound = _musInbound[instanceId];
-                if (inbound && inbound.length > 0) {
-                    return { type: 'message' };
+            result.inboundStates = [];
+            result.lastContents = [];
+            result.lastContentMatches = [];
+            result.inboundHandledByMessage = [];
+            result.inboundReplyPendings = [];
+            result.inboundReplyQueuedByMessage = [];
+            result.inboundReplySentByMessage = [];
+            for (var inboundIndex = 0; inboundIndex < inboundSequence.length; inboundIndex++) {
+                var expectedInbound = inboundSequence[inboundIndex];
+                var expectedReply = inboundReplySequence[inboundIndex] == null
+                    ? inboundReplyExpected
+                    : inboundReplySequence[inboundIndex];
+                var inboundState = await _waitForMusState(instanceId, function() {
+                    var inbound = _musInbound[instanceId];
+                    if (inbound && inbound.length > 0) {
+                        return { type: 'message' };
+                    }
+                    if (_hasQueuedMusEvent(_musErrors, instanceId)) {
+                        return { type: 'error', code: _musErrors[instanceId] };
+                    }
+                    if (_hasQueuedMusEvent(_musDisconnected, instanceId)) {
+                        return { type: 'disconnected' };
+                    }
+                    return null;
+                }, timeoutMs);
+                var inboundStateName = inboundState ? inboundState.type : 'timeout';
+                result.inboundStates.push(inboundStateName);
+                if (inboundIndex === 0) {
+                    result.inboundState = inboundStateName;
                 }
-                if (_hasQueuedMusEvent(_musErrors, instanceId)) {
-                    return { type: 'error', code: _musErrors[instanceId] };
+                if (!inboundState || inboundState.type !== 'message') {
+                    if (inboundState && inboundState.type === 'error') {
+                        result.inboundErrorCode = inboundState.code;
+                    }
+                    break;
                 }
-                if (_hasQueuedMusEvent(_musDisconnected, instanceId)) {
-                    return { type: 'disconnected' };
-                }
-                return null;
-            }, timeoutMs);
-            result.inboundState = inboundState ? inboundState.type : 'timeout';
-            if (inboundState && inboundState.type === 'message') {
+
                 result.inboundReceived = true;
+                result.inboundReceivedCount++;
                 _deliverMusEvents();
                 _exports.tick();
                 result.handlerTickedAfterInbound = true;
-                result.connectionOkAfterInbound = _debugGetGlobalInt('gConnectionOk') === 1;
-                result.lastContent = _debugGetGlobalString('lastContent');
-                result.lastContentMatched = !inboundExpected ||
-                    result.lastContent.indexOf(inboundExpected) !== -1;
-                if (inboundReplyExpected) {
-                    result.inboundReplyPending = _findFirstPendingMusRequest(1);
-                    result.inboundReplyQueued = result.inboundReplyPending.index >= 0 &&
-                        result.inboundReplyPending.instanceId === instanceId &&
-                        result.inboundReplyPending.dataText.indexOf(inboundReplyExpected) !== -1;
-                    _pumpMusRequests();
-                    result.inboundReplySent = result.inboundReplyQueued;
+                var connectionOk = _debugGetGlobalInt('gConnectionOk') === 1;
+                result.connectionOkThroughoutInbound =
+                    result.connectionOkThroughoutInbound && connectionOk;
+                if (inboundIndex === 0) {
+                    result.connectionOkAfterInbound = connectionOk;
                 }
-                result.inboundHandled = result.lastContentMatched || result.inboundReplyQueued;
-            } else if (inboundState && inboundState.type === 'error') {
-                result.inboundErrorCode = inboundState.code;
+                var lastContent = _debugGetGlobalString('lastContent');
+                var lastContentMatched = !expectedInbound ||
+                    lastContent.indexOf(expectedInbound) !== -1;
+                result.lastContents.push(lastContent);
+                result.lastContentMatches.push(lastContentMatched);
+                if (inboundIndex === 0) {
+                    result.lastContent = lastContent;
+                    result.lastContentMatched = lastContentMatched;
+                }
+
+                var replyRequired = !!expectedReply;
+                var replyQueued = !replyRequired;
+                var replyPending = { index: -1, count: _exports.getMusPendingCount(), instanceId: 0,
+                    host: '', port: 0, dataLength: 0, dataText: '', dataHexPrefix: '' };
+                if (replyRequired) {
+                    replyPending = _findFirstPendingMusRequest(1);
+                    replyQueued = replyPending.index >= 0 &&
+                        replyPending.instanceId === instanceId &&
+                        replyPending.dataText.indexOf(expectedReply) !== -1;
+                    if (replyPending.index >= 0) {
+                        _pumpMusRequests();
+                    }
+                }
+                result.inboundReplyPendings.push(replyPending);
+                result.inboundReplyQueuedByMessage.push(replyQueued);
+                result.inboundReplySentByMessage.push(replyQueued);
+                if (replyQueued && expectedReply) {
+                    result.inboundReplySentCount++;
+                }
+                if (inboundIndex === 0) {
+                    result.inboundReplyPending = replyPending;
+                    result.inboundReplyQueued = replyQueued;
+                    result.inboundReplySent = replyQueued;
+                }
+                var handled = lastContentMatched || (replyRequired && replyQueued);
+                result.inboundHandledByMessage.push(handled);
+                if (!handled || !replyQueued) {
+                    break;
+                }
             }
+            result.inboundSequenceComplete =
+                result.inboundReceivedCount === inboundSequence.length &&
+                result.inboundHandledByMessage.length === inboundSequence.length &&
+                result.inboundHandledByMessage.every(function(handled) { return handled; }) &&
+                result.inboundReplySentByMessage.length === inboundSequence.length &&
+                result.inboundReplySentByMessage.every(function(sent) { return sent; }) &&
+                result.connectionOkThroughoutInbound;
+            result.inboundHandled = result.inboundSequenceComplete;
         } else {
             result.inboundState = 'not-required';
             result.inboundHandled = true;
+            result.inboundSequenceComplete = true;
         }
 
         _exports.debugMusRequestDisconnect(instanceId);
@@ -1437,6 +1512,7 @@ async function _runFixtureMultiuserScriptSelfTest(message) {
             result.scriptSendSent && result.disconnected &&
             (!requireInbound || (result.inboundReceived && result.handlerTickedAfterInbound &&
                 result.connectionOkAfterInbound && result.inboundHandled &&
+                result.inboundSequenceComplete &&
                 (!inboundReplyExpected || result.inboundReplySent)));
         return result;
     } catch (e) {
