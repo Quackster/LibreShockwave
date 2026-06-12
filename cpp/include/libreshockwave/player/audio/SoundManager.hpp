@@ -49,6 +49,8 @@ public:
     void setSoundMixMedia(bool mixMedia);
     [[nodiscard]] bool soundMixMedia() const;
     void play(int channelNum, const lingo::Datum& args);
+    void queue(int channelNum, const lingo::Datum& args);
+    void playNext(int channelNum);
     void stop(int channelNum);
     void stopAll();
     void setVolume(int channelNum, int volume);
@@ -67,6 +69,8 @@ public:
     [[nodiscard]] int getLoopEndTime(int channelNum) const;
     void setMember(int channelNum, const lingo::Datum::CastMemberRef& memberRef);
     [[nodiscard]] std::optional<lingo::Datum::CastMemberRef> getMember(int channelNum) const;
+    void setPlaylist(int channelNum, const lingo::Datum& playlist);
+    [[nodiscard]] std::vector<lingo::Datum> getPlaylist(int channelNum) const;
     [[nodiscard]] bool isPlaying(int channelNum) const;
     [[nodiscard]] int getElapsedTime(int channelNum) const;
 
@@ -108,6 +112,7 @@ private:
     std::array<int, MAX_CHANNELS + 1> loopStartTimes_{};
     std::array<int, MAX_CHANNELS + 1> loopEndTimes_{};
     std::array<std::optional<lingo::Datum::CastMemberRef>, MAX_CHANNELS + 1> memberRefs_{};
+    std::array<std::vector<lingo::Datum>, MAX_CHANNELS + 1> playlists_{};
     std::unordered_map<int, DirectorFile*> castLibFiles_;
     AudioResolver resolver_;
 };

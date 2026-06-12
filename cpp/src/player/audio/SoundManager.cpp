@@ -127,6 +127,28 @@ void SoundManager::play(int channelNum, const lingo::Datum& args) {
     applyVolume(channelNum);
 }
 
+void SoundManager::queue(int channelNum, const lingo::Datum& args) {
+    if (!isValidChannel(channelNum)) {
+        return;
+    }
+    playlists_[static_cast<std::size_t>(channelNum)].push_back(args.deepCopy());
+}
+
+void SoundManager::playNext(int channelNum) {
+    if (!enabled_ || backend_ == nullptr || !isValidChannel(channelNum)) {
+        return;
+    }
+
+    auto& playlist = playlists_[static_cast<std::size_t>(channelNum)];
+    if (playlist.empty()) {
+        return;
+    }
+
+    const auto next = playlist.front().deepCopy();
+    playlist.erase(playlist.begin());
+    play(channelNum, next);
+}
+
 void SoundManager::stop(int channelNum) {
     if (backend_ == nullptr || !isValidChannel(channelNum)) {
         return;
@@ -228,6 +250,39 @@ void SoundManager::setMember(int channelNum, const lingo::Datum::CastMemberRef& 
 
 std::optional<lingo::Datum::CastMemberRef> SoundManager::getMember(int channelNum) const {
     return isValidChannel(channelNum) ? memberRefs_[static_cast<std::size_t>(channelNum)] : std::nullopt;
+}
+
+void SoundManager::setPlaylist(int channelNum, const lingo::Datum& playlist) {
+    if (!isValidChannel(channelNum)) {
+        return;
+    }
+
+    auto& entries = playlists_[static_cast<std::size_t>(channelNum)];
+    entries.clear();
+    if (playlist.isVoid()) {
+        return;
+    }
+    if (playlist.isList()) {
+        for (const auto& item : playlist.listValue().items()) {
+            entries.push_back(item.deepCopy());
+        }
+        return;
+    }
+    entries.push_back(playlist.deepCopy());
+}
+
+std::vector<lingo::Datum> SoundManager::getPlaylist(int channelNum) const {
+    if (!isValidChannel(channelNum)) {
+        return {};
+    }
+
+    std::vector<lingo::Datum> result;
+    const auto& entries = playlists_[static_cast<std::size_t>(channelNum)];
+    result.reserve(entries.size());
+    for (const auto& entry : entries) {
+        result.push_back(entry.deepCopy());
+    }
+    return result;
 }
 
 bool SoundManager::isPlaying(int channelNum) const {

@@ -11386,6 +11386,33 @@ void testBuiltinRegistryFoundation() {
     assert(SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "member", {}).asCastMemberRef()->memberNum() == 9);
     assert(!SoundChannelMethodDispatcher::setProperty(&context, *builtinSoundChannel, "member", Datum::of(7)));
     assert(SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "getPlaylist", {}).listValue().count() == 0);
+    assert(SoundChannelMethodDispatcher::dispatch(&context,
+                                                  *builtinSoundChannel,
+                                                  "queue",
+                                                  {Datum::castMemberRef(CastLibId(1), MemberId(8))}).isVoid());
+    auto builtinPlaylist = SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "getPlaylist", {});
+    assert(builtinPlaylist.listValue().count() == 1);
+    assert(builtinPlaylist.listValue().getAt(1).asCastMemberRef()->memberNum() == 8);
+    auto builtinQueuedArgs = Datum::propList();
+    builtinQueuedArgs.propListValue().put(Datum::symbol("member"), Datum::castMemberRef(CastLibId(1), MemberId(8)));
+    builtinQueuedArgs.propListValue().put(Datum::symbol("loopCount"), Datum::of(0));
+    assert(SoundChannelMethodDispatcher::dispatch(&context,
+                                                  *builtinSoundChannel,
+                                                  "setPlaylist",
+                                                  {Datum::list({Datum::castMemberRef(CastLibId(1), MemberId(8)),
+                                                                builtinQueuedArgs})}).isVoid());
+    builtinPlaylist = SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "getPlaylist", {});
+    assert(builtinPlaylist.listValue().count() == 2);
+    const int playlistPlayCount = builtinSoundBackend.playCount;
+    assert(SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "playNext", {}).isVoid());
+    assert(builtinSoundBackend.playCount == playlistPlayCount + 1);
+    assert(builtinSoundBackend.lastPlayChannel == 2);
+    assert(builtinSoundBackend.lastLoopCount == 1);
+    assert(SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "getPlaylist", {}).listValue().count() == 1);
+    assert(SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "playNext", {}).isVoid());
+    assert(builtinSoundBackend.playCount == playlistPlayCount + 2);
+    assert(builtinSoundBackend.lastLoopCount == 0);
+    assert(SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "getPlaylist", {}).listValue().count() == 0);
     assert(SoundChannelMethodDispatcher::dispatch(&context, *builtinSoundChannel, "ilk", {}).asSymbol()->name == "instance");
     assert(SoundChannelMethodDispatcher::getProperty(&context, *builtinSoundChannel, "loopCount").intValue() == 1);
     assert(!SoundChannelMethodDispatcher::setProperty(&context, *builtinSoundChannel, "unknown", Datum::of(1)));
@@ -24886,12 +24913,44 @@ void testSoundManagerFoundation() {
     backend.stopAllCount = 0;
     manager.setEnabled(true);
     assert(manager.isEnabled());
+    manager.queue(9, Datum::castMemberRef(CastLibId(2), MemberId(5)));
+    assert(manager.getPlaylist(9).empty());
+    manager.queue(5, Datum::castMemberRef(CastLibId(2), MemberId(5)));
+    auto playlist = manager.getPlaylist(5);
+    assert(playlist.size() == 1);
+    assert(playlist[0].asCastMemberRef()->memberNum() == 5);
+    playlist[0] = Datum::of(99);
+    assert(manager.getPlaylist(5).front().asCastMemberRef()->memberNum() == 5);
 
+    auto queuedArgs = Datum::propList();
+    queuedArgs.propListValue().put(Datum::symbol("member"), Datum::castMemberRef(CastLibId(2), MemberId(6)));
+    queuedArgs.propListValue().put(Datum::symbol("loopCount"), Datum::of(0));
+    manager.setPlaylist(5, Datum::list({Datum::castMemberRef(CastLibId(2), MemberId(5)), queuedArgs}));
+    assert(manager.getPlaylist(5).size() == 2);
+    const int beforePlaylistPlayCount = backend.playCount;
+    manager.playNext(5);
+    assert(backend.playCount == beforePlaylistPlayCount + 1);
+    assert(backend.lastPlayChannel == 5);
+    assert(backend.lastLoopCount == 1);
+    assert(manager.getMember(5).has_value());
+    assert(manager.getMember(5)->memberNum() == 5);
+    assert(manager.getPlaylist(5).size() == 1);
+    manager.playNext(5);
+    assert(backend.playCount == beforePlaylistPlayCount + 2);
+    assert(backend.lastPlayChannel == 5);
+    assert(backend.lastLoopCount == 0);
+    assert(manager.getMember(5).has_value());
+    assert(manager.getMember(5)->memberNum() == 6);
+    assert(manager.getPlaylist(5).empty());
+    manager.setPlaylist(5, Datum::voidValue());
+    assert(manager.getPlaylist(5).empty());
+
+    const int afterPlaylistPlayCount = backend.playCount;
     auto args = Datum::propList();
     args.propListValue().put(Datum::symbol("member"), Datum::castMemberRef(CastLibId(2), MemberId(6)));
     args.propListValue().put(Datum::symbol("loopCount"), Datum::of(0));
     manager.play(3, args);
-    assert(backend.playCount == 2);
+    assert(backend.playCount == afterPlaylistPlayCount + 1);
     assert(backend.lastPlayChannel == 3);
     assert(backend.lastFormat == "mp3");
     assert(backend.lastLoopCount == 0);
@@ -24903,7 +24962,7 @@ void testSoundManagerFoundation() {
     stringKeyArgs.propListValue().put(Datum::of(std::string("member")), Datum::castMemberRef(CastLibId(2), MemberId(5)));
     stringKeyArgs.propListValue().put(Datum::of(std::string("loopCount")), Datum::of(2));
     manager.play(4, Datum::list({stringKeyArgs}));
-    assert(backend.playCount == 3);
+    assert(backend.playCount == afterPlaylistPlayCount + 2);
     assert(backend.lastPlayChannel == 4);
     assert(backend.lastLoopCount == 2);
     assert(manager.getMember(4).has_value());

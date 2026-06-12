@@ -1727,9 +1727,15 @@ Datum SoundBuiltins::handleMethod(BuiltinContext& context,
     auto* manager = context.soundManager;
     const int channelNum = channel.channel;
 
-    if (method == "play" || method == "queue") {
+    if (method == "play") {
         if (manager != nullptr && !args.empty()) {
             manager->play(channelNum, args[0]);
+        }
+        return Datum::voidValue();
+    }
+    if (method == "queue") {
+        if (manager != nullptr && !args.empty()) {
+            manager->queue(channelNum, args[0]);
         }
         return Datum::voidValue();
     }
@@ -1739,10 +1745,21 @@ Datum SoundBuiltins::handleMethod(BuiltinContext& context,
         }
         return Datum::voidValue();
     }
+    if (method == "setplaylist") {
+        if (manager != nullptr) {
+            manager->setPlaylist(channelNum, args.empty() ? Datum::voidValue() : args[0]);
+        }
+        return Datum::voidValue();
+    }
     if (method == "pause" || method == "resume" || method == "unpause" ||
-        method == "playfile" || method == "playnext" || method == "breakloop" ||
-        method == "rewind" || method == "fadein" || method == "fadeto" ||
-        method == "setplaylist") {
+        method == "playfile" || method == "breakloop" ||
+        method == "rewind" || method == "fadein" || method == "fadeto") {
+        return Datum::voidValue();
+    }
+    if (method == "playnext") {
+        if (manager != nullptr) {
+            manager->playNext(channelNum);
+        }
         return Datum::voidValue();
     }
     if (method == "isbusy") {
@@ -1755,7 +1772,7 @@ Datum SoundBuiltins::handleMethod(BuiltinContext& context,
         return Datum::of(manager != nullptr ? manager->getElapsedTime(channelNum) : 0);
     }
     if (method == "getplaylist") {
-        return Datum::list({});
+        return Datum::list(manager != nullptr ? manager->getPlaylist(channelNum) : std::vector<Datum>{});
     }
     if (method == "volume") {
         if (!args.empty()) {
