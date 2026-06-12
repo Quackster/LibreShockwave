@@ -72,6 +72,7 @@
 #include "libreshockwave/chunks/ScoreChunk.hpp"
 #include "libreshockwave/chunks/SoundChunk.hpp"
 #include "libreshockwave/chunks/TextChunk.hpp"
+#ifdef LIBRESHOCKWAVE_BUILD_EDITOR
 #include "libreshockwave/editor/AppModels.hpp"
 #include "libreshockwave/editor/EditorContextModels.hpp"
 #include "libreshockwave/editor/EditorFrameModels.hpp"
@@ -123,6 +124,7 @@
 #include "libreshockwave/editor/script/LingoTokenizer.hpp"
 #include "libreshockwave/editor/stage/StageViewModels.hpp"
 #include "libreshockwave/editor/ui/EditorRendererModels.hpp"
+#endif
 #include "libreshockwave/format/ChunkInfo.hpp"
 #include "libreshockwave/format/AfterburnerReader.hpp"
 #include "libreshockwave/format/ChunkType.hpp"
@@ -304,6 +306,7 @@ using libreshockwave::chunks::ScriptNamesChunk;
 using libreshockwave::chunks::ScoreChunk;
 using libreshockwave::chunks::SoundChunk;
 using libreshockwave::chunks::TextChunk;
+#ifdef LIBRESHOCKWAVE_BUILD_EDITOR
 using libreshockwave::editor::ExternalParamRow;
 using libreshockwave::editor::ExternalParamsTableModel;
 using libreshockwave::editor::EditorContextEvent;
@@ -515,6 +518,7 @@ using libreshockwave::editor::ui::RowHeaderPresentation;
 using libreshockwave::editor::ui::TreeCellPresentation;
 using libreshockwave::editor::ui::TreeIcon;
 using libreshockwave::editor::ui::UiColor;
+#endif
 using libreshockwave::lingo::Datum;
 using libreshockwave::lingo::DatumType;
 using libreshockwave::lingo::LingoValueParser;
@@ -1509,6 +1513,7 @@ void testUtilityFormatting() {
     assert(libreshockwave::format::resolveHandlerName(nullptr, 3) == "handler#3");
 }
 
+#ifdef LIBRESHOCKWAVE_BUILD_EDITOR
 void testEditorFormattingAndScriptHelpers() {
     assert(ChannelNames::get(-1) == "Ch 0");
     assert(ChannelNames::get(0) == "Tempo");
@@ -6565,6 +6570,7 @@ void testEditorScanningHelpers() {
 
     std::filesystem::remove_all(outputDir);
 }
+#endif
 
 void testLingoDatumTypes() {
     assert(libreshockwave::lingo::typeName(DatumType::String) == "string");
@@ -29725,6 +29731,7 @@ int main() {
     testIdsAndEnums();
     testFormatTypes();
     testUtilityFormatting();
+#ifdef LIBRESHOCKWAVE_BUILD_EDITOR
     testEditorFormattingAndScriptHelpers();
     testEditorAppShellModels();
     testEditorContextModels();
@@ -29742,6 +29749,7 @@ int main() {
     testEditorDebugDataModels();
     testEditorScoreDataHelpers();
     testEditorScanningHelpers();
+#endif
     testLingoDatumTypes();
     testLingoOpcodeHelpers();
     testLingoDecompilerNodeFoundation();

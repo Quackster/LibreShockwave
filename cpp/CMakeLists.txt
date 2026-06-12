@@ -35,47 +35,13 @@ add_custom_command(
 )
 set_source_files_properties("${LIBRESHOCKWAVE_PLATFORM_FONT_DATA_CPP}" PROPERTIES GENERATED TRUE)
 
-add_library(libreshockwave
+option(LIBRESHOCKWAVE_BUILD_EDITOR "Build experimental editor-only models and GTK shell" OFF)
+
+set(LIBRESHOCKWAVE_EDITOR_SOURCES
     src/editor/AppModels.cpp
     src/editor/EditorContextModels.cpp
     src/editor/EditorFrameModels.cpp
     src/editor/EditorShellModels.cpp
-    src/DirectorFile.cpp
-    src/W3DFile.cpp
-    src/audio/SoundConverter.cpp
-    src/bitmap/Bitmap.cpp
-    src/bitmap/BitmapColorizer.cpp
-    src/bitmap/BitmapDecoder.cpp
-    src/bitmap/ColorRef.cpp
-    src/bitmap/Drawing.cpp
-    src/bitmap/Palette.cpp
-    src/cast/BitmapInfo.cpp
-    src/cast/CastMember.cpp
-    src/cast/FilmLoopInfo.cpp
-    src/cast/MemberType.cpp
-    src/cast/ScriptType.cpp
-    src/cast/ShapeInfo.cpp
-    src/cast/Shockwave3DInfo.cpp
-    src/cast/TextInfo.cpp
-    src/cast/XmedStyledText.cpp
-    src/cast/XmedTextParser.cpp
-    src/chunks/BitmapChunk.cpp
-    src/chunks/CastChunk.cpp
-    src/chunks/CastListChunk.cpp
-    src/chunks/CastMemberChunk.cpp
-    src/chunks/ConfigChunk.cpp
-    src/chunks/FontMapChunk.cpp
-    src/chunks/FrameLabelsChunk.cpp
-    src/chunks/KeyTableChunk.cpp
-    src/chunks/MediaChunk.cpp
-    src/chunks/PaletteChunk.cpp
-    src/chunks/RawChunk.cpp
-    src/chunks/ScriptContextChunk.cpp
-    src/chunks/ScriptChunk.cpp
-    src/chunks/ScriptNamesChunk.cpp
-    src/chunks/ScoreChunk.cpp
-    src/chunks/SoundChunk.cpp
-    src/chunks/TextChunk.cpp
     src/editor/audio/EditorAudioModels.cpp
     src/editor/cast/CastBrowserModels.cpp
     src/editor/debug/DebugBrowserModels.cpp
@@ -119,6 +85,45 @@ add_library(libreshockwave
     src/editor/script/LingoTokenizer.cpp
     src/editor/stage/StageViewModels.cpp
     src/editor/ui/EditorRendererModels.cpp
+)
+
+add_library(libreshockwave
+    src/DirectorFile.cpp
+    src/W3DFile.cpp
+    src/audio/SoundConverter.cpp
+    src/bitmap/Bitmap.cpp
+    src/bitmap/BitmapColorizer.cpp
+    src/bitmap/BitmapDecoder.cpp
+    src/bitmap/ColorRef.cpp
+    src/bitmap/Drawing.cpp
+    src/bitmap/Palette.cpp
+    src/cast/BitmapInfo.cpp
+    src/cast/CastMember.cpp
+    src/cast/FilmLoopInfo.cpp
+    src/cast/MemberType.cpp
+    src/cast/ScriptType.cpp
+    src/cast/ShapeInfo.cpp
+    src/cast/Shockwave3DInfo.cpp
+    src/cast/TextInfo.cpp
+    src/cast/XmedStyledText.cpp
+    src/cast/XmedTextParser.cpp
+    src/chunks/BitmapChunk.cpp
+    src/chunks/CastChunk.cpp
+    src/chunks/CastListChunk.cpp
+    src/chunks/CastMemberChunk.cpp
+    src/chunks/ConfigChunk.cpp
+    src/chunks/FontMapChunk.cpp
+    src/chunks/FrameLabelsChunk.cpp
+    src/chunks/KeyTableChunk.cpp
+    src/chunks/MediaChunk.cpp
+    src/chunks/PaletteChunk.cpp
+    src/chunks/RawChunk.cpp
+    src/chunks/ScriptContextChunk.cpp
+    src/chunks/ScriptChunk.cpp
+    src/chunks/ScriptNamesChunk.cpp
+    src/chunks/ScoreChunk.cpp
+    src/chunks/SoundChunk.cpp
+    src/chunks/TextChunk.cpp
     src/format/AfterburnerReader.cpp
     src/format/ChunkType.cpp
     src/format/MoaID.cpp
@@ -245,6 +250,11 @@ target_include_directories(libreshockwave
 
 target_compile_features(libreshockwave PUBLIC cxx_std_20)
 
+if(LIBRESHOCKWAVE_BUILD_EDITOR)
+    target_sources(libreshockwave PRIVATE ${LIBRESHOCKWAVE_EDITOR_SOURCES})
+    target_compile_definitions(libreshockwave PUBLIC LIBRESHOCKWAVE_BUILD_EDITOR=1)
+endif()
+
 if(EMSCRIPTEN)
     target_compile_options(libreshockwave PUBLIC "-fexceptions" "-sUSE_ZLIB=1")
     target_compile_definitions(libreshockwave PUBLIC LIBRESHOCKWAVE_HAVE_ZLIB=1)
@@ -278,23 +288,25 @@ if(ZLIB_FOUND)
     target_compile_definitions(libreshockwave PUBLIC LIBRESHOCKWAVE_HAVE_ZLIB=1)
 endif()
 
-find_package(PkgConfig QUIET)
-if(PkgConfig_FOUND)
-    pkg_check_modules(GTK4 QUIET IMPORTED_TARGET gtk4)
-endif()
+if(LIBRESHOCKWAVE_BUILD_EDITOR)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(GTK4 QUIET IMPORTED_TARGET gtk4)
+    endif()
 
-if(GTK4_FOUND)
-    add_executable(libreshockwave_editor_gtk
-        src/editor/gtk/EditorGtkMain.cpp
-    )
-    target_link_libraries(libreshockwave_editor_gtk
-        PRIVATE
-            LibreShockwave::libreshockwave
-            PkgConfig::GTK4
-    )
-    target_compile_features(libreshockwave_editor_gtk PRIVATE cxx_std_20)
-else()
-    message(STATUS "GTK4 not found; libreshockwave_editor_gtk target disabled. Install gtk4-devel to build it.")
+    if(GTK4_FOUND)
+        add_executable(libreshockwave_editor_gtk
+            src/editor/gtk/EditorGtkMain.cpp
+        )
+        target_link_libraries(libreshockwave_editor_gtk
+            PRIVATE
+                LibreShockwave::libreshockwave
+                PkgConfig::GTK4
+        )
+        target_compile_features(libreshockwave_editor_gtk PRIVATE cxx_std_20)
+    else()
+        message(STATUS "GTK4 not found; libreshockwave_editor_gtk target disabled. Install gtk4-devel to build it.")
+    endif()
 endif()
 
 if(EMSCRIPTEN)
@@ -361,5 +373,8 @@ if(BUILD_TESTING)
         tests/sdk_foundation_test.cpp
     )
     target_link_libraries(libreshockwave_tests PRIVATE LibreShockwave::libreshockwave)
+    if(LIBRESHOCKWAVE_BUILD_EDITOR)
+        target_compile_definitions(libreshockwave_tests PRIVATE LIBRESHOCKWAVE_BUILD_EDITOR=1)
+    endif()
     add_test(NAME libreshockwave_cpp_tests COMMAND libreshockwave_tests)
 endif()

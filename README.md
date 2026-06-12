@@ -11,7 +11,6 @@ The old Java/Gradle implementation was the historical reference for this port an
 - CMake 3.20 or newer
 - A C++20 compiler
 - zlib or zlib-ng development headers
-- Optional: GTK4 development headers for the experimental native editor shell target
 - Optional: Emscripten for the browser/WASM target
 - Optional: Node.js plus `ws` and either `puppeteer` or `playwright` for browser fixture verification
 
@@ -19,12 +18,6 @@ On Fedora, the native runtime dependencies are typically:
 
 ```bash
 sudo dnf install cmake gcc-c++ zlib-ng-devel
-```
-
-For the optional GTK target:
-
-```bash
-sudo dnf install gtk4-devel
 ```
 
 ## Build
@@ -94,7 +87,7 @@ The `/dcr0910/loader.dcr` movie was used only as a completed load/render/network
 
 Shockwave3D/W3D can be ignored for the current parity goal because it was never completed in the historical LibreShockwave runtime. Existing C++ W3D parsing and preliminary bake coverage can remain opportunistic.
 
-The C++ editor scaffolding is not the active port objective. Keep runtime/player work decoupled from editor expansion unless a later task explicitly changes that scope.
+The C++ editor scaffolding is not the active port objective and is excluded from the default CMake build. Keep runtime/player work decoupled from editor expansion unless a later task explicitly changes that scope.
 
 ## Repository Layout
 
@@ -102,7 +95,7 @@ The C++ editor scaffolding is not the active port objective. Keep runtime/player
 cpp/
   CMakeLists.txt
   include/libreshockwave/       Public C++ headers
-  src/                          Runtime, SDK, VM, player, and optional editor sources
+  src/                          Runtime, SDK, VM, and player sources
   resources/fonts/              Bundled runtime font assets
   tests/                        C++ regression and contract tests
   tools/                        Native probes and browser fixture checker

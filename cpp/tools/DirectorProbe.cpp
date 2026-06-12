@@ -14,8 +14,6 @@
 #include <vector>
 
 #include "libreshockwave/DirectorFile.hpp"
-#include "libreshockwave/editor/score/ScoreDataBuilder.hpp"
-#include "libreshockwave/editor/scanning/FileProcessor.hpp"
 #include "libreshockwave/format/ChunkType.hpp"
 #include "ProbeFixtureRoots.hpp"
 
@@ -47,8 +45,8 @@ struct ProbeSummary {
     std::size_t scannedMembers = 0;
     std::size_t scripts = 0;
     std::size_t palettes = 0;
-    std::size_t scoreRows = 0;
-    std::size_t scoreColumns = 0;
+    std::size_t scoreChannels = 0;
+    std::size_t scoreFrames = 0;
     std::size_t externalCasts = 0;
     int stageWidth = 0;
     int stageHeight = 0;
@@ -107,8 +105,8 @@ std::string usage(const char* argv0) {
     out << "Usage: " << argv0
         << " [--allow-empty] [--max-failures N] [--progress-interval N] [--show-current] [--verbose]"
         << " <file-or-directory>...\n"
-        << "Scans Director .cct/.cst/.dcr/.dir/.dxr files through the native C++ loader, editor member scan, "
-        << "and score model builder.\n"
+        << "Scans Director .cct/.cst/.dcr/.dir/.dxr files through the native C++ runtime loader "
+        << "and score metadata paths.\n"
         << "If no paths are supplied, /var/html is used when present; otherwise /var/www/html is used "
         << "as the local fixture mapping.";
     return out.str();
@@ -253,23 +251,18 @@ ProbeSummary probeFile(const fs::path& path) {
     auto directorFile = libreshockwave::DirectorFile::load(data);
     directorFile->setBasePath(path.parent_path().string());
 
-    libreshockwave::editor::scanning::FileProcessor fileProcessor;
-    const auto scannedMembers = fileProcessor.processMembers(*directorFile);
-
-    libreshockwave::editor::score::ScoreDataBuilder scoreBuilder;
-    const auto scoreRows = scoreBuilder.buildScoreData(*directorFile);
-    const auto scoreColumns = scoreBuilder.buildColumnNames(*directorFile);
+    const auto score = directorFile->scoreChunk();
     const auto externalCasts = directorFile->getExternalCastPaths();
 
     return ProbeSummary{
         data.size(),
         directorFile->chunks().size(),
         directorFile->castMembers().size(),
-        scannedMembers.size(),
+        directorFile->castMembers().size(),
         directorFile->scripts().size(),
         directorFile->palettes().size(),
-        scoreRows.size(),
-        scoreColumns.size(),
+        score == nullptr ? 0U : static_cast<std::size_t>(std::max(0, score->getChannelCount())),
+        score == nullptr ? 0U : static_cast<std::size_t>(std::max(0, score->getFrameCount())),
         externalCasts.size(),
         directorFile->stageWidth(),
         directorFile->stageHeight(),
@@ -292,7 +285,7 @@ void printVerboseOk(const fs::path& path, const ProbeSummary& summary) {
               << " scannedMembers=" << summary.scannedMembers
               << " scripts=" << summary.scripts
               << " palettes=" << summary.palettes
-              << " score=" << summary.scoreRows << 'x' << summary.scoreColumns
+              << " score=" << summary.scoreChannels << " channels x " << summary.scoreFrames << " frames"
               << " externalCasts=" << summary.externalCasts
               << '\n';
 }
@@ -318,7 +311,8 @@ int main(int argc, char** argv) {
         std::size_t totalCastMembers = 0;
         std::size_t totalScannedMembers = 0;
         std::size_t totalScripts = 0;
-        std::size_t totalScoreRows = 0;
+        std::size_t totalScoreChannels = 0;
+        std::size_t totalScoreFrames = 0;
 
         const auto printProgress = [&](std::size_t processedCount) {
             if (options.verbose || options.progressInterval == 0) {
@@ -350,7 +344,8 @@ int main(int argc, char** argv) {
                 totalCastMembers += summary.castMembers;
                 totalScannedMembers += summary.scannedMembers;
                 totalScripts += summary.scripts;
-                totalScoreRows += summary.scoreRows;
+                totalScoreChannels += summary.scoreChannels;
+                totalScoreFrames += summary.scoreFrames;
 
                 if (options.verbose) {
                     printVerboseOk(file, summary);
@@ -383,7 +378,8 @@ int main(int argc, char** argv) {
                   << " castMembers=" << totalCastMembers
                   << " scannedMembers=" << totalScannedMembers
                   << " scripts=" << totalScripts
-                  << " scoreRows=" << totalScoreRows
+                  << " scoreChannels=" << totalScoreChannels
+                  << " scoreFrames=" << totalScoreFrames
                   << '\n';
 
         if (okCount == 0 && !files.empty() && failureCount == 0 && !options.allowEmpty) {
